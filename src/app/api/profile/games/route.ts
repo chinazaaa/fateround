@@ -82,8 +82,19 @@ export async function GET(req: NextRequest) {
       // Most-played first: the list should open on what this person actually plays.
       .sort((a, b) => b.gamesPlayed - a.gamesPlayed || a.label.localeCompare(b.label))
 
+    // `username` is read best-effort and separately so this route survives being deployed a
+    // moment before its migration: a missing column 400s only this small query, and the dashboard
+    // still renders (username just reads null, so "Share profile" opens the claim step).
+    let username: string | null = null
+    try {
+      const { data: uRow } = await admin.from('profiles').select('username').eq('id', profileId).maybeSingle()
+      username = (uRow?.username as string | null) ?? null
+    } catch {
+      username = null
+    }
+
     return NextResponse.json({
-      profile: profile ?? null,
+      profile: profile ? { ...profile, username } : null,
       games,
     })
   } catch (err) {

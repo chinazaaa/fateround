@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { SaveToProfileModal } from '@/components/profile/SaveToProfileModal'
+import { ShareProfileModal } from '@/components/profile/ShareProfileModal'
 import { GAME_CATEGORIES } from '@/lib/game-types'
 import { authHeaders } from '@/lib/identity'
 
@@ -23,6 +24,7 @@ type GameRow = {
 type ProfileSummary = {
   id: string
   handle: string | null
+  username: string | null
   avatar_url: string | null
   is_anonymous: boolean
   trophy_points: number
@@ -52,6 +54,7 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true)
   const [signedOut, setSignedOut] = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
+  const [shareOpen, setShareOpen] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -116,13 +119,18 @@ export default function ProfilePage() {
         {/* The name editor lives here rather than as a header chip: on these routes the floating
             theme toggle already owns the header's right side, and this is where someone looks
             for their own settings anyway. */}
-        <button
-          type="button"
-          onClick={() => setProfileOpen(true)}
-          className="btn-secondary btn-fit shrink-0 px-3 py-1.5 text-sm"
-        >
-          {profile?.handle ? 'Edit name' : 'Set your name'}
-        </button>
+        <div className="flex shrink-0 flex-col items-stretch gap-2">
+          <button type="button" onClick={() => setShareOpen(true)} className="btn-primary btn-fit px-3 py-1.5 text-sm">
+            Share profile
+          </button>
+          <button
+            type="button"
+            onClick={() => setProfileOpen(true)}
+            className="btn-secondary btn-fit px-3 py-1.5 text-sm"
+          >
+            {profile?.handle ? 'Edit name' : 'Set your name'}
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-3 gap-2 sm:gap-3">
@@ -189,6 +197,17 @@ export default function ProfilePage() {
         onClose={() => setProfileOpen(false)}
         profile={profile}
         onChanged={() => void load()}
+      />
+
+      <ShareProfileModal
+        open={shareOpen}
+        onClose={() => setShareOpen(false)}
+        username={profile?.username ?? null}
+        handle={profile?.handle ?? null}
+        onClaimed={(username) => {
+          setProfile((p) => (p ? { ...p, username } : p))
+          void load()
+        }}
       />
     </div>
   )
