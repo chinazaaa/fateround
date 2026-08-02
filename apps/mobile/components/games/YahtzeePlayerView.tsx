@@ -2,7 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ScrollView, StyleSheet, Text } from 'react-native'
 import { type YahtzeeCategory, type YahtzeePlayerScore, type YahtzeeSession } from '@fateround/shared'
 import { batch3GameLabel } from '@fateround/shared/batch-3-games'
-import { YAHTZEE_MIN_PLAYERS, currentPlayerId, totalScore } from '@fateround/shared/yahtzee'
+import {
+  YAHTZEE_CATEGORY_LABELS,
+  YAHTZEE_MIN_PLAYERS,
+  currentPlayerId,
+  jokerApplies,
+  matchingUpperCategory,
+  totalScore,
+} from '@fateround/shared/yahtzee'
 import { preJoinScreen } from '@fateround/shared/viewers'
 import { JoinScreen } from '@/components/JoinScreen'
 import { GameInfoChips } from '@/components/GameInfoChips'
@@ -263,6 +270,16 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
   const canScore = isMyTurn && (session.rolls_this_turn ?? 0) > 0
   const turnName = bootstrap.players.find((p) => p.id === turnPlayerId)?.name ?? 'Someone'
 
+  // Joker rule guide — names the forced box before the player taps, rather than after a
+  // rejected score. See the web player view for the reasoning.
+  const jokerForcedBox = (() => {
+    if (!canScore || !dice) return null
+    const myCats = scores.find((s) => s.player_id === bootstrap.myPlayerId)?.scores.categories
+    if (!myCats || !jokerApplies(dice, myCats)) return null
+    const forced = matchingUpperCategory(dice)
+    return forced && myCats[forced] == null ? YAHTZEE_CATEGORY_LABELS[forced] : null
+  })()
+
   return (
     <GameShell
       bootstrap={bootstrap}
@@ -286,6 +303,10 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
 
         {session.status_message ? <Text style={styles.status}>{session.status_message}</Text> : null}
 
+        {jokerForcedBox ? (
+          <Text style={styles.jokerHint}>🃏 Yahtzee bonus! Score it in your {jokerForcedBox} box first.</Text>
+        ) : null}
+
         <YahtzeeScorecardGrid
           players={bootstrap.players}
           scores={scores}
@@ -303,5 +324,12 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
     scroll: { gap: 12, paddingBottom: 24 },
+    jokerHint: {
+      textAlign: 'center',
+      fontSize: 13,
+      fontWeight: '600',
+      color: '#7c3aed',
+      paddingVertical: 6,
+    },
     status: { color: theme.textMuted, textAlign: 'center' },
   })

@@ -6,6 +6,7 @@ import {
   YAHTZEE_LOWER_CATEGORIES,
   YAHTZEE_UPPER_CATEGORIES,
   categoryScore,
+  jokerApplies,
   upperBonus,
   upperScore,
   totalScore,
@@ -115,7 +116,11 @@ export function YahtzeeScorecard({
         const isActive = player.id === activePlayerId
         const isYou = player.id === myPlayerId
         const val = score ? score[category] : null
-        const previewVal = isActive && val == null && dice ? categoryScore(dice, category) : null
+        // Under the Joker rule the lower boxes preview their max (a Large Straight cell showing
+        // 40 for five 4s), so the number itself tells the player the Joker is live before they
+        // click — nothing here forces or blocks, the server still does that.
+        const joker = isActive && score ? jokerApplies(dice ?? [], score) : false
+        const previewVal = isActive && val == null && dice ? categoryScore(dice, category, { joker }) : null
 
         return (
           <td key={player.id} className={playerColClass(player.id)}>

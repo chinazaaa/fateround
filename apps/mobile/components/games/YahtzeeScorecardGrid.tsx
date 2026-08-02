@@ -6,6 +6,7 @@ import {
   YAHTZEE_UPPER_BONUS_THRESHOLD,
   YAHTZEE_UPPER_CATEGORIES,
   categoryScore,
+  jokerApplies,
   totalScore,
   upperBonus,
   upperScore,
@@ -79,7 +80,8 @@ export function YahtzeeScorecardGrid({
     const isActive = player.id === activePlayerId
     const isYou = player.id === myPlayerId
     const val = score ? score[category] : null
-    const preview = isActive && val == null && dice ? categoryScore(dice, category) : null
+    const joker = isActive && score ? jokerApplies(dice ?? [], score) : false
+    const preview = isActive && val == null && dice ? categoryScore(dice, category, { joker }) : null
 
     if (val != null) {
       return <Text style={styles.cellFilled}>{val}</Text>

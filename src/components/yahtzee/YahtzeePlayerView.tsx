@@ -17,7 +17,14 @@ import { YahtzeeFinalResultsShareBlock } from '@/components/yahtzee/YahtzeeFinal
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { gameTypeConfig } from '@/lib/game-types'
-import { currentPlayerId, totalScore, YAHTZEE_MIN_PLAYERS } from '@/lib/yahtzee'
+import {
+  currentPlayerId,
+  jokerApplies,
+  matchingUpperCategory,
+  totalScore,
+  YAHTZEE_CATEGORY_LABELS,
+  YAHTZEE_MIN_PLAYERS,
+} from '@/lib/yahtzee'
 import { supabase } from '@/lib/supabase'
 import { YAHTZEE_PLAYER_SCORES_SELECT, YAHTZEE_SESSION_SELECT } from '@/lib/supabase-selects'
 import { clearPlayerSession } from '@/lib/utils'
@@ -322,6 +329,17 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
   const winner = players.find((p) => p.id === session?.winner_player_id)
   const canScore = isMyTurn && (session?.rolls_this_turn ?? 0) > 0
 
+  // Joker rule guide. When it's your turn and a Yahtzee is on the table with your Yahtzee box
+  // already filled, the roll is forced into its matching upper box until that box is taken.
+  // Naming it here means the player is told before they click, rather than by a rejected score.
+  const jokerForcedBox = (() => {
+    if (!canScore || !session?.dice) return null
+    const myCats = scores.find((s) => s.player_id === myPlayerId)?.scores.categories
+    if (!myCats || !jokerApplies(session.dice, myCats)) return null
+    const forced = matchingUpperCategory(session.dice)
+    return forced && myCats[forced] == null ? YAHTZEE_CATEGORY_LABELS[forced] : null
+  })()
+
   // Audio notifications
   useYahtzeeNotifications({ game, session, myPlayerId, enabled: screen === 'active' })
 
@@ -544,6 +562,12 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
   return (
     <YahtzeeShell title={game?.title} wide compact>
       <div className="space-y-2">
+        {jokerForcedBox && (
+          <div className="glass-card border border-[var(--primary)]/40 px-3 py-2 text-center text-sm">
+            🃏 <span className="font-semibold">Yahtzee bonus!</span> Score it in your{' '}
+            <span className="font-semibold">{jokerForcedBox}</span> box first.
+          </div>
+        )}
         <YahtzeeScorecard
           players={players}
           scores={scores}
