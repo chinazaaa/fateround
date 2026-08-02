@@ -4,7 +4,7 @@ import { assertAdminRequest } from '@/lib/admin-api'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { parseJsonBody } from '@/lib/parse-body'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
-import { criteriaUsesLiveMeasures } from '@/lib/trophies/catalog'
+import { criteriaUsesLiveMeasures, scopeCriteriaToGame } from '@/lib/trophies/catalog'
 import { parseCriteria } from '@/lib/trophies/criteria'
 
 /**
@@ -60,7 +60,21 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const patch = Object.fromEntries(Object.entries(body).filter(([, v]) => v !== undefined))
   if (!Object.keys(patch).length) return NextResponse.json({ error: 'Nothing to update.' }, { status: 400 })
 
-  const { error } = await getSupabaseAdmin().from('trophies').update(patch).eq('id', id)
+  const supabase = getSupabaseAdmin()
+
+  // Re-scope whenever either half of the pairing moves. Creating scoped the rule to the game;
+  // editing did not, so two paths could desync it: changing the rule alone left it counting
+  // every game, and changing the game alone left it measuring the old one. Both produce a
+  // trophy that looks right in the list and counts the wrong thing.
+  if (body.criteria !== undefined || body.game_type !== undefined) {
+    const { data: current } = await supabase.from('trophies').select('game_type, criteria').eq('id', id).maybeSingle()
+    const gameType = body.game_type !== undefined ? (body.game_type ?? null) : ((current?.game_type as string) ?? null)
+    const criteria = body.criteria !== undefined ? body.criteria : current?.criteria
+    patch.criteria = scopeCriteriaToGame(criteria, gameType)
+    patch.game_type = gameType
+  }
+
+  const { error } = await supabase.from('trophies').update(patch).eq('id', id)
   if (error) return NextResponse.json({ error: internalErrorMessage('admin/trophies', error) }, { status: 500 })
 
   return NextResponse.json({ ok: true })

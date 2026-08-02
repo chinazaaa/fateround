@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { describeRule, fromCriteria, toCriteria, type Condition, type SimpleRule } from '@/lib/trophies/rule-builder'
 
 type Trophy = {
@@ -57,6 +57,10 @@ export default function AdminTrophiesPage() {
   const [message, setMessage] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [rule, setRule] = useState<SimpleRule>(DEFAULT_RULE)
+  // 280+ rows once every game is seeded, so the catalog is unusable without narrowing.
+  const [filterGame, setFilterGame] = useState('all')
+  const [filterTier, setFilterTier] = useState('all')
+  const [search, setSearch] = useState('')
   // Raw JSON is the escape hatch, not the default. It turns on by itself when an existing rule
   // is too exotic for the builder — showing a simplified version would let someone save it back
   // and quietly lose what it actually said.
@@ -86,7 +90,9 @@ export default function AdminTrophiesPage() {
     setMessage(null)
     try {
       const res = await fetch('/api/admin/trophies', { method: 'PUT' })
-      const json = await res.json()
+      // A failure before a JSON body would otherwise throw past the caller as an unhandled
+      // rejection, leaving the admin with no message at all.
+      const json = await res.json().catch(() => ({}))
       setMessage(res.ok ? `Seeded ${json.seeded}, left ${json.skipped} untouched.` : (json.error ?? 'Seeding failed'))
       if (res.ok) await load()
     } finally {
@@ -190,6 +196,22 @@ export default function AdminTrophiesPage() {
     setRawMode(!parsed)
     setMessage(null)
   }
+
+  const visible = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    return trophies.filter(
+      (t) =>
+        (filterGame === 'all' || (t.game_type ?? '__none__') === filterGame) &&
+        (filterTier === 'all' || t.tier === filterTier) &&
+        (!q || t.title.toLowerCase().includes(q) || t.id.toLowerCase().includes(q))
+    )
+  }, [trophies, filterGame, filterTier, search])
+
+  // Only games that actually have trophies — offering all 47 would mostly filter to nothing.
+  const gamesWithTrophies = useMemo(() => {
+    const present = new Set(trophies.map((t) => t.game_type).filter(Boolean) as string[])
+    return games.filter((g) => present.has(g.id))
+  }, [trophies, games])
 
   return (
     <div className="space-y-6">
@@ -341,7 +363,9 @@ export default function AdminTrophiesPage() {
               value={form.points}
               min={0}
               max={1000}
-              onChange={(e) => setForm({ ...form, points: Number(e.target.value) })}
+              // Number('') is 0 and a partial entry is NaN, which serializes to null and gets
+              // rejected server-side with a message that explains nothing.
+              onChange={(e) => setForm({ ...form, points: Number(e.target.value) || 0 })}
             />
           </label>
           <label className="block text-sm">
@@ -351,7 +375,7 @@ export default function AdminTrophiesPage() {
               className="input-field mt-1"
               value={form.sort_order}
               min={0}
-              onChange={(e) => setForm({ ...form, sort_order: Number(e.target.value) })}
+              onChange={(e) => setForm({ ...form, sort_order: Number(e.target.value) || 0 })}
             />
           </label>
         </div>
@@ -500,16 +524,57 @@ export default function AdminTrophiesPage() {
       </div>
 
       <div className="glass-card p-5">
-        <h2 className="mb-3 text-sm font-bold uppercase tracking-wide">Catalog ({trophies.length})</h2>
+        <h2 className="mb-3 text-sm font-bold uppercase tracking-wide">
+          Catalog ({visible.length}
+          {visible.length !== trophies.length && ` of ${trophies.length}`})
+        </h2>
+
+        <div className="mb-4 grid gap-2 sm:grid-cols-3">
+          <input
+            className="input-field !py-2 text-sm"
+            placeholder="Search title or id…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          <select
+            className="input-field !py-2 text-sm"
+            value={filterGame}
+            onChange={(e) => setFilterGame(e.target.value)}
+            aria-label="Filter by game"
+          >
+            <option value="all">Every game</option>
+            <option value="__none__">No game (cross-game)</option>
+            {gamesWithTrophies.map((g) => (
+              <option key={g.id} value={g.id}>
+                {g.label}
+              </option>
+            ))}
+          </select>
+          <select
+            className="input-field !py-2 text-sm"
+            value={filterTier}
+            onChange={(e) => setFilterTier(e.target.value)}
+            aria-label="Filter by tier"
+          >
+            <option value="all">Any tier</option>
+            {TIERS.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </select>
+        </div>
         {loading ? (
           <p className="text-sm text-[var(--muted)]">Loading…</p>
         ) : trophies.length === 0 ? (
           <p className="text-sm text-[var(--muted)]">
             Nothing yet — use <strong>Seed launch trophies</strong> to add the starting set.
           </p>
+        ) : visible.length === 0 ? (
+          <p className="text-sm text-[var(--muted)]">Nothing matches those filters.</p>
         ) : (
           <ul className="divide-y divide-[var(--border)]">
-            {trophies.map((t) => (
+            {visible.map((t) => (
               <li key={t.id} className="flex flex-wrap items-center gap-3 py-3">
                 <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${TIER_STYLE[t.tier]}`}>{t.tier}</span>
                 <div className="min-w-0 flex-1">

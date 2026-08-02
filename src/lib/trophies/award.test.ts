@@ -25,6 +25,49 @@ function makeDb(over: Partial<Record<string, unknown[]>> = {}) {
   }
 
   const client = {
+    // The counters moved into Postgres, so the mock has to model the RPCs or the tests would
+    // assert nothing about the path that actually runs.
+    async rpc(fn: string, args: Record<string, unknown>) {
+      const rows = (tables.player_stats ??= [])
+      if (fn === 'bump_player_stats') {
+        const key = (r: Record<string, unknown>) =>
+          r.profile_id === args.p_profile_id && r.game_type === args.p_game_type
+        let row = rows.find(key)
+        if (!row) {
+          row = {
+            profile_id: args.p_profile_id,
+            game_type: args.p_game_type,
+            games_played: 0,
+            games_won: 0,
+            counters: {},
+          }
+          rows.push(row)
+        }
+        row.games_played = (Number(row.games_played) || 0) + (Number(args.p_played) || 0)
+        row.games_won = (Number(row.games_won) || 0) + (Number(args.p_won) || 0)
+        const merged = { ...((row.counters ?? {}) as Record<string, number>) }
+        for (const [k, v] of Object.entries((args.p_counters ?? {}) as Record<string, number>)) {
+          merged[k] = (Number(merged[k]) || 0) + Number(v)
+        }
+        row.counters = merged
+        return { data: null, error: null }
+      }
+      if (fn === 'recompute_profile_points') {
+        // Derived, exactly as the SQL does it: sum of what the profile holds.
+        const held = (tables.player_trophies ?? []).filter((r) => r.profile_id === args.p_profile_id)
+        const total = held.reduce((sum, r) => {
+          const t = (tables.trophies ?? []).find((x) => x.id === r.trophy_id)
+          return sum + (Number(t?.points) || 0)
+        }, 0)
+        const profile = (tables.profiles ?? []).find((r) => r.id === args.p_profile_id)
+        if (profile) {
+          profile.trophy_points = total
+          profile.trophy_level = total >= 150 ? 3 : total >= 50 ? 2 : 1
+        }
+        return { data: total, error: null }
+      }
+      return { data: null, error: null }
+    },
     from(table: string) {
       const rows = (tables[table] ??= [])
       const filters: Array<[string, unknown]> = []

@@ -351,11 +351,12 @@ can be tuned in one place (`TROPHY_POINTS` constant).
 >   "this game has no winner" rather than "not supported yet" — different messages, and
 >   conflating them makes the warning meaningless.
 
-**Where it hooks in.** Game completion already flows through
-`src/app/api/games/[code]/finish-game/route.ts`, and the winner is already detected
-client-side by `PostWinToCommunity` (which posts to the leaderboard). The award engine
-runs in the **same server path** as finish/leaderboard-post so a win reliably produces
-both a leaderboard entry and any trophies.
+**Where it hooks in.** ⚠️ **Not `finish-game`** — see the correction box in §3.8. `finish-game`
+runs before any identity exists: `players.profile_id` is written afterwards, by the attribution
+call the client makes once the finished screen mounts. The award pass therefore runs in
+`src/app/api/profile/attribute/route.ts`, which is the first point where a finished session and
+a profile are both known. `PostWinToCommunity` does not detect the winner for us either — the
+server resolves it via `resolveWinners()` (`src/lib/trophies/outcome.ts`).
 
 **Flow (server-side, uses the admin client + the authenticated `auth.uid()`):**
 
@@ -884,7 +885,8 @@ The push infra already exists (VAPID keys + `push_subscriptions`), but it is cur
    Whot, Trivia, Monopoly, Scrabble, Chess** (each carries ~25–30 trophies; mix of most-played
    + richest event surface) + the platform set; the rest of the 606 seed straight from the file.
    Bench for the next wave: Yahtzee, Ludo, Checkers.
-3. Award engine wired into `finish-game`; unlock toast on the end screen.
+3. Award engine wired into `/api/profile/attribute` (NOT `finish-game` — no profile exists yet
+   at finish time); unlock toast on the end screen.
 4. The general streak (any-game-or-Daily) + WAT day boundary + basic freeze.
 5. The four PSN-modeled screens (§3A): profile overview → per-game summary → all-trophies
    list → trophy detail, plus the corner profile button (Guest + logged-in states) and the

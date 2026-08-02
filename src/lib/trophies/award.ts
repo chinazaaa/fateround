@@ -87,37 +87,27 @@ export async function buildSnapshot(supabase: SupabaseClient, profileId: string)
   return { counters, distinct: distinctCounts }
 }
 
-/** Add `delta` to one counter in one scope, creating the row if needed. */
+/**
+ * Add to one scope's counters, atomically.
+ *
+ * The arithmetic happens in Postgres because it has to. Reading a row, adding a delta in
+ * TypeScript and writing the absolute result loses one of two concurrent updates — and
+ * `awarded_sessions` only serializes one (profile, game) pair, so two DIFFERENT games finishing
+ * at once both write the same `__global__` row and one game silently vanishes.
+ */
 async function bumpStats(
   supabase: SupabaseClient,
   profileId: string,
   scope: string,
   deltas: { played?: number; won?: number; counters?: Record<string, number> }
 ): Promise<void> {
-  const { data: existing } = await supabase
-    .from('player_stats')
-    .select('games_played, games_won, counters')
-    .eq('profile_id', profileId)
-    .eq('game_type', scope)
-    .maybeSingle()
-
-  const current = (existing?.counters ?? {}) as Record<string, number>
-  const merged: Record<string, number> = { ...current }
-  for (const [key, delta] of Object.entries(deltas.counters ?? {})) {
-    merged[key] = (Number(merged[key]) || 0) + delta
-  }
-
-  await supabase.from('player_stats').upsert(
-    {
-      profile_id: profileId,
-      game_type: scope,
-      games_played: (Number(existing?.games_played) || 0) + (deltas.played ?? 0),
-      games_won: (Number(existing?.games_won) || 0) + (deltas.won ?? 0),
-      counters: merged,
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: 'profile_id,game_type' }
-  )
+  await supabase.rpc('bump_player_stats', {
+    p_profile_id: profileId,
+    p_game_type: scope,
+    p_played: deltas.played ?? 0,
+    p_won: deltas.won ?? 0,
+    p_counters: deltas.counters ?? {},
+  })
 }
 
 /**
@@ -221,17 +211,18 @@ export async function awardForFinishedGame(
 
     const earned = await grantEligible(supabase, profileId, snapshot)
 
-    const points = (Number(profile?.trophy_points) || 0) + earned.reduce((sum, t) => sum + t.points, 0)
     await supabase
       .from('profiles')
       .update({
         current_streak: streak.current_streak,
         longest_streak: streak.longest_streak,
         last_active_date: streak.last_active_date,
-        trophy_points: points,
-        trophy_level: levelForPoints(points),
       })
       .eq('id', profileId)
+
+    // Points and level are DERIVED from what the profile holds, not accumulated — so two
+    // concurrent passes reach the same total instead of one overwriting the other.
+    await supabase.rpc('recompute_profile_points', { p_profile_id: profileId })
 
     return { earned, applied: true }
   } catch {
@@ -306,12 +297,7 @@ export async function syncEligibleTrophies(supabase: SupabaseClient, profileId: 
     const earned = await grantEligible(supabase, profileId, snapshot)
     if (!earned.length) return []
 
-    const points = (Number(profile?.trophy_points) || 0) + earned.reduce((sum, t) => sum + t.points, 0)
-    await supabase
-      .from('profiles')
-      .update({ trophy_points: points, trophy_level: levelForPoints(points) })
-      .eq('id', profileId)
-
+    await supabase.rpc('recompute_profile_points', { p_profile_id: profileId })
     return earned
   } catch {
     return []

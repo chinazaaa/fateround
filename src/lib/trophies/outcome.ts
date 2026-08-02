@@ -149,6 +149,25 @@ export async function resolveStandings(
   }
 }
 
+/**
+ * Winners from a finishing order.
+ *
+ * NOT just `standings[0]`. Team games put every member of the winning side at the front — in
+ * Codewords that is the whole team — so taking the first entry awards one player and records
+ * their team-mates as having lost a game they won. Team games therefore take the whole leading
+ * block; individual games take the single leader.
+ */
+function winnersFromStandings(standings: string[] | null, gameType: GameType): string[] | null {
+  if (!standings?.length) return null
+  return TEAM_STANDINGS_GAMES.has(gameType) ? standings : [standings[0]]
+}
+
+/**
+ * Game types whose standings are ordered by TEAM, so the leading block is all winners.
+ * Adding to this needs a look at how that game builds its standings, not a guess from the name.
+ */
+const TEAM_STANDINGS_GAMES = new Set<string>(['codewords'])
+
 function normalizeIds(value: unknown): string[] {
   if (typeof value === 'string' && value) return [value]
   if (Array.isArray(value)) return value.filter((v): v is string => typeof v === 'string' && Boolean(v))
@@ -170,8 +189,7 @@ export async function resolveWinners(
   const source = WINNER_SOURCES[gameType]
   if (!source) {
     // No persisted winner column. Derived standings cover the rest of the competitive games.
-    const standings = await resolveStandings(supabase, gameId, gameType)
-    return standings ? [standings[0]] : null
+    return winnersFromStandings(await resolveStandings(supabase, gameId, gameType), gameType)
   }
 
   const columns = source.arrayColumn ? `${source.column}, ${source.arrayColumn}` : source.column
@@ -181,8 +199,7 @@ export async function resolveWinners(
     // session row can also be legitimately absent (an old game, a schema that arrived later),
     // so fall through to derived standings before giving up.
     if (error || !data) {
-      const standings = await resolveStandings(supabase, gameId, gameType)
-      return standings ? [standings[0]] : null
+      return winnersFromStandings(await resolveStandings(supabase, gameId, gameType), gameType)
     }
 
     const row = data as unknown as Record<string, unknown>

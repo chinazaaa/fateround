@@ -98,11 +98,15 @@ export async function POST(req: NextRequest) {
   const { data: body, error: bodyError } = await parseJsonBody(req, trophySchema)
   if (bodyError) return bodyError
 
+  // VALIDATE BEFORE SCOPING. `parseCriteria` is what bounds nesting depth and branch count on
+  // admin-authored input; scoping walks the tree, so doing it first would walk an unbounded
+  // payload before anything had checked its shape.
+  const invalid = validateCriteria(body.criteria)
+  if (invalid) return NextResponse.json({ error: invalid }, { status: 400 })
+
   // Filing a trophy under a game and leaving its rule counting every game is the easy mistake,
   // so the scope is applied to both from one choice.
   const criteria = scopeCriteriaToGame(body.criteria, body.game_type ?? null)
-  const invalid = validateCriteria(criteria)
-  if (invalid) return NextResponse.json({ error: invalid }, { status: 400 })
 
   const { error } = await getSupabaseAdmin()
     .from('trophies')
@@ -141,7 +145,13 @@ export async function PUT(req: NextRequest) {
 
   try {
     const supabase = getSupabaseAdmin()
-    const { data: existing } = await supabase.from('trophies').select('id')
+    const { data: existing, error: existingError } = await supabase.from('trophies').select('id')
+    // Without this check a failed read looks like an empty catalog, so "seed what's missing"
+    // becomes "insert everything" — contradicting the safe-to-re-run guarantee and hiding the
+    // real failure behind a duplicate-key error.
+    if (existingError) {
+      return NextResponse.json({ error: internalErrorMessage('admin/trophies', existingError) }, { status: 500 })
+    }
     const have = new Set((existing ?? []).map((r) => r.id as string))
 
     // Every game gets its own list. Win trophies are skipped where the server can't resolve a
