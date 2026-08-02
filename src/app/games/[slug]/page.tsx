@@ -24,7 +24,7 @@ import {
 } from '@/lib/game-maturity'
 import { FaqList } from '@/components/marketing/FaqList'
 import { MafiaRolesLanding } from '@/components/mafia/MafiaRolesLanding'
-import { getPublicTrophiesForGame } from '@/lib/trophies/public'
+import { GameLandingTrophies } from '@/components/marketing/GameLandingTrophies'
 
 // ISR: the page is statically generated (generateStaticParams below), but it now renders the
 // trophy catalog, which admins edit at runtime. Without a revalidate window an admin's change —
@@ -33,8 +33,6 @@ import { getPublicTrophiesForGame } from '@/lib/trophies/public'
 export const revalidate = 3600
 
 type Props = { params: Promise<{ slug: string }> }
-
-const TROPHY_TIER_EMOJI: Record<string, string> = { bronze: '🥉', silver: '🥈', gold: '🥇', platinum: '🏆' }
 
 export async function generateStaticParams() {
   return ALL_GAME_LANDING_SLUGS.map((slug) => ({ slug }))
@@ -89,7 +87,6 @@ export default async function GameLandingRoute({ params }: Props) {
   const bodyParagraph = getGameBodyParagraph(content)
   const faqs = getGameFaqs(content)
   const customContentHints = getGameLandingCustomContentHints(content.gameType)
-  const trophies = await getPublicTrophiesForGame(content.gameType)
 
   return (
     <>
@@ -283,39 +280,7 @@ export default async function GameLandingRoute({ params }: Props) {
               ))}
             </section>
 
-            {trophies.length > 0 && (
-              <section id="trophies" className="scroll-mt-24">
-                <h2 className="sec-title-fr">Trophies</h2>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  {trophies.map((trophy) => (
-                    <div
-                      key={trophy.id}
-                      className="flex items-start gap-3 rounded-[var(--radius-md)] p-[18px]"
-                      style={{
-                        background: 'var(--surface)',
-                        border: '1px solid var(--border)',
-                        borderLeft: '3px solid var(--accent)',
-                      }}
-                    >
-                      <span className={`text-2xl ${trophy.hidden ? 'opacity-50' : ''}`} aria-hidden>
-                        {trophy.hidden ? '🔒' : (TROPHY_TIER_EMOJI[trophy.tier] ?? '🏅')}
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <h3 className="mb-1 text-[15px] font-bold" style={{ color: 'var(--text)' }}>
-                          {trophy.title}
-                        </h3>
-                        <p className="text-[13.5px] leading-[1.5]" style={{ color: 'var(--text-muted)' }}>
-                          {trophy.description}
-                        </p>
-                        <p className="mt-1.5 text-[12.5px]" style={{ color: 'var(--text-faint)' }}>
-                          {trophy.points} pt{trophy.points === 1 ? '' : 's'}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            )}
+            <GameLandingTrophies gameType={content.gameType} />
 
             {content.relatedBlogPosts && content.relatedBlogPosts.length > 0 && (
               <section>
