@@ -77,8 +77,24 @@ async function listTables(): Promise<string[]> {
   const res = await fetch(`${url}/rest/v1/`, {
     headers: { apikey: serviceKey!, Authorization: `Bearer ${serviceKey}` },
   })
-  const spec = (await res.json()) as { definitions?: Record<string, unknown> }
-  return Object.keys(spec.definitions ?? {}).sort()
+  // A non-2xx here is almost always a credential/URL mismatch — a service key issued for a
+  // different project than NEXT_PUBLIC_SUPABASE_URL names. Say that, instead of letting it degrade
+  // into a bare "0 tables" that looks like an empty database. (See the Aug 2026 release: the
+  // Production environment's URL was right but its keys pointed at the Preview project.)
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    throw new Error(
+      `Could not read the schema: GET ${url}/rest/v1/ returned ${res.status}. ` +
+        `NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must point at the SAME project. ${body.slice(0, 200)}`
+    )
+  }
+  // PostgREST <12 (Swagger 2.0) lists tables under `definitions`; newer (OpenAPI 3.0) under
+  // `components.schemas`. Accept either so a PostgREST upgrade doesn't read as "no tables".
+  const spec = (await res.json()) as {
+    definitions?: Record<string, unknown>
+    components?: { schemas?: Record<string, unknown> }
+  }
+  return Object.keys(spec.definitions ?? spec.components?.schemas ?? {}).sort()
 }
 
 /**
@@ -131,7 +147,14 @@ describe.skipIf(!hasCreds)('RLS boundaries (live)', () => {
     anon = createClient(url!, anonKey!, { auth: { persistSession: false } })
     service = createClient(url!, serviceKey!, { auth: { persistSession: false } })
     tables = await listTables()
-    expect(tables.length).toBeGreaterThan(50)
+    // Positive control (verification rule 3): the privileged client must SEE the schema before any
+    // "anon cannot read X" negative below can be trusted. A low count here is NOT a passing security
+    // result — it means this job is pointed at an empty or wrong project and can verify nothing.
+    expect(
+      tables.length,
+      `service role saw ${tables.length} tables at ${url} — expected the full schema (>50). ` +
+        `The URL and service-role key are probably not the same project as the migrated one.`
+    ).toBeGreaterThan(50)
   }, 60_000)
 
   // A passing check proves nothing until you've seen it fail. `canWrite` must report `writable`
