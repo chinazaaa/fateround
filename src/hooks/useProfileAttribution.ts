@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from 'react'
 import { authHeaders, ensureServerIdentity } from '@/lib/identity'
+import { emitTrophiesEarned } from '@/lib/trophies/earned-events'
 import { getPlayerSession } from '@/lib/utils'
 
 type Options = {
@@ -54,11 +55,18 @@ export function useProfileAttribution({ gameCode, status, resumeToken }: Options
         const headers = await authHeaders()
         if (!headers || cancelled) return
 
-        await fetch('/api/profile/attribute', {
+        const res = await fetch('/api/profile/attribute', {
           method: 'POST',
           headers,
           body: JSON.stringify({ gameCode, resumeToken: token }),
         })
+
+        // The award pass runs server-side inside this call and reports what it granted. Emit it
+        // so the always-mounted prompt can celebrate without every game view knowing about
+        // trophies. `earned` only ever lists trophies from THIS pass, so a replay is silent.
+        if (cancelled) return
+        const body = (await res.json().catch(() => null)) as { earned?: unknown } | null
+        if (Array.isArray(body?.earned)) emitTrophiesEarned(body.earned)
       } catch {
         // Offline, rate-limited, or the endpoint is unavailable. Nothing to tell the player.
       }
