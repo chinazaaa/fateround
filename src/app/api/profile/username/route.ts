@@ -57,6 +57,16 @@ export async function POST(req: NextRequest) {
     if (!check.ok) return NextResponse.json({ error: check.error, reason: check.reason }, { status: 400 })
 
     const admin = getSupabaseAdmin()
+    // Claim-once. A username is permanent because it's a shared public URL: releasing an old slug
+    // on rename would hand every already-shared /u/<old> link to whoever claims it next. Setting
+    // the same value again is a harmless no-op; a genuine change is refused.
+    const { data: self } = await admin.from('profiles').select('username').eq('id', profileId).maybeSingle()
+    if (self?.username && self.username !== check.value)
+      return NextResponse.json(
+        { error: 'Your username is already set and can’t be changed.', reason: 'immutable' },
+        { status: 409 }
+      )
+
     // Pre-check for a friendly message; the unique index is what actually guarantees it.
     const { data: existing } = await admin.from('profiles').select('id').eq('username', check.value).maybeSingle()
     if (existing && existing.id !== profileId)

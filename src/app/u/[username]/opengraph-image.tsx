@@ -17,6 +17,11 @@ const TIER_DOT: Record<string, string> = {
 
 type Props = { params: Promise<{ username: string }> }
 
+/** Satori doesn't shrink text to fit, so long user-supplied strings would overflow the card. */
+function clamp(text: string, max: number): string {
+  return text.length > max ? `${text.slice(0, max - 1).trimEnd()}…` : text
+}
+
 /**
  * The link-unfurl card for /u/[username] — what WhatsApp/Twitter/etc. render when the link is
  * pasted. Built with next/og (no extra dependency). Deliberately emoji-free: the default OG font
@@ -85,8 +90,10 @@ export default async function Image({ params }: Props) {
           >
             {getInitial(summary.handle)}
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column' }}>
-            <div style={{ display: 'flex', fontSize: 64, fontWeight: 800, color: '#18181b' }}>{summary.handle}</div>
+          <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            <div style={{ display: 'flex', fontSize: 64, fontWeight: 800, color: '#18181b' }}>
+              {clamp(summary.handle, 16)}
+            </div>
             <div style={{ display: 'flex', fontSize: 30, color: '#71717a', marginTop: 6 }}>
               Level {summary.level} · {summary.points.toLocaleString()} points
               {summary.currentStreak > 0 ? ` · ${summary.currentStreak} day streak` : ''}
@@ -104,7 +111,7 @@ export default async function Image({ params }: Props) {
         {/* Top trophies */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           {summary.topTrophies.slice(0, 3).map((t) => (
-            <div key={t.id} style={{ display: 'flex', alignItems: 'center' }}>
+            <div key={t.id} style={{ display: 'flex', alignItems: 'center', overflow: 'hidden' }}>
               <div
                 style={{
                   display: 'flex',
@@ -113,9 +120,12 @@ export default async function Image({ params }: Props) {
                   borderRadius: 20,
                   background: TIER_DOT[t.tier] ?? '#a1a1aa',
                   marginRight: 16,
+                  flexShrink: 0,
                 }}
               />
-              <div style={{ display: 'flex', fontSize: 30, fontWeight: 700, color: '#27272a' }}>{t.title}</div>
+              <div style={{ display: 'flex', fontSize: 30, fontWeight: 700, color: '#27272a', flexShrink: 0 }}>
+                {clamp(t.title, 28)}
+              </div>
               <div style={{ display: 'flex', fontSize: 26, color: '#a1a1aa', marginLeft: 12 }}>
                 {t.gameLabel}
                 {t.rarityPct !== null ? ` · ${t.rarityPct}%` : ''}
@@ -127,7 +137,7 @@ export default async function Image({ params }: Props) {
         {/* Footer */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', fontSize: 30, fontWeight: 700, color: '#f43f5e' }}>
-            Beat {summary.handle}’s score →
+            Beat {clamp(summary.handle, 16)}’s score →
           </div>
           <div style={{ display: 'flex', fontSize: 26, fontWeight: 600, color: '#a1a1aa' }}>fateround.com</div>
         </div>
