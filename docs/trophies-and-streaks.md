@@ -331,8 +331,17 @@ can be tuned in one place (`TROPHY_POINTS` constant).
 > because collapsing the last into the second would record "did not win" for every trivia game
 > and make a "never lost" trophy earnable by playing the ones we can't measure.
 >
-> Still unresolved: poll, quiz and party games (trivia, bingo, the poll family). Those need
-> either placement derivation per game or a decision that they simply don't carry win trophies.
+> **Resolved 2026-08-02.** The line is *has a winner concept* vs *doesn't*, not hard vs easy:
+>
+> - **Competitive games without a winner column** (trivia, bingo, codewords, sudoku, word hunt)
+>   now resolve through `getCompetitiveStandings`, which `room-points.ts` already used for room
+>   points and which is now exported. Reused rather than reimplemented — two independent
+>   notions of "who won" would drift, and the trophy one grants entitlements.
+> - **The poll family has no winner by design** and is listed in `NO_WINNER_BY_DESIGN`. Everyone
+>   answers, nothing is scored, nobody comes first. That is the product, not a gap: those games
+>   carry `games_played` and streaks instead. `isWinnerlessByDesign()` lets the admin UI say
+>   "this game has no winner" rather than "not supported yet" — different messages, and
+>   conflating them makes the warning meaningless.
 
 **Where it hooks in.** Game completion already flows through
 `src/app/api/games/[code]/finish-game/route.ts`, and the winner is already detected
