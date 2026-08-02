@@ -76,7 +76,16 @@ export async function mahjongFacts(
 ): Promise<Map<string, Record<string, number>>> {
   const out = new Map<string, Record<string, number>>()
 
-  const { data } = await supabase.from('mahjong_player_state').select('player_id, game_counters').eq('game_id', gameId)
+  const { data, error } = await supabase
+    .from('mahjong_player_state')
+    .select('player_id, game_counters')
+    .eq('game_id', gameId)
+  // A table/column failure must not silently suppress every Mahjong trophy — surface it. The
+  // builder is best-effort (buildGameFacts swallows a throw), so logging is the visible signal.
+  if (error) {
+    console.error(`mahjongFacts: could not read mahjong_player_state for ${gameId}`, error)
+    return out
+  }
 
   const rows = (data ?? []) as StateRow[]
 

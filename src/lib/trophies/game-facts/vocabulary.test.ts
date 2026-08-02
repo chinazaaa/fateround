@@ -56,4 +56,21 @@ describe('template-built counters', () => {
       expect(isKnownCounter(`codewords_clue${n}_full`), `codewords_clue${n}_full`).toBe(true)
     }
   })
+
+  /**
+   * Mahjong copies its per-hand tallies out of the stored `game_counters` blob with a
+   * `for (const key of TALLY_KEYS) facts[key] = …` loop, so the literal scan above never sees the
+   * individual keys. If a name drifts between the blob writer (mahjong-hand-resolution.ts) and the
+   * vocabulary, the trophy silently reads zero — the exact failure this file exists to catch.
+   * Asserting the whole list here restores that guarantee for the templated keys.
+   */
+  it('mahjong per-hand tally keys are registered', () => {
+    const src = readFileSync('src/lib/trophies/game-facts/mahjong.ts', 'utf8')
+    const block = src.match(/const TALLY_KEYS = \[([\s\S]*?)\] as const/)
+    expect(block, 'TALLY_KEYS not found — did the mahjong tally loop change shape?').not.toBeNull()
+    const keys = [...block![1].matchAll(/'([a-z0-9_]+)'/g)].map((m) => m[1])
+    expect(keys.length, 'TALLY_KEYS is empty — the regex no longer matches its entries').toBeGreaterThan(10)
+    const unknown = keys.filter((k) => !isKnownCounter(k))
+    expect(unknown, 'mahjong tally key unregistered in counters.ts — trophy could never be earned').toEqual([])
+  })
 })

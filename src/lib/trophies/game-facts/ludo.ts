@@ -41,6 +41,7 @@ type StateRow = {
 }
 
 /** Number of a player's pieces sent home this game — the max over the four per-colour tallies. */
+/** The largest number of captures the player MADE against a single opponent colour. */
 function mostAgainstOneOpponent(c: Record<string, number>): number {
   return Math.max(0, c.cap_vs_red ?? 0, c.cap_vs_green ?? 0, c.cap_vs_yellow ?? 0, c.cap_vs_blue ?? 0)
 }

@@ -30,9 +30,9 @@ import type { SystemTrophySpec } from './types'
  *
  * NOTE (integration): a Crazy Eights winner empties their hand and the engine flips them
  * `spectator = true`. The award pass and the finish-time facts snapshot both currently drop
- * spectators, so the win-gated counters below (and even generic `games_won`) will not reach the
- * emptied-hand winner until that exclusion is addressed. Flagged in the report; the counters here
- * are correct and fire the moment it is.
+ * The emptied-hand winner is flagged `spectator = true` by the engine, but the award pass now
+ * rescues finishers from `finish_order` (see `resolveFinishers`), so the win-gated counters below
+ * reach the winner normally.
  */
 export const CRAZY_EIGHTS: SystemTrophySpec[] = [
   // ── Bronze ──────────────────────────────────────────────────────────────────────────────

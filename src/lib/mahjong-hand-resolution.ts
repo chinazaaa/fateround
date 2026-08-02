@@ -142,14 +142,22 @@ async function creditMahjongHandWin(
 /** Credit every seated player for reaching the end of the wall (Wall Watcher). */
 async function creditMahjongExhaustiveDraw(supabase: SupabaseClient, states: MahjongPlayerState[]): Promise<void> {
   await Promise.all(
-    states.map((state) =>
-      supabase
+    states.map(async (state) => {
+      // RE-READ before bumping. The in-memory `state` predates the discard counter increment this
+      // same turn wrote to the row (a discard folds `mahjong_discards` into its own update), so
+      // bumping the stale blob and writing it back would clobber that discard. Read the current
+      // blob, add the exhaustive-draw credit to it, write once.
+      const { data } = await supabase
         .from('mahjong_player_state')
-        .update({
-          game_counters: bumpMahjongCounters(mahjongGameCounters(state), { mahjong_exhaustive_draws_seen: 1 }),
-        })
+        .select('game_counters')
         .eq('id', state.id)
-    )
+        .maybeSingle()
+      const current = mahjongGameCounters((data ?? state) as MahjongPlayerState)
+      await supabase
+        .from('mahjong_player_state')
+        .update({ game_counters: bumpMahjongCounters(current, { mahjong_exhaustive_draws_seen: 1 }) })
+        .eq('id', state.id)
+    })
   )
 }
 

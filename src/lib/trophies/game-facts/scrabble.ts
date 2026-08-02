@@ -147,7 +147,8 @@ function playerFacts(row: StateRow, ctx: FactsContext, won: boolean): Record<str
   if (score >= FOUR_HUNDRED) facts.scrabble_four_hundred_games = 1
 
   // ── Clean rack (bucket A — an empty rack at finish; see header) ────────────────────────────
-  if ((row.rack?.length ?? 0) === 0) facts.scrabble_clean_rack_games = 1
+  // A NULL rack means "not recorded", not "played the last tile". Require an actual empty array.
+  if (Array.isArray(row.rack) && row.rack.length === 0) facts.scrabble_clean_rack_games = 1
 
   // ── Win flags (only ever emitted for a named winner) ───────────────────────────────────────
   if (won) {
