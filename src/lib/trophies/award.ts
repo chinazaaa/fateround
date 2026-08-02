@@ -119,10 +119,26 @@ async function bumpStats(
 }
 
 /**
- * Award for one profile and one finished game.
+ * The idempotency key for one ROUND, not one room.
  *
- * @param sessionId the idempotency key. The game code, so replays of the same finished game
- * are a no-op no matter how many times the client retries attribution.
+ * "Play again" UPDATES the same `games` row — same id, status back to `waiting` — so a room
+ * plays many rounds under one code. Keying the claim on the code alone meant round one claimed
+ * it and every round after hit the conflict and awarded NOTHING: no trophies, no `games_played`,
+ * no streak day. A room that played all evening recorded a single game.
+ *
+ * `finished_at` is what separates rounds. It is rewritten at each finish and stable within a
+ * round, so retried attributions for the same round still collapse to one award — which is the
+ * entire point of the claim.
+ *
+ * Falls back to the bare code when `finished_at` is missing: awarding once is a better failure
+ * than awarding on every retry.
+ */
+function roundKey(gameId: string, finishedAt: string | null): string {
+  return finishedAt ? `${gameId}#${new Date(finishedAt).toISOString()}` : gameId
+}
+
+/**
+ * Award for one profile and one finished round. Idempotent per (profile, round).
  */
 export async function awardForFinishedGame(
   supabase: SupabaseClient,
@@ -131,17 +147,22 @@ export async function awardForFinishedGame(
 ): Promise<AwardResult> {
   const sessionId = gameId.toUpperCase()
 
+  // The claim key needs `finished_at`, so it is read before claiming. A plain select with no
+  // side effects — the claim is still taken before anything is counted.
+  const { data: round } = await supabase.from('games').select('finished_at').eq('id', sessionId).maybeSingle()
+  const claimKey = roundKey(sessionId, (round?.finished_at as string) ?? null)
+
   // ── Claim first ─────────────────────────────────────────────────────────────────────────
   // The PK on (profile_id, session_id) is the lock. Claiming BEFORE doing the work means two
   // concurrent calls can't both award; the loser sees a conflict and stops. The cost is that a
   // crash mid-pass would strand the claim, so the claim is released on any failure below.
   const { error: claimError } = await supabase
     .from('awarded_sessions')
-    .insert({ profile_id: profileId, session_id: sessionId })
+    .insert({ profile_id: profileId, session_id: claimKey })
   if (claimError) return NOOP('already_awarded')
 
   const releaseClaim = async () => {
-    await supabase.from('awarded_sessions').delete().eq('profile_id', profileId).eq('session_id', sessionId)
+    await supabase.from('awarded_sessions').delete().eq('profile_id', profileId).eq('session_id', claimKey)
   }
 
   try {
