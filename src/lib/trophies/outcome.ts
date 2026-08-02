@@ -199,6 +199,42 @@ async function expandUnoTeamWin(supabase: SupabaseClient, gameId: string, winner
   }
 }
 
+/**
+ * Games where a player who FINISHED is flagged `spectator = true`.
+ *
+ * The shed-your-hand card games flip the winner (and every player who goes out) to a spectator
+ * the instant they empty their hand — the flag doubles as "no longer holding cards" for the UI.
+ * But those players PLAYED, and the winner literally won. The award pass and the facts snapshot
+ * both treat a spectator as a non-participant, so without this the winner of a Whot/UNO/Crazy
+ * Eights game earns nothing at all — no win, no games_played, no streak. `finish_order` is the
+ * ordered list of everyone who went out (winner first), so it is exactly the set to rescue.
+ */
+const FINISH_ORDER_SOURCES: Partial<Record<GameType, string>> = {
+  whot: 'whot_sessions',
+  uno: 'uno_sessions',
+  crazy_eights: 'crazy_eights_sessions',
+}
+
+/**
+ * Player ids who genuinely participated but may now read as spectators — the game's
+ * `finish_order`. `[]` for games that don't overload the spectator flag, which leaves the
+ * spectator flag as the sole signal (unchanged behaviour).
+ */
+export async function resolveFinishers(
+  supabase: SupabaseClient,
+  gameId: string,
+  gameType: GameType
+): Promise<string[]> {
+  const table = FINISH_ORDER_SOURCES[gameType]
+  if (!table) return []
+  try {
+    const { data } = await supabase.from(table).select('finish_order').eq('game_id', gameId).maybeSingle()
+    return normalizeIds(data?.finish_order)
+  } catch {
+    return []
+  }
+}
+
 function normalizeIds(value: unknown): string[] {
   if (typeof value === 'string' && value) return [value]
   if (Array.isArray(value)) return value.filter((v): v is string => typeof v === 'string' && Boolean(v))

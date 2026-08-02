@@ -28,7 +28,7 @@ import type { GameType } from '@/types'
 import { GLOBAL_SCOPE, evaluateRaw, type ProgressSnapshot } from './criteria'
 import { unlockedThisRound } from './instant-unlock'
 import { buildGameFacts } from './game-facts'
-import { resolveWinners } from './outcome'
+import { resolveFinishers, resolveWinners } from './outcome'
 import { advanceStreak, watDate, watHour, type StreakState } from './streak'
 
 /** Trophy points needed for each level. Deliberately shallow early so level 2 is reachable. */
@@ -184,14 +184,21 @@ export async function awardForFinishedGame(
       .from('players')
       .select('id, profile_id, spectator')
       .eq('game_id', sessionId)
+    // The shed-your-hand card games flag a player who WENT OUT as a spectator, winner included.
+    // Those players played; only a true watcher never did. `finish_order` is who actually
+    // finished, so a spectator counts as a participant if they are in it.
+    const finishers = new Set(await resolveFinishers(supabase, sessionId, gameType))
+    const isParticipant = (p: { id: string; spectator?: boolean | null }) => !p.spectator || finishers.has(p.id)
+
     const me = players?.find((p) => p.profile_id === profileId)
-    // Spectators don't earn. There is no player row to attribute and no game they played.
-    if (!me || me.spectator) {
+    // Pure spectators don't earn — no game they played. A finisher (spectator flag set because
+    // they went out) is NOT a pure spectator, and must not be dropped or the winner earns nothing.
+    if (!me || !isParticipant(me)) {
       await releaseClaim()
       return NOOP('not_a_player')
     }
 
-    const seated = (players ?? []).filter((p) => !p.spectator)
+    const seated = (players ?? []).filter(isParticipant)
     // `null` means the server cannot determine a winner for this game type — which must not be
     // recorded as a loss. Only a definite result moves `games_won`.
     const winners = await resolveWinners(supabase, sessionId, gameType)

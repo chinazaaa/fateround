@@ -346,3 +346,30 @@ describe('awardForFinishedGame — every round in a room awards', () => {
     expect(db.tables.player_stats.find((r) => r.game_type === 'trivia')?.games_played).toBe(2)
   })
 })
+
+describe('awardForFinishedGame — the card-game winner is flagged spectator but still earns', () => {
+  it('attributes the winner who went out (finish_order rescue)', async () => {
+    // Whot/UNO/Crazy Eights flip a player to spectator=true the moment they empty their hand —
+    // winner included. Without the finish_order rescue the winner earns nothing at all.
+    const db = makeDb({
+      games: [{ id: 'WHOT01', status: 'finished', game_type: 'whot', finished_at: '2026-08-02T12:00:00Z' }],
+      players: [
+        { id: 'winner', game_id: 'WHOT01', profile_id: 'prof-1', spectator: true }, // went out -> spectator
+        { id: 'loser', game_id: 'WHOT01', profile_id: 'prof-2', spectator: false },
+      ],
+      whot_sessions: [{ game_id: 'WHOT01', winner_player_id: 'winner', finish_order: ['winner'] }],
+      profiles: [{ id: 'prof-1', current_streak: 0, longest_streak: 0, last_active_date: null, trophy_points: 0 }],
+      trophies: [],
+      player_trophies: [],
+      player_stats: [],
+      awarded_sessions: [],
+      player_distinct: [],
+    })
+
+    await awardForFinishedGame(db.client as never, 'prof-1', 'WHOT01')
+
+    const stats = db.tables.player_stats.find((r) => r.game_type === 'whot')
+    expect(stats?.games_played).toBe(1)
+    expect(stats?.games_won).toBe(1)
+  })
+})
