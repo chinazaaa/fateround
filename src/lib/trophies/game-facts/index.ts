@@ -11,33 +11,44 @@ import { yahtzeeFacts } from './yahtzee'
  * The award pass used to emit only two things every game type shared (`big_room_games`,
  * `late_night_games`). Anything a trophy wanted to know ABOUT a game — how many questions you
  * got right, whether you led from the first round — had nowhere to come from. This is that
- * hook: one function per game type, returning the integer facts for one player in one finished
- * game, folded into `player_stats.counters` alongside the shared ones.
+ * hook: one function per game type, returning the integer facts for every player in one
+ * finished round, folded into `player_stats.counters` alongside the shared ones.
+ *
+ * WHY A BUILDER RUNS ONCE PER ROUND, NOT ONCE PER PLAYER. Facts are derived from the round's own
+ * rows — every answer, every guess, the whole move list. Called per player, each builder re-read
+ * the same rows and threw away all but one player's share: a 40-player Trivia game meant reading
+ * 400 answer rows forty times over. One call per round reads them once.
  *
  * RULES FOR A FACTS BUILDER:
- *  - It must be TOTAL. A finished game is being recorded; a builder that throws would lose the
- *    player's `games_played` too. Every builder is wrapped below and falls back to `{}`.
+ *  - It must be TOTAL. A finished round is being recorded; a builder that throws would lose the
+ *    players' `games_played` too. Every builder is wrapped below and falls back to empty.
  *  - It must return LIFETIME-SUMMABLE integers. Counters accumulate, so per-game achievements
- *    are 0/1 flags counted once ("did it in a game"), never in-game values like a best streak.
- *  - It reads only PERSISTED state. It runs after the game is over; there is nothing live left.
+ *    are 0/1 flags counted once ("did it in a round"), never in-round values like a best streak.
+ *  - It reads only PERSISTED state. It runs after the round is over; nothing is live any more.
+ *  - It returns entries only for players it has something to say about. A missing entry is not
+ *    an error.
  *
- * Games absent from the map simply contribute no facts, which is the correct behaviour for one
- * that hasn't been built yet — no error, no invented data.
+ * Games absent from the map contribute no facts, which is correct for one that hasn't been built
+ * yet — no error, no invented data.
  */
 
 export type FactsContext = {
   timerSeconds: number | null
   questionSource: string | null
-  won: boolean
-  seated: number
+  /** Seated player ids (spectators excluded). Its length is the room size for size-gated facts. */
+  seated: string[]
+  /**
+   * Player ids who won. Empty for a draw AND for a game whose winner the server cannot
+   * determine — a builder must therefore never read "not in winners" as "lost".
+   */
+  winners: string[]
 }
 
 type FactsBuilder = (
   supabase: SupabaseClient,
   gameId: string,
-  playerId: string,
   ctx: FactsContext
-) => Promise<Record<string, number>>
+) => Promise<Map<string, Record<string, number>>>
 
 const BUILDERS: Partial<Record<GameType, FactsBuilder>> = {
   chess: chessFacts,
@@ -51,20 +62,24 @@ export function hasGameFacts(gameType: GameType): boolean {
   return Boolean(BUILDERS[gameType])
 }
 
+/**
+ * Facts for every player in one finished round.
+ *
+ * Never throws and never rejects: a fact we couldn't derive is a missing trophy, but a throw
+ * here would cost every player in the room their finished game. Losing the extras is always the
+ * better failure.
+ */
 export async function buildGameFacts(
   supabase: SupabaseClient,
   gameType: GameType,
   gameId: string,
-  playerId: string,
   ctx: FactsContext
-): Promise<Record<string, number>> {
+): Promise<Map<string, Record<string, number>>> {
   const builder = BUILDERS[gameType]
-  if (!builder) return {}
+  if (!builder) return new Map()
   try {
-    return await builder(supabase, gameId, playerId, ctx)
+    return await builder(supabase, gameId, ctx)
   } catch {
-    // A fact we couldn't derive is a missing trophy; a throw here would cost the player the
-    // whole finished game. Losing the extras is always the better failure.
-    return {}
+    return new Map()
   }
 }

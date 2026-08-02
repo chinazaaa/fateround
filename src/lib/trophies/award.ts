@@ -205,18 +205,33 @@ export async function awardForFinishedGame(
     if (seated.length >= BIG_ROOM_PLAYERS) extras.big_room_games = 1
     if (watHour(finishedAt) < 5) extras.late_night_games = 1
 
-    // Per-game facts, derived from what the game itself persisted. Merged UNDER nothing — the
-    // shared extras above are platform-level and a game builder must not be able to overwrite
-    // them, so game facts are namespaced by game type and collisions are impossible by naming.
-    Object.assign(
-      extras,
-      await buildGameFacts(supabase, gameType, sessionId, me.id, {
+    // Per-game facts. Merged UNDER nothing — the shared extras above are platform-level and a
+    // game builder must not be able to overwrite them, so game facts are namespaced by game
+    // type and collisions are impossible by naming.
+    //
+    // PREFER THE SNAPSHOT taken at finish (`round_facts`). Deriving here would read the game's
+    // own tables, which play-again may already have cleared — that is the whole reason the
+    // snapshot exists. The live path stays as a fallback for rounds that finished before the
+    // snapshot shipped, so nothing needs backfilling; those simply behave as they did before.
+    const { data: factsRow } = await supabase
+      .from('round_facts')
+      .select('facts')
+      .eq('game_id', sessionId)
+      .eq('player_id', me.id)
+      .eq('finished_at', game.finished_at as string)
+      .maybeSingle()
+
+    if (factsRow?.facts) {
+      Object.assign(extras, factsRow.facts as Record<string, number>)
+    } else {
+      const live = await buildGameFacts(supabase, gameType, sessionId, {
         timerSeconds: (game.timer_seconds as number) ?? null,
         questionSource: (game.question_source as string) ?? null,
-        won,
-        seated: seated.length,
+        seated: seated.map((p) => p.id as string),
+        winners: winners ?? [],
       })
-    )
+      Object.assign(extras, live.get(me.id) ?? {})
+    }
 
     // Per-game-type and global scopes both move, so a rule can ask "10 wins" or "10 Whot wins".
     await bumpStats(supabase, profileId, gameType, { played: 1, won: won ? 1 : 0, counters: extras })

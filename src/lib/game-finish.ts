@@ -3,6 +3,7 @@ import { awardRoomGamePoints } from '@/lib/room-points'
 import { resolveHeadToHeadMatch } from '@/lib/tournament-h2h'
 import { resolveSchoolMatch } from '@/lib/tournament-school'
 import { resolveKnockoutGroupRoom } from '@/lib/tournament-scoring'
+import { recordRoundFacts } from '@/lib/trophies/round-facts'
 
 export async function markGameFinished(
   supabase: SupabaseClient,
@@ -26,6 +27,16 @@ export async function markGameFinished(
       await awardRoomGamePoints(supabase, gameId)
     } catch {
       // Room stats are best-effort — never block game finish.
+    }
+    try {
+      // Snapshot trophy facts NOW, while the game's own tables still hold the round. Play-again
+      // clears them and Chess's rematch blanks its move list, so deriving these at attribution
+      // time — after the client mounts the finished screen — loses them to whoever replays
+      // first. Best-effort: on failure the award pass falls back to deriving live, which is
+      // exactly the old behaviour.
+      await recordRoundFacts(supabase, gameId, finishedAt)
+    } catch {
+      // Never block game finish for a trophy snapshot.
     }
     try {
       // Advance a head-to-head bracket match (record winner / rematch a draw).

@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { YahtzeeCategoryPoints } from '@/types'
 import { YAHTZEE_LOWER_CATEGORIES, YAHTZEE_UPPER_BONUS_POINTS, totalScore, upperBonus, upperScore } from '@/lib/yahtzee'
+import type { FactsContext } from './index'
 
 /**
  * Yahtzee's per-game facts, derived at finish from the scorecard the game already stored.
@@ -18,11 +19,19 @@ import { YAHTZEE_LOWER_CATEGORIES, YAHTZEE_UPPER_BONUS_POINTS, totalScore, upper
  * is emitted as a 0/1 flag counted once, and the rule reads `>= 1`. The category-scored counters
  * are genuine lifetime tallies: one per game in which that category was taken for more than zero.
  *
+ * ONCE PER ROUND, NOT ONCE PER PLAYER. The builder reads every card in the game with a single
+ * `yahtzee_player_scores` query and derives each player's facts from its own row, returning a map
+ * keyed by player id. Nothing here is cross-player — one card decides one player's counters — but
+ * one query for a six-player table beats six identical-shaped ones. A player with no row simply
+ * gets no entry, which is not an error (see the contract in ./index).
+ *
  * SOLO PLAY IS A FIRST-CLASS CASE. Yahtzee's minimum is one player, and the award pass refuses to
- * call a solo game a win, so `opts.won` is false there. That is correct for win trophies and wrong
- * for everything else — a 300-point solo card is still a 300-point card. Only the two win-gated
- * counters at the bottom (`yahtzee_multiplayer_wins`, `yahtzee_big_table_wins`) read `opts.won` or
- * `opts.seated`; every score-shaped counter above them fires regardless of table size.
+ * call a solo game a win, so `ctx.winners` is empty there. That is correct for win trophies and
+ * wrong for everything else — a 300-point solo card is still a 300-point card. Only the two
+ * win-gated counters at the bottom (`yahtzee_multiplayer_wins`, `yahtzee_big_table_wins`) read the
+ * winners or the seat count; every score-shaped counter above them fires regardless of table size.
+ * Note also that an empty `winners` means "a draw OR the winner is unknown", so absence from it is
+ * never read as a loss — it only withholds the two win counters.
  *
  * DELIBERATELY ABSENT. The brief lists a "Yahtzee Bonus (100 points)" trophy and a "Joker rule"
  * trophy. Neither rule exists in this implementation: `categoryScore` has no bonus branch for a
@@ -43,25 +52,33 @@ const FOUR_KIND_STRONG = 27
 /** Comfortably past the bonus rather than scraping it. */
 const UPPER_STRONG = 70
 
-type ScoreRow = { scores: { categories: YahtzeeCategoryPoints } | null } | null
+type ScoreRow = { player_id: string; scores: { categories: YahtzeeCategoryPoints } | null }
 
 export async function yahtzeeFacts(
   supabase: SupabaseClient,
   gameId: string,
-  playerId: string,
-  opts: { timerSeconds: number | null; questionSource: string | null; won: boolean; seated: number }
-): Promise<Record<string, number>> {
+  ctx: FactsContext
+): Promise<Map<string, Record<string, number>>> {
+  const out = new Map<string, Record<string, number>>()
+
+  // Every card in the round, read once.
+  const { data } = await supabase.from('yahtzee_player_scores').select('player_id, scores').eq('game_id', gameId)
+
+  const rows = (data ?? []) as ScoreRow[]
+
+  for (const row of rows) {
+    const cats = row?.scores?.categories
+    // No card, no entry — a player we have nothing to say about is simply absent from the map.
+    if (!cats) continue
+    out.set(row.player_id, cardFacts(cats, ctx, ctx.winners.includes(row.player_id)))
+  }
+
+  return out
+}
+
+/** One player's counters, derived from that player's finished card alone. */
+function cardFacts(cats: YahtzeeCategoryPoints, ctx: FactsContext, won: boolean): Record<string, number> {
   const facts: Record<string, number> = {}
-
-  const { data } = await supabase
-    .from('yahtzee_player_scores')
-    .select('scores')
-    .eq('game_id', gameId)
-    .eq('player_id', playerId)
-    .maybeSingle()
-
-  const cats = (data as ScoreRow)?.scores?.categories
-  if (!cats) return facts
 
   // A cell is `null` only if the player never took it. Everything below asks `> 0`, which reads
   // "took it for points" and correctly excludes both an unscored cell and a scratched zero.
@@ -117,10 +134,10 @@ export async function yahtzeeFacts(
   if (total >= 250) facts.yahtzee_games_250_plus = 1
   if (total >= 300) facts.yahtzee_games_300_plus = 1
 
-  // ── Wins (the only opts-dependent counters) ───────────────────────────────────────────
+  // ── Wins (the only ctx-dependent counters) ────────────────────────────────────────────
   // Solo games never reach here with `won` true, by design — see the header note.
-  if (opts.won && opts.seated >= 2) facts.yahtzee_multiplayer_wins = 1
-  if (opts.won && opts.seated >= 4) facts.yahtzee_big_table_wins = 1
+  if (won && ctx.seated.length >= 2) facts.yahtzee_multiplayer_wins = 1
+  if (won && ctx.seated.length >= 4) facts.yahtzee_big_table_wins = 1
 
   return facts
 }

@@ -13,6 +13,19 @@ import { isKnownCounter } from '@/lib/trophies/counters'
  * So this test reads the builder SOURCE rather than calling it: the point is to catch a key that
  * exists in code and nowhere else, which no amount of behavioural testing would surface.
  */
+/**
+ * Tokens that look like counters but are table names the builders read from. Kept explicit so a
+ * genuinely new counter can never hide behind a loose pattern.
+ */
+const NON_COUNTERS = new Set([
+  'chess_sessions',
+  'codewords_boards',
+  'codewords_guesses',
+  'codewords_player_roles',
+  'trivia_answers',
+  'yahtzee_player_scores',
+])
+
 describe('game-facts counters are all registered', () => {
   const dir = 'src/lib/trophies/game-facts'
   const builders = readdirSync(dir).filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts') && f !== 'index.ts')
@@ -25,11 +38,18 @@ describe('game-facts counters are all registered', () => {
     it(`${file} emits only known counters`, () => {
       const src = readFileSync(`${dir}/${file}`, 'utf8')
       const game = file.replace('.ts', '')
+
+      // Scan for EVERY `<game>_…` token, not just `facts.<key> =`. An earlier version keyed off
+      // the assignment target and went blind the moment a builder started accumulating into a
+      // local before folding it in — which is exactly the rename this test exists to catch.
+      // Casting a wide net and subtracting the known non-counters is the version that stays
+      // honest through a refactor.
+      // The negative lookahead drops template fragments: `codewords_clue${n}_full` scans as the
+      // prefix `codewords_clue`, which is not a counter and never was. Those four keys are
+      // asserted by name in the block below, so nothing goes unchecked.
       const keys = new Set<string>()
-      // `facts.game_key = …`
-      for (const m of src.matchAll(new RegExp(`facts\\.(${game}_[a-z0-9_]+)`, 'g'))) keys.add(m[1])
-      // `facts['game_key'] = …`
-      for (const m of src.matchAll(new RegExp(`facts\\['(${game}_[a-z0-9_]+)'\\]`, 'g'))) keys.add(m[1])
+      for (const m of src.matchAll(new RegExp(`\\b(${game}_[a-z0-9_]+)(?!\\$)\\b`, 'g'))) keys.add(m[1])
+      for (const t of NON_COUNTERS) keys.delete(t)
 
       expect(keys.size, `${file} emits no counters — did the naming change?`).toBeGreaterThan(0)
       const unknown = [...keys].filter((k) => !isKnownCounter(k))

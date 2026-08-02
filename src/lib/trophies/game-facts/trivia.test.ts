@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import type { FactsContext } from './index'
 import { triviaFacts } from './trivia'
 
 /**
@@ -15,8 +16,16 @@ function db(answers: Record<string, unknown>[], rounds: Record<string, unknown>[
   } as never
 }
 
-const CTX = { timerSeconds: 10, questionSource: 'platform', won: false, seated: 4 }
+const CTX: FactsContext = { timerSeconds: 10, questionSource: 'platform', seated: ['me', 'rival'], winners: [] }
 const rounds = (n: number) => Array.from({ length: n }, (_, i) => ({ id: `r${i + 1}`, round_number: i + 1 }))
+
+/** One call returns the whole room; most cases only care about one player's slice of it. */
+const factsFor = async (
+  answers: Record<string, unknown>[],
+  roundRows: Record<string, unknown>[],
+  playerId: string,
+  ctx: FactsContext = CTX
+) => (await triviaFacts(db(answers, roundRows), 'G', ctx)).get(playerId) ?? {}
 
 describe('triviaFacts', () => {
   it('counts correct answers and the in-game streak', async () => {
@@ -27,7 +36,7 @@ describe('triviaFacts', () => {
       response_ms: 4000,
       points: 10,
     }))
-    const f = await triviaFacts(db(answers, rounds(5)), 'G', 'me', CTX)
+    const f = await factsFor(answers, rounds(5), 'me')
     expect(f.trivia_correct_answers).toBe(4)
     expect(f.trivia_streak_3_games).toBe(1)
     expect(f.trivia_streak_5_games).toBeUndefined()
@@ -43,7 +52,7 @@ describe('triviaFacts', () => {
       response_ms: 3000,
       points: 10,
     }))
-    const f = await triviaFacts(db(answers, rounds(5)), 'G', 'me', CTX)
+    const f = await factsFor(answers, rounds(5), 'me')
     expect(f.trivia_correct_answers).toBe(4)
     expect(f.trivia_streak_3_games).toBeUndefined()
   })
@@ -53,17 +62,37 @@ describe('triviaFacts', () => {
       { round_id: 'r1', player_id: 'me', is_correct: true, response_ms: 2000, points: 10 },
       { round_id: 'r1', player_id: 'rival', is_correct: true, response_ms: 900, points: 10 },
     ]
-    const mine = await triviaFacts(db(answers, rounds(1)), 'G', 'me', CTX)
-    const theirs = await triviaFacts(db(answers, rounds(1)), 'G', 'rival', CTX)
-    expect(mine.trivia_first_correct_games).toBeUndefined()
-    expect(theirs.trivia_first_correct_games).toBe(1)
+    const facts = await triviaFacts(db(answers, rounds(1)), 'G', CTX)
+    expect(facts.get('me')?.trivia_first_correct_games).toBeUndefined()
+    expect(facts.get('rival')?.trivia_first_correct_games).toBe(1)
+  })
+
+  it('gives every player their own facts from a single call', async () => {
+    // The point of the once-per-round shape: two players, one read, each derived correctly and
+    // independently — nobody inherits the other's streak, speed or accuracy.
+    const answers = [
+      { round_id: 'r1', player_id: 'me', is_correct: true, response_ms: 1000, points: 10 },
+      { round_id: 'r2', player_id: 'me', is_correct: true, response_ms: 1200, points: 10 },
+      { round_id: 'r3', player_id: 'me', is_correct: true, response_ms: 1100, points: 10 },
+      { round_id: 'r1', player_id: 'rival', is_correct: true, response_ms: 8000, points: 10 },
+      { round_id: 'r2', player_id: 'rival', is_correct: false, response_ms: 8000, points: 0 },
+      { round_id: 'r3', player_id: 'rival', is_correct: false, response_ms: 8000, points: 0 },
+    ]
+    const facts = await triviaFacts(db(answers, rounds(3)), 'G', CTX)
+    expect([...facts.keys()].sort()).toEqual(['me', 'rival'])
+    expect(facts.get('me')?.trivia_correct_answers).toBe(3)
+    expect(facts.get('me')?.trivia_streak_3_games).toBe(1)
+    expect(facts.get('me')?.trivia_lightning_games).toBe(1)
+    expect(facts.get('rival')?.trivia_correct_answers).toBe(1)
+    expect(facts.get('rival')?.trivia_streak_3_games).toBeUndefined()
+    expect(facts.get('rival')?.trivia_lightning_games).toBeUndefined()
   })
 
   it('flags a buzzer beater only inside the last two seconds', async () => {
     const late = [{ round_id: 'r1', player_id: 'me', is_correct: true, response_ms: 8500, points: 10 }]
     const early = [{ round_id: 'r1', player_id: 'me', is_correct: true, response_ms: 3000, points: 10 }]
-    expect((await triviaFacts(db(late, rounds(1)), 'G', 'me', CTX)).trivia_buzzer_beater_games).toBe(1)
-    expect((await triviaFacts(db(early, rounds(1)), 'G', 'me', CTX)).trivia_buzzer_beater_games).toBeUndefined()
+    expect((await factsFor(late, rounds(1), 'me')).trivia_buzzer_beater_games).toBe(1)
+    expect((await factsFor(early, rounds(1), 'me')).trivia_buzzer_beater_games).toBeUndefined()
   })
 
   it('does not call a partial game perfect', async () => {
@@ -76,7 +105,7 @@ describe('triviaFacts', () => {
       response_ms: 4000,
       points: 10,
     }))
-    const f = await triviaFacts(db(answers, rounds(10)), 'G', 'me', CTX)
+    const f = await factsFor(answers, rounds(10), 'me')
     expect(f.trivia_full_marks_games).toBeUndefined()
     expect(f.trivia_perfect_10q_games).toBeUndefined()
   })
@@ -88,13 +117,14 @@ describe('triviaFacts', () => {
       { round_id: 'r2', player_id: 'me', is_correct: true, response_ms: 1000, points: 20 },
       { round_id: 'r2', player_id: 'rival', is_correct: true, response_ms: 5000, points: 10 },
     ]
-    const f = await triviaFacts(db(answers, rounds(2)), 'G', 'me', { ...CTX, won: true })
+    const f = await factsFor(answers, rounds(2), 'me', { ...CTX, winners: ['me'] })
     expect(f.trivia_wire_to_wire_wins).toBe(1)
     expect(f.trivia_comeback_wins).toBeUndefined()
   })
 
   it('returns nothing for a player who never answered', async () => {
-    const f = await triviaFacts(db([], rounds(5)), 'G', 'ghost', CTX)
-    expect(f).toEqual({})
+    const facts = await triviaFacts(db([], rounds(5)), 'G', CTX)
+    expect(facts.has('ghost')).toBe(false)
+    expect(facts.size).toBe(0)
   })
 })

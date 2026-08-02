@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import type { FactsContext } from './index'
 
 /**
  * Trivia's per-game facts, derived at finish from what the game already stored.
@@ -7,6 +8,13 @@ import type { SupabaseClient } from '@supabase/supabase-js'
  * one row per (player, round) with `is_correct`, `response_ms` and `points`, all written
  * server-side. So 28 of the 30 briefed Trivia trophies need no new tracking at all — they are
  * aggregations over rows that are already there. Nothing here touches a gameplay route.
+ *
+ * ONE CALL PER ROUND, NOT PER PLAYER. The two tables are read once and every player's facts come
+ * out of that single read. It matters here more than anywhere: the round-shaped derivations
+ * (first-correct per question, the cumulative rank history) already needed EVERY player's answers
+ * to decide one player's facts, so a per-player call re-read all 400 rows of a 40-player game
+ * forty times and threw away thirty-nine fortieths of the work each time. Everything below is
+ * therefore computed once for the round, then sliced per player.
  *
  * WHY FLAGS AND NOT VALUES. Counters are lifetime sums (`bump_player_stats` adds deltas) and the
  * rule DSL only asks `counter >= n`. So a per-game achievement cannot be stored as a value —
@@ -61,10 +69,9 @@ function longestCorrectRun(mine: AnswerRow[], roundOrder: Map<string, number>): 
 export async function triviaFacts(
   supabase: SupabaseClient,
   gameId: string,
-  playerId: string,
-  opts: { timerSeconds: number | null; questionSource: string | null; won: boolean; seated: number }
-): Promise<Record<string, number>> {
-  const facts: Record<string, number> = {}
+  ctx: FactsContext
+): Promise<Map<string, Record<string, number>>> {
+  const out = new Map<string, Record<string, number>>()
 
   const [{ data: answers }, { data: rounds }] = await Promise.all([
     supabase
@@ -75,19 +82,21 @@ export async function triviaFacts(
   ])
 
   const all = (answers ?? []) as AnswerRow[]
-  const mine = all.filter((a) => a.player_id === playerId)
-  if (!mine.length) return facts
+  if (!all.length) return out
 
   const roundOrder = new Map((rounds ?? []).map((r) => [(r as RoundRow).id, Number((r as RoundRow).round_number) || 0]))
   const questionCount = (rounds ?? []).length
 
-  const correct = mine.filter((a) => a.is_correct)
-  if (correct.length) facts.trivia_correct_answers = correct.length
+  // ── Round-wide passes, done once ──────────────────────────────────────────────────────
+  const byPlayer = new Map<string, AnswerRow[]>()
+  for (const a of all) {
+    const list = byPlayer.get(a.player_id) ?? []
+    list.push(a)
+    byPlayer.set(a.player_id, list)
+  }
 
-  // ── Speed and ordering ────────────────────────────────────────────────────────────────
   // First-correct per round: the earliest correct response in that round. Ties are impossible
-  // in practice (millisecond resolution) but `<` keeps one winner if they ever happen.
-  const firstCorrectRounds = new Set<string>()
+  // in practice (millisecond resolution) but `<=` keeps one winner if they ever happen.
   const byRound = new Map<string, AnswerRow[]>()
   for (const a of all) {
     if (!a.is_correct) continue
@@ -95,57 +104,78 @@ export async function triviaFacts(
     list.push(a)
     byRound.set(a.round_id, list)
   }
-  for (const [roundId, list] of byRound) {
+  const firstCorrectCounts = new Map<string, number>()
+  for (const [, list] of byRound) {
     const fastest = list.reduce((a, b) => ((a.response_ms ?? Infinity) <= (b.response_ms ?? Infinity) ? a : b))
-    if (fastest.player_id === playerId) firstCorrectRounds.add(roundId)
+    firstCorrectCounts.set(fastest.player_id, (firstCorrectCounts.get(fastest.player_id) ?? 0) + 1)
   }
 
-  if (firstCorrectRounds.size) facts.trivia_first_correct_games = 1
-  if (firstCorrectRounds.size >= 5) facts.trivia_speed_demon_games = 1
-  // Clean sweep: first correct on EVERY question, in a game long enough to mean something.
-  if (questionCount >= 5 && firstCorrectRounds.size === questionCount) facts.trivia_clean_sweep_games = 1
+  // Rank history replays the same cumulative points the standings use, so "led from the first
+  // question" and "came from outside the top three" are measured against the score players
+  // actually saw. It is only ever read for a winner, so it is skipped when nobody won — which is
+  // also the case for a draw and for a round whose winner the server couldn't determine.
+  const winners = new Set(ctx.winners)
+  const ranked = winners.size && questionCount > 0 ? rankHistory(all, roundOrder, questionCount) : null
 
-  const timerMs = (opts.timerSeconds ?? 0) * 1000
-  if (timerMs > BUZZER_BEATER_MS && correct.some((a) => (a.response_ms ?? 0) >= timerMs - BUZZER_BEATER_MS)) {
-    facts.trivia_buzzer_beater_games = 1
+  const timerMs = (ctx.timerSeconds ?? 0) * 1000
+
+  // ── Per player, from the rows already in hand ──────────────────────────────────────────
+  for (const [playerId, mine] of byPlayer) {
+    const facts: Record<string, number> = {}
+    const won = winners.has(playerId)
+
+    const correct = mine.filter((a) => a.is_correct)
+    if (correct.length) facts.trivia_correct_answers = correct.length
+
+    // ── Speed and ordering ──────────────────────────────────────────────────────────────
+    const firstCorrect = firstCorrectCounts.get(playerId) ?? 0
+    if (firstCorrect) facts.trivia_first_correct_games = 1
+    if (firstCorrect >= 5) facts.trivia_speed_demon_games = 1
+    // Clean sweep: first correct on EVERY question, in a game long enough to mean something.
+    if (questionCount >= 5 && firstCorrect === questionCount) facts.trivia_clean_sweep_games = 1
+
+    if (timerMs > BUZZER_BEATER_MS && correct.some((a) => (a.response_ms ?? 0) >= timerMs - BUZZER_BEATER_MS)) {
+      facts.trivia_buzzer_beater_games = 1
+    }
+
+    const timed = correct.filter((a) => typeof a.response_ms === 'number')
+    if (timed.length) {
+      const mean = timed.reduce((sum, a) => sum + (a.response_ms ?? 0), 0) / timed.length
+      if (mean < LIGHTNING_MEAN_MS) facts.trivia_lightning_games = 1
+    }
+
+    // ── Streaks within the game ─────────────────────────────────────────────────────────
+    const run = longestCorrectRun(mine, roundOrder)
+    if (run >= 3) facts.trivia_streak_3_games = 1
+    if (run >= 5) facts.trivia_streak_5_games = 1
+    if (run >= 10) facts.trivia_streak_10_games = 1
+    if (run >= 20) facts.trivia_streak_20_games = 1
+
+    // ── Accuracy ────────────────────────────────────────────────────────────────────────
+    const perfect = questionCount > 0 && correct.length === questionCount
+    if (perfect && questionCount >= 5) facts.trivia_full_marks_games = 1
+    if (perfect && questionCount >= 10) facts.trivia_perfect_10q_games = 1
+    if (perfect && questionCount >= 15 && won) facts.trivia_flawless_wins = 1
+
+    // ── Room and source ─────────────────────────────────────────────────────────────────
+    if (ctx.questionSource === 'custom') facts.trivia_custom_set_games = 1
+    if (ctx.seated.length >= 15) facts.trivia_big_room_15 = 1
+    if (ctx.seated.length >= 20 && won) facts.trivia_packed_house_wins = 1
+
+    // ── Rank history ────────────────────────────────────────────────────────────────────
+    if (won && ranked) {
+      const mineRanks = ranked.get(playerId) ?? []
+      if (mineRanks.length && mineRanks.every((r) => r === 1)) facts.trivia_wire_to_wire_wins = 1
+      const halfway = mineRanks[Math.max(0, Math.ceil(questionCount / 2) - 1)]
+      if (halfway !== undefined && halfway > 3) facts.trivia_comeback_wins = 1
+    }
+
+    // A player whose rows produced nothing worth counting gets no entry at all, rather than an
+    // empty one — the map is "what we have to say", and silence is not a zero.
+    if (Object.keys(facts).length) out.set(playerId, facts)
   }
 
-  const timed = correct.filter((a) => typeof a.response_ms === 'number')
-  if (timed.length) {
-    const mean = timed.reduce((sum, a) => sum + (a.response_ms ?? 0), 0) / timed.length
-    if (mean < LIGHTNING_MEAN_MS) facts.trivia_lightning_games = 1
-  }
-
-  // ── Streaks within the game ───────────────────────────────────────────────────────────
-  const run = longestCorrectRun(mine, roundOrder)
-  if (run >= 3) facts.trivia_streak_3_games = 1
-  if (run >= 5) facts.trivia_streak_5_games = 1
-  if (run >= 10) facts.trivia_streak_10_games = 1
-  if (run >= 20) facts.trivia_streak_20_games = 1
-
-  // ── Accuracy ──────────────────────────────────────────────────────────────────────────
-  const perfect = questionCount > 0 && correct.length === questionCount
-  if (perfect && questionCount >= 5) facts.trivia_full_marks_games = 1
-  if (perfect && questionCount >= 10) facts.trivia_perfect_10q_games = 1
-  if (perfect && questionCount >= 15 && opts.won) facts.trivia_flawless_wins = 1
-
-  // ── Room and source ───────────────────────────────────────────────────────────────────
-  if (opts.questionSource === 'custom') facts.trivia_custom_set_games = 1
-  if (opts.seated >= 15) facts.trivia_big_room_15 = 1
-  if (opts.seated >= 20 && opts.won) facts.trivia_packed_house_wins = 1
-
-  // ── Rank history ──────────────────────────────────────────────────────────────────────
-  // Replays the same cumulative points the standings use, so "led from the first question" and
-  // "came from outside the top three" are measured against the score players actually saw.
-  if (opts.won && questionCount > 0) {
-    const ranked = rankHistory(all, roundOrder, questionCount)
-    const mineRanks = ranked.get(playerId) ?? []
-    if (mineRanks.length && mineRanks.every((r) => r === 1)) facts.trivia_wire_to_wire_wins = 1
-    const halfway = mineRanks[Math.max(0, Math.ceil(questionCount / 2) - 1)]
-    if (halfway !== undefined && halfway > 3) facts.trivia_comeback_wins = 1
-  }
-
-  return facts
+  return out
 }
 
 /** Cumulative rank per player after each round, best first. */
