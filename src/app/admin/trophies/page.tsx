@@ -74,6 +74,9 @@ export default function AdminTrophiesPage() {
   // is too exotic for the builder — showing a simplified version would let someone save it back
   // and quietly lose what it actually said.
   const [rawMode, setRawMode] = useState(false)
+  // The vocabulary reference is a lookup, not a step — collapsed by default so it stays out of
+  // the way of the editor. Controlled so the chevron can reflect the state reliably.
+  const [vocabOpen, setVocabOpen] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -280,11 +283,26 @@ export default function AdminTrophiesPage() {
 
       {message && <p className="glass-card px-4 py-3 text-sm">{message}</p>}
 
-      {/* The vocabulary is shown next to the editor on purpose. A rule referencing a counter
-          that doesn't exist reads as zero — the trophy is simply never earned, with no error
-          anywhere — so guessing a name is indistinguishable from a typo. */}
-      <div className="glass-card p-5">
-        <h2 className="text-sm font-bold uppercase tracking-wide">What rules can measure</h2>
+      {/* The vocabulary is a REFERENCE, not a step — every measure already appears in the rule
+          editor's dropdown, labelled. It's kept here because a rule naming a counter that doesn't
+          exist reads as zero (the trophy is simply never earned, with no error anywhere), so
+          being able to check a name is what separates a typo from a real measure. But it grows
+          with every game, so it's collapsed by default and out of the way until wanted. */}
+      <details className="glass-card p-5 [&[open]_summary_.chev]:rotate-90">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
+          <span className="flex items-center gap-2 text-sm font-bold uppercase tracking-wide">
+            <span className="chev inline-block text-[var(--muted)] transition-transform">›</span>
+            What rules can measure
+          </span>
+          <span className="text-xs font-normal normal-case text-[var(--muted)]">
+            {vocabulary.counters.length} counter{vocabulary.counters.length === 1 ? '' : 's'} ·{' '}
+            {vocabulary.distinct.length} distinct set{vocabulary.distinct.length === 1 ? '' : 's'}
+          </span>
+        </summary>
+        <p className="mt-2 text-xs text-[var(--muted)]">
+          The measurements rules are built from. You can compose these freely, but you can&apos;t invent a new one — a
+          rule naming anything not listed here is never earned.
+        </p>
         <div className="mt-3 grid gap-4 sm:grid-cols-2">
           <div>
             <p className="text-faint mb-2 text-xs uppercase tracking-wide">Counters</p>
@@ -312,7 +330,7 @@ export default function AdminTrophiesPage() {
             </ul>
           </div>
         </div>
-      </div>
+      </details>
 
       <div className="glass-card space-y-3 p-5">
         <h2 className="text-sm font-bold uppercase tracking-wide">{editing ? `Edit ${editing}` : 'New trophy'}</h2>
