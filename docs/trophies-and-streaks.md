@@ -35,7 +35,9 @@ These come straight from `account-tiers.md` and constrain every decision below:
 3. **Ask for signup at the moment of earned value, never at the door.** The prompt fires
    right after the user earned something they'd hate to lose (a trophy, a streak day).
 4. **No pay-to-win.** Trophies and streaks are earned by playing, never bought. (Cosmetics
-   are a separate line — see `revenue-model.md`.)
+   are a FateRound+ *entitlement*, not an à-la-carte purchase — the standalone cosmetics shop
+   in the original draft is gone. Updated 2026-08-02; see the note below and
+   [`revenue-model.md`](./revenue-model.md).)
 5. **Accessibility/fun is never behind the account.** The games are all free; the account
    only adds *persistence*.
 
@@ -903,7 +905,7 @@ The push infra already exists (VAPID keys + `push_subscriptions`), but it is cur
 
 **Phase 3:**
 11. Community auto-posts for Ultra-Rare unlocks; seasonal leaderboard tie-in; tournament
-    trophy catalog (see [`revenue-model.md`](./revenue-model.md) §2).
+    trophy catalog (see [`trophy-catalog.md`](./trophy-catalog.md)).
 
 ---
 

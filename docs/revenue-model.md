@@ -145,6 +145,11 @@ The football-club model — turns a friend group into a community worth maintain
 **Member upgrade discount:**
 - Any member of an active Club Pro club can upgrade to FateRound+ at **50% off** —
   ₦500/mo (£1.24 / $1.49)
+- **Rounding: half of list, rounded DOWN to the nearest minor unit.** £2.49 → £1.245 → **£1.24**;
+  $2.99 → $1.495 → **$1.49**. Down rather than nearest, so the charged amount is never more than
+  half of list — "50% off" that bills £1.25 is a complaint, and rounding down costs a penny.
+  These exact figures are the contract: checkout, renewal and entitlement copy must all use the
+  charged amount, never recompute `list / 2` and land on a different penny.
 - The discount holds only while they remain in an active Club Pro club; it reverts at next
   renewal if they leave
 - It does **not** stack — one 50% discount per person regardless of how many Club Pro clubs

@@ -62,7 +62,7 @@ would they pay?**
 
 > **FateRound+ requires an Account.** You can't hold a subscription as a ghost.
 > **Guest ⊂ Account ⊂ FateRound+.** **Club Pro** is a club-scoped subscription paid by the
-> club owner/admin, who gets FateRound+ bundled — see [Club Pro members ≠ FateRound+ members](#club-pro-members--faterounds-members-important)
+> club owner/admin, who gets FateRound+ bundled — see [Club Pro members ≠ FateRound+ members](#club-pro-members--fateround-members-important)
 > below for the anti-loophole rule.
 
 ---

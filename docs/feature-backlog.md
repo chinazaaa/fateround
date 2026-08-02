@@ -9,9 +9,11 @@ Ideas for future development. Items that have since shipped are listed under
 Record short video reactions when results are shown using the MediaRecorder API. Upload clips to Supabase Storage. Play back a compilation at the final leaderboard. Significant storage and bandwidth implications.
 
 ### Daily / cross-session streaks
-Per-game achievement badges already ship (see Shipped below). A daily or
-cross-session streak system — tracking a player's activity across games and days
-— is still unbuilt; it would require player identity / accounts.
+**Partially shipped.** The identity layer and the streak engine both landed with trophies:
+`profiles.current_streak` / `longest_streak` advance once per WAT day from the award pass
+(`src/lib/trophies/streak.ts`), and streak trophies are earnable. What is still open is the
+player-facing surface — there is no streak UI on web or mobile yet, no freeze/grace mechanic,
+and no reminder. See [trophies-and-streaks.md](./trophies-and-streaks.md).
 
 ## Monetization
 
