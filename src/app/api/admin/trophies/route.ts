@@ -4,8 +4,8 @@ import { assertAdminRequest } from '@/lib/admin-api'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { parseJsonBody } from '@/lib/parse-body'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
-import { GAME_TYPE_CONFIG } from '@/lib/game-types'
-import { LAUNCH_CATALOG, criteriaUsesLiveMeasures, scopeCriteriaToGame } from '@/lib/trophies/catalog'
+import { GAME_TYPE_CONFIG, gameTypeLabel } from '@/lib/game-types'
+import { buildCatalogForGame, criteriaUsesLiveMeasures, scopeCriteriaToGame } from '@/lib/trophies/catalog'
 import { hasWinnerSource, isWinnerlessByDesign } from '@/lib/trophies/outcome'
 import type { GameType } from '@/types'
 import { liveCounters, liveDistinctSets } from '@/lib/trophies/counters'
@@ -129,10 +129,11 @@ export async function POST(req: NextRequest) {
 }
 
 /**
- * Seed any launch trophies that are missing.
+ * Seed the per-game trophy set for every game.
  *
  * Insert-only, deliberately: once seeded the TABLE is the source of truth, and re-seeding must
- * never overwrite a title someone reworded or a threshold someone tuned. Safe to run repeatedly.
+ * never overwrite a title someone reworded or a threshold someone tuned. Safe to run repeatedly,
+ * and re-running after a new game ships adds just that game's trophies.
  */
 export async function PUT(req: NextRequest) {
   const session = await assertAdminRequest(req)
@@ -142,9 +143,15 @@ export async function PUT(req: NextRequest) {
     const supabase = getSupabaseAdmin()
     const { data: existing } = await supabase.from('trophies').select('id')
     const have = new Set((existing ?? []).map((r) => r.id as string))
-    const missing = LAUNCH_CATALOG.filter((t) => !have.has(t.id))
 
-    if (!missing.length) return NextResponse.json({ seeded: 0, skipped: LAUNCH_CATALOG.length })
+    // Every game gets its own list. Win trophies are skipped where the server can't resolve a
+    // winner, so no game is seeded with something nobody could ever earn.
+    const full = (Object.keys(GAME_TYPE_CONFIG) as GameType[]).flatMap((gameType) =>
+      buildCatalogForGame(gameType, gameTypeLabel(gameType) ?? gameType, hasWinnerSource(gameType))
+    )
+    const missing = full.filter((t) => !have.has(t.id))
+
+    if (!missing.length) return NextResponse.json({ seeded: 0, skipped: full.length })
 
     const { error } = await supabase.from('trophies').insert(
       missing.map((t) => ({
@@ -162,7 +169,7 @@ export async function PUT(req: NextRequest) {
     )
     if (error) return NextResponse.json({ error: internalErrorMessage('admin/trophies', error) }, { status: 500 })
 
-    return NextResponse.json({ seeded: missing.length, skipped: LAUNCH_CATALOG.length - missing.length })
+    return NextResponse.json({ seeded: missing.length, skipped: full.length - missing.length })
   } catch (err) {
     return NextResponse.json({ error: internalErrorMessage('admin/trophies', err) }, { status: 500 })
   }

@@ -28,166 +28,143 @@ export type CatalogTrophy = {
   sort_order: number
 }
 
-export const LAUNCH_CATALOG: readonly CatalogTrophy[] = [
-  // ── Getting started ───────────────────────────────────────────────────────────────────
+/**
+ * The per-game trophy templates.
+ *
+ * EVERY TROPHY BELONGS TO A GAME. There is no cross-game trophy, deliberately — a trophy list
+ * is browsed one game at a time, so a "FateRound" bucket sitting above the games is a category
+ * that belongs to nothing and can never be opened from a game you're playing. Cross-game
+ * progress is real, but it is a *profile stat* (level, points, streak) shown at the top of the
+ * list, not a trophy.
+ *
+ * Templates are instantiated for each game type, which is how ~47 games each get a real trophy
+ * list from a handful of definitions. `requiresWins` templates are skipped for games whose
+ * outcome the server can't resolve — a "win 10" trophy for a poll game would parse, save, and
+ * never be earned by anyone.
+ */
+type TrophyTemplate = {
+  suffix: string
+  tier: CatalogTrophy['tier']
+  title: string
+  /** `{game}` is replaced with the game's label. */
+  description: string
+  counter: string
+  gte: number
+  points: number
+  sortOrder: number
+  /** Skipped for game types with no server-resolvable winner. */
+  requiresWins?: boolean
+  hidden?: boolean
+}
+
+export const TROPHY_TEMPLATES: readonly TrophyTemplate[] = [
   {
-    id: 'first_game',
-    game_type: null,
+    suffix: 'first_game',
     tier: 'bronze',
     title: 'First round',
-    description: 'Finish your first game.',
-    criteria: { type: 'counter', counter: 'games_played', gte: 1 },
+    description: 'Finish your first game of {game}.',
+    counter: 'games_played',
+    gte: 1,
     points: 10,
-    hidden: false,
-    sort_order: 10,
+    sortOrder: 10,
   },
   {
-    id: 'first_win',
-    game_type: null,
+    suffix: 'first_win',
     tier: 'bronze',
     title: 'First win',
-    description: 'Win a game.',
-    criteria: { type: 'counter', counter: 'games_won', gte: 1 },
+    description: 'Win a game of {game}.',
+    counter: 'games_won',
+    gte: 1,
     points: 25,
-    hidden: false,
-    sort_order: 20,
+    sortOrder: 20,
+    requiresWins: true,
   },
   {
-    id: 'ten_games',
-    game_type: null,
+    suffix: 'ten_games',
     tier: 'bronze',
     title: 'Regular',
-    description: 'Finish 10 games.',
-    criteria: { type: 'counter', counter: 'games_played', gte: 10 },
+    description: 'Finish 10 games of {game}.',
+    counter: 'games_played',
+    gte: 10,
     points: 30,
-    hidden: false,
-    sort_order: 30,
+    sortOrder: 30,
   },
-
-  // ── Winning ───────────────────────────────────────────────────────────────────────────
   {
-    id: 'ten_wins',
-    game_type: null,
+    suffix: 'ten_wins',
     tier: 'silver',
     title: 'Winner',
-    description: 'Win 10 games.',
-    criteria: { type: 'counter', counter: 'games_won', gte: 10 },
+    description: 'Win 10 games of {game}.',
+    counter: 'games_won',
+    gte: 10,
     points: 75,
-    hidden: false,
-    sort_order: 40,
+    sortOrder: 40,
+    requiresWins: true,
   },
   {
-    id: 'fifty_wins',
-    game_type: null,
+    suffix: 'fifty_games',
+    tier: 'silver',
+    title: 'Devoted',
+    description: 'Finish 50 games of {game}.',
+    counter: 'games_played',
+    gte: 50,
+    points: 100,
+    sortOrder: 50,
+  },
+  {
+    suffix: 'fifty_wins',
     tier: 'gold',
     title: 'Champion',
-    description: 'Win 50 games.',
-    criteria: { type: 'counter', counter: 'games_won', gte: 50 },
+    description: 'Win 50 games of {game}.',
+    counter: 'games_won',
+    gte: 50,
     points: 200,
-    hidden: false,
-    sort_order: 50,
-  },
-
-  // ── Breadth ───────────────────────────────────────────────────────────────────────────
-  {
-    id: 'five_modes',
-    game_type: null,
-    tier: 'bronze',
-    title: 'Browser',
-    description: 'Play 5 different game modes.',
-    criteria: { type: 'distinct', key: 'modes_played', gte: 5 },
-    points: 30,
-    hidden: false,
-    sort_order: 60,
+    sortOrder: 60,
+    requiresWins: true,
   },
   {
-    id: 'fifteen_modes',
-    game_type: null,
-    tier: 'gold',
-    title: 'Completionist',
-    description: 'Play 15 different game modes.',
-    criteria: { type: 'distinct', key: 'modes_played', gte: 15 },
-    points: 150,
-    hidden: false,
-    sort_order: 70,
-  },
-
-  // ── Streaks ───────────────────────────────────────────────────────────────────────────
-  {
-    id: 'streak_7',
-    game_type: null,
-    tier: 'silver',
-    title: 'Week on',
-    description: 'Play on 7 days in a row.',
-    criteria: { type: 'counter', counter: 'longest_streak', gte: 7 },
-    points: 80,
-    hidden: false,
-    sort_order: 80,
-  },
-  {
-    id: 'streak_30',
-    game_type: null,
+    suffix: 'hundred_wins',
     tier: 'platinum',
-    title: 'Unbroken',
-    description: 'Play on 30 days in a row.',
-    criteria: { type: 'counter', counter: 'longest_streak', gte: 30 },
+    title: 'Master',
+    description: 'Win 100 games of {game}.',
+    counter: 'games_won',
+    gte: 100,
     points: 400,
-    hidden: false,
-    sort_order: 90,
+    sortOrder: 70,
+    requiresWins: true,
   },
   {
-    id: 'fifty_days',
-    game_type: null,
-    tier: 'silver',
-    title: 'Fixture',
-    description: 'Play on 50 different days.',
-    criteria: { type: 'counter', counter: 'days_played', gte: 50 },
-    points: 120,
-    hidden: false,
-    sort_order: 100,
-  },
-
-  // ── Flavour ───────────────────────────────────────────────────────────────────────────
-  {
-    id: 'big_room',
-    game_type: null,
-    tier: 'bronze',
-    title: 'Full house',
-    description: 'Finish a game with 8 or more players.',
-    criteria: { type: 'counter', counter: 'big_room_games', gte: 1 },
-    points: 25,
-    hidden: false,
-    sort_order: 110,
-  },
-  {
-    id: 'night_owl',
-    game_type: null,
+    suffix: 'night_owl',
     tier: 'silver',
     title: 'Night owl',
-    description: 'Finish 5 games after midnight.',
-    criteria: { type: 'counter', counter: 'late_night_games', gte: 5 },
+    description: 'Finish 5 games of {game} after midnight.',
+    counter: 'late_night_games',
+    gte: 5,
     points: 60,
+    sortOrder: 80,
     hidden: true,
-    sort_order: 120,
   },
-  {
-    id: 'all_rounder',
-    game_type: null,
-    tier: 'gold',
-    title: 'All-rounder',
-    description: 'Win 10 games across at least 5 different modes.',
-    criteria: {
-      type: 'all',
-      of: [
-        { type: 'counter', counter: 'games_won', gte: 10 },
-        { type: 'distinct', key: 'modes_played', gte: 5 },
-      ],
-    },
-    points: 175,
-    hidden: false,
-    sort_order: 130,
-  },
-] as const
+]
+
+/**
+ * Build one game's trophies.
+ *
+ * `canScoreWins` comes from `outcome.ts` rather than being assumed: for a game whose winner the
+ * server never learns, a win trophy is not a hard trophy, it is an impossible one.
+ */
+export function buildCatalogForGame(gameType: string, gameLabel: string, canScoreWins: boolean): CatalogTrophy[] {
+  return TROPHY_TEMPLATES.filter((t) => !t.requiresWins || canScoreWins).map((t) => ({
+    id: `${gameType}.${t.suffix}`,
+    game_type: gameType,
+    tier: t.tier,
+    title: t.title,
+    description: t.description.replace('{game}', gameLabel),
+    // Scoped at build time so the counter only ever reads this game's total.
+    criteria: { type: 'counter', counter: t.counter, gte: t.gte, gameType },
+    points: t.points,
+    hidden: t.hidden ?? false,
+    sort_order: t.sortOrder,
+  }))
+}
 
 /**
  * Counter and set keys referenced by a rule. Used by the catalog test and by the admin API to

@@ -2,74 +2,60 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { useSearchParams } from 'next/navigation'
+import { GAME_CATEGORIES } from '@/lib/game-types'
 import { authHeaders } from '@/lib/identity'
 
-type Trophy = {
-  id: string
-  gameType: string | null
-  gameLabel: string | null
-  tier: string
-  title: string
-  description: string
+type GameRow = {
+  gameType: string
+  label: string
+  emoji: string
+  category: string
+  gamesPlayed: number
+  gamesWon: number
+  earned: number
+  total: number
   points: number
-  earned: boolean
-  earnedAt: string | null
-  progress: number
-  rarityPct: number | null
+  pct: number
 }
 
-type Group = { gameType: string | null; label: string; earned: number; total: number; trophies: Trophy[] }
-type Totals = { earned: number; total: number; pct: number; points: number; level: number }
 type ProfileSummary = {
   handle: string | null
   trophy_points: number
   trophy_level: number
   current_streak: number
   longest_streak: number
-  last_active_date: string | null
 } | null
 
-const TIERS = ['bronze', 'silver', 'gold', 'platinum'] as const
-const TIER_EMOJI: Record<string, string> = { bronze: '🥉', silver: '🥈', gold: '🥇', platinum: '🏆' }
-
-/** "1 day", not "1 days". The mismatch is small and it is the thing people notice. */
+/** "1 day", not "1 days". Small, and the thing people notice. */
 function plural(count: number, word: string): string {
   return `${count} ${word}${count === 1 ? '' : 's'}`
 }
 
+/**
+ * The trophy list — the games you've played, not a catalogue of every game that exists.
+ *
+ * Modelled on a console trophy list: you open a game to see its trophies. Listing all 47 would
+ * bury the two someone actually plays, and a game only enters this list by being PLAYED —
+ * admin creating a Monopoly trophy is not a reason to show Monopoly to someone who plays Ayo.
+ */
 export default function ProfilePage() {
-  const params = useSearchParams()
   const [profile, setProfile] = useState<ProfileSummary>(null)
-  const [groups, setGroups] = useState<Group[]>([])
-  const [totals, setTotals] = useState<Totals | null>(null)
+  const [games, setGames] = useState<GameRow[]>([])
+  const [category, setCategory] = useState<string>('all')
   const [loading, setLoading] = useState(true)
   const [signedOut, setSignedOut] = useState(false)
-
-  const [tier, setTier] = useState<string>('all')
-  const [status, setStatus] = useState<'all' | 'earned' | 'locked'>('all')
-  // Deep-linked from inside a game ("see this game's trophies"), so the page opens already
-  // filtered rather than making someone find the game in a long list.
-  const [game, setGame] = useState<string>(params.get('game') ?? 'all')
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
       const headers = await authHeaders()
-      if (!headers) {
-        setSignedOut(true)
-        return
-      }
-      const res = await fetch('/api/profile/trophies', { headers })
+      if (!headers) return setSignedOut(true)
+      const res = await fetch('/api/profile/games', { headers })
       if (!res.ok) return
       const json = await res.json()
-      if (!json.profile) {
-        setSignedOut(true)
-        return
-      }
+      if (!json.profile) return setSignedOut(true)
       setProfile(json.profile)
-      setGroups(json.groups ?? [])
-      setTotals(json.totals ?? null)
+      setGames(json.games ?? [])
     } finally {
       setLoading(false)
     }
@@ -79,33 +65,26 @@ export default function ProfilePage() {
     void load()
   }, [load])
 
-  const filtered = useMemo(() => {
-    return groups
-      .filter((g) => game === 'all' || (g.gameType ?? 'all') === game)
-      .map((g) => ({
-        ...g,
-        trophies: g.trophies.filter(
-          (t) =>
-            (tier === 'all' || t.tier === tier) && (status === 'all' || (status === 'earned' ? t.earned : !t.earned))
-        ),
-      }))
-      .filter((g) => g.trophies.length > 0)
-  }, [groups, tier, status, game])
+  // Only offer categories the player actually has games in — a tab that filters to nothing is
+  // worse than no tab.
+  const categories = useMemo(() => {
+    const present = new Set(games.map((g) => g.category))
+    return GAME_CATEGORIES.filter((c) => present.has(c.key))
+  }, [games])
 
-  const visibleCount = filtered.reduce((sum, g) => sum + g.trophies.length, 0)
-  const filtering = tier !== 'all' || status !== 'all' || game !== 'all'
+  const visible = useMemo(
+    () => (category === 'all' ? games : games.filter((g) => g.category === category)),
+    [games, category]
+  )
 
   if (loading) return <p className="mx-auto max-w-3xl p-6 text-sm text-muted">Loading…</p>
 
-  // No identity yet is the normal state for someone who has never finished a game — not an
-  // error, and not a reason to show an empty case that implies they lost something.
   if (signedOut) {
     return (
       <div className="mx-auto max-w-3xl space-y-4 p-6">
-        <h1 className="text-2xl font-black tracking-tight">Your profile</h1>
+        <h1 className="text-2xl font-black tracking-tight">Your trophies</h1>
         <p className="text-body">
-          Finish a game and your trophies and streak start here. Save them to an email and they follow you to any
-          device.
+          Finish a game and it appears here with its trophies. Save them to an email and they follow you to any device.
         </p>
         <Link href="/" className="btn-primary btn-fit inline-block px-5 py-2.5 text-sm">
           Find a game
@@ -117,139 +96,125 @@ export default function ProfilePage() {
   return (
     <div className="mx-auto max-w-3xl space-y-5 p-4 sm:p-6">
       <div>
-        <h1 className="text-2xl font-black tracking-tight">{profile?.handle || 'Your profile'}</h1>
+        <h1 className="text-2xl font-black tracking-tight">{profile?.handle || 'Your trophies'}</h1>
         <p className="mt-0.5 text-sm text-muted">
-          Level {totals?.level ?? 1} · {plural(totals?.points ?? 0, 'point')}
+          Level {profile?.trophy_level ?? 1} · {plural(profile?.trophy_points ?? 0, 'point')}
         </p>
       </div>
 
-      {/* Three across at every width. Stacked, these were three tall cards holding one number
-          each and pushed the trophies — the actual content — below the fold. */}
       <div className="grid grid-cols-3 gap-2 sm:gap-3">
-        <div className="glass-card p-3 text-center sm:p-4">
-          <p className="text-2xl font-black sm:text-3xl">🔥{profile?.current_streak ?? 0}</p>
-          <p className="text-faint mt-0.5 text-[11px] uppercase tracking-wide">Day streak</p>
-          <p className="text-faint text-[11px]">Best {profile?.longest_streak ?? 0}</p>
-        </div>
-        <div className="glass-card p-3 text-center sm:p-4">
-          <p className="text-2xl font-black sm:text-3xl">
-            {totals?.earned ?? 0}
-            <span className="text-faint text-base font-semibold">/{totals?.total ?? 0}</span>
-          </p>
-          <p className="text-faint mt-0.5 text-[11px] uppercase tracking-wide">Trophies</p>
-          <p className="text-faint text-[11px]">{totals?.pct ?? 0}% done</p>
-        </div>
-        <div className="glass-card p-3 text-center sm:p-4">
-          <p className="text-2xl font-black sm:text-3xl">{totals?.points ?? 0}</p>
-          <p className="text-faint mt-0.5 text-[11px] uppercase tracking-wide">Points</p>
-          <p className="text-faint text-[11px]">Level {totals?.level ?? 1}</p>
-        </div>
+        <Stat
+          value={`🔥${profile?.current_streak ?? 0}`}
+          label="Day streak"
+          sub={`Best ${profile?.longest_streak ?? 0}`}
+        />
+        <Stat
+          value={`${games.reduce((sum, g) => sum + g.earned, 0)}`}
+          label="Trophies"
+          sub={`${plural(games.length, 'game')}`}
+        />
+        <Stat value={`${profile?.trophy_points ?? 0}`} label="Points" sub={`Level ${profile?.trophy_level ?? 1}`} />
       </div>
 
-      <div className="space-y-2">
+      {categories.length > 1 && (
         <div className="flex flex-wrap gap-1.5">
-          {(['all', 'earned', 'locked'] as const).map((value) => (
-            <FilterChip key={value} active={status === value} onClick={() => setStatus(value)}>
-              {value === 'all' ? 'All' : value === 'earned' ? 'Earned' : 'Locked'}
-            </FilterChip>
-          ))}
-          <span className="mx-1 self-center text-[var(--border-strong)]">|</span>
-          {(['all', ...TIERS] as const).map((value) => (
-            <FilterChip key={value} active={tier === value} onClick={() => setTier(value)}>
-              {value === 'all' ? 'Any tier' : `${TIER_EMOJI[value]} ${value}`}
-            </FilterChip>
+          <Chip active={category === 'all'} onClick={() => setCategory('all')}>
+            All
+          </Chip>
+          {categories.map((c) => (
+            <Chip key={c.key} active={category === c.key} onClick={() => setCategory(c.key)}>
+              {c.label}
+            </Chip>
           ))}
         </div>
+      )}
 
-        {groups.length > 1 && (
-          <select
-            className="input-field !py-2 text-sm"
-            value={game}
-            onChange={(e) => setGame(e.target.value)}
-            aria-label="Filter by game"
-          >
-            <option value="all">Every game</option>
-            {groups.map((g) => (
-              <option key={g.label} value={g.gameType ?? 'all'}>
-                {g.label} ({g.earned}/{g.total})
-              </option>
-            ))}
-          </select>
-        )}
-      </div>
-
-      {visibleCount === 0 ? (
+      {games.length === 0 ? (
         <p className="glass-card p-5 text-sm text-muted">
-          {filtering ? 'Nothing matches those filters.' : 'No trophies have been set up yet.'}
+          You haven&apos;t finished a game yet. Play one and it shows up here.
         </p>
+      ) : visible.length === 0 ? (
+        <p className="glass-card p-5 text-sm text-muted">No games in that category yet.</p>
       ) : (
-        filtered.map((group) => (
-          <section key={group.label} className="glass-card p-4 sm:p-5">
-            <div className="mb-3 flex items-baseline justify-between gap-3">
-              <h2 className="font-bold">{group.label}</h2>
-              <span className="text-faint text-xs">
-                {group.earned}/{group.total}
-                {group.total > 0 && ` · ${Math.round((group.earned / group.total) * 100)}%`}
-              </span>
-            </div>
-
-            <ul className="space-y-2">
-              {group.trophies.map((trophy) => (
-                <li
-                  key={trophy.id}
-                  className={`flex items-start gap-3 rounded-xl border p-3 ${
-                    trophy.earned
-                      ? 'border-[var(--border-strong)] bg-[var(--surface-inset-bg)]'
-                      : 'border-[var(--border)]'
-                  }`}
-                >
-                  <span className={`text-xl ${trophy.earned ? '' : 'opacity-40 grayscale'}`} aria-hidden>
-                    {TIER_EMOJI[trophy.tier] ?? '🏅'}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className={`font-semibold ${trophy.earned ? '' : 'text-muted'}`}>{trophy.title}</p>
-                    <p className="text-sm text-muted">{trophy.description}</p>
-
-                    {/* A bar only where there is something to travel. A full bar on an earned
-                        trophy is noise; the date is the more interesting fact. */}
-                    {!trophy.earned && trophy.progress > 0 && (
-                      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[var(--surface-inset-bg)]">
-                        <div
-                          className="h-full rounded-full bg-[var(--primary)]"
-                          style={{ width: `${Math.round(trophy.progress * 100)}%` }}
-                        />
-                      </div>
-                    )}
-
-                    <p className="text-faint mt-1 text-xs">
-                      {plural(trophy.points, 'pt')}
-                      {trophy.earned && trophy.earnedAt
-                        ? ` · earned ${new Date(trophy.earnedAt).toLocaleDateString()}`
-                        : trophy.progress > 0
-                          ? ` · ${Math.round(trophy.progress * 100)}% there`
-                          : ''}
-                      {trophy.rarityPct !== null && ` · ${trophy.rarityPct}% of players`}
-                    </p>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </section>
-        ))
+        <div className="space-y-2">
+          {visible.map((game) => (
+            <GameCard
+              key={game.gameType}
+              href={`/profile/${encodeURIComponent(game.gameType)}`}
+              emoji={game.emoji}
+              label={game.label}
+              sub={`${plural(game.gamesPlayed, 'game')} played${game.gamesWon ? ` · ${game.gamesWon} won` : ''}`}
+              earned={game.earned}
+              total={game.total}
+              pct={game.pct}
+            />
+          ))}
+        </div>
       )}
     </div>
   )
 }
 
-function FilterChip({
-  active,
-  onClick,
-  children,
+function Stat({ value, label, sub }: { value: string; label: string; sub: string }) {
+  return (
+    <div className="glass-card p-3 text-center sm:p-4">
+      <p className="text-2xl font-black sm:text-3xl">{value}</p>
+      <p className="text-faint mt-0.5 text-[11px] uppercase tracking-wide">{label}</p>
+      <p className="text-faint text-[11px]">{sub}</p>
+    </div>
+  )
+}
+
+function GameCard({
+  href,
+  emoji,
+  label,
+  sub,
+  earned,
+  total,
+  pct,
 }: {
-  active: boolean
-  onClick: () => void
-  children: React.ReactNode
+  href: string
+  emoji: string
+  label: string
+  sub: string
+  earned: number
+  total: number
+  pct: number
 }) {
+  return (
+    <Link href={href} className="glass-card-interactive flex items-center gap-3 p-4">
+      <span className="text-2xl" aria-hidden>
+        {emoji}
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="font-bold">{label}</p>
+        <p className="text-faint text-xs">{sub}</p>
+        {total > 0 && (
+          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[var(--surface-inset-bg)]">
+            <div className="h-full rounded-full bg-[var(--primary)]" style={{ width: `${pct}%` }} />
+          </div>
+        )}
+      </div>
+      <div className="shrink-0 text-right">
+        {total > 0 ? (
+          <>
+            <p className="font-black">
+              {earned}
+              <span className="text-faint text-sm font-semibold">/{total}</span>
+            </p>
+            <p className="text-faint text-[11px]">{pct}%</p>
+          </>
+        ) : (
+          // Honest rather than hiding the game: they played it, there just aren't trophies yet.
+          <p className="text-faint text-[11px]">No trophies yet</p>
+        )}
+      </div>
+    </Link>
+  )
+}
+
+function Chip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
     <button
       type="button"

@@ -9,7 +9,7 @@ import { supabase } from '@/lib/supabase'
  *
  * Resolves the game type client-side from the code, so the row can live in the settings sheet
  * without every caller having to thread `gameType` down to it. Renders nothing until it knows,
- * because a link that lands on the wrong filter is worse than one that appears a beat late.
+ * because a link that lands on the wrong game is worse than one that appears a beat late.
  */
 export function TrophiesForThisGameLink({ gameCode, className }: { gameCode: string | null; className?: string }) {
   const [gameType, setGameType] = useState<string | null>(null)
@@ -29,7 +29,7 @@ export function TrophiesForThisGameLink({ gameCode, className }: { gameCode: str
   if (!gameType) return null
 
   return (
-    <Link href={`/profile?game=${encodeURIComponent(gameType)}`} className={className}>
+    <Link href={`/profile/${encodeURIComponent(gameType)}`} className={className}>
       🏆 Trophies in this game
     </Link>
   )

@@ -23,6 +23,11 @@ export async function GET(req: NextRequest) {
     const profileId = await getProfileFromRequest(req)
     if (!profileId) return NextResponse.json({ profile: null, groups: [], totals: null })
 
+    // `?game=` narrows to one game's trophies; `?game=platform` to the cross-game ones. The
+    // trophy list is browsed one game at a time, so the default of "everything" is only used by
+    // callers that genuinely want the lot.
+    const scope = new URL(req.url).searchParams.get('game')
+
     const admin = getSupabaseAdmin()
     const [{ data: profile }, { data: catalog, error }, { data: earnedRows }, { data: rarityRows }] = await Promise.all(
       [
@@ -54,6 +59,11 @@ export async function GET(req: NextRequest) {
     }
 
     const items = (catalog ?? [])
+      .filter((row) => {
+        if (!scope) return true
+        const gameType = (row.game_type as string | null) ?? null
+        return scope === 'platform' ? gameType === null : gameType === scope
+      })
       .map((row) => {
         const id = row.id as string
         const earned = earnedAt.has(id)
