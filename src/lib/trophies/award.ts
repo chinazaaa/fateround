@@ -26,6 +26,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { GameType } from '@/types'
 import { GLOBAL_SCOPE, evaluateRaw, type ProgressSnapshot } from './criteria'
+import { buildGameFacts } from './game-facts'
 import { resolveWinners } from './outcome'
 import { advanceStreak, watDate, watHour, type StreakState } from './streak'
 
@@ -146,7 +147,9 @@ export async function awardForFinishedGame(
   try {
     const { data: game } = await supabase
       .from('games')
-      .select('id, game_type, status, max_players, finished_at')
+      // timer_seconds / question_source are read for the per-game facts builders (Trivia uses
+      // both). Cheap to carry here; a second round-trip per finish would not be.
+      .select('id, game_type, status, max_players, finished_at, timer_seconds, question_source')
       .eq('id', sessionId)
       .maybeSingle()
     if (!game || game.status !== 'finished') {
@@ -180,6 +183,19 @@ export async function awardForFinishedGame(
     const extras: Record<string, number> = {}
     if (seated.length >= BIG_ROOM_PLAYERS) extras.big_room_games = 1
     if (watHour(finishedAt) < 5) extras.late_night_games = 1
+
+    // Per-game facts, derived from what the game itself persisted. Merged UNDER nothing — the
+    // shared extras above are platform-level and a game builder must not be able to overwrite
+    // them, so game facts are namespaced by game type and collisions are impossible by naming.
+    Object.assign(
+      extras,
+      await buildGameFacts(supabase, gameType, sessionId, me.id, {
+        timerSeconds: (game.timer_seconds as number) ?? null,
+        questionSource: (game.question_source as string) ?? null,
+        won,
+        seated: seated.length,
+      })
+    )
 
     // Per-game-type and global scopes both move, so a rule can ask "10 wins" or "10 Whot wins".
     await bumpStats(supabase, profileId, gameType, { played: 1, won: won ? 1 : 0, counters: extras })
