@@ -10,6 +10,7 @@ import { RosterButton } from '@/components/roster/RosterButton'
 import { GameChromeSettings } from '@/components/GameChromeSettings'
 import { ProfileChip } from '@/components/profile/ProfileChip'
 import { PostWinPrompt } from '@/components/profile/PostWinPrompt'
+import { GameAttribution } from '@/components/profile/GameAttribution'
 import { useHostPlayerSession } from '@/hooks/useHostPlayerSession'
 import { useHostToken } from '@/hooks/useHostToken'
 import { setupAudioUnlock } from '@/lib/sounds'
@@ -50,6 +51,7 @@ export function GameHostChrome() {
 
       {/* Renders only when the award pass reports something earned, so it can never
           appear before a game is finished. */}
+      <GameAttribution gameCode={code} />
       <PostWinPrompt />
     </>
   )
