@@ -3,7 +3,7 @@ import { Avatar } from '@/components/Avatar'
 import type { PublicProfileSummary } from '@/lib/profile/public-profile'
 
 const TIER_EMOJI: Record<string, string> = { bronze: '🥉', silver: '🥈', gold: '🥇', platinum: '🏆' }
-// Tinted tile behind each top-trophy medal — the coloured squares in the mockup.
+// Tinted tile behind each top-trophy medal.
 const TIER_TILE: Record<string, string> = {
   bronze: 'linear-gradient(135deg, #cd7f32, #a86423)',
   silver: 'linear-gradient(135deg, #d8d8e0, #a8a8b8)',
@@ -16,45 +16,48 @@ function plural(count: number, word: string): string {
 }
 
 /**
- * The public trophy card shown on /u/[username]. Purely presentational — a visitor views it; the
- * owner shares it from their own /profile dashboard, so this card carries no share/download
- * controls of its own.
+ * The public profile view shown on /u/[username]. Presentational — a visitor views it; the owner
+ * shares it from their own /profile dashboard. Laid out as a full-width hero band + content column
+ * to match /u/[username]/trophies, so the two public pages read as one design.
  */
 export function PublicProfileCard({ summary }: { summary: PublicProfileSummary }) {
   return (
-    <div className="mx-auto w-full max-w-sm">
-      <div className="overflow-hidden rounded-[var(--radius-lg)] border border-[var(--border)]">
-        {/* Header band */}
-        <div
-          className="flex flex-col items-center gap-2 px-6 pt-8 pb-6 text-center"
-          style={{ background: 'linear-gradient(160deg, var(--accent-soft, #fdf2f8), transparent)' }}
-        >
-          <Avatar name={summary.handle} photoUrl={summary.avatarUrl} size="lg" className="!h-20 !w-20 !text-2xl" />
-          <h1 className="mt-1 text-2xl font-black tracking-tight">{summary.handle}</h1>
-          <p className="text-sm text-muted">
-            Level {summary.level} · {summary.points.toLocaleString()} points
-          </p>
-          {summary.currentStreak > 0 && (
-            // whitespace-nowrap: keeps the short streak line on one row (it otherwise wraps in some
-            // narrow renders).
-            <p className="whitespace-nowrap text-sm font-semibold" style={{ color: 'var(--accent, #f43f5e)' }}>
-              🔥 {plural(summary.currentStreak, 'day')} streak
+    <>
+      {/* Hero band — full-bleed tinted header so the top reads as intentional on desktop. */}
+      <div
+        className="border-b border-[var(--border)]"
+        style={{
+          background:
+            'linear-gradient(180deg, color-mix(in srgb, var(--accent, #f43f5e) 9%, transparent), transparent)',
+        }}
+      >
+        <div className="mx-auto max-w-2xl px-4 pt-10 pb-9 sm:px-6">
+          <div className="flex flex-col items-center text-center">
+            <Avatar name={summary.handle} photoUrl={summary.avatarUrl} size="lg" className="!h-24 !w-24 !text-3xl" />
+            <h1 className="mt-4 text-3xl font-black tracking-tight sm:text-4xl">{summary.handle}</h1>
+            <p className="mt-1 text-sm text-muted">
+              Level {summary.level} · {summary.points.toLocaleString()} points
             </p>
-          )}
-        </div>
-
-        <div className="space-y-5 bg-[var(--surface)] px-6 pb-7 pt-5">
-          {/* Stat row */}
-          <div className="grid grid-cols-3 gap-2 text-center">
-            <CardStat value={`${summary.trophyCount}`} label="Trophies" />
-            <CardStat value={`${summary.gamesPlayed}`} label="Games played" />
-            <CardStat value={summary.winRate === null ? '—' : `${summary.winRate}%`} label="Win rate" />
+            {summary.currentStreak > 0 && (
+              <p className="mt-1 whitespace-nowrap text-sm font-semibold" style={{ color: 'var(--accent, #f43f5e)' }}>
+                🔥 {plural(summary.currentStreak, 'day')} streak
+              </p>
+            )}
+            <div className="mt-5 grid w-full max-w-sm grid-cols-3 gap-2 sm:gap-3">
+              <Tile value={`${summary.trophyCount}`} label="Trophies" />
+              <Tile value={`${summary.gamesPlayed}`} label="Games played" />
+              <Tile value={summary.winRate === null ? '—' : `${summary.winRate}%`} label="Win rate" />
+            </div>
           </div>
+        </div>
+      </div>
 
-          {/* Top trophies */}
-          {summary.topTrophies.length > 0 && (
-            <div className="space-y-2.5">
-              <p className="text-faint text-xs font-bold uppercase tracking-wide">Top trophies</p>
+      {/* Content */}
+      <div className="mx-auto max-w-2xl space-y-4 px-4 pt-6 sm:px-6">
+        {summary.topTrophies.length > 0 && (
+          <div className="glass-card p-5">
+            <p className="text-faint mb-3 text-xs font-bold uppercase tracking-wide">Top trophies</p>
+            <div className="space-y-3">
               {summary.topTrophies.map((t) => (
                 <div key={t.id} className="flex items-center gap-3">
                   <span
@@ -75,34 +78,33 @@ export function PublicProfileCard({ summary }: { summary: PublicProfileSummary }
                 </div>
               ))}
             </div>
-          )}
+            {summary.trophyCount > 0 && (
+              <Link
+                href={`/u/${summary.username}/trophies`}
+                className="mt-4 block text-center text-sm font-semibold no-underline"
+                style={{ color: 'var(--accent, #f43f5e)' }}
+              >
+                See all {summary.trophyCount} {summary.trophyCount === 1 ? 'trophy' : 'trophies'} →
+              </Link>
+            )}
+          </div>
+        )}
 
-          {/* Plain-text link, deliberately quiet so it doesn't compete with the CTA below it. */}
-          {summary.trophyCount > 0 && (
-            <Link
-              href={`/u/${summary.username}/trophies`}
-              className="block text-center text-sm font-semibold no-underline"
-              style={{ color: 'var(--accent, #f43f5e)' }}
-            >
-              See all {summary.trophyCount} {summary.trophyCount === 1 ? 'trophy' : 'trophies'} →
-            </Link>
-          )}
-
-          {/* CTA — the brand primary button. */}
+        <div className="mx-auto max-w-sm pt-1">
           <Link href="/" className="btn-primary block w-full text-center no-underline">
             Beat {summary.handle}&apos;s score →
           </Link>
         </div>
       </div>
-    </div>
+    </>
   )
 }
 
-function CardStat({ value, label }: { value: string; label: string }) {
+function Tile({ value, label }: { value: string; label: string }) {
   return (
-    <div>
+    <div className="glass-card p-3 text-center">
       <p className="text-2xl font-black">{value}</p>
-      <p className="text-faint text-[11px] uppercase tracking-wide">{label}</p>
+      <p className="text-faint mt-0.5 text-[11px] uppercase tracking-wide">{label}</p>
     </div>
   )
 }
