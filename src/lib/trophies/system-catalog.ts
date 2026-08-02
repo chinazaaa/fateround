@@ -1,4 +1,5 @@
 import type { CatalogTrophy } from './catalog'
+import { AYO } from './system-trophies/ayo'
 import { CHECKERS, CHECKERS_INTERNATIONAL, CHECKERS_NIGERIA } from './system-trophies/checkers'
 import { CHESS } from './system-trophies/chess'
 import { CRAZY_EIGHTS } from './system-trophies/crazy-eights'
@@ -41,6 +42,7 @@ function rule(counter: string, gte: number, gameType: string) {
 }
 
 const BY_GAME: Record<string, SystemTrophySpec[]> = {
+  ayo: AYO,
   checkers: CHECKERS,
   checkers_international: CHECKERS_INTERNATIONAL,
   checkers_nigeria: CHECKERS_NIGERIA,

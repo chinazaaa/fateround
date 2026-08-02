@@ -3269,6 +3269,10 @@ export function getGameFaqs(content: GameLandingContent): GameLandingFaq[] {
       question: `Can I play ${label} on my phone?`,
       answer: `Yes. FateRound runs in any mobile browser. Share the room link in your group chat and everyone can play ${label} from their phone or desktop.`,
     },
+    {
+      question: `How do trophies work in ${label}?`,
+      answer: `Trophies are earned automatically as you play — things like finishing your first game, racking up wins, or hitting a milestone. Bronze, silver, gold, and platinum trophies are listed above with what they need; some are secret and only reveal themselves once you've earned them. Trophies and points carry over to your FateRound profile across every game.`,
+    },
     ...(content.extraFaqs ?? []),
   ]
 }

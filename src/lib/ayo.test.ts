@@ -16,6 +16,7 @@ import {
   AYO_STARTING_SEEDS,
   AYO_PIT_COUNT,
   AYO_PITS_PER_SIDE,
+  bumpAyoStats,
 } from './ayo'
 
 const OWare_CONFIG = { variant: 'oware' as const, aRowSize: AYO_PITS_PER_SIDE, bRowSize: AYO_PITS_PER_SIDE }
@@ -273,5 +274,80 @@ describe('totalSeedsOnSide', () => {
     const pits = startingPits(5, 6)
     expect(totalSeedsOnSide(pits, 'a', { aRowSize: 5, bRowSize: 6 })).toBe(20)
     expect(totalSeedsOnSide(pits, 'b', { aRowSize: 5, bRowSize: 6 })).toBe(24)
+  })
+})
+
+describe('bumpAyoStats (per-game trophy accumulator)', () => {
+  it('counts moves, capturing moves and sets last_capture on the mover', () => {
+    const first = bumpAyoStats(
+      {},
+      {},
+      { moverSide: 'a', pitIndex: 2, seedsSown: 4, captured: true, capturedA: 4, capturedB: 0 }
+    )
+    expect(first.a_stats.moves).toBe(1)
+    expect(first.a_stats.capturing_moves).toBe(1)
+    expect(first.a_stats.last_capture).toBe(1)
+    expect(first.b_stats.moves).toBeUndefined()
+    // A non-capturing move clears last_capture (it's the MOST-RECENT flag, not a sum).
+    const second = bumpAyoStats(first.a_stats, first.b_stats, {
+      moverSide: 'a',
+      pitIndex: 3,
+      seedsSown: 3,
+      captured: false,
+      capturedA: 4,
+      capturedB: 0,
+    })
+    expect(second.a_stats.moves).toBe(2)
+    expect(second.a_stats.capturing_moves).toBe(1)
+    expect(second.a_stats.last_capture).toBe(0)
+  })
+
+  it('builds the sown_mask from LOCAL house index per side', () => {
+    // Side A pit 0 -> bit 0; side B pit 6 -> local 0 -> bit 0.
+    const a = bumpAyoStats(
+      {},
+      {},
+      { moverSide: 'a', pitIndex: 0, seedsSown: 4, captured: false, capturedA: 0, capturedB: 0 }
+    )
+    expect(a.a_stats.sown_mask).toBe(0b000001)
+    const b = bumpAyoStats(
+      {},
+      {},
+      { moverSide: 'b', pitIndex: 6, seedsSown: 4, captured: false, capturedA: 0, capturedB: 0 }
+    )
+    expect(b.b_stats.sown_mask).toBe(0b000001)
+    // Sowing from every A house sets all six bits.
+    let stats = {}
+    for (let pit = 0; pit < 6; pit += 1) {
+      stats = bumpAyoStats(
+        stats,
+        {},
+        { moverSide: 'a', pitIndex: pit, seedsSown: 4, captured: false, capturedA: 0, capturedB: 0 }
+      ).a_stats
+    }
+    expect((stats as { sown_mask?: number }).sown_mask).toBe(0b111111)
+  })
+
+  it('tracks max_sown and the worst deficit for BOTH seats', () => {
+    const first = bumpAyoStats(
+      {},
+      {},
+      { moverSide: 'a', pitIndex: 1, seedsSown: 7, captured: false, capturedA: 0, capturedB: 8 }
+    )
+    expect(first.a_stats.max_sown).toBe(7)
+    // A trails by 8 after this move; B leads.
+    expect(first.a_stats.worst_deficit).toBe(8)
+    expect(first.b_stats.worst_deficit ?? 0).toBe(0)
+    // A bigger lap later keeps the larger max_sown; a smaller deficit doesn't lower worst_deficit.
+    const second = bumpAyoStats(first.a_stats, first.b_stats, {
+      moverSide: 'a',
+      pitIndex: 1,
+      seedsSown: 13,
+      captured: false,
+      capturedA: 4,
+      capturedB: 8,
+    })
+    expect(second.a_stats.max_sown).toBe(13)
+    expect(second.a_stats.worst_deficit).toBe(8)
   })
 })
