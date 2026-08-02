@@ -358,7 +358,7 @@ export type UnoStanding = {
   rank: number
 }
 
-type UnoRankableHand = { player_id: string; cards: UnoCard[] }
+type UnoRankableHand = { player_id: string; cards: UnoCard[] | null }
 
 /**
  * Final placement order (1st → last). Players who emptied their hand rank FIRST, in the

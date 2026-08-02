@@ -4,7 +4,7 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { fetchCodewordsBoard } from '@/lib/codewords-board-client'
-import { fetchWhotHands } from '@/lib/hands-client'
+import { fetchUnoHands, fetchWhotHands } from '@/lib/hands-client'
 import { roundGenderLabel } from '@/lib/participants'
 import { isGenderFreeVoting } from '@/lib/gender-based'
 import {
@@ -57,7 +57,6 @@ import {
   WHOT_SESSION_SELECT,
   CRAZY8_PLAYER_HANDS_SELECT,
   CRAZY8_SESSION_SELECT,
-  UNO_PLAYER_HANDS_SELECT,
   UNO_SESSION_SELECT,
   YAHTZEE_PLAYER_SCORES_SELECT,
   YAHTZEE_SESSION_SELECT,
@@ -441,14 +440,13 @@ export default function GameHistoryPage() {
       }
 
       if (isUnoGame(gameType)) {
-        const [{ data: plrs }, { data: sessionData }, { data: handRows }] = await Promise.all([
+        // Hands via /api/uno/hands: `cards` is no longer read directly by the browser. This
+        // page only renders finished games, and the route reveals full hands once a game is
+        // finished, so the post-game summary is unchanged.
+        const [{ data: plrs }, { data: sessionData }, handRows] = await Promise.all([
           supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at'),
           supabase.from('uno_sessions').select(UNO_SESSION_SELECT).eq('game_id', gameCode).maybeSingle(),
-          supabase
-            .from('uno_player_hands')
-            .select(UNO_PLAYER_HANDS_SELECT)
-            .eq('game_id', gameCode)
-            .order('player_order'),
+          fetchUnoHands(gameCode, {}),
         ])
         setGame(gameData)
         setPlayers(plrs ?? [])

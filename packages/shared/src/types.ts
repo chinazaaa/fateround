@@ -863,7 +863,15 @@ export interface UnoPlayerHand {
   id: string
   game_id: string
   player_id: string
-  cards: UnoCard[]
+  /**
+   * `null` means REDACTED (another player's hand) — deliberately not `[]`, since an empty
+   * array is meaningful state ("this player is out"). Use `card_count` for anyone but the
+   * local player (Team-Up: your teammate's cards also come back in full). See
+   * src/lib/hand-redaction.ts.
+   */
+  cards: UnoCard[] | null
+  /** How many cards the player holds. Public information; survives redaction. */
+  card_count?: number
   player_order: number
 }
 

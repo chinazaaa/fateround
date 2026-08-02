@@ -59,12 +59,14 @@ import {
   postUnoPass,
   postUnoPlay,
   postUnoPlayMulti,
+  postUnoHands,
   postUnoSwap,
   postUnoTeamLeaveDecision,
 } from '@/lib/game-api'
+import { getPlayerSession } from '@/lib/secure-session'
 import { playSound } from '@/lib/sounds'
 import { getSupabase } from '@/lib/supabase'
-import { UNO_PLAYER_HANDS_SELECT, UNO_SESSION_SELECT } from '@/lib/supabase-selects'
+import { UNO_SESSION_SELECT } from '@/lib/supabase-selects'
 import { usePlayerSessionActions } from '@/lib/player-session'
 import { cardHandLeaderboard } from '@/lib/finish-leaderboards'
 import { useUnoQuickChat } from '@/hooks/useUnoQuickChat'
@@ -97,18 +99,18 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
   const loadGameState = useCallback(
     async (_game: Game, _players: Player[]): Promise<{ state: UnoSession | null; ok: boolean }> => {
       const code = gameCode.toUpperCase()
+      // Hands via /api/uno/hands so other players' cards never reach this device; own cards come
+      // back in full, everyone else's as `card_count`. In Team-Up mode the caller's teammate's
+      // hand also comes back in full (resolved server-side). See src/lib/hand-redaction.ts.
+      const session = await getPlayerSession(code)
       const [sessionRes, handsRes] = await Promise.all([
         getSupabase().from('uno_sessions').select(UNO_SESSION_SELECT).eq('game_id', code).maybeSingle(),
-        getSupabase()
-          .from('uno_player_hands')
-          .select(UNO_PLAYER_HANDS_SELECT)
-          .eq('game_id', code)
-          .order('player_order'),
+        postUnoHands(code, { resumeToken: session?.resumeToken }).catch(() => null),
       ])
-      if (sessionRes.error || handsRes.error) return { state: null, ok: false }
+      if (sessionRes.error || !handsRes) return { state: null, ok: false }
       const sessionData = sessionRes.data as UnoSession | null
       setSession(sessionData)
-      setHands((handsRes.data as UnoPlayerHand[]) ?? [])
+      setHands(handsRes.hands ?? [])
       return { state: sessionData, ok: true }
     },
     [gameCode]
@@ -154,7 +156,7 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
 
   const me = bootstrap.myPlayerId ? (bootstrap.players.find((p) => p.id === bootstrap.myPlayerId) ?? null) : null
   const isViewer = !!(me && bootstrap.game && playerIsViewer(me, bootstrap.game))
-  const isOut = !!myHand && myHand.cards.length === 0 && bootstrap.game?.status === 'active'
+  const isOut = !!myHand && (myHand.cards?.length ?? 0) === 0 && bootstrap.game?.status === 'active'
   const isWatching = isViewer || isOut
 
   // Desync guard (mirrors Whot/Crazy Eights — see docs memory "card-hand-desync"): the
@@ -198,7 +200,7 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
 
   const playableIds = useMemo(() => {
     if (!session || !myHand) return new Set<string>()
-    return new Set(myHand.cards.filter((c) => canPlayCard(c, session)).map((c) => c.id))
+    return new Set((myHand.cards ?? []).filter((c) => canPlayCard(c, session)).map((c) => c.id))
   }, [session, myHand])
 
   const timerSeconds = useTurnDeadlineSeconds(
@@ -233,7 +235,7 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
 
   const handCounts = useMemo(() => {
     const counts: Record<string, number> = {}
-    for (const hand of hands) counts[hand.player_id] = hand.cards.length
+    for (const hand of hands) counts[hand.player_id] = hand.card_count ?? hand.cards?.length ?? 0
     return counts
   }, [hands])
 
@@ -401,7 +403,7 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
   const tableHint = [demandLabel, penaltyLabel].filter(Boolean).join(' · ')
 
   const drawDepleted = isDrawPileDepleted(session)
-  const canPlayNow = !!myHand && hasPlayableCard(myHand.cards, session)
+  const canPlayNow = !!myHand && hasPlayableCard(myHand.cards ?? [], session)
   const canDraw = isMyTurn && session.phase === 'playing' && !session.drawn_card_id && !(drawDepleted && canPlayNow)
   const canPass = isMyTurn && session.phase === 'playing' && !!session.drawn_card_id
   const drawLabel = drawDepleted ? 'Pass turn' : 'Draw a card'
@@ -411,7 +413,7 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
   // settled (no pending Draw penalty) and it isn't already your turn.
   const canJumpIn =
     rules.jumpIn && !isWatching && !isMyTurn && session.phase === 'playing' && (session.draw_penalty ?? 0) === 0
-  const jumpableCards = canJumpIn && myHand ? myHand.cards.filter((c) => isJumpInMatch(c, top)) : []
+  const jumpableCards = canJumpIn && myHand ? (myHand.cards ?? []).filter((c) => isJumpInMatch(c, top)) : []
   const canJumpNow = jumpableCards.length > 0
 
   // ── Multi-Play selection ──────────────────────────────────────────────────────
@@ -423,7 +425,7 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
     !hasDrawn &&
     (session.draw_penalty ?? 0) === 0 &&
     rules.multiPlay !== 'off' &&
-    (myHand?.cards.length ?? 0) >= 2
+    (myHand?.cards?.length ?? 0) >= 2
   const handById = new Map((myHand?.cards ?? []).map((c) => [c.id, c]))
   const selectedCards = selectedIds.map((id) => handById.get(id)).filter((c): c is UnoCard => !!c)
   const multiValid =
@@ -639,8 +641,8 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
         ) : (
           <>
             <CardHand
-              count={myHand?.cards.length ?? 0}
-              many={(myHand?.cards.length ?? 0) >= 8}
+              count={myHand?.cards?.length ?? 0}
+              many={(myHand?.cards?.length ?? 0) >= 8}
               hint={
                 multiMode && multiEnabled ? (
                   <Text style={styles.reshuffleNote}>
