@@ -2294,6 +2294,17 @@ export const DISTINCT_SETS: readonly DistinctDef[] = [
     phrase: 'faced at least {n} different opponent{s}',
   },
   {
+    // Emitted by mafiaFacts as `distinct:mafia_winning_roles:<role>` on a win, folded into
+    // `player_distinct` by the award pass (see the `distinct:` convention in award.ts). This is
+    // the one Mafia achievement that is genuinely a SET rather than a sum — "won as N different
+    // roles" — which no summable counter can express.
+    key: 'mafia_winning_roles',
+    label: 'Mafia — roles won as',
+    description: 'Distinct Mafia roles this profile has won a game as.',
+    availability: 'partial',
+    phrase: 'won as at least {n} different role{s}',
+  },
+  {
     key: 'rooms',
     label: 'Rooms played in',
     description: 'Distinct game rooms this profile has finished a game in.',

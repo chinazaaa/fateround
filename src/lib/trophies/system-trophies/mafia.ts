@@ -1,4 +1,6 @@
-import type { SystemTrophySpec } from './types'
+import { allOf, anyOf, counterCrit, distinctCrit, type SystemTrophySpec } from './types'
+
+const g = (counter: string) => counterCrit(counter, 1, 'mafia')
 
 /**
  * Mafia — derived at finish from `mafia_player_states` (role / alive / death_cause / is_lover /
@@ -153,5 +155,46 @@ export const MAFIA: SystemTrophySpec[] = [
     counter: 'mafia_clean_sweep_wins',
     points: 150,
     sortOrder: 140,
+  },
+  {
+    // A CONJUNCTION over the three solo-role win counters: win as the Jester AND the Serial Killer
+    // AND the Arsonist, across any number of games.
+    suffix: 'solo_artist',
+    tier: 'platinum',
+    title: 'Solo Artist',
+    description: 'Win a game as each of the three solo roles: the Jester, the Serial Killer and the Arsonist.',
+    criteria: allOf(g('mafia_jester_wins'), g('mafia_serial_killer_wins'), g('mafia_arsonist_wins')),
+    points: 175,
+    sortOrder: 150,
+    hidden: true,
+  },
+  {
+    // One win on each of the four winning sides. Neutral is "any solo role", so it is an `any`
+    // branch inside the `all`.
+    suffix: 'all_four_teams',
+    tier: 'platinum',
+    title: 'All Four Teams',
+    description: 'Win with the Village, with the Mafia, as a solo role, and as a Lover.',
+    criteria: allOf(
+      g('mafia_village_wins'),
+      g('mafia_mafia_wins'),
+      anyOf(g('mafia_jester_wins'), g('mafia_serial_killer_wins'), g('mafia_arsonist_wins')),
+      g('mafia_lovers_wins')
+    ),
+    points: 200,
+    sortOrder: 160,
+    hidden: true,
+  },
+  {
+    // A DISTINCT set: won as five different roles. Backed by `mafia_winning_roles`, emitted on a
+    // win by the facts builder.
+    suffix: 'role_player',
+    tier: 'platinum',
+    title: 'Role Player',
+    description: 'Win a game as five different roles.',
+    criteria: distinctCrit('mafia_winning_roles', 5),
+    points: 200,
+    sortOrder: 170,
+    hidden: true,
   },
 ]

@@ -1,4 +1,6 @@
-import type { SystemTrophySpec } from './types'
+import { allOf, counterCrit, type SystemTrophySpec } from './types'
+
+const g = (counter: string) => counterCrit(counter, 1, 'mahjong')
 
 /**
  * Mahjong — folded at finish from the per-MATCH in-play accumulator. See `./game-facts/mahjong.ts`,
@@ -294,6 +296,23 @@ export const MAHJONG: SystemTrophySpec[] = [
     counter: 'mahjong_grand_slam',
     points: 150,
     sortOrder: 270,
+    hidden: true,
+  },
+  {
+    // Win a hand under every ruleset the platform offers — Simple (Fate Round), Hong Kong, Riichi
+    // and MCR. A CONJUNCTION over the four per-ruleset win counters.
+    suffix: 'all_rulesets',
+    tier: 'platinum',
+    title: 'Rules of the World',
+    description: 'Win a hand under all four rulesets: Simple, Hong Kong, Riichi and MCR.',
+    criteria: allOf(
+      g('mahjong_won_fate_round'),
+      g('mahjong_won_hong_kong'),
+      g('mahjong_won_riichi'),
+      g('mahjong_won_mcr')
+    ),
+    points: 200,
+    sortOrder: 280,
     hidden: true,
   },
 ]

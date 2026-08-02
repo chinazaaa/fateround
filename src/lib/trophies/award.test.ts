@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { awardForFinishedGame, levelForPoints } from './award'
+import { awardForFinishedGame, extractDistinctMembers, levelForPoints } from './award'
 
 /**
  * An in-memory stand-in for the handful of tables the pass touches. Deliberately models the
@@ -142,6 +142,44 @@ describe('levelForPoints', () => {
   it('is safe on junk', () => {
     expect(levelForPoints(Number.NaN)).toBe(1)
     expect(levelForPoints(-100)).toBe(1)
+  })
+})
+
+describe('extractDistinctMembers', () => {
+  it('pulls distinct: entries out and mutates them off the counters bag', () => {
+    const extras: Record<string, number> = {
+      mafia_village_wins: 1,
+      'distinct:mafia_winning_roles:jester': 1,
+      'distinct:mafia_winning_roles:doctor': 1,
+    }
+    const members = extractDistinctMembers(extras)
+    expect(members).toEqual([
+      { key: 'mafia_winning_roles', member: 'jester' },
+      { key: 'mafia_winning_roles', member: 'doctor' },
+    ])
+    // The reserved keys must NOT survive into the numeric counters.
+    expect(extras).toEqual({ mafia_village_wins: 1 })
+  })
+
+  it('returns nothing and leaves a plain bag untouched', () => {
+    const extras = { mafia_village_wins: 1, mafia_survivor_games: 1 }
+    expect(extractDistinctMembers(extras)).toEqual([])
+    expect(extras).toEqual({ mafia_village_wins: 1, mafia_survivor_games: 1 })
+  })
+
+  it('drops malformed reserved keys without throwing, still stripping them', () => {
+    const extras: Record<string, number> = {
+      'distinct:no_member_here': 1, // missing the :member segment
+      'distinct:': 1, // empty
+      keep_me: 1,
+    }
+    expect(extractDistinctMembers(extras)).toEqual([])
+    expect(extras).toEqual({ keep_me: 1 })
+  })
+
+  it('keeps colons that belong to the member', () => {
+    const extras: Record<string, number> = { 'distinct:some_set:a:b:c': 1 }
+    expect(extractDistinctMembers(extras)).toEqual([{ key: 'some_set', member: 'a:b:c' }])
   })
 })
 

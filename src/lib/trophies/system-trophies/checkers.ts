@@ -1,4 +1,22 @@
-import type { SystemTrophySpec } from './types'
+import { allOf, counterCrit, type SystemTrophySpec } from './types'
+
+// Win in every board variant. The three are SEPARATE game types, so this is a conjunction over
+// `games_won` in each — the one counter the award pass writes into every game's own scope. It
+// lives in the shared base so it shows (and can be earned toward) on all three boards.
+const CROSS_VARIANT_CHAMPION: SystemTrophySpec = {
+  suffix: 'grandmaster',
+  tier: 'platinum',
+  title: 'Draughts Grandmaster',
+  description: 'Win a game on all three boards: American 8x8, International 10x10 and Nigerian.',
+  criteria: allOf(
+    counterCrit('games_won', 1, 'checkers'),
+    counterCrit('games_won', 1, 'checkers_international'),
+    counterCrit('games_won', 1, 'checkers_nigeria')
+  ),
+  points: 250,
+  sortOrder: 300,
+  hidden: true,
+}
 
 /**
  * Checkers / Draughts — folded at finish from the in-play accumulator. See
@@ -229,6 +247,7 @@ const CHECKERS_BASE: SystemTrophySpec[] = [
     sortOrder: 200,
     hidden: true,
   },
+  CROSS_VARIANT_CHAMPION,
 ]
 
 // ── 10x10 extra (International AND Nigeria — same draughts10 engine) ─────────────────────────

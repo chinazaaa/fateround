@@ -35,7 +35,7 @@ import { YAHTZEE } from './system-trophies/yahtzee'
  * earned cannot be renamed or removed — only retired. Choose them carefully.
  */
 
-/** A counter rule scoped to one game. The only shape these need. */
+/** A counter rule scoped to one game. The shape almost every system trophy needs. */
 function rule(counter: string, gte: number, gameType: string) {
   return { type: 'counter' as const, counter, gte, gameType }
 }
@@ -89,7 +89,9 @@ export function buildSystemCatalog(): CatalogTrophy[] {
       tier: s.tier,
       title: s.title,
       description: s.description,
-      criteria: rule(s.counter, s.gte ?? 1, gameType),
+      // A composite spec owns its whole rule (and the gameType on every node); a plain one is
+      // auto-scoped to the game it is filed under. Exactly one of `criteria`/`counter` is set.
+      criteria: s.criteria ?? rule(s.counter as string, s.gte ?? 1, gameType),
       points: s.points,
       hidden: s.hidden ?? false,
       sort_order: s.sortOrder,

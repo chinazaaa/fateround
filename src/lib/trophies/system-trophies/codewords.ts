@@ -1,4 +1,6 @@
-import type { SystemTrophySpec } from './types'
+import { allOf, counterCrit, type SystemTrophySpec } from './types'
+
+const g = (counter: string) => counterCrit(counter, 1, 'codewords')
 
 /**
  * Codewords — derived at finish from the guess log, the roles and the board. See
@@ -211,6 +213,18 @@ export const CODEWORDS: SystemTrophySpec[] = [
     counter: 'codewords_flawless_sweep_wins',
     points: 150,
     sortOrder: 200,
+    hidden: true,
+  },
+  {
+    // Win from both seats: at least one win as the Spymaster giving clues AND at least one as an
+    // Operative guessing. A CONJUNCTION over the two per-role win counters.
+    suffix: 'both_chairs',
+    tier: 'platinum',
+    title: 'Both Chairs',
+    description: 'Win a game as the Spymaster and win a game as an Operative.',
+    criteria: allOf(g('codewords_spymaster_wins'), g('codewords_operative_wins')),
+    points: 160,
+    sortOrder: 210,
     hidden: true,
   },
 ]

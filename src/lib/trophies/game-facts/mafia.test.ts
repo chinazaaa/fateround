@@ -217,4 +217,28 @@ describe('mafiaFacts', () => {
     const map = await factsFor([], 'village')
     expect(map.size).toBe(0)
   })
+
+  describe('distinct winning-role emission (Role Player)', () => {
+    it('emits the role into the distinct set for a winner, using ctx.winners', async () => {
+      const map = await factsFor(BASE, 'village', { ...CTX, winners: ['b', 'c'] })
+      // A winning villager and doctor each contribute their own role to the set.
+      expect(map.get('b')?.['distinct:mafia_winning_roles:villager']).toBe(1)
+      expect(map.get('c')?.['distinct:mafia_winning_roles:doctor']).toBe(1)
+    })
+
+    it('does not emit for a player who did not win', async () => {
+      const map = await factsFor(BASE, 'village', { ...CTX, winners: ['b'] })
+      const me = map.get('me') ?? {}
+      expect(Object.keys(me).some((k) => k.startsWith('distinct:mafia_winning_roles:'))).toBe(false)
+    })
+
+    it('emits the solo role for a solo winner', async () => {
+      const rows: Row[] = [
+        { player_id: 'me', role: 'jester', is_alive: false, death_cause: 'village_vote' },
+        { player_id: 'b', role: 'villager', is_alive: true },
+      ]
+      const map = await factsFor(rows, 'jester', { ...CTX, winners: ['me'] })
+      expect(map.get('me')?.['distinct:mafia_winning_roles:jester']).toBe(1)
+    })
+  })
 })

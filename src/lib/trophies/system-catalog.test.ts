@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { GAME_TYPE_CONFIG, gameTypeLabel } from '@/lib/game-types'
-import { buildCatalogForGame, criteriaUsesLiveMeasures } from './catalog'
+import { buildCatalogForGame, criteriaUsesLiveMeasures, referencedKeys } from './catalog'
 import { isKnownCounter } from './counters'
 import { parseCriteria } from './criteria'
 import { hasWinnerSource } from './outcome'
@@ -29,9 +29,15 @@ describe('system catalog', () => {
   })
 
   it('names only counters that exist in the vocabulary', () => {
-    const bad = catalog
-      .map((t) => ({ id: t.id, counter: (t.criteria as { counter?: string })?.counter }))
-      .filter((t) => !t.counter || !isKnownCounter(t.counter))
+    // Recurse: a rule may be a lone counter, or an `all`/`any` over several, or a `distinct` set
+    // with no counter at all. Every counter it DOES name must be registered. (Distinct keys are
+    // held to the same bar by the `criteriaUsesLiveMeasures` check below.)
+    const bad: { id: string; counter: string }[] = []
+    for (const t of catalog) {
+      for (const counter of referencedKeys(t.criteria).counters) {
+        if (!isKnownCounter(counter)) bad.push({ id: t.id, counter })
+      }
+    }
     expect(bad, 'unregistered counter — these trophies could never be earned').toEqual([])
   })
 
@@ -53,8 +59,39 @@ describe('system catalog', () => {
   it('scopes every rule to its own game', () => {
     // A rule that forgot its gameType would count EVERY game — "win 5 chess games" satisfied by
     // five Trivia wins. Silent and very wrong.
+    //
+    // A plain counter rule must be scoped to exactly the game it is filed under. A COMPOSITE rule
+    // (all/any/distinct) is allowed to name other game types deliberately — "win on all three
+    // boards" references two sibling variants — but two things still have to hold: every counter
+    // node it contains is scoped to SOME real game type (never left global by mistake), and the
+    // trophy's own game_type is among the scopes it names (so it isn't misfiled). `distinct` nodes
+    // carry no gameType — they are global sets, tied to their game by how they're emitted — so
+    // they're exempt from the scope check.
+    const knownGameType = (g: unknown): g is string => typeof g === 'string' && g in GAME_TYPE_CONFIG
+
+    const counterScopes = (node: unknown): string[] => {
+      if (!node || typeof node !== 'object') return []
+      const rule = node as Record<string, unknown>
+      if (rule.type === 'counter') return [String(rule.gameType ?? '')]
+      if (Array.isArray(rule.of)) return rule.of.flatMap(counterScopes)
+      return []
+    }
+
     for (const t of catalog) {
-      expect((t.criteria as { gameType?: string }).gameType, `${t.id} is not scoped to a game`).toBe(t.game_type)
+      const top = t.criteria as { type?: string; gameType?: string }
+      if (top.type === 'counter') {
+        expect(top.gameType, `${t.id} is not scoped to a game`).toBe(t.game_type)
+        continue
+      }
+      const scopes = counterScopes(t.criteria)
+      for (const scope of scopes) {
+        expect(knownGameType(scope), `${t.id} has a counter scoped to "${scope}", not a real game type`).toBe(true)
+      }
+      // Only demand the own-game-type appear when the rule actually has counter nodes; a pure
+      // `distinct` rule (e.g. Mafia Role Player) has none and is tied to its game by emission.
+      if (scopes.length > 0) {
+        expect(scopes, `${t.id} names no counter in its own game (${t.game_type})`).toContain(t.game_type)
+      }
     }
   })
 

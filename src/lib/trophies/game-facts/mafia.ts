@@ -33,11 +33,14 @@ import type { FactsContext } from './index'
  * player's facts; the builder returns a map keyed by player id. A player with no state row simply
  * gets no entry, which is not an error (see the contract in ./index).
  *
+ * DISTINCT-SET EMISSION. "Role Player" (win as N different roles) is a set, not a sum, so on a win
+ * this builder also emits the reserved key `distinct:mafia_winning_roles:<role>`. The award pass
+ * folds it into `player_distinct` (see the `distinct:` convention in award.ts); the trophy is a
+ * `distinct` rule over that set. "Solo Artist" (win as all three solo roles) and "All Four Teams"
+ * are expressed instead as `all`/`any` rules over the per-role/per-team win COUNTERS below — no
+ * new emission needed there.
+ *
  * OMITTED HERE, BY DESIGN (see the branch report for the full list):
- *  - Role Player (5 distinct roles) / Solo Artist (win as all three solo roles): these count
- *    DISTINCT roles across games, which needs `player_distinct` membership. A facts builder can
- *    only emit summable counters, and a SystemTrophySpec only supports `counter` rules — neither
- *    can express a distinct set — so these are omitted rather than shipped unearnable.
  *  - The night-OUTCOME counters (Doctor save, Aura Seer read, Tracker, etc.) are omitted: their
  *    data is computed transiently during night resolution and never persisted, so deriving them at
  *    finish is impossible, and instrumenting them would mean writing new columns inside the atomic
@@ -83,9 +86,13 @@ export async function mafiaFacts(
   const allMafiaAlive = rows.filter((r) => mafiaRoleTeam(r.role) === 'mafia').every((r) => r.is_alive)
 
   const tableSize = ctx.seated.length
+  const winnerIds = new Set(ctx.winners)
 
   for (const row of rows) {
-    out.set(row.player_id, playerFacts(row, { winningTeam, aliveVillagers, allMafiaAlive, tableSize }))
+    out.set(
+      row.player_id,
+      playerFacts(row, { winningTeam, aliveVillagers, allMafiaAlive, tableSize, won: winnerIds.has(row.player_id) })
+    )
   }
 
   return out
@@ -94,7 +101,13 @@ export async function mafiaFacts(
 /** One player's counters, from that player's own final state plus the round-level context. */
 function playerFacts(
   row: StateRow,
-  round: { winningTeam: string | null; aliveVillagers: number; allMafiaAlive: boolean; tableSize: number }
+  round: {
+    winningTeam: string | null
+    aliveVillagers: number
+    allMafiaAlive: boolean
+    tableSize: number
+    won: boolean
+  }
 ): Record<string, number> {
   const facts: Record<string, number> = {}
   const team = mafiaRoleTeam(row.role)
@@ -131,6 +144,12 @@ function playerFacts(
   if (winningTeam === 'lovers' && row.is_lover === true) facts.mafia_lovers_wins = 1
   // "Clean Sweep": the Mafia won and not one of them died all game.
   if (winningTeam === 'mafia' && team === 'mafia' && round.allMafiaAlive) facts.mafia_clean_sweep_wins = 1
+
+  // ── Distinct set: roles won as ────────────────────────────────────────────────────────────
+  // "Role Player" wants the VARIETY of roles you've won with, which a counter can't hold. Emit
+  // this player's role into the `mafia_winning_roles` set whenever they're among the winners —
+  // the same winners the award pass credits `games_won` to, so the two never disagree.
+  if (round.won) facts[`distinct:mafia_winning_roles:${row.role}`] = 1
 
   return facts
 }

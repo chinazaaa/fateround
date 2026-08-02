@@ -97,6 +97,29 @@ export async function buildSnapshot(supabase: SupabaseClient, profileId: string)
 }
 
 /**
+ * Pull reserved `distinct:<setKey>:<member>` entries out of a facts bag, MUTATING it to remove
+ * them, and return the (setKey, member) pairs they name.
+ *
+ * The convention lets a facts builder — which can only return summable counters — contribute to a
+ * distinct set instead ("won as the jester"). The value is ignored (membership is binary; the PK
+ * dedupes), so the entry is deleted from `extras` and never reaches `bump_player_stats` as a bogus
+ * counter. Malformed keys (missing a member segment) are dropped silently: this runs at finish and
+ * must never throw. `member` may itself contain colons; only the first two segments are structural.
+ */
+export function extractDistinctMembers(extras: Record<string, number>): { key: string; member: string }[] {
+  const out: { key: string; member: string }[] = []
+  for (const rawKey of Object.keys(extras)) {
+    if (!rawKey.startsWith('distinct:')) continue
+    delete extras[rawKey]
+    const rest = rawKey.slice('distinct:'.length)
+    const sep = rest.indexOf(':')
+    if (sep <= 0 || sep >= rest.length - 1) continue
+    out.push({ key: rest.slice(0, sep), member: rest.slice(sep + 1) })
+  }
+  return out
+}
+
+/**
  * Add to one scope's counters, atomically.
  *
  * The arithmetic happens in Postgres because it has to. Reading a row, adding a delta in
@@ -242,14 +265,23 @@ export async function awardForFinishedGame(
       Object.assign(extras, live.get(me.id) ?? {})
     }
 
+    // A facts builder can also contribute to a DISTINCT SET — a measure of variety no summable
+    // counter can express ("won as N different roles"). It does so with a reserved key shape,
+    // `distinct:<setKey>:<member>`, carried through the same `extras` bag (and therefore through
+    // `round_facts` too). Split those out here: they belong in `player_distinct`, not in the
+    // numeric counters, so pull them from `extras` before it reaches `bump_player_stats`.
+    const distinctMembers = extractDistinctMembers(extras)
+
     // Per-game-type and global scopes both move, so a rule can ask "10 wins" or "10 Whot wins".
     await bumpStats(supabase, profileId, gameType, { played: 1, won: won ? 1 : 0, counters: extras })
     await bumpStats(supabase, profileId, GLOBAL_SCOPE, { played: 1, won: won ? 1 : 0, counters: extras })
 
     // Distinct sets: the PK does the deduping, so a repeat insert is a harmless conflict.
-    await supabase
-      .from('player_distinct')
-      .upsert({ profile_id: profileId, key: 'modes_played', member: gameType }, { onConflict: 'profile_id,key,member' })
+    const distinctRows = [
+      { profile_id: profileId, key: 'modes_played', member: gameType },
+      ...distinctMembers.map(({ key, member }) => ({ profile_id: profileId, key, member })),
+    ]
+    await supabase.from('player_distinct').upsert(distinctRows, { onConflict: 'profile_id,key,member' })
 
     // ── Streak ────────────────────────────────────────────────────────────────────────────
     const { data: profile } = await supabase
