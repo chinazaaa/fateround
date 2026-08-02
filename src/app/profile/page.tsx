@@ -16,6 +16,7 @@ type GameRow = {
   total: number
   points: number
   pct: number
+  tiers: { bronze: number; silver: number; gold: number; platinum: number }
 }
 
 type ProfileSummary = {
@@ -50,6 +51,9 @@ export default function ProfilePage() {
     try {
       const headers = await authHeaders()
       if (!headers) return setSignedOut(true)
+      // Collect anything already qualified for before reading — a trophy added to the
+      // catalog after you played would otherwise sit locked at 100% until you played again.
+      await fetch('/api/profile/sync', { method: 'POST', headers }).catch(() => {})
       const res = await fetch('/api/profile/games', { headers })
       if (!res.ok) return
       const json = await res.json()
@@ -147,6 +151,7 @@ export default function ProfilePage() {
               earned={game.earned}
               total={game.total}
               pct={game.pct}
+              tiers={game.tiers}
             />
           ))}
         </div>
@@ -173,6 +178,7 @@ function GameCard({
   earned,
   total,
   pct,
+  tiers,
 }: {
   href: string
   emoji: string
@@ -181,6 +187,7 @@ function GameCard({
   earned: number
   total: number
   pct: number
+  tiers?: { bronze: number; silver: number; gold: number; platinum: number }
 }) {
   return (
     <Link href={href} className="glass-card-interactive flex items-center gap-3 p-4">
@@ -190,6 +197,13 @@ function GameCard({
       <div className="min-w-0 flex-1">
         <p className="font-bold">{label}</p>
         <p className="text-faint text-xs">{sub}</p>
+        {/* The per-tier tally is how a trophy list is actually scanned — "two silvers" tells you
+            more at a glance than "6 of 14". */}
+        {tiers && total > 0 && (
+          <p className="text-faint mt-1 text-xs">
+            🏆 {tiers.platinum} · 🥇 {tiers.gold} · 🥈 {tiers.silver} · 🥉 {tiers.bronze}
+          </p>
+        )}
         {total > 0 && (
           <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[var(--surface-inset-bg)]">
             <div className="h-full rounded-full bg-[var(--primary)]" style={{ width: `${pct}%` }} />

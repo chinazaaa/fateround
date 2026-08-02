@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
         .eq('id', profileId)
         .maybeSingle(),
       admin.from('player_stats').select('game_type, games_played, games_won').eq('profile_id', profileId),
-      admin.from('trophies').select('id, game_type, points').eq('is_active', true),
+      admin.from('trophies').select('id, game_type, points, tier').eq('is_active', true),
       admin.from('player_trophies').select('trophy_id').eq('profile_id', profileId),
     ])
 
@@ -42,12 +42,22 @@ export async function GET(req: NextRequest) {
 
     const earned = new Set((earnedRows ?? []).map((r) => r.trophy_id as string))
 
-    // Trophy totals per game type, so each row can show "3 / 11" without loading every trophy.
+    // Trophy totals per game type, so each row can show "3 / 11" plus the per-tier tally a
+    // trophy list is usually scanned by, without loading every trophy.
     const totalsFor = (gameType: string | null) => {
       const list = (catalog ?? []).filter((t) => (t.game_type as string | null) === gameType)
-      const earnedCount = list.filter((t) => earned.has(t.id as string)).length
-      const points = list.filter((t) => earned.has(t.id as string)).reduce((sum, t) => sum + (Number(t.points) || 0), 0)
-      return { earned: earnedCount, total: list.length, points }
+      const mine = list.filter((t) => earned.has(t.id as string))
+      const tiers = { bronze: 0, silver: 0, gold: 0, platinum: 0 }
+      for (const t of mine) {
+        const tier = t.tier as keyof typeof tiers
+        if (tier in tiers) tiers[tier] += 1
+      }
+      return {
+        earned: mine.length,
+        total: list.length,
+        points: mine.reduce((sum, t) => sum + (Number(t.points) || 0), 0),
+        tiers,
+      }
     }
 
     const games = (stats ?? [])

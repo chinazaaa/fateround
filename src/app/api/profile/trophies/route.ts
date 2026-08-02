@@ -49,7 +49,16 @@ export async function GET(req: NextRequest) {
     if (error) return NextResponse.json({ error: internalErrorMessage('profile/trophies', error) }, { status: 500 })
 
     const earnedAt = new Map((earnedRows ?? []).map((r) => [r.trophy_id as string, r.earned_at as string]))
-    const rarity = new Map((rarityRows ?? []).map((r) => [r.trophy_id as string, Number(r.pct) || 0]))
+    const earnerCounts = new Map<string, number>()
+    for (const row of rarityRows ?? []) {
+      const id = row.trophy_id as string
+      earnerCounts.set(id, (earnerCounts.get(id) ?? 0) + 1)
+    }
+    // Eligible = people who have played anything. Good enough while the population is small,
+    // and honest: it never reports a trophy as rarer than the number of people who could hold it.
+    const { count: playerCount } = await admin.from('profiles').select('id', { count: 'exact', head: true })
+    const eligible = Math.max(1, playerCount ?? 1)
+    const rarity = new Map([...earnerCounts.entries()].map(([id, n]) => [id, Math.round((n / eligible) * 100)]))
     const snapshot = await buildSnapshot(admin, profileId)
     // `longest_streak` lives on `profiles`, not `player_stats` — mirrors the award pass, or a
     // streak trophy would always read as 0% here while being earnable in reality.
@@ -107,12 +116,27 @@ export async function GET(req: NextRequest) {
       .sort((a, b) => (a.gameType === null ? -1 : b.gameType === null ? 1 : a.label.localeCompare(b.label)))
 
     const earnedCount = items.filter((t) => t.earned).length
+    const mine = items.filter((t) => t.earned)
+    const tiers = { bronze: 0, silver: 0, gold: 0, platinum: 0 }
+    for (const t of mine) {
+      const tier = t.tier as keyof typeof tiers
+      if (tier in tiers) tiers[tier] += 1
+    }
+    // The one you're most likely to want to show someone. Ties break on the earlier date, so
+    // it doesn't shuffle every time two trophies share a rarity.
+    const rarest =
+      [...mine].sort(
+        (a, b) => (a.rarityPct ?? 100) - (b.rarityPct ?? 100) || (a.earnedAt ?? '').localeCompare(b.earnedAt ?? '')
+      )[0] ?? null
+
     return NextResponse.json({
       profile: profile ?? null,
       groups,
+      rarest,
       totals: {
         earned: earnedCount,
         total: items.length,
+        tiers,
         // Guard the divide: an empty catalog is a valid state before the seed has been run.
         pct: items.length ? Math.round((earnedCount / items.length) * 100) : 0,
         points: Number(profile?.trophy_points) || 0,

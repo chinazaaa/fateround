@@ -219,32 +219,7 @@ export async function awardForFinishedGame(
       longest_streak: streak.longest_streak,
     }
 
-    const [{ data: catalog }, { data: alreadyEarned }] = await Promise.all([
-      supabase.from('trophies').select('id, title, tier, points, criteria').eq('is_active', true),
-      supabase.from('player_trophies').select('trophy_id').eq('profile_id', profileId),
-    ])
-    const have = new Set((alreadyEarned ?? []).map((r) => r.trophy_id as string))
-
-    const earned: AwardedTrophy[] = []
-    for (const trophy of catalog ?? []) {
-      const id = trophy.id as string
-      if (have.has(id)) continue
-      // evaluateRaw never throws — one malformed catalog row must not stop the rest.
-      if (!evaluateRaw(trophy.criteria, snapshot).met) continue
-      earned.push({
-        id,
-        title: trophy.title as string,
-        tier: trophy.tier as string,
-        points: Number(trophy.points) || 0,
-      })
-    }
-
-    if (earned.length) {
-      await supabase.from('player_trophies').upsert(
-        earned.map((t) => ({ profile_id: profileId, trophy_id: t.id })),
-        { onConflict: 'profile_id,trophy_id', ignoreDuplicates: true }
-      )
-    }
+    const earned = await grantEligible(supabase, profileId, snapshot)
 
     const points = (Number(profile?.trophy_points) || 0) + earned.reduce((sum, t) => sum + t.points, 0)
     await supabase
@@ -264,5 +239,81 @@ export async function awardForFinishedGame(
     // player everything this game should have earned, with no error anywhere.
     await releaseClaim().catch(() => {})
     return NOOP('error')
+  }
+}
+
+/** Grant every active trophy this snapshot satisfies and the profile doesn't already hold. */
+async function grantEligible(
+  supabase: SupabaseClient,
+  profileId: string,
+  snapshot: ProgressSnapshot
+): Promise<AwardedTrophy[]> {
+  const [{ data: catalog }, { data: alreadyEarned }] = await Promise.all([
+    supabase.from('trophies').select('id, title, tier, points, criteria').eq('is_active', true),
+    supabase.from('player_trophies').select('trophy_id').eq('profile_id', profileId),
+  ])
+  const have = new Set((alreadyEarned ?? []).map((r) => r.trophy_id as string))
+
+  const earned: AwardedTrophy[] = []
+  for (const trophy of catalog ?? []) {
+    const id = trophy.id as string
+    if (have.has(id)) continue
+    // evaluateRaw never throws — one malformed catalog row must not stop the rest.
+    if (!evaluateRaw(trophy.criteria, snapshot).met) continue
+    earned.push({
+      id,
+      title: trophy.title as string,
+      tier: trophy.tier as string,
+      points: Number(trophy.points) || 0,
+    })
+  }
+
+  if (earned.length) {
+    await supabase.from('player_trophies').upsert(
+      earned.map((t) => ({ profile_id: profileId, trophy_id: t.id })),
+      { onConflict: 'profile_id,trophy_id', ignoreDuplicates: true }
+    )
+  }
+  return earned
+}
+
+/**
+ * Catch-up pass: grant anything this profile already qualifies for.
+ *
+ * WHY THIS IS NEEDED. The award pass is keyed on (profile, game) and runs once per finished
+ * game, so a trophy ADDED AFTER someone played is never granted by it. Admin adds "Finish 10
+ * Trivia games", and a player with 40 sees it sitting at 100% and locked until they happen to
+ * play again. Editing a live catalog is normal, so that can't be the behaviour.
+ *
+ * Deliberately touches NO counters and no streak — it only grants what existing stats already
+ * justify, so running it can never inflate anything. That is what makes it safe to call
+ * whenever the trophy list is opened.
+ */
+export async function syncEligibleTrophies(supabase: SupabaseClient, profileId: string): Promise<AwardedTrophy[]> {
+  try {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('trophy_points, longest_streak')
+      .eq('id', profileId)
+      .maybeSingle()
+
+    const snapshot = await buildSnapshot(supabase, profileId)
+    snapshot.counters[GLOBAL_SCOPE] = {
+      ...(snapshot.counters[GLOBAL_SCOPE] ?? {}),
+      longest_streak: Number(profile?.longest_streak) || 0,
+    }
+
+    const earned = await grantEligible(supabase, profileId, snapshot)
+    if (!earned.length) return []
+
+    const points = (Number(profile?.trophy_points) || 0) + earned.reduce((sum, t) => sum + t.points, 0)
+    await supabase
+      .from('profiles')
+      .update({ trophy_points: points, trophy_level: levelForPoints(points) })
+      .eq('id', profileId)
+
+    return earned
+  } catch {
+    return []
   }
 }
