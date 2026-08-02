@@ -55,11 +55,13 @@ import {
 } from '@/lib/mahjong-hand'
 import {
   applyMahjongPayments,
+  bumpMahjongCounters,
   dealerRepeatsAfterHand,
   finishAbortiveDraw,
   finishMahjongMultiRon,
   finishMahjongWin,
   finishWallDraw,
+  mahjongGameCounters,
   maybeFinishMahjongMatch,
   riichiAbortiveDrawReason,
 } from '@/lib/mahjong-hand-resolution'
@@ -382,6 +384,12 @@ export async function initializeMahjongGame(
     melds: [],
     discarded: [],
     player_order: index,
+    // Seat trophies, credited for the hand about to be played. Later hands are credited in
+    // processMahjongNextHand; between them every played hand's seat is recorded exactly once.
+    game_counters: {
+      mahjong_seat_mask: 1 << index,
+      ...(MAHJONG_SEATS[index] === 'east' ? { mahjong_hands_as_east: 1 } : {}),
+    },
   }))
 
   const { error: statesError } = await supabase.from('mahjong_player_state').insert(stateRows)
@@ -482,10 +490,23 @@ export async function processMahjongNextHand(supabase: SupabaseClient, gameId: s
   const stateUpdates = session.turn_order.map((playerId, index) => {
     const state = stateFor(states, playerId)
     if (!state) return Promise.resolve({ error: { message: 'Player state not found' } })
+    const seat = seatForOrderIndex(index, nextPosition.dealerIndex)
+    // The per-MATCH trophy blob MUST survive this per-hand re-deal (see the migration header):
+    // it is carried forward here, never reset. We extend it with this new hand's seat, and settle
+    // the consecutive-win streak — the just-finished hand's winner keeps their run (already
+    // advanced at resolution), everyone else is reset to zero here so a run needs the SAME player
+    // to keep winning. A draw/abortive/chombo has no winner, so every run resets.
+    const base = mahjongGameCounters(state)
+    const nextCounters = { ...base }
+    const seatIndex = MAHJONG_SEATS.indexOf(seat)
+    nextCounters.mahjong_seat_mask = (base.mahjong_seat_mask ?? 0) | (seatIndex >= 0 ? 1 << seatIndex : 0)
+    if (seat === 'east') nextCounters.mahjong_hands_as_east = (base.mahjong_hands_as_east ?? 0) + 1
+    const wonLastHand = session.hand_result === 'win' && (session.winner_player_ids ?? []).includes(playerId)
+    if (!wonLastHand) nextCounters.mahjong_win_streak = 0
     return supabase
       .from('mahjong_player_state')
       .update({
-        seat: seatForOrderIndex(index, nextPosition.dealerIndex),
+        seat,
         hand: sortMahjongTiles(deal.hands.get(playerId) ?? []),
         last_drawn_tile: playerId === deal.dealer ? deal.dealerDrawnTile : null,
         flowers: deal.flowers.get(playerId) ?? [],
@@ -496,6 +517,7 @@ export async function processMahjongNextHand(supabase: SupabaseClient, gameId: s
         melds: [],
         discarded: [],
         player_order: index,
+        game_counters: nextCounters,
       })
       .eq('id', state.id)
   })
@@ -699,6 +721,8 @@ export async function processMahjongDiscard(
         hand: sortMahjongTiles(nextHand),
         discarded: [...state.discarded, tile],
       }),
+      // First Discard / lifetime discards — bumped in the same write as the discard itself.
+      game_counters: bumpMahjongCounters(mahjongGameCounters(state), { mahjong_discards: 1 }),
     })
     .eq('id', state.id)
   if (stateError) return { error: stateError.message }
@@ -847,9 +871,19 @@ export async function processMahjongClaim(
         melds: nextMelds,
       }
       const nextStates = states.map((row) => (row.player_id === playerId ? nextState : row))
+      // Kong trophy counters. A concealed Kong and a Pung upgraded to a Kong both count as
+      // "calling a Kong" (Kong trophy) plus their specific flavour (Concealed / Added Kong).
+      const kongDeltas: Record<string, number> = concealedTile
+        ? { mahjong_kongs_called: 1, mahjong_concealed_kongs: 1 }
+        : { mahjong_kongs_called: 1, mahjong_added_kongs: 1 }
       const { error: stateError } = await supabase
         .from('mahjong_player_state')
-        .update({ hand: nextState.hand, last_drawn_tile: null, melds: nextState.melds })
+        .update({
+          hand: nextState.hand,
+          last_drawn_tile: null,
+          melds: nextState.melds,
+          game_counters: bumpMahjongCounters(mahjongGameCounters(state), kongDeltas),
+        })
         .eq('id', state.id)
       if (stateError) return { error: stateError.message }
       const abortReason = riichiAbortiveDrawReason(session, nextStates)
@@ -939,9 +973,22 @@ export async function processMahjongClaim(
     melds: [...state.melds, meld],
   }
   const nextStates = states.map((row) => (row.player_id === playerId ? nextState : row))
+  // Called-meld trophy counters (Chow / Pung / Kong), for a meld taken from an opponent's
+  // discard. `claimType` here is one of chow | pung | kong (a winning claim exited above).
+  const callDeltas: Record<string, number> =
+    claimType === 'chow'
+      ? { mahjong_chows_called: 1 }
+      : claimType === 'pung'
+        ? { mahjong_pungs_called: 1 }
+        : { mahjong_kongs_called: 1 }
   const { error: stateError } = await supabase
     .from('mahjong_player_state')
-    .update({ hand: nextState.hand, last_drawn_tile: null, melds: nextState.melds })
+    .update({
+      hand: nextState.hand,
+      last_drawn_tile: null,
+      melds: nextState.melds,
+      game_counters: bumpMahjongCounters(mahjongGameCounters(state), callDeltas),
+    })
     .eq('id', state.id)
   if (stateError) return { error: stateError.message }
 

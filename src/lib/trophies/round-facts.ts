@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { GameType } from '@/types'
 import { buildGameFacts, hasGameFacts } from './game-facts'
-import { resolveWinners } from './outcome'
+import { resolveFinishers, resolveWinners } from './outcome'
 
 /**
  * Snapshot one finished round's trophy facts, at finish.
@@ -22,7 +22,7 @@ import { resolveWinners } from './outcome'
 export async function recordRoundFacts(supabase: SupabaseClient, gameId: string, finishedAt: string): Promise<void> {
   const { data: game } = await supabase
     .from('games')
-    .select('game_type, timer_seconds, question_source')
+    .select('game_type, timer_seconds, question_source, theme')
     .eq('id', gameId)
     .maybeSingle()
   if (!game) return
@@ -32,7 +32,10 @@ export async function recordRoundFacts(supabase: SupabaseClient, gameId: string,
   if (!hasGameFacts(gameType)) return
 
   const { data: players } = await supabase.from('players').select('id, spectator').eq('game_id', gameId)
-  const seated = (players ?? []).filter((p) => !p.spectator).map((p) => p.id as string)
+  // A player who went out in a shed-your-hand game is flagged spectator but genuinely finished —
+  // rescue them via finish_order so the winner's facts are snapshotted. See resolveFinishers.
+  const finishers = new Set(await resolveFinishers(supabase, gameId, gameType))
+  const seated = (players ?? []).filter((p) => !p.spectator || finishers.has(p.id as string)).map((p) => p.id as string)
   if (!seated.length) return
 
   // `null` from resolveWinners means "cannot determine", which is NOT a draw. Builders are told
@@ -42,6 +45,7 @@ export async function recordRoundFacts(supabase: SupabaseClient, gameId: string,
   const facts = await buildGameFacts(supabase, gameType, gameId, {
     timerSeconds: (game.timer_seconds as number) ?? null,
     questionSource: (game.question_source as string) ?? null,
+    theme: (game.theme as string) ?? null,
     seated,
     winners,
   })

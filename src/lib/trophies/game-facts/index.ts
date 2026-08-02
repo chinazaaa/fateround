@@ -1,7 +1,15 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { GameType } from '@/types'
+import { checkersFacts } from './checkers'
 import { chessFacts } from './chess'
+import { crazyEightsFacts } from './crazy-eights'
+import { describeItFacts } from './describe-it'
+import { mafiaFacts } from './mafia'
+import { mahjongFacts } from './mahjong'
+import { scrabbleFacts } from './scrabble'
 import { codewordsFacts } from './codewords'
+import { ludoFacts } from './ludo'
+import { monopolyFacts } from './monopoly'
 import { triviaFacts } from './trivia'
 import { yahtzeeFacts } from './yahtzee'
 
@@ -35,6 +43,8 @@ import { yahtzeeFacts } from './yahtzee'
 export type FactsContext = {
   timerSeconds: number | null
   questionSource: string | null
+  /** The game's cosmetic theme (e.g. 'naija'). Some games treat it as an edition. Null if unset. */
+  theme: string | null
   /** Seated player ids (spectators excluded). Its length is the room size for size-gated facts. */
   seated: string[]
   /**
@@ -51,8 +61,18 @@ type FactsBuilder = (
 ) => Promise<Map<string, Record<string, number>>>
 
 const BUILDERS: Partial<Record<GameType, FactsBuilder>> = {
+  checkers: checkersFacts,
+  checkers_international: checkersFacts,
+  checkers_nigeria: checkersFacts,
   chess: chessFacts,
   codewords: codewordsFacts,
+  crazy_eights: crazyEightsFacts,
+  describe_it: describeItFacts,
+  ludo: ludoFacts,
+  mafia: mafiaFacts,
+  mahjong: mahjongFacts,
+  monopoly: monopolyFacts,
+  scrabble: scrabbleFacts,
   trivia: triviaFacts,
   yahtzee: yahtzeeFacts,
 }

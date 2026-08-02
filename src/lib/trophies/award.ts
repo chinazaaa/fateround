@@ -28,7 +28,7 @@ import type { GameType } from '@/types'
 import { GLOBAL_SCOPE, evaluateRaw, type ProgressSnapshot } from './criteria'
 import { unlockedThisRound } from './instant-unlock'
 import { buildGameFacts } from './game-facts'
-import { resolveWinners } from './outcome'
+import { resolveFinishers, resolveWinners } from './outcome'
 import { advanceStreak, watDate, watHour, type StreakState } from './streak'
 
 /** Trophy points needed for each level. Deliberately shallow early so level 2 is reachable. */
@@ -94,6 +94,29 @@ export async function buildSnapshot(supabase: SupabaseClient, profileId: string)
   }
 
   return { counters, distinct: distinctCounts }
+}
+
+/**
+ * Pull reserved `distinct:<setKey>:<member>` entries out of a facts bag, MUTATING it to remove
+ * them, and return the (setKey, member) pairs they name.
+ *
+ * The convention lets a facts builder — which can only return summable counters — contribute to a
+ * distinct set instead ("won as the jester"). The value is ignored (membership is binary; the PK
+ * dedupes), so the entry is deleted from `extras` and never reaches `bump_player_stats` as a bogus
+ * counter. Malformed keys (missing a member segment) are dropped silently: this runs at finish and
+ * must never throw. `member` may itself contain colons; only the first two segments are structural.
+ */
+export function extractDistinctMembers(extras: Record<string, number>): { key: string; member: string }[] {
+  const out: { key: string; member: string }[] = []
+  for (const rawKey of Object.keys(extras)) {
+    if (!rawKey.startsWith('distinct:')) continue
+    delete extras[rawKey]
+    const rest = rawKey.slice('distinct:'.length)
+    const sep = rest.indexOf(':')
+    if (sep <= 0 || sep >= rest.length - 1) continue
+    out.push({ key: rest.slice(0, sep), member: rest.slice(sep + 1) })
+  }
+  return out
 }
 
 /**
@@ -171,7 +194,7 @@ export async function awardForFinishedGame(
       .from('games')
       // timer_seconds / question_source are read for the per-game facts builders (Trivia uses
       // both). Cheap to carry here; a second round-trip per finish would not be.
-      .select('id, game_type, status, max_players, finished_at, timer_seconds, question_source')
+      .select('id, game_type, status, max_players, finished_at, timer_seconds, question_source, theme')
       .eq('id', sessionId)
       .maybeSingle()
     if (!game || game.status !== 'finished') {
@@ -184,14 +207,21 @@ export async function awardForFinishedGame(
       .from('players')
       .select('id, profile_id, spectator')
       .eq('game_id', sessionId)
+    // The shed-your-hand card games flag a player who WENT OUT as a spectator, winner included.
+    // Those players played; only a true watcher never did. `finish_order` is who actually
+    // finished, so a spectator counts as a participant if they are in it.
+    const finishers = new Set(await resolveFinishers(supabase, sessionId, gameType))
+    const isParticipant = (p: { id: string; spectator?: boolean | null }) => !p.spectator || finishers.has(p.id)
+
     const me = players?.find((p) => p.profile_id === profileId)
-    // Spectators don't earn. There is no player row to attribute and no game they played.
-    if (!me || me.spectator) {
+    // Pure spectators don't earn — no game they played. A finisher (spectator flag set because
+    // they went out) is NOT a pure spectator, and must not be dropped or the winner earns nothing.
+    if (!me || !isParticipant(me)) {
       await releaseClaim()
       return NOOP('not_a_player')
     }
 
-    const seated = (players ?? []).filter((p) => !p.spectator)
+    const seated = (players ?? []).filter(isParticipant)
     // `null` means the server cannot determine a winner for this game type — which must not be
     // recorded as a loss. Only a definite result moves `games_won`.
     const winners = await resolveWinners(supabase, sessionId, gameType)
@@ -228,20 +258,30 @@ export async function awardForFinishedGame(
       const live = await buildGameFacts(supabase, gameType, sessionId, {
         timerSeconds: (game.timer_seconds as number) ?? null,
         questionSource: (game.question_source as string) ?? null,
+        theme: (game.theme as string) ?? null,
         seated: seated.map((p) => p.id as string),
         winners: winners ?? [],
       })
       Object.assign(extras, live.get(me.id) ?? {})
     }
 
+    // A facts builder can also contribute to a DISTINCT SET — a measure of variety no summable
+    // counter can express ("won as N different roles"). It does so with a reserved key shape,
+    // `distinct:<setKey>:<member>`, carried through the same `extras` bag (and therefore through
+    // `round_facts` too). Split those out here: they belong in `player_distinct`, not in the
+    // numeric counters, so pull them from `extras` before it reaches `bump_player_stats`.
+    const distinctMembers = extractDistinctMembers(extras)
+
     // Per-game-type and global scopes both move, so a rule can ask "10 wins" or "10 Whot wins".
     await bumpStats(supabase, profileId, gameType, { played: 1, won: won ? 1 : 0, counters: extras })
     await bumpStats(supabase, profileId, GLOBAL_SCOPE, { played: 1, won: won ? 1 : 0, counters: extras })
 
     // Distinct sets: the PK does the deduping, so a repeat insert is a harmless conflict.
-    await supabase
-      .from('player_distinct')
-      .upsert({ profile_id: profileId, key: 'modes_played', member: gameType }, { onConflict: 'profile_id,key,member' })
+    const distinctRows = [
+      { profile_id: profileId, key: 'modes_played', member: gameType },
+      ...distinctMembers.map(({ key, member }) => ({ profile_id: profileId, key, member })),
+    ]
+    await supabase.from('player_distinct').upsert(distinctRows, { onConflict: 'profile_id,key,member' })
 
     // ── Streak ────────────────────────────────────────────────────────────────────────────
     const { data: profile } = await supabase

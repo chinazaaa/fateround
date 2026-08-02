@@ -1,6 +1,14 @@
 import type { CatalogTrophy } from './catalog'
+import { CHECKERS, CHECKERS_INTERNATIONAL, CHECKERS_NIGERIA } from './system-trophies/checkers'
 import { CHESS } from './system-trophies/chess'
+import { CRAZY_EIGHTS } from './system-trophies/crazy-eights'
+import { DESCRIBE_IT } from './system-trophies/describe-it'
+import { MAFIA } from './system-trophies/mafia'
+import { MAHJONG } from './system-trophies/mahjong'
+import { SCRABBLE } from './system-trophies/scrabble'
 import { CODEWORDS } from './system-trophies/codewords'
+import { LUDO } from './system-trophies/ludo'
+import { MONOPOLY } from './system-trophies/monopoly'
 import { TRIVIA } from './system-trophies/trivia'
 import type { SystemTrophySpec } from './system-trophies/types'
 import { YAHTZEE } from './system-trophies/yahtzee'
@@ -27,14 +35,24 @@ import { YAHTZEE } from './system-trophies/yahtzee'
  * earned cannot be renamed or removed — only retired. Choose them carefully.
  */
 
-/** A counter rule scoped to one game. The only shape these need. */
+/** A counter rule scoped to one game. The shape almost every system trophy needs. */
 function rule(counter: string, gte: number, gameType: string) {
   return { type: 'counter' as const, counter, gte, gameType }
 }
 
 const BY_GAME: Record<string, SystemTrophySpec[]> = {
+  checkers: CHECKERS,
+  checkers_international: CHECKERS_INTERNATIONAL,
+  checkers_nigeria: CHECKERS_NIGERIA,
   chess: CHESS,
   codewords: CODEWORDS,
+  crazy_eights: CRAZY_EIGHTS,
+  describe_it: DESCRIBE_IT,
+  ludo: LUDO,
+  mafia: MAFIA,
+  mahjong: MAHJONG,
+  monopoly: MONOPOLY,
+  scrabble: SCRABBLE,
   trivia: TRIVIA,
   yahtzee: YAHTZEE,
 }
@@ -71,7 +89,9 @@ export function buildSystemCatalog(): CatalogTrophy[] {
       tier: s.tier,
       title: s.title,
       description: s.description,
-      criteria: rule(s.counter, s.gte ?? 1, gameType),
+      // A composite spec owns its whole rule (and the gameType on every node); a plain one is
+      // auto-scoped to the game it is filed under. Exactly one of `criteria`/`counter` is set.
+      criteria: s.criteria ?? rule(s.counter as string, s.gte ?? 1, gameType),
       points: s.points,
       hidden: s.hidden ?? false,
       sort_order: s.sortOrder,

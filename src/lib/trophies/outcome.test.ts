@@ -21,14 +21,18 @@ describe('resolveWinners', () => {
     expect(await resolveWinners(supabase, 'ABCD', 'whot')).toEqual(['p-1'])
   })
 
-  it('prefers the array column when a game can have several winners', async () => {
-    const supabase = client({ data: { winner_player_id: 'p-1', winner_player_ids: ['p-1', 'p-2'] } })
-    expect(await resolveWinners(supabase, 'ABCD', 'mahjong')).toEqual(['p-1', 'p-2'])
+  it('mahjong: the match winner is the top of the cumulative scores, not the last hand', async () => {
+    // winner_player_id would be whoever won the final HAND; the match belongs to the highest
+    // total. Ties at the top return every leader.
+    const supabase = client({ data: { scores: { 'p-1': 42000, 'p-2': 30000, 'p-3': 18000 } } })
+    expect(await resolveWinners(supabase, 'ABCD', 'mahjong')).toEqual(['p-1'])
+    const tied = client({ data: { scores: { 'p-1': 30000, 'p-2': 30000, 'p-3': 10000 } } })
+    expect(await resolveWinners(tied, 'ABCD', 'mahjong')).toEqual(['p-1', 'p-2'])
   })
 
-  it('falls back to the scalar when the array is empty', async () => {
-    const supabase = client({ data: { winner_player_id: 'p-9', winner_player_ids: [] } })
-    expect(await resolveWinners(supabase, 'ABCD', 'mahjong')).toEqual(['p-9'])
+  it('mahjong: everyone level is a draw, not everyone winning', async () => {
+    const supabase = client({ data: { scores: { 'p-1': 25000, 'p-2': 25000 } } })
+    expect(await resolveWinners(supabase, 'ABCD', 'mahjong')).toEqual([])
   })
 
   it('returns [] for a finished game with genuinely no winner', async () => {
@@ -64,9 +68,11 @@ describe('resolveWinners', () => {
     await expect(resolveWinners(exploding, 'ABCD', 'whot')).resolves.toBeNull()
   })
 
-  it('ignores non-string junk in the array column', async () => {
-    const supabase = client({ data: { winner_player_id: null, winner_player_ids: [null, 42, 'p-3', ''] } })
-    expect(await resolveWinners(supabase, 'ABCD', 'mahjong')).toEqual(['p-3'])
+  it('ignores non-string junk in a winner column', async () => {
+    // Codewords-style array standings still need the junk filter; use the standings fallback via
+    // a scalar-less game. Here we assert the scalar path stays string-only.
+    const supabase = client({ data: { winner_player_id: 42 } })
+    expect(await resolveWinners(supabase, 'ABCD', 'whot')).toEqual([])
   })
 })
 
@@ -103,5 +109,75 @@ describe('the winner-source map', () => {
     expect(hasWinnerSource('checkers_international' as GameType)).toBe(true)
     expect(hasWinnerSource('checkers_nigeria' as GameType)).toBe(true)
     expect(hasWinnerSource('checkers' as GameType)).toBe(true)
+  })
+})
+
+describe('custom winner resolvers', () => {
+  // A client that returns different rows per table (the custom resolvers query several).
+  function multi(byTable: Record<string, unknown>): SupabaseClient {
+    return {
+      from: (table: string) => ({
+        select: () => ({
+          eq: () => ({
+            eq: () => Promise.resolve({ data: byTable[table] ?? [], error: null }),
+            maybeSingle: async () => ({ data: byTable[table] ?? null, error: null }),
+            then: (r: (v: { data: unknown; error: null }) => unknown) => r({ data: byTable[table] ?? [], error: null }),
+          }),
+        }),
+      }),
+    } as unknown as SupabaseClient
+  }
+
+  it('mafia: a team win credits every player whose role maps to the winning team', async () => {
+    const db = multi({
+      mafia_sessions: { winning_team: 'mafia' },
+      mafia_player_states: [
+        { player_id: 'm1', role: 'mafia', is_lover: false },
+        { player_id: 'm2', role: 'framer', is_lover: false }, // framer is on the mafia team
+        { player_id: 'v1', role: 'doctor', is_lover: false },
+        { player_id: 'v2', role: 'villager', is_lover: false },
+      ],
+    })
+    expect(await resolveWinners(db, 'G', 'mafia')).toEqual(['m1', 'm2'])
+  })
+
+  it('mafia: a lovers win credits the two linked players whatever their roles', async () => {
+    const db = multi({
+      mafia_sessions: { winning_team: 'lovers' },
+      mafia_player_states: [
+        { player_id: 'a', role: 'mafia', is_lover: true },
+        { player_id: 'b', role: 'villager', is_lover: true },
+        { player_id: 'c', role: 'doctor', is_lover: false },
+      ],
+    })
+    expect(await resolveWinners(db, 'G', 'mafia')).toEqual(['a', 'b'])
+  })
+
+  it('describe_it (team mode): every player on the winning team wins', async () => {
+    const db = multi({
+      games: { describe_it_num_teams: 2, describe_it_mode: 'team' },
+      describe_it_players: [
+        { player_id: 'a', team: 1, score: 0 },
+        { player_id: 'b', team: 1, score: 0 },
+        { player_id: 'c', team: 2, score: 0 },
+      ],
+      describe_it_words: [
+        { team: 1, status: 'guessed' },
+        { team: 1, status: 'guessed' },
+        { team: 2, status: 'guessed' },
+      ],
+    })
+    expect(await resolveWinners(db, 'G', 'describe_it')).toEqual(['a', 'b'])
+  })
+
+  it('describe_it (individual mode): the top scorer wins', async () => {
+    const db = multi({
+      games: { describe_it_num_teams: 1, describe_it_mode: 'individual' },
+      describe_it_players: [
+        { player_id: 'a', team: 0, score: 12 },
+        { player_id: 'b', team: 0, score: 5 },
+      ],
+    })
+    expect(await resolveWinners(db, 'G', 'describe_it')).toEqual(['a'])
   })
 })

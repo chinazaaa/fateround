@@ -10,6 +10,9 @@ export type PublicTrophy = {
   sortOrder: number
 }
 
+// Display order for the landing page strip: rarest/most prestigious tier first.
+const TIER_RANK: Record<string, number> = { platinum: 0, gold: 1, silver: 2, bronze: 3 }
+
 /**
  * The trophy list for one game, for logged-out/public surfaces (game landing pages).
  *
@@ -35,15 +38,17 @@ export async function getPublicTrophiesForGame(gameType: string): Promise<Public
 
     if (error || !data) return []
 
-    return data.map((row) => ({
-      id: row.id as string,
-      tier: row.tier as string,
-      title: row.hidden ? 'Secret trophy' : (row.title as string),
-      description: row.hidden ? 'Keep playing to uncover this one.' : (row.description as string),
-      points: Number(row.points) || 0,
-      hidden: Boolean(row.hidden),
-      sortOrder: Number(row.sort_order) || 0,
-    }))
+    return data
+      .map((row) => ({
+        id: row.id as string,
+        tier: row.tier as string,
+        title: row.hidden ? 'Secret trophy' : (row.title as string),
+        description: row.hidden ? 'Keep playing to uncover this one.' : (row.description as string),
+        points: Number(row.points) || 0,
+        hidden: Boolean(row.hidden),
+        sortOrder: Number(row.sort_order) || 0,
+      }))
+      .sort((a, b) => (TIER_RANK[a.tier] ?? 99) - (TIER_RANK[b.tier] ?? 99) || a.sortOrder - b.sortOrder)
   } catch {
     // No service-role key (build time) or the query threw — show no trophies rather than break.
     return []

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { awardForFinishedGame, levelForPoints } from './award'
+import { awardForFinishedGame, extractDistinctMembers, levelForPoints } from './award'
 
 /**
  * An in-memory stand-in for the handful of tables the pass touches. Deliberately models the
@@ -142,6 +142,44 @@ describe('levelForPoints', () => {
   it('is safe on junk', () => {
     expect(levelForPoints(Number.NaN)).toBe(1)
     expect(levelForPoints(-100)).toBe(1)
+  })
+})
+
+describe('extractDistinctMembers', () => {
+  it('pulls distinct: entries out and mutates them off the counters bag', () => {
+    const extras: Record<string, number> = {
+      mafia_village_wins: 1,
+      'distinct:mafia_winning_roles:jester': 1,
+      'distinct:mafia_winning_roles:doctor': 1,
+    }
+    const members = extractDistinctMembers(extras)
+    expect(members).toEqual([
+      { key: 'mafia_winning_roles', member: 'jester' },
+      { key: 'mafia_winning_roles', member: 'doctor' },
+    ])
+    // The reserved keys must NOT survive into the numeric counters.
+    expect(extras).toEqual({ mafia_village_wins: 1 })
+  })
+
+  it('returns nothing and leaves a plain bag untouched', () => {
+    const extras = { mafia_village_wins: 1, mafia_survivor_games: 1 }
+    expect(extractDistinctMembers(extras)).toEqual([])
+    expect(extras).toEqual({ mafia_village_wins: 1, mafia_survivor_games: 1 })
+  })
+
+  it('drops malformed reserved keys without throwing, still stripping them', () => {
+    const extras: Record<string, number> = {
+      'distinct:no_member_here': 1, // missing the :member segment
+      'distinct:': 1, // empty
+      keep_me: 1,
+    }
+    expect(extractDistinctMembers(extras)).toEqual([])
+    expect(extras).toEqual({ keep_me: 1 })
+  })
+
+  it('keeps colons that belong to the member', () => {
+    const extras: Record<string, number> = { 'distinct:some_set:a:b:c': 1 }
+    expect(extractDistinctMembers(extras)).toEqual([{ key: 'some_set', member: 'a:b:c' }])
   })
 })
 
@@ -344,5 +382,32 @@ describe('awardForFinishedGame — every round in a room awards', () => {
     db.tables.games[0].finished_at = '2026-08-02T13:30:00Z'
     await awardForFinishedGame(db.client as never, 'prof-1', 'ROOM01')
     expect(db.tables.player_stats.find((r) => r.game_type === 'trivia')?.games_played).toBe(2)
+  })
+})
+
+describe('awardForFinishedGame — the card-game winner is flagged spectator but still earns', () => {
+  it('attributes the winner who went out (finish_order rescue)', async () => {
+    // Whot/UNO/Crazy Eights flip a player to spectator=true the moment they empty their hand —
+    // winner included. Without the finish_order rescue the winner earns nothing at all.
+    const db = makeDb({
+      games: [{ id: 'WHOT01', status: 'finished', game_type: 'whot', finished_at: '2026-08-02T12:00:00Z' }],
+      players: [
+        { id: 'winner', game_id: 'WHOT01', profile_id: 'prof-1', spectator: true }, // went out -> spectator
+        { id: 'loser', game_id: 'WHOT01', profile_id: 'prof-2', spectator: false },
+      ],
+      whot_sessions: [{ game_id: 'WHOT01', winner_player_id: 'winner', finish_order: ['winner'] }],
+      profiles: [{ id: 'prof-1', current_streak: 0, longest_streak: 0, last_active_date: null, trophy_points: 0 }],
+      trophies: [],
+      player_trophies: [],
+      player_stats: [],
+      awarded_sessions: [],
+      player_distinct: [],
+    })
+
+    await awardForFinishedGame(db.client as never, 'prof-1', 'WHOT01')
+
+    const stats = db.tables.player_stats.find((r) => r.game_type === 'whot')
+    expect(stats?.games_played).toBe(1)
+    expect(stats?.games_won).toBe(1)
   })
 })
