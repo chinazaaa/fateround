@@ -21,6 +21,7 @@
  * playing the games we can't measure.
  */
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { getCompetitiveStandings, isCompetitiveRoomGame } from '@/lib/room-points'
 import type { GameType } from '@/types'
 
 type WinnerSource = {
@@ -65,6 +66,41 @@ const WINNER_SOURCES: Partial<Record<GameType, WinnerSource>> = {
 }
 
 /**
+ * Game types with no winner BY DESIGN — not a coverage gap to close later.
+ *
+ * The poll family isn't competitive: everyone answers, nothing is scored, nobody comes first.
+ * Recording them as "unmeasured" would imply someone should eventually go and measure them,
+ * and would leave the admin UI warning about a limitation that is actually the product. They
+ * carry `games_played` and streaks instead, which is the whole point of those measures.
+ */
+const NO_WINNER_BY_DESIGN = new Set<string>([
+  'smash_marry_kill',
+  'red_flag_green_flag',
+  'smash_or_pass',
+  'would_you_rather',
+  'never_have_i_ever',
+  'this_or_that',
+  'most_likely_to',
+  'who_said_this',
+  'pick_a_number',
+  'two_truths',
+  'hot_seat',
+  'anonymous_messages',
+  'secret_message',
+  'parent_approval',
+  'custom',
+])
+
+/**
+ * True when this game type simply has no notion of winning, so a win rule is a category error
+ * rather than a missing feature. Lets the admin UI say "this game has no winner" instead of
+ * "not supported yet", which are different messages.
+ */
+export function isWinnerlessByDesign(gameType: GameType): boolean {
+  return NO_WINNER_BY_DESIGN.has(gameType)
+}
+
+/**
  * Whether a win can be measured for this game type at all.
  *
  * Exported so `/admin/trophies` can warn before someone writes a "win 10 games" rule for a
@@ -72,12 +108,45 @@ const WINNER_SOURCES: Partial<Record<GameType, WinnerSource>> = {
  * fire, which looks identical to a typo.
  */
 export function hasWinnerSource(gameType: GameType): boolean {
-  return gameType in WINNER_SOURCES
+  return gameType in WINNER_SOURCES || isCompetitiveRoomGame(gameType)
 }
 
-/** Game types where win-based trophies work today. For the admin UI and for docs. */
+/**
+ * Game types where win-based trophies work today, from the persisted-winner map. The standings
+ * fallback widens this further at runtime — use {@link hasWinnerSource} for a per-type answer.
+ */
 export function gameTypesWithWinners(): GameType[] {
   return Object.keys(WINNER_SOURCES).sort() as GameType[]
+}
+
+/**
+ * Full finishing order, best first, or null when the server can't determine it.
+ *
+ * Two sources, tried in order: the game's own persisted `winner_player_id` (authoritative,
+ * written when the game ended), then the same standings derivation room points already uses.
+ * The fallback is what brings in the competitive games that keep no winner column — trivia,
+ * bingo, codewords, sudoku, word hunt.
+ */
+export async function resolveStandings(
+  supabase: SupabaseClient,
+  gameId: string,
+  gameType: GameType
+): Promise<string[] | null> {
+  if (!isCompetitiveRoomGame(gameType)) return null
+  try {
+    const { data: players } = await supabase
+      .from('players')
+      .select('id, name, spectator, room_member_id')
+      .eq('game_id', gameId)
+    if (!players?.length) return null
+
+    const standings = await getCompetitiveStandings(supabase, gameId, gameType, players)
+    // `[]` here is ambiguous — unsupported type or simply no scores yet — and the two are
+    // indistinguishable from outside. Report "unknown" rather than inventing a draw.
+    return standings.length ? standings : null
+  } catch {
+    return null
+  }
 }
 
 function normalizeIds(value: unknown): string[] {
@@ -99,13 +168,22 @@ export async function resolveWinners(
   gameType: GameType
 ): Promise<string[] | null> {
   const source = WINNER_SOURCES[gameType]
-  if (!source) return null
+  if (!source) {
+    // No persisted winner column. Derived standings cover the rest of the competitive games.
+    const standings = await resolveStandings(supabase, gameId, gameType)
+    return standings ? [standings[0]] : null
+  }
 
   const columns = source.arrayColumn ? `${source.column}, ${source.arrayColumn}` : source.column
   try {
     const { data, error } = await supabase.from(source.table).select(columns).eq('game_id', gameId).maybeSingle()
-    // An error is "we don't know", not "nobody won" — see the three-way note at the top.
-    if (error || !data) return null
+    // An error is "we don't know", not "nobody won" — see the three-way note at the top. The
+    // session row can also be legitimately absent (an old game, a schema that arrived later),
+    // so fall through to derived standings before giving up.
+    if (error || !data) {
+      const standings = await resolveStandings(supabase, gameId, gameType)
+      return standings ? [standings[0]] : null
+    }
 
     const row = data as unknown as Record<string, unknown>
     if (source.arrayColumn) {

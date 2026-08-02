@@ -18,6 +18,21 @@ const nextConfig: NextConfig = {
   },
   // Don't advertise the framework (audit finding H4).
   poweredByHeader: false,
+  async redirects() {
+    return [
+      // Blog post slug rename.
+      {
+        source: '/blog/how-to-play-whot-card-game-rules',
+        destination: '/blog/whot-rules-explained',
+        permanent: true,
+      },
+      {
+        source: '/blog/free-online-party-games-with-friends',
+        destination: '/free-online-party-games',
+        permanent: true,
+      },
+    ]
+  },
   async headers() {
     return [
       // The Apple App Site Association file has no extension, so serve it explicitly

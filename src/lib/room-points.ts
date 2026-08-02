@@ -131,7 +131,19 @@ function memberIdForPlayer(player: RoomPlayerRow, members: RoomMemberRow[]): str
   return match?.id ?? null
 }
 
-async function getCompetitiveStandings(
+/**
+ * Finishing order for the competitive game types, best first.
+ *
+ * Exported for the trophy award pass (`src/lib/trophies/outcome.ts`), which needs the same
+ * server-derived placement this file already computes for room points. Reused rather than
+ * reimplemented: two independent notions of "who won" would drift, and the trophy one grants
+ * entitlements.
+ *
+ * Returns `[]` for a game type it doesn't cover AND for one it covers but has no data for, so
+ * callers must gate on {@link isCompetitiveRoomGame} first and treat an empty result as
+ * "unknown" rather than "nobody won".
+ */
+export async function getCompetitiveStandings(
   supabase: SupabaseClient,
   gameId: string,
   gameType: GameType,

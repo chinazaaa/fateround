@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { GameType } from '@/types'
-import { gameTypesWithWinners, hasWinnerSource, resolveWinners } from './outcome'
+import { gameTypesWithWinners, hasWinnerSource, isWinnerlessByDesign, resolveWinners } from './outcome'
 
 /** Minimal stand-in for the one query shape `resolveWinners` issues. */
 function client(result: { data?: unknown; error?: unknown }): SupabaseClient {
@@ -37,11 +37,12 @@ describe('resolveWinners', () => {
     expect(await resolveWinners(supabase, 'ABCD', 'chess')).toEqual([])
   })
 
-  it('returns null — not [] — for a game type it cannot measure', async () => {
+  it('returns null — not [] — for a game with no winner concept, without querying', async () => {
     // The distinction is load-bearing. Collapsing null into [] would record "did not win" for
-    // every trivia game, making a "never lost" trophy earnable by playing the unmeasurable ones.
+    // every poll game, making a "never lost" trophy earnable by playing the ones that have no
+    // winner at all. It should also cost nothing: no table is worth checking here.
     const supabase = client({ data: { winner_player_id: 'p-1' } })
-    expect(await resolveWinners(supabase, 'ABCD', 'trivia')).toBeNull()
+    expect(await resolveWinners(supabase, 'ABCD', 'never_have_i_ever')).toBeNull()
     expect(supabase.from).not.toHaveBeenCalled()
   })
 
@@ -77,11 +78,24 @@ describe('the winner-source map', () => {
     }
   })
 
-  it('reports poll and quiz games as unmeasurable, so the admin UI can warn', () => {
-    // Not a gap to paper over: a "win 10 games" rule for these parses, saves, and silently
-    // never fires — indistinguishable from a typo unless the UI says so up front.
-    for (const gameType of ['trivia', 'never_have_i_ever', 'bingo'] as GameType[]) {
-      expect(hasWinnerSource(gameType)).toBe(false)
+  it('covers the competitive non-seat games through derived standings', () => {
+    // These keep no winner column, but room points already derives their finishing order —
+    // reused rather than reimplemented, so the two notions of "who won" can't drift.
+    for (const gameType of ['trivia', 'bingo', 'codewords', 'sudoku'] as GameType[]) {
+      expect(hasWinnerSource(gameType), `${gameType} should resolve via standings`).toBe(true)
+    }
+  })
+
+  it('separates "no winner by design" from "not measured yet"', () => {
+    // Different messages for the admin UI: one is the product working as intended, the other
+    // is a limitation someone might go and fix. Conflating them makes the warning meaningless.
+    expect(isWinnerlessByDesign('never_have_i_ever' as GameType)).toBe(true)
+    expect(isWinnerlessByDesign('would_you_rather' as GameType)).toBe(true)
+    expect(hasWinnerSource('never_have_i_ever' as GameType)).toBe(false)
+
+    // A competitive game is never "winnerless by design", whichever route resolves it.
+    for (const gameType of ['chess', 'trivia', 'whot'] as GameType[]) {
+      expect(isWinnerlessByDesign(gameType), `${gameType} does have winners`).toBe(false)
     }
   })
 
