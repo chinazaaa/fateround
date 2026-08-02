@@ -11,6 +11,7 @@ import { GameChromeSettings } from '@/components/GameChromeSettings'
 import { ProfileChip } from '@/components/profile/ProfileChip'
 import { PostWinPrompt } from '@/components/profile/PostWinPrompt'
 import { TrophiesThisGame } from '@/components/profile/TrophiesThisGame'
+import { InstantTrophyToast } from '@/components/profile/InstantTrophyToast'
 import { GameAttribution } from '@/components/profile/GameAttribution'
 import { useHostPlayerSession } from '@/hooks/useHostPlayerSession'
 import { useHostToken } from '@/hooks/useHostToken'
@@ -55,6 +56,7 @@ export function GameHostChrome() {
       <GameAttribution gameCode={code} />
       <PostWinPrompt />
       <TrophiesThisGame />
+      <InstantTrophyToast gameCode={code} />
     </>
   )
 }

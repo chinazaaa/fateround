@@ -26,6 +26,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { GameType } from '@/types'
 import { GLOBAL_SCOPE, evaluateRaw, type ProgressSnapshot } from './criteria'
+import { unlockedThisRound } from './instant-unlock'
 import { buildGameFacts } from './game-facts'
 import { resolveWinners } from './outcome'
 import { advanceStreak, watDate, watHour, type StreakState } from './streak'
@@ -272,7 +273,13 @@ export async function awardForFinishedGame(
       longest_streak: streak.longest_streak,
     }
 
-    const earned = await grantEligible(supabase, profileId, snapshot)
+    // Trophies unlocked mid-round were recorded against the PLAYER, because no profile existed
+    // at the time. Fold them in now that we know whose they are. They are granted DIRECTLY, not
+    // re-derived: the moment already happened and was verified server-side by the handler that
+    // saw it — re-checking it against finish-time counters would silently drop anything the
+    // counters can't express, which is the whole reason instant unlocks exist.
+    const instant = await unlockedThisRound(supabase, sessionId, me.id)
+    const earned = await grantEligible(supabase, profileId, snapshot, instant)
 
     await supabase
       .from('profiles')
@@ -296,24 +303,34 @@ export async function awardForFinishedGame(
   }
 }
 
-/** Grant every active trophy this snapshot satisfies and the profile doesn't already hold. */
+/**
+ * Grant every active trophy this snapshot satisfies and the profile doesn't already hold.
+ *
+ * `forceIds` are trophies already verified during play (see `instant-unlock.ts`). They bypass
+ * the criteria check but NOT the already-held check — so an instant unlock in round one and
+ * again in round two grants once, exactly as a counter-derived trophy would.
+ */
 async function grantEligible(
   supabase: SupabaseClient,
   profileId: string,
-  snapshot: ProgressSnapshot
+  snapshot: ProgressSnapshot,
+  forceIds: string[] = []
 ): Promise<AwardedTrophy[]> {
   const [{ data: catalog }, { data: alreadyEarned }] = await Promise.all([
     supabase.from('trophies').select('id, title, tier, points, criteria').eq('is_active', true),
     supabase.from('player_trophies').select('trophy_id').eq('profile_id', profileId),
   ])
   const have = new Set((alreadyEarned ?? []).map((r) => r.trophy_id as string))
+  const forced = new Set(forceIds)
 
   const earned: AwardedTrophy[] = []
   for (const trophy of catalog ?? []) {
     const id = trophy.id as string
     if (have.has(id)) continue
-    // evaluateRaw never throws — one malformed catalog row must not stop the rest.
-    if (!evaluateRaw(trophy.criteria, snapshot).met) continue
+    // A mid-round unlock was already verified by the handler that saw it happen, so it does not
+    // have to satisfy the criteria again. evaluateRaw never throws — one malformed catalog row
+    // must not stop the rest.
+    if (!forced.has(id) && !evaluateRaw(trophy.criteria, snapshot).met) continue
     earned.push({
       id,
       title: trophy.title as string,

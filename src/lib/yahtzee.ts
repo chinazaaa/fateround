@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { unlockNow } from '@/lib/trophies/instant-unlock'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { clearSessionTables } from './session-clear'
 import { markGameFinished } from '@/lib/game-finish'
@@ -413,6 +414,14 @@ export async function processYahtzeeScore(
   if (currentPoints[category] != null) return { error: 'Category already scored' }
 
   const nextPoints: YahtzeeCategoryPoints = { ...currentPoints, [category]: score }
+
+  // Scoring a Yahtzee is the moment worth celebrating, and this handler already knows it — the
+  // category and the value are right here. Recorded now so the toast fires immediately; the
+  // award pass folds it into the profile at finish. Best-effort by design: never let a trophy
+  // interrupt a turn, and the counters grant it at finish anyway if this write is lost.
+  if (category === 'yahtzee' && score > 0) {
+    void unlockNow(supabase, gameId, playerId, 'yahtzee.sys.yahtzee_scored')
+  }
 
   const updatedScoresRows = (scoresRows as YahtzeePlayerScore[]).map((r) =>
     r.player_id === playerId ? { ...r, scores: { ...r.scores, categories: nextPoints } } : r

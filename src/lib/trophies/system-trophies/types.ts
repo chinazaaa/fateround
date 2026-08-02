@@ -21,4 +21,17 @@ export type SystemTrophySpec = {
   points: number
   sortOrder: number
   hidden?: boolean
+  /**
+   * Can this be unlocked DURING play, rather than at the finished screen?
+   *
+   * Only true when both hold: the condition is decidable at a single action, AND the action
+   * handler already computes it as part of doing its job. "Score a Yahtzee" qualifies — the
+   * score handler knows the category and the value. "Win from outside the top three at halfway"
+   * never will.
+   *
+   * Marking this does nothing on its own: a route still has to call `unlockNow`. The flag is
+   * what AUTHORISES that call, so a finish-derived trophy can't be made to pop early and show a
+   * toast for something the counters might not grant.
+   */
+  instant?: boolean
 }

@@ -20,6 +20,7 @@ const REQUIRED = [
   { tag: '<GameAttribution', why: 'links the player row to a profile and runs the award pass' },
   { tag: '<PostWinPrompt', why: 'the one moment anonymous players are asked to save progress' },
   { tag: '<TrophiesThisGame', why: 'the results-screen line for what this round earned' },
+  { tag: '<InstantTrophyToast', why: 'the mid-round unlock pop; without it an unlock is silent' },
 ]
 
 describe('game chromes render the attribution components', () => {

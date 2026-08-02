@@ -39,6 +39,18 @@ const BY_GAME: Record<string, SystemTrophySpec[]> = {
   yahtzee: YAHTZEE,
 }
 
+/**
+ * Ids that may be unlocked mid-round.
+ *
+ * `unlockNow` refuses anything absent from this set. Derived from the specs rather than kept as
+ * its own list, so eligibility can never drift from the trophy it describes.
+ */
+export const INSTANT_TROPHY_IDS: ReadonlySet<string> = new Set(
+  Object.entries(BY_GAME).flatMap(([gameType, specs]) =>
+    specs.filter((s) => s.instant).map((s) => `${gameType}.sys.${s.suffix}`)
+  )
+)
+
 /** Game types that have a system trophy set, for the admin UI. */
 export function gamesWithSystemTrophies(): string[] {
   return Object.keys(BY_GAME).sort()

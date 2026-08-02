@@ -12,6 +12,7 @@ import { ProfileChip } from '@/components/profile/ProfileChip'
 import { PostWinPrompt } from '@/components/profile/PostWinPrompt'
 import { GameAttribution } from '@/components/profile/GameAttribution'
 import { TrophiesThisGame } from '@/components/profile/TrophiesThisGame'
+import { InstantTrophyToast } from '@/components/profile/InstantTrophyToast'
 import { useHostPlayerSession } from '@/hooks/useHostPlayerSession'
 import { HostNominationBanner } from '@/components/HostNominationBanner'
 import { setupAudioUnlock } from '@/lib/sounds'
@@ -51,6 +52,7 @@ export function GamePlayerChrome() {
       <GameAttribution gameCode={code} />
       <PostWinPrompt />
       <TrophiesThisGame />
+      <InstantTrophyToast gameCode={code} />
     </>
   )
 }

@@ -82,6 +82,9 @@ export const YAHTZEE: SystemTrophySpec[] = [
 
   // ── Silver ──────────────────────────────────────────────────────────────────────────────
   {
+    // Unlocks the moment it is scored — processYahtzeeScore already knows the category and the
+    // value, so there is nothing to re-derive. See instant-unlock.ts.
+    instant: true,
     suffix: 'yahtzee_scored',
     tier: 'silver',
     title: 'YAHTZEE!',
