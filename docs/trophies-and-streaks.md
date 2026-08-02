@@ -295,6 +295,35 @@ can be tuned in one place (`TROPHY_POINTS` constant).
 
 ### 3.8 The award engine
 
+> **⚠️ Corrected 2026-08-02, after checking against the code.** The two paragraphs below are
+> wrong on both counts. Read this box first.
+>
+> **1. `finish-game/route.ts` is not the hook — and neither is `markGameFinished`.**
+> That route is one of ~40 finish paths (a bingo claim, a chess move, a turn expiry and the
+> server ticker all finish games too). `src/lib/game-finish.ts` `markGameFinished()` *is* the
+> real chokepoint, and it has the `onlyIfActive` CAS that guarantees single-fire — but hooking
+> it still doesn't work, because of ordering:
+>
+> **`players.profile_id` is written by `/api/profile/attribute`, which the player's own client
+> calls when it sees the finished screen — i.e. normally *after* `markGameFinished` has already
+> run.** An award pass there would find `profile_id IS NULL` on every player and award nothing.
+>
+> So the award pass hooks **attribution**, not finish. That is the moment both facts are known
+> — this profile, this finished game — and `awarded_sessions (profile_id, session_id)` is
+> already exactly the right idempotency key for a per-player pass.
+>
+> **2. The winner is not detected server-side, for most games.** `PostWinToCommunity` is
+> client-side and cannot be trusted for anything that grants an entitlement. Server-side there
+> is only `getCompetitiveStandings` in `src/lib/room-points.ts` — module-private, an if-chain
+> covering **12 of ~60 game types**. Separately, 17 per-game session tables persist
+> `winner_player_id`. There is no `games.winner_id` and no shared standings builder on web.
+>
+> Consequence: `games_played` is universal, but **`games_won` and anything placement-based are
+> `partial`** — see `availability` in `src/lib/trophies/counters.ts`. A "win 10 games" trophy
+> silently never fires for a game whose outcome the server can't resolve, so the admin UI has
+> to show which measures are live. Widening that coverage is per-game work, and the cheapest
+> big win is a `game_type → session table` map over those 17 `winner_player_id` columns.
+
 **Where it hooks in.** Game completion already flows through
 `src/app/api/games/[code]/finish-game/route.ts`, and the winner is already detected
 client-side by `PostWinToCommunity` (which posts to the leaderboard). The award engine

@@ -1,0 +1,185 @@
+/**
+ * The counter vocabulary — what a trophy rule is allowed to talk about.
+ *
+ * THIS FILE IS THE PRODUCT SURFACE, not the trophy list. A trophy is a row in `trophies`
+ * that an admin can write; a *counter* is a measurement the server emits, and only code can
+ * add one. So the breadth here decides how much can be built without a deploy:
+ *
+ *   - "Win 25 games"            → composable today, because `games_won` exists
+ *   - "Win without drawing"     → needs a `wins_no_draw` counter emitted by the card games
+ *
+ * The registry is exported so `/admin/trophies` can *show* the vocabulary while someone is
+ * writing a rule. Without that, "admin-editable" quietly means "editable if you remember the
+ * counter names", and the first typo produces a trophy that is simply never earned — with no
+ * error, because an unknown counter reads as zero by design.
+ *
+ * Adding a counter here does NOT make it real. It has to be emitted by the award pass too.
+ * `availability` records how far along each one is, so the admin UI can grey out the ones that
+ * would never fire rather than offering a rule that silently can't be satisfied.
+ */
+
+export type CounterScope =
+  /** Tracked per game type, and also aggregated globally. */
+  | 'per-game'
+  /** Only meaningful across all games. */
+  | 'global'
+
+export type CounterAvailability =
+  /** Emitted for every game type today. */
+  | 'universal'
+  /**
+   * Emitted only where the server can actually determine it. `games_won` is the live example:
+   * there is no universal winner on this stack — 17 session tables persist `winner_player_id`
+   * and the rest derive placement per game type — so a "win" rule silently never fires for a
+   * game whose outcome the server can't resolve. The admin UI must say so.
+   */
+  | 'partial'
+  /** Declared for the catalog's benefit, not yet emitted anywhere. */
+  | 'planned'
+
+export type CounterDef = {
+  key: string
+  label: string
+  description: string
+  scope: CounterScope
+  availability: CounterAvailability
+}
+
+export type DistinctDef = {
+  key: string
+  label: string
+  description: string
+  availability: CounterAvailability
+}
+
+/**
+ * Scalar counters, addressable by `{ type: 'counter', counter: <key> }`.
+ *
+ * Deliberately broader than the launch catalog needs. Emitting a counter nobody uses yet costs
+ * one key in a jsonb blob; discovering later that you need it costs a deploy and a backfill,
+ * and the backfill is impossible because the games it would have measured are already over.
+ */
+export const COUNTERS: readonly CounterDef[] = [
+  {
+    key: 'games_played',
+    label: 'Games played',
+    description: 'Finished games this profile took part in as a seated player.',
+    scope: 'per-game',
+    availability: 'universal',
+  },
+  {
+    key: 'games_won',
+    label: 'Games won',
+    description: 'Finished games this profile won outright.',
+    scope: 'per-game',
+    availability: 'partial',
+  },
+  {
+    key: 'podium_finishes',
+    label: 'Podium finishes',
+    description: 'Finished in the top three of a ranked game.',
+    scope: 'per-game',
+    availability: 'partial',
+  },
+  {
+    key: 'days_played',
+    label: 'Days played',
+    description: 'Distinct calendar days (WAT) with at least one finished game.',
+    scope: 'global',
+    availability: 'universal',
+  },
+  {
+    key: 'longest_streak',
+    label: 'Longest streak',
+    description: 'Best run of consecutive days played.',
+    scope: 'global',
+    availability: 'universal',
+  },
+  {
+    key: 'big_room_games',
+    label: 'Big-room games',
+    description: 'Finished games with eight or more seated players.',
+    scope: 'per-game',
+    availability: 'universal',
+  },
+  {
+    key: 'late_night_games',
+    label: 'Late-night games',
+    description: 'Games finished between midnight and 5am, local to the room.',
+    scope: 'global',
+    availability: 'universal',
+  },
+  {
+    key: 'host_games',
+    label: 'Games hosted',
+    description: 'Finished games this profile hosted.',
+    scope: 'per-game',
+    availability: 'planned',
+  },
+  {
+    key: 'comeback_wins',
+    label: 'Comeback wins',
+    description: 'Won after being last at any scored checkpoint.',
+    scope: 'per-game',
+    availability: 'planned',
+  },
+  {
+    key: 'perfect_games',
+    label: 'Perfect games',
+    description: 'Finished with a flawless score by that game’s own definition.',
+    scope: 'per-game',
+    availability: 'planned',
+  },
+] as const
+
+/**
+ * Set-valued measures, addressable by `{ type: 'distinct', key: <key> }`. Backed by
+ * `player_distinct`, where the primary key does the deduping and `count(*)` is the value.
+ */
+export const DISTINCT_SETS: readonly DistinctDef[] = [
+  {
+    key: 'modes_played',
+    label: 'Game modes played',
+    description: 'How many different game types this profile has finished.',
+    availability: 'universal',
+  },
+  {
+    key: 'opponents',
+    label: 'Opponents faced',
+    description: 'Distinct other profiles seated in the same finished game.',
+    availability: 'partial',
+  },
+  {
+    key: 'rooms',
+    label: 'Rooms played in',
+    description: 'Distinct game rooms this profile has finished a game in.',
+    availability: 'planned',
+  },
+] as const
+
+const COUNTER_KEYS = new Set(COUNTERS.map((c) => c.key))
+const DISTINCT_KEYS = new Set(DISTINCT_SETS.map((d) => d.key))
+
+/** True when a counter key is one the engine knows how to emit or plans to. */
+export function isKnownCounter(key: string): boolean {
+  return COUNTER_KEYS.has(key)
+}
+
+export function isKnownDistinctSet(key: string): boolean {
+  return DISTINCT_KEYS.has(key)
+}
+
+/**
+ * Counters and sets that will actually fire today.
+ *
+ * The admin UI should offer these first and mark the rest, because a rule referencing a
+ * `planned` measure is indistinguishable at runtime from a typo: both read as zero, both
+ * produce a trophy nobody can ever earn, and neither raises an error anywhere.
+ */
+export function liveCounters(): CounterDef[] {
+  return COUNTERS.filter((c) => c.availability !== 'planned')
+}
+
+export function liveDistinctSets(): DistinctDef[] {
+  return DISTINCT_SETS.filter((d) => d.availability !== 'planned')
+}
