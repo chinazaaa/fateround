@@ -50,6 +50,9 @@ const TIER_STYLE: Record<Trophy['tier'], string> = {
 export default function AdminTrophiesPage() {
   const [trophies, setTrophies] = useState<Trophy[]>([])
   const [vocabulary, setVocabulary] = useState<Vocabulary>({ counters: [], distinct: [] })
+  // How many trophies seeding would add. Drives the button's label so it reads as a real
+  // action ("Add 12 missing trophies") or an obvious no-op ("Catalog up to date").
+  const [missingCount, setMissingCount] = useState(0)
   const [games, setGames] = useState<GameOption[]>([])
   const [loading, setLoading] = useState(true)
   const [form, setForm] = useState(EMPTY)
@@ -74,6 +77,7 @@ export default function AdminTrophiesPage() {
       if (res.ok) {
         setTrophies(json.trophies ?? [])
         setVocabulary(json.vocabulary ?? { counters: [], distinct: [] })
+        setMissingCount(Number(json.missingCount) || 0)
         setGames(json.games ?? [])
       }
     } finally {
@@ -233,14 +237,24 @@ export default function AdminTrophiesPage() {
             about.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={seed}
-          disabled={busy}
-          className="btn-secondary px-4 py-2 text-sm disabled:opacity-50"
-        >
-          Seed launch trophies
-        </button>
+        {/* Kept, but stated as what it does. It is the "a new game was added, give it its
+            trophies" action — not a launch step — so when nothing is missing it says so rather
+            than sitting there looking like something you forgot to press. */}
+        <div className="text-right">
+          <button
+            type="button"
+            onClick={seed}
+            disabled={busy || missingCount === 0}
+            className="btn-secondary px-4 py-2 text-sm disabled:opacity-50"
+          >
+            {missingCount > 0
+              ? `Add ${missingCount} missing ${missingCount === 1 ? 'trophy' : 'trophies'}`
+              : 'Catalog up to date'}
+          </button>
+          <p className="mt-1 max-w-[16rem] text-xs text-[var(--muted)]">
+            Builds the standard set for any game that has none — press it after adding a new game type.
+          </p>
+        </div>
       </div>
 
       {message && <p className="glass-card px-4 py-3 text-sm">{message}</p>}
@@ -576,7 +590,7 @@ export default function AdminTrophiesPage() {
           <p className="text-sm text-[var(--muted)]">Loading…</p>
         ) : trophies.length === 0 ? (
           <p className="text-sm text-[var(--muted)]">
-            Nothing yet — use <strong>Seed launch trophies</strong> to add the starting set.
+            Nothing yet — use the button above to build the standard set for every game.
           </p>
         ) : visible.length === 0 ? (
           <p className="text-sm text-[var(--muted)]">Nothing matches those filters.</p>

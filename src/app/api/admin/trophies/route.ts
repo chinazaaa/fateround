@@ -72,8 +72,18 @@ export async function GET(req: NextRequest) {
 
   if (error) return NextResponse.json({ error: internalErrorMessage('admin/trophies', error) }, { status: 500 })
 
+  // What seeding would ADD right now. The button is not a one-time launch action — it is how
+  // the catalog catches up after a new game type is registered — but "Seed launch trophies"
+  // reads as something you do once, so it looked redundant the moment the catalog was full.
+  // Reporting the number makes it obvious when it has work to do and when it is a no-op.
+  const have = new Set((data ?? []).map((t) => t.id as string))
+  const missingCount = (Object.keys(GAME_TYPE_CONFIG) as GameType[])
+    .flatMap((g) => buildCatalogForGame(g, gameTypeLabel(g) ?? g, hasWinnerSource(g)))
+    .filter((t) => !have.has(t.id)).length
+
   return NextResponse.json({
     trophies: data ?? [],
+    missingCount,
     // The vocabulary travels with the list so the editor can render pickers instead of a bare
     // JSON box. Without it "admin-editable" means "editable if you remember the counter names".
     vocabulary: { counters: liveCounters(), distinct: liveDistinctSets() },
