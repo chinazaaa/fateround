@@ -247,6 +247,37 @@ export default function AdminTrophiesPage() {
     return games.filter((g) => present.has(g.id))
   }, [trophies, games])
 
+  // The counter vocabulary is 270+ rows once every game is seeded, most of them belonging to one
+  // game. There's no game field on a counter, so ownership is read off the key prefix: a
+  // game-specific counter starts with `<gameId>_` (with `c8_` the one alias — Crazy Eights emits
+  // that prefix). The handful with no game prefix are platform-wide and relevant to every game.
+  const [vocabGame, setVocabGame] = useState('all')
+  const counterGameOf = useCallback(
+    (key: string): string | null => {
+      let best: string | null = null
+      for (const g of games) {
+        if (key.startsWith(g.id + '_') && (!best || g.id.length > best.length)) best = g.id
+      }
+      if (!best && key.startsWith('c8_') && games.some((g) => g.id === 'crazy_eights')) best = 'crazy_eights'
+      return best
+    },
+    [games]
+  )
+  // Only games that actually own a counter, so the dropdown doesn't list games with nothing to show.
+  const vocabGames = useMemo(() => {
+    const owners = new Set(vocabulary.counters.map((c) => counterGameOf(c.key)).filter(Boolean) as string[])
+    return games.filter((g) => owners.has(g.id))
+  }, [vocabulary.counters, games, counterGameOf])
+  // When a game is picked, show its counters PLUS the platform-wide ones (still relevant to a rule
+  // for that game); "all" shows everything.
+  const shownCounters = useMemo(() => {
+    if (vocabGame === 'all') return vocabulary.counters
+    return vocabulary.counters.filter((c) => {
+      const owner = counterGameOf(c.key)
+      return owner === null || owner === vocabGame
+    })
+  }, [vocabulary.counters, vocabGame, counterGameOf])
+
   return (
     <div className="space-y-6">
       <div className="glass-card p-5">
@@ -327,9 +358,27 @@ export default function AdminTrophiesPage() {
         </p>
         <div className="mt-3 grid gap-4 sm:grid-cols-2">
           <div>
-            <p className="text-faint mb-2 text-xs uppercase tracking-wide">Counters</p>
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <p className="text-faint text-xs uppercase tracking-wide">Counters</p>
+              {/* Most counters belong to one game, so narrow to a game to keep this short. The
+                  platform-wide counters stay visible under any game, since a rule for that game
+                  can still use them. */}
+              <select
+                className="input-field !mt-0 !w-auto !py-1 text-xs"
+                value={vocabGame}
+                onChange={(e) => setVocabGame(e.target.value)}
+                aria-label="Filter counters by game"
+              >
+                <option value="all">All games ({vocabulary.counters.length})</option>
+                {vocabGames.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.label}
+                  </option>
+                ))}
+              </select>
+            </div>
             <ul className="space-y-1.5 text-sm">
-              {vocabulary.counters.map((c) => (
+              {shownCounters.map((c) => (
                 <li key={c.key}>
                   <code className="rounded bg-[var(--surface-inset-bg)] px-1.5 py-0.5 text-xs">{c.key}</code>{' '}
                   <span className="text-[var(--muted)]">{c.description}</span>
@@ -339,6 +388,19 @@ export default function AdminTrophiesPage() {
                 </li>
               ))}
             </ul>
+            {vocabGame !== 'all' && (
+              <p className="mt-2 text-xs text-[var(--muted)]">
+                Showing {vocabGames.find((g) => g.id === vocabGame)?.label ?? vocabGame} counters plus the platform-wide
+                ones.{' '}
+                <button
+                  type="button"
+                  onClick={() => setVocabGame('all')}
+                  className="font-semibold text-[var(--primary)]"
+                >
+                  Show all
+                </button>
+              </p>
+            )}
           </div>
           <div>
             <p className="text-faint mb-2 text-xs uppercase tracking-wide">Distinct sets</p>
