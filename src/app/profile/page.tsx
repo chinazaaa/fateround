@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
+import { SaveToProfileModal } from '@/components/profile/SaveToProfileModal'
 import { GAME_CATEGORIES } from '@/lib/game-types'
 import { authHeaders } from '@/lib/identity'
 
@@ -20,11 +21,16 @@ type GameRow = {
 }
 
 type ProfileSummary = {
+  id: string
   handle: string | null
+  avatar_url: string | null
+  is_anonymous: boolean
   trophy_points: number
   trophy_level: number
   current_streak: number
   longest_streak: number
+  last_active_date: string | null
+  streak_freezes: number
 } | null
 
 /** "1 day", not "1 days". Small, and the thing people notice. */
@@ -45,6 +51,7 @@ export default function ProfilePage() {
   const [category, setCategory] = useState<string>('all')
   const [loading, setLoading] = useState(true)
   const [signedOut, setSignedOut] = useState(false)
+  const [profileOpen, setProfileOpen] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -99,11 +106,23 @@ export default function ProfilePage() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-5 p-4 sm:p-6">
-      <div>
-        <h1 className="text-2xl font-black tracking-tight">{profile?.handle || 'Your trophies'}</h1>
-        <p className="mt-0.5 text-sm text-muted">
-          Level {profile?.trophy_level ?? 1} · {plural(profile?.trophy_points ?? 0, 'point')}
-        </p>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="truncate text-2xl font-black tracking-tight">{profile?.handle || 'Your trophies'}</h1>
+          <p className="mt-0.5 text-sm text-muted">
+            Level {profile?.trophy_level ?? 1} · {plural(profile?.trophy_points ?? 0, 'point')}
+          </p>
+        </div>
+        {/* The name editor lives here rather than as a header chip: on these routes the floating
+            theme toggle already owns the header's right side, and this is where someone looks
+            for their own settings anyway. */}
+        <button
+          type="button"
+          onClick={() => setProfileOpen(true)}
+          className="btn-secondary btn-fit shrink-0 px-3 py-1.5 text-sm"
+        >
+          {profile?.handle ? 'Edit name' : 'Set your name'}
+        </button>
       </div>
 
       <div className="grid grid-cols-3 gap-2 sm:gap-3">
@@ -156,6 +175,21 @@ export default function ProfilePage() {
           ))}
         </div>
       )}
+
+      {/* Without this the list reads as "Trivia is the only game with trophies", because a game
+          you haven't played has nothing to show yet. */}
+      {games.length > 0 && (
+        <p className="text-faint px-1 text-center text-xs">
+          Every game has its own trophies — play another and it appears here.
+        </p>
+      )}
+
+      <SaveToProfileModal
+        open={profileOpen}
+        onClose={() => setProfileOpen(false)}
+        profile={profile}
+        onChanged={() => void load()}
+      />
     </div>
   )
 }
