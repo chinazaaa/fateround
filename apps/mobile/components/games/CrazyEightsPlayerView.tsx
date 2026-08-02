@@ -54,8 +54,10 @@ import {
   postCrazyEightsChoose,
   postCrazyEightsDraw,
   postCrazyEightsExpireTurn,
+  postCrazyEightsHands,
   postCrazyEightsPlay,
 } from '@/lib/game-api'
+import { getPlayerSession } from '@/lib/secure-session'
 import { playSound } from '@/lib/sounds'
 import { getSupabase } from '@/lib/supabase'
 import { CRAZY8_PLAYER_HANDS_SELECT, CRAZY8_SESSION_SELECT } from '@/lib/supabase-selects'
@@ -84,18 +86,17 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
   const loadGameState = useCallback(
     async (_game: Game, _players: Player[]): Promise<{ state: CrazyEightsSession | null; ok: boolean }> => {
       const code = gameCode.toUpperCase()
+      // Hands via /api/crazy-eights/hands so other players' cards never reach this device; own
+      // cards come back in full, everyone else's as `card_count` (see src/lib/hand-redaction.ts).
+      const session = await getPlayerSession(code)
       const [sessionRes, handsRes] = await Promise.all([
         getSupabase().from('crazy_eights_sessions').select(CRAZY8_SESSION_SELECT).eq('game_id', code).maybeSingle(),
-        getSupabase()
-          .from('crazy_eights_player_hands')
-          .select(CRAZY8_PLAYER_HANDS_SELECT)
-          .eq('game_id', code)
-          .order('player_order'),
+        postCrazyEightsHands(code, { resumeToken: session?.resumeToken }).catch(() => null),
       ])
-      if (sessionRes.error || handsRes.error) return { state: null, ok: false }
+      if (sessionRes.error || !handsRes) return { state: null, ok: false }
       const sessionData = sessionRes.data as CrazyEightsSession | null
       setSession(sessionData)
-      setHands((handsRes.data as CrazyEightsPlayerHand[]) ?? [])
+      setHands(handsRes.hands ?? [])
       return { state: sessionData, ok: true }
     },
     [gameCode]
@@ -154,7 +155,7 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
   //    briefly treated as empty and flip a still-playing player into the watch-only UI.
   const me = bootstrap.myPlayerId ? (bootstrap.players.find((p) => p.id === bootstrap.myPlayerId) ?? null) : null
   const isViewer = !!(me && bootstrap.game && playerIsViewer(me, bootstrap.game))
-  const isOut = !!myHand && myHand.cards.length === 0 && bootstrap.game?.status === 'active'
+  const isOut = !!myHand && (myHand.cards?.length ?? 0) === 0 && bootstrap.game?.status === 'active'
   const isWatching = isViewer || isOut
 
   // Desync guard: the hands table loaded (others' rows present) but none is ours,
@@ -167,7 +168,7 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
 
   const playableIds = useMemo(() => {
     if (!session || !myHand) return new Set<string>()
-    return new Set(myHand.cards.filter((c) => canPlayCard(c, session, rules)).map((c) => c.id))
+    return new Set((myHand.cards ?? []).filter((c) => canPlayCard(c, session, rules)).map((c) => c.id))
   }, [session, myHand, rules])
 
   const timerSeconds = useTurnDeadlineSeconds(
@@ -214,7 +215,7 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
 
   const handCounts = useMemo(() => {
     const counts: Record<string, number> = {}
-    for (const hand of hands) counts[hand.player_id] = hand.cards.length
+    for (const hand of hands) counts[hand.player_id] = hand.card_count ?? hand.cards?.length ?? 0
     return counts
   }, [hands])
 
@@ -365,7 +366,7 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
     .join(' · ')
 
   const drawDepleted = isDrawPileDepleted(session)
-  const myCanPlay = myHand ? hasPlayableCard(myHand.cards, session, rules) : false
+  const myCanPlay = myHand ? hasPlayableCard(myHand.cards ?? [], session, rules) : false
   const suitCallActive = hasActiveSuitCall(session)
   // Draw pile empty but played cards remain → the pile reshuffles from the discard.
   const reshuffleNote = drawDepleted && (session.discard_pile?.length ?? 0) > 0
@@ -478,7 +479,7 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
           <>
             {isMyTurn && session.phase === 'playing' ? <Text style={styles.turnHint}>{turnHint}</Text> : null}
 
-            <CardHand count={myHand?.cards.length ?? 0} many={(myHand?.cards.length ?? 0) >= 8}>
+            <CardHand count={myHand?.cards?.length ?? 0} many={(myHand?.cards?.length ?? 0) >= 8}>
               {(myHand?.cards ?? []).map((card) => {
                 const playable = playableIds.has(card.id)
                 return (

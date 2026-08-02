@@ -23,7 +23,8 @@ import {
 } from '@/lib/crazy-eights'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { supabase } from '@/lib/supabase'
-import { clearPlayerSession } from '@/lib/utils'
+import { fetchCrazyEightsHands } from '@/lib/hands-client'
+import { clearPlayerSession, getPlayerSession } from '@/lib/utils'
 import type { Game, CrazyEightsPlayerHand, CrazyEightsSession } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
@@ -51,7 +52,6 @@ import { useGamePlacements, useGameStats } from '@/components/roster/RosterDrawe
 
 const CRAZY8_SESSION_SELECT =
   'id,game_id,turn_order,current_turn_index,direction,phase,draw_pile,discard_pile,top_card,required_suit,pick_two_stack,joker_penalty,status_message,winner_player_id,finish_order,turn_deadline_at,created_at,updated_at'
-const CRAZY8_PLAYER_HANDS_SELECT = 'id,game_id,player_id,cards,player_order,created_at'
 
 type Screen =
   | 'loading'
@@ -76,18 +76,23 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
   // Game-specific load: fetch the crazy eights session + player hands (the shared
   // game/players fetch + session resolution lives in useGameViewBootstrap).
   const loadGameState = useCallback(async (): Promise<{ state: CrazyEightsSession | null; ok: boolean }> => {
-    const [sessionRes, handsRes] = await Promise.all([
+    // Hands come from /api/crazy-eights/hands, not the table: other players' `cards` must never
+    // reach this client (see lib/hand-redaction.ts). Own cards come back in full; everyone
+    // else's arrive as `card_count`.
+    const [sessionRes, handsData] = await Promise.all([
       supabase.from('crazy_eights_sessions').select(CRAZY8_SESSION_SELECT).eq('game_id', gameCode).maybeSingle(),
-      supabase
-        .from('crazy_eights_player_hands')
-        .select(CRAZY8_PLAYER_HANDS_SELECT)
-        .eq('game_id', gameCode)
-        .order('player_order'),
+      // Read the token from the session store rather than the hook value: this callback is
+      // defined before useGameViewBootstrap (which itself takes `load`), so closing over
+      // myResumeToken here would be a cycle.
+      fetchCrazyEightsHands(gameCode, { resumeToken: getPlayerSession(gameCode)?.resumeToken }),
     ])
     const sessionData = supabasePollOk(sessionRes) ? (sessionRes.data as CrazyEightsSession | null) : null
     if (sessionData) setSession(sessionData)
-    if (supabasePollOk(handsRes)) setHands((handsRes.data as CrazyEightsPlayerHand[]) ?? [])
-    return { state: sessionData, ok: supabasePollOk(sessionRes, handsRes) }
+    // null = the fetch failed. Leave the previous hands in place rather than clearing them —
+    // an empty hand is meaningful state here ("you are out"), so a transport blip must not
+    // masquerade as one.
+    if (handsData) setHands(handsData)
+    return { state: sessionData, ok: supabasePollOk(sessionRes) && handsData !== null }
   }, [gameCode])
 
   const computeScreen = useCallback((gameData: Game, playerId: string | null): Screen => {
@@ -140,17 +145,36 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
     sessionRef.current = next
     return prev != null
   }, [])
-  const applyHandRow = useCallback((row: Record<string, unknown>): boolean => {
-    const next = row as unknown as CrazyEightsPlayerHand
-    setHands((prev) => {
-      const i = prev.findIndex((h) => h.id === next.id)
-      if (i === -1) return [...prev, next].sort((a, b) => a.player_order - b.player_order)
-      const copy = [...prev]
-      copy[i] = next
-      return copy
-    })
-    return true
-  }, [])
+  const applyHandRow = useCallback(
+    (row: Record<string, unknown>): boolean => {
+      const next = row as unknown as CrazyEightsPlayerHand
+      // Once `cards` is revoked from anon, realtime payloads carry no cards at all. Applying
+      // one verbatim to OUR OWN row would blank the hand — and because `isOut` is derived from
+      // an empty hand, it would read as "you are out" mid-game. So: never let a payload shrink
+      // our own hand; re-fetch through the authorized route instead.
+      if (myPlayerId && next.player_id === myPlayerId && !Array.isArray(next.cards)) {
+        void fetchCrazyEightsHands(gameCode, { resumeToken: getPlayerSession(gameCode)?.resumeToken }).then((hands) => {
+          if (hands) setHands(hands)
+        })
+        return true
+      }
+      setHands((prev) => {
+        const i = prev.findIndex((h) => h.id === next.id)
+        // Carry a known count forward when the payload omits it, so an opponent never
+        // momentarily renders as holding zero cards.
+        const merged: CrazyEightsPlayerHand = {
+          ...next,
+          card_count: next.card_count ?? (Array.isArray(next.cards) ? next.cards.length : prev[i]?.card_count),
+        }
+        if (i === -1) return [...prev, merged].sort((a, b) => a.player_order - b.player_order)
+        const copy = [...prev]
+        copy[i] = merged
+        return copy
+      })
+      return true
+    },
+    [gameCode, myPlayerId]
+  )
 
   const connected = useGameTableSync(
     gameCode,
@@ -248,7 +272,7 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
   const handCounts = useMemo(() => {
     const counts: Record<string, number> = {}
     for (const h of hands) {
-      counts[h.player_id] = h.cards?.length ?? 0
+      counts[h.player_id] = h.card_count ?? h.cards?.length ?? 0
     }
     return counts
   }, [hands])

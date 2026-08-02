@@ -111,7 +111,9 @@ export type CrazyEightsStanding = {
 /** Minimal hand shape `crazyEightsPlacementOrder` needs — works for both
  *  `CrazyEightsPlayerHand` rows and the trimmed `{ player_id, cards }` rows the
  *  room-points query selects. */
-type CrazyEightsRankableHand = { player_id: string; cards: CrazyEightsCard[] }
+// Nullable to match CrazyEightsPlayerHand (null == redacted). Ranking only runs where the real
+// array is available; a missing one is treated as empty.
+type CrazyEightsRankableHand = { player_id: string; cards: CrazyEightsCard[] | null }
 
 /**
  * Final placement order (1st → last), the single source of truth for who placed where.

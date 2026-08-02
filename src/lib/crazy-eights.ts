@@ -112,7 +112,10 @@ export type CrazyEightsStanding = {
 /** Minimal hand shape `crazyEightsPlacementOrder` needs — works for both
  *  `CrazyEightsPlayerHand` rows and the trimmed `{ player_id, cards }` rows the
  *  room-points query selects. */
-type CrazyEightsRankableHand = { player_id: string; cards: CrazyEightsCard[] }
+// `cards` is nullable on the client-facing CrazyEightsPlayerHand (null == redacted, see
+// types/index.ts), but ranking only ever runs server-side where the real array is in hand.
+// Accept the nullable shape and treat a missing array as empty so callers don't have to pre-map.
+type CrazyEightsRankableHand = { player_id: string; cards: CrazyEightsCard[] | null }
 
 /**
  * Final placement order (1st → last), the single source of truth for who placed where.

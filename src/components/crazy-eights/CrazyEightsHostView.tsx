@@ -22,6 +22,7 @@ import {
   CRAZY8_MIN_PLAYERS,
 } from '@/lib/crazy-eights'
 import { supabase } from '@/lib/supabase'
+import { fetchCrazyEightsHands } from '@/lib/hands-client'
 import { CRAZY8_SESSION_SELECT, GAME_SELECT, PLAYER_SELECT } from '@/lib/supabase-selects'
 import { appOrigin } from '@/lib/site'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
@@ -65,8 +66,6 @@ import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { CrazyEightsCard, CrazyEightsPrimaryButton } from '@/components/crazy-eights/CrazyEightsChrome'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
 
-const CRAZY8_PLAYER_HANDS_SELECT = 'id,game_id,player_id,cards,player_order,created_at'
-
 type HostTab = 'play' | 'manage'
 
 export function CrazyEightsHostView({ gameCode, hostToken }: { gameCode: string; hostToken: string }) {
@@ -91,19 +90,17 @@ export function CrazyEightsHostView({ gameCode, hostToken }: { gameCode: string;
       supabase.from('games').select(GAME_SELECT).eq('id', gameCode).maybeSingle(),
       supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at'),
       supabase.from('crazy_eights_sessions').select(CRAZY8_SESSION_SELECT).eq('game_id', gameCode).maybeSingle(),
-      supabase
-        .from('crazy_eights_player_hands')
-        .select(CRAZY8_PLAYER_HANDS_SELECT)
-        .eq('game_id', gameCode)
-        .order('player_order'),
+      // Via /api/crazy-eights/hands — the host runs the board and never needs to see anyone's
+      // cards, so every hand comes back as a count (see lib/hand-redaction.ts).
+      fetchCrazyEightsHands(gameCode, { hostToken }),
     ])
-    if (!supabasePollOk(gameRes, plrsRes, sessionRes, handsRes)) return false
+    if (!supabasePollOk(gameRes, plrsRes, sessionRes) || handsRes === null) return false
     setGame(gameRes.data)
     setPlayers(plrsRes.data ?? [])
     setSession(sessionRes.data as CrazyEightsSession | null)
-    setHands((handsRes.data as CrazyEightsPlayerHand[]) ?? [])
+    setHands(handsRes)
     return true
-  }, [gameCode])
+  }, [gameCode, hostToken])
 
   useEffect(() => {
     load()
@@ -131,9 +128,16 @@ export function CrazyEightsHostView({ gameCode, hostToken }: { gameCode: string;
     const next = row as unknown as CrazyEightsPlayerHand
     setHands((prev) => {
       const i = prev.findIndex((h) => h.id === next.id)
-      if (i === -1) return [...prev, next].sort((a, b) => a.player_order - b.player_order)
+      // The host only ever needs counts, but once `cards` is revoked from anon the realtime
+      // payload carries neither cards nor card_count — so carry the known count forward rather
+      // than letting an opponent flicker to zero (which reads as "out").
+      const merged: CrazyEightsPlayerHand = {
+        ...next,
+        card_count: next.card_count ?? (Array.isArray(next.cards) ? next.cards.length : prev[i]?.card_count),
+      }
+      if (i === -1) return [...prev, merged].sort((a, b) => a.player_order - b.player_order)
       const copy = [...prev]
-      copy[i] = next
+      copy[i] = merged
       return copy
     })
     return true
@@ -309,7 +313,7 @@ export function CrazyEightsHostView({ gameCode, hostToken }: { gameCode: string;
   const handCounts = useMemo(() => {
     const counts: Record<string, number> = {}
     for (const h of hands) {
-      counts[h.player_id] = h.cards?.length ?? 0
+      counts[h.player_id] = h.card_count ?? h.cards?.length ?? 0
     }
     return counts
   }, [hands])

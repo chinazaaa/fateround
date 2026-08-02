@@ -741,7 +741,14 @@ export interface CrazyEightsPlayerHand {
   id: string
   game_id: string
   player_id: string
-  cards: CrazyEightsCard[]
+  /**
+   * `null` means REDACTED (another player's hand) — deliberately not `[]`, since an empty
+   * array is meaningful state ("this player is out"). Use `card_count` for anyone but the
+   * local player. See src/lib/hand-redaction.ts.
+   */
+  cards: CrazyEightsCard[] | null
+  /** How many cards the player holds. Public information; survives redaction. */
+  card_count?: number
   player_order: number
 }
 

@@ -741,7 +741,15 @@ export interface CrazyEightsPlayerHand {
   id: string
   game_id: string
   player_id: string
-  cards: CrazyEightsCard[]
+  /**
+   * The player's cards. `null` means REDACTED (someone else's hand) — deliberately not `[]`,
+   * because an empty array is meaningful state ("this player is out") and conflating the two
+   * is what would make a redacted row read as a finished player. Use `card_count` for anyone
+   * other than the local player. Server-side code always holds the real array.
+   */
+  cards: CrazyEightsCard[] | null
+  /** How many cards the player holds. Public information, and survives redaction. */
+  card_count?: number
   player_order: number
   created_at: string
 }
