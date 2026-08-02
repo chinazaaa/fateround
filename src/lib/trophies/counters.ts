@@ -29,9 +29,10 @@ export type CounterAvailability =
   | 'universal'
   /**
    * Emitted only where the server can actually determine it. `games_won` is the live example:
-   * there is no universal winner on this stack — 17 session tables persist `winner_player_id`
-   * and the rest derive placement per game type — so a "win" rule silently never fires for a
-   * game whose outcome the server can't resolve. The admin UI must say so.
+   * there is no universal winner on this stack, so a "win" rule silently never fires for a
+   * game whose outcome the server can't resolve. `./outcome.ts` maps the 16 game types where
+   * it can — call `gameTypesWithWinners()` for the current list rather than hardcoding it, and
+   * warn in the admin UI when a rule targets a game type outside it.
    */
   | 'partial'
   /** Declared for the catalog's benefit, not yet emitted anywhere. */

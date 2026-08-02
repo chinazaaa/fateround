@@ -321,8 +321,18 @@ can be tuned in one place (`TROPHY_POINTS` constant).
 > Consequence: `games_played` is universal, but **`games_won` and anything placement-based are
 > `partial`** — see `availability` in `src/lib/trophies/counters.ts`. A "win 10 games" trophy
 > silently never fires for a game whose outcome the server can't resolve, so the admin UI has
-> to show which measures are live. Widening that coverage is per-game work, and the cheapest
-> big win is a `game_type → session table` map over those 17 `winner_player_id` columns.
+> to show which measures are live.
+>
+> **Partly closed 2026-08-02:** `src/lib/trophies/outcome.ts` now maps the `winner_player_id`
+> session tables, so wins resolve server-side for the 16 seat-based game types (whot, chess,
+> monopoly, uno, ludo, mahjong, scrabble, yahtzee, the draughts family, …). Call
+> `gameTypesWithWinners()` rather than hardcoding the list. `resolveWinners` returns three
+> outcomes on purpose — ids, `[]` for a genuine draw, and `null` for "cannot determine" —
+> because collapsing the last into the second would record "did not win" for every trivia game
+> and make a "never lost" trophy earnable by playing the ones we can't measure.
+>
+> Still unresolved: poll, quiz and party games (trivia, bingo, the poll family). Those need
+> either placement derivation per game or a decision that they simply don't carry win trophies.
 
 **Where it hooks in.** Game completion already flows through
 `src/app/api/games/[code]/finish-game/route.ts`, and the winner is already detected
