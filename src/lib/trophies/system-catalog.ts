@@ -1,6 +1,11 @@
 import type { CatalogTrophy } from './catalog'
+import { CHECKERS, CHECKERS_INTERNATIONAL, CHECKERS_NIGERIA } from './system-trophies/checkers'
 import { CHESS } from './system-trophies/chess'
 import { CRAZY_EIGHTS } from './system-trophies/crazy-eights'
+import { DESCRIBE_IT } from './system-trophies/describe-it'
+import { MAFIA } from './system-trophies/mafia'
+import { MAHJONG } from './system-trophies/mahjong'
+import { SCRABBLE } from './system-trophies/scrabble'
 import { CODEWORDS } from './system-trophies/codewords'
 import { LUDO } from './system-trophies/ludo'
 import { MONOPOLY } from './system-trophies/monopoly'
@@ -36,11 +41,18 @@ function rule(counter: string, gte: number, gameType: string) {
 }
 
 const BY_GAME: Record<string, SystemTrophySpec[]> = {
+  checkers: CHECKERS,
+  checkers_international: CHECKERS_INTERNATIONAL,
+  checkers_nigeria: CHECKERS_NIGERIA,
   chess: CHESS,
   codewords: CODEWORDS,
   crazy_eights: CRAZY_EIGHTS,
+  describe_it: DESCRIBE_IT,
   ludo: LUDO,
+  mafia: MAFIA,
+  mahjong: MAHJONG,
   monopoly: MONOPOLY,
+  scrabble: SCRABBLE,
   trivia: TRIVIA,
   yahtzee: YAHTZEE,
 }

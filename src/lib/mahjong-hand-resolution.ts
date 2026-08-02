@@ -2,7 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { markGameFinished } from '@/lib/game-finish'
 import { mahjongRulesetConfig, parseMahjongRuleset } from '@/lib/mahjong-rulesets'
 import { isTerminalOrHonor, rankedScoreEntries, ruleOptionsForSession } from '@/lib/mahjong-core'
-import { isTenpai, type MahjongWinAnalysis } from '@/lib/mahjong-hand'
+import { isClosedHand, isTenpai, type MahjongWinAnalysis } from '@/lib/mahjong-hand'
 import { buildMahjongScoreSummary, buildRiichiPayments, dealerPlayerId } from '@/lib/mahjong-scoring'
 import { playerName, turnDistanceAfterDiscard } from '@/lib/mahjong-session'
 import type {
@@ -12,10 +12,146 @@ import type {
   MahjongScoreSummary,
   MahjongSeat,
   MahjongSession,
+  MahjongWinType,
   Player,
 } from '@/types'
 
 const MAHJONG_CONFLICT_ERROR = 'Mahjong table changed; please retry'
+
+// ── Per-game (per-MATCH) trophy counters ────────────────────────────────────────────────────
+// `mahjong_player_state.game_counters` (migration 20260812030000) is a scratch blob that must
+// SURVIVE `processMahjongNextHand`'s per-hand wipe, because a Mahjong match is many hands and
+// per-hand melds/winner/score are erased each hand. It is bumped here AT HAND RESOLUTION and in
+// the play routes (src/lib/mahjong.ts), then folded into lifetime trophy counters at match
+// finish by src/lib/trophies/game-facts/mahjong.ts. Everything here is ADDITIVE — it changes no
+// scoring, payment, or hand logic; it only records what already happened. See the migration
+// header for the full field list and the preservation contract.
+
+export type MahjongCounters = Record<string, number>
+
+/** Read the trophy counter blob off a state row (column added by 20260812030000). */
+export function mahjongGameCounters(state: Pick<MahjongPlayerState, 'id'>): MahjongCounters {
+  const raw = (state as unknown as { game_counters?: unknown }).game_counters
+  return raw && typeof raw === 'object' && !Array.isArray(raw) ? { ...(raw as MahjongCounters) } : {}
+}
+
+/** A NEW blob with the given integer deltas added (additive; a missing key counts as 0). */
+export function bumpMahjongCounters(base: MahjongCounters, deltas: MahjongCounters): MahjongCounters {
+  const next: MahjongCounters = { ...base }
+  for (const [key, delta] of Object.entries(deltas)) next[key] = (next[key] ?? 0) + delta
+  return next
+}
+
+/**
+ * The "High Fan" bar, per ruleset — fan/point scales are NOT comparable across rulesets (a
+ * Riichi han, a Hong Kong faan, an MCR point and a Simple fan measure different things), so one
+ * global number would be meaningless. Each is set at roughly the "big hand" tier for its scale:
+ *   fate_round 6 (Simple base 1 + several patterns)   hong_kong 8 (comfortably past the low limit)
+ *   riichi     6 (Haneman and above)                  mcr       40 (a heavyweight MCR hand)
+ */
+function mahjongHighFanBar(ruleset: MahjongRuleset): number {
+  switch (ruleset) {
+    case 'hong_kong':
+      return 8
+    case 'mcr':
+      return 40
+    case 'riichi':
+      return 6
+    default:
+      return 6
+  }
+}
+
+/** The trophy deltas earned by one winning hand, derived from the already-computed win. */
+function mahjongWinCounterDeltas(opts: {
+  winnerState: MahjongPlayerState
+  analysis: MahjongWinAnalysis
+  winType: MahjongWinType
+  ruleset: MahjongRuleset
+  session: MahjongSession
+  fan: number
+}): MahjongCounters {
+  const { winnerState, analysis, winType, ruleset, session, fan } = opts
+  const melds = winnerState.melds ?? []
+  const deltas: MahjongCounters = { mahjong_hands_won: 1 }
+  if (winType === 'self_draw') deltas.mahjong_self_draw_wins = 1
+  if (analysis.pattern === 'seven_pairs') deltas.mahjong_seven_pairs_wins = 1
+  if (analysis.pattern === 'thirteen_orphans') deltas.mahjong_thirteen_orphans_wins = 1
+  const closed = isClosedHand(melds)
+  if (closed) deltas.mahjong_concealed_wins = 1
+  // "Clean hand" — no meld was claimed from an opponent's discard (self concealed/added kongs,
+  // which carry no `from_player_id`, still count as a clean hand).
+  if (melds.every((meld) => !meld.from_player_id)) deltas.mahjong_no_call_wins = 1
+  // Per-ruleset win flag. `mahjong_won_mcr` / `mahjong_won_fate_round` have no single-counter
+  // trophy today; they exist so "win under all four rulesets" can be assembled once the distinct
+  // set is wired (see game-facts/mahjong.ts + the report). Keys resolve to mahjong_won_<ruleset>.
+  deltas[`mahjong_won_${ruleset}`] = 1
+  // Exposed melds in the winning hand — three (Silver) and the fuller four (Gold). Melds a hand
+  // did NOT win with are wiped, so this is scoped to the winning hand rather than the match.
+  const exposedMelds = melds.length
+  if (exposedMelds >= 3) deltas.mahjong_triple_meld = 1
+  if (exposedMelds >= 4) deltas.mahjong_four_melds = 1
+  if (melds.filter((meld) => meld.type === 'kong').length >= 2) deltas.mahjong_double_kong = 1
+  // Grand Slam: a fully concealed standard (four-meld) win — the four-meld sibling of a plain
+  // concealed win, which also fires for seven pairs / thirteen orphans.
+  if (analysis.pattern === 'standard' && closed) deltas.mahjong_grand_slam = 1
+  // Quick Hand: won with ten or fewer tiles on the table (a very fast hand).
+  if ((session.discard_pile?.length ?? 0) <= 10) deltas.mahjong_quick_hand = 1
+  if (fan >= mahjongHighFanBar(ruleset)) deltas.mahjong_high_fan = 1
+  // Heavenly Hand is Riichi-only (Tenhou): the dealer self-draws on the opening hand, before any
+  // discard has hit the table.
+  if (
+    ruleset === 'riichi' &&
+    winType === 'self_draw' &&
+    dealerPlayerId(session) === winnerState.player_id &&
+    (session.discard_pile?.length ?? 0) === 0
+  ) {
+    deltas.mahjong_heavenly_hand = 1
+  }
+  return deltas
+}
+
+/**
+ * Credit one winner's per-match counters for the hand they just won.
+ *
+ * Also advances the consecutive-hand-win streak (Table Sweep): the winner's run grows by one and
+ * the match's best run is remembered. Non-winners' runs are reset to zero when the NEXT hand is
+ * dealt (`processMahjongNextHand`), which reads this hand's result — so a run only survives while
+ * the same player keeps winning, and this credit still lands for the final hand of a match, which
+ * has no next-hand. Best-effort: a failure here must never turn a real win into an error.
+ */
+async function creditMahjongHandWin(
+  supabase: SupabaseClient,
+  opts: {
+    winnerState: MahjongPlayerState
+    analysis: MahjongWinAnalysis
+    winType: MahjongWinType
+    ruleset: MahjongRuleset
+    session: MahjongSession
+    fan: number
+  }
+): Promise<void> {
+  const base = mahjongGameCounters(opts.winnerState)
+  const next = bumpMahjongCounters(base, mahjongWinCounterDeltas(opts))
+  const streak = (base.mahjong_win_streak ?? 0) + 1
+  next.mahjong_win_streak = streak
+  next.mahjong_win_streak_max = Math.max(base.mahjong_win_streak_max ?? 0, streak)
+  await supabase.from('mahjong_player_state').update({ game_counters: next }).eq('id', opts.winnerState.id)
+}
+
+/** Credit every seated player for reaching the end of the wall (Wall Watcher). */
+async function creditMahjongExhaustiveDraw(supabase: SupabaseClient, states: MahjongPlayerState[]): Promise<void> {
+  await Promise.all(
+    states.map((state) =>
+      supabase
+        .from('mahjong_player_state')
+        .update({
+          game_counters: bumpMahjongCounters(mahjongGameCounters(state), { mahjong_exhaustive_draws_seen: 1 }),
+        })
+        .eq('id', state.id)
+    )
+  )
+}
 
 async function persistMahjongSession(
   supabase: SupabaseClient,
@@ -261,7 +397,7 @@ export async function finishWallDraw(
           payments: matchFinish.payments,
           payer_player_id: null,
         } satisfies MahjongScoreSummary)
-  return persistMahjongSession(
+  const sessionWrite = await persistMahjongSession(
     supabase,
     gameId,
     {
@@ -284,6 +420,11 @@ export async function finishWallDraw(
     },
     session?.updated_at
   )
+  // The wall ran out with everyone still in the hand — credit Wall Watcher to all seated players.
+  // (Nagashi Mangan reaches here too and its winners are not credited to the hand-win trophies;
+  // it is a rare special ruling, noted in the report.)
+  if (!sessionWrite.error && states.length > 0) await creditMahjongExhaustiveDraw(supabase, states)
+  return { error: sessionWrite.error }
 }
 
 export async function finishAbortiveDraw(
@@ -421,7 +562,7 @@ export async function finishMahjongWin(
           lines: [...scoreSummary.lines, { label: 'Final match settlement', fan: 0 }],
         }
       : scoreSummary
-  return persistMahjongSession(
+  const sessionWrite = await persistMahjongSession(
     supabase,
     opts.gameId,
     {
@@ -442,6 +583,19 @@ export async function finishMahjongWin(
     },
     opts.session.updated_at
   )
+  // Credit the win's per-match trophy counters only once the win is durably recorded — a lost
+  // CAS race means another request already resolved this hand, and must not double-count.
+  if (!sessionWrite.error) {
+    await creditMahjongHandWin(supabase, {
+      winnerState: opts.winnerState,
+      analysis: opts.analysis,
+      winType: opts.winType,
+      ruleset: opts.ruleset,
+      session: opts.session,
+      fan: scoreSummary.fan,
+    })
+  }
+  return { error: sessionWrite.error }
 }
 
 export async function finishMahjongMultiRon(
@@ -573,7 +727,7 @@ export async function finishMahjongMultiRon(
           lines: [...scoreSummary.lines, { label: 'Final match settlement', fan: 0 }],
         }
       : scoreSummary
-  return persistMahjongSession(
+  const sessionWrite = await persistMahjongSession(
     supabase,
     opts.gameId,
     {
@@ -593,4 +747,21 @@ export async function finishMahjongMultiRon(
     },
     opts.session.updated_at
   )
+  // Each Ron winner is credited from their own hand (discard win), using that winner's own score
+  // summary. Only once the multi-Ron result is durably recorded.
+  if (!sessionWrite.error) {
+    await Promise.all(
+      sortedWinners.map((winner, index) =>
+        creditMahjongHandWin(supabase, {
+          winnerState: winner.state,
+          analysis: winner.analysis,
+          winType: 'discard',
+          ruleset: opts.ruleset,
+          session: opts.session,
+          fan: summaries[index]?.fan ?? 0,
+        })
+      )
+    )
+  }
+  return { error: sessionWrite.error }
 }

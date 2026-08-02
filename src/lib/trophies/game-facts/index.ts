@@ -1,7 +1,12 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { GameType } from '@/types'
+import { checkersFacts } from './checkers'
 import { chessFacts } from './chess'
 import { crazyEightsFacts } from './crazy-eights'
+import { describeItFacts } from './describe-it'
+import { mafiaFacts } from './mafia'
+import { mahjongFacts } from './mahjong'
+import { scrabbleFacts } from './scrabble'
 import { codewordsFacts } from './codewords'
 import { ludoFacts } from './ludo'
 import { monopolyFacts } from './monopoly'
@@ -56,11 +61,18 @@ type FactsBuilder = (
 ) => Promise<Map<string, Record<string, number>>>
 
 const BUILDERS: Partial<Record<GameType, FactsBuilder>> = {
+  checkers: checkersFacts,
+  checkers_international: checkersFacts,
+  checkers_nigeria: checkersFacts,
   chess: chessFacts,
   codewords: codewordsFacts,
   crazy_eights: crazyEightsFacts,
+  describe_it: describeItFacts,
   ludo: ludoFacts,
+  mafia: mafiaFacts,
+  mahjong: mahjongFacts,
   monopoly: monopolyFacts,
+  scrabble: scrabbleFacts,
   trivia: triviaFacts,
   yahtzee: yahtzeeFacts,
 }
