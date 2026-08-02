@@ -287,3 +287,62 @@ describe('awardForFinishedGame', () => {
     expect(result.earned.map((t) => t.id)).toEqual(['ok'])
   })
 })
+
+describe('awardForFinishedGame — a win needs an opponent', () => {
+  it('does not record a win for a solo game', async () => {
+    // Yahtzee and Sudoku allow one player and still write winner_player_id. Counting that as a
+    // win would make every Champion track farmable alone.
+    const db = makeDb({
+      games: [{ id: 'SOLO01', status: 'finished', game_type: 'yahtzee', finished_at: '2026-08-02T12:00:00Z' }],
+      players: [{ id: 'p1', game_id: 'SOLO01', profile_id: 'prof-1', spectator: false }],
+      yahtzee_sessions: [{ game_id: 'SOLO01', winner_player_id: 'p1' }],
+      profiles: [{ id: 'prof-1', current_streak: 0, longest_streak: 0, last_active_date: null, trophy_points: 0 }],
+      trophies: [],
+      player_trophies: [],
+      player_stats: [],
+      awarded_sessions: [],
+      player_distinct: [],
+    })
+
+    await awardForFinishedGame(db.client as never, 'prof-1', 'SOLO01')
+
+    const stats = db.tables.player_stats.find((r) => r.game_type === 'yahtzee')
+    expect(stats?.games_played).toBe(1)
+    expect(stats?.games_won).toBe(0)
+  })
+})
+
+describe('awardForFinishedGame — every round in a room awards', () => {
+  it('awards again after play again reuses the same game code', async () => {
+    // "Play again" UPDATEs the same games row, so a room plays many rounds under one code.
+    // The claim used to be keyed on the code alone, which meant round 2 onwards silently
+    // awarded nothing — a room that played all evening recorded one game.
+    const db = makeDb({
+      games: [{ id: 'ROOM01', status: 'finished', game_type: 'trivia', finished_at: '2026-08-02T12:00:00Z' }],
+      players: [
+        { id: 'p1', game_id: 'ROOM01', profile_id: 'prof-1', spectator: false },
+        { id: 'p2', game_id: 'ROOM01', profile_id: 'prof-2', spectator: false },
+      ],
+      profiles: [{ id: 'prof-1', current_streak: 0, longest_streak: 0, last_active_date: null, trophy_points: 0 }],
+      trophies: [],
+      player_trophies: [],
+      player_stats: [],
+      awarded_sessions: [],
+      player_distinct: [],
+      trivia_answers: [],
+      rounds: [],
+    })
+
+    await awardForFinishedGame(db.client as never, 'prof-1', 'ROOM01')
+    expect(db.tables.player_stats.find((r) => r.game_type === 'trivia')?.games_played).toBe(1)
+
+    // A retry of the SAME round must still be a no-op.
+    await awardForFinishedGame(db.client as never, 'prof-1', 'ROOM01')
+    expect(db.tables.player_stats.find((r) => r.game_type === 'trivia')?.games_played).toBe(1)
+
+    // Play again: same row, new finish.
+    db.tables.games[0].finished_at = '2026-08-02T13:30:00Z'
+    await awardForFinishedGame(db.client as never, 'prof-1', 'ROOM01')
+    expect(db.tables.player_stats.find((r) => r.game_type === 'trivia')?.games_played).toBe(2)
+  })
+})

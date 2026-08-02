@@ -644,6 +644,10 @@ export interface YahtzeePlayerScore {
   player_id: string
   scores: {
     categories: YahtzeeCategoryPoints
+    /** Count of Yahtzee Bonuses earned (each a flat +100). Absent on cards from before the rule. */
+    bonusYahtzees?: number
+    /** Whether a Joker-rule Yahtzee was scored this game. Not derivable from the final card. */
+    jokerUsed?: boolean
   }
   player_order: number
   created_at: string

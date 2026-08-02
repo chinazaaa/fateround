@@ -158,7 +158,10 @@ export async function getCompetitiveStandings(
     return rows
       .map((row) => ({
         playerId: row.player_id as string,
-        total: totalScore((row.scores as { categories: YahtzeeCategoryPoints }).categories),
+        total: totalScore(
+          (row.scores as { categories: YahtzeeCategoryPoints; bonusYahtzees?: number }).categories,
+          (row.scores as { bonusYahtzees?: number }).bonusYahtzees
+        ),
       }))
       .sort((a, b) => b.total - a.total || a.playerId.localeCompare(b.playerId))
       .map((row) => row.playerId)
@@ -280,19 +283,25 @@ export async function getCompetitiveStandings(
   }
 
   if (isCodewordsGame(gameType)) {
-    const { data: board } = await supabase
-      .from('codewords_boards')
-      .select('winner, turn_order')
-      .eq('game_id', gameId)
-      .maybeSingle()
+    // `codewords_boards` has NO `turn_order` column — selecting one made PostgREST reject the
+    // whole query (42703), so `board` was always null and this returned [] for every Codewords
+    // game ever played. That silently cost Codewords both its room-leaderboard points and, once
+    // trophies shipped, every win. The losing side comes from the roles table instead, which is
+    // where the full roster actually lives.
+    const { data: board } = await supabase.from('codewords_boards').select('winner').eq('game_id', gameId).maybeSingle()
     if (!board?.winner) return []
     const { data: roles } = await supabase
       .from('codewords_player_roles')
       .select('player_id, team')
       .eq('game_id', gameId)
-      .eq('team', board.winner)
-    const winners = (roles ?? []).map((r) => r.player_id as string)
-    const rest = ((board.turn_order as string[]) ?? []).filter((id) => !winners.includes(id))
+    // Sorted by player_id so the order is deterministic. The query has no ORDER BY, and placement
+    // points are assigned by index, so an unsorted list would hand the same finish different
+    // points run to run — a real, if small, nondeterminism in a "team share the win" board.
+    const sortedIds = (roles ?? [])
+      .map((r) => ({ id: r.player_id as string, team: r.team }))
+      .sort((a, b) => a.id.localeCompare(b.id))
+    const winners = sortedIds.filter((r) => r.team === board.winner).map((r) => r.id)
+    const rest = sortedIds.filter((r) => r.team !== board.winner).map((r) => r.id)
     return [...winners, ...rest]
   }
 

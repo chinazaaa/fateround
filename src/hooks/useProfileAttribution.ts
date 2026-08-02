@@ -65,8 +65,8 @@ export function useProfileAttribution({ gameCode, status, resumeToken }: Options
         // so the always-mounted prompt can celebrate without every game view knowing about
         // trophies. `earned` only ever lists trophies from THIS pass, so a replay is silent.
         if (cancelled) return
-        const body = (await res.json().catch(() => null)) as { earned?: unknown } | null
-        if (Array.isArray(body?.earned)) emitTrophiesEarned(body.earned)
+        const body = (await res.json().catch(() => null)) as { earned?: unknown; gameType?: string } | null
+        if (Array.isArray(body?.earned)) emitTrophiesEarned(body.earned, body?.gameType)
       } catch {
         // Offline, rate-limited, or the endpoint is unavailable. Nothing to tell the player.
       }

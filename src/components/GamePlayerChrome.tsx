@@ -11,6 +11,8 @@ import { GameChromeSettings } from '@/components/GameChromeSettings'
 import { ProfileChip } from '@/components/profile/ProfileChip'
 import { PostWinPrompt } from '@/components/profile/PostWinPrompt'
 import { GameAttribution } from '@/components/profile/GameAttribution'
+import { TrophiesThisGame } from '@/components/profile/TrophiesThisGame'
+import { InstantTrophyToast } from '@/components/profile/InstantTrophyToast'
 import { useHostPlayerSession } from '@/hooks/useHostPlayerSession'
 import { HostNominationBanner } from '@/components/HostNominationBanner'
 import { setupAudioUnlock } from '@/lib/sounds'
@@ -42,6 +44,15 @@ export function GamePlayerChrome() {
         </div>
       </header>
       <HostNominationBanner />
+
+      {/* Attribution is what links this player row to a profile, and the award pass runs inside
+          it. Without these the player earns NOTHING — no trophies, no games_played, no streak.
+          They must be in BOTH chromes: the host page and the player page share no hook, which is
+          the whole reason this moved out of useGameSession/useGameViewBootstrap. */}
+      <GameAttribution gameCode={code} />
+      <PostWinPrompt />
+      <TrophiesThisGame />
+      <InstantTrophyToast gameCode={code} />
     </>
   )
 }

@@ -13,17 +13,22 @@ export type EarnedTrophy = { id: string; title: string; tier: string; points: nu
 
 const EVENT = 'fateround-trophies-earned'
 
-export function emitTrophiesEarned(trophies: EarnedTrophy[]): void {
+export function emitTrophiesEarned(trophies: EarnedTrophy[], gameType?: string): void {
   if (typeof window === 'undefined' || !trophies.length) return
-  window.dispatchEvent(new CustomEvent(EVENT, { detail: { trophies } }))
+  window.dispatchEvent(new CustomEvent(EVENT, { detail: { trophies, gameType } }))
 }
 
-/** Subscribe. Returns the unsubscribe function. */
-export function onTrophiesEarned(handler: (trophies: EarnedTrophy[]) => void): () => void {
+/**
+ * Subscribe. Returns the unsubscribe function.
+ *
+ * `gameType` may be undefined for an older emitter or a game whose type couldn't be read —
+ * listeners must degrade rather than assume it, since a broken link is worse than no link.
+ */
+export function onTrophiesEarned(handler: (trophies: EarnedTrophy[], gameType?: string) => void): () => void {
   if (typeof window === 'undefined') return () => {}
   const listener = (event: Event) => {
-    const detail = (event as CustomEvent).detail as { trophies?: EarnedTrophy[] } | undefined
-    if (detail?.trophies?.length) handler(detail.trophies)
+    const detail = (event as CustomEvent).detail as { trophies?: EarnedTrophy[]; gameType?: string } | undefined
+    if (detail?.trophies?.length) handler(detail.trophies, detail.gameType)
   }
   window.addEventListener(EVENT, listener)
   return () => window.removeEventListener(EVENT, listener)

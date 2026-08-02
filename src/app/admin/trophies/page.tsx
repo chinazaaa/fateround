@@ -14,6 +14,7 @@ type Trophy = {
   hidden: boolean
   sort_order: number
   is_active: boolean
+  is_system?: boolean
 }
 
 type CounterDef = { key: string; label: string; description: string; scope: string; availability: string }
@@ -52,7 +53,9 @@ export default function AdminTrophiesPage() {
   const [vocabulary, setVocabulary] = useState<Vocabulary>({ counters: [], distinct: [] })
   // How many trophies seeding would add. Drives the button's label so it reads as a real
   // action ("Add 12 missing trophies") or an obvious no-op ("Catalog up to date").
-  const [missingCount, setMissingCount] = useState(0)
+  // `null` = we don't know, because the load failed. Distinct from 0, which means "nothing to
+  // seed" — conflating them is how a broken page claims to be a healthy one.
+  const [missingCount, setMissingCount] = useState<number | null>(0)
   const [games, setGames] = useState<GameOption[]>([])
   const [loading, setLoading] = useState(true)
   const [form, setForm] = useState(EMPTY)
@@ -63,6 +66,9 @@ export default function AdminTrophiesPage() {
   // 280+ rows once every game is seeded, so the catalog is unusable without narrowing.
   const [filterGame, setFilterGame] = useState('all')
   const [filterTier, setFilterTier] = useState('all')
+  // System vs custom is the most useful cut in the list: one half is safe to edit, the other
+  // is code and only shown here so the catalog reads as the whole truth.
+  const [filterSource, setFilterSource] = useState('all')
   const [search, setSearch] = useState('')
   // Raw JSON is the escape hatch, not the default. It turns on by itself when an existing rule
   // is too exotic for the builder — showing a simplified version would let someone save it back
@@ -73,13 +79,24 @@ export default function AdminTrophiesPage() {
     setLoading(true)
     try {
       const res = await fetch('/api/admin/trophies')
-      const json = await res.json()
+      const json = await res.json().catch(() => ({}))
       if (res.ok) {
         setTrophies(json.trophies ?? [])
         setVocabulary(json.vocabulary ?? { counters: [], distinct: [] })
         setMissingCount(Number(json.missingCount) || 0)
         setGames(json.games ?? [])
+        return
       }
+      // A FAILED LOAD MUST NOT READ AS A HEALTHY ONE. This used to be a bare `if (res.ok)` with
+      // no else, so an error left every value at its initial state — empty vocabulary, zero
+      // missing — and the page rendered that as a complete, up-to-date catalog. The button said
+      // "Catalog up to date" when the request had 400'd. `null` means "unknown", which the
+      // button below reports honestly.
+      setMissingCount(null)
+      setMessage(json.error ?? 'Could not load the catalog.')
+    } catch {
+      setMissingCount(null)
+      setMessage('Could not load the catalog.')
     } finally {
       setLoading(false)
     }
@@ -216,9 +233,10 @@ export default function AdminTrophiesPage() {
       (t) =>
         (filterGame === 'all' || t.game_type === filterGame) &&
         (filterTier === 'all' || t.tier === filterTier) &&
+        (filterSource === 'all' || (filterSource === 'system' ? t.is_system : !t.is_system)) &&
         (!q || t.title.toLowerCase().includes(q) || t.id.toLowerCase().includes(q))
     )
-  }, [trophies, filterGame, filterTier, search])
+  }, [trophies, filterGame, filterTier, filterSource, search])
 
   // Only games that actually have trophies — offering all 47 would mostly filter to nothing.
   const gamesWithTrophies = useMemo(() => {
@@ -232,9 +250,10 @@ export default function AdminTrophiesPage() {
         <div>
           <h1 className="text-2xl font-black tracking-tight">Trophies</h1>
           <p className="mt-1 max-w-2xl text-sm text-[var(--muted)]">
-            A trophy is a rule over the counters the server measures, so new ones are added here rather than in code.
-            What you can&apos;t invent is a new <em>measurement</em> — the vocabulary below is what rules can talk
-            about.
+            Two kinds live here. <strong>Custom</strong> trophies are rules you write over the shared counters — add and
+            edit them freely. <strong>System</strong> trophies are written in code against one game&apos;s own
+            measurements; they show here so the list is the whole truth, but they can only be retired, not edited. What
+            you can&apos;t invent is a new <em>measurement</em> — the vocabulary below is what rules can talk about.
           </p>
         </div>
         {/* Kept, but stated as what it does. It is the "a new game was added, give it its
@@ -244,12 +263,14 @@ export default function AdminTrophiesPage() {
           <button
             type="button"
             onClick={seed}
-            disabled={busy || missingCount === 0}
+            disabled={busy || missingCount === null || missingCount === 0}
             className="btn-secondary px-4 py-2 text-sm disabled:opacity-50"
           >
-            {missingCount > 0
-              ? `Add ${missingCount} missing ${missingCount === 1 ? 'trophy' : 'trophies'}`
-              : 'Catalog up to date'}
+            {missingCount === null
+              ? 'Catalog unavailable'
+              : missingCount > 0
+                ? `Add ${missingCount} missing ${missingCount === 1 ? 'trophy' : 'trophies'}`
+                : 'Catalog up to date'}
           </button>
           <p className="mt-1 max-w-[16rem] text-xs text-[var(--muted)]">
             Builds the standard set for any game that has none — press it after adding a new game type.
@@ -552,7 +573,7 @@ export default function AdminTrophiesPage() {
           {visible.length !== trophies.length && ` of ${trophies.length}`})
         </h2>
 
-        <div className="mb-4 grid gap-2 sm:grid-cols-3">
+        <div className="mb-4 grid gap-2 sm:grid-cols-4">
           <input
             className="input-field !py-2 text-sm"
             placeholder="Search title or id…"
@@ -571,6 +592,16 @@ export default function AdminTrophiesPage() {
                 {g.label}
               </option>
             ))}
+          </select>
+          <select
+            className="input-field !py-2 text-sm"
+            value={filterSource}
+            onChange={(e) => setFilterSource(e.target.value)}
+            aria-label="Filter by source"
+          >
+            <option value="all">System &amp; custom</option>
+            <option value="system">System only</option>
+            <option value="custom">Custom only</option>
           </select>
           <select
             className="input-field !py-2 text-sm"
@@ -602,6 +633,14 @@ export default function AdminTrophiesPage() {
                 <div className="min-w-0 flex-1">
                   <p className="font-semibold">
                     {t.title}{' '}
+                    {/* System trophies are code — shown so the catalog is the whole truth, but
+                        their rule only works alongside the facts builder that emits its counter,
+                        so there is no Edit button for them. */}
+                    {t.is_system && (
+                      <span className="rounded-full bg-[var(--surface-inset-bg)] px-1.5 py-0.5 align-middle text-[10px] font-bold uppercase tracking-wide text-[var(--muted)]">
+                        System
+                      </span>
+                    )}{' '}
                     {!t.is_active && <span className="text-xs font-normal text-[var(--muted)]">· retired</span>}
                     {t.hidden && <span className="text-xs font-normal text-[var(--muted)]">· hidden</span>}
                   </p>
@@ -610,9 +649,13 @@ export default function AdminTrophiesPage() {
                     {t.points} pts · {t.description}
                   </p>
                 </div>
-                <button type="button" onClick={() => edit(t)} className="btn-secondary btn-fit px-3 py-1.5 text-xs">
-                  Edit
-                </button>
+                {t.is_system ? (
+                  <span className="text-xs text-[var(--muted)]">Defined in code</span>
+                ) : (
+                  <button type="button" onClick={() => edit(t)} className="btn-secondary btn-fit px-3 py-1.5 text-xs">
+                    Edit
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => retire(t)}

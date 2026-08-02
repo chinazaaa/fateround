@@ -26,6 +26,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { GameType } from '@/types'
 import { GLOBAL_SCOPE, evaluateRaw, type ProgressSnapshot } from './criteria'
+import { unlockedThisRound } from './instant-unlock'
+import { buildGameFacts } from './game-facts'
 import { resolveWinners } from './outcome'
 import { advanceStreak, watDate, watHour, type StreakState } from './streak'
 
@@ -33,6 +35,13 @@ import { advanceStreak, watDate, watHour, type StreakState } from './streak'
 const LEVEL_THRESHOLDS = [0, 50, 150, 350, 700, 1200, 2000, 3200, 5000, 8000]
 
 /** Rooms of this size or larger count toward `big_room_games`. */
+/**
+ * A win needs someone to beat. Solo-capable games (Yahtzee, Sudoku) still record a winner in
+ * their session row, and counting that as a win would make every win-based trophy earnable
+ * without another player in the room.
+ */
+const MIN_PLAYERS_FOR_A_WIN = 2
+
 const BIG_ROOM_PLAYERS = 8
 
 export type AwardedTrophy = { id: string; title: string; tier: string; points: number }
@@ -111,10 +120,26 @@ async function bumpStats(
 }
 
 /**
- * Award for one profile and one finished game.
+ * The idempotency key for one ROUND, not one room.
  *
- * @param sessionId the idempotency key. The game code, so replays of the same finished game
- * are a no-op no matter how many times the client retries attribution.
+ * "Play again" UPDATES the same `games` row — same id, status back to `waiting` — so a room
+ * plays many rounds under one code. Keying the claim on the code alone meant round one claimed
+ * it and every round after hit the conflict and awarded NOTHING: no trophies, no `games_played`,
+ * no streak day. A room that played all evening recorded a single game.
+ *
+ * `finished_at` is what separates rounds. It is rewritten at each finish and stable within a
+ * round, so retried attributions for the same round still collapse to one award — which is the
+ * entire point of the claim.
+ *
+ * Falls back to the bare code when `finished_at` is missing: awarding once is a better failure
+ * than awarding on every retry.
+ */
+function roundKey(gameId: string, finishedAt: string | null): string {
+  return finishedAt ? `${gameId}#${new Date(finishedAt).toISOString()}` : gameId
+}
+
+/**
+ * Award for one profile and one finished round. Idempotent per (profile, round).
  */
 export async function awardForFinishedGame(
   supabase: SupabaseClient,
@@ -123,23 +148,30 @@ export async function awardForFinishedGame(
 ): Promise<AwardResult> {
   const sessionId = gameId.toUpperCase()
 
+  // The claim key needs `finished_at`, so it is read before claiming. A plain select with no
+  // side effects — the claim is still taken before anything is counted.
+  const { data: round } = await supabase.from('games').select('finished_at').eq('id', sessionId).maybeSingle()
+  const claimKey = roundKey(sessionId, (round?.finished_at as string) ?? null)
+
   // ── Claim first ─────────────────────────────────────────────────────────────────────────
   // The PK on (profile_id, session_id) is the lock. Claiming BEFORE doing the work means two
   // concurrent calls can't both award; the loser sees a conflict and stops. The cost is that a
   // crash mid-pass would strand the claim, so the claim is released on any failure below.
   const { error: claimError } = await supabase
     .from('awarded_sessions')
-    .insert({ profile_id: profileId, session_id: sessionId })
+    .insert({ profile_id: profileId, session_id: claimKey })
   if (claimError) return NOOP('already_awarded')
 
   const releaseClaim = async () => {
-    await supabase.from('awarded_sessions').delete().eq('profile_id', profileId).eq('session_id', sessionId)
+    await supabase.from('awarded_sessions').delete().eq('profile_id', profileId).eq('session_id', claimKey)
   }
 
   try {
     const { data: game } = await supabase
       .from('games')
-      .select('id, game_type, status, max_players, finished_at')
+      // timer_seconds / question_source are read for the per-game facts builders (Trivia uses
+      // both). Cheap to carry here; a second round-trip per finish would not be.
+      .select('id, game_type, status, max_players, finished_at, timer_seconds, question_source')
       .eq('id', sessionId)
       .maybeSingle()
     if (!game || game.status !== 'finished') {
@@ -163,12 +195,44 @@ export async function awardForFinishedGame(
     // `null` means the server cannot determine a winner for this game type — which must not be
     // recorded as a loss. Only a definite result moves `games_won`.
     const winners = await resolveWinners(supabase, sessionId, gameType)
-    const won = winners !== null && winners.includes(me.id)
+    // A game you were the only player in is not a game you WON. Yahtzee and Sudoku allow solo
+    // play and still write `winner_player_id`, so without this the whole win vocabulary —
+    // `games_won`, every Champion track, every "win N games" rule — is farmable by playing
+    // alone against nobody. `games_played` still counts: you did play it.
+    const won = seated.length >= MIN_PLAYERS_FOR_A_WIN && winners !== null && winners.includes(me.id)
 
     const finishedAt = game.finished_at ? new Date(game.finished_at as string) : new Date()
     const extras: Record<string, number> = {}
     if (seated.length >= BIG_ROOM_PLAYERS) extras.big_room_games = 1
     if (watHour(finishedAt) < 5) extras.late_night_games = 1
+
+    // Per-game facts. Merged UNDER nothing — the shared extras above are platform-level and a
+    // game builder must not be able to overwrite them, so game facts are namespaced by game
+    // type and collisions are impossible by naming.
+    //
+    // PREFER THE SNAPSHOT taken at finish (`round_facts`). Deriving here would read the game's
+    // own tables, which play-again may already have cleared — that is the whole reason the
+    // snapshot exists. The live path stays as a fallback for rounds that finished before the
+    // snapshot shipped, so nothing needs backfilling; those simply behave as they did before.
+    const { data: factsRow } = await supabase
+      .from('round_facts')
+      .select('facts')
+      .eq('game_id', sessionId)
+      .eq('player_id', me.id)
+      .eq('finished_at', game.finished_at as string)
+      .maybeSingle()
+
+    if (factsRow?.facts) {
+      Object.assign(extras, factsRow.facts as Record<string, number>)
+    } else {
+      const live = await buildGameFacts(supabase, gameType, sessionId, {
+        timerSeconds: (game.timer_seconds as number) ?? null,
+        questionSource: (game.question_source as string) ?? null,
+        seated: seated.map((p) => p.id as string),
+        winners: winners ?? [],
+      })
+      Object.assign(extras, live.get(me.id) ?? {})
+    }
 
     // Per-game-type and global scopes both move, so a rule can ask "10 wins" or "10 Whot wins".
     await bumpStats(supabase, profileId, gameType, { played: 1, won: won ? 1 : 0, counters: extras })
@@ -209,7 +273,13 @@ export async function awardForFinishedGame(
       longest_streak: streak.longest_streak,
     }
 
-    const earned = await grantEligible(supabase, profileId, snapshot)
+    // Trophies unlocked mid-round were recorded against the PLAYER, because no profile existed
+    // at the time. Fold them in now that we know whose they are. They are granted DIRECTLY, not
+    // re-derived: the moment already happened and was verified server-side by the handler that
+    // saw it — re-checking it against finish-time counters would silently drop anything the
+    // counters can't express, which is the whole reason instant unlocks exist.
+    const instant = await unlockedThisRound(supabase, sessionId, me.id)
+    const earned = await grantEligible(supabase, profileId, snapshot, instant)
 
     await supabase
       .from('profiles')
@@ -233,24 +303,34 @@ export async function awardForFinishedGame(
   }
 }
 
-/** Grant every active trophy this snapshot satisfies and the profile doesn't already hold. */
+/**
+ * Grant every active trophy this snapshot satisfies and the profile doesn't already hold.
+ *
+ * `forceIds` are trophies already verified during play (see `instant-unlock.ts`). They bypass
+ * the criteria check but NOT the already-held check — so an instant unlock in round one and
+ * again in round two grants once, exactly as a counter-derived trophy would.
+ */
 async function grantEligible(
   supabase: SupabaseClient,
   profileId: string,
-  snapshot: ProgressSnapshot
+  snapshot: ProgressSnapshot,
+  forceIds: string[] = []
 ): Promise<AwardedTrophy[]> {
   const [{ data: catalog }, { data: alreadyEarned }] = await Promise.all([
     supabase.from('trophies').select('id, title, tier, points, criteria').eq('is_active', true),
     supabase.from('player_trophies').select('trophy_id').eq('profile_id', profileId),
   ])
   const have = new Set((alreadyEarned ?? []).map((r) => r.trophy_id as string))
+  const forced = new Set(forceIds)
 
   const earned: AwardedTrophy[] = []
   for (const trophy of catalog ?? []) {
     const id = trophy.id as string
     if (have.has(id)) continue
-    // evaluateRaw never throws — one malformed catalog row must not stop the rest.
-    if (!evaluateRaw(trophy.criteria, snapshot).met) continue
+    // A mid-round unlock was already verified by the handler that saw it happen, so it does not
+    // have to satisfy the criteria again. evaluateRaw never throws — one malformed catalog row
+    // must not stop the rest.
+    if (!forced.has(id) && !evaluateRaw(trophy.criteria, snapshot).met) continue
     earned.push({
       id,
       title: trophy.title as string,
