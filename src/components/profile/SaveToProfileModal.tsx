@@ -1,10 +1,12 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { Modal } from '@/components/ui/Modal'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { useToast } from '@/components/ui/Toast'
-import { signOutIdentity } from '@/lib/identity'
+import { authHeaders, signOutIdentity } from '@/lib/identity'
+import { rememberName } from '@/lib/identity-local'
 import { requestEmailCode, verifyEmailCode, type EmailCodeFlow } from '@/lib/identity-auth'
 import type { Profile } from '@/hooks/useProfile'
 
@@ -38,6 +40,12 @@ export function SaveToProfileModal({ open, onClose, profile, onChanged }: Props)
   const [step, setStep] = useState<'email' | 'code'>('email')
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
+  const [handle, setHandle] = useState('')
+
+  // Seed the name field whenever the sheet opens on a signed-in profile.
+  useEffect(() => {
+    if (open) setHandle(profile?.handle ?? '')
+  }, [open, profile?.handle])
 
   const signedIn = Boolean(profile && !profile.is_anonymous)
 
@@ -88,6 +96,39 @@ export function SaveToProfileModal({ open, onClose, profile, onChanged }: Props)
     onClose()
   }
 
+  const saveHandle = async () => {
+    const next = handle.trim()
+    if (!next) {
+      setMessage('Enter a name.')
+      return
+    }
+    setBusy(true)
+    setMessage(null)
+    try {
+      const headers = await authHeaders()
+      if (!headers) {
+        setMessage('You are signed out.')
+        return
+      }
+      const res = await fetch('/api/profile/me', {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify({ handle: next }),
+      })
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}))
+        setMessage(json.error ?? 'Could not save your name.')
+        return
+      }
+      // Mirror immediately so join screens pick it up without waiting for a profile refetch.
+      rememberName(next)
+      onChanged()
+      success('Name saved')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const switchUser = async () => {
     const ok = await confirm({
       title: 'Switch account?',
@@ -109,14 +150,44 @@ export function SaveToProfileModal({ open, onClose, profile, onChanged }: Props)
   if (signedIn) {
     return (
       <Modal open={open} onClose={onClose} title="Your profile">
-        <div className="space-y-6">
-          <p className="text-body">
-            Signed in as <strong>{profile?.handle || 'you'}</strong>. Your streak and trophies follow this account onto
-            any device.
-          </p>
-          <button type="button" className="btn-secondary" onClick={() => void switchUser()}>
-            Not you? Switch
-          </button>
+        <div className="space-y-5">
+          <div className="space-y-2">
+            <label className="block text-sm">
+              <span className="text-muted">Your name</span>
+              <input
+                className="input-field mt-1"
+                value={handle}
+                maxLength={50}
+                placeholder="What should we call you?"
+                onChange={(e) => setHandle(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && handle.trim() && !busy) void saveHandle()
+                }}
+              />
+            </label>
+            {/* The everyday payoff for signing in, and the reason this field is the first thing
+                in the sheet: set it once and no join screen asks again, on any device. */}
+            <p className="text-faint text-xs">Used when you join or host a game, so you never type it again.</p>
+            {message ? <p className="text-red-400 text-sm">{message}</p> : null}
+            <button
+              type="button"
+              className="btn-primary"
+              disabled={busy || !handle.trim() || handle.trim() === (profile?.handle ?? '')}
+              onClick={() => void saveHandle()}
+            >
+              {busy ? 'Saving…' : 'Save name'}
+            </button>
+          </div>
+
+          <div className="space-y-3 border-t border-[var(--border)] pt-4">
+            <p className="text-body text-sm">Your streak and trophies follow this account onto any device.</p>
+            <Link href="/profile" className="btn-secondary block text-center" onClick={onClose}>
+              View trophies &amp; streak
+            </Link>
+            <button type="button" className="btn-ghost" onClick={() => void switchUser()}>
+              Not you? Switch
+            </button>
+          </div>
         </div>
       </Modal>
     )
