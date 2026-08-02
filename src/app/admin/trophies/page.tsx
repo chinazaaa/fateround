@@ -382,8 +382,18 @@ export default function AdminTrophiesPage() {
                 <li key={c.key}>
                   <code className="rounded bg-[var(--surface-inset-bg)] px-1.5 py-0.5 text-xs">{c.key}</code>{' '}
                   <span className="text-[var(--muted)]">{c.description}</span>
-                  {c.availability === 'partial' && (
-                    <span className="ml-1 text-xs text-amber-600">· not every game can be scored</span>
+                  {/* The "needs a winner" caveat only makes sense on the SHARED, cross-game win
+                      counters (games_won, podium_finishes). Every game-specific counter is also
+                      `partial` — it just means "not emitted by every game" — but there the note is
+                      noise: a chess counter obviously only applies to chess, and chess has a
+                      winner. So gate it on the counter being platform-wide (no owning game). */}
+                  {c.availability === 'partial' && counterGameOf(c.key) === null && (
+                    <span
+                      className="ml-1 cursor-help text-xs text-amber-600"
+                      title="Recorded only for games that produce a winner or ranking. On a winnerless game — or one whose win-scoring isn't wired up yet — a rule using it can never be earned."
+                    >
+                      · only in games with a winner
+                    </span>
                   )}
                 </li>
               ))}
