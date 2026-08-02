@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import { describeRule, fromCriteria, toCriteria, type Condition, type SimpleRule } from '@/lib/trophies/rule-builder'
 
 type Trophy = {
   id: string
@@ -34,6 +35,11 @@ const EMPTY = {
   criteriaText: '{\n  "type": "counter",\n  "counter": "games_won",\n  "gte": 1\n}',
 }
 
+const DEFAULT_RULE: SimpleRule = {
+  combinator: 'all',
+  conditions: [{ measure: 'games_won', kind: 'counter', gte: 1 }],
+}
+
 const TIER_STYLE: Record<Trophy['tier'], string> = {
   bronze: 'bg-amber-700/15 text-amber-700',
   silver: 'bg-slate-400/15 text-slate-500',
@@ -50,6 +56,11 @@ export default function AdminTrophiesPage() {
   const [editing, setEditing] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [rule, setRule] = useState<SimpleRule>(DEFAULT_RULE)
+  // Raw JSON is the escape hatch, not the default. It turns on by itself when an existing rule
+  // is too exotic for the builder — showing a simplified version would let someone save it back
+  // and quietly lose what it actually said.
+  const [rawMode, setRawMode] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -88,11 +99,19 @@ export default function AdminTrophiesPage() {
     setMessage(null)
     try {
       let criteria: unknown
-      try {
-        criteria = JSON.parse(form.criteriaText)
-      } catch {
-        setMessage('The rule is not valid JSON.')
-        return
+      if (rawMode) {
+        try {
+          criteria = JSON.parse(form.criteriaText)
+        } catch {
+          setMessage('The rule is not valid JSON.')
+          return
+        }
+      } else {
+        if (!rule.conditions.length) {
+          setMessage('Add at least one condition.')
+          return
+        }
+        criteria = toCriteria(rule)
       }
 
       const payload = {
@@ -125,6 +144,8 @@ export default function AdminTrophiesPage() {
       }
       setMessage(editing ? 'Saved.' : 'Trophy created.')
       setForm(EMPTY)
+      setRule(DEFAULT_RULE)
+      setRawMode(false)
       setEditing(null)
       await load()
     } finally {
@@ -164,6 +185,9 @@ export default function AdminTrophiesPage() {
       sort_order: trophy.sort_order,
       criteriaText: JSON.stringify(trophy.criteria, null, 2),
     })
+    const parsed = fromCriteria(trophy.criteria)
+    setRule(parsed ?? DEFAULT_RULE)
+    setRawMode(!parsed)
     setMessage(null)
   }
 
@@ -282,7 +306,9 @@ export default function AdminTrophiesPage() {
           {/* A win rule on a game the server can't score parses, saves and never fires. Saying so
               here is the only place the difference between that and a typo is visible. */}
           {form.game_type &&
-            /"counter"\s*:\s*"(games_won|podium_finishes)"/.test(form.criteriaText) &&
+            (rawMode
+              ? /"counter"\s*:\s*"(games_won|podium_finishes)"/.test(form.criteriaText)
+              : rule.conditions.some((c) => c.measure === 'games_won' || c.measure === 'podium_finishes')) &&
             !games.find((g) => g.id === form.game_type)?.canScoreWins && (
               <span className="mt-1 block text-xs text-amber-600">
                 {games.find((g) => g.id === form.game_type)?.winnerless
@@ -330,15 +356,118 @@ export default function AdminTrophiesPage() {
           </label>
         </div>
 
-        <label className="block text-sm">
-          <span className="text-[var(--muted)]">Rule</span>
-          <textarea
-            className="input-field mt-1 font-mono text-xs"
-            rows={7}
-            value={form.criteriaText}
-            onChange={(e) => setForm({ ...form, criteriaText: e.target.value })}
-          />
-        </label>
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-[var(--muted)]">When is it earned?</span>
+            <button
+              type="button"
+              onClick={() => setRawMode((v) => !v)}
+              className="text-xs font-semibold text-[var(--primary)]"
+            >
+              {rawMode ? 'Use the simple editor' : 'Edit as JSON'}
+            </button>
+          </div>
+
+          {rawMode ? (
+            <>
+              <textarea
+                className="input-field font-mono text-xs"
+                rows={7}
+                value={form.criteriaText}
+                onChange={(e) => setForm({ ...form, criteriaText: e.target.value })}
+              />
+              <p className="text-xs text-[var(--muted)]">Only needed for rules the simple editor can&apos;t express.</p>
+            </>
+          ) : (
+            <div className="space-y-2 rounded-xl border border-[var(--border)] p-3">
+              {rule.conditions.length > 1 && (
+                <label className="block text-xs text-[var(--muted)]">
+                  Player must meet{' '}
+                  <select
+                    className="rounded border border-[var(--border)] bg-transparent px-1 py-0.5 text-xs"
+                    value={rule.combinator}
+                    onChange={(e) => setRule({ ...rule, combinator: e.target.value as 'all' | 'any' })}
+                  >
+                    <option value="all">all</option>
+                    <option value="any">any</option>
+                  </select>{' '}
+                  of these:
+                </label>
+              )}
+
+              {rule.conditions.map((condition, index) => (
+                <div key={index} className="flex flex-wrap items-center gap-2">
+                  <select
+                    className="input-field !mt-0 max-w-[16rem] flex-1"
+                    value={`${condition.kind}:${condition.measure}`}
+                    onChange={(e) => {
+                      const [kind, measure] = e.target.value.split(':')
+                      const next = [...rule.conditions]
+                      next[index] = { ...condition, kind: kind as Condition['kind'], measure }
+                      setRule({ ...rule, conditions: next })
+                    }}
+                  >
+                    <optgroup label="Counters">
+                      {vocabulary.counters.map((c) => (
+                        <option key={c.key} value={`counter:${c.key}`}>
+                          {c.label}
+                        </option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="Distinct sets">
+                      {vocabulary.distinct.map((d) => (
+                        <option key={d.key} value={`distinct:${d.key}`}>
+                          {d.label}
+                        </option>
+                      ))}
+                    </optgroup>
+                  </select>
+                  <span className="text-sm text-[var(--muted)]">of at least</span>
+                  <input
+                    type="number"
+                    min={1}
+                    className="input-field !mt-0 w-24"
+                    value={condition.gte}
+                    onChange={(e) => {
+                      const next = [...rule.conditions]
+                      next[index] = { ...condition, gte: Number(e.target.value) }
+                      setRule({ ...rule, conditions: next })
+                    }}
+                  />
+                  {rule.conditions.length > 1 && (
+                    <button
+                      type="button"
+                      aria-label="Remove condition"
+                      onClick={() => setRule({ ...rule, conditions: rule.conditions.filter((_, i) => i !== index) })}
+                      className="text-sm text-[var(--muted)] hover:text-red-500"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+              ))}
+
+              <button
+                type="button"
+                onClick={() =>
+                  setRule({
+                    ...rule,
+                    conditions: [...rule.conditions, { measure: 'games_played', kind: 'counter', gte: 1 }],
+                  })
+                }
+                className="text-xs font-semibold text-[var(--primary)]"
+              >
+                + Add condition
+              </button>
+
+              {/* The sentence is the point: someone can check what they wrote without knowing
+                  the rule format. "Win at least 25 games" is verifiable at a glance. */}
+              <p className="border-t border-[var(--border)] pt-2 text-sm">
+                {describeRule(rule, games.find((g) => g.id === form.game_type)?.label ?? null)}
+              </p>
+            </div>
+          )}
+        </div>
 
         <label className="flex items-center gap-2 text-sm">
           <input
@@ -359,6 +488,8 @@ export default function AdminTrophiesPage() {
               onClick={() => {
                 setEditing(null)
                 setForm(EMPTY)
+                setRule(DEFAULT_RULE)
+                setRawMode(false)
               }}
               className="btn-secondary btn-fit px-4 py-2 text-sm"
             >
