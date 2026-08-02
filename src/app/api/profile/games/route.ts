@@ -18,13 +18,15 @@ import type { GameType } from '@/types'
  * by admin creating a trophy for it — a Monopoly trophy existing is not a reason to show
  * Monopoly to someone who only plays Ayo.
  *
- * Cross-game trophies are their own entry at the top, since they belong to no single game but
- * are still the biggest slice of the catalog.
+ * There is no cross-game bucket. Trophies are strictly per game: a player wants to know what
+ * they can earn in the game they're playing, and a platform-wide pile is the thing they'd have
+ * to scroll past to get there. `GLOBAL_SCOPE` still exists in `player_stats` because streaks and
+ * days-played are measured across games — it just isn't a row anyone browses.
  */
 export async function GET(req: NextRequest) {
   try {
     const profileId = await getProfileFromRequest(req)
-    if (!profileId) return NextResponse.json({ profile: null, platform: null, games: [] })
+    if (!profileId) return NextResponse.json({ profile: null, games: [] })
 
     const admin = getSupabaseAdmin()
     const [{ data: profile }, { data: stats }, { data: catalog, error }, { data: earnedRows }] = await Promise.all([
@@ -80,18 +82,8 @@ export async function GET(req: NextRequest) {
       // Most-played first: the list should open on what this person actually plays.
       .sort((a, b) => b.gamesPlayed - a.gamesPlayed || a.label.localeCompare(b.label))
 
-    const platformTotals = totalsFor(null)
-    const global = (stats ?? []).find((row) => (row.game_type as string) === GLOBAL_SCOPE)
-
     return NextResponse.json({
       profile: profile ?? null,
-      // Cross-game trophies — shown first and never filtered out by category, because they
-      // aren't a game and hiding them behind a "Party" tab would lose most of the catalog.
-      platform: {
-        ...platformTotals,
-        pct: platformTotals.total ? Math.round((platformTotals.earned / platformTotals.total) * 100) : 0,
-        gamesPlayed: Number(global?.games_played) || 0,
-      },
       games,
     })
   } catch (err) {

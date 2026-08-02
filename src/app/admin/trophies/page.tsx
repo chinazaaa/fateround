@@ -120,8 +120,17 @@ export default function AdminTrophiesPage() {
         criteria = toCriteria(rule)
       }
 
+      // A trophy with no game has nowhere to appear: the profile lists the games you've PLAYED
+      // and opens each one's trophies, so a game-less trophy could be awarded and then never be
+      // seen by the player who earned it. Requiring a game is what keeps the catalog and the
+      // player-facing list the same set.
+      if (!form.game_type) {
+        setMessage('Choose which game this trophy is for.')
+        return
+      }
+
       const payload = {
-        game_type: form.game_type || null,
+        game_type: form.game_type,
         tier: form.tier,
         title: form.title,
         description: form.description,
@@ -201,7 +210,7 @@ export default function AdminTrophiesPage() {
     const q = search.trim().toLowerCase()
     return trophies.filter(
       (t) =>
-        (filterGame === 'all' || (t.game_type ?? '__none__') === filterGame) &&
+        (filterGame === 'all' || t.game_type === filterGame) &&
         (filterTier === 'all' || t.tier === filterTier) &&
         (!q || t.title.toLowerCase().includes(q) || t.id.toLowerCase().includes(q))
     )
@@ -312,7 +321,7 @@ export default function AdminTrophiesPage() {
             value={form.game_type}
             onChange={(e) => setForm({ ...form, game_type: e.target.value })}
           >
-            <option value="">All games</option>
+            <option value="">Choose a game…</option>
             {games.map((g) => (
               <option key={g.id} value={g.id}>
                 {g.label}
@@ -543,7 +552,6 @@ export default function AdminTrophiesPage() {
             aria-label="Filter by game"
           >
             <option value="all">Every game</option>
-            <option value="__none__">No game (cross-game)</option>
             {gamesWithTrophies.map((g) => (
               <option key={g.id} value={g.id}>
                 {g.label}
