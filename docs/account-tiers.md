@@ -49,7 +49,8 @@ would they pay?**
 | **Trophy case + profile customisation** | — | 🔸 basic | ✅ full | ✅ (via +) |
 | **2 / 4 saved templates per game** | — | 2 | 4 | 4 (via +) |
 | **Friends list + rematch** | — | ✅ | ✅ | ✅ |
-| **Join clubs / create clubs (≤ 1 free)** | — | 1 joined | up to 3 | admin: unlimited |
+| **Join clubs** | — | unlimited | unlimited | unlimited |
+| **Create clubs** | — | 1 | up to 3 | admin: unlimited |
 | **Cross-device + claim guest history** | — | ✅ | ✅ | ✅ |
 | **Return notifications** | — | ✅ | ✅ | ✅ |
 | **Room player cap** | 8 | 8 | 25 | 25 (via +) |
@@ -105,7 +106,7 @@ People sign up to **not lose things**, not to play.
   FateRound+ perk; a free account can still see and earn everything, just without the
   showcase polish.
 - **Friends + rematch** — "play again with the same crew."
-- **Clubs** — persistent teams, 1 free (see below).
+- **Clubs** — join unlimited, create 1 free (see below).
 - **Claim guest history** — 90-day window; signup feels like *claiming*, not starting over.
 - **Come-back notifications** — streak nudge, new Daily, seasonal drop live.
 
@@ -142,7 +143,7 @@ any time. Per [`revenue-model.md`](./revenue-model.md).
 - Trophy case and profile customisation
 - Premium themes
 - Extended game clocks (Monopoly add-time, etc.)
-- Join or create up to 3 clubs, larger club sizes
+- Join unlimited clubs · create up to 3, larger club sizes
 - 4 saved templates per game (vs 2 free)
 
 **Explicitly not in launch copy:** "no ads" (no ad system exists to remove), "priority
@@ -220,22 +221,28 @@ Named groups for recurring crews. Moves community off WhatsApp.
 
 | Club capability | Tier |
 |-----------------|------|
-| Join 1 club | Free account |
-| Create 1 club (≤ 20 members) | Free account |
-| Join or create up to 3 clubs | FateRound+ |
+| Join clubs | **Unlimited, every tier** |
+| Create clubs | Free: 1 · FateRound+: up to 3 · Club Pro admin: unlimited |
 | Club branding, private tournaments, up to 50 members, hall of fame | Club Pro (admin-paid) |
 
-> **Numbers reconciled 2026-08-02.** An earlier revision (2026-07-31) changed this to
-> "unlimited clubs *joined*, cap on clubs *owned*" — that decision belonged to the
-> Pro+Cosmetics model and does not carry over automatically now that clubs are a paid-tier
-> lever (`revenue-model.md` §2 explicitly ties club count to Free/FateRound+/Club Pro). If you
-> want to keep "unlimited joins" as a growth mechanic layered under this pricing, say so
-> explicitly — for now this doc matches `revenue-model.md` literally: **Free = 1 club,
-> FateRound+ = 3.** [`clubs-spec.md`](./clubs-spec.md) §11 decision #2 has the same conflict
-> and needs the same call.
+> **Decided 2026-08-02 — join unlimited, cap creation.** Confirms and sharpens the 2026-07-31
+> call: **joining is never capped, on any tier.** Capping joins taxes the wrong person — a
+> free member invited into a friend's club didn't create or consume anything, so blocking them
+> is an arbitrary paywall that degrades the *inviter's* club too (smaller, less active) and
+> kills FateRound's best distribution loop (invites) at the exact moment a new user is most
+> engaged. The real cost — storage, moderation surface, branding slots, admin tooling — sits on
+> **creation**, so that's the lever. Free creation is tightened from 2 → **1**: at 2, a second
+> club is a weak upgrade trigger nobody hits; at 1, wanting a second (family vs. work, say)
+> is a real, self-caused wall the user understands, and 1 → 3 reads as a clear step up where
+> 2 → 3 barely registers. Side effect: unlimited joining also means more free users land inside
+> a Club Pro club, which is what feeds the 50%-off FateRound+ member-upgrade funnel — Free-caps-
+> joining would have shrunk that funnel instead. [`clubs-spec.md`](./clubs-spec.md) §11
+> decision #2 is updated to match — this is now the single number, don't re-open it without a
+> new reason.
 
-**Decision:** club count is a paid-tier lever (Free 1 → FateRound+ 3 → Club Pro branding/50
-members). Crests/branding are bundled into Club Pro, not sold separately.
+**Decision:** join is unlimited on every tier; creation is the paid-tier lever (Free 1 →
+FateRound+ 3 → Club Pro branding/50 members, admin-created). Crests/branding are bundled into
+Club Pro, not sold separately.
 
 ---
 
@@ -246,7 +253,7 @@ Guest plays / hosts / joins tournament
         │
         ├── earns trophy / streak ──▶ Account (claims guest history)
         │                                      │
-        │                                 joins/creates a Club (1 free)
+        │                                 joins unlimited clubs / creates 1 free
         │
         └── hosts a lot / wants custom decks ──▶ FateRound+ (₦1,000/mo)
                                                           │
@@ -259,8 +266,8 @@ Nobody is forced up a tier. Each step is opt-in at the moment of earned value.
 
 ## Decisions (locked)
 
-1. **Free club size cap = 20 members; free club count = 1** (see the reconciliation note in
-   §Clubs above — this reopens the 2026-07-31 "unlimited joins" call, flag if that's wrong).
+1. **Free club roster cap = 20 members. Joining clubs is unlimited on every tier; free club
+   *creation* = 1** (sharpened from 2 on 2026-08-02 — see §Clubs above).
 2. **Hosting is identical for Guest and Account until FateRound+.** Account = identity;
    FateRound+ = capacity + content + persistence.
 3. **Streak = any game played today** (not Daily-only); the streak *archive* is what's gated.

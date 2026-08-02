@@ -85,7 +85,7 @@ crippled version of the product.
 - Voice chat in rooms
 - Daily challenge — today's puzzle and today's leaderboard, always free
 - Browse and use the public custom-content library
-- Join up to 1 club
+- Join unlimited clubs · create 1
 - 2 saved templates per game
 
 > **Copy note:** the player cap is a ceiling, not a per-game rule. Chess (2), Whot (2–6),
@@ -108,7 +108,7 @@ For people who host regularly and want their content and their record to persist
 - **Trophy case and profile customisation** — rare trophies, badges, cosmetic flair
 - **Premium themes**
 - **Extended game clocks** — add time to Monopoly, Whot and other timed games
-- Join or create up to 3 clubs, larger club sizes
+- Join unlimited clubs · create up to 3, larger club sizes
 - 4 saved templates per game
 
 **Custom decks are the hero feature, listed second.** Player count is a weak lead — most

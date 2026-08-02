@@ -15,14 +15,16 @@ cross-session streak system — tracking a player's activity across games and da
 
 ## Monetization
 
-### Accounts + Pro + Cosmetics (Phase 0–1)
-Anonymous-first auth (Supabase), email OTP upgrade, `profiles.is_pro` + `owned_cosmetics`.
-**Pro Host** — one-time ₦1,000 / $2 host utility (add-time, caps, concurrent
-rooms/tournaments). **Cosmetics** — primary revenue: premium themes, skins, frames,
-seasonal drops (₦200–1,200); sold to any account, **not** bundled in Pro. **Trophies +
-streaks** drive account signup (earned, never sold). Payments: Paystack (Africa) + Stripe.
-Full spec: [revenue-model.md](./revenue-model.md) · [account-tiers.md](./account-tiers.md) ·
-[trophies-and-streaks.md](./trophies-and-streaks.md).
+### Accounts + FateRound+ + Club Pro (Phase 0–1)
+Anonymous-first auth (Supabase), email OTP upgrade, `profiles` + `subscriptions` +
+entitlements. **FateRound+** — recurring subscription (₦1,000/mo · ₦7,500/yr): raised room
+caps, unlimited custom decks/CSV, daily-challenge archive, premium packs/themes, trophy case,
+extended clocks. **Club Pro** — ₦3,000/mo per club, paid by the admin, who gets FateRound+
+bundled; members stay free (anti-loophole: never auto-grants the whole club +). **Trophies +
+streaks** drive account signup and are earned, never sold, on every tier. Payments: Paystack
+(Africa) + Stripe (intl). Full spec: [revenue-model.md](./revenue-model.md) ·
+[account-tiers.md](./account-tiers.md) · [trophies-and-streaks.md](./trophies-and-streaks.md) ·
+[pricing-implementation-plan.md](./pricing-implementation-plan.md).
 
 ## Shipped
 

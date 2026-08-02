@@ -15,25 +15,28 @@ Companion to [`account-tiers.md`](./account-tiers.md) (§Clubs — the philosoph
 > valuable once there are trophies (Batch 3) and daily scores (Batch 4) to aggregate into a club
 > leaderboard. Build the thing people join *for* first, then the container.
 
-> **2026-08-02 — pricing model realigned.** [`revenue-model.md`](./revenue-model.md) moved from
-> a one-time Pro+Cosmetics model to a **FateRound+ / Club Pro subscription** model. Under that
-> plan, club *count* is a paid-tier lever (Free 1 → FateRound+ 3 → Club Pro branding/50 members)
-> rather than something monetized via purchasable crests. §1 and §11 below still describe the
-> older "free until sticky, unlimited joins, monetize crests later" framing — **flagged, not yet
-> reconciled with the new numbers.** See [`account-tiers.md`](./account-tiers.md) §Clubs for the
-> literal new numbers; decide whether "unlimited joins / cap owned" survives as a growth layer
-> under the new pricing before building §3's `member_limit` default.
+> **2026-08-02 — pricing model realigned, club-count decision reconfirmed.**
+> [`revenue-model.md`](./revenue-model.md) moved from a one-time Pro+Cosmetics model to a
+> **FateRound+ / Club Pro subscription** model. Club *creation* is now a paid-tier lever
+> (Free 1 → FateRound+ 3 → Club Pro branding/50-member roster, admin-paid), but **joining stays
+> unlimited on every tier — reconfirmed, not reopened.** Free club creation is sharpened from 2
+> to **1** (see [`account-tiers.md`](./account-tiers.md) §Clubs for the full reasoning: capping
+> joins would tax an invited member for someone else's decision, shrink the inviter's own club,
+> and break FateRound's invite-driven growth loop at exactly the moment a new user is most
+> engaged). §1 and §11 below are updated to match.
 
 ---
 
 ## 1. Principles (inherited from `account-tiers.md`)
 
-1. **Free until sticky.** Creating and joining a club is free (account required, not Pro). Monetize
-   crests and seasons *later*, once clubs demonstrably drive retention — never gate the core.
-2. **Account-gated, not Pro-gated.** You need an account (not a guest) to join or create — a club is
-   persistent membership, and a ghost can't hold a spot. This is a moment-of-value signup hook.
-3. **Free roster cap = 20 members.** Larger rosters / seasons / vanity codes are a later Pro-or-Club+
-   lever (out of scope here, noted in §9).
+1. **Joining is free and unlimited on every tier.** Free account required (not a guest), but no
+   cap on how many clubs you can join — see the 2026-08-02 note above for why.
+2. **Account-gated, not FateRound+-gated.** You need an account (not a guest) to join or
+   create — a club is persistent membership, and a ghost can't hold a spot. This is a
+   moment-of-value signup hook.
+3. **Club *creation* is the paid-tier lever, not membership.** Free account: 1 club created.
+   FateRound+: up to 3. Club Pro (admin-paid): unlimited, plus the roster jumps from the
+   free 20-member cap to 50. See §11 decision #2.
 4. **Additive only.** Clubs never make non-club play worse. Every game still works with zero clubs.
 
 ---
@@ -249,7 +252,7 @@ in supported lobbies. Budget design on **both** platforms.
 | # | Decision | Recommended default |
 |---|---|---|
 | 1 | Crest in v1 — emoji+colour vs. image upload | **Emoji + colour.** No upload infra, no moderation surface, ships fast. Image/branded crests become a later cosmetic. |
-| 2 | Can one person be in many clubs? | **Yes, unlimited membership; cap clubs *created/owned* per free account (e.g. 2).** Joining is the sticky action; owning many is the abuse vector. |
+| 2 | Can one person be in many clubs? | **Yes, unlimited membership on every tier — reconfirmed 2026-08-02.** Cap sits on clubs *created* instead: Free 1, FateRound+ 3, Club Pro admin unlimited (sharpened from Free=2 on 2026-08-02, see [`account-tiers.md`](./account-tiers.md) §Clubs). Joining is the sticky, invite-driven action; creation is the abuse vector and the actual cost centre (storage, moderation, branding, admin tooling). |
 | 3 | Club leaderboard metric | **Default to wins within the season; offer a toggle to trophy-points or daily-score.** Wins are the most intuitive "who's best in our crew." |
 | 4 | Guests inside a club room | Guests can *play* in a club's room, but only **accounts count toward the club leaderboard/history** (they're the ones with a persistent identity). Nudge guests to claim. |
 | 5 | Season length | **Owner-defined, suggest monthly.** Auto-recurring monthly seasons are a later nicety. |
