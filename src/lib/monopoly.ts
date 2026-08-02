@@ -2009,8 +2009,14 @@ export async function processMonopolyBuild(
     housesInBank += 1
   } else if (action === 'sell_hotel') {
     if (!canRemoveHotel(spaceIndex, playerId, owners, buildings)) return { error: 'Cannot sell hotel here' }
+    // Steps the site back down to houses, so only the hotel itself is sold: the
+    // houses underneath stay on the board and must not be refunded as well. They
+    // were paid for on the way up to MAX_HOUSES_PER_PROPERTY, and buy_hotel
+    // charges for the hotel step alone, so refunding them here printed money —
+    // the round trip restored the level and both bank counts exactly, leaving
+    // buy_hotel/sell_hotel repeatable for a net gain every cycle.
     buildings[String(spaceIndex)] = MONOPOLY_MAX_HOUSES_PER_PROPERTY
-    cash += Math.floor(houseCost / 2) + Math.floor(houseCost / 2) * MONOPOLY_HOUSES_UNDER_HOTEL
+    cash += Math.floor(houseCost / 2)
     hotelsInBank += 1
     housesInBank -= MONOPOLY_HOUSES_UNDER_HOTEL
   }
