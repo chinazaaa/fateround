@@ -6,6 +6,7 @@ import { parseJsonBody } from '@/lib/parse-body'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { GAME_TYPE_CONFIG, gameTypeLabel } from '@/lib/game-types'
 import { buildCatalogForGame, criteriaUsesLiveMeasures, scopeCriteriaToGame } from '@/lib/trophies/catalog'
+import { buildSystemCatalog } from '@/lib/trophies/system-catalog'
 import { hasWinnerSource, isWinnerlessByDesign } from '@/lib/trophies/outcome'
 import type { GameType } from '@/types'
 import { liveCounters, liveDistinctSets } from '@/lib/trophies/counters'
@@ -66,7 +67,7 @@ export async function GET(req: NextRequest) {
 
   const { data, error } = await getSupabaseAdmin()
     .from('trophies')
-    .select('id, game_type, tier, title, description, criteria, points, hidden, sort_order, is_active')
+    .select('id, game_type, tier, title, description, criteria, points, hidden, sort_order, is_active, is_system')
     .order('sort_order', { ascending: true })
     .order('id', { ascending: true })
 
@@ -77,9 +78,12 @@ export async function GET(req: NextRequest) {
   // reads as something you do once, so it looked redundant the moment the catalog was full.
   // Reporting the number makes it obvious when it has work to do and when it is a no-op.
   const have = new Set((data ?? []).map((t) => t.id as string))
-  const missingCount = (Object.keys(GAME_TYPE_CONFIG) as GameType[])
-    .flatMap((g) => buildCatalogForGame(g, gameTypeLabel(g) ?? g, hasWinnerSource(g)))
-    .filter((t) => !have.has(t.id)).length
+  const missingCount = [
+    ...(Object.keys(GAME_TYPE_CONFIG) as GameType[]).flatMap((g) =>
+      buildCatalogForGame(g, gameTypeLabel(g) ?? g, hasWinnerSource(g))
+    ),
+    ...buildSystemCatalog(),
+  ].filter((t) => !have.has(t.id)).length
 
   return NextResponse.json({
     trophies: data ?? [],
@@ -166,9 +170,16 @@ export async function PUT(req: NextRequest) {
 
     // Every game gets its own list. Win trophies are skipped where the server can't resolve a
     // winner, so no game is seeded with something nobody could ever earn.
-    const full = (Object.keys(GAME_TYPE_CONFIG) as GameType[]).flatMap((gameType) =>
+    // Two catalogs, one table. The generic one is the same eight templates per game; the system
+    // one is code-authored per game against that game's own facts builder. Both must be rows —
+    // `player_trophies.trophy_id` references this table, so a definition that is not a row here
+    // can never be awarded.
+    const generic = (Object.keys(GAME_TYPE_CONFIG) as GameType[]).flatMap((gameType) =>
       buildCatalogForGame(gameType, gameTypeLabel(gameType) ?? gameType, hasWinnerSource(gameType))
     )
+    const system = buildSystemCatalog()
+    const full = [...generic, ...system]
+    const systemIds = new Set(system.map((t) => t.id))
     const missing = full.filter((t) => !have.has(t.id))
 
     if (!missing.length) return NextResponse.json({ seeded: 0, skipped: full.length })
@@ -176,6 +187,7 @@ export async function PUT(req: NextRequest) {
     const { error } = await supabase.from('trophies').insert(
       missing.map((t) => ({
         id: t.id,
+        is_system: systemIds.has(t.id),
         game_type: t.game_type,
         tier: t.tier,
         title: t.title,

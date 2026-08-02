@@ -1,6 +1,9 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { GameType } from '@/types'
+import { chessFacts } from './chess'
+import { codewordsFacts } from './codewords'
 import { triviaFacts } from './trivia'
+import { yahtzeeFacts } from './yahtzee'
 
 /**
  * Per-game facts for the award pass.
@@ -37,7 +40,10 @@ type FactsBuilder = (
 ) => Promise<Record<string, number>>
 
 const BUILDERS: Partial<Record<GameType, FactsBuilder>> = {
+  chess: chessFacts,
+  codewords: codewordsFacts,
   trivia: triviaFacts,
+  yahtzee: yahtzeeFacts,
 }
 
 /** True when this game type emits per-game facts, for the admin UI's benefit. */

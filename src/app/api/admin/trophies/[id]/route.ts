@@ -42,6 +42,21 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const { data: body, error: bodyError } = await parseJsonBody(req, patchSchema)
   if (bodyError) return bodyError
 
+  // A system trophy's rule is only satisfiable because a specific facts builder emits the
+  // counter it names. Editing the row without changing the builder yields a trophy that reads
+  // as zero forever — no error, nothing to debug. Retiring stays allowed (DELETE below):
+  // hiding a trophy is safe, rewriting one is not.
+  const { data: existing } = await getSupabaseAdmin().from('trophies').select('is_system').eq('id', id).maybeSingle()
+  if (existing?.is_system) {
+    return NextResponse.json(
+      {
+        error:
+          'This is a system trophy — its rule lives in code beside the counter it reads. You can retire it here, but it cannot be edited.',
+      },
+      { status: 400 }
+    )
+  }
+
   // `criteria` is only validated when it is actually being changed — an edit that only renames
   // a trophy shouldn't fail because the rule predates a vocabulary change.
   if (body.criteria !== undefined) {
