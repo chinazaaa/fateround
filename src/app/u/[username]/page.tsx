@@ -7,8 +7,11 @@ import { SITE_NAME } from '@/lib/seo'
 
 type Props = { params: Promise<{ username: string }> }
 
-// Public profiles change as people play; re-render periodically rather than baking them at build.
-export const revalidate = 300
+// Render fresh on every request rather than ISR-caching. A profile changes as the player plays,
+// and — the reason this isn't `revalidate` — a request that lands the instant BEFORE a username is
+// claimed (or during a transient DB blip) returns notFound(); with ISR that 404 would be cached and
+// served for the whole window even after the profile exists. force-dynamic never caches a 404.
+export const dynamic = 'force-dynamic'
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { username } = await params
