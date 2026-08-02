@@ -34,6 +34,8 @@ type Detail = {
     tier: string | null
     points: number
     gameType: string | null
+    gameLabel: string | null
+    isActive: boolean
     earnedAt: string
   }[]
 }
@@ -277,8 +279,10 @@ function Stat({ label, value }: { label: string; value: number }) {
 
 function UserDetail({ detail, loading, onClose }: { detail: Detail | null; loading: boolean; onClose: () => void }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4">
-      <div className="glass-card mt-8 w-full max-w-2xl space-y-5 p-6">
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4">
+      {/* Solid, not `glass-card`: this panel sits over a dense table and a translucent one let
+          the rows behind it read straight through the trophy list. */}
+      <div className="mt-8 w-full max-w-2xl space-y-5 rounded-2xl border border-[var(--border)] bg-[var(--card-strong)] p-6 shadow-xl">
         <div className="flex items-start justify-between gap-3">
           <div>
             <h2 className="text-xl font-black">{detail?.user.handle ?? 'User'}</h2>
@@ -336,7 +340,17 @@ function UserDetail({ detail, loading, onClose }: { detail: Detail | null; loadi
                   {detail.trophies.map((t) => (
                     <li key={t.id} className="flex justify-between gap-3 py-1.5">
                       <span>
-                        <span aria-hidden>{(t.tier && TIER_EMOJI[t.tier]) ?? '🏅'}</span> {t.title}
+                        <span aria-hidden>{(t.tier && TIER_EMOJI[t.tier]) ?? '🏅'}</span> {t.title}{' '}
+                        {/* The game is part of the identity, not decoration: titles come from
+                            shared templates, so "First round" exists once per game AND
+                            cross-game. Two rows reading the same is what makes it look like
+                            the same trophy was awarded twice. */}
+                        <span className="text-[var(--muted)]">· {t.gameLabel ?? 'Cross-game'}</span>
+                        {!t.isActive && (
+                          <span className="ml-1 rounded-full bg-[var(--surface-inset-bg)] px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-[var(--muted)]">
+                            Retired
+                          </span>
+                        )}
                       </span>
                       <span className="shrink-0 text-[var(--muted)]">{shortDate(t.earnedAt)}</span>
                     </li>
@@ -347,9 +361,12 @@ function UserDetail({ detail, loading, onClose }: { detail: Detail | null; loadi
 
             {Object.keys(detail.totals.counters).length > 0 && (
               <section>
-                <h3 className="mb-2 text-sm font-bold uppercase tracking-wide">Cross-game counters</h3>
-                {/* What trophy rules are actually measured against — the thing to look at when
-                    someone asks why a trophy hasn't fired. */}
+                <h3 className="mb-1 text-sm font-bold uppercase tracking-wide">Cross-game counters</h3>
+                <p className="mb-2 text-xs text-[var(--muted)]">
+                  The raw measurements trophy rules are written against, totalled across every game (per-game counts are
+                  in Games above). <code>days_played</code> is distinct days with a finished game — the number streak
+                  trophies read. Check here when someone asks why a trophy hasn&apos;t unlocked.
+                </p>
                 <ul className="text-sm text-[var(--muted)]">
                   {Object.entries(detail.totals.counters).map(([key, value]) => (
                     <li key={key} className="flex justify-between py-0.5">

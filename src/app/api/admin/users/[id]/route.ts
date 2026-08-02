@@ -45,7 +45,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     // still lists (as its raw id) instead of dropping the row and under-reporting what they have.
     const trophyIds = (earned ?? []).map((r) => r.trophy_id as string)
     const { data: catalog } = trophyIds.length
-      ? await supabase.from('trophies').select('id, title, tier, points, game_type').in('id', trophyIds)
+      ? await supabase.from('trophies').select('id, title, tier, points, game_type, is_active').in('id', trophyIds)
       : { data: [] as Record<string, unknown>[] }
     const byId = new Map((catalog ?? []).map((t) => [t.id as string, t]))
 
@@ -107,6 +107,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
           tier: (t?.tier as string) ?? null,
           points: Number(t?.points) || 0,
           gameType: (t?.game_type as string) ?? null,
+          gameLabel: t?.game_type ? (gameTypeLabel(t.game_type as string) ?? (t.game_type as string)) : null,
+          // Titles are built from shared templates, so "First round" exists once per game and
+          // once cross-game. Without the game beside it the list reads as a duplicate award.
+          isActive: t ? Boolean(t.is_active) : false,
           earnedAt: r.earned_at,
         }
       }),
