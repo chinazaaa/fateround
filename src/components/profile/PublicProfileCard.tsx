@@ -1,11 +1,5 @@
-'use client'
-
-import { useRef, useState } from 'react'
 import Link from 'next/link'
 import { Avatar } from '@/components/Avatar'
-import { ShareActionButtons } from '@/components/ShareActionButtons'
-import { captureElementAsImage } from '@/lib/capture-element-image'
-import { shareImageBlob, downloadBlobAsFile, shareFilenameStem } from '@/lib/share-image'
 import type { PublicProfileSummary } from '@/lib/profile/public-profile'
 
 const TIER_EMOJI: Record<string, string> = { bronze: '🥉', silver: '🥈', gold: '🥇', platinum: '🏆' }
@@ -22,48 +16,14 @@ function plural(count: number, word: string): string {
 }
 
 /**
- * The public trophy card — the thing a player shares. The captured region (`cardRef`) is exactly
- * what becomes the image; the share/download controls sit outside it so they never appear in the
- * PNG. `captureElementAsImage` appends the fateround.com footer itself, so the card doesn't draw
- * its own domain line.
+ * The public trophy card shown on /u/[username]. Purely presentational — a visitor views it; the
+ * owner shares it from their own /profile dashboard, so this card carries no share/download
+ * controls of its own.
  */
 export function PublicProfileCard({ summary }: { summary: PublicProfileSummary }) {
-  const cardRef = useRef<HTMLDivElement>(null)
-  const [sharing, setSharing] = useState(false)
-  const [downloading, setDownloading] = useState(false)
-  const [copied, setCopied] = useState(false)
-
-  const filename = `${shareFilenameStem(summary.handle)}-fateround.png`
-
-  const run = async (mode: 'share' | 'download') => {
-    if (!cardRef.current) return
-    const setBusy = mode === 'share' ? setSharing : setDownloading
-    setBusy(true)
-    try {
-      const blob = await captureElementAsImage(cardRef.current)
-      if (mode === 'download') downloadBlobAsFile(blob, filename)
-      else await shareImageBlob(blob, filename)
-    } catch {
-      // AbortError (user dismissed the share sheet) and capture failures both no-op quietly.
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const copyLink = async () => {
-    try {
-      const url = `${window.location.origin}/u/${summary.username}`
-      await navigator.clipboard.writeText(url)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1800)
-    } catch {
-      /* clipboard blocked — ignore */
-    }
-  }
-
   return (
-    <div className="mx-auto w-full max-w-sm space-y-3">
-      <div ref={cardRef} className="overflow-hidden rounded-[var(--radius-lg)] border border-[var(--border)]">
+    <div className="mx-auto w-full max-w-sm">
+      <div className="overflow-hidden rounded-[var(--radius-lg)] border border-[var(--border)]">
         {/* Header band */}
         <div
           className="flex flex-col items-center gap-2 px-6 pt-8 pb-6 text-center"
@@ -75,8 +35,8 @@ export function PublicProfileCard({ summary }: { summary: PublicProfileSummary }
             Level {summary.level} · {summary.points.toLocaleString()} points
           </p>
           {summary.currentStreak > 0 && (
-            // whitespace-nowrap: html-to-image can mis-measure width on capture and wrap this short
-            // line across two rows in the downloaded PNG even though it fits on screen.
+            // whitespace-nowrap: keeps the short streak line on one row (it otherwise wraps in some
+            // narrow renders).
             <p className="whitespace-nowrap text-sm font-semibold" style={{ color: 'var(--accent, #f43f5e)' }}>
               🔥 {plural(summary.currentStreak, 'day')} streak
             </p>
@@ -134,20 +94,6 @@ export function PublicProfileCard({ summary }: { summary: PublicProfileSummary }
           </Link>
         </div>
       </div>
-
-      {/* Controls — outside the captured card. */}
-      <ShareActionButtons
-        shareLabel="Share profile"
-        onShare={() => void run('share')}
-        onDownload={() => void run('download')}
-        sharing={sharing}
-        downloading={downloading}
-        downloadLabel="Download card"
-        primary
-      />
-      <button type="button" onClick={() => void copyLink()} className="btn-ghost w-full text-sm">
-        {copied ? 'Link copied ✓' : 'Copy link'}
-      </button>
     </div>
   )
 }

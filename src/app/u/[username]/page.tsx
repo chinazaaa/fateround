@@ -7,8 +7,10 @@ import { SITE_NAME } from '@/lib/seo'
 
 type Props = { params: Promise<{ username: string }> }
 
-// Public profiles change as people play; re-render periodically rather than baking them at build.
-export const revalidate = 300
+// Fresh per request (not ISR): a request that lands the instant BEFORE a username is claimed (or
+// during a transient DB blip) returns notFound(); ISR would cache that 404 and keep serving it even
+// after the profile exists. force-dynamic never caches a 404, and keeps trophy counts current.
+export const dynamic = 'force-dynamic'
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { username } = await params
@@ -35,7 +37,7 @@ export default async function PublicProfilePage({ params }: Props) {
   if (!summary) notFound()
 
   return (
-    <div className="fr-site flex min-h-dvh flex-col items-center px-4 py-10">
+    <div className="fr-site flex min-h-dvh flex-col items-center justify-center px-4 py-10">
       <div className="w-full max-w-sm">
         <PublicProfileCard summary={summary} />
         <p className="text-faint mt-6 text-center text-xs">
