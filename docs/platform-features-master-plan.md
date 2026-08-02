@@ -36,8 +36,16 @@ thing only: a persistent identity per player.** Today the app has no memory of w
 name typed into one game, forgotten when it ends. The fix is defined once, in
 [`trophies-and-streaks.md`](./trophies-and-streaks.md) §2, and reused everywhere:
 
-- **Anonymous-first.** On first play the client calls `supabase.auth.signInAnonymously()`. Every
-  player gets a real `profiles.id` from game one — no sign-up screen, zero friction.
+- **Anonymous-first.** The client calls `supabase.auth.signInAnonymously()` at the **first
+  finished game** — every player who actually plays gets a real `profiles.id` from game one, with
+  no sign-up screen and zero friction.
+  > Superseded 2026-07-31: this used to say "on first play", which read as page load or lobby
+  > join. Anonymous sign-ins are rate-limited to **30/hour per IP**, and a NAT'd classroom or a
+  > 20-person party shares one IP — so spectators, abandoned lobbies and people who merely opened
+  > a link must not consume that budget. Nothing is worth persisting until a game completes
+  > anyway, since trophies and streak days are both awarded on the finish path. See
+  > [`accounts-and-identity-plan.md`](./accounts-and-identity-plan.md) §2.2, which is canonical
+  > for *when* identity is created.
 - **Email + 6-digit code upgrades that same identity in place** (not a magic link — the code stays
   in the playing tab and works cross-device). Login == signup, one door, never labelled "Sign up."
 - **Nothing is ever gated behind login to *play*.** The only nudge is *after* earned value
@@ -380,7 +388,7 @@ All resolved with **recommended defaults** (2026-07-17) — reversible, override
 
 ## What is deliberately NOT in this plan
 
-- **Revenue** (Pro, cosmetics, season drops, Season Pass) — [`revenue-model.md`](./revenue-model.md).
+- **Revenue** (FateRound+, Club Pro, Schools, Corporate — subscription tiers) — [`revenue-model.md`](./revenue-model.md).
   Referenced only where a feature creates a future purchase surface (frames, crests, extra freezes,
   podium art). Build the free/earned layer first; monetize around it later, never on trophies/streaks.
 - **Tournaments** — already shipped; trophies/leaderboards reference them but don't rebuild them.

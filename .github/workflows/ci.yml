@@ -34,6 +34,10 @@ jobs:
             exit 1
           fi
           echo "All migration versions are unique."
+      - name: Security regression gate (no anon-writable policies in new migrations)
+        # Static, deterministic, no DB or secrets needed — so it runs on every PR, unlike
+        # the RLS Boundaries job which needs live credentials. From PR #735 (billmal071).
+        run: node scripts/check-migration-security.mjs
 
   lint:
     name: Lint
@@ -164,6 +168,49 @@ jobs:
           # the migrations-check job, so a non-zero exit here is a genuine problem
           # a human must look at, not something to paper over.
           supabase db push --include-all
+
+  rls-boundaries:
+    name: RLS Boundaries
+    needs: [migrate]
+    # Runs straight after migrations land, against that environment's own Supabase project, and
+    # asserts the rule docs/rls-hardening.md is built on: the publishable anon key can read game
+    # state and write nothing. This is the gate that would have caught the Aug 2026 audit's C1,
+    # C2, H1 and H2 at the commit that introduced each — see
+    # src/lib/rls-boundaries.integration.test.ts.
+    if: github.event_name == 'push' && (github.ref_name == 'dev' || github.ref_name == 'main')
+    runs-on: ubuntu-latest
+    environment: ${{ github.ref_name == 'main' && 'Production' || 'Preview' }}
+    permissions:
+      contents: read
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+      # Fail loudly rather than skipping. A security gate that silently no-ops when a secret is
+      # missing reports green while the boundary is open — which is the exact failure mode this
+      # job exists to catch.
+      - name: Require credentials
+        run: |
+          missing=""
+          [ -z "${NEXT_PUBLIC_SUPABASE_URL:-}" ] && missing="$missing NEXT_PUBLIC_SUPABASE_URL(var)"
+          [ -z "${NEXT_PUBLIC_SUPABASE_ANON_KEY:-}" ] && missing="$missing NEXT_PUBLIC_SUPABASE_ANON_KEY(var)"
+          [ -z "${SUPABASE_SERVICE_ROLE_KEY:-}" ] && missing="$missing SUPABASE_SERVICE_ROLE_KEY(secret)"
+          if [ -n "$missing" ]; then
+            echo "::error::Missing on the ${{ github.ref_name == 'main' && 'Production' || 'Preview' }} environment:$missing"
+            echo "Add them so the RLS boundary check can run. Refusing to pass without checking."
+            exit 1
+          fi
+      - run: pnpm vitest run src/lib/rls-boundaries.integration.test.ts
 
   security:
     name: Security Scan

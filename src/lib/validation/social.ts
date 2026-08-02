@@ -54,7 +54,11 @@ export type CreateConfessionInput = z.infer<typeof createConfessionSchema>
 
 export const createAnonymousMessageSchema = z.object({
   gameId: gameCodeString(),
-  playerId: uuidString('playerId'),
+  // The SENDER's secret, not their public id. Posting used to be authorized by a bare
+  // `playerId`, which anon can read off the roster — so anyone could post into an anonymous
+  // room as any named player. On boards whose whole premise is "who said this", that is
+  // impersonation. The route resolves the author from this token via assertPlayer.
+  resumeToken: z.string().min(4),
   text: z
     .string()
     .transform((s) => stripHtml(s.trim()))

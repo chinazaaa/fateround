@@ -3,6 +3,7 @@
 import { useState, useRef, useMemo, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { getPlayerSession, setPlayerSession, clearPlayerSession } from '@/lib/utils'
+import { getRememberedName, rememberName, subscribeLocalIdentity } from '@/lib/identity-local'
 import { currentTournamentPlayerToken } from '@/lib/tournament-player-token'
 import { parseGameType, isNameOnlyPlayerJoin } from '@/lib/game-types'
 import {
@@ -65,7 +66,12 @@ export function useJoinFlow(deps: JoinFlowDeps) {
     autoJoinAsViewer,
   } = deps
   const toast = useToast()
-  const { displayName: roomDisplayName, joinExtras, resolving: resolvingRoomMember } = useRoomMemberJoin(gameCode)
+  const {
+    displayName: roomDisplayName,
+    joinExtras,
+    resolving: resolvingRoomMember,
+    memberCode: roomMemberCode,
+  } = useRoomMemberJoin(gameCode)
   // Tournament rooms are reached via a ?tournament= link; the player's secret token
   // (saved at tournament join) rides along so the server can seat/reclaim only them.
   const tournamentToken = currentTournamentPlayerToken()
@@ -88,10 +94,17 @@ export function useJoinFlow(deps: JoinFlowDeps) {
   // it in once it's available so the name-based auto-join isn't blocked by an empty
   // field — otherwise the player has to re-open the link for the join to fire.
   const initialNameSyncedRef = useRef(false)
+  // True while `nameInput` holds a name we prefilled from this device's remembered
+  // identity rather than one the player typed or a link supplied. A remembered name
+  // is the weakest source, so anything more specific is allowed to overwrite it —
+  // without this flag the prefill would block a late-resolving tournament name and
+  // the player would auto-join under the wrong one.
+  const nameFromRememberedRef = useRef(false)
   useEffect(() => {
     if (initialNameSyncedRef.current) return
-    if (initialName?.trim() && !nameInput.trim() && !myPlayerId && !editingJoin) {
+    if (initialName?.trim() && (!nameInput.trim() || nameFromRememberedRef.current) && !myPlayerId && !editingJoin) {
       initialNameSyncedRef.current = true
+      nameFromRememberedRef.current = false
       setTimeout(() => setNameInput(initialName), 0)
     }
   }, [initialName, nameInput, myPlayerId, editingJoin])
@@ -105,6 +118,36 @@ export function useJoinFlow(deps: JoinFlowDeps) {
   const joinPlayerGender: PlayerGender =
     isNameOnlyJoin || !joinNeedsGender ? 'both' : playerGenderFromJoin(joinIdentityGender, voteBothGenders)
   const canSubmitJoin = useFreeNameJoin ? nameInput.trim().length > 0 : selectedParticipantId !== null
+
+  // Prefill the name this device used last time, so a returning player doesn't retype
+  // it in every game they ever join (see `docs/accounts-and-identity-plan.md` §5, Slice 1).
+  // Weakest source by design — it only fires into an empty field, and only when no room
+  // or tournament link is supplying a name of its own. Skipped entirely when a room member
+  // code is present because that name resolves asynchronously and must win.
+  const rememberedNamePrefillRef = useRef(false)
+  // A signed-in player's name is written by `useProfile` after its fetch resolves, which is
+  // later than this effect's first run — none of its other deps change when that happens, so
+  // without this it would never look again and the field would stay empty all visit.
+  const [identityTick, setIdentityTick] = useState(0)
+  useEffect(() => subscribeLocalIdentity(() => setIdentityTick((n) => n + 1)), [])
+  useEffect(() => {
+    if (rememberedNamePrefillRef.current) return
+    if (!game || !useFreeNameJoin || view !== 'join') return
+    if (myPlayerId || editingJoin || nameInput.trim()) return
+    if (roomMemberCode || initialName?.trim()) return
+    const remembered = getRememberedName()
+    if (!remembered) return
+    rememberedNamePrefillRef.current = true
+    nameFromRememberedRef.current = true
+    setTimeout(() => setNameInput(remembered), 0)
+  }, [game, useFreeNameJoin, view, myPlayerId, editingJoin, nameInput, roomMemberCode, initialName, identityTick])
+
+  // Once the player edits the field themselves it's their name, not a prefill, so a
+  // late-arriving tournament name must no longer overwrite it.
+  const handleSetNameInput = (value: string) => {
+    nameFromRememberedRef.current = false
+    setNameInput(value)
+  }
 
   const setJoinIdentity = (gender: ParticipantGender) => {
     joinGenderTouchedRef.current = true
@@ -236,6 +279,11 @@ export function useJoinFlow(deps: JoinFlowDeps) {
       })
       const data = await res.json()
       if (data.playerId) {
+        // Remember the name for next time. Uses the name that went in, not `data.playerName`,
+        // because anonymous games hand back a server-generated alias that isn't the player's.
+        // Only free-name modes qualify — a claimed participant name comes from the host's
+        // import list, not from the player telling us who they are.
+        if (useFreeNameJoin) rememberName(resolvedName)
         // GA key event: a player joined a game via code/link (viral conversion).
         // Only a real join (POST) counts — skip name edits (PATCH / isSelfEdit).
         if (!isSelfEdit) trackEvent(GA_EVENTS.joinGame)
@@ -318,6 +366,7 @@ export function useJoinFlow(deps: JoinFlowDeps) {
 
   const handlePlayerRenamed = (name: string) => {
     setMyPlayerName(name)
+    if (useFreeNameJoin) rememberName(name)
     const existing = getPlayerSession(gameCode)
     if (existing)
       setPlayerSession(gameCode, existing.playerId, name, existing.playerGender ?? 'both', existing.resumeToken)
@@ -452,7 +501,7 @@ export function useJoinFlow(deps: JoinFlowDeps) {
     joinPlayerGender,
     namePickerOptions,
     joinNeedsGender,
-    setNameInput,
+    setNameInput: handleSetNameInput,
     setJoinIdentityGender: setJoinIdentity,
     setVoteBothGenders,
     joinGame,

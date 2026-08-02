@@ -475,7 +475,7 @@ export interface YahtzeePlayerScore {
   id: string
   game_id: string
   player_id: string
-  scores: { categories: YahtzeeCategoryPoints }
+  scores: { categories: YahtzeeCategoryPoints; bonusYahtzees?: number; jokerUsed?: boolean }
   player_order: number
 }
 
@@ -777,7 +777,14 @@ export interface WhotPlayerHand {
   id: string
   game_id: string
   player_id: string
-  cards: WhotCard[]
+  /**
+   * `null` means REDACTED (another player's hand) — deliberately not `[]`, since an empty
+   * array is meaningful state ("this player is out"). Use `card_count` for anyone but the
+   * local player. See src/lib/hand-redaction.ts.
+   */
+  cards: WhotCard[] | null
+  /** How many cards the player holds. Public information; survives redaction. */
+  card_count?: number
   player_order: number
 }
 
@@ -794,12 +801,7 @@ export type UnoCardKind = 'number' | 'skip' | 'reverse' | 'draw2' | 'wild' | 'wi
  * type for parity with web's session shape but are not driven by any mobile UI yet.
  */
 export type UnoPhase =
-  | 'playing'
-  | 'choose_color'
-  | 'challenge_window'
-  | 'swap_target'
-  | 'team_leave_decision'
-  | 'finished'
+  'playing' | 'choose_color' | 'challenge_window' | 'swap_target' | 'team_leave_decision' | 'finished'
 
 export interface UnoCard {
   id: string

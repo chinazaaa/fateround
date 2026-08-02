@@ -32,6 +32,22 @@ export const DEFAULT_KEYWORDS = [
   'fateround',
 ]
 
+/**
+ * Serialize a JSON-LD payload for embedding in an inline `<script>` (audit finding M6).
+ *
+ * The output of these builders goes straight into `dangerouslySetInnerHTML`, where the browser
+ * is parsing HTML, not JSON — so a `</script>` inside any string value closes the tag early and
+ * whatever follows is parsed as markup. `JSON.stringify` does not escape `<`, `>` or `&`, so it
+ * cannot be trusted here on its own. Today every value is either static or admin-authored (blog
+ * titles), so this is hardening rather than a live hole — but the escape belongs at the
+ * serializer, not in every caller's head.
+ *
+ * `\uXXXX` escapes stay valid JSON, so consumers parse the identical object.
+ */
+function jsonLd(payload: unknown): string {
+  return JSON.stringify(payload).replace(/</g, '\\u003c').replace(/>/g, '\\u003e').replace(/&/g, '\\u0026')
+}
+
 export function rootMetadata(): Metadata {
   const origin = appOrigin()
 
@@ -181,7 +197,7 @@ export function webApplicationJsonLd(): string {
   const origin = appOrigin()
   const gameNames = GAME_TYPE_OPTIONS.map((type) => gameTypeConfig(type).label)
 
-  return JSON.stringify({
+  return jsonLd({
     '@context': 'https://schema.org',
     '@type': 'WebApplication',
     name: SITE_NAME,
@@ -203,7 +219,7 @@ export function webApplicationJsonLd(): string {
 export function organizationJsonLd(): string {
   const origin = appOrigin()
 
-  return JSON.stringify({
+  return jsonLd({
     '@context': 'https://schema.org',
     '@type': 'Organization',
     name: SITE_NAME,
@@ -215,7 +231,7 @@ export function organizationJsonLd(): string {
 export function websiteJsonLd(): string {
   const origin = appOrigin()
 
-  return JSON.stringify({
+  return jsonLd({
     '@context': 'https://schema.org',
     '@type': 'WebSite',
     name: SITE_NAME,
@@ -229,7 +245,7 @@ export function gameJsonLd(content: GameLandingContent): string {
   const cfg = gameTypeConfig(content.gameType)
   const url = `${appOrigin()}/games/${content.slug}`
 
-  return JSON.stringify({
+  return jsonLd({
     '@context': 'https://schema.org',
     '@type': 'Game',
     name: cfg.label,
@@ -249,7 +265,7 @@ export function gameJsonLd(content: GameLandingContent): string {
 }
 
 export function faqPageJsonLd(faqs: GameLandingFaq[]): string {
-  return JSON.stringify({
+  return jsonLd({
     '@context': 'https://schema.org',
     '@type': 'FAQPage',
     mainEntity: faqs.map((faq) => ({
@@ -280,7 +296,7 @@ export function blogPostingJsonLd(post: {
       : `${origin}${post.coverImageUrl}`
     : `${origin}${OG_IMAGE.url}`
 
-  return JSON.stringify({
+  return jsonLd({
     '@context': 'https://schema.org',
     '@type': 'BlogPosting',
     headline: post.title,
@@ -298,7 +314,7 @@ export function blogPostingJsonLd(post: {
 export function breadcrumbJsonLd(items: { name: string; path: string }[]): string {
   const origin = appOrigin()
 
-  return JSON.stringify({
+  return jsonLd({
     '@context': 'https://schema.org',
     '@type': 'BreadcrumbList',
     itemListElement: items.map((item, i) => ({
@@ -314,7 +330,7 @@ export function breadcrumbJsonLd(items: { name: string; path: string }[]): strin
 export function gamesItemListJsonLd(): string {
   const origin = appOrigin()
 
-  return JSON.stringify({
+  return jsonLd({
     '@context': 'https://schema.org',
     '@type': 'ItemList',
     name: `${SITE_NAME} party games`,
@@ -344,7 +360,7 @@ export function gameHowToJsonLd(content: GameLandingContent): string {
   const cfg = gameTypeConfig(content.gameType)
   const origin = appOrigin()
 
-  return JSON.stringify({
+  return jsonLd({
     '@context': 'https://schema.org',
     '@type': 'HowTo',
     name: `How to play ${cfg.label} online`,

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { FateRoundLogo } from '@/components/FateRoundLogo'
+import { ProfileChip } from '@/components/profile/ProfileChip'
 import { useTheme } from '@/components/ThemeProvider'
 
 type NavItem = { href: string; label: string; icon?: string }
@@ -100,7 +101,7 @@ const NAV: NavItem[] = [
  * Public-site header — logo + desktop nav + a mobile hamburger drawer.
  * Mirrors the Claude Design marketing header (`site-header` / drawer).
  */
-export function MarketingHeader() {
+export function MarketingHeader({ hideBack = false }: { hideBack?: boolean } = {}) {
   const [menu, setMenu] = useState(false)
   const pathname = usePathname()
   const isHome = pathname === '/'
@@ -128,10 +129,12 @@ export function MarketingHeader() {
           <Link href="/updates" className="fr-btn fr-btn--secondary fr-btn--sm">
             What&apos;s new
           </Link>
+          <ProfileChip />
           <ThemeButton />
         </nav>
 
         <div className="fr-mobile-actions">
+          <ProfileChip />
           <ThemeButton />
           <button type="button" className="fr-burger" aria-label="Open menu" onClick={() => setMenu(true)}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round">
@@ -141,7 +144,7 @@ export function MarketingHeader() {
         </div>
       </header>
 
-      {!isHome && <BackBar />}
+      {!isHome && !hideBack && <BackBar />}
 
       {/* Mobile drawer */}
       <div className={`fr-scrim${menu ? ' on' : ''}`} onClick={() => setMenu(false)} aria-hidden />

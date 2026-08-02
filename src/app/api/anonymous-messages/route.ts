@@ -13,6 +13,7 @@ import {
 } from '@/lib/anonymous-messages'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { parseJsonBody } from '@/lib/parse-body'
+import { assertPlayer } from '@/lib/game-admin'
 
 const supabase = getSupabaseAnon()
 
@@ -20,7 +21,7 @@ export async function POST(req: NextRequest) {
   const { data: body, error: bodyError } = await parseJsonBody(req, createAnonymousMessageSchema)
   if (bodyError) return bodyError
 
-  const { gameId, playerId, text, replyToId } = body
+  const { gameId, resumeToken, text, replyToId } = body
   const messageType = body.messageType ?? 'text'
   const mediaUrl = body.mediaUrl ?? null
   const gameCode = gameId.toUpperCase()
@@ -48,14 +49,12 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const { data: player } = await supabase
-    .from('players')
-    .select('id, joined_at')
-    .eq('id', playerId)
-    .eq('game_id', gameCode)
-    .maybeSingle()
-
-  if (!player) return NextResponse.json({ error: 'Player not in this game' }, { status: 403 })
+  // Resolve the author from their secret token, server-side. Never from a client-supplied
+  // playerId: that value is public (anon can read the roster), so trusting it let anyone post
+  // into an anonymous room as any other player.
+  const { player, error: authError, status: authStatus } = await assertPlayer(getSupabaseAdmin(), gameCode, resumeToken)
+  if (!player) return NextResponse.json({ error: authError ?? 'Unauthorized' }, { status: authStatus })
+  const playerId = player.id
 
   const { data: ban } = await supabase
     .from('anonymous_room_bans')
@@ -108,15 +107,18 @@ export async function POST(req: NextRequest) {
     replyToText = parent.text?.trim() ? truncateReplyPreview(parent.text) : '[GIF]'
   }
 
-  const { error } = await supabase.from('anonymous_messages').insert({
-    game_id: gameCode,
-    player_id: playerId,
-    text: text || '',
-    reply_to_id: replyToIdValue,
-    reply_to_text: replyToText,
-    message_type: messageType,
-    media_url: mediaUrl,
-  })
+  // Service role: `anonymous_messages` is write-locked for anon since 20260803140000.
+  const { error } = await getSupabaseAdmin()
+    .from('anonymous_messages')
+    .insert({
+      game_id: gameCode,
+      player_id: playerId,
+      text: text || '',
+      reply_to_id: replyToIdValue,
+      reply_to_text: replyToText,
+      message_type: messageType,
+      media_url: mediaUrl,
+    })
 
   if (error) return NextResponse.json({ error: internalErrorMessage('anonymous-messages', error) }, { status: 500 })
 
@@ -155,7 +157,11 @@ export async function DELETE(req: NextRequest) {
 
   if (!message) return NextResponse.json({ error: 'Message not found' }, { status: 404 })
 
-  const { error } = await supabase.from('anonymous_messages').delete().eq('id', messageId).eq('game_id', gameCode)
+  const { error } = await getSupabaseAdmin()
+    .from('anonymous_messages')
+    .delete()
+    .eq('id', messageId)
+    .eq('game_id', gameCode)
   if (error) return NextResponse.json({ error: internalErrorMessage('anonymous-messages', error) }, { status: 500 })
 
   return NextResponse.json({ success: true })

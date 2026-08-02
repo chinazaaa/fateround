@@ -31,7 +31,16 @@ Companion to `FateRoundPricingPackages.md` (the pricing/packaging draft). That d
 ### 0.1 User accounts / identity
 This is the single biggest prerequisite. There is nothing to attach a subscription to today.
 
-- Stand up **Supabase Auth** (email + OAuth: Google/Apple at minimum for mobile).
+- Stand up **Supabase Auth** — anonymous-first, **email + 6-digit OTP only**. No OAuth in v1.
+  (This line previously said "email + OAuth: Google/Apple at minimum for mobile", which was the
+  only place in the docs asking for OAuth; resolved in favour of OTP-only on 2026-07-31, see
+  [`accounts-and-identity-plan.md`](./accounts-and-identity-plan.md) §2.1. Email OTP needs zero native config and behaves
+  identically on web and Expo. It also keeps us inside **App Store Guideline 4.8 (Login Services)**
+  the easy way: 4.8 only bites once an app uses a *third-party or social* login to set up the
+  primary account, and it explicitly exempts apps that use exclusively their own account system.
+  Our own email OTP is that exemption. Adding Google would trigger 4.8 and oblige us to offer an
+  equivalent privacy-preserving option such as Sign in with Apple. Revisit only if measured
+  signup conversion is bad.)
 - Add a **`profiles` table** keyed on `auth.uid()` (display name, avatar, created_at, plan fields later).
 - **Migrate the anonymous identity model.** Today every gating decision keys off ephemeral per-game/room secret tokens. We need a durable `user_id` that:
   - links a signed-in user to the games/rooms they host and play,
@@ -86,7 +95,38 @@ Most of these features already exist; the work is **adding the gate + the upsell
 Nothing here exists. `rooms` is ephemeral and token-based; clubs are persistent, accounts-backed groups.
 
 - **Data model:** `clubs` (owner_id, name, branding: badge/colors/banner), `club_members` (role: owner/admin/member, joined_at). RLS on `auth.uid()`.
-- **Membership limits by plan:** free = join 1 club; + = up to 3 clubs, larger sizes; Club Pro = up to 50 members. Enforce via entitlements.
+- **Membership limits by plan — [`clubs-spec.md`](./clubs-spec.md) is canonical, not this doc.** Two different axes were
+  being conflated here. The reconciled position (2026-07-31):
+  - **Joining is unlimited on free.** This line used to say "free = join 1 club". `clubs-spec.md`
+    §Decisions Q2 and [`account-tiers.md`](./account-tiers.md) both say unlimited membership instead, with an explicit
+    rationale — *joining is the sticky action; owning many is the abuse vector* — so the cap
+    belongs on clubs **created/owned** (1 per free account), not on clubs joined. Capping the
+    sticky action to protect against the abuse vector was simply aimed at the wrong thing.
+  - **Roster size: 20 on free, 50 on Club Pro.** These never actually conflicted — 20 is the free
+    club's cap ([`clubs-spec.md`](./clubs-spec.md) §3, [`account-tiers.md`](./account-tiers.md)) and 50 is what the paid tier raises it to.
+  - `+ = up to 3 clubs` referred to clubs *owned*, and is consistent once read that way.
+  - **Sharpened 2026-08-02 — free creation 2 → 1, Club Pro admin → unlimited.** At 2, a second
+    club is an upgrade trigger nobody hits; at 1, wanting a second (family vs. work) is a real
+    wall the user caused themselves. [`account-tiers.md`](./account-tiers.md) §Clubs and
+    [`clubs-spec.md`](./clubs-spec.md) §11 decision #2 are the authority; the table below is
+    the enforcement contract and must match them.
+
+  **Exact entitlements to enforce** (all scoped to a *permanent account* — clubs are
+  account-gated, not guest-accessible, per [`clubs-spec.md`](./clubs-spec.md) §2):
+
+  | Entitlement | Free account | Fate Round+ | Club Pro (per club) |
+  |---|---|---|---|
+  | Clubs **joined** | unlimited | unlimited | unlimited |
+  | Clubs **owned/created** | 1 | 3 | unlimited (admin) |
+  | **Roster size** of a club you own | 20 | 20 | 50 |
+
+  Roster size is a property of the *club* (set by its plan), not of the member — a Club Pro club
+  holds 50 members regardless of what tier those members are on.
+
+  > **Decided 2026-07-31 — settled, don't re-open.** "Free = join 1 club" came from the original
+  > pricing draft, so this was a real monetization change rather than a doc tidy-up; it was
+  > reviewed and confirmed in favour of unlimited joining. The pricing draft's club-count
+  > numbers are superseded. Enforce via entitlements: unlimited *joins*, cap clubs *owned*.
 - **Club Pro subscription** billed to the owner/admin ($7.99/mo/club) — a **club-scoped** subscription, not user-scoped (new shape in the billing model).
 - **The anti-loophole rule (called out as critical in the pricing doc):** the flat club fee must **NOT** grant all members FateRound+. Only the paying admin gets + bundled. Members get club-level perks (branding, club tournaments, club leaderboard, trophy-case visibility) only.
 - **The 50%-off member discount** — the fiddliest billing logic in the whole model:

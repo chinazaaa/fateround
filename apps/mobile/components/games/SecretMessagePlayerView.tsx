@@ -131,10 +131,17 @@ export function SecretMessagePlayerView({ gameCode }: { gameCode: string }) {
     setSending(true)
     setError(null)
     try {
-      let playerId = myPlayerId
-      if (!playerId) playerId = await ensureSender()
-      if (!playerId) throw new Error('Could not connect')
-      await postAnonymousMessage(code, playerId, text)
+      if (!myPlayerId) await ensureSender()
+      // The sender's secret, not their public id — the server resolves the author from it. A
+      // pre-token session has an id but no secret; clear it so ensureSender() can mint a fresh
+      // one on the next attempt rather than failing forever (review on PR #736).
+      const session = await getPlayerSession(code)
+      if (!session?.resumeToken) {
+        await clearPlayerSession(code)
+        setMyPlayerId(null)
+        throw new Error('Could not connect — tap send again to rejoin')
+      }
+      await postAnonymousMessage(code, session.resumeToken, text)
       setMessageInput('')
       setSentCount((c) => c + 1)
     } catch (err) {

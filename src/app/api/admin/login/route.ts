@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
     const email = typeof body.email === 'string' ? body.email : ''
     const password = typeof body.password === 'string' ? body.password : ''
 
-    if (!verifyAdminCredentials(email, password)) {
+    if (!(await verifyAdminCredentials(email, password))) {
       return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 })
     }
 

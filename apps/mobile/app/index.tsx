@@ -9,6 +9,7 @@ import { AppButton } from '@/components/ui/AppButton'
 import { KeyboardFormScreen } from '@/components/ui/KeyboardFormScreen'
 import { SurfaceCard } from '@/components/ui/SurfaceCard'
 import { SettingsButton } from '@/components/ui/SettingsSheet'
+import { ProfileChip } from '@/components/profile/ProfileChip'
 import { centeredContent } from '@/constants/layout'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
@@ -75,6 +76,7 @@ export default function HomeScreen() {
       >
         <View style={styles.topBar}>
           <SettingsButton />
+          <ProfileChip />
         </View>
 
         <View style={styles.hero}>
@@ -141,9 +143,7 @@ export default function HomeScreen() {
                 onPress={() => setShowAllRecent((v) => !v)}
                 hitSlop={8}
               >
-                <Text style={styles.recentToggleText}>
-                  {showAllRecent ? 'Show less' : `Show all ${recent.length}`}
-                </Text>
+                <Text style={styles.recentToggleText}>{showAllRecent ? 'Show less' : `Show all ${recent.length}`}</Text>
               </Pressable>
             ) : null}
           </View>
@@ -156,111 +156,111 @@ export default function HomeScreen() {
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
     safe: { flex: 1, backgroundColor: theme.bg },
-  container: {
-    paddingHorizontal: theme.space.lg,
-    paddingTop: theme.space.md,
-    paddingBottom: 40,
-    gap: theme.space.lg,
-    // Center + cap on iPad so the home screen isn't a stretched phone layout.
-    ...centeredContent,
-  },
-  hero: {
-    alignItems: 'center',
-    paddingTop: theme.space.sm,
-    paddingBottom: theme.space.xs,
-    gap: theme.space.xs,
-  },
-  kicker: {
-    color: theme.primaryMuted,
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 2,
-    textTransform: 'uppercase',
-  },
-  tagline: {
-    color: theme.textMuted,
-    fontSize: 16,
-    lineHeight: 24,
-    textAlign: 'center',
-    maxWidth: 280,
-    marginTop: 4,
-  },
-  cardLabel: {
-    color: theme.primaryMuted,
-    fontSize: 12,
-    fontWeight: '800',
-    letterSpacing: 1.2,
-    textTransform: 'uppercase',
-  },
-  codeInput: {
-    backgroundColor: theme.bg,
-    borderColor: theme.border,
-    borderWidth: 1,
-    borderRadius: theme.radius.md,
-    color: theme.text,
-    fontSize: 28,
-    fontWeight: '800',
-    letterSpacing: 6,
-    textAlign: 'center',
-    paddingVertical: 18,
-    paddingHorizontal: theme.space.md,
-  },
-  actions: {
-    gap: theme.space.xs,
-    alignItems: 'stretch',
-  },
-  flexBtn: { width: '100%' },
-  recentBlock: { gap: theme.space.sm },
-  sectionTitle: {
-    color: theme.text,
-    fontSize: 18,
-    fontWeight: '800',
-    marginBottom: 2,
-  },
-  recentRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: theme.surface,
-    borderRadius: theme.radius.md,
-    borderWidth: 1,
-    borderColor: theme.border,
-    padding: theme.space.md,
-    gap: theme.space.md,
-  },
-  recentRowPressed: { opacity: 0.85 },
-  recentBadge: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    backgroundColor: theme.primarySoft,
-    borderWidth: 1,
-    borderColor: theme.borderAccent,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  recentBadgeText: {
-    color: theme.primaryMuted,
-    fontSize: 14,
-    fontWeight: '800',
-  },
-  recentToggle: {
-    alignItems: 'center',
-    paddingVertical: theme.space.sm,
-    marginTop: 2,
-  },
-  recentToggleText: {
-    color: theme.primaryMuted,
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  recentMeta: { flex: 1, gap: 2 },
-  recentCode: {
-    color: theme.text,
-    fontSize: 17,
-    fontWeight: '800',
-    letterSpacing: 2,
-  },
-  recentLabel: { color: theme.textMuted, fontSize: 14 },
-  recentChevron: { color: theme.textFaint, fontSize: 24, fontWeight: '300' },
-  topBar: { alignItems: 'flex-start' },
-})
+    container: {
+      paddingHorizontal: theme.space.lg,
+      paddingTop: theme.space.md,
+      paddingBottom: 40,
+      gap: theme.space.lg,
+      // Center + cap on iPad so the home screen isn't a stretched phone layout.
+      ...centeredContent,
+    },
+    hero: {
+      alignItems: 'center',
+      paddingTop: theme.space.sm,
+      paddingBottom: theme.space.xs,
+      gap: theme.space.xs,
+    },
+    kicker: {
+      color: theme.primaryMuted,
+      fontSize: 11,
+      fontWeight: '800',
+      letterSpacing: 2,
+      textTransform: 'uppercase',
+    },
+    tagline: {
+      color: theme.textMuted,
+      fontSize: 16,
+      lineHeight: 24,
+      textAlign: 'center',
+      maxWidth: 280,
+      marginTop: 4,
+    },
+    cardLabel: {
+      color: theme.primaryMuted,
+      fontSize: 12,
+      fontWeight: '800',
+      letterSpacing: 1.2,
+      textTransform: 'uppercase',
+    },
+    codeInput: {
+      backgroundColor: theme.bg,
+      borderColor: theme.border,
+      borderWidth: 1,
+      borderRadius: theme.radius.md,
+      color: theme.text,
+      fontSize: 28,
+      fontWeight: '800',
+      letterSpacing: 6,
+      textAlign: 'center',
+      paddingVertical: 18,
+      paddingHorizontal: theme.space.md,
+    },
+    actions: {
+      gap: theme.space.xs,
+      alignItems: 'stretch',
+    },
+    flexBtn: { width: '100%' },
+    recentBlock: { gap: theme.space.sm },
+    sectionTitle: {
+      color: theme.text,
+      fontSize: 18,
+      fontWeight: '800',
+      marginBottom: 2,
+    },
+    recentRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: theme.surface,
+      borderRadius: theme.radius.md,
+      borderWidth: 1,
+      borderColor: theme.border,
+      padding: theme.space.md,
+      gap: theme.space.md,
+    },
+    recentRowPressed: { opacity: 0.85 },
+    recentBadge: {
+      width: 44,
+      height: 44,
+      borderRadius: 12,
+      backgroundColor: theme.primarySoft,
+      borderWidth: 1,
+      borderColor: theme.borderAccent,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    recentBadgeText: {
+      color: theme.primaryMuted,
+      fontSize: 14,
+      fontWeight: '800',
+    },
+    recentToggle: {
+      alignItems: 'center',
+      paddingVertical: theme.space.sm,
+      marginTop: 2,
+    },
+    recentToggleText: {
+      color: theme.primaryMuted,
+      fontSize: 14,
+      fontWeight: '700',
+    },
+    recentMeta: { flex: 1, gap: 2 },
+    recentCode: {
+      color: theme.text,
+      fontSize: 17,
+      fontWeight: '800',
+      letterSpacing: 2,
+    },
+    recentLabel: { color: theme.textMuted, fontSize: 14 },
+    recentChevron: { color: theme.textFaint, fontSize: 24, fontWeight: '300' },
+    topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  })

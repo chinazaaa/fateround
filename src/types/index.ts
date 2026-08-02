@@ -191,7 +191,19 @@ export interface CodewordsBoard {
   id: string
   game_id: string
   words: string[]
-  key: CodewordsCellType[]
+  /**
+   * Word → team assignment. SECRET while the game is live: only the host and the two
+   * spymasters receive the real array from /api/codewords/board. Everyone else gets a MASKED
+   * copy — the true type at revealed indices, `null` at unrevealed ones — which is all an
+   * operative's UI needs (see audit finding H2). Server code always holds the full key.
+   */
+  key: (CodewordsCellType | null)[]
+  /**
+   * How many cells belong to each type. Not secret (the split is fixed by the ruleset and is
+   * already on screen), but it can't be derived from a masked key — so the API sends it
+   * explicitly for the scoreboard.
+   */
+  key_totals?: Partial<Record<CodewordsCellType, number>>
   starting_team: CodewordsTeam
   revealed_indices: number[]
   current_turn: CodewordsTeam
@@ -632,6 +644,10 @@ export interface YahtzeePlayerScore {
   player_id: string
   scores: {
     categories: YahtzeeCategoryPoints
+    /** Count of Yahtzee Bonuses earned (each a flat +100). Absent on cards from before the rule. */
+    bonusYahtzees?: number
+    /** Whether a Joker-rule Yahtzee was scored this game. Not derivable from the final card. */
+    jokerUsed?: boolean
   }
   player_order: number
   created_at: string
@@ -673,7 +689,15 @@ export interface WhotPlayerHand {
   id: string
   game_id: string
   player_id: string
-  cards: WhotCard[]
+  /**
+   * The player's cards. `null` means REDACTED (someone else's hand) — deliberately not `[]`,
+   * because an empty array is meaningful state ("this player is out") and conflating the two
+   * is what would make a redacted row read as a finished player. Use `card_count` for anyone
+   * other than the local player. Server-side code always holds the real array.
+   */
+  cards: WhotCard[] | null
+  /** How many cards the player holds. Public information, and survives redaction. */
+  card_count?: number
   player_order: number
   created_at: string
 }
@@ -1236,8 +1260,30 @@ export interface AyoSession {
   is_draw: boolean
   status_message: string | null
   turn_deadline_at: string | null
+  /** Per-game trophy accumulators (migration 20260812040000). See src/lib/trophies/game-facts/ayo.ts. */
+  a_stats?: AyoStats
+  b_stats?: AyoStats
   created_at: string
   updated_at: string
+}
+
+/**
+ * One seat's per-game trophy accumulator, kept on the `ayo_sessions` row. All keys optional,
+ * absent == 0. Reset each game by `initializeAyoGame`. See migration 20260812040000.
+ */
+export interface AyoStats {
+  /** This seat's completed moves this game. */
+  moves?: number
+  /** Of those, how many captured a house (completed exactly four). */
+  capturing_moves?: number
+  /** 0/1 — did this seat's MOST RECENT move capture (for the final-move win trophy). */
+  last_capture?: number
+  /** Bitmask of local houses (0–5) this seat has sowed from; 63 == all six. */
+  sown_mask?: number
+  /** Most seeds moved in a single move, relay laps included (a full lap == 12). */
+  max_sown?: number
+  /** Largest (opponent captured − this seat captured) seen after any move. */
+  worst_deficit?: number
 }
 
 export type DescribeItPhase = 'turn' | 'break' | 'finished'

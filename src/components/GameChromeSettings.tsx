@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { GearIcon } from '@/components/rooms/icons'
+import { TrophiesForThisGameLink } from '@/components/profile/TrophiesForThisGameLink'
 import { HostLobbySettingsSheet } from '@/components/host/HostLobbySettingsSheet'
 import { TransferHostControl } from '@/components/TransferHostControl'
 import { WhatsAppChannelLink } from '@/components/WhatsAppChannelLink'
@@ -93,6 +94,9 @@ export function GameChromeSettings({
           {gameSettings}
           {role === 'host' ? <TransferHostControl triggerClassName={rowClass} /> : null}
           {gameCode && resumeToken ? <RotatePlayerCodeButton gameCode={gameCode} className={rotateRowClass} /> : null}
+          {/* Straight to this game's trophies, pre-filtered. Finding "Whot" in a list of every
+              game you've played is the kind of small friction that stops people looking at all. */}
+          <TrophiesForThisGameLink gameCode={gameCode} className={rowClass} />
           <WhatsAppChannelLink className="w-full justify-center" />
         </GameSettingsCloseProvider>
       </HostLobbySettingsSheet>

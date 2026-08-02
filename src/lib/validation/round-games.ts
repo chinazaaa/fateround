@@ -238,6 +238,8 @@ export type NpatCallerApproveInput = z.infer<typeof npatCallerApproveSchema>
 
 export const npatAdvanceSchema = z.object({
   gameId: gameCodeString(),
+  // force is DERIVED from a verified host token in the route, never trusted from the client.
+  hostToken: z.string().min(1).optional(),
   force: z.boolean().optional(),
 })
 

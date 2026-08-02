@@ -1,3 +1,5 @@
+import { timingSafeEqual } from '@/lib/secret-compare'
+
 const COOKIE_NAME = 'admin_session'
 const SESSION_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000
 
@@ -64,7 +66,7 @@ export async function verifyAdminSessionToken(token: string | undefined | null):
 
   try {
     const expected = await hmacSign(encoded, getSecret())
-    if (expected !== signature) return null
+    if (!(await timingSafeEqual(expected, signature))) return null
 
     const payload = JSON.parse(new TextDecoder().decode(fromBase64Url(encoded))) as SessionPayload
     if (!payload.email || typeof payload.exp !== 'number') return null
@@ -79,9 +81,13 @@ export async function verifyAdminSessionToken(token: string | undefined | null):
   }
 }
 
-export function verifyAdminCredentials(email: string, password: string): boolean {
+export async function verifyAdminCredentials(email: string, password: string): Promise<boolean> {
   const allowedEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase()
   const allowedPassword = process.env.ADMIN_PASSWORD
   if (!allowedEmail || !allowedPassword) return false
-  return email.trim().toLowerCase() === allowedEmail && password === allowedPassword
+  // Compare BOTH in constant time, and evaluate both regardless of the first result, so the
+  // response time doesn't reveal whether the email was the one that matched.
+  const emailOk = await timingSafeEqual(email.trim().toLowerCase(), allowedEmail)
+  const passwordOk = await timingSafeEqual(password, allowedPassword)
+  return emailOk && passwordOk
 }

@@ -235,12 +235,7 @@ export default function HostPage() {
         {/* Floating "Join voice" pill for the host. Skipped for games with the
             header voice rail (Whot) so they don't get two voice controls. */}
         {hostToken && !gameHasHeaderVoice(game.game_type) && (
-          <AudioChat
-            roomCode={gameCode}
-            playerName={hostName}
-            identity={hostIdentity}
-            auth={{ kind: 'host', token: hostToken }}
-          />
+          <AudioChat roomCode={gameCode} playerName={hostName} auth={{ kind: 'host', token: hostToken }} />
         )}
         {/* Floating DJ panel — persists across lobby + active play for every game type. */}
         {/* <HostMusicControl gameCode={gameCode} hostToken={hostToken} /> */}
