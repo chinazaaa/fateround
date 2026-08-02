@@ -209,8 +209,12 @@ describe.skipIf(!hasCreds)('RLS boundaries (live)', () => {
     // "Denied", "empty" and "not found" look identical from the outside, so score on the error
     // code: a successful read of zero rows is a FAILURE here, not a pass.
     expect(error, `${table} is readable by the anon key`).not.toBeNull()
+    // 42501 = the role lacks the privilege. PGRST205 = PostgREST won't expose the table to this
+    // role at all, which is the same denial one layer out. PGRST106 ("schema not configured") is
+    // deliberately NOT accepted: it signals a misconfigured request, and treating it as denial is
+    // how a broken probe scores green against an open boundary.
     expect(
-      ['42501', 'PGRST205', 'PGRST106'],
+      ['42501', 'PGRST205'],
       `${table} failed for an unexpected reason (${error?.code}) — investigate rather than assume denied`
     ).toContain(error?.code)
     expect(data, `${table} returned rows to the anon key`).toBeNull()

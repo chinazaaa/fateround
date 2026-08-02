@@ -92,7 +92,13 @@ create index if not exists idx_player_distinct_lookup on player_distinct (profil
 -- Trophies a profile has earned.
 create table if not exists player_trophies (
   profile_id uuid not null references profiles(id) on delete cascade,
-  trophy_id  text not null references trophies(id) on delete cascade,
+  -- RESTRICT, deliberately, while `profile_id` cascades. Deleting a person should take their
+  -- award records with them; deleting a CATALOG ROW must never erase what other people earned.
+  -- Cascade here would also silently desync `profiles.trophy_points` / `trophy_level`, which
+  -- are cached aggregates this migration has no trigger to recompute — so an admin tidying up
+  -- the catalog would leave every affected player's level wrong with no error anywhere.
+  -- Retire a trophy with `is_active = false` instead; that is what the flag is for.
+  trophy_id  text not null references trophies(id) on delete restrict,
   earned_at  timestamptz not null default now(),
   primary key (profile_id, trophy_id)
 );
@@ -128,6 +134,10 @@ begin
     -- Belt to the default-privileges braces. Also drops SELECT: nothing reads these directly,
     -- and "no grant" is a stronger statement than "a policy denies it".
     execute format('revoke all on public.%I from anon, authenticated', t);
+    -- Privileges in Postgres are CUMULATIVE: a role holds what it was granted directly, plus
+    -- what it inherits, plus anything granted to PUBLIC. Revoking from anon/authenticated
+    -- alone therefore proves nothing — a PUBLIC grant would still reach them. Revoke that too.
+    execute format('revoke all on public.%I from public', t);
     -- TRUNCATE is not subject to RLS, so no policy above could stop it. TRIGGER and REFERENCES
     -- are equally never issued by the data API. Default grants hand out all three.
     execute format('revoke truncate, trigger, references on public.%I from anon, authenticated', t);
