@@ -74,6 +74,9 @@ export default function AdminTrophiesPage() {
   // is too exotic for the builder — showing a simplified version would let someone save it back
   // and quietly lose what it actually said.
   const [rawMode, setRawMode] = useState(false)
+  // The vocabulary reference is a lookup, not a step — collapsed by default so it stays out of
+  // the way of the editor. Controlled so the chevron can reflect the state reliably.
+  const [vocabOpen, setVocabOpen] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -244,61 +247,170 @@ export default function AdminTrophiesPage() {
     return games.filter((g) => present.has(g.id))
   }, [trophies, games])
 
+  // The counter vocabulary is 270+ rows once every game is seeded, most of them belonging to one
+  // game. There's no game field on a counter, so ownership is read off the key prefix: a
+  // game-specific counter starts with `<gameId>_` (with `c8_` the one alias — Crazy Eights emits
+  // that prefix). The handful with no game prefix are platform-wide and relevant to every game.
+  const [vocabGame, setVocabGame] = useState('all')
+  const counterGameOf = useCallback(
+    (key: string): string | null => {
+      let best: string | null = null
+      for (const g of games) {
+        if (key.startsWith(g.id + '_') && (!best || g.id.length > best.length)) best = g.id
+      }
+      if (!best && key.startsWith('c8_') && games.some((g) => g.id === 'crazy_eights')) best = 'crazy_eights'
+      return best
+    },
+    [games]
+  )
+  // Only games that actually own a counter, so the dropdown doesn't list games with nothing to show.
+  const vocabGames = useMemo(() => {
+    const owners = new Set(vocabulary.counters.map((c) => counterGameOf(c.key)).filter(Boolean) as string[])
+    return games.filter((g) => owners.has(g.id))
+  }, [vocabulary.counters, games, counterGameOf])
+  // When a game is picked, show its counters PLUS the platform-wide ones (still relevant to a rule
+  // for that game); "all" shows everything.
+  const shownCounters = useMemo(() => {
+    if (vocabGame === 'all') return vocabulary.counters
+    return vocabulary.counters.filter((c) => {
+      const owner = counterGameOf(c.key)
+      return owner === null || owner === vocabGame
+    })
+  }, [vocabulary.counters, vocabGame, counterGameOf])
+
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-black tracking-tight">Trophies</h1>
-          <p className="mt-1 max-w-2xl text-sm text-[var(--muted)]">
-            Two kinds live here. <strong>Custom</strong> trophies are rules you write over the shared counters — add and
-            edit them freely. <strong>System</strong> trophies are written in code against one game&apos;s own
-            measurements; they show here so the list is the whole truth, but they can only be retired, not edited. What
-            you can&apos;t invent is a new <em>measurement</em> — the vocabulary below is what rules can talk about.
-          </p>
+      <div className="glass-card p-5">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0">
+            <h1 className="text-2xl font-black tracking-tight">Trophies</h1>
+            <p className="mt-1 max-w-xl text-sm text-[var(--muted)]">
+              Trophies are rules over a fixed vocabulary of measurements. You can compose rules freely — what you
+              can&apos;t do is invent a new <em>measurement</em>.
+            </p>
+          </div>
+          {/* The seed action, anchored top-right. It's the "a new game was added, give it its
+              trophies" action — not a launch step — so it reads as an obvious no-op when nothing
+              is missing, and only carries a caption when there's actually something to do. */}
+          <div className="flex shrink-0 flex-col items-end gap-1.5">
+            <button
+              type="button"
+              onClick={seed}
+              disabled={busy || missingCount === null || missingCount === 0}
+              className={`px-4 py-2 text-sm disabled:opacity-60 ${
+                missingCount && missingCount > 0 ? 'btn-primary' : 'btn-secondary'
+              }`}
+            >
+              {missingCount === null
+                ? 'Catalog unavailable'
+                : missingCount > 0
+                  ? `Add ${missingCount} missing ${missingCount === 1 ? 'trophy' : 'trophies'}`
+                  : '✓ Catalog up to date'}
+            </button>
+            {missingCount !== 0 && (
+              <p className="max-w-[15rem] text-right text-xs text-[var(--muted)]">
+                {missingCount === null
+                  ? 'Reload the page to try again.'
+                  : 'Seeds the standard set for any newly-added game type.'}
+              </p>
+            )}
+          </div>
         </div>
-        {/* Kept, but stated as what it does. It is the "a new game was added, give it its
-            trophies" action — not a launch step — so when nothing is missing it says so rather
-            than sitting there looking like something you forgot to press. */}
-        <div className="text-right">
-          <button
-            type="button"
-            onClick={seed}
-            disabled={busy || missingCount === null || missingCount === 0}
-            className="btn-secondary px-4 py-2 text-sm disabled:opacity-50"
-          >
-            {missingCount === null
-              ? 'Catalog unavailable'
-              : missingCount > 0
-                ? `Add ${missingCount} missing ${missingCount === 1 ? 'trophy' : 'trophies'}`
-                : 'Catalog up to date'}
-          </button>
-          <p className="mt-1 max-w-[16rem] text-xs text-[var(--muted)]">
-            Builds the standard set for any game that has none — press it after adding a new game type.
-          </p>
+
+        {/* The two kinds of trophy, as scannable tags rather than a paragraph. */}
+        <div className="mt-4 flex flex-wrap gap-2">
+          <span className="inline-flex items-center gap-2 rounded-full bg-[var(--surface-inset-bg)] px-3 py-1 text-xs">
+            <span className="h-1.5 w-1.5 rounded-full bg-[var(--primary)]" />
+            <span className="font-semibold">Custom</span>
+            <span className="text-[var(--muted)]">you write and edit these freely</span>
+          </span>
+          <span className="inline-flex items-center gap-2 rounded-full bg-[var(--surface-inset-bg)] px-3 py-1 text-xs">
+            <span className="h-1.5 w-1.5 rounded-full bg-[var(--muted)]" />
+            <span className="font-semibold">System</span>
+            <span className="text-[var(--muted)]">defined in code · shown here but retire-only</span>
+          </span>
         </div>
       </div>
 
       {message && <p className="glass-card px-4 py-3 text-sm">{message}</p>}
 
-      {/* The vocabulary is shown next to the editor on purpose. A rule referencing a counter
-          that doesn't exist reads as zero — the trophy is simply never earned, with no error
-          anywhere — so guessing a name is indistinguishable from a typo. */}
-      <div className="glass-card p-5">
-        <h2 className="text-sm font-bold uppercase tracking-wide">What rules can measure</h2>
+      {/* The vocabulary is a REFERENCE, not a step — every measure already appears in the rule
+          editor's dropdown, labelled. It's kept here because a rule naming a counter that doesn't
+          exist reads as zero (the trophy is simply never earned, with no error anywhere), so
+          being able to check a name is what separates a typo from a real measure. But it grows
+          with every game, so it's collapsed by default and out of the way until wanted. */}
+      <details open={vocabOpen} onToggle={(e) => setVocabOpen(e.currentTarget.open)} className="glass-card p-5">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
+          <span className="flex items-center gap-2 text-sm font-bold uppercase tracking-wide">
+            <span className={`inline-block text-[var(--muted)] transition-transform ${vocabOpen ? 'rotate-90' : ''}`}>
+              ›
+            </span>
+            What rules can measure
+          </span>
+          <span className="text-xs font-normal normal-case text-[var(--muted)]">
+            {vocabulary.counters.length} counter{vocabulary.counters.length === 1 ? '' : 's'} ·{' '}
+            {vocabulary.distinct.length} distinct set{vocabulary.distinct.length === 1 ? '' : 's'}
+          </span>
+        </summary>
+        <p className="mt-2 text-xs text-[var(--muted)]">
+          The measurements rules are built from. You can compose these freely, but you can&apos;t invent a new one — a
+          rule naming anything not listed here is never earned.
+        </p>
         <div className="mt-3 grid gap-4 sm:grid-cols-2">
           <div>
-            <p className="text-faint mb-2 text-xs uppercase tracking-wide">Counters</p>
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <p className="text-faint text-xs uppercase tracking-wide">Counters</p>
+              {/* Most counters belong to one game, so narrow to a game to keep this short. The
+                  platform-wide counters stay visible under any game, since a rule for that game
+                  can still use them. */}
+              <select
+                className="input-field !mt-0 !w-auto !py-1 text-xs"
+                value={vocabGame}
+                onChange={(e) => setVocabGame(e.target.value)}
+                aria-label="Filter counters by game"
+              >
+                <option value="all">All games ({vocabulary.counters.length})</option>
+                {vocabGames.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.label}
+                  </option>
+                ))}
+              </select>
+            </div>
             <ul className="space-y-1.5 text-sm">
-              {vocabulary.counters.map((c) => (
+              {shownCounters.map((c) => (
                 <li key={c.key}>
                   <code className="rounded bg-[var(--surface-inset-bg)] px-1.5 py-0.5 text-xs">{c.key}</code>{' '}
                   <span className="text-[var(--muted)]">{c.description}</span>
-                  {c.availability === 'partial' && (
-                    <span className="ml-1 text-xs text-amber-600">· not every game can be scored</span>
+                  {/* The "needs a winner" caveat only makes sense on the SHARED, cross-game win
+                      counters (games_won, podium_finishes). Every game-specific counter is also
+                      `partial` — it just means "not emitted by every game" — but there the note is
+                      noise: a chess counter obviously only applies to chess, and chess has a
+                      winner. So gate it on the counter being platform-wide (no owning game). */}
+                  {c.availability === 'partial' && counterGameOf(c.key) === null && (
+                    <span
+                      className="ml-1 cursor-help text-xs text-amber-600"
+                      title="Recorded only for games that produce a winner or ranking. On a winnerless game — or one whose win-scoring isn't wired up yet — a rule using it can never be earned."
+                    >
+                      · only in games with a winner
+                    </span>
                   )}
                 </li>
               ))}
             </ul>
+            {vocabGame !== 'all' && (
+              <p className="mt-2 text-xs text-[var(--muted)]">
+                Showing {vocabGames.find((g) => g.id === vocabGame)?.label ?? vocabGame} counters plus the platform-wide
+                ones.{' '}
+                <button
+                  type="button"
+                  onClick={() => setVocabGame('all')}
+                  className="font-semibold text-[var(--primary)]"
+                >
+                  Show all
+                </button>
+              </p>
+            )}
           </div>
           <div>
             <p className="text-faint mb-2 text-xs uppercase tracking-wide">Distinct sets</p>
@@ -312,7 +424,7 @@ export default function AdminTrophiesPage() {
             </ul>
           </div>
         </div>
-      </div>
+      </details>
 
       <div className="glass-card space-y-3 p-5">
         <h2 className="text-sm font-bold uppercase tracking-wide">{editing ? `Edit ${editing}` : 'New trophy'}</h2>

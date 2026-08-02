@@ -4089,16 +4089,6 @@ function CreateGameInner() {
             ) : isAyo ? (
               <SettingsGroup title="Ayo room">
                 <p className="text-faint text-sm">Exactly 2 players — the host can join as one of them.</p>
-                <Field label="Rules">
-                  <select
-                    value={ayoVariant}
-                    onChange={(e) => setAyoVariant(e.target.value as AyoVariant)}
-                    className="input-field w-full"
-                  >
-                    <option value="traditional">Traditional — complete fours to win houses, multi-round match</option>
-                    <option value="oware">Oware — capture 2s and 3s with linkage, seed scoring</option>
-                  </select>
-                </Field>
                 <Field label="Time per player">
                   <select
                     value={settings.timer_seconds}
@@ -4114,9 +4104,11 @@ function CreateGameInner() {
                 </Field>
                 <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="ayo" />
                 <p className="text-faint text-sm leading-relaxed">
-                  {ayoVariant === 'traditional'
-                    ? 'Traditional Ayo Olopon — sow anti-clockwise and complete fours on your own houses to win them. If you complete a four on your opponent’s house with your last seed, you win it; if you still have seeds left to sow, they win it instead. Most houses wins the round; each round win takes one of their houses. Play until all opponent houses are gone. Winner is Ọta; three straight round wins makes an Ọta champion.'
-                    : 'Oware rules — sow anti-clockwise (skip the house you picked up), capture 2s and 3s with linkage, and feed your opponent when their row is empty. Most captured seeds wins the deal; the winner is Ọta.'}
+                  Traditional Ayo Olopon — sow anti-clockwise, relaying whenever your last seed lands in a non-empty
+                  house. When your last seed completes exactly four in any house — yours or your opponent’s — you win
+                  it. Once only eight seeds remain, the player who captures the first four takes the last four and the
+                  game ends. Most houses wins — if houses are equal, the most seeds captured breaks the tie. The winner
+                  is Ọta.
                 </p>
               </SettingsGroup>
             ) : isScrabble ? (

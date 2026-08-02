@@ -14,8 +14,11 @@ export const AYO_TOTAL_SEEDS = 48
 
 export const AYO_DEFAULT_VARIANT: AyoVariant = 'traditional'
 
-export function parseAyoVariant(raw: unknown): AyoVariant {
-  return raw === 'oware' ? 'oware' : 'traditional'
+export function parseAyoVariant(_raw: unknown): AyoVariant {
+  // Oware is temporarily disabled — every Ayo game is Traditional. This is the single
+  // chokepoint the server routes rules through, so it also normalises any legacy
+  // 'oware' rows. To restore Oware: return raw === 'oware' ? 'oware' : 'traditional'.
+  return 'traditional'
 }
 
 export type AyoBoardConfig = {
@@ -189,22 +192,6 @@ export function captureOwareFromLanding(
   return { pits: next, capture }
 }
 
-/** Traditional: completing four (3 + last seed) wins the house — owner depends on pit side and seeds left. */
-export function resolveTraditionalHouseWin(
-  landingPit: number,
-  moverSide: AyoSide,
-  seedsRemaining: number
-): { winnerSide: AyoSide; turnEnds: boolean } {
-  const landingSide = sideOfPit(landingPit)
-  if (landingSide === moverSide) {
-    return { winnerSide: moverSide, turnEnds: true }
-  }
-  if (seedsRemaining > 0) {
-    return { winnerSide: landingSide, turnEnds: false }
-  }
-  return { winnerSide: moverSide, turnEnds: true }
-}
-
 /** Clears a pit that completed four and returns captured seed count. */
 export function captureTraditionalFromLanding(
   pits: number[],
@@ -272,6 +259,12 @@ function runTraditionalSow(
   let housesB = 0
   let landingPit = pitIndex
 
+  // Relay sowing continues laps until a lap's last seed lands in an empty house
+  // or completes a capture. In a pathological full board it could fail to reach
+  // a stop, so bound the total seeds moved to guarantee the move terminates.
+  let guard = 0
+  const guardMax = AYO_TOTAL_SEEDS * AYO_PIT_COUNT * 4
+
   while (seeds > 0) {
     current = nextActivePit(current, config)
     const before = next[current]
@@ -291,39 +284,38 @@ function runTraditionalSow(
       })
     }
 
-    if (after === 4 && before === 3) {
-      const { winnerSide, turnEnds } = resolveTraditionalHouseWin(current, moverSide, seeds)
-      next[current] = 0
-      capture += 4
-      if (winnerSide === 'a') housesA += 1
-      else housesB += 1
-      if (recordSteps) {
-        steps.push({
-          type: 'house_win',
-          pitIndex: current,
-          winnerSide,
-          turnEnds,
-          pitsAfter: [...next],
-        })
-      }
-      if (turnEnds) break
-      continue
-    }
-
     if (seeds === 0) {
-      if (before === 0) break
+      // Only the last seed of a lap can capture or end the turn.
+      if (after === 4) {
+        // Completing exactly four wins the house for the mover — whether it is
+        // the mover's own house or the opponent's. The turn ends.
+        next[current] = 0
+        capture += 4
+        if (moverSide === 'a') housesA += 1
+        else housesB += 1
+        if (recordSteps) {
+          steps.push({
+            type: 'house_win',
+            pitIndex: current,
+            winnerSide: moverSide,
+            turnEnds: true,
+            pitsAfter: [...next],
+          })
+        }
+        break
+      }
+      if (before === 0) break // landed in an empty house — turn ends, no capture
+      // Non-empty landing (2, 3, 5, 6…), e.g. 4+1=5 wins nothing: pick up all and keep sowing.
       const pickedUp = next[current]
       next[current] = 0
       seeds = pickedUp
       if (recordSteps) {
-        steps.push({
-          type: 'relay',
-          pitIndex: current,
-          seedsPickedUp: pickedUp,
-          pitsAfter: [...next],
-        })
+        steps.push({ type: 'relay', pitIndex: current, seedsPickedUp: pickedUp, pitsAfter: [...next] })
       }
     }
+
+    guard += 1
+    if (guard > guardMax) break
   }
 
   if (recordSteps) {
@@ -488,19 +480,6 @@ export function dealWinnerFromHouses(
   return { draw: true, winnerSide: null }
 }
 
-export function applyRoundHouseTransfer(
-  winnerSide: AyoSide,
-  aRowSize: number,
-  bRowSize: number
-): { aRowSize: number; bRowSize: number; matchFinished: boolean } {
-  if (winnerSide === 'a') {
-    const nextB = Math.max(0, bRowSize - 1)
-    return { aRowSize, bRowSize: nextB, matchFinished: nextB <= 0 }
-  }
-  const nextA = Math.max(0, aRowSize - 1)
-  return { aRowSize: nextA, bRowSize, matchFinished: nextA <= 0 }
-}
-
 export type AyoMoveResult = {
   pits: number[]
   capturedA: number
@@ -537,14 +516,84 @@ export function applyAyoMove(
   }
 
   const { pits: sown, capture, housesA: wonA, housesB: wonB, landingPit } = sowFromPit(pits, pitIndex, config)
-  const nextCapturedA = side === 'a' ? capturedA + capture : capturedA
-  const nextCapturedB = side === 'b' ? capturedB + capture : capturedB
-  const nextHousesA = housesA + wonA
-  const nextHousesB = housesB + wonB
+  let nextCapturedA = side === 'a' ? capturedA + capture : capturedA
+  let nextCapturedB = side === 'b' ? capturedB + capture : capturedB
+  let nextHousesA = housesA + wonA
+  let nextHousesB = housesB + wonB
   const nextTurn = resolveNextTurn(side)
 
-  // A deal ends when the board empties or the player about to move has no legal move.
-  // (Traditional has no feeding rule, so shouldEndGameForSide captures both cases.)
+  if (config.variant === 'traditional') {
+    let finalPits = sown
+    const boardLeft = seedsOnBoard(sown)
+
+    // Official endgame rule: once only eight seeds remain, the player who captures
+    // the first four automatically receives the remaining four, which are not
+    // replayed. Every capture removes exactly four, so a capture that leaves four
+    // on the board is that moment — award the tail to the mover and end the game.
+    const eightSeedEndgame = capture > 0 && boardLeft === 4
+    if (eightSeedEndgame) {
+      finalPits = Array(AYO_PIT_COUNT).fill(0)
+      if (side === 'a') {
+        nextCapturedA += 4
+        nextHousesA += 1
+      } else {
+        nextCapturedB += 4
+        nextHousesB += 1
+      }
+    }
+
+    // The game also ends if the board is now empty or the next player is blocked.
+    const gameOver = eightSeedEndgame || boardLeft === 0 || legalMovesForSide(sown, nextTurn, config).length === 0
+
+    if (!gameOver) {
+      return {
+        pits: sown,
+        capturedA: nextCapturedA,
+        capturedB: nextCapturedB,
+        housesA: nextHousesA,
+        housesB: nextHousesB,
+        aRowSize: config.aRowSize,
+        bRowSize: config.bRowSize,
+        nextTurn,
+        finished: false,
+        draw: false,
+        winnerSide: null,
+        lastPit: landingPit,
+        resultReason: null,
+        matchFinished: false,
+      }
+    }
+
+    // If a side was blocked with seeds still on the board, each side keeps the
+    // seeds on its own row so all 48 are accounted for before scoring.
+    if (!eightSeedEndgame && boardLeft > 0) {
+      const collected = collectRemainingSeeds(sown, nextCapturedA, nextCapturedB)
+      finalPits = collected.pits
+      nextCapturedA = collected.capturedA
+      nextCapturedB = collected.capturedB
+    }
+
+    // Winner is whoever captured more houses (captured seeds as tiebreak).
+    const { draw, winnerSide } = dealWinnerFromHouses(nextHousesA, nextHousesB, nextCapturedA, nextCapturedB)
+    return {
+      pits: finalPits,
+      capturedA: nextCapturedA,
+      capturedB: nextCapturedB,
+      housesA: nextHousesA,
+      housesB: nextHousesB,
+      aRowSize: config.aRowSize,
+      bRowSize: config.bRowSize,
+      nextTurn,
+      finished: true,
+      draw,
+      winnerSide,
+      lastPit: landingPit,
+      resultReason: 'most_houses',
+      matchFinished: false,
+    }
+  }
+
+  // Oware: a deal ends when the board empties or the player about to move is stuck.
   const endDeal = shouldEndGameForSide(sown, nextTurn, config)
 
   if (!endDeal) {
@@ -563,44 +612,6 @@ export function applyAyoMove(
       lastPit: landingPit,
       resultReason: null,
       matchFinished: false,
-    }
-  }
-
-  if (config.variant === 'traditional') {
-    // If the deal ended because a side was blocked, seeds may still sit on the board —
-    // each side collects the seeds remaining on its own row before scoring.
-    const collected = collectRemainingSeeds(sown, nextCapturedA, nextCapturedB)
-    const finalCapturedA = collected.capturedA
-    const finalCapturedB = collected.capturedB
-    const { draw, winnerSide } = dealWinnerFromHouses(nextHousesA, nextHousesB, finalCapturedA, finalCapturedB)
-    let aRowSize = config.aRowSize
-    let bRowSize = config.bRowSize
-    let matchFinished = false
-    let resultReason: AyoMoveResult['resultReason'] = 'most_houses'
-
-    if (!draw && winnerSide) {
-      const transfer = applyRoundHouseTransfer(winnerSide, aRowSize, bRowSize)
-      aRowSize = transfer.aRowSize
-      bRowSize = transfer.bRowSize
-      matchFinished = transfer.matchFinished
-      if (matchFinished) resultReason = 'match_won'
-    }
-
-    return {
-      pits: collected.pits,
-      capturedA: finalCapturedA,
-      capturedB: finalCapturedB,
-      housesA: nextHousesA,
-      housesB: nextHousesB,
-      aRowSize,
-      bRowSize,
-      nextTurn,
-      finished: true,
-      draw,
-      winnerSide,
-      lastPit: landingPit,
-      resultReason,
-      matchFinished,
     }
   }
 
@@ -753,8 +764,10 @@ export async function initializeAyoGame(
   let bId: string
   let aStreak = 0
   let bStreak = 0
-  let aRowSize = AYO_PITS_PER_SIDE
-  let bRowSize = AYO_PITS_PER_SIDE
+  // Every game is a fresh full board (12 houses, 6 per side). Rematches swap sides
+  // and carry win streaks; matchRound is just a rematch counter for display.
+  const aRowSize = AYO_PITS_PER_SIDE
+  const bRowSize = AYO_PITS_PER_SIDE
   let matchRound = 1
 
   if (existing) {
@@ -762,20 +775,11 @@ export async function initializeAyoGame(
     aId = existing.player_b_id
     aStreak = existing.b_win_streak ?? 0
     bStreak = existing.a_win_streak ?? 0
-    aRowSize = existing.a_row_size ?? AYO_PITS_PER_SIDE
-    bRowSize = existing.b_row_size ?? AYO_PITS_PER_SIDE
     matchRound = (existing.match_round ?? 1) + 1
-    if (existing.result_reason === 'match_won' || aRowSize <= 0 || bRowSize <= 0) {
-      aRowSize = AYO_PITS_PER_SIDE
-      bRowSize = AYO_PITS_PER_SIDE
-      matchRound = 1
-    }
     if (!playerIds.includes(aId) || !playerIds.includes(bId)) {
       ;[aId, bId] = shuffle(playerIds)
       aStreak = 0
       bStreak = 0
-      aRowSize = AYO_PITS_PER_SIDE
-      bRowSize = AYO_PITS_PER_SIDE
       matchRound = 1
     }
   } else {
@@ -965,11 +969,9 @@ export async function processAyoMove(
         ? variant === 'traditional'
           ? "It's a draw — equal houses!"
           : "It's a draw — 24 seeds each!"
-        : reason === 'match_won'
-          ? `${names.get(winnerPlayerId!) ?? 'Winner'} wins the match! Ọta!`
-          : variant === 'traditional'
-            ? `Round ${session.match_round}: ${names.get(winnerPlayerId!) ?? 'Winner'} wins the deal!`
-            : `${names.get(winnerPlayerId!) ?? 'Winner'} is Ọta! Mo ki ota, mo ki ope o.`
+        : variant === 'traditional'
+          ? `${names.get(winnerPlayerId!) ?? 'Winner'} is Ọta — most houses won!`
+          : `${names.get(winnerPlayerId!) ?? 'Winner'} is Ọta! Mo ki ota, mo ki ope o.`
     : turnMessage(nextName, result.nextTurn)
 
   const nextRemaining = result.nextTurn === 'a' ? aMs : bMs

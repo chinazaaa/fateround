@@ -1,10 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import {
   applyAyoMove,
-  applyRoundHouseTransfer,
   captureOwareFromLanding,
   captureTraditionalFromLanding,
-  resolveTraditionalHouseWin,
   dealWinnerFromHouses,
   legalMoves,
   legalMovesForSide,
@@ -60,55 +58,68 @@ describe('oware sowFromPit', () => {
 })
 
 describe('traditional sowFromPit', () => {
-  it('mover wins a house when last seed completes four on opponent pit', () => {
-    const pits = startingPits()
+  const empty = () => Array(AYO_PIT_COUNT).fill(0)
+
+  it('mover wins a house when the last seed completes four on their own pit', () => {
+    const pits = empty()
+    pits[0] = 1
+    pits[1] = 3
+    const { pits: next, capture, housesA, housesB } = sowFromPit(pits, 0, TRADITIONAL_CONFIG)
+    expect(next[1]).toBe(0)
+    expect(capture).toBe(4)
+    expect(housesA).toBe(1)
+    expect(housesB).toBe(0)
+  })
+
+  it('mover wins a house when the last seed completes four on the opponent pit', () => {
+    const pits = empty()
     pits[5] = 1
     pits[6] = 3
     const { pits: next, capture, housesA, housesB } = sowFromPit(pits, 5, TRADITIONAL_CONFIG)
     expect(next[6]).toBe(0)
     expect(capture).toBe(4)
+    // The house always belongs to the mover, own side or opponent side.
     expect(housesA).toBe(1)
     expect(housesB).toBe(0)
   })
 
-  it('opponent wins a house when completing four on their pit before the last seed', () => {
-    const pits = startingPits()
+  it('does not capture a four completed mid-lap (only the last seed can capture)', () => {
+    const pits = empty()
+    pits[4] = 2
     pits[5] = 3
-    pits[6] = 3
-    const { capture, housesA, housesB } = sowFromPit(pits, 5, TRADITIONAL_CONFIG)
-    expect(capture).toBe(4)
-    expect(housesA).toBe(0)
-    expect(housesB).toBe(1)
-  })
-
-  it('mover wins a house when completing four on own pit', () => {
-    const pits = startingPits()
-    pits[1] = 1
-    pits[2] = 3
-    const { pits: next, capture, housesA, housesB } = sowFromPit(pits, 1, TRADITIONAL_CONFIG)
-    expect(next[2]).toBe(0)
-    expect(capture).toBe(4)
-    expect(housesA).toBe(1)
-    expect(housesB).toBe(0)
-  })
-
-  it('does not capture when landing leaves three on opponent pit', () => {
-    const pits = startingPits()
-    pits[5] = 1
-    pits[6] = 2
-    const { capture, housesA, housesB } = sowFromPit(pits, 5, TRADITIONAL_CONFIG)
+    // Sow 2: pit5 reaches 4 mid-lap (not captured), last seed lands empty at pit6.
+    const { pits: next, capture, housesA, housesB } = sowFromPit(pits, 4, TRADITIONAL_CONFIG)
+    expect(next[5]).toBe(4) // left standing, not captured
+    expect(next[6]).toBe(1)
     expect(capture).toBe(0)
     expect(housesA).toBe(0)
     expect(housesB).toBe(0)
   })
 
-  it('relays through non-empty landings until the last seed hits an empty house', () => {
-    const pits = startingPits()
-    const { pits: next, capture, housesA, housesB } = sowFromPit(pits, 0, TRADITIONAL_CONFIG)
+  it('does not capture when the last seed makes five (4+1); it relays instead', () => {
+    const pits = empty()
+    pits[0] = 1
+    pits[1] = 4
+    const { capture, housesA, housesB } = sowFromPit(pits, 0, TRADITIONAL_CONFIG)
     expect(capture).toBe(0)
     expect(housesA).toBe(0)
     expect(housesB).toBe(0)
-    expect(seedsOnBoard(next)).toBe(48)
+  })
+
+  it('ends the lap when the last seed lands in an empty house', () => {
+    const pits = empty()
+    pits[0] = 1
+    const { pits: next, capture, landingPit } = sowFromPit(pits, 0, TRADITIONAL_CONFIG)
+    expect(landingPit).toBe(1)
+    expect(next[1]).toBe(1)
+    expect(capture).toBe(0)
+  })
+
+  it('relays through non-empty landings, conserving seeds when nothing is captured', () => {
+    const pits = startingPits()
+    const { pits: next, capture } = sowFromPit(pits, 0, TRADITIONAL_CONFIG)
+    // Every seed is accounted for: whatever is not still on the board was captured.
+    expect(seedsOnBoard(next) + capture).toBe(48)
     expect(next.some((n) => n === 0)).toBe(true)
   })
 
@@ -127,20 +138,6 @@ describe('traditional sowFromPit', () => {
     expect(trace.landingPit).toBe(1)
     expect(trace.pits[1]).toBe(1)
     expect(trace.steps.at(-1)?.type).toBe('end')
-  })
-})
-
-describe('resolveTraditionalHouseWin', () => {
-  it('awards own-house fours to the mover', () => {
-    expect(resolveTraditionalHouseWin(2, 'a', 0)).toEqual({ winnerSide: 'a', turnEnds: true })
-  })
-
-  it('awards opponent-house fours to the mover on the last seed', () => {
-    expect(resolveTraditionalHouseWin(6, 'a', 0)).toEqual({ winnerSide: 'a', turnEnds: true })
-  })
-
-  it('awards opponent-house fours to the opponent when seeds remain', () => {
-    expect(resolveTraditionalHouseWin(6, 'a', 2)).toEqual({ winnerSide: 'b', turnEnds: false })
   })
 })
 
@@ -178,7 +175,7 @@ describe('feeding rule (oware only)', () => {
 })
 
 describe('applyAyoMove traditional', () => {
-  it('adds a house when mover completes four on opponent pit with last seed', () => {
+  it('credits the mover a house when the last seed completes four on the opponent pit', () => {
     const pits = startingPits()
     pits[5] = 1
     pits[6] = 3
@@ -189,21 +186,31 @@ describe('applyAyoMove traditional', () => {
     expect(result.capturedA).toBe(4)
   })
 
-  it('adds a house to the opponent when completing four on their pit before the last seed', () => {
+  it('does not shrink rows or finish a match — every game is a single board', () => {
     const pits = startingPits()
-    pits[5] = 3
-    pits[6] = 3
-    const result = applyAyoMove(pits, 0, 0, 0, 0, 'a', 5, TRADITIONAL_CONFIG)
-    expect(result.finished).toBe(false)
-    expect(result.housesA).toBe(0)
-    expect(result.housesB).toBe(1)
-    expect(result.capturedA).toBe(4)
+    pits[0] = 1
+    pits[1] = 3
+    const result = applyAyoMove(pits, 0, 0, 0, 0, 'a', 0, TRADITIONAL_CONFIG)
+    expect(result.aRowSize).toBe(AYO_PITS_PER_SIDE)
+    expect(result.bRowSize).toBe(AYO_PITS_PER_SIDE)
+    expect(result.matchFinished).toBe(false)
   })
 
-  it('transfers an opponent house after winning a deal', () => {
-    expect(applyRoundHouseTransfer('a', 6, 6)).toEqual({ aRowSize: 6, bRowSize: 5, matchFinished: false })
-    expect(applyRoundHouseTransfer('b', 6, 6)).toEqual({ aRowSize: 5, bRowSize: 6, matchFinished: false })
-    expect(applyRoundHouseTransfer('a', 6, 1).matchFinished).toBe(true)
+  it('applies the 8-seed endgame: a capture leaving four auto-awards the tail to the capturer', () => {
+    // Board holds exactly 8 seeds: A completes a four (capturing 4), leaving 4 on B's row.
+    const pits = Array(AYO_PIT_COUNT).fill(0)
+    pits[0] = 1
+    pits[1] = 3
+    pits[6] = 4
+    const result = applyAyoMove(pits, 0, 0, 0, 0, 'a', 0, TRADITIONAL_CONFIG)
+    expect(result.finished).toBe(true)
+    expect(seedsOnBoard(result.pits)).toBe(0)
+    // 4 captured by completing the house + the remaining 4 auto-awarded = 8, two houses.
+    expect(result.capturedA).toBe(8)
+    expect(result.housesA).toBe(2)
+    expect(result.capturedB).toBe(0)
+    expect(result.winnerSide).toBe('a')
+    expect(result.resultReason).toBe('most_houses')
   })
 
   it('picks winner by houses then seeds', () => {
