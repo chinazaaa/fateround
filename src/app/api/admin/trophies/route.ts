@@ -4,7 +4,10 @@ import { assertAdminRequest } from '@/lib/admin-api'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { parseJsonBody } from '@/lib/parse-body'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
-import { LAUNCH_CATALOG, criteriaUsesLiveMeasures } from '@/lib/trophies/catalog'
+import { GAME_TYPE_CONFIG } from '@/lib/game-types'
+import { LAUNCH_CATALOG, criteriaUsesLiveMeasures, scopeCriteriaToGame } from '@/lib/trophies/catalog'
+import { hasWinnerSource, isWinnerlessByDesign } from '@/lib/trophies/outcome'
+import type { GameType } from '@/types'
 import { liveCounters, liveDistinctSets } from '@/lib/trophies/counters'
 import { parseCriteria } from '@/lib/trophies/criteria'
 
@@ -74,6 +77,16 @@ export async function GET(req: NextRequest) {
     // The vocabulary travels with the list so the editor can render pickers instead of a bare
     // JSON box. Without it "admin-editable" means "editable if you remember the counter names".
     vocabulary: { counters: liveCounters(), distinct: liveDistinctSets() },
+    // Which games a trophy can be filed under, and whether a WIN rule would ever fire for each.
+    // Without this the editor cannot warn that "win 5 Never Have I Ever games" is unearnable.
+    games: (Object.keys(GAME_TYPE_CONFIG) as GameType[])
+      .map((id) => ({
+        id,
+        label: GAME_TYPE_CONFIG[id]?.label ?? id,
+        canScoreWins: hasWinnerSource(id),
+        winnerless: isWinnerlessByDesign(id),
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label)),
   })
 }
 
@@ -85,7 +98,10 @@ export async function POST(req: NextRequest) {
   const { data: body, error: bodyError } = await parseJsonBody(req, trophySchema)
   if (bodyError) return bodyError
 
-  const invalid = validateCriteria(body.criteria)
+  // Filing a trophy under a game and leaving its rule counting every game is the easy mistake,
+  // so the scope is applied to both from one choice.
+  const criteria = scopeCriteriaToGame(body.criteria, body.game_type ?? null)
+  const invalid = validateCriteria(criteria)
   if (invalid) return NextResponse.json({ error: invalid }, { status: 400 })
 
   const { error } = await getSupabaseAdmin()
@@ -96,7 +112,7 @@ export async function POST(req: NextRequest) {
       tier: body.tier,
       title: body.title,
       description: body.description,
-      criteria: body.criteria,
+      criteria,
       points: body.points,
       hidden: body.hidden ?? false,
       sort_order: body.sort_order ?? 0,

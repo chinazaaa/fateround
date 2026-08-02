@@ -223,3 +223,26 @@ export function criteriaUsesLiveMeasures(criteria: unknown): { ok: boolean; unkn
   ]
   return { ok: bad.length === 0, unknown: [...new Set(bad)] }
 }
+
+/**
+ * Scope every unscoped counter in a rule to one game type.
+ *
+ * A trophy filed under Whot almost always means "…in Whot", but the rule and the filing are
+ * two separate fields, and setting one without the other is the easy mistake: a trophy that
+ * *looks* Whot-specific in the admin list while counting every game. This applies the intent
+ * to both, and deliberately leaves an explicitly-scoped counter alone so a deliberate
+ * cross-game clause inside a game-specific trophy still works.
+ */
+export function scopeCriteriaToGame(criteria: unknown, gameType: string | null): unknown {
+  if (!gameType) return criteria
+  const walk = (node: unknown): unknown => {
+    if (!node || typeof node !== 'object') return node
+    const rule = node as Record<string, unknown>
+    if (rule.type === 'counter') {
+      return rule.gameType ? rule : { ...rule, gameType }
+    }
+    if (Array.isArray(rule.of)) return { ...rule, of: rule.of.map(walk) }
+    return rule
+  }
+  return walk(criteria)
+}

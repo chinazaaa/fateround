@@ -18,11 +18,13 @@ type Trophy = {
 type CounterDef = { key: string; label: string; description: string; scope: string; availability: string }
 type DistinctDef = { key: string; label: string; description: string; availability: string }
 type Vocabulary = { counters: CounterDef[]; distinct: DistinctDef[] }
+type GameOption = { id: string; label: string; canScoreWins: boolean; winnerless: boolean }
 
 const TIERS = ['bronze', 'silver', 'gold', 'platinum'] as const
 
 const EMPTY = {
   id: '',
+  game_type: '',
   tier: 'bronze' as Trophy['tier'],
   title: '',
   description: '',
@@ -42,6 +44,7 @@ const TIER_STYLE: Record<Trophy['tier'], string> = {
 export default function AdminTrophiesPage() {
   const [trophies, setTrophies] = useState<Trophy[]>([])
   const [vocabulary, setVocabulary] = useState<Vocabulary>({ counters: [], distinct: [] })
+  const [games, setGames] = useState<GameOption[]>([])
   const [loading, setLoading] = useState(true)
   const [form, setForm] = useState(EMPTY)
   const [editing, setEditing] = useState<string | null>(null)
@@ -56,6 +59,7 @@ export default function AdminTrophiesPage() {
       if (res.ok) {
         setTrophies(json.trophies ?? [])
         setVocabulary(json.vocabulary ?? { counters: [], distinct: [] })
+        setGames(json.games ?? [])
       }
     } finally {
       setLoading(false)
@@ -92,6 +96,7 @@ export default function AdminTrophiesPage() {
       }
 
       const payload = {
+        game_type: form.game_type || null,
         tier: form.tier,
         title: form.title,
         description: form.description,
@@ -150,6 +155,7 @@ export default function AdminTrophiesPage() {
     setEditing(trophy.id)
     setForm({
       id: trophy.id,
+      game_type: trophy.game_type ?? '',
       tier: trophy.tier,
       title: trophy.title,
       description: trophy.description,
@@ -253,6 +259,39 @@ export default function AdminTrophiesPage() {
           />
         </label>
 
+        <label className="block text-sm">
+          <span className="text-[var(--muted)]">This trophy is for</span>
+          <select
+            className="input-field mt-1"
+            value={form.game_type}
+            onChange={(e) => setForm({ ...form, game_type: e.target.value })}
+          >
+            <option value="">All games</option>
+            {games.map((g) => (
+              <option key={g.id} value={g.id}>
+                {g.label}
+              </option>
+            ))}
+          </select>
+          {form.game_type && (
+            <span className="mt-1 block text-xs text-[var(--muted)]">
+              Counters in the rule will be scoped to this game automatically, so it counts only{' '}
+              {games.find((g) => g.id === form.game_type)?.label ?? form.game_type} games.
+            </span>
+          )}
+          {/* A win rule on a game the server can't score parses, saves and never fires. Saying so
+              here is the only place the difference between that and a typo is visible. */}
+          {form.game_type &&
+            /"counter"\s*:\s*"(games_won|podium_finishes)"/.test(form.criteriaText) &&
+            !games.find((g) => g.id === form.game_type)?.canScoreWins && (
+              <span className="mt-1 block text-xs text-amber-600">
+                {games.find((g) => g.id === form.game_type)?.winnerless
+                  ? 'This game has no winner — everyone answers and nothing is scored, so a win rule can never be earned.'
+                  : 'Wins are not scored for this game yet, so this rule would never be earned.'}
+              </span>
+            )}
+        </label>
+
         <div className="grid gap-3 sm:grid-cols-3">
           <label className="block text-sm">
             <span className="text-[var(--muted)]">Tier</span>
@@ -349,7 +388,8 @@ export default function AdminTrophiesPage() {
                     {t.hidden && <span className="text-xs font-normal text-[var(--muted)]">· hidden</span>}
                   </p>
                   <p className="text-xs text-[var(--muted)]">
-                    <code>{t.id}</code> · {t.points} pts · {t.description}
+                    <code>{t.id}</code> · {t.game_type ? `${t.game_type} · ` : ''}
+                    {t.points} pts · {t.description}
                   </p>
                 </div>
                 <button type="button" onClick={() => edit(t)} className="btn-secondary btn-fit px-3 py-1.5 text-xs">

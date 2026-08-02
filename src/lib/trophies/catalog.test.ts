@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { LAUNCH_CATALOG, criteriaUsesLiveMeasures, referencedKeys } from './catalog'
+import { LAUNCH_CATALOG, criteriaUsesLiveMeasures, referencedKeys, scopeCriteriaToGame } from './catalog'
 import { parseCriteria } from './criteria'
 
 describe('the launch catalog', () => {
@@ -79,5 +79,42 @@ describe('criteriaUsesLiveMeasures', () => {
 
   it('accepts a rule built from live measures', () => {
     expect(criteriaUsesLiveMeasures({ type: 'counter', counter: 'games_won', gte: 3 }).ok).toBe(true)
+  })
+})
+
+describe('scopeCriteriaToGame', () => {
+  it('scopes a bare counter to the game', () => {
+    expect(scopeCriteriaToGame({ type: 'counter', counter: 'games_won', gte: 5 }, 'whot')).toEqual({
+      type: 'counter',
+      counter: 'games_won',
+      gte: 5,
+      gameType: 'whot',
+    })
+  })
+
+  it('reaches counters nested inside combinators', () => {
+    const scoped = scopeCriteriaToGame(
+      { type: 'all', of: [{ type: 'counter', counter: 'games_won', gte: 5 }] },
+      'chess'
+    ) as { of: { gameType: string }[] }
+    expect(scoped.of[0].gameType).toBe('chess')
+  })
+
+  it('leaves an explicitly scoped counter alone', () => {
+    // So a deliberate cross-game clause inside a game-specific trophy still works.
+    const scoped = scopeCriteriaToGame({ type: 'counter', counter: 'games_won', gte: 5, gameType: 'uno' }, 'whot') as {
+      gameType: string
+    }
+    expect(scoped.gameType).toBe('uno')
+  })
+
+  it('leaves distinct sets alone — they are cross-game by nature', () => {
+    const rule = { type: 'distinct', key: 'modes_played', gte: 5 }
+    expect(scopeCriteriaToGame(rule, 'whot')).toEqual(rule)
+  })
+
+  it('is a no-op for an all-games trophy', () => {
+    const rule = { type: 'counter', counter: 'games_won', gte: 5 }
+    expect(scopeCriteriaToGame(rule, null)).toEqual(rule)
   })
 })
