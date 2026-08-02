@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest'
-import { describeRule, fromCriteria, measureLabel, toCriteria, type SimpleRule } from './rule-builder'
+import {
+  describeCondition,
+  describeRule,
+  fromCriteria,
+  measureLabel,
+  toCriteria,
+  type SimpleRule,
+} from './rule-builder'
 import { parseCriteria } from './criteria'
 
 const single: SimpleRule = { combinator: 'all', conditions: [{ measure: 'games_won', kind: 'counter', gte: 25 }] }
@@ -81,12 +88,14 @@ describe('fromCriteria', () => {
 })
 
 describe('describeRule', () => {
-  it('says what a single condition means in words', () => {
-    expect(describeRule(single)).toBe('Earned when the player reaches games won of at least 25.')
+  it('reads as English, not as the JSON spoken aloud', () => {
+    expect(describeRule(single)).toBe('Earned when the player has won at least 25 games.')
   })
 
-  it('names the game when the trophy is scoped', () => {
-    expect(describeRule(single, 'Whot')).toContain('in Whot')
+  it('says which game it counts when the trophy is scoped', () => {
+    expect(describeRule(single, 'Whot')).toBe(
+      'Earned when the player has won at least 25 games — counting Whot games only.'
+    )
   })
 
   it('joins with "and" for all, "or" for any', () => {
@@ -107,5 +116,30 @@ describe('measureLabel', () => {
 
   it('falls back to the key so an unknown measure is still visible', () => {
     expect(measureLabel('mystery_stat')).toBe('mystery_stat')
+  })
+})
+
+describe('describeCondition', () => {
+  it('uses the measure’s own verb rather than its label', () => {
+    // "won at least 25 games" is checkable at a glance; "games won of at least 25" is the
+    // stored format read out loud, which is what the JSON box already did badly.
+    expect(describeCondition({ measure: 'games_won', kind: 'counter', gte: 25 })).toBe('won at least 25 games')
+    expect(describeCondition({ measure: 'modes_played', kind: 'distinct', gte: 5 })).toBe(
+      'played at least 5 different game modes'
+    )
+  })
+
+  it('drops the plural at 1', () => {
+    // "at least 1 games" is the giveaway that nobody read the sentence.
+    expect(describeCondition({ measure: 'games_won', kind: 'counter', gte: 1 })).toBe('won at least 1 game')
+    expect(describeCondition({ measure: 'modes_played', kind: 'distinct', gte: 1 })).toBe(
+      'played at least 1 different game mode'
+    )
+  })
+
+  it('stays truthful for a measure it has no verb for', () => {
+    expect(describeCondition({ measure: 'mystery_stat', kind: 'counter', gte: 3 })).toBe(
+      'reached mystery_stat of at least 3'
+    )
   })
 })

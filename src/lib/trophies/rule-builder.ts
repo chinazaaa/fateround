@@ -82,15 +82,26 @@ export function measureLabel(measure: string): string {
   )
 }
 
+/** One condition, in words. `{n}` is the threshold, `{s}` pluralises. */
+export function describeCondition(condition: Condition): string {
+  const template =
+    COUNTERS.find((c) => c.key === condition.measure)?.phrase ??
+    DISTINCT_SETS.find((d) => d.key === condition.measure)?.phrase ??
+    // Unknown measure: still say something truthful rather than pretending to know the verb.
+    `reached ${condition.measure} of at least {n}`
+  return template.replace('{n}', String(condition.gte)).replace('{s}', condition.gte === 1 ? '' : 's')
+}
+
 /**
  * A plain-English sentence for a rule.
  *
- * The point is that someone can check what they wrote without knowing the DSL. "Win at least 25
- * games" is verifiable at a glance; `{"gte":25}` is not.
+ * The point is that someone can check what they wrote without knowing the format. "Earned when
+ * the player has won at least 25 games in Whot" is verifiable at a glance; `{"gte":25}` is not,
+ * and neither was the earlier "games won of at least 25", which is just the JSON read aloud.
  */
 export function describeRule(rule: SimpleRule, gameLabel?: string | null): string {
-  const parts = rule.conditions.map((c) => `${measureLabel(c.measure).toLowerCase()} of at least ${c.gte}`)
+  const parts = rule.conditions.map(describeCondition)
   const joined = parts.length === 1 ? parts[0] : rule.combinator === 'all' ? parts.join(' and ') : parts.join(' or ')
-  const scope = gameLabel ? ` in ${gameLabel}` : ''
-  return `Earned when the player reaches ${joined}${scope}.`
+  const scope = gameLabel ? ` — counting ${gameLabel} games only` : ''
+  return `Earned when the player has ${joined}${scope}.`
 }

@@ -44,6 +44,13 @@ export type CounterDef = {
   description: string
   scope: CounterScope
   availability: CounterAvailability
+  /**
+   * How this measure reads in a sentence, with `{n}` for the threshold and `{s}` for a plural
+   * "s". Exists so the admin editor can say "won at least 25 games" instead of "games won of at
+   * least 25" — the whole point of the sentence is that someone can check the rule without
+   * knowing the format, and that only works if it reads like English.
+   */
+  phrase: string
 }
 
 export type DistinctDef = {
@@ -51,6 +58,8 @@ export type DistinctDef = {
   label: string
   description: string
   availability: CounterAvailability
+  /** See `CounterDef.phrase`. */
+  phrase: string
 }
 
 /**
@@ -67,6 +76,7 @@ export const COUNTERS: readonly CounterDef[] = [
     description: 'Finished games this profile took part in as a seated player.',
     scope: 'per-game',
     availability: 'universal',
+    phrase: 'finished at least {n} game{s}',
   },
   {
     key: 'games_won',
@@ -74,6 +84,7 @@ export const COUNTERS: readonly CounterDef[] = [
     description: 'Finished games this profile won outright.',
     scope: 'per-game',
     availability: 'partial',
+    phrase: 'won at least {n} game{s}',
   },
   {
     key: 'podium_finishes',
@@ -81,6 +92,7 @@ export const COUNTERS: readonly CounterDef[] = [
     description: 'Finished in the top three of a ranked game.',
     scope: 'per-game',
     availability: 'partial',
+    phrase: 'finished in the top three at least {n} time{s}',
   },
   {
     key: 'days_played',
@@ -88,6 +100,7 @@ export const COUNTERS: readonly CounterDef[] = [
     description: 'Distinct calendar days (WAT) with at least one finished game.',
     scope: 'global',
     availability: 'universal',
+    phrase: 'played on at least {n} different day{s}',
   },
   {
     key: 'longest_streak',
@@ -95,6 +108,7 @@ export const COUNTERS: readonly CounterDef[] = [
     description: 'Best run of consecutive days played.',
     scope: 'global',
     availability: 'universal',
+    phrase: 'reached a streak of at least {n} day{s} in a row',
   },
   {
     key: 'big_room_games',
@@ -102,6 +116,7 @@ export const COUNTERS: readonly CounterDef[] = [
     description: 'Finished games with eight or more seated players.',
     scope: 'per-game',
     availability: 'universal',
+    phrase: 'finished at least {n} game{s} with 8 or more players',
   },
   {
     key: 'late_night_games',
@@ -109,6 +124,7 @@ export const COUNTERS: readonly CounterDef[] = [
     description: 'Games finished between midnight and 5am, local to the room.',
     scope: 'global',
     availability: 'universal',
+    phrase: 'finished at least {n} game{s} after midnight',
   },
   {
     key: 'host_games',
@@ -116,6 +132,7 @@ export const COUNTERS: readonly CounterDef[] = [
     description: 'Finished games this profile hosted.',
     scope: 'per-game',
     availability: 'planned',
+    phrase: 'hosted at least {n} game{s}',
   },
   {
     key: 'comeback_wins',
@@ -123,6 +140,7 @@ export const COUNTERS: readonly CounterDef[] = [
     description: 'Won after being last at any scored checkpoint.',
     scope: 'per-game',
     availability: 'planned',
+    phrase: 'won at least {n} game{s} after being last',
   },
   {
     key: 'perfect_games',
@@ -130,6 +148,7 @@ export const COUNTERS: readonly CounterDef[] = [
     description: 'Finished with a flawless score by that game’s own definition.',
     scope: 'per-game',
     availability: 'planned',
+    phrase: 'finished at least {n} perfect game{s}',
   },
 ] as const
 
@@ -143,18 +162,21 @@ export const DISTINCT_SETS: readonly DistinctDef[] = [
     label: 'Game modes played',
     description: 'How many different game types this profile has finished.',
     availability: 'universal',
+    phrase: 'played at least {n} different game mode{s}',
   },
   {
     key: 'opponents',
     label: 'Opponents faced',
     description: 'Distinct other profiles seated in the same finished game.',
     availability: 'partial',
+    phrase: 'faced at least {n} different opponent{s}',
   },
   {
     key: 'rooms',
     label: 'Rooms played in',
     description: 'Distinct game rooms this profile has finished a game in.',
     availability: 'planned',
+    phrase: 'played in at least {n} different room{s}',
   },
 ] as const
 

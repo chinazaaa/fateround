@@ -396,9 +396,9 @@ export default function AdminTrophiesPage() {
               )}
 
               {rule.conditions.map((condition, index) => (
-                <div key={index} className="flex flex-wrap items-center gap-2">
+                <div key={index} className="flex items-center gap-2">
                   <select
-                    className="input-field !mt-0 max-w-[16rem] flex-1"
+                    className="input-field !mt-0 min-w-0 flex-1"
                     value={`${condition.kind}:${condition.measure}`}
                     onChange={(e) => {
                       const [kind, measure] = e.target.value.split(':')
@@ -426,7 +426,7 @@ export default function AdminTrophiesPage() {
                   <input
                     type="number"
                     min={1}
-                    className="input-field !mt-0 w-24"
+                    className="input-field !mt-0 !w-20 shrink-0"
                     value={condition.gte}
                     onChange={(e) => {
                       const next = [...rule.conditions]
