@@ -7,7 +7,9 @@ import { SITE_NAME } from '@/lib/seo'
 
 type Props = { params: Promise<{ username: string }> }
 
-export const revalidate = 300
+// Fresh per request (not ISR): see the note in ../page.tsx — a notFound() from a not-yet-claimed
+// username must never be cached and served as a stale 404 once the profile exists.
+export const dynamic = 'force-dynamic'
 
 const TIER_EMOJI: Record<string, string> = { bronze: '🥉', silver: '🥈', gold: '🥇', platinum: '🏆' }
 
