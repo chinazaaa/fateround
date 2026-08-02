@@ -2541,7 +2541,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
   ayo: landing('ayo', {
     seoTitle: 'Ayo Online — Play Ayo Olopon with a Friend',
     seoDescription:
-      'Play Ayo (Ayo Olopon) online — the classic Yoruba seed game. Sow anti-clockwise, capture 2s and 3s, crown Ọta. Two players, optional clock. Free, no sign-up.',
+      'Play Ayo (Ayo Olopon) online — the classic Yoruba seed game. Sow anti-clockwise, complete fours to win houses, crown Ọta. Two players, optional clock. Free, no sign-up.',
     keywords: [
       'ayo online',
       'ayo olopon',
@@ -2561,19 +2561,19 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       'ayo board game',
       'yoruba board game online',
     ],
-    heroSubtitle: 'Sow seeds, capture 2s and 3s, and crown Ọta — the Yoruba classic, head-to-head.',
+    heroSubtitle: 'Sow seeds, complete fours to win houses, and crown Ọta — the Yoruba classic, head-to-head.',
     bodyParagraph:
-      "Ayo on FateRound follows traditional Ayo Olopon rules for two players online. Twelve houses, four seeds each, sow anti-clockwise around the board — skipping the house you picked up. When your last seed lands in an opponent's house with 2 or 3 seeds, you capture those seeds and any linked opponent houses ahead with 2 or 3. If their row is empty, you must sow into it when possible. When your opponent cannot move, you sweep every seed left on the board. Most captured seeds wins. The winner is Ọta; the loser is Ọpẹ. Three straight wins makes an Ọta champion.",
-    highlights: ['2 players', 'Classic capture', 'Ọta & Ọpẹ'],
+      "Ayo on FateRound follows traditional Ayo Olopon rules for two players online. Twelve houses, four seeds each, sow anti-clockwise around the board — relaying whenever your last seed lands in a house that already has seeds, and picking them all up to keep going. Your turn ends when your last seed lands in an empty house. When your last seed makes a house hold exactly four seeds — your own or your opponent's — you win that house. Once only eight seeds remain, the player who captures the first four takes the last four and the game ends. The player who has won the most houses is the winner — Ọta; the loser is Ọpẹ. Three straight wins makes an Ọta champion.",
+    highlights: ['2 players', 'Complete fours', 'Ọta & Ọpẹ'],
     features: [
       {
-        title: 'Traditional sowing',
-        description: "Pick up all seeds from one house and sow anti-clockwise — into your opponent's row too.",
+        title: 'Relay sowing',
+        description: 'Pick up all seeds from one house and sow anti-clockwise — relaying through non-empty houses.',
         emoji: '🌰',
       },
       {
-        title: 'Capture 2s & 3s',
-        description: 'Land your last seed in an opponent house with 2 or 3 seeds — capture linked houses too.',
+        title: 'Complete fours',
+        description: 'Make a house hold exactly four with your last seed — yours or your opponent’s — to win it.',
         emoji: '🎯',
       },
       SHARED_FEATURES.mobile,
@@ -2582,7 +2582,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     steps: [
       { title: 'Join a room', description: 'Two players join with their name — the host can play too.' },
       { title: 'Sow seeds', description: 'On your turn, tap one of your houses with seeds. Seeds sow anti-clockwise.' },
-      { title: 'Crown Ọta', description: 'Capture the most seeds to win. Mo ki ota, mo ki ope o!' },
+      { title: 'Crown Ọta', description: 'Win the most houses to win. Mo ki ota, mo ki ope o!' },
     ],
     perfectFor: ['Cultural game nights', 'Quick strategy duels', 'Mancala fans'],
     extraFaqs: [
@@ -2594,7 +2594,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       {
         question: 'How does capture work?',
         answer:
-          "If your last sown seed lands in an opponent's house with 2 or 3 seeds, you capture those seeds plus any linked opponent houses ahead that also have 2 or 3. If their row is empty, you must feed them when you can.",
+          "When the last seed of your sowing makes a house hold exactly four seeds — your own or your opponent's — you win that house and its four seeds. If your last seed lands in a house that already had seeds (without making four), you pick them all up and keep sowing; your turn only ends when your last seed lands in an empty house.",
       },
       {
         question: 'Can I play untimed?',
@@ -2604,17 +2604,17 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       {
         question: 'What is Ayo / Ayoayo?',
         answer:
-          "Ayo (also called Ayoayo or Ayo Olopon) is a traditional Yoruba board game from Nigeria in the mancala family. Two players sit on opposite sides of a board with 12 houses (6 per side), each starting with 4 seeds. Players take turns sowing seeds anti-clockwise, capturing from the opponent's side when the last seed lands in a house with 2 or 3 seeds.",
+          'Ayo (also called Ayoayo or Ayo Olopon) is a traditional Yoruba board game from Nigeria in the mancala family. Two players sit on opposite sides of a board with 12 houses (6 per side), each starting with 4 seeds. Players take turns sowing seeds anti-clockwise, relaying through non-empty houses, and winning a house whenever the last seed makes it hold exactly four.',
       },
       {
         question: 'How many seeds are in Ayo?',
         answer:
-          'A standard Ayo board starts with 48 seeds — 4 seeds in each of the 12 houses (6 per player). As the game progresses, seeds move around the board and get captured. The player who captures the most seeds wins.',
+          'A standard Ayo board starts with 48 seeds — 4 seeds in each of the 12 houses (6 per player). As the game progresses, seeds move around the board and houses are won four seeds at a time. The player who wins the most houses wins.',
       },
       {
         question: 'Is Ayo the same as Mancala?',
         answer:
-          'Ayo is one game in the mancala family — a group of count-and-capture board games played across Africa and beyond. Ayo follows Yoruba rules (anti-clockwise sowing, capture on 2s and 3s, the Ota/Ope tradition). Other mancala variants include Oware (Ghana), Bao (East Africa), and Kalah (Western adaptation).',
+          'Ayo is one game in the mancala family — a group of count-and-capture board games played across Africa and beyond. Ayo follows Yoruba rules (anti-clockwise relay sowing, winning a house when your last seed completes exactly four, the Ota/Ope tradition). Other mancala variants include Oware (Ghana), Bao (East Africa), and Kalah (Western adaptation).',
       },
       {
         question: 'Can I play Ayo online with friends?',

@@ -1627,7 +1627,7 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
   ayo: {
     id: 'ayo',
     label: 'Ayo',
-    tagline: 'Yoruba seed game — sow, capture twos and threes, crown Ọta',
+    tagline: 'Yoruba seed game — sow anti-clockwise, complete fours to win houses, crown Ọta',
     headerEmoji: '🌰🎯',
     card: {
       accent: '#b45309',
@@ -2386,7 +2386,7 @@ export function gameHowItWorks(
     case 'checkers_nigeria':
       return 'Two players join with their name. The host can play too. Nigerian draughts (Naija checkers) — the same 10×10 flying-kings engine as International, played with local "seed" terminology and a mirrored board orientation. Each side starts with 20 seeds; captures are mandatory and must take the maximum number of seeds when a choice exists. Seeds capture in any direction; kings fly the full diagonal and crown only once their capture sequence ends. Hosts can optionally switch on Street Rules for a house-rules variant. Win by capturing all enemy seeds or blocking every legal move. Draw: 25 moves without a capture or a seed-only move. Optional per-player clock.'
     case 'ayo':
-      return 'Two players join with their name. The host can play too. Choose Traditional Ayo (complete fours on your houses to win them; on opponent houses, last seed wins for you, earlier seeds win for them) or Oware rules (2/3 capture with linkage, seed scoring). Winner is Ọta; three straight round wins makes an Ọta champion. Optional per-player clock.'
+      return 'Two players join with their name. The host can play too. Traditional Ayo Olopon on a board of 12 houses, 4 seeds each. Sow anti-clockwise, relaying whenever your last seed lands in a non-empty house. When your last seed completes exactly four in any house — yours or your opponent’s — you win it. Once only eight seeds remain, the player who captures the first four takes the last four and the game ends. Most houses wins; the winner is Ọta, and three straight game wins makes an Ọta champion. Optional per-player clock.'
     case 'mafia':
       return 'Players join with their name (5 to 16 players). Each player is secretly assigned a role: Villager, Mafia, Doctor, or Detective. The game alternates between Night (when the Mafia kills, the Doctor heals, and the Detective investigates) and Day (when the village discusses and votes to eliminate a suspect). Eliminate the Mafia to win, or parity wins for the Mafia.'
     case 'describe_it':

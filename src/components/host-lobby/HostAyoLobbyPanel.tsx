@@ -1,15 +1,12 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { AYO_TIME_OPTIONS, parseAyoVariant } from '@/lib/ayo'
+import { AYO_TIME_OPTIONS } from '@/lib/ayo'
 import { HostLobbySettingsSection } from '@/components/host-lobby/HostLobbySettingsSection'
 import { HostLobbySettingBlock } from '@/components/host-lobby/HostLobbySettingBlock'
 import { HostLobbyOptionChips } from '@/components/host-lobby/HostLobbyOptionChips'
-import { HostAllowViewersField } from '@/components/HostAllowViewersField'
-import { gameSupportsViewerSetting } from '@/lib/viewers'
-import { Chip, Toggle } from '@/components/ui/PageShell'
 import { useToast } from '@/components/ui/Toast'
-import type { AyoVariant, Game } from '@/types'
+import type { Game } from '@/types'
 
 type Props = {
   gameCode: string
@@ -32,7 +29,6 @@ function shortAyoTimerLabel(seconds: number): string {
 export function HostAyoLobbyPanel({ gameCode, hostToken, game, onGameUpdate }: Props) {
   const { error: toastError } = useToast()
   const [isPublic, setIsPublic] = useState(game.is_public === true)
-  const [variant, setVariant] = useState<AyoVariant>(() => parseAyoVariant(game.ayo_variant))
   const [turnTimer, setTurnTimer] = useState(game.timer_seconds ?? 0)
   const [saveState, setSaveState] = useState<SaveState>('idle')
   const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -42,9 +38,8 @@ export function HostAyoLobbyPanel({ gameCode, hostToken, game, onGameUpdate }: P
   }, [game.is_public])
 
   useEffect(() => {
-    setVariant(parseAyoVariant(game.ayo_variant))
     setTurnTimer(game.timer_seconds ?? 0)
-  }, [game.ayo_variant, game.timer_seconds])
+  }, [game.timer_seconds])
 
   useEffect(() => {
     return () => {
@@ -81,15 +76,6 @@ export function HostAyoLobbyPanel({ gameCode, hostToken, game, onGameUpdate }: P
     [gameCode, hostToken, markSaved, onGameUpdate, toastError]
   )
 
-  const onVariantChange = (next: AyoVariant) => {
-    if (next === variant || saveState === 'saving') return
-    const previous = variant
-    setVariant(next)
-    void patchSettings({ ayo_variant: next }).then((ok) => {
-      if (!ok) setVariant(previous)
-    })
-  }
-
   const onTurnTimerChange = (next: number) => {
     if (saveState === 'saving') return
     const previous = turnTimer
@@ -114,26 +100,10 @@ export function HostAyoLobbyPanel({ gameCode, hostToken, game, onGameUpdate }: P
     <HostLobbySettingsSection status={statusLabel}>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-4">
         <HostLobbySettingBlock title="Rules" className="sm:col-span-2">
-          <div className="flex flex-wrap gap-1.5">
-            <Chip
-              active={variant === 'traditional'}
-              onClick={() => onVariantChange('traditional')}
-              className="px-2.5 py-1.5 text-xs font-semibold"
-            >
-              Traditional
-            </Chip>
-            <Chip
-              active={variant === 'oware'}
-              onClick={() => onVariantChange('oware')}
-              className="px-2.5 py-1.5 text-xs font-semibold"
-            >
-              Oware
-            </Chip>
-          </div>
-          <p className="mt-1.5 text-xs text-white/60">
-            {variant === 'traditional'
-              ? 'Complete fours on your houses to win them. On opponent houses: your last seed wins for you; earlier seeds win for them.'
-              : 'Capture 2s and 3s with linkage — most captured seeds wins the deal.'}
+          <p className="text-xs text-white/60">
+            Traditional Ayo Olopon. Sow anti-clockwise, relaying until your last seed lands in an empty house. When your
+            last seed completes exactly four in any house — yours or your opponent’s — you win it. Once only eight seeds
+            remain, the player who captures the first four takes the last four and the game ends. Most houses wins.
           </p>
         </HostLobbySettingBlock>
 

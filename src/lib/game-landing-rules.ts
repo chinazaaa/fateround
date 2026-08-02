@@ -1316,15 +1316,15 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
     {
       title: 'Objective',
       points: [
-        'Capture more seeds than your opponent by sowing strategically around the board.',
-        'The winner is traditionally called Ọta; the loser is Ọpẹ. Three straight wins makes an Ọta champion.',
+        'Win more houses than your opponent by sowing strategically around the board.',
+        'A house is won when your last seed makes it hold exactly four seeds. The winner is traditionally called Ọta; the loser is Ọpẹ. Three straight wins makes an Ọta champion.',
       ],
     },
     {
       title: 'Board & setup',
       points: [
         '12 houses in two rows of six — one row per player, four seeds in each house (48 total).',
-        'Exactly 2 players. The host can play. Player A opens on the first game; colors swap on rematch.',
+        'Exactly 2 players. The host can play. Player A opens on the first game; sides swap on rematch.',
         'Optional per-player clock — Casual (untimed), Ranked (30s), or 3/5/10 minutes each.',
       ],
     },
@@ -1332,25 +1332,24 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
       title: 'How a turn works',
       points: [
         'Pick up all seeds from one of your own houses that has seeds.',
-        "Sow anti-clockwise — drop one seed per house, skipping the house you picked up, including into your opponent's row.",
-        "Capture: if your last seed lands in an opponent's house with 2 or 3 seeds, capture those and any linked opponent houses ahead that also have 2 or 3.",
-        'Feeding: if your opponent has no seeds on their row, you must choose a move that sows into their row when one exists.',
-        'Players alternate until a player cannot move — the other player sweeps all seeds still on the board.',
+        "Sow anti-clockwise — drop one seed per house, continuing through the house you picked up and into your opponent's row.",
+        'Relay: if your last seed lands in a house that already had seeds, pick them all up and keep sowing. Your turn ends only when your last seed lands in an empty house.',
+        "Capture: when your last seed makes a house hold exactly four seeds — your own or your opponent's — you win that house and its four seeds. (Making five, 4+1, wins nothing — you relay on.)",
       ],
     },
     {
       title: 'Winning',
       points: [
-        'When your opponent cannot move, you sweep every seed still on the board. Most total captured seeds wins.',
-        'You can also win if your opponent resigns, leaves, or runs out of time.',
-        'A tie is possible if both players finish with 24 seeds each.',
+        'The player who has won the most houses wins.',
+        'Endgame: once only eight seeds remain, the player who captures the first four automatically takes the last four and the game ends.',
+        'You can also win if your opponent resigns, leaves, or runs out of time. A tie is possible if both players win the same number of houses.',
       ],
     },
     {
       title: 'Spectators',
       points: [
         'Late joiners can watch the match in read-only mode — Ayo is traditionally played with commentary and banter.',
-        'The host can spectate from the Watch tab while managing the room.',
+        'A host who is not seated can follow the game live while managing the room.',
       ],
     },
   ],
