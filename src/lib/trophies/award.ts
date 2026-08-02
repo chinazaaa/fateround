@@ -33,6 +33,13 @@ import { advanceStreak, watDate, watHour, type StreakState } from './streak'
 const LEVEL_THRESHOLDS = [0, 50, 150, 350, 700, 1200, 2000, 3200, 5000, 8000]
 
 /** Rooms of this size or larger count toward `big_room_games`. */
+/**
+ * A win needs someone to beat. Solo-capable games (Yahtzee, Sudoku) still record a winner in
+ * their session row, and counting that as a win would make every win-based trophy earnable
+ * without another player in the room.
+ */
+const MIN_PLAYERS_FOR_A_WIN = 2
+
 const BIG_ROOM_PLAYERS = 8
 
 export type AwardedTrophy = { id: string; title: string; tier: string; points: number }
@@ -163,7 +170,11 @@ export async function awardForFinishedGame(
     // `null` means the server cannot determine a winner for this game type — which must not be
     // recorded as a loss. Only a definite result moves `games_won`.
     const winners = await resolveWinners(supabase, sessionId, gameType)
-    const won = winners !== null && winners.includes(me.id)
+    // A game you were the only player in is not a game you WON. Yahtzee and Sudoku allow solo
+    // play and still write `winner_player_id`, so without this the whole win vocabulary —
+    // `games_won`, every Champion track, every "win N games" rule — is farmable by playing
+    // alone against nobody. `games_played` still counts: you did play it.
+    const won = seated.length >= MIN_PLAYERS_FOR_A_WIN && winners !== null && winners.includes(me.id)
 
     const finishedAt = game.finished_at ? new Date(game.finished_at as string) : new Date()
     const extras: Record<string, number> = {}

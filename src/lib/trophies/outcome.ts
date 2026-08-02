@@ -22,6 +22,7 @@
  */
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { getCompetitiveStandings, isCompetitiveRoomGame } from '@/lib/room-points'
+import { unoTeammateId } from '@/lib/uno'
 import type { GameType } from '@/types'
 
 type WinnerSource = {
@@ -168,6 +169,36 @@ function winnersFromStandings(standings: string[] | null, gameType: GameType): s
  */
 const TEAM_STANDINGS_GAMES = new Set<string>(['codewords'])
 
+/**
+ * UNO Team-Up: the partner of the player who went out also won.
+ *
+ * A team round ends the instant ONE member empties their hand, and `winner_player_id` records
+ * only that player. Their partner won the same round — `unoPlayerSharesWin` exists for exactly
+ * this and the community leaderboard already uses it — but the trophy pass read the raw column,
+ * so the partner was recorded as having LOST a game they won. That is wrong twice over: no win
+ * counted, and a "never lost" style rule would be broken by a victory.
+ *
+ * Only teams change the answer, so a normal room does no extra work beyond the flag read.
+ */
+async function expandUnoTeamWin(supabase: SupabaseClient, gameId: string, winners: string[]): Promise<string[]> {
+  if (winners.length !== 1) return winners
+  try {
+    const { data: game } = await supabase.from('games').select('uno_team_mode').eq('id', gameId).maybeSingle()
+    if (!game?.uno_team_mode) return winners
+
+    const { data: session } = await supabase
+      .from('uno_sessions')
+      .select('turn_order')
+      .eq('game_id', gameId)
+      .maybeSingle()
+    const teammate = unoTeammateId((session?.turn_order as string[]) ?? [], winners[0])
+    return teammate ? [winners[0], teammate] : winners
+  } catch {
+    // Never fail the whole resolution over the partner lookup — one recorded winner beats none.
+    return winners
+  }
+}
+
 function normalizeIds(value: unknown): string[] {
   if (typeof value === 'string' && value) return [value]
   if (Array.isArray(value)) return value.filter((v): v is string => typeof v === 'string' && Boolean(v))
@@ -207,7 +238,8 @@ export async function resolveWinners(
       const many = normalizeIds(row[source.arrayColumn])
       if (many.length) return many
     }
-    return normalizeIds(row[source.column])
+    const winners = normalizeIds(row[source.column])
+    return gameType === 'uno' ? await expandUnoTeamWin(supabase, gameId, winners) : winners
   } catch {
     return null
   }

@@ -287,3 +287,27 @@ describe('awardForFinishedGame', () => {
     expect(result.earned.map((t) => t.id)).toEqual(['ok'])
   })
 })
+
+describe('awardForFinishedGame — a win needs an opponent', () => {
+  it('does not record a win for a solo game', async () => {
+    // Yahtzee and Sudoku allow one player and still write winner_player_id. Counting that as a
+    // win would make every Champion track farmable alone.
+    const db = makeDb({
+      games: [{ id: 'SOLO01', status: 'finished', game_type: 'yahtzee', finished_at: '2026-08-02T12:00:00Z' }],
+      players: [{ id: 'p1', game_id: 'SOLO01', profile_id: 'prof-1', spectator: false }],
+      yahtzee_sessions: [{ game_id: 'SOLO01', winner_player_id: 'p1' }],
+      profiles: [{ id: 'prof-1', current_streak: 0, longest_streak: 0, last_active_date: null, trophy_points: 0 }],
+      trophies: [],
+      player_trophies: [],
+      player_stats: [],
+      awarded_sessions: [],
+      player_distinct: [],
+    })
+
+    await awardForFinishedGame(db.client as never, 'prof-1', 'SOLO01')
+
+    const stats = db.tables.player_stats.find((r) => r.game_type === 'yahtzee')
+    expect(stats?.games_played).toBe(1)
+    expect(stats?.games_won).toBe(0)
+  })
+})
