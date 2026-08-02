@@ -158,7 +158,10 @@ export async function getCompetitiveStandings(
     return rows
       .map((row) => ({
         playerId: row.player_id as string,
-        total: totalScore((row.scores as { categories: YahtzeeCategoryPoints }).categories),
+        total: totalScore(
+          (row.scores as { categories: YahtzeeCategoryPoints; bonusYahtzees?: number }).categories,
+          (row.scores as { bonusYahtzees?: number }).bonusYahtzees
+        ),
       }))
       .sort((a, b) => b.total - a.total || a.playerId.localeCompare(b.playerId))
       .map((row) => row.playerId)

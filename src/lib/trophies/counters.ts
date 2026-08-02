@@ -848,6 +848,22 @@ export const COUNTERS: readonly CounterDef[] = [
     availability: 'partial',
     phrase: 'won at least {n} game{s} a queen down',
   },
+  {
+    key: 'yahtzee_bonus_earned',
+    label: 'Yahtzee — bonus earned',
+    description: 'Games where you earned at least one 100-point Yahtzee bonus.',
+    scope: 'per-game',
+    availability: 'partial',
+    phrase: 'earned a Yahtzee bonus in at least {n} game{s}',
+  },
+  {
+    key: 'yahtzee_joker_used',
+    label: 'Yahtzee — Joker scored',
+    description: 'Games where you scored a Yahtzee under the Joker rule.',
+    scope: 'per-game',
+    availability: 'partial',
+    phrase: 'used the Joker rule in at least {n} game{s}',
+  },
 ] as const
 
 /**

@@ -30,14 +30,7 @@ import { usePlayerSessionActions } from '@/lib/player-session'
 import { scoreListLeaderboard } from '@/lib/finish-leaderboards'
 
 type Screen =
-  | 'loading'
-  | 'join'
-  | 'game_started_waiting'
-  | 'game_ended'
-  | 'waiting'
-  | 'playing'
-  | 'finished'
-  | 'not_found'
+  'loading' | 'join' | 'game_started_waiting' | 'game_ended' | 'waiting' | 'playing' | 'finished' | 'not_found'
 
 export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
   const styles = useThemedStyles(makeStyles)
@@ -165,7 +158,7 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
 
   // Roster drawer scoreboard: total score headline + filled-categories detail.
   const rosterScores = useMemo(
-    () => Object.fromEntries(scores.map((s) => [s.player_id, totalScore(s.scores.categories)])),
+    () => Object.fromEntries(scores.map((s) => [s.player_id, totalScore(s.scores.categories, s.scores.bonusYahtzees)])),
     [scores]
   )
   useGameScores(rosterScores, { suffix: ' pts' })
@@ -241,7 +234,7 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
     const totals = scores
       .map((s) => ({
         name: bootstrap.players.find((p) => p.id === s.player_id)?.name ?? 'Player',
-        total: totalScore(s.scores.categories),
+        total: totalScore(s.scores.categories, s.scores.bonusYahtzees),
       }))
       .sort((a, b) => b.total - a.total)
     return (

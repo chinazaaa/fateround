@@ -52,7 +52,10 @@ const FOUR_KIND_STRONG = 27
 /** Comfortably past the bonus rather than scraping it. */
 const UPPER_STRONG = 70
 
-type ScoreRow = { player_id: string; scores: { categories: YahtzeeCategoryPoints } | null }
+type ScoreRow = {
+  player_id: string
+  scores: { categories: YahtzeeCategoryPoints; bonusYahtzees?: number; jokerUsed?: boolean } | null
+}
 
 export async function yahtzeeFacts(
   supabase: SupabaseClient,
@@ -69,16 +72,29 @@ export async function yahtzeeFacts(
   for (const row of rows) {
     const cats = row?.scores?.categories
     // No card, no entry — a player we have nothing to say about is simply absent from the map.
-    if (!cats) continue
-    out.set(row.player_id, cardFacts(cats, ctx, ctx.winners.includes(row.player_id)))
+    if (!cats || !row.scores) continue
+    out.set(row.player_id, cardFacts(row.scores, ctx, ctx.winners.includes(row.player_id)))
   }
 
   return out
 }
 
 /** One player's counters, derived from that player's finished card alone. */
-function cardFacts(cats: YahtzeeCategoryPoints, ctx: FactsContext, won: boolean): Record<string, number> {
+function cardFacts(
+  scores: { categories: YahtzeeCategoryPoints; bonusYahtzees?: number; jokerUsed?: boolean },
+  ctx: FactsContext,
+  won: boolean
+): Record<string, number> {
+  const cats = scores.categories
   const facts: Record<string, number> = {}
+
+  // Yahtzee Bonus and the Joker rule are recorded on the card when they happen (the score
+  // handler knows), so both are derivable at finish rather than needing an in-play counter.
+  // Bonus needs a stored count because a finished card cannot show it otherwise; Joker is not
+  // recoverable from the final numbers at all (a 40 large-straight could be legit or a Joker),
+  // which is exactly why the handler stamps `jokerUsed`.
+  if ((scores.bonusYahtzees ?? 0) > 0) facts.yahtzee_bonus_earned = 1
+  if (scores.jokerUsed) facts.yahtzee_joker_used = 1
 
   // A cell is `null` only if the player never took it. Everything below asks `> 0`, which reads
   // "took it for points" and correctly excludes both an unscored cell and a scratched zero.

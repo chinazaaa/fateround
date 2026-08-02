@@ -18,10 +18,12 @@ import type { SystemTrophySpec } from './types'
  *   per-turn ROLL detail — how many rolls a turn took, how many Yahtzees were rolled rather than
  *   scored. Only the finished card is persisted, one value per category, so the builder emits
  *   nothing for any of them: the scorecard survives the game, the individual rolls do not.
- * - "Yahtzee Bonus" (100 points) and "Joker" describe scoring rules this engine does not
- *   implement — there is no bonus branch for a second five-of-a-kind, and a Yahtzee explicitly
- *   scores 0 as a full house. These are pending a rules change, not an oversight; when the engine
- *   grows them, the counters and the trophies can be added together.
+ * The Yahtzee Bonus (+100 for a Yahtzee rolled with the box already at 50) and the Joker rule
+ * (a Yahtzee scored after the box is filled fills a lower box at its max) are BOTH implemented —
+ * standard Hasbro scoring, not house rules. Their trophies are below. Both unlock the moment
+ * they happen (`instant: true`) because the score handler knows, and both are also derivable at
+ * finish: the bonus from the stored count, the Joker from a stored flag (it can't be read back
+ * from the final numbers).
  */
 export const YAHTZEE: SystemTrophySpec[] = [
   // ── Bronze ──────────────────────────────────────────────────────────────────────────────
@@ -223,5 +225,27 @@ export const YAHTZEE: SystemTrophySpec[] = [
     points: 150,
     sortOrder: 210,
     hidden: true,
+  },
+  {
+    // Fires the moment the +100 lands — processYahtzeeScore knows it. Also derivable from the
+    // stored bonus count at finish.
+    instant: true,
+    suffix: 'bonus',
+    tier: 'gold',
+    title: 'Yahtzee bonus',
+    description: 'Earn a 100-point Yahtzee bonus — roll a Yahtzee with your Yahtzee box already at 50.',
+    counter: 'yahtzee_bonus_earned',
+    points: 70,
+    sortOrder: 220,
+  },
+  {
+    instant: true,
+    suffix: 'joker',
+    tier: 'gold',
+    title: 'Joker',
+    description: 'Score a Yahtzee under the Joker rule after your Yahtzee box is filled.',
+    counter: 'yahtzee_joker_used',
+    points: 70,
+    sortOrder: 230,
   },
 ]

@@ -88,7 +88,7 @@ export function YahtzeeScorecard({
 
   const orderedScores = players.map((p) => {
     const pScore = scores.find((s) => s.player_id === p.id)
-    return { player: p, score: pScore?.scores.categories ?? null }
+    return { player: p, score: pScore?.scores.categories ?? null, bonus: pScore?.scores.bonusYahtzees ?? 0 }
   })
 
   const playerColClass = (playerId: string) => {
@@ -140,10 +140,10 @@ export function YahtzeeScorecard({
               <th className="sticky left-0 z-20 w-[5.5rem] px-2 py-2 text-left text-[9px] font-black uppercase tracking-widest text-[var(--foreground)]/30 bg-[var(--card-strong)]">
                 Category
               </th>
-              {orderedScores.map(({ player, score }) => {
+              {orderedScores.map(({ player, score, bonus }) => {
                 const isActive = player.id === activePlayerId
                 const isYou = player.id === myPlayerId
-                const total = score ? totalScore(score) : 0
+                const total = score ? totalScore(score, bonus) : 0
                 const initial = player.name.charAt(0).toUpperCase()
                 return (
                   <th
@@ -240,10 +240,10 @@ export function YahtzeeScorecard({
             {/* ── Total row ── */}
             <tr className="yahtzee-score-total">
               <td className="sticky left-0 z-10 px-2 py-1.5 text-[11px] font-black text-[var(--foreground)]">Total</td>
-              {orderedScores.map(({ player, score }) => (
+              {orderedScores.map(({ player, score, bonus }) => (
                 <td key={player.id} className={playerColClass(player.id)}>
                   <span className="text-sm font-black tabular-nums text-[var(--primary)]">
-                    {score ? totalScore(score) : 0}
+                    {score ? totalScore(score, bonus) : 0}
                   </span>
                 </td>
               ))}
@@ -265,17 +265,20 @@ export function YahtzeeLeaderboard({
   players,
   highlightPlayerId,
 }: {
-  rows: { player_id: string; scores: { categories: YahtzeeCategoryPoints } }[]
+  rows: { player_id: string; scores: { categories: YahtzeeCategoryPoints; bonusYahtzees?: number } }[]
   players: { id: string; name: string }[]
   highlightPlayerId?: string | null
 }) {
-  const sorted = [...rows].sort((a, b) => totalScore(b.scores.categories) - totalScore(a.scores.categories))
+  const sorted = [...rows].sort(
+    (a, b) =>
+      totalScore(b.scores.categories, b.scores.bonusYahtzees) - totalScore(a.scores.categories, a.scores.bonusYahtzees)
+  )
 
   return (
     <div className="grid grid-cols-1 gap-2">
       {sorted.map((row, index) => {
         const player = players.find((p) => p.id === row.player_id)
-        const total = totalScore(row.scores.categories)
+        const total = totalScore(row.scores.categories, row.scores.bonusYahtzees)
         const isYou = row.player_id === highlightPlayerId
         const rankColors = ['bg-amber-500', 'bg-slate-400', 'bg-amber-700', 'bg-[var(--faint)]']
 

@@ -252,15 +252,7 @@ export interface CodewordsMessage {
   player_name?: string
 }
 export type ThemeId =
-  | 'default'
-  | 'neon'
-  | 'retro'
-  | 'elegant'
-  | 'tropical'
-  | 'pirate'
-  | 'arctic'
-  | 'naija'
-  | 'grass_court'
+  'default' | 'neon' | 'retro' | 'elegant' | 'tropical' | 'pirate' | 'arctic' | 'naija' | 'grass_court'
 export type WyrChoice = 'a' | 'b'
 
 export type ParticipantGender = 'male' | 'female'
@@ -644,6 +636,10 @@ export interface YahtzeePlayerScore {
   player_id: string
   scores: {
     categories: YahtzeeCategoryPoints
+    /** Count of Yahtzee Bonuses earned (each a flat +100). Absent on cards from before the rule. */
+    bonusYahtzees?: number
+    /** Whether a Joker-rule Yahtzee was scored this game. Not derivable from the final card. */
+    jokerUsed?: boolean
   }
   player_order: number
   created_at: string
@@ -756,12 +752,7 @@ export type UnoColor = 'red' | 'yellow' | 'green' | 'blue'
 export type UnoCardKind = 'number' | 'skip' | 'reverse' | 'draw2' | 'wild' | 'wild_draw4'
 
 export type UnoPhase =
-  | 'playing'
-  | 'choose_color'
-  | 'challenge_window'
-  | 'swap_target'
-  | 'team_leave_decision'
-  | 'finished'
+  'playing' | 'choose_color' | 'challenge_window' | 'swap_target' | 'team_leave_decision' | 'finished'
 
 export interface UnoCard {
   id: string

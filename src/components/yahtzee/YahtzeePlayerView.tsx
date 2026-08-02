@@ -47,14 +47,7 @@ import { useYahtzeeNotifications, playYahtzeeScoreSound } from '@/hooks/useYahtz
 import { useYahtzeeTurnTimer } from '@/hooks/useYahtzeeTurnTimer'
 
 type Screen =
-  | 'loading'
-  | 'join'
-  | 'game_started_waiting'
-  | 'game_ended'
-  | 'waiting'
-  | 'active'
-  | 'finished'
-  | 'not_found'
+  'loading' | 'join' | 'game_started_waiting' | 'game_ended' | 'waiting' | 'active' | 'finished' | 'not_found'
 
 export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
   const router = useRouter()
@@ -161,7 +154,7 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
   // the header drawer + its live score/categories scoreboard.
   useRosterBase(game?.status === 'active' || game?.status === 'finished' ? players : undefined, game, myPlayerId)
   const rosterScores = useMemo(
-    () => Object.fromEntries(scores.map((s) => [s.player_id, totalScore(s.scores.categories)])),
+    () => Object.fromEntries(scores.map((s) => [s.player_id, totalScore(s.scores.categories, s.scores.bonusYahtzees)])),
     [scores]
   )
   useGameScores(rosterScores, { suffix: ' pts' })
@@ -481,7 +474,7 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
     // game has no one to beat, so there's no real win). Matches the other
     // score-based games.
     const myScoreRow = scores.find((s) => s.player_id === myPlayerId)
-    const myTotal = myScoreRow ? totalScore(myScoreRow.scores.categories) : 0
+    const myTotal = myScoreRow ? totalScore(myScoreRow.scores.categories, myScoreRow.scores.bonusYahtzees) : 0
     const iWon = myPlayerId != null && session?.winner_player_id === myPlayerId && myTotal > 0 && scores.length > 1
     const shareWinnerName = iWon ? myName : winner?.name
 
