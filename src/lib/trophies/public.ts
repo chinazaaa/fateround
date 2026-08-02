@@ -25,31 +25,27 @@ export type PublicTrophy = {
  * trophies fill in.
  */
 export async function getPublicTrophiesForGame(gameType: string): Promise<PublicTrophy[]> {
-  let data: Record<string, unknown>[] | null = null
   try {
-    const admin = getSupabaseAdmin()
-    const res = await admin
+    const { data, error } = await getSupabaseAdmin()
       .from('trophies')
       .select('id, tier, title, description, points, hidden, sort_order')
       .eq('game_type', gameType)
       .eq('is_active', true)
       .order('sort_order', { ascending: true })
-    if (res.error) return []
-    data = res.data
+
+    if (error || !data) return []
+
+    return data.map((row) => ({
+      id: row.id as string,
+      tier: row.tier as string,
+      title: row.hidden ? 'Secret trophy' : (row.title as string),
+      description: row.hidden ? 'Keep playing to uncover this one.' : (row.description as string),
+      points: Number(row.points) || 0,
+      hidden: Boolean(row.hidden),
+      sortOrder: Number(row.sort_order) || 0,
+    }))
   } catch {
     // No service-role key (build time) or the query threw — show no trophies rather than break.
     return []
   }
-
-  if (!data) return []
-
-  return data.map((row) => ({
-    id: row.id as string,
-    tier: row.tier as string,
-    title: row.hidden ? 'Secret trophy' : (row.title as string),
-    description: row.hidden ? 'Keep playing to uncover this one.' : (row.description as string),
-    points: Number(row.points) || 0,
-    hidden: Boolean(row.hidden),
-    sortOrder: Number(row.sort_order) || 0,
-  }))
 }
