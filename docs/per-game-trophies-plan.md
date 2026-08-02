@@ -8,7 +8,7 @@ Ayo, Checkers) + 135 (Group B, 15 each). **585 trophies across 24 games in total
 
 **Status:** planning. Feasibility audit in progress (Whot and Monopoly complete). Nothing built.
 
-### Audit scoreboard — COMPLETE (16 games, 480 trophies)
+### Audit scoreboard — COMPLETE (15 games, 450 trophies at 30 each)
 
 | Game | A — derivable | B — needs in-play | C — cannot build | Verdict |
 |---|---|---|---|---|
@@ -19,7 +19,7 @@ Ayo, Checkers) + 135 (Group B, 15 each). **585 trophies across 24 games in total
 | Scrabble | 8 | 22 | 0 | All buildable, none per-play free |
 | Ayo | 6 | 22 | 2 | No per-player table — paired `a_*/b_*` columns |
 | Crazy Eights | 5 | 23 | 2 | Whot's schema; shares Whot's mechanism |
-| Whot | 5 | 24 | 0 (5 ambiguous) | The original ask |
+| Whot | 6 | 24 | 0 (5 ambiguous) | The original ask; the +1 A is the Champion track |
 | Checkers | 12 | 17 | 1 | THREE game types, TWO engines/tables |
 | **Trivia** | 28 | 0 | 2 | Per-answer log with response times. FREE. |
 | **Codewords** | 29 | 1 | 0 | Per-guess log. Blocked on a live bug (fixed). |
@@ -28,10 +28,12 @@ Ayo, Checkers) + 135 (Group B, 15 each). **585 trophies across 24 games in total
 | Mahjong | 7 | 22 | 1 | Rich per-hand data, wiped every hand |
 | UNO | 3 | 24 | 3 | Most contradictions of any game |
 
-**The split is not a spectrum, it is two populations.** Chess and Yahtzee persist a *record*
-(a move list; a scorecard). Everything else persists a *position*. Games in the first group are
-almost entirely free; games in the second need in-play accumulation for ~three quarters of
-their list.
+**The split is not a spectrum, it is two populations.** The RECORD-based games persist what
+happened — a move list (Chess), a scorecard (Yahtzee), a per-answer log (Trivia), a per-guess
+log (Codewords), a per-word log (Text Charades) — and are almost entirely derivable at finish.
+The POSITION-based games (Whot, UNO, Crazy Eights, Scrabble, Ludo, Monopoly, Ayo, Mahjong,
+Checkers, Mafia) persist only current state, and need in-play accumulation for ~three quarters
+of their list.
 
 Every game can ship its **Champion track today with zero new code** — `games_won` scoped to the
 game type already works and all ten are wired in `outcome.ts`. That is 10 trophies (or 40 if

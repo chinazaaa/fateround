@@ -25,19 +25,19 @@ import type { FactsContext } from './index'
  * one query for a six-player table beats six identical-shaped ones. A player with no row simply
  * gets no entry, which is not an error (see the contract in ./index).
  *
- * SOLO PLAY IS A FIRST-CLASS CASE. Yahtzee's minimum is one player, and the award pass refuses to
- * call a solo game a win, so `ctx.winners` is empty there. That is correct for win trophies and
- * wrong for everything else — a 300-point solo card is still a 300-point card. Only the two
- * win-gated counters at the bottom (`yahtzee_multiplayer_wins`, `yahtzee_big_table_wins`) read the
- * winners or the seat count; every score-shaped counter above them fires regardless of table size.
- * Note also that an empty `winners` means "a draw OR the winner is unknown", so absence from it is
- * never read as a loss — it only withholds the two win counters.
+ * SOLO PLAY IS A FIRST-CLASS CASE. Yahtzee's minimum is one player, and a solo game still records
+ * a `winner_player_id` — so `ctx.winners` DOES contain that lone player here. Solo is excluded from
+ * the win counters not by an empty `winners` but by the explicit `ctx.seated.length >= 2` guard on
+ * `yahtzee_multiplayer_wins` (and `>= 4` on `yahtzee_big_table_wins`). Separately, the award pass
+ * applies its own `MIN_PLAYERS_FOR_A_WIN` gate so `games_won` never counts a solo game either.
+ * Every score-shaped counter above those two fires regardless of table size — a 300-point solo
+ * card is still a 300-point card. And an empty `winners` means "a draw OR the winner is unknown",
+ * so absence from it is never read as a loss — it only withholds the two win counters.
  *
- * DELIBERATELY ABSENT. The brief lists a "Yahtzee Bonus (100 points)" trophy and a "Joker rule"
- * trophy. Neither rule exists in this implementation: `categoryScore` has no bonus branch for a
- * second five-of-a-kind, and `full_house` explicitly returns 0 for five of a kind ("MVP rules:
- * Yahtzee does NOT count as full house"). Emitting a counter that can never be non-zero would make
- * those trophies silently unearnable, so nothing is emitted for them until the rules land.
+ * BONUS AND JOKER. Both standard rules are implemented (see src/lib/yahtzee.ts), and their
+ * counters — `yahtzee_bonus_earned`, `yahtzee_joker_used` — are derived below from the card's
+ * stored `bonusYahtzees` count and `jokerUsed` flag. The Joker cannot be read back from the final
+ * numbers (a 40 large-straight might be legit or a Joker), which is why the flag is stored.
  */
 
 /** Chance is 5 dice, so 30 is the ceiling — five sixes taken as Chance. */

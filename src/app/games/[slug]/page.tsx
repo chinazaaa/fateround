@@ -26,6 +26,12 @@ import { FaqList } from '@/components/marketing/FaqList'
 import { MafiaRolesLanding } from '@/components/mafia/MafiaRolesLanding'
 import { getPublicTrophiesForGame } from '@/lib/trophies/public'
 
+// ISR: the page is statically generated (generateStaticParams below), but it now renders the
+// trophy catalog, which admins edit at runtime. Without a revalidate window an admin's change —
+// a new trophy, a retirement — wouldn't show until the next deploy. An hour keeps the page fast
+// while letting catalog edits surface on their own.
+export const revalidate = 3600
+
 type Props = { params: Promise<{ slug: string }> }
 
 const TROPHY_TIER_EMOJI: Record<string, string> = { bronze: '🥉', silver: '🥈', gold: '🥇', platinum: '🏆' }

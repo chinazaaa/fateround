@@ -16,6 +16,24 @@
 -- The format must match JavaScript's `toISOString()` exactly (`roundKey` in
 -- src/lib/trophies/award.ts) or the rewritten rows block nothing.
 
+-- Guard against a primary-key collision. If the application deploys BEFORE this migration runs,
+-- the new roundKey immediately starts writing `<CODE>#<finished_at>` rows. A profile that already
+-- has such a row for a round would then collide when we try to rewrite its bare-code row to the
+-- same key. Drop the now-redundant bare-code row first — the new-shape row already blocks that
+-- round — so the UPDATE below can never hit a duplicate key.
+delete from awarded_sessions a
+ using games g
+ where g.id = a.session_id
+   and g.finished_at is not null
+   and position('#' in a.session_id) = 0
+   and exists (
+     select 1
+       from awarded_sessions b
+      where b.profile_id = a.profile_id
+        and b.session_id =
+          a.session_id || '#' || to_char(g.finished_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+   );
+
 update awarded_sessions a
    set session_id = a.session_id || '#' || to_char(g.finished_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
   from games g

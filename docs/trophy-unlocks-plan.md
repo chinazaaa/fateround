@@ -105,6 +105,15 @@ create table round_unlocks (
   whatever profile the player turns out to belong to. Already-held trophies are skipped by
   `grantEligible`, so a second unlock of the same trophy is a no-op, exactly as it is now.
 
+**On the key: `(game_id, player_id, trophy_id)`, deliberately NOT round-scoped.** `game_id` is
+reused across rounds ("play again"), so a later round re-unlocking the same trophy collides with
+the earlier row — and that collision is exactly the wanted behaviour: the upsert is a no-op, so
+no duplicate toast fires (no INSERT event) and no duplicate award happens (`player_trophies` is
+unique per profile and `grantEligible` skips held ids). Rows accumulate across a room's rounds
+and are never round-scoped, which is harmless: at each finish `unlockedThisRound` may return an
+id from an earlier round, but granting it is idempotent. A round token would add a column to
+prevent a collision we actively rely on, so it is intentionally omitted.
+
 ### 2.3 Which trophies qualify
 
 **Not all of them, and the list must stay short.** A trophy is instant-eligible only when:
@@ -159,6 +168,21 @@ as it is and the trophy line should sit with the results, not replace it.
 Phase 2 is the one worth doing regardless — it fixes a live bug where legitimately-earned
 trophies vanish. Phases 4–5 are the console-style polish and depend on nothing else being
 in flight.
+
+## 4b. Deploy order (round_facts)
+
+The award pass reads `round_facts` and falls back to deriving live when the row is absent
+(`§1.3`). That fallback is what makes the deploy order safe in BOTH directions:
+
+- **Migration before code:** the table exists but nothing writes it yet; every finish uses the
+  live fallback — i.e. exactly today's behaviour. No breakage.
+- **Code before migration:** `recordRoundFacts` writes fail (table missing) and are swallowed
+  (best-effort), and the award pass falls back to live derivation. Still today's behaviour.
+
+So neither ordering loses a trophy; the snapshot simply starts helping once both are in place.
+Rounds that finished before both landed keep working through the live path and are never
+backfilled — their session rows may already be gone, which is the whole reason the snapshot
+exists going forward.
 
 ## 5. Explicitly out of scope
 

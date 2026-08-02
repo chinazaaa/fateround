@@ -294,8 +294,14 @@ export async function getCompetitiveStandings(
       .from('codewords_player_roles')
       .select('player_id, team')
       .eq('game_id', gameId)
-    const winners = (roles ?? []).filter((r) => r.team === board.winner).map((r) => r.player_id as string)
-    const rest = (roles ?? []).filter((r) => r.team !== board.winner).map((r) => r.player_id as string)
+    // Sorted by player_id so the order is deterministic. The query has no ORDER BY, and placement
+    // points are assigned by index, so an unsorted list would hand the same finish different
+    // points run to run — a real, if small, nondeterminism in a "team share the win" board.
+    const sortedIds = (roles ?? [])
+      .map((r) => ({ id: r.player_id as string, team: r.team }))
+      .sort((a, b) => a.id.localeCompare(b.id))
+    const winners = sortedIds.filter((r) => r.team === board.winner).map((r) => r.id)
+    const rest = sortedIds.filter((r) => r.team !== board.winner).map((r) => r.id)
     return [...winners, ...rest]
   }
 

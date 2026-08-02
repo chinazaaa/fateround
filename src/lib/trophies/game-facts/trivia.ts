@@ -190,7 +190,10 @@ function rankHistory(all: AnswerRow[], roundOrder: Map<string, number>, question
       if ((roundOrder.get(a.round_id) ?? 0) !== n) continue
       totals.set(a.player_id, (totals.get(a.player_id) ?? 0) + (Number(a.points) || 0))
     }
-    const standing = [...players].sort((a, b) => (totals.get(b) ?? 0) - (totals.get(a) ?? 0))
+    // player_id breaks a points tie deterministically. `players` comes from an unordered query,
+    // and `wire_to_wire` / `comeback` read the exact rank a tied player lands on — without a
+    // stable tiebreaker the same game could award those trophies differently run to run.
+    const standing = [...players].sort((a, b) => (totals.get(b) ?? 0) - (totals.get(a) ?? 0) || a.localeCompare(b))
     standing.forEach((p, i) => history.get(p)?.push(i + 1))
   }
   return history

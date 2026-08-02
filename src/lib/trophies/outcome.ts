@@ -217,6 +217,19 @@ export async function resolveWinners(
   gameId: string,
   gameType: GameType
 ): Promise<string[] | null> {
+  const winners = await resolveWinnersRaw(supabase, gameId, gameType)
+  // UNO partner expansion is applied to the FINAL result of every path — scalar column, standings
+  // fallback, or missing session — so a team win is never recorded as a solo one no matter which
+  // branch produced it. Applied exactly once, here, and only for UNO.
+  if (winners === null) return null
+  return gameType === 'uno' ? expandUnoTeamWin(supabase, gameId, winners) : winners
+}
+
+async function resolveWinnersRaw(
+  supabase: SupabaseClient,
+  gameId: string,
+  gameType: GameType
+): Promise<string[] | null> {
   const source = WINNER_SOURCES[gameType]
   if (!source) {
     // No persisted winner column. Derived standings cover the rest of the competitive games.
@@ -238,8 +251,7 @@ export async function resolveWinners(
       const many = normalizeIds(row[source.arrayColumn])
       if (many.length) return many
     }
-    const winners = normalizeIds(row[source.column])
-    return gameType === 'uno' ? await expandUnoTeamWin(supabase, gameId, winners) : winners
+    return normalizeIds(row[source.column])
   } catch {
     return null
   }
