@@ -270,4 +270,23 @@ export const CHESS: SystemTrophySpec[] = [
     sortOrder: 260,
     hidden: true,
   },
+  {
+    suffix: 'smothered',
+    tier: 'platinum',
+    title: 'Smothered',
+    description: 'Win by smothered mate — a knight mates a king hemmed in by its own pieces.',
+    counter: 'chess_wins_smothered',
+    points: 150,
+    sortOrder: 270,
+    hidden: true,
+  },
+  {
+    suffix: 'immortal',
+    tier: 'platinum',
+    title: 'Immortal',
+    description: 'Win a game having given up your queen while your opponent kept theirs.',
+    counter: 'chess_wins_queen_sac',
+    points: 150,
+    sortOrder: 280,
+  },
 ]

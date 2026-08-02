@@ -832,6 +832,22 @@ export const COUNTERS: readonly CounterDef[] = [
     availability: 'partial',
     phrase: 'won at least {n} game{s} with 4+ players',
   },
+  {
+    key: 'chess_wins_smothered',
+    label: 'Chess — smothered mate',
+    description: 'Wins by smothered mate: a knight mates a king walled in by its own pieces.',
+    scope: 'per-game',
+    availability: 'partial',
+    phrase: 'delivered at least {n} smothered mate{s}',
+  },
+  {
+    key: 'chess_wins_queen_sac',
+    label: 'Chess — won without your queen',
+    description: 'Wins where your queen was captured and the opponent kept theirs.',
+    scope: 'per-game',
+    availability: 'partial',
+    phrase: 'won at least {n} game{s} a queen down',
+  },
 ] as const
 
 /**

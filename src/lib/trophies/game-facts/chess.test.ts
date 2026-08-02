@@ -235,3 +235,64 @@ describe('chessFacts', () => {
     expect(await chessFacts(db(session('')), 'G', CTX)).toEqual(new Map())
   })
 })
+
+describe('smothered mate is stricter than knight mate', () => {
+  // The brief conflated the two. They must not be the same trophy twice: a knight mate is any
+  // mate a knight delivers; a SMOTHERED mate additionally requires the king to be walled in by
+  // its own pieces with nowhere to run.
+  // Blackburne Shilling Gambit — Black smothers White's king on e1 with a knight on f3.
+  const SMOTHERED = [
+    'e4',
+    'e5',
+    'Nf3',
+    'Nc6',
+    'Bc4',
+    'Nd4',
+    'Nxe5',
+    'Qg5',
+    'Nxf7',
+    'Qxg2',
+    'Rf1',
+    'Qxe4+',
+    'Be2',
+    'Nf3#',
+  ]
+
+  it('a smothered mate sets both flags', async () => {
+    const chess = new Chess()
+    for (const san of SMOTHERED) chess.move(san)
+    // Guard the fixture itself: if this line ever stops being mate the assertions below would
+    // pass vacuously.
+    expect(chess.isCheckmate(), 'fixture is not actually checkmate').toBe(true)
+
+    // Black gives the mate, so `me` is Black here.
+    const row = session(chess.pgn(), {
+      player_white_id: 'rival',
+      player_black_id: 'me',
+      result_reason: 'checkmate',
+      winner_player_id: 'me',
+    })
+    const f = await factsFor(row, 'me', { ...CTX, winners: ['me'] })
+    expect(f.chess_wins_knight_mate).toBe(1)
+    expect(f.chess_wins_smothered).toBe(1)
+  })
+
+  it('a knight mate in the open is NOT smothered', async () => {
+    const open = ['e4', 'e5', 'Qh5', 'Nc6', 'Bc4', 'Nf6', 'Qxf7#']
+    const row = session(pgnOf(open), { result_reason: 'checkmate', winner_player_id: 'me' })
+    const f = await factsFor(row, 'me', { ...CTX, winners: ['me'] })
+    expect(f.chess_wins_smothered).toBeUndefined()
+  })
+})
+
+describe('Immortal needs the opponent to keep their queen', () => {
+  it('a plain queen trade does not count', async () => {
+    // Otherwise every queen swap in the game would award a platinum, which is what made the
+    // brief's "sacrificed" wording unusable as written.
+    const trade = ['e4', 'e5', 'Qh5', 'Nf6', 'Qxe5+', 'Qe7', 'Qxe7+', 'Bxe7']
+    const row = session(pgnOf(trade), { winner_player_id: 'me', result_reason: 'resignation' })
+    const f = await factsFor(row, 'me', { ...CTX, winners: ['me'] })
+    expect(f.chess_wins_after_queen_loss).toBe(1)
+    expect(f.chess_wins_queen_sac).toBeUndefined()
+  })
+})

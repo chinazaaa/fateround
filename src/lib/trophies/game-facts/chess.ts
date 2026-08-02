@@ -123,6 +123,30 @@ function occupied(board: ReturnType<Chess['board']>) {
   return board.flat().filter((p): p is NonNullable<typeof p> => Boolean(p))
 }
 
+/**
+ * Is this a smothered mate — every escape square blocked by the mated king's own men?
+ *
+ * Only the eight neighbours matter: a mate is already established, so the question is purely
+ * whether the king is walled in by its own side rather than merely covered by attacks.
+ */
+function isSmothered(board: Chess, kingSquare: string, color: 'w' | 'b'): boolean {
+  const file = kingSquare.charCodeAt(0)
+  const rank = Number(kingSquare[1])
+  for (const df of [-1, 0, 1]) {
+    for (const dr of [-1, 0, 1]) {
+      if (!df && !dr) continue
+      const f = String.fromCharCode(file + df)
+      const r = rank + dr
+      if (f < 'a' || f > 'h' || r < 1 || r > 8) continue
+      const occupant = board.get(`${f}${r}` as Square)
+      // An empty square, or one held by the mating side, means the king was hemmed in by the
+      // position rather than smothered by its own pieces.
+      if (!occupant || occupant.color !== color) return false
+    }
+  }
+  return true
+}
+
 export async function chessFacts(
   supabase: SupabaseClient,
   gameId: string,
@@ -293,6 +317,12 @@ export async function chessFacts(
 
     // ── Win shapes ──────────────────────────────────────────────────────────────────────
     if (t.lostQueen) f.chess_wins_after_queen_loss = 1
+    // "Immortal": you won having given up your queen while the opponent kept theirs. The brief
+    // asked for a deliberate SACRIFICE, which needs an engine eval or an intent model and is not
+    // decidable here. This is the closest honest reading — losing your queen and still winning
+    // against one is the shape of the game the trophy is named for, and it cannot be satisfied
+    // by a plain queen trade, which is what would have made it meaningless.
+    if (t.lostQueen && !t.queensCaptured) f.chess_wins_queen_sac = 1
     if (history.length >= MATERIAL_CHECK_PLY && t.materialDownAt20) f.chess_wins_material_down_move20 = 1
     // Clean sheet counts pawns too: the opponent never took anything at all.
     if (t.piecesLost === 0) f.chess_wins_clean_sheet = 1
@@ -313,8 +343,14 @@ export async function chessFacts(
         ) {
           f.chess_wins_back_rank = 1
         }
-        // Knight mate, not smothered mate — see the definitions note at the top.
-        if (checkers.some((c) => c.piece?.type === 'n')) f.chess_wins_knight_mate = 1
+        if (checkers.some((c) => c.piece?.type === 'n')) {
+          f.chess_wins_knight_mate = 1
+          // SMOTHERED MATE is the strict form and a genuinely different achievement: the king is
+          // mated by a knight while every square it could flee to is blocked by its OWN pieces.
+          // Decidable here without an engine — walk the eight neighbours and check occupancy.
+          // Off-board squares don't count as blocked; a king on an edge simply has fewer.
+          if (isSmothered(board, matedKing, them)) f.chess_wins_smothered = 1
+        }
       }
     }
   }
