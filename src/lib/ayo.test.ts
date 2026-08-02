@@ -279,27 +279,27 @@ describe('totalSeedsOnSide', () => {
 
 describe('bumpAyoStats (per-game trophy accumulator)', () => {
   it('counts moves, capturing moves and sets last_capture on the mover', () => {
-    let { a_stats, b_stats } = bumpAyoStats(
+    const first = bumpAyoStats(
       {},
       {},
       { moverSide: 'a', pitIndex: 2, seedsSown: 4, captured: true, capturedA: 4, capturedB: 0 }
     )
-    expect(a_stats.moves).toBe(1)
-    expect(a_stats.capturing_moves).toBe(1)
-    expect(a_stats.last_capture).toBe(1)
-    expect(b_stats.moves).toBeUndefined()
+    expect(first.a_stats.moves).toBe(1)
+    expect(first.a_stats.capturing_moves).toBe(1)
+    expect(first.a_stats.last_capture).toBe(1)
+    expect(first.b_stats.moves).toBeUndefined()
     // A non-capturing move clears last_capture (it's the MOST-RECENT flag, not a sum).
-    ;({ a_stats, b_stats } = bumpAyoStats(a_stats, b_stats, {
+    const second = bumpAyoStats(first.a_stats, first.b_stats, {
       moverSide: 'a',
       pitIndex: 3,
       seedsSown: 3,
       captured: false,
       capturedA: 4,
       capturedB: 0,
-    }))
-    expect(a_stats.moves).toBe(2)
-    expect(a_stats.capturing_moves).toBe(1)
-    expect(a_stats.last_capture).toBe(0)
+    })
+    expect(second.a_stats.moves).toBe(2)
+    expect(second.a_stats.capturing_moves).toBe(1)
+    expect(second.a_stats.last_capture).toBe(0)
   })
 
   it('builds the sown_mask from LOCAL house index per side', () => {
