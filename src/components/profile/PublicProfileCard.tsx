@@ -105,7 +105,8 @@ export function PublicProfileCard({ summary }: { summary: PublicProfileSummary }
                   <div className="min-w-0 flex-1">
                     <p className="truncate font-semibold leading-tight">{t.title}</p>
                     <p className="text-faint truncate text-xs">
-                      {t.gameLabel} · {t.tier[0].toUpperCase() + t.tier.slice(1)}
+                      {t.gameLabel}
+                      {t.tier ? ` · ${t.tier[0].toUpperCase()}${t.tier.slice(1)}` : ''}
                       {t.rarityPct !== null ? ` · ${t.rarityPct}% of players` : ''}
                     </p>
                   </div>

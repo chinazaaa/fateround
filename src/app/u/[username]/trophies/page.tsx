@@ -16,8 +16,10 @@ function plural(count: number, word: string): string {
 }
 
 function formatEarned(at: string): string {
+  // Explicit locale: this renders on the server, where the runtime's default locale is arbitrary
+  // and would otherwise format dates inconsistently between environments.
   const d = new Date(at)
-  return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+  return d.toLocaleDateString('en-GB', { year: 'numeric', month: 'short', day: 'numeric' })
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {

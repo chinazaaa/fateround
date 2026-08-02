@@ -15,10 +15,13 @@
 
 alter table profiles add column if not exists username text;
 
--- Case-insensitive uniqueness, and only across CLAIMED usernames — many null rows must coexist.
--- The API stores a canonical lowercase value, so lower() here is belt-and-braces.
-create unique index if not exists profiles_username_lower_key
-  on profiles (lower(username))
+-- Unique across CLAIMED usernames only — many null rows must coexist. A PLAIN index on the column
+-- (not a functional lower() one): the CHECK below forbids uppercase, so the stored value is already
+-- canonical lowercase and a plain unique index is therefore case-insensitive in practice. It also
+-- serves the lookup `where username = $1` (`.eq('username', ...)` in public-profile.ts) — a
+-- `lower(username)` index could not, and every public profile read would seq-scan.
+create unique index if not exists profiles_username_key
+  on profiles (username)
   where username is not null;
 
 -- Format guard mirrored in src/lib/profile/username.ts. Canonical form is lowercase, so the class

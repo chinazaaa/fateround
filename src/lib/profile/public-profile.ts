@@ -1,3 +1,4 @@
+import { cache } from 'react'
 import { GAME_TYPE_CONFIG, gameTypeLabel } from '@/lib/game-types'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { GLOBAL_SCOPE } from '@/lib/trophies/criteria'
@@ -96,29 +97,45 @@ type LoadedProfile = {
   statsByGame: Map<string, { gamesPlayed: number; gamesWon: number }>
 }
 
-/** The one query pass both shapers share. Returns null when no profile has claimed that username. */
-async function loadProfile(username: string): Promise<LoadedProfile | null> {
+/**
+ * The one query pass both shapers share. Returns null when no profile has claimed that username.
+ *
+ * Wrapped in React `cache()` so a single request that reads it twice — `generateMetadata` and then
+ * the page component both call a shaper below — runs the DB work once, not twice.
+ */
+const loadProfile = cache(async (username: string): Promise<LoadedProfile | null> => {
   const canonical = normalizeUsername(username)
   if (!canonical) return null
 
   const admin = getSupabaseAdmin()
-  const { data: profile } = await admin
+  const { data: profile, error } = await admin
     .from('profiles')
     .select('id, handle, avatar_url, username, trophy_points, trophy_level, current_streak, longest_streak')
     .eq('username', canonical)
     .maybeSingle()
 
+  // A query failure is NOT "no such username". Returning null here would make the page 404 and,
+  // with revalidate on the route, cache that 404 for a profile that actually exists. Throw so a
+  // transient fault becomes a 500 (uncached) instead. (The OG route catches this and still renders
+  // its fallback card, so unfurls never break.)
+  if (error) throw new Error(`public-profile: profile lookup failed (${error.code ?? 'unknown'})`)
   if (!profile) return null
   const id = profile.id as string
 
-  const [{ data: earnedRows }, { data: rarityRows }, { data: statRows }] = await Promise.all([
+  const [{ data: earnedRows }, { data: statRows }] = await Promise.all([
     admin
       .from('player_trophies')
       .select('trophy_id, earned_at, trophies(id, game_type, tier, title, description, points)')
       .eq('profile_id', id),
-    admin.from('trophy_rarity').select('trophy_id, pct'),
     admin.from('player_stats').select('game_type, games_played, games_won').eq('profile_id', id),
   ])
+
+  // Rarity scoped to THIS player's earned trophies — a table-wide select grows with the catalog
+  // (not the player) and can hit PostgREST's max-rows cap, silently dropping some to rarityPct:null.
+  const earnedIds = (earnedRows ?? []).map((r) => r.trophy_id as string)
+  const { data: rarityRows } = earnedIds.length
+    ? await admin.from('trophy_rarity').select('trophy_id, pct').in('trophy_id', earnedIds)
+    : { data: [] as { trophy_id: string; pct: number }[] }
 
   const rarityById = new Map<string, number>()
   for (const r of rarityRows ?? []) rarityById.set(r.trophy_id as string, Number(r.pct))
@@ -164,7 +181,7 @@ async function loadProfile(username: string): Promise<LoadedProfile | null> {
     rarityById,
     statsByGame,
   }
-}
+})
 
 /** Total games played across every game the player has stats in. The global row is a counters bucket. */
 function totalPlayed(statsByGame: Map<string, { gamesPlayed: number; gamesWon: number }>) {
