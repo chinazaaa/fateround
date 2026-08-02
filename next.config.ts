@@ -31,6 +31,11 @@ const nextConfig: NextConfig = {
         destination: '/free-online-party-games',
         permanent: true,
       },
+      {
+        source: '/blog/best-games-to-play-over-video-call',
+        destination: '/blog/games-to-play-video-call-discord',
+        permanent: true,
+      },
     ]
   },
   async headers() {
