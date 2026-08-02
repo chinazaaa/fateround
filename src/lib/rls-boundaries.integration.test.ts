@@ -48,6 +48,28 @@ const SECRET_COLUMNS: ReadonlyArray<[table: string, column: string]> = [
  */
 const ANON_INSERT_ALLOWED = new Set<string>(['app_feedback'])
 
+/**
+ * Tables no public role may read AT ALL — not one column, not one row.
+ *
+ * These carry progression that underpins the paid tiers, so read access is not merely a
+ * privacy question: the catalog reveals hidden trophies before they're earned, and
+ * `awarded_sessions` is the idempotency ledger. They are served exclusively by API routes
+ * holding the service role (20260804000000_trophies_streaks.sql), which is what lets the
+ * server filter `hidden`/`is_active` rather than shipping them and trusting the client.
+ *
+ * The sweeps above only probe WRITES, plus reads of secret-SHAPED column names. Neither
+ * would notice `player_trophies` becoming world-readable, because nothing in it is called
+ * `token`. Hence this list.
+ */
+const SERVICE_ROLE_ONLY_TABLES: ReadonlyArray<string> = [
+  'trophies',
+  'trophy_rarity',
+  'player_stats',
+  'player_distinct',
+  'player_trophies',
+  'awarded_sessions',
+]
+
 let anon: SupabaseClient
 let service: SupabaseClient
 
@@ -175,6 +197,24 @@ describe.skipIf(!hasCreds)('RLS boundaries (live)', () => {
     },
     SWEEP_TIMEOUT_MS
   )
+
+  // Deliberately asserts EXISTENCE first. Without that this passes vacuously on any
+  // environment where the migration hasn't been applied — green because the table is missing,
+  // which is exactly the "assertion encodes an assumption about fixture state" trap.
+  it.each(SERVICE_ROLE_ONLY_TABLES)('anon cannot read %s at all', async (table) => {
+    const { error: serviceError } = await service.from(table).select('*').limit(1)
+    expect(serviceError, `${table} does not exist — this assertion would pass vacuously`).toBeNull()
+
+    const { data, error } = await anon.from(table).select('*').limit(1)
+    // "Denied", "empty" and "not found" look identical from the outside, so score on the error
+    // code: a successful read of zero rows is a FAILURE here, not a pass.
+    expect(error, `${table} is readable by the anon key`).not.toBeNull()
+    expect(
+      ['42501', 'PGRST205', 'PGRST106'],
+      `${table} failed for an unexpected reason (${error?.code}) — investigate rather than assume denied`
+    ).toContain(error?.code)
+    expect(data, `${table} returned rows to the anon key`).toBeNull()
+  })
 
   it.each(SECRET_COLUMNS)('anon cannot read %s.%s', async (table, column) => {
     const { error } = await anon.from(table).select(`${column}`).limit(1)
