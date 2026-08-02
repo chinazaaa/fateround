@@ -23,6 +23,9 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { getCompetitiveStandings, isCompetitiveRoomGame } from '@/lib/room-points'
 import { unoTeammateId } from '@/lib/uno'
+import { mafiaRoleTeam } from '@/lib/mafia'
+import type { MafiaRole } from '@/types'
+import { describeItIndividualLeaderboard, computeDescribeItScores, describeItWinningTeams } from '@/lib/describe-it'
 import type { GameType } from '@/types'
 
 type WinnerSource = {
@@ -30,11 +33,6 @@ type WinnerSource = {
   table: string
   /** Single-winner column. */
   column: string
-  /**
-   * Multi-winner column, where a game can have more than one (mahjong). Read in preference to
-   * `column` when present and non-empty.
-   */
-  arrayColumn?: string
 }
 
 /**
@@ -63,7 +61,6 @@ const WINNER_SOURCES: Partial<Record<GameType, WinnerSource>> = {
   ping_pong: { table: 'ping_pong_sessions', column: 'winner_player_id' },
   uno: { table: 'uno_sessions', column: 'winner_player_id' },
   // Mahjong can end with several winners, so prefer the array and fall back to the scalar.
-  mahjong: { table: 'mahjong_sessions', column: 'winner_player_id', arrayColumn: 'winner_player_ids' },
 }
 
 /**
@@ -109,7 +106,7 @@ export function isWinnerlessByDesign(gameType: GameType): boolean {
  * fire, which looks identical to a typo.
  */
 export function hasWinnerSource(gameType: GameType): boolean {
-  return gameType in WINNER_SOURCES || isCompetitiveRoomGame(gameType)
+  return gameType in WINNER_SOURCES || gameType in CUSTOM_WINNER_RESOLVERS || isCompetitiveRoomGame(gameType)
 }
 
 /**
@@ -117,7 +114,7 @@ export function hasWinnerSource(gameType: GameType): boolean {
  * fallback widens this further at runtime — use {@link hasWinnerSource} for a per-type answer.
  */
 export function gameTypesWithWinners(): GameType[] {
-  return Object.keys(WINNER_SOURCES).sort() as GameType[]
+  return [...Object.keys(WINNER_SOURCES), ...Object.keys(CUSTOM_WINNER_RESOLVERS)].sort() as GameType[]
 }
 
 /**
@@ -242,6 +239,105 @@ function normalizeIds(value: unknown): string[] {
 }
 
 /**
+ * Game types whose winner needs game-specific logic, not a single column.
+ *
+ * Three shapes the column map can't express:
+ *  - Mafia: the winner is a TEAM (`mafia_sessions.winning_team`); a player wins if their role
+ *    maps to that team, plus the `lovers` overlay. So `games_won` was permanently 0 for Mafia.
+ *  - Mahjong: `winner_player_id` is the last HAND's winner, but a match is many hands and the
+ *    result lives in the cumulative `scores`. Reading the column credited the wrong player.
+ *  - describe_it (Text Charades): no winner column at all; the result is the team (or, in
+ *    individual mode, the player) with the most words, which the game's own helpers compute.
+ *
+ * Each returns player ids, `[]` for a genuine draw, or `null` when it can't tell. Checked BEFORE
+ * `WINNER_SOURCES`, so it overrides the (wrong) mahjong column.
+ */
+const CUSTOM_WINNER_RESOLVERS: Partial<
+  Record<GameType, (supabase: SupabaseClient, gameId: string) => Promise<string[] | null>>
+> = {
+  mafia: resolveMafiaWinners,
+  mahjong: resolveMahjongWinners,
+  describe_it: resolveDescribeItWinners,
+}
+
+async function resolveMafiaWinners(supabase: SupabaseClient, gameId: string): Promise<string[] | null> {
+  try {
+    const { data: session } = await supabase
+      .from('mafia_sessions')
+      .select('winning_team')
+      .eq('game_id', gameId)
+      .maybeSingle()
+    const team = session?.winning_team as string | null | undefined
+    if (!team) return null
+
+    const { data: states } = await supabase
+      .from('mafia_player_states')
+      .select('player_id, role, is_lover')
+      .eq('game_id', gameId)
+    if (!states?.length) return null
+
+    // The 'lovers' win is the two linked players, whatever their roles. Every other team is
+    // decided by role → team, so `village`/`mafia` credit the whole side and the solo roles
+    // (jester/serial_killer/arsonist) credit their single player.
+    if (team === 'lovers') {
+      return states.filter((p) => p.is_lover === true).map((p) => p.player_id as string)
+    }
+    return states.filter((p) => mafiaRoleTeam(p.role as MafiaRole) === team).map((p) => p.player_id as string)
+  } catch {
+    return null
+  }
+}
+
+async function resolveMahjongWinners(supabase: SupabaseClient, gameId: string): Promise<string[] | null> {
+  try {
+    const { data } = await supabase.from('mahjong_sessions').select('scores').eq('game_id', gameId).maybeSingle()
+    const scores = (data?.scores ?? {}) as Record<string, number>
+    const entries = Object.entries(scores)
+    if (entries.length < 2) return null
+    const top = Math.max(...entries.map(([, v]) => Number(v) || 0))
+    const leaders = entries.filter(([, v]) => (Number(v) || 0) === top).map(([id]) => id)
+    // Everyone level (no hand moved the needle) is a genuine draw, not "everyone won".
+    return leaders.length === entries.length ? [] : leaders
+  } catch {
+    return null
+  }
+}
+
+async function resolveDescribeItWinners(supabase: SupabaseClient, gameId: string): Promise<string[] | null> {
+  try {
+    const [{ data: game }, { data: players }] = await Promise.all([
+      supabase.from('games').select('describe_it_num_teams, describe_it_mode').eq('id', gameId).maybeSingle(),
+      supabase.from('describe_it_players').select('player_id, team, score').eq('game_id', gameId),
+    ])
+    if (!players?.length) return null
+
+    if ((game?.describe_it_mode as string) === 'individual') {
+      const ranked = describeItIndividualLeaderboard(
+        players.map((p) => ({ player_id: p.player_id as string, score: p.score as number | null })),
+        players.map((p) => ({ id: p.player_id as string, name: '' }))
+      )
+      if (!ranked.length || ranked[0]!.score === 0) return []
+      const top = ranked[0]!.score
+      return ranked.filter((r) => r.score === top).map((r) => r.id)
+    }
+
+    // Team mode: winning teams come from the guessed-word counts, then every player on a winning
+    // team is a winner — the same "team share the win" rule Codewords uses.
+    const { data: words } = await supabase.from('describe_it_words').select('team, status').eq('game_id', gameId)
+    const numTeams = (game?.describe_it_num_teams as number) ?? 2
+    const winningTeams = new Set(
+      describeItWinningTeams(
+        computeDescribeItScores((words ?? []) as { team: number; status: 'guessed' | 'skipped' }[], numTeams)
+      )
+    )
+    if (!winningTeams.size) return []
+    return players.filter((p) => winningTeams.has(p.team as number)).map((p) => p.player_id as string)
+  } catch {
+    return null
+  }
+}
+
+/**
  * Read the winner(s) of a finished game from the server's own tables.
  *
  * @returns player ids, `[]` when there was genuinely no winner, or `null` when this game
@@ -266,15 +362,17 @@ async function resolveWinnersRaw(
   gameId: string,
   gameType: GameType
 ): Promise<string[] | null> {
+  const custom = CUSTOM_WINNER_RESOLVERS[gameType]
+  if (custom) return custom(supabase, gameId)
+
   const source = WINNER_SOURCES[gameType]
   if (!source) {
     // No persisted winner column. Derived standings cover the rest of the competitive games.
     return winnersFromStandings(await resolveStandings(supabase, gameId, gameType), gameType)
   }
 
-  const columns = source.arrayColumn ? `${source.column}, ${source.arrayColumn}` : source.column
   try {
-    const { data, error } = await supabase.from(source.table).select(columns).eq('game_id', gameId).maybeSingle()
+    const { data, error } = await supabase.from(source.table).select(source.column).eq('game_id', gameId).maybeSingle()
     // An error is "we don't know", not "nobody won" — see the three-way note at the top. The
     // session row can also be legitimately absent (an old game, a schema that arrived later),
     // so fall through to derived standings before giving up.
@@ -283,10 +381,6 @@ async function resolveWinnersRaw(
     }
 
     const row = data as unknown as Record<string, unknown>
-    if (source.arrayColumn) {
-      const many = normalizeIds(row[source.arrayColumn])
-      if (many.length) return many
-    }
     return normalizeIds(row[source.column])
   } catch {
     return null
