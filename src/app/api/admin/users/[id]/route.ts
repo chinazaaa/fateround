@@ -111,6 +111,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
           // Titles are built from shared templates, so "First round" exists once per game and
           // once cross-game. Without the game beside it the list reads as a duplicate award.
           isActive: t ? Boolean(t.is_active) : false,
+          known: Boolean(t),
           earnedAt: r.earned_at,
         }
       }),

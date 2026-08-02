@@ -36,6 +36,7 @@ type Detail = {
     gameType: string | null
     gameLabel: string | null
     isActive: boolean
+    known: boolean
     earnedAt: string
   }[]
 }
@@ -345,8 +346,10 @@ function UserDetail({ detail, loading, onClose }: { detail: Detail | null; loadi
                             shared templates, so "First round" exists once per game AND
                             cross-game. Two rows reading the same is what makes it look like
                             the same trophy was awarded twice. */}
-                        <span className="text-[var(--muted)]">· {t.gameLabel ?? 'Cross-game'}</span>
-                        {!t.isActive && (
+                        <span className="text-[var(--muted)]">
+                          · {t.gameLabel ?? (t.known ? 'No game' : 'Deleted from catalog')}
+                        </span>
+                        {t.known && !t.isActive && (
                           <span className="ml-1 rounded-full bg-[var(--surface-inset-bg)] px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-[var(--muted)]">
                             Retired
                           </span>
