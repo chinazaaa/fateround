@@ -1,6 +1,9 @@
 import type { CatalogTrophy } from './catalog'
 import { CHESS } from './system-trophies/chess'
+import { CRAZY_EIGHTS } from './system-trophies/crazy-eights'
 import { CODEWORDS } from './system-trophies/codewords'
+import { LUDO } from './system-trophies/ludo'
+import { MONOPOLY } from './system-trophies/monopoly'
 import { TRIVIA } from './system-trophies/trivia'
 import type { SystemTrophySpec } from './system-trophies/types'
 import { YAHTZEE } from './system-trophies/yahtzee'
@@ -35,6 +38,9 @@ function rule(counter: string, gte: number, gameType: string) {
 const BY_GAME: Record<string, SystemTrophySpec[]> = {
   chess: CHESS,
   codewords: CODEWORDS,
+  crazy_eights: CRAZY_EIGHTS,
+  ludo: LUDO,
+  monopoly: MONOPOLY,
   trivia: TRIVIA,
   yahtzee: YAHTZEE,
 }

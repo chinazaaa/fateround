@@ -1,7 +1,10 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { GameType } from '@/types'
 import { chessFacts } from './chess'
+import { crazyEightsFacts } from './crazy-eights'
 import { codewordsFacts } from './codewords'
+import { ludoFacts } from './ludo'
+import { monopolyFacts } from './monopoly'
 import { triviaFacts } from './trivia'
 import { yahtzeeFacts } from './yahtzee'
 
@@ -55,6 +58,9 @@ type FactsBuilder = (
 const BUILDERS: Partial<Record<GameType, FactsBuilder>> = {
   chess: chessFacts,
   codewords: codewordsFacts,
+  crazy_eights: crazyEightsFacts,
+  ludo: ludoFacts,
+  monopoly: monopolyFacts,
   trivia: triviaFacts,
   yahtzee: yahtzeeFacts,
 }

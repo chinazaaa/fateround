@@ -19,7 +19,13 @@ function db(rows: { player_id: string; scores: { categories: YahtzeeCategoryPoin
   } as never
 }
 
-const CTX: FactsContext = { timerSeconds: 60, questionSource: null, theme: null, seated: ['me', 'b', 'c', 'd'], winners: [] }
+const CTX: FactsContext = {
+  timerSeconds: 60,
+  questionSource: null,
+  theme: null,
+  seated: ['me', 'b', 'c', 'd'],
+  winners: [],
+}
 
 /** A finished card: every cell non-null, defaults chosen so nothing accidentally trips a flag. */
 function cats(overrides: Partial<YahtzeeCategoryPoints> = {}): YahtzeeCategoryPoints {

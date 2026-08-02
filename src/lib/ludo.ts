@@ -550,6 +550,77 @@ function advanceTurnIndex(session: LudoSession): number {
   return (session.current_turn_index + 1) % session.turn_order.length
 }
 
+// ── Per-game trophy accumulator ───────────────────────────────────────────────────────────
+//
+// PURELY ADDITIVE. Everything below is a write-only tally the finish-time facts builder folds
+// into trophy counters (src/lib/trophies/game-facts/ludo.ts). None of it is ever read by the
+// engine's move / capture / turn / win logic — remove it and gameplay is byte-for-byte the same.
+// Ludo keeps only current piece positions, so a six rolled or a piece captured leaves no trace
+// once the turn passes; this scratch blob on `ludo_player_state.game_counters` is that trace.
+// See supabase/migrations/20260811010000_ludo_round_stats.sql.
+
+/** A flat bag of per-game counters. Absent key == 0. */
+type LudoGameCounters = Record<string, number>
+
+/** Read the stored scratch counters off a state row, tolerating the untyped jsonb column. */
+function readGameCounters(row: LudoPlayerState | undefined): LudoGameCounters {
+  const raw = (row as unknown as { game_counters?: unknown } | undefined)?.game_counters
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
+  const out: LudoGameCounters = {}
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof value === 'number' && Number.isFinite(value)) out[key] = value
+  }
+  return out
+}
+
+/** True when two of a player's own pieces share a track square (a capture-proof pair). */
+function hasOwnStack(pieces: LudoPiece[]): boolean {
+  const seen = new Set<number>()
+  for (const piece of pieces) {
+    if (piece.zone !== 'track') continue
+    if (seen.has(piece.pos)) return true
+    seen.add(piece.pos)
+  }
+  return false
+}
+
+/** The roller's scratch counters after one landed roll (sixes, double sixes, streaks). */
+function rollCounterUpdate(base: LudoGameCounters, dice: LudoDiceRoll): LudoGameCounters {
+  const next = { ...base }
+  next.rolls = (next.rolls ?? 0) + 1
+  const sixes = (dice.d1 === 6 ? 1 : 0) + (dice.d2 === 6 ? 1 : 0)
+  if (sixes > 0) next.sixes_rolled = (next.sixes_rolled ?? 0) + sixes
+  if (dice.d1 === 6 && dice.d2 === 6) {
+    next.double_sixes = (next.double_sixes ?? 0) + 1
+    next.dsix_streak = (next.dsix_streak ?? 0) + 1
+  } else {
+    next.dsix_streak = 0
+  }
+  next.dsix_streak_max = Math.max(next.dsix_streak_max ?? 0, next.dsix_streak ?? 0)
+  return next
+}
+
+/**
+ * Record the roller's dice counters after a roll that won the session CAS.
+ *
+ * A plain (non-CAS) write on the roller's own row: the caller only invokes this once the
+ * session claim landed, so exactly one request per roll reaches here. Best-effort — a failed
+ * counter write must never surface as a failed roll, so this never returns an error.
+ */
+async function bumpRollCounters(
+  supabase: SupabaseClient,
+  gameId: string,
+  playerRow: LudoPlayerState,
+  dice: LudoDiceRoll
+): Promise<void> {
+  const next = rollCounterUpdate(readGameCounters(playerRow), dice)
+  await supabase
+    .from('ludo_player_state')
+    .update({ game_counters: next })
+    .eq('game_id', gameId)
+    .eq('player_id', playerRow.player_id)
+}
+
 async function loadGameState(
   supabase: SupabaseClient,
   gameId: string
@@ -769,6 +840,61 @@ async function persistMove(
     }
   }
 
+  // ── Trophy counters (additive, gameplay-neutral) ────────────────────────────────────────
+  // Every affected row (the mover, plus any capture victims) also has its pieces changed by this
+  // move, so all of these land inside `changedRows` below and ride the same CAS-gated write.
+  const victims = didCapture ? victimsAtTrackPos(states, move.to.pos, playerRow.color) : []
+  const finalCounters = new Map<string, LudoGameCounters>()
+
+  // Mover: deployments, captures dealt, and the board-shape flags.
+  const moverCounters = readGameCounters(playerRow)
+  if (movedFromBase) {
+    moverCounters.pieces_deployed = (moverCounters.pieces_deployed ?? 0) + 1
+    // A bring-out on the player's very first roll of the game. `rolls` reaches 1 in the roll
+    // handler for this same turn, so 1 here means "first roll".
+    if ((moverCounters.rolls ?? 0) === 1) moverCounters.fast_start = 1
+  }
+  // Landing on a safe square by counting a die (the automatic bring-out to a safe start square
+  // is excluded so the achievement means reaching a mid-arm star, not just leaving the yard).
+  // `traditional` has no safe track squares, so this only ever fires in `modern`.
+  if (!movedFromBase && move.to.zone === 'track' && isSafeSquare(move.to.pos, variant)) {
+    moverCounters.safe_landings = (moverCounters.safe_landings ?? 0) + 1
+  }
+  if (victims.length > 0) {
+    // Count pieces actually sent home — matching applyMoveLocally, which returns every opponent
+    // piece on the destination square when a capture triggers.
+    moverCounters.captures_made = (moverCounters.captures_made ?? 0) + victims.length
+    moverCounters.max_captures_in_move = Math.max(moverCounters.max_captures_in_move ?? 0, victims.length)
+    for (const victim of victims) {
+      const victimColor = states.find((s) => s.player_id === victim.playerId)?.color
+      if (victimColor) {
+        const key = `cap_vs_${victimColor}`
+        moverCounters[key] = (moverCounters[key] ?? 0) + 1
+      }
+    }
+  }
+  const moverPiecesAfter = nextStates.find((s) => s.player_id === playerId)?.pieces ?? []
+  if (moverPiecesAfter.length > 0 && moverPiecesAfter.every((p) => p.zone !== 'base')) {
+    moverCounters.full_deploy = 1
+  }
+  if (hasOwnStack(moverPiecesAfter)) moverCounters.shield = 1
+  finalCounters.set(playerId, moverCounters)
+
+  // Victims: each piece knocked home bumps `times_captured` and marks its id in `captured_mask`
+  // (so the finish builder can tell a piece that was captured yet still reached home). A victim
+  // reduced to all four in the yard by this capture records the comeback flag.
+  for (const victim of victims) {
+    const counters =
+      finalCounters.get(victim.playerId) ?? readGameCounters(states.find((s) => s.player_id === victim.playerId))
+    counters.times_captured = (counters.times_captured ?? 0) + 1
+    counters.captured_mask = (counters.captured_mask ?? 0) | (1 << victim.pieceId)
+    const victimPiecesAfter = nextStates.find((s) => s.player_id === victim.playerId)?.pieces ?? []
+    if (victimPiecesAfter.length > 0 && victimPiecesAfter.every((p) => p.zone === 'base')) {
+      counters.all_four_yarded = 1
+    }
+    finalCounters.set(victim.playerId, counters)
+  }
+
   const changedRows = nextStates.filter((row) => {
     const original = states.find((s) => s.player_id === row.player_id)
     return !original || JSON.stringify(original.pieces) !== JSON.stringify(row.pieces)
@@ -797,13 +923,11 @@ async function persistMove(
 
   // We hold the claim — now safe to write piece state and finalize.
   const writeResults = await Promise.all(
-    changedRows.map((row) =>
-      supabase
-        .from('ludo_player_state')
-        .update({ pieces: row.pieces })
-        .eq('game_id', gameId)
-        .eq('player_id', row.player_id)
-    )
+    changedRows.map((row) => {
+      const counters = finalCounters.get(row.player_id)
+      const patch = counters ? { pieces: row.pieces, game_counters: counters } : { pieces: row.pieces }
+      return supabase.from('ludo_player_state').update(patch).eq('game_id', gameId).eq('player_id', row.player_id)
+    })
   )
   const writeError = writeResults.find((r) => r.error)
   if (writeError?.error) return { error: internalErrorMessage('ludo', writeError.error) }
@@ -846,7 +970,7 @@ export async function processLudoRoll(
     else consecutiveSixes = 0
 
     if (ludoGrantsExtraRoll(dice) && consecutiveSixes < 3) {
-      await persistSession(
+      const claimed = await persistSession(
         supabase,
         gameId,
         {
@@ -859,13 +983,14 @@ export async function processLudoRoll(
         timerSeconds,
         session.updated_at
       )
+      if (claimed) await bumpRollCounters(supabase, gameId, playerRow, dice)
       return { dice }
     }
 
     if (consecutiveSixes >= 3) {
       const nextIndex = advanceTurnIndex(session)
       const nextId = session.turn_order[nextIndex]
-      await persistSession(
+      const claimed = await persistSession(
         supabase,
         gameId,
         {
@@ -879,12 +1004,13 @@ export async function processLudoRoll(
         timerSeconds,
         session.updated_at
       )
+      if (claimed) await bumpRollCounters(supabase, gameId, playerRow, dice)
       return { dice }
     }
 
     const nextIndex = advanceTurnIndex(session)
     const nextId = session.turn_order[nextIndex]
-    await persistSession(
+    const claimed = await persistSession(
       supabase,
       gameId,
       {
@@ -898,10 +1024,11 @@ export async function processLudoRoll(
       timerSeconds,
       session.updated_at
     )
+    if (claimed) await bumpRollCounters(supabase, gameId, playerRow, dice)
     return { dice }
   }
 
-  await persistSession(
+  const claimed = await persistSession(
     supabase,
     gameId,
     {
@@ -915,6 +1042,7 @@ export async function processLudoRoll(
     timerSeconds,
     session.updated_at
   )
+  if (claimed) await bumpRollCounters(supabase, gameId, playerRow, dice)
   return { dice }
 }
 
