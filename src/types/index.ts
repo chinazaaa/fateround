@@ -1260,8 +1260,30 @@ export interface AyoSession {
   is_draw: boolean
   status_message: string | null
   turn_deadline_at: string | null
+  /** Per-game trophy accumulators (migration 20260812040000). See src/lib/trophies/game-facts/ayo.ts. */
+  a_stats?: AyoStats
+  b_stats?: AyoStats
   created_at: string
   updated_at: string
+}
+
+/**
+ * One seat's per-game trophy accumulator, kept on the `ayo_sessions` row. All keys optional,
+ * absent == 0. Reset each game by `initializeAyoGame`. See migration 20260812040000.
+ */
+export interface AyoStats {
+  /** This seat's completed moves this game. */
+  moves?: number
+  /** Of those, how many captured a house (completed exactly four). */
+  capturing_moves?: number
+  /** 0/1 — did this seat's MOST RECENT move capture (for the final-move win trophy). */
+  last_capture?: number
+  /** Bitmask of local houses (0–5) this seat has sowed from; 63 == all six. */
+  sown_mask?: number
+  /** Most seeds moved in a single move, relay laps included (a full lap == 12). */
+  max_sown?: number
+  /** Largest (opponent captured − this seat captured) seen after any move. */
+  worst_deficit?: number
 }
 
 export type DescribeItPhase = 'turn' | 'break' | 'finished'
