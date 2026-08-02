@@ -83,4 +83,27 @@ describe('system catalog', () => {
       expect(['bronze', 'silver', 'gold', 'platinum']).toContain(t.tier)
     }
   })
+
+  it('sorts tiers in order — no gold trophy ranked after a platinum one', () => {
+    // sortOrder drives display order, so a gold entry with a higher sortOrder than a platinum
+    // one renders below it. Caught two Yahtzee golds that had been appended under the platinum
+    // header. Checked per game, since sortOrder is only meaningful within a game's own list.
+    const RANK = { bronze: 0, silver: 1, gold: 2, platinum: 3 }
+    const byGame = new Map<string, typeof catalog>()
+    for (const t of catalog) {
+      const list = byGame.get(t.game_type ?? '') ?? []
+      list.push(t)
+      byGame.set(t.game_type ?? '', list)
+    }
+    for (const [game, list] of byGame) {
+      const bySort = [...list].sort((a, b) => a.sort_order - b.sort_order)
+      const ranks = bySort.map((t) => RANK[t.tier as keyof typeof RANK])
+      for (let i = 1; i < ranks.length; i += 1) {
+        expect(
+          ranks[i],
+          `${game}: ${bySort[i].id} (${bySort[i].tier}) is sorted after a higher tier`
+        ).toBeGreaterThanOrEqual(ranks[i - 1])
+      }
+    }
+  })
 })

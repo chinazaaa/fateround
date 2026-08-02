@@ -304,7 +304,7 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
         {session.status_message ? <Text style={styles.status}>{session.status_message}</Text> : null}
 
         {jokerForcedBox ? (
-          <Text style={styles.jokerHint}>🃏 Yahtzee bonus! Score it in your {jokerForcedBox} box first.</Text>
+          <Text style={styles.jokerHint}>🃏 Joker rule. Score this Yahtzee in your {jokerForcedBox} box first.</Text>
         ) : null}
 
         <YahtzeeScorecardGrid

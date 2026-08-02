@@ -35,8 +35,13 @@ export async function markGameFinished(
       // first. Best-effort: on failure the award pass falls back to deriving live, which is
       // exactly the old behaviour.
       await recordRoundFacts(supabase, gameId, finishedAt)
-    } catch {
-      // Never block game finish for a trophy snapshot.
+    } catch (err) {
+      // Never block game finish for a trophy snapshot — but do NOT swallow the failure silently.
+      // The snapshot is the durable copy of a round's facts; if it keeps failing, play-again can
+      // delete the live state before attribution and the fallback has nothing to reconstruct
+      // from. Logging it means a persistent problem is visible rather than an invisible slow
+      // leak of trophies.
+      console.error(`recordRoundFacts failed for game ${gameId}`, err)
     }
     try {
       // Advance a head-to-head bracket match (record winner / rematch a draw).

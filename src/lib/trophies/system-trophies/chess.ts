@@ -12,10 +12,14 @@ import type { SystemTrophySpec } from './types'
  *  - "Full Arsenal" (win by checkmate AND on time AND by resignation) is not here: a rule is a
  *    single `counter >= n`, so a set of three different win reasons cannot be expressed. The
  *    resignation leg is covered on its own by 'concession' below.
- *  - "Immortal" (win having SACRIFICED your queen) is not here: nothing distinguishes a queen
- *    given up on purpose from one that was simply taken. `chess_wins_after_queen_loss` is the
- *    weaker, decidable fact — you won a game in which your queen was captured — and it is used
- *    for the brief's "Queenless" below, not relabelled as the sacrifice.
+ *
+ * Two brief trophies the replay CAN decide, so they ARE here:
+ *  - "Immortal" ('immortal', `chess_wins_queen_sac`): won while your queen was captured and the
+ *    opponent's was not. Not the literal "sacrifice" — no engine eval judges intent — but a
+ *    plain queen trade is excluded, so it is not a freebie. Distinct from "Queenless"
+ *    ('queenless', `chess_wins_after_queen_loss`), which only needs your own queen gone.
+ *  - "Smothered" ('smothered', `chess_wins_smothered`): the strict form of a knight mate, where
+ *    the mated king is walled in by its own pieces. The looser knight mate is its own trophy.
  *
  * Two counters are deliberately worded loosely, for reasons the builder documents: a forfeit on
  * leave is recorded as a resignation, and a stalemate is scored for BOTH players.

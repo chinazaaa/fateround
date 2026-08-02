@@ -205,27 +205,6 @@ export const YAHTZEE: SystemTrophySpec[] = [
     points: 80,
     sortOrder: 190,
   },
-
-  // ── Platinum ────────────────────────────────────────────────────────────────────────────
-  {
-    suffix: 'three_hundred_club',
-    tier: 'platinum',
-    title: '300 club',
-    description: 'Finish a card with 300 or more points.',
-    counter: 'yahtzee_games_300_plus',
-    points: 150,
-    sortOrder: 200,
-  },
-  {
-    suffix: 'flawless_card',
-    tier: 'platinum',
-    title: 'Flawless card',
-    description: 'Earn the upper bonus and score every category above zero.',
-    counter: 'yahtzee_flawless_card_games',
-    points: 150,
-    sortOrder: 210,
-    hidden: true,
-  },
   {
     // Fires the moment the +100 lands — processYahtzeeScore knows it. Also derivable from the
     // stored bonus count at finish.
@@ -236,7 +215,7 @@ export const YAHTZEE: SystemTrophySpec[] = [
     description: 'Earn a 100-point Yahtzee bonus — roll a Yahtzee with your Yahtzee box already at 50.',
     counter: 'yahtzee_bonus_earned',
     points: 70,
-    sortOrder: 220,
+    sortOrder: 200,
   },
   {
     instant: true,
@@ -246,6 +225,27 @@ export const YAHTZEE: SystemTrophySpec[] = [
     description: 'Score a Yahtzee under the Joker rule after your Yahtzee box is filled.',
     counter: 'yahtzee_joker_used',
     points: 70,
+    sortOrder: 210,
+  },
+
+  // ── Platinum ────────────────────────────────────────────────────────────────────────────
+  {
+    suffix: 'three_hundred_club',
+    tier: 'platinum',
+    title: '300 club',
+    description: 'Finish a card with 300 or more points.',
+    counter: 'yahtzee_games_300_plus',
+    points: 150,
+    sortOrder: 220,
+  },
+  {
+    suffix: 'flawless_card',
+    tier: 'platinum',
+    title: 'Flawless card',
+    description: 'Earn the upper bonus and score every category above zero.',
+    counter: 'yahtzee_flawless_card_games',
+    points: 150,
     sortOrder: 230,
+    hidden: true,
   },
 ]

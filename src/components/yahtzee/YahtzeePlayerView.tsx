@@ -571,7 +571,7 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
       <div className="space-y-2">
         {jokerForcedBox && (
           <div className="glass-card border border-[var(--primary)]/40 px-3 py-2 text-center text-sm">
-            🃏 <span className="font-semibold">Yahtzee bonus!</span> Score it in your{' '}
+            🃏 <span className="font-semibold">Joker rule.</span> Score this Yahtzee in your{' '}
             <span className="font-semibold">{jokerForcedBox}</span> box first.
           </div>
         )}

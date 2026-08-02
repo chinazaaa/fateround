@@ -278,9 +278,18 @@ describe('smothered mate is stricter than knight mate', () => {
   })
 
   it('a knight mate in the open is NOT smothered', async () => {
-    const open = ['e4', 'e5', 'Qh5', 'Nc6', 'Bc4', 'Nf6', 'Qxf7#']
-    const row = session(pgnOf(open), { result_reason: 'checkmate', winner_player_id: 'me' })
+    // Legal's Mate: the knight on d5 delivers the checkmate, but the mated king on e7 is walled
+    // in by the OPPONENT's pieces, not its own — so this is a real knight mate that isSmothered
+    // must reject. Asserting knight_mate here is what makes the test non-vacuous: without it,
+    // smothered being undefined would prove nothing (a queen mate would pass it too).
+    const legalsMate = ['e4', 'e5', 'Nf3', 'd6', 'Bc4', 'Bg4', 'Nc3', 'g6', 'Nxe5', 'Bxd1', 'Bxf7+', 'Ke7', 'Nd5#']
+    const chess = new Chess()
+    for (const san of legalsMate) chess.move(san)
+    expect(chess.isCheckmate(), 'fixture is not actually checkmate').toBe(true)
+
+    const row = session(chess.pgn(), { result_reason: 'checkmate', winner_player_id: 'me' })
     const f = await factsFor(row, 'me', { ...CTX, winners: ['me'] })
+    expect(f.chess_wins_knight_mate).toBe(1)
     expect(f.chess_wins_smothered).toBeUndefined()
   })
 })

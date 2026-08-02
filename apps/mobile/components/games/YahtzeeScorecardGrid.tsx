@@ -123,10 +123,10 @@ export function YahtzeeScorecardGrid({
             <View style={styles.labelCell}>
               <Text style={styles.headerLabel}>Category</Text>
             </View>
-            {ordered.map(({ player, score }) => {
+            {ordered.map(({ player, score, bonus }) => {
               const isActive = player.id === activePlayerId
               const isYou = player.id === myPlayerId
-              const total = score ? totalScore(score) : 0
+              const total = score ? totalScore(score, bonus) : 0
               return (
                 <View key={player.id} style={[styles.cell, isActive && styles.cellActive]}>
                   <View style={[styles.avatar, isActive && styles.avatarActive]}>
@@ -185,7 +185,7 @@ export function YahtzeeScorecardGrid({
             <View style={styles.labelCell}>
               <Text style={styles.totalLabel}>Total</Text>
             </View>
-            {ordered.map(({ player, score }) => (
+            {ordered.map(({ player, score, bonus }) => (
               <View key={player.id} style={playerCellStyle(player.id)}>
                 <Text style={styles.totalValue}>{score ? totalScore(score, bonus) : 0}</Text>
               </View>

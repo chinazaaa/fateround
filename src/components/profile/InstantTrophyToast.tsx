@@ -45,6 +45,11 @@ export function InstantTrophyToast({ gameCode }: { gameCode: string | null }) {
     const myPlayerId = getPlayerSession(gameCode)?.playerId
     if (!myPlayerId) return
 
+    // Fresh de-dup set PER GAME. `seen` survives remounts within one round on purpose, but a new
+    // game code is a new room — carrying the old ids would suppress a trophy that legitimately
+    // unlocks again there. Reset it when the subscription re-binds to a different game.
+    seen.current = new Set()
+
     const channel = supabase
       .channel(`unlocks-${gameCode}-${++channelSeq}`)
       .on(

@@ -8,7 +8,7 @@ Ayo, Checkers) + 135 (Group B, 15 each). **585 trophies across 24 games in total
 
 **Status:** planning. Feasibility audit in progress (Whot and Monopoly complete). Nothing built.
 
-### Audit scoreboard — COMPLETE (15 games, 450 trophies at 30 each)
+## Audit scoreboard — COMPLETE (15 games, 450 trophies at 30 each)
 
 | Game | A — derivable | B — needs in-play | C — cannot build | Verdict |
 |---|---|---|---|---|
