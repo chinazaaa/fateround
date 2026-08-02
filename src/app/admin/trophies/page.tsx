@@ -53,7 +53,9 @@ export default function AdminTrophiesPage() {
   const [vocabulary, setVocabulary] = useState<Vocabulary>({ counters: [], distinct: [] })
   // How many trophies seeding would add. Drives the button's label so it reads as a real
   // action ("Add 12 missing trophies") or an obvious no-op ("Catalog up to date").
-  const [missingCount, setMissingCount] = useState(0)
+  // `null` = we don't know, because the load failed. Distinct from 0, which means "nothing to
+  // seed" — conflating them is how a broken page claims to be a healthy one.
+  const [missingCount, setMissingCount] = useState<number | null>(0)
   const [games, setGames] = useState<GameOption[]>([])
   const [loading, setLoading] = useState(true)
   const [form, setForm] = useState(EMPTY)
@@ -77,13 +79,24 @@ export default function AdminTrophiesPage() {
     setLoading(true)
     try {
       const res = await fetch('/api/admin/trophies')
-      const json = await res.json()
+      const json = await res.json().catch(() => ({}))
       if (res.ok) {
         setTrophies(json.trophies ?? [])
         setVocabulary(json.vocabulary ?? { counters: [], distinct: [] })
         setMissingCount(Number(json.missingCount) || 0)
         setGames(json.games ?? [])
+        return
       }
+      // A FAILED LOAD MUST NOT READ AS A HEALTHY ONE. This used to be a bare `if (res.ok)` with
+      // no else, so an error left every value at its initial state — empty vocabulary, zero
+      // missing — and the page rendered that as a complete, up-to-date catalog. The button said
+      // "Catalog up to date" when the request had 400'd. `null` means "unknown", which the
+      // button below reports honestly.
+      setMissingCount(null)
+      setMessage(json.error ?? 'Could not load the catalog.')
+    } catch {
+      setMissingCount(null)
+      setMessage('Could not load the catalog.')
     } finally {
       setLoading(false)
     }
@@ -250,12 +263,14 @@ export default function AdminTrophiesPage() {
           <button
             type="button"
             onClick={seed}
-            disabled={busy || missingCount === 0}
+            disabled={busy || missingCount === null || missingCount === 0}
             className="btn-secondary px-4 py-2 text-sm disabled:opacity-50"
           >
-            {missingCount > 0
-              ? `Add ${missingCount} missing ${missingCount === 1 ? 'trophy' : 'trophies'}`
-              : 'Catalog up to date'}
+            {missingCount === null
+              ? 'Catalog unavailable'
+              : missingCount > 0
+                ? `Add ${missingCount} missing ${missingCount === 1 ? 'trophy' : 'trophies'}`
+                : 'Catalog up to date'}
           </button>
           <p className="mt-1 max-w-[16rem] text-xs text-[var(--muted)]">
             Builds the standard set for any game that has none — press it after adding a new game type.
