@@ -145,6 +145,7 @@ import { WST_DECK_MIN_ENTRIES, type WstDeckEntry } from '@/lib/who-said-this'
 import { WST_PLATFORM_DECK } from '@/lib/who-said-this-questions'
 import { playerQuestionsOrderOptions, parsePlayerQuestionsOrder } from '@/lib/player-question-pool'
 import { isPeoplePollGame, playerNameSubmissionHint } from '@/lib/player-participant-pool'
+import { getRememberedName, subscribeLocalIdentity } from '@/lib/identity-local'
 import { setHostPlayIntent } from '@/lib/host-play-intent'
 import { CustomSlotBuilder } from '@/components/CustomSlotBuilder'
 import { GenderRoundModeControl } from '@/components/GenderRoundModeControl'
@@ -1721,6 +1722,23 @@ function CreateGameInner() {
   const isSecretMessage = isSecretMessageGame(settings.game_type)
   // Host's create-screen seat choice, carried into the lobby via host-play intent.
   const [hostName, setHostName] = useState('')
+
+  // Prefill the host's own name from the device record (the same one the join screen uses).
+  // Seeded in an effect, not a useState initializer, because localStorage does not exist
+  // during SSR and reading it there is a hydration mismatch. Subscribed because a signed-in
+  // player's name is written by `useProfile` after its fetch resolves, which is later than
+  // this component's first render. Only ever fills an EMPTY field — once the host types
+  // something it is theirs, and a late-arriving profile must not overwrite it.
+  const hostNameTouchedRef = useRef(false)
+  useEffect(() => {
+    const seed = () => {
+      if (hostNameTouchedRef.current) return
+      const remembered = getRememberedName()
+      if (remembered) setHostName((current) => (current.trim() ? current : remembered))
+    }
+    seed()
+    return subscribeLocalIdentity(seed)
+  }, [])
   const [hostWillPlay, setHostWillPlay] = useState(true)
   // Games whose host panel supports the "Host only / Host + play" seat toggle.
   // Excludes the poll family (routed through PollHostView, own join flow) and the
@@ -2873,7 +2891,10 @@ function CreateGameInner() {
                   <input
                     type="text"
                     value={hostName}
-                    onChange={(e) => setHostName(e.target.value)}
+                    onChange={(e) => {
+                      hostNameTouchedRef.current = true
+                      setHostName(e.target.value)
+                    }}
                     placeholder="Your name (optional)"
                     maxLength={24}
                     className="input-field w-full"
