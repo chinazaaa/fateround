@@ -8,15 +8,34 @@ Ayo, Checkers) + 135 (Group B, 15 each). **585 trophies across 24 games in total
 
 **Status:** planning. Feasibility audit in progress (Whot and Monopoly complete). Nothing built.
 
-### Audit scoreboard
+### Audit scoreboard — COMPLETE (16 games, 480 trophies)
 
-| Game | A (derivable) | B (needs in-play) | C (cannot build) |
-|---|---|---|---|
-| Whot | 5 | 24 | 0 outright, 5 ambiguous |
-| Monopoly | 10 | 17 | 3 |
+| Game | A — derivable | B — needs in-play | C — cannot build | Verdict |
+|---|---|---|---|---|
+| **Chess** | 29 | 0 | 1 | Full PGN stored. Replay at finish. Nearly free. |
+| **Yahtzee** | 23 | 5 | 2 | Complete 13-cell scorecard persisted. Nearly free. |
+| Monopoly | 10 | 17 | 3 | RPC allowlist must be extended first |
+| Ludo | 8 | 17 | 5 | Nothing recorded; 5 trophies describe absent mechanics |
+| Scrabble | 8 | 22 | 0 | All buildable, none per-play free |
+| Ayo | 6 | 22 | 2 | No per-player table — paired `a_*/b_*` columns |
+| Crazy Eights | 5 | 23 | 2 | Whot's schema; shares Whot's mechanism |
+| Whot | 5 | 24 | 0 (5 ambiguous) | The original ask |
+| Checkers | 12 | 17 | 1 | THREE game types, TWO engines/tables |
+| **Trivia** | 28 | 0 | 2 | Per-answer log with response times. FREE. |
+| **Codewords** | 29 | 1 | 0 | Per-guess log. Blocked on a live bug (fixed). |
+| **Text Charades** | 26 | 3 | 1 | Per-word log; needs a winner resolver first |
+| Mafia | 17 | 10 | 3 | Roles/teams persisted; night OUTCOMES are not |
+| Mahjong | 7 | 22 | 1 | Rich per-hand data, wiped every hand |
+| UNO | 3 | 24 | 3 | Most contradictions of any game |
 
-Both games can ship their **Champion track today with zero code** — `games_won` scoped to the
-game type already works, and both are wired in `outcome.ts`.
+**The split is not a spectrum, it is two populations.** Chess and Yahtzee persist a *record*
+(a move list; a scorecard). Everything else persists a *position*. Games in the first group are
+almost entirely free; games in the second need in-play accumulation for ~three quarters of
+their list.
+
+Every game can ship its **Champion track today with zero new code** — `games_won` scoped to the
+game type already works and all ten are wired in `outcome.ts`. That is 10 trophies (or 40 if
+each track is four rows) available immediately.
 
 ---
 
@@ -144,6 +163,55 @@ Also worth knowing: Monopoly **destroys ownership history for bankrupt players**
 players row** — so seated counts for anti-farm minimums must be read from
 `monopoly_boards.turn_order`, not from `players`.
 
+## 2g. THREE live bugs the audit found in shipped code (all FIXED)
+
+Neither was hypothetical — both affected counters already in PR #742.
+
+1. **UNO Team-Up recorded a LOSS for the winning teammate.** A team round ends when one member
+   empties their hand and `winner_player_id` holds only that player. `unoPlayerSharesWin` exists
+   for exactly this case and the community leaderboard already used it; the trophy pass read the
+   raw column. Fixed in `outcome.ts` (`expandUnoTeamWin`).
+2. **Solo games counted as wins.** Yahtzee and Sudoku allow one player and still write
+   `winner_player_id`, so every Champion track was farmable alone. Fixed: a win now needs
+   ≥2 seated players. `games_played` still counts. Test added.
+3. **Codewords produced NO standings, ever — and this one predates trophies.**
+   `room-points.ts` selected `winner, turn_order` from `codewords_boards`, which has no
+   `turn_order` column. PostgREST rejects the whole query (42703, verified live), so `board` was
+   always null and `getCompetitiveStandings` returned `[]`. Codewords therefore contributed
+   nothing to **room leaderboard points** either — a user-facing bug that shipped long before
+   this work. Fixed by reading the roster from `codewords_player_roles`.
+
+### Still open (not fixed — decide first)
+
+- **Mafia has no winner source at all.** Absent from `WINNER_SOURCES` *and* from
+  `NO_WINNER_BY_DESIGN`, so `games_won` is permanently 0. The winner is a TEAM
+  (`mafia_sessions.winning_team`), so it needs a custom resolver joining through
+  `mafiaRoleTeam()`, not a two-line map entry.
+- **Mahjong's `games_won` means "won the last HAND", not the match.** `winner_player_id` is
+  reset by `processMahjongNextHand`; the match result lives in `scores`.
+- **`describe_it` has no winner source** and is not in `isCompetitiveRoomGame`.
+- **Only the FIRST round in a room can ever award.** `awarded_sessions` is keyed on the game
+  CODE, and a rematch reuses it — so every subsequent game in the same room is a silent no-op.
+  This contradicts the brief's "award at end of round/match" premise.
+
+## 2h. THE ATTRIBUTION RACE — decide this before building anything
+
+The award pass runs when the **client** posts attribution, after the finished screen. But:
+
+- Ludo's play-again **DELETEs `ludo_sessions` and `ludo_player_state`** (`ludo.ts:635`).
+- Chess's rematch **wipes `pgn` to `''`** (`chess.ts:175`).
+- Play-again also clears Yahtzee and Scrabble session data
+  (`api/games/[code]/play-again/route.ts:145,159`).
+
+So the evidence a trophy is derived from can be **gone before attribution lands**. This already
+costs legitimately-earned wins today for a slow client, and it makes every bucket-A derivation
+unreliable.
+
+**Fix: derive facts at FINISH, not at attribution.** Compute the per-player integer facts inside
+the game's own finish path and write them somewhere durable (a `game_facts(game_id, player_id,
+facts jsonb)` table that play-again does not touch). The award pass then reads facts, never live
+session state. This also removes the need to keep session rows alive purely for trophies.
+
 ## 3. What is already true and does not need rebuilding
 
 - `player_stats.counters` — per-(profile, game_type) integer bag, merged atomically by
@@ -171,6 +239,50 @@ players row** — so seated counts for anti-farm minimums must be read from
    Distinct-opponents in particular needs data the counter bag cannot hold.
 4. **Two-wave ship.** The brief recommends launching Bronze + Silver only (18/game, 162 total).
    Worth honouring — it front-loads the trophies players actually hit.
+
+## 4b. Trophies that describe rules the games do not have
+
+Rewrite or cut these **before** anyone builds them. An unearnable trophy is indistinguishable
+from a typo.
+
+| Game | # | Problem |
+|---|---|---|
+| Monopoly | 15 | 4 houses — engine caps at 3 then hotel |
+| Monopoly | 25, 26 | Naija / London editions do not exist; the only board IS London |
+| Yahtzee | 20 | 100-point Yahtzee bonus not implemented |
+| Yahtzee | 22 | Joker rule not implemented — the code explicitly does the opposite |
+| Ludo | 13, 22 | "Exact" entry — overshoot is already illegal, so these are always true |
+| Ludo | 9, 15 | Blockade/roadblock — no path-blocking exists; a stack only grants immunity |
+| Ludo | 24 | Says "three doubles"; the engine forfeits on three double-SIXES only |
+| Ludo | 4 | Safe squares are an EMPTY set in the `traditional` variant |
+| Ludo | 11, 16 | Need per-victim / per-piece history that nothing records |
+| UNO | 9 | "Caught Out" — no catch action exists, the penalty is automatic |
+| UNO | 15 | "Four colours in one turn" impossible in the default multi-play mode |
+| UNO | 17 / C8 15, 23 | "Win holding X" — the winner's hand is empty by definition |
+| UNO | 13 | Stacking is OFF by default |
+| C8 | 8, 24, 28 | Jokers are OFF by default |
+| Chess | 26 | Title says smothered mate, condition says knight mate — different trophies |
+| Chess | 29 | "Sacrificed" is not decidable without an engine eval or intent model |
+| Ayo | — | Brief says "12 houses + 2 stores"; there are no stores |
+| Ayo | 15, 25 | 30s is a whole-game bank, not per-move; no per-move clock exists |
+| Ayo | 27 | 44-of-48 unreachable once traditional match rounds shrink the rows |
+| Ayo | 4,5,11,19,26 | Oware-only mechanics — silently unearnable in the DEFAULT traditional variant |
+| Checkers | header | "All three share an engine" is wrong — American is a separate engine and table |
+| Checkers | 26, 27 | Labelled International-only; the mechanics are equally live in Nigeria |
+| Checkers | 30 | Cross-variant track — the DSL cannot sum counters across game types |
+
+Confirmed **correct** despite looking wrong: Checkers #29 "seeds" is the real Nigerian-draughts
+term for pieces, used in the product's own room copy.
+
+## 4c. Vocabulary gaps in the engine itself
+
+- `games_lost` does not exist (Ayo #10 "Ọpẹ" needs it). Derivable at finish.
+- No turn/ply counter in Whot, UNO, Crazy Eights, Ayo or Checkers. One counter unblocks every
+  "win in N turns" trophy AND the brief's own anti-farm minimum-length rule.
+- `player_distinct` has only a GLOBAL `opponents` key, and the DSL's `distinct` node takes no
+  `gameType`. The brief's anti-farm rule 3 (5 distinct opponents per Champion track) needs both
+  a new key shape and a DSL change.
+- No way to sum a counter across game types (Checkers' cross-variant track).
 
 ## 5. Sequence
 

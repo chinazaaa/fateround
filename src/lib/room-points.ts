@@ -280,19 +280,19 @@ export async function getCompetitiveStandings(
   }
 
   if (isCodewordsGame(gameType)) {
-    const { data: board } = await supabase
-      .from('codewords_boards')
-      .select('winner, turn_order')
-      .eq('game_id', gameId)
-      .maybeSingle()
+    // `codewords_boards` has NO `turn_order` column — selecting one made PostgREST reject the
+    // whole query (42703), so `board` was always null and this returned [] for every Codewords
+    // game ever played. That silently cost Codewords both its room-leaderboard points and, once
+    // trophies shipped, every win. The losing side comes from the roles table instead, which is
+    // where the full roster actually lives.
+    const { data: board } = await supabase.from('codewords_boards').select('winner').eq('game_id', gameId).maybeSingle()
     if (!board?.winner) return []
     const { data: roles } = await supabase
       .from('codewords_player_roles')
       .select('player_id, team')
       .eq('game_id', gameId)
-      .eq('team', board.winner)
-    const winners = (roles ?? []).map((r) => r.player_id as string)
-    const rest = ((board.turn_order as string[]) ?? []).filter((id) => !winners.includes(id))
+    const winners = (roles ?? []).filter((r) => r.team === board.winner).map((r) => r.player_id as string)
+    const rest = (roles ?? []).filter((r) => r.team !== board.winner).map((r) => r.player_id as string)
     return [...winners, ...rest]
   }
 
