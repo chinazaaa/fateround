@@ -75,7 +75,9 @@ export function PublicProfileCard({ summary }: { summary: PublicProfileSummary }
             Level {summary.level} · {summary.points.toLocaleString()} points
           </p>
           {summary.currentStreak > 0 && (
-            <p className="text-sm font-semibold" style={{ color: 'var(--accent, #f43f5e)' }}>
+            // whitespace-nowrap: html-to-image can mis-measure width on capture and wrap this short
+            // line across two rows in the downloaded PNG even though it fits on screen.
+            <p className="whitespace-nowrap text-sm font-semibold" style={{ color: 'var(--accent, #f43f5e)' }}>
               🔥 {plural(summary.currentStreak, 'day')} streak
             </p>
           )}
