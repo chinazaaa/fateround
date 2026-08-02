@@ -10,6 +10,7 @@ import { RosterButton } from '@/components/roster/RosterButton'
 import { GameChromeSettings } from '@/components/GameChromeSettings'
 import { ProfileChip } from '@/components/profile/ProfileChip'
 import { PostWinPrompt } from '@/components/profile/PostWinPrompt'
+import { TrophiesThisGame } from '@/components/profile/TrophiesThisGame'
 import { GameAttribution } from '@/components/profile/GameAttribution'
 import { useHostPlayerSession } from '@/hooks/useHostPlayerSession'
 import { useHostToken } from '@/hooks/useHostToken'
@@ -53,6 +54,7 @@ export function GameHostChrome() {
           appear before a game is finished. */}
       <GameAttribution gameCode={code} />
       <PostWinPrompt />
+      <TrophiesThisGame />
     </>
   )
 }

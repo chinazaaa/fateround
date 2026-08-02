@@ -111,11 +111,16 @@ async function runAwardPass(
   admin: SupabaseClient,
   profileId: string,
   gameId: string
-): Promise<{ earned?: { id: string; title: string; tier: string; points: number }[] }> {
+): Promise<{ earned?: { id: string; title: string; tier: string; points: number }[]; gameType?: string }> {
   try {
     const result = await awardForFinishedGame(admin, profileId, gameId)
     // Only surface trophies earned by THIS pass — that is what the post-win prompt celebrates.
-    return result.earned.length ? { earned: result.earned } : {}
+    if (!result.earned.length) return {}
+    // The game type travels with the result so the finished-screen link knows where to point.
+    // Reading it here costs one small select on a path that already did several; the
+    // alternative was threading the type through both game chromes into ~40 views.
+    const { data: game } = await admin.from('games').select('game_type').eq('id', gameId).maybeSingle()
+    return { earned: result.earned, gameType: (game?.game_type as string) ?? undefined }
   } catch {
     return {}
   }
