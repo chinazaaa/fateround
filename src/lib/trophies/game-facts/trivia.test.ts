@@ -16,7 +16,7 @@ function db(answers: Record<string, unknown>[], rounds: Record<string, unknown>[
   } as never
 }
 
-const CTX: FactsContext = { timerSeconds: 10, questionSource: 'platform', seated: ['me', 'rival'], winners: [] }
+const CTX: FactsContext = { timerSeconds: 10, questionSource: 'platform', theme: null, seated: ['me', 'rival'], winners: [] }
 const rounds = (n: number) => Array.from({ length: n }, (_, i) => ({ id: `r${i + 1}`, round_number: i + 1 }))
 
 /** One call returns the whole room; most cases only care about one player's slice of it. */

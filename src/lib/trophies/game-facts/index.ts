@@ -35,6 +35,8 @@ import { yahtzeeFacts } from './yahtzee'
 export type FactsContext = {
   timerSeconds: number | null
   questionSource: string | null
+  /** The game's cosmetic theme (e.g. 'naija'). Some games treat it as an edition. Null if unset. */
+  theme: string | null
   /** Seated player ids (spectators excluded). Its length is the room size for size-gated facts. */
   seated: string[]
   /**

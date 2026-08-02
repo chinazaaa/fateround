@@ -171,7 +171,7 @@ export async function awardForFinishedGame(
       .from('games')
       // timer_seconds / question_source are read for the per-game facts builders (Trivia uses
       // both). Cheap to carry here; a second round-trip per finish would not be.
-      .select('id, game_type, status, max_players, finished_at, timer_seconds, question_source')
+      .select('id, game_type, status, max_players, finished_at, timer_seconds, question_source, theme')
       .eq('id', sessionId)
       .maybeSingle()
     if (!game || game.status !== 'finished') {
@@ -228,6 +228,7 @@ export async function awardForFinishedGame(
       const live = await buildGameFacts(supabase, gameType, sessionId, {
         timerSeconds: (game.timer_seconds as number) ?? null,
         questionSource: (game.question_source as string) ?? null,
+        theme: (game.theme as string) ?? null,
         seated: seated.map((p) => p.id as string),
         winners: winners ?? [],
       })

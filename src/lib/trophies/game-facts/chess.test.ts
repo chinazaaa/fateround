@@ -28,7 +28,7 @@ function pgnOf(moves: string[]): string {
   return chess.pgn()
 }
 
-const CTX = { timerSeconds: 300, questionSource: null, seated: ['me', 'rival'], winners: [] as string[] }
+const CTX = { timerSeconds: 300, questionSource: null, theme: null, seated: ['me', 'rival'], winners: [] as string[] }
 
 /** A finished session with `me` as White, filled in by each test. */
 function session(pgn: string, extra: Record<string, unknown> = {}) {

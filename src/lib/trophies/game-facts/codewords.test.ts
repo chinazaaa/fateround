@@ -27,7 +27,7 @@ function db(parts: {
 
 const CTX: FactsContext = {
   timerSeconds: 60,
-  questionSource: null,
+  questionSource: null, theme: null,
   seated: ['me', 'boss', 'rival', 'mate'],
   winners: [],
 }

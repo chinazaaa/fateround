@@ -22,7 +22,7 @@ import { resolveWinners } from './outcome'
 export async function recordRoundFacts(supabase: SupabaseClient, gameId: string, finishedAt: string): Promise<void> {
   const { data: game } = await supabase
     .from('games')
-    .select('game_type, timer_seconds, question_source')
+    .select('game_type, timer_seconds, question_source, theme')
     .eq('id', gameId)
     .maybeSingle()
   if (!game) return
@@ -42,6 +42,7 @@ export async function recordRoundFacts(supabase: SupabaseClient, gameId: string,
   const facts = await buildGameFacts(supabase, gameType, gameId, {
     timerSeconds: (game.timer_seconds as number) ?? null,
     questionSource: (game.question_source as string) ?? null,
+    theme: (game.theme as string) ?? null,
     seated,
     winners,
   })
