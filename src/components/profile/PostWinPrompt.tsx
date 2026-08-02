@@ -27,6 +27,8 @@ const TIER_EMOJI: Record<string, string> = {
  *    to someone whose progress is already saved is noise that teaches people to dismiss it.
  *  - It is a card, not a blocking modal. This lands right after a game ends, next to the
  *    results everyone is reading; stealing the screen there would be worse than not asking.
+ *    It sits at the TOP though — the bottom corner is where people have learned nothing
+ *    important lives, and this is the only moment the product asks for anything.
  */
 export function PostWinPrompt() {
   const [trophies, setTrophies] = useState<EarnedTrophy[]>([])
@@ -53,7 +55,10 @@ export function PostWinPrompt() {
     <>
       <div
         role="status"
-        className="fixed inset-x-4 bottom-4 z-40 mx-auto max-w-sm rounded-2xl border border-[var(--border)] bg-[var(--card-strong)] p-4 shadow-lg backdrop-blur-md sm:left-auto sm:right-4 sm:mx-0"
+        // Top, not bottom: this is the one moment the product actually asks for something, and
+        // the bottom corner is where people have learned nothing important lives. `top-16` clears
+        // the fixed game header, and z-50 puts it above that header's z-40.
+        className="fixed inset-x-4 top-16 z-50 mx-auto max-w-sm rounded-2xl border border-[var(--border)] bg-[var(--card-strong)] p-4 shadow-lg backdrop-blur-md sm:left-auto sm:right-4 sm:mx-0"
       >
         <div className="flex items-start gap-3">
           <div className="min-w-0 flex-1">
