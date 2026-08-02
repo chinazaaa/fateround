@@ -1,16 +1,16 @@
 import type { Metadata } from 'next'
-import Link from 'next/link'
 import { notFound } from 'next/navigation'
+import { MarketingHeader } from '@/components/MarketingHeader'
+import { SiteFooter } from '@/components/SiteFooter'
 import { PublicProfileCard } from '@/components/profile/PublicProfileCard'
 import { getPublicProfileSummary } from '@/lib/profile/public-profile'
 import { SITE_NAME } from '@/lib/seo'
 
 type Props = { params: Promise<{ username: string }> }
 
-// Render fresh on every request rather than ISR-caching. A profile changes as the player plays,
-// and — the reason this isn't `revalidate` — a request that lands the instant BEFORE a username is
-// claimed (or during a transient DB blip) returns notFound(); with ISR that 404 would be cached and
-// served for the whole window even after the profile exists. force-dynamic never caches a 404.
+// Fresh per request (not ISR): a request that lands the instant BEFORE a username is claimed (or
+// during a transient DB blip) returns notFound(); ISR would cache that 404 and keep serving it even
+// after the profile exists. force-dynamic never caches a 404, and keeps trophy counts current.
 export const dynamic = 'force-dynamic'
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
@@ -38,16 +38,12 @@ export default async function PublicProfilePage({ params }: Props) {
   if (!summary) notFound()
 
   return (
-    <div className="fr-site flex min-h-dvh flex-col items-center px-4 py-10">
-      <div className="w-full max-w-sm">
+    <div className="fr-site flex min-h-dvh flex-col">
+      <MarketingHeader hideBack />
+      <main className="flex-1 pb-14">
         <PublicProfileCard summary={summary} />
-        <p className="text-faint mt-6 text-center text-xs">
-          <Link href="/" className="font-semibold no-underline" style={{ color: 'var(--accent, #f43f5e)' }}>
-            {SITE_NAME}
-          </Link>{' '}
-          — free party games, no download.
-        </p>
-      </div>
+      </main>
+      <SiteFooter />
     </div>
   )
 }
