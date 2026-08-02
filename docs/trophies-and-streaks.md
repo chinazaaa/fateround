@@ -41,14 +41,22 @@ These come straight from `account-tiers.md` and constrain every decision below:
 
 ### Revenue boundaries (see [`revenue-model.md`](./revenue-model.md))
 
+> **2026-08-02:** `revenue-model.md` moved from a one-time Pro + à-la-carte cosmetics shop to a
+> **FateRound+ / Club Pro subscription** model. The boundary below is updated accordingly —
+> there is no longer a standalone cosmetics storefront; the trophy case and premium themes are
+> a **FateRound+ perk**, not individually purchasable items.
+
 Trophies and streaks are **retention**, not a revenue line:
 
-- **Never sell** trophies, trophy progress, streak length, or tournament placement.
-- **Do sell** optional flair *around* trophies: profile frames, showcase borders, champion
-  podium art — cosmetics only.
+- **Never sell** trophies, trophy progress, streak length, or tournament placement — earning
+  is always free, on every tier.
+- **FateRound+ perk, not a purchase:** full trophy case customisation (rare trophies, badges,
+  cosmetic flair) and the daily-challenge/streak archive are gated behind the FateRound+
+  subscription, not sold as individual items.
 - **Tournament trophies** (First Tournament Win, Game Night Host, etc.) are earned like any
   other trophy — they drive signup, not checkout.
-- Trophies hook into the flywheel: earn → save to account → see shop → buy cosmetic.
+- Trophies hook into the flywheel: earn → save to account → see the trophy case → upgrade to
+  FateRound+ for the full case + archive.
 
 ---
 
@@ -620,9 +628,11 @@ Aligned with `account-tiers.md` §"Streak = any game played today":
   available (Duolingo model). One freeze auto-consumes to cover one missed day.
 - Grant freezes slowly (e.g. earn 1 per 7 consecutive days, cap ~2 held). Tunable
   constants. This forgiveness is a large part of why streaks retain instead of demoralise.
-- Extra streak freezes (beyond the free base) may be sold later as a **₦300 cosmetic
-  convenience** — never bundled in Pro, never required to keep a streak. The **base
-  forgiveness stays free**; see principle §0.5 and [`revenue-model.md`](./revenue-model.md).
+- The **base freeze allowance stays free on every tier** — never required to be FateRound+ to
+  keep a streak. What FateRound+ gates is the **archive/history view**, not forgiveness itself;
+  see principle §0.5 and [`revenue-model.md`](./revenue-model.md). (A later "extra freeze"
+  convenience purchase is no longer part of the plan — the current model has no à-la-carte
+  purchases below a full subscription.)
 
 ### 4.5 Milestones & nudges
 
@@ -891,8 +901,7 @@ The push infra already exists (VAPID keys + `push_subscriptions`), but it is cur
 
 **Phase 3:**
 11. Community auto-posts for Ultra-Rare unlocks; seasonal leaderboard tie-in; tournament
-    trophy catalog (see [`revenue-model.md`](./revenue-model.md) §Tournaments); extra streak
-    freeze as optional cosmetic (not Pro).
+    trophy catalog (see [`revenue-model.md`](./revenue-model.md) §2).
 
 ---
 

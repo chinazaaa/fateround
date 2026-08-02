@@ -12,6 +12,7 @@ const NAV: { href: string; label: string; icon: string; exact?: boolean }[] = [
   { href: '/admin/settings', label: 'Game limits', icon: '🎚️' },
   { href: '/admin/library', label: 'Library', icon: '📚' },
   { href: '/admin/themes', label: 'Themes', icon: '🎨' },
+  { href: '/admin/trophies', label: 'Trophies', icon: '🏆' },
   { href: '/admin/landmine-categories', label: 'Landmine', icon: '🧨' },
   { href: '/admin/platform-content', label: 'Platform', icon: '🗂️' },
   { href: '/admin/community', label: 'Community', icon: '👥' },

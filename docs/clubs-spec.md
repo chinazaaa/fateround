@@ -15,6 +15,15 @@ Companion to [`account-tiers.md`](./account-tiers.md) (§Clubs — the philosoph
 > valuable once there are trophies (Batch 3) and daily scores (Batch 4) to aggregate into a club
 > leaderboard. Build the thing people join *for* first, then the container.
 
+> **2026-08-02 — pricing model realigned.** [`revenue-model.md`](./revenue-model.md) moved from
+> a one-time Pro+Cosmetics model to a **FateRound+ / Club Pro subscription** model. Under that
+> plan, club *count* is a paid-tier lever (Free 1 → FateRound+ 3 → Club Pro branding/50 members)
+> rather than something monetized via purchasable crests. §1 and §11 below still describe the
+> older "free until sticky, unlimited joins, monetize crests later" framing — **flagged, not yet
+> reconciled with the new numbers.** See [`account-tiers.md`](./account-tiers.md) §Clubs for the
+> literal new numbers; decide whether "unlimited joins / cap owned" survives as a growth layer
+> under the new pricing before building §3's `member_limit` default.
+
 ---
 
 ## 1. Principles (inherited from `account-tiers.md`)
@@ -250,8 +259,9 @@ in supported lobbies. Budget design on **both** platforms.
 
 ## 12. What's explicitly NOT in this spec
 
-- **Monetization** (purchasable crests, season cosmetics, Club+ tier, >20 rosters) —
-  [`revenue-model.md`](./revenue-model.md). Build the free, sticky layer first.
+- **Monetization** (Club Pro branding bundle, >20 rosters, club count gating) —
+  [`revenue-model.md`](./revenue-model.md). Build the free, sticky layer first; no separate
+  crest/cosmetic purchases — branding ships bundled into the Club Pro subscription.
 - **Club tournaments / leagues** — deferred to after v1; they sit on the shipped tournaments system.
 - **Cross-club discovery / public directory** — clubs are invite-only in v1; a browse/directory is a
   later growth feature with its own moderation questions.
