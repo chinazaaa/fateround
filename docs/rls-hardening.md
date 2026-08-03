@@ -162,7 +162,7 @@ and is what the table UI and the out/finished checks actually consume.
 | Whot | `whot_player_hands` | ✅ `/api/whot/hands` | ✅ player, host, history | ✅ | ❌ **required** | ⏳ blocked |
 | UNO | `uno_player_hands` | ❌ | ❌ | ❌ | ❌ | ⏳ blocked |
 | Crazy Eights | `crazy_eights_player_hands` | ❌ | ❌ | ❌ | ❌ | ⏳ blocked |
-| Bingo | `bingo_cards` | ❌ | ❌ | ❌ | ❌ | ⏳ blocked |
+| Bingo | `bingo_cards` | ✅ `/api/bingo/card` | ✅ player, host | ✅ | ❌ **required** | ⏳ blocked |
 
 **Per the staging rule below, the migration revoking `cards` from anon comes LAST — one
 migration covering all four, only once every reader for every one of those tables is on a

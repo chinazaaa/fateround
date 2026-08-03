@@ -12,8 +12,9 @@ import { gameTypeConfig } from '@/lib/game-types'
 import { formatBingoNumber, hasBingoWin, BINGO_MIN_PLAYERS } from '@/lib/bingo'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { supabase } from '@/lib/supabase'
-import { BINGO_CALLED_NUMBER_SELECT, BINGO_CARD_SELECT, BINGO_CLAIM_SELECT } from '@/lib/supabase-selects'
-import { clearPlayerSession } from '@/lib/utils'
+import { BINGO_CALLED_NUMBER_SELECT, BINGO_CLAIM_SELECT } from '@/lib/supabase-selects'
+import { fetchBingoCard } from '@/lib/hands-client'
+import { clearPlayerSession, getPlayerSession } from '@/lib/utils'
 import type { BingoCalledNumber, BingoCard, BingoClaim, Game } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { useBingoWinNotification, useBingoStartNotification } from '@/hooks/useBingoNotifications'
@@ -58,17 +59,18 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
   const [claiming, setClaiming] = useState(false)
   const [marking, setMarking] = useState(false)
 
+  // The card comes through /api/bingo/card so `cells`/`marked_indices` never reach this device
+  // via the anon key — the route resolves this player from their secret resume token and returns
+  // only their own card. `playerId` is unused now (the token identifies the caller); it stays in
+  // the signature to match the bootstrap's afterResolve/poll callsites. Read the token from the
+  // session store, not the bootstrap value, since loadCard is defined before useGameViewBootstrap.
+  // A null result (fetch failed OR no card dealt yet) leaves the previous card in place; the
+  // `!card` poll and realtime fallback recover it.
   const loadCard = useCallback(
-    async (playerId: string): Promise<boolean> => {
-      const res = await supabase
-        .from('bingo_cards')
-        .select(BINGO_CARD_SELECT)
-        .eq('game_id', gameCode)
-        .eq('player_id', playerId)
-        .maybeSingle()
-      if (!supabasePollOk(res)) return false
-      setCard(res.data ? (res.data as BingoCard) : null)
-      return true
+    async (_playerId: string): Promise<boolean> => {
+      const fetched = await fetchBingoCard(gameCode, { resumeToken: getPlayerSession(gameCode)?.resumeToken })
+      if (fetched) setCard(fetched)
+      return fetched != null
     },
     [gameCode]
   )

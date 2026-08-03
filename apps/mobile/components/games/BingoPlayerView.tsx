@@ -19,10 +19,11 @@ import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { ReplayReadyRing } from '@/components/lifecycle/ReplayReadyRing'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { winnerLeaderboard } from '@/lib/finish-leaderboards'
-import { postBingoClaim, postBingoMark } from '@/lib/game-api'
+import { postBingoCard, postBingoClaim, postBingoMark } from '@/lib/game-api'
 import { playSound } from '@/lib/sounds'
 import { getSupabase } from '@/lib/supabase'
-import { BINGO_CALLED_NUMBER_SELECT, BINGO_CARD_SELECT, BINGO_CLAIM_SELECT } from '@/lib/supabase-selects'
+import { BINGO_CALLED_NUMBER_SELECT, BINGO_CLAIM_SELECT } from '@/lib/supabase-selects'
+import { getPlayerSession } from '@/lib/secure-session'
 import { usePlayerSessionActions } from '@/lib/player-session'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
@@ -49,17 +50,22 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
   const [claiming, setClaiming] = useState(false)
   const [claimError, setClaimError] = useState<string | null>(null)
 
+  // The card comes through /api/bingo/card so `cells`/`marked_indices` never reach this device
+  // via the anon key — the route resolves this player from their secret resume token and returns
+  // only their own card. `playerId` is unused now (the token identifies the caller); it stays in
+  // the signature to match afterResolve's callsite. A null result (fetch failed OR no card dealt
+  // yet) leaves the previous card in place; the realtime sync reloads and recovers it.
   const loadCard = useCallback(
-    async (playerId: string): Promise<boolean> => {
-      const res = await getSupabase()
-        .from('bingo_cards')
-        .select(BINGO_CARD_SELECT)
-        .eq('game_id', gameCode.toUpperCase())
-        .eq('player_id', playerId)
-        .maybeSingle()
-      if (res.error) return false
-      setCard((res.data as BingoCard | null) ?? null)
-      return true
+    async (_playerId: string): Promise<boolean> => {
+      const code = gameCode.toUpperCase()
+      const session = await getPlayerSession(code)
+      try {
+        const { card } = await postBingoCard(code, { resumeToken: session?.resumeToken })
+        if (card) setCard(card)
+        return card != null
+      } catch {
+        return false
+      }
     },
     [gameCode]
   )

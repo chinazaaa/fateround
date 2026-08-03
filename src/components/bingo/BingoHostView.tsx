@@ -34,13 +34,8 @@ import {
   hasBingoWin,
 } from '@/lib/bingo'
 import { supabase } from '@/lib/supabase'
-import {
-  BINGO_CALLED_NUMBER_SELECT,
-  BINGO_CARD_SELECT,
-  BINGO_CLAIM_SELECT,
-  GAME_SELECT,
-  PLAYER_SELECT,
-} from '@/lib/supabase-selects'
+import { fetchBingoCard } from '@/lib/hands-client'
+import { BINGO_CALLED_NUMBER_SELECT, BINGO_CLAIM_SELECT, GAME_SELECT, PLAYER_SELECT } from '@/lib/supabase-selects'
 import { appOrigin } from '@/lib/site'
 import { HostAllowViewersField } from '@/components/HostAllowViewersField'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
@@ -78,17 +73,16 @@ export function BingoHostView({ gameCode, hostToken }: { gameCode: string; hostT
 
   useScrollHostViewToTop({ gameStatus: game?.status, tab })
 
+  // Host reads a card through /api/bingo/card (authorized by the host token), so
+  // `cells`/`marked_indices` never reach the browser via the anon key. Today this only ever
+  // loads the host's OWN seat's card; the route also supports naming any player (claim
+  // verification) should that be wired up later. A null result leaves the current card in place.
   const loadHostCard = useCallback(
     async (playerId: string) => {
-      const res = await supabase
-        .from('bingo_cards')
-        .select(BINGO_CARD_SELECT)
-        .eq('game_id', gameCode)
-        .eq('player_id', playerId)
-        .maybeSingle()
-      if (res.data) setHostCard(res.data as BingoCard)
+      const card = await fetchBingoCard(gameCode, { hostToken, playerId })
+      if (card) setHostCard(card)
     },
-    [gameCode]
+    [gameCode, hostToken]
   )
 
   const load = useCallback(async (): Promise<boolean> => {
@@ -201,8 +195,10 @@ export function BingoHostView({ gameCode, hostToken }: { gameCode: string; hostT
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'bingo_cards', filter: `game_id=eq.${gameCode}` },
         (payload) => {
-          if (hostPlayerId && (payload.new as BingoCard).player_id === hostPlayerId) {
-            setHostCard(payload.new as BingoCard)
+          // Post-revoke the payload carries no `cells`/`marked_indices`, so applying it verbatim
+          // would blank the host's card. Re-fetch through the authorized route instead.
+          if (hostPlayerId && (payload.new as { player_id?: string }).player_id === hostPlayerId) {
+            void loadHostCard(hostPlayerId)
           }
         }
       )
@@ -211,7 +207,7 @@ export function BingoHostView({ gameCode, hostToken }: { gameCode: string; hostT
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [gameCode, load, hostPlayerId])
+  }, [gameCode, load, hostPlayerId, loadHostCard])
 
   usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
 

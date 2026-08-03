@@ -1,5 +1,5 @@
 import { apiUrl } from '@/lib/config'
-import type { GameType, WhotPlayerHand } from '@fateround/shared'
+import type { BingoCard, GameType, WhotPlayerHand } from '@fateround/shared'
 import type { GamePlayerLimitsMap } from '@fateround/shared/lobby-limits'
 import { getCodeDefaultLimits } from '@fateround/shared/lobby-limits'
 import type { MafiaStateResponse } from '@fateround/shared/mafia'
@@ -1001,6 +1001,19 @@ export function postQuickDrawGuessTeam(gameId: string, resumeToken: string, team
  */
 export function postWhotHands(gameCode: string, auth: { resumeToken?: string | null }) {
   return postJson<{ hands: WhotPlayerHand[] }>('/api/whot/hands', {
+    gameCode: gameCode.toUpperCase(),
+    resumeToken: auth.resumeToken ?? undefined,
+  })
+}
+
+/**
+ * Fetch this player's own Bingo card through /api/bingo/card so `cells`/`marked_indices` never
+ * reach the device via the anon key. Bingo is not a hand game — the caller only ever reads their
+ * OWN card, resolved from the secret resume token; there is no redaction and no card_count.
+ * See src/app/api/bingo/card/route.ts.
+ */
+export function postBingoCard(gameCode: string, auth: { resumeToken?: string | null }) {
+  return postJson<{ card: BingoCard | null }>('/api/bingo/card', {
     gameCode: gameCode.toUpperCase(),
     resumeToken: auth.resumeToken ?? undefined,
   })
