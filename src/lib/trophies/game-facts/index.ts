@@ -12,6 +12,7 @@ import { codewordsFacts } from './codewords'
 import { ludoFacts } from './ludo'
 import { monopolyFacts } from './monopoly'
 import { triviaFacts } from './trivia'
+import { whotFacts } from './whot'
 import { yahtzeeFacts } from './yahtzee'
 
 /**
@@ -76,6 +77,7 @@ const BUILDERS: Partial<Record<GameType, FactsBuilder>> = {
   monopoly: monopolyFacts,
   scrabble: scrabbleFacts,
   trivia: triviaFacts,
+  whot: whotFacts,
   yahtzee: yahtzeeFacts,
 }
 
