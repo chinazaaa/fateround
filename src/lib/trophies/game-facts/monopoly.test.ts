@@ -147,7 +147,7 @@ describe('monopolyFacts — ownership', () => {
         { player_id: 'me' },
       ])
     )
-    expect(four.monopoly_three_houses).toBe(1)
+    expect(four.monopoly_four_houses).toBe(1)
 
     // Three houses is below the max now (four before a hotel), so it does not count.
     const three = await factsFor(
@@ -155,14 +155,14 @@ describe('monopolyFacts — ownership', () => {
         { player_id: 'me' },
       ])
     )
-    expect(three.monopoly_three_houses).toBeUndefined()
+    expect(three.monopoly_four_houses).toBeUndefined()
 
     const hotel = await factsFor(
       db({ property_owners: owners([1, 'me']), property_buildings: { '1': 5 }, turn_order: ['me', 'rival'] }, [
         { player_id: 'me' },
       ])
     )
-    expect(hotel.monopoly_three_houses).toBeUndefined()
+    expect(hotel.monopoly_four_houses).toBeUndefined()
   })
 })
 
