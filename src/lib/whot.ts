@@ -799,6 +799,154 @@ function generalMarketDetail(deckExhausted: boolean, reshuffled: boolean): strin
   return 'General Market! Everyone drew — go again'
 }
 
+// ── Per-game trophy accumulator ──────────────────────────────────────────────────────────────
+// Whot is a position game: the session and hands hold only the current state, and a finished hand
+// is empty, so "played three Pick Twos", "went to market five times", "won on a WHOT" cannot be
+// reconstructed after the fact. Each acting player's counters are folded forward on their own turn,
+// INSIDE the same atomic hand write the handler already does once it has WON the session CAS (see
+// processWhotPlay/Draw/Choose). A lost CAS writes nothing, so nothing double-counts. These
+// functions are pure and additive; they change no card, turn or score — they only accumulate
+// integers the finish-time facts builder reads back.
+// See src/lib/trophies/game-facts/whot.ts for how each key becomes a trophy.
+
+/** Opaque bag of integer counters stored on `whot_player_hands.stats`. */
+type WhotRoundStats = Record<string, number>
+
+/** Shape → bit, for the "played every shape" bitmask. The WHOT card (shape 'whot') sets no bit. */
+const WHOT_SHAPE_BIT: Record<WhotShape, number> = {
+  circle: 1,
+  cross: 2,
+  triangle: 4,
+  square: 8,
+  star: 16,
+  whot: 0,
+}
+
+/** This player's current accumulator, copied so the fold never mutates the loaded row. */
+function currentWhotStats(hands: WhotPlayerHand[], playerId: string): WhotRoundStats {
+  const row = hands.find((h) => h.player_id === playerId) as (WhotPlayerHand & { stats?: WhotRoundStats }) | undefined
+  return { ...(row?.stats ?? {}) }
+}
+
+function incWhot(stats: WhotRoundStats, key: string, by = 1): void {
+  stats[key] = (stats[key] ?? 0) + by
+}
+
+function bumpMaxWhot(stats: WhotRoundStats, key: string, value: number): void {
+  if (value > (stats[key] ?? 0)) stats[key] = value
+}
+
+/** How many WHOT (20) cards are in a hand — for the "hold two WHOTs at once" achievement. */
+function countWhots(cards: WhotCard[]): number {
+  return cards.reduce((n, c) => n + (c.number === 20 ? 1 : 0), 0)
+}
+
+/**
+ * Fold the counters for a card `playerId` just played. `handBefore` is their hand as it was when
+ * the turn began; `wentOut` is whether this play emptied it. `session` is pre-write, so its pick
+ * stacks read the penalty this 2/5 landed on. `pickTwoAfter` is the Pick 2 stack size AFTER this
+ * play (for chain-depth). `marketDraws` is how many opponents a General Market forced to draw.
+ */
+function foldWhotPlayStats(
+  prev: WhotRoundStats,
+  card: WhotCard,
+  handBefore: WhotCard[],
+  wentOut: boolean,
+  session: WhotSession,
+  pickTwoAfter: number,
+  marketDraws: number
+): WhotRoundStats {
+  const stats = { ...prev }
+  incWhot(stats, 'whot_turns_taken')
+  bumpMaxWhot(stats, 'whot_peak_hand_size', handBefore.length)
+  if (countWhots(handBefore) >= 2) stats.whot_two_whots = 1
+
+  const n = card.number
+  if (n === 1) {
+    incWhot(stats, 'whot_hold_ons')
+  } else if (n === 2) {
+    incWhot(stats, 'whot_pick_twos')
+    if ((session.pick_two_stack ?? 0) > 0) incWhot(stats, 'whot_pick_twos_stacked')
+    bumpMaxWhot(stats, 'whot_max_pick2_cards', pickTwoAfter)
+  } else if (n === 5) {
+    incWhot(stats, 'whot_pick_threes')
+    if ((session.pick_five_stack ?? 0) > 0) incWhot(stats, 'whot_pick_threes_stacked')
+  } else if (n === 8) {
+    incWhot(stats, 'whot_suspensions')
+  } else if (n === 14) {
+    incWhot(stats, 'whot_general_markets')
+    // General Market is the one penalty a player inflicts inside their OWN turn handler (every
+    // opponent draws 1), so it can be credited atomically. Pick 2/3 land in the victim's handler
+    // and are deliberately not attributed back to the setter — same reasoning as Crazy Eights.
+    if (marketDraws > 0) incWhot(stats, 'whot_cards_inflicted', marketDraws)
+  } else if (n === 20) {
+    incWhot(stats, 'whot_whots')
+  }
+
+  // Shape bitmask + same-shape "in a row" run. A WHOT (no shape bit) breaks the run.
+  const bit = WHOT_SHAPE_BIT[card.shape]
+  if (bit === 0) {
+    stats.whot_run_shape_bit = 0
+    stats.whot_run_shape_len = 0
+  } else {
+    stats.whot_shapes_mask = (stats.whot_shapes_mask ?? 0) | bit
+    const len =
+      bit === (stats.whot_run_shape_bit ?? 0) && (stats.whot_run_shape_len ?? 0) > 0 ? stats.whot_run_shape_len! + 1 : 1
+    stats.whot_run_shape_bit = bit
+    stats.whot_run_shape_len = len
+    bumpMaxWhot(stats, 'whot_max_shape_run', len)
+  }
+
+  // Consecutive Hold Ons (1) — a Hold On keeps the turn, so a run is a single-turn chain. Any
+  // other card breaks it.
+  if (n === 1) {
+    const len = (stats.whot_run_holdon_len ?? 0) + 1
+    stats.whot_run_holdon_len = len
+    bumpMaxWhot(stats, 'whot_max_holdon_run', len)
+  } else {
+    stats.whot_run_holdon_len = 0
+  }
+
+  if (wentOut) {
+    stats.whot_out_number = n
+    stats.whot_out_star = card.shape === 'star' ? 1 : 0
+    stats.whot_out_whot = n === 20 ? 1 : 0
+  }
+
+  return stats
+}
+
+/** Fold the counters for a draw. `penaltyActive` marks a Pick 2/3 penalty draw ("was made to draw"). */
+function foldWhotDrawStats(
+  prev: WhotRoundStats,
+  drawnCount: number,
+  newHand: WhotCard[],
+  penaltyActive: boolean
+): WhotRoundStats {
+  const stats = { ...prev }
+  incWhot(stats, 'whot_turns_taken')
+  incWhot(stats, 'whot_market_visits')
+  incWhot(stats, 'whot_cards_drawn', drawnCount)
+  bumpMaxWhot(stats, 'whot_peak_hand_size', newHand.length)
+  if (penaltyActive) {
+    incWhot(stats, 'whot_penalty_hits')
+    incWhot(stats, 'whot_penalty_cards', drawnCount)
+  }
+  if (countWhots(newHand) >= 2) stats.whot_two_whots = 1
+  // A draw breaks both "in a row" runs.
+  stats.whot_run_shape_bit = 0
+  stats.whot_run_shape_len = 0
+  stats.whot_run_holdon_len = 0
+  return stats
+}
+
+/** Fold the counter for naming a shape after a WHOT (the "play a WHOT and call a shape" event). */
+function foldWhotChooseStats(prev: WhotRoundStats, hasShape: boolean): WhotRoundStats {
+  const stats = { ...prev }
+  if (hasShape) incWhot(stats, 'whot_shape_calls')
+  return stats
+}
+
 /**
  * Optimistic-concurrency session write. The update only lands if the row still
  * carries the `expectedUpdatedAt` we read, so when two requests race (e.g. every
@@ -940,8 +1088,23 @@ export async function processWhotPlay(
   const won = await persistSession(supabase, gameId, patch, timerSeconds, session.updated_at)
   if (!won) return {}
 
-  // We hold the claim — now safe to write hands and finalize.
-  await supabase.from('whot_player_hands').update({ cards: newHand }).eq('game_id', gameId).eq('player_id', playerId)
+  // We hold the claim — now safe to write hands and finalize. Fold this play's trophy counters
+  // forward into the same atomic hand write (pre-write `session` reads the pick stack this 2/5
+  // landed on; `pickTwo` is the stack after; `marketWrites.length` is the General Market draws).
+  const nextStats = foldWhotPlayStats(
+    currentWhotStats(hands, playerId),
+    card,
+    hand,
+    wentOut,
+    session,
+    pickTwo,
+    marketWrites.length
+  )
+  await supabase
+    .from('whot_player_hands')
+    .update({ cards: newHand, stats: nextStats })
+    .eq('game_id', gameId)
+    .eq('player_id', playerId)
   for (const w of marketWrites) {
     await supabase
       .from('whot_player_hands')
@@ -1063,7 +1226,19 @@ export async function processWhotDraw(
   )
   if (!won) return {}
 
-  await supabase.from('whot_player_hands').update({ cards: newHand }).eq('game_id', gameId).eq('player_id', playerId)
+  // Fold this draw's trophy counters forward. A draw under an active Pick 2/3 is a penalty the
+  // player was made to take (`penaltyActive`), distinct from a voluntary single draw.
+  const nextStats = foldWhotDrawStats(
+    currentWhotStats(hands, playerId),
+    drawn.length,
+    newHand,
+    pickTwo > 0 || pickFive > 0
+  )
+  await supabase
+    .from('whot_player_hands')
+    .update({ cards: newHand, stats: nextStats })
+    .eq('game_id', gameId)
+    .eq('player_id', playerId)
 
   return {}
 }
@@ -1111,7 +1286,7 @@ export async function processWhotChoose(
   if (stacks.pickTwo > 0) status = `${status} · Pick 2 active (${stacks.pickTwo} cards to draw)`
   else if (stacks.pickFive > 0) status = `${status} · Pick 3 active (${stacks.pickFive} cards to draw)`
 
-  await persistSession(
+  const won = await persistSession(
     supabase,
     gameId,
     {
@@ -1126,6 +1301,16 @@ export async function processWhotChoose(
     timerSeconds,
     session.updated_at
   )
+  // Naming a shape after a WHOT is the "Shape Shifter" event. Stats-only write (the choose
+  // changes no cards) folded once we hold the claim, so a lost race never double-counts.
+  if (won && hasShape) {
+    const nextStats = foldWhotChooseStats(currentWhotStats(hands, playerId), hasShape)
+    await supabase
+      .from('whot_player_hands')
+      .update({ stats: nextStats })
+      .eq('game_id', gameId)
+      .eq('player_id', playerId)
+  }
 
   return {}
 }
