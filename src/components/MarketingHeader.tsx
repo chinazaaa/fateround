@@ -101,7 +101,7 @@ const NAV: NavItem[] = [
  * Public-site header — logo + desktop nav + a mobile hamburger drawer.
  * Mirrors the Claude Design marketing header (`site-header` / drawer).
  */
-export function MarketingHeader() {
+export function MarketingHeader({ hideBack = false }: { hideBack?: boolean } = {}) {
   const [menu, setMenu] = useState(false)
   const pathname = usePathname()
   const isHome = pathname === '/'
@@ -144,7 +144,7 @@ export function MarketingHeader() {
         </div>
       </header>
 
-      {!isHome && <BackBar />}
+      {!isHome && !hideBack && <BackBar />}
 
       {/* Mobile drawer */}
       <div className={`fr-scrim${menu ? ' on' : ''}`} onClick={() => setMenu(false)} aria-hidden />

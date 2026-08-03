@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { consumeHostPlayIntent } from '@/lib/host-play-intent'
+import { getRememberedName } from '@/lib/identity-local'
 import { clearPlayerSession, getPlayerSession, setPlayerSession } from '@/lib/utils'
 import { useHostPlayerReconciliation } from '@/hooks/useHostPlayerReconciliation'
 
@@ -430,6 +431,12 @@ export function useHostSeat(options: UseHostSeatOptions): UseHostSeatResult {
       return
     }
 
+    // No session and no create intent — a direct host link, a refresh before seating, or a
+    // host who left the name blank on /create. The name is still known, so prefill it. This
+    // is a PREFILL ONLY, never an auto-join: the create screen promises that leaving the name
+    // blank means you add yourself from the lobby, and auto-seating here would break that.
+    const remembered = getRememberedName()
+    if (remembered) setHostJoinName((current) => (current.trim() ? current : remembered))
     setHostMode(readPersistedMode(gameCode))
   }, [gameCode])
 
