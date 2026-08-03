@@ -5,6 +5,7 @@ import { getProfileFromRequest } from '@/lib/identity-server'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { buildSnapshot } from '@/lib/trophies/award'
 import { evaluateRaw } from '@/lib/trophies/criteria'
+import { byTierDesc } from '@/lib/trophies/tier-rank'
 
 /**
  * Everything the trophy case needs: the catalog, what this profile has earned, and how far
@@ -94,8 +95,9 @@ export async function GET(req: NextRequest) {
           rarityPct: rarity.get(id) ?? null,
         }
       })
-      // Earned first within each group, then by the catalog's own ordering.
-      .sort((a, b) => Number(b.earned) - Number(a.earned))
+      // Highest tier first (platinum → bronze), matching every other trophy list in the app;
+      // earned trophies lead within a tier, then the catalog's own ordering.
+      .sort((a, b) => byTierDesc(a, b) || Number(b.earned) - Number(a.earned))
 
     // Grouped by game so the case reads as "your Whot trophies", with cross-game ones first.
     const byGame = new Map<string | null, typeof items>()
