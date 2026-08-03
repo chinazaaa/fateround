@@ -2,7 +2,7 @@
  * Layer 3 of the identity plan: attaching an email to an identity so it survives a new device
  * (`docs/accounts-and-identity-plan.md` §5, Slice 3; `docs/trophies-and-streaks.md` §2.2/§2.7).
  *
- * LOGIN == SIGNUP. The user never picks. They type an email, we send a 6-digit code, and the
+ * LOGIN == SIGNUP. The user never picks. They type an email, we send an 8-digit code, and the
  * backend either loads their account or creates one. UI copy must say "Save to profile", never
  * "Sign up" — the person acting might be a brand-new guest or a returning user who happens to
  * be signed out.
@@ -57,7 +57,7 @@ function isEmailTaken(error: { message: string; code?: string }): boolean {
 }
 
 /**
- * Send a 6-digit code to `email`.
+ * Send an 8-digit code to `email`.
  *
  * @returns the flow to hand back to {@link verifyEmailCode}. Always inspect `ok` — `flow` is
  * only meaningful when the request succeeded.
