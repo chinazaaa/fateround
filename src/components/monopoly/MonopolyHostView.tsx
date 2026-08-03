@@ -183,9 +183,13 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
     players,
     onReload: load,
     toast: { success, error: toastError },
-    buildJoinBody: () => ({ monopolyToken: hostJoinToken }),
+    // OMIT the key when no token is chosen — never send `monopolyToken: null`. The
+    // "Host only" seat is taken without a join form ever rendering, so nothing has
+    // picked a token yet, and a spectator doesn't need one (the server nulls it anyway).
+    // Matches how MonopolyPlayerView builds its join extras.
+    buildJoinBody: () => (hostJoinToken ? { monopolyToken: hostJoinToken } : {}),
     // Monopoly needs a token chosen before joining — don't auto-seat from the
-    // create intent (it would POST monopolyToken: null and fail validation).
+    // create intent (it would POST no token and fail the join check).
     autoJoinEnabled: false,
   })
 

@@ -91,9 +91,6 @@ export function AyoFinalResultsShareBlock({
             }
           />
         )}
-        {session && variant === 'traditional' && (
-          <p className="text-center text-xs text-faint">Round {session.match_round}</p>
-        )}
         {session && (
           <div className="space-y-2 text-sm px-1">
             {standings.map(({ player, score, label, winStreak }) => (

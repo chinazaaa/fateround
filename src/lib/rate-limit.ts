@@ -45,7 +45,7 @@ export const RATE_LIMITS = {
   // Sending an OTP costs a real email, so this is tighter than the gameplay buckets —
   // but still has to clear a few people signing up from the same room at once.
   authRequestCode: { bucket: 'auth-request-code', max: 20, windowSeconds: 900 },
-  // Backstop against grinding a 6-digit code. Supabase enforces its own per-token
+  // Backstop against grinding an 8-digit code. Supabase enforces its own per-token
   // attempt limit too; this only stops a scripted flood from one IP.
   authVerifyCode: { bucket: 'auth-verify-code', max: 30, windowSeconds: 900 },
   // Every GIF search spends third-party Klipy quota, and the endpoint is unauthenticated

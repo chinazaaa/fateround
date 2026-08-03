@@ -774,6 +774,128 @@ function applyPickTwoAfterPlay(card: CrazyEightsCard, pickTwo: number, rules: Cr
   return Math.max(0, pickTwo)
 }
 
+// ── Per-game trophy accumulator (counting only — never touches game state) ─────────────────
+//
+// Crazy Eights keeps no history: a finished hand is empty and the session holds no move list, so
+// per-game trophy facts ("played three 8s", "drew ten cards", "changed the suit three times")
+// cannot be reconstructed after the fact. Instead each acting player's counters are folded
+// forward on their own turn, INSIDE the same atomic hand write the handler already does once it
+// has WON the session CAS (see processCrazyEightsPlay/Draw/Choose). A lost CAS writes nothing, so
+// nothing double-counts. These functions are pure and additive; they change no card, turn, or
+// score — they only accumulate integers the finish-time facts builder reads back.
+// See src/lib/trophies/game-facts/crazy-eights.ts for how each key becomes a trophy.
+
+/** Opaque bag of integer counters stored on `crazy_eights_player_hands.stats`. */
+type CrazyEightsRoundStats = Record<string, number>
+
+/** Suit → bit, for the "played every suit" bitmask. The Joker (no suit) sets no bit. */
+const CRAZY8_SUIT_BIT: Record<CrazyEightsCalledSuit, number> = { spades: 1, clubs: 2, hearts: 4, diamonds: 8 }
+
+/** This player's current accumulator, copied so the fold never mutates the loaded row. */
+function currentRoundStats(hands: CrazyEightsPlayerHand[], playerId: string): CrazyEightsRoundStats {
+  const row = hands.find((h) => h.player_id === playerId) as
+    | (CrazyEightsPlayerHand & { stats?: CrazyEightsRoundStats })
+    | undefined
+  return { ...(row?.stats ?? {}) }
+}
+
+function inc(stats: CrazyEightsRoundStats, key: string, by = 1): void {
+  stats[key] = (stats[key] ?? 0) + by
+}
+
+function bumpMax(stats: CrazyEightsRoundStats, key: string, value: number): void {
+  if (value > (stats[key] ?? 0)) stats[key] = value
+}
+
+/** A play or a draw ends the same-suit / same-rank "in a row" streak of the OTHER kind. */
+function resetPlayRuns(stats: CrazyEightsRoundStats): void {
+  stats.c8_run_suit_bit = 0
+  stats.c8_run_suit_len = 0
+  stats.c8_run_rank_len = 0
+}
+
+/**
+ * Fold the counters for a card `playerId` just played. `handBefore` is their hand as it was when
+ * the turn began (its length is the peak candidate); `wentOut` is whether this play emptied it.
+ * `session` is pre-write, so `session.pick_two_stack` reads the stack this 2 landed on.
+ */
+function foldPlayStats(
+  prev: CrazyEightsRoundStats,
+  card: CrazyEightsCard,
+  handBefore: CrazyEightsCard[],
+  wentOut: boolean,
+  session: CrazyEightsSession,
+  rules: CrazyEightsRules
+): CrazyEightsRoundStats {
+  const stats = { ...prev }
+  inc(stats, 'c8_turns_taken')
+  bumpMax(stats, 'c8_peak_hand_size', handBefore.length)
+
+  if (isJoker(card)) {
+    inc(stats, 'c8_jokers_played')
+  } else {
+    stats.c8_suits_mask = (stats.c8_suits_mask ?? 0) | CRAZY8_SUIT_BIT[card.suit as CrazyEightsCalledSuit]
+    if (card.rank === 8) inc(stats, 'c8_eights_played')
+    if (rules.actionCards) {
+      if (card.rank === 2) {
+        inc(stats, 'c8_pick_twos_played')
+        if ((session.pick_two_stack ?? 0) > 0) inc(stats, 'c8_pick_twos_stacked')
+      }
+      if (card.rank === 1 || card.rank === 11) inc(stats, 'c8_skips_played')
+      if (card.rank === 12) inc(stats, 'c8_reverses_played')
+    }
+  }
+
+  // Same-suit "in a row" among this player's own plays. A Joker (no suit) breaks the run.
+  if (isJoker(card)) {
+    stats.c8_run_suit_bit = 0
+    stats.c8_run_suit_len = 0
+  } else {
+    const bit = CRAZY8_SUIT_BIT[card.suit as CrazyEightsCalledSuit]
+    const len =
+      bit === (stats.c8_run_suit_bit ?? 0) && (stats.c8_run_suit_len ?? 0) > 0 ? stats.c8_run_suit_len! + 1 : 1
+    stats.c8_run_suit_bit = bit
+    stats.c8_run_suit_len = len
+    bumpMax(stats, 'c8_max_suit_run', len)
+  }
+
+  // Same-rank "in a row" among this player's own plays.
+  const rankLen = (stats.c8_run_rank_len ?? 0) > 0 && card.rank === stats.c8_run_rank ? stats.c8_run_rank_len! + 1 : 1
+  stats.c8_run_rank = card.rank
+  stats.c8_run_rank_len = rankLen
+  bumpMax(stats, 'c8_max_rank_run', rankLen)
+
+  if (wentOut) {
+    stats.c8_out_rank = card.rank
+    stats.c8_out_joker = isJoker(card) ? 1 : 0
+  }
+
+  return stats
+}
+
+/** Fold the counters for a draw. `pickTwoActive` marks a Pick-2 penalty draw ("took a Pick Two"). */
+function foldDrawStats(
+  prev: CrazyEightsRoundStats,
+  drawnCount: number,
+  newHandLen: number,
+  pickTwoActive: boolean
+): CrazyEightsRoundStats {
+  const stats = { ...prev }
+  inc(stats, 'c8_turns_taken')
+  inc(stats, 'c8_cards_drawn', drawnCount)
+  bumpMax(stats, 'c8_peak_hand_size', newHandLen)
+  if (pickTwoActive) inc(stats, 'c8_pick_twos_received')
+  resetPlayRuns(stats)
+  return stats
+}
+
+/** Fold the counter for naming a suit (an 8/Joker follow-up, or a timeout auto-choice). */
+function foldChooseStats(prev: CrazyEightsRoundStats): CrazyEightsRoundStats {
+  const stats = { ...prev }
+  inc(stats, 'c8_suit_changes')
+  return stats
+}
+
 /**
  * Optimistic-concurrency session write (CAS on `updated_at`). See Whot's
  * persistSession for the full rationale on why this matters for timer races.
@@ -890,9 +1012,13 @@ export async function processCrazyEightsPlay(
   const won = await persistSession(supabase, gameId, patch, timerSeconds, session.updated_at)
   if (!won) return {}
 
+  // CAS won: fold this player's trophy counters into the same hand write that persists their
+  // new cards. Counting only — the card, turn and scoring above are already decided.
+  const nextStats = foldPlayStats(currentRoundStats(hands, playerId), card, hand, wentOut, session, rules)
+
   await supabase
     .from('crazy_eights_player_hands')
-    .update({ cards: newHand })
+    .update({ cards: newHand, stats: nextStats })
     .eq('game_id', gameId)
     .eq('player_id', playerId)
 
@@ -1007,9 +1133,12 @@ export async function processCrazyEightsDraw(
   )
   if (!won) return {}
 
+  // CAS won: fold the draw counters into the same hand write that credits the drawn cards.
+  const nextStats = foldDrawStats(currentRoundStats(hands, playerId), drawn.length, newHand.length, pickTwo > 0)
+
   await supabase
     .from('crazy_eights_player_hands')
-    .update({ cards: newHand })
+    .update({ cards: newHand, stats: nextStats })
     .eq('game_id', gameId)
     .eq('player_id', playerId)
 
@@ -1053,7 +1182,7 @@ export async function processCrazyEightsChoose(
   let status = `${playerName(playerNames, nextPlayerId)}'s turn — match ${CRAZY8_SUIT_LABELS[suit]} ${CRAZY8_SUIT_SYMBOLS[suit]}`
   if (jokerPenalty > 0) status = `${status} · draw ${jokerPenalty} (Joker)`
 
-  await persistSession(
+  const won = await persistSession(
     supabase,
     gameId,
     {
@@ -1067,6 +1196,17 @@ export async function processCrazyEightsChoose(
     timerSeconds,
     session.updated_at
   )
+
+  // CAS won: naming a suit is a suit change. Gated on the win so a lost race never double-counts;
+  // this writes only the accumulator (choose changes no cards). Nothing else here is altered.
+  if (won) {
+    const nextStats = foldChooseStats(currentRoundStats(hands, playerId))
+    await supabase
+      .from('crazy_eights_player_hands')
+      .update({ stats: nextStats })
+      .eq('game_id', gameId)
+      .eq('player_id', playerId)
+  }
 
   return {}
 }

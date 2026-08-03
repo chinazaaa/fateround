@@ -14,7 +14,16 @@ import { getSupabase } from '@/lib/supabase'
 /** Which Supabase verification the code belongs to — the two cases need different types. */
 export type EmailCodeFlow = 'upgrade' | 'signin'
 
-export type RequestCodeResult = { ok: boolean; flow: EmailCodeFlow; error?: string }
+export type RequestCodeResult = {
+  ok: boolean
+  flow: EmailCodeFlow
+  error?: string
+  /**
+   * True when the upgrade already finished and there is no code to enter — Supabase only issues
+   * one when "Confirm email" is enabled. Without this the user waits for a mail that never comes.
+   */
+  complete?: boolean
+}
 export type VerifyCodeResult = { ok: boolean; error?: string }
 
 const GENERIC_ERROR = "That didn't work. Check the address and try again."
@@ -43,8 +52,15 @@ export async function requestEmailCode(email: string): Promise<RequestCodeResult
 
     // Case A first — upgrading in place keeps the same auth.uid(), so nothing is lost.
     if (user?.is_anonymous) {
-      const { error } = await supabase.auth.updateUser({ email: address })
-      if (!error) return { ok: true, flow: 'upgrade' }
+      const { data: updated, error } = await supabase.auth.updateUser({ email: address })
+      if (!error) {
+        const applied = updated.user?.email?.toLowerCase() === address && !updated.user?.new_email
+        if (applied) {
+          await postWithSession('/api/profile/anon')
+          return { ok: true, flow: 'upgrade', complete: true }
+        }
+        return { ok: true, flow: 'upgrade' }
+      }
       if (!isEmailTaken(error)) return { ok: false, flow: 'upgrade', error: error.message || GENERIC_ERROR }
     }
 
