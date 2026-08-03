@@ -3,7 +3,7 @@
 import { useState, useRef, useMemo, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { getPlayerSession, setPlayerSession, clearPlayerSession } from '@/lib/utils'
-import { getRememberedName, rememberName } from '@/lib/identity-local'
+import { getRememberedName, rememberName, subscribeLocalIdentity } from '@/lib/identity-local'
 import { currentTournamentPlayerToken } from '@/lib/tournament-player-token'
 import { parseGameType, isNameOnlyPlayerJoin } from '@/lib/game-types'
 import {
@@ -125,6 +125,11 @@ export function useJoinFlow(deps: JoinFlowDeps) {
   // or tournament link is supplying a name of its own. Skipped entirely when a room member
   // code is present because that name resolves asynchronously and must win.
   const rememberedNamePrefillRef = useRef(false)
+  // A signed-in player's name is written by `useProfile` after its fetch resolves, which is
+  // later than this effect's first run — none of its other deps change when that happens, so
+  // without this it would never look again and the field would stay empty all visit.
+  const [identityTick, setIdentityTick] = useState(0)
+  useEffect(() => subscribeLocalIdentity(() => setIdentityTick((n) => n + 1)), [])
   useEffect(() => {
     if (rememberedNamePrefillRef.current) return
     if (!game || !useFreeNameJoin || view !== 'join') return
@@ -135,7 +140,7 @@ export function useJoinFlow(deps: JoinFlowDeps) {
     rememberedNamePrefillRef.current = true
     nameFromRememberedRef.current = true
     setTimeout(() => setNameInput(remembered), 0)
-  }, [game, useFreeNameJoin, view, myPlayerId, editingJoin, nameInput, roomMemberCode, initialName])
+  }, [game, useFreeNameJoin, view, myPlayerId, editingJoin, nameInput, roomMemberCode, initialName, identityTick])
 
   // Once the player edits the field themselves it's their name, not a prefill, so a
   // late-arriving tournament name must no longer overwrite it.

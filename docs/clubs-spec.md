@@ -15,16 +15,28 @@ Companion to [`account-tiers.md`](./account-tiers.md) (§Clubs — the philosoph
 > valuable once there are trophies (Batch 3) and daily scores (Batch 4) to aggregate into a club
 > leaderboard. Build the thing people join *for* first, then the container.
 
+> **2026-08-02 — pricing model realigned, club-count decision reconfirmed.**
+> [`revenue-model.md`](./revenue-model.md) moved from a one-time Pro+Cosmetics model to a
+> **FateRound+ / Club Pro subscription** model. Club *creation* is now a paid-tier lever
+> (Free 1 → FateRound+ 3 → Club Pro branding/50-member roster, admin-paid), but **joining stays
+> unlimited on every tier — reconfirmed, not reopened.** Free club creation is sharpened from 2
+> to **1** (see [`account-tiers.md`](./account-tiers.md) §Clubs for the full reasoning: capping
+> joins would tax an invited member for someone else's decision, shrink the inviter's own club,
+> and break FateRound's invite-driven growth loop at exactly the moment a new user is most
+> engaged). §1 and §11 below are updated to match.
+
 ---
 
 ## 1. Principles (inherited from `account-tiers.md`)
 
-1. **Free until sticky.** Creating and joining a club is free (account required, not Pro). Monetize
-   crests and seasons *later*, once clubs demonstrably drive retention — never gate the core.
-2. **Account-gated, not Pro-gated.** You need an account (not a guest) to join or create — a club is
-   persistent membership, and a ghost can't hold a spot. This is a moment-of-value signup hook.
-3. **Free roster cap = 20 members.** Larger rosters / seasons / vanity codes are a later Pro-or-Club+
-   lever (out of scope here, noted in §9).
+1. **Joining is free and unlimited on every tier.** Free account required (not a guest), but no
+   cap on how many clubs you can join — see the 2026-08-02 note above for why.
+2. **Account-gated, not FateRound+-gated.** You need an account (not a guest) to join or
+   create — a club is persistent membership, and a ghost can't hold a spot. This is a
+   moment-of-value signup hook.
+3. **Club *creation* is the paid-tier lever, not membership.** Free account: 1 club created.
+   FateRound+: up to 3. Club Pro (admin-paid): unlimited, plus the roster jumps from the
+   free 20-member cap to 50. See §11 decision #2.
 4. **Additive only.** Clubs never make non-club play worse. Every game still works with zero clubs.
 
 ---
@@ -240,7 +252,7 @@ in supported lobbies. Budget design on **both** platforms.
 | # | Decision | Recommended default |
 |---|---|---|
 | 1 | Crest in v1 — emoji+colour vs. image upload | **Emoji + colour.** No upload infra, no moderation surface, ships fast. Image/branded crests become a later cosmetic. |
-| 2 | Can one person be in many clubs? | **Yes, unlimited membership; cap clubs *created/owned* per free account (e.g. 2).** Joining is the sticky action; owning many is the abuse vector. |
+| 2 | Can one person be in many clubs? | **Yes, unlimited membership on every tier — reconfirmed 2026-08-02.** Cap sits on clubs *created* instead: Free 1, FateRound+ 3, Club Pro admin unlimited (sharpened from Free=2 on 2026-08-02, see [`account-tiers.md`](./account-tiers.md) §Clubs). Joining is the sticky, invite-driven action; creation is the abuse vector and the actual cost centre (storage, moderation, branding, admin tooling). |
 | 3 | Club leaderboard metric | **Default to wins within the season; offer a toggle to trophy-points or daily-score.** Wins are the most intuitive "who's best in our crew." |
 | 4 | Guests inside a club room | Guests can *play* in a club's room, but only **accounts count toward the club leaderboard/history** (they're the ones with a persistent identity). Nudge guests to claim. |
 | 5 | Season length | **Owner-defined, suggest monthly.** Auto-recurring monthly seasons are a later nicety. |
@@ -250,8 +262,9 @@ in supported lobbies. Budget design on **both** platforms.
 
 ## 12. What's explicitly NOT in this spec
 
-- **Monetization** (purchasable crests, season cosmetics, Club+ tier, >20 rosters) —
-  [`revenue-model.md`](./revenue-model.md). Build the free, sticky layer first.
+- **Monetization** (Club Pro branding bundle, >20 rosters, club count gating) —
+  [`revenue-model.md`](./revenue-model.md). Build the free, sticky layer first; no separate
+  crest/cosmetic purchases — branding ships bundled into the Club Pro subscription.
 - **Club tournaments / leagues** — deferred to after v1; they sit on the shipped tournaments system.
 - **Cross-club discovery / public directory** — clubs are invite-only in v1; a browse/directory is a
   later growth feature with its own moderation questions.

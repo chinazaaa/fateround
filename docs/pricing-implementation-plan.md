@@ -100,11 +100,16 @@ Nothing here exists. `rooms` is ephemeral and token-based; clubs are persistent,
   - **Joining is unlimited on free.** This line used to say "free = join 1 club". `clubs-spec.md`
     §Decisions Q2 and [`account-tiers.md`](./account-tiers.md) both say unlimited membership instead, with an explicit
     rationale — *joining is the sticky action; owning many is the abuse vector* — so the cap
-    belongs on clubs **created/owned** (≈2 per free account), not on clubs joined. Capping the
+    belongs on clubs **created/owned** (1 per free account), not on clubs joined. Capping the
     sticky action to protect against the abuse vector was simply aimed at the wrong thing.
   - **Roster size: 20 on free, 50 on Club Pro.** These never actually conflicted — 20 is the free
     club's cap ([`clubs-spec.md`](./clubs-spec.md) §3, [`account-tiers.md`](./account-tiers.md)) and 50 is what the paid tier raises it to.
   - `+ = up to 3 clubs` referred to clubs *owned*, and is consistent once read that way.
+  - **Sharpened 2026-08-02 — free creation 2 → 1, Club Pro admin → unlimited.** At 2, a second
+    club is an upgrade trigger nobody hits; at 1, wanting a second (family vs. work) is a real
+    wall the user caused themselves. [`account-tiers.md`](./account-tiers.md) §Clubs and
+    [`clubs-spec.md`](./clubs-spec.md) §11 decision #2 are the authority; the table below is
+    the enforcement contract and must match them.
 
   **Exact entitlements to enforce** (all scoped to a *permanent account* — clubs are
   account-gated, not guest-accessible, per [`clubs-spec.md`](./clubs-spec.md) §2):
@@ -112,7 +117,7 @@ Nothing here exists. `rooms` is ephemeral and token-based; clubs are persistent,
   | Entitlement | Free account | Fate Round+ | Club Pro (per club) |
   |---|---|---|---|
   | Clubs **joined** | unlimited | unlimited | unlimited |
-  | Clubs **owned/created** | 2 | 3 | 3 |
+  | Clubs **owned/created** | 1 | 3 | unlimited (admin) |
   | **Roster size** of a club you own | 20 | 20 | 50 |
 
   Roster size is a property of the *club* (set by its plan), not of the member — a Club Pro club

@@ -125,6 +125,27 @@ export const SITE_FAQ_GROUPS: SiteFaqGroup[] = [
     ],
   },
   {
+    id: 'trophies',
+    title: 'Trophies',
+    faqs: [
+      {
+        question: 'How do trophies work?',
+        answer:
+          'Trophies are earned automatically as you play — things like finishing your first game, racking up wins, or hitting a milestone. Each game has its own trophy list, shown on that game’s page, with bronze, silver, gold, and platinum tiers. Some trophies are secret and only reveal themselves once you have earned them.',
+      },
+      {
+        question: 'Do I need an account to earn trophies?',
+        answer:
+          'You need a FateRound profile, which is created automatically the first time you finish a game — no email or password required. Trophies and points are tied to that profile, so play from the same device or sign in to keep them.',
+      },
+      {
+        question: 'Where can I see my trophies?',
+        answer:
+          'Your profile page lists everything you have earned across every game, plus your progress toward what is left. Each game’s page also shows that game’s full trophy list.',
+      },
+    ],
+  },
+  {
     id: 'privacy',
     title: 'Privacy and data',
     faqs: [

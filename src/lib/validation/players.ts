@@ -10,7 +10,12 @@ export const createPlayerSchema = z.object({
   identityGender: participantGenderEnum.or(z.string()).nullish(),
   participantId: uuidString('participantId').nullish(),
   joinAsViewer: z.boolean().optional(),
-  monopolyToken: z.enum(MONOPOLY_TOKEN_ID_LIST as [string, ...string[]]).optional(),
+  // `.nullish()`, not `.optional()`: a caller that sends an explicitly null token means
+  // "none chosen", and the handler already answers that with "Pick a player token to join".
+  // Under `.optional()` the null died in the schema instead and the player was shown the raw
+  // enum list — a validator dump reading "expected one of car|hat|dog…" as if they had typed
+  // something wrong.
+  monopolyToken: z.enum(MONOPOLY_TOKEN_ID_LIST as [string, ...string[]]).nullish(),
   roomMemberCode: z.string().trim().toUpperCase().max(12).optional(),
   // Private tournament identity secret (see tournament-player-token). Proves the
   // joiner really is the named tournament player, so only they can take/reclaim the seat.

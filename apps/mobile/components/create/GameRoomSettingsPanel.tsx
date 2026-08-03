@@ -16,7 +16,11 @@ import {
   turnTimerOptionsFor,
 } from '@fateround/shared/create-board-games'
 import { WHOT_GAME_DURATION_OPTIONS } from '@fateround/shared/whot'
-import { PING_PONG_POINTS_OPTIONS, PING_PONG_GAME_DURATION_OPTIONS, formatPingPongDuration } from '@fateround/shared/ping-pong'
+import {
+  PING_PONG_POINTS_OPTIONS,
+  PING_PONG_GAME_DURATION_OPTIONS,
+  formatPingPongDuration,
+} from '@fateround/shared/ping-pong'
 import { UNO_GAME_DURATION_OPTIONS } from '@fateround/shared/uno'
 import { MAHJONG_RULESET_LABELS, MAHJONG_RULESETS } from '@fateround/shared/mahjong-rulesets'
 import {
@@ -30,12 +34,7 @@ import { TimerPicker } from '@/components/create/TimerPicker'
 import { SurfaceCard } from '@/components/ui/SurfaceCard'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
-import {
-  AYO_VARIANT_OPTIONS,
-  boardGameTimerKey,
-  hasGameRoomSettings,
-  type GameRoomSettings,
-} from '@/lib/create-settings/board-games'
+import { boardGameTimerKey, hasGameRoomSettings, type GameRoomSettings } from '@/lib/create-settings/board-games'
 import { gameLabel } from '@/lib/mobile-registry'
 
 type Props = {
@@ -170,26 +169,13 @@ export function GameRoomSettingsPanel({ gameType, room, onChange }: Props) {
         ) : null}
 
         {gameType === 'ayo' ? (
-          <>
-            <View style={styles.field}>
-              <Text style={styles.label}>Rules</Text>
-              <SegmentedControl
-                value={room.ayoVariant}
-                options={AYO_VARIANT_OPTIONS.map((option) => ({
-                  value: option.value,
-                  label: option.label,
-                }))}
-                onChange={(value) => onChange({ ayoVariant: value as GameRoomSettings['ayoVariant'] })}
-              />
-            </View>
-            <TimerPicker
-              label="Time per player"
-              value={room.timerSeconds}
-              options={turnTimerOptionsFor('ayo')}
-              format={formatAyoClockLabel}
-              onChange={(timerSeconds) => onChange({ timerSeconds })}
-            />
-          </>
+          <TimerPicker
+            label="Time per player"
+            value={room.timerSeconds}
+            options={turnTimerOptionsFor('ayo')}
+            format={formatAyoClockLabel}
+            onChange={(timerSeconds) => onChange({ timerSeconds })}
+          />
         ) : null}
 
         {gameType === 'whot' ? (

@@ -6,6 +6,7 @@ import {
   YAHTZEE_UPPER_BONUS_THRESHOLD,
   YAHTZEE_UPPER_CATEGORIES,
   categoryScore,
+  jokerApplies,
   totalScore,
   upperBonus,
   upperScore,
@@ -66,6 +67,7 @@ export function YahtzeeScorecardGrid({
   const ordered = players.map((p) => ({
     player: p,
     score: scores.find((s) => s.player_id === p.id)?.scores.categories ?? null,
+    bonus: scores.find((s) => s.player_id === p.id)?.scores.bonusYahtzees ?? 0,
   }))
 
   const playerCellStyle = (playerId: string) => {
@@ -74,15 +76,12 @@ export function YahtzeeScorecardGrid({
     return [styles.cell, isActive && styles.cellActive, isYou && !isActive && styles.cellYou]
   }
 
-  const renderScoreCell = (
-    category: YahtzeeCategory,
-    player: PlayerLite,
-    score: YahtzeeCategoryPoints | null
-  ) => {
+  const renderScoreCell = (category: YahtzeeCategory, player: PlayerLite, score: YahtzeeCategoryPoints | null) => {
     const isActive = player.id === activePlayerId
     const isYou = player.id === myPlayerId
     const val = score ? score[category] : null
-    const preview = isActive && val == null && dice ? categoryScore(dice, category) : null
+    const joker = isActive && score ? jokerApplies(dice ?? [], score) : false
+    const preview = isActive && val == null && dice ? categoryScore(dice, category, { joker }) : null
 
     if (val != null) {
       return <Text style={styles.cellFilled}>{val}</Text>
@@ -124,10 +123,10 @@ export function YahtzeeScorecardGrid({
             <View style={styles.labelCell}>
               <Text style={styles.headerLabel}>Category</Text>
             </View>
-            {ordered.map(({ player, score }) => {
+            {ordered.map(({ player, score, bonus }) => {
               const isActive = player.id === activePlayerId
               const isYou = player.id === myPlayerId
-              const total = score ? totalScore(score) : 0
+              const total = score ? totalScore(score, bonus) : 0
               return (
                 <View key={player.id} style={[styles.cell, isActive && styles.cellActive]}>
                   <View style={[styles.avatar, isActive && styles.avatarActive]}>
@@ -186,9 +185,9 @@ export function YahtzeeScorecardGrid({
             <View style={styles.labelCell}>
               <Text style={styles.totalLabel}>Total</Text>
             </View>
-            {ordered.map(({ player, score }) => (
+            {ordered.map(({ player, score, bonus }) => (
               <View key={player.id} style={playerCellStyle(player.id)}>
-                <Text style={styles.totalValue}>{score ? totalScore(score) : 0}</Text>
+                <Text style={styles.totalValue}>{score ? totalScore(score, bonus) : 0}</Text>
               </View>
             ))}
           </View>
