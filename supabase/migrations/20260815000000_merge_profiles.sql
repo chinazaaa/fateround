@@ -35,8 +35,12 @@ begin
   if p_from is null or p_into is null or p_from = p_into then
     return;
   end if;
-  -- Nothing to merge if the source profile is already gone (e.g. a retried call).
-  select * into src from profiles where id = p_from;
+  -- Lock the source profile for the whole merge. The route calls this best-effort and a client
+  -- retry can fire while the first request is still in flight; without the lock both passes could
+  -- clear the not-found check and `bump_player_stats` (additive) would double-count the guest's
+  -- games/counters onto the destination. FOR UPDATE serialises them: the second call blocks here
+  -- until the first commits its delete, then finds nothing and returns.
+  select * into src from profiles where id = p_from for update;
   if not found then
     return;
   end if;
