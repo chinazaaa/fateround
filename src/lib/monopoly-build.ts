@@ -4,6 +4,7 @@ import {
   spacesInGroup,
   MONOPOLY_MAX_HOUSES_PER_PROPERTY,
   MONOPOLY_HOTEL_LEVEL,
+  MONOPOLY_HOUSES_UNDER_HOTEL,
   type MonopolyColorGroup,
 } from '@/lib/monopoly-board'
 import { buildingLevel } from '@/lib/monopoly-rent'
@@ -104,9 +105,15 @@ export function canRemoveHotel(
   spaceIndex: number,
   ownerId: string,
   owners: Record<string, string>,
-  buildings: Record<string, number>
+  buildings: Record<string, number>,
+  housesInBank: number
 ): boolean {
-  return owners[String(spaceIndex)] === ownerId && buildingLevel(buildings, spaceIndex) === MONOPOLY_HOTEL_LEVEL
+  if (owners[String(spaceIndex)] !== ownerId) return false
+  if (buildingLevel(buildings, spaceIndex) !== MONOPOLY_HOTEL_LEVEL) return false
+  // Selling a hotel steps the site back down to 3 houses, so the bank must
+  // actually have that many to give back. Without this check a player could
+  // sell a hotel with the bank at 0 houses and drive houses_in_bank negative.
+  return housesInBank >= MONOPOLY_HOUSES_UNDER_HOTEL
 }
 
 export function groupHasBuildings(

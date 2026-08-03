@@ -1998,23 +1998,26 @@ export async function processMonopolyBuild(
       return { error: 'Cannot build a hotel here' }
     }
     if (cash < houseCost) return { error: 'Not enough cash' }
+    const housesOnSite = buildingLevel(buildings, spaceIndex)
     buildings[String(spaceIndex)] = MONOPOLY_HOTEL_LEVEL
     cash -= houseCost
     hotelsInBank -= 1
-    housesInBank += MONOPOLY_HOUSES_UNDER_HOTEL
+    housesInBank += housesOnSite
   } else if (action === 'sell_house') {
     if (!canRemoveHouse(spaceIndex, playerId, owners, buildings)) return { error: 'Cannot sell a house here' }
     buildings[String(spaceIndex)] = buildingLevel(buildings, spaceIndex) - 1
     cash += Math.floor(houseCost / 2)
     housesInBank += 1
   } else if (action === 'sell_hotel') {
-    if (!canRemoveHotel(spaceIndex, playerId, owners, buildings)) return { error: 'Cannot sell hotel here' }
-    // Steps the site back down to houses, so only the hotel itself is sold: the
-    // houses underneath stay on the board and must not be refunded as well. They
-    // were paid for on the way up to MAX_HOUSES_PER_PROPERTY, and buy_hotel
-    // charges for the hotel step alone, so refunding them here printed money —
-    // the round trip restored the level and both bank counts exactly, leaving
-    // buy_hotel/sell_hotel repeatable for a net gain every cycle.
+    if (!canRemoveHotel(spaceIndex, playerId, owners, buildings, housesInBank)) {
+      const shortOnHouses =
+        buildingLevel(buildings, spaceIndex) === MONOPOLY_HOTEL_LEVEL && housesInBank < MONOPOLY_HOUSES_UNDER_HOTEL
+      return {
+        error: shortOnHouses
+          ? 'The bank has too few houses to break this hotel into — mortgage or forfeit instead'
+          : 'Cannot sell hotel here',
+      }
+    }
     buildings[String(spaceIndex)] = MONOPOLY_MAX_HOUSES_PER_PROPERTY
     cash += Math.floor(houseCost / 2)
     hotelsInBank += 1
@@ -2644,7 +2647,6 @@ function releasePropertiesToBank(
     const level = nextBuildings[idx] ?? 0
     if (level === MONOPOLY_HOTEL_LEVEL) {
       hotelsReturned += 1
-      housesReturned += MONOPOLY_HOUSES_UNDER_HOTEL
     } else {
       housesReturned += level
     }

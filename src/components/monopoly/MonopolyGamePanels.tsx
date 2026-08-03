@@ -801,7 +801,7 @@ export function MonopolyManagePanel({
                 Sell house
               </button>
             )}
-            {canRemoveHotel(space.index, myPlayerId, owners, buildings) && (
+            {canRemoveHotel(space.index, myPlayerId, owners, buildings, housesInBank) && (
               <button
                 type="button"
                 disabled={acting}

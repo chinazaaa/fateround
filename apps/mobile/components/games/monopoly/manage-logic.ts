@@ -5,6 +5,7 @@
 import {
   MONOPOLY_BOARD,
   MONOPOLY_HOTEL_LEVEL,
+  MONOPOLY_HOUSES_UNDER_HOTEL,
   MONOPOLY_MAX_HOUSES_PER_PROPERTY,
   countOwnedInGroup,
   groupHasMortgage,
@@ -205,16 +206,28 @@ export function canRemoveHotel(
   spaceIndex: number,
   ownerId: string,
   owners: Record<string, string>,
-  buildings: Record<string, number>
+  buildings: Record<string, number>,
+  housesInBank: number
 ): boolean {
-  return owners[String(spaceIndex)] === ownerId && buildingLevel(buildings, spaceIndex) === MONOPOLY_HOTEL_LEVEL
+  if (owners[String(spaceIndex)] !== ownerId) return false
+  if (buildingLevel(buildings, spaceIndex) !== MONOPOLY_HOTEL_LEVEL) return false
+  // Selling a hotel steps the site back down to 3 houses, so the bank must
+  // actually have that many to give back. Without this check a player could
+  // sell a hotel with the bank at 0 houses and drive houses_in_bank negative.
+  return housesInBank >= MONOPOLY_HOUSES_UNDER_HOTEL
 }
 
 // Count how many build actions (houses + hotels) the player can currently make.
 // Mirrors web src/components/monopoly/monopoly-manage-utils.ts so the mobile
 // "you can build" nudge fires on exactly the same condition.
 export function getMonopolyBuildActionCount(
-  board: { property_owners?: unknown; property_buildings?: unknown; mortgaged_properties?: unknown; houses_in_bank?: number; hotels_in_bank?: number },
+  board: {
+    property_owners?: unknown
+    property_buildings?: unknown
+    mortgaged_properties?: unknown
+    houses_in_bank?: number
+    hotels_in_bank?: number
+  },
   myPlayerId: string
 ): number {
   const owners = parsePropertyOwners(board.property_owners)
