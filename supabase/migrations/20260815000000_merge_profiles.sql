@@ -1,0 +1,98 @@
+-- The real Case-B profile merge (docs/trophies-and-streaks.md §2.7).
+--
+-- WHAT WAS BROKEN. A guest earns progression on an anonymous profile. When they then sign into an
+-- email account that ALREADY EXISTS (Case B — a returning player, or anyone re-using an email
+-- across test sessions), Supabase lands them on a DIFFERENT auth.uid(); the guest's profile is
+-- left behind. `/api/profile/merge` only wrote the audit row and returned `pending: true` — the
+-- comment said "there is nothing to move yet." There is now: every trophy, stat and streak the
+-- guest earned this session stayed orphaned on the abandoned profile, so the account they signed
+-- into showed empty ("finish a game to see it here"). This function moves it.
+--
+-- Reuses `bump_player_stats` for the stats merge — the same additive upsert the award pass uses,
+-- so games_played/won are summed and the counters jsonb is merged key-by-key (not overwritten).
+--
+-- IDEMPOTENT. The guest profile row is DELETED at the end; its player_stats / player_trophies /
+-- player_distinct / awarded_sessions are ON DELETE CASCADE, so they go with it and a re-run finds
+-- nothing to move. The `players.profile_id` FK is ON DELETE SET NULL, so seats are re-pointed
+-- FIRST. The anonymous auth.users row is deliberately left for the 90-day prune (the profile_merges
+-- audit deliberately has no FK to it, precisely because it's deleted here).
+--
+-- SECURITY. SECURITY DEFINER with a pinned search_path, revoked from the public roles and granted
+-- only to service_role — like bump_player_stats. The route proves ownership of BOTH identities
+-- (destination via bearer JWT, source via the anonymous session's own token) before calling this;
+-- the function trusts its two ids because only the service role can reach it.
+
+create or replace function merge_profiles(p_from uuid, p_into uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  r record;
+  src profiles%rowtype;
+begin
+  if p_from is null or p_into is null or p_from = p_into then
+    return;
+  end if;
+  -- Nothing to merge if the source profile is already gone (e.g. a retried call).
+  select * into src from profiles where id = p_from;
+  if not found then
+    return;
+  end if;
+
+  -- 1. Re-point the guest's game seats to the destination (BEFORE the delete below, whose
+  --    players FK is ON DELETE SET NULL).
+  update players set profile_id = p_into where profile_id = p_from;
+
+  -- 2. Idempotency ledger — carry the guest's awarded rounds over so a game already awarded to
+  --    the guest can never re-award to the destination.
+  insert into awarded_sessions (profile_id, session_id, awarded_at)
+    select p_into, session_id, awarded_at from awarded_sessions where profile_id = p_from
+    on conflict (profile_id, session_id) do nothing;
+
+  -- 3. Earned trophies — union, keeping the EARLIER earned_at.
+  insert into player_trophies (profile_id, trophy_id, earned_at)
+    select p_into, trophy_id, earned_at from player_trophies where profile_id = p_from
+    on conflict (profile_id, trophy_id) do update
+      set earned_at = least(player_trophies.earned_at, excluded.earned_at);
+
+  -- 4. Distinct sets (modes_played, mafia_winning_roles, …) — union the members.
+  insert into player_distinct (profile_id, key, member)
+    select p_into, key, member from player_distinct where profile_id = p_from
+    on conflict (profile_id, key, member) do nothing;
+
+  -- 5. Per-game stats — add the guest's counts into the destination via the same additive upsert
+  --    the award pass uses (sums played/won and every counter key, incl. days_played).
+  for r in select game_type, games_played, games_won, counters from player_stats where profile_id = p_from loop
+    perform bump_player_stats(p_into, r.game_type, r.games_played, r.games_won, coalesce(r.counters, '{}'::jsonb));
+  end loop;
+
+  -- 6. Streak aggregates — keep the better of the two.
+  update profiles set
+    current_streak   = greatest(current_streak, coalesce(src.current_streak, 0)),
+    longest_streak   = greatest(longest_streak, coalesce(src.longest_streak, 0)),
+    streak_freezes   = greatest(streak_freezes, coalesce(src.streak_freezes, 0)),
+    last_active_date = greatest(last_active_date, src.last_active_date)
+    where id = p_into;
+
+  -- 7. Recompute the destination's cached points/level from what it now holds.
+  perform recompute_profile_points(p_into);
+
+  -- 8. Delete the guest profile. CASCADE clears its now-redundant stats/trophies/distinct/awarded
+  --    rows, which is what makes this function safe to re-run. auth.users is left for the prune.
+  delete from profiles where id = p_from;
+end;
+$$;
+
+revoke all on function merge_profiles(uuid, uuid) from public, anon, authenticated;
+grant execute on function merge_profiles(uuid, uuid) to service_role;
+
+-- ----------------------------------------------------------------------------
+-- ROLLBACK (drafted). Apply as a NEW forward migration; do NOT edit this file
+-- after it has shipped.
+--
+--   drop function if exists merge_profiles(uuid, uuid);
+--
+-- Dropping it returns Case B to "audit only", re-orphaning guest progression on sign-in.
+-- ----------------------------------------------------------------------------
