@@ -33,6 +33,10 @@ export type WatchedTable =
 /** The slice of the Realtime payload we consume; typed loosely to survive client upgrades. */
 type ChangePayload = { eventType?: string; new?: Record<string, unknown> | null }
 
+/** How often to re-check live socket state so `connected` catches a silent drop the channel
+ *  status callback never reported. Cheap (a boolean read), so a few seconds is plenty. */
+const HEARTBEAT_MS = 3000
+
 /**
  * Push instead of poll for the per-game views.
  *
@@ -74,11 +78,15 @@ export function useGameTableSync(
   const applyRef = useRef(new Map<string, ((row: Record<string, unknown>) => void | boolean) | undefined>())
   applyRef.current = new Map(norm.map((t) => [t.table, t.apply]))
 
-  // Whether the Realtime channel is currently SUBSCRIBED. Returned so callers can gate their
-  // safety-net poll (`usePolling(..., { enabled: !connected })`) — no redundant full reloads
-  // while realtime is healthy. On a socket drop `connected` flips false and the poll re-enables;
-  // callers pass `runImmediately: false`, so the first reconcile lands within one interval (the
-  // backstop for a sustained outage — Supabase auto-reconnects transient drops before then).
+  // Whether realtime is healthy. Returned so callers can gate their safety-net poll
+  // (`usePolling(..., { enabled: !connected })`) — no redundant full reloads while realtime is
+  // live. `connected` = the channel reached SUBSCRIBED AND the underlying websocket is actually
+  // connected. The second half matters: the channel status callback only fires on an explicit
+  // status change, so a socket that dies WITHOUT emitting CLOSED/CHANNEL_ERROR (a silent drop)
+  // would otherwise leave `connected` stuck true and the fallback poll disabled forever. A small
+  // heartbeat re-reads the live socket state so `connected` reflects reality within HEARTBEAT_MS
+  // and the poll re-enables. (A socket that stays open but silently stops delivering WAL rows is
+  // a different failure this can't see — the per-view active-game reconcile poll covers that.)
   const [connected, setConnected] = useState(false)
 
   useEffect(() => {
@@ -126,10 +134,21 @@ export function useGameTableSync(
         }
       )
     }
-    channel.subscribe((status) => setConnected(status === 'SUBSCRIBED'))
+    // Track SUBSCRIBED from the status callback, but AND it with live socket state so a silent
+    // socket drop (no status callback) still flips `connected` false. `supabase.realtime` auto-
+    // reconnects and re-fires SUBSCRIBED on recovery, so `subscribed` self-heals; the heartbeat
+    // just keeps `connected` honest in between.
+    let subscribed = false
+    const evalConnected = () => setConnected(subscribed && supabase.realtime.isConnected())
+    channel.subscribe((status) => {
+      subscribed = status === 'SUBSCRIBED'
+      evalConnected()
+    })
+    const heartbeat = window.setInterval(evalConnected, HEARTBEAT_MS)
 
     return () => {
       if (debounce) clearTimeout(debounce)
+      window.clearInterval(heartbeat)
       setConnected(false)
       supabase.removeChannel(channel)
     }
