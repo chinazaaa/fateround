@@ -117,17 +117,26 @@ export function ChessHostView({ gameCode, hostToken }: { gameCode: string; hostT
     load
   )
 
-  // Fallback poll: tighter while the match is live, so a dropped realtime channel
-  // costs seconds of move lag instead of most of a minute. Only runs while the
-  // channel is down — no redundant reloads alongside healthy realtime.
+  // Reconciliation poll. `connected` only means the Realtime channel is SUBSCRIBED —
+  // it does NOT catch a channel that stays subscribed but silently stops delivering
+  // row changes. For a live clock game that gap is catastrophic: a client waiting to
+  // receive the opponent's move would sit on a stale `current_turn` forever, ticking
+  // the wrong clock, never seeing it's their turn, and losing on time. So during an
+  // active match we ALWAYS poll (a slow 10s safety reconcile while connected, the
+  // tight 4s duel cadence when the channel is actually down); load()'s newest-updated_at
+  // guard keeps whichever row is freshest, so a healthy realtime push still wins and this
+  // only corrects a stuck view.
+  const activeMatch = game?.status === 'active' && session?.status === 'active'
   usePolling(() => load(), [gameCode, load], {
     intervalMs:
       game?.status === 'waiting'
         ? POLL_INTERVALS.lobby
-        : game?.status === 'active' && session?.status === 'active'
-          ? POLL_INTERVALS.duelFallback
-          : POLL_INTERVALS.realtimeFallback,
-    enabled: game?.status === 'waiting' || !connected,
+        : !connected
+          ? activeMatch
+            ? POLL_INTERVALS.duelFallback
+            : POLL_INTERVALS.realtimeFallback
+          : POLL_INTERVALS.activeGame,
+    enabled: game?.status === 'waiting' || !connected || activeMatch,
     runImmediately: false,
   })
 
