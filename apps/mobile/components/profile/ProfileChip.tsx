@@ -6,6 +6,7 @@ import { useTheme, useThemedStyles } from '@/constants/theme-context'
 import { apiUrl } from '@/lib/config'
 import { authHeaders, signOutIdentity } from '@/lib/identity'
 import { requestEmailCode, verifyEmailCode, type EmailCodeFlow } from '@/lib/identity-auth'
+import { getSupabase } from '@/lib/supabase'
 
 type Profile = {
   handle: string | null
@@ -59,6 +60,18 @@ export function ProfileChip() {
 
   useEffect(() => {
     void refresh()
+  }, [refresh])
+
+  // Re-fetch when the auth session changes. The session hydrates from AsyncStorage
+  // asynchronously, so the mount fetch above can run before there is a session and read as a
+  // guest for a player who is actually signed in — leaving the chip stuck on "Guest".
+  // `onAuthStateChange` fires `INITIAL_SESSION` once the session is restored (and on sign-in/out,
+  // token refresh and email upgrade), so refreshing here lands the true identity.
+  useEffect(() => {
+    const { data } = getSupabase().auth.onAuthStateChange(() => {
+      void refresh()
+    })
+    return () => data.subscription.unsubscribe()
   }, [refresh])
 
   const signedIn = Boolean(profile && !profile.is_anonymous)

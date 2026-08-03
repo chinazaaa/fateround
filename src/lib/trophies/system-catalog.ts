@@ -12,6 +12,7 @@ import { LUDO } from './system-trophies/ludo'
 import { MONOPOLY } from './system-trophies/monopoly'
 import { TRIVIA } from './system-trophies/trivia'
 import type { SystemTrophySpec } from './system-trophies/types'
+import { WHOT } from './system-trophies/whot'
 import { YAHTZEE } from './system-trophies/yahtzee'
 
 /**
@@ -56,6 +57,7 @@ const BY_GAME: Record<string, SystemTrophySpec[]> = {
   monopoly: MONOPOLY,
   scrabble: SCRABBLE,
   trivia: TRIVIA,
+  whot: WHOT,
   yahtzee: YAHTZEE,
 }
 
