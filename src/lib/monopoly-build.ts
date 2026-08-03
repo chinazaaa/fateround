@@ -13,7 +13,6 @@ export function canBuildOnGroup(
   group: MonopolyColorGroup,
   ownerId: string,
   owners: Record<string, string>,
-  buildings: Record<string, number>,
   mortgaged: Record<string, boolean>
 ): boolean {
   if (group === 'station' || group === 'utility') return false
@@ -55,7 +54,7 @@ export function canAddHouse(
   const space = spaceAt(spaceIndex)
   if (space.type !== 'property' || !space.color || !space.houseCost) return false
   if (owners[String(spaceIndex)] !== ownerId) return false
-  if (!canBuildOnGroup(space.color, ownerId, owners, buildings, mortgaged)) return false
+  if (!canBuildOnGroup(space.color, ownerId, owners, mortgaged)) return false
   const level = buildingLevel(buildings, spaceIndex)
   if (level >= MONOPOLY_MAX_HOUSES_PER_PROPERTY) return false
   if (housesInBank < 1) return false
@@ -75,7 +74,7 @@ export function canAddHotel(
   const space = spaceAt(spaceIndex)
   if (space.type !== 'property' || !space.color) return false
   if (owners[String(spaceIndex)] !== ownerId) return false
-  if (!canBuildOnGroup(space.color, ownerId, owners, buildings, mortgaged)) return false
+  if (!canBuildOnGroup(space.color, ownerId, owners, mortgaged)) return false
   const siteLevel = buildingLevel(buildings, spaceIndex)
   if (siteLevel !== MONOPOLY_MAX_HOUSES_PER_PROPERTY && siteLevel !== 4) return false
   if (hotelsInBank < 1) return false
@@ -101,6 +100,27 @@ export function canRemoveHouse(
   return level >= max
 }
 
+/**
+ * Why this hotel can't be sold, or null if it can. Callers that need to explain
+ * the rejection use this directly; `canRemoveHotel` is the boolean form. Keeping
+ * one predicate means the message can't drift out of sync with the guard.
+ */
+export function hotelRemovalBlocker(
+  spaceIndex: number,
+  ownerId: string,
+  owners: Record<string, string>,
+  buildings: Record<string, number>,
+  housesInBank: number
+): 'not_owner' | 'no_hotel' | 'bank_short_on_houses' | null {
+  if (owners[String(spaceIndex)] !== ownerId) return 'not_owner'
+  if (buildingLevel(buildings, spaceIndex) !== MONOPOLY_HOTEL_LEVEL) return 'no_hotel'
+  // Selling a hotel steps the site back down to 3 houses, so the bank must
+  // actually have that many to give back. Without this check a player could
+  // sell a hotel with the bank at 0 houses and drive houses_in_bank negative.
+  if (housesInBank < MONOPOLY_HOUSES_UNDER_HOTEL) return 'bank_short_on_houses'
+  return null
+}
+
 export function canRemoveHotel(
   spaceIndex: number,
   ownerId: string,
@@ -108,12 +128,7 @@ export function canRemoveHotel(
   buildings: Record<string, number>,
   housesInBank: number
 ): boolean {
-  if (owners[String(spaceIndex)] !== ownerId) return false
-  if (buildingLevel(buildings, spaceIndex) !== MONOPOLY_HOTEL_LEVEL) return false
-  // Selling a hotel steps the site back down to 3 houses, so the bank must
-  // actually have that many to give back. Without this check a player could
-  // sell a hotel with the bank at 0 houses and drive houses_in_bank negative.
-  return housesInBank >= MONOPOLY_HOUSES_UNDER_HOTEL
+  return hotelRemovalBlocker(spaceIndex, ownerId, owners, buildings, housesInBank) === null
 }
 
 export function groupHasBuildings(

@@ -202,6 +202,23 @@ export function canRemoveHouse(
   return level >= max
 }
 
+/** Mirrors web hotelRemovalBlocker — one predicate, so the UI gate can't drift. */
+export function hotelRemovalBlocker(
+  spaceIndex: number,
+  ownerId: string,
+  owners: Record<string, string>,
+  buildings: Record<string, number>,
+  housesInBank: number
+): 'not_owner' | 'no_hotel' | 'bank_short_on_houses' | null {
+  if (owners[String(spaceIndex)] !== ownerId) return 'not_owner'
+  if (buildingLevel(buildings, spaceIndex) !== MONOPOLY_HOTEL_LEVEL) return 'no_hotel'
+  // Selling a hotel steps the site back down to 3 houses, so the bank must
+  // actually have that many to give back. Without this check a player could
+  // sell a hotel with the bank at 0 houses and drive houses_in_bank negative.
+  if (housesInBank < MONOPOLY_HOUSES_UNDER_HOTEL) return 'bank_short_on_houses'
+  return null
+}
+
 export function canRemoveHotel(
   spaceIndex: number,
   ownerId: string,
@@ -209,12 +226,7 @@ export function canRemoveHotel(
   buildings: Record<string, number>,
   housesInBank: number
 ): boolean {
-  if (owners[String(spaceIndex)] !== ownerId) return false
-  if (buildingLevel(buildings, spaceIndex) !== MONOPOLY_HOTEL_LEVEL) return false
-  // Selling a hotel steps the site back down to 3 houses, so the bank must
-  // actually have that many to give back. Without this check a player could
-  // sell a hotel with the bank at 0 houses and drive houses_in_bank negative.
-  return housesInBank >= MONOPOLY_HOUSES_UNDER_HOTEL
+  return hotelRemovalBlocker(spaceIndex, ownerId, owners, buildings, housesInBank) === null
 }
 
 // Count how many build actions (houses + hotels) the player can currently make.

@@ -36,7 +36,7 @@ import {
 } from '@/lib/monopoly-board'
 import { MONOPOLY_AUCTION_TIMER_SECONDS, MONOPOLY_DEFAULT_TURN_TIMER } from '@/lib/supabase-selects'
 import { applyCardEffect, createShuffledDeck, drawCard, goSalaryForCard, type CardKind } from '@/lib/monopoly-cards'
-import { canAddHotel, canAddHouse, canRemoveHotel, canRemoveHouse, groupHasBuildings } from '@/lib/monopoly-build'
+import { canAddHotel, canAddHouse, canRemoveHouse, groupHasBuildings, hotelRemovalBlocker } from '@/lib/monopoly-build'
 import { buildingLevel, computeRent, parseBuildings, parseJsonRecord, parseMortgaged } from '@/lib/monopoly-rent'
 import { normalizePendingTrade, normalizeTradePropertyList } from '@/lib/monopoly-trade-messages'
 import { secondsUntilDeadline } from '@/lib/round-timing'
@@ -2009,13 +2009,13 @@ export async function processMonopolyBuild(
     cash += Math.floor(houseCost / 2)
     housesInBank += 1
   } else if (action === 'sell_hotel') {
-    if (!canRemoveHotel(spaceIndex, playerId, owners, buildings, housesInBank)) {
-      const shortOnHouses =
-        buildingLevel(buildings, spaceIndex) === MONOPOLY_HOTEL_LEVEL && housesInBank < MONOPOLY_HOUSES_UNDER_HOTEL
+    const blocker = hotelRemovalBlocker(spaceIndex, playerId, owners, buildings, housesInBank)
+    if (blocker) {
       return {
-        error: shortOnHouses
-          ? 'The bank has too few houses to break this hotel into — mortgage or forfeit instead'
-          : 'Cannot sell hotel here',
+        error:
+          blocker === 'bank_short_on_houses'
+            ? 'The bank has too few houses to break this hotel into — mortgage or forfeit instead'
+            : 'Cannot sell hotel here',
       }
     }
     buildings[String(spaceIndex)] = MONOPOLY_MAX_HOUSES_PER_PROPERTY
@@ -2646,6 +2646,10 @@ function releasePropertiesToBank(
     delete nextOwners[idx]
     const level = nextBuildings[idx] ?? 0
     if (level === MONOPOLY_HOTEL_LEVEL) {
+      // A hotel site holds no physical houses: buy_hotel already returned the
+      // MONOPOLY_HOUSES_UNDER_HOTEL underneath it to the bank when it was built.
+      // Crediting them again here minted 3 phantom houses per hotel on every
+      // bankruptcy, pushing houses_in_bank above its cap.
       hotelsReturned += 1
     } else {
       housesReturned += level
