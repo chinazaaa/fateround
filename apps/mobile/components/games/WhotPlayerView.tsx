@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { type Game, type Player, type WhotPlayerHand, type WhotSession, type WhotShape } from '@fateround/shared'
 import { batch4GameLabel } from '@fateround/shared/batch-4-games'
@@ -71,6 +71,9 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
   const [session, setSession] = useState<WhotSession | null>(null)
   const [hands, setHands] = useState<WhotPlayerHand[]>([])
   const [acting, setActing] = useState(false)
+  // Authoritative resume token, mirrored to a ref so the hand fetch (defined before the bootstrap
+  // resolves the token) can fall back to it. See the fetch + effect below.
+  const myResumeTokenRef = useRef<string | null>(null)
 
   const loadGameState = useCallback(
     async (_game: Game, _players: Player[]): Promise<{ state: WhotSession | null; ok: boolean }> => {
@@ -80,7 +83,13 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
       const session = await getPlayerSession(code)
       const [sessionRes, handsRes] = await Promise.all([
         getSupabase().from('whot_sessions').select(WHOT_SESSION_SELECT).eq('game_id', code).maybeSingle(),
-        postWhotHands(code, { resumeToken: session?.resumeToken }).catch(() => null),
+        // Fall back to the bootstrap-resolved token: this runs BEFORE the player is resolved on the
+        // first load, so for a share-link player the stored session isn't written yet, and a
+        // tokenless request makes the redaction route blank our OWN hand. The effect below re-fetches
+        // once the token lands.
+        postWhotHands(code, { resumeToken: session?.resumeToken ?? myResumeTokenRef.current ?? undefined }).catch(
+          () => null
+        ),
       ])
       if (sessionRes.error || !handsRes) return { state: null, ok: false }
       const sessionData = sessionRes.data as WhotSession | null
@@ -117,6 +126,23 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
     computeScreen,
   })
   const { onLeft, lobbyProps } = usePlayerSessionActions(bootstrap)
+  myResumeTokenRef.current = bootstrap.myResumeToken
+
+  // The first hand fetch can run before the resume token is resolved, which the redaction route
+  // answers with our own hand blanked. Re-fetch with the authoritative token once it lands.
+  useEffect(() => {
+    const token = bootstrap.myResumeToken
+    if (!token || bootstrap.game?.status !== 'active') return
+    let cancelled = false
+    void postWhotHands(gameCode.toUpperCase(), { resumeToken: token })
+      .then((res) => {
+        if (!cancelled && res) setHands(res.hands ?? [])
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [bootstrap.myResumeToken, bootstrap.game?.status, gameCode])
 
   useGameTableSync(
     gameCode,
