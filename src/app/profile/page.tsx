@@ -6,6 +6,7 @@ import { SaveToProfileModal } from '@/components/profile/SaveToProfileModal'
 import { ShareProfileModal } from '@/components/profile/ShareProfileModal'
 import { GAME_CATEGORIES } from '@/lib/game-types'
 import { authHeaders } from '@/lib/identity'
+import { Skeleton } from '@/components/Skeleton'
 
 type GameRow = {
   gameType: string
@@ -56,24 +57,37 @@ export default function ProfilePage() {
   const [profileOpen, setProfileOpen] = useState(false)
   const [shareOpen, setShareOpen] = useState(false)
 
+  const fetchGames = useCallback(async (headers: Record<string, string>) => {
+    const res = await fetch('/api/profile/games', { headers })
+    if (!res.ok) return
+    const json = await res.json()
+    if (!json.profile) {
+      setSignedOut(true)
+      return
+    }
+    setProfile(json.profile)
+    setGames(json.games ?? [])
+  }, [])
+
   const load = useCallback(async () => {
     setLoading(true)
+    const headers = await authHeaders()
+    if (!headers) {
+      setSignedOut(true)
+      setLoading(false)
+      return
+    }
+    // Paint the summary first — don't block the whole screen on the sync pass.
     try {
-      const headers = await authHeaders()
-      if (!headers) return setSignedOut(true)
-      // Collect anything already qualified for before reading — a trophy added to the
-      // catalog after you played would otherwise sit locked at 100% until you played again.
-      await fetch('/api/profile/sync', { method: 'POST', headers }).catch(() => {})
-      const res = await fetch('/api/profile/games', { headers })
-      if (!res.ok) return
-      const json = await res.json()
-      if (!json.profile) return setSignedOut(true)
-      setProfile(json.profile)
-      setGames(json.games ?? [])
+      await fetchGames(headers)
     } finally {
       setLoading(false)
     }
-  }, [])
+    // Then reconcile in the background: sync collects anything newly qualified for (e.g. a trophy
+    // added to the catalog after you last played), and a quiet re-read folds it in.
+    await fetch('/api/profile/sync', { method: 'POST', headers }).catch(() => {})
+    await fetchGames(headers)
+  }, [fetchGames])
 
   useEffect(() => {
     void load()
@@ -91,7 +105,19 @@ export default function ProfilePage() {
     [games, category]
   )
 
-  if (loading) return <p className="mx-auto max-w-3xl p-6 text-sm text-muted">Loading…</p>
+  if (loading) {
+    return (
+      <div className="mx-auto max-w-3xl space-y-5 p-4 sm:p-6" aria-busy="true">
+        <Skeleton className="h-8 w-48" />
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Skeleton key={i} className="h-24 w-full" />
+          ))}
+        </div>
+        <span className="sr-only">Loading your profile…</span>
+      </div>
+    )
+  }
 
   if (signedOut) {
     return (
