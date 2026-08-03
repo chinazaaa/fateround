@@ -73,6 +73,10 @@ export function WhotHostView({ gameCode, hostToken }: { gameCode: string; hostTo
   const sessionRef = useRef<WhotSession | null>(null)
   sessionRef.current = session
   const [hands, setHands] = useState<WhotPlayerHand[]>([])
+  // The host's own player resume token WHEN they're seated and playing. Mirrored to a ref so the
+  // hand fetch (defined before useHostSeat resolves it) can send it — a hostToken alone can't
+  // unredact the host's own hand, so a playing host would otherwise see "0 cards". See load().
+  const hostResumeTokenRef = useRef<string | null>(null)
   const [starting, setStarting] = useState(false)
   const [playingAgain, setPlayingAgain] = useState(false)
   const [hostActing, setHostActing] = useState(false)
@@ -86,9 +90,12 @@ export function WhotHostView({ gameCode, hostToken }: { gameCode: string; hostTo
       supabase.from('games').select(GAME_SELECT).eq('id', gameCode).maybeSingle(),
       supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at'),
       supabase.from('whot_sessions').select(WHOT_SESSION_SELECT).eq('game_id', gameCode).maybeSingle(),
-      // Via /api/whot/hands — the host runs the board and never needs to see anyone's cards,
-      // so every hand comes back as a count (see lib/hand-redaction.ts).
-      fetchWhotHands(gameCode, { hostToken }),
+      // Via /api/whot/hands. A watching host only gets counts — but a host who is SEATED AND
+      // PLAYING needs their own cards, and the redaction route can only unredact via a resume
+      // token (a hostToken resolves no viewer). So send the host's player resume token too when we
+      // have one; without it a playing host sees "0 cards". The effect below re-fetches once the
+      // token resolves (it's resolved by useHostSeat, after this callback is defined).
+      fetchWhotHands(gameCode, { hostToken, resumeToken: hostResumeTokenRef.current ?? undefined }),
     ])
     if (!supabasePollOk(gameRes, plrsRes, sessionRes) || handsRes === null) return false
     setGame(gameRes.data)
@@ -177,6 +184,20 @@ export function WhotHostView({ gameCode, hostToken }: { gameCode: string; hostTo
     onReload: load,
     toast: { success, error: toastError },
   })
+  hostResumeTokenRef.current = hostResumeToken
+
+  // The first hand fetch runs before useHostSeat resolves the host's player token, so a playing
+  // host's own hand comes back redacted ("0 cards"). Re-fetch with the token the moment it lands.
+  useEffect(() => {
+    if (!hostResumeToken || game?.status !== 'active') return
+    let cancelled = false
+    void fetchWhotHands(gameCode, { hostToken, resumeToken: hostResumeToken }).then((h) => {
+      if (!cancelled && h) setHands(h)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [hostResumeToken, game?.status, gameCode, hostToken])
 
   const handlePlayerRemoved = useCallback(
     (playerId: string) => {
