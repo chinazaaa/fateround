@@ -19,7 +19,7 @@ type Props = {
 }
 
 /**
- * The one door: email → 6-digit code (`docs/trophies-and-streaks.md` §2.2).
+ * The one door: email → 8-digit code (`docs/trophies-and-streaks.md` §2.2).
  *
  * LOGIN == SIGNUP. There is no "sign up" vs "log in" choice, because with an email code they
  * are the same action — the backend loads the account if the address is known and creates one
@@ -201,7 +201,7 @@ export function SaveToProfileModal({ open, onClose, profile, onChanged }: Props)
       subtitle={
         step === 'email'
           ? "New here? We'll create your profile. Been here before? We'll load your trophies."
-          : `We emailed a 6-digit code to ${email}.`
+          : `We emailed an 8-digit code to ${email}.`
       }
     >
       <div className="space-y-4">
@@ -234,7 +234,7 @@ export function SaveToProfileModal({ open, onClose, profile, onChanged }: Props)
             <input
               type="text"
               className="input-field"
-              placeholder="123456"
+              placeholder="12345678"
               value={code}
               autoComplete="one-time-code"
               inputMode="numeric"

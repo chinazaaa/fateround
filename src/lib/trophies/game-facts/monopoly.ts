@@ -151,11 +151,11 @@ export async function monopolyFacts(
         facts.monopoly_one_side = 1
       }
 
-      // "Full House": three houses on a single property. The engine caps houses at three before a
-      // property upgrades to a hotel (level 5), so exactly `=== 3` is the three-houses milestone —
-      // a hotel is a different, later state and does not count here.
+      // "Full House": four houses on a single property. The engine caps houses at the max (four)
+      // before a property upgrades to a hotel (level 5), so `=== MONOPOLY_MAX_HOUSES_PER_PROPERTY`
+      // is the full-houses milestone — a hotel is a different, later state and does not count here.
       if (ownedIndices.some((i) => buildings[String(i)] === MONOPOLY_MAX_HOUSES_PER_PROPERTY)) {
-        facts.monopoly_three_houses = 1
+        facts.monopoly_four_houses = 1
       }
     }
 

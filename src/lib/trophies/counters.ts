@@ -1340,12 +1340,12 @@ export const COUNTERS: readonly CounterDef[] = [
     phrase: 'owned a whole side in at least {n} game{s}',
   },
   {
-    key: 'monopoly_three_houses',
-    label: 'Monopoly — three houses',
-    description: 'Games where you built three houses on a single property.',
+    key: 'monopoly_four_houses',
+    label: 'Monopoly — four houses',
+    description: 'Games where you built four houses on a single property.',
     scope: 'per-game',
     availability: 'partial',
-    phrase: 'built three houses in at least {n} game{s}',
+    phrase: 'built four houses in at least {n} game{s}',
   },
   {
     key: 'monopoly_naija_wins',

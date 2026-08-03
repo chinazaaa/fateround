@@ -36,7 +36,7 @@ import {
 } from '@/lib/monopoly-board'
 import { MONOPOLY_AUCTION_TIMER_SECONDS, MONOPOLY_DEFAULT_TURN_TIMER } from '@/lib/supabase-selects'
 import { applyCardEffect, createShuffledDeck, drawCard, goSalaryForCard, type CardKind } from '@/lib/monopoly-cards'
-import { canAddHotel, canAddHouse, canRemoveHotel, canRemoveHouse, groupHasBuildings } from '@/lib/monopoly-build'
+import { canAddHotel, canAddHouse, canRemoveHouse, groupHasBuildings, hotelRemovalBlocker } from '@/lib/monopoly-build'
 import { buildingLevel, computeRent, parseBuildings, parseJsonRecord, parseMortgaged } from '@/lib/monopoly-rent'
 import { normalizePendingTrade, normalizeTradePropertyList } from '@/lib/monopoly-trade-messages'
 import { secondsUntilDeadline } from '@/lib/round-timing'
@@ -1998,19 +1998,28 @@ export async function processMonopolyBuild(
       return { error: 'Cannot build a hotel here' }
     }
     if (cash < houseCost) return { error: 'Not enough cash' }
+    const housesOnSite = buildingLevel(buildings, spaceIndex)
     buildings[String(spaceIndex)] = MONOPOLY_HOTEL_LEVEL
     cash -= houseCost
     hotelsInBank -= 1
-    housesInBank += MONOPOLY_HOUSES_UNDER_HOTEL
+    housesInBank += housesOnSite
   } else if (action === 'sell_house') {
     if (!canRemoveHouse(spaceIndex, playerId, owners, buildings)) return { error: 'Cannot sell a house here' }
     buildings[String(spaceIndex)] = buildingLevel(buildings, spaceIndex) - 1
     cash += Math.floor(houseCost / 2)
     housesInBank += 1
   } else if (action === 'sell_hotel') {
-    if (!canRemoveHotel(spaceIndex, playerId, owners, buildings)) return { error: 'Cannot sell hotel here' }
+    const blocker = hotelRemovalBlocker(spaceIndex, playerId, owners, buildings, housesInBank)
+    if (blocker) {
+      return {
+        error:
+          blocker === 'bank_short_on_houses'
+            ? 'The bank has too few houses to break this hotel into — mortgage or forfeit instead'
+            : 'Cannot sell hotel here',
+      }
+    }
     buildings[String(spaceIndex)] = MONOPOLY_MAX_HOUSES_PER_PROPERTY
-    cash += Math.floor(houseCost / 2) + Math.floor(houseCost / 2) * MONOPOLY_HOUSES_UNDER_HOTEL
+    cash += Math.floor(houseCost / 2)
     hotelsInBank += 1
     housesInBank -= MONOPOLY_HOUSES_UNDER_HOTEL
   }
@@ -2637,8 +2646,11 @@ function releasePropertiesToBank(
     delete nextOwners[idx]
     const level = nextBuildings[idx] ?? 0
     if (level === MONOPOLY_HOTEL_LEVEL) {
+      // A hotel site holds no physical houses: buy_hotel already returned the
+      // MONOPOLY_HOUSES_UNDER_HOTEL underneath it to the bank when it was built.
+      // Crediting them again here minted 3 phantom houses per hotel on every
+      // bankruptcy, pushing houses_in_bank above its cap.
       hotelsReturned += 1
-      housesReturned += MONOPOLY_HOUSES_UNDER_HOTEL
     } else {
       housesReturned += level
     }
