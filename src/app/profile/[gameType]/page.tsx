@@ -3,6 +3,7 @@
 import { use, useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { authHeaders } from '@/lib/identity'
+import { Skeleton } from '@/components/Skeleton'
 
 type Trophy = {
   id: string
@@ -46,24 +47,37 @@ export default function GameTrophiesPage({ params }: { params: Promise<{ gameTyp
   const [tier, setTier] = useState<string>('all')
   const [status, setStatus] = useState<'all' | 'earned' | 'locked'>('all')
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    try {
-      const headers = await authHeaders()
-      if (!headers) return
-      // Collect anything already qualified for before reading — a trophy added to the
-      // catalog after you played would otherwise sit locked at 100% until you played again.
-      await fetch('/api/profile/sync', { method: 'POST', headers }).catch(() => {})
+  const fetchTrophies = useCallback(
+    async (headers: Record<string, string>) => {
       const res = await fetch(`/api/profile/trophies?game=${encodeURIComponent(gameType)}`, { headers })
       if (!res.ok) return
       const json = await res.json()
       setGroup(json.groups?.[0] ?? null)
       setTotals(json.totals ?? null)
       setRarest(json.rarest ?? null)
+    },
+    [gameType]
+  )
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    const headers = await authHeaders()
+    if (!headers) {
+      setLoading(false)
+      return
+    }
+    // Paint the list immediately — don't make the whole screen wait on the sync pass.
+    try {
+      await fetchTrophies(headers)
     } finally {
       setLoading(false)
     }
-  }, [gameType])
+    // Then reconcile in the background: sync collects anything newly qualified for (e.g. a trophy
+    // added to the catalog after you last played, which would otherwise sit locked at 100%), and a
+    // quiet re-read folds it in — without ever blocking the first paint.
+    await fetch('/api/profile/sync', { method: 'POST', headers }).catch(() => {})
+    await fetchTrophies(headers)
+  }, [fetchTrophies])
 
   useEffect(() => {
     void load()
@@ -76,7 +90,27 @@ export default function GameTrophiesPage({ params }: { params: Promise<{ gameTyp
     )
   }, [group, tier, status])
 
-  if (loading) return <p className="mx-auto max-w-3xl p-6 text-sm text-muted">Loading…</p>
+  if (loading) {
+    return (
+      <div className="mx-auto max-w-3xl space-y-5 p-4 sm:p-6" aria-busy="true">
+        <Skeleton className="h-4 w-28" />
+        <Skeleton className="h-8 w-48" />
+        <div className="glass-card p-5">
+          <div className="flex items-center justify-around gap-4">
+            <Skeleton className="h-14 w-16" />
+            <Skeleton className="h-20 w-20 rounded-full" />
+            <Skeleton className="h-14 w-16" />
+          </div>
+        </div>
+        <div className="space-y-3">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Skeleton key={i} className="h-20 w-full" />
+          ))}
+        </div>
+        <span className="sr-only">Loading trophies…</span>
+      </div>
+    )
+  }
 
   const pct = totals?.pct ?? 0
 

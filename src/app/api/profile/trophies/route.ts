@@ -30,22 +30,34 @@ export async function GET(req: NextRequest) {
     const scope = new URL(req.url).searchParams.get('game')
 
     const admin = getSupabaseAdmin()
-    const [{ data: profile }, { data: catalog, error }, { data: earnedRows }, { data: rarityRows }] = await Promise.all(
-      [
-        admin
-          .from('profiles')
-          .select('handle, trophy_points, trophy_level, current_streak, longest_streak, last_active_date')
-          .eq('id', profileId)
-          .maybeSingle(),
-        admin
-          .from('trophies')
-          .select('id, game_type, tier, title, description, criteria, points, hidden, sort_order')
-          .eq('is_active', true)
-          .order('sort_order', { ascending: true }),
-        admin.from('player_trophies').select('trophy_id, earned_at').eq('profile_id', profileId),
-        admin.from('trophy_rarity').select('trophy_id, pct'),
-      ]
-    )
+    // One parallel phase: the profile, the catalog, this player's earned rows and the rarity table,
+    // plus the eligible-player count and the progress snapshot — none depend on each other, so
+    // firing them together turns three serial round-trips into one.
+    const [
+      { data: profile },
+      { data: catalog, error },
+      { data: earnedRows },
+      { data: rarityRows },
+      { count: playerCount },
+      snapshot,
+    ] = await Promise.all([
+      admin
+        .from('profiles')
+        .select('handle, trophy_points, trophy_level, current_streak, longest_streak, last_active_date')
+        .eq('id', profileId)
+        .maybeSingle(),
+      admin
+        .from('trophies')
+        .select('id, game_type, tier, title, description, criteria, points, hidden, sort_order')
+        .eq('is_active', true)
+        .order('sort_order', { ascending: true }),
+      admin.from('player_trophies').select('trophy_id, earned_at').eq('profile_id', profileId),
+      admin.from('trophy_rarity').select('trophy_id, pct'),
+      // Eligible = people who have played anything. Good enough while the population is small, and
+      // honest: it never reports a trophy as rarer than the number of people who could hold it.
+      admin.from('profiles').select('id', { count: 'exact', head: true }),
+      buildSnapshot(admin, profileId),
+    ])
 
     if (error) return NextResponse.json({ error: internalErrorMessage('profile/trophies', error) }, { status: 500 })
 
@@ -55,12 +67,8 @@ export async function GET(req: NextRequest) {
       const id = row.trophy_id as string
       earnerCounts.set(id, (earnerCounts.get(id) ?? 0) + 1)
     }
-    // Eligible = people who have played anything. Good enough while the population is small,
-    // and honest: it never reports a trophy as rarer than the number of people who could hold it.
-    const { count: playerCount } = await admin.from('profiles').select('id', { count: 'exact', head: true })
     const eligible = Math.max(1, playerCount ?? 1)
     const rarity = new Map([...earnerCounts.entries()].map(([id, n]) => [id, Math.round((n / eligible) * 100)]))
-    const snapshot = await buildSnapshot(admin, profileId)
     // `longest_streak` lives on `profiles`, not `player_stats` — mirrors the award pass, or a
     // streak trophy would always read as 0% here while being earnable in reality.
     snapshot.counters.__global__ = {
