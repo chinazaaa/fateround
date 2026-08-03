@@ -81,7 +81,7 @@ export const MONOPOLY: SystemTrophySpec[] = [
     suffix: 'three_houses',
     tier: 'silver',
     title: 'Full house',
-    description: 'Build three houses on a single property.',
+    description: 'Build four houses on a single property.',
     counter: 'monopoly_three_houses',
     points: 30,
     sortOrder: 60,

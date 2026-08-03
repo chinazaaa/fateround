@@ -155,8 +155,8 @@ describe('processMonopolyBuild — hotel economy', () => {
   })
 
   it('returns half the total build cost when a hotel site is fully liquidated', async () => {
-    // Both brown sites at hotel: 4 x houseCost sunk into each (3 houses + the
-    // hotel step) = £400. Selling everything must return exactly half.
+    // Both brown sites at hotel: 5 x houseCost sunk into each (4 houses + the
+    // hotel step) = £500. Selling everything must return exactly half.
     const h = makeHarness({
       buildings: { [String(BROWN_A)]: MONOPOLY_HOTEL_LEVEL, [String(BROWN_B)]: MONOPOLY_HOTEL_LEVEL },
       cash: 0,
@@ -174,7 +174,7 @@ describe('processMonopolyBuild — hotel economy', () => {
 
     // Matches computePlayerEstateValue's houseCost x (HOUSES_UNDER_HOTEL + 1) / 2
     // per site, so incremental selling and bulk liquidation agree.
-    expect(h.cash()).toBe(200)
+    expect(h.cash()).toBe(250)
     expect(h.buildings()[String(BROWN_A)]).toBe(0)
     expect(h.buildings()[String(BROWN_B)]).toBe(0)
     expect(h.houses()).toBe(MONOPOLY_HOUSES_IN_BANK)

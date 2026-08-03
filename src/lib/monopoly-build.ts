@@ -62,7 +62,7 @@ export function canAddHouse(
   return level <= min
 }
 
-/** True if a hotel may be built (3 houses on this site; every site in group at 3 houses or hotel). */
+/** True if a hotel may be built (4 houses on this site; every site in group at 4 houses or hotel). */
 export function canAddHotel(
   spaceIndex: number,
   ownerId: string,
@@ -76,12 +76,12 @@ export function canAddHotel(
   if (owners[String(spaceIndex)] !== ownerId) return false
   if (!canBuildOnGroup(space.color, ownerId, owners, mortgaged)) return false
   const siteLevel = buildingLevel(buildings, spaceIndex)
-  if (siteLevel !== MONOPOLY_MAX_HOUSES_PER_PROPERTY && siteLevel !== 4) return false
+  if (siteLevel !== MONOPOLY_MAX_HOUSES_PER_PROPERTY) return false
   if (hotelsInBank < 1) return false
   const groupSites = spacesInGroup(space.color).filter((s) => owners[String(s.index)] === ownerId)
   return groupSites.every((s) => {
     const level = buildingLevel(buildings, s.index)
-    return level === MONOPOLY_MAX_HOUSES_PER_PROPERTY || level === 4 || level === MONOPOLY_HOTEL_LEVEL
+    return level === MONOPOLY_MAX_HOUSES_PER_PROPERTY || level === MONOPOLY_HOTEL_LEVEL
   })
 }
 
@@ -114,7 +114,7 @@ export function hotelRemovalBlocker(
 ): 'not_owner' | 'no_hotel' | 'bank_short_on_houses' | null {
   if (owners[String(spaceIndex)] !== ownerId) return 'not_owner'
   if (buildingLevel(buildings, spaceIndex) !== MONOPOLY_HOTEL_LEVEL) return 'no_hotel'
-  // Selling a hotel steps the site back down to 3 houses, so the bank must
+  // Selling a hotel steps the site back down to 4 houses, so the bank must
   // actually have that many to give back. Without this check a player could
   // sell a hotel with the bank at 0 houses and drive houses_in_bank negative.
   if (housesInBank < MONOPOLY_HOUSES_UNDER_HOTEL) return 'bank_short_on_houses'

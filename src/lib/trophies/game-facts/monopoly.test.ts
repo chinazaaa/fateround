@@ -141,13 +141,21 @@ describe('monopolyFacts — ownership', () => {
     expect(g.monopoly_one_side).toBeUndefined()
   })
 
-  it('flags three houses at level exactly 3, and not at a hotel (level 5)', async () => {
+  it('flags four houses at level exactly 4 (not at 3, not at a hotel)', async () => {
+    const four = await factsFor(
+      db({ property_owners: owners([1, 'me']), property_buildings: { '1': 4 }, turn_order: ['me', 'rival'] }, [
+        { player_id: 'me' },
+      ])
+    )
+    expect(four.monopoly_three_houses).toBe(1)
+
+    // Three houses is below the max now (four before a hotel), so it does not count.
     const three = await factsFor(
       db({ property_owners: owners([1, 'me']), property_buildings: { '1': 3 }, turn_order: ['me', 'rival'] }, [
         { player_id: 'me' },
       ])
     )
-    expect(three.monopoly_three_houses).toBe(1)
+    expect(three.monopoly_three_houses).toBeUndefined()
 
     const hotel = await factsFor(
       db({ property_owners: owners([1, 'me']), property_buildings: { '1': 5 }, turn_order: ['me', 'rival'] }, [
