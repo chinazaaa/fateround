@@ -178,12 +178,12 @@ export function canAddHotel(
   if (owners[String(spaceIndex)] !== ownerId) return false
   if (!canBuildOnGroup(space.color, ownerId, owners, mortgaged)) return false
   const siteLevel = buildingLevel(buildings, spaceIndex)
-  if (siteLevel !== MONOPOLY_MAX_HOUSES_PER_PROPERTY && siteLevel !== 4) return false
+  if (siteLevel !== MONOPOLY_MAX_HOUSES_PER_PROPERTY) return false
   if (hotelsInBank < 1) return false
   const groupSites = spacesInGroup(space.color).filter((s) => owners[String(s.index)] === ownerId)
   return groupSites.every((s) => {
     const level = buildingLevel(buildings, s.index)
-    return level === MONOPOLY_MAX_HOUSES_PER_PROPERTY || level === 4 || level === MONOPOLY_HOTEL_LEVEL
+    return level === MONOPOLY_MAX_HOUSES_PER_PROPERTY || level === MONOPOLY_HOTEL_LEVEL
   })
 }
 
