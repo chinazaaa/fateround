@@ -7,8 +7,10 @@ import { useDailyChallengeTimer } from '@/hooks/useDailyChallengeTimer'
 import { hashWord } from '@/lib/daily-word-hash'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { DAILY_SUBMIT_CONFIRM } from '@/components/daily/daily-submit-confirm'
+import { getOrCreateStartedAt, loadDailyAnswers, saveDailyAnswers, clearDailyProgress } from '@/lib/daily-progress'
 
 interface DailyWordHuntPlayProps {
+  challengeId: string
   grid: string[][]
   /** Hashes of the board's valid words — lets the client reject non-words without exposing answers. */
   validWordHashes: string[]
@@ -24,19 +26,31 @@ function scoreWord(word: string): number {
   return 800 + (len - 5) * 400
 }
 
-export function DailyWordHuntPlay({ grid, validWordHashes, timer: maxSeconds, onSubmit }: DailyWordHuntPlayProps) {
+export function DailyWordHuntPlay({
+  challengeId,
+  grid,
+  validWordHashes,
+  timer: maxSeconds,
+  onSubmit,
+}: DailyWordHuntPlayProps) {
+  const [startAtMs] = useState(() => getOrCreateStartedAt(challengeId))
   const [selectedPath, setSelectedPath] = useState<number[]>([])
-  const [foundWords, setFoundWords] = useState<string[]>([])
+  const [foundWords, setFoundWords] = useState<string[]>(() => loadDailyAnswers<string[]>(challengeId) ?? [])
   const [submitted, setSubmitted] = useState(false)
   const submitRef = useRef(false)
   const { confirm } = useConfirm()
 
   const validHashSet = useMemo(() => new Set(validWordHashes), [validWordHashes])
 
+  useEffect(() => {
+    if (!submitted) saveDailyAnswers(challengeId, foundWords)
+  }, [challengeId, foundWords, submitted])
+
   const { elapsed, formatted, isTimeUp } = useDailyChallengeTimer({
     mode: 'countdown',
     maxSeconds,
     running: !submitted,
+    startAtMs,
   })
 
   const foundSet = useMemo(() => new Set(foundWords.map((w) => w.toLowerCase())), [foundWords])
@@ -46,11 +60,12 @@ export function DailyWordHuntPlay({ grid, validWordHashes, timer: maxSeconds, on
     if (submitRef.current) return
     submitRef.current = true
     setSubmitted(true)
+    clearDailyProgress(challengeId)
     onSubmit({
       timeSeconds: elapsed,
       submission: { words: foundWords },
     })
-  }, [foundWords, elapsed, onSubmit])
+  }, [foundWords, elapsed, onSubmit, challengeId])
 
   const confirmAndSubmit = useCallback(async () => {
     if (await confirm(DAILY_SUBMIT_CONFIRM)) handleSubmit()
