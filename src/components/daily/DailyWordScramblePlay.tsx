@@ -240,8 +240,9 @@ export function DailyWordScramblePlay({
         </div>
       </div>
 
-      {/* Submit button when all attempted */}
-      {allDone && !submitted && (
+      {/* Submit button only when some words were skipped (unsolved). Solving them all auto-submits,
+          so there's nothing to click on the last one. */}
+      {allDone && !submitted && solved.length < totalWords && (
         <div className="text-center">
           <button className="fr-btn fr-btn--primary fr-btn--lg" onClick={confirmAndSubmit}>
             Submit ({solved.length} words)
