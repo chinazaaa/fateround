@@ -141,7 +141,44 @@ export function DailyCrosswordPlay({ puzzle, timer: maxSeconds, onSubmit }: Dail
     return cells
   }, [selectedCell, direction, metadata, size])
 
-  // Keyboard input
+  // Shared letter-entry actions, used by both the physical keyboard and the on-screen keyboard
+  // (the latter is the only way to type on touch devices, which have no hardware keys).
+  const enterLetter = useCallback(
+    (raw: string) => {
+      if (submitted || !selectedCell) return
+      const letter = raw.toUpperCase()
+      if (!/^[A-Z]$/.test(letter)) return
+      const [row, col] = selectedCell
+      setLetterGrid((prev) => {
+        const next = prev.map((r) => [...r])
+        next[row][col] = letter
+        return next
+      })
+      const dr = direction === 'down' ? 1 : 0
+      const dc = direction === 'across' ? 1 : 0
+      const nr = row + dr
+      const nc = col + dc
+      if (nr >= 0 && nr < size && nc >= 0 && nc < size && !metadata.blocked[nr][nc]) setSelectedCell([nr, nc])
+    },
+    [submitted, selectedCell, direction, size, metadata]
+  )
+
+  const deleteLetter = useCallback(() => {
+    if (submitted || !selectedCell) return
+    const [row, col] = selectedCell
+    setLetterGrid((prev) => {
+      const next = prev.map((r) => [...r])
+      next[row][col] = ''
+      return next
+    })
+    const dr = direction === 'down' ? -1 : 0
+    const dc = direction === 'across' ? -1 : 0
+    const nr = row + dr
+    const nc = col + dc
+    if (nr >= 0 && nr < size && nc >= 0 && nc < size && !metadata.blocked[nr][nc]) setSelectedCell([nr, nc])
+  }, [submitted, selectedCell, direction, size, metadata])
+
+  // Physical keyboard input (desktop). Touch devices use the on-screen keyboard below.
   useEffect(() => {
     if (submitted || !selectedCell) return
 
@@ -150,22 +187,9 @@ export function DailyCrosswordPlay({ puzzle, timer: maxSeconds, onSubmit }: Dail
 
       if (e.key === 'Backspace' || e.key === 'Delete') {
         e.preventDefault()
-        setLetterGrid((prev) => {
-          const next = prev.map((r) => [...r])
-          next[row][col] = ''
-          return next
-        })
-        // Move back
-        const dr = direction === 'down' ? -1 : 0
-        const dc = direction === 'across' ? -1 : 0
-        const nr = row + dr
-        const nc = col + dc
-        if (nr >= 0 && nr < size && nc >= 0 && nc < size && !metadata.blocked[nr][nc]) {
-          setSelectedCell([nr, nc])
-        }
+        deleteLetter()
         return
       }
-
       if (e.key === 'ArrowUp') {
         e.preventDefault()
         setDirection('down')
@@ -191,29 +215,15 @@ export function DailyCrosswordPlay({ puzzle, timer: maxSeconds, onSubmit }: Dail
         return
       }
 
-      const letter = e.key.toUpperCase()
-      if (!/^[A-Z]$/.test(letter)) return
-
-      e.preventDefault()
-      setLetterGrid((prev) => {
-        const next = prev.map((r) => [...r])
-        next[row][col] = letter
-        return next
-      })
-
-      // Advance to next cell
-      const dr = direction === 'down' ? 1 : 0
-      const dc = direction === 'across' ? 1 : 0
-      const nr = row + dr
-      const nc = col + dc
-      if (nr >= 0 && nr < size && nc >= 0 && nc < size && !metadata.blocked[nr][nc]) {
-        setSelectedCell([nr, nc])
+      if (/^[a-zA-Z]$/.test(e.key)) {
+        e.preventDefault()
+        enterLetter(e.key)
       }
     }
 
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [selectedCell, direction, submitted, metadata, size])
+  }, [selectedCell, direction, submitted, metadata, size, enterLetter, deleteLetter])
 
   return (
     <div className="space-y-4">
@@ -238,6 +248,37 @@ export function DailyCrosswordPlay({ puzzle, timer: maxSeconds, onSubmit }: Dail
         onCellSelect={handleCellSelect}
         readOnly={submitted || isTimeUp}
       />
+
+      {/* On-screen keyboard — the only way to type on touch devices (no hardware keys). */}
+      {!submitted && !isTimeUp && (
+        <div className="mx-auto w-full max-w-[min(460px,100%)] select-none space-y-1.5">
+          {['QWERTYUIOP', 'ASDFGHJKL', 'ZXCVBNM'].map((rowKeys, ri) => (
+            <div key={ri} className="flex justify-center gap-1">
+              {ri === 2 && (
+                <button
+                  type="button"
+                  aria-label="Backspace"
+                  onClick={deleteLetter}
+                  className="flex h-11 flex-[1.5] items-center justify-center rounded-md bg-base-300 text-base font-semibold active:scale-95"
+                >
+                  ⌫
+                </button>
+              )}
+              {rowKeys.split('').map((ch) => (
+                <button
+                  key={ch}
+                  type="button"
+                  onClick={() => enterLetter(ch)}
+                  className="flex h-11 min-w-0 flex-1 items-center justify-center rounded-md bg-base-200 text-base font-semibold active:scale-95"
+                >
+                  {ch}
+                </button>
+              ))}
+              {ri === 2 && <div className="flex-[1.5]" aria-hidden />}
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Clues */}
       <div className="rounded-lg bg-base-200 p-3 max-h-48 overflow-y-auto">
