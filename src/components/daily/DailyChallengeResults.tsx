@@ -12,6 +12,7 @@ import type { DailyChallengeResult } from '@/hooks/useDailyChallengeSession'
 import { captureElementAsImage } from '@/lib/capture-element-image'
 import { shareImageBlob } from '@/lib/share-image'
 import { useToast } from '@/components/ui/Toast'
+import { DailyNamePrompt } from './DailyNamePrompt'
 
 interface DailyChallengeResultsProps {
   gameType: DailyChallengeGameType
@@ -120,28 +121,28 @@ export function DailyChallengeResults({
   const emoji = score >= 900 ? '🏆' : score >= 700 ? '🎯' : score >= 400 ? '👍' : '💪'
 
   return (
-    <div className="mx-auto max-w-lg px-4 py-8">
+    <div className="mx-auto max-w-sm px-4 py-8">
       <div className="fr-card fr-card--xl">
         <div className="flex flex-col items-center text-center">
           {/* Trophy emoji */}
-          <div className="text-5xl mb-3" style={{ filter: 'drop-shadow(0 6px 14px rgba(225, 29, 72, 0.2))' }}>
+          <div className="text-4xl mb-2" style={{ filter: 'drop-shadow(0 4px 10px rgba(225, 29, 72, 0.2))' }}>
             {emoji}
           </div>
 
           {/* Title */}
           <p
-            className="font-semibold uppercase tracking-wider mb-4"
+            className="font-semibold uppercase tracking-wider mb-3"
             style={{ fontSize: 'var(--text-2xs)', color: 'var(--text-faint)' }}
           >
             Daily {DAILY_GAME_LABELS[gameType]} #{challengeNumber}
           </p>
 
           {/* Score — hero */}
-          <div className="my-2">
+          <div className="my-1">
             <span
               className="font-black"
               style={{
-                fontSize: 'var(--text-5xl)',
+                fontSize: 'var(--text-4xl)',
                 fontFamily: 'var(--font-display)',
                 fontFeatureSettings: '"tnum"',
                 color: 'var(--primary)',
@@ -149,18 +150,18 @@ export function DailyChallengeResults({
             >
               <AnimatedScore target={score} />
             </span>
-            <span className="ml-1 font-medium" style={{ fontSize: 'var(--text-xl)', color: 'var(--text-faint)' }}>
+            <span className="ml-1 font-medium" style={{ fontSize: 'var(--text-lg)', color: 'var(--text-faint)' }}>
               / 1000
             </span>
           </div>
 
           {/* New personal best */}
-          {isNewBest && (
+          {isNewBest && score > 0 && (
             <div className="mt-2 fr-badge fr-badge--soft font-semibold animate-bounce">⭐ New Personal Best!</div>
           )}
 
           {/* Stats grid */}
-          <div className="grid grid-cols-3 gap-3 w-full mt-6">
+          <div className={`grid ${rank && score > 0 ? 'grid-cols-3' : 'grid-cols-2'} gap-3 w-full mt-5`}>
             <div
               className="rounded-xl p-3 text-center"
               style={{ background: 'var(--surface-sunken)', border: '1px solid var(--border)' }}
@@ -189,7 +190,7 @@ export function DailyChallengeResults({
                 Solved
               </div>
             </div>
-            {rank && (
+            {rank && score > 0 && (
               <div
                 className="rounded-xl p-3 text-center"
                 style={{ background: 'var(--surface-sunken)', border: '1px solid var(--border)' }}
@@ -207,15 +208,27 @@ export function DailyChallengeResults({
             )}
           </div>
 
+          {/* Zero score notice */}
+          {score === 0 && (
+            <div className="mt-4" style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>
+              Scores of 0 don't appear on the leaderboard
+            </div>
+          )}
+
           {/* Personal best comparison */}
-          {personalBest && !isNewBest && (
+          {personalBest && !isNewBest && score > 0 && (
             <div className="mt-4" style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>
               Personal best: {personalBest.bestScore} pts ({personalBest.totalPlays} plays)
             </div>
           )}
 
+          {/* Personalize the auto-assigned leaderboard name */}
+          <div className="mt-6 w-full">
+            <DailyNamePrompt />
+          </div>
+
           {/* Actions */}
-          <div className="mt-8 flex flex-col gap-3 w-full">
+          <div className="mt-5 flex flex-col gap-2.5 w-full">
             <Link href={`/daily/${slug}/leaderboard`} className="fr-btn fr-btn--primary fr-btn--block">
               View Leaderboard
             </Link>
@@ -236,7 +249,7 @@ export function DailyChallengeResults({
           style={{
             width: 420,
             padding: 32,
-            background: 'linear-gradient(145deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
+            background: 'linear-gradient(145deg, #1c1c1e 0%, #2c2c2e 50%, #1c1c1e 100%)',
             color: '#fff',
             fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
             borderRadius: 24,
@@ -261,7 +274,11 @@ export function DailyChallengeResults({
 
           {/* Score */}
           <div style={{ textAlign: 'center', marginBottom: 24 }}>
-            <div style={{ fontSize: 64, fontWeight: 900, lineHeight: 1, fontFeatureSettings: '"tnum"' }}>{score}</div>
+            <div
+              style={{ fontSize: 64, fontWeight: 900, lineHeight: 1, fontFeatureSettings: '"tnum"', color: '#f43f5e' }}
+            >
+              {score}
+            </div>
             <div style={{ fontSize: 18, fontWeight: 500, color: 'rgba(255,255,255,0.4)', marginTop: 4 }}>/ 1000</div>
           </div>
 

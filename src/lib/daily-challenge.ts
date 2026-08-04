@@ -153,13 +153,22 @@ export function stripSolution(
 // Challenge number — days since launch (for display: "Daily Sudoku #42")
 // ---------------------------------------------------------------------------
 
-const DAILY_CHALLENGE_EPOCH = '2026-08-20'
+// Launch day = Day 1. Puzzles are seeded per calendar date regardless; this only sets the "#N" label.
+const DAILY_CHALLENGE_EPOCH = '2026-08-05'
 
 export function getDailyChallengeNumber(dateStr: string): number {
   const epoch = new Date(`${DAILY_CHALLENGE_EPOCH}T00:00:00Z`).getTime()
   const current = new Date(`${dateStr}T00:00:00Z`).getTime()
   // Clamp to >= 1 so pre-launch/test dates (before the epoch) never render "#0" or "#-15".
   return Math.max(1, Math.floor((current - epoch) / (24 * 60 * 60 * 1000)) + 1)
+}
+
+/** The public launch date (Day 1). Before this the daily challenge is dormant. */
+export const DAILY_CHALLENGE_LAUNCH = DAILY_CHALLENGE_EPOCH
+
+/** Is the daily challenge live yet? Lets us ship the code ahead of launch but keep it dormant. */
+export function isDailyChallengeLive(today: string = watToday()): boolean {
+  return today >= DAILY_CHALLENGE_EPOCH
 }
 
 // Re-export for convenience

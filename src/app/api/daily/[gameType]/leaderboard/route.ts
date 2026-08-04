@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { getProfileFromRequest } from '@/lib/identity-server'
-import { isDailyChallengeGameType, watToday } from '@/lib/daily-challenge'
+import { isDailyChallengeGameType, watToday, DAILY_GAME_PRIMARY_METRIC } from '@/lib/daily-challenge'
 import { isValidDateStr } from '@/lib/community-dates'
 
 export const dynamic = 'force-dynamic'
@@ -20,6 +20,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ game
   const tab = url.searchParams.get('tab') === 'alltime' ? 'alltime' : 'today'
 
   const admin = getSupabaseAdmin()
+  // 'time' games (sudoku/crossword/word-search/word-scramble) rank by "fastest to complete":
+  // most solved first, then fastest time, then fewest hints. 'score' games (word hunt) rank by
+  // the blended score. Time is only a tiebreaker for score games.
+  const metric = DAILY_GAME_PRIMARY_METRIC[gameType]
 
   if (tab === 'today') {
     // Load challenge for the given date
@@ -34,22 +38,32 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ game
       return NextResponse.json({ entries: [], total: 0, date })
     }
 
-    // Leaderboard query
-    const { data: entries, count: total } = await admin
+    // Leaderboard query. A 0 means no real attempt (auto-submit at timeout with nothing done) —
+    // keep them off the board either way.
+    let entriesQuery = admin
       .from('daily_scores')
       .select('profile_id, normalized_score, items_solved, items_total, time_seconds, hints_used, submitted_at', {
         count: 'exact',
       })
       .eq('challenge_id', challenge.id)
-      // A 0 means they didn't really play (e.g. auto-submit at timeout with nothing done) — keep
-      // them off the board.
       .gt('normalized_score', 0)
-      .order('normalized_score', { ascending: false })
-      .order('items_solved', { ascending: false })
-      .order('time_seconds', { ascending: true })
-      .order('hints_used', { ascending: true })
-      .order('submitted_at', { ascending: true })
-      .range(offset, offset + limit - 1)
+
+    if (metric === 'time') {
+      entriesQuery = entriesQuery
+        .order('items_solved', { ascending: false })
+        .order('time_seconds', { ascending: true })
+        .order('hints_used', { ascending: true })
+        .order('submitted_at', { ascending: true })
+    } else {
+      entriesQuery = entriesQuery
+        .order('normalized_score', { ascending: false })
+        .order('items_solved', { ascending: false })
+        .order('time_seconds', { ascending: true })
+        .order('hints_used', { ascending: true })
+        .order('submitted_at', { ascending: true })
+    }
+
+    const { data: entries, count: total } = await entriesQuery.range(offset, offset + limit - 1)
 
     // Fetch profile info for the entries
     const profileIds = (entries ?? []).map((e) => e.profile_id)
@@ -77,19 +91,39 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ game
     if (profileId) {
       const { data: myEntry } = await admin
         .from('daily_scores')
-        .select('normalized_score')
+        .select('normalized_score, items_solved, time_seconds')
         .eq('challenge_id', challenge.id)
         .eq('profile_id', profileId)
         .single()
 
       if (myEntry) {
         myScore = myEntry.normalized_score
-        const { count: betterCount } = await admin
-          .from('daily_scores')
-          .select('*', { count: 'exact', head: true })
-          .eq('challenge_id', challenge.id)
-          .gt('normalized_score', myEntry.normalized_score)
-        myRank = (betterCount ?? 0) + 1
+        if (metric === 'time') {
+          // Ahead of me = more solved, or same solved but faster. Two counts, same ordering as above.
+          const [{ count: moreSolved }, { count: sameSolvedFaster }] = await Promise.all([
+            admin
+              .from('daily_scores')
+              .select('*', { count: 'exact', head: true })
+              .eq('challenge_id', challenge.id)
+              .gt('normalized_score', 0)
+              .gt('items_solved', myEntry.items_solved),
+            admin
+              .from('daily_scores')
+              .select('*', { count: 'exact', head: true })
+              .eq('challenge_id', challenge.id)
+              .gt('normalized_score', 0)
+              .eq('items_solved', myEntry.items_solved)
+              .lt('time_seconds', myEntry.time_seconds),
+          ])
+          myRank = (moreSolved ?? 0) + (sameSolvedFaster ?? 0) + 1
+        } else {
+          const { count: betterCount } = await admin
+            .from('daily_scores')
+            .select('*', { count: 'exact', head: true })
+            .eq('challenge_id', challenge.id)
+            .gt('normalized_score', myEntry.normalized_score)
+          myRank = (betterCount ?? 0) + 1
+        }
       }
     }
 

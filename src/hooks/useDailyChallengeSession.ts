@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { ensureServerIdentity, authHeaders } from '@/lib/identity'
 import type { DailyChallengeGameType } from '@/lib/daily-challenge'
 
-export type DailyChallengePhase = 'loading' | 'playing' | 'submitting' | 'results' | 'error'
+export type DailyChallengePhase = 'loading' | 'playing' | 'submitting' | 'results' | 'error' | 'notLive'
 
 export interface DailyChallengeData {
   challengeId: string
@@ -34,6 +34,7 @@ interface UseDailyChallengeSessionReturn {
   result: DailyChallengeResult | null
   previousScore: Record<string, unknown> | null
   error: string | null
+  launchDate: string | null
   submitResult: (payload: { timeSeconds: number; submission: Record<string, unknown> }) => Promise<void>
 }
 
@@ -44,6 +45,7 @@ export function useDailyChallengeSession(gameType: DailyChallengeGameType): UseD
   const [result, setResult] = useState<DailyChallengeResult | null>(null)
   const [previousScore, setPreviousScore] = useState<Record<string, unknown> | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [launchDate, setLaunchDate] = useState<string | null>(null)
 
   // Load identity + fetch puzzle
   useEffect(() => {
@@ -70,6 +72,13 @@ export function useDailyChallengeSession(gameType: DailyChallengeGameType): UseD
 
         const data = await res.json()
         if (cancelled) return
+
+        // Shipped ahead of launch but not live yet — show the "starts on <date>" screen.
+        if (data.notLive) {
+          setLaunchDate(data.launchDate ?? null)
+          setPhase('notLive')
+          return
+        }
 
         setChallengeData({
           challengeId: data.challengeId,
@@ -153,6 +162,7 @@ export function useDailyChallengeSession(gameType: DailyChallengeGameType): UseD
     result,
     previousScore,
     error,
+    launchDate,
     submitResult,
   }
 }

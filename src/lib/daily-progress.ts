@@ -51,6 +51,11 @@ export function hasDailyProgress(challengeId: string): boolean {
   return read(challengeId) !== null
 }
 
+/** Epoch-ms this attempt started, or null if none saved. */
+export function getDailyStartedAt(challengeId: string): number | null {
+  return read(challengeId)?.startedAt ?? null
+}
+
 export function clearDailyProgress(challengeId: string): void {
   if (typeof window === 'undefined' || !challengeId) return
   try {
