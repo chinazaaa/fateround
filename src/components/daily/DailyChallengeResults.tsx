@@ -166,6 +166,11 @@ export function DailyChallengeResults({
               800 for solving + up to 200 for speed
             </p>
           )}
+          {gameType === 'trivia' && (
+            <p className="mt-1" style={{ fontSize: 'var(--text-2xs)', color: 'var(--text-faint)' }}>
+              100 points per correct answer
+            </p>
+          )}
 
           {/* New personal best */}
           {isNewBest && score > 0 && (
