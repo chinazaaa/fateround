@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { CrosswordBoard } from '@/components/crossword/CrosswordBoard'
 import { useDailyChallengeTimer } from '@/hooks/useDailyChallengeTimer'
+import { hashWord } from '@/lib/daily-word-hash'
 import type { CrosswordMetadata } from '@/lib/crossword'
 
 interface DailyCrosswordPlayProps {
@@ -52,6 +53,32 @@ export function DailyCrosswordPlay({ puzzle, timer: maxSeconds, onSubmit }: Dail
   }, [metadata, letterGrid, size])
 
   const allFilled = fillableCount > 0 && filledCount >= fillableCount
+
+  // Live correctness via per-clue answer hashes (no solution ever reaches the client). A word is
+  // "solved" when every cell is filled and the hash of the entry matches its clue's answer hash.
+  const answerHashes = (puzzle.answer_hashes as string[] | undefined) ?? []
+  const clues = useMemo(() => metadata.clues ?? [], [metadata.clues])
+  const { solvedCells, solvedClues, solvedCount } = useMemo(() => {
+    const cellsGrid: boolean[][] = Array.from({ length: size }, () => Array(size).fill(false))
+    const solved = new Set<number>()
+    clues.forEach((clue, i) => {
+      const hash = answerHashes[i]
+      if (!hash) return
+      let word = ''
+      const cells: [number, number][] = []
+      for (let k = 0; k < clue.length; k++) {
+        const r = clue.direction === 'across' ? clue.row : clue.row + k
+        const c = clue.direction === 'across' ? clue.col + k : clue.col
+        cells.push([r, c])
+        word += letterGrid[r]?.[c] ?? ''
+      }
+      if (word.length === clue.length && hashWord(word) === hash) {
+        solved.add(i)
+        for (const [r, c] of cells) cellsGrid[r][c] = true
+      }
+    })
+    return { solvedCells: cellsGrid, solvedClues: solved, solvedCount: solved.size }
+  }, [clues, answerHashes, letterGrid, size])
 
   const handleSubmit = useCallback(() => {
     if (submitRef.current) return
@@ -193,18 +220,19 @@ export function DailyCrosswordPlay({ puzzle, timer: maxSeconds, onSubmit }: Dail
       {/* Timer bar */}
       <div className="flex items-center justify-between rounded-lg bg-base-200 px-4 py-2">
         <div>
-          <span className="text-sm font-medium text-base-content/60">Progress: </span>
+          <span className="text-sm font-medium text-base-content/60">Solved: </span>
           <span className="font-bold">
-            {filledCount}/{fillableCount}
+            {solvedCount}/{clues.length}
           </span>
         </div>
         <span className={`font-mono text-lg font-bold ${isTimeUp ? 'text-error' : ''}`}>{formatted}</span>
       </div>
 
-      {/* Board */}
+      {/* Board — correct words are filled in the solved colour */}
       <CrosswordBoard
         metadata={metadata}
         letterGrid={letterGrid}
+        mySolvedCells={solvedCells}
         selectedCell={selectedCell}
         activeCells={activeCells}
         onCellSelect={handleCellSelect}
@@ -215,15 +243,19 @@ export function DailyCrosswordPlay({ puzzle, timer: maxSeconds, onSubmit }: Dail
       <div className="rounded-lg bg-base-200 p-3 max-h-48 overflow-y-auto">
         <div className="text-sm font-medium text-base-content/60 mb-2">Clues</div>
         <div className="space-y-1 text-sm">
-          {(metadata.clues ?? []).map((clue, i) => (
-            <div key={i} className="flex gap-2">
-              <span className="font-bold text-base-content/50 w-8 shrink-0">
-                {clue.number}
-                {clue.direction === 'across' ? 'A' : 'D'}
-              </span>
-              <span>{clue.clue}</span>
-            </div>
-          ))}
+          {clues.map((clue, i) => {
+            const solved = solvedClues.has(i)
+            return (
+              <div key={i} className={`flex gap-2 ${solved ? 'text-success line-through' : ''}`}>
+                <span className="font-bold text-base-content/50 w-8 shrink-0">
+                  {clue.number}
+                  {clue.direction === 'across' ? 'A' : 'D'}
+                </span>
+                <span>{clue.clue}</span>
+                {solved && <span className="ml-auto shrink-0">✓</span>}
+              </div>
+            )
+          })}
         </div>
       </div>
 
