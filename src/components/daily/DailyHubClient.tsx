@@ -8,10 +8,11 @@ import {
   DAILY_GAME_EMOJIS,
   DAILY_GAME_TYPE_TO_SLUG,
   DAILY_GAME_PRIMARY_METRIC,
+  DAILY_GAME_TIMER,
   type DailyChallengeGameType,
 } from '@/lib/daily-challenge'
 import { authHeaders } from '@/lib/identity'
-import { hasDailyProgress } from '@/lib/daily-progress'
+import { getDailyStartedAt } from '@/lib/daily-progress'
 
 interface GameStatus {
   gameType: DailyChallengeGameType
@@ -25,8 +26,10 @@ export function DailyHubClient() {
   const [games, setGames] = useState<GameStatus[]>([])
   const [challengeNumber, setChallengeNumber] = useState(0)
   const [loading, setLoading] = useState(true)
-  // Challenge ids with saved local progress → show "Continue". Computed after mount (localStorage).
-  const [startedIds, setStartedIds] = useState<Set<string>>(new Set())
+  // challengeId → epoch-ms the local attempt started (localStorage), read after mount. Lets us tell
+  // an in-progress attempt (time left → "Continue") from an expired one (time's up but never
+  // submitted → "See result", clicking finalizes it).
+  const [startedAtById, setStartedAtById] = useState<Record<string, number>>({})
 
   useEffect(() => {
     async function load() {
@@ -40,11 +43,13 @@ export function DailyHubClient() {
         const loaded: GameStatus[] = data.games ?? []
         setGames(loaded)
         setChallengeNumber(data.challengeNumber ?? 0)
-        setStartedIds(
-          new Set(
-            loaded.filter((g) => g.challengeId && hasDailyProgress(g.challengeId)).map((g) => g.challengeId as string)
-          )
-        )
+        const map: Record<string, number> = {}
+        for (const g of loaded) {
+          if (!g.challengeId) continue
+          const startedAt = getDailyStartedAt(g.challengeId)
+          if (startedAt != null) map[g.challengeId] = startedAt
+        }
+        setStartedAtById(map)
       } catch {
         // Silent fail
       } finally {
@@ -106,7 +111,11 @@ export function DailyHubClient() {
               const status = games.find((g) => g.gameType === gt)
               const played = status?.played ?? false
               const score = status?.score ?? null
-              const started = !played && !!status?.challengeId && startedIds.has(status.challengeId)
+              const startedAt = status?.challengeId ? startedAtById[status.challengeId] : undefined
+              // In progress = time still left; expired = time's up but never submitted (opening it
+              // just finalizes the result).
+              const inProgress = startedAt != null && Date.now() < startedAt + DAILY_GAME_TIMER[gt] * 1000
+              const expired = startedAt != null && !inProgress
               const slug = DAILY_GAME_TYPE_TO_SLUG[gt]
               const metric = DAILY_GAME_PRIMARY_METRIC[gt]
 
@@ -140,7 +149,9 @@ export function DailyHubClient() {
                         </div>
                       </div>
                     ) : (
-                      <span className="fr-btn fr-btn--primary fr-btn--sm">{started ? 'Continue' : 'Play'}</span>
+                      <span className="fr-btn fr-btn--primary fr-btn--sm">
+                        {inProgress ? 'Continue' : expired ? 'See result' : 'Play'}
+                      </span>
                     )}
                   </div>
                 </Link>

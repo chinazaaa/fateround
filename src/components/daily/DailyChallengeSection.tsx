@@ -7,10 +7,11 @@ import {
   DAILY_GAME_LABELS,
   DAILY_GAME_EMOJIS,
   DAILY_GAME_TYPE_TO_SLUG,
+  DAILY_GAME_TIMER,
   type DailyChallengeGameType,
 } from '@/lib/daily-challenge'
 import { authHeaders } from '@/lib/identity'
-import { hasDailyProgress } from '@/lib/daily-progress'
+import { getDailyStartedAt } from '@/lib/daily-progress'
 
 interface GameStatus {
   gameType: DailyChallengeGameType
@@ -22,7 +23,7 @@ interface GameStatus {
 export function DailyChallengeSection() {
   const [games, setGames] = useState<GameStatus[]>([])
   const [loading, setLoading] = useState(true)
-  const [startedIds, setStartedIds] = useState<Set<string>>(new Set())
+  const [startedAtById, setStartedAtById] = useState<Record<string, number>>({})
 
   useEffect(() => {
     async function load() {
@@ -35,11 +36,13 @@ export function DailyChallengeSection() {
         const data = await res.json()
         const loaded: GameStatus[] = data.games ?? []
         setGames(loaded)
-        setStartedIds(
-          new Set(
-            loaded.filter((g) => g.challengeId && hasDailyProgress(g.challengeId)).map((g) => g.challengeId as string)
-          )
-        )
+        const map: Record<string, number> = {}
+        for (const g of loaded) {
+          if (!g.challengeId) continue
+          const startedAt = getDailyStartedAt(g.challengeId)
+          if (startedAt != null) map[g.challengeId] = startedAt
+        }
+        setStartedAtById(map)
       } catch {
         // Silent fail — section just shows "Play" for everything
       } finally {
@@ -68,7 +71,9 @@ export function DailyChallengeSection() {
           const status = games.find((g) => g.gameType === gt)
           const played = status?.played ?? false
           const score = status?.score ?? null
-          const started = !played && !!status?.challengeId && startedIds.has(status.challengeId)
+          const startedAt = status?.challengeId ? startedAtById[status.challengeId] : undefined
+          const inProgress = startedAt != null && Date.now() < startedAt + DAILY_GAME_TIMER[gt] * 1000
+          const expired = startedAt != null && !inProgress
           const slug = DAILY_GAME_TYPE_TO_SLUG[gt]
 
           return (
@@ -90,7 +95,7 @@ export function DailyChallengeSection() {
                       className="font-bold uppercase tracking-wider"
                       style={{ fontSize: 'var(--text-2xs)', color: 'var(--primary)' }}
                     >
-                      {started ? 'Continue' : 'Play'}
+                      {inProgress ? 'Continue' : expired ? 'See result' : 'Play'}
                     </span>
                   )}
                 </div>

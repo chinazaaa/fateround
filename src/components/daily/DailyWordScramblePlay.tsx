@@ -18,7 +18,6 @@ interface DailyWordScramblePlayProps {
 type ScrambleProgress = {
   solved: Array<{ index: number; word: string }>
   skipped: number[]
-  hintsUsed: number
   currentIndex: number
 }
 
@@ -30,7 +29,6 @@ export function DailyWordScramblePlay({
 }: DailyWordScramblePlayProps) {
   const metadata = puzzle.metadata as WordScrambleMetadata
   const scrambles = metadata.scrambles ?? []
-  const hints = metadata.hints ?? []
   const totalWords = scrambles.length
 
   const savedProgress = loadDailyAnswers<ScrambleProgress>(challengeId)
@@ -39,8 +37,6 @@ export function DailyWordScramblePlay({
   const [guess, setGuess] = useState('')
   const [solved, setSolved] = useState<Array<{ index: number; word: string }>>(savedProgress?.solved ?? [])
   const [skipped, setSkipped] = useState<Set<number>>(() => new Set(savedProgress?.skipped ?? []))
-  const [showHint, setShowHint] = useState(false)
-  const [hintsUsed, setHintsUsed] = useState(savedProgress?.hintsUsed ?? 0)
   const [submitted, setSubmitted] = useState(false)
   const submitRef = useRef(false)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -51,10 +47,9 @@ export function DailyWordScramblePlay({
       saveDailyAnswers<ScrambleProgress>(challengeId, {
         solved,
         skipped: [...skipped],
-        hintsUsed,
         currentIndex,
       })
-  }, [challengeId, solved, skipped, hintsUsed, currentIndex, submitted])
+  }, [challengeId, solved, skipped, currentIndex, submitted])
 
   const { elapsed, formatted, isTimeUp } = useDailyChallengeTimer({
     mode: 'countdown',
@@ -72,9 +67,9 @@ export function DailyWordScramblePlay({
     clearDailyProgress(challengeId)
     onSubmit({
       timeSeconds: elapsed,
-      submission: { answers: solved, hintsUsed },
+      submission: { answers: solved, hintsUsed: 0 },
     })
-  }, [solved, elapsed, hintsUsed, onSubmit, challengeId])
+  }, [solved, elapsed, onSubmit, challengeId])
 
   const confirmAndSubmit = useCallback(async () => {
     if (await confirm(DAILY_SUBMIT_CONFIRM)) handleSubmitAll()
@@ -107,7 +102,6 @@ export function DailyWordScramblePlay({
     const word = guess.trim()
     setSolved((prev) => [...prev, { index: currentIndex, word }])
     setGuess('')
-    setShowHint(false)
 
     const next = findNextUnsolved(currentIndex + 1)
     if (next >= 0) setCurrentIndex(next)
@@ -119,26 +113,11 @@ export function DailyWordScramblePlay({
     if (submitted) return
     setSkipped((prev) => new Set(prev).add(currentIndex))
     setGuess('')
-    setShowHint(false)
     const next = findNextUnsolved(currentIndex + 1)
     if (next >= 0) setCurrentIndex(next)
   }, [currentIndex, submitted, findNextUnsolved])
 
-  const handleShowHint = useCallback(async () => {
-    // Hints reduce the score (hintsUsed feeds the penalty in computeNormalizedScore), so confirm.
-    const ok = await confirm({
-      title: 'Reveal the hint?',
-      message: 'Using a hint lowers your score for this puzzle.',
-      confirmLabel: 'Show hint',
-      cancelLabel: 'Never mind',
-    })
-    if (!ok) return
-    setShowHint(true)
-    setHintsUsed((prev) => prev + 1)
-  }, [confirm])
-
   const currentScramble = scrambles[currentIndex] ?? ''
-  const currentHint = hints[currentIndex] ?? null
   const allDone = solved.length + skipped.size >= totalWords
 
   return (
@@ -178,12 +157,6 @@ export function DailyWordScramblePlay({
             </p>
             <div className="text-3xl font-bold tracking-[0.3em] uppercase mb-5">{currentScramble}</div>
 
-            {showHint && currentHint && (
-              <div className="mb-3" style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>
-                Hint: {currentHint}
-              </div>
-            )}
-
             <div className="flex gap-2 w-full max-w-xs">
               <input
                 ref={inputRef}
@@ -214,11 +187,6 @@ export function DailyWordScramblePlay({
             </div>
 
             <div className="flex gap-3 mt-3">
-              {!showHint && currentHint && (
-                <button className="fr-btn fr-btn--ghost fr-btn--sm" onClick={handleShowHint}>
-                  Show hint
-                </button>
-              )}
               <button className="fr-btn fr-btn--ghost fr-btn--sm" onClick={handleSkip}>
                 Skip
               </button>
