@@ -45,7 +45,14 @@ function PlaySurface({
     case 'sudoku':
       return <DailySudokuPlay puzzle={puzzle.puzzle as number[][]} timer={timer} onSubmit={onSubmit} />
     case 'word_hunt':
-      return <DailyWordHuntPlay grid={puzzle.grid as string[][]} timer={timer} onSubmit={onSubmit} />
+      return (
+        <DailyWordHuntPlay
+          grid={puzzle.grid as string[][]}
+          validWordHashes={(puzzle.valid_word_hashes as string[]) ?? []}
+          timer={timer}
+          onSubmit={onSubmit}
+        />
+      )
     case 'word_search':
       return <DailyWordSearchPlay puzzle={puzzle} timer={timer} onSubmit={onSubmit} />
     case 'crossword':

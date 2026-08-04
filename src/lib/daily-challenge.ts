@@ -1,4 +1,5 @@
 import { watToday } from '@/lib/community-dates'
+import { hashWord } from '@/lib/daily-word-hash'
 
 // ---------------------------------------------------------------------------
 // Game types eligible for the daily challenge
@@ -117,6 +118,10 @@ export function stripSolution(
   delete safe.solution
 
   if (gameType === 'word_hunt') {
+    // Don't ship the answer list, but give the client hashes so it can reject non-words in-play
+    // without being able to read every answer. The server still re-validates on submit.
+    const validWords = Array.isArray(safe.valid_words) ? (safe.valid_words as string[]) : []
+    safe.valid_word_hashes = validWords.map(hashWord)
     delete safe.valid_words
   }
 
@@ -135,7 +140,8 @@ const DAILY_CHALLENGE_EPOCH = '2026-08-20'
 export function getDailyChallengeNumber(dateStr: string): number {
   const epoch = new Date(`${DAILY_CHALLENGE_EPOCH}T00:00:00Z`).getTime()
   const current = new Date(`${dateStr}T00:00:00Z`).getTime()
-  return Math.floor((current - epoch) / (24 * 60 * 60 * 1000)) + 1
+  // Clamp to >= 1 so pre-launch/test dates (before the epoch) never render "#0" or "#-15".
+  return Math.max(1, Math.floor((current - epoch) / (24 * 60 * 60 * 1000)) + 1)
 }
 
 // Re-export for convenience
