@@ -5,6 +5,8 @@ import { WordHuntGrid } from '@/components/word-hunt/WordHuntGrid'
 import { WORD_HUNT_GRID_SIZE, wordFromPath, WORD_HUNT_MIN_WORD_LENGTH } from '@/lib/word-hunt'
 import { useDailyChallengeTimer } from '@/hooks/useDailyChallengeTimer'
 import { hashWord } from '@/lib/daily-word-hash'
+import { useConfirm } from '@/components/ui/ConfirmDialog'
+import { DAILY_SUBMIT_CONFIRM } from '@/components/daily/daily-submit-confirm'
 
 interface DailyWordHuntPlayProps {
   grid: string[][]
@@ -27,6 +29,7 @@ export function DailyWordHuntPlay({ grid, validWordHashes, timer: maxSeconds, on
   const [foundWords, setFoundWords] = useState<string[]>([])
   const [submitted, setSubmitted] = useState(false)
   const submitRef = useRef(false)
+  const { confirm } = useConfirm()
 
   const validHashSet = useMemo(() => new Set(validWordHashes), [validWordHashes])
 
@@ -48,6 +51,10 @@ export function DailyWordHuntPlay({ grid, validWordHashes, timer: maxSeconds, on
       submission: { words: foundWords },
     })
   }, [foundWords, elapsed, onSubmit])
+
+  const confirmAndSubmit = useCallback(async () => {
+    if (await confirm(DAILY_SUBMIT_CONFIRM)) handleSubmit()
+  }, [confirm, handleSubmit])
 
   // Auto-submit on time up
   useEffect(() => {
@@ -105,7 +112,7 @@ export function DailyWordHuntPlay({ grid, validWordHashes, timer: maxSeconds, on
       {/* Manual submit button */}
       {!submitted && !isTimeUp && foundWords.length > 0 && (
         <div className="text-center">
-          <button className="btn btn-primary" onClick={handleSubmit}>
+          <button className="btn btn-primary" onClick={confirmAndSubmit}>
             Submit ({foundWords.length} words)
           </button>
         </div>
