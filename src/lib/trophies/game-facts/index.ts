@@ -29,6 +29,7 @@ import { wordHuntFacts } from './word-hunt'
 import { wordRushFacts } from './word-rush'
 import { wordScrambleFacts } from './word-scramble'
 import { wordSearchFacts } from './word-search'
+import { snakeAndLadderFacts } from './snake-and-ladder'
 
 /**
  * Per-game facts for the award pass.
@@ -109,6 +110,7 @@ const BUILDERS: Partial<Record<GameType, FactsBuilder>> = {
   word_rush: wordRushFacts,
   word_scramble: wordScrambleFacts,
   word_search: wordSearchFacts,
+  snake_and_ladder: snakeAndLadderFacts,
 }
 
 /** True when this game type emits per-game facts, for the admin UI's benefit. */
