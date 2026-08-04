@@ -154,7 +154,8 @@ export function stripSolution(
 // ---------------------------------------------------------------------------
 
 // Launch day = Day 1. Puzzles are seeded per calendar date regardless; this only sets the "#N" label.
-const DAILY_CHALLENGE_EPOCH = '2026-08-05'
+// TESTING: set to today so the challenge is live now. Move to the real launch date before go-live.
+const DAILY_CHALLENGE_EPOCH = '2026-08-04'
 
 export function getDailyChallengeNumber(dateStr: string): number {
   const epoch = new Date(`${DAILY_CHALLENGE_EPOCH}T00:00:00Z`).getTime()
