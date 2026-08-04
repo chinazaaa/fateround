@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { getProfileFromRequest } from '@/lib/identity-server'
+import { internalErrorMessage } from '@/lib/api-errors'
 import {
   isDailyChallengeGameType,
   getDailyChallengeSeed,
@@ -24,33 +25,39 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ game
   const today = watToday()
   const admin = getSupabaseAdmin()
 
-  // Try to load today's challenge
+  // Try to load today's challenge (maybeSingle: a missing row is expected before lazy creation,
+  // and avoids the noisy 406 that `.single()` returns on zero rows).
   let { data: challenge } = await admin
     .from('daily_challenges')
     .select('id, game_type, challenge_date, puzzle_data, config')
     .eq('game_type', gameType)
     .eq('challenge_date', today)
-    .single()
+    .maybeSingle()
 
   // Lazy creation on first request of the day
   if (!challenge) {
     const seed = getDailyChallengeSeed(gameType, today)
     const { puzzleData, config } = await generateDailyPuzzle(gameType, seed)
 
-    await admin.from('daily_challenges').insert({
+    // Ignore a duplicate-key error (another request created it first — the re-read handles it),
+    // but surface any other insert failure instead of silently returning a generic 500.
+    const { error: insertError } = await admin.from('daily_challenges').insert({
       game_type: gameType,
       challenge_date: today,
       seed,
       puzzle_data: puzzleData,
       config,
     })
+    if (insertError && insertError.code !== '23505') {
+      return NextResponse.json({ error: internalErrorMessage('daily/[gameType]', insertError) }, { status: 500 })
+    }
     // Re-read (handles race where another request created it first)
     const { data: created } = await admin
       .from('daily_challenges')
       .select('id, game_type, challenge_date, puzzle_data, config')
       .eq('game_type', gameType)
       .eq('challenge_date', today)
-      .single()
+      .maybeSingle()
 
     if (!created) {
       return NextResponse.json({ error: 'Failed to create daily challenge' }, { status: 500 })
@@ -68,7 +75,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ game
       .select('normalized_score, raw_points, items_solved, items_total, time_seconds, hints_used, submitted_at')
       .eq('challenge_id', challenge.id)
       .eq('profile_id', profileId)
-      .single()
+      .maybeSingle()
 
     if (existing) {
       alreadyPlayed = true

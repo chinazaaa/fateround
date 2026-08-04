@@ -27,48 +27,47 @@ export function useDailyChallengeTimer({
   running,
 }: DailyChallengeTimerOptions): DailyChallengeTimerResult {
   const [elapsed, setElapsed] = useState(0)
-  const startTimeRef = useRef<number | null>(null)
-  const pausedElapsedRef = useRef(0)
+  // Seconds banked from completed running segments, plus the wall-clock start of the current one.
+  // Kept in refs so the ticking effect does NOT depend on `elapsed` — depending on it tore down
+  // and recreated the interval every second, which reset the start time and pinned the clock.
+  const accumulatedRef = useRef(0)
+  const segmentStartRef = useRef<number | null>(null)
 
   useEffect(() => {
-    if (!running) {
-      if (startTimeRef.current !== null) {
-        pausedElapsedRef.current = elapsed
-        startTimeRef.current = null
+    if (!running) return
+
+    const bankSegment = () => {
+      if (segmentStartRef.current !== null) {
+        accumulatedRef.current += Math.floor((Date.now() - segmentStartRef.current) / 1000)
+        segmentStartRef.current = null
       }
-      return
     }
 
-    startTimeRef.current = Date.now()
-    const baseElapsed = pausedElapsedRef.current
+    // Begin (or resume) a running segment.
+    if (segmentStartRef.current === null) segmentStartRef.current = Date.now()
 
     const tick = () => {
-      if (!startTimeRef.current) return
-      const delta = Math.floor((Date.now() - startTimeRef.current) / 1000)
-      const total = baseElapsed + delta
+      if (segmentStartRef.current === null) return
+      const total = accumulatedRef.current + Math.floor((Date.now() - segmentStartRef.current) / 1000)
       setElapsed(mode === 'countdown' ? Math.min(total, maxSeconds) : total)
     }
 
+    // Pause while the tab is hidden; resume on return.
+    const onVisibility = () => {
+      if (document.hidden) bankSegment()
+      else if (segmentStartRef.current === null) segmentStartRef.current = Date.now()
+    }
+
     const id = setInterval(tick, 1000)
+    document.addEventListener('visibilitychange', onVisibility)
     tick()
 
-    return () => clearInterval(id)
-  }, [running, mode, maxSeconds, elapsed])
-
-  // Pause on tab visibility change
-  useEffect(() => {
-    if (!running) return
-    const handler = () => {
-      if (document.hidden) {
-        pausedElapsedRef.current = elapsed
-        startTimeRef.current = null
-      } else if (startTimeRef.current === null) {
-        startTimeRef.current = Date.now()
-      }
+    return () => {
+      clearInterval(id)
+      document.removeEventListener('visibilitychange', onVisibility)
+      bankSegment() // preserve progress if paused via `running` (e.g. on submit)
     }
-    document.addEventListener('visibilitychange', handler)
-    return () => document.removeEventListener('visibilitychange', handler)
-  }, [running, elapsed])
+  }, [running, mode, maxSeconds])
 
   const remaining = Math.max(0, maxSeconds - elapsed)
   const isTimeUp = mode === 'countdown' && remaining <= 0
