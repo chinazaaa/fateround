@@ -160,6 +160,13 @@ export function DailyChallengeResults({
             </span>
           </div>
 
+          {/* Explain the score so a full solve under 1000 isn't confusing. */}
+          {!isPointsGame && (
+            <p className="mt-1" style={{ fontSize: 'var(--text-2xs)', color: 'var(--text-faint)' }}>
+              800 for solving + up to 200 for speed
+            </p>
+          )}
+
           {/* New personal best */}
           {isNewBest && score > 0 && (
             <div className="mt-2 fr-badge fr-badge--soft font-semibold animate-bounce">⭐ New Personal Best!</div>
