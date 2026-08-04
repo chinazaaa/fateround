@@ -4,13 +4,13 @@ import { getProfileFromRequest } from '@/lib/identity-server'
 import {
   isDailyChallengeGameType,
   getDailyChallengeSeed,
-  generateDailyPuzzle,
   stripSolution,
   watToday,
   getDailyChallengeNumber,
   DAILY_GAME_TIMER,
   type DailyChallengeGameType,
 } from '@/lib/daily-challenge'
+import { generateDailyPuzzle } from '@/lib/daily-challenge-server'
 
 export const dynamic = 'force-dynamic'
 

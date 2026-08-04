@@ -95,9 +95,7 @@ export function DailyChallengeResults({
       <div className="card bg-base-200 shadow-lg">
         <div className="card-body items-center text-center">
           {/* Header */}
-          <div className="text-4xl mb-2">
-            {score >= 900 ? '🏆' : score >= 700 ? '🎯' : score >= 400 ? '👍' : '💪'}
-          </div>
+          <div className="text-4xl mb-2">{score >= 900 ? '🏆' : score >= 700 ? '🎯' : score >= 400 ? '👍' : '💪'}</div>
           <h2 className="card-title text-xl">
             Daily {DAILY_GAME_LABELS[gameType]} #{challengeNumber}
           </h2>
@@ -112,9 +110,7 @@ export function DailyChallengeResults({
 
           {/* New personal best */}
           {isNewBest && (
-            <div className="badge badge-warning gap-1 text-sm font-semibold animate-bounce">
-              ⭐ New Personal Best!
-            </div>
+            <div className="badge badge-warning gap-1 text-sm font-semibold animate-bounce">⭐ New Personal Best!</div>
           )}
 
           {/* Stats grid */}
@@ -132,9 +128,7 @@ export function DailyChallengeResults({
             {rank && (
               <div>
                 <div className="text-2xl font-bold">#{rank}</div>
-                <div className="text-xs text-base-content/60">
-                  of {totalPlayers}
-                </div>
+                <div className="text-xs text-base-content/60">of {totalPlayers}</div>
               </div>
             )}
           </div>
@@ -148,10 +142,7 @@ export function DailyChallengeResults({
 
           {/* Actions */}
           <div className="card-actions mt-6 flex-col gap-2 w-full">
-            <Link
-              href={`/daily/${slug}/leaderboard`}
-              className="btn btn-primary w-full"
-            >
+            <Link href={`/daily/${slug}/leaderboard`} className="btn btn-primary w-full">
               View Leaderboard
             </Link>
             <button className="btn btn-outline w-full" onClick={handleShare}>

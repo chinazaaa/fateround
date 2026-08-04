@@ -48,12 +48,8 @@ export function DailyHubClient() {
     <div className="mx-auto max-w-2xl px-4 py-8">
       <div className="text-center mb-8">
         <h1 className="text-2xl font-bold">Daily Challenge</h1>
-        <p className="text-base-content/60 mt-1">
-          Same puzzle for everyone. One shot, one score.
-        </p>
-        {challengeNumber > 0 && (
-          <p className="text-sm text-base-content/40 mt-1">Day #{challengeNumber}</p>
-        )}
+        <p className="text-base-content/60 mt-1">Same puzzle for everyone. One shot, one score.</p>
+        {challengeNumber > 0 && <p className="text-sm text-base-content/40 mt-1">Day #{challengeNumber}</p>}
       </div>
 
       {loading ? (
@@ -72,11 +68,7 @@ export function DailyHubClient() {
             const metric = DAILY_GAME_PRIMARY_METRIC[gt]
 
             return (
-              <Link
-                key={gt}
-                href={`/daily/${slug}`}
-                className="card bg-base-200 hover:bg-base-300 transition-colors"
-              >
+              <Link key={gt} href={`/daily/${slug}`} className="card bg-base-200 hover:bg-base-300 transition-colors">
                 <div className="card-body flex-row items-center gap-4 py-4">
                   <div className="text-3xl">{DAILY_GAME_EMOJIS[gt]}</div>
                   <div className="flex-1">

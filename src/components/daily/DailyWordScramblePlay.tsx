@@ -111,9 +111,7 @@ export function DailyWordScramblePlay({ puzzle, timer: maxSeconds, onSubmit }: D
             {solved.length}/{totalWords}
           </span>
         </div>
-        <span className={`font-mono text-lg font-bold ${isTimeUp ? 'text-error' : ''}`}>
-          {formatted}
-        </span>
+        <span className={`font-mono text-lg font-bold ${isTimeUp ? 'text-error' : ''}`}>{formatted}</span>
       </div>
 
       {/* Current scramble */}
@@ -123,15 +121,9 @@ export function DailyWordScramblePlay({ puzzle, timer: maxSeconds, onSubmit }: D
             <div className="text-xs text-base-content/50 mb-1">
               Word {currentIndex + 1} of {totalWords}
             </div>
-            <div className="text-3xl font-bold tracking-[0.3em] uppercase mb-4">
-              {currentScramble}
-            </div>
+            <div className="text-3xl font-bold tracking-[0.3em] uppercase mb-4">{currentScramble}</div>
 
-            {showHint && currentHint && (
-              <div className="text-sm text-base-content/60 mb-2">
-                Hint: {currentHint}
-              </div>
-            )}
+            {showHint && currentHint && <div className="text-sm text-base-content/60 mb-2">Hint: {currentHint}</div>}
 
             <div className="flex gap-2 w-full max-w-xs">
               <input
@@ -147,11 +139,7 @@ export function DailyWordScramblePlay({ puzzle, timer: maxSeconds, onSubmit }: D
                 autoFocus
                 disabled={submitted}
               />
-              <button
-                className="btn btn-primary"
-                onClick={handleGuessSubmit}
-                disabled={!guess.trim() || submitted}
-              >
+              <button className="btn btn-primary" onClick={handleGuessSubmit} disabled={!guess.trim() || submitted}>
                 Go
               </button>
             </div>
@@ -180,9 +168,7 @@ export function DailyWordScramblePlay({ puzzle, timer: maxSeconds, onSubmit }: D
             </span>
           ))}
           {solved.length === 0 && (
-            <span className="text-sm text-base-content/40">
-              Unscramble the letters to form words
-            </span>
+            <span className="text-sm text-base-content/40">Unscramble the letters to form words</span>
           )}
         </div>
       </div>
