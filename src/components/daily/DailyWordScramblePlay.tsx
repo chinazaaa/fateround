@@ -2,6 +2,8 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useDailyChallengeTimer } from '@/hooks/useDailyChallengeTimer'
+import { useConfirm } from '@/components/ui/ConfirmDialog'
+import { DAILY_SUBMIT_CONFIRM } from '@/components/daily/daily-submit-confirm'
 import type { WordScrambleMetadata } from '@/lib/word-scramble'
 
 interface DailyWordScramblePlayProps {
@@ -25,6 +27,7 @@ export function DailyWordScramblePlay({ puzzle, timer: maxSeconds, onSubmit }: D
   const [submitted, setSubmitted] = useState(false)
   const submitRef = useRef(false)
   const inputRef = useRef<HTMLInputElement>(null)
+  const { confirm } = useConfirm()
 
   const { elapsed, formatted, isTimeUp } = useDailyChallengeTimer({
     mode: 'countdown',
@@ -43,6 +46,10 @@ export function DailyWordScramblePlay({ puzzle, timer: maxSeconds, onSubmit }: D
       submission: { answers: solved, hintsUsed },
     })
   }, [solved, elapsed, hintsUsed, onSubmit])
+
+  const confirmAndSubmit = useCallback(async () => {
+    if (await confirm(DAILY_SUBMIT_CONFIRM)) handleSubmitAll()
+  }, [confirm, handleSubmitAll])
 
   useEffect(() => {
     if (isTimeUp && !submitted) handleSubmitAll()
@@ -176,7 +183,7 @@ export function DailyWordScramblePlay({ puzzle, timer: maxSeconds, onSubmit }: D
       {/* Submit button when all attempted */}
       {allDone && !submitted && (
         <div className="text-center">
-          <button className="btn btn-primary btn-lg" onClick={handleSubmitAll}>
+          <button className="btn btn-primary btn-lg" onClick={confirmAndSubmit}>
             Submit ({solved.length} words)
           </button>
         </div>

@@ -3,6 +3,8 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { WordSearchBoard } from '@/components/word-search/WordSearchBoard'
 import { useDailyChallengeTimer } from '@/hooks/useDailyChallengeTimer'
+import { useConfirm } from '@/components/ui/ConfirmDialog'
+import { DAILY_SUBMIT_CONFIRM } from '@/components/daily/daily-submit-confirm'
 import type { WordSearchMetadata } from '@/lib/word-search'
 
 interface DailyWordSearchPlayProps {
@@ -21,6 +23,7 @@ export function DailyWordSearchPlay({ puzzle, timer: maxSeconds, onSubmit }: Dai
   )
   const [submitted, setSubmitted] = useState(false)
   const submitRef = useRef(false)
+  const { confirm } = useConfirm()
 
   const { elapsed, formatted, isTimeUp } = useDailyChallengeTimer({
     mode: 'countdown',
@@ -40,6 +43,10 @@ export function DailyWordSearchPlay({ puzzle, timer: maxSeconds, onSubmit }: Dai
       submission: { words: foundWords, hintsUsed: 0 },
     })
   }, [foundWords, elapsed, onSubmit])
+
+  const confirmAndSubmit = useCallback(async () => {
+    if (await confirm(DAILY_SUBMIT_CONFIRM)) handleSubmit()
+  }, [confirm, handleSubmit])
 
   useEffect(() => {
     if (isTimeUp && !submitted) handleSubmit()
@@ -125,7 +132,7 @@ export function DailyWordSearchPlay({ puzzle, timer: maxSeconds, onSubmit }: Dai
 
       {!submitted && !isTimeUp && foundWords.length > 0 && foundWords.length < totalWords && (
         <div className="text-center">
-          <button className="btn btn-primary" onClick={handleSubmit}>
+          <button className="btn btn-primary" onClick={confirmAndSubmit}>
             Submit ({foundWords.length}/{totalWords})
           </button>
         </div>

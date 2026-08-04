@@ -4,6 +4,8 @@ import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { CrosswordBoard } from '@/components/crossword/CrosswordBoard'
 import { useDailyChallengeTimer } from '@/hooks/useDailyChallengeTimer'
 import { hashWord } from '@/lib/daily-word-hash'
+import { useConfirm } from '@/components/ui/ConfirmDialog'
+import { DAILY_SUBMIT_CONFIRM } from '@/components/daily/daily-submit-confirm'
 import type { CrosswordMetadata } from '@/lib/crossword'
 
 interface DailyCrosswordPlayProps {
@@ -24,6 +26,7 @@ export function DailyCrosswordPlay({ puzzle, timer: maxSeconds, onSubmit }: Dail
   const [submitted, setSubmitted] = useState(false)
   const [hintsUsed, setHintsUsed] = useState(0)
   const submitRef = useRef(false)
+  const { confirm } = useConfirm()
 
   const { elapsed, formatted, isTimeUp } = useDailyChallengeTimer({
     mode: 'countdown',
@@ -99,6 +102,10 @@ export function DailyCrosswordPlay({ puzzle, timer: maxSeconds, onSubmit }: Dail
       submission: { cells, hintsUsed },
     })
   }, [metadata, letterGrid, size, elapsed, hintsUsed, onSubmit])
+
+  const confirmAndSubmit = useCallback(async () => {
+    if (await confirm(DAILY_SUBMIT_CONFIRM)) handleSubmit()
+  }, [confirm, handleSubmit])
 
   useEffect(() => {
     if (isTimeUp && !submitted) handleSubmit()
@@ -302,7 +309,7 @@ export function DailyCrosswordPlay({ puzzle, timer: maxSeconds, onSubmit }: Dail
 
       {allFilled && !submitted && (
         <div className="text-center">
-          <button className="btn btn-primary btn-lg" onClick={handleSubmit}>
+          <button className="btn btn-primary btn-lg" onClick={confirmAndSubmit}>
             Submit Crossword
           </button>
         </div>

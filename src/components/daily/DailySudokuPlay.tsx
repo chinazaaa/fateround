@@ -3,6 +3,8 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { SudokuBoard } from '@/components/sudoku/SudokuBoard'
 import { useDailyChallengeTimer } from '@/hooks/useDailyChallengeTimer'
+import { useConfirm } from '@/components/ui/ConfirmDialog'
+import { DAILY_SUBMIT_CONFIRM } from '@/components/daily/daily-submit-confirm'
 
 interface DailySudokuPlayProps {
   puzzle: number[][]
@@ -28,6 +30,7 @@ export function DailySudokuPlay({ puzzle, timer: maxSeconds, onSubmit }: DailySu
   const [highlightNumber, setHighlightNumber] = useState<number | null>(null)
   const [submitted, setSubmitted] = useState(false)
   const submitRef = useRef(false)
+  const { confirm } = useConfirm()
 
   const { elapsed, formatted, isTimeUp } = useDailyChallengeTimer({
     mode: 'countdown',
@@ -66,6 +69,10 @@ export function DailySudokuPlay({ puzzle, timer: maxSeconds, onSubmit }: DailySu
       submission: { cells },
     })
   }, [puzzle, userGrid, elapsed, onSubmit])
+
+  const confirmAndSubmit = useCallback(async () => {
+    if (await confirm(DAILY_SUBMIT_CONFIRM)) handleSubmit()
+  }, [confirm, handleSubmit])
 
   // Auto-submit on time up
   useEffect(() => {
@@ -251,7 +258,7 @@ export function DailySudokuPlay({ puzzle, timer: maxSeconds, onSubmit }: DailySu
       {/* Submit button */}
       {allFilled && !submitted && (
         <div className="text-center">
-          <button className="btn btn-primary btn-lg" onClick={handleSubmit}>
+          <button className="btn btn-primary btn-lg" onClick={confirmAndSubmit}>
             Submit Puzzle
           </button>
         </div>

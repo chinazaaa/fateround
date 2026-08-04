@@ -12,7 +12,14 @@ import { DAILY_GAME_LABELS, DAILY_GAME_EMOJIS, type DailyChallengeGameType } fro
 function LoadingState({ gameType }: { gameType: DailyChallengeGameType }) {
   return (
     <div className="mx-auto max-w-lg px-4 py-16 text-center">
-      <div className="text-4xl mb-4">{DAILY_GAME_EMOJIS[gameType]}</div>
+      <div
+        className="text-4xl mb-4"
+        style={{
+          filter: 'drop-shadow(0 6px 14px color-mix(in srgb, var(--primary) 25%, transparent))',
+        }}
+      >
+        {DAILY_GAME_EMOJIS[gameType]}
+      </div>
       <h1 className="text-xl font-bold">Loading Daily {DAILY_GAME_LABELS[gameType]}...</h1>
       <div className="loading loading-spinner loading-lg mt-4" />
     </div>
@@ -23,7 +30,7 @@ function ErrorState({ error }: { error: string | null }) {
   return (
     <div className="mx-auto max-w-lg px-4 py-16 text-center">
       <h1 className="text-xl font-bold text-error">Something went wrong</h1>
-      <p className="mt-2 text-base-content/60">{error ?? 'Please try again later.'}</p>
+      <p className="mt-2 text-muted">{error ?? 'Please try again later.'}</p>
     </div>
   )
 }
@@ -85,11 +92,18 @@ export function DailyChallengeGame({ gameType }: { gameType: DailyChallengeGameT
   return (
     <div className="mx-auto max-w-2xl px-4 py-4">
       <div className="mb-4 text-center">
-        <div className="text-3xl mb-1">{DAILY_GAME_EMOJIS[gameType]}</div>
+        <div
+          className="text-3xl mb-1"
+          style={{
+            filter: 'drop-shadow(0 4px 10px color-mix(in srgb, var(--primary) 20%, transparent))',
+          }}
+        >
+          {DAILY_GAME_EMOJIS[gameType]}
+        </div>
         <h1 className="text-lg font-bold">
           Daily {DAILY_GAME_LABELS[gameType]} #{challengeData.challengeNumber}
         </h1>
-        <p className="text-sm text-base-content/60">Same puzzle for everyone. One attempt.</p>
+        <p className="text-sm text-muted">Same puzzle for everyone. One attempt.</p>
       </div>
 
       <PlaySurface
