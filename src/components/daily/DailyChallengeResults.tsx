@@ -166,6 +166,11 @@ export function DailyChallengeResults({
               800 for solving + up to 200 for speed
             </p>
           )}
+          {gameType === 'trivia' && (
+            <p className="mt-1" style={{ fontSize: 'var(--text-2xs)', color: 'var(--text-faint)' }}>
+              100 points per correct answer
+            </p>
+          )}
 
           {/* New personal best */}
           {isNewBest && score > 0 && (
@@ -199,7 +204,7 @@ export function DailyChallengeResults({
                 className="font-semibold uppercase tracking-wider mt-1"
                 style={{ fontSize: '10px', color: 'var(--text-faint)' }}
               >
-                Solved
+                {gameType === 'trivia' ? 'Correct' : 'Solved'}
               </div>
             </div>
             {rank && score > 0 && (
@@ -352,7 +357,7 @@ export function DailyChallengeResults({
                   marginTop: 4,
                 }}
               >
-                Solved
+                {gameType === 'trivia' ? 'Correct' : 'Solved'}
               </div>
             </div>
             {rank && (

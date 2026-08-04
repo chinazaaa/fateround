@@ -6,7 +6,14 @@ import type { CrosswordClue } from '@/lib/crossword'
 // Game types eligible for the daily challenge
 // ---------------------------------------------------------------------------
 
-export const DAILY_CHALLENGE_GAME_TYPES = ['sudoku', 'word_hunt', 'crossword', 'word_search', 'word_scramble'] as const
+export const DAILY_CHALLENGE_GAME_TYPES = [
+  'sudoku',
+  'word_hunt',
+  'crossword',
+  'word_search',
+  'word_scramble',
+  'trivia',
+] as const
 
 export type DailyChallengeGameType = (typeof DAILY_CHALLENGE_GAME_TYPES)[number]
 
@@ -20,6 +27,7 @@ export const DAILY_GAME_SLUG_TO_TYPE: Record<string, DailyChallengeGameType> = {
   crossword: 'crossword',
   'word-search': 'word_search',
   'word-scramble': 'word_scramble',
+  trivia: 'trivia',
 }
 
 export const DAILY_GAME_TYPE_TO_SLUG: Record<DailyChallengeGameType, string> = {
@@ -28,6 +36,7 @@ export const DAILY_GAME_TYPE_TO_SLUG: Record<DailyChallengeGameType, string> = {
   crossword: 'crossword',
   word_search: 'word-search',
   word_scramble: 'word-scramble',
+  trivia: 'trivia',
 }
 
 export const DAILY_GAME_LABELS: Record<DailyChallengeGameType, string> = {
@@ -36,6 +45,7 @@ export const DAILY_GAME_LABELS: Record<DailyChallengeGameType, string> = {
   crossword: 'Crossword',
   word_search: 'Word Search',
   word_scramble: 'Word Scramble',
+  trivia: 'Trivia',
 }
 
 export const DAILY_GAME_EMOJIS: Record<DailyChallengeGameType, string> = {
@@ -44,16 +54,18 @@ export const DAILY_GAME_EMOJIS: Record<DailyChallengeGameType, string> = {
   crossword: '📝',
   word_search: '🔍',
   word_scramble: '🔀',
+  trivia: '🧠',
 }
 
 // Default timer per game (seconds). Time-first games get a countdown;
-// score-first (word_hunt) also has a timer since it's a timed race.
+// score-first (word_hunt, trivia) also has a timer since it's a timed race.
 export const DAILY_GAME_TIMER: Record<DailyChallengeGameType, number> = {
   sudoku: 300,
   word_hunt: 180,
   crossword: 300,
   word_search: 300,
   word_scramble: 300,
+  trivia: 90,
 }
 
 // Whether the primary metric is time (lower is better) or score (higher is better).
@@ -63,6 +75,7 @@ export const DAILY_GAME_PRIMARY_METRIC: Record<DailyChallengeGameType, 'time' | 
   crossword: 'time',
   word_search: 'time',
   word_scramble: 'time',
+  trivia: 'score',
 }
 
 // ---------------------------------------------------------------------------
@@ -150,6 +163,13 @@ export function stripSolution(
     // unscramble and reject rubbish, without shipping the answers. Server still re-validates.
     const solution = Array.isArray(puzzleData.solution) ? (puzzleData.solution as string[]) : []
     safe.answer_hashes = solution.map(hashWord)
+  }
+
+  if (gameType === 'trivia') {
+    // Strip correct_index from each question — the client doesn't need it during play.
+    // The server re-verifies on submit.
+    const questions = Array.isArray(safe.questions) ? (safe.questions as Record<string, unknown>[]) : []
+    safe.questions = questions.map(({ correct_index: _, ...rest }) => rest)
   }
 
   return safe

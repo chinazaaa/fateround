@@ -65,7 +65,8 @@ export function useDailyChallengeSession(gameType: DailyChallengeGameType): UseD
         })
 
         if (!res.ok) {
-          setError("Failed to load today's challenge")
+          const body = await res.json().catch(() => null)
+          setError(body?.error ?? "Failed to load today's challenge")
           setPhase('error')
           return
         }

@@ -159,6 +159,28 @@ function verifyWordScramble(
   }
 }
 
+function verifyTrivia(
+  puzzleData: Record<string, unknown>,
+  submission: Record<string, unknown>
+): VerifiedMetrics | { error: string } {
+  const solution = puzzleData.solution as number[]
+  const answers = submission.answers as Array<{ questionIndex: number; choiceIndex: number }>
+  if (!Array.isArray(answers)) return { error: 'Missing answers array' }
+  if (!Array.isArray(solution)) return { error: 'Missing solution' }
+
+  let correct = 0
+  for (const a of answers) {
+    if (solution[a.questionIndex] === a.choiceIndex) correct++
+  }
+
+  return {
+    rawPoints: correct * 100,
+    itemsSolved: correct,
+    itemsTotal: solution.length,
+    hintsUsed: 0,
+  }
+}
+
 function verifySubmission(
   gameType: DailyChallengeGameType,
   puzzleData: Record<string, unknown>,
@@ -175,6 +197,8 @@ function verifySubmission(
       return verifyWordSearch(puzzleData, submission)
     case 'word_scramble':
       return verifyWordScramble(puzzleData, submission)
+    case 'trivia':
+      return verifyTrivia(puzzleData, submission)
   }
 }
 
@@ -262,7 +286,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ gam
   // Word Hunt is a points game with no natural "complete" — rank/record it by raw points, not the
   // completion-based normalized score (which is tiny when there are hundreds of possible words).
   // normalized_score is still stored (its column is capped 0–1000); raw_points/best_score are not.
-  const isPointsGame = gameType === 'word_hunt'
+  const isPointsGame = gameType === 'word_hunt' || gameType === 'trivia'
   const boardScore = isPointsGame ? metrics.rawPoints : normalizedScore
 
   // Insert score (PK enforces one attempt)

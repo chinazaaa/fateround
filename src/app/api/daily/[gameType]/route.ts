@@ -59,6 +59,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ game
       generated = await generateDailyPuzzleFromContent(gameType, seed, adminRow.content)
     }
     if (!generated) {
+      if (gameType === 'trivia') {
+        return NextResponse.json(
+          { error: 'No trivia content for today — ask an admin to add questions' },
+          { status: 404 }
+        )
+      }
       generated = await generateDailyPuzzle(gameType, seed)
     }
     const { puzzleData, config } = generated
