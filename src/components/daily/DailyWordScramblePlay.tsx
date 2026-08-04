@@ -55,14 +55,12 @@ export function DailyWordScramblePlay({ puzzle, timer: maxSeconds, onSubmit }: D
     if (isTimeUp && !submitted) handleSubmitAll()
   }, [isTimeUp, submitted, handleSubmitAll])
 
-  // Auto-submit when all words solved
   useEffect(() => {
     if (solved.length === totalWords && totalWords > 0 && !submitted) {
       handleSubmitAll()
     }
   }, [solved.length, totalWords, submitted, handleSubmitAll])
 
-  // Find next unsolved index
   const findNextUnsolved = useCallback(
     (from: number) => {
       for (let i = 0; i < totalWords; i++) {
@@ -77,13 +75,11 @@ export function DailyWordScramblePlay({ puzzle, timer: maxSeconds, onSubmit }: D
   const handleGuessSubmit = useCallback(() => {
     if (!guess.trim() || submitted) return
 
-    // Accept the guess (server will verify at finish)
     const word = guess.trim()
     setSolved((prev) => [...prev, { index: currentIndex, word }])
     setGuess('')
     setShowHint(false)
 
-    // Move to next unsolved
     const next = findNextUnsolved(currentIndex + 1)
     if (next >= 0) setCurrentIndex(next)
 
@@ -111,26 +107,45 @@ export function DailyWordScramblePlay({ puzzle, timer: maxSeconds, onSubmit }: D
   return (
     <div className="space-y-4">
       {/* Timer + progress */}
-      <div className="flex items-center justify-between rounded-lg bg-base-200 px-4 py-2">
+      <div
+        className="flex items-center justify-between px-4 py-2.5"
+        style={{
+          background: 'var(--surface-sunken)',
+          borderRadius: 'var(--radius-md)',
+          border: '1px solid var(--border)',
+        }}
+      >
         <div>
-          <span className="text-sm font-medium text-base-content/60">Solved: </span>
-          <span className="font-bold">
+          <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>Solved: </span>
+          <span className="font-bold" style={{ fontFeatureSettings: '"tnum"' }}>
             {solved.length}/{totalWords}
           </span>
         </div>
-        <span className={`font-mono text-lg font-bold ${isTimeUp ? 'text-error' : ''}`}>{formatted}</span>
+        <span
+          className={`font-mono font-bold ${isTimeUp ? 'text-error' : ''}`}
+          style={{ fontSize: 'var(--text-lg)', fontFeatureSettings: '"tnum"' }}
+        >
+          {formatted}
+        </span>
       </div>
 
       {/* Current scramble */}
       {!allDone && !submitted && (
-        <div className="card bg-base-200">
-          <div className="card-body items-center text-center">
-            <div className="text-xs text-base-content/50 mb-1">
+        <div className="fr-card fr-card--xl">
+          <div className="flex flex-col items-center text-center">
+            <p
+              className="font-semibold uppercase tracking-wider mb-2"
+              style={{ fontSize: 'var(--text-2xs)', color: 'var(--text-faint)' }}
+            >
               Word {currentIndex + 1} of {totalWords}
-            </div>
-            <div className="text-3xl font-bold tracking-[0.3em] uppercase mb-4">{currentScramble}</div>
+            </p>
+            <div className="text-3xl font-bold tracking-[0.3em] uppercase mb-5">{currentScramble}</div>
 
-            {showHint && currentHint && <div className="text-sm text-base-content/60 mb-2">Hint: {currentHint}</div>}
+            {showHint && currentHint && (
+              <div className="mb-3" style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>
+                Hint: {currentHint}
+              </div>
+            )}
 
             <div className="flex gap-2 w-full max-w-xs">
               <input
@@ -142,22 +157,32 @@ export function DailyWordScramblePlay({ puzzle, timer: maxSeconds, onSubmit }: D
                   if (e.key === 'Enter') handleGuessSubmit()
                 }}
                 placeholder="Your answer..."
-                className="input input-bordered flex-1"
+                className="flex-1 px-4 py-2.5 outline-none"
+                style={{
+                  background: 'var(--surface-sunken)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 'var(--radius-md)',
+                  fontSize: 'var(--text-sm)',
+                }}
                 autoFocus
                 disabled={submitted}
               />
-              <button className="btn btn-primary" onClick={handleGuessSubmit} disabled={!guess.trim() || submitted}>
+              <button
+                className="fr-btn fr-btn--primary"
+                onClick={handleGuessSubmit}
+                disabled={!guess.trim() || submitted}
+              >
                 Go
               </button>
             </div>
 
-            <div className="flex gap-2 mt-2">
+            <div className="flex gap-3 mt-3">
               {!showHint && currentHint && (
-                <button className="btn btn-ghost btn-xs" onClick={handleShowHint}>
+                <button className="fr-btn fr-btn--ghost fr-btn--sm" onClick={handleShowHint}>
                   Show hint
                 </button>
               )}
-              <button className="btn btn-ghost btn-xs" onClick={handleSkip}>
+              <button className="fr-btn fr-btn--ghost fr-btn--sm" onClick={handleSkip}>
                 Skip
               </button>
             </div>
@@ -166,16 +191,23 @@ export function DailyWordScramblePlay({ puzzle, timer: maxSeconds, onSubmit }: D
       )}
 
       {/* Solved words */}
-      <div className="rounded-lg bg-base-200 p-3">
-        <div className="text-sm font-medium text-base-content/60 mb-2">Your answers</div>
-        <div className="flex flex-wrap gap-1">
+      <div className="fr-card !p-4">
+        <p
+          className="font-semibold uppercase tracking-wider mb-2"
+          style={{ fontSize: 'var(--text-2xs)', color: 'var(--text-faint)' }}
+        >
+          Your answers
+        </p>
+        <div className="flex flex-wrap gap-1.5">
           {solved.map((s, i) => (
-            <span key={i} className="badge badge-sm badge-primary">
+            <span key={i} className="fr-badge fr-badge--soft font-semibold">
               {s.word.toUpperCase()}
             </span>
           ))}
           {solved.length === 0 && (
-            <span className="text-sm text-base-content/40">Unscramble the letters to form words</span>
+            <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-faint)' }}>
+              Unscramble the letters to form words
+            </span>
           )}
         </div>
       </div>
@@ -183,7 +215,7 @@ export function DailyWordScramblePlay({ puzzle, timer: maxSeconds, onSubmit }: D
       {/* Submit button when all attempted */}
       {allDone && !submitted && (
         <div className="text-center">
-          <button className="btn btn-primary btn-lg" onClick={confirmAndSubmit}>
+          <button className="fr-btn fr-btn--primary fr-btn--lg" onClick={confirmAndSubmit}>
             Submit ({solved.length} words)
           </button>
         </div>

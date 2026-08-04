@@ -235,9 +235,21 @@ export function DailySudokuPlay({ puzzle, timer: maxSeconds, onSubmit }: DailySu
   return (
     <div className="space-y-4">
       {/* Timer bar */}
-      <div className="flex items-center justify-between rounded-lg bg-base-200 px-4 py-2">
-        <span className="text-sm font-medium text-base-content/60">Time remaining</span>
-        <span className={`font-mono text-lg font-bold ${isTimeUp ? 'text-error' : ''}`}>{formatted}</span>
+      <div
+        className="flex items-center justify-between px-4 py-2.5"
+        style={{
+          background: 'var(--surface-sunken)',
+          borderRadius: 'var(--radius-md)',
+          border: '1px solid var(--border)',
+        }}
+      >
+        <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>Time remaining</span>
+        <span
+          className={`font-mono font-bold ${isTimeUp ? 'text-error' : ''}`}
+          style={{ fontSize: 'var(--text-lg)', fontFeatureSettings: '"tnum"' }}
+        >
+          {formatted}
+        </span>
       </div>
 
       <SudokuBoard
@@ -258,7 +270,7 @@ export function DailySudokuPlay({ puzzle, timer: maxSeconds, onSubmit }: DailySu
       {/* Submit button */}
       {allFilled && !submitted && (
         <div className="text-center">
-          <button className="btn btn-primary btn-lg" onClick={confirmAndSubmit}>
+          <button className="fr-btn fr-btn--primary fr-btn--lg" onClick={confirmAndSubmit}>
             Submit Puzzle
           </button>
         </div>

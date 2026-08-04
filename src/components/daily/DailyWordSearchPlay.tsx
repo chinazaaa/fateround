@@ -97,14 +97,44 @@ export function DailyWordSearchPlay({ puzzle, timer: maxSeconds, onSubmit }: Dai
   return (
     <div className="space-y-4">
       {/* Timer + progress bar */}
-      <div className="flex items-center justify-between rounded-lg bg-base-200 px-4 py-2">
+      <div
+        className="flex items-center justify-between px-4 py-2.5"
+        style={{
+          background: 'var(--surface-sunken)',
+          borderRadius: 'var(--radius-md)',
+          border: '1px solid var(--border)',
+        }}
+      >
         <div>
-          <span className="text-sm font-medium text-base-content/60">Found: </span>
-          <span className="font-bold">
+          <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>Found: </span>
+          <span className="font-bold" style={{ fontFeatureSettings: '"tnum"' }}>
             {foundWords.length}/{totalWords}
           </span>
         </div>
-        <span className={`font-mono text-lg font-bold ${isTimeUp ? 'text-error' : ''}`}>{formatted}</span>
+        <span
+          className={`font-mono font-bold ${isTimeUp ? 'text-error' : ''}`}
+          style={{ fontSize: 'var(--text-lg)', fontFeatureSettings: '"tnum"' }}
+        >
+          {formatted}
+        </span>
+      </div>
+
+      {/* Word list — above the board so players can see target words */}
+      <div className="fr-card !p-4">
+        <div className="flex flex-wrap gap-1.5">
+          {(metadata.words ?? []).map((word, i) => {
+            const found = foundSet.has(word.toUpperCase())
+            return (
+              <span
+                key={i}
+                className={`fr-badge font-semibold ${found ? 'fr-badge--soft line-through' : ''}`}
+                style={!found ? { background: 'var(--surface-sunken)', color: 'var(--text-muted)' } : undefined}
+              >
+                {word}
+              </span>
+            )
+          })}
+        </div>
       </div>
 
       {/* Board */}
@@ -115,24 +145,9 @@ export function DailyWordSearchPlay({ puzzle, timer: maxSeconds, onSubmit }: Dai
         readOnly={submitted || isTimeUp}
       />
 
-      {/* Word list */}
-      <div className="rounded-lg bg-base-200 p-3">
-        <div className="flex flex-wrap gap-1">
-          {(metadata.words ?? []).map((word, i) => {
-            const found = foundSet.has(word.toUpperCase())
-            // A word search shows the words you're hunting for; found ones get struck through.
-            return (
-              <span key={i} className={`badge badge-sm ${found ? 'badge-primary line-through' : 'badge-ghost'}`}>
-                {word}
-              </span>
-            )
-          })}
-        </div>
-      </div>
-
       {!submitted && !isTimeUp && foundWords.length > 0 && foundWords.length < totalWords && (
         <div className="text-center">
-          <button className="btn btn-primary" onClick={confirmAndSubmit}>
+          <button className="fr-btn fr-btn--primary" onClick={confirmAndSubmit}>
             Submit ({foundWords.length}/{totalWords})
           </button>
         </div>

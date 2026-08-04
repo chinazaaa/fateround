@@ -45,14 +45,16 @@ export function DailyChallengeSection() {
       <div className="flex items-center justify-between mb-4">
         <div>
           <h2 className="text-lg font-bold">Daily Challenge</h2>
-          <p className="text-muted text-sm">Today&apos;s puzzles — one shot, one score</p>
+          <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+            Today&apos;s puzzles — one shot, one score
+          </p>
         </div>
-        <Link href="/daily" className="btn-secondary text-sm px-3 py-1.5 rounded-xl">
+        <Link href="/daily" className="fr-btn fr-btn--ghost fr-btn--sm">
           See all &rarr;
         </Link>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 animate-stagger">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
         {DAILY_CHALLENGE_GAME_TYPES.map((gt) => {
           const status = games.find((g) => g.gameType === gt)
           const played = status?.played ?? false
@@ -63,23 +65,23 @@ export function DailyChallengeSection() {
             <Link
               key={gt}
               href={`/daily/${slug}`}
-              className={`glass-card glass-card-interactive flex flex-col items-center text-center p-4 gap-1.5 ${loading ? 'animate-pulse' : ''}`}
+              className={`fr-card fr-card--interactive flex flex-col items-center text-center !p-4 gap-1.5 ${loading ? 'animate-pulse' : ''}`}
             >
-              <div
-                className="text-2xl"
-                style={{ filter: 'drop-shadow(0 4px 8px color-mix(in srgb, var(--primary) 20%, transparent))' }}
-              >
-                {DAILY_GAME_EMOJIS[gt]}
-              </div>
+              <div className="text-2xl">{DAILY_GAME_EMOJIS[gt]}</div>
               <div className="text-xs font-semibold">{DAILY_GAME_LABELS[gt]}</div>
               {!loading && (
                 <div className="mt-0.5">
                   {played && score !== null ? (
-                    <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-primary">
+                    <span className="fr-badge fr-badge--soft" style={{ fontSize: 'var(--text-2xs)' }}>
                       {score} pts
                     </span>
                   ) : (
-                    <span className="label-caps text-primary">Play</span>
+                    <span
+                      className="font-bold uppercase tracking-wider"
+                      style={{ fontSize: 'var(--text-2xs)', color: 'var(--primary)' }}
+                    >
+                      Play
+                    </span>
                   )}
                 </div>
               )}
