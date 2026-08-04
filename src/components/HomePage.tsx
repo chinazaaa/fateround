@@ -3,6 +3,7 @@ import { GAME_TYPE_OPTIONS, HOMEPAGE_FEATURED_GAMES, gameTypeConfig } from '@/li
 import { gameLandingSlug } from '@/lib/game-landing'
 import { HomePageHeroActions } from '@/components/HomePageHeroActions'
 import { HomePageJoinPanel } from '@/components/HomePageJoinPanel'
+import { DailyChallengeSection } from '@/components/daily/DailyChallengeSection'
 
 const displayFont = { fontFamily: 'var(--font-display)' }
 const JOIN_INPUT_ID = 'home-join-code'
@@ -44,6 +45,8 @@ export function HomePage() {
 
         <HomePageJoinPanel joinInputId={JOIN_INPUT_ID} />
       </section>
+
+      <DailyChallengeSection />
 
       <div className="mt-10 mb-4 flex items-baseline justify-between">
         <h2
