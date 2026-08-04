@@ -29,6 +29,7 @@ import { WORD_HUNT } from './system-trophies/word-hunt'
 import { WORD_RUSH } from './system-trophies/word-rush'
 import { WORD_SCRAMBLE } from './system-trophies/word-scramble'
 import { WORD_SEARCH } from './system-trophies/word-search'
+import { SNAKE_AND_LADDER } from './system-trophies/snake-and-ladder'
 
 /**
  * SYSTEM trophies — authored in code, against one game's own measurements.
@@ -89,6 +90,7 @@ const BY_GAME: Record<string, SystemTrophySpec[]> = {
   word_rush: WORD_RUSH,
   word_scramble: WORD_SCRAMBLE,
   word_search: WORD_SEARCH,
+  snake_and_ladder: SNAKE_AND_LADDER,
 }
 
 /**
