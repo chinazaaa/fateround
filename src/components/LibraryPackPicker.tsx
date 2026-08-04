@@ -2,6 +2,9 @@
 
 import { useEffect, useState } from 'react'
 
+// At or below this many collections, show tappable chips; above it, switch to a compact dropdown.
+const COLLECTION_CHIP_LIMIT = 6
+
 export type LibraryPackLite = {
   id: string
   title: string
@@ -88,37 +91,56 @@ function LibraryPackList({
     return p.title.toLowerCase().includes(q) || p.author_name.toLowerCase().includes(q)
   })
 
+  // Few collections → chips (discoverable, one tap). Many → a compact dropdown that scales
+  // without pushing the pack list down the screen.
+  const useDropdown = collectionOptions.length > COLLECTION_CHIP_LIMIT
+
   return (
     <div className="space-y-2">
-      {collectionOptions.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
-          <button
-            type="button"
-            onClick={() => setCollectionFilter(null)}
-            className={`rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${
-              collectionFilter === null
-                ? 'border-[var(--chip-active-border)] bg-[var(--chip-active-bg)] text-[var(--chip-active-text)]'
-                : 'border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--border-strong)]'
-            }`}
+      {collectionOptions.length > 0 &&
+        (useDropdown ? (
+          <select
+            value={collectionFilter ?? ''}
+            onChange={(e) => setCollectionFilter(e.target.value || null)}
+            aria-label="Filter by collection"
+            className="input-field w-full text-sm"
           >
-            All collections
-          </button>
-          {collectionOptions.map((c) => (
+            <option value="">All collections</option>
+            {collectionOptions.map((c) => (
+              <option key={c.slug} value={c.slug}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <div className="flex flex-wrap gap-1.5">
             <button
-              key={c.slug}
               type="button"
-              onClick={() => setCollectionFilter(c.slug)}
+              onClick={() => setCollectionFilter(null)}
               className={`rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${
-                collectionFilter === c.slug
+                collectionFilter === null
                   ? 'border-[var(--chip-active-border)] bg-[var(--chip-active-bg)] text-[var(--chip-active-text)]'
                   : 'border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--border-strong)]'
               }`}
             >
-              {c.name}
+              All collections
             </button>
-          ))}
-        </div>
-      )}
+            {collectionOptions.map((c) => (
+              <button
+                key={c.slug}
+                type="button"
+                onClick={() => setCollectionFilter(c.slug)}
+                className={`rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${
+                  collectionFilter === c.slug
+                    ? 'border-[var(--chip-active-border)] bg-[var(--chip-active-bg)] text-[var(--chip-active-text)]'
+                    : 'border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--border-strong)]'
+                }`}
+              >
+                {c.name}
+              </button>
+            ))}
+          </div>
+        ))}
       <div className="relative">
         <input
           type="search"
