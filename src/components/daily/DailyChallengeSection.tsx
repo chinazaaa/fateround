@@ -10,16 +10,19 @@ import {
   type DailyChallengeGameType,
 } from '@/lib/daily-challenge'
 import { authHeaders } from '@/lib/identity'
+import { hasDailyProgress } from '@/lib/daily-progress'
 
 interface GameStatus {
   gameType: DailyChallengeGameType
   played: boolean
   score: number | null
+  challengeId: string | null
 }
 
 export function DailyChallengeSection() {
   const [games, setGames] = useState<GameStatus[]>([])
   const [loading, setLoading] = useState(true)
+  const [startedIds, setStartedIds] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     async function load() {
@@ -30,7 +33,13 @@ export function DailyChallengeSection() {
         })
         if (!res.ok) return
         const data = await res.json()
-        setGames(data.games ?? [])
+        const loaded: GameStatus[] = data.games ?? []
+        setGames(loaded)
+        setStartedIds(
+          new Set(
+            loaded.filter((g) => g.challengeId && hasDailyProgress(g.challengeId)).map((g) => g.challengeId as string)
+          )
+        )
       } catch {
         // Silent fail — section just shows "Play" for everything
       } finally {
@@ -59,6 +68,7 @@ export function DailyChallengeSection() {
           const status = games.find((g) => g.gameType === gt)
           const played = status?.played ?? false
           const score = status?.score ?? null
+          const started = !played && !!status?.challengeId && startedIds.has(status.challengeId)
           const slug = DAILY_GAME_TYPE_TO_SLUG[gt]
 
           return (
@@ -80,7 +90,7 @@ export function DailyChallengeSection() {
                       className="font-bold uppercase tracking-wider"
                       style={{ fontSize: 'var(--text-2xs)', color: 'var(--primary)' }}
                     >
-                      Play
+                      {started ? 'Continue' : 'Play'}
                     </span>
                   )}
                 </div>

@@ -11,18 +11,22 @@ import {
   type DailyChallengeGameType,
 } from '@/lib/daily-challenge'
 import { authHeaders } from '@/lib/identity'
+import { hasDailyProgress } from '@/lib/daily-progress'
 
 interface GameStatus {
   gameType: DailyChallengeGameType
   available: boolean
   played: boolean
   score: number | null
+  challengeId: string | null
 }
 
 export function DailyHubClient() {
   const [games, setGames] = useState<GameStatus[]>([])
   const [challengeNumber, setChallengeNumber] = useState(0)
   const [loading, setLoading] = useState(true)
+  // Challenge ids with saved local progress → show "Continue". Computed after mount (localStorage).
+  const [startedIds, setStartedIds] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     async function load() {
@@ -33,8 +37,14 @@ export function DailyHubClient() {
         })
         if (!res.ok) return
         const data = await res.json()
-        setGames(data.games ?? [])
+        const loaded: GameStatus[] = data.games ?? []
+        setGames(loaded)
         setChallengeNumber(data.challengeNumber ?? 0)
+        setStartedIds(
+          new Set(
+            loaded.filter((g) => g.challengeId && hasDailyProgress(g.challengeId)).map((g) => g.challengeId as string)
+          )
+        )
       } catch {
         // Silent fail
       } finally {
@@ -96,6 +106,7 @@ export function DailyHubClient() {
               const status = games.find((g) => g.gameType === gt)
               const played = status?.played ?? false
               const score = status?.score ?? null
+              const started = !played && !!status?.challengeId && startedIds.has(status.challengeId)
               const slug = DAILY_GAME_TYPE_TO_SLUG[gt]
               const metric = DAILY_GAME_PRIMARY_METRIC[gt]
 
@@ -129,7 +140,7 @@ export function DailyHubClient() {
                         </div>
                       </div>
                     ) : (
-                      <span className="fr-btn fr-btn--primary fr-btn--sm">Play</span>
+                      <span className="fr-btn fr-btn--primary fr-btn--sm">{started ? 'Continue' : 'Play'}</span>
                     )}
                   </div>
                 </Link>

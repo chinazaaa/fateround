@@ -41,6 +41,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ game
         count: 'exact',
       })
       .eq('challenge_id', challenge.id)
+      // A 0 means they didn't really play (e.g. auto-submit at timeout with nothing done) — keep
+      // them off the board.
+      .gt('normalized_score', 0)
       .order('normalized_score', { ascending: false })
       .order('items_solved', { ascending: false })
       .order('time_seconds', { ascending: true })
@@ -104,6 +107,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ game
     .from('personal_bests')
     .select('profile_id, best_score, best_time, total_plays, best_date', { count: 'exact' })
     .eq('game_type', gameType)
+    .gt('best_score', 0)
     .order('best_score', { ascending: false })
     .order('best_time', { ascending: true })
     .range(offset, offset + limit - 1)

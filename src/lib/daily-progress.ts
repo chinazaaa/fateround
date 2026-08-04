@@ -46,6 +46,11 @@ export function saveDailyAnswers<T>(challengeId: string, answers: T): void {
   write<T>(challengeId, { startedAt, answers })
 }
 
+/** True if there's a saved (unsubmitted) attempt for this challenge — i.e. the player has started. */
+export function hasDailyProgress(challengeId: string): boolean {
+  return read(challengeId) !== null
+}
+
 export function clearDailyProgress(challengeId: string): void {
   if (typeof window === 'undefined' || !challengeId) return
   try {

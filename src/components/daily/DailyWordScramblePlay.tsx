@@ -124,10 +124,18 @@ export function DailyWordScramblePlay({
     if (next >= 0) setCurrentIndex(next)
   }, [currentIndex, submitted, findNextUnsolved])
 
-  const handleShowHint = useCallback(() => {
+  const handleShowHint = useCallback(async () => {
+    // Hints reduce the score (hintsUsed feeds the penalty in computeNormalizedScore), so confirm.
+    const ok = await confirm({
+      title: 'Reveal the hint?',
+      message: 'Using a hint lowers your score for this puzzle.',
+      confirmLabel: 'Show hint',
+      cancelLabel: 'Never mind',
+    })
+    if (!ok) return
     setShowHint(true)
     setHintsUsed((prev) => prev + 1)
-  }, [])
+  }, [confirm])
 
   const currentScramble = scrambles[currentIndex] ?? ''
   const currentHint = hints[currentIndex] ?? null
