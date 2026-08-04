@@ -74,7 +74,10 @@ export function getDailyChallengeSeed(gameType: string, date: string): number {
     hash ^= input.charCodeAt(i)
     hash = Math.imul(hash, 0x01000193) // FNV prime
   }
-  return hash >>> 0 // unsigned 32-bit
+  // Mask to 31 bits: keeps the seed in [0, 2^31-1] so it fits Postgres `integer` (int4). An
+  // unsigned 32-bit value (`>>> 0`) overflows int4 for ~half of inputs, which made the
+  // daily_challenges insert fail ("integer out of range") and surfaced as "Failed to load".
+  return hash & 0x7fffffff
 }
 
 // ---------------------------------------------------------------------------
