@@ -156,12 +156,12 @@ export function DailyChallengeResults({
           </div>
 
           {/* New personal best */}
-          {isNewBest && (
+          {isNewBest && score > 0 && (
             <div className="mt-2 fr-badge fr-badge--soft font-semibold animate-bounce">⭐ New Personal Best!</div>
           )}
 
           {/* Stats grid */}
-          <div className={`grid ${rank ? 'grid-cols-3' : 'grid-cols-2'} gap-3 w-full mt-5`}>
+          <div className={`grid ${rank && score > 0 ? 'grid-cols-3' : 'grid-cols-2'} gap-3 w-full mt-5`}>
             <div
               className="rounded-xl p-3 text-center"
               style={{ background: 'var(--surface-sunken)', border: '1px solid var(--border)' }}
@@ -190,7 +190,7 @@ export function DailyChallengeResults({
                 Solved
               </div>
             </div>
-            {rank && (
+            {rank && score > 0 && (
               <div
                 className="rounded-xl p-3 text-center"
                 style={{ background: 'var(--surface-sunken)', border: '1px solid var(--border)' }}
