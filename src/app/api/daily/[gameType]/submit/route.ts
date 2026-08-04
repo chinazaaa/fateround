@@ -6,6 +6,7 @@ import {
   computeNormalizedScore,
   watToday,
   DAILY_GAME_TIMER,
+  DAILY_GAME_PRIMARY_METRIC,
   type DailyChallengeGameType,
   type DailyScoreInput,
 } from '@/lib/daily-challenge'
@@ -204,6 +205,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ gam
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
   }
 
+  // Never trust the client's time: a negative or non-finite value would sort to the top of the
+  // fastest-time tie-breaker (and into personal_bests.best_time). Require a finite, non-negative
+  // number; the maxTime cap is applied afterwards.
+  if (typeof timeSeconds !== 'number' || !Number.isFinite(timeSeconds) || timeSeconds < 0) {
+    return NextResponse.json({ error: 'Invalid time' }, { status: 400 })
+  }
+
   const admin = getSupabaseAdmin()
   const today = watToday()
 
@@ -256,7 +264,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ gam
   // normalized_score is still stored (its column is capped 0–1000); raw_points/best_score are not.
   const isPointsGame = gameType === 'word_hunt'
   const boardScore = isPointsGame ? metrics.rawPoints : normalizedScore
-  const boardColumn = isPointsGame ? 'raw_points' : 'normalized_score'
 
   // Insert score (PK enforces one attempt)
   const { error: insertError } = await admin.from('daily_scores').insert({
@@ -316,14 +323,34 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ gam
       .eq('game_type', gameType)
   }
 
-  // Compute rank on the board metric (raw points for Word Hunt, normalized score otherwise).
-  const { count: betterCount } = await admin
-    .from('daily_scores')
-    .select('*', { count: 'exact', head: true })
-    .eq('challenge_id', challengeId)
-    .gt(boardColumn, boardScore)
-
-  const rank = (betterCount ?? 0) + 1
+  // Compute rank with the SAME comparator the leaderboard uses, so the finished-screen rank matches
+  // the board: time games by most-solved then fastest; Word Hunt by raw points.
+  let rank: number
+  if (DAILY_GAME_PRIMARY_METRIC[gameType] === 'time') {
+    const [{ count: moreSolved }, { count: sameSolvedFaster }] = await Promise.all([
+      admin
+        .from('daily_scores')
+        .select('*', { count: 'exact', head: true })
+        .eq('challenge_id', challengeId)
+        .gt('normalized_score', 0)
+        .gt('items_solved', metrics.itemsSolved),
+      admin
+        .from('daily_scores')
+        .select('*', { count: 'exact', head: true })
+        .eq('challenge_id', challengeId)
+        .gt('normalized_score', 0)
+        .eq('items_solved', metrics.itemsSolved)
+        .lt('time_seconds', clampedTime),
+    ])
+    rank = (moreSolved ?? 0) + (sameSolvedFaster ?? 0) + 1
+  } else {
+    const { count: betterCount } = await admin
+      .from('daily_scores')
+      .select('*', { count: 'exact', head: true })
+      .eq('challenge_id', challengeId)
+      .gt('raw_points', metrics.rawPoints)
+    rank = (betterCount ?? 0) + 1
+  }
 
   const { count: totalPlayers } = await admin
     .from('daily_scores')
