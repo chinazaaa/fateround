@@ -199,7 +199,7 @@ export function DailyChallengeResults({
                 className="font-semibold uppercase tracking-wider mt-1"
                 style={{ fontSize: '10px', color: 'var(--text-faint)' }}
               >
-                Solved
+                {gameType === 'trivia' ? 'Correct' : 'Solved'}
               </div>
             </div>
             {rank && score > 0 && (
@@ -352,7 +352,7 @@ export function DailyChallengeResults({
                   marginTop: 4,
                 }}
               >
-                Solved
+                {gameType === 'trivia' ? 'Correct' : 'Solved'}
               </div>
             </div>
             {rank && (
