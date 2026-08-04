@@ -8,6 +8,8 @@ import {
   stripSolution,
   watToday,
   getDailyChallengeNumber,
+  isDailyChallengeLive,
+  DAILY_CHALLENGE_LAUNCH,
   DAILY_GAME_TIMER,
   type DailyChallengeGameType,
 } from '@/lib/daily-challenge'
@@ -23,6 +25,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ game
   const gameType: DailyChallengeGameType = rawGameType
 
   const today = watToday()
+
+  // Before launch: report dormant and do NOT create a challenge row (keeps pre-launch days off the
+  // board). The client shows a "starts on <date>" screen.
+  if (!isDailyChallengeLive(today)) {
+    return NextResponse.json({ notLive: true, launchDate: DAILY_CHALLENGE_LAUNCH }, { status: 200 })
+  }
+
   const admin = getSupabaseAdmin()
 
   // Try to load today's challenge (maybeSingle: a missing row is expected before lazy creation,

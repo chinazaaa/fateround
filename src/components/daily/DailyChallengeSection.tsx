@@ -8,6 +8,7 @@ import {
   DAILY_GAME_EMOJIS,
   DAILY_GAME_TYPE_TO_SLUG,
   DAILY_GAME_TIMER,
+  isDailyChallengeLive,
   type DailyChallengeGameType,
 } from '@/lib/daily-challenge'
 import { authHeaders } from '@/lib/identity'
@@ -51,6 +52,9 @@ export function DailyChallengeSection() {
     }
     load()
   }, [])
+
+  // Hidden from the homepage until launch day.
+  if (!isDailyChallengeLive()) return null
 
   return (
     <section className="mt-10 mb-6">

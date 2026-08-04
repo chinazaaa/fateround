@@ -9,8 +9,11 @@ import {
   DAILY_GAME_TYPE_TO_SLUG,
   DAILY_GAME_PRIMARY_METRIC,
   DAILY_GAME_TIMER,
+  DAILY_CHALLENGE_LAUNCH,
+  isDailyChallengeLive,
   type DailyChallengeGameType,
 } from '@/lib/daily-challenge'
+import { formatDayLabel } from '@/lib/community-dates'
 import { authHeaders } from '@/lib/identity'
 import { getDailyStartedAt } from '@/lib/daily-progress'
 
@@ -60,6 +63,21 @@ export function DailyHubClient() {
   }, [])
 
   const completedCount = games.filter((g) => g.played).length
+
+  // Dormant before launch — the code can ship early without the challenge going live.
+  if (!isDailyChallengeLive()) {
+    return (
+      <div className="mx-auto max-w-lg px-4 py-16 text-center">
+        <div className="text-4xl mb-3">🗓️</div>
+        <h1 className="font-bold" style={{ fontSize: 'var(--text-2xl)', fontFamily: 'var(--font-display)' }}>
+          Daily Challenge starts {formatDayLabel(DAILY_CHALLENGE_LAUNCH)}
+        </h1>
+        <p className="mt-2" style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>
+          Five puzzles a day, same for everyone, one shot each. Come back on launch day!
+        </p>
+      </div>
+    )
+  }
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-8">

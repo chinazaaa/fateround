@@ -1,5 +1,7 @@
 'use client'
 
+import Link from 'next/link'
+import { formatDayLabel } from '@/lib/community-dates'
 import { useDailyChallengeSession } from '@/hooks/useDailyChallengeSession'
 import { DailyChallengeResults } from './DailyChallengeResults'
 import { DailySudokuPlay } from './DailySudokuPlay'
@@ -35,6 +37,23 @@ function ErrorState({ error }: { error: string | null }) {
       <p className="mt-2" style={{ color: 'var(--text-muted)' }}>
         {error ?? 'Please try again later.'}
       </p>
+    </div>
+  )
+}
+
+function NotLiveState({ gameType, launchDate }: { gameType: DailyChallengeGameType; launchDate: string | null }) {
+  return (
+    <div className="mx-auto max-w-lg px-4 py-16 text-center">
+      <div className="text-4xl mb-3">{DAILY_GAME_EMOJIS[gameType]}</div>
+      <h1 className="font-bold" style={{ fontSize: 'var(--text-xl)' }}>
+        Daily Challenge starts {launchDate ? formatDayLabel(launchDate) : 'soon'}
+      </h1>
+      <p className="mt-2" style={{ color: 'var(--text-muted)' }}>
+        Come back on launch day for Daily {DAILY_GAME_LABELS[gameType]} — same puzzle for everyone, one attempt.
+      </p>
+      <Link href="/games" className="fr-btn fr-btn--secondary fr-btn--sm mt-6 inline-block">
+        Browse games
+      </Link>
     </div>
   )
 }
@@ -87,9 +106,11 @@ function PlaySurface({
 }
 
 export function DailyChallengeGame({ gameType }: { gameType: DailyChallengeGameType }) {
-  const { phase, challengeData, result, previousScore, error, submitResult } = useDailyChallengeSession(gameType)
+  const { phase, challengeData, result, previousScore, error, launchDate, submitResult } =
+    useDailyChallengeSession(gameType)
 
   if (phase === 'loading') return <LoadingState gameType={gameType} />
+  if (phase === 'notLive') return <NotLiveState gameType={gameType} launchDate={launchDate} />
   if (phase === 'error') return <ErrorState error={error} />
 
   if (phase === 'results' || phase === 'submitting') {
