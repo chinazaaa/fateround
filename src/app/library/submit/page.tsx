@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState, useRef } from 'react'
+import { useEffect, useMemo, useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { PageShell, Field, PrimaryBtn } from '@/components/ui/PageShell'
 import { Modal } from '@/components/ui/Modal'
@@ -349,6 +349,8 @@ export default function SubmitPackPage() {
   const [description, setDescription] = useState('')
   const [difficulty, setDifficulty] = useState<DifficultyTag | null>(null)
   const [vibeTags, setVibeTags] = useState<Set<VibeTag>>(new Set())
+  const [collections, setCollections] = useState<{ id: string; name: string }[]>([])
+  const [collectionIds, setCollectionIds] = useState<Set<string>>(new Set())
   const [validation, setValidation] = useState<ValidationResult | null>(null)
   const [fileName, setFileName] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -357,6 +359,25 @@ export default function SubmitPackPage() {
   const [pickerOpen, setPickerOpen] = useState(true)
   const [pickerSearch, setPickerSearch] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
+
+  // Active collections the submitter can suggest. The pack is created as `pending`, so it only
+  // shows in a collection publicly once an admin approves it — they can also re-pick then.
+  useEffect(() => {
+    fetch('/api/collections')
+      .then((r) => r.json())
+      .then((d) =>
+        setCollections((d.collections ?? []).map((c: { id: string; name: string }) => ({ id: c.id, name: c.name })))
+      )
+      .catch(() => setCollections([]))
+  }, [])
+
+  const toggleCollection = (id: string) =>
+    setCollectionIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
 
   const pickerMatches = useMemo(() => {
     const q = pickerSearch.trim().toLowerCase()
@@ -419,6 +440,7 @@ export default function SubmitPackPage() {
           description: description.trim() || undefined,
           questions: validation.questions,
           tags,
+          collection_ids: Array.from(collectionIds),
         }),
       })
       const data = await res.json()
@@ -457,6 +479,7 @@ export default function SubmitPackPage() {
                 setDescription('')
                 setDifficulty(null)
                 setVibeTags(new Set())
+                setCollectionIds(new Set())
                 setValidation(null)
                 setFileName('')
                 setSubmitError(null)
@@ -608,6 +631,33 @@ export default function SubmitPackPage() {
               ))}
             </div>
           </div>
+
+          {collections.length > 0 && (
+            <div className="space-y-3">
+              <div>
+                <p className="text-sm font-medium text-muted">Collections (optional)</p>
+                <p className="text-faint text-xs mt-0.5">
+                  Suggest where this pack belongs. It only appears in a collection after we approve it.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {collections.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => toggleCollection(c.id)}
+                    className={`rounded-full border px-3 py-1 text-xs font-medium transition-all ${
+                      collectionIds.has(c.id)
+                        ? 'border-[var(--chip-active-border)] bg-[var(--chip-active-bg)] text-[var(--chip-active-text)]'
+                        : 'border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--border-strong)]'
+                    }`}
+                  >
+                    {c.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="space-y-2">
             <div className="flex items-center justify-between">
