@@ -6,20 +6,23 @@ import { useDailyChallengeTimer } from '@/hooks/useDailyChallengeTimer'
 import { hashWord } from '@/lib/daily-word-hash'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { DAILY_SUBMIT_CONFIRM } from '@/components/daily/daily-submit-confirm'
+import { getOrCreateStartedAt, loadDailyAnswers, saveDailyAnswers, clearDailyProgress } from '@/lib/daily-progress'
 import type { CrosswordMetadata } from '@/lib/crossword'
 
 interface DailyCrosswordPlayProps {
+  challengeId: string
   puzzle: Record<string, unknown>
   timer: number
   onSubmit: (payload: { timeSeconds: number; submission: Record<string, unknown> }) => void
 }
 
-export function DailyCrosswordPlay({ puzzle, timer: maxSeconds, onSubmit }: DailyCrosswordPlayProps) {
+export function DailyCrosswordPlay({ challengeId, puzzle, timer: maxSeconds, onSubmit }: DailyCrosswordPlayProps) {
   const metadata = puzzle.metadata as CrosswordMetadata
   const size = metadata.size
 
-  const [letterGrid, setLetterGrid] = useState<string[][]>(() =>
-    Array.from({ length: size }, () => Array(size).fill(''))
+  const [startAtMs] = useState(() => getOrCreateStartedAt(challengeId))
+  const [letterGrid, setLetterGrid] = useState<string[][]>(
+    () => loadDailyAnswers<string[][]>(challengeId) ?? Array.from({ length: size }, () => Array(size).fill(''))
   )
   const [selectedCell, setSelectedCell] = useState<[number, number] | null>(null)
   const [direction, setDirection] = useState<'across' | 'down'>('across')
@@ -28,10 +31,16 @@ export function DailyCrosswordPlay({ puzzle, timer: maxSeconds, onSubmit }: Dail
   const submitRef = useRef(false)
   const { confirm } = useConfirm()
 
+  // Persist the grid so leaving and returning restores progress (timer keeps running via startAtMs).
+  useEffect(() => {
+    if (!submitted) saveDailyAnswers(challengeId, letterGrid)
+  }, [challengeId, letterGrid, submitted])
+
   const { elapsed, formatted, isTimeUp } = useDailyChallengeTimer({
     mode: 'countdown',
     maxSeconds,
     running: !submitted,
+    startAtMs,
   })
 
   // Count fillable cells and filled cells
@@ -87,6 +96,7 @@ export function DailyCrosswordPlay({ puzzle, timer: maxSeconds, onSubmit }: Dail
     if (submitRef.current) return
     submitRef.current = true
     setSubmitted(true)
+    clearDailyProgress(challengeId)
 
     const cells: Array<{ row: number; col: number; letter: string }> = []
     for (let r = 0; r < size; r++) {
@@ -101,7 +111,7 @@ export function DailyCrosswordPlay({ puzzle, timer: maxSeconds, onSubmit }: Dail
       timeSeconds: elapsed,
       submission: { cells, hintsUsed },
     })
-  }, [metadata, letterGrid, size, elapsed, hintsUsed, onSubmit])
+  }, [metadata, letterGrid, size, elapsed, hintsUsed, onSubmit, challengeId])
 
   const confirmAndSubmit = useCallback(async () => {
     if (await confirm(DAILY_SUBMIT_CONFIRM)) handleSubmit()
@@ -115,12 +125,22 @@ export function DailyCrosswordPlay({ puzzle, timer: maxSeconds, onSubmit }: Dail
     (row: number, col: number) => {
       if (submitted || metadata.blocked[row][col]) return
       if (selectedCell && selectedCell[0] === row && selectedCell[1] === col) {
+        // Re-tapping the same cell flips orientation (only meaningful where both words cross).
         setDirection((d) => (d === 'across' ? 'down' : 'across'))
-      } else {
-        setSelectedCell([row, col])
+        return
       }
+      setSelectedCell([row, col])
+      // Point the cursor along the word this cell actually belongs to, so typing auto-advances
+      // correctly (a down-only cell shouldn't try to step sideways into a block).
+      const hasAcross =
+        (col > 0 && !metadata.blocked[row][col - 1]) || (col < size - 1 && !metadata.blocked[row][col + 1])
+      const hasDown =
+        (row > 0 && !metadata.blocked[row - 1][col]) || (row < size - 1 && !metadata.blocked[row + 1][col])
+      if (hasAcross && !hasDown) setDirection('across')
+      else if (hasDown && !hasAcross) setDirection('down')
+      // crossing cell (both) → keep current direction; re-tap to flip
     },
-    [selectedCell, submitted, metadata]
+    [selectedCell, submitted, metadata, size]
   )
 
   // Active cells highlight for current word

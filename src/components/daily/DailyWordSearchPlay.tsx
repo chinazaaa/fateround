@@ -5,30 +5,41 @@ import { WordSearchBoard } from '@/components/word-search/WordSearchBoard'
 import { useDailyChallengeTimer } from '@/hooks/useDailyChallengeTimer'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { DAILY_SUBMIT_CONFIRM } from '@/components/daily/daily-submit-confirm'
+import { getOrCreateStartedAt, loadDailyAnswers, saveDailyAnswers, clearDailyProgress } from '@/lib/daily-progress'
 import type { WordSearchMetadata } from '@/lib/word-search'
 
 interface DailyWordSearchPlayProps {
+  challengeId: string
   puzzle: Record<string, unknown>
   timer: number
   onSubmit: (payload: { timeSeconds: number; submission: Record<string, unknown> }) => void
 }
 
-export function DailyWordSearchPlay({ puzzle, timer: maxSeconds, onSubmit }: DailyWordSearchPlayProps) {
+type WordSearchProgress = { foundWords: string[]; myFoundCells: boolean[][] }
+
+export function DailyWordSearchPlay({ challengeId, puzzle, timer: maxSeconds, onSubmit }: DailyWordSearchPlayProps) {
   const metadata = puzzle.metadata as WordSearchMetadata
   const totalWords = metadata.words?.length ?? 0
 
-  const [foundWords, setFoundWords] = useState<string[]>([])
-  const [myFoundCells, setMyFoundCells] = useState<boolean[][]>(() =>
-    Array.from({ length: metadata.size }, () => Array(metadata.size).fill(false))
+  const saved = loadDailyAnswers<WordSearchProgress>(challengeId)
+  const [startAtMs] = useState(() => getOrCreateStartedAt(challengeId))
+  const [foundWords, setFoundWords] = useState<string[]>(saved?.foundWords ?? [])
+  const [myFoundCells, setMyFoundCells] = useState<boolean[][]>(
+    () => saved?.myFoundCells ?? Array.from({ length: metadata.size }, () => Array(metadata.size).fill(false))
   )
   const [submitted, setSubmitted] = useState(false)
   const submitRef = useRef(false)
   const { confirm } = useConfirm()
 
+  useEffect(() => {
+    if (!submitted) saveDailyAnswers<WordSearchProgress>(challengeId, { foundWords, myFoundCells })
+  }, [challengeId, foundWords, myFoundCells, submitted])
+
   const { elapsed, formatted, isTimeUp } = useDailyChallengeTimer({
     mode: 'countdown',
     maxSeconds,
     running: !submitted,
+    startAtMs,
   })
 
   const wordsSet = useMemo(() => new Set(metadata.words?.map((w) => w.toUpperCase()) ?? []), [metadata.words])
@@ -38,11 +49,12 @@ export function DailyWordSearchPlay({ puzzle, timer: maxSeconds, onSubmit }: Dai
     if (submitRef.current) return
     submitRef.current = true
     setSubmitted(true)
+    clearDailyProgress(challengeId)
     onSubmit({
       timeSeconds: elapsed,
       submission: { words: foundWords, hintsUsed: 0 },
     })
-  }, [foundWords, elapsed, onSubmit])
+  }, [foundWords, elapsed, onSubmit, challengeId])
 
   const confirmAndSubmit = useCallback(async () => {
     if (await confirm(DAILY_SUBMIT_CONFIRM)) handleSubmit()

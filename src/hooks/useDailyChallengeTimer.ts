@@ -6,6 +6,12 @@ interface DailyChallengeTimerOptions {
   mode: 'countup' | 'countdown'
   maxSeconds: number
   running: boolean
+  /**
+   * Epoch-ms the attempt started. When provided (from persisted daily progress), the clock is pure
+   * wall-clock from that instant, so it keeps running across reloads / navigation instead of
+   * resetting. Omit to start from mount.
+   */
+  startAtMs?: number
 }
 
 interface DailyChallengeTimerResult {
@@ -25,49 +31,32 @@ export function useDailyChallengeTimer({
   mode,
   maxSeconds,
   running,
+  startAtMs,
 }: DailyChallengeTimerOptions): DailyChallengeTimerResult {
   const [elapsed, setElapsed] = useState(0)
-  // Seconds banked from completed running segments, plus the wall-clock start of the current one.
-  // Kept in refs so the ticking effect does NOT depend on `elapsed` — depending on it tore down
-  // and recreated the interval every second, which reset the start time and pinned the clock.
-  const accumulatedRef = useRef(0)
-  const segmentStartRef = useRef<number | null>(null)
+  // Wall-clock from a fixed start instant. `startAtMs` (persisted) keeps the clock honest across
+  // reloads; without it we capture mount time once. Kept in a ref so the interval isn't torn down
+  // and recreated each tick (which would reset the start and pin the clock).
+  const startRef = useRef<number | null>(startAtMs ?? null)
 
   useEffect(() => {
     if (!running) return
 
-    const bankSegment = () => {
-      if (segmentStartRef.current !== null) {
-        accumulatedRef.current += Math.floor((Date.now() - segmentStartRef.current) / 1000)
-        segmentStartRef.current = null
-      }
-    }
-
-    // Begin (or resume) a running segment.
-    if (segmentStartRef.current === null) segmentStartRef.current = Date.now()
+    if (startAtMs != null) startRef.current = startAtMs
+    else if (startRef.current === null) startRef.current = Date.now()
 
     const tick = () => {
-      if (segmentStartRef.current === null) return
-      const total = accumulatedRef.current + Math.floor((Date.now() - segmentStartRef.current) / 1000)
+      const start = startRef.current
+      if (start === null) return
+      const total = Math.max(0, Math.floor((Date.now() - start) / 1000))
       setElapsed(mode === 'countdown' ? Math.min(total, maxSeconds) : total)
     }
 
-    // Pause while the tab is hidden; resume on return.
-    const onVisibility = () => {
-      if (document.hidden) bankSegment()
-      else if (segmentStartRef.current === null) segmentStartRef.current = Date.now()
-    }
-
     const id = setInterval(tick, 1000)
-    document.addEventListener('visibilitychange', onVisibility)
     tick()
 
-    return () => {
-      clearInterval(id)
-      document.removeEventListener('visibilitychange', onVisibility)
-      bankSegment() // preserve progress if paused via `running` (e.g. on submit)
-    }
-  }, [running, mode, maxSeconds])
+    return () => clearInterval(id)
+  }, [running, mode, maxSeconds, startAtMs])
 
   const remaining = Math.max(0, maxSeconds - elapsed)
   const isTimeUp = mode === 'countdown' && remaining <= 0

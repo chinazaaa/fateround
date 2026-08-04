@@ -7,7 +7,12 @@ import { DailyWordHuntPlay } from './DailyWordHuntPlay'
 import { DailyWordSearchPlay } from './DailyWordSearchPlay'
 import { DailyCrosswordPlay } from './DailyCrosswordPlay'
 import { DailyWordScramblePlay } from './DailyWordScramblePlay'
-import { DAILY_GAME_LABELS, DAILY_GAME_EMOJIS, type DailyChallengeGameType } from '@/lib/daily-challenge'
+import {
+  DAILY_GAME_LABELS,
+  DAILY_GAME_EMOJIS,
+  DAILY_GAME_TIMER,
+  type DailyChallengeGameType,
+} from '@/lib/daily-challenge'
 
 function LoadingState({ gameType }: { gameType: DailyChallengeGameType }) {
   return (
@@ -36,23 +41,36 @@ function ErrorState({ error }: { error: string | null }) {
 
 function PlaySurface({
   gameType,
+  challengeId,
   puzzle,
   config,
   onSubmit,
 }: {
   gameType: DailyChallengeGameType
+  challengeId: string
   puzzle: Record<string, unknown>
   config: Record<string, unknown>
   onSubmit: (payload: { timeSeconds: number; submission: Record<string, unknown> }) => void
 }) {
-  const timer = (config.timer as number) ?? 300
+  // Prefer the code constant so a timer change applies immediately, even to challenges whose stored
+  // config.timer was baked at an older value (and to stay in sync with the submit route's scoring,
+  // which uses DAILY_GAME_TIMER). Falls back to config for safety.
+  const timer = DAILY_GAME_TIMER[gameType] ?? (config.timer as number) ?? 300
 
   switch (gameType) {
     case 'sudoku':
-      return <DailySudokuPlay puzzle={puzzle.puzzle as number[][]} timer={timer} onSubmit={onSubmit} />
+      return (
+        <DailySudokuPlay
+          challengeId={challengeId}
+          puzzle={puzzle.puzzle as number[][]}
+          timer={timer}
+          onSubmit={onSubmit}
+        />
+      )
     case 'word_hunt':
       return (
         <DailyWordHuntPlay
+          challengeId={challengeId}
           grid={puzzle.grid as string[][]}
           validWordHashes={(puzzle.valid_word_hashes as string[]) ?? []}
           timer={timer}
@@ -60,11 +78,11 @@ function PlaySurface({
         />
       )
     case 'word_search':
-      return <DailyWordSearchPlay puzzle={puzzle} timer={timer} onSubmit={onSubmit} />
+      return <DailyWordSearchPlay challengeId={challengeId} puzzle={puzzle} timer={timer} onSubmit={onSubmit} />
     case 'crossword':
-      return <DailyCrosswordPlay puzzle={puzzle} timer={timer} onSubmit={onSubmit} />
+      return <DailyCrosswordPlay challengeId={challengeId} puzzle={puzzle} timer={timer} onSubmit={onSubmit} />
     case 'word_scramble':
-      return <DailyWordScramblePlay puzzle={puzzle} timer={timer} onSubmit={onSubmit} />
+      return <DailyWordScramblePlay challengeId={challengeId} puzzle={puzzle} timer={timer} onSubmit={onSubmit} />
   }
 }
 
@@ -100,6 +118,7 @@ export function DailyChallengeGame({ gameType }: { gameType: DailyChallengeGameT
 
       <PlaySurface
         gameType={gameType}
+        challengeId={challengeData.challengeId}
         puzzle={challengeData.puzzle}
         config={challengeData.config}
         onSubmit={submitResult}

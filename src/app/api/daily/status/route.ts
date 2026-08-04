@@ -46,6 +46,8 @@ export async function GET(req: NextRequest) {
       available: !!challenge,
       played: !!score,
       score: score?.normalized_score ?? null,
+      // Lets the client show "Continue" when there's saved local progress for this challenge.
+      challengeId: challenge?.id ?? null,
     }
   })
 

@@ -49,9 +49,9 @@ export const DAILY_GAME_EMOJIS: Record<DailyChallengeGameType, string> = {
 // Default timer per game (seconds). Time-first games get a countdown;
 // score-first (word_hunt) also has a timer since it's a timed race.
 export const DAILY_GAME_TIMER: Record<DailyChallengeGameType, number> = {
-  sudoku: 900,
+  sudoku: 300,
   word_hunt: 180,
-  crossword: 600,
+  crossword: 300,
   word_search: 300,
   word_scramble: 300,
 }

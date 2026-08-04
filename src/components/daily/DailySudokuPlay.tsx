@@ -5,8 +5,10 @@ import { SudokuBoard } from '@/components/sudoku/SudokuBoard'
 import { useDailyChallengeTimer } from '@/hooks/useDailyChallengeTimer'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { DAILY_SUBMIT_CONFIRM } from '@/components/daily/daily-submit-confirm'
+import { getOrCreateStartedAt, loadDailyAnswers, saveDailyAnswers, clearDailyProgress } from '@/lib/daily-progress'
 
 interface DailySudokuPlayProps {
+  challengeId: string
   puzzle: number[][]
   timer: number
   onSubmit: (payload: { timeSeconds: number; submission: Record<string, unknown> }) => void
@@ -22,8 +24,11 @@ function makeEmptyBoolGrid(): boolean[][] {
   return Array.from({ length: 9 }, () => Array(9).fill(false))
 }
 
-export function DailySudokuPlay({ puzzle, timer: maxSeconds, onSubmit }: DailySudokuPlayProps) {
-  const [userGrid, setUserGrid] = useState<number[][]>(makeEmptyGrid)
+export function DailySudokuPlay({ challengeId, puzzle, timer: maxSeconds, onSubmit }: DailySudokuPlayProps) {
+  const [startAtMs] = useState(() => getOrCreateStartedAt(challengeId))
+  const [userGrid, setUserGrid] = useState<number[][]>(
+    () => loadDailyAnswers<number[][]>(challengeId) ?? makeEmptyGrid()
+  )
   const [wrongDrafts, setWrongDrafts] = useState<boolean[][]>(makeEmptyBoolGrid)
   const [undoStack, setUndoStack] = useState<DraftUndo[]>([])
   const [selectedCell, setSelectedCell] = useState<[number, number] | null>(null)
@@ -32,10 +37,15 @@ export function DailySudokuPlay({ puzzle, timer: maxSeconds, onSubmit }: DailySu
   const submitRef = useRef(false)
   const { confirm } = useConfirm()
 
+  useEffect(() => {
+    if (!submitted) saveDailyAnswers(challengeId, userGrid)
+  }, [challengeId, userGrid, submitted])
+
   const { elapsed, formatted, isTimeUp } = useDailyChallengeTimer({
     mode: 'countdown',
     maxSeconds,
     running: !submitted,
+    startAtMs,
   })
 
   // Count filled cells for completion percent
@@ -54,6 +64,7 @@ export function DailySudokuPlay({ puzzle, timer: maxSeconds, onSubmit }: DailySu
     if (submitRef.current) return
     submitRef.current = true
     setSubmitted(true)
+    clearDailyProgress(challengeId)
 
     const cells: Array<{ row: number; col: number; value: number }> = []
     for (let r = 0; r < 9; r++) {
@@ -68,7 +79,7 @@ export function DailySudokuPlay({ puzzle, timer: maxSeconds, onSubmit }: DailySu
       timeSeconds: elapsed,
       submission: { cells },
     })
-  }, [puzzle, userGrid, elapsed, onSubmit])
+  }, [puzzle, userGrid, elapsed, onSubmit, challengeId])
 
   const confirmAndSubmit = useCallback(async () => {
     if (await confirm(DAILY_SUBMIT_CONFIRM)) handleSubmit()

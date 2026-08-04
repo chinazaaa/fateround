@@ -4,35 +4,63 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import { useDailyChallengeTimer } from '@/hooks/useDailyChallengeTimer'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { DAILY_SUBMIT_CONFIRM } from '@/components/daily/daily-submit-confirm'
+import { getOrCreateStartedAt, loadDailyAnswers, saveDailyAnswers, clearDailyProgress } from '@/lib/daily-progress'
 import type { WordScrambleMetadata } from '@/lib/word-scramble'
 
 interface DailyWordScramblePlayProps {
+  challengeId: string
   puzzle: Record<string, unknown>
   timer: number
   onSubmit: (payload: { timeSeconds: number; submission: Record<string, unknown> }) => void
 }
 
-export function DailyWordScramblePlay({ puzzle, timer: maxSeconds, onSubmit }: DailyWordScramblePlayProps) {
+// `skipped` is a Set, which JSON can't serialize — persist it as an array.
+type ScrambleProgress = {
+  solved: Array<{ index: number; word: string }>
+  skipped: number[]
+  hintsUsed: number
+  currentIndex: number
+}
+
+export function DailyWordScramblePlay({
+  challengeId,
+  puzzle,
+  timer: maxSeconds,
+  onSubmit,
+}: DailyWordScramblePlayProps) {
   const metadata = puzzle.metadata as WordScrambleMetadata
   const scrambles = metadata.scrambles ?? []
   const hints = metadata.hints ?? []
   const totalWords = scrambles.length
 
-  const [currentIndex, setCurrentIndex] = useState(0)
+  const savedProgress = loadDailyAnswers<ScrambleProgress>(challengeId)
+  const [startAtMs] = useState(() => getOrCreateStartedAt(challengeId))
+  const [currentIndex, setCurrentIndex] = useState(savedProgress?.currentIndex ?? 0)
   const [guess, setGuess] = useState('')
-  const [solved, setSolved] = useState<Array<{ index: number; word: string }>>([])
-  const [skipped, setSkipped] = useState<Set<number>>(new Set())
+  const [solved, setSolved] = useState<Array<{ index: number; word: string }>>(savedProgress?.solved ?? [])
+  const [skipped, setSkipped] = useState<Set<number>>(() => new Set(savedProgress?.skipped ?? []))
   const [showHint, setShowHint] = useState(false)
-  const [hintsUsed, setHintsUsed] = useState(0)
+  const [hintsUsed, setHintsUsed] = useState(savedProgress?.hintsUsed ?? 0)
   const [submitted, setSubmitted] = useState(false)
   const submitRef = useRef(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const { confirm } = useConfirm()
 
+  useEffect(() => {
+    if (!submitted)
+      saveDailyAnswers<ScrambleProgress>(challengeId, {
+        solved,
+        skipped: [...skipped],
+        hintsUsed,
+        currentIndex,
+      })
+  }, [challengeId, solved, skipped, hintsUsed, currentIndex, submitted])
+
   const { elapsed, formatted, isTimeUp } = useDailyChallengeTimer({
     mode: 'countdown',
     maxSeconds,
     running: !submitted,
+    startAtMs,
   })
 
   const solvedIndices = new Set(solved.map((s) => s.index))
@@ -41,11 +69,12 @@ export function DailyWordScramblePlay({ puzzle, timer: maxSeconds, onSubmit }: D
     if (submitRef.current) return
     submitRef.current = true
     setSubmitted(true)
+    clearDailyProgress(challengeId)
     onSubmit({
       timeSeconds: elapsed,
       submission: { answers: solved, hintsUsed },
     })
-  }, [solved, elapsed, hintsUsed, onSubmit])
+  }, [solved, elapsed, hintsUsed, onSubmit, challengeId])
 
   const confirmAndSubmit = useCallback(async () => {
     if (await confirm(DAILY_SUBMIT_CONFIRM)) handleSubmitAll()
@@ -95,10 +124,18 @@ export function DailyWordScramblePlay({ puzzle, timer: maxSeconds, onSubmit }: D
     if (next >= 0) setCurrentIndex(next)
   }, [currentIndex, submitted, findNextUnsolved])
 
-  const handleShowHint = useCallback(() => {
+  const handleShowHint = useCallback(async () => {
+    // Hints reduce the score (hintsUsed feeds the penalty in computeNormalizedScore), so confirm.
+    const ok = await confirm({
+      title: 'Reveal the hint?',
+      message: 'Using a hint lowers your score for this puzzle.',
+      confirmLabel: 'Show hint',
+      cancelLabel: 'Never mind',
+    })
+    if (!ok) return
     setShowHint(true)
     setHintsUsed((prev) => prev + 1)
-  }, [])
+  }, [confirm])
 
   const currentScramble = scrambles[currentIndex] ?? ''
   const currentHint = hints[currentIndex] ?? null
