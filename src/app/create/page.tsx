@@ -533,7 +533,13 @@ function CreateGameInner() {
   const [selectedPackId, setSelectedPackId] = useState<string | null>(null)
   const [libraryPackQuestions, setLibraryPackQuestions] = useState<unknown[]>([])
   const [libraryPacks, setLibraryPacks] = useState<
-    { id: string; title: string; author_name: string; question_count: number }[]
+    {
+      id: string
+      title: string
+      author_name: string
+      question_count: number
+      collections?: { slug: string; name: string }[]
+    }[]
   >([])
   const [libraryPacksLoading, setLibraryPacksLoading] = useState(false)
   const [libraryPackSearch, setLibraryPackSearch] = useState('')

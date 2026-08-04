@@ -313,6 +313,39 @@ function describeOutcome(name: string, die: number, outcome: RollOutcome): strin
   }
 }
 
+type SnakeLadderCounters = Record<string, number>
+
+function readCounters(row: SnakeLadderPlayerState): SnakeLadderCounters {
+  return (row as unknown as { game_counters?: SnakeLadderCounters }).game_counters ?? {}
+}
+
+function buildRollCounters(row: SnakeLadderPlayerState, outcome: RollOutcome): SnakeLadderCounters | null {
+  const prev = readCounters(row)
+  const next = { ...prev }
+
+  next.rolls = (prev.rolls ?? 0) + 1
+
+  if (outcome.event === 'ladder') {
+    next.ladders_taken = (prev.ladders_taken ?? 0) + 1
+    const jump = outcome.to - outcome.landed
+    if (jump > (prev.longest_ladder ?? 0)) next.longest_ladder = jump
+  }
+  if (outcome.event === 'snake') next.snakes_hit = (prev.snakes_hit ?? 0) + 1
+  if (outcome.event === 'overshoot') next.overshoots = (prev.overshoots ?? 0) + 1
+  if (outcome.event === 'bust') next.busts = (prev.busts ?? 0) + 1
+
+  if (outcome.consecutiveSixes > 0) {
+    next.sixes_rolled = (prev.sixes_rolled ?? 0) + 1
+    if (outcome.consecutiveSixes > (prev.consecutive_sixes_max ?? 0)) {
+      next.consecutive_sixes_max = outcome.consecutiveSixes
+    }
+  }
+
+  if (outcome.to >= 50 && (prev.reached_50 ?? 0) === 0) next.reached_50 = 1
+
+  return next
+}
+
 export async function processSnakeAndLadderRoll(
   supabase: SupabaseClient,
   gameId: string,
@@ -366,10 +399,17 @@ export async function processSnakeAndLadderRoll(
   )
   if (!claimed) return {}
 
-  if (outcome.to !== outcome.from) {
+  // Accumulate per-game counters for the trophy engine (same CAS window).
+  const counters = buildRollCounters(playerRow, outcome)
+
+  if (outcome.to !== outcome.from || counters) {
+    const patch: Record<string, unknown> = {}
+    if (outcome.to !== outcome.from) patch.position = outcome.to
+    if (counters) patch.game_counters = counters
+
     const { error: moveError } = await supabase
       .from('snake_ladder_player_state')
-      .update({ position: outcome.to })
+      .update(patch)
       .eq('game_id', gameId)
       .eq('player_id', playerId)
     if (moveError) return { error: internalErrorMessage('snake-and-ladder', moveError) }

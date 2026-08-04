@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { getIdentityFromRequest } from '@/lib/identity-server'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { randomDisplayName } from '@/lib/random-name'
 
 /**
  * Ensure a `profiles` row exists for the caller's identity.
@@ -40,6 +41,15 @@ export async function POST(req: NextRequest) {
     if (error) {
       return NextResponse.json({ error: internalErrorMessage('profile/anon', error) }, { status: 500 })
     }
+
+    // Give brand-new profiles a friendly random name so leaderboards aren't a wall of "Guest".
+    // Scoped to handle IS NULL, so it only ever fires on first creation and never overwrites a
+    // name the player has chosen (or a returning player's existing handle).
+    await getSupabaseAdmin()
+      .from('profiles')
+      .update({ handle: randomDisplayName() })
+      .eq('id', identity.profileId)
+      .is('handle', null)
 
     return NextResponse.json({ profileId: identity.profileId }, { status: 200 })
   } catch (err) {

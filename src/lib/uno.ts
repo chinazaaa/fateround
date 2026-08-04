@@ -984,6 +984,102 @@ function discardWith(base: UnoCard[], top: UnoCard | null): UnoCard[] {
   return discard
 }
 
+// ── Per-game trophy accumulator ──────────────────────────────────────────────────────────────
+// UNO is a position game: the session and hands hold only current state, and a finished hand is
+// empty, so "played a Skip", "called UNO", "caught a missed call", "challenged a Wild Draw Four",
+// "changed the colour five times", "won on a Wild" cannot be reconstructed after the fact. Each
+// acting player's counters are folded forward on their own action, gated on WINNING the session
+// CAS (a lost race writes nothing, so nothing double-counts), and stashed on
+// `uno_player_hands.stats`. These functions are pure and additive; they change no card, turn or
+// score. See src/lib/trophies/game-facts/uno.ts for how each key becomes a trophy.
+
+/** Opaque bag of integer counters stored on `uno_player_hands.stats`. */
+type UnoRoundStats = Record<string, number>
+
+/** This player's current accumulator, copied so the fold never mutates the loaded row. */
+function currentUnoStats(hands: UnoPlayerHand[], playerId: string): UnoRoundStats {
+  const row = hands.find((h) => h.player_id === playerId) as (UnoPlayerHand & { stats?: UnoRoundStats }) | undefined
+  return { ...(row?.stats ?? {}) }
+}
+
+function incU(stats: UnoRoundStats, key: string, by = 1): void {
+  stats[key] = (stats[key] ?? 0) + by
+}
+
+function bumpMaxU(stats: UnoRoundStats, key: string, value: number): void {
+  if (value > (stats[key] ?? 0)) stats[key] = value
+}
+
+/**
+ * Fold the counters for a play of `cards` (a single-card play is a one-element array). `handBefore`
+ * is the hand as it was when the turn began; `wentOut` whether this play emptied it. `opts` carries
+ * the play's cross-cutting facts: whether the player called UNO on their second-to-last card,
+ * whether this move CAUGHT a missed UNO call, whether a Draw Two stacked onto a pending one, and
+ * (Multi-Play only) whether the set spanned all four colours.
+ */
+function foldUnoPlay(
+  prev: UnoRoundStats,
+  cards: UnoCard[],
+  handBefore: UnoCard[],
+  wentOut: boolean,
+  opts: { calledUno: boolean; caught: boolean; stackedDraw2: boolean; rainbow: boolean }
+): UnoRoundStats {
+  const stats = { ...prev }
+  incU(stats, 'uno_turns_taken')
+  bumpMaxU(stats, 'uno_peak_hand_size', handBefore.length)
+  for (const c of cards) {
+    if (c.kind === 'skip') incU(stats, 'uno_skips')
+    else if (c.kind === 'reverse') incU(stats, 'uno_reverses')
+    else if (c.kind === 'draw2') incU(stats, 'uno_draw_twos')
+    else if (c.kind === 'wild') incU(stats, 'uno_wilds')
+    else if (c.kind === 'wild_draw4') incU(stats, 'uno_wild_draw_fours')
+  }
+  if (opts.stackedDraw2) incU(stats, 'uno_draw2_stacked')
+  if (opts.calledUno) incU(stats, 'uno_uno_calls')
+  if (opts.caught) incU(stats, 'uno_catches')
+  if (opts.rainbow) stats.uno_rainbow = 1
+  if (wentOut) {
+    const last = cards[cards.length - 1]!
+    stats.uno_out_wild = isWildCard(last) ? 1 : 0
+    stats.uno_out_wd4 = last.kind === 'wild_draw4' ? 1 : 0
+  }
+  return stats
+}
+
+/** Fold the counter for naming a colour after a Wild / Wild Draw Four (the colour-change event). */
+function foldUnoChoose(prev: UnoRoundStats): UnoRoundStats {
+  const stats = { ...prev }
+  incU(stats, 'uno_color_changes')
+  return stats
+}
+
+/** Fold a draw. `forced` marks a Draw Two / Draw Four penalty draw, distinct from a voluntary one. */
+function foldUnoDraw(prev: UnoRoundStats, drawnCount: number, newHandLen: number, forced: boolean): UnoRoundStats {
+  const stats = { ...prev }
+  incU(stats, 'uno_cards_drawn', drawnCount)
+  bumpMaxU(stats, 'uno_peak_hand_size', newHandLen)
+  if (forced) incU(stats, 'uno_forced_hits')
+  return stats
+}
+
+/** Fold a single event counter onto a player's bag (challenge outcomes, the standalone UNO call). */
+function foldUnoEvent(prev: UnoRoundStats, key: string): UnoRoundStats {
+  const stats = { ...prev }
+  incU(stats, key)
+  return stats
+}
+
+/** Write one player's folded accumulator. Separate from the hand write so the 0-rule rotation and
+ *  cross-player challenge credits both reach the right row without disturbing card writes. */
+async function writeUnoStats(
+  supabase: SupabaseClient,
+  gameId: string,
+  playerId: string,
+  stats: UnoRoundStats
+): Promise<void> {
+  await supabase.from('uno_player_hands').update({ stats }).eq('game_id', gameId).eq('player_id', playerId)
+}
+
 async function persistSession(
   supabase: SupabaseClient,
   gameId: string,
@@ -1238,6 +1334,20 @@ export async function processUnoPlay(
     if (missed) await writeHand(supabase, gameId, missed.playerId, missed.hand)
   }
 
+  // Fold this play's trophy counters. `session` is pre-write, so its pending penalty reads the
+  // stack this Draw Two landed on; `missed` means this move caught a forgotten UNO call.
+  await writeUnoStats(
+    supabase,
+    gameId,
+    playerId,
+    foldUnoPlay(currentUnoStats(hands, playerId), [card], hand, wentOut, {
+      calledUno: owesUno && callUno,
+      caught: !!missed,
+      stackedDraw2: card.kind === 'draw2' && session.draw_penalty_kind === 'draw2' && (session.draw_penalty ?? 0) > 0,
+      rainbow: false,
+    })
+  )
+
   if (wentOut) {
     await supabase.from('players').update({ spectator: true }).eq('id', playerId).eq('game_id', gameId)
     if (patch.phase === 'finished') await markGameFinished(supabase, gameId)
@@ -1437,6 +1547,23 @@ export async function processUnoPlayMulti(
   if (autoDraw) await writeHand(supabase, gameId, autoDraw.playerId, autoDraw.hand)
   if (missed && missed.playerId !== autoDraw?.playerId) await writeHand(supabase, gameId, missed.playerId, missed.hand)
 
+  // Fold this multi-play's trophy counters. "Rainbow" is a single set spanning all four colours
+  // (same-value cards of every colour); a Draw Two laid onto a pending Draw-Two stack counts.
+  await writeUnoStats(
+    supabase,
+    gameId,
+    playerId,
+    foldUnoPlay(currentUnoStats(hands, playerId), cards, hand, wentOut, {
+      calledUno: owesUno && callUno,
+      caught: !!missed,
+      stackedDraw2:
+        session.draw_penalty_kind === 'draw2' &&
+        (session.draw_penalty ?? 0) > 0 &&
+        cards.some((c) => c.kind === 'draw2'),
+      rainbow: new Set(cards.filter((c) => c.color !== 'wild').map((c) => c.color)).size >= 4,
+    })
+  )
+
   if (wentOut) {
     await supabase.from('players').update({ spectator: true }).eq('id', playerId).eq('game_id', gameId)
     if (patch.phase === 'finished') await markGameFinished(supabase, gameId)
@@ -1605,6 +1732,15 @@ export async function processUnoDraw(
   await writeHand(supabase, gameId, playerId, newHand)
   if (missed) await writeHand(supabase, gameId, missed.playerId, missed.hand)
 
+  // Fold the draw. `forced` marks a Draw Two / Draw Four penalty draw, which the "never made to
+  // draw" and "no penalties" trophies key off, distinct from a voluntary single draw.
+  await writeUnoStats(
+    supabase,
+    gameId,
+    playerId,
+    foldUnoDraw(currentUnoStats(hands, playerId), drawn.length, newHand.length, forced)
+  )
+
   return {}
 }
 
@@ -1704,7 +1840,7 @@ export async function processUnoChoose(
     // The challenge window only applies to a lone Draw Four — stacking replaces it.
     if (rules.wd4Challenge && !rules.stacking) {
       const status = `${playerName(playerNames, nextPlayerId)} — accept Draw 4 or challenge (colour: ${UNO_COLOR_LABELS[color]})`
-      await persistSession(
+      const won = await persistSession(
         supabase,
         gameId,
         {
@@ -1719,6 +1855,7 @@ export async function processUnoChoose(
         timerSeconds,
         session.updated_at
       )
+      if (won) await writeUnoStats(supabase, gameId, playerId, foldUnoChoose(currentUnoStats(hands, playerId)))
       return {}
     }
     // Stacking (or challenge disabled): the penalty passes to the next player, who may stack
@@ -1731,7 +1868,7 @@ export async function processUnoChoose(
     )
     const optionNote = options.length ? ` or ${options.join(' / ')}` : ''
     const status = `${playerName(playerNames, nextPlayerId)} must draw ${accumulated}${optionNote} — colour ${UNO_COLOR_LABELS[color]}`
-    await persistSession(
+    const won = await persistSession(
       supabase,
       gameId,
       {
@@ -1748,11 +1885,12 @@ export async function processUnoChoose(
       timerSeconds,
       session.updated_at
     )
+    if (won) await writeUnoStats(supabase, gameId, playerId, foldUnoChoose(currentUnoStats(hands, playerId)))
     return {}
   }
 
   // Plain Wild: colour set, play passes on.
-  await persistSession(
+  const won = await persistSession(
     supabase,
     gameId,
     {
@@ -1767,6 +1905,7 @@ export async function processUnoChoose(
     timerSeconds,
     session.updated_at
   )
+  if (won) await writeUnoStats(supabase, gameId, playerId, foldUnoChoose(currentUnoStats(hands, playerId)))
   return {}
 }
 
@@ -1885,6 +2024,13 @@ export async function processUnoChallenge(
     )
     if (!won) return {}
     await writeHand(supabase, gameId, wd4PlayerId, drawResult.hand)
+    // The challenger correctly called the bluff — "Challenger".
+    await writeUnoStats(
+      supabase,
+      gameId,
+      playerId,
+      foldUnoEvent(currentUnoStats(hands, playerId), 'uno_challenges_won')
+    )
     return {}
   }
 
@@ -1915,6 +2061,15 @@ export async function processUnoChallenge(
   )
   if (!won) return {}
   await writeHand(supabase, gameId, playerId, failHand)
+  // The Wild Draw Four was legal — the WD4 player survived a challenge on their own Draw Four.
+  if (wd4PlayerId) {
+    await writeUnoStats(
+      supabase,
+      gameId,
+      wd4PlayerId,
+      foldUnoEvent(currentUnoStats(hands, wd4PlayerId), 'uno_bluff_survived')
+    )
+  }
   return {}
 }
 
@@ -1999,11 +2154,24 @@ export async function processUnoCall(
   const { data: playerRow } = await supabase.from('players').select('name').eq('id', playerId).maybeSingle()
   const nm = playerRow?.name ?? 'A player'
 
-  await supabase
+  const { data: landed } = await supabase
     .from('uno_sessions')
     .update({ uno_called: true, status_message: `${nm} called UNO! 🎉`, updated_at: new Date().toISOString() })
     .eq('game_id', gameId)
     .eq('updated_at', session.updated_at)
+    .select('game_id')
+  // Correctly called UNO on the second-to-last card via the standalone button — "UNO!". Only when
+  // the call actually landed (CAS won), and read/written here since this path skips loadGameState.
+  if ((landed?.length ?? 0) > 0) {
+    const { data: handRow } = await supabase
+      .from('uno_player_hands')
+      .select('stats')
+      .eq('game_id', gameId)
+      .eq('player_id', playerId)
+      .maybeSingle()
+    const prev = ((handRow?.stats as UnoRoundStats | null) ?? {}) as UnoRoundStats
+    await writeUnoStats(supabase, gameId, playerId, foldUnoEvent(prev, 'uno_uno_calls'))
+  }
   return {}
 }
 

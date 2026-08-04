@@ -12,8 +12,24 @@ import { codewordsFacts } from './codewords'
 import { ludoFacts } from './ludo'
 import { monopolyFacts } from './monopoly'
 import { triviaFacts } from './trivia'
+import { unoFacts } from './uno'
 import { whotFacts } from './whot'
 import { yahtzeeFacts } from './yahtzee'
+import { bingoFacts } from './bingo'
+import { crosswordFacts } from './crossword'
+import { iCallOnFacts } from './i-call-on'
+import { landmineFacts } from './landmine'
+import { matchingPairsFacts } from './matching-pairs'
+import { pingPongFacts } from './ping-pong'
+import { quiplashFacts } from './quiplash'
+import { sudokuFacts } from './sudoku'
+import { ticTacToeFacts } from './tic-tac-toe'
+import { twoTruthsFacts } from './two-truths'
+import { wordHuntFacts } from './word-hunt'
+import { wordRushFacts } from './word-rush'
+import { wordScrambleFacts } from './word-scramble'
+import { wordSearchFacts } from './word-search'
+import { snakeAndLadderFacts } from './snake-and-ladder'
 
 /**
  * Per-game facts for the award pass.
@@ -77,8 +93,24 @@ const BUILDERS: Partial<Record<GameType, FactsBuilder>> = {
   monopoly: monopolyFacts,
   scrabble: scrabbleFacts,
   trivia: triviaFacts,
+  uno: unoFacts,
   whot: whotFacts,
   yahtzee: yahtzeeFacts,
+  bingo: bingoFacts,
+  crossword: crosswordFacts,
+  i_call_on: iCallOnFacts,
+  landmine: landmineFacts,
+  matching_pairs: matchingPairsFacts,
+  ping_pong: pingPongFacts,
+  quiplash: quiplashFacts,
+  sudoku: sudokuFacts,
+  tic_tac_toe: ticTacToeFacts,
+  two_truths: twoTruthsFacts,
+  word_hunt: wordHuntFacts,
+  word_rush: wordRushFacts,
+  word_scramble: wordScrambleFacts,
+  word_search: wordSearchFacts,
+  snake_and_ladder: snakeAndLadderFacts,
 }
 
 /** True when this game type emits per-game facts, for the admin UI's benefit. */

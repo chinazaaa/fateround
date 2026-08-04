@@ -11,13 +11,24 @@ type NavItem = { href: string; label: string; icon?: string }
 
 function BackBar() {
   const router = useRouter()
-  const goBack = () => {
-    if (typeof window !== 'undefined' && window.history.length > 1) router.back()
-    else router.push('/')
+  const pathname = usePathname()
+
+  // Daily leaderboard pages should go back to /daily, not browser history
+  const fixedHref = pathname.startsWith('/daily/') && pathname.endsWith('/leaderboard') ? '/daily' : null
+
+  const handleClick = () => {
+    if (fixedHref) {
+      router.push(fixedHref)
+    } else if (typeof window !== 'undefined' && window.history.length > 1) {
+      router.back()
+    } else {
+      router.push('/')
+    }
   }
+
   return (
     <div className="fr-backbar">
-      <button type="button" onClick={goBack} className="fr-backbar__link" aria-label="Go back">
+      <button type="button" onClick={handleClick} className="fr-backbar__link" aria-label="Go back">
         <svg
           width="16"
           height="16"
@@ -92,7 +103,7 @@ function ThemeButton({ withLabel = false }: { withLabel?: boolean }) {
 const NAV: NavItem[] = [
   { href: '/games', label: 'Games', icon: '🎮' },
   { href: '/tournament', label: 'Tournaments', icon: '🏆' },
-  { href: '/rooms', label: 'Rooms', icon: '🏠' },
+  { href: '/daily', label: 'Daily Challenges', icon: '📅' },
   { href: '/leaderboard', label: 'Leaderboard', icon: '📊' },
   { href: '/updates', label: "What's new", icon: '✨' },
 ]
