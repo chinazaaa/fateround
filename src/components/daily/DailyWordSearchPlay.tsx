@@ -16,8 +16,8 @@ export function DailyWordSearchPlay({ puzzle, timer: maxSeconds, onSubmit }: Dai
   const totalWords = metadata.words?.length ?? 0
 
   const [foundWords, setFoundWords] = useState<string[]>([])
-  const [myFoundCells, setMyFoundCells] = useState<boolean[][]>(
-    () => Array.from({ length: metadata.size }, () => Array(metadata.size).fill(false))
+  const [myFoundCells, setMyFoundCells] = useState<boolean[][]>(() =>
+    Array.from({ length: metadata.size }, () => Array(metadata.size).fill(false))
   )
   const [submitted, setSubmitted] = useState(false)
   const submitRef = useRef(false)
@@ -97,9 +97,7 @@ export function DailyWordSearchPlay({ puzzle, timer: maxSeconds, onSubmit }: Dai
             {foundWords.length}/{totalWords}
           </span>
         </div>
-        <span className={`font-mono text-lg font-bold ${isTimeUp ? 'text-error' : ''}`}>
-          {formatted}
-        </span>
+        <span className={`font-mono text-lg font-bold ${isTimeUp ? 'text-error' : ''}`}>{formatted}</span>
       </div>
 
       {/* Board */}
@@ -116,9 +114,7 @@ export function DailyWordSearchPlay({ puzzle, timer: maxSeconds, onSubmit }: Dai
           {(metadata.words ?? []).map((word, i) => (
             <span
               key={i}
-              className={`badge badge-sm ${
-                foundSet.has(word.toUpperCase()) ? 'badge-primary' : 'badge-ghost'
-              }`}
+              className={`badge badge-sm ${foundSet.has(word.toUpperCase()) ? 'badge-primary' : 'badge-ghost'}`}
             >
               {foundSet.has(word.toUpperCase()) ? word : '???'}
             </span>

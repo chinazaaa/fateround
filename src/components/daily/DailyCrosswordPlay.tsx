@@ -15,8 +15,8 @@ export function DailyCrosswordPlay({ puzzle, timer: maxSeconds, onSubmit }: Dail
   const metadata = puzzle.metadata as CrosswordMetadata
   const size = metadata.size
 
-  const [letterGrid, setLetterGrid] = useState<string[][]>(
-    () => Array.from({ length: size }, () => Array(size).fill(''))
+  const [letterGrid, setLetterGrid] = useState<string[][]>(() =>
+    Array.from({ length: size }, () => Array(size).fill(''))
   )
   const [selectedCell, setSelectedCell] = useState<[number, number] | null>(null)
   const [direction, setDirection] = useState<'across' | 'down'>('across')
@@ -139,10 +139,30 @@ export function DailyCrosswordPlay({ puzzle, timer: maxSeconds, onSubmit }: Dail
         return
       }
 
-      if (e.key === 'ArrowUp') { e.preventDefault(); setDirection('down'); if (row > 0 && !metadata.blocked[row - 1][col]) setSelectedCell([row - 1, col]); return }
-      if (e.key === 'ArrowDown') { e.preventDefault(); setDirection('down'); if (row < size - 1 && !metadata.blocked[row + 1][col]) setSelectedCell([row + 1, col]); return }
-      if (e.key === 'ArrowLeft') { e.preventDefault(); setDirection('across'); if (col > 0 && !metadata.blocked[row][col - 1]) setSelectedCell([row, col - 1]); return }
-      if (e.key === 'ArrowRight') { e.preventDefault(); setDirection('across'); if (col < size - 1 && !metadata.blocked[row][col + 1]) setSelectedCell([row, col + 1]); return }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setDirection('down')
+        if (row > 0 && !metadata.blocked[row - 1][col]) setSelectedCell([row - 1, col])
+        return
+      }
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setDirection('down')
+        if (row < size - 1 && !metadata.blocked[row + 1][col]) setSelectedCell([row + 1, col])
+        return
+      }
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault()
+        setDirection('across')
+        if (col > 0 && !metadata.blocked[row][col - 1]) setSelectedCell([row, col - 1])
+        return
+      }
+      if (e.key === 'ArrowRight') {
+        e.preventDefault()
+        setDirection('across')
+        if (col < size - 1 && !metadata.blocked[row][col + 1]) setSelectedCell([row, col + 1])
+        return
+      }
 
       const letter = e.key.toUpperCase()
       if (!/^[A-Z]$/.test(letter)) return
@@ -178,9 +198,7 @@ export function DailyCrosswordPlay({ puzzle, timer: maxSeconds, onSubmit }: Dail
             {filledCount}/{fillableCount}
           </span>
         </div>
-        <span className={`font-mono text-lg font-bold ${isTimeUp ? 'text-error' : ''}`}>
-          {formatted}
-        </span>
+        <span className={`font-mono text-lg font-bold ${isTimeUp ? 'text-error' : ''}`}>{formatted}</span>
       </div>
 
       {/* Board */}
@@ -200,7 +218,8 @@ export function DailyCrosswordPlay({ puzzle, timer: maxSeconds, onSubmit }: Dail
           {(metadata.clues ?? []).map((clue, i) => (
             <div key={i} className="flex gap-2">
               <span className="font-bold text-base-content/50 w-8 shrink-0">
-                {clue.number}{clue.direction === 'across' ? 'A' : 'D'}
+                {clue.number}
+                {clue.direction === 'across' ? 'A' : 'D'}
               </span>
               <span>{clue.clue}</span>
             </div>

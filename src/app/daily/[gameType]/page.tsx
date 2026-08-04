@@ -1,19 +1,11 @@
 import type { Metadata } from 'next'
 import { SITE_NAME, OG_IMAGE } from '@/lib/seo'
 import { DailyChallengeGame } from '@/components/daily/DailyChallengeGame'
-import {
-  DAILY_GAME_SLUG_TO_TYPE,
-  DAILY_GAME_LABELS,
-  type DailyChallengeGameType,
-} from '@/lib/daily-challenge'
+import { DAILY_GAME_SLUG_TO_TYPE, DAILY_GAME_LABELS, type DailyChallengeGameType } from '@/lib/daily-challenge'
 
 export const dynamic = 'force-dynamic'
 
-export async function generateMetadata({
-  params,
-}: {
-  params: Promise<{ gameType: string }>
-}): Promise<Metadata> {
+export async function generateMetadata({ params }: { params: Promise<{ gameType: string }> }): Promise<Metadata> {
   const { gameType: slug } = await params
   const gameType = DAILY_GAME_SLUG_TO_TYPE[slug] as DailyChallengeGameType | undefined
   const label = gameType ? DAILY_GAME_LABELS[gameType] : 'Daily Challenge'
@@ -31,11 +23,7 @@ export async function generateMetadata({
   }
 }
 
-export default async function DailyGamePage({
-  params,
-}: {
-  params: Promise<{ gameType: string }>
-}) {
+export default async function DailyGamePage({ params }: { params: Promise<{ gameType: string }> }) {
   const { gameType: slug } = await params
   const gameType = DAILY_GAME_SLUG_TO_TYPE[slug]
 

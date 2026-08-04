@@ -98,7 +98,10 @@ function verifyCrossword(
   }
 
   const totalFillable = solution.flat().filter((c) => c && c !== ' ').length
-  const wordsCompleted = totalFillable > 0 && correct >= totalFillable ? totalClues : Math.floor((correct / Math.max(totalFillable, 1)) * totalClues)
+  const wordsCompleted =
+    totalFillable > 0 && correct >= totalFillable
+      ? totalClues
+      : Math.floor((correct / Math.max(totalFillable, 1)) * totalClues)
 
   return {
     rawPoints: correct * 10 - hintsUsed * 3,

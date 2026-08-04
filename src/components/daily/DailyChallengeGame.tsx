@@ -7,11 +7,7 @@ import { DailyWordHuntPlay } from './DailyWordHuntPlay'
 import { DailyWordSearchPlay } from './DailyWordSearchPlay'
 import { DailyCrosswordPlay } from './DailyCrosswordPlay'
 import { DailyWordScramblePlay } from './DailyWordScramblePlay'
-import {
-  DAILY_GAME_LABELS,
-  DAILY_GAME_EMOJIS,
-  type DailyChallengeGameType,
-} from '@/lib/daily-challenge'
+import { DAILY_GAME_LABELS, DAILY_GAME_EMOJIS, type DailyChallengeGameType } from '@/lib/daily-challenge'
 
 function LoadingState({ gameType }: { gameType: DailyChallengeGameType }) {
   return (
@@ -47,57 +43,20 @@ function PlaySurface({
 
   switch (gameType) {
     case 'sudoku':
-      return (
-        <DailySudokuPlay
-          puzzle={puzzle.puzzle as number[][]}
-          timer={timer}
-          onSubmit={onSubmit}
-        />
-      )
+      return <DailySudokuPlay puzzle={puzzle.puzzle as number[][]} timer={timer} onSubmit={onSubmit} />
     case 'word_hunt':
-      return (
-        <DailyWordHuntPlay
-          grid={puzzle.grid as string[][]}
-          timer={timer}
-          onSubmit={onSubmit}
-        />
-      )
+      return <DailyWordHuntPlay grid={puzzle.grid as string[][]} timer={timer} onSubmit={onSubmit} />
     case 'word_search':
-      return (
-        <DailyWordSearchPlay
-          puzzle={puzzle}
-          timer={timer}
-          onSubmit={onSubmit}
-        />
-      )
+      return <DailyWordSearchPlay puzzle={puzzle} timer={timer} onSubmit={onSubmit} />
     case 'crossword':
-      return (
-        <DailyCrosswordPlay
-          puzzle={puzzle}
-          timer={timer}
-          onSubmit={onSubmit}
-        />
-      )
+      return <DailyCrosswordPlay puzzle={puzzle} timer={timer} onSubmit={onSubmit} />
     case 'word_scramble':
-      return (
-        <DailyWordScramblePlay
-          puzzle={puzzle}
-          timer={timer}
-          onSubmit={onSubmit}
-        />
-      )
+      return <DailyWordScramblePlay puzzle={puzzle} timer={timer} onSubmit={onSubmit} />
   }
 }
 
 export function DailyChallengeGame({ gameType }: { gameType: DailyChallengeGameType }) {
-  const {
-    phase,
-    challengeData,
-    result,
-    previousScore,
-    error,
-    submitResult,
-  } = useDailyChallengeSession(gameType)
+  const { phase, challengeData, result, previousScore, error, submitResult } = useDailyChallengeSession(gameType)
 
   if (phase === 'loading') return <LoadingState gameType={gameType} />
   if (phase === 'error') return <ErrorState error={error} />
@@ -123,9 +82,7 @@ export function DailyChallengeGame({ gameType }: { gameType: DailyChallengeGameT
         <h1 className="text-lg font-bold">
           Daily {DAILY_GAME_LABELS[gameType]} #{challengeData.challengeNumber}
         </h1>
-        <p className="text-sm text-base-content/60">
-          Same puzzle for everyone. One attempt.
-        </p>
+        <p className="text-sm text-base-content/60">Same puzzle for everyone. One attempt.</p>
       </div>
 
       <PlaySurface

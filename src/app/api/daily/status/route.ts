@@ -22,9 +22,7 @@ export async function GET(req: NextRequest) {
     .eq('challenge_date', today)
     .in('game_type', [...DAILY_CHALLENGE_GAME_TYPES])
 
-  const challengeMap = new Map(
-    (challenges ?? []).map((c) => [c.game_type as DailyChallengeGameType, c])
-  )
+  const challengeMap = new Map((challenges ?? []).map((c) => [c.game_type as DailyChallengeGameType, c]))
 
   // Load scores for this player if authenticated
   let scoreMap = new Map<string, { normalized_score: number }>()
@@ -36,9 +34,7 @@ export async function GET(req: NextRequest) {
       .eq('profile_id', profileId)
       .in('challenge_id', challengeIds)
 
-    scoreMap = new Map(
-      (scores ?? []).map((s) => [s.challenge_id, s])
-    )
+    scoreMap = new Map((scores ?? []).map((s) => [s.challenge_id, s]))
   }
 
   const games = DAILY_CHALLENGE_GAME_TYPES.map((gameType) => {
