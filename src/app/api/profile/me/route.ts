@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
     const { data, error } = await getSupabaseAdmin()
       .from('profiles')
       .select(
-        'id, handle, avatar_url, is_anonymous, trophy_points, trophy_level, current_streak, longest_streak, last_active_date, streak_freezes'
+        'id, handle, handle_is_auto, avatar_url, is_anonymous, trophy_points, trophy_level, current_streak, longest_streak, last_active_date, streak_freezes'
       )
       .eq('id', profileId)
       .maybeSingle()
@@ -66,7 +66,11 @@ export async function PATCH(req: NextRequest) {
     const { data: body, error: bodyError } = await parseJsonBody(req, patchSchema)
     if (bodyError) return bodyError
 
-    const { error } = await getSupabaseAdmin().from('profiles').update({ handle: body.handle }).eq('id', profileId)
+    // The player is choosing their own name now, so it's no longer the auto-assigned one.
+    const { error } = await getSupabaseAdmin()
+      .from('profiles')
+      .update({ handle: body.handle, handle_is_auto: false })
+      .eq('id', profileId)
 
     if (error) return NextResponse.json({ error: internalErrorMessage('profile/me', error) }, { status: 500 })
     return NextResponse.json({ handle: body.handle })

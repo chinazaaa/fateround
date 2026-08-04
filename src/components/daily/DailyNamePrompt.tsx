@@ -6,26 +6,19 @@ import { useToast } from '@/components/ui/Toast'
 import { authHeaders } from '@/lib/identity'
 import { rememberName } from '@/lib/identity-local'
 
-const PERSONALIZED_KEY = 'daily-name-personalized'
-
 /**
- * Finish-screen nudge to personalize the auto-assigned display name (e.g. "SwiftFalcon12") so the
- * leaderboard shows a real name. Anonymous-friendly — it just PATCHes the handle, no sign-in. First
- * time it shows expanded ("make it yours"); after the player has set a name once, it collapses to a
- * subtle "Playing as X · Edit".
+ * Finish-screen name control. Players who still have the AUTO-assigned name (handle_is_auto) get a
+ * clear "make it yours" nudge; players who've already chosen a name just see a subtle "Playing as
+ * X · Edit". Anonymous-friendly — it PATCHes the handle, no sign-in. Setting a name clears
+ * handle_is_auto server-side, so the nudge never reappears (across devices too).
  */
 export function DailyNamePrompt() {
   const { profile, refresh } = useProfile()
   const { success } = useToast()
 
-  const [personalized, setPersonalized] = useState(true) // assume until we read localStorage
   const [editing, setEditing] = useState(false)
   const [name, setName] = useState('')
   const [busy, setBusy] = useState(false)
-
-  useEffect(() => {
-    setPersonalized(typeof window !== 'undefined' && window.localStorage.getItem(PERSONALIZED_KEY) === '1')
-  }, [])
 
   useEffect(() => {
     if (profile?.handle) setName(profile.handle)
@@ -33,6 +26,8 @@ export function DailyNamePrompt() {
 
   // No identity yet (guest who somehow reached results without a profile) — nothing to rename.
   if (!profile) return null
+
+  const isAuto = profile.handle_is_auto
 
   const save = async () => {
     const next = name.trim()
@@ -51,10 +46,8 @@ export function DailyNamePrompt() {
       })
       if (!res.ok) return
       rememberName(next)
-      window.localStorage.setItem(PERSONALIZED_KEY, '1')
-      setPersonalized(true)
       setEditing(false)
-      refresh()
+      refresh() // re-reads profile with handle_is_auto now false → nudge collapses to subtle line
       success('Name saved')
     } finally {
       setBusy(false)
@@ -92,8 +85,8 @@ export function DailyNamePrompt() {
     )
   }
 
-  // Already personalized → subtle line. Otherwise → a clear nudge.
-  if (personalized) {
+  // Chosen name → subtle line. Still on the auto name → a clear nudge.
+  if (!isAuto) {
     return (
       <p className="text-center text-sm" style={{ color: 'var(--text-muted)' }}>
         Playing as <strong>{profile.handle}</strong> ·{' '}

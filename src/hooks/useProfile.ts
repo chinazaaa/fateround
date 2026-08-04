@@ -8,6 +8,9 @@ import { supabase } from '@/lib/supabase'
 export type Profile = {
   id: string
   handle: string | null
+  // Optional: only /api/profile/me returns it (drives the daily finish-screen name nudge). Other
+  // profile shapes (e.g. /api/profile/games) omit it, where "not auto" is the right default.
+  handle_is_auto?: boolean
   avatar_url: string | null
   is_anonymous: boolean
   trophy_points: number
