@@ -222,9 +222,10 @@ export function DailyLeaderboardClient({ gameType }: { gameType: DailyChallengeG
         </div>
       )}
 
-      {/* My rank sticky footer — only when the player has a real (non-zero) score, matching the
-          board's own 0-exclusion. */}
-      {myRank && myScore !== null && myScore > 0 && (
+      {/* My rank sticky footer — only when the player has a real (non-zero) score AND isn't already
+          visible in the list above (no point repeating "you're #1" when #1 is right there). It
+          earns its place when you're e.g. #47 and the page only shows the top 50. */}
+      {myRank && myScore !== null && myScore > 0 && myRank > entries.length && (
         <div
           className="sticky bottom-4 mt-4 px-4 py-3 flex items-center justify-between"
           style={{
