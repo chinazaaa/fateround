@@ -208,8 +208,15 @@ export function DailyChallengeResults({
             )}
           </div>
 
+          {/* Zero score notice */}
+          {score === 0 && (
+            <div className="mt-4" style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>
+              Scores of 0 don't appear on the leaderboard
+            </div>
+          )}
+
           {/* Personal best comparison */}
-          {personalBest && !isNewBest && (
+          {personalBest && !isNewBest && score > 0 && (
             <div className="mt-4" style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>
               Personal best: {personalBest.bestScore} pts ({personalBest.totalPlays} plays)
             </div>
