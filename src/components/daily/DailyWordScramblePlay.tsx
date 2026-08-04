@@ -132,7 +132,8 @@ export function DailyWordScramblePlay({
   }, [currentIndex, submitted, findNextUnsolved])
 
   const currentScramble = scrambles[currentIndex] ?? ''
-  const allDone = solved.length + skipped.size >= totalWords
+  const allSolved = solved.length >= totalWords
+  const hasSkipped = skipped.size > 0
 
   return (
     <div className="space-y-4">
@@ -159,8 +160,9 @@ export function DailyWordScramblePlay({
         </span>
       </div>
 
-      {/* Current scramble */}
-      {!allDone && !submitted && (
+      {/* Current scramble — shown until every word is solved. Skipping cycles through the remaining
+          unsolved (incl. previously skipped) words, so you can always come back to them. */}
+      {!allSolved && !submitted && (
         <div className="fr-card fr-card--xl">
           <div className="flex flex-col items-center text-center">
             <p
@@ -214,6 +216,11 @@ export function DailyWordScramblePlay({
                 Skip
               </button>
             </div>
+            {hasSkipped && (
+              <p className="mt-2" style={{ fontSize: 'var(--text-2xs)', color: 'var(--text-faint)' }}>
+                Skipped words come back around — or submit when you&apos;re done.
+              </p>
+            )}
           </div>
         </div>
       )}
@@ -240,9 +247,9 @@ export function DailyWordScramblePlay({
         </div>
       </div>
 
-      {/* Submit button only when some words were skipped (unsolved). Solving them all auto-submits,
-          so there's nothing to click on the last one. */}
-      {allDone && !submitted && solved.length < totalWords && (
+      {/* Submit appears once you've skipped a word, so you can finalize whenever. Solving every word
+          auto-submits, so there's nothing to click on the last one. */}
+      {!submitted && !allSolved && hasSkipped && (
         <div className="text-center">
           <button className="fr-btn fr-btn--primary fr-btn--lg" onClick={confirmAndSubmit}>
             Submit ({solved.length} words)
