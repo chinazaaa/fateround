@@ -121,28 +121,28 @@ export function DailyChallengeResults({
   const emoji = score >= 900 ? '🏆' : score >= 700 ? '🎯' : score >= 400 ? '👍' : '💪'
 
   return (
-    <div className="mx-auto max-w-lg px-4 py-8">
+    <div className="mx-auto max-w-sm px-4 py-8">
       <div className="fr-card fr-card--xl">
         <div className="flex flex-col items-center text-center">
           {/* Trophy emoji */}
-          <div className="text-5xl mb-3" style={{ filter: 'drop-shadow(0 6px 14px rgba(225, 29, 72, 0.2))' }}>
+          <div className="text-4xl mb-2" style={{ filter: 'drop-shadow(0 4px 10px rgba(225, 29, 72, 0.2))' }}>
             {emoji}
           </div>
 
           {/* Title */}
           <p
-            className="font-semibold uppercase tracking-wider mb-4"
+            className="font-semibold uppercase tracking-wider mb-3"
             style={{ fontSize: 'var(--text-2xs)', color: 'var(--text-faint)' }}
           >
             Daily {DAILY_GAME_LABELS[gameType]} #{challengeNumber}
           </p>
 
           {/* Score — hero */}
-          <div className="my-2">
+          <div className="my-1">
             <span
               className="font-black"
               style={{
-                fontSize: 'var(--text-5xl)',
+                fontSize: 'var(--text-4xl)',
                 fontFamily: 'var(--font-display)',
                 fontFeatureSettings: '"tnum"',
                 color: 'var(--primary)',
@@ -150,7 +150,7 @@ export function DailyChallengeResults({
             >
               <AnimatedScore target={score} />
             </span>
-            <span className="ml-1 font-medium" style={{ fontSize: 'var(--text-xl)', color: 'var(--text-faint)' }}>
+            <span className="ml-1 font-medium" style={{ fontSize: 'var(--text-lg)', color: 'var(--text-faint)' }}>
               / 1000
             </span>
           </div>
@@ -161,7 +161,7 @@ export function DailyChallengeResults({
           )}
 
           {/* Stats grid */}
-          <div className="grid grid-cols-3 gap-3 w-full mt-6">
+          <div className={`grid ${rank ? 'grid-cols-3' : 'grid-cols-2'} gap-3 w-full mt-5`}>
             <div
               className="rounded-xl p-3 text-center"
               style={{ background: 'var(--surface-sunken)', border: '1px solid var(--border)' }}
@@ -221,7 +221,7 @@ export function DailyChallengeResults({
           </div>
 
           {/* Actions */}
-          <div className="mt-6 flex flex-col gap-3 w-full">
+          <div className="mt-5 flex flex-col gap-2.5 w-full">
             <Link href={`/daily/${slug}/leaderboard`} className="fr-btn fr-btn--primary fr-btn--block">
               View Leaderboard
             </Link>
