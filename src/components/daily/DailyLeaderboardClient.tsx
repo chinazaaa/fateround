@@ -30,6 +30,7 @@ interface LeaderboardEntry {
   username: string | null
   avatarUrl: string | null
   normalizedScore?: number
+  rawPoints?: number
   itemsSolved?: number
   timeSeconds?: number
   bestScore?: number
@@ -199,7 +200,12 @@ export function DailyLeaderboardClient({ gameType }: { gameType: DailyChallengeG
       {!loading && entries.length > 0 && (
         <div className="space-y-1.5">
           {entries.map((entry) => {
-            const score = entry.normalizedScore ?? entry.bestScore ?? 0
+            // Word Hunt ('score') shows raw points; today carries rawPoints, all-time carries it in
+            // bestScore. Other games show the normalized/best score.
+            const score =
+              metric === 'score'
+                ? (entry.rawPoints ?? entry.bestScore ?? 0)
+                : (entry.normalizedScore ?? entry.bestScore ?? 0)
             const time = entry.timeSeconds ?? entry.bestTime ?? 0
             const isTop3 = entry.rank <= 3
 

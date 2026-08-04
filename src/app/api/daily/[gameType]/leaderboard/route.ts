@@ -40,13 +40,17 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ game
 
     // Leaderboard query. A 0 means no real attempt (auto-submit at timeout with nothing done) —
     // keep them off the board either way.
+    // Word Hunt ('score') ranks by raw points; 'time' games by fastest completion; nothing else
+    // qualifies here. Filter out non-attempts on the metric that actually ranks the board.
+    const isPointsGame = metric === 'score'
     let entriesQuery = admin
       .from('daily_scores')
-      .select('profile_id, normalized_score, items_solved, items_total, time_seconds, hints_used, submitted_at', {
-        count: 'exact',
-      })
+      .select(
+        'profile_id, normalized_score, raw_points, items_solved, items_total, time_seconds, hints_used, submitted_at',
+        { count: 'exact' }
+      )
       .eq('challenge_id', challenge.id)
-      .gt('normalized_score', 0)
+      .gt(isPointsGame ? 'raw_points' : 'normalized_score', 0)
 
     if (metric === 'time') {
       entriesQuery = entriesQuery
@@ -56,10 +60,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ game
         .order('submitted_at', { ascending: true })
     } else {
       entriesQuery = entriesQuery
-        .order('normalized_score', { ascending: false })
-        .order('items_solved', { ascending: false })
+        .order('raw_points', { ascending: false })
         .order('time_seconds', { ascending: true })
-        .order('hints_used', { ascending: true })
         .order('submitted_at', { ascending: true })
     }
 
@@ -80,6 +82,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ game
       username: profileMap.get(e.profile_id)?.username ?? null,
       avatarUrl: profileMap.get(e.profile_id)?.avatar_url ?? null,
       normalizedScore: e.normalized_score,
+      rawPoints: e.raw_points,
       itemsSolved: e.items_solved,
       timeSeconds: e.time_seconds,
     }))
@@ -91,13 +94,14 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ game
     if (profileId) {
       const { data: myEntry } = await admin
         .from('daily_scores')
-        .select('normalized_score, items_solved, time_seconds')
+        .select('normalized_score, raw_points, items_solved, time_seconds')
         .eq('challenge_id', challenge.id)
         .eq('profile_id', profileId)
         .single()
 
       if (myEntry) {
-        myScore = myEntry.normalized_score
+        // The footer shows the board metric: raw points for Word Hunt, normalized score otherwise.
+        myScore = isPointsGame ? myEntry.raw_points : myEntry.normalized_score
         if (metric === 'time') {
           // Ahead of me = more solved, or same solved but faster. Two counts, same ordering as above.
           const [{ count: moreSolved }, { count: sameSolvedFaster }] = await Promise.all([
@@ -121,7 +125,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ game
             .from('daily_scores')
             .select('*', { count: 'exact', head: true })
             .eq('challenge_id', challenge.id)
-            .gt('normalized_score', myEntry.normalized_score)
+            .gt('raw_points', myEntry.raw_points)
           myRank = (betterCount ?? 0) + 1
         }
       }

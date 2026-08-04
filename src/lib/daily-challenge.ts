@@ -103,7 +103,9 @@ export function computeNormalizedScore(input: DailyScoreInput): number {
   const speedRatio = maxTimeSeconds > 0 ? Math.max(0, 1 - timeSeconds / maxTimeSeconds) : completionRatio > 0 ? 1 : 0
   const penaltyRatio = maxHints > 0 ? Math.min(1, hintsUsed / maxHints) : 0
 
-  const raw = completionRatio * 700 + speedRatio * 200 - penaltyRatio * 100
+  // completion 800 + speed 200 → a fully-solved, instant run reaches the full 1000; a full but
+  // slow solve is 800. (Hints removed from daily games, so penalty is effectively 0.)
+  const raw = completionRatio * 800 + speedRatio * 200 - penaltyRatio * 100
   return Math.max(0, Math.min(1000, Math.round(raw)))
 }
 
