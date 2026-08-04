@@ -48,11 +48,7 @@ export function DailyTriviaPlay({ challengeId, puzzle, timer: maxSeconds, onSubm
     startAtMs,
   })
 
-  const correctCount = useMemo(() => {
-    const solution = puzzle.solution as number[] | undefined
-    if (!solution) return answers.length
-    return answers.filter((a) => solution[a.questionIndex] === a.choiceIndex).length
-  }, [answers, puzzle.solution])
+  const answeredCount = answers.length
 
   const handleSubmit = useCallback(() => {
     if (submitRef.current) return
@@ -100,7 +96,6 @@ export function DailyTriviaPlay({ challengeId, puzzle, timer: maxSeconds, onSubm
   }
 
   const question = currentIndex < questions.length ? questions[currentIndex] : null
-  const solution = puzzle.solution as number[] | undefined
 
   return (
     <div className="space-y-4">
@@ -109,13 +104,8 @@ export function DailyTriviaPlay({ challengeId, puzzle, timer: maxSeconds, onSubm
         className="flex items-center justify-between rounded-xl px-4 py-2.5"
         style={{ background: 'var(--card)', border: '1px solid var(--border)' }}
       >
-        <div className="flex items-center gap-3">
-          <span className="font-bold tabular-nums" style={{ fontSize: 'var(--text-sm)' }}>
-            {correctCount} correct
-          </span>
-          <span style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>
-            {answers.length} / {questions.length} answered
-          </span>
+        <div className="font-bold tabular-nums" style={{ fontSize: 'var(--text-sm)' }}>
+          {answeredCount} / {questions.length} answered
         </div>
         <div
           className="font-bold tabular-nums"
@@ -146,18 +136,10 @@ export function DailyTriviaPlay({ challengeId, puzzle, timer: maxSeconds, onSubm
           <div className="grid gap-2">
             {question.choices.map((choice, i) => {
               const isSelected = selectedChoice === i
-              const isCorrect = showFeedback && solution && solution[currentIndex] === i
-              const isWrong = showFeedback && isSelected && solution && solution[currentIndex] !== i
 
               let bg = 'var(--card)'
               let border = 'var(--border)'
-              if (isCorrect) {
-                bg = 'var(--green-100, rgba(22, 163, 74, 0.15))'
-                border = 'var(--green-600, #16a34a)'
-              } else if (isWrong) {
-                bg = 'var(--red-100, rgba(220, 38, 38, 0.15))'
-                border = 'var(--red-500, #ef4444)'
-              } else if (isSelected) {
+              if (isSelected) {
                 bg = 'var(--surface)'
                 border = 'var(--primary)'
               }

@@ -32,7 +32,7 @@ type Props = {
 }
 
 const APP_CLASS =
-  'inline-flex h-9 items-center gap-1.5 rounded-xl border border-[var(--border)] bg-[var(--surface-inset-bg)] px-3 text-sm font-semibold text-muted transition-colors hover:text-[var(--foreground)] hover:border-[var(--border-strong)]'
+  'inline-flex h-9 items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface-inset-bg)] px-3.5 text-sm font-semibold text-muted transition-colors hover:text-[var(--foreground)] hover:border-[var(--border-strong)]'
 
 export function ProfileChip({ tone = 'site' }: Props) {
   const [open, setOpen] = useState(false)

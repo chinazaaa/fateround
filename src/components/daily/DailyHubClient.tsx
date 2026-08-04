@@ -104,7 +104,9 @@ export function DailyHubClient() {
             className="mt-3 inline-flex items-center gap-2 fr-card !py-1.5 !px-4"
             style={{ fontSize: 'var(--text-sm)' }}
           >
-            <span style={{ color: 'var(--text-muted)' }}>{completedCount}/5 completed</span>
+            <span style={{ color: 'var(--text-muted)' }}>
+              {completedCount}/{DAILY_CHALLENGE_GAME_TYPES.length} completed
+            </span>
             <div className="flex gap-1">
               {DAILY_CHALLENGE_GAME_TYPES.map((gt) => {
                 const played = games.find((g) => g.gameType === gt)?.played
