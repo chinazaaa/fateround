@@ -5,6 +5,7 @@ import { useDailyChallengeTimer } from '@/hooks/useDailyChallengeTimer'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { DAILY_SUBMIT_CONFIRM } from '@/components/daily/daily-submit-confirm'
 import { getOrCreateStartedAt, loadDailyAnswers, saveDailyAnswers, clearDailyProgress } from '@/lib/daily-progress'
+import { hashWord } from '@/lib/daily-word-hash'
 import type { WordScrambleMetadata } from '@/lib/word-scramble'
 
 interface DailyWordScramblePlayProps {
@@ -29,12 +30,14 @@ export function DailyWordScramblePlay({
 }: DailyWordScramblePlayProps) {
   const metadata = puzzle.metadata as WordScrambleMetadata
   const scrambles = metadata.scrambles ?? []
+  const answerHashes = (puzzle.answer_hashes as string[] | undefined) ?? []
   const totalWords = scrambles.length
 
   const savedProgress = loadDailyAnswers<ScrambleProgress>(challengeId)
   const [startAtMs] = useState(() => getOrCreateStartedAt(challengeId))
   const [currentIndex, setCurrentIndex] = useState(savedProgress?.currentIndex ?? 0)
   const [guess, setGuess] = useState('')
+  const [wrongGuess, setWrongGuess] = useState(false)
   const [solved, setSolved] = useState<Array<{ index: number; word: string }>>(savedProgress?.solved ?? [])
   const [skipped, setSkipped] = useState<Set<number>>(() => new Set(savedProgress?.skipped ?? []))
   const [submitted, setSubmitted] = useState(false)
@@ -100,19 +103,30 @@ export function DailyWordScramblePlay({
     if (!guess.trim() || submitted) return
 
     const word = guess.trim()
+    // Only a correct unscramble counts. Wrong guesses stay on the word (retry or Skip) — checked
+    // against the hashed answer so the solution never reaches the client.
+    const expected = answerHashes[currentIndex]
+    if (expected && hashWord(word) !== expected) {
+      setWrongGuess(true)
+      inputRef.current?.focus()
+      return
+    }
+
     setSolved((prev) => [...prev, { index: currentIndex, word }])
     setGuess('')
+    setWrongGuess(false)
 
     const next = findNextUnsolved(currentIndex + 1)
     if (next >= 0) setCurrentIndex(next)
 
     inputRef.current?.focus()
-  }, [guess, currentIndex, submitted, findNextUnsolved])
+  }, [guess, currentIndex, submitted, findNextUnsolved, answerHashes])
 
   const handleSkip = useCallback(() => {
     if (submitted) return
     setSkipped((prev) => new Set(prev).add(currentIndex))
     setGuess('')
+    setWrongGuess(false)
     const next = findNextUnsolved(currentIndex + 1)
     if (next >= 0) setCurrentIndex(next)
   }, [currentIndex, submitted, findNextUnsolved])
@@ -162,7 +176,10 @@ export function DailyWordScramblePlay({
                 ref={inputRef}
                 type="text"
                 value={guess}
-                onChange={(e) => setGuess(e.target.value)}
+                onChange={(e) => {
+                  setGuess(e.target.value)
+                  if (wrongGuess) setWrongGuess(false)
+                }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') handleGuessSubmit()
                 }}
@@ -170,7 +187,7 @@ export function DailyWordScramblePlay({
                 className="flex-1 px-4 py-2.5 outline-none"
                 style={{
                   background: 'var(--surface-sunken)',
-                  border: '1px solid var(--border)',
+                  border: `1px solid ${wrongGuess ? 'var(--error, #ef4444)' : 'var(--border)'}`,
                   borderRadius: 'var(--radius-md)',
                   fontSize: 'var(--text-sm)',
                 }}
@@ -185,6 +202,12 @@ export function DailyWordScramblePlay({
                 Go
               </button>
             </div>
+
+            {wrongGuess && (
+              <p className="mt-2 text-error" style={{ fontSize: 'var(--text-xs)' }}>
+                Not quite — try again or skip.
+              </p>
+            )}
 
             <div className="flex gap-3 mt-3">
               <button className="fr-btn fr-btn--ghost fr-btn--sm" onClick={handleSkip}>

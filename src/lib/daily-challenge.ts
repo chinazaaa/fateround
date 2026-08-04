@@ -145,6 +145,13 @@ export function stripSolution(
     })
   }
 
+  if (gameType === 'word_scramble') {
+    // Per-word answer hashes (parallel to metadata.scrambles) so the client can accept a correct
+    // unscramble and reject rubbish, without shipping the answers. Server still re-validates.
+    const solution = Array.isArray(puzzleData.solution) ? (puzzleData.solution as string[]) : []
+    safe.answer_hashes = solution.map(hashWord)
+  }
+
   return safe
 }
 
