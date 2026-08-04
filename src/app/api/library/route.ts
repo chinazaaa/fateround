@@ -109,7 +109,7 @@ export async function POST(req: NextRequest) {
   if (limited) return limited
 
   const body = await req.json()
-  const { title, game_type, author_name, description, questions, tags } = body
+  const { title, game_type, author_name, description, questions, tags, collection_ids } = body
 
   if (!title || !game_type || !author_name || !Array.isArray(questions)) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
@@ -143,6 +143,21 @@ export async function POST(req: NextRequest) {
     .single()
 
   if (error) return NextResponse.json({ error: internalErrorMessage('library', error) }, { status: 500 })
+
+  // Optional collection membership suggested at submit time. Validate the ids against real
+  // collections (drop anything unknown) so a public submitter can't write arbitrary rows. The pack
+  // is `pending`, so it stays invisible in the collection until an admin approves it.
+  if (Array.isArray(collection_ids) && collection_ids.length > 0) {
+    const requested = collection_ids.filter((c: unknown): c is string => typeof c === 'string').slice(0, 20)
+    if (requested.length > 0) {
+      const { data: valid } = await supabase.from('content_collections').select('id').in('id', requested)
+      const rows = (valid ?? []).map((c) => ({ collection_id: c.id as string, pack_id: data.id, sort_order: 0 }))
+      if (rows.length > 0) {
+        // Best-effort: a membership failure shouldn't fail the whole submission.
+        await supabase.from('question_pack_collections').insert(rows)
+      }
+    }
+  }
 
   return NextResponse.json({ success: true, id: data.id })
 }
