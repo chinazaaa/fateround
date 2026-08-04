@@ -1,5 +1,6 @@
 import { watToday } from '@/lib/community-dates'
 import { hashWord } from '@/lib/daily-word-hash'
+import type { CrosswordClue } from '@/lib/crossword'
 
 // ---------------------------------------------------------------------------
 // Game types eligible for the daily challenge
@@ -123,6 +124,23 @@ export function stripSolution(
     const validWords = Array.isArray(safe.valid_words) ? (safe.valid_words as string[]) : []
     safe.valid_word_hashes = validWords.map(hashWord)
     delete safe.valid_words
+  }
+
+  if (gameType === 'crossword') {
+    // Per-clue answer hashes (parallel to metadata.clues) so the client can mark a completed
+    // across/down word correct WITHOUT ever receiving the solution grid. Answers are 5–8 letters,
+    // so the hashes aren't brute-forceable. Computed from the (pre-strip) solution grid.
+    const solution = Array.isArray(puzzleData.solution) ? (puzzleData.solution as string[][]) : []
+    const metadata = puzzleData.metadata as { clues?: CrosswordClue[] } | undefined
+    safe.answer_hashes = (metadata?.clues ?? []).map((c) => {
+      let word = ''
+      for (let i = 0; i < c.length; i++) {
+        const r = c.direction === 'across' ? c.row : c.row + i
+        const col = c.direction === 'across' ? c.col + i : c.col
+        word += solution[r]?.[col] ?? ''
+      }
+      return hashWord(word)
+    })
   }
 
   return safe
