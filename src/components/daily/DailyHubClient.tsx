@@ -48,28 +48,50 @@ export function DailyHubClient() {
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-8">
+      {/* Header */}
       <div className="text-center mb-8">
-        <h1 className="text-2xl font-bold gradient-title inline-block">Daily Challenge</h1>
-        <p className="text-muted mt-1">Same puzzle for everyone. One shot, one score.</p>
-        {challengeNumber > 0 && <p className="label-caps mt-2">Day #{challengeNumber}</p>}
+        <h1 className="font-bold" style={{ fontSize: 'var(--text-2xl)', fontFamily: 'var(--font-display)' }}>
+          Daily Challenge
+        </h1>
+        <p className="mt-1" style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>
+          Same puzzle for everyone. One shot, one score.
+        </p>
+        {challengeNumber > 0 && (
+          <p
+            className="mt-2 font-semibold uppercase tracking-wider"
+            style={{ fontSize: 'var(--text-2xs)', color: 'var(--text-faint)' }}
+          >
+            Day #{challengeNumber}
+          </p>
+        )}
+
+        {/* Progress dots */}
         {!loading && completedCount > 0 && (
-          <div className="mt-3">
-            <div className="inline-flex items-center gap-2 glass-card px-4 py-1.5 text-sm">
-              <span className="text-muted">{completedCount}/5 completed</span>
-              <div className="flex gap-0.5">
-                {DAILY_CHALLENGE_GAME_TYPES.map((gt) => {
-                  const played = games.find((g) => g.gameType === gt)?.played
-                  return <div key={gt} className={`w-2 h-2 rounded-full ${played ? 'bg-primary' : 'surface-inset'}`} />
-                })}
-              </div>
+          <div
+            className="mt-3 inline-flex items-center gap-2 fr-card !py-1.5 !px-4"
+            style={{ fontSize: 'var(--text-sm)' }}
+          >
+            <span style={{ color: 'var(--text-muted)' }}>{completedCount}/5 completed</span>
+            <div className="flex gap-1">
+              {DAILY_CHALLENGE_GAME_TYPES.map((gt) => {
+                const played = games.find((g) => g.gameType === gt)?.played
+                return (
+                  <div
+                    key={gt}
+                    className="w-2 h-2 rounded-full"
+                    style={{ background: played ? 'var(--primary)' : 'var(--surface-sunken)' }}
+                  />
+                )
+              })}
             </div>
           </div>
         )}
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 animate-stagger">
+      {/* Game cards */}
+      <div className="grid gap-3 sm:grid-cols-2">
         {loading
-          ? DAILY_CHALLENGE_GAME_TYPES.map((gt) => <div key={gt} className="glass-card animate-pulse h-[88px]" />)
+          ? DAILY_CHALLENGE_GAME_TYPES.map((gt) => <div key={gt} className="fr-card animate-pulse h-[88px]" />)
           : DAILY_CHALLENGE_GAME_TYPES.map((gt) => {
               const status = games.find((g) => g.gameType === gt)
               const played = status?.played ?? false
@@ -81,32 +103,33 @@ export function DailyHubClient() {
                 <Link
                   key={gt}
                   href={`/daily/${slug}`}
-                  className={`glass-card glass-card-interactive flex items-center gap-4 px-5 py-4 ${played ? 'border-primary/20' : ''}`}
+                  className="fr-card fr-card--interactive flex items-center gap-4 !px-5 !py-4"
+                  style={played ? { borderColor: 'var(--border-primary)', borderWidth: 1 } : undefined}
                 >
-                  <div
-                    className="text-3xl shrink-0"
-                    style={{
-                      filter: 'drop-shadow(0 4px 10px color-mix(in srgb, var(--primary) 20%, transparent))',
-                    }}
-                  >
-                    {DAILY_GAME_EMOJIS[gt]}
-                  </div>
+                  <div className="text-3xl shrink-0">{DAILY_GAME_EMOJIS[gt]}</div>
                   <div className="flex-1 min-w-0">
-                    <h3 className="font-bold text-sm">{DAILY_GAME_LABELS[gt]}</h3>
-                    <p className="text-faint text-xs mt-0.5">
+                    <h3 className="font-bold" style={{ fontSize: 'var(--text-sm)' }}>
+                      {DAILY_GAME_LABELS[gt]}
+                    </h3>
+                    <p className="mt-0.5" style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>
                       {metric === 'time' ? 'Fastest time wins' : 'Highest score wins'}
                     </p>
                   </div>
                   <div className="shrink-0">
                     {played && score !== null ? (
                       <div className="text-right">
-                        <div className="text-primary font-bold text-sm">{score} pts</div>
-                        <div className="text-[10px] font-semibold uppercase tracking-wider text-green-500 mt-0.5">
+                        <div className="font-bold" style={{ color: 'var(--primary)', fontSize: 'var(--text-sm)' }}>
+                          {score} pts
+                        </div>
+                        <div
+                          className="font-semibold uppercase tracking-wider mt-0.5"
+                          style={{ fontSize: '10px', color: 'var(--green-600, #16a34a)' }}
+                        >
                           Done
                         </div>
                       </div>
                     ) : (
-                      <div className="btn-primary text-xs px-4 py-1.5 rounded-xl">Play</div>
+                      <span className="fr-btn fr-btn--primary fr-btn--sm">Play</span>
                     )}
                   </div>
                 </Link>
@@ -114,11 +137,9 @@ export function DailyHubClient() {
             })}
       </div>
 
+      {/* Footer link */}
       <div className="text-center mt-8">
-        <Link
-          href="/daily/sudoku/leaderboard"
-          className="btn-secondary text-sm px-5 py-2 rounded-xl inline-flex items-center gap-2"
-        >
+        <Link href="/daily/sudoku/leaderboard" className="fr-btn fr-btn--secondary fr-btn--sm">
           View Leaderboards
         </Link>
       </div>

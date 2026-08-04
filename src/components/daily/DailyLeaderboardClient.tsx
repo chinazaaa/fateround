@@ -86,15 +86,10 @@ export function DailyLeaderboardClient({ gameType }: { gameType: DailyChallengeG
     <div className="mx-auto max-w-lg px-4 py-6">
       {/* Header */}
       <div className="text-center mb-6">
-        <div
-          className="text-3xl mb-1"
-          style={{
-            filter: 'drop-shadow(0 4px 10px color-mix(in srgb, var(--primary) 20%, transparent))',
-          }}
-        >
-          {DAILY_GAME_EMOJIS[gameType]}
-        </div>
-        <h1 className="text-xl font-bold">Daily {DAILY_GAME_LABELS[gameType]} Leaderboard</h1>
+        <div className="text-3xl mb-1">{DAILY_GAME_EMOJIS[gameType]}</div>
+        <h1 className="font-bold" style={{ fontSize: 'var(--text-xl)' }}>
+          Daily {DAILY_GAME_LABELS[gameType]} Leaderboard
+        </h1>
       </div>
 
       {/* Game type chips */}
@@ -103,9 +98,7 @@ export function DailyLeaderboardClient({ gameType }: { gameType: DailyChallengeG
           <Link
             key={gt}
             href={`/daily/${DAILY_GAME_TYPE_TO_SLUG[gt]}/leaderboard`}
-            className={`shrink-0 text-sm px-4 py-2 rounded-xl font-medium transition-all ${
-              gt === gameType ? 'btn-primary' : 'btn-ghost'
-            }`}
+            className={`shrink-0 fr-btn fr-btn--sm ${gt === gameType ? 'fr-btn--primary' : 'fr-btn--ghost'}`}
           >
             {DAILY_GAME_EMOJIS[gt]} {DAILY_GAME_LABELS[gt]}
           </Link>
@@ -113,19 +106,28 @@ export function DailyLeaderboardClient({ gameType }: { gameType: DailyChallengeG
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 glass-card p-1 mb-5">
+      <div
+        className="flex gap-1 p-1 mb-5"
+        style={{ background: 'var(--surface-sunken)', borderRadius: 'var(--radius-md)' }}
+      >
         <button
-          className={`flex-1 text-sm font-medium py-2 rounded-lg transition-all ${
-            tab === 'today' ? 'bg-primary text-white' : 'text-muted hover:text-foreground'
-          }`}
+          className="flex-1 font-medium py-2 transition-all"
+          style={{
+            fontSize: 'var(--text-sm)',
+            borderRadius: 'var(--radius-sm)',
+            ...(tab === 'today' ? { background: 'var(--primary)', color: '#fff' } : { color: 'var(--text-muted)' }),
+          }}
           onClick={() => setTab('today')}
         >
           Today
         </button>
         <button
-          className={`flex-1 text-sm font-medium py-2 rounded-lg transition-all ${
-            tab === 'alltime' ? 'bg-primary text-white' : 'text-muted hover:text-foreground'
-          }`}
+          className="flex-1 font-medium py-2 transition-all"
+          style={{
+            fontSize: 'var(--text-sm)',
+            borderRadius: 'var(--radius-sm)',
+            ...(tab === 'alltime' ? { background: 'var(--primary)', color: '#fff' } : { color: 'var(--text-muted)' }),
+          }}
           onClick={() => setTab('alltime')}
         >
           All Time
@@ -135,11 +137,13 @@ export function DailyLeaderboardClient({ gameType }: { gameType: DailyChallengeG
       {/* Date navigation (today tab only) */}
       {tab === 'today' && (
         <div className="flex items-center justify-between mb-4">
-          <button className="btn-ghost text-sm px-3 py-1.5 rounded-lg" onClick={() => step(-1)}>
+          <button className="fr-btn fr-btn--ghost fr-btn--sm" onClick={() => step(-1)}>
             &larr;
           </button>
-          <span className="text-sm font-medium">{isToday ? 'Today' : formatDayLabel(date)}</span>
-          <button className="btn-ghost text-sm px-3 py-1.5 rounded-lg" onClick={() => step(1)} disabled={isToday}>
+          <span className="font-medium" style={{ fontSize: 'var(--text-sm)' }}>
+            {isToday ? 'Today' : formatDayLabel(date)}
+          </span>
+          <button className="fr-btn fr-btn--ghost fr-btn--sm" onClick={() => step(1)} disabled={isToday}>
             &rarr;
           </button>
         </div>
@@ -154,9 +158,9 @@ export function DailyLeaderboardClient({ gameType }: { gameType: DailyChallengeG
 
       {/* Empty state */}
       {!loading && entries.length === 0 && (
-        <div className="text-center py-8 text-muted">
+        <div className="text-center py-8" style={{ color: 'var(--text-muted)' }}>
           <p>No scores yet{tab === 'today' ? ' for this day' : ''}.</p>
-          <Link href={`/daily/${slug}`} className="btn-primary inline-block text-sm px-5 py-2 rounded-xl mt-4">
+          <Link href={`/daily/${slug}`} className="fr-btn fr-btn--primary fr-btn--sm mt-4 inline-block">
             Play now
           </Link>
         </div>
@@ -164,7 +168,7 @@ export function DailyLeaderboardClient({ gameType }: { gameType: DailyChallengeG
 
       {/* Entries */}
       {!loading && entries.length > 0 && (
-        <div className="space-y-1.5 animate-stagger">
+        <div className="space-y-1.5">
           {entries.map((entry) => {
             const score = entry.normalizedScore ?? entry.bestScore ?? 0
             const time = entry.timeSeconds ?? entry.bestTime ?? 0
@@ -172,24 +176,38 @@ export function DailyLeaderboardClient({ gameType }: { gameType: DailyChallengeG
             return (
               <div
                 key={entry.profileId}
-                className={`flex items-center gap-3 rounded-xl px-4 py-3 transition-all ${
-                  isTop3 ? 'glass-card' : 'hover:bg-[var(--card-hover)]'
-                }`}
+                className="flex items-center gap-3 px-4 py-3 transition-all"
+                style={{
+                  borderRadius: 'var(--radius-md)',
+                  ...(isTop3 ? { background: 'var(--surface-sunken)', border: '1px solid var(--border)' } : {}),
+                }}
               >
-                <div className="w-8 text-center font-bold text-sm shrink-0">
+                <div className="w-8 text-center font-bold shrink-0" style={{ fontSize: 'var(--text-sm)' }}>
                   {isTop3 ? MEDALS[entry.rank - 1] : `#${entry.rank}`}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div
-                    className={`font-semibold text-sm truncate ${entry.rank === 1 ? 'gradient-title inline-block' : ''}`}
+                    className="font-semibold truncate"
+                    style={{
+                      fontSize: 'var(--text-sm)',
+                      ...(entry.rank === 1 ? { color: 'var(--primary)' } : {}),
+                    }}
                   >
                     {entry.handle || 'Guest'}
                   </div>
-                  {entry.username && <div className="text-xs text-faint">@{entry.username}</div>}
+                  {entry.username && (
+                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-faint)' }}>@{entry.username}</div>
+                  )}
                 </div>
                 <div className="text-right shrink-0">
-                  <div className="font-bold text-sm tabular-nums">{score}</div>
-                  <div className="text-xs text-faint tabular-nums">{formatTime(time)}</div>
+                  <div className="font-bold" style={{ fontSize: 'var(--text-sm)', fontFeatureSettings: '"tnum"' }}>
+                    {score}
+                  </div>
+                  <div
+                    style={{ fontSize: 'var(--text-xs)', color: 'var(--text-faint)', fontFeatureSettings: '"tnum"' }}
+                  >
+                    {formatTime(time)}
+                  </div>
                 </div>
               </div>
             )
@@ -199,16 +217,28 @@ export function DailyLeaderboardClient({ gameType }: { gameType: DailyChallengeG
 
       {/* Total count */}
       {!loading && total > entries.length && (
-        <div className="text-center mt-4 text-sm text-faint">
+        <div className="text-center mt-4" style={{ fontSize: 'var(--text-sm)', color: 'var(--text-faint)' }}>
           Showing {entries.length} of {total} players
         </div>
       )}
 
       {/* My rank sticky footer */}
       {myRank && myScore !== null && (
-        <div className="sticky bottom-4 mt-4 glass-card-strong px-4 py-3 flex items-center justify-between border-primary/20">
-          <span className="text-sm font-semibold">Your rank: #{myRank}</span>
-          <span className="font-bold text-primary">{myScore} pts</span>
+        <div
+          className="sticky bottom-4 mt-4 px-4 py-3 flex items-center justify-between"
+          style={{
+            background: 'var(--surface)',
+            border: '1px solid var(--border-primary)',
+            borderRadius: 'var(--radius-lg)',
+            boxShadow: 'var(--shadow-md)',
+          }}
+        >
+          <span className="font-semibold" style={{ fontSize: 'var(--text-sm)' }}>
+            Your rank: #{myRank}
+          </span>
+          <span className="font-bold" style={{ color: 'var(--primary)' }}>
+            {myScore} pts
+          </span>
         </div>
       )}
     </div>

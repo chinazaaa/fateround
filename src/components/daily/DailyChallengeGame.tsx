@@ -1,6 +1,6 @@
 'use client'
 
-import { useDailyChallengeSession, type DailyChallengePhase } from '@/hooks/useDailyChallengeSession'
+import { useDailyChallengeSession } from '@/hooks/useDailyChallengeSession'
 import { DailyChallengeResults } from './DailyChallengeResults'
 import { DailySudokuPlay } from './DailySudokuPlay'
 import { DailyWordHuntPlay } from './DailyWordHuntPlay'
@@ -12,15 +12,10 @@ import { DAILY_GAME_LABELS, DAILY_GAME_EMOJIS, type DailyChallengeGameType } fro
 function LoadingState({ gameType }: { gameType: DailyChallengeGameType }) {
   return (
     <div className="mx-auto max-w-lg px-4 py-16 text-center">
-      <div
-        className="text-4xl mb-4"
-        style={{
-          filter: 'drop-shadow(0 6px 14px color-mix(in srgb, var(--primary) 25%, transparent))',
-        }}
-      >
-        {DAILY_GAME_EMOJIS[gameType]}
-      </div>
-      <h1 className="text-xl font-bold">Loading Daily {DAILY_GAME_LABELS[gameType]}...</h1>
+      <div className="text-4xl mb-4">{DAILY_GAME_EMOJIS[gameType]}</div>
+      <h1 className="font-bold" style={{ fontSize: 'var(--text-xl)' }}>
+        Loading Daily {DAILY_GAME_LABELS[gameType]}...
+      </h1>
       <div className="loading loading-spinner loading-lg mt-4" />
     </div>
   )
@@ -29,8 +24,12 @@ function LoadingState({ gameType }: { gameType: DailyChallengeGameType }) {
 function ErrorState({ error }: { error: string | null }) {
   return (
     <div className="mx-auto max-w-lg px-4 py-16 text-center">
-      <h1 className="text-xl font-bold text-error">Something went wrong</h1>
-      <p className="mt-2 text-muted">{error ?? 'Please try again later.'}</p>
+      <h1 className="font-bold text-error" style={{ fontSize: 'var(--text-xl)' }}>
+        Something went wrong
+      </h1>
+      <p className="mt-2" style={{ color: 'var(--text-muted)' }}>
+        {error ?? 'Please try again later.'}
+      </p>
     </div>
   )
 }
@@ -90,20 +89,13 @@ export function DailyChallengeGame({ gameType }: { gameType: DailyChallengeGameT
   if (!challengeData) return <ErrorState error="No challenge data" />
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-4">
+    <div className={`mx-auto px-4 py-4 ${gameType === 'crossword' ? 'max-w-4xl' : 'max-w-2xl'}`}>
       <div className="mb-4 text-center">
-        <div
-          className="text-3xl mb-1"
-          style={{
-            filter: 'drop-shadow(0 4px 10px color-mix(in srgb, var(--primary) 20%, transparent))',
-          }}
-        >
-          {DAILY_GAME_EMOJIS[gameType]}
-        </div>
-        <h1 className="text-lg font-bold">
+        <div className="text-3xl mb-1">{DAILY_GAME_EMOJIS[gameType]}</div>
+        <h1 className="font-bold" style={{ fontSize: 'var(--text-lg)' }}>
           Daily {DAILY_GAME_LABELS[gameType]} #{challengeData.challengeNumber}
         </h1>
-        <p className="text-sm text-muted">Same puzzle for everyone. One attempt.</p>
+        <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>Same puzzle for everyone. One attempt.</p>
       </div>
 
       <PlaySurface

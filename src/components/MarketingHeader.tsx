@@ -92,7 +92,7 @@ function ThemeButton({ withLabel = false }: { withLabel?: boolean }) {
 const NAV: NavItem[] = [
   { href: '/games', label: 'Games', icon: '🎮' },
   { href: '/tournament', label: 'Tournaments', icon: '🏆' },
-  { href: '/rooms', label: 'Rooms', icon: '🏠' },
+  { href: '/daily', label: 'Daily Challenges', icon: '📅' },
   { href: '/leaderboard', label: 'Leaderboard', icon: '📊' },
   { href: '/updates', label: "What's new", icon: '✨' },
 ]

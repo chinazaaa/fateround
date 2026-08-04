@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import Link from 'next/link'
 import {
   DAILY_GAME_LABELS,
@@ -9,6 +9,9 @@ import {
   type DailyChallengeGameType,
 } from '@/lib/daily-challenge'
 import type { DailyChallengeResult } from '@/hooks/useDailyChallengeSession'
+import { captureElementAsImage } from '@/lib/capture-element-image'
+import { shareImageBlob } from '@/lib/share-image'
+import { useToast } from '@/components/ui/Toast'
 
 interface DailyChallengeResultsProps {
   gameType: DailyChallengeGameType
@@ -53,15 +56,9 @@ export function DailyChallengeResults({
   submitting,
 }: DailyChallengeResultsProps) {
   const slug = DAILY_GAME_TYPE_TO_SLUG[gameType]
-
-  if (submitting) {
-    return (
-      <div className="mx-auto max-w-lg px-4 py-16 text-center">
-        <div className="loading loading-spinner loading-lg" />
-        <p className="text-muted mt-4">Calculating your score...</p>
-      </div>
-    )
-  }
+  const shareCardRef = useRef<HTMLDivElement>(null)
+  const { success, error: toastError } = useToast()
+  const [sharing, setSharing] = useState(false)
 
   const score = result?.normalizedScore ?? (previousScore?.normalized_score as number | undefined) ?? 0
   const rank = result?.rank ?? null
@@ -72,75 +69,138 @@ export function DailyChallengeResults({
   const isNewBest = result?.isNewBest ?? false
   const personalBest = result?.personalBest
 
-  const shareText = [
-    `FateRound Daily ${DAILY_GAME_LABELS[gameType]} #${challengeNumber}`,
-    `Score: ${score}/1000 | Time: ${formatTime(timeSeconds)}`,
-    rank && totalPlayers ? `Rank: #${rank} of ${totalPlayers}` : null,
-    `fateround.com/daily/${slug}`,
-  ]
-    .filter(Boolean)
-    .join('\n')
+  const handleShare = useCallback(async () => {
+    if (sharing) return
+    const target = shareCardRef.current
+    if (!target) return
 
-  const handleShare = async () => {
-    if (navigator.share) {
-      await navigator.share({ text: shareText }).catch(() => {})
-    } else {
-      await navigator.clipboard.writeText(shareText)
+    setSharing(true)
+    try {
+      const blob = await captureElementAsImage(target)
+      const result = await shareImageBlob(blob, `daily-${slug}-${challengeNumber}.png`)
+      if (result === 'copied') success('Image copied — paste into Stories or chat')
+      else if (result === 'shared') success('Shared!')
+      else success('Image downloaded')
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return
+      // Fallback to text share
+      const shareText = [
+        `FateRound Daily ${DAILY_GAME_LABELS[gameType]} #${challengeNumber}`,
+        `Score: ${score}/1000 | Time: ${formatTime(timeSeconds)}`,
+        rank && totalPlayers ? `Rank: #${rank} of ${totalPlayers}` : null,
+        `fateround.com/daily/${slug}`,
+      ]
+        .filter(Boolean)
+        .join('\n')
+      try {
+        if (navigator.share) await navigator.share({ text: shareText })
+        else {
+          await navigator.clipboard.writeText(shareText)
+          success('Results copied to clipboard!')
+        }
+      } catch {
+        toastError('Could not share results')
+      }
+    } finally {
+      setSharing(false)
     }
+  }, [sharing, slug, challengeNumber, gameType, score, timeSeconds, rank, totalPlayers, success, toastError])
+
+  if (submitting) {
+    return (
+      <div className="mx-auto max-w-lg px-4 py-16 text-center">
+        <div className="loading loading-spinner loading-lg" />
+        <p className="mt-4" style={{ color: 'var(--text-muted)' }}>
+          Calculating your score...
+        </p>
+      </div>
+    )
   }
 
   const emoji = score >= 900 ? '🏆' : score >= 700 ? '🎯' : score >= 400 ? '👍' : '💪'
 
   return (
     <div className="mx-auto max-w-lg px-4 py-8">
-      <div className="glass-card-strong p-6 sm:p-8">
+      <div className="fr-card fr-card--xl">
         <div className="flex flex-col items-center text-center">
-          {/* Trophy emoji with glow */}
-          <div
-            className="text-5xl mb-3"
-            style={{
-              filter: 'drop-shadow(0 6px 14px color-mix(in srgb, var(--primary) 25%, transparent))',
-            }}
-          >
+          {/* Trophy emoji */}
+          <div className="text-5xl mb-3" style={{ filter: 'drop-shadow(0 6px 14px rgba(225, 29, 72, 0.2))' }}>
             {emoji}
           </div>
 
           {/* Title */}
-          <div className="label-caps mb-4">
+          <p
+            className="font-semibold uppercase tracking-wider mb-4"
+            style={{ fontSize: 'var(--text-2xs)', color: 'var(--text-faint)' }}
+          >
             Daily {DAILY_GAME_LABELS[gameType]} #{challengeNumber}
-          </div>
+          </p>
 
-          {/* Score — hero treatment */}
+          {/* Score — hero */}
           <div className="my-2">
-            <span className="text-6xl font-black tabular-nums gradient-title inline-block">
+            <span
+              className="font-black"
+              style={{
+                fontSize: 'var(--text-5xl)',
+                fontFamily: 'var(--font-display)',
+                fontFeatureSettings: '"tnum"',
+                color: 'var(--primary)',
+              }}
+            >
               <AnimatedScore target={score} />
             </span>
-            <span className="text-xl text-faint ml-1 font-medium">/ 1000</span>
+            <span className="ml-1 font-medium" style={{ fontSize: 'var(--text-xl)', color: 'var(--text-faint)' }}>
+              / 1000
+            </span>
           </div>
 
           {/* New personal best */}
           {isNewBest && (
-            <div className="mt-2 inline-flex items-center gap-1.5 glass-card px-3 py-1 text-sm font-semibold text-primary animate-bounce">
-              <span>⭐</span> New Personal Best!
-            </div>
+            <div className="mt-2 fr-badge fr-badge--soft font-semibold animate-bounce">⭐ New Personal Best!</div>
           )}
 
           {/* Stats grid */}
-          <div className="grid grid-cols-3 gap-3 w-full mt-6 animate-stagger">
-            <div className="glass-card p-3 text-center">
-              <div className="text-xl font-black tabular-nums">{formatTime(timeSeconds)}</div>
-              <div className="text-faint text-[10px] uppercase tracking-wider font-semibold mt-1">Time</div>
+          <div className="grid grid-cols-3 gap-3 w-full mt-6">
+            <div
+              className="rounded-xl p-3 text-center"
+              style={{ background: 'var(--surface-sunken)', border: '1px solid var(--border)' }}
+            >
+              <div className="font-black" style={{ fontSize: 'var(--text-xl)', fontFeatureSettings: '"tnum"' }}>
+                {formatTime(timeSeconds)}
+              </div>
+              <div
+                className="font-semibold uppercase tracking-wider mt-1"
+                style={{ fontSize: '10px', color: 'var(--text-faint)' }}
+              >
+                Time
+              </div>
             </div>
-            <div className="glass-card p-3 text-center">
-              <div className="text-xl font-black tabular-nums">
+            <div
+              className="rounded-xl p-3 text-center"
+              style={{ background: 'var(--surface-sunken)', border: '1px solid var(--border)' }}
+            >
+              <div className="font-black" style={{ fontSize: 'var(--text-xl)', fontFeatureSettings: '"tnum"' }}>
                 {itemsSolved}/{itemsTotal}
               </div>
-              <div className="text-faint text-[10px] uppercase tracking-wider font-semibold mt-1">Solved</div>
+              <div
+                className="font-semibold uppercase tracking-wider mt-1"
+                style={{ fontSize: '10px', color: 'var(--text-faint)' }}
+              >
+                Solved
+              </div>
             </div>
             {rank && (
-              <div className="glass-card p-3 text-center">
-                <div className="text-xl font-black tabular-nums">#{rank}</div>
-                <div className="text-faint text-[10px] uppercase tracking-wider font-semibold mt-1">
+              <div
+                className="rounded-xl p-3 text-center"
+                style={{ background: 'var(--surface-sunken)', border: '1px solid var(--border)' }}
+              >
+                <div className="font-black" style={{ fontSize: 'var(--text-xl)', fontFeatureSettings: '"tnum"' }}>
+                  #{rank}
+                </div>
+                <div
+                  className="font-semibold uppercase tracking-wider mt-1"
+                  style={{ fontSize: '10px', color: 'var(--text-faint)' }}
+                >
                   of {totalPlayers}
                 </div>
               </div>
@@ -149,26 +209,153 @@ export function DailyChallengeResults({
 
           {/* Personal best comparison */}
           {personalBest && !isNewBest && (
-            <div className="mt-4 text-sm text-muted">
+            <div className="mt-4" style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>
               Personal best: {personalBest.bestScore} pts ({personalBest.totalPlays} plays)
             </div>
           )}
 
           {/* Actions */}
           <div className="mt-8 flex flex-col gap-3 w-full">
-            <Link
-              href={`/daily/${slug}/leaderboard`}
-              className="btn-primary w-full text-center py-3 rounded-xl font-semibold"
-            >
+            <Link href={`/daily/${slug}/leaderboard`} className="fr-btn fr-btn--primary fr-btn--block">
               View Leaderboard
             </Link>
-            <button className="btn-secondary w-full text-center py-2.5 rounded-xl" onClick={handleShare}>
-              Share Result
+            <button className="fr-btn fr-btn--secondary fr-btn--block" onClick={handleShare} disabled={sharing}>
+              {sharing ? 'Generating...' : 'Share Result'}
             </button>
-            <Link href="/daily" className="btn-ghost text-sm text-center py-2">
+            <Link href="/daily" className="fr-btn fr-btn--ghost fr-btn--sm mx-auto">
               Back to Daily Challenges
             </Link>
           </div>
+        </div>
+      </div>
+
+      {/* Hidden share card — captured as image */}
+      <div aria-hidden style={{ position: 'fixed', left: '-9999px', top: 0, pointerEvents: 'none' }}>
+        <div
+          ref={shareCardRef}
+          style={{
+            width: 420,
+            padding: 32,
+            background: 'linear-gradient(145deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
+            color: '#fff',
+            fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+            borderRadius: 24,
+          }}
+        >
+          {/* Header */}
+          <div style={{ textAlign: 'center', marginBottom: 24 }}>
+            <div style={{ fontSize: 48, lineHeight: 1 }}>{DAILY_GAME_EMOJIS[gameType]}</div>
+            <div
+              style={{
+                fontSize: 11,
+                fontWeight: 600,
+                textTransform: 'uppercase' as const,
+                letterSpacing: '0.12em',
+                color: 'rgba(255,255,255,0.5)',
+                marginTop: 12,
+              }}
+            >
+              Daily {DAILY_GAME_LABELS[gameType]} #{challengeNumber}
+            </div>
+          </div>
+
+          {/* Score */}
+          <div style={{ textAlign: 'center', marginBottom: 24 }}>
+            <div style={{ fontSize: 64, fontWeight: 900, lineHeight: 1, fontFeatureSettings: '"tnum"' }}>{score}</div>
+            <div style={{ fontSize: 18, fontWeight: 500, color: 'rgba(255,255,255,0.4)', marginTop: 4 }}>/ 1000</div>
+          </div>
+
+          {/* Stats row */}
+          <div
+            style={{
+              display: 'flex',
+              gap: 12,
+              justifyContent: 'center',
+              marginBottom: isNewBest ? 20 : 0,
+            }}
+          >
+            <div
+              style={{
+                flex: 1,
+                background: 'rgba(255,255,255,0.08)',
+                borderRadius: 12,
+                padding: '12px 8px',
+                textAlign: 'center',
+              }}
+            >
+              <div style={{ fontSize: 22, fontWeight: 800, fontFeatureSettings: '"tnum"' }}>
+                {formatTime(timeSeconds)}
+              </div>
+              <div
+                style={{
+                  fontSize: 10,
+                  fontWeight: 600,
+                  textTransform: 'uppercase' as const,
+                  letterSpacing: '0.1em',
+                  color: 'rgba(255,255,255,0.45)',
+                  marginTop: 4,
+                }}
+              >
+                Time
+              </div>
+            </div>
+            <div
+              style={{
+                flex: 1,
+                background: 'rgba(255,255,255,0.08)',
+                borderRadius: 12,
+                padding: '12px 8px',
+                textAlign: 'center',
+              }}
+            >
+              <div style={{ fontSize: 22, fontWeight: 800, fontFeatureSettings: '"tnum"' }}>
+                {itemsSolved}/{itemsTotal}
+              </div>
+              <div
+                style={{
+                  fontSize: 10,
+                  fontWeight: 600,
+                  textTransform: 'uppercase' as const,
+                  letterSpacing: '0.1em',
+                  color: 'rgba(255,255,255,0.45)',
+                  marginTop: 4,
+                }}
+              >
+                Solved
+              </div>
+            </div>
+            {rank && (
+              <div
+                style={{
+                  flex: 1,
+                  background: 'rgba(255,255,255,0.08)',
+                  borderRadius: 12,
+                  padding: '12px 8px',
+                  textAlign: 'center',
+                }}
+              >
+                <div style={{ fontSize: 22, fontWeight: 800, fontFeatureSettings: '"tnum"' }}>#{rank}</div>
+                <div
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 600,
+                    textTransform: 'uppercase' as const,
+                    letterSpacing: '0.1em',
+                    color: 'rgba(255,255,255,0.45)',
+                    marginTop: 4,
+                  }}
+                >
+                  of {totalPlayers}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {isNewBest && (
+            <div style={{ textAlign: 'center', fontSize: 14, fontWeight: 600, color: '#fbbf24' }}>
+              New Personal Best!
+            </div>
+          )}
         </div>
       </div>
     </div>

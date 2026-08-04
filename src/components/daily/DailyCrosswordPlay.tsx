@@ -232,84 +232,116 @@ export function DailyCrosswordPlay({ puzzle, timer: maxSeconds, onSubmit }: Dail
     return () => window.removeEventListener('keydown', handler)
   }, [selectedCell, direction, submitted, metadata, size, enterLetter, deleteLetter])
 
+  const cluesPanel = (
+    <div className="fr-card !p-4 max-h-[600px] overflow-y-auto lg:max-h-none lg:h-full">
+      <p
+        className="font-semibold uppercase tracking-wider mb-2"
+        style={{ fontSize: 'var(--text-2xs)', color: 'var(--text-faint)' }}
+      >
+        Clues
+      </p>
+      <div className="space-y-1" style={{ fontSize: 'var(--text-sm)' }}>
+        {clues.map((clue, i) => {
+          const solved = solvedClues.has(i)
+          return (
+            <div
+              key={i}
+              className={`flex gap-2 ${solved ? 'line-through' : ''}`}
+              style={solved ? { color: 'var(--green-600, #16a34a)' } : undefined}
+            >
+              <span className="font-bold w-8 shrink-0" style={{ color: 'var(--text-faint)' }}>
+                {clue.number}
+                {clue.direction === 'across' ? 'A' : 'D'}
+              </span>
+              <span>{clue.clue}</span>
+              {solved && <span className="ml-auto shrink-0">✓</span>}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+
   return (
     <div className="space-y-4">
       {/* Timer bar */}
-      <div className="flex items-center justify-between rounded-lg bg-base-200 px-4 py-2">
+      <div
+        className="flex items-center justify-between px-4 py-2.5"
+        style={{
+          background: 'var(--surface-sunken)',
+          borderRadius: 'var(--radius-md)',
+          border: '1px solid var(--border)',
+        }}
+      >
         <div>
-          <span className="text-sm font-medium text-base-content/60">Solved: </span>
-          <span className="font-bold">
+          <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>Solved: </span>
+          <span className="font-bold" style={{ fontFeatureSettings: '"tnum"' }}>
             {solvedCount}/{clues.length}
           </span>
         </div>
-        <span className={`font-mono text-lg font-bold ${isTimeUp ? 'text-error' : ''}`}>{formatted}</span>
+        <span
+          className={`font-mono font-bold ${isTimeUp ? 'text-error' : ''}`}
+          style={{ fontSize: 'var(--text-lg)', fontFeatureSettings: '"tnum"' }}
+        >
+          {formatted}
+        </span>
       </div>
 
-      {/* Board — correct words are filled in the solved colour */}
-      <CrosswordBoard
-        metadata={metadata}
-        letterGrid={letterGrid}
-        mySolvedCells={solvedCells}
-        selectedCell={selectedCell}
-        activeCells={activeCells}
-        onCellSelect={handleCellSelect}
-        readOnly={submitted || isTimeUp}
-      />
+      {/* Desktop: board+keyboard left, clues right. Mobile: stacked. */}
+      <div className="lg:grid lg:grid-cols-[1fr_280px] lg:gap-4 lg:items-start">
+        {/* Left column: board + keyboard */}
+        <div className="space-y-4">
+          <CrosswordBoard
+            metadata={metadata}
+            letterGrid={letterGrid}
+            mySolvedCells={solvedCells}
+            selectedCell={selectedCell}
+            activeCells={activeCells}
+            onCellSelect={handleCellSelect}
+            readOnly={submitted || isTimeUp}
+          />
 
-      {/* On-screen keyboard — the only way to type on touch devices (no hardware keys). */}
-      {!submitted && !isTimeUp && (
-        <div className="mx-auto w-full max-w-[min(460px,100%)] select-none space-y-1.5">
-          {['QWERTYUIOP', 'ASDFGHJKL', 'ZXCVBNM'].map((rowKeys, ri) => (
-            <div key={ri} className="flex justify-center gap-1">
-              {ri === 2 && (
-                <button
-                  type="button"
-                  aria-label="Backspace"
-                  onClick={deleteLetter}
-                  className="flex h-11 flex-[1.5] items-center justify-center rounded-md bg-base-300 text-base font-semibold active:scale-95"
-                >
-                  ⌫
-                </button>
-              )}
-              {rowKeys.split('').map((ch) => (
-                <button
-                  key={ch}
-                  type="button"
-                  onClick={() => enterLetter(ch)}
-                  className="flex h-11 min-w-0 flex-1 items-center justify-center rounded-md bg-base-200 text-base font-semibold active:scale-95"
-                >
-                  {ch}
-                </button>
+          {/* On-screen keyboard */}
+          {!submitted && !isTimeUp && (
+            <div className="mx-auto w-full max-w-[min(460px,100%)] select-none space-y-1.5">
+              {['QWERTYUIOP', 'ASDFGHJKL', 'ZXCVBNM'].map((rowKeys, ri) => (
+                <div key={ri} className="flex justify-center gap-1">
+                  {ri === 2 && (
+                    <button
+                      type="button"
+                      aria-label="Backspace"
+                      onClick={deleteLetter}
+                      className="flex h-11 flex-[1.5] items-center justify-center rounded-md text-base font-semibold active:scale-95"
+                      style={{ background: 'var(--surface-sunken)', border: '1px solid var(--border)' }}
+                    >
+                      ⌫
+                    </button>
+                  )}
+                  {rowKeys.split('').map((ch) => (
+                    <button
+                      key={ch}
+                      type="button"
+                      onClick={() => enterLetter(ch)}
+                      className="flex h-11 min-w-0 flex-1 items-center justify-center rounded-md text-base font-semibold active:scale-95"
+                      style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
+                    >
+                      {ch}
+                    </button>
+                  ))}
+                  {ri === 2 && <div className="flex-[1.5]" aria-hidden />}
+                </div>
               ))}
-              {ri === 2 && <div className="flex-[1.5]" aria-hidden />}
             </div>
-          ))}
+          )}
         </div>
-      )}
 
-      {/* Clues */}
-      <div className="rounded-lg bg-base-200 p-3 max-h-48 overflow-y-auto">
-        <div className="text-sm font-medium text-base-content/60 mb-2">Clues</div>
-        <div className="space-y-1 text-sm">
-          {clues.map((clue, i) => {
-            const solved = solvedClues.has(i)
-            return (
-              <div key={i} className={`flex gap-2 ${solved ? 'text-success line-through' : ''}`}>
-                <span className="font-bold text-base-content/50 w-8 shrink-0">
-                  {clue.number}
-                  {clue.direction === 'across' ? 'A' : 'D'}
-                </span>
-                <span>{clue.clue}</span>
-                {solved && <span className="ml-auto shrink-0">✓</span>}
-              </div>
-            )
-          })}
-        </div>
+        {/* Right column (desktop) / below (mobile): clues */}
+        {cluesPanel}
       </div>
 
       {allFilled && !submitted && (
         <div className="text-center">
-          <button className="btn btn-primary btn-lg" onClick={confirmAndSubmit}>
+          <button className="fr-btn fr-btn--primary fr-btn--lg" onClick={confirmAndSubmit}>
             Submit Crossword
           </button>
         </div>
