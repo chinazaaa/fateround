@@ -9,14 +9,15 @@ export async function generateMetadata({ params }: { params: Promise<{ gameType:
   const { gameType: slug } = await params
   const gameType = DAILY_GAME_SLUG_TO_TYPE[slug] as DailyChallengeGameType | undefined
   const label = gameType ? DAILY_GAME_LABELS[gameType] : 'Daily Challenge'
+  const description = `Today's top scores on the Daily ${label}. See where you rank against other players.`
 
   return {
-    title: `${label} Leaderboard`,
-    description: `Today's top scores on the Daily ${label}.`,
+    title: `Daily ${label} Leaderboard — Today's Top Scores`,
+    description,
     alternates: { canonical: `/daily-challenges/${slug}/leaderboard` },
     openGraph: {
-      title: `${label} Leaderboard | ${SITE_NAME}`,
-      description: `Today's top scores on the Daily ${label}.`,
+      title: `Daily ${label} Leaderboard | ${SITE_NAME}`,
+      description,
       url: `/daily-challenges/${slug}/leaderboard`,
       images: [OG_IMAGE],
     },
