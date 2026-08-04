@@ -236,7 +236,7 @@ export function DailyChallengeResults({
           style={{
             width: 420,
             padding: 32,
-            background: 'linear-gradient(145deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
+            background: 'linear-gradient(145deg, #1c1c1e 0%, #2c2c2e 50%, #1c1c1e 100%)',
             color: '#fff',
             fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
             borderRadius: 24,
@@ -261,7 +261,11 @@ export function DailyChallengeResults({
 
           {/* Score */}
           <div style={{ textAlign: 'center', marginBottom: 24 }}>
-            <div style={{ fontSize: 64, fontWeight: 900, lineHeight: 1, fontFeatureSettings: '"tnum"' }}>{score}</div>
+            <div
+              style={{ fontSize: 64, fontWeight: 900, lineHeight: 1, fontFeatureSettings: '"tnum"', color: '#f43f5e' }}
+            >
+              {score}
+            </div>
             <div style={{ fontSize: 18, fontWeight: 500, color: 'rgba(255,255,255,0.4)', marginTop: 4 }}>/ 1000</div>
           </div>
 
