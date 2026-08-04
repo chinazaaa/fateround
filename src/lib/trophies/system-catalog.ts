@@ -15,6 +15,20 @@ import type { SystemTrophySpec } from './system-trophies/types'
 import { UNO } from './system-trophies/uno'
 import { WHOT } from './system-trophies/whot'
 import { YAHTZEE } from './system-trophies/yahtzee'
+import { BINGO } from './system-trophies/bingo'
+import { CROSSWORD } from './system-trophies/crossword'
+import { I_CALL_ON } from './system-trophies/i-call-on'
+import { LANDMINE } from './system-trophies/landmine'
+import { MATCHING_PAIRS } from './system-trophies/matching-pairs'
+import { PING_PONG } from './system-trophies/ping-pong'
+import { QUIPLASH } from './system-trophies/quiplash'
+import { SUDOKU } from './system-trophies/sudoku'
+import { TIC_TAC_TOE } from './system-trophies/tic-tac-toe'
+import { TWO_TRUTHS } from './system-trophies/two-truths'
+import { WORD_HUNT } from './system-trophies/word-hunt'
+import { WORD_RUSH } from './system-trophies/word-rush'
+import { WORD_SCRAMBLE } from './system-trophies/word-scramble'
+import { WORD_SEARCH } from './system-trophies/word-search'
 
 /**
  * SYSTEM trophies — authored in code, against one game's own measurements.
@@ -61,6 +75,20 @@ const BY_GAME: Record<string, SystemTrophySpec[]> = {
   uno: UNO,
   whot: WHOT,
   yahtzee: YAHTZEE,
+  bingo: BINGO,
+  crossword: CROSSWORD,
+  i_call_on: I_CALL_ON,
+  landmine: LANDMINE,
+  matching_pairs: MATCHING_PAIRS,
+  ping_pong: PING_PONG,
+  quiplash: QUIPLASH,
+  sudoku: SUDOKU,
+  tic_tac_toe: TIC_TAC_TOE,
+  two_truths: TWO_TRUTHS,
+  word_hunt: WORD_HUNT,
+  word_rush: WORD_RUSH,
+  word_scramble: WORD_SCRAMBLE,
+  word_search: WORD_SEARCH,
 }
 
 /**
