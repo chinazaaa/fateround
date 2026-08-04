@@ -26,6 +26,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const gameType = searchParams.get('game_type')
   const tag = searchParams.get('tag')
+  const collection = searchParams.get('collection') // slug or uuid; filters to that collection's datasets
   const page = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10))
   const pageSize = Math.min(
     MAX_PAGE_SIZE,
@@ -36,22 +37,65 @@ export async function GET(req: NextRequest) {
 
   const search = sanitizeSearchTerm(searchParams.get('q') ?? '')
 
+  // Collection filter: resolve the collection to its member pack ids first, then constrain the
+  // main query with `.in('id', …)`. Keeps the answer-bearing questions out of the response and
+  // avoids brittle PostgREST embedded filters. RLS limits both tables to active/approved rows.
+  let collectionPackIds: string[] | null = null
+  if (collection) {
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(collection)
+    let collectionId: string | null = isUuid ? collection : null
+    if (!collectionId) {
+      const { data: coll } = await supabase
+        .from('content_collections')
+        .select('id')
+        .eq('slug', collection)
+        .maybeSingle()
+      collectionId = coll?.id ?? null
+    }
+    if (!collectionId) {
+      return NextResponse.json({ packs: [], total: 0, page, pages: 1 })
+    }
+    const { data: members, error: memberErr } = await supabase
+      .from('question_pack_collections')
+      .select('pack_id')
+      .eq('collection_id', collectionId)
+    if (memberErr) return NextResponse.json({ error: internalErrorMessage('library', memberErr) }, { status: 500 })
+    collectionPackIds = (members ?? []).map((m) => m.pack_id as string)
+    if (collectionPackIds.length === 0) {
+      return NextResponse.json({ packs: [], total: 0, page, pages: 1 })
+    }
+  }
+
   let query = supabase
     .from('question_packs')
-    .select('id, title, game_type, author_name, description, question_count, approved_at, tags', { count: 'exact' })
+    // Embed active-collection membership so the create picker can offer a client-side collection
+    // chip filter without extra round-trips. RLS limits the join/collections to active rows.
+    .select(
+      'id, title, game_type, author_name, description, question_count, approved_at, tags, question_pack_collections(content_collections(slug, name))',
+      { count: 'exact' }
+    )
     .eq('status', 'approved')
     .order('approved_at', { ascending: false })
     .range((page - 1) * pageSize, page * pageSize - 1)
 
   if (gameType) query = query.eq('game_type', gameType)
   if (tag) query = query.contains('tags', [tag])
+  if (collectionPackIds) query = query.in('id', collectionPackIds)
   if (search) query = query.or(`title.ilike.%${search}%,description.ilike.%${search}%,author_name.ilike.%${search}%`)
 
   const { data, error, count } = await query
   if (error) return NextResponse.json({ error: internalErrorMessage('library', error) }, { status: 500 })
 
+  // Flatten the embedded membership into a simple `collections: [{slug,name}]` per pack.
+  const packs = (data ?? []).map((row) => {
+    const { question_pack_collections, ...rest } = row as Record<string, unknown>
+    const links = (question_pack_collections ?? []) as { content_collections?: { slug: string; name: string } | null }[]
+    const collections = links.map((l) => l.content_collections).filter(Boolean) as { slug: string; name: string }[]
+    return { ...rest, collections }
+  })
+
   return NextResponse.json({
-    packs: data,
+    packs,
     total: count ?? 0,
     page,
     pages: Math.max(1, Math.ceil((count ?? 0) / pageSize)),
