@@ -8,6 +8,7 @@ import {
   DAILY_GAME_EMOJIS,
   DAILY_GAME_TYPE_TO_SLUG,
   DAILY_CHALLENGE_GAME_TYPES,
+  DAILY_GAME_PRIMARY_METRIC,
   type DailyChallengeGameType,
 } from '@/lib/daily-challenge'
 import { authHeaders } from '@/lib/identity'
@@ -81,6 +82,8 @@ export function DailyLeaderboardClient({ gameType }: { gameType: DailyChallengeG
   const step = (dir: -1 | 1) => setDate((d) => addDays(d, dir))
   const isToday = date === today
   const slug = DAILY_GAME_TYPE_TO_SLUG[gameType]
+  // Time games headline the time; score games headline the points.
+  const metric = DAILY_GAME_PRIMARY_METRIC[gameType]
 
   return (
     <div className="mx-auto max-w-lg px-4 py-6">
@@ -201,12 +204,12 @@ export function DailyLeaderboardClient({ gameType }: { gameType: DailyChallengeG
                 </div>
                 <div className="text-right shrink-0">
                   <div className="font-bold" style={{ fontSize: 'var(--text-sm)', fontFeatureSettings: '"tnum"' }}>
-                    {score}
+                    {metric === 'time' ? formatTime(time) : score}
                   </div>
                   <div
                     style={{ fontSize: 'var(--text-xs)', color: 'var(--text-faint)', fontFeatureSettings: '"tnum"' }}
                   >
-                    {formatTime(time)}
+                    {metric === 'time' ? `${score} pts` : formatTime(time)}
                   </div>
                 </div>
               </div>
