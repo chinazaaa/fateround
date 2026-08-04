@@ -155,6 +155,23 @@ export function DailySudokuPlay({ puzzle, timer: maxSeconds, onSubmit }: DailySu
     })
   }, [submitted])
 
+  // Physical keyboard input: 1–9 enters a number into the selected cell, Backspace/Delete/0 erases.
+  useEffect(() => {
+    if (submitted) return
+    const handler = (e: KeyboardEvent) => {
+      if (!selectedCell) return
+      if (/^[1-9]$/.test(e.key)) {
+        e.preventDefault()
+        handleNumberPress(Number(e.key))
+      } else if (e.key === 'Backspace' || e.key === 'Delete' || e.key === '0') {
+        e.preventDefault()
+        handleErase()
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [selectedCell, submitted, handleNumberPress, handleErase])
+
   // Basic Sudoku rule violation detection (duplicates in row/col/block)
   const draftWrongCells = (() => {
     const grid = makeEmptyBoolGrid()

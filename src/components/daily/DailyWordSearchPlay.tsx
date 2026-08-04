@@ -111,14 +111,15 @@ export function DailyWordSearchPlay({ puzzle, timer: maxSeconds, onSubmit }: Dai
       {/* Word list */}
       <div className="rounded-lg bg-base-200 p-3">
         <div className="flex flex-wrap gap-1">
-          {(metadata.words ?? []).map((word, i) => (
-            <span
-              key={i}
-              className={`badge badge-sm ${foundSet.has(word.toUpperCase()) ? 'badge-primary' : 'badge-ghost'}`}
-            >
-              {foundSet.has(word.toUpperCase()) ? word : '???'}
-            </span>
-          ))}
+          {(metadata.words ?? []).map((word, i) => {
+            const found = foundSet.has(word.toUpperCase())
+            // A word search shows the words you're hunting for; found ones get struck through.
+            return (
+              <span key={i} className={`badge badge-sm ${found ? 'badge-primary line-through' : 'badge-ghost'}`}>
+                {word}
+              </span>
+            )
+          })}
         </div>
       </div>
 
