@@ -9,6 +9,7 @@ import { DailyWordHuntPlay } from './DailyWordHuntPlay'
 import { DailyWordSearchPlay } from './DailyWordSearchPlay'
 import { DailyCrosswordPlay } from './DailyCrosswordPlay'
 import { DailyWordScramblePlay } from './DailyWordScramblePlay'
+import { DailyTriviaPlay } from './DailyTriviaPlay'
 import {
   DAILY_GAME_LABELS,
   DAILY_GAME_EMOJIS,
@@ -102,6 +103,8 @@ function PlaySurface({
       return <DailyCrosswordPlay challengeId={challengeId} puzzle={puzzle} timer={timer} onSubmit={onSubmit} />
     case 'word_scramble':
       return <DailyWordScramblePlay challengeId={challengeId} puzzle={puzzle} timer={timer} onSubmit={onSubmit} />
+    case 'trivia':
+      return <DailyTriviaPlay challengeId={challengeId} puzzle={puzzle} timer={timer} onSubmit={onSubmit} />
   }
 }
 

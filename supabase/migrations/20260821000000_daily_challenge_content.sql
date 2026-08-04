@@ -5,8 +5,9 @@
 -- table first; if no row exists for (game_type, challenge_date) it falls back to
 -- the hardcoded banks + algorithmic generation.
 --
--- Only crossword, word_search, and word_scramble need admin content — sudoku and
--- word_hunt are fully algorithmic (infinite variety from the seed alone).
+-- Crossword, word_search, word_scramble, and trivia accept admin content. Sudoku
+-- and word_hunt are fully algorithmic (infinite variety from the seed alone).
+-- Trivia REQUIRES admin content (no algorithmic fallback).
 
 create table if not exists daily_challenge_content (
   id              uuid primary key default gen_random_uuid(),
@@ -16,13 +17,14 @@ create table if not exists daily_challenge_content (
   --   crossword:     [{answer, clue}, ...]
   --   word_search:   [word, ...]
   --   word_scramble: [{word, clue}, ...]
+  --   trivia:        [{question, choices: [A,B,C,D], correct_index: 0}, ...]
   content         jsonb not null,
   created_at      timestamptz not null default now(),
   updated_at      timestamptz not null default now(),
 
   constraint daily_content_one_per_day unique (game_type, challenge_date),
   constraint daily_content_valid_game_type check (
-    game_type in ('crossword', 'word_search', 'word_scramble')
+    game_type in ('crossword', 'word_search', 'word_scramble', 'trivia')
   )
 );
 

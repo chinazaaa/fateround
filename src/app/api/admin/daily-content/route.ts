@@ -7,7 +7,7 @@ import { parseJsonBody } from '@/lib/parse-body'
 
 export const dynamic = 'force-dynamic'
 
-const VALID_GAME_TYPES = ['crossword', 'word_search', 'word_scramble'] as const
+const VALID_GAME_TYPES = ['crossword', 'word_search', 'word_scramble', 'trivia'] as const
 
 export async function GET(req: NextRequest) {
   const session = await assertAdminRequest(req)
