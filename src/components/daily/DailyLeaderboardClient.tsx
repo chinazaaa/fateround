@@ -80,7 +80,7 @@ export function DailyLeaderboardClient({ gameType }: { gameType: DailyChallengeG
       try {
         const headers = await authHeaders()
         const query = new URLSearchParams({ tab, date })
-        const res = await fetch(`/api/daily/${gameType}/leaderboard?${query}`, {
+        const res = await fetch(`/api/daily-challenges/${gameType}/leaderboard?${query}`, {
           headers: headers ?? undefined,
           signal,
         })
@@ -126,7 +126,7 @@ export function DailyLeaderboardClient({ gameType }: { gameType: DailyChallengeG
         {DAILY_CHALLENGE_GAME_TYPES.map((gt) => (
           <Link
             key={gt}
-            href={`/daily/${DAILY_GAME_TYPE_TO_SLUG[gt]}/leaderboard`}
+            href={`/daily-challenges/${DAILY_GAME_TYPE_TO_SLUG[gt]}/leaderboard`}
             className={`shrink-0 fr-btn fr-btn--sm ${gt === gameType ? 'fr-btn--primary' : 'fr-btn--ghost'}`}
             style={{ fontSize: 'var(--text-2xs)' }}
           >
@@ -189,7 +189,7 @@ export function DailyLeaderboardClient({ gameType }: { gameType: DailyChallengeG
             Be the first to make it on the board!
           </p>
           {tab === 'today' && isToday && (
-            <Link href={`/daily/${slug}`} className="fr-btn fr-btn--primary fr-btn--sm">
+            <Link href={`/daily-challenges/${slug}`} className="fr-btn fr-btn--primary fr-btn--sm">
               Play now
             </Link>
           )}

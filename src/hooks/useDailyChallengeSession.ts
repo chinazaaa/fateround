@@ -60,7 +60,7 @@ export function useDailyChallengeSession(gameType: DailyChallengeGameType): UseD
 
         // Fetch today's challenge
         const headers = await authHeaders()
-        const res = await fetch(`/api/daily/${gameType}`, {
+        const res = await fetch(`/api/daily-challenges/${gameType}`, {
           headers: headers ?? undefined,
         })
 
@@ -122,7 +122,7 @@ export function useDailyChallengeSession(gameType: DailyChallengeGameType): UseD
           return
         }
 
-        const res = await fetch(`/api/daily/${gameType}/submit`, {
+        const res = await fetch(`/api/daily-challenges/${gameType}/submit`, {
           method: 'POST',
           headers,
           body: JSON.stringify({

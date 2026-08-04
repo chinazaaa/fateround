@@ -38,7 +38,7 @@ export function DailyHubClient() {
     async function load() {
       try {
         const headers = await authHeaders()
-        const res = await fetch('/api/daily/status', {
+        const res = await fetch('/api/daily-challenges/status', {
           headers: headers ?? undefined,
         })
         if (!res.ok) return
@@ -142,7 +142,7 @@ export function DailyHubClient() {
               return (
                 <Link
                   key={gt}
-                  href={`/daily/${slug}`}
+                  href={`/daily-challenges/${slug}`}
                   className="fr-card fr-card--interactive flex items-center gap-4 !px-5 !py-4"
                   style={played ? { borderColor: 'var(--border-primary)', borderWidth: 1 } : undefined}
                 >
@@ -181,7 +181,7 @@ export function DailyHubClient() {
 
       {/* Footer link */}
       <div className="text-center mt-8">
-        <Link href="/daily/sudoku/leaderboard" className="fr-btn fr-btn--secondary fr-btn--sm">
+        <Link href="/daily-challenges/sudoku/leaderboard" className="fr-btn fr-btn--secondary fr-btn--sm">
           View Leaderboards
         </Link>
       </div>

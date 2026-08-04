@@ -30,7 +30,7 @@ export function DailyChallengeSection() {
     async function load() {
       try {
         const headers = await authHeaders()
-        const res = await fetch('/api/daily/status', {
+        const res = await fetch('/api/daily-challenges/status', {
           headers: headers ?? undefined,
         })
         if (!res.ok) return
@@ -65,7 +65,7 @@ export function DailyChallengeSection() {
             Today&apos;s puzzles — one shot, one score
           </p>
         </div>
-        <Link href="/daily" className="fr-btn fr-btn--ghost fr-btn--sm">
+        <Link href="/daily-challenges" className="fr-btn fr-btn--ghost fr-btn--sm">
           See all &rarr;
         </Link>
       </div>
@@ -83,7 +83,7 @@ export function DailyChallengeSection() {
           return (
             <Link
               key={gt}
-              href={`/daily/${slug}`}
+              href={`/daily-challenges/${slug}`}
               className={`fr-card fr-card--interactive flex flex-col items-center text-center !p-4 gap-1.5 ${loading ? 'animate-pulse' : ''}`}
             >
               <div className="text-2xl">{DAILY_GAME_EMOJIS[gt]}</div>

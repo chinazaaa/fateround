@@ -94,7 +94,7 @@ export function DailyChallengeResults({
         `FateRound Daily ${DAILY_GAME_LABELS[gameType]} #${challengeNumber}`,
         `Score: ${score}${isPointsGame ? ' pts' : '/1000'} | Time: ${formatTime(timeSeconds)}`,
         rank && totalPlayers ? `Rank: #${rank} of ${totalPlayers}` : null,
-        `fateround.com/daily/${slug}`,
+        `fateround.com/daily-challenges/${slug}`,
       ]
         .filter(Boolean)
         .join('\n')
@@ -246,13 +246,13 @@ export function DailyChallengeResults({
 
           {/* Actions */}
           <div className="mt-5 flex flex-col gap-2.5 w-full">
-            <Link href={`/daily/${slug}/leaderboard`} className="fr-btn fr-btn--primary fr-btn--block">
+            <Link href={`/daily-challenges/${slug}/leaderboard`} className="fr-btn fr-btn--primary fr-btn--block">
               View Leaderboard
             </Link>
             <button className="fr-btn fr-btn--secondary fr-btn--block" onClick={handleShare} disabled={sharing}>
               {sharing ? 'Generating...' : 'Share Result'}
             </button>
-            <Link href="/daily" className="fr-btn fr-btn--ghost fr-btn--sm mx-auto">
+            <Link href="/daily-challenges" className="fr-btn fr-btn--ghost fr-btn--sm mx-auto">
               Back to Daily Challenges
             </Link>
           </div>

@@ -13,11 +13,11 @@ export async function generateMetadata({ params }: { params: Promise<{ gameType:
   return {
     title: `Daily ${label}`,
     description: `Play today's ${label} — same puzzle for everyone. One shot, one score.`,
-    alternates: { canonical: `/daily/${slug}` },
+    alternates: { canonical: `/daily-challenges/${slug}` },
     openGraph: {
       title: `Daily ${label} | ${SITE_NAME}`,
       description: `Play today's ${label} — same puzzle for everyone. One shot, one score.`,
-      url: `/daily/${slug}`,
+      url: `/daily-challenges/${slug}`,
       images: [OG_IMAGE],
     },
   }
