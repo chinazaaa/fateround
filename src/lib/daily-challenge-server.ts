@@ -7,11 +7,10 @@
 
 import { DAILY_GAME_TIMER, type DailyChallengeGameType } from '@/lib/daily-challenge'
 
+type PuzzleResult = { puzzleData: Record<string, unknown>; config: Record<string, unknown> }
+
 // Calls the existing seeded generators. Server-only (word-hunt uses fs for its dictionary).
-export async function generateDailyPuzzle(
-  gameType: DailyChallengeGameType,
-  seed: number
-): Promise<{ puzzleData: Record<string, unknown>; config: Record<string, unknown> }> {
+export async function generateDailyPuzzle(gameType: DailyChallengeGameType, seed: number): Promise<PuzzleResult> {
   switch (gameType) {
     case 'sudoku': {
       const { generateSudokuPuzzle } = await import('@/lib/sudoku')
@@ -91,5 +90,113 @@ export async function generateDailyPuzzle(
         },
       }
     }
+  }
+}
+
+/**
+ * Build a daily puzzle from admin-curated content instead of the hardcoded banks.
+ * Returns null if the content can't produce a valid puzzle (the caller falls back
+ * to the normal algorithmic path).
+ */
+export async function generateDailyPuzzleFromContent(
+  gameType: DailyChallengeGameType,
+  seed: number,
+  adminContent: unknown
+): Promise<PuzzleResult | null> {
+  if (!Array.isArray(adminContent) || adminContent.length === 0) return null
+
+  switch (gameType) {
+    case 'crossword': {
+      const { generateCrossword, CROSSWORD_DIFFICULTY_SPECS } = await import('@/lib/crossword')
+      const spec = CROSSWORD_DIFFICULTY_SPECS.medium
+      const entries = (adminContent as { answer?: string; clue?: string }[])
+        .filter((e) => e.answer && e.clue)
+        .map((e) => ({ answer: e.answer!, clue: e.clue! }))
+      if (entries.length < 4) return null
+
+      for (let i = 0; i < 8; i++) {
+        const result = generateCrossword(entries, {
+          size: spec.size,
+          seed: seed + i * 7919,
+          targetWords: spec.targetWords,
+          maxWordLength: spec.maxWordLength,
+          minWords: Math.min(4, spec.targetWords),
+        })
+        if (result) {
+          return {
+            puzzleData: {
+              metadata: { ...result.metadata, theme: 'admin', difficulty: 'medium' },
+              solution: result.solution,
+            },
+            config: {
+              timer: DAILY_GAME_TIMER.crossword,
+              theme: 'admin',
+              difficulty: 'medium',
+              totalClues: result.metadata.clues?.length ?? 0,
+            },
+          }
+        }
+      }
+      return null
+    }
+
+    case 'word_search': {
+      const { generateWordSearch, WORD_SEARCH_DIFFICULTY_SPECS } = await import('@/lib/word-search')
+      const spec = WORD_SEARCH_DIFFICULTY_SPECS.medium
+      const words = (adminContent as string[]).filter((w) => typeof w === 'string' && w.length >= 3)
+      if (words.length < 4) return null
+
+      for (let i = 0; i < 8; i++) {
+        const result = generateWordSearch(words, {
+          size: spec.size,
+          seed: seed + i * 7919,
+          targetWords: spec.targetWords,
+          directions: spec.directions,
+          minWords: Math.min(4, spec.targetWords),
+        })
+        if (result) {
+          return {
+            puzzleData: {
+              metadata: { ...result.metadata, theme: 'admin', difficulty: 'medium' },
+              solution: result.solution,
+            },
+            config: {
+              timer: DAILY_GAME_TIMER.word_search,
+              theme: 'admin',
+              difficulty: 'medium',
+              totalWords: result.metadata.words?.length ?? 0,
+            },
+          }
+        }
+      }
+      return null
+    }
+
+    case 'word_scramble': {
+      const { buildWordScrambleFromEntries } = await import('@/lib/word-scramble-puzzles')
+      const entries = (adminContent as { word?: string; clue?: string }[])
+        .filter((e) => e.word)
+        .map((e) => ({ word: e.word!, hint: e.clue ?? '' }))
+      if (entries.length < 3) return null
+
+      const result = buildWordScrambleFromEntries(entries, 'medium', seed)
+      if (!result) return null
+
+      return {
+        puzzleData: {
+          metadata: { ...result.metadata, theme: 'admin' },
+          solution: result.solution,
+        },
+        config: {
+          timer: DAILY_GAME_TIMER.word_scramble,
+          theme: 'admin',
+          difficulty: 'medium',
+          totalWords: result.solution?.length ?? 0,
+        },
+      }
+    }
+
+    default:
+      return null
   }
 }
