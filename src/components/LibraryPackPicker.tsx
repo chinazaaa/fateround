@@ -7,6 +7,8 @@ export type LibraryPackLite = {
   title: string
   author_name: string
   question_count: number
+  /** Active collections this pack belongs to (for the collection chip filter). */
+  collections?: { slug: string; name: string }[]
 }
 
 /** Presentational community-library pack browser — caller owns the pack list and selection state. */
@@ -42,13 +44,81 @@ export function LibraryPackPicker({
   if (packs.length === 0) {
     return <p className="text-muted text-sm text-center py-4">No approved packs for this game type yet.</p>
   }
+  return (
+    <LibraryPackList
+      packs={packs}
+      search={search}
+      onSearchChange={onSearchChange}
+      selectedPackId={selectedPackId}
+      onSelect={onSelect}
+      noun={noun}
+    />
+  )
+}
+
+/** Inner list with the collection chip filter — split out so hooks run only when packs exist. */
+function LibraryPackList({
+  packs,
+  search,
+  onSearchChange,
+  selectedPackId,
+  onSelect,
+  noun,
+}: {
+  packs: LibraryPackLite[]
+  search: string
+  onSearchChange: (value: string) => void
+  selectedPackId: string | null
+  onSelect: (id: string) => void
+  noun: string
+}) {
+  const [collectionFilter, setCollectionFilter] = useState<string | null>(null)
+
+  // Distinct collections present across the loaded packs (only show the row when there's a choice).
+  const collectionOptions = (() => {
+    const byS = new Map<string, string>()
+    for (const p of packs) for (const c of p.collections ?? []) byS.set(c.slug, c.name)
+    return [...byS.entries()].map(([slug, name]) => ({ slug, name }))
+  })()
+
   const matches = packs.filter((p) => {
+    if (collectionFilter && !(p.collections ?? []).some((c) => c.slug === collectionFilter)) return false
     const q = search.toLowerCase().trim()
     if (!q) return true
     return p.title.toLowerCase().includes(q) || p.author_name.toLowerCase().includes(q)
   })
+
   return (
     <div className="space-y-2">
+      {collectionOptions.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          <button
+            type="button"
+            onClick={() => setCollectionFilter(null)}
+            className={`rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${
+              collectionFilter === null
+                ? 'border-[var(--chip-active-border)] bg-[var(--chip-active-bg)] text-[var(--chip-active-text)]'
+                : 'border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--border-strong)]'
+            }`}
+          >
+            All collections
+          </button>
+          {collectionOptions.map((c) => (
+            <button
+              key={c.slug}
+              type="button"
+              onClick={() => setCollectionFilter(c.slug)}
+              className={`rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${
+                collectionFilter === c.slug
+                  ? 'border-[var(--chip-active-border)] bg-[var(--chip-active-bg)] text-[var(--chip-active-text)]'
+                  : 'border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--border-strong)]'
+              }`}
+            >
+              {c.name}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="relative">
         <input
           type="search"
