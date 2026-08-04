@@ -37,10 +37,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ game
     // Leaderboard query
     const { data: entries, count: total } = await admin
       .from('daily_scores')
-      .select(
-        'profile_id, normalized_score, items_solved, items_total, time_seconds, hints_used, submitted_at',
-        { count: 'exact' }
-      )
+      .select('profile_id, normalized_score, items_solved, items_total, time_seconds, hints_used, submitted_at', {
+        count: 'exact',
+      })
       .eq('challenge_id', challenge.id)
       .order('normalized_score', { ascending: false })
       .order('items_solved', { ascending: false })
@@ -52,10 +51,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ game
     // Fetch profile info for the entries
     const profileIds = (entries ?? []).map((e) => e.profile_id)
     const { data: profiles } = profileIds.length
-      ? await admin
-          .from('profiles')
-          .select('id, handle, avatar_url, username')
-          .in('id', profileIds)
+      ? await admin.from('profiles').select('id, handle, avatar_url, username').in('id', profileIds)
       : { data: [] }
 
     const profileMap = new Map((profiles ?? []).map((p) => [p.id, p]))
@@ -114,10 +110,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ game
 
   const profileIds = (entries ?? []).map((e) => e.profile_id)
   const { data: profiles } = profileIds.length
-    ? await admin
-        .from('profiles')
-        .select('id, handle, avatar_url, username')
-        .in('id', profileIds)
+    ? await admin.from('profiles').select('id, handle, avatar_url, username').in('id', profileIds)
     : { data: [] }
 
   const profileMap = new Map((profiles ?? []).map((p) => [p.id, p]))

@@ -87,9 +87,7 @@ export function DailyLeaderboardClient({ gameType }: { gameType: DailyChallengeG
       {/* Header */}
       <div className="text-center mb-6">
         <div className="text-3xl mb-1">{DAILY_GAME_EMOJIS[gameType]}</div>
-        <h1 className="text-xl font-bold">
-          Daily {DAILY_GAME_LABELS[gameType]} Leaderboard
-        </h1>
+        <h1 className="text-xl font-bold">Daily {DAILY_GAME_LABELS[gameType]} Leaderboard</h1>
       </div>
 
       {/* Game type chips */}
@@ -107,16 +105,10 @@ export function DailyLeaderboardClient({ gameType }: { gameType: DailyChallengeG
 
       {/* Tabs */}
       <div className="tabs tabs-boxed mb-4">
-        <button
-          className={`tab ${tab === 'today' ? 'tab-active' : ''}`}
-          onClick={() => setTab('today')}
-        >
+        <button className={`tab ${tab === 'today' ? 'tab-active' : ''}`} onClick={() => setTab('today')}>
           Today
         </button>
-        <button
-          className={`tab ${tab === 'alltime' ? 'tab-active' : ''}`}
-          onClick={() => setTab('alltime')}
-        >
+        <button className={`tab ${tab === 'alltime' ? 'tab-active' : ''}`} onClick={() => setTab('alltime')}>
           All Time
         </button>
       </div>
@@ -127,14 +119,8 @@ export function DailyLeaderboardClient({ gameType }: { gameType: DailyChallengeG
           <button className="btn btn-ghost btn-sm" onClick={() => step(-1)}>
             &larr;
           </button>
-          <span className="text-sm font-medium">
-            {isToday ? 'Today' : formatDayLabel(date)}
-          </span>
-          <button
-            className="btn btn-ghost btn-sm"
-            onClick={() => step(1)}
-            disabled={isToday}
-          >
+          <span className="text-sm font-medium">{isToday ? 'Today' : formatDayLabel(date)}</span>
+          <button className="btn btn-ghost btn-sm" onClick={() => step(1)} disabled={isToday}>
             &rarr;
           </button>
         </div>
@@ -166,20 +152,14 @@ export function DailyLeaderboardClient({ gameType }: { gameType: DailyChallengeG
             return (
               <div
                 key={entry.profileId}
-                className={`flex items-center gap-3 rounded-lg px-3 py-2 ${
-                  entry.rank <= 3 ? 'bg-base-200' : ''
-                }`}
+                className={`flex items-center gap-3 rounded-lg px-3 py-2 ${entry.rank <= 3 ? 'bg-base-200' : ''}`}
               >
                 <div className="w-8 text-center font-bold text-sm">
                   {entry.rank <= 3 ? MEDALS[entry.rank - 1] : `#${entry.rank}`}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="font-medium text-sm truncate">
-                    {entry.handle || 'Guest'}
-                  </div>
-                  {entry.username && (
-                    <div className="text-xs text-base-content/40">@{entry.username}</div>
-                  )}
+                  <div className="font-medium text-sm truncate">{entry.handle || 'Guest'}</div>
+                  {entry.username && <div className="text-xs text-base-content/40">@{entry.username}</div>}
                 </div>
                 <div className="text-right">
                   <div className="font-bold text-sm">{score}</div>

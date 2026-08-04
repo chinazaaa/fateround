@@ -45,9 +45,7 @@ export function DailyChallengeSection() {
       <div className="flex items-center justify-between mb-4">
         <div>
           <h2 className="text-lg font-bold">Daily Challenge</h2>
-          <p className="text-sm text-base-content/50">
-            Today&apos;s puzzles — one shot, one score
-          </p>
+          <p className="text-sm text-base-content/50">Today&apos;s puzzles — one shot, one score</p>
         </div>
         <Link href="/daily" className="btn btn-ghost btn-sm">
           See all &rarr;
@@ -65,9 +63,7 @@ export function DailyChallengeSection() {
             <Link
               key={gt}
               href={`/daily/${slug}`}
-              className={`card bg-base-200 hover:bg-base-300 transition-colors ${
-                loading ? 'animate-pulse' : ''
-              }`}
+              className={`card bg-base-200 hover:bg-base-300 transition-colors ${loading ? 'animate-pulse' : ''}`}
             >
               <div className="card-body items-center text-center p-4 gap-1">
                 <div className="text-2xl">{DAILY_GAME_EMOJIS[gt]}</div>
