@@ -12,6 +12,7 @@ import type { DailyChallengeResult } from '@/hooks/useDailyChallengeSession'
 import { captureElementAsImage } from '@/lib/capture-element-image'
 import { shareImageBlob } from '@/lib/share-image'
 import { useToast } from '@/components/ui/Toast'
+import { DailyNamePrompt } from './DailyNamePrompt'
 
 interface DailyChallengeResultsProps {
   gameType: DailyChallengeGameType
@@ -214,8 +215,13 @@ export function DailyChallengeResults({
             </div>
           )}
 
+          {/* Personalize the auto-assigned leaderboard name */}
+          <div className="mt-6 w-full">
+            <DailyNamePrompt />
+          </div>
+
           {/* Actions */}
-          <div className="mt-8 flex flex-col gap-3 w-full">
+          <div className="mt-6 flex flex-col gap-3 w-full">
             <Link href={`/daily/${slug}/leaderboard`} className="fr-btn fr-btn--primary fr-btn--block">
               View Leaderboard
             </Link>
