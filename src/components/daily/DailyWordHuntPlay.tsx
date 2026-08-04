@@ -69,9 +69,7 @@ export function DailyWordHuntPlay({ grid, timer: maxSeconds, onSubmit }: DailyWo
           <span className="text-sm font-medium text-base-content/60">Score: </span>
           <span className="font-bold">{totalPoints}</span>
         </div>
-        <span className={`font-mono text-lg font-bold ${isTimeUp ? 'text-error' : ''}`}>
-          {formatted}
-        </span>
+        <span className={`font-mono text-lg font-bold ${isTimeUp ? 'text-error' : ''}`}>{formatted}</span>
       </div>
 
       {/* Grid */}
@@ -87,20 +85,14 @@ export function DailyWordHuntPlay({ grid, timer: maxSeconds, onSubmit }: DailyWo
 
       {/* Found words */}
       <div className="rounded-lg bg-base-200 p-3">
-        <div className="text-sm font-medium text-base-content/60 mb-2">
-          Words found: {foundWords.length}
-        </div>
+        <div className="text-sm font-medium text-base-content/60 mb-2">Words found: {foundWords.length}</div>
         <div className="flex flex-wrap gap-1">
           {foundWords.map((word, i) => (
             <span key={i} className="badge badge-sm badge-primary">
               {word.toUpperCase()} +{scoreWord(word)}
             </span>
           ))}
-          {foundWords.length === 0 && (
-            <span className="text-sm text-base-content/40">
-              Trace letters to form words
-            </span>
-          )}
+          {foundWords.length === 0 && <span className="text-sm text-base-content/40">Trace letters to form words</span>}
         </div>
       </div>
 

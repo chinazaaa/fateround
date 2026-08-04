@@ -34,15 +34,10 @@ interface UseDailyChallengeSessionReturn {
   result: DailyChallengeResult | null
   previousScore: Record<string, unknown> | null
   error: string | null
-  submitResult: (payload: {
-    timeSeconds: number
-    submission: Record<string, unknown>
-  }) => Promise<void>
+  submitResult: (payload: { timeSeconds: number; submission: Record<string, unknown> }) => Promise<void>
 }
 
-export function useDailyChallengeSession(
-  gameType: DailyChallengeGameType
-): UseDailyChallengeSessionReturn {
+export function useDailyChallengeSession(gameType: DailyChallengeGameType): UseDailyChallengeSessionReturn {
   const [phase, setPhase] = useState<DailyChallengePhase>('loading')
   const [userId, setUserId] = useState<string | null>(null)
   const [challengeData, setChallengeData] = useState<DailyChallengeData | null>(null)
@@ -68,7 +63,7 @@ export function useDailyChallengeSession(
         })
 
         if (!res.ok) {
-          setError('Failed to load today\'s challenge')
+          setError("Failed to load today's challenge")
           setPhase('error')
           return
         }

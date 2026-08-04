@@ -93,10 +93,7 @@ export function DailySudokuPlay({ puzzle, timer: maxSeconds, onSubmit }: DailySu
       if (puzzle[row][col] !== 0) return
 
       // Push undo
-      setUndoStack((prev) => [
-        ...prev,
-        { row, col, prev: userGrid[row][col], prevWrong: wrongDrafts[row][col] },
-      ])
+      setUndoStack((prev) => [...prev, { row, col, prev: userGrid[row][col], prevWrong: wrongDrafts[row][col] }])
 
       // Update grid
       setUserGrid((prev) => {
@@ -120,10 +117,7 @@ export function DailySudokuPlay({ puzzle, timer: maxSeconds, onSubmit }: DailySu
     const [row, col] = selectedCell
     if (puzzle[row][col] !== 0) return
 
-    setUndoStack((prev) => [
-      ...prev,
-      { row, col, prev: userGrid[row][col], prevWrong: wrongDrafts[row][col] },
-    ])
+    setUndoStack((prev) => [...prev, { row, col, prev: userGrid[row][col], prevWrong: wrongDrafts[row][col] }])
 
     setUserGrid((prev) => {
       const next = prev.map((r) => [...r])
@@ -176,14 +170,20 @@ export function DailySudokuPlay({ puzzle, timer: maxSeconds, onSubmit }: DailySu
         for (let cc = 0; cc < 9; cc++) {
           if (cc === c) continue
           const other = puzzle[r][cc] || userGrid[r][cc]
-          if (other === val) { grid[r][c] = true; break }
+          if (other === val) {
+            grid[r][c] = true
+            break
+          }
         }
         if (grid[r][c]) continue
         // Check col duplicate
         for (let rr = 0; rr < 9; rr++) {
           if (rr === r) continue
           const other = puzzle[rr][c] || userGrid[rr][c]
-          if (other === val) { grid[r][c] = true; break }
+          if (other === val) {
+            grid[r][c] = true
+            break
+          }
         }
         if (grid[r][c]) continue
         // Check block duplicate
@@ -193,7 +193,10 @@ export function DailySudokuPlay({ puzzle, timer: maxSeconds, onSubmit }: DailySu
           for (let cc = bc; cc < bc + 3; cc++) {
             if (rr === r && cc === c) continue
             const other = puzzle[rr][cc] || userGrid[rr][cc]
-            if (other === val) { grid[r][c] = true; break }
+            if (other === val) {
+              grid[r][c] = true
+              break
+            }
           }
           if (grid[r][c]) break
         }
@@ -203,18 +206,14 @@ export function DailySudokuPlay({ puzzle, timer: maxSeconds, onSubmit }: DailySu
   })()
 
   // Merge puzzle + user grid for display
-  const displayGrid = puzzle.map((row, r) =>
-    row.map((val, c) => (val !== 0 ? val : userGrid[r][c]))
-  )
+  const displayGrid = puzzle.map((row, r) => row.map((val, c) => (val !== 0 ? val : userGrid[r][c])))
 
   return (
     <div className="space-y-4">
       {/* Timer bar */}
       <div className="flex items-center justify-between rounded-lg bg-base-200 px-4 py-2">
         <span className="text-sm font-medium text-base-content/60">Time remaining</span>
-        <span className={`font-mono text-lg font-bold ${isTimeUp ? 'text-error' : ''}`}>
-          {formatted}
-        </span>
+        <span className={`font-mono text-lg font-bold ${isTimeUp ? 'text-error' : ''}`}>{formatted}</span>
       </div>
 
       <SudokuBoard
@@ -235,10 +234,7 @@ export function DailySudokuPlay({ puzzle, timer: maxSeconds, onSubmit }: DailySu
       {/* Submit button */}
       {allFilled && !submitted && (
         <div className="text-center">
-          <button
-            className="btn btn-primary btn-lg"
-            onClick={handleSubmit}
-          >
+          <button className="btn btn-primary btn-lg" onClick={handleSubmit}>
             Submit Puzzle
           </button>
         </div>
