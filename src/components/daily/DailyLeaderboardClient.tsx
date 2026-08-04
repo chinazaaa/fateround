@@ -150,7 +150,7 @@ export function DailyLeaderboardClient({ gameType }: { gameType: DailyChallengeG
             }}
             onClick={() => setTab(t)}
           >
-            {t === 'today' ? 'Today' : 'All Time'}
+            {t === 'today' ? 'Today' : 'Best'}
           </button>
         ))}
       </div>
