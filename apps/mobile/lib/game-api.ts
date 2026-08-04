@@ -1,5 +1,5 @@
 import { apiUrl } from '@/lib/config'
-import type { GameType, WhotPlayerHand } from '@fateround/shared'
+import type { CodewordsBoard, GameType, WhotPlayerHand } from '@fateround/shared'
 import type { GamePlayerLimitsMap } from '@fateround/shared/lobby-limits'
 import { getCodeDefaultLimits } from '@fateround/shared/lobby-limits'
 import type { MafiaStateResponse } from '@fateround/shared/mafia'
@@ -858,6 +858,39 @@ export function postCodewordsExpireTurn(gameId: string) {
   return postJson<{ success: boolean; board?: unknown; skipped?: boolean }>('/api/codewords/expire-turn', {
     gameId,
   })
+}
+
+/**
+ * Fetch the Codewords board through the server route rather than reading the table.
+ *
+ * `codewords_boards.key` (the secret colour assignment) is no longer anon-selectable since
+ * migration 20260803170000 (audit finding H2), so a direct client read now errors. The route
+ * hands the real key only to the host, a spymaster, or anyone once the game has finished, and
+ * masks it for everyone else. POST so the token travels in the body, not the URL.
+ *
+ * Returns null when there is no board yet or on any transport failure — callers treat that the
+ * same way they treated a missing row before. Mirrors web's `fetchCodewordsBoard`.
+ */
+export async function postCodewordsBoard(
+  gameCode: string,
+  auth?: { resumeToken?: string | null; hostToken?: string | null }
+): Promise<CodewordsBoard | null> {
+  try {
+    const res = await fetch(apiUrl('/api/codewords/board'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        gameCode: gameCode.toUpperCase(),
+        hostToken: auth?.hostToken ?? undefined,
+        resumeToken: auth?.resumeToken ?? undefined,
+      }),
+    })
+    if (!res.ok) return null
+    const data = (await res.json()) as { board?: CodewordsBoard | null }
+    return data.board ?? null
+  } catch {
+    return null
+  }
 }
 
 export function postMonopolyRoll(gameId: string, resumeToken: string) {

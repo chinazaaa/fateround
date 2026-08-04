@@ -48,6 +48,7 @@ import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { useLateJoinContext } from '@/hooks/useLateJoinContext'
 import {
+  postCodewordsBoard,
   postCodewordsChat,
   postCodewordsClue,
   postCodewordsEndTurn,
@@ -57,11 +58,11 @@ import {
 } from '@/lib/game-api'
 import { getSupabase } from '@/lib/supabase'
 import {
-  CODEWORDS_BOARD_SELECT,
   CODEWORDS_GUESS_SELECT,
   CODEWORDS_MESSAGE_SELECT,
   CODEWORDS_PLAYER_ROLE_SELECT,
 } from '@/lib/supabase-selects'
+import { getPlayerSession } from '@/lib/secure-session'
 import { usePlayerSessionActions } from '@/lib/player-session'
 import { useToast } from '@/components/ui/Toast'
 import type { Theme } from '@/constants/theme'
@@ -118,8 +119,12 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
   const loadGameState = useCallback(
     async (_game: Game, _players: Player[]): Promise<{ state: CodewordsState; ok: boolean }> => {
       const code = gameCode.toUpperCase()
-      const [boardRes, rolesRes, guessesRes, messagesRes] = await Promise.all([
-        getSupabase().from('codewords_boards').select(CODEWORDS_BOARD_SELECT).eq('game_id', code).maybeSingle(),
+      // The board comes from the server route, not a direct read: `codewords_boards.key` is no
+      // longer anon-selectable (audit finding H2). The route returns the real key only to a
+      // spymaster (resolved from the resume token) and masks it for everyone else.
+      const session = await getPlayerSession(code)
+      const [board, rolesRes, guessesRes, messagesRes] = await Promise.all([
+        postCodewordsBoard(code, { resumeToken: session?.resumeToken }),
         getSupabase().from('codewords_player_roles').select(CODEWORDS_PLAYER_ROLE_SELECT).eq('game_id', code),
         getSupabase().from('codewords_guesses').select(CODEWORDS_GUESS_SELECT).eq('game_id', code).order('created_at'),
         getSupabase()
@@ -128,15 +133,16 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
           .eq('game_id', code)
           .order('created_at'),
       ])
-      // Board + roles drive screen routing, so a failure there is a hard miss.
-      // Guesses and messages only enrich the view — if one of those errors
-      // (a transient RLS hiccup), degrade it to empty rather than nulling the
-      // board, which would bounce a seated player back to the lobby.
-      if (boardRes.error || rolesRes.error) {
+      // Roles drive screen routing, so a failure there is a hard miss. The board now comes from
+      // postCodewordsBoard, which returns null both for "no board yet" and on a transport error —
+      // so, like web, we never hard-miss on the board alone: a seated player stays put and the
+      // playing view shows a loading state until the board arrives. Guesses and messages only
+      // enrich the view — if one errors (a transient RLS hiccup), degrade it to empty.
+      if (rolesRes.error) {
         return { state: { board: null, roles: [], guesses: [], messages: [] }, ok: false }
       }
       const state: CodewordsState = {
-        board: (boardRes.data as CodewordsBoard | null) ?? null,
+        board,
         roles: (rolesRes.data as CodewordsPlayerRole[]) ?? [],
         guesses: guessesRes.error ? [] : ((guessesRes.data as CodewordsGuess[]) ?? []),
         messages: messagesRes.error ? [] : ((messagesRes.data as CodewordsMessage[]) ?? []),
@@ -191,6 +197,9 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
   // Watch-or-play prompt for a late opener (fetched only on that screen).
   const lateJoin = useLateJoinContext(gameCode, bootstrap.game, bootstrap.screen === 'late_join_choice')
 
+  // A codewords_boards realtime event triggers a full bootstrap.load(), which refetches the
+  // board through postCodewordsBoard (the route) — we never apply the realtime payload directly,
+  // since it no longer carries the redacted `key` column (audit finding H2).
   useGameTableSync(
     gameCode,
     [
