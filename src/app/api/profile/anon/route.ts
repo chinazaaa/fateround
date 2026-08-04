@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
     // name the player has chosen (or a returning player's existing handle).
     await getSupabaseAdmin()
       .from('profiles')
-      .update({ handle: randomDisplayName(), handle_is_auto: true })
+      .update({ handle: randomDisplayName() })
       .eq('id', identity.profileId)
       .is('handle', null)
 

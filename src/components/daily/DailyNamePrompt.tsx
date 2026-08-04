@@ -5,12 +5,13 @@ import { useProfile } from '@/hooks/useProfile'
 import { useToast } from '@/components/ui/Toast'
 import { authHeaders } from '@/lib/identity'
 import { rememberName } from '@/lib/identity-local'
+import { isAutoName } from '@/lib/random-name'
 
 /**
- * Finish-screen name control. Players who still have the AUTO-assigned name (handle_is_auto) get a
- * clear "make it yours" nudge; players who've already chosen a name just see a subtle "Playing as
- * X · Edit". Anonymous-friendly — it PATCHes the handle, no sign-in. Setting a name clears
- * handle_is_auto server-side, so the nudge never reappears (across devices too).
+ * Finish-screen name control. Players who still have the auto-assigned name (Adjective+Animal+NN)
+ * get a clear "make it yours" nudge; players who've chosen a name just see a subtle "Playing as
+ * X · Edit". Anonymous-friendly — it PATCHes the handle, no sign-in. Detection is by name shape
+ * (isAutoName), so there's no DB flag/migration to keep in step.
  */
 export function DailyNamePrompt() {
   const { profile, refresh } = useProfile()
@@ -27,7 +28,7 @@ export function DailyNamePrompt() {
   // No identity yet (guest who somehow reached results without a profile) — nothing to rename.
   if (!profile) return null
 
-  const isAuto = profile.handle_is_auto
+  const isAuto = isAutoName(profile.handle)
 
   const save = async () => {
     const next = name.trim()

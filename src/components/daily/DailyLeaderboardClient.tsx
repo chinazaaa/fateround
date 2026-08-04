@@ -156,13 +156,16 @@ export function DailyLeaderboardClient({ gameType }: { gameType: DailyChallengeG
         </div>
       )}
 
-      {/* Empty state */}
+      {/* Empty state. "Play now" only when today's challenge is actually playable — you can't play
+          a past day, and the all-time tab isn't a single day. */}
       {!loading && entries.length === 0 && (
         <div className="text-center py-8" style={{ color: 'var(--text-muted)' }}>
-          <p>No scores yet{tab === 'today' ? ' for this day' : ''}.</p>
-          <Link href={`/daily/${slug}`} className="fr-btn fr-btn--primary fr-btn--sm mt-4 inline-block">
-            Play now
-          </Link>
+          <p>{tab === 'today' && !isToday ? 'No scores for this day.' : 'No scores yet.'}</p>
+          {tab === 'today' && isToday && (
+            <Link href={`/daily/${slug}`} className="fr-btn fr-btn--primary fr-btn--sm mt-4 inline-block">
+              Play now
+            </Link>
+          )}
         </div>
       )}
 
@@ -195,9 +198,6 @@ export function DailyLeaderboardClient({ gameType }: { gameType: DailyChallengeG
                   >
                     {entry.handle || 'Guest'}
                   </div>
-                  {entry.username && (
-                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-faint)' }}>@{entry.username}</div>
-                  )}
                 </div>
                 <div className="text-right shrink-0">
                   <div className="font-bold" style={{ fontSize: 'var(--text-sm)', fontFeatureSettings: '"tnum"' }}>
@@ -222,8 +222,9 @@ export function DailyLeaderboardClient({ gameType }: { gameType: DailyChallengeG
         </div>
       )}
 
-      {/* My rank sticky footer */}
-      {myRank && myScore !== null && (
+      {/* My rank sticky footer — only when the player has a real (non-zero) score, matching the
+          board's own 0-exclusion. */}
+      {myRank && myScore !== null && myScore > 0 && (
         <div
           className="sticky bottom-4 mt-4 px-4 py-3 flex items-center justify-between"
           style={{
