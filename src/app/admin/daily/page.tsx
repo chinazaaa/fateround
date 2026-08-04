@@ -6,12 +6,13 @@ import { useCallback, useEffect, useState } from 'react'
 // Types
 // ---------------------------------------------------------------------------
 
-type GameTypeId = 'crossword' | 'word_search' | 'word_scramble'
+type GameTypeId = 'crossword' | 'word_search' | 'word_scramble' | 'trivia'
 
 const GAME_TYPES: { id: GameTypeId; label: string; hint: string }[] = [
   { id: 'crossword', label: 'Crossword', hint: 'answer,clue — one per line' },
   { id: 'word_search', label: 'Word Search', hint: 'word — one per line' },
   { id: 'word_scramble', label: 'Word Scramble', hint: 'word,clue — one per line' },
+  { id: 'trivia', label: 'Trivia', hint: 'question | optionA | optionB | optionC | optionD | correct index (0-3)' },
 ]
 
 type ContentRow = {
@@ -42,6 +43,11 @@ function contentToText(gameType: GameTypeId, content: unknown): string {
   if (gameType === 'word_search') {
     return (content as string[]).join('\n')
   }
+  if (gameType === 'trivia') {
+    return (content as { question: string; choices: string[]; correct_index: number }[])
+      .map((e) => `${e.question} | ${e.choices.join(' | ')} | ${e.correct_index}`)
+      .join('\n')
+  }
   return (content as { answer?: string; word?: string; clue?: string }[])
     .map((e) => {
       const w = e.answer ?? e.word ?? ''
@@ -57,6 +63,21 @@ function textToContent(gameType: GameTypeId, text: string): unknown {
     .filter(Boolean)
   if (gameType === 'word_search') {
     return lines.map((l) => l.toUpperCase().replace(/[^A-Z]/g, '')).filter((w) => w.length >= 3)
+  }
+  if (gameType === 'trivia') {
+    return lines
+      .map((l) => {
+        const parts = l.split('|').map((p) => p.trim())
+        if (parts.length < 4) return null
+        const question = parts[0]
+        const lastPart = parts[parts.length - 1]
+        const correctIndex = parseInt(lastPart, 10)
+        const hasIndex = !isNaN(correctIndex) && correctIndex >= 0 && correctIndex <= 3
+        const choices = hasIndex ? parts.slice(1, -1) : parts.slice(1)
+        if (choices.length < 2 || choices.length > 4) return null
+        return { question, choices, correct_index: hasIndex ? correctIndex : 0 }
+      })
+      .filter(Boolean)
   }
   if (gameType === 'crossword') {
     return lines
@@ -272,7 +293,9 @@ export default function AdminDailyPage() {
                 ? 'PLANET,Earth is one\nRIVER,Flowing body of water\nCASTLE,Fortified royal home'
                 : gameType === 'word_search'
                   ? 'PLANET\nRIVER\nISLAND\nDESERT\nCASTLE'
-                  : 'PLANET,A world orbiting a star\nRIVER,A large natural stream\nCASTLE,A fortified royal home'
+                  : gameType === 'trivia'
+                    ? 'What is the capital of France? | London | Paris | Berlin | Madrid | 1\nWhat colour is the sky? | Green | Blue | Red | Yellow | 1'
+                    : 'PLANET,A world orbiting a star\nRIVER,A large natural stream\nCASTLE,A fortified royal home'
             }
           />
           {createText && (

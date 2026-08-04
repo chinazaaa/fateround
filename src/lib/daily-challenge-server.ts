@@ -90,6 +90,9 @@ export async function generateDailyPuzzle(gameType: DailyChallengeGameType, seed
         },
       }
     }
+
+    case 'trivia':
+      throw new Error('Daily trivia requires admin content — no algorithmic fallback')
   }
 }
 
@@ -192,6 +195,40 @@ export async function generateDailyPuzzleFromContent(
           theme: 'admin',
           difficulty: 'medium',
           totalWords: result.solution?.length ?? 0,
+        },
+      }
+    }
+
+    case 'trivia': {
+      type TriviaEntry = { question?: string; choices?: string[]; correct_index?: number }
+      const entries = (adminContent as TriviaEntry[]).filter(
+        (e) => e.question && Array.isArray(e.choices) && e.choices.length >= 2 && typeof e.correct_index === 'number'
+      )
+      if (entries.length < 5) return null
+
+      // Deterministic shuffle using the seed
+      const shuffled = [...entries]
+      let s = seed
+      for (let i = shuffled.length - 1; i > 0; i--) {
+        s = (Math.imul(s, 1664525) + 1013904223) | 0
+        const j = (s >>> 0) % (i + 1)
+        ;[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
+      }
+
+      const questions = shuffled.map((e) => ({
+        question: e.question!,
+        choices: e.choices!,
+        correct_index: e.correct_index!,
+      }))
+
+      return {
+        puzzleData: {
+          questions,
+          solution: questions.map((q) => q.correct_index),
+        },
+        config: {
+          timer: DAILY_GAME_TIMER.trivia,
+          totalQuestions: questions.length,
         },
       }
     }
