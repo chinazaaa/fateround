@@ -13,7 +13,7 @@ import {
   DAILY_GAME_TIMER,
   type DailyChallengeGameType,
 } from '@/lib/daily-challenge'
-import { generateDailyPuzzle } from '@/lib/daily-challenge-server'
+import { generateDailyPuzzle, generateDailyPuzzleFromContent } from '@/lib/daily-challenge-server'
 
 export const dynamic = 'force-dynamic'
 
@@ -46,7 +46,22 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ game
   // Lazy creation on first request of the day
   if (!challenge) {
     const seed = getDailyChallengeSeed(gameType, today)
-    const { puzzleData, config } = await generateDailyPuzzle(gameType, seed)
+
+    // Check for admin-curated content first; fall back to hardcoded banks.
+    let generated: { puzzleData: Record<string, unknown>; config: Record<string, unknown> } | null = null
+    const { data: adminRow } = await admin
+      .from('daily_challenge_content')
+      .select('content')
+      .eq('game_type', gameType)
+      .eq('challenge_date', today)
+      .maybeSingle()
+    if (adminRow?.content) {
+      generated = await generateDailyPuzzleFromContent(gameType, seed, adminRow.content)
+    }
+    if (!generated) {
+      generated = await generateDailyPuzzle(gameType, seed)
+    }
+    const { puzzleData, config } = generated
 
     // Ignore a duplicate-key error (another request created it first — the re-read handles it),
     // but surface any other insert failure instead of silently returning a generic 500.
