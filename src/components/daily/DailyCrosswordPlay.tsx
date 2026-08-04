@@ -121,6 +121,11 @@ export function DailyCrosswordPlay({ challengeId, puzzle, timer: maxSeconds, onS
     if (isTimeUp && !submitted) handleSubmit()
   }, [isTimeUp, submitted, handleSubmit])
 
+  // Auto-submit the moment every word is correct — no need to also click Submit.
+  useEffect(() => {
+    if (!submitted && clues.length > 0 && solvedCount === clues.length) handleSubmit()
+  }, [solvedCount, clues.length, submitted, handleSubmit])
+
   const handleCellSelect = useCallback(
     (row: number, col: number) => {
       if (submitted || metadata.blocked[row][col]) return

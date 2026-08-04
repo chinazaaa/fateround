@@ -6,6 +6,7 @@ import {
   DAILY_GAME_LABELS,
   DAILY_GAME_EMOJIS,
   DAILY_GAME_TYPE_TO_SLUG,
+  DAILY_GAME_PRIMARY_METRIC,
   type DailyChallengeGameType,
 } from '@/lib/daily-challenge'
 import type { DailyChallengeResult } from '@/hooks/useDailyChallengeSession'
@@ -61,7 +62,11 @@ export function DailyChallengeResults({
   const { success, error: toastError } = useToast()
   const [sharing, setSharing] = useState(false)
 
-  const score = result?.normalizedScore ?? (previousScore?.normalized_score as number | undefined) ?? 0
+  // Word Hunt ('score') is shown as raw points with no "/1000"; other games use the 0–1000 score.
+  const isPointsGame = DAILY_GAME_PRIMARY_METRIC[gameType] === 'score'
+  const normalized = result?.normalizedScore ?? (previousScore?.normalized_score as number | undefined) ?? 0
+  const rawPoints = result?.rawPoints ?? (previousScore?.raw_points as number | undefined) ?? 0
+  const score = isPointsGame ? rawPoints : normalized
   const rank = result?.rank ?? null
   const totalPlayers = result?.totalPlayers ?? null
   const timeSeconds = result?.timeSeconds ?? (previousScore?.time_seconds as number | undefined) ?? 0
@@ -87,7 +92,7 @@ export function DailyChallengeResults({
       // Fallback to text share
       const shareText = [
         `FateRound Daily ${DAILY_GAME_LABELS[gameType]} #${challengeNumber}`,
-        `Score: ${score}/1000 | Time: ${formatTime(timeSeconds)}`,
+        `Score: ${score}${isPointsGame ? ' pts' : '/1000'} | Time: ${formatTime(timeSeconds)}`,
         rank && totalPlayers ? `Rank: #${rank} of ${totalPlayers}` : null,
         `fateround.com/daily/${slug}`,
       ]
@@ -151,9 +156,16 @@ export function DailyChallengeResults({
               <AnimatedScore target={score} />
             </span>
             <span className="ml-1 font-medium" style={{ fontSize: 'var(--text-lg)', color: 'var(--text-faint)' }}>
-              / 1000
+              {isPointsGame ? 'pts' : '/ 1000'}
             </span>
           </div>
+
+          {/* Explain the score so a full solve under 1000 isn't confusing. */}
+          {!isPointsGame && (
+            <p className="mt-1" style={{ fontSize: 'var(--text-2xs)', color: 'var(--text-faint)' }}>
+              800 for solving + up to 200 for speed
+            </p>
+          )}
 
           {/* New personal best */}
           {isNewBest && score > 0 && (
@@ -279,7 +291,9 @@ export function DailyChallengeResults({
             >
               {score}
             </div>
-            <div style={{ fontSize: 18, fontWeight: 500, color: 'rgba(255,255,255,0.4)', marginTop: 4 }}>/ 1000</div>
+            <div style={{ fontSize: 18, fontWeight: 500, color: 'rgba(255,255,255,0.4)', marginTop: 4 }}>
+              {isPointsGame ? 'pts' : '/ 1000'}
+            </div>
           </div>
 
           {/* Stats row */}

@@ -103,7 +103,9 @@ export function computeNormalizedScore(input: DailyScoreInput): number {
   const speedRatio = maxTimeSeconds > 0 ? Math.max(0, 1 - timeSeconds / maxTimeSeconds) : completionRatio > 0 ? 1 : 0
   const penaltyRatio = maxHints > 0 ? Math.min(1, hintsUsed / maxHints) : 0
 
-  const raw = completionRatio * 700 + speedRatio * 200 - penaltyRatio * 100
+  // completion 800 + speed 200 → a fully-solved, instant run reaches the full 1000; a full but
+  // slow solve is 800. (Hints removed from daily games, so penalty is effectively 0.)
+  const raw = completionRatio * 800 + speedRatio * 200 - penaltyRatio * 100
   return Math.max(0, Math.min(1000, Math.round(raw)))
 }
 
@@ -143,6 +145,13 @@ export function stripSolution(
     })
   }
 
+  if (gameType === 'word_scramble') {
+    // Per-word answer hashes (parallel to metadata.scrambles) so the client can accept a correct
+    // unscramble and reject rubbish, without shipping the answers. Server still re-validates.
+    const solution = Array.isArray(puzzleData.solution) ? (puzzleData.solution as string[]) : []
+    safe.answer_hashes = solution.map(hashWord)
+  }
+
   return safe
 }
 
@@ -154,7 +163,8 @@ export function stripSolution(
 // ---------------------------------------------------------------------------
 
 // Launch day = Day 1. Puzzles are seeded per calendar date regardless; this only sets the "#N" label.
-const DAILY_CHALLENGE_EPOCH = '2026-08-05'
+// TESTING: set to today so the challenge is live now. Move to the real launch date before go-live.
+const DAILY_CHALLENGE_EPOCH = '2026-08-04'
 
 export function getDailyChallengeNumber(dateStr: string): number {
   const epoch = new Date(`${DAILY_CHALLENGE_EPOCH}T00:00:00Z`).getTime()

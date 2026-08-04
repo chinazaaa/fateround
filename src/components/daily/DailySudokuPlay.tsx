@@ -240,6 +240,12 @@ export function DailySudokuPlay({ challengeId, puzzle, timer: maxSeconds, onSubm
     return grid
   })()
 
+  // A complete grid with no row/col/box conflicts is the solution — auto-submit it.
+  const hasWrongCells = draftWrongCells.some((row) => row.some(Boolean))
+  useEffect(() => {
+    if (!submitted && allFilled && !hasWrongCells) handleSubmit()
+  }, [allFilled, hasWrongCells, submitted, handleSubmit])
+
   // Merge puzzle + user grid for display
   const displayGrid = puzzle.map((row, r) => row.map((val, c) => (val !== 0 ? val : userGrid[r][c])))
 
