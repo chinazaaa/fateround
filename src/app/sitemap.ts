@@ -1,6 +1,7 @@
 import type { MetadataRoute } from 'next'
 import { ALL_GAME_LANDING_SLUGS } from '@/lib/game-landing'
 import { ALL_MARKETING_SLUGS } from '@/lib/marketing-landing'
+import { DAILY_GAME_TYPE_TO_SLUG, DAILY_CHALLENGE_GAME_TYPES } from '@/lib/daily-challenge'
 import { appOrigin } from '@/lib/site'
 import { fetchPublishedPosts } from '@/lib/blog-server'
 
@@ -64,5 +65,26 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     // Blog table missing or DB unreachable — omit blog URLs rather than breaking the sitemap.
   }
 
-  return [...staticPages, ...gamePages, ...marketingPages, ...blogPages]
+  const dailyPages: MetadataRoute.Sitemap = [
+    {
+      url: `${origin}/daily-challenges`,
+      lastModified,
+      changeFrequency: 'daily',
+      priority: 0.9,
+    },
+    ...DAILY_CHALLENGE_GAME_TYPES.map((gt) => ({
+      url: `${origin}/daily-challenges/${DAILY_GAME_TYPE_TO_SLUG[gt]}`,
+      lastModified,
+      changeFrequency: 'daily' as const,
+      priority: 0.85,
+    })),
+    ...DAILY_CHALLENGE_GAME_TYPES.map((gt) => ({
+      url: `${origin}/daily-challenges/${DAILY_GAME_TYPE_TO_SLUG[gt]}/leaderboard`,
+      lastModified,
+      changeFrequency: 'daily' as const,
+      priority: 0.7,
+    })),
+  ]
+
+  return [...staticPages, ...gamePages, ...dailyPages, ...marketingPages, ...blogPages]
 }
