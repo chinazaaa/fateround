@@ -424,6 +424,13 @@ export const GAME_LANDING_OG_BY_SLUG: Record<string, string> = {
   landmine: '/og/landmine.png',
   'ping-pong': '/og/ping-pong.png',
   uno: '/og/uno.png',
+  'daily-challenges': '/og/daily-challenges.png',
+  'daily-crossword': '/og/daily-crossword.png',
+  'daily-word-search': '/og/daily-word-search.png',
+  'daily-word-scramble': '/og/daily-word-scramble.png',
+  'daily-sudoku': '/og/daily-sudoku.png',
+  'daily-trivia': '/og/daily-trivia.png',
+  'daily-word-hunt': '/og/daily-word-hunt.png',
 }
 
 export function gameLandingOgPath(slug: string): string {

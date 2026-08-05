@@ -13,8 +13,9 @@ function BackBar() {
   const router = useRouter()
   const pathname = usePathname()
 
-  // Daily leaderboard pages should go back to /daily, not browser history
-  const fixedHref = pathname.startsWith('/daily/') && pathname.endsWith('/leaderboard') ? '/daily' : null
+  // Daily leaderboard pages should go back to /daily-challenges, not browser history
+  const fixedHref =
+    pathname.startsWith('/daily-challenges/') && pathname.endsWith('/leaderboard') ? '/daily-challenges' : null
 
   const handleClick = () => {
     if (fixedHref) {
@@ -103,7 +104,7 @@ function ThemeButton({ withLabel = false }: { withLabel?: boolean }) {
 const NAV: NavItem[] = [
   { href: '/games', label: 'Games', icon: '🎮' },
   { href: '/tournament', label: 'Tournaments', icon: '🏆' },
-  { href: '/daily', label: 'Daily Challenges', icon: '📅' },
+  { href: '/daily-challenges', label: 'Daily Challenges', icon: '📅' },
   { href: '/leaderboard', label: 'Leaderboard', icon: '📊' },
   { href: '/updates', label: "What's new", icon: '✨' },
 ]

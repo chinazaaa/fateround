@@ -38,7 +38,7 @@ export function DailyHubClient() {
     async function load() {
       try {
         const headers = await authHeaders()
-        const res = await fetch('/api/daily/status', {
+        const res = await fetch('/api/daily-challenges/status', {
           headers: headers ?? undefined,
         })
         if (!res.ok) return
@@ -142,7 +142,7 @@ export function DailyHubClient() {
               return (
                 <Link
                   key={gt}
-                  href={`/daily/${slug}`}
+                  href={`/daily-challenges/${slug}`}
                   className="fr-card fr-card--interactive flex items-center gap-4 !px-5 !py-4"
                   style={played ? { borderColor: 'var(--border-primary)', borderWidth: 1 } : undefined}
                 >
@@ -181,10 +181,90 @@ export function DailyHubClient() {
 
       {/* Footer link */}
       <div className="text-center mt-8">
-        <Link href="/daily/sudoku/leaderboard" className="fr-btn fr-btn--secondary fr-btn--sm">
+        <Link href="/daily-challenges/sudoku/leaderboard" className="fr-btn fr-btn--secondary fr-btn--sm">
           View Leaderboards
         </Link>
       </div>
+
+      {/* SEO content */}
+      <section className="mt-16 space-y-10" style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>
+        <div>
+          <h2 className="font-bold mb-4" style={{ fontSize: 'var(--text-lg)', color: 'var(--foreground)' }}>
+            How it works
+          </h2>
+          <ol className="list-decimal list-inside space-y-3">
+            <li>
+              <strong style={{ color: 'var(--foreground)' }}>One puzzle a day, the same for every player.</strong>{' '}
+              Everyone gets identical content, so the leaderboard is a fair comparison — not a different randomised
+              puzzle per person.
+            </li>
+            <li>
+              <strong style={{ color: 'var(--foreground)' }}>One attempt.</strong> You get one shot at each day&apos;s
+              challenge. No retries, no do-overs — that&apos;s what makes finishing it feel earned.
+            </li>
+            <li>
+              <strong style={{ color: 'var(--foreground)' }}>Compete on the leaderboard.</strong> See how your time and
+              score stack up against everyone else who played today.
+            </li>
+            <li>
+              <strong style={{ color: 'var(--foreground)' }}>Come back tomorrow.</strong> A new puzzle goes live every
+              day, so there&apos;s always a fresh challenge and a fresh leaderboard waiting.
+            </li>
+          </ol>
+        </div>
+
+        <div>
+          <h2 className="font-bold mb-3" style={{ fontSize: 'var(--text-lg)', color: 'var(--foreground)' }}>
+            Why play a daily puzzle
+          </h2>
+          <p className="leading-relaxed">
+            A few minutes a day is enough to notice a difference. Crosswords and word puzzles are associated with
+            sharper recall and vocabulary; Sudoku and trivia keep pattern recognition and general knowledge in shape.
+            And because everyone plays the same puzzle each day, it&apos;s genuinely competitive — you&apos;re on the
+            same leaderboard as every other player.
+          </p>
+        </div>
+
+        <div>
+          <h2 className="font-bold mb-4" style={{ fontSize: 'var(--text-lg)', color: 'var(--foreground)' }}>
+            Frequently asked questions
+          </h2>
+          <dl className="space-y-4">
+            <div>
+              <dt className="font-semibold" style={{ color: 'var(--foreground)' }}>
+                Is FateRound&apos;s daily challenge free?
+              </dt>
+              <dd className="mt-1">
+                Yes — every daily puzzle is free to play, every day, for every player. No sign-up and no download
+                required.
+              </dd>
+            </div>
+            <div>
+              <dt className="font-semibold" style={{ color: 'var(--foreground)' }}>
+                Do I need an account to play?
+              </dt>
+              <dd className="mt-1">No — you can play today&apos;s puzzle straight away, no account needed.</dd>
+            </div>
+            <div>
+              <dt className="font-semibold" style={{ color: 'var(--foreground)' }}>
+                What time does the daily challenge reset?
+              </dt>
+              <dd className="mt-1">
+                Every puzzle refreshes at midnight UTC, so everyone worldwide gets the same challenge on the same day.
+              </dd>
+            </div>
+            <div>
+              <dt className="font-semibold" style={{ color: 'var(--foreground)' }}>
+                Is there a leaderboard?
+              </dt>
+              <dd className="mt-1">
+                Yes — every daily puzzle has its own leaderboard showing how your score and time compare to everyone who
+                played that day.
+              </dd>
+            </div>
+          </dl>
+        </div>
+      </section>
     </div>
   )
 }

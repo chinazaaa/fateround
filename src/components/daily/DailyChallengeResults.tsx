@@ -62,6 +62,12 @@ export function DailyChallengeResults({
   const { success, error: toastError } = useToast()
   const [sharing, setSharing] = useState(false)
 
+  // On submit you're usually scrolled to the bottom (near the Submit button) — jump back to the top
+  // so the "Calculating…" / results view is actually in sight.
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }, [])
+
   // Word Hunt ('score') is shown as raw points with no "/1000"; other games use the 0–1000 score.
   const isPointsGame = DAILY_GAME_PRIMARY_METRIC[gameType] === 'score'
   const normalized = result?.normalizedScore ?? (previousScore?.normalized_score as number | undefined) ?? 0
@@ -94,7 +100,7 @@ export function DailyChallengeResults({
         `FateRound Daily ${DAILY_GAME_LABELS[gameType]} #${challengeNumber}`,
         `Score: ${score}${isPointsGame ? ' pts' : '/1000'} | Time: ${formatTime(timeSeconds)}`,
         rank && totalPlayers ? `Rank: #${rank} of ${totalPlayers}` : null,
-        `fateround.com/daily/${slug}`,
+        `fateround.com/daily-challenges/${slug}`,
       ]
         .filter(Boolean)
         .join('\n')
@@ -246,13 +252,13 @@ export function DailyChallengeResults({
 
           {/* Actions */}
           <div className="mt-5 flex flex-col gap-2.5 w-full">
-            <Link href={`/daily/${slug}/leaderboard`} className="fr-btn fr-btn--primary fr-btn--block">
+            <Link href={`/daily-challenges/${slug}/leaderboard`} className="fr-btn fr-btn--primary fr-btn--block">
               View Leaderboard
             </Link>
             <button className="fr-btn fr-btn--secondary fr-btn--block" onClick={handleShare} disabled={sharing}>
               {sharing ? 'Generating...' : 'Share Result'}
             </button>
-            <Link href="/daily" className="fr-btn fr-btn--ghost fr-btn--sm mx-auto">
+            <Link href="/daily-challenges" className="fr-btn fr-btn--ghost fr-btn--sm mx-auto">
               Back to Daily Challenges
             </Link>
           </div>

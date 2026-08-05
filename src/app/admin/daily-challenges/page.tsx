@@ -151,7 +151,7 @@ export default function AdminDailyPage() {
       const qs = new URLSearchParams({ game_type: gameType })
       if (filterFrom) qs.set('from', filterFrom)
       if (filterTo) qs.set('to', filterTo)
-      const res = await fetch(`/api/admin/daily-content?${qs}`)
+      const res = await fetch(`/api/admin/daily-challenges-content?${qs}`)
       const json = await res.json()
       setItems(res.ok ? (json.items ?? []) : [])
     } finally {
@@ -177,7 +177,7 @@ export default function AdminDailyPage() {
     setSaving(true)
     setSaveMsg(null)
 
-    const res = await fetch('/api/admin/daily-content', {
+    const res = await fetch('/api/admin/daily-challenges-content', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ game_type: gameType, challenge_date: createDate, content }),
@@ -204,7 +204,7 @@ export default function AdminDailyPage() {
     if (!Array.isArray(content) || content.length === 0) return
 
     setEditSaving(true)
-    const res = await fetch(`/api/admin/daily-content/${item.id}`, {
+    const res = await fetch(`/api/admin/daily-challenges-content/${item.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ content }),
@@ -219,7 +219,7 @@ export default function AdminDailyPage() {
   // ---- Delete ----
   const handleDelete = async (id: string) => {
     if (!confirm('Delete this daily content?')) return
-    await fetch(`/api/admin/daily-content/${id}`, { method: 'DELETE' })
+    await fetch(`/api/admin/daily-challenges-content/${id}`, { method: 'DELETE' })
     void load()
   }
 
