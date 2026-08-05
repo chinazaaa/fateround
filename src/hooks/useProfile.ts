@@ -107,6 +107,7 @@ export function useProfile(): { profile: Profile | null; loading: boolean; refre
   // fires `INITIAL_SESSION` once the session is restored (and on sign-in/out, token refresh and
   // email upgrade), so bumping the nonce here makes every instance converge on the true identity.
   useEffect(() => {
+    if (!supabase?.auth) return
     const { data } = supabase.auth.onAuthStateChange(() => {
       setNonce((n) => n + 1)
     })
