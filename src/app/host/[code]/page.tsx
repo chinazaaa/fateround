@@ -15,6 +15,7 @@ import { rememberHostToken, clearHostToken } from '@/lib/host-session'
 import { useHostToken } from '@/hooks/useHostToken'
 import { useHostIdentity, useHostDisplayName } from '@/hooks/useHostVoiceIdentity'
 import { MatureGameGate } from '@/components/MatureGameGate'
+import { useProfile } from '@/hooks/useProfile'
 import type { Game } from '@/types'
 
 /**
@@ -34,6 +35,7 @@ export default function HostPage() {
   // Voice identity for the host's floating pill (mounted for non-header games below).
   const hostIdentity = useHostIdentity(gameCode)
   const hostName = useHostDisplayName(gameCode)
+  const { profile } = useProfile()
 
   const [game, setGame] = useState<Game | null>(null)
   const [loading, setLoading] = useState(true)
@@ -235,7 +237,12 @@ export default function HostPage() {
         {/* Floating "Join voice" pill for the host. Skipped for games with the
             header voice rail (Whot) so they don't get two voice controls. */}
         {hostToken && !gameHasHeaderVoice(game.game_type) && (
-          <AudioChat roomCode={gameCode} playerName={hostName} auth={{ kind: 'host', token: hostToken }} />
+          <AudioChat
+            roomCode={gameCode}
+            playerName={hostName}
+            auth={{ kind: 'host', token: hostToken }}
+            autoJoin={!!profile?.default_voice_on}
+          />
         )}
         {/* Floating DJ panel — persists across lobby + active play for every game type. */}
         {/* <HostMusicControl gameCode={gameCode} hostToken={hostToken} /> */}
