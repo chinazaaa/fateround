@@ -62,6 +62,12 @@ export function DailyChallengeResults({
   const { success, error: toastError } = useToast()
   const [sharing, setSharing] = useState(false)
 
+  // On submit you're usually scrolled to the bottom (near the Submit button) — jump back to the top
+  // so the "Calculating…" / results view is actually in sight.
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }, [])
+
   // Word Hunt ('score') is shown as raw points with no "/1000"; other games use the 0–1000 score.
   const isPointsGame = DAILY_GAME_PRIMARY_METRIC[gameType] === 'score'
   const normalized = result?.normalizedScore ?? (previousScore?.normalized_score as number | undefined) ?? 0
