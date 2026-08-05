@@ -116,7 +116,7 @@ export function GamesGrid({ games }: { games: GamesGridItem[] }) {
 
         {/* Category filter */}
         <div
-          role="tablist"
+          role="group"
           aria-label="Filter games by category"
           className="flex flex-wrap items-center justify-center gap-2"
         >
@@ -126,8 +126,7 @@ export function GamesGrid({ games }: { games: GamesGridItem[] }) {
               <button
                 key={tab.key}
                 type="button"
-                role="tab"
-                aria-selected={active}
+                aria-pressed={active}
                 onClick={() => {
                   setQuery('')
                   setCategory(tab.key)

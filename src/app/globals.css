@@ -947,6 +947,11 @@ body {
   .fr-icon-btn:hover::after {
     animation: none;
   }
+
+  .btn-nav:hover:not(:disabled),
+  .btn-nav:active:not(:disabled) {
+    transform: none;
+  }
 }
 
 .page-wrap {
@@ -1186,27 +1191,12 @@ body {
     background 0.2s;
 }
 
-input::placeholder {
-  color: var(--faint, var(--text-faint)) !important;
-  opacity: 1 !important;
-}
-textarea::placeholder {
-  color: var(--faint, var(--text-faint)) !important;
-  opacity: 1 !important;
-}
-input::-webkit-input-placeholder {
-  color: var(--faint, var(--text-faint)) !important;
-  opacity: 1 !important;
-  -webkit-text-fill-color: var(--faint, var(--text-faint)) !important;
-}
-textarea::-webkit-input-placeholder {
-  color: var(--faint, var(--text-faint)) !important;
-  opacity: 1 !important;
-  -webkit-text-fill-color: var(--faint, var(--text-faint)) !important;
-}
+input::placeholder,
+textarea::placeholder,
 .input-field::placeholder {
-  color: var(--faint, var(--text-faint)) !important;
+  color: var(--text-faint) !important;
   opacity: 1 !important;
+  -webkit-text-fill-color: var(--text-faint) !important;
 }
 
 .input-field:focus {
@@ -1294,18 +1284,16 @@ textarea::-webkit-input-placeholder {
   }
 }
 
-/* Nav — the "leave this page" controls (Back, Home). No fill, so they never
-   compete with the step's real action; the rose border and text make them
-   findable.
+/* Nav — the "leave this page" controls (Back, Home). A filled rose circle
+   so the control is always visible above any page background.
 
-   Hover recedes the border and pulses the accent, exactly like a game-type card:
-   the button is being acknowledged without being promoted to a primary action.
+   Hover deepens the fill and lifts the button to acknowledge the tap target
+   without promoting it to a primary action.
 
-   Every value here mirrors `.fr-btn` + `.fr-btn--sm` + `.fr-btn--nav` in
-   fate-round-ds.css so the Home button on /create and the Back button on the
-   marketing pages are the same control. They are written as literals rather
-   than tokens because this scope does not import the DS token set, and because
-   `--primary` and `--border` are both reassigned per game theme
+   Every value here mirrors `.fr-btn--nav` in fate-round-ds.css so the Home
+   button on /create and the Back button on the marketing pages are the same
+   control. Written as literals because this scope does not import the DS
+   token set, and `--primary` is reassigned per game theme
    ([data-game-theme]) — these must read the same on every board. */
 .btn-nav {
   position: relative;
@@ -1339,10 +1327,6 @@ textarea::-webkit-input-placeholder {
 .btn-nav:disabled {
   opacity: 0.45;
   cursor: not-allowed;
-}
-
-[data-theme='dark'] .btn-nav:hover:not(:disabled) {
-  border-color: rgba(255, 255, 255, 0.08);
 }
 
 /* Matches the .fr-btn look used on public/marketing pages (solid, tactile,

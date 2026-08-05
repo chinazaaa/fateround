@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useExpiryRefresh } from '@/hooks/useExpiryRefresh'
 import Link from 'next/link'
 import {
   DAILY_CHALLENGE_GAME_TYPES,
@@ -65,6 +66,19 @@ export function DailyChallengeSection() {
     load()
   }, [])
 
+  // Compute expiry deadlines for all in-progress challenges so the card
+  // state auto-updates when a timer runs out.
+  const deadlines = useMemo(() => {
+    const result: number[] = []
+    for (const g of games) {
+      if (!g.challengeId || g.played) continue
+      const s = startedAtById[g.challengeId]
+      if (s != null) result.push(s + DAILY_GAME_TIMER[g.gameType] * 1000)
+    }
+    return result
+  }, [games, startedAtById])
+  const now = useExpiryRefresh(deadlines)
+
   // Hidden from the homepage until launch day.
   if (!isDailyChallengeLive()) return null
 
@@ -83,7 +97,7 @@ export function DailyChallengeSection() {
             const played = status?.played ?? false
             const score = status?.score ?? null
             const startedAt = status?.challengeId ? startedAtById[status.challengeId] : undefined
-            const inProgress = startedAt != null && Date.now() < startedAt + DAILY_GAME_TIMER[gameType] * 1000
+            const inProgress = startedAt != null && now < startedAt + DAILY_GAME_TIMER[gameType] * 1000
             const expired = startedAt != null && !inProgress
             const slug = DAILY_GAME_TYPE_TO_SLUG[gameType]
 

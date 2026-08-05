@@ -68,11 +68,14 @@ const CHIP_EMOJI_ICONS: Record<string, any> = {
   '🙋': UserMultipleIcon,
   '🎲': DiceIcon,
   '🚪': Link01Icon,
+  '0️⃣': Cancel01Icon,
 }
 
 function parseChipItem(item: string) {
   // Strip leading emoji if present and map to fr-glyph
-  const match = item.match(/^((?:[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]|\u{FE0F}|\u{200D})+)\s*/u)
+  const match = item.match(
+    /^((?:[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]|[0-9*#]\u{FE0F}?\u{20E3}|\u{FE0F}|\u{200D})+)\s*/u
+  )
   if (match) {
     const rawEmoji = match[1].replace(/\u{FE0F}/gu, '')
     const cleanText = item.slice(match[0].length).trim()

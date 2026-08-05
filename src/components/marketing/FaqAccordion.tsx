@@ -54,14 +54,16 @@ export function FaqAccordion({ faqs, accent }: { faqs: FaqItem[]; accent?: strin
               </svg>
             </button>
             <div
-              className="transition-all duration-200 ease-out overflow-hidden"
+              className="grid transition-[grid-template-rows,opacity] duration-200 ease-out overflow-hidden"
               style={{
-                maxHeight: isOpen ? '500px' : '0',
+                gridTemplateRows: isOpen ? '1fr' : '0fr',
                 opacity: isOpen ? 1 : 0,
               }}
             >
-              <div className="px-[22px] pb-[18px] text-sm leading-[1.55]" style={{ color: 'var(--text-muted)' }}>
-                {faq.answer}
+              <div className="overflow-hidden">
+                <div className="px-[22px] pb-[18px] text-sm leading-[1.55]" style={{ color: 'var(--text-muted)' }}>
+                  {faq.answer}
+                </div>
               </div>
             </div>
           </div>

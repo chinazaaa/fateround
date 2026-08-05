@@ -179,8 +179,6 @@ function CustomDatePicker({ value, max, onChange }: { value: string; max: string
     year: 'numeric',
   })
 
-  const maxObj = new Date(max)
-
   return (
     <div ref={ref} className="relative inline-block text-left">
       <button
@@ -251,10 +249,9 @@ function CustomDatePicker({ value, max, onChange }: { value: string; max: string
             {/* Month days */}
             {Array.from({ length: daysInMonth }).map((_, i) => {
               const dayNum = i + 1
-              const cellDate = new Date(viewYear, viewMonth, dayNum)
               const dateStr = `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`
               const isSelected = dateStr === value
-              const isFuture = cellDate > maxObj
+              const isFuture = dateStr > max
 
               return (
                 <button

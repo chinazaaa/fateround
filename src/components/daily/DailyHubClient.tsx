@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import {
   DAILY_CHALLENGE_GAME_TYPES,
@@ -17,6 +17,7 @@ import { authHeaders } from '@/lib/identity'
 import { getDailyStartedAt } from '@/lib/daily-progress'
 import { gameIcon } from '@/lib/game-glyphs'
 import { Glyph } from '@/components/icons/Glyph'
+import { useExpiryRefresh } from '@/hooks/useExpiryRefresh'
 
 interface GameStatus {
   gameType: DailyChallengeGameType
@@ -64,6 +65,19 @@ export function DailyHubClient() {
   }, [])
 
   const completedCount = games.filter((g) => g.played).length
+
+  // Compute expiry deadlines for all in-progress challenges so the card
+  // state auto-updates when a timer runs out.
+  const deadlines = useMemo(() => {
+    const result: number[] = []
+    for (const g of games) {
+      if (!g.challengeId || g.played) continue
+      const s = startedAtById[g.challengeId]
+      if (s != null) result.push(s + DAILY_GAME_TIMER[g.gameType] * 1000)
+    }
+    return result
+  }, [games, startedAtById])
+  const now = useExpiryRefresh(deadlines)
 
   // Dormant before launch — the code can ship early without the challenge going live.
   if (!isDailyChallengeLive()) {
@@ -131,7 +145,7 @@ export function DailyHubClient() {
           const startedAt = status?.challengeId ? startedAtById[status.challengeId] : undefined
           // In progress = time still left; expired = time's up but never submitted (opening it
           // just finalizes the result).
-          const inProgress = startedAt != null && Date.now() < startedAt + DAILY_GAME_TIMER[gameType] * 1000
+          const inProgress = startedAt != null && now < startedAt + DAILY_GAME_TIMER[gameType] * 1000
           const expired = startedAt != null && !inProgress
           const slug = DAILY_GAME_TYPE_TO_SLUG[gameType]
           const metric = DAILY_GAME_PRIMARY_METRIC[gameType]

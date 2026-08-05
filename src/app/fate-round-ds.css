@@ -382,12 +382,11 @@
   transform: var(--lift-press);
 }
 
-/* Nav — the "leave this page" controls (Back, Home). No fill: these sit above
-   the page content and should not compete with the action the page is actually
-   for. Rose border and text is what makes them findable.
+/* Nav — the "leave this page" controls (Back, Home). A filled rose circle
+   so the control is always visible above any page background.
 
-   Hover recedes the border and pulses the accent, exactly like a game-type card:
-   the button is being acknowledged without being promoted to a primary action. */
+   Hover deepens the fill and lifts the button to acknowledge the tap target
+   without promoting it to a primary action. */
 .fr-btn--nav {
   position: relative;
   display: inline-flex;
@@ -433,15 +432,7 @@
 .fr-input::placeholder {
   color: var(--text-faint) !important;
   opacity: 1 !important;
-}
-.fr-input::-webkit-input-placeholder {
-  color: var(--text-faint) !important;
-  opacity: 1 !important;
   -webkit-text-fill-color: var(--text-faint) !important;
-}
-.fr-input::-moz-placeholder {
-  color: var(--text-faint) !important;
-  opacity: 1 !important;
 }
 .fr-input:hover:not(:disabled):not(:focus) {
   border-color: var(--neutral-400);
@@ -480,11 +471,6 @@
   padding: 0.75rem 0.5rem;
 }
 .fr-input--code::placeholder {
-  color: var(--text-faint) !important;
-  opacity: 1 !important;
-  letter-spacing: clamp(0.06em, 0.8vw, 0.18em);
-}
-.fr-input--code::-webkit-input-placeholder {
   color: var(--text-faint) !important;
   opacity: 1 !important;
   letter-spacing: clamp(0.06em, 0.8vw, 0.18em);
@@ -1097,6 +1083,7 @@
   align-items: center;
   gap: 6px;
   color: var(--text-muted);
+  font-family: var(--font-display);
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;

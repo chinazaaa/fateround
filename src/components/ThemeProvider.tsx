@@ -74,23 +74,27 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         applyTheme()
       })
 
-      transition.ready.then(() => {
-        const glowColor = next === 'dark' ? 'rgba(251, 113, 133, 0.8)' : 'rgba(245, 158, 11, 0.8)'
-        document.documentElement.animate(
-          {
-            clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${endRadius}px at ${x}px ${y}px)`],
-            filter: [
-              `drop-shadow(0 0 45px ${glowColor}) brightness(1.25)`,
-              `drop-shadow(0 0 0px transparent) brightness(1)`,
-            ],
-          },
-          {
-            duration: 650,
-            easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
-            pseudoElement: '::view-transition-new(root)',
-          }
-        )
-      })
+      transition.ready
+        .then(() => {
+          const glowColor = next === 'dark' ? 'rgba(251, 113, 133, 0.8)' : 'rgba(245, 158, 11, 0.8)'
+          document.documentElement.animate(
+            {
+              clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${endRadius}px at ${x}px ${y}px)`],
+              filter: [
+                `drop-shadow(0 0 45px ${glowColor}) brightness(1.25)`,
+                `drop-shadow(0 0 0px transparent) brightness(1)`,
+              ],
+            },
+            {
+              duration: 650,
+              easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
+              pseudoElement: '::view-transition-new(root)',
+            }
+          )
+        })
+        .catch(() => {
+          /* View transition was skipped — theme already applied */
+        })
     } else {
       applyTheme()
     }

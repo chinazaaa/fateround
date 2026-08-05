@@ -3,10 +3,10 @@
 import { useEffect, useState } from 'react'
 import type { PublicTrophy } from '@/lib/trophies/public'
 import { Glyph } from '@/components/icons/Glyph'
-import { ChampionIcon, CrownIcon, LockIcon, StarIcon } from '@hugeicons/core-free-icons'
+import { ChampionIcon, CrownIcon, LockIcon, Medal01Icon, StarIcon } from '@hugeicons/core-free-icons'
 
 const TIER_ICONS = {
-  bronze: StarIcon,
+  bronze: Medal01Icon,
   silver: StarIcon,
   gold: CrownIcon,
   platinum: ChampionIcon,
