@@ -5,7 +5,6 @@ import Link from 'next/link'
 import {
   DAILY_CHALLENGE_GAME_TYPES,
   DAILY_GAME_LABELS,
-  DAILY_GAME_EMOJIS,
   DAILY_GAME_TYPE_TO_SLUG,
   DAILY_GAME_PRIMARY_METRIC,
   DAILY_GAME_TIMER,
@@ -16,6 +15,8 @@ import {
 import { formatDayLabel } from '@/lib/community-dates'
 import { authHeaders } from '@/lib/identity'
 import { getDailyStartedAt } from '@/lib/daily-progress'
+import { gameIcon } from '@/lib/game-glyphs'
+import { Glyph } from '@/components/icons/Glyph'
 
 interface GameStatus {
   gameType: DailyChallengeGameType
@@ -83,9 +84,7 @@ export function DailyHubClient() {
     <div className="mx-auto max-w-2xl px-4 py-8">
       {/* Header */}
       <div className="text-center mb-8">
-        <h1 className="font-bold" style={{ fontSize: 'var(--text-2xl)', fontFamily: 'var(--font-display)' }}>
-          Daily Challenge
-        </h1>
+        <h1 className="fr-display text-[2rem]">Daily Challenge</h1>
         <p className="mt-1" style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>
           Same puzzle for everyone. One shot, one score.
         </p>
@@ -108,11 +107,11 @@ export function DailyHubClient() {
               {completedCount}/{DAILY_CHALLENGE_GAME_TYPES.length} completed
             </span>
             <div className="flex gap-1">
-              {DAILY_CHALLENGE_GAME_TYPES.map((gt) => {
-                const played = games.find((g) => g.gameType === gt)?.played
+              {DAILY_CHALLENGE_GAME_TYPES.map((gameType) => {
+                const played = games.find((game) => game.gameType === gameType)?.played
                 return (
                   <div
-                    key={gt}
+                    key={gameType}
                     className="w-2 h-2 rounded-full"
                     style={{ background: played ? 'var(--primary)' : 'var(--surface-sunken)' }}
                   />
@@ -125,58 +124,60 @@ export function DailyHubClient() {
 
       {/* Game cards */}
       <div className="grid gap-3 sm:grid-cols-2">
-        {loading
-          ? DAILY_CHALLENGE_GAME_TYPES.map((gt) => <div key={gt} className="fr-card animate-pulse h-[88px]" />)
-          : DAILY_CHALLENGE_GAME_TYPES.map((gt) => {
-              const status = games.find((g) => g.gameType === gt)
-              const played = status?.played ?? false
-              const score = status?.score ?? null
-              const startedAt = status?.challengeId ? startedAtById[status.challengeId] : undefined
-              // In progress = time still left; expired = time's up but never submitted (opening it
-              // just finalizes the result).
-              const inProgress = startedAt != null && Date.now() < startedAt + DAILY_GAME_TIMER[gt] * 1000
-              const expired = startedAt != null && !inProgress
-              const slug = DAILY_GAME_TYPE_TO_SLUG[gt]
-              const metric = DAILY_GAME_PRIMARY_METRIC[gt]
+        {DAILY_CHALLENGE_GAME_TYPES.map((gameType) => {
+          const status = games.find((game) => game.gameType === gameType)
+          const played = status?.played ?? false
+          const score = status?.score ?? null
+          const startedAt = status?.challengeId ? startedAtById[status.challengeId] : undefined
+          // In progress = time still left; expired = time's up but never submitted (opening it
+          // just finalizes the result).
+          const inProgress = startedAt != null && Date.now() < startedAt + DAILY_GAME_TIMER[gameType] * 1000
+          const expired = startedAt != null && !inProgress
+          const slug = DAILY_GAME_TYPE_TO_SLUG[gameType]
+          const metric = DAILY_GAME_PRIMARY_METRIC[gameType]
 
-              return (
-                <Link
-                  key={gt}
-                  href={`/daily-challenges/${slug}`}
-                  className="fr-card fr-card--interactive flex items-center gap-4 !px-5 !py-4"
-                  style={played ? { borderColor: 'var(--border-primary)', borderWidth: 1 } : undefined}
-                >
-                  <div className="text-3xl shrink-0">{DAILY_GAME_EMOJIS[gt]}</div>
-                  <div className="flex-1 min-w-0">
-                    <h3 className="font-bold" style={{ fontSize: 'var(--text-sm)' }}>
-                      {DAILY_GAME_LABELS[gt]}
-                    </h3>
-                    <p className="mt-0.5" style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>
-                      {metric === 'time' ? 'Fastest time wins' : 'Highest score wins'}
-                    </p>
+          return (
+            <Link
+              key={gameType}
+              href={`/daily-challenges/${slug}`}
+              className="fr-card fr-card--interactive flex items-center gap-4 !px-5 !py-4 no-underline"
+              style={played ? { borderColor: 'var(--border-primary)', borderWidth: 1 } : undefined}
+            >
+              <span className="fr-glyph fr-glyph--sm">
+                <Glyph icon={gameIcon(gameType)} size={22} />
+              </span>
+              <div className="flex-1 min-w-0">
+                <h3 className="font-bold" style={{ fontSize: 'var(--text-sm)' }}>
+                  {DAILY_GAME_LABELS[gameType]}
+                </h3>
+                <p className="mt-0.5" style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>
+                  {metric === 'time' ? 'Fastest time wins' : 'Highest score wins'}
+                </p>
+              </div>
+              {/* Height is reserved on every branch so the grid does not shift
+                  when /api/daily-challenges/status resolves. */}
+              <div className="flex h-[38px] shrink-0 items-center">
+                {loading ? (
+                  <span
+                    className="block h-[26px] w-[52px] animate-pulse rounded-full"
+                    style={{ background: 'var(--surface-sunken)' }}
+                  />
+                ) : played && score !== null ? (
+                  <div className="text-right">
+                    <span className="fr-badge fr-badge--soft">{score} pts</span>
+                    <span className="mt-1 block text-xs font-semibold" style={{ color: 'var(--success)' }}>
+                      Completed
+                    </span>
                   </div>
-                  <div className="shrink-0">
-                    {played && score !== null ? (
-                      <div className="text-right">
-                        <div className="font-bold" style={{ color: 'var(--primary)', fontSize: 'var(--text-sm)' }}>
-                          {score} pts
-                        </div>
-                        <div
-                          className="font-semibold uppercase tracking-wider mt-0.5"
-                          style={{ fontSize: '10px', color: 'var(--green-600, #16a34a)' }}
-                        >
-                          Done
-                        </div>
-                      </div>
-                    ) : (
-                      <span className="fr-btn fr-btn--primary fr-btn--sm">
-                        {inProgress ? 'Continue' : expired ? 'See result' : 'Play'}
-                      </span>
-                    )}
-                  </div>
-                </Link>
-              )
-            })}
+                ) : (
+                  <span className="fr-btn fr-btn--primary fr-btn--sm">
+                    {inProgress ? 'Continue' : expired ? 'See result' : 'Play'}
+                  </span>
+                )}
+              </div>
+            </Link>
+          )
+        })}
       </div>
 
       {/* Footer link */}

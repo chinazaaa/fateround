@@ -5,6 +5,7 @@ import { Modal } from '@/components/ui/Modal'
 import { useTheme } from '@/components/ThemeProvider'
 import type { Theme } from '@/lib/theme-cookie'
 import { themeStyleVars, type ThemeConfig } from '@/lib/themes'
+import { Glyph } from '@/components/icons/Glyph'
 
 /** Per-theme description of its two named modes (all themes adapt to light/dark). */
 const THEME_MODE_SUBTITLES: Record<string, string> = {
@@ -68,7 +69,7 @@ function ThemeSampleRoom({ theme, siteMode, gameType }: { theme: ThemeConfig; si
         style={{ backgroundColor: theme.preview.bg }}
       >
         <div className="text-center space-y-2" style={{ color: theme.preview.text }}>
-          <p className="text-3xl leading-none">{theme.emoji}</p>
+          <Glyph icon={theme.icon} filled={theme.iconFilled} size={30} className="mx-auto" />
           <h3 className="text-lg font-black tracking-tight">{theme.label}</h3>
           <span className="inline-flex items-center rounded-full bg-black/20 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide">
             Ping Pong
@@ -130,7 +131,7 @@ function ThemeSampleRoom({ theme, siteMode, gameType }: { theme: ThemeConfig; si
         }}
       >
         <div className="text-center space-y-2">
-          <p className="text-2xl leading-none">{theme.emoji}</p>
+          <Glyph icon={theme.icon} filled={theme.iconFilled} size={26} className="mx-auto" />
           <h3 className="text-lg font-black tracking-tight gradient-title">Friday Night</h3>
           <span className="inline-flex items-center rounded-full border border-[var(--border)] bg-[var(--surface-inset-bg)] px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted">
             Kiss Marry Kill
@@ -208,7 +209,7 @@ export function ThemePreviewModal({
     <Modal
       open={open}
       onClose={onClose}
-      title={`${theme.emoji} ${theme.label}`}
+      title={theme.label}
       subtitle={
         isAdaptiveTheme
           ? (THEME_MODE_SUBTITLES[theme.id] ?? 'Follows your site light or dark appearance')
@@ -279,8 +280,9 @@ export function ThemePreviewCard({
             style={{ background: theme.preview.text }}
           />
         </div>
-        <span className="w-full truncate text-center text-[11px] font-medium leading-tight text-body">
-          {theme.emoji} {theme.label}
+        <span className="flex w-full min-w-0 items-center justify-center gap-1 text-[11px] font-medium leading-tight text-body">
+          <Glyph icon={theme.icon} filled={theme.iconFilled} size={13} className="shrink-0" />
+          <span className="truncate">{theme.label}</span>
         </span>
       </button>
       <button

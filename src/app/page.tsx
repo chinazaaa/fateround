@@ -13,28 +13,25 @@ function HomeSeoContent() {
         <div className="blk">
           <h2>What is FateRound?</h2>
           <p>
-            FateRound is a free online party game platform where friend groups vote, laugh, and reveal together — no
-            sign-up, no download, and no app store required. Create a game in seconds, share a short code or link, and
-            everyone joins the lobby from their phone or laptop in real time.
+            FateRound is a web platform with 47+ free games for your squad. You can host quick party votes, play classic
+            board games like Monopoly and Whot, or tackle daily word puzzles together in your browser.
           </p>
         </div>
 
         <div className="blk">
           <h2>Who is it for?</h2>
           <p>
-            FateRound is built for friend groups, Discord calls, birthday parties, icebreakers, and late-night group
-            chats. Whether you want a Yahtzee dice night, a Whot or Monopoly showdown, Smash Marry Kill chaos, or
-            anonymous Would You Rather votes, every mode runs in the browser so nobody needs to install anything.
+            It is built for friend groups, Discord servers, game nights, and group chats. Whether you are playing
+            Monopoly with friends across the world or running a fast Smash Marry Kill round over a call, everyone joins
+            from their phone or laptop.
           </p>
         </div>
 
         <div className="blk">
           <h2>How does it work?</h2>
           <p>
-            Pick a game mode, create your game, and share the code with your group. Players join with a display name,
-            vote or play each round, and the host reveals results live. Classics like Yahtzee, Whot, Monopoly, and
-            Codewords sit alongside party modes like Smash Marry Kill, Most Likely To, and Would You Rather — all free
-            forever. Browse all modes or jump straight into a game from the homepage.
+            Pick any game mode, create a room, and share the 6-digit code or link. Players type in a nickname, join the
+            room, and play live. You can also set up permanent Game Rooms to track stats and scores over time.
           </p>
         </div>
       </div>
@@ -50,7 +47,7 @@ export default function Page() {
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: websiteJsonLd() }} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: webApplicationJsonLd() }} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: organizationJsonLd() }} />
-      <div className="fr-site flex min-h-dvh flex-col">
+      <div className="fr-site fr-site--textured flex min-h-dvh flex-col">
         <MarketingHeader />
         <main className="flex-1">
           <HomePage />

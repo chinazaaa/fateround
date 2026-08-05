@@ -201,7 +201,7 @@ export function SaveToProfileModal({ open, onClose, profile, onChanged }: Props)
       title={step === 'email' ? 'Save your progress' : 'Enter your code'}
       subtitle={
         step === 'email'
-          ? "New here? We'll create your profile. Been here before? We'll load your trophies."
+          ? 'Submit your email to save your stats, claim trophies, and track your rank.'
           : `We emailed an 8-digit code to ${email}.`
       }
     >

@@ -96,6 +96,8 @@ import { DEFAULT_MAHJONG_RULESET, MAHJONG_RULESETS, MAHJONG_RULESET_CONFIG } fro
 import type { MahjongRuleset } from '@/types'
 import { BOARD_THEMES, PIECE_SETS, useChessAppearance } from '@/lib/chess-appearance'
 import { ChessPieceGlyph } from '@/components/chess/ChessPieceDetailed'
+import { Glyph } from '@/components/icons/Glyph'
+import { GlobeIcon, LockIcon, TableTennisBatIcon } from '@hugeicons/core-free-icons'
 import { WYR_QUESTION_COUNT } from '@/lib/would-you-rather-questions'
 import { THIS_OR_THAT_QUESTION_COUNT } from '@/lib/this-or-that-questions'
 import type { WyrQuestion } from '@/lib/would-you-rather-questions'
@@ -2798,20 +2800,22 @@ function CreateGameInner() {
                 <button
                   type="button"
                   onClick={() => setSettings({ ...settings, isPublic: false })}
-                  className={`flex-1 py-2 text-sm font-semibold transition-colors ${
+                  className={`flex flex-1 items-center justify-center gap-1.5 py-2 text-sm font-semibold transition-colors ${
                     !settings.isPublic ? 'bg-[var(--primary)] text-white' : 'text-muted hover:text-body'
                   }`}
                 >
-                  🔒 Private
+                  <Glyph icon={LockIcon} size={15} />
+                  Private
                 </button>
                 <button
                   type="button"
                   onClick={() => setSettings({ ...settings, isPublic: true })}
-                  className={`flex-1 py-2 text-sm font-semibold transition-colors ${
+                  className={`flex flex-1 items-center justify-center gap-1.5 py-2 text-sm font-semibold transition-colors ${
                     settings.isPublic ? 'bg-[var(--primary)] text-white' : 'text-muted hover:text-body'
                   }`}
                 >
-                  🌐 Public
+                  <Glyph icon={GlobeIcon} size={15} />
+                  Public
                 </button>
               </div>
               <p className="mt-1.5 text-xs text-faint">
@@ -2864,6 +2868,7 @@ function CreateGameInner() {
                         ...theme,
                         label: 'Table Tennis',
                         emoji: '🏓',
+                        icon: TableTennisBatIcon,
                         preview: { bg: '#064e3b', accent: '#f43f5e', text: '#ecfdf5' },
                       }
                     : theme
@@ -5854,20 +5859,22 @@ function CreateGameInner() {
                     <button
                       type="button"
                       onClick={() => setSettings({ ...settings, isPublic: false })}
-                      className={`flex-1 py-2 text-sm font-semibold transition-colors ${
+                      className={`flex flex-1 items-center justify-center gap-1.5 py-2 text-sm font-semibold transition-colors ${
                         !settings.isPublic ? 'bg-[var(--primary)] text-white' : 'text-muted hover:text-body'
                       }`}
                     >
-                      🔒 Private
+                      <Glyph icon={LockIcon} size={15} />
+                      Private
                     </button>
                     <button
                       type="button"
                       onClick={() => setSettings({ ...settings, isPublic: true })}
-                      className={`flex-1 py-2 text-sm font-semibold transition-colors ${
+                      className={`flex flex-1 items-center justify-center gap-1.5 py-2 text-sm font-semibold transition-colors ${
                         settings.isPublic ? 'bg-[var(--primary)] text-white' : 'text-muted hover:text-body'
                       }`}
                     >
-                      🌐 Public
+                      <Glyph icon={GlobeIcon} size={15} />
+                      Public
                     </button>
                   </div>
                   <p className="text-faint text-xs mt-2">

@@ -80,7 +80,9 @@
 
   --text: var(--neutral-900);
   --text-muted: var(--neutral-600);
-  --text-faint: var(--neutral-500);
+  /* Not --neutral-500 (#837a82): that reads 3.69:1 on --surface-sunken, below
+     the 4.5:1 AA floor for the 11–12px captions this token is used for. */
+  --text-faint: #6d656c;
   --text-on-primary: #ffffff;
 
   --border: var(--neutral-200);
@@ -141,6 +143,10 @@
   --container-md: 42rem;
   --container-lg: 64rem;
   --container-xl: 75rem;
+  /* The one measure the marketing shell aligns to. The header gutter,
+     `.mk-wrap` and `.foot-inner` all resolve to this, so the logo, the page
+     content and the footer columns share a left edge the whole way down. */
+  --measure: 1120px;
 
   /* Radii */
   --radius-xs: 6px;
@@ -202,7 +208,8 @@
 
   --text: #f4f1f7;
   --text-muted: #b3aabf;
-  --text-faint: #7d7490;
+  /* Was #7d7490 — only 3.96:1 on --surface, under the 4.5:1 AA floor. */
+  --text-faint: #948aa8;
 
   --border: rgba(255, 255, 255, 0.09);
   --border-strong: rgba(255, 255, 255, 0.16);
@@ -255,6 +262,7 @@
 /* Button */
 .fr-btn {
   display: inline-flex;
+  position: relative;
   align-items: center;
   justify-content: center;
   gap: var(--space-2);
@@ -272,7 +280,7 @@
   -webkit-tap-highlight-color: transparent;
   text-decoration: none;
   transition:
-    transform var(--dur-fast) var(--ease-out),
+    var(--lift-transition),
     box-shadow var(--dur-base) var(--ease-out),
     background var(--dur-fast) var(--ease-out),
     border-color var(--dur-fast) var(--ease-out),
@@ -280,6 +288,30 @@
 }
 .fr-btn:focus-visible {
   box-shadow: var(--focus-ring);
+}
+
+/* Hover aura — see the `aura-radiate` block in globals.css for why this is a
+   shadow-only ::after layer, why the shadow animates rather than a scale, and
+   why `--aura-glow` is declared on the button rather than on the token
+   wrappers. */
+.fr-btn,
+.fr-icon-btn {
+  --aura-glow: color-mix(in srgb, var(--accent, var(--primary)) 70%, transparent);
+}
+
+.fr-btn::after,
+.fr-icon-btn::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+}
+
+.fr-btn:hover:not(:disabled)::after,
+.fr-icon-btn:hover::after {
+  animation: aura-radiate 0.55s ease-out;
 }
 .fr-btn:disabled {
   opacity: 0.45;
@@ -305,13 +337,16 @@
   color: var(--primary-contrast);
   box-shadow: var(--shadow-raised);
 }
+/* Keeps `--shadow-raised` from the resting state rather than escalating to
+   `--shadow-raised-hover`, whose wider rose layer would read as a standing glow
+   for as long as the pointer rests here. The aura pulse supplies the glow, and
+   removes it again. */
 .fr-btn--primary:hover:not(:disabled) {
   background: var(--primary-strong);
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-raised-hover);
+  transform: var(--lift-hover);
 }
 .fr-btn--primary:active:not(:disabled) {
-  transform: translateY(1px);
+  transform: var(--lift-press);
   box-shadow:
     0 0 0 var(--rose-700),
     0 2px 6px rgba(225, 29, 72, 0.3);
@@ -326,11 +361,11 @@
 .fr-btn--secondary:hover:not(:disabled) {
   background: var(--surface-2);
   border-color: var(--neutral-400);
-  transform: translateY(-1px);
+  transform: var(--lift-hover);
   box-shadow: var(--shadow-sm);
 }
 .fr-btn--secondary:active:not(:disabled) {
-  transform: translateY(0);
+  transform: var(--lift-press);
   box-shadow: none;
 }
 
@@ -341,9 +376,43 @@
 .fr-btn--ghost:hover:not(:disabled) {
   background: var(--surface-sunken);
   color: var(--text);
+  transform: var(--lift-hover);
 }
 .fr-btn--ghost:active:not(:disabled) {
-  transform: scale(0.98);
+  transform: var(--lift-press);
+}
+
+/* Nav — the "leave this page" controls (Back, Home). No fill: these sit above
+   the page content and should not compete with the action the page is actually
+   for. Rose border and text is what makes them findable.
+
+   Hover recedes the border and pulses the accent, exactly like a game-type card:
+   the button is being acknowledged without being promoted to a primary action. */
+.fr-btn--nav {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  background: var(--primary, #f43f5e);
+  color: #ffffff;
+  border: none;
+  border-radius: 9999px;
+  box-shadow: 0 2px 6px rgba(244, 63, 94, 0.3);
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.fr-btn--nav:hover:not(:disabled) {
+  background: var(--primary-strong, #e11d48);
+  color: #ffffff;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px rgba(225, 29, 72, 0.4);
+}
+.fr-btn--nav:active:not(:disabled) {
+  transform: translateY(0);
 }
 
 /* Input / Field */
@@ -362,7 +431,17 @@
     background var(--dur-fast) var(--ease-out);
 }
 .fr-input::placeholder {
-  color: var(--text-faint);
+  color: var(--text-faint) !important;
+  opacity: 1 !important;
+}
+.fr-input::-webkit-input-placeholder {
+  color: var(--text-faint) !important;
+  opacity: 1 !important;
+  -webkit-text-fill-color: var(--text-faint) !important;
+}
+.fr-input::-moz-placeholder {
+  color: var(--text-faint) !important;
+  opacity: 1 !important;
 }
 .fr-input:hover:not(:disabled):not(:focus) {
   border-color: var(--neutral-400);
@@ -377,6 +456,19 @@
   cursor: not-allowed;
   background: var(--surface-sunken);
 }
+.fr-input::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  padding: 2px;
+  opacity: 0.75;
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+.fr-input::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+}
+[data-theme='dark'] .fr-input::-webkit-calendar-picker-indicator {
+  filter: invert(0.85) hue-rotate(180deg);
+}
 .fr-input--code {
   text-align: center;
   font-family: var(--font-mono);
@@ -388,7 +480,78 @@
   padding: 0.75rem 0.5rem;
 }
 .fr-input--code::placeholder {
+  color: var(--text-faint) !important;
+  opacity: 1 !important;
   letter-spacing: clamp(0.06em, 0.8vw, 0.18em);
+}
+.fr-input--code::-webkit-input-placeholder {
+  color: var(--text-faint) !important;
+  opacity: 1 !important;
+  letter-spacing: clamp(0.06em, 0.8vw, 0.18em);
+  -webkit-text-fill-color: var(--text-faint) !important;
+}
+
+/* ── Select ──────────────────────────────────────────────────────────
+   A native <select> paints its own control chrome — the platform's arrow,
+   corner radius and focus ring — so next to `.fr-input` it reads as a piece of
+   the operating system that wandered onto the page. `appearance: none` strips
+   that and this class puts the input's own geometry back.
+
+   The chevron is a background image rather than a pseudo-element because a
+   <select> cannot host ::before/::after. That means it can't inherit
+   `currentColor`, so the stroke is baked into the data URI and the dark theme
+   swaps in its own copy — the one place duplicating the markup is unavoidable.
+
+   `padding-right` clears the chevron; without it a long option label runs
+   underneath it.
+   ──────────────────────────────────────────────────────────────────── */
+.fr-select {
+  appearance: none;
+  width: 100%;
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  font-weight: var(--fw-medium);
+  color: var(--text);
+  background-color: var(--surface);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.75 4.5 6 7.75 9.25 4.5' fill='none' stroke='%235e5661' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+  background-size: 12px 12px;
+  border: 1.5px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  padding: 0.5625rem 2.25rem 0.5625rem 0.875rem;
+  cursor: pointer;
+  transition:
+    border-color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out),
+    background-color var(--dur-fast) var(--ease-out);
+}
+[data-theme='dark'] .fr-select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.75 4.5 6 7.75 9.25 4.5' fill='none' stroke='%23b3aabf' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+.fr-select:hover:not(:disabled):not(:focus) {
+  border-color: var(--neutral-400);
+}
+.fr-select:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: var(--focus-ring);
+}
+.fr-select:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  background-color: var(--surface-sunken);
+}
+/* The dropdown list itself is drawn by the platform, and only these two
+   properties reliably carry through to it. Setting them stops a dark-theme page
+   from opening a white list. */
+.fr-select option {
+  background: var(--surface);
+  color: var(--text);
+}
+/* Sits inline beside chips or labels instead of filling its row. */
+.fr-select--auto {
+  width: auto;
 }
 
 /* Unified code field: the code input with an inline go submit tucked into the right edge.
@@ -503,9 +666,75 @@
   padding: 0.4375rem 0.875rem;
 }
 
+/* Filter/segment chips, as opposed to the static tag chips this class also
+   serves (blog tags, game highlights). Those stay pills; a control that sits in
+   a row with buttons and a search field should share their corner, otherwise
+   the same page carries two unrelated radii. */
+.fr-chip--control {
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition:
+    border-color var(--dur-fast) var(--ease-out),
+    background var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out);
+}
+.fr-chip--control:hover:not([aria-selected='true']):not([aria-pressed='true']) {
+  border-color: var(--border-strong);
+  background: var(--surface-2);
+}
+
+/* ── Segmented control ───────────────────────────────────────────────
+   A row of mutually exclusive options sharing one border, for a choice that is
+   small and fixed enough that a <select> would be heavier than the options
+   themselves (three tabs, two visibility states).
+
+   The children are borderless and the group owns the outline, so the corner is
+   set once here and clipped by `overflow: hidden` — otherwise each end button
+   would need its own asymmetric radius.
+
+   `flex: 1` with `min-width: 0` divides the row evenly regardless of label
+   length, which keeps the selected fill from jumping width as the choice moves.
+   ──────────────────────────────────────────────────────────────────── */
+.fr-segment {
+  display: flex;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+.fr-segment__btn {
+  flex: 1;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--text-muted);
+  background: transparent;
+  border: 0;
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  transition:
+    background var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out);
+}
+.fr-segment__btn:hover:not([aria-selected='true']):not([aria-pressed='true']) {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.fr-segment__btn[aria-selected='true'],
+.fr-segment__btn[aria-pressed='true'] {
+  background: var(--primary);
+  color: var(--primary-contrast);
+}
+
 /* Icon button — bordered rounded square (theme toggle, etc.) */
 .fr-icon-btn {
   display: inline-flex;
+  position: relative;
   align-items: center;
   justify-content: center;
   gap: var(--space-2);
@@ -524,11 +753,16 @@
   transition:
     border-color var(--dur-fast) var(--ease-out),
     background var(--dur-fast) var(--ease-out),
-    color var(--dur-fast) var(--ease-out);
+    color var(--dur-fast) var(--ease-out),
+    var(--lift-transition);
 }
 .fr-icon-btn:hover {
   border-color: var(--neutral-400);
   background: var(--surface-2);
+  transform: var(--lift-hover);
+}
+.fr-icon-btn:active {
+  transform: var(--lift-press);
 }
 
 /* Modal — dialog / bottom sheet */
@@ -673,8 +907,19 @@
   flex-direction: column;
   gap: var(--space-3);
   text-align: left;
-  background: var(--surface);
-  border: 1px solid var(--border);
+  /* Accent wash rather than flat `--surface`: with a neutral body, eight
+     differently-themed games read as eight identical white tiles, and the only
+     thing distinguishing them is a 3px bar most people never look at.
+
+     The wash fades to plain `--surface` by 62% — above the tagline and the meta
+     row — so text contrast is measured against the same background as before
+     and none of the muted type gets harder to read. */
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--accent) 6%, var(--surface)) 0%,
+    var(--surface) 62%
+  );
+  border: 1px solid color-mix(in srgb, var(--accent) 16%, var(--border));
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
   padding: var(--space-5);
@@ -690,9 +935,11 @@
   content: '';
   position: absolute;
   inset: 0 0 auto 0;
-  height: 3px;
+  height: 4px;
   background: var(--accent);
-  opacity: 0;
+  /* Visible at rest so the eight tiles read as eight different games before
+     any hover — full strength on hover. */
+  opacity: 0.7;
   transition: opacity var(--dur-base) var(--ease-out);
 }
 .fr-gamecard:hover {
@@ -706,6 +953,17 @@
 .fr-gamecard:active {
   transform: translateY(-1px);
 }
+/* Dark surfaces swallow a 6% wash — `--surface` is already near-black, so the
+   mix barely moves. The accents themselves are bright here, so a larger share
+   still lands well short of the card looking coloured-in. */
+[data-theme='dark'] .fr-gamecard {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--accent) 11%, var(--surface)) 0%,
+    var(--surface) 62%
+  );
+  border-color: color-mix(in srgb, var(--accent) 22%, var(--border));
+}
 .fr-gamecard__emoji {
   display: inline-flex;
   align-items: center;
@@ -716,6 +974,17 @@
   font-size: 1.75rem;
   line-height: 1;
   background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+/* Compact centred variant — the daily-challenge row. */
+.fr-gamecard--compact {
+  align-items: center;
+  text-align: center;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-3);
+}
+.fr-gamecard--compact .fr-gamecard__title {
+  font-size: var(--text-sm);
 }
 .fr-gamecard__title {
   font-family: var(--font-display);
@@ -770,33 +1039,26 @@
   margin: 0;
 }
 
-/* Header — spans full width: logo flush-left, nav flush-right */
+/* Header — the bar spans full width so its background reaches the edges, but
+   its contents sit on the shared measure: logo flush-left of the page content,
+   nav flush-right of it.
+
+   The centring is done with a gutter rather than an inner wrapper so no DOM
+   change is needed in `MarketingHeader`, which every marketing page renders.
+   The `+ 24px` matches `.mk-wrap`'s own inner padding — without it the logo
+   would sit 24px left of the content it is meant to line up with. `max()`
+   holds the gutter at that 24px until the viewport outgrows the measure. */
 .site-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px clamp(18px, 4vw, 40px);
+  padding: 16px max(24px, calc((100% - var(--measure)) / 2 + 24px));
 }
 
-/* Back bar — sits below the header on every page except home */
+/* Back bar — sits below the header on every page except home. Shares the
+   header's gutter so "Back" lines up under the logo. */
 .fr-backbar {
-  padding: 4px clamp(18px, 4vw, 40px) 0;
-}
-.fr-backbar__link {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 4px;
-  background: transparent;
-  border: 0;
-  cursor: pointer;
-  font-size: var(--text-sm);
-  font-weight: var(--fw-semibold);
-  color: var(--text-muted);
-  transition: color var(--dur-fast) var(--ease-out);
-}
-.fr-backbar__link:hover {
-  color: var(--text);
+  padding: 8px max(24px, calc((100% - var(--measure)) / 2 + 24px)) 0;
 }
 .site-nav {
   display: flex;
@@ -806,10 +1068,31 @@
 .site-nav a {
   color: var(--text-muted);
   text-decoration: none;
+  font-family: var(--font-display);
   font-size: 14px;
   font-weight: 500;
 }
 .site-nav a:hover {
+  color: var(--text);
+}
+/* A nav item that has to be a <button> (it opens a dialog rather than navigating).
+   Matches `.site-nav a` exactly so the profile chip reads as one more nav word
+   instead of a control parked at the end of the row. Icon-only buttons in the
+   same row keep `.fr-icon-btn` — this is text-only. */
+.fr-nav-btn {
+  background: transparent;
+  border: none;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease-out);
+}
+.fr-nav-btn:hover {
   color: var(--text);
 }
 .site-nav-cta {
@@ -834,7 +1117,7 @@
   margin-top: 56px;
 }
 .foot-inner {
-  max-width: 1040px;
+  max-width: var(--measure);
   margin: 0 auto;
   padding: 44px 24px 36px;
 }
@@ -915,17 +1198,22 @@
 
 /* Section scaffolding */
 .mk-wrap {
-  max-width: 1120px;
+  max-width: var(--measure);
   margin: 0 auto;
   padding: 0 24px;
 }
+/* The closing prose block. It used to centre its own 720px column, which put its
+   left edge ~200px right of every other section — the one place the shared
+   measure visibly broke. The block now sits on `--measure` like everything else,
+   and the reading width is enforced on the paragraph instead, which is where it
+   actually matters: 68ch is a comfortable line, and it is a maximum, so the
+   column still narrows with the viewport.
+
+   The top margin is gone too. `.fr-band` already owns the rhythm above this, and
+   the two were stacking into a ~96px gap. */
 .mk-seo {
   border-top: 1px solid var(--border);
-  margin-top: 48px;
   padding: 40px 0 8px;
-}
-.mk-seo .mk-wrap {
-  max-width: 720px;
 }
 .mk-seo h2 {
   font-family: var(--font-display);
@@ -1098,4 +1386,310 @@
   font-weight: var(--fw-black);
   letter-spacing: var(--tracking-tighter);
   line-height: var(--leading-tight);
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   Glyphs — Hugeicons artwork on a raised accent plate
+   (see components/icons/Glyph.tsx)
+
+   The free Hugeicons set is stroke-only, so the dimensionality lives here
+   rather than in the artwork: the plate is a lit gradient with a bright top
+   edge, a shaded bottom edge and a cast shadow, and the stroke itself gets a
+   1px drop shadow so it sits above the plate. Every colour derives from
+   `--accent`, so one treatment serves all 47 games. Light source is upper-left.
+   ════════════════════════════════════════════════════════════════════ */
+.fr-glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 3.25rem;
+  height: 3.25rem;
+  border-radius: var(--radius-md);
+  color: var(--accent, var(--primary));
+  background: linear-gradient(
+    158deg,
+    color-mix(in srgb, var(--accent, var(--primary)) 22%, transparent) 0%,
+    color-mix(in srgb, var(--accent, var(--primary)) 9%, transparent) 100%
+  );
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #fff 55%, transparent),
+    inset 0 -1px 0 color-mix(in srgb, var(--accent, var(--primary)) 30%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, var(--accent, var(--primary)) 18%, transparent),
+    0 1px 2px color-mix(in srgb, var(--accent, var(--primary)) 22%, transparent);
+  transition:
+    background var(--dur-base) var(--ease-out),
+    box-shadow var(--dur-base) var(--ease-out),
+    transform var(--dur-base) var(--ease-out);
+}
+.fr-glyph--sm {
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: var(--radius-sm);
+}
+/* Inline size, for a plate sitting beside a single line of label text rather
+   than heading a card. */
+.fr-glyph--xs {
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: var(--radius-xs);
+}
+
+/* Lift the stroke off the plate so the icon reads as a separate layer. */
+.fr-glyph svg {
+  overflow: visible;
+  filter: drop-shadow(0 1px 0.5px color-mix(in srgb, var(--accent, var(--primary)) 45%, transparent));
+}
+
+.fr-gamecard:hover .fr-glyph,
+.fr-tile:hover .fr-glyph {
+  background: linear-gradient(
+    158deg,
+    color-mix(in srgb, var(--accent, var(--primary)) 34%, transparent) 0%,
+    color-mix(in srgb, var(--accent, var(--primary)) 15%, transparent) 100%
+  );
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #fff 70%, transparent),
+    inset 0 -1px 0 color-mix(in srgb, var(--accent, var(--primary)) 45%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, var(--accent, var(--primary)) 32%, transparent),
+    0 2px 5px color-mix(in srgb, var(--accent, var(--primary)) 30%, transparent);
+  transform: translateY(-1px);
+}
+
+/* On dark surfaces a 55% white top edge blows out; the plate carries the
+   depth through the accent gradient and cast shadow instead. */
+[data-theme='dark'] .fr-glyph {
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #fff 16%, transparent),
+    inset 0 -1px 0 color-mix(in srgb, #000 30%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, var(--accent, var(--primary)) 26%, transparent),
+    0 1px 3px color-mix(in srgb, #000 45%, transparent);
+}
+[data-theme='dark'] .fr-gamecard:hover .fr-glyph,
+[data-theme='dark'] .fr-tile:hover .fr-glyph {
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #fff 24%, transparent),
+    inset 0 -1px 0 color-mix(in srgb, #000 38%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, var(--accent, var(--primary)) 42%, transparent),
+    0 3px 7px color-mix(in srgb, #000 55%, transparent);
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   Band — full-bleed horizontal slab behind a page section
+
+   The page background is one flat colour and `.fr-site--textured::before` is
+   `position: fixed`, so its texture can only ever tint the first screenful.
+   Bands are what give the rest of the scroll structure: the band spans the
+   viewport while the `.mk-wrap` inside it holds the content to the measure.
+
+   `.fr-band` also owns the vertical rhythm, so sections no longer each carry
+   their own ad-hoc top margin.
+   ════════════════════════════════════════════════════════════════════ */
+.fr-band {
+  padding-block: var(--space-12);
+}
+.fr-band--tight {
+  padding-block: var(--space-8);
+}
+
+/* Alternating slab. The hairlines matter more than the fill: at 4% apart in
+   light mode the tint alone is nearly invisible, and it is the top and bottom
+   edges that actually announce a new section. */
+.fr-band--sunken {
+  background: var(--bg-subtle);
+  border-block: 1px solid var(--border);
+}
+
+/* Controls panel — search + filters + sort, grouped into one sunken slab.
+   Used where the controls share state with the content below them, so they
+   cannot be split into their own `.fr-band` without lifting that state. */
+.fr-controls {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   Section heading row — title + trailing action
+   ════════════════════════════════════════════════════════════════════ */
+.fr-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+.fr-section-head__text {
+  min-width: 0;
+}
+.fr-section-head__title {
+  font-family: var(--font-display);
+  font-weight: var(--fw-black);
+  /* --text-2xl, not --text-xl: the hero runs to ~4.75rem, so a 1.375rem
+     section title reads as body copy and the page loses its skeleton. This is
+     the middle register between the two. */
+  font-size: var(--text-2xl);
+  letter-spacing: var(--tracking-tight);
+  line-height: var(--leading-tight);
+  color: var(--text);
+  margin: 0;
+}
+.fr-section-head__sub {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  line-height: var(--leading-snug);
+  margin: var(--space-1) 0 0;
+}
+
+/* Trailing "see all" control. `.fr-btn--secondary` supplies the surface, border
+   and hover lift; this only stops the flex parent from squashing it. */
+/* Trailing "see all" control. `.fr-btn--primary` supplies the surface, border
+   and hover lift; this only stops the flex parent from squashing it. */
+.fr-section-head__action {
+  flex-shrink: 0;
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   Tile — compact quick-link card (icon + title + caption)
+   ════════════════════════════════════════════════════════════════════ */
+.fr-tile {
+  --accent: var(--primary);
+
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    transform var(--dur-base) var(--ease-out),
+    box-shadow var(--dur-base) var(--ease-out),
+    border-color var(--dur-base) var(--ease-out);
+}
+.fr-tile:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-lg);
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+}
+.fr-tile:active {
+  transform: translateY(-1px);
+}
+.fr-tile__body {
+  min-width: 0;
+}
+.fr-tile__title {
+  display: block;
+  font-family: var(--font-display);
+  font-weight: var(--fw-bold);
+  font-size: var(--text-sm);
+  letter-spacing: var(--tracking-tight);
+  color: var(--text);
+}
+.fr-tile__caption {
+  display: block;
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+  line-height: var(--leading-snug);
+}
+
+/* Filled variant — the tile carries the accent instead of tinting it. */
+.fr-tile--filled {
+  background: var(--accent);
+  border-color: transparent;
+  box-shadow: var(--shadow-md);
+}
+.fr-tile--filled .fr-glyph {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.16);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22);
+}
+.fr-tile--filled:hover .fr-glyph {
+  background: rgba(255, 255, 255, 0.24);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.32);
+}
+.fr-tile--filled .fr-tile__title {
+  color: #fff;
+}
+.fr-tile--filled .fr-tile__caption {
+  color: rgba(255, 255, 255, 0.88);
+}
+.fr-tile--filled:hover {
+  border-color: transparent;
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   Surface texture — a fine tactile grain, no glass or colour wash.
+   Opt in per page with `.fr-site--textured` on the site wrapper.
+   ════════════════════════════════════════════════════════════════════ */
+.fr-site--textured {
+  position: relative;
+  isolation: isolate;
+}
+.fr-site--textured::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  /* A 22px dot lattice plus two hairline rules — reads as woven paper at
+     100% zoom and stays crisp on HiDPI because it is drawn, not sampled. */
+  background-image:
+    radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--text) 8%, transparent) 1px, transparent 0),
+    linear-gradient(to right, color-mix(in srgb, var(--text) 3%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in srgb, var(--text) 3%, transparent) 1px, transparent 1px);
+  background-size:
+    22px 22px,
+    110px 110px,
+    110px 110px;
+  /* Fade the lattice out toward the fold so it never competes with content. */
+  mask-image: radial-gradient(ellipse 120% 80% at 50% 0%, #000 20%, transparent 78%);
+}
+[data-theme='dark'] .fr-site--textured::before {
+  background-image:
+    radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.055) 1px, transparent 0),
+    linear-gradient(to right, rgba(255, 255, 255, 0.022) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.022) 1px, transparent 1px);
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   Reduced motion — keep colour/border feedback, drop movement.
+   ════════════════════════════════════════════════════════════════════ */
+@media (prefers-reduced-motion: reduce) {
+  .fr-btn,
+  .fr-card--interactive,
+  .fr-gamecard,
+  .fr-tile,
+  .fr-glyph,
+  .fr-code-go,
+  .fr-icon-btn {
+    transition-property: background, border-color, color, box-shadow;
+  }
+  .fr-btn:hover:not(:disabled),
+  .fr-btn:active:not(:disabled),
+  .fr-card--interactive:hover,
+  .fr-card--interactive:active,
+  .fr-gamecard:hover,
+  .fr-gamecard:active,
+  .fr-tile:hover,
+  .fr-tile:active,
+  .fr-gamecard:hover .fr-glyph,
+  .fr-tile:hover .fr-glyph {
+    transform: none;
+  }
+  .fr-modal-backdrop,
+  .fr-modal,
+  .fr-drawer,
+  .fr-scrim {
+    animation: none;
+    transition: none;
+  }
 }

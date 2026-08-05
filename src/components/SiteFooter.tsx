@@ -98,7 +98,7 @@ export function SiteFooter() {
           <div className="foot-brand">
             <p className="foot-name">{SITE_NAME}</p>
             <p className="foot-tag">
-              Free online party games — one link, everyone plays from their phone. No sign-up, no download.
+              Free party and board games for your squad. Share the room link and play from any device.
             </p>
             <div className="foot-social">
               {SOCIAL_LINKS.map((social) => (

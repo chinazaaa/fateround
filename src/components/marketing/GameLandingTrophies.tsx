@@ -2,17 +2,18 @@
 
 import { useEffect, useState } from 'react'
 import type { PublicTrophy } from '@/lib/trophies/public'
+import { Glyph } from '@/components/icons/Glyph'
+import { ChampionIcon, CrownIcon, LockIcon, StarIcon } from '@hugeicons/core-free-icons'
 
-const TROPHY_TIER_EMOJI: Record<string, string> = { bronze: '🥉', silver: '🥈', gold: '🥇', platinum: '🏆' }
+const TIER_ICONS = {
+  bronze: StarIcon,
+  silver: StarIcon,
+  gold: CrownIcon,
+  platinum: ChampionIcon,
+}
 
 /**
  * The "Trophies" strip on a game landing page.
- *
- * Fetched on the client, on purpose: the landing page is statically generated (ISR), so a
- * server-rendered version reads the trophies table at BUILD time — where the service-role key is
- * absent and the strip bakes empty, then never fills in reliably. Loading from /api/game-trophies
- * at view time makes it come from the live DB every time. Renders nothing until (and unless) the
- * game has active trophies, so it stays invisible rather than flashing an empty section.
  */
 export function GameLandingTrophies({ gameType }: { gameType: string }) {
   const [trophies, setTrophies] = useState<PublicTrophy[] | null>(null)
@@ -36,34 +37,33 @@ export function GameLandingTrophies({ gameType }: { gameType: string }) {
 
   return (
     <section id="trophies" className="scroll-mt-24">
-      <h2 className="sec-title-fr">Trophies</h2>
+      <h2 className="sec-title-fr" style={{ color: 'var(--accent)' }}>
+        Trophies
+      </h2>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        {trophies.map((trophy) => (
-          <div
-            key={trophy.id}
-            className="flex items-start gap-3 rounded-[var(--radius-md)] p-[18px]"
-            style={{
-              background: 'var(--surface)',
-              border: '1px solid var(--border)',
-              borderLeft: '3px solid var(--accent)',
-            }}
-          >
-            <span className={`text-2xl ${trophy.hidden ? 'opacity-50' : ''}`} aria-hidden>
-              {trophy.hidden ? '🔒' : (TROPHY_TIER_EMOJI[trophy.tier] ?? '🏅')}
-            </span>
-            <div className="min-w-0 flex-1">
-              <h3 className="mb-1 text-[15px] font-bold" style={{ color: 'var(--text)' }}>
-                {trophy.title}
-              </h3>
-              <p className="text-[13.5px] leading-[1.5]" style={{ color: 'var(--text-muted)' }}>
-                {trophy.description}
-              </p>
-              <p className="mt-1.5 text-[12.5px]" style={{ color: 'var(--text-faint)' }}>
-                {trophy.points} pt{trophy.points === 1 ? '' : 's'}
-              </p>
+        {trophies.map((trophy) => {
+          const IconComponent = trophy.hidden
+            ? LockIcon
+            : (TIER_ICONS[trophy.tier as keyof typeof TIER_ICONS] ?? ChampionIcon)
+          return (
+            <div
+              key={trophy.id}
+              className="fr-gamecard cursor-default flex items-start gap-3"
+              style={{ '--accent': 'var(--accent)' } as React.CSSProperties}
+            >
+              <span className={`fr-glyph mt-0.5 ${trophy.hidden ? 'opacity-50' : ''}`}>
+                <Glyph icon={IconComponent} size={22} />
+              </span>
+              <div className="min-w-0 flex-1">
+                <h3 className="fr-gamecard__title text-[15px]">{trophy.title}</h3>
+                <p className="fr-gamecard__tagline text-[13.5px] leading-[1.5]">{trophy.description}</p>
+                <p className="mt-1.5 text-[12.5px]" style={{ color: 'var(--text-faint)' }}>
+                  {trophy.points} pt{trophy.points === 1 ? '' : 's'}
+                </p>
+              </div>
             </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
     </section>
   )

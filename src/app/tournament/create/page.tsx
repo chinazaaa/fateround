@@ -208,7 +208,7 @@ export default function TournamentCreatePage() {
               id="tournament-game-type"
               value={gameType}
               onChange={(e) => pickGameType(e.target.value)}
-              className="input-field"
+              className="fr-select"
             >
               {(isH2H ? H2H_ELIGIBLE_TYPES : KNOCKOUT_ELIGIBLE_TYPES).map((t) => (
                 <option key={t} value={t}>
