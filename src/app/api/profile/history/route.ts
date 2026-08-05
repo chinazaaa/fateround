@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
 
     let query = admin
       .from('players')
-      .select('id, game_id, games!players_game_id_fkey!inner(id, game_type, finished_at, created_at)')
+      .select('id, game_id, games!players_game_id_fkey!inner(id, game_type, finished_at, created_at, sessions_played)')
       .eq('profile_id', profileId)
       .eq('games.status', 'finished')
       .not('games.finished_at', 'is', null)
@@ -49,7 +49,7 @@ export async function GET(req: NextRequest) {
     const rows = (data ?? []) as unknown as Array<{
       id: string
       game_id: string
-      games: { id: string; game_type: string; finished_at: string; created_at: string }
+      games: { id: string; game_type: string; finished_at: string; created_at: string; sessions_played: number | null }
     }>
 
     const hasMore = rows.length > limit
@@ -68,39 +68,69 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // Resolve winners for each game (parallel, capped at page size = 20).
+    // Resolve the CURRENT session's winner for each game.
     const winnerResults = await Promise.all(
       page.map((r) => resolveWinners(admin, r.games.id, r.games.game_type as GameType).catch(() => null))
     )
 
-    // Map player id → name for winner display. Collect all winner player ids first.
+    // Map player id → name for the current session's winner.
     const allWinnerIds = new Set<string>()
     for (const winners of winnerResults) {
       if (winners) winners.forEach((id) => allWinnerIds.add(id))
     }
-    const winnerNames: Record<string, string> = {}
+    const winnerIdToName: Record<string, string> = {}
     if (allWinnerIds.size > 0) {
       const { data: nameData } = await admin
         .from('players')
         .select('id, name')
         .in('id', [...allWinnerIds])
       if (nameData) {
-        for (const row of nameData) winnerNames[row.id] = row.name
+        for (const row of nameData) winnerIdToName[row.id] = row.name
+      }
+    }
+
+    // For multi-session games, fetch per-session winner names from snapshots.
+    const multiSessionIds = page.filter((r) => (r.games.sessions_played ?? 1) > 1).map((r) => r.games.id)
+    const snapshotWinners: Record<string, string[][]> = {}
+    if (multiSessionIds.length > 0) {
+      const { data: snapData } = await admin
+        .from('game_snapshots')
+        .select('game_id, snapshot_data')
+        .in('game_id', multiSessionIds)
+        .order('session_number', { ascending: true })
+      if (snapData) {
+        for (const snap of snapData) {
+          const gid = snap.game_id as string
+          const sd = snap.snapshot_data as Record<string, unknown> | null
+          const names = (sd?.winnerNames ?? []) as string[]
+          if (!snapshotWinners[gid]) snapshotWinners[gid] = []
+          snapshotWinners[gid].push(names)
+        }
       }
     }
 
     const games = page.map((r, i) => {
       const winners = winnerResults[i]
       const myPlayerId = r.id
-      let won: boolean | null = null
-      let winnerName: string | null = null
+      const sessionsPlayed = r.games.sessions_played ?? 1
 
+      // Current session winner
+      let won: boolean | null = null
+      let currentWinnerName: string | null = null
       if (winners !== null) {
         won = winners.includes(myPlayerId)
         if (winners.length > 0) {
-          winnerName = winnerNames[winners[0]] ?? null
+          currentWinnerName = winnerIdToName[winners[0]] ?? null
         }
       }
+
+      // Collect all winner names across sessions (snapshots + current).
+      const allWinnerNames: string[] = []
+      const pastSessions = snapshotWinners[r.games.id] ?? []
+      for (const sessionNames of pastSessions) {
+        for (const name of sessionNames) allWinnerNames.push(name)
+      }
+      if (currentWinnerName) allWinnerNames.push(currentWinnerName)
 
       return {
         id: r.games.id,
@@ -108,8 +138,10 @@ export async function GET(req: NextRequest) {
         finishedAt: r.games.finished_at,
         createdAt: r.games.created_at,
         playerCount: playerCounts[r.games.id] ?? 1,
+        sessionsPlayed,
         won,
-        winnerName,
+        winnerName: currentWinnerName,
+        allWinnerNames: sessionsPlayed > 1 ? allWinnerNames : currentWinnerName ? [currentWinnerName] : [],
       }
     })
 

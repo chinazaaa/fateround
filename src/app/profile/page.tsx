@@ -268,7 +268,7 @@ export default function ProfilePage() {
         </>
       )}
 
-      {tab === 'stats' && <StatsTab games={games} />}
+      {tab === 'stats' && <StatsTab games={games} myName={profile?.handle ?? null} />}
 
       {tab === 'settings' && <SettingsTab profile={profile} onChanged={() => void load()} />}
 
