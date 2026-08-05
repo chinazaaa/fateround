@@ -280,6 +280,7 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
     // "Play again · same settings" reopens the lobby with the ready-up ring; a plain
     // "Return to lobby" reset (sameSettings falsy) lands in the standard lobby.
     replay_pending: sameSettings === true,
+    sessions_played: (game.sessions_played ?? 1) + 1,
   }
 
   if (rawCustomQuestions !== undefined && isCodewordsGame(gameType)) {
