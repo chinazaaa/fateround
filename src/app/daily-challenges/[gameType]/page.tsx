@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { SITE_NAME, OG_IMAGE } from '@/lib/seo'
+import { SITE_NAME, OG_IMAGE, gameLandingOgPath } from '@/lib/seo'
 import { DailyChallengeGame } from '@/components/daily/DailyChallengeGame'
 import { DAILY_GAME_SLUG_TO_TYPE, DAILY_GAME_LABELS, type DailyChallengeGameType } from '@/lib/daily-challenge'
 
@@ -55,6 +55,8 @@ export async function generateMetadata({ params }: { params: Promise<{ gameType:
   const title = seo?.title ?? `Daily ${label} — Free Online Puzzle, New Every Day`
   const description = seo?.description ?? `Play today's ${label} — same puzzle for everyone. One shot, one score.`
   const keywords = GAME_KEYWORDS[slug] ?? ['daily puzzle', 'daily challenge']
+  const ogPath = gameLandingOgPath(`daily-${slug}`)
+  const ogImage = { url: ogPath, width: 1200, height: 630, alt: `${title} | ${SITE_NAME}` }
 
   return {
     title,
@@ -65,12 +67,13 @@ export async function generateMetadata({ params }: { params: Promise<{ gameType:
       title: `${title} | ${SITE_NAME}`,
       description,
       url: `/daily-challenges/${slug}`,
-      images: [OG_IMAGE],
+      images: [ogImage],
     },
     twitter: {
       card: 'summary_large_image',
       title: `${title} | ${SITE_NAME}`,
       description,
+      images: [ogPath],
     },
   }
 }

@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { SITE_NAME, OG_IMAGE } from '@/lib/seo'
+import { SITE_NAME, gameLandingOgPath } from '@/lib/seo'
 import { DailyLeaderboardClient } from '@/components/daily/DailyLeaderboardClient'
 import { DAILY_GAME_SLUG_TO_TYPE, DAILY_GAME_LABELS, type DailyChallengeGameType } from '@/lib/daily-challenge'
 
@@ -11,6 +11,9 @@ export async function generateMetadata({ params }: { params: Promise<{ gameType:
   const label = gameType ? DAILY_GAME_LABELS[gameType] : 'Daily Challenge'
   const description = `Today's top scores on the Daily ${label}. See where you rank against other players.`
 
+  const ogPath = gameLandingOgPath(`daily-${slug}`)
+  const ogImage = { url: ogPath, width: 1200, height: 630, alt: `Daily ${label} Leaderboard | ${SITE_NAME}` }
+
   return {
     title: `Daily ${label} Leaderboard — Today's Top Scores`,
     description,
@@ -19,7 +22,7 @@ export async function generateMetadata({ params }: { params: Promise<{ gameType:
       title: `Daily ${label} Leaderboard | ${SITE_NAME}`,
       description,
       url: `/daily-challenges/${slug}/leaderboard`,
-      images: [OG_IMAGE],
+      images: [ogImage],
     },
   }
 }
