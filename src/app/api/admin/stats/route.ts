@@ -4,6 +4,31 @@ import { assertAdminRequest } from '@/lib/admin-api'
 import { getSupabaseAdmin, hasServiceRoleKey } from '@/lib/supabase-admin'
 import { addDays, monthBounds, watRangeToUtc, watToday } from '@/lib/community-dates'
 import type { GameType } from '@/types'
+import type { SupabaseClient } from '@supabase/supabase-js'
+
+async function fetchAll<T>(
+  supabase: SupabaseClient,
+  table: string,
+  select: string,
+  pageSize = 1000
+): Promise<{ data: T[]; count: number }> {
+  const rows: T[] = []
+  let from = 0
+  let totalCount = 0
+  while (true) {
+    const { data, count, error } = await supabase
+      .from(table)
+      .select(select, { count: 'exact', head: false })
+      .range(from, from + pageSize - 1)
+    if (error) throw error
+    if (count !== null) totalCount = count
+    if (!data || data.length === 0) break
+    rows.push(...(data as T[]))
+    if (data.length < pageSize) break
+    from += pageSize
+  }
+  return { data: rows, count: totalCount }
+}
 
 export async function GET(req: NextRequest) {
   const session = await assertAdminRequest(req)
@@ -25,8 +50,24 @@ export async function GET(req: NextRequest) {
   const prev7DaysStart = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString()
   const prev7DaysEnd = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
 
+  // Paginated fetches — bypass Supabase's max_rows cap (default 1000)
+  type GameRow = { id: string; game_type: string; status: string; created_at: string; sessions_played: number }
+  type PlayerGameRow = { game_id: string }
+  type ProfileRow = {
+    id: string
+    created_at: string
+    current_streak: number
+    trophy_points: number
+    last_active_date: string | null
+  }
+
+  const [gamesAll, playersAll, profilesAll] = await Promise.all([
+    fetchAll<GameRow>(supabase, 'games', 'id, game_type, status, created_at, sessions_played'),
+    fetchAll<PlayerGameRow>(supabase, 'players', 'game_id'),
+    fetchAll<ProfileRow>(supabase, 'profiles', 'id, created_at, current_streak, trophy_points, last_active_date'),
+  ])
+
   const [
-    gamesRes,
     playersRes,
     votesRes,
     finishedGamesRes,
@@ -40,13 +81,7 @@ export async function GET(req: NextRequest) {
     gamesLastMonthRes,
     tournamentsRes,
     uniqueProfilesRes,
-    avgPlayersRes,
-    profilesRes,
   ] = await Promise.all([
-    supabase
-      .from('games')
-      .select('id, game_type, status, created_at, sessions_played', { count: 'exact', head: false })
-      .limit(10000),
     supabase.from('players').select('id', { count: 'exact', head: true }),
     supabase.from('votes').select('id', { count: 'exact', head: true }),
     supabase.from('games').select('id', { count: 'exact', head: true }).eq('status', 'finished'),
@@ -64,7 +99,8 @@ export async function GET(req: NextRequest) {
       .from('games')
       .select('id, session_started_at, finished_at')
       .eq('status', 'finished')
-      .not('session_started_at', 'is', null),
+      .not('session_started_at', 'is', null)
+      .limit(5000),
     supabase.from('rooms').select('id', { count: 'exact', head: true }),
     supabase
       .from('games')
@@ -82,12 +118,7 @@ export async function GET(req: NextRequest) {
       .gte('created_at', prevMonthRange.gte)
       .lt('created_at', prevMonthRange.lt),
     supabase.from('tournaments').select('id, status', { count: 'exact', head: false }),
-    // Unique players who have a profile (signed-in users)
     supabase.from('profiles').select('id', { count: 'exact', head: true }),
-    // Avg players per game: fetch player counts per game
-    supabase.from('players').select('game_id').limit(50000),
-    // Profiles with created_at for growth, last_active_date for DAU/WAU/MAU, trophy_points for engagement
-    supabase.from('profiles').select('id, created_at, current_streak, trophy_points, last_active_date').limit(10000),
   ])
 
   let feedbackCount = 0
@@ -106,7 +137,6 @@ export async function GET(req: NextRequest) {
   }
 
   const queryError =
-    gamesRes.error ??
     playersRes.error ??
     votesRes.error ??
     finishedGamesRes.error ??
@@ -119,15 +149,13 @@ export async function GET(req: NextRequest) {
     gamesThisMonthRes.error ??
     gamesLastMonthRes.error ??
     tournamentsRes.error ??
-    uniqueProfilesRes.error ??
-    avgPlayersRes.error ??
-    profilesRes.error
+    uniqueProfilesRes.error
   if (queryError) {
     console.error('[admin/stats] query failed', queryError)
     return NextResponse.json({ error: 'Failed to load statistics' }, { status: 500 })
   }
 
-  const games = gamesRes.data ?? []
+  const games = gamesAll.data
   const gamesByStatus: Record<string, number> = {}
   const gamesByType: Record<string, number> = {}
   const gamesByType7d: Record<string, number> = {}
@@ -196,7 +224,7 @@ export async function GET(req: NextRequest) {
   }
 
   // Average players per game (excluding poll/vote games which inflate counts)
-  const playerRows = avgPlayersRes.data ?? []
+  const playerRows = playersAll.data
   let totalPlayerJoins = 0
   const playersPerGame = new Map<string, number>()
   for (const row of playerRows) {
@@ -221,7 +249,7 @@ export async function GET(req: NextRequest) {
     gamesLastMonth > 0 ? Math.round(((gamesThisMonth - gamesLastMonth) / gamesLastMonth) * 100) : null
 
   // Active profiles and engagement
-  const profiles = profilesRes.data ?? []
+  const profiles = profilesAll.data
   const sevenDaysAgo = addDays(today, -7)
   const thirtyDaysAgo = addDays(today, -30)
   const activeProfiles = profiles.filter((p) => p.last_active_date && p.last_active_date >= sevenDaysAgo).length
@@ -322,7 +350,7 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({
     totals: {
-      games: gamesRes.count ?? games.length,
+      games: gamesAll.count,
       sessions: totalSessions,
       replays: totalReplays,
       gamesToday: gamesTodayRes.count ?? 0,
