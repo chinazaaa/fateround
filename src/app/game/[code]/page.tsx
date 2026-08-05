@@ -10,6 +10,7 @@ import { IosInstallPushNudge } from '@/components/IosInstallPushNudge'
 import { MatureGameGate } from '@/components/MatureGameGate'
 import { getPlayerSession } from '@/lib/utils'
 import { gameHasHeaderVoice } from '@/lib/game-types'
+import { useProfile } from '@/hooks/useProfile'
 
 const TOURNAMENT_RETURN_SECONDS = 8
 
@@ -97,6 +98,7 @@ export default function GamePage() {
   // Spectator "Watch live" links carry ?watch=1 — auto-join as a viewer under a
   // stable generated name so people can follow the game without playing.
   const watch = searchParams.get('watch') === '1'
+  const { profile } = useProfile()
   const initialName = useMemo(() => {
     if (!watch) return searchParams.get('name') ?? undefined
     if (typeof window === 'undefined') return undefined
@@ -166,7 +168,12 @@ export default function GamePage() {
           tournament players (unstable across the lobby/match tabs) — but spectators
           watching a tournament game can still hop in. */}
       {playerName && resumeToken && (!tournamentId || watch) && !!gameType && !gameHasHeaderVoice(gameType) && (
-        <AudioChat roomCode={gameCode} playerName={playerName} auth={{ kind: 'player', resumeToken }} />
+        <AudioChat
+          roomCode={gameCode}
+          playerName={playerName}
+          auth={{ kind: 'player', resumeToken }}
+          autoJoin={!!profile?.default_voice_on}
+        />
       )}
       <TournamentBanner gameCode={gameCode} tournamentId={tournamentId} />
       {/* {resumeToken && <NowPlayingBar gameCode={gameCode} resumeToken={resumeToken} />} */}

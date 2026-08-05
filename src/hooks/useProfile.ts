@@ -16,6 +16,8 @@ export type Profile = {
   longest_streak: number
   last_active_date: string | null
   streak_freezes: number
+  default_voice_on: boolean | null
+  preferred_theme: string | null
 }
 
 /**

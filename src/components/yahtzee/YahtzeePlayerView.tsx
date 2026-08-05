@@ -504,7 +504,7 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
     const shareWinnerName = iWon ? myName : winner?.name
 
     return (
-      <YahtzeeShell title="Game over!" subtitle={winner ? `${winner.name} wins` : undefined}>
+      <YahtzeeShell>
         {game && scores.length > 0 ? (
           <YahtzeeFinalResultsShareBlock
             game={game}

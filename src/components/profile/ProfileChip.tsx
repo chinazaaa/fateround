@@ -32,7 +32,7 @@ type Props = {
 }
 
 const APP_CLASS =
-  'inline-flex h-9 items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface-inset-bg)] px-3.5 text-sm font-semibold text-muted transition-colors hover:text-[var(--foreground)] hover:border-[var(--border-strong)]'
+  'inline-flex h-9 max-w-44 items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface-inset-bg)] px-3.5 text-sm font-semibold text-muted transition-colors hover:text-[var(--foreground)] hover:border-[var(--border-strong)]'
 
 export function ProfileChip({ tone = 'site' }: Props) {
   const [open, setOpen] = useState(false)
@@ -55,9 +55,12 @@ export function ProfileChip({ tone = 'site' }: Props) {
         onClick={() => setOpen(true)}
         aria-label={signedIn ? 'Your profile' : 'Save your progress'}
       >
-        {streak > 0 ? <span aria-hidden>🔥 {streak}</span> : null}
-        {trophies > 0 ? <span aria-hidden>🏆 {trophies}</span> : null}
-        <span>{label}</span>
+        {streak > 0 ? (
+          <span className="shrink-0" aria-hidden>
+            🔥 {streak}
+          </span>
+        ) : null}
+        <span className="truncate">{label}</span>
       </button>
 
       <SaveToProfileModal open={open} onClose={() => setOpen(false)} profile={profile} onChanged={refresh} />

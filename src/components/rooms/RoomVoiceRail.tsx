@@ -38,6 +38,8 @@ interface RoomVoiceRailProps {
    * taps "Join voice chat" (matches the card-table spectator behaviour).
    */
   autoRejoin?: boolean
+  /** Auto-join voice on mount (from profile `default_voice_on` preference). */
+  autoJoin?: boolean
   /**
    * `floating` (default) — the compact pill parked bottom-right.
    * `topbar` — the full design-system `.pr-rail` voice bar rendered inline as
@@ -76,6 +78,7 @@ export function RoomVoiceRail({
   onEditName,
   variant = 'floating',
   autoRejoin = true,
+  autoJoin = false,
   onVoiceParticipants,
 }: RoomVoiceRailProps) {
   const { error: toastError } = useToast()
@@ -255,6 +258,19 @@ export function RoomVoiceRail({
     }, 300)
     return () => window.clearTimeout(timeout)
   }, [autoRejoin, resolvedRoomCode, activeTabId, token, isConnecting])
+
+  // Auto-join on mount when the profile preference is on and there's no
+  // existing session to reconnect to.
+  useEffect(() => {
+    if (!autoJoin || token || isConnecting || activeTabId) return
+    const codeUpper = resolvedRoomCode.toUpperCase()
+    const stored = localStorage.getItem(`fateround_voice_${codeUpper}`)
+    if (stored) return
+    const timeout = window.setTimeout(() => {
+      void joinAudioRef.current?.()
+    }, 500)
+    return () => window.clearTimeout(timeout)
+  }, [autoJoin, resolvedRoomCode, activeTabId, token, isConnecting])
 
   // While not in the call there is no voice roster — report empty so consumers
   // (the desktop side rail) don't show anyone as "in chat".
