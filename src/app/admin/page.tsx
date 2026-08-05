@@ -352,7 +352,7 @@ function UserGrowthChart({ data }: { data: { week: string; cumulative: number; n
   return (
     <div className="glass-card-strong p-5 space-y-4">
       <div className="flex flex-wrap items-baseline justify-between gap-3">
-        <h2 className="font-bold">User growth — last 12 weeks</h2>
+        <h2 className="font-bold">User growth — last 4 weeks</h2>
         <span className="text-xs text-muted">{latest?.cumulative ?? 0} total users</span>
       </div>
       <div className="relative" style={{ height: '160px' }}>

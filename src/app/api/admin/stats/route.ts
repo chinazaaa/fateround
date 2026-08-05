@@ -221,8 +221,8 @@ export async function GET(req: NextRequest) {
     profilesByDate.set(d, (profilesByDate.get(d) ?? 0) + 1)
   }
 
-  // Build 12 weekly buckets ending on today's week
-  const weekCount = 12
+  // Build 4 weekly buckets ending on today's week
+  const weekCount = 4
   for (let w = weekCount - 1; w >= 0; w--) {
     const weekEnd = addDays(today, -w * 7)
     const weekStart = addDays(weekEnd, -6)
