@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { computeTypicalPlayTime } from '@/lib/admin-play-time'
 import { assertAdminRequest } from '@/lib/admin-api'
 import { getSupabaseAdmin, hasServiceRoleKey } from '@/lib/supabase-admin'
-import { monthBounds, watRangeToUtc, watToday } from '@/lib/community-dates'
+import { addDays, monthBounds, watRangeToUtc, watToday } from '@/lib/community-dates'
 import type { GameType } from '@/types'
 
 export async function GET(req: NextRequest) {
@@ -11,11 +11,19 @@ export async function GET(req: NextRequest) {
 
   const supabase = getSupabaseAdmin()
 
-  // WAT day/month ranges for the "today" and "this month" game-count cards.
   const today = watToday()
   const todayRange = watRangeToUtc(today, today)
   const month = monthBounds(today)
   const monthRange = watRangeToUtc(month.start, month.end)
+
+  // Previous month for MoM growth
+  const prevMonthEnd = addDays(month.start, -1)
+  const prevMonth = monthBounds(prevMonthEnd)
+  const prevMonthRange = watRangeToUtc(prevMonth.start, prevMonth.end)
+
+  // Previous 7 days (8-14 days ago) for WoW growth
+  const prev7DaysStart = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString()
+  const prev7DaysEnd = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
 
   const [
     gamesRes,
@@ -24,13 +32,20 @@ export async function GET(req: NextRequest) {
     finishedGamesRes,
     activeGamesRes,
     gamesLast7DaysRes,
+    gamesPrev7DaysRes,
     playSessionsRes,
     roomsRes,
     gamesTodayRes,
     gamesThisMonthRes,
+    gamesLastMonthRes,
     tournamentsRes,
+    uniqueProfilesRes,
+    avgPlayersRes,
+    profilesRes,
   ] = await Promise.all([
-    supabase.from('games').select('id, game_type, status, created_at', { count: 'exact', head: false }),
+    supabase
+      .from('games')
+      .select('id, game_type, status, created_at, sessions_played', { count: 'exact', head: false }),
     supabase.from('players').select('id', { count: 'exact', head: true }),
     supabase.from('votes').select('id', { count: 'exact', head: true }),
     supabase.from('games').select('id', { count: 'exact', head: true }).eq('status', 'finished'),
@@ -39,6 +54,11 @@ export async function GET(req: NextRequest) {
       .from('games')
       .select('id', { count: 'exact', head: true })
       .gte('created_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()),
+    supabase
+      .from('games')
+      .select('id', { count: 'exact', head: true })
+      .gte('created_at', prev7DaysStart)
+      .lt('created_at', prev7DaysEnd),
     supabase
       .from('games')
       .select('id, session_started_at, finished_at')
@@ -55,7 +75,18 @@ export async function GET(req: NextRequest) {
       .select('id', { count: 'exact', head: true })
       .gte('created_at', monthRange.gte)
       .lt('created_at', monthRange.lt),
+    supabase
+      .from('games')
+      .select('id', { count: 'exact', head: true })
+      .gte('created_at', prevMonthRange.gte)
+      .lt('created_at', prevMonthRange.lt),
     supabase.from('tournaments').select('id, status', { count: 'exact', head: false }),
+    // Unique players who have a profile (signed-in users)
+    supabase.from('profiles').select('id', { count: 'exact', head: true }),
+    // Avg players per game: fetch player counts per game
+    supabase.from('players').select('game_id'),
+    // Profiles with created_at for growth, last_active_date for DAU/WAU/MAU, trophy_points for engagement
+    supabase.from('profiles').select('id, created_at, current_streak, trophy_points, last_active_date'),
   ])
 
   let feedbackCount = 0
@@ -73,8 +104,6 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // Surface a backend failure instead of silently rendering 0/null stats when any
-  // of the count queries error out.
   const queryError =
     gamesRes.error ??
     playersRes.error ??
@@ -82,11 +111,16 @@ export async function GET(req: NextRequest) {
     finishedGamesRes.error ??
     activeGamesRes.error ??
     gamesLast7DaysRes.error ??
+    gamesPrev7DaysRes.error ??
     playSessionsRes.error ??
     roomsRes.error ??
     gamesTodayRes.error ??
     gamesThisMonthRes.error ??
-    tournamentsRes.error
+    gamesLastMonthRes.error ??
+    tournamentsRes.error ??
+    uniqueProfilesRes.error ??
+    avgPlayersRes.error ??
+    profilesRes.error
   if (queryError) {
     console.error('[admin/stats] query failed', queryError)
     return NextResponse.json({ error: 'Failed to load statistics' }, { status: 500 })
@@ -95,11 +129,40 @@ export async function GET(req: NextRequest) {
   const games = gamesRes.data ?? []
   const gamesByStatus: Record<string, number> = {}
   const gamesByType: Record<string, number> = {}
+  const gamesByType7d: Record<string, number> = {}
+  const gamesByType30d: Record<string, number> = {}
+  const sessionsByType: Record<string, number> = {}
+
+  const cutoff7d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+  const cutoff30d = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
+
+  let totalSessions = 0
+  let totalReplays = 0
+  const mostReplayedGames: { id: string; type: string; sessions: number }[] = []
 
   for (const game of games) {
     gamesByStatus[game.status] = (gamesByStatus[game.status] ?? 0) + 1
     gamesByType[game.game_type] = (gamesByType[game.game_type] ?? 0) + 1
+
+    if (game.created_at >= cutoff7d) {
+      gamesByType7d[game.game_type] = (gamesByType7d[game.game_type] ?? 0) + 1
+    }
+    if (game.created_at >= cutoff30d) {
+      gamesByType30d[game.game_type] = (gamesByType30d[game.game_type] ?? 0) + 1
+    }
+
+    const sp = game.sessions_played ?? 1
+    totalSessions += sp
+    sessionsByType[game.game_type] = (sessionsByType[game.game_type] ?? 0) + sp
+
+    if (sp > 1) {
+      totalReplays += sp - 1
+      mostReplayedGames.push({ id: game.id, type: game.game_type, sessions: sp })
+    }
   }
+
+  mostReplayedGames.sort((a, b) => b.sessions - a.sessions)
+  const topReplayed = mostReplayedGames.slice(0, 10)
 
   const tournaments = tournamentsRes.data ?? []
   const tournamentsByStatus: Record<string, number> = {}
@@ -107,8 +170,109 @@ export async function GET(req: NextRequest) {
     tournamentsByStatus[tournament.status] = (tournamentsByStatus[tournament.status] ?? 0) + 1
   }
 
+  // Average players per game
+  const playerRows = avgPlayersRes.data ?? []
+  const playersPerGame = new Map<string, number>()
+  for (const row of playerRows) {
+    playersPerGame.set(row.game_id, (playersPerGame.get(row.game_id) ?? 0) + 1)
+  }
+  const gamePlayerCounts = Array.from(playersPerGame.values())
+  const avgPlayersPerGame =
+    gamePlayerCounts.length > 0
+      ? Math.round((gamePlayerCounts.reduce((s, n) => s + n, 0) / gamePlayerCounts.length) * 10) / 10
+      : 0
+
+  // Growth rates
+  const gamesLast7 = gamesLast7DaysRes.count ?? 0
+  const gamesPrev7 = gamesPrev7DaysRes.count ?? 0
+  const weekOverWeekGrowth = gamesPrev7 > 0 ? Math.round(((gamesLast7 - gamesPrev7) / gamesPrev7) * 100) : null
+
+  const gamesThisMonth = gamesThisMonthRes.count ?? 0
+  const gamesLastMonth = gamesLastMonthRes.count ?? 0
+  const monthOverMonthGrowth =
+    gamesLastMonth > 0 ? Math.round(((gamesThisMonth - gamesLastMonth) / gamesLastMonth) * 100) : null
+
+  // Active profiles and engagement
+  const profiles = profilesRes.data ?? []
+  const sevenDaysAgo = addDays(today, -7)
+  const thirtyDaysAgo = addDays(today, -30)
+  const activeProfiles = profiles.filter((p) => p.last_active_date && p.last_active_date >= sevenDaysAgo).length
+  const profilesWithTrophies = profiles.filter((p) => p.trophy_points > 0).length
+
+  // DAU / WAU / MAU from last_active_date
+  const dau = profiles.filter((p) => p.last_active_date === today).length
+  const wau = activeProfiles
+  const mau = profiles.filter((p) => p.last_active_date && p.last_active_date >= thirtyDaysAgo).length
+
+  // User growth: cumulative signups over the last 12 weeks (weekly buckets)
+  const userGrowth: { week: string; cumulative: number; newUsers: number }[] = []
+  const toWatDate = (ts: string) =>
+    new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Africa/Lagos',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date(ts))
+
+  const profilesByDate = new Map<string, number>()
+  for (const p of profiles) {
+    if (!p.created_at) continue
+    const d = toWatDate(p.created_at)
+    profilesByDate.set(d, (profilesByDate.get(d) ?? 0) + 1)
+  }
+
+  // Build 12 weekly buckets ending on today's week
+  const weekCount = 12
+  for (let w = weekCount - 1; w >= 0; w--) {
+    const weekEnd = addDays(today, -w * 7)
+    const weekStart = addDays(weekEnd, -6)
+    let newInWeek = 0
+    for (let d = 0; d < 7; d++) {
+      const date = addDays(weekStart, d)
+      newInWeek += profilesByDate.get(date) ?? 0
+    }
+    // Cumulative = all profiles created on or before weekEnd
+    const cumulative = profiles.filter((p) => p.created_at && toWatDate(p.created_at) <= weekEnd).length
+    const label = `${weekStart.slice(5)} – ${weekEnd.slice(5)}`
+    userGrowth.push({ week: label, cumulative, newUsers: newInWeek })
+  }
+
+  // DAU trend (last 30 days) from last_active_date
+  const dauTrend: { date: string; dau: number }[] = []
+  const activeByDate = new Map<string, number>()
+  for (const p of profiles) {
+    if (p.last_active_date) {
+      activeByDate.set(p.last_active_date, (activeByDate.get(p.last_active_date) ?? 0) + 1)
+    }
+  }
+  for (let i = 29; i >= 0; i--) {
+    const date = addDays(today, -i)
+    dauTrend.push({ date, dau: activeByDate.get(date) ?? 0 })
+  }
+
+  // Daily activity trend (last 30 days)
+  const dailyActivity: { date: string; games: number }[] = []
+  const gameDateCounts = new Map<string, number>()
+  for (const game of games) {
+    if (!game.created_at) continue
+    const d = new Date(game.created_at)
+    const watDate = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Africa/Lagos',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(d)
+    gameDateCounts.set(watDate, (gameDateCounts.get(watDate) ?? 0) + 1)
+  }
+
+  for (let i = 29; i >= 0; i--) {
+    const date = addDays(today, -i)
+    dailyActivity.push({ date, games: gameDateCounts.get(date) ?? 0 })
+  }
+
+  // Typical play time
   const playSessions = playSessionsRes.data ?? []
-  const sessionsMissingFinishedAt = playSessions.filter((session) => !session.finished_at).map((session) => session.id)
+  const sessionsMissingFinishedAt = playSessions.filter((s) => !s.finished_at).map((s) => s.id)
   const latestRoundEndedAtByGame = new Map<string, string>()
 
   if (sessionsMissingFinishedAt.length > 0) {
@@ -131,24 +295,44 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     totals: {
       games: gamesRes.count ?? games.length,
+      sessions: totalSessions,
+      replays: totalReplays,
       gamesToday: gamesTodayRes.count ?? 0,
-      gamesThisMonth: gamesThisMonthRes.count ?? 0,
+      gamesThisMonth,
+      gamesLastMonth,
       tournaments: tournamentsRes.count ?? tournaments.length,
       activeTournaments: tournamentsByStatus['active'] ?? 0,
       finishedTournaments: tournamentsByStatus['finished'] ?? 0,
       rooms: roomsRes.count ?? 0,
       players: playersRes.count ?? 0,
+      uniqueProfiles: uniqueProfilesRes.count ?? 0,
+      activeProfiles,
+      profilesWithTrophies,
+      dau,
+      wau,
+      mau,
+      avgPlayersPerGame,
       votes: votesRes.count ?? 0,
       feedback: feedbackCount,
       finishedGames: finishedGamesRes.count ?? 0,
       activeGames: activeGamesRes.count ?? 0,
-      gamesLast7Days: gamesLast7DaysRes.count ?? 0,
+      gamesLast7Days: gamesLast7,
+      gamesPrev7Days: gamesPrev7,
+      weekOverWeekGrowth,
+      monthOverMonthGrowth,
       typicalPlayTimeSeconds: typicalPlayTime.typicalSeconds,
       typicalPlayTimeSampleCount: typicalPlayTime.sampleCount,
     },
     gamesByStatus,
     gamesByType: gamesByType as Partial<Record<GameType | string, number>>,
+    gamesByType7d: gamesByType7d as Partial<Record<GameType | string, number>>,
+    gamesByType30d: gamesByType30d as Partial<Record<GameType | string, number>>,
+    sessionsByType: sessionsByType as Partial<Record<GameType | string, number>>,
     tournamentsByStatus,
     feedbackByCategory,
+    topReplayed,
+    dailyActivity,
+    userGrowth,
+    dauTrend,
   })
 }
