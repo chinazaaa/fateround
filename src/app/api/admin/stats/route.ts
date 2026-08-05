@@ -45,7 +45,8 @@ export async function GET(req: NextRequest) {
   ] = await Promise.all([
     supabase
       .from('games')
-      .select('id, game_type, status, created_at, sessions_played', { count: 'exact', head: false }),
+      .select('id, game_type, status, created_at, sessions_played', { count: 'exact', head: false })
+      .limit(10000),
     supabase.from('players').select('id', { count: 'exact', head: true }),
     supabase.from('votes').select('id', { count: 'exact', head: true }),
     supabase.from('games').select('id', { count: 'exact', head: true }).eq('status', 'finished'),
@@ -84,9 +85,9 @@ export async function GET(req: NextRequest) {
     // Unique players who have a profile (signed-in users)
     supabase.from('profiles').select('id', { count: 'exact', head: true }),
     // Avg players per game: fetch player counts per game
-    supabase.from('players').select('game_id'),
+    supabase.from('players').select('game_id').limit(50000),
     // Profiles with created_at for growth, last_active_date for DAU/WAU/MAU, trophy_points for engagement
-    supabase.from('profiles').select('id, created_at, current_streak, trophy_points, last_active_date'),
+    supabase.from('profiles').select('id, created_at, current_streak, trophy_points, last_active_date').limit(10000),
   ])
 
   let feedbackCount = 0
@@ -133,6 +134,27 @@ export async function GET(req: NextRequest) {
   const gamesByType30d: Record<string, number> = {}
   const sessionsByType: Record<string, number> = {}
 
+  // Poll/vote games inflate player counts — every viewer becomes a "player" row.
+  // Exclude them from avg-players and total-player-joins stats.
+  const POLL_GAME_TYPES = new Set([
+    'smash_marry_kill',
+    'red_flag_green_flag',
+    'smash_or_pass',
+    'parent_approval',
+    'custom',
+    'most_likely_to',
+    'would_you_rather',
+    'never_have_i_ever',
+    'who_said_this',
+    'hot_seat',
+    'anonymous_messages',
+    'secret_message',
+    'pick_a_number',
+    'this_or_that',
+  ])
+  const gameTypeById = new Map<string, string>()
+  const pollGameIds = new Set<string>()
+
   const cutoff7d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
   const cutoff30d = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
 
@@ -141,6 +163,9 @@ export async function GET(req: NextRequest) {
   const mostReplayedGames: { id: string; type: string; sessions: number }[] = []
 
   for (const game of games) {
+    gameTypeById.set(game.id, game.game_type)
+    if (POLL_GAME_TYPES.has(game.game_type)) pollGameIds.add(game.id)
+
     gamesByStatus[game.status] = (gamesByStatus[game.status] ?? 0) + 1
     gamesByType[game.game_type] = (gamesByType[game.game_type] ?? 0) + 1
 
@@ -170,10 +195,13 @@ export async function GET(req: NextRequest) {
     tournamentsByStatus[tournament.status] = (tournamentsByStatus[tournament.status] ?? 0) + 1
   }
 
-  // Average players per game
+  // Average players per game (excluding poll/vote games which inflate counts)
   const playerRows = avgPlayersRes.data ?? []
+  let totalPlayerJoins = 0
   const playersPerGame = new Map<string, number>()
   for (const row of playerRows) {
+    if (pollGameIds.has(row.game_id)) continue
+    totalPlayerJoins++
     playersPerGame.set(row.game_id, (playersPerGame.get(row.game_id) ?? 0) + 1)
   }
   const gamePlayerCounts = Array.from(playersPerGame.values())
@@ -304,7 +332,7 @@ export async function GET(req: NextRequest) {
       activeTournaments: tournamentsByStatus['active'] ?? 0,
       finishedTournaments: tournamentsByStatus['finished'] ?? 0,
       rooms: roomsRes.count ?? 0,
-      players: playersRes.count ?? 0,
+      players: totalPlayerJoins,
       uniqueProfiles: uniqueProfilesRes.count ?? 0,
       activeProfiles,
       profilesWithTrophies,
