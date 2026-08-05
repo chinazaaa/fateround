@@ -19,8 +19,10 @@ type HistoryEntry = {
   finishedAt: string
   createdAt: string
   playerCount: number
+  sessionsPlayed: number
   won: boolean | null
   winnerName: string | null
+  allWinnerNames: string[]
 }
 
 function gameEmoji(gameType: string): string {
@@ -46,7 +48,7 @@ function relativeDate(iso: string): string {
   return new Date(iso).toLocaleDateString()
 }
 
-export function StatsTab({ games }: { games: GameRow[] }) {
+export function StatsTab({ games, myName }: { games: GameRow[]; myName: string | null }) {
   const totalPlayed = games.reduce((s, g) => s + g.gamesPlayed, 0)
   const totalWon = games.reduce((s, g) => s + g.gamesWon, 0)
   const winRate = totalPlayed > 0 ? Math.round((totalWon / totalPlayed) * 100) : 0
@@ -149,34 +151,41 @@ export function StatsTab({ games }: { games: GameRow[] }) {
         ) : (
           <div className="space-y-1.5">
             {history.map((h) => (
-              <div key={`${h.id}-${h.finishedAt}`} className="surface-inset flex items-center gap-3 px-4 py-2.5">
-                <span className="text-lg" aria-hidden>
+              <div key={`${h.id}-${h.finishedAt}`} className="surface-inset flex items-start gap-3 px-4 py-2.5">
+                <span className="mt-0.5 text-lg" aria-hidden>
                   {gameEmoji(h.gameType)}
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium">
-                    {gameLabel(h.gameType)}
-                    {h.won === true && (
-                      <span className="ml-2 inline-block rounded-full bg-[var(--primary)] px-2 py-0.5 text-[10px] font-bold text-white">
-                        Winner (you)
-                      </span>
-                    )}
-                    {h.won === false && h.winnerName && (
-                      <span className="ml-2 inline-block rounded-full bg-[var(--surface-inset-bg)] px-2 py-0.5 text-[10px] font-semibold text-muted">
-                        Won by {h.winnerName}
-                      </span>
-                    )}
-                    {h.won !== true && !h.winnerName && (
-                      <span className="ml-2 inline-block rounded-full border border-[var(--border)] px-2 py-0.5 text-[10px] font-semibold text-muted">
-                        No winner
-                      </span>
-                    )}
-                  </p>
-                  <p className="text-faint text-xs">
-                    {h.playerCount} player{h.playerCount !== 1 ? 's' : ''} · {h.id}
+                  <p className="text-sm font-medium">{gameLabel(h.gameType)}</p>
+                  {h.allWinnerNames.length > 0 ? (
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {h.allWinnerNames.map((name, idx) => {
+                        const isMe = myName !== null && name.toLowerCase() === myName.toLowerCase()
+                        return (
+                          <span
+                            key={idx}
+                            className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                              isMe ? 'bg-[var(--primary)] text-white' : 'bg-[var(--surface-inset-bg)] text-muted'
+                            }`}
+                          >
+                            {isMe ? `${name} (you)` : name}
+                          </span>
+                        )
+                      })}
+                    </div>
+                  ) : (
+                    <span className="mt-1 inline-block rounded-full border border-[var(--border)] px-2 py-0.5 text-[10px] font-semibold text-muted">
+                      No winner
+                    </span>
+                  )}
+                  <p className="text-faint mt-1 text-xs">
+                    {h.playerCount} player{h.playerCount !== 1 ? 's' : ''}
+                    {h.sessionsPlayed > 1 ? ` · ${h.sessionsPlayed} rounds` : ''}
+                    {' · '}
+                    {h.id}
                   </p>
                 </div>
-                <p className="text-faint shrink-0 text-xs">{relativeDate(h.finishedAt)}</p>
+                <p className="text-faint mt-0.5 shrink-0 text-xs">{relativeDate(h.finishedAt)}</p>
               </div>
             ))}
             {cursor && (
