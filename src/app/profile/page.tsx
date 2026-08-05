@@ -7,9 +7,13 @@ import { SaveToProfileModal } from '@/components/profile/SaveToProfileModal'
 import { ShareProfileModal } from '@/components/profile/ShareProfileModal'
 import { StatsTab } from '@/components/profile/StatsTab'
 import { SettingsTab } from '@/components/profile/SettingsTab'
-import { GAME_CATEGORIES } from '@/lib/game-types'
+import { GAME_CATEGORIES, parseGameType } from '@/lib/game-types'
 import { authHeaders } from '@/lib/identity'
 import { Skeleton } from '@/components/Skeleton'
+import { Glyph } from '@/components/icons/Glyph'
+import { ChampionIcon, CrownIcon, FireIcon } from '@hugeicons/core-free-icons'
+import type { IconSvgElement } from '@hugeicons/react'
+import { gameIcon, tierIcon } from '@/lib/game-glyphs'
 
 type GameRow = {
   gameType: string
@@ -188,18 +192,25 @@ export default function ProfilePage() {
         </button>
       </div>
 
-      <div className="grid grid-cols-3 gap-2 sm:gap-3">
+      <div className="grid grid-cols-3 gap-3">
         <Stat
-          value={`🔥${profile?.current_streak ?? 0}`}
+          icon={FireIcon}
+          value={`${profile?.current_streak ?? 0}`}
           label="Day streak"
           sub={`Best ${profile?.longest_streak ?? 0}`}
         />
         <Stat
+          icon={ChampionIcon}
           value={`${games.reduce((sum, g) => sum + g.earned, 0)}`}
           label="Trophies"
           sub={`${plural(games.length, 'game')}`}
         />
-        <Stat value={`${profile?.trophy_points ?? 0}`} label="Points" sub={`Level ${profile?.trophy_level ?? 1}`} />
+        <Stat
+          icon={CrownIcon}
+          value={`${profile?.trophy_points ?? 0}`}
+          label="Points"
+          sub={`Level ${profile?.trophy_level ?? 1}`}
+        />
       </div>
 
       {/* Tab bar */}
@@ -248,7 +259,7 @@ export default function ProfilePage() {
                 <GameCard
                   key={game.gameType}
                   href={`/profile/${encodeURIComponent(game.gameType)}`}
-                  emoji={game.emoji}
+                  gameType={game.gameType}
                   label={game.label}
                   sub={`${plural(game.gamesPlayed, 'game')} played${game.gamesWon ? ` · ${game.gamesWon} won` : ''}`}
                   earned={game.earned}
@@ -286,9 +297,12 @@ export default function ProfilePage() {
   )
 }
 
-function Stat({ value, label, sub }: { value: string; label: string; sub: string }) {
+function Stat({ icon, value, label, sub }: { icon: IconSvgElement; value: string; label: string; sub: string }) {
   return (
     <div className="glass-card p-3 text-center sm:p-4">
+      <div className="mb-1 flex justify-center text-[var(--primary)]">
+        <Glyph icon={icon} size={20} />
+      </div>
       <p className="text-2xl font-black sm:text-3xl">{value}</p>
       <p className="text-faint mt-0.5 text-[11px] uppercase tracking-wide">{label}</p>
       <p className="text-faint text-[11px]">{sub}</p>
@@ -298,7 +312,7 @@ function Stat({ value, label, sub }: { value: string; label: string; sub: string
 
 function GameCard({
   href,
-  emoji,
+  gameType,
   label,
   sub,
   earned,
@@ -307,7 +321,7 @@ function GameCard({
   tiers,
 }: {
   href: string
-  emoji: string
+  gameType: string
   label: string
   sub: string
   earned: number
@@ -317,16 +331,20 @@ function GameCard({
 }) {
   return (
     <Link href={href} className="glass-card-interactive flex items-center gap-3 p-4">
-      <span className="text-2xl" aria-hidden>
-        {emoji}
+      <span className="text-[var(--primary)]">
+        <Glyph icon={gameIcon(parseGameType(gameType))} size={24} />
       </span>
       <div className="min-w-0 flex-1">
         <p className="font-bold">{label}</p>
         <p className="text-faint text-xs">{sub}</p>
         {tiers && total > 0 && (
-          <p className="text-faint mt-1 text-xs">
-            🏆 {tiers.platinum} · 🥇 {tiers.gold} · 🥈 {tiers.silver} · 🥉 {tiers.bronze}
-          </p>
+          <div className="text-faint mt-1 flex items-center gap-3 text-xs">
+            {(['platinum', 'gold', 'silver', 'bronze'] as const).map((tierName) => (
+              <span key={tierName} className="inline-flex items-center gap-1">
+                <Glyph icon={tierIcon(tierName)} size={14} /> {tiers[tierName]}
+              </span>
+            ))}
+          </div>
         )}
         {total > 0 && (
           <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[var(--surface-inset-bg)]">

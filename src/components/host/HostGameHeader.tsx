@@ -2,6 +2,8 @@
 
 import { gameTypeConfig, parseGameType } from '@/lib/game-types'
 import { ContentLabelChip } from '@/components/game-lobby/ContentLabelChip'
+import { gameIcon } from '@/lib/game-glyphs'
+import { Glyph } from '@/components/icons/Glyph'
 import type { Game } from '@/types'
 
 type Props = {
@@ -12,19 +14,21 @@ type Props = {
 
 /**
  * Compact in-game header — mirrors the mobile session header: title + a small
- * game-type pill, left-aligned, with no oversized emoji or redundant "Host
- * panel" caption. Keeps the top of the screen light so gameplay leads.
+ * game-type pill with fr-glyph icon, left-aligned.
  */
 export function HostGameHeader({ game, subtitle, className = '' }: Props) {
-  const cfg = gameTypeConfig(parseGameType(game.game_type))
+  const parsedType = parseGameType(game.game_type)
+  const cfg = gameTypeConfig(parsedType)
   const finished = game.status === 'finished'
 
   return (
     <div className={`space-y-1.5 ${className}`}>
       <h1 className="truncate text-lg sm:text-xl font-black tracking-tight text-body">{game.title}</h1>
       <div className="flex flex-wrap items-center gap-1.5">
-        <span className="inline-flex items-center gap-1 rounded-full border border-[var(--chip-active-border)] bg-[color-mix(in_srgb,var(--primary)_10%,transparent)] px-2.5 py-0.5 text-[11px] font-extrabold uppercase tracking-wide text-[var(--primary)]">
-          <span aria-hidden>{cfg.headerEmoji}</span>
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--chip-active-border)] bg-[color-mix(in_srgb,var(--primary)_10%,transparent)] px-2.5 py-0.5 text-[11px] font-extrabold uppercase tracking-wide text-[var(--primary)]">
+          <span className="fr-glyph">
+            <Glyph icon={gameIcon(parsedType)} size={14} />
+          </span>
           {cfg.label}
         </span>
         <ContentLabelChip label={game.content_label} />
