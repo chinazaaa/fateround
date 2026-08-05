@@ -63,6 +63,18 @@
 <script>
 const TRI = '<svg viewBox="0 0 24 24" fill="none"><path d="M12 3 L21.5 20 H2.5 Z" stroke="#fff" stroke-width="2.4" stroke-linejoin="round"/></svg>';
 
+function dcRow(emoji,name,sub,state){
+  const done=state==='done';
+  return `<div style="display:flex;align-items:center;gap:13px;background:${done?'rgba(16,185,129,.08)':'rgba(255,255,255,.04)'};border:1px solid ${done?'rgba(16,185,129,.3)':'rgba(255,255,255,.1)'};border-radius:12px;padding:10px 14px">
+    <span style="font-size:24px">${emoji}</span>
+    <div style="flex:1;min-width:0">
+      <div style="font-size:16px;font-weight:700">${name}</div>
+      <div style="font-size:12px;color:#8b93a1;margin-top:1px">${sub}</div>
+    </div>
+    ${done?'<span style="color:#6ee7b7;font-weight:800;font-size:14px">✓ Done</span>':'<span style="background:linear-gradient(180deg,#f43f5e,#e11d48);color:#fff;font-weight:700;font-size:13px;padding:6px 14px;border-radius:8px">Play</span>'}
+  </div>`;
+}
+
 const GAMES = {
 'uno': {
   accent:'#ef4444', soft:'rgba(239,68,68,.14)', eyebrow:'Party Card Classic',
@@ -363,6 +375,162 @@ const GAMES = {
       </div>
       <div style="display:flex;justify-content:center;margin-top:10px">${pongCourt()}</div>
     </div>`
+},
+/* ---------- daily challenge cards ---------- */
+'daily-crossword': {
+  accent:'#0ea5e9', soft:'rgba(14,165,233,.14)', eyebrow:'Daily Challenge',
+  title:'Daily Crossword', titleSize:74,
+  url:'fateround.com/daily-challenges/crossword',
+  desc:'A free crossword every day — same grid for everyone. Solve it, rank on the leaderboard, come back tomorrow.',
+  pills:['New every day','One attempt','Daily leaderboard'],
+  panel:`
+    <div class="rhead" style="background:rgba(14,165,233,.10)">
+      <span class="tag" style="background:rgba(14,165,233,.18);color:#7dd3fc">TODAY'S PUZZLE</span>
+      <span class="mid">Same for everyone</span>
+      <span class="mid" style="color:#c9cfd8">7 / 12 words</span>
+    </div>
+    <div class="rbody">
+      <div style="display:flex;justify-content:center">${xwGrid()}</div>
+      <div style="margin-top:18px;background:rgba(14,165,233,.10);border:1px solid rgba(14,165,233,.3);border-radius:12px;padding:13px 16px;display:flex;align-items:center;gap:13px">
+        <span style="background:#0ea5e9;color:#042430;font-weight:800;border-radius:8px;padding:5px 11px;font-size:14px">1 ACROSS</span>
+        <span style="font-size:17px;font-weight:600">Have fun with a game</span>
+        <span style="margin-left:auto;color:#7dd3fc;font-weight:800;font-size:16px">+40 ✓</span>
+      </div>
+    </div>`
+},
+'daily-word-search': {
+  accent:'#8b5cf6', soft:'rgba(139,92,246,.14)', eyebrow:'Daily Challenge',
+  title:'Daily Word Search', titleSize:64,
+  url:'fateround.com/daily-challenges/word-search',
+  desc:'A free word search every day — same grid for everyone. Find every word, rank on the leaderboard.',
+  pills:['New every day','One attempt','Daily leaderboard'],
+  panel:`
+    <div class="rhead" style="background:rgba(139,92,246,.10)">
+      <span class="tag" style="background:rgba(139,92,246,.20);color:#c4b5fd">TODAY'S PUZZLE</span>
+      <span class="mid">Same for everyone</span>
+      <span class="mid" style="color:#c9cfd8">4 / 8 found</span>
+    </div>
+    <div class="rbody">
+      <div style="display:flex;justify-content:center">${wsGrid()}</div>
+      <div style="margin-top:16px;display:flex;gap:9px;flex-wrap:wrap;justify-content:center">
+        ${wsWord('PARTY',true)}${wsWord('GAME',true)}${wsWord('PLAY',false)}${wsWord('WIN',false)}
+      </div>
+    </div>`
+},
+'daily-word-scramble': {
+  accent:'#f59e0b', soft:'rgba(245,158,11,.14)', eyebrow:'Daily Challenge',
+  title:'Daily Word Scramble', titleSize:56,
+  url:'fateround.com/daily-challenges/word-scramble',
+  desc:'A free word scramble every day — same words for everyone. Unscramble them all and climb the leaderboard.',
+  pills:['New every day','One attempt','Daily leaderboard'],
+  panel:`
+    <div class="rhead" style="background:rgba(245,158,11,.10)">
+      <span class="tag" style="background:rgba(245,158,11,.18);color:#fcd34d">TODAY'S PUZZLE</span>
+      <span class="mid">Same for everyone</span>
+      <span class="mid" style="color:#fcd34d;font-weight:700">0:07</span>
+    </div>
+    <div class="rbody">
+      <div style="text-align:center;margin-top:4px">
+        <div class="muted" style="font-size:13px;letter-spacing:2.5px;font-weight:600">SCRAMBLE</div>
+        <div style="display:flex;gap:9px;justify-content:center;margin-top:14px">
+          ${['T','A','E','R','S'].map(l=>scTile(l,'scramble')).join('')}
+        </div>
+        <div style="color:#f59e0b;font-size:24px;margin:14px 0 8px">↓</div>
+        <div style="display:flex;gap:9px;justify-content:center">
+          ${scTile('S','filled')}${scTile('T','filled')}${scTile('A','filled')}${scTile('R','filled')}${scTile('','empty')}
+        </div>
+      </div>
+      <div style="margin-top:22px;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4);border-radius:14px;padding:14px 18px;display:flex;align-items:center;justify-content:space-between">
+        <span style="font-size:17px;font-weight:600">Solve first for a bonus</span>
+        <span style="color:#fcd34d;font-size:20px;font-weight:800">+80 ⚡</span>
+      </div>
+    </div>`
+},
+'daily-sudoku': {
+  accent:'#10b981', soft:'rgba(16,185,129,.14)', eyebrow:'Daily Challenge',
+  title:'Daily Sudoku', titleSize:74,
+  url:'fateround.com/daily-challenges/sudoku',
+  desc:'A free Sudoku every day — same grid for everyone. Solve it, rank on the leaderboard, come back tomorrow.',
+  pills:['New every day','One attempt','Daily leaderboard'],
+  panel:`
+    <div class="rhead" style="background:rgba(16,185,129,.10)">
+      <span class="tag" style="background:rgba(16,185,129,.18);color:#6ee7b7">TODAY'S PUZZLE</span>
+      <span class="mid">Same for everyone</span>
+      <span class="mid" style="color:#6ee7b7;font-weight:700">2:34</span>
+    </div>
+    <div class="rbody" style="display:flex;justify-content:center">
+      ${sudokuGrid()}
+    </div>`
+},
+'daily-trivia': {
+  accent:'#f43f5e', soft:'rgba(244,63,94,.14)', eyebrow:'Daily Challenge',
+  title:'Daily Trivia', titleSize:82,
+  url:'fateround.com/daily-challenges/trivia',
+  desc:'A free trivia quiz every day — same questions for everyone. Answer fast and climb the daily leaderboard.',
+  pills:['New every day','One attempt','Daily leaderboard'],
+  panel:`
+    <div class="rhead" style="background:rgba(244,63,94,.10)">
+      <span class="tag" style="background:rgba(244,63,94,.18);color:#fda4af">TODAY'S QUIZ</span>
+      <span class="mid">Question 3 of 7</span>
+      <span class="mid" style="color:#fda4af;font-weight:700">0:42</span>
+    </div>
+    <div class="rbody">
+      <div style="background:rgba(244,63,94,.10);border:1px solid rgba(244,63,94,.28);border-radius:14px;padding:14px 18px;font-size:18px;font-weight:600;line-height:1.3">
+        What is the largest ocean on Earth?
+      </div>
+      <div style="margin-top:14px;display:flex;flex-direction:column;gap:10px">
+        ${trivOpt('A','Atlantic Ocean',false)}
+        ${trivOpt('B','Pacific Ocean',true)}
+        ${trivOpt('C','Indian Ocean',false)}
+        ${trivOpt('D','Arctic Ocean',false)}
+      </div>
+    </div>`
+},
+'daily-word-hunt': {
+  accent:'#f97316', soft:'rgba(249,115,22,.14)', eyebrow:'Daily Challenge',
+  title:'Daily Word Hunt', titleSize:64,
+  url:'fateround.com/daily-challenges/word-hunt',
+  desc:'A free Word Hunt every day — same letter grid for everyone. Find as many words as you can and top the leaderboard.',
+  pills:['New every day','One attempt','Daily leaderboard'],
+  panel:`
+    <div class="rhead" style="background:rgba(249,115,22,.10)">
+      <span class="tag" style="background:rgba(249,115,22,.18);color:#fdba74">TODAY'S GRID</span>
+      <span class="mid">Find words</span>
+      <span class="tag" style="background:rgba(249,115,22,.18);color:#fdba74">12 found</span>
+    </div>
+    <div class="rbody">
+      <div style="display:flex;justify-content:center">${whGrid()}</div>
+      <div style="margin-top:16px;display:flex;gap:9px;flex-wrap:wrap;justify-content:center">
+        ${whWord('RING',true)}${whWord('GRIN',true)}${whWord('SIGN',true)}${whWord('SING',false)}
+      </div>
+      <div style="margin-top:14px;background:rgba(249,115,22,.12);border:1px solid rgba(249,115,22,.4);border-radius:14px;padding:12px 18px;display:flex;align-items:center;justify-content:space-between">
+        <span style="font-size:16px;font-weight:600">Score</span>
+        <span style="color:#fdba74;font-size:22px;font-weight:800">2,480 pts</span>
+      </div>
+    </div>`
+},
+'daily-challenges': {
+  accent:'#f43f5e', soft:'rgba(244,63,94,.14)', eyebrow:'New Every Day',
+  title:'Daily Challenges', titleSize:68,
+  url:'fateround.com/daily-challenges',
+  desc:'Six free puzzles a day — crossword, word search, word scramble, Sudoku, trivia, and Word Hunt. Same for everyone, one attempt, daily leaderboard.',
+  pills:['Free to play','Same puzzle for all'],
+  panel:`
+    <div class="rhead" style="background:rgba(244,63,94,.10)">
+      <span class="tag" style="background:rgba(244,63,94,.18);color:#fda4af">TODAY'S PUZZLES</span>
+      <span class="mid">Same for everyone</span>
+      <span class="tag" style="background:rgba(16,185,129,.16);color:#6ee7b7">3 / 6 done</span>
+    </div>
+    <div class="rbody">
+      <div style="display:flex;flex-direction:column;gap:11px">
+        ${dcRow('🧩','Crossword','Fastest time wins','done')}
+        ${dcRow('🔍','Word Search','Fastest time wins','done')}
+        ${dcRow('🔤','Word Scramble','Fastest time wins','done')}
+        ${dcRow('🔢','Sudoku','Fastest time wins','play')}
+        ${dcRow('🧠','Trivia','Highest score wins','play')}
+        ${dcRow('📖','Word Hunt','Highest score wins','play')}
+      </div>
+    </div>`
 }
 };
 
@@ -585,6 +753,70 @@ function pongCourt(){
   </svg>`;
 }
 
+/* ---------- daily-challenge helpers ---------- */
+function sudokuGrid(){
+  const cell=44;
+  const vals=[
+    [5,'',3,'','',7,'','',2],
+    ['',8,'','',4,'','',6,''],
+    ['','','',2,'','',1,'',''],
+    [3,'','','',7,'','','',4],
+    ['',1,'',8,'',3,'',9,''],
+    [7,'','','',6,'','','',8],
+    ['','',6,'','',9,'','',''],
+    ['',4,'','',1,'','',2,''],
+    [9,'',1,'','',5,3,'',7],
+  ];
+  let cells='';
+  for(let r=0;r<9;r++)for(let c=0;c<9;c++){
+    const v=vals[r][c];
+    const thick=(x)=>x%3===0&&x>0;
+    const bl=thick(c)?'3px solid rgba(255,255,255,.35)':'1px solid rgba(255,255,255,.08)';
+    const bt=thick(r)?'3px solid rgba(255,255,255,.35)':'1px solid rgba(255,255,255,.08)';
+    const filled=v!=='';
+    const userFill=!filled?'':'';
+    const col=filled?'#e2e8f0':'#6ee7b7';
+    cells+=`<div style="width:${cell}px;height:${cell}px;border-left:${bl};border-top:${bt};display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:${filled?'800':'600'};color:${col}">${v}</div>`;
+  }
+  return `<div style="display:grid;grid-template-columns:repeat(9,${cell}px);border:3px solid rgba(255,255,255,.35);border-radius:8px;overflow:hidden;background:rgba(255,255,255,.03)">${cells}</div>`;
+}
+
+function trivOpt(letter,text,selected){
+  const bg=selected?'rgba(244,63,94,.16)':'rgba(255,255,255,.04)';
+  const bd=selected?'rgba(244,63,94,.5)':'rgba(255,255,255,.1)';
+  const lbg=selected?'#f43f5e':'rgba(255,255,255,.08)';
+  const lcol=selected?'#fff':'#8b93a1';
+  return `<div style="display:flex;align-items:center;gap:13px;background:${bg};border:1px solid ${bd};border-radius:12px;padding:12px 16px">
+    <span style="width:30px;height:30px;border-radius:50%;background:${lbg};color:${lcol};display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800">${letter}</span>
+    <span style="font-size:17px;font-weight:600">${text}</span>
+    ${selected?'<span style="margin-left:auto;color:#fda4af;font-weight:800;font-size:16px">✓</span>':''}</div>`;
+}
+
+function whGrid(){
+  const cell=52;
+  const g=[
+    ['R','I','N','G','S'],
+    ['E','A','G','R','I'],
+    ['S','I','N','K','G'],
+    ['T','R','G','E','N'],
+    ['S','I','N','G','S'],
+  ];
+  const hl={'0,0':1,'0,1':1,'0,2':1,'0,3':1,'1,3':1,'2,3':1,'2,2':1,'2,1':1};
+  let cells='';
+  for(let r=0;r<5;r++)for(let c=0;c<5;c++){
+    const k=r+','+c, v=g[r][c];
+    const on=hl[k];
+    const bg=on?'rgba(249,115,22,.4)':'transparent';
+    const col=on?'#fff':'#c7cdd6';
+    cells+=`<div style="width:${cell}px;height:${cell}px;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:700;color:${col};background:${bg};border-radius:${on?'11px':'0'}">${v}</div>`;
+  }
+  return `<div style="display:grid;grid-template-columns:repeat(5,${cell}px);background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:7px">${cells}</div>`;
+}
+function whWord(w,found){
+  return `<span style="padding:9px 15px;border-radius:999px;font-size:16px;font-weight:700;
+    ${found?'color:#fdba74;background:rgba(249,115,22,.16);border:1px solid rgba(249,115,22,.4);text-decoration:line-through':'color:#8b93a1;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1)'}">${w}</span>`;
+}
+
 /* ---------- render ---------- */
 const slug = new URLSearchParams(location.search).get('game') || 'mahjong';
 const g = GAMES[slug];
@@ -599,7 +831,7 @@ document.getElementById('stage').innerHTML = `
     <div class="desc">${g.desc}</div>
     <div class="pills">${g.pills.map(p=>`<span class="pill" style="color:${g.accent};background:${g.soft};border:1px solid ${hexA(g.accent,.3)}">${p}</span>`).join('')}</div>
   </div>
-  <div class="url" style="color:${g.accent}">fateround.com/games/${slug}</div>
+  <div class="url" style="color:${g.accent}">${g.url||('fateround.com/games/'+slug)}</div>
   <div class="right">${g.panel}</div>`;
 
 // background tint
