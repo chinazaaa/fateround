@@ -152,9 +152,12 @@ export function SaveToProfileModal({ open, onClose, profile, onChanged }: Props)
       <Modal open={open} onClose={onClose} title="Your profile">
         <div className="space-y-5">
           <div className="space-y-2">
-            <span className="text-sm text-muted">Your name</span>
+            <label htmlFor="modal-display-name" className="text-sm text-muted">
+              Your name
+            </label>
             <div className="flex items-center gap-2">
               <input
+                id="modal-display-name"
                 className="input-field max-w-48 text-sm"
                 value={handle}
                 maxLength={50}

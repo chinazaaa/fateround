@@ -55,27 +55,34 @@ export function StatsTab({ games }: { games: GameRow[] }) {
 
   const [history, setHistory] = useState<HistoryEntry[]>([])
   const [cursor, setCursor] = useState<string | null>(null)
+  const [cursorId, setCursorId] = useState<string | null>(null)
   const [historyLoading, setHistoryLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
 
-  const fetchHistory = useCallback(async (cursorParam?: string) => {
-    const headers = await authHeaders()
-    if (!headers) {
-      setHistoryLoading(false)
-      return
-    }
-    const url = cursorParam ? `/api/profile/history?cursor=${encodeURIComponent(cursorParam)}` : '/api/profile/history'
-    const res = await fetch(url, { headers })
-    if (!res.ok) {
+  const fetchHistory = useCallback(async (c?: string, cId?: string) => {
+    try {
+      const headers = await authHeaders()
+      if (!headers) {
+        setHistoryLoading(false)
+        return
+      }
+      const params = new URLSearchParams()
+      if (c) params.set('cursor', c)
+      if (cId) params.set('cursorId', cId)
+      const qs = params.toString()
+      const url = qs ? `/api/profile/history?${qs}` : '/api/profile/history'
+      const res = await fetch(url, { headers })
+      if (!res.ok) return
+      const json = await res.json()
+      setHistory((prev) => (c ? [...prev, ...json.games] : json.games))
+      setCursor(json.nextCursor)
+      setCursorId(json.nextCursorId)
+    } catch {
+      // Network failures silently stop pagination.
+    } finally {
       setHistoryLoading(false)
       setLoadingMore(false)
-      return
     }
-    const json = await res.json()
-    setHistory((prev) => (cursorParam ? [...prev, ...json.games] : json.games))
-    setCursor(json.nextCursor)
-    setHistoryLoading(false)
-    setLoadingMore(false)
   }, [])
 
   useEffect(() => {
@@ -85,7 +92,7 @@ export function StatsTab({ games }: { games: GameRow[] }) {
   const loadMore = () => {
     if (!cursor || loadingMore) return
     setLoadingMore(true)
-    void fetchHistory(cursor)
+    void fetchHistory(cursor, cursorId ?? undefined)
   }
 
   return (

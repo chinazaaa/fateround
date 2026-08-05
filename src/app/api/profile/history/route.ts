@@ -17,6 +17,7 @@ export async function GET(req: NextRequest) {
     if (!profileId) return NextResponse.json({ games: [], nextCursor: null })
 
     const cursor = req.nextUrl.searchParams.get('cursor')
+    const cursorId = req.nextUrl.searchParams.get('cursorId')
     const limit = 20
 
     const admin = getSupabaseAdmin()
@@ -28,10 +29,15 @@ export async function GET(req: NextRequest) {
       .eq('games.status', 'finished')
       .not('games.finished_at', 'is', null)
       .order('finished_at', { referencedTable: 'games', ascending: false })
+      .order('id', { referencedTable: 'games', ascending: false })
       .limit(limit + 1)
 
     if (cursor) {
-      query = query.lt('games.finished_at', cursor)
+      query = cursorId
+        ? query.or(`finished_at.lt.${cursor},and(finished_at.eq.${cursor},id.lt.${cursorId})`, {
+            referencedTable: 'games',
+          })
+        : query.lt('games.finished_at', cursor)
     }
 
     const { data, error } = await query
@@ -107,9 +113,11 @@ export async function GET(req: NextRequest) {
       }
     })
 
-    const nextCursor = hasMore ? (page[page.length - 1]?.games.finished_at ?? null) : null
+    const lastRow = hasMore ? page[page.length - 1] : null
+    const nextCursor = lastRow?.games.finished_at ?? null
+    const nextCursorId = lastRow?.games.id ?? null
 
-    return NextResponse.json({ games, nextCursor })
+    return NextResponse.json({ games, nextCursor, nextCursorId })
   } catch (err) {
     return NextResponse.json({ error: internalErrorMessage('profile/history', err) }, { status: 500 })
   }

@@ -65,15 +65,23 @@ export function SettingsTab({ profile, onChanged }: Props) {
     }
   }, [handle, onChanged, success])
 
-  const saveSetting = useCallback(async (key: string, value: unknown) => {
-    const headers = await authHeaders()
-    if (!headers) return
-    await fetch('/api/profile/settings', {
-      method: 'PATCH',
-      headers,
-      body: JSON.stringify({ [key]: value }),
-    })
-  }, [])
+  const saveSetting = useCallback(
+    async (key: string, value: unknown) => {
+      try {
+        const headers = await authHeaders()
+        if (!headers) return
+        const res = await fetch('/api/profile/settings', {
+          method: 'PATCH',
+          headers,
+          body: JSON.stringify({ [key]: value }),
+        })
+        if (!res.ok) toastError('Could not save preference')
+      } catch {
+        toastError('Could not save preference')
+      }
+    },
+    [toastError]
+  )
 
   const handleVoiceToggle = (v: boolean) => {
     setVoiceOn(v)
@@ -110,7 +118,11 @@ export function SettingsTab({ profile, onChanged }: Props) {
       <div className="space-y-2">
         <h3 className="text-sm font-semibold">Display name</h3>
         <div className="flex items-center gap-2">
+          <label htmlFor="settings-display-name" className="sr-only">
+            Your name
+          </label>
           <input
+            id="settings-display-name"
             className="input-field max-w-48 text-sm"
             value={handle}
             maxLength={50}

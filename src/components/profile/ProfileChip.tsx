@@ -53,7 +53,7 @@ export function ProfileChip({ tone = 'site' }: Props) {
         type="button"
         className={tone === 'app' ? APP_CLASS : 'fr-icon-btn'}
         onClick={() => setOpen(true)}
-        aria-label={signedIn ? 'Your profile' : 'Save your progress'}
+        aria-label={signedIn ? `${label}${streak > 0 ? `, ${streak} day streak` : ''}` : 'Save your progress'}
       >
         {streak > 0 ? (
           <span className="shrink-0" aria-hidden>
