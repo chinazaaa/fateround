@@ -5,48 +5,71 @@ import { DAILY_GAME_SLUG_TO_TYPE, DAILY_GAME_LABELS, type DailyChallengeGameType
 
 export const dynamic = 'force-dynamic'
 
-const GAME_DESCRIPTIONS: Record<string, string> = {
-  sudoku:
-    "Solve today's Sudoku puzzle — same grid for everyone. One attempt, race the clock, climb the daily leaderboard.",
-  word_hunt: "Find as many words as you can in today's letter grid. Same board for everyone — highest score wins.",
-  crossword: "Today's daily crossword — fill the grid, beat the clock. Same clues for everyone, one attempt.",
-  word_search: "Find all the hidden words in today's grid. Same puzzle for everyone, one shot at the leaderboard.",
-  word_scramble: "Unscramble today's words before time runs out. Same challenge for everyone, one attempt.",
-  trivia: "Answer today's trivia questions — 90 seconds, as many as you can. Same questions for everyone.",
+const GAME_SEO: Record<string, { title: string; description: string }> = {
+  crossword: {
+    title: 'Daily Crossword — Free Online Puzzle, New Every Day',
+    description:
+      "A free daily crossword, the same grid for everyone. Solve today's puzzle, see where you rank on the leaderboard, then come back tomorrow for a new one.",
+  },
+  'word-search': {
+    title: 'Daily Word Search — Free Puzzle, New Every Day',
+    description:
+      "A free daily word search, the same grid for everyone. Find every hidden word, see where you rank on today's leaderboard, and come back tomorrow for a new one.",
+  },
+  'word-scramble': {
+    title: 'Daily Word Scramble — Free Unscramble Puzzle Every Day',
+    description:
+      "A free daily word scramble, the same words for everyone. Unscramble them, see where you rank on today's leaderboard, and come back tomorrow for a new set.",
+  },
+  sudoku: {
+    title: 'Daily Sudoku — Free Online Puzzle, New Every Day',
+    description:
+      "A free daily Sudoku, the same grid for everyone. Solve today's puzzle, see where you rank on the leaderboard, and come back tomorrow for a new one.",
+  },
+  trivia: {
+    title: 'Daily Trivia — Free Quiz Question of the Day',
+    description:
+      "A free daily trivia quiz, the same questions for everyone. Answer fast, see where you rank on today's leaderboard, and come back tomorrow for a new set.",
+  },
+  'word-hunt': {
+    title: 'Daily Word Hunt — Free Boggle-Style Puzzle Every Day',
+    description:
+      "A free daily Word Hunt, the same letter grid for everyone. Find as many words as you can, score the highest, and see where you rank on today's leaderboard.",
+  },
 }
 
 const GAME_KEYWORDS: Record<string, string[]> = {
   sudoku: ['daily sudoku', 'sudoku puzzle today', 'free daily sudoku', 'sudoku of the day'],
-  word_hunt: ['daily word hunt', 'word hunt puzzle', 'boggle daily', 'find words daily'],
+  'word-hunt': ['daily word hunt', 'word hunt puzzle', 'boggle daily', 'find words daily', 'boggle style puzzle'],
   crossword: ['daily crossword', 'free daily crossword', 'crossword puzzle today', 'mini crossword'],
-  word_search: ['daily word search', 'word search today', 'free word search puzzle', 'word find daily'],
-  word_scramble: ['daily word scramble', 'word scramble today', 'daily anagram', 'unscramble words daily'],
-  trivia: ['daily trivia', 'trivia quiz today', 'daily trivia questions', 'free daily trivia'],
+  'word-search': ['daily word search', 'word search today', 'free word search puzzle', 'word find daily'],
+  'word-scramble': ['daily word scramble', 'word scramble today', 'daily anagram', 'unscramble words daily'],
+  trivia: ['daily trivia', 'trivia quiz today', 'daily trivia questions', 'free daily trivia', 'question of the day'],
 }
 
 export async function generateMetadata({ params }: { params: Promise<{ gameType: string }> }): Promise<Metadata> {
   const { gameType: slug } = await params
   const gameType = DAILY_GAME_SLUG_TO_TYPE[slug] as DailyChallengeGameType | undefined
   const label = gameType ? DAILY_GAME_LABELS[gameType] : 'Daily Challenge'
-  const description =
-    (gameType && GAME_DESCRIPTIONS[gameType]) ??
-    `Play today's ${label} — same puzzle for everyone. One shot, one score.`
-  const keywords = (gameType && GAME_KEYWORDS[gameType]) ?? ['daily puzzle', 'daily challenge']
+  const seo = GAME_SEO[slug]
+  const title = seo?.title ?? `Daily ${label} — Free Online Puzzle, New Every Day`
+  const description = seo?.description ?? `Play today's ${label} — same puzzle for everyone. One shot, one score.`
+  const keywords = GAME_KEYWORDS[slug] ?? ['daily puzzle', 'daily challenge']
 
   return {
-    title: `Daily ${label} — Play Today's Puzzle Free`,
+    title,
     description,
     keywords: [...keywords, 'daily challenge', 'free daily puzzle game', 'puzzle of the day'],
     alternates: { canonical: `/daily-challenges/${slug}` },
     openGraph: {
-      title: `Daily ${label} | ${SITE_NAME}`,
+      title: `${title} | ${SITE_NAME}`,
       description,
       url: `/daily-challenges/${slug}`,
       images: [OG_IMAGE],
     },
     twitter: {
       card: 'summary_large_image',
-      title: `Daily ${label} | ${SITE_NAME}`,
+      title: `${title} | ${SITE_NAME}`,
       description,
     },
   }
@@ -60,7 +83,7 @@ export default async function DailyGamePage({ params }: { params: Promise<{ game
     return (
       <div className="mx-auto max-w-lg px-4 py-16 text-center">
         <h1 className="text-2xl font-bold">Game not found</h1>
-        <p className="mt-2 text-base-content/60">This daily challenge type doesn't exist.</p>
+        <p className="mt-2 text-base-content/60">This daily challenge type doesn&apos;t exist.</p>
       </div>
     )
   }
