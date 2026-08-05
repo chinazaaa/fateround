@@ -74,7 +74,7 @@ const CHIP_EMOJI_ICONS: Record<string, any> = {
 function parseChipItem(item: string) {
   // Strip leading emoji if present and map to fr-glyph
   const match = item.match(
-    /^((?:[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]|[0-9*#]\u{FE0F}?\u{20E3}|\u{FE0F}|\u{200D})+)\s*/u
+    /^((?:[\u{1F0A0}-\u{1F0FF}\u{1F300}-\u{1F9FF}\u{2300}-\u{23FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]|[0-9*#]\u{FE0F}?\u{20E3}|\u{FE0F}|\u{200D})+)\s*/u
   )
   if (match) {
     const rawEmoji = match[1].replace(/\u{FE0F}/gu, '')
@@ -379,8 +379,8 @@ export function GameInfoChips({
             className="inline-flex items-center gap-1.5 rounded-full bg-[var(--surface-inset-bg)] px-2.5 py-1 text-xs font-semibold text-muted"
           >
             {IconComponent && (
-              <span className="fr-glyph text-[var(--primary)] shrink-0">
-                <Glyph icon={IconComponent} size={13} />
+              <span className="inline-flex items-center shrink-0 text-[var(--primary)]">
+                <Glyph icon={IconComponent} size={14} />
               </span>
             )}
             <span>{text}</span>
