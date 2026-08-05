@@ -34,6 +34,7 @@ const PRIMARY_LINKS: FooterLink[] = [
   { href: '/tournament', label: 'Tournaments' },
   { href: '/rooms', label: 'Rooms' },
   { href: '/leaderboard', label: 'Leaderboard' },
+  { href: '/daily-challenges', label: 'Daily Challenges' },
   { href: '/blog', label: 'Blog' },
   { href: '/faq', label: 'FAQ & help' },
   { href: '/contact', label: 'Contact us' },
