@@ -11,9 +11,9 @@ import { GAME_CATEGORIES, parseGameType } from '@/lib/game-types'
 import { authHeaders } from '@/lib/identity'
 import { Skeleton } from '@/components/Skeleton'
 import { Glyph } from '@/components/icons/Glyph'
-import { ChampionIcon, CrownIcon, FireIcon, StarIcon } from '@hugeicons/core-free-icons'
+import { ChampionIcon, CrownIcon, FireIcon } from '@hugeicons/core-free-icons'
 import type { IconSvgElement } from '@hugeicons/react'
-import { gameIcon } from '@/lib/game-glyphs'
+import { gameIcon, tierIcon } from '@/lib/game-glyphs'
 
 type GameRow = {
   gameType: string
@@ -339,18 +339,11 @@ function GameCard({
         <p className="text-faint text-xs">{sub}</p>
         {tiers && total > 0 && (
           <div className="text-faint mt-1 flex items-center gap-3 text-xs">
-            <span className="inline-flex items-center gap-1">
-              <Glyph icon={ChampionIcon} size={14} /> {tiers.platinum}
-            </span>
-            <span className="inline-flex items-center gap-1">
-              <Glyph icon={CrownIcon} size={14} /> {tiers.gold}
-            </span>
-            <span className="inline-flex items-center gap-1">
-              <Glyph icon={StarIcon} size={14} /> {tiers.silver}
-            </span>
-            <span className="inline-flex items-center gap-1">
-              <Glyph icon={StarIcon} size={14} /> {tiers.bronze}
-            </span>
+            {(['platinum', 'gold', 'silver', 'bronze'] as const).map((tierName) => (
+              <span key={tierName} className="inline-flex items-center gap-1">
+                <Glyph icon={tierIcon(tierName)} size={14} /> {tiers[tierName]}
+              </span>
+            ))}
           </div>
         )}
         {total > 0 && (

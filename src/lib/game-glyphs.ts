@@ -11,6 +11,7 @@ import {
   ChessPawnIcon,
   Coins01Icon,
   Copy01Icon,
+  CrownIcon,
   DicesIcon,
   DominoIcon,
   EyeClosedIcon,
@@ -30,6 +31,8 @@ import {
   LockPasswordIcon,
   Mail01Icon,
   MaskIcon,
+  Medal01Icon,
+  Medal02Icon,
   Megaphone01Icon,
   PaintBrush01Icon,
   Pen01Icon,
@@ -130,3 +133,36 @@ export const UI_ICONS = {
   whatsNew: SparklesIcon,
   browse: GlobeIcon,
 } satisfies Record<string, IconSvgElement>
+
+/**
+ * Trophy tier artwork, replacing the 🥉🥈🥇🏆 medals the trophy surfaces used to
+ * inline. Each tier gets a distinct shape so the rank is legible without reading
+ * the label — a medal for the two lower tiers, then a crown and a cup.
+ *
+ * Ordering matches `TIER_RANK` in `lib/trophies/tier-rank.ts`; that module stays
+ * icon-free because it is imported by API routes, which have no use for artwork.
+ */
+const TIER_ICONS: Record<string, IconSvgElement> = {
+  bronze: Medal02Icon,
+  silver: Medal01Icon,
+  gold: CrownIcon,
+  platinum: ChampionIcon,
+}
+
+/** Icon for a trophy tier. Unknown tiers fall back to the cup rather than rendering nothing. */
+export function tierIcon(tier: string): IconSvgElement {
+  return TIER_ICONS[tier] ?? ChampionIcon
+}
+
+/**
+ * Metal colours for a tier, used where a tier needs to be identifiable at a glance
+ * (the medal plate on a public profile). Deliberately literal rather than tokenised:
+ * bronze and gold have no equivalent in the rose-based palette, and they must read
+ * the same in both themes.
+ */
+export const TIER_COLORS: Record<string, string> = {
+  bronze: '#cd7f32',
+  silver: '#a8a8b8',
+  gold: '#f0b429',
+  platinum: '#c4b5fd',
+}

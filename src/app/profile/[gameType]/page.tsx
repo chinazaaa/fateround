@@ -5,7 +5,8 @@ import Link from 'next/link'
 import { authHeaders } from '@/lib/identity'
 import { Skeleton } from '@/components/Skeleton'
 import { Glyph } from '@/components/icons/Glyph'
-import { ChampionIcon, CrownIcon, LockIcon, StarIcon } from '@hugeicons/core-free-icons'
+import { LockIcon, ArrowLeft01Icon } from '@hugeicons/core-free-icons'
+import { tierIcon } from '@/lib/game-glyphs'
 
 type Trophy = {
   id: string
@@ -28,12 +29,6 @@ type Totals = {
 }
 
 const TIERS = ['bronze', 'silver', 'gold', 'platinum'] as const
-const TIER_ICONS = {
-  bronze: StarIcon,
-  silver: StarIcon,
-  gold: CrownIcon,
-  platinum: ChampionIcon,
-}
 
 function plural(count: number, word: string): string {
   return `${count} ${word}${count === 1 ? '' : 's'}`
@@ -94,7 +89,7 @@ export default function GameTrophiesPage({ params }: { params: Promise<{ gameTyp
 
   if (loading) {
     return (
-      <div className="mx-auto max-w-3xl space-y-5 p-4 sm:p-6" aria-busy="true">
+      <div className="fr-portal mx-auto max-w-3xl space-y-5 p-4 sm:p-6" aria-busy="true">
         <Skeleton className="h-4 w-28" />
         <Skeleton className="h-8 w-48" />
         <div className="fr-card p-5">
@@ -117,12 +112,17 @@ export default function GameTrophiesPage({ params }: { params: Promise<{ gameTyp
   const pct = totals?.pct ?? 0
 
   return (
-    <div className="mx-auto max-w-3xl space-y-5 p-4 sm:p-6">
+    // `fr-card`/`fr-chip`/`fr-gamecard` below resolve their tokens from the `fr-*` scope
+    // (fate-round-ds.css). The shared profile layout is on the app system, so this page
+    // carries the scope itself — `fr-portal` rather than `fr-site` because it supplies the
+    // same tokens without `fr-site`'s own background and full-viewport height.
+    <div className="fr-portal mx-auto max-w-3xl space-y-5 p-4 sm:p-6">
       <Link
         href="/profile"
         className="text-sm font-semibold text-[var(--primary)] hover:underline no-underline inline-flex items-center gap-1"
       >
-        ← Your trophies
+        <Glyph icon={ArrowLeft01Icon} size={16} />
+        Your trophies
       </Link>
 
       <h1
@@ -156,19 +156,16 @@ export default function GameTrophiesPage({ params }: { params: Promise<{ gameTyp
             </div>
 
             <div className="mt-4 grid grid-cols-4 gap-2 border-t border-[var(--border)] pt-3 text-center">
-              {(['platinum', 'gold', 'silver', 'bronze'] as const).map((t) => {
-                const IconComponent = TIER_ICONS[t]
-                return (
-                  <div key={t} className="flex flex-col items-center">
-                    <span className="fr-glyph text-[var(--primary)] mb-1">
-                      <Glyph icon={IconComponent} size={20} />
-                    </span>
-                    <p className="font-extrabold" style={{ color: 'var(--text)' }}>
-                      {totals?.tiers?.[t] ?? 0}
-                    </p>
-                  </div>
-                )
-              })}
+              {(['platinum', 'gold', 'silver', 'bronze'] as const).map((tierName) => (
+                <div key={tierName} className="flex flex-col items-center">
+                  <span className="fr-glyph text-[var(--primary)] mb-1">
+                    <Glyph icon={tierIcon(tierName)} size={20} />
+                  </span>
+                  <p className="font-extrabold" style={{ color: 'var(--text)' }}>
+                    {totals?.tiers?.[tierName] ?? 0}
+                  </p>
+                </div>
+              ))}
             </div>
           </div>
 
@@ -218,12 +215,10 @@ export default function GameTrophiesPage({ params }: { params: Promise<{ gameTyp
 }
 
 function TrophyRow({ trophy }: { trophy: Trophy }) {
-  const IconComponent = trophy.earned ? (TIER_ICONS[trophy.tier as keyof typeof TIER_ICONS] ?? ChampionIcon) : LockIcon
-
   return (
     <div className="fr-gamecard cursor-default flex items-start gap-3 p-4">
       <span className={`fr-glyph mt-0.5 ${trophy.earned ? 'text-[var(--primary)]' : 'opacity-50'}`}>
-        <Glyph icon={IconComponent} size={22} />
+        <Glyph icon={trophy.earned ? tierIcon(trophy.tier) : LockIcon} size={22} />
       </span>
       <div className="min-w-0 flex-1">
         <p className={`fr-gamecard__title text-base ${trophy.earned ? '' : 'opacity-70'}`}>{trophy.title}</p>
@@ -291,7 +286,7 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      className={active ? 'fr-chip fr-chip--active' : 'fr-chip'}
+      className={`fr-chip fr-chip--control ${active ? 'fr-chip--active' : ''}`}
     >
       {children}
     </button>

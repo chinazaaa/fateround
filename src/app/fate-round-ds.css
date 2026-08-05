@@ -683,6 +683,16 @@
   background: var(--surface-2);
 }
 
+/* The selected state of a filter chip. Solid primary rather than a tinted
+   border, because these rows sit directly above the content they filter and a
+   border-only treatment is too quiet to answer "which one am I looking at". */
+.fr-chip--active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--primary-contrast);
+  font-weight: var(--fw-bold);
+}
+
 /* ── Segmented control ───────────────────────────────────────────────
    A row of mutually exclusive options sharing one border, for a choice that is
    small and fixed enough that a <select> would be heavier than the options
