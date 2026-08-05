@@ -2,8 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
+import { useSearchParams, useRouter } from 'next/navigation'
 import { SaveToProfileModal } from '@/components/profile/SaveToProfileModal'
 import { ShareProfileModal } from '@/components/profile/ShareProfileModal'
+import { StatsTab } from '@/components/profile/StatsTab'
+import { SettingsTab } from '@/components/profile/SettingsTab'
 import { GAME_CATEGORIES } from '@/lib/game-types'
 import { authHeaders } from '@/lib/identity'
 import { Skeleton } from '@/components/Skeleton'
@@ -34,21 +37,33 @@ type ProfileSummary = {
   longest_streak: number
   last_active_date: string | null
   streak_freezes: number
+  default_voice_on: boolean | null
+  preferred_theme: string | null
 } | null
 
-/** "1 day", not "1 days". Small, and the thing people notice. */
+const TABS = [
+  { key: 'trophies', label: 'Trophies' },
+  { key: 'stats', label: 'Stats & History' },
+  { key: 'settings', label: 'Settings' },
+] as const
+
+type TabKey = (typeof TABS)[number]['key']
+
+function isValidTab(v: string | null): v is TabKey {
+  return v === 'trophies' || v === 'stats' || v === 'settings'
+}
+
 function plural(count: number, word: string): string {
   return `${count} ${word}${count === 1 ? '' : 's'}`
 }
 
-/**
- * The trophy list — the games you've played, not a catalogue of every game that exists.
- *
- * Modelled on a console trophy list: you open a game to see its trophies. Listing all 47 would
- * bury the two someone actually plays, and a game only enters this list by being PLAYED —
- * admin creating a Monopoly trophy is not a reason to show Monopoly to someone who plays Ayo.
- */
 export default function ProfilePage() {
+  const searchParams = useSearchParams()
+  const router = useRouter()
+
+  const initialTab = searchParams.get('tab')
+  const [tab, setTab] = useState<TabKey>(isValidTab(initialTab) ? initialTab : 'trophies')
+
   const [profile, setProfile] = useState<ProfileSummary>(null)
   const [games, setGames] = useState<GameRow[]>([])
   const [category, setCategory] = useState<string>('all')
@@ -56,6 +71,15 @@ export default function ProfilePage() {
   const [signedOut, setSignedOut] = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
   const [shareOpen, setShareOpen] = useState(false)
+
+  const switchTab = useCallback(
+    (next: TabKey) => {
+      setTab(next)
+      const url = next === 'trophies' ? '/profile' : `/profile?tab=${next}`
+      router.replace(url, { scroll: false })
+    },
+    [router]
+  )
 
   const fetchGames = useCallback(async (headers: Record<string, string>) => {
     const res = await fetch('/api/profile/games', { headers })
@@ -65,6 +89,7 @@ export default function ProfilePage() {
       setSignedOut(true)
       return
     }
+    setSignedOut(false)
     setProfile(json.profile)
     setGames(json.games ?? [])
   }, [])
@@ -77,14 +102,11 @@ export default function ProfilePage() {
       setLoading(false)
       return
     }
-    // Paint the summary first — don't block the whole screen on the sync pass.
     try {
       await fetchGames(headers)
     } finally {
       setLoading(false)
     }
-    // Then reconcile in the background: sync collects anything newly qualified for (e.g. a trophy
-    // added to the catalog after you last played), and a quiet re-read folds it in.
     await fetch('/api/profile/sync', { method: 'POST', headers }).catch(() => {})
     await fetchGames(headers)
   }, [fetchGames])
@@ -93,8 +115,6 @@ export default function ProfilePage() {
     void load()
   }, [load])
 
-  // Only offer categories the player actually has games in — a tab that filters to nothing is
-  // worse than no tab.
   const categories = useMemo(() => {
     const present = new Set(games.map((g) => g.category))
     return GAME_CATEGORIES.filter((c) => present.has(c.key))
@@ -114,7 +134,7 @@ export default function ProfilePage() {
             <Skeleton key={i} className="h-24 w-full" />
           ))}
         </div>
-        <span className="sr-only">Loading your profile…</span>
+        <span className="sr-only">Loading your profile...</span>
       </div>
     )
   }
@@ -122,41 +142,50 @@ export default function ProfilePage() {
   if (signedOut) {
     return (
       <div className="mx-auto max-w-3xl space-y-4 p-6">
-        <h1 className="text-2xl font-black tracking-tight">Your trophies</h1>
+        <h1 className="text-2xl font-black tracking-tight">Your profile</h1>
         <p className="text-body">
-          Finish a game and it appears here with its trophies. Save them to an email and they follow you to any device.
+          Track your stats, trophies, and streaks. Save your profile with an email so your progress follows you to any
+          device.
         </p>
-        <Link href="/" className="btn-primary btn-fit inline-block px-5 py-2.5 text-sm">
-          Find a game
-        </Link>
+        <div className="flex flex-wrap gap-3">
+          <button
+            type="button"
+            onClick={() => setProfileOpen(true)}
+            className="btn-primary btn-fit px-5 py-2.5 text-sm"
+          >
+            Save your profile
+          </button>
+          <Link href="/" className="btn-secondary btn-fit inline-block px-5 py-2.5 text-sm">
+            Find a game
+          </Link>
+        </div>
+        <SaveToProfileModal
+          open={profileOpen}
+          onClose={() => setProfileOpen(false)}
+          profile={null}
+          onChanged={() => void load()}
+        />
       </div>
     )
   }
 
   return (
     <div className="mx-auto max-w-3xl space-y-5 p-4 sm:p-6">
+      {/* Header — shared across all tabs */}
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="truncate text-2xl font-black tracking-tight">{profile?.handle || 'Your trophies'}</h1>
+          <h1 className="truncate text-2xl font-black tracking-tight">{profile?.handle || 'Your profile'}</h1>
           <p className="mt-0.5 text-sm text-muted">
             Level {profile?.trophy_level ?? 1} · {plural(profile?.trophy_points ?? 0, 'point')}
           </p>
         </div>
-        {/* The name editor lives here rather than as a header chip: on these routes the floating
-            theme toggle already owns the header's right side, and this is where someone looks
-            for their own settings anyway. */}
-        <div className="flex shrink-0 flex-col items-stretch gap-2">
-          <button type="button" onClick={() => setShareOpen(true)} className="btn-primary btn-fit px-3 py-1.5 text-sm">
-            Share profile
-          </button>
-          <button
-            type="button"
-            onClick={() => setProfileOpen(true)}
-            className="btn-secondary btn-fit px-3 py-1.5 text-sm"
-          >
-            {profile?.handle ? 'Edit name' : 'Set your name'}
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={() => setShareOpen(true)}
+          className="btn-primary btn-fit shrink-0 px-3 py-1.5 text-sm"
+        >
+          Share profile
+        </button>
       </div>
 
       <div className="grid grid-cols-3 gap-2 sm:gap-3">
@@ -173,57 +202,75 @@ export default function ProfilePage() {
         <Stat value={`${profile?.trophy_points ?? 0}`} label="Points" sub={`Level ${profile?.trophy_level ?? 1}`} />
       </div>
 
-      {categories.length > 1 && (
-        <div className="flex flex-wrap gap-1.5">
-          <Chip active={category === 'all'} onClick={() => setCategory('all')}>
-            All
-          </Chip>
-          {categories.map((c) => (
-            <Chip key={c.key} active={category === c.key} onClick={() => setCategory(c.key)}>
-              {c.label}
-            </Chip>
-          ))}
-        </div>
+      {/* Tab bar */}
+      <div className="flex gap-1.5 border-b border-[var(--border)] pb-0">
+        {TABS.map((t) => (
+          <button
+            key={t.key}
+            type="button"
+            onClick={() => switchTab(t.key)}
+            className={`px-3 py-2 text-sm font-semibold transition-colors ${
+              tab === t.key
+                ? 'border-b-2 border-[var(--primary)] text-[var(--foreground)]'
+                : 'text-muted hover:text-[var(--foreground)]'
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Tab content */}
+      {tab === 'trophies' && (
+        <>
+          {categories.length > 1 && (
+            <div className="flex flex-wrap gap-1.5">
+              <Chip active={category === 'all'} onClick={() => setCategory('all')}>
+                All
+              </Chip>
+              {categories.map((c) => (
+                <Chip key={c.key} active={category === c.key} onClick={() => setCategory(c.key)}>
+                  {c.label}
+                </Chip>
+              ))}
+            </div>
+          )}
+
+          {games.length === 0 ? (
+            <p className="glass-card p-5 text-sm text-muted">
+              You haven&apos;t finished a game yet. Play one and it shows up here.
+            </p>
+          ) : visible.length === 0 ? (
+            <p className="glass-card p-5 text-sm text-muted">No games in that category yet.</p>
+          ) : (
+            <div className="space-y-2">
+              {visible.map((game) => (
+                <GameCard
+                  key={game.gameType}
+                  href={`/profile/${encodeURIComponent(game.gameType)}`}
+                  emoji={game.emoji}
+                  label={game.label}
+                  sub={`${plural(game.gamesPlayed, 'game')} played${game.gamesWon ? ` · ${game.gamesWon} won` : ''}`}
+                  earned={game.earned}
+                  total={game.total}
+                  pct={game.pct}
+                  tiers={game.tiers}
+                />
+              ))}
+            </div>
+          )}
+
+          {games.length > 0 && (
+            <p className="text-faint px-1 text-center text-xs">
+              Every game has its own trophies — play another and it appears here.
+            </p>
+          )}
+        </>
       )}
 
-      {games.length === 0 ? (
-        <p className="glass-card p-5 text-sm text-muted">
-          You haven&apos;t finished a game yet. Play one and it shows up here.
-        </p>
-      ) : visible.length === 0 ? (
-        <p className="glass-card p-5 text-sm text-muted">No games in that category yet.</p>
-      ) : (
-        <div className="space-y-2">
-          {visible.map((game) => (
-            <GameCard
-              key={game.gameType}
-              href={`/profile/${encodeURIComponent(game.gameType)}`}
-              emoji={game.emoji}
-              label={game.label}
-              sub={`${plural(game.gamesPlayed, 'game')} played${game.gamesWon ? ` · ${game.gamesWon} won` : ''}`}
-              earned={game.earned}
-              total={game.total}
-              pct={game.pct}
-              tiers={game.tiers}
-            />
-          ))}
-        </div>
-      )}
+      {tab === 'stats' && <StatsTab games={games} />}
 
-      {/* Without this the list reads as "Trivia is the only game with trophies", because a game
-          you haven't played has nothing to show yet. */}
-      {games.length > 0 && (
-        <p className="text-faint px-1 text-center text-xs">
-          Every game has its own trophies — play another and it appears here.
-        </p>
-      )}
-
-      <SaveToProfileModal
-        open={profileOpen}
-        onClose={() => setProfileOpen(false)}
-        profile={profile}
-        onChanged={() => void load()}
-      />
+      {tab === 'settings' && <SettingsTab profile={profile} onChanged={() => void load()} />}
 
       <ShareProfileModal
         open={shareOpen}
@@ -276,8 +323,6 @@ function GameCard({
       <div className="min-w-0 flex-1">
         <p className="font-bold">{label}</p>
         <p className="text-faint text-xs">{sub}</p>
-        {/* The per-tier tally is how a trophy list is actually scanned — "two silvers" tells you
-            more at a glance than "6 of 14". */}
         {tiers && total > 0 && (
           <p className="text-faint mt-1 text-xs">
             🏆 {tiers.platinum} · 🥇 {tiers.gold} · 🥈 {tiers.silver} · 🥉 {tiers.bronze}
@@ -299,7 +344,6 @@ function GameCard({
             <p className="text-faint text-[11px]">{pct}%</p>
           </>
         ) : (
-          // Honest rather than hiding the game: they played it, there just aren't trophies yet.
           <p className="text-faint text-[11px]">No trophies yet</p>
         )}
       </div>

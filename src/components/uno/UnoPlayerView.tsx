@@ -460,7 +460,7 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
 
   if (screen === 'finished') {
     return (
-      <UnoShell title="Game over!" subtitle={winner ? `${winner.name} wins` : undefined}>
+      <UnoShell>
         {game ? (
           <UnoFinalResultsShareBlock
             game={game}
