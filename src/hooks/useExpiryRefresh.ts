@@ -19,6 +19,12 @@ export function useExpiryRefresh(deadlines: number[]): number {
     for (const d of deadlines) {
       if (d > current && d < nearest) nearest = d
     }
+    // A deadline crossed since the last `now` — sync immediately so the
+    // component reflects the new state even if no future deadline remains.
+    if (deadlines.some((d) => d > now && d <= current)) {
+      setNow(current)
+      return
+    }
     if (!isFinite(nearest)) return
 
     const delay = nearest - current + 50 // +50 ms buffer so Date.now() has crossed the boundary
