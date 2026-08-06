@@ -10,6 +10,10 @@ import { DailyWordSearchPlay } from './DailyWordSearchPlay'
 import { DailyCrosswordPlay } from './DailyCrosswordPlay'
 import { DailyWordScramblePlay } from './DailyWordScramblePlay'
 import { DailyTriviaPlay } from './DailyTriviaPlay'
+import { DailyWhotPuzzlePlay } from './DailyWhotPuzzlePlay'
+import { DailyWordGroupingPlay } from './DailyWordGroupingPlay'
+import { DailyChessMatePlay } from './DailyChessMatePlay'
+import { DailyCodenamesCodewordPlay } from './DailyCodenamesCodewordPlay'
 import {
   DAILY_GAME_LABELS,
   DAILY_GAME_EMOJIS,
@@ -101,10 +105,20 @@ function PlaySurface({
       return <DailyWordSearchPlay challengeId={challengeId} puzzle={puzzle} timer={timer} onSubmit={onSubmit} />
     case 'crossword':
       return <DailyCrosswordPlay challengeId={challengeId} puzzle={puzzle} timer={timer} onSubmit={onSubmit} />
+    case 'mini_crossword':
+      return <DailyCrosswordPlay challengeId={challengeId} puzzle={puzzle} timer={timer} onSubmit={onSubmit} />
     case 'word_scramble':
       return <DailyWordScramblePlay challengeId={challengeId} puzzle={puzzle} timer={timer} onSubmit={onSubmit} />
     case 'trivia':
       return <DailyTriviaPlay challengeId={challengeId} puzzle={puzzle} timer={timer} onSubmit={onSubmit} />
+    case 'whot_puzzle':
+      return <DailyWhotPuzzlePlay challengeId={challengeId} puzzle={puzzle} timer={timer} onSubmit={onSubmit} />
+    case 'word_grouping':
+      return <DailyWordGroupingPlay challengeId={challengeId} puzzle={puzzle} timer={timer} onSubmit={onSubmit} />
+    case 'chess_mate':
+      return <DailyChessMatePlay challengeId={challengeId} puzzle={puzzle} timer={timer} onSubmit={onSubmit} />
+    case 'codenames_codeword':
+      return <DailyCodenamesCodewordPlay challengeId={challengeId} puzzle={puzzle} timer={timer} onSubmit={onSubmit} />
   }
 }
 
@@ -131,7 +145,9 @@ export function DailyChallengeGame({ gameType }: { gameType: DailyChallengeGameT
   if (!challengeData) return <ErrorState error="No challenge data" />
 
   return (
-    <div className={`mx-auto px-4 py-4 ${gameType === 'crossword' ? 'max-w-4xl' : 'max-w-2xl'}`}>
+    <div
+      className={`mx-auto px-4 py-4 ${gameType === 'crossword' || gameType === 'mini_crossword' ? 'max-w-4xl' : 'max-w-2xl'}`}
+    >
       <div className="mb-4 text-center">
         <div className="text-3xl mb-1">{DAILY_GAME_EMOJIS[gameType]}</div>
         <h1 className="font-bold" style={{ fontSize: 'var(--text-lg)' }}>

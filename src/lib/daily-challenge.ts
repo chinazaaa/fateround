@@ -10,9 +10,14 @@ export const DAILY_CHALLENGE_GAME_TYPES = [
   'sudoku',
   'word_hunt',
   'crossword',
+  'mini_crossword',
   'word_search',
   'word_scramble',
   'trivia',
+  'whot_puzzle',
+  'word_grouping',
+  'chess_mate',
+  'codenames_codeword',
 ] as const
 
 export type DailyChallengeGameType = (typeof DAILY_CHALLENGE_GAME_TYPES)[number]
@@ -25,36 +30,56 @@ export const DAILY_GAME_SLUG_TO_TYPE: Record<string, DailyChallengeGameType> = {
   sudoku: 'sudoku',
   'word-hunt': 'word_hunt',
   crossword: 'crossword',
+  'mini-crossword': 'mini_crossword',
   'word-search': 'word_search',
   'word-scramble': 'word_scramble',
   trivia: 'trivia',
+  'whot-puzzle': 'whot_puzzle',
+  'word-grouping': 'word_grouping',
+  'chess-mate': 'chess_mate',
+  'codenames-codeword': 'codenames_codeword',
 }
 
 export const DAILY_GAME_TYPE_TO_SLUG: Record<DailyChallengeGameType, string> = {
   sudoku: 'sudoku',
   word_hunt: 'word-hunt',
   crossword: 'crossword',
+  mini_crossword: 'mini-crossword',
   word_search: 'word-search',
   word_scramble: 'word-scramble',
   trivia: 'trivia',
+  whot_puzzle: 'whot-puzzle',
+  word_grouping: 'word-grouping',
+  chess_mate: 'chess-mate',
+  codenames_codeword: 'codenames-codeword',
 }
 
 export const DAILY_GAME_LABELS: Record<DailyChallengeGameType, string> = {
   sudoku: 'Sudoku',
   word_hunt: 'Word Hunt',
   crossword: 'Crossword',
+  mini_crossword: 'Mini Crossword',
   word_search: 'Word Search',
   word_scramble: 'Word Scramble',
   trivia: 'Trivia',
+  whot_puzzle: 'Whot Puzzle',
+  word_grouping: 'Word Grouping',
+  chess_mate: 'Chess Mate',
+  codenames_codeword: 'Codeword',
 }
 
 export const DAILY_GAME_EMOJIS: Record<DailyChallengeGameType, string> = {
   sudoku: '🔢',
   word_hunt: '🔤',
   crossword: '📝',
+  mini_crossword: '✏️',
   word_search: '🔍',
   word_scramble: '🔀',
   trivia: '🧠',
+  whot_puzzle: '🃏',
+  word_grouping: '🔗',
+  chess_mate: '♟️',
+  codenames_codeword: '🕵️',
 }
 
 // Default timer per game (seconds). Time-first games get a countdown;
@@ -62,10 +87,15 @@ export const DAILY_GAME_EMOJIS: Record<DailyChallengeGameType, string> = {
 export const DAILY_GAME_TIMER: Record<DailyChallengeGameType, number> = {
   sudoku: 300,
   word_hunt: 180,
-  crossword: 300,
+  crossword: 900,
+  mini_crossword: 120,
   word_search: 300,
   word_scramble: 300,
   trivia: 90,
+  whot_puzzle: 300,
+  word_grouping: 240,
+  chess_mate: 180,
+  codenames_codeword: 180,
 }
 
 // Whether the primary metric is time (lower is better) or score (higher is better).
@@ -73,9 +103,14 @@ export const DAILY_GAME_PRIMARY_METRIC: Record<DailyChallengeGameType, 'time' | 
   sudoku: 'time',
   word_hunt: 'score',
   crossword: 'time',
+  mini_crossword: 'time',
   word_search: 'time',
   word_scramble: 'time',
   trivia: 'score',
+  whot_puzzle: 'score',
+  word_grouping: 'score',
+  chess_mate: 'time',
+  codenames_codeword: 'score',
 }
 
 // ---------------------------------------------------------------------------
@@ -141,7 +176,7 @@ export function stripSolution(
     delete safe.valid_words
   }
 
-  if (gameType === 'crossword') {
+  if (gameType === 'crossword' || gameType === 'mini_crossword') {
     // Per-clue answer hashes (parallel to metadata.clues) so the client can mark a completed
     // across/down word correct WITHOUT ever receiving the solution grid. Answers are 5–8 letters,
     // so the hashes aren't brute-forceable. Computed from the (pre-strip) solution grid.
@@ -170,6 +205,30 @@ export function stripSolution(
     // The server re-verifies on submit.
     const questions = Array.isArray(safe.questions) ? (safe.questions as Record<string, unknown>[]) : []
     safe.questions = questions.map(({ correct_index: _, ...rest }) => rest)
+  }
+
+  if (gameType === 'whot_puzzle') {
+    delete safe.solution
+  }
+
+  if (gameType === 'word_grouping') {
+    // Keep groups available as _groups for client-side real-time correct/incorrect feedback.
+    // The shuffled `words` array already hides which words belong together.
+    const solution = puzzleData.solution as
+      | { groups?: Array<{ category: string; words: string[]; difficulty: number }> }
+      | undefined
+    if (solution?.groups) {
+      safe._groups = solution.groups
+    }
+    delete safe.solution
+  }
+
+  if (gameType === 'chess_mate') {
+    delete safe.solution
+  }
+
+  if (gameType === 'codenames_codeword') {
+    delete safe.solution
   }
 
   return safe

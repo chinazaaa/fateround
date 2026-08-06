@@ -181,6 +181,140 @@ function verifyTrivia(
   }
 }
 
+function verifyWhotPuzzle(
+  puzzleData: Record<string, unknown>,
+  submission: Record<string, unknown>
+): VerifiedMetrics | { error: string } {
+  const solution = puzzleData.solution as { optimalMoves: number }
+  const moves = submission.moves as Array<{ type: string }>
+  if (!Array.isArray(moves)) return { error: 'Missing moves array' }
+
+  const handSize = (puzzleData.hand as unknown[])?.length ?? 6
+  const cardsPlayed = moves.filter((m) => m.type === 'play').length
+  const drawsMade = moves.filter((m) => m.type === 'draw').length
+  const cleared = cardsPlayed >= handSize
+  const optimalMoves = solution?.optimalMoves ?? moves.length
+
+  const baseScore = 1000
+  const movePenalty = 40
+  const drawPenalty = 60
+  const rawPoints = Math.max(
+    0,
+    baseScore - Math.max(0, moves.length - optimalMoves) * movePenalty - drawsMade * drawPenalty
+  )
+
+  return {
+    rawPoints: cleared ? rawPoints : Math.floor(rawPoints * 0.3),
+    itemsSolved: cleared ? handSize : cardsPlayed,
+    itemsTotal: handSize,
+    hintsUsed: drawsMade,
+  }
+}
+
+function verifyWordGrouping(
+  puzzleData: Record<string, unknown>,
+  submission: Record<string, unknown>
+): VerifiedMetrics | { error: string } {
+  const solution = puzzleData.solution as { groups: Array<{ words: string[] }> }
+  const guesses = submission.guesses as Array<{ words: string[] }>
+  if (!Array.isArray(guesses)) return { error: 'Missing guesses array' }
+  if (!solution?.groups) return { error: 'Missing solution' }
+
+  const solutionSets = solution.groups.map((g) => new Set(g.words.map((w) => w.toLowerCase())))
+  let groupsFound = 0
+  let mistakes = 0
+
+  for (const guess of guesses) {
+    const guessSet = new Set((guess.words ?? []).map((w: string) => w.toLowerCase()))
+    const isCorrect = solutionSets.some((s) => s.size === guessSet.size && [...guessSet].every((w) => s.has(w)))
+    if (isCorrect) {
+      groupsFound++
+    } else {
+      mistakes++
+    }
+  }
+
+  const baseScore = 1000
+  const mistakePenalty = 150
+  const rawPoints = Math.max(0, baseScore - mistakes * mistakePenalty)
+
+  return {
+    rawPoints: groupsFound > 0 ? rawPoints : 0,
+    itemsSolved: groupsFound,
+    itemsTotal: 4,
+    hintsUsed: mistakes,
+  }
+}
+
+function verifyChessMate(
+  puzzleData: Record<string, unknown>,
+  submission: Record<string, unknown>
+): VerifiedMetrics | { error: string } {
+  const solution = puzzleData.solution as { lines: string[][] }
+  const playerMoves = submission.moves as string[]
+  if (!Array.isArray(playerMoves)) return { error: 'Missing moves array' }
+  if (!solution?.lines?.length) return { error: 'Missing solution' }
+
+  const mateIn = (puzzleData.mateIn as number) ?? 2
+  const totalPlayerMoves = mateIn
+
+  let bestMatch = 0
+  for (const line of solution.lines) {
+    const attackerMoves = line.filter((_, i) => i % 2 === 0)
+    let matched = 0
+    for (let i = 0; i < Math.min(playerMoves.length, attackerMoves.length); i++) {
+      if (playerMoves[i] === attackerMoves[i]) {
+        matched++
+      } else {
+        break
+      }
+    }
+    bestMatch = Math.max(bestMatch, matched)
+  }
+
+  const solved = bestMatch >= totalPlayerMoves
+  return {
+    rawPoints: solved ? 1000 : 0,
+    itemsSolved: bestMatch,
+    itemsTotal: totalPlayerMoves,
+    hintsUsed: 0,
+  }
+}
+
+function verifyCodenamesCodeword(
+  puzzleData: Record<string, unknown>,
+  submission: Record<string, unknown>
+): VerifiedMetrics | { error: string } {
+  const solution = puzzleData.solution as { correctWords: string[] }
+  const selectedWords = submission.selectedWords as string[]
+  if (!Array.isArray(selectedWords)) return { error: 'Missing selectedWords array' }
+  if (!solution?.correctWords) return { error: 'Missing solution' }
+
+  const correctSet = new Set(solution.correctWords.map((w) => w.toLowerCase()))
+  const total = correctSet.size
+  let correct = 0
+  let wrong = 0
+
+  for (const w of selectedWords) {
+    if (correctSet.has(w.toLowerCase())) {
+      correct++
+    } else {
+      wrong++
+    }
+  }
+
+  const baseScore = 1000
+  const wrongPenalty = 150
+  const rawPoints = Math.max(0, Math.round((correct / Math.max(total, 1)) * baseScore) - wrong * wrongPenalty)
+
+  return {
+    rawPoints,
+    itemsSolved: correct,
+    itemsTotal: total,
+    hintsUsed: wrong,
+  }
+}
+
 function verifySubmission(
   gameType: DailyChallengeGameType,
   puzzleData: Record<string, unknown>,
@@ -193,12 +327,22 @@ function verifySubmission(
       return verifyWordHunt(puzzleData, submission)
     case 'crossword':
       return verifyCrossword(puzzleData, submission)
+    case 'mini_crossword':
+      return verifyCrossword(puzzleData, submission)
     case 'word_search':
       return verifyWordSearch(puzzleData, submission)
     case 'word_scramble':
       return verifyWordScramble(puzzleData, submission)
     case 'trivia':
       return verifyTrivia(puzzleData, submission)
+    case 'whot_puzzle':
+      return verifyWhotPuzzle(puzzleData, submission)
+    case 'word_grouping':
+      return verifyWordGrouping(puzzleData, submission)
+    case 'chess_mate':
+      return verifyChessMate(puzzleData, submission)
+    case 'codenames_codeword':
+      return verifyCodenamesCodeword(puzzleData, submission)
   }
 }
 
@@ -286,7 +430,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ gam
   // Word Hunt is a points game with no natural "complete" — rank/record it by raw points, not the
   // completion-based normalized score (which is tiny when there are hundreds of possible words).
   // normalized_score is still stored (its column is capped 0–1000); raw_points/best_score are not.
-  const isPointsGame = gameType === 'word_hunt' || gameType === 'trivia'
+  const isPointsGame = DAILY_GAME_PRIMARY_METRIC[gameType] === 'score'
   const boardScore = isPointsGame ? metrics.rawPoints : normalizedScore
 
   // Insert score (PK enforces one attempt)

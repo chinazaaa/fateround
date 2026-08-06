@@ -6,13 +6,37 @@ import { useCallback, useEffect, useState } from 'react'
 // Types
 // ---------------------------------------------------------------------------
 
-type GameTypeId = 'crossword' | 'word_search' | 'word_scramble' | 'trivia'
+type GameTypeId =
+  | 'crossword'
+  | 'mini_crossword'
+  | 'word_search'
+  | 'word_scramble'
+  | 'trivia'
+  | 'word_grouping'
+  | 'chess_mate'
+  | 'codenames_codeword'
 
 const GAME_TYPES: { id: GameTypeId; label: string; hint: string }[] = [
   { id: 'crossword', label: 'Crossword', hint: 'answer,clue — one per line' },
+  { id: 'mini_crossword', label: 'Mini Crossword', hint: 'answer,clue — one per line' },
   { id: 'word_search', label: 'Word Search', hint: 'word — one per line' },
   { id: 'word_scramble', label: 'Word Scramble', hint: 'word,clue — one per line' },
   { id: 'trivia', label: 'Trivia', hint: 'question | optionA | optionB | optionC | optionD | correct index (0-3)' },
+  {
+    id: 'word_grouping',
+    label: 'Word Grouping',
+    hint: 'JSON: {"groups":[{"category":"...","words":["a","b","c","d"],"difficulty":1}, ...]}',
+  },
+  {
+    id: 'chess_mate',
+    label: 'Chess Mate',
+    hint: 'JSON: {"fen":"...","mateIn":2,"toMove":"white","lines":[["Qh7+","Kf8","Qf7#"]]}',
+  },
+  {
+    id: 'codenames_codeword',
+    label: 'Codeword',
+    hint: 'JSON: {"grid":["WORD",...25],"clue":"OCEAN","clueNumber":3,"correctWords":["A","B","C"]}',
+  },
 ]
 
 type ContentRow = {
@@ -38,7 +62,12 @@ function addDays(iso: string, n: number): string {
   return toIso(d)
 }
 
+const JSON_GAME_TYPES: GameTypeId[] = ['word_grouping', 'chess_mate', 'codenames_codeword']
+
 function contentToText(gameType: GameTypeId, content: unknown): string {
+  if (JSON_GAME_TYPES.includes(gameType)) {
+    return JSON.stringify(content, null, 2)
+  }
   if (!Array.isArray(content)) return ''
   if (gameType === 'word_search') {
     return (content as string[]).join('\n')
@@ -57,6 +86,13 @@ function contentToText(gameType: GameTypeId, content: unknown): string {
 }
 
 function textToContent(gameType: GameTypeId, text: string): unknown {
+  if (JSON_GAME_TYPES.includes(gameType)) {
+    try {
+      return JSON.parse(text)
+    } catch {
+      return null
+    }
+  }
   const lines = text
     .split('\n')
     .map((l) => l.trim())
