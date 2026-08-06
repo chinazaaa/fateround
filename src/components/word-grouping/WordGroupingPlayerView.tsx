@@ -28,6 +28,7 @@ import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { gameTypeConfig } from '@/lib/game-types'
 import {
   WORD_GROUPING_MAX_MISTAKES,
+  WORD_GROUPING_MISTAKE_PENALTY,
   WORD_GROUPING_TOTAL_GROUPS,
   tallyWordGroupingScores,
   wordGroupingFinishSeconds,
@@ -504,26 +505,16 @@ export function WordGroupingPlayerView({ gameCode }: { gameCode: string }) {
     // Single winner only: I must be the top row outright, in a room with someone to beat,
     // and have actually scored — a 0-point finish is not a community leaderboard result.
     const iWon = !!myRow && leaderboardRows.length > 1 && leader != null && myRow === leader && leader.points > 0
+    // Order matches the host finished screen and the other puzzle games (crossword,
+    // word-search, word-scramble): standings first, answers below. Previously the answer
+    // tiles rendered above Final Standings, so player and host disagreed on layout.
     return (
       <div className="mx-auto max-w-lg space-y-4 px-4 py-6">
         <ShareResultsCaptureHeader game={game} />
         <h2 className="text-center text-xl font-bold mb-4">Game Over</h2>
 
-        {revealedGroups
-          .sort((a, b) => a.difficulty - b.difficulty)
-          .map((group) => (
-            <div
-              key={group.category || group.groupIndex}
-              className="rounded-xl px-4 py-3 text-center mb-2"
-              style={{ background: GROUP_COLORS[group.difficulty] ?? GROUP_COLORS[1], color: '#1a1a1a' }}
-            >
-              <div className="font-bold uppercase tracking-wider text-sm">{group.category}</div>
-              <div className="mt-1 font-medium text-sm">{group.words.join(', ')}</div>
-            </div>
-          ))}
-
         {myRow && (
-          <div className="mt-4 text-center">
+          <div className="text-center">
             <p className="text-lg font-bold">{myRow.points} points</p>
             <p className="text-muted text-sm">
               {myRow.groups}/4 groups · {myRow.mistakes} mistake{myRow.mistakes !== 1 ? 's' : ''}
@@ -556,6 +547,23 @@ export function WordGroupingPlayerView({ gameCode }: { gameCode: string }) {
           />
         )}
 
+        {revealedGroups.length > 0 && (
+          <div className="space-y-2">
+            {revealedGroups
+              .sort((a, b) => a.difficulty - b.difficulty)
+              .map((group) => (
+                <div
+                  key={group.category || group.groupIndex}
+                  className="rounded-xl px-4 py-3 text-center"
+                  style={{ background: GROUP_COLORS[group.difficulty] ?? GROUP_COLORS[1], color: '#1a1a1a' }}
+                >
+                  <div className="font-bold uppercase tracking-wider text-sm">{group.category}</div>
+                  <div className="mt-1 font-medium text-sm">{group.words.join(', ')}</div>
+                </div>
+              ))}
+          </div>
+        )}
+
         <div className="flex gap-2">
           {myPlayerId && <LeaveGameButton gameCode={gameCode} playerId={myPlayerId} onLeft={handlePlayerLeft} />}
         </div>
@@ -584,10 +592,12 @@ export function WordGroupingPlayerView({ gameCode }: { gameCode: string }) {
         .wg-one-away { animation: wg-one-away 1.5s ease-in-out forwards; }
       `}</style>
 
-      {/* Timer + mistakes bar */}
-      <div className="sticky top-[3.75rem] z-30 flex items-center justify-between rounded-xl border border-[var(--border-strong)] bg-[var(--card-strong)] px-4 py-2.5">
+      {/* Mistakes · score · timer bar. Three-column grid so the score sits between the
+          mistake dots and the countdown, mirroring the way the finished screen presents
+          them and giving players a live view of what their guesses are worth. */}
+      <div className="sticky top-[3.75rem] z-30 grid grid-cols-3 items-center rounded-xl border border-[var(--border-strong)] bg-[var(--card-strong)] px-3 py-2.5">
         <div className="flex items-center gap-2">
-          <span className="font-bold text-sm">Mistakes</span>
+          <span className="hidden sm:inline font-bold text-xs uppercase tracking-wider text-muted">Mistakes</span>
           <div className="flex gap-1">
             {Array.from({ length: WORD_GROUPING_MAX_MISTAKES }).map((_, i) => (
               <span
@@ -602,17 +612,20 @@ export function WordGroupingPlayerView({ gameCode }: { gameCode: string }) {
             ))}
           </div>
         </div>
-        {timeRemaining !== null && (
-          <div className={`font-bold tabular-nums text-sm ${timeRemaining <= 10 ? 'text-[var(--marry)]' : ''}`}>
-            {formatMinutesSeconds(timeRemaining)}
-          </div>
-        )}
+        <div className="text-center font-bold tabular-nums text-sm">{myRow?.points ?? 0} pts</div>
+        <div
+          className={`text-right font-bold tabular-nums text-sm ${timeRemaining !== null && timeRemaining <= 10 ? 'text-[var(--marry)]' : ''}`}
+        >
+          {timeRemaining !== null ? formatMinutesSeconds(timeRemaining) : '—'}
+        </div>
       </div>
 
       {revealingAnswers ? (
         <p className="text-center text-sm font-bold">That&rsquo;s the puzzle — here are all four groups.</p>
       ) : (
-        <p className="text-center text-xs text-faint">Find four groups of four words that share something in common.</p>
+        <p className="text-center text-xs text-faint">
+          Find four groups of four. Wrong guess costs {Math.abs(WORD_GROUPING_MISTAKE_PENALTY)} pts.
+        </p>
       )}
 
       {/* One away toast */}
