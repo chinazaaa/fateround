@@ -28,6 +28,20 @@ import { GameLandingTrophies } from '@/components/marketing/GameLandingTrophies'
 import { gameIcon } from '@/lib/game-glyphs'
 import { featureIcon } from '@/lib/feature-icons'
 import { Glyph } from '@/components/icons/Glyph'
+import { DAILY_GAME_LABELS, DAILY_GAME_TYPE_TO_SLUG } from '@/lib/daily-challenge'
+
+const GAME_TO_DAILY: Partial<Record<string, string[]>> = {
+  sudoku: ['sudoku'],
+  word_hunt: ['word_hunt'],
+  crossword: ['crossword', 'mini_crossword'],
+  word_search: ['word_search'],
+  word_scramble: ['word_scramble'],
+  trivia: ['trivia'],
+  whot: ['whot_puzzle'],
+  chess: ['chess_mate'],
+  codewords: ['codenames_codeword'],
+  ludo: ['ludo_puzzle'],
+}
 
 export const revalidate = 3600
 
@@ -86,6 +100,11 @@ export default async function GameLandingRoute({ params }: Props) {
   const bodyParagraph = getGameBodyParagraph(content)
   const faqs = getGameFaqs(content)
   const customContentHints = getGameLandingCustomContentHints(content.gameType)
+  const dailyTypes = GAME_TO_DAILY[content.gameType]
+  const dailyLinks = dailyTypes?.map((dt) => ({
+    slug: DAILY_GAME_TYPE_TO_SLUG[dt as keyof typeof DAILY_GAME_TYPE_TO_SLUG],
+    label: DAILY_GAME_LABELS[dt as keyof typeof DAILY_GAME_LABELS],
+  }))
 
   return (
     <>
@@ -183,6 +202,33 @@ export default async function GameLandingRoute({ params }: Props) {
                   </a>
                 </p>
               </div>
+
+              {dailyLinks && dailyLinks.length > 0 && (
+                <div
+                  className="mx-auto mt-6 max-w-[520px] rounded-[var(--radius-lg)] px-5 py-4 text-center"
+                  style={{
+                    background: 'var(--surface)',
+                    border: '1px solid color-mix(in srgb, var(--accent) 30%, var(--border))',
+                  }}
+                >
+                  <p className="text-[14px] leading-[1.55]" style={{ color: 'var(--text-muted)' }}>
+                    Fancy a solo brain-teaser? Try the daily{' '}
+                    {dailyLinks.map((dl, i) => (
+                      <span key={dl.slug}>
+                        {i > 0 && (i === dailyLinks.length - 1 ? ' or ' : ', ')}
+                        <Link
+                          href={`/daily-challenges/${dl.slug}`}
+                          className="font-semibold no-underline"
+                          style={{ color: 'var(--accent)' }}
+                        >
+                          {dl.label}
+                        </Link>
+                      </span>
+                    ))}
+                    {!dailyLinks[dailyLinks.length - 1].label.toLowerCase().includes('puzzle') && ' puzzle'}&nbsp;→
+                  </p>
+                </div>
+              )}
 
               <div className="mx-auto max-w-[680px] space-y-10 pt-8">
                 {/* SEO body */}

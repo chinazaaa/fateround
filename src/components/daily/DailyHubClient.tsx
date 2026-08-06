@@ -26,6 +26,7 @@ const DAILY_ICON_FALLBACK: Partial<Record<DailyChallengeGameType, GameType>> = {
   chess_mate: 'chess',
   codenames_codeword: 'codewords',
   mini_crossword: 'crossword',
+  ludo_puzzle: 'ludo',
 }
 
 interface GameStatus {

@@ -130,6 +130,12 @@ export async function generateDailyPuzzle(gameType: DailyChallengeGameType, seed
       const { generateCodenamesPuzzle } = await import('@/lib/daily-codenames')
       return generateCodenamesPuzzle(seed, DAILY_GAME_TIMER.codenames_codeword)
     }
+
+    case 'ludo_puzzle': {
+      const { generateLudoPuzzle } = await import('@/lib/daily-ludo-puzzle')
+      const result = generateLudoPuzzle(seed, DAILY_GAME_TIMER.ludo_puzzle)
+      return { puzzleData: result.puzzleData as unknown as Record<string, unknown>, config: result.config }
+    }
   }
 }
 
@@ -321,6 +327,13 @@ export async function generateDailyPuzzleFromContent(
     case 'codenames_codeword': {
       const { generateCodenamesFromContent } = await import('@/lib/daily-codenames')
       return generateCodenamesFromContent(adminContent, seed, DAILY_GAME_TIMER.codenames_codeword)
+    }
+
+    case 'ludo_puzzle': {
+      const { generateLudoFromContent } = await import('@/lib/daily-ludo-puzzle')
+      const result = generateLudoFromContent(adminContent, seed, DAILY_GAME_TIMER.ludo_puzzle)
+      if (!result) return null
+      return { puzzleData: result.puzzleData as unknown as Record<string, unknown>, config: result.config }
     }
 
     default:

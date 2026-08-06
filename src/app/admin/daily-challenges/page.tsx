@@ -17,6 +17,7 @@ type GameTypeId =
   | 'word_grouping'
   | 'chess_mate'
   | 'codenames_codeword'
+  | 'ludo_puzzle'
 
 const GAME_TYPES: { id: GameTypeId; label: string; hint: string }[] = [
   { id: 'crossword', label: 'Crossword', hint: 'ANSWER,clue — one per line. Min 4 entries, max 13 letters per word.' },
@@ -47,6 +48,11 @@ const GAME_TYPES: { id: GameTypeId; label: string; hint: string }[] = [
     label: 'Codeword',
     hint: 'JSON. Required: grid (exactly 25 words), clue, clueNumber, correctWords (must be in grid, count = clueNumber).',
   },
+  {
+    id: 'ludo_puzzle',
+    label: 'Ludo Puzzle',
+    hint: 'JSON. Required: startingPieces (4 tokens with id/zone/pos), diceSequence (1-6[]), optimalRolls. Optional: obstacles [{trackPos}].',
+  },
 ]
 
 type ContentRow = {
@@ -72,7 +78,7 @@ function addDays(iso: string, n: number): string {
   return toIso(d)
 }
 
-const JSON_GAME_TYPES: GameTypeId[] = ['word_grouping', 'chess_mate', 'codenames_codeword']
+const JSON_GAME_TYPES: GameTypeId[] = ['word_grouping', 'chess_mate', 'codenames_codeword', 'ludo_puzzle']
 
 function contentToText(gameType: GameTypeId, content: unknown): string {
   if (JSON_GAME_TYPES.includes(gameType)) {
@@ -266,6 +272,43 @@ function validateContent(gameType: GameTypeId, content: unknown): string | null 
         const gridSet = new Set(obj.grid.map((w) => w.toUpperCase()))
         const missing = obj.correctWords.filter((w) => !gridSet.has(w.toUpperCase()))
         if (missing.length > 0) return `${prefix}correctWords not in grid: ${missing.join(', ')}`
+      }
+      return null
+    }
+    case 'ludo_puzzle': {
+      const items = Array.isArray(content) ? content : [content]
+      if (items.length === 0) return 'Add at least one puzzle'
+      for (let p = 0; p < items.length; p++) {
+        const prefix = items.length > 1 ? `Puzzle ${p + 1}: ` : ''
+        const item = items[p]
+        if (typeof item !== 'object' || item === null) return `${prefix}Invalid JSON`
+        const obj = item as {
+          startingPieces?: Array<{ id?: number; zone?: string; pos?: number }>
+          diceSequence?: number[]
+          optimalRolls?: number
+          obstacles?: Array<{ trackPos?: number }>
+        }
+        if (!Array.isArray(obj.startingPieces) || obj.startingPieces.length !== 4)
+          return `${prefix}"startingPieces" must have exactly 4 tokens (got ${obj.startingPieces?.length ?? 0})`
+        for (let i = 0; i < obj.startingPieces.length; i++) {
+          const t = obj.startingPieces[i]
+          if (typeof t.id !== 'number') return `${prefix}Token ${i + 1} missing "id"`
+          if (!['base', 'track', 'home', 'finished'].includes(t.zone ?? ''))
+            return `${prefix}Token ${i + 1} "zone" must be base/track/home/finished`
+          if (typeof t.pos !== 'number') return `${prefix}Token ${i + 1} missing "pos"`
+        }
+        if (!Array.isArray(obj.diceSequence) || obj.diceSequence.length === 0)
+          return `${prefix}Missing "diceSequence" (non-empty number array)`
+        if (obj.diceSequence.some((d) => typeof d !== 'number' || d < 1 || d > 6))
+          return `${prefix}"diceSequence" values must be 1-6`
+        if (typeof obj.optimalRolls !== 'number' || obj.optimalRolls < 1)
+          return `${prefix}"optimalRolls" must be a positive number`
+        if (obj.obstacles !== undefined) {
+          if (!Array.isArray(obj.obstacles)) return `${prefix}"obstacles" must be an array`
+          for (let i = 0; i < obj.obstacles.length; i++) {
+            if (typeof obj.obstacles[i].trackPos !== 'number') return `${prefix}Obstacle ${i + 1} missing "trackPos"`
+          }
+        }
       }
       return null
     }
@@ -495,7 +538,9 @@ export default function AdminDailyPage() {
                         ? '{\n  "fen": "r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 4 4",\n  "mateIn": 2,\n  "toMove": "white",\n  "lines": [["Qxf7#"]]\n}'
                         : gameType === 'codenames_codeword'
                           ? '{\n  "grid": ["WORD1", "WORD2", "...25 words"],\n  "clue": "OCEAN",\n  "clueNumber": 3,\n  "correctWords": ["WAVE", "TIDE", "SURF"]\n}'
-                          : 'PLANET,A world orbiting a star\nRIVER,A large natural stream\nCASTLE,A fortified royal home'
+                          : gameType === 'ludo_puzzle'
+                            ? '{\n  "startingPieces": [\n    {"id": 0, "zone": "track", "pos": 45},\n    {"id": 1, "zone": "track", "pos": 47},\n    {"id": 2, "zone": "home", "pos": 1},\n    {"id": 3, "zone": "base", "pos": 0}\n  ],\n  "diceSequence": [6, 5, 4, 3, 2, 6, 5, 4],\n  "obstacles": [],\n  "optimalRolls": 6\n}'
+                            : 'PLANET,A world orbiting a star\nRIVER,A large natural stream\nCASTLE,A fortified royal home'
             }
           />
           {createText &&

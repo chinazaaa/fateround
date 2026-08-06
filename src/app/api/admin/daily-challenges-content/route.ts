@@ -16,6 +16,7 @@ const VALID_GAME_TYPES = [
   'word_grouping',
   'chess_mate',
   'codenames_codeword',
+  'ludo_puzzle',
 ] as const
 
 export async function GET(req: NextRequest) {

@@ -317,6 +317,83 @@ function verifyCodenamesCodeword(
   }
 }
 
+function verifyLudoPuzzle(
+  puzzleData: Record<string, unknown>,
+  submission: Record<string, unknown>
+): VerifiedMetrics | { error: string } {
+  const moves = submission.moves as Array<number | null>
+  if (!Array.isArray(moves)) return { error: 'Missing moves array' }
+
+  // Dynamic import would be async — inline the scoring logic instead.
+  // The server holds the full puzzleData including solution.optimalRolls.
+  const solution = puzzleData.solution as { optimalRolls: number } | undefined
+  const diceSequence = puzzleData.diceSequence as number[]
+  const startingPieces = puzzleData.startingPieces as Array<{
+    id: number
+    zone: 'base' | 'track' | 'home' | 'finished'
+    pos: number
+  }>
+  const obstacles = (puzzleData.obstacles as Array<{ trackPos: number }>) ?? []
+
+  if (!Array.isArray(diceSequence) || !Array.isArray(startingPieces)) return { error: 'Invalid puzzle data' }
+
+  const FINISH_STEPS = 56
+  const HOME_ENTRY_STEPS = 51
+  const stepsOf = (p: { zone: string; pos: number }) => {
+    if (p.zone === 'base') return -1
+    if (p.zone === 'track') return p.pos
+    if (p.zone === 'home') return HOME_ENTRY_STEPS + p.pos
+    return FINISH_STEPS
+  }
+
+  const steps = [...startingPieces].sort((a, b) => a.id - b.id).map(stepsOf)
+  let obs = obstacles.map((o) => o.trackPos)
+  let captures = 0
+  let rollsUsed = 0
+
+  for (let i = 0; i < diceSequence.length && !steps.every((s) => s === FINISH_STEPS); i++) {
+    const roll = diceSequence[i]
+    const choice = i < moves.length ? moves[i] : null
+    rollsUsed = i + 1
+
+    if (typeof choice === 'number' && choice >= 0 && choice < 4) {
+      const cur = steps[choice]
+      let next: number | null = null
+      if (cur === -1) {
+        if (roll === 6) next = 0
+      } else if (cur < FINISH_STEPS) {
+        const c = cur + roll
+        if (c <= FINISH_STEPS) next = c
+      }
+      if (next !== null) {
+        steps[choice] = next
+        if (next < HOME_ENTRY_STEPS && obs.includes(next)) {
+          obs = obs.filter((o) => o !== next)
+          captures++
+        }
+      }
+    }
+  }
+
+  const tokensHome = steps.filter((s) => s === FINISH_STEPS).length
+  const solved = tokensHome === 4
+  const optimalRolls = solution?.optimalRolls ?? diceSequence.length
+
+  let rawPoints: number
+  if (solved) {
+    rawPoints = Math.max(100, 1000 - (rollsUsed - optimalRolls) * 30 + captures * 50 + tokensHome * 100)
+  } else {
+    rawPoints = Math.max(0, captures * 50 + tokensHome * 100)
+  }
+
+  return {
+    rawPoints,
+    itemsSolved: tokensHome,
+    itemsTotal: 4,
+    hintsUsed: 0,
+  }
+}
+
 function verifySubmission(
   gameType: DailyChallengeGameType,
   puzzleData: Record<string, unknown>,
@@ -345,6 +422,8 @@ function verifySubmission(
       return verifyChessMate(puzzleData, submission)
     case 'codenames_codeword':
       return verifyCodenamesCodeword(puzzleData, submission)
+    case 'ludo_puzzle':
+      return verifyLudoPuzzle(puzzleData, submission)
   }
 }
 

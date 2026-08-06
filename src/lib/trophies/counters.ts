@@ -2597,7 +2597,7 @@ export const COUNTERS: readonly CounterDef[] = [
   {
     key: 'mahjong_won_fate_round',
     label: 'Mahjong — Simple win',
-    description: 'Hands won under Simple (Fate Round) rules.',
+    description: 'Hands won under Simple (FateRound) rules.',
     scope: 'per-game',
     availability: 'partial',
     phrase: 'won at least {n} Simple hand{s}',

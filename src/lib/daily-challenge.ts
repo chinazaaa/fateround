@@ -18,6 +18,7 @@ export const DAILY_CHALLENGE_GAME_TYPES = [
   'word_grouping',
   'chess_mate',
   'codenames_codeword',
+  'ludo_puzzle',
 ] as const
 
 export type DailyChallengeGameType = (typeof DAILY_CHALLENGE_GAME_TYPES)[number]
@@ -38,6 +39,7 @@ export const DAILY_GAME_SLUG_TO_TYPE: Record<string, DailyChallengeGameType> = {
   'word-grouping': 'word_grouping',
   'chess-mate': 'chess_mate',
   'codenames-codeword': 'codenames_codeword',
+  'ludo-puzzle': 'ludo_puzzle',
 }
 
 export const DAILY_GAME_TYPE_TO_SLUG: Record<DailyChallengeGameType, string> = {
@@ -52,6 +54,7 @@ export const DAILY_GAME_TYPE_TO_SLUG: Record<DailyChallengeGameType, string> = {
   word_grouping: 'word-grouping',
   chess_mate: 'chess-mate',
   codenames_codeword: 'codenames-codeword',
+  ludo_puzzle: 'ludo-puzzle',
 }
 
 export const DAILY_GAME_LABELS: Record<DailyChallengeGameType, string> = {
@@ -66,6 +69,7 @@ export const DAILY_GAME_LABELS: Record<DailyChallengeGameType, string> = {
   word_grouping: 'Word Grouping',
   chess_mate: 'Chess Mate',
   codenames_codeword: 'Codeword',
+  ludo_puzzle: 'Ludo Puzzle',
 }
 
 export const DAILY_GAME_EMOJIS: Record<DailyChallengeGameType, string> = {
@@ -80,6 +84,7 @@ export const DAILY_GAME_EMOJIS: Record<DailyChallengeGameType, string> = {
   word_grouping: '🔗',
   chess_mate: '♟️',
   codenames_codeword: '🕵️',
+  ludo_puzzle: '🎲',
 }
 
 // Default timer per game (seconds). Time-first games get a countdown;
@@ -96,6 +101,7 @@ export const DAILY_GAME_TIMER: Record<DailyChallengeGameType, number> = {
   word_grouping: 240,
   chess_mate: 180,
   codenames_codeword: 180,
+  ludo_puzzle: 300,
 }
 
 // Whether the primary metric is time (lower is better) or score (higher is better).
@@ -111,6 +117,7 @@ export const DAILY_GAME_PRIMARY_METRIC: Record<DailyChallengeGameType, 'time' | 
   word_grouping: 'score',
   chess_mate: 'time',
   codenames_codeword: 'score',
+  ludo_puzzle: 'score',
 }
 
 // ---------------------------------------------------------------------------
@@ -232,6 +239,10 @@ export function stripSolution(
   }
 
   if (gameType === 'codenames_codeword') {
+    delete safe.solution
+  }
+
+  if (gameType === 'ludo_puzzle') {
     delete safe.solution
   }
 

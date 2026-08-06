@@ -14,6 +14,7 @@ import { DailyWhotPuzzlePlay } from './DailyWhotPuzzlePlay'
 import { DailyWordGroupingPlay } from './DailyWordGroupingPlay'
 import { DailyChessMatePlay } from './DailyChessMatePlay'
 import { DailyCodenamesCodewordPlay } from './DailyCodenamesCodewordPlay'
+import { DailyLudoPuzzlePlay } from './DailyLudoPuzzlePlay'
 import {
   DAILY_GAME_LABELS,
   DAILY_GAME_EMOJIS,
@@ -119,6 +120,8 @@ function PlaySurface({
       return <DailyChessMatePlay challengeId={challengeId} puzzle={puzzle} timer={timer} onSubmit={onSubmit} />
     case 'codenames_codeword':
       return <DailyCodenamesCodewordPlay challengeId={challengeId} puzzle={puzzle} timer={timer} onSubmit={onSubmit} />
+    case 'ludo_puzzle':
+      return <DailyLudoPuzzlePlay challengeId={challengeId} puzzle={puzzle} timer={timer} onSubmit={onSubmit} />
   }
 }
 

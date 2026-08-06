@@ -61,6 +61,11 @@ const GAME_SEO: Record<string, { title: string; description: string }> = {
     description:
       'A free daily Whot puzzle — clear your hand by matching shape or number, play Whot (20) as your wild. Fewer moves score higher; see where you rank today.',
   },
+  'ludo-puzzle': {
+    title: 'Daily Ludo Puzzle — Free Board Game Challenge Every Day',
+    description:
+      "A free daily Ludo puzzle — the same board and dice rolls for everyone. Plan your moves, get all four tokens home in as few rolls as you can, and climb today's leaderboard.",
+  },
 }
 
 const GAME_KEYWORDS: Record<string, string[]> = {
@@ -94,6 +99,7 @@ const GAME_KEYWORDS: Record<string, string[]> = {
     'codenames style game',
   ],
   'whot-puzzle': ['daily whot puzzle', 'whot card game', 'whot puzzle', 'daily card puzzle', 'play whot online'],
+  'ludo-puzzle': ['daily ludo puzzle', 'ludo puzzle', 'ludo board game', 'free ludo online', 'ludo king alternative'],
 }
 
 export async function generateMetadata({ params }: { params: Promise<{ gameType: string }> }): Promise<Metadata> {

@@ -127,10 +127,10 @@ export default function TermsPage() {
       <Section title="Trademarks">
         <p>
           Some games on {SITE_NAME} are digital versions inspired by well-known party, board, or card games — for
-          example Yahtzee®, Monopoly®, Scrabble®, UNO®, and Whot®. {SITE_NAME} is an independent platform and is not
-          affiliated with, endorsed by, or sponsored by the owners of these or any other game. All trademarks, logos,
-          and brand names are the property of their respective owners and are used here only to describe the game being
-          played.
+          example Yahtzee®, Monopoly®, Scrabble®, UNO®, Whot®, Codenames®, and Quiplash®. {SITE_NAME} is an independent
+          platform and is not affiliated with, endorsed by, or sponsored by the owners of these or any other game. All
+          trademarks, logos, and brand names are the property of their respective owners and are used here only to
+          describe the game being played.
         </p>
       </Section>
 

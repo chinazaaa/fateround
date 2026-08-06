@@ -596,7 +596,7 @@ const GAMES = {
   accent:'#06b6d4', soft:'rgba(6,182,212,.14)', eyebrow:'Daily Challenge',
   title:'Daily Codewords', titleSize:68,
   url:'fateround.com/daily-challenges/codenames-codeword',
-  desc:'A free daily Codewords puzzle — the clue hints at words in the grid. Same puzzle for everyone, one attempt.',
+  desc:'A free daily Codewords puzzle — one clue, one submission. Pick the words you think match and lock it in.',
   pills:['25-word grid','New every day','Daily leaderboard'],
   panel:`
     <div class="rhead" style="background:rgba(6,182,212,.10)">
@@ -637,8 +637,59 @@ const GAMES = {
         <span style="color:#fcd34d;font-size:20px;font-weight:800">4 moves</span>
       </div>
     </div>`
+},
+'daily-ludo-puzzle': {
+  accent:'#22c55e', soft:'rgba(34,197,94,.14)', eyebrow:'Daily Challenge',
+  title:'Daily Ludo Puzzle', titleSize:58,
+  url:'fateround.com/daily-challenges/ludo-puzzle',
+  desc:'A free daily Ludo puzzle — same board, same dice. Plan your moves, get all four tokens home.',
+  pills:['Board puzzle','Fixed dice','Daily leaderboard'],
+  panel:`
+    <div class="rhead" style="background:rgba(34,197,94,.10)">
+      <span class="tag" style="background:rgba(34,197,94,.18);color:#86efac">TODAY'S PUZZLE</span>
+      <span class="mid">Get 4 tokens home</span>
+      <span class="tag" style="background:rgba(34,197,94,.18);color:#86efac">🎲 Roll: 6</span>
+    </div>
+    <div class="rbody">
+      ${ludoBoard()}
+      <div style="margin-top:16px;display:flex;gap:10px">
+        <div style="flex:1;background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.4);border-radius:14px;padding:12px 16px;text-align:center">
+          <div style="font-size:12px;color:#9aa1ad;font-weight:600;letter-spacing:1px">TOKENS HOME</div>
+          <div style="font-size:22px;font-weight:800;color:#86efac;margin-top:4px">1 / 4</div>
+        </div>
+        <div style="flex:1;background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.4);border-radius:14px;padding:12px 16px;text-align:center">
+          <div style="font-size:12px;color:#9aa1ad;font-weight:600;letter-spacing:1px">ROLLS USED</div>
+          <div style="font-size:22px;font-weight:800;color:#86efac;margin-top:4px">3 / 8</div>
+        </div>
+      </div>
+    </div>`
 }
 };
+
+function ludoBoard(){
+  const size = 7;
+  const cellPx = 48;
+  let cells = '';
+  const track = [[0,3],[1,3],[2,3],[3,3],[3,2],[3,1],[3,0],[4,0],[5,0],[5,1],[5,2],[5,3],[6,3]];
+  const home = [[4,3],[3,3]];
+  for(let r=0;r<size;r++){
+    for(let c=0;c<size;c++){
+      const isCenter = r===3 && c===3;
+      const isTrack = (r===0||r===6||c===0||c===6||r===3||c===3) && !(r<2&&c<2) && !(r<2&&c>4) && !(r>4&&c<2) && !(r>4&&c>4);
+      const isBase = (r<2&&c<2);
+      const bg = isCenter ? 'rgba(34,197,94,.3)' : isTrack ? 'rgba(255,255,255,.06)' : isBase ? 'rgba(34,197,94,.08)' : 'transparent';
+      const border = isTrack || isCenter ? '1px solid rgba(255,255,255,.08)' : 'none';
+      let content = '';
+      if(r===0&&c===3) content = '<div style="width:22px;height:22px;border-radius:50%;background:#22c55e;border:2px solid #fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#fff">1</div>';
+      if(r===3&&c===5) content = '<div style="width:22px;height:22px;border-radius:50%;background:#22c55e;border:2px solid #fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#fff">2</div>';
+      if(r===1&&c===1) content = '<div style="width:22px;height:22px;border-radius:50%;background:#22c55e;opacity:.5;border:2px solid rgba(255,255,255,.4);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#fff">3</div>';
+      if(r===5&&c===3) content = '<div style="width:18px;height:18px;border-radius:50%;background:#ef4444;opacity:.7;border:2px solid rgba(255,255,255,.3)"></div>';
+      if(isCenter) content = '<div style="font-size:16px;font-weight:800;color:#22c55e">🏠</div>';
+      cells += '<div style="width:'+cellPx+'px;height:'+cellPx+'px;background:'+bg+';border:'+border+';display:flex;align-items:center;justify-content:center">'+content+'</div>';
+    }
+  }
+  return '<div style="display:grid;grid-template-columns:repeat('+size+','+cellPx+'px);border-radius:10px;overflow:hidden;border:2px solid rgba(34,197,94,.3);box-shadow:0 12px 30px rgba(0,0,0,.3)">'+cells+'</div>';
+}
 
 /* ---------- mockup helpers ---------- */
 function unoCard(label,color,small,tiny){

@@ -22,6 +22,7 @@ const DAILY_ICON_FALLBACK: Partial<Record<DailyChallengeGameType, GameType>> = {
   chess_mate: 'chess',
   codenames_codeword: 'codewords',
   mini_crossword: 'crossword',
+  ludo_puzzle: 'ludo',
 }
 import { authHeaders } from '@/lib/identity'
 import { getDailyStartedAt } from '@/lib/daily-progress'
@@ -46,6 +47,7 @@ const DAILY_GAME_ACCENTS: Record<DailyChallengeGameType, string> = {
   word_grouping: '#f97316',
   chess_mate: '#6366f1',
   codenames_codeword: '#84cc16',
+  ludo_puzzle: '#22c55e',
 }
 
 export function DailyChallengeSection() {
