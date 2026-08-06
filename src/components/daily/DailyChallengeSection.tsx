@@ -12,7 +12,18 @@ import {
   isDailyChallengeLive,
   type DailyChallengeGameType,
 } from '@/lib/daily-challenge'
+import { gameIcon } from '@/lib/game-glyphs'
+import { Glyph } from '@/components/icons/Glyph'
+import type { GameType } from '@/types'
 import { SectionHeading } from '@/components/SectionHeading'
+
+const DAILY_ICON_FALLBACK: Partial<Record<DailyChallengeGameType, GameType>> = {
+  whot_puzzle: 'whot',
+  word_grouping: 'tic_tac_toe',
+  chess_mate: 'chess',
+  codenames_codeword: 'codewords',
+  mini_crossword: 'crossword',
+}
 import { authHeaders } from '@/lib/identity'
 import { getDailyStartedAt } from '@/lib/daily-progress'
 
