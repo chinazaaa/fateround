@@ -51,7 +51,7 @@ export type AwardResult = {
   earned: AwardedTrophy[]
   /** False when the pass was a no-op: already awarded, unknown game, or nothing to do. */
   applied: boolean
-  reason?: 'already_awarded' | 'game_not_found' | 'not_a_player' | 'error'
+  reason?: 'already_awarded' | 'game_not_found' | 'never_started' | 'not_a_player' | 'error'
 }
 
 const NOOP = (reason: AwardResult['reason']): AwardResult => ({ earned: [], applied: false, reason })
@@ -194,12 +194,18 @@ export async function awardForFinishedGame(
       .from('games')
       // timer_seconds / question_source are read for the per-game facts builders (Trivia uses
       // both). Cheap to carry here; a second round-trip per finish would not be.
-      .select('id, game_type, status, max_players, finished_at, timer_seconds, question_source, theme')
+      .select(
+        'id, game_type, status, max_players, finished_at, session_started_at, timer_seconds, question_source, theme'
+      )
       .eq('id', sessionId)
       .maybeSingle()
     if (!game || game.status !== 'finished') {
       await releaseClaim()
       return NOOP('game_not_found')
+    }
+    if (!game.session_started_at) {
+      await releaseClaim()
+      return NOOP('never_started')
     }
 
     const gameType = game.game_type as GameType
