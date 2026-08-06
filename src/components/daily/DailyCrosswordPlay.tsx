@@ -155,13 +155,32 @@ export function DailyCrosswordPlay({ challengeId, puzzle, timer: maxSeconds, onS
         setDirection((d) => (d === 'across' ? 'down' : 'across'))
         return
       }
-      setSelectedCell([row, col])
+
       const hasAcross =
         (col > 0 && !metadata.blocked[row][col - 1]) || (col < size - 1 && !metadata.blocked[row][col + 1])
       const hasDown =
         (row > 0 && !metadata.blocked[row - 1][col]) || (row < size - 1 && !metadata.blocked[row + 1][col])
       if (hasAcross && !hasDown) setDirection('across')
       else if (hasDown && !hasAcross) setDirection('down')
+
+      // If the tapped cell is already solved, advance to the next editable cell.
+      if (solvedCellsRef.current[row]?.[col]) {
+        const dir = directionRef.current
+        const dr = dir === 'down' ? 1 : 0
+        const dc = dir === 'across' ? 1 : 0
+        let r = row + dr
+        let c = col + dc
+        while (r >= 0 && r < size && c >= 0 && c < size && !metadata.blocked[r][c]) {
+          if (!solvedCellsRef.current[r]?.[c]) {
+            setSelectedCell([r, c])
+            return
+          }
+          r += dr
+          c += dc
+        }
+      }
+
+      setSelectedCell([row, col])
     },
     [submitted, metadata, size, setSelectedCell, setDirection]
   )
