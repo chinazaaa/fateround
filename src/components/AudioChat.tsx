@@ -72,6 +72,7 @@ export function AudioChat({ roomCode, playerName, auth, autoJoin = false }: Audi
   // never clears and our own Leave arrives at `onError` looking exactly like a
   // failed connect. Track the intent ourselves so Leave stays silent.
   const leavingRef = useRef(false)
+  const userDeclinedRef = useRef(false)
   // Keep auth in a ref so the presence poll doesn't restart when the parent
   // passes a fresh auth object on every render.
   const authRef = useRef(auth)
@@ -208,6 +209,7 @@ export function AudioChat({ roomCode, playerName, auth, autoJoin = false }: Audi
   // 3. Leave voice chat handler
   const leaveAudio = (manual = true) => {
     leavingRef.current = true
+    if (manual) userDeclinedRef.current = true
     setToken(null)
     setIsOpen(false)
     if (manual) {
@@ -287,7 +289,7 @@ export function AudioChat({ roomCode, playerName, auth, autoJoin = false }: Audi
   //    existing session to reconnect to. Runs after the auto-reconnect check
   //    (300ms) so a stored session takes priority over a fresh auto-join.
   useEffect(() => {
-    if (!autoJoin || token || isConnecting || activeTabId) return
+    if (!autoJoin || token || isConnecting || activeTabId || userDeclinedRef.current) return
     const resolvedCodeUpper = resolvedRoomCode.toUpperCase()
     const stored = localStorage.getItem(`fateround_voice_${resolvedCodeUpper}`)
     if (stored) return
