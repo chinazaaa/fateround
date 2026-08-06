@@ -3,6 +3,8 @@
 import { useState } from 'react'
 import { GameLobbyPlayerList } from '@/components/ui/GameLobbyPlayerList'
 import { gameTypeConfig, parseGameType } from '@/lib/game-types'
+import { gameIcon } from '@/lib/game-glyphs'
+import { Glyph } from '@/components/icons/Glyph'
 import { GameInfoChips } from '@/components/game-lobby/GameInfoChips'
 import { lobbyHasOpenPlayerSeat } from '@/lib/game-limits'
 import type { Game, Player } from '@/types'
@@ -55,7 +57,8 @@ export function GameLobbyWaitingPanel({
   onReadyError,
 }: Props) {
   const [readying, setReadying] = useState(false)
-  const gameCfg = gameType ? gameTypeConfig(parseGameType(gameType)) : null
+  const parsedGameType = gameType ? parseGameType(gameType) : null
+  const gameCfg = parsedGameType ? gameTypeConfig(parsedGameType) : null
   // A spectator can only ready up if a seat is actually open. When the lobby is full
   // (all seats taken by ready players), they stay a watcher — hide the ready button and
   // label them "watching" rather than "not ready". Needs the full `game` row for the cap;
@@ -110,9 +113,11 @@ export function GameLobbyWaitingPanel({
             {description ? <div className="text-muted text-sm leading-relaxed">{description}</div> : null}
           </>
         )}
-        {gameCfg && (
+        {gameCfg && parsedGameType && (
           <p className="flex items-center justify-center gap-1.5 pt-1 text-sm font-bold text-[var(--foreground)]">
-            <span className="leading-none">{gameCfg.headerEmoji}</span>
+            <span className="fr-glyph text-[var(--primary)]">
+              <Glyph icon={gameIcon(parsedGameType)} size={16} />
+            </span>
             <span>{gameCfg.label}</span>
           </p>
         )}

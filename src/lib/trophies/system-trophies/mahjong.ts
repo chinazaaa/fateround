@@ -299,7 +299,7 @@ export const MAHJONG: SystemTrophySpec[] = [
     hidden: true,
   },
   {
-    // Win a hand under every ruleset the platform offers — Simple (Fate Round), Hong Kong, Riichi
+    // Win a hand under every ruleset the platform offers — Simple (FateRound), Hong Kong, Riichi
     // and MCR. A CONJUNCTION over the four per-ruleset win counters.
     suffix: 'all_rulesets',
     tier: 'platinum',

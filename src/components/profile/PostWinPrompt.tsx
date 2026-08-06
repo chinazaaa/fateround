@@ -2,15 +2,11 @@
 
 import { useEffect, useState } from 'react'
 import { SaveToProfileModal } from '@/components/profile/SaveToProfileModal'
+import { Glyph } from '@/components/icons/Glyph'
+import { Cancel01Icon } from '@hugeicons/core-free-icons'
+import { tierIcon } from '@/lib/game-glyphs'
 import { useProfile } from '@/hooks/useProfile'
 import { onTrophiesEarned, type EarnedTrophy } from '@/lib/trophies/earned-events'
-
-const TIER_EMOJI: Record<string, string> = {
-  bronze: '🥉',
-  silver: '🥈',
-  gold: '🥇',
-  platinum: '🏆',
-}
 
 /**
  * The second — and only active — signup surface (`docs/trophies-and-streaks.md` §2.6).
@@ -47,9 +43,6 @@ export function PostWinPrompt() {
 
   const signedIn = Boolean(profile && !profile.is_anonymous)
   const best = trophies[0]
-  const emoji = TIER_EMOJI[best.tier] ?? '🏅'
-  const headline =
-    trophies.length === 1 ? `${emoji} ${best.title}` : `${emoji} ${best.title} +${trophies.length - 1} more`
 
   return (
     <>
@@ -62,7 +55,15 @@ export function PostWinPrompt() {
       >
         <div className="flex items-start gap-3">
           <div className="min-w-0 flex-1">
-            <p className="font-bold">{headline}</p>
+            <p className="flex items-center gap-1.5 font-bold">
+              {/* Bare glyph, no `.fr-glyph` plate: this card renders inside the game chrome, which
+                  has no `.fr-site` ancestor and none of the `fr-*` tokens the plate needs. */}
+              <Glyph icon={tierIcon(best.tier)} size={18} />
+              <span className="min-w-0 truncate">{best.title}</span>
+              {trophies.length > 1 && (
+                <span className="shrink-0 font-semibold text-muted">+{trophies.length - 1} more</span>
+              )}
+            </p>
             <p className="mt-0.5 text-sm text-muted">
               {signedIn
                 ? 'Added to your profile.'
@@ -77,7 +78,7 @@ export function PostWinPrompt() {
             onClick={() => setDismissed(true)}
             className="shrink-0 text-faint hover:text-[var(--foreground)]"
           >
-            ✕
+            <Glyph icon={Cancel01Icon} size={18} />
           </button>
         </div>
 

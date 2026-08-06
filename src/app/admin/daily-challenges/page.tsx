@@ -1,18 +1,58 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import { useConfirm } from '@/components/ui/ConfirmDialog'
+import { useToast } from '@/components/ui/Toast'
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-type GameTypeId = 'crossword' | 'word_search' | 'word_scramble' | 'trivia'
+type GameTypeId =
+  | 'crossword'
+  | 'mini_crossword'
+  | 'word_search'
+  | 'word_scramble'
+  | 'trivia'
+  | 'word_grouping'
+  | 'chess_mate'
+  | 'codenames_codeword'
+  | 'ludo_puzzle'
 
 const GAME_TYPES: { id: GameTypeId; label: string; hint: string }[] = [
-  { id: 'crossword', label: 'Crossword', hint: 'answer,clue — one per line' },
-  { id: 'word_search', label: 'Word Search', hint: 'word — one per line' },
-  { id: 'word_scramble', label: 'Word Scramble', hint: 'word,clue — one per line' },
-  { id: 'trivia', label: 'Trivia', hint: 'question | optionA | optionB | optionC | optionD | correct index (0-3)' },
+  { id: 'crossword', label: 'Crossword', hint: 'ANSWER,clue — one per line. Min 4 entries, max 13 letters per word.' },
+  {
+    id: 'mini_crossword',
+    label: 'Mini Crossword',
+    hint: 'ANSWER,clue — one per line. Min 4 entries, max 7 letters per word.',
+  },
+  { id: 'word_search', label: 'Word Search', hint: 'One word per line. Min 4 words, 3+ letters each.' },
+  { id: 'word_scramble', label: 'Word Scramble', hint: 'word,clue — one per line. Min 3 entries, 3+ letters each.' },
+  {
+    id: 'trivia',
+    label: 'Trivia',
+    hint: 'question | optA | optB | optC | optD | correct index (0-3). Min 5 questions, 2-4 choices.',
+  },
+  {
+    id: 'word_grouping',
+    label: 'Word Grouping',
+    hint: 'JSON. Exactly 4 groups, exactly 4 words each, difficulty 1-4 per group.',
+  },
+  {
+    id: 'chess_mate',
+    label: 'Chess Mate',
+    hint: 'JSON. Required: fen, mateIn (2 or 3), toMove (white/black), lines (array of move arrays).',
+  },
+  {
+    id: 'codenames_codeword',
+    label: 'Codeword',
+    hint: 'JSON. Required: grid (exactly 25 words), clue, clueNumber, correctWords (must be in grid, count = clueNumber).',
+  },
+  {
+    id: 'ludo_puzzle',
+    label: 'Ludo Puzzle',
+    hint: 'JSON. Required: startingPieces (4 tokens with id/zone/pos), diceSequence (1-6[]), optimalRolls. Optional: obstacles [{trackPos}].',
+  },
 ]
 
 type ContentRow = {
@@ -38,7 +78,12 @@ function addDays(iso: string, n: number): string {
   return toIso(d)
 }
 
+const JSON_GAME_TYPES: GameTypeId[] = ['word_grouping', 'chess_mate', 'codenames_codeword', 'ludo_puzzle']
+
 function contentToText(gameType: GameTypeId, content: unknown): string {
+  if (JSON_GAME_TYPES.includes(gameType)) {
+    return JSON.stringify(content, null, 2)
+  }
   if (!Array.isArray(content)) return ''
   if (gameType === 'word_search') {
     return (content as string[]).join('\n')
@@ -57,6 +102,13 @@ function contentToText(gameType: GameTypeId, content: unknown): string {
 }
 
 function textToContent(gameType: GameTypeId, text: string): unknown {
+  if (JSON_GAME_TYPES.includes(gameType)) {
+    try {
+      return JSON.parse(text)
+    } catch {
+      return null
+    }
+  }
   const lines = text
     .split('\n')
     .map((l) => l.trim())
@@ -79,7 +131,7 @@ function textToContent(gameType: GameTypeId, text: string): unknown {
       })
       .filter(Boolean)
   }
-  if (gameType === 'crossword') {
+  if (gameType === 'crossword' || gameType === 'mini_crossword') {
     return lines
       .map((l) => {
         const idx = l.indexOf(',')
@@ -105,8 +157,170 @@ function formatDate(iso: string): string {
 }
 
 function entryCount(gameType: GameTypeId, content: unknown): number {
-  if (!Array.isArray(content)) return 0
-  return content.length
+  if (JSON_GAME_TYPES.includes(gameType)) {
+    if (Array.isArray(content)) return content.length
+    if (content != null && typeof content === 'object') return 1
+    return 0
+  }
+  if (Array.isArray(content)) return content.length
+  return 0
+}
+
+/** Validate parsed content and return an error string or null if valid. */
+function validateContent(gameType: GameTypeId, content: unknown): string | null {
+  if (content == null) return 'Could not parse content'
+
+  switch (gameType) {
+    case 'crossword': {
+      if (!Array.isArray(content)) return 'Expected a list of entries'
+      if (content.length < 4) return `Need at least 4 entries (got ${content.length})`
+      const tooLong = (content as { answer: string }[]).filter((e) => e.answer.length > 13)
+      if (tooLong.length > 0)
+        return `${tooLong.length} word(s) exceed 13 letters: ${tooLong.map((e) => e.answer).join(', ')}`
+      return null
+    }
+    case 'mini_crossword': {
+      if (!Array.isArray(content)) return 'Expected a list of entries'
+      if (content.length < 4) return `Need at least 4 entries (got ${content.length})`
+      const tooLong = (content as { answer: string }[]).filter((e) => e.answer.length > 7)
+      if (tooLong.length > 0)
+        return `${tooLong.length} word(s) exceed 7 letters: ${tooLong.map((e) => e.answer).join(', ')}`
+      return null
+    }
+    case 'word_search': {
+      if (!Array.isArray(content)) return 'Expected a list of words'
+      if (content.length < 4) return `Need at least 4 words (got ${content.length})`
+      return null
+    }
+    case 'word_scramble': {
+      if (!Array.isArray(content)) return 'Expected a list of entries'
+      if (content.length < 3) return `Need at least 3 entries (got ${content.length})`
+      return null
+    }
+    case 'trivia': {
+      if (!Array.isArray(content)) return 'Expected a list of questions'
+      if (content.length < 5) return `Need at least 5 questions (got ${content.length})`
+      for (let i = 0; i < content.length; i++) {
+        const q = content[i] as { question?: string; choices?: string[]; correct_index?: number }
+        if (!q.question) return `Question ${i + 1} is missing the question text`
+        if (!q.choices || q.choices.length < 2) return `Question ${i + 1} needs at least 2 choices`
+      }
+      return null
+    }
+    case 'word_grouping': {
+      const items = Array.isArray(content) ? content : [content]
+      if (items.length === 0) return 'Add at least one puzzle'
+      for (let p = 0; p < items.length; p++) {
+        const prefix = items.length > 1 ? `Puzzle ${p + 1}: ` : ''
+        const item = items[p]
+        if (typeof item !== 'object' || item === null) return `${prefix}Invalid JSON`
+        const obj = item as { groups?: unknown[] }
+        if (!Array.isArray(obj.groups)) return `${prefix}Missing "groups" array`
+        if (obj.groups.length !== 4) return `${prefix}Need exactly 4 groups (got ${obj.groups.length})`
+        for (let i = 0; i < obj.groups.length; i++) {
+          const g = obj.groups[i] as { category?: string; words?: string[]; difficulty?: number }
+          if (!g.category) return `${prefix}Group ${i + 1} is missing "category"`
+          if (!Array.isArray(g.words) || g.words.length !== 4)
+            return `${prefix}Group ${i + 1} needs exactly 4 words (got ${g.words?.length ?? 0})`
+          if (typeof g.difficulty !== 'number' || g.difficulty < 1 || g.difficulty > 4)
+            return `${prefix}Group ${i + 1} "difficulty" must be 1-4`
+        }
+        const allWords = (obj.groups as { words: string[] }[]).flatMap((g) => g.words)
+        if (new Set(allWords).size !== 16) return `${prefix}All 16 words must be unique`
+      }
+      return null
+    }
+    case 'chess_mate': {
+      const items = Array.isArray(content) ? content : [content]
+      if (items.length === 0) return 'Add at least one puzzle'
+      for (let p = 0; p < items.length; p++) {
+        const prefix = items.length > 1 ? `Puzzle ${p + 1}: ` : ''
+        const item = items[p]
+        if (typeof item !== 'object' || item === null) return `${prefix}Invalid JSON`
+        const obj = item as { fen?: string; mateIn?: number; toMove?: string; lines?: string[][] }
+        if (!obj.fen) return `${prefix}Missing "fen"`
+        if (![2, 3].includes(obj.mateIn ?? 0)) return `${prefix}"mateIn" must be 2 or 3`
+        if (!['white', 'black'].includes(obj.toMove ?? '')) return `${prefix}"toMove" must be "white" or "black"`
+        if (!Array.isArray(obj.lines) || obj.lines.length === 0)
+          return `${prefix}Missing "lines" (solution move arrays)`
+        const expectedMoves = (obj.mateIn ?? 2) * 2 - 1
+        for (let i = 0; i < obj.lines.length; i++) {
+          if (!Array.isArray(obj.lines[i]) || obj.lines[i].length === 0)
+            return `${prefix}Line ${i + 1} must be a non-empty array of moves`
+          if (obj.lines[i].length !== expectedMoves)
+            return `${prefix}Line ${i + 1} has ${obj.lines[i].length} moves but mate-in-${obj.mateIn} needs ${expectedMoves}`
+        }
+      }
+      return null
+    }
+    case 'codenames_codeword': {
+      const items = Array.isArray(content) ? content : [content]
+      if (items.length === 0) return 'Add at least one puzzle'
+      for (let p = 0; p < items.length; p++) {
+        const prefix = items.length > 1 ? `Puzzle ${p + 1}: ` : ''
+        const item = items[p]
+        if (typeof item !== 'object' || item === null) return `${prefix}Invalid JSON`
+        const obj = item as { grid?: string[]; clue?: string; clueNumber?: number; correctWords?: string[] }
+        if (!Array.isArray(obj.grid) || obj.grid.length !== 25)
+          return `${prefix}"grid" must have exactly 25 words (got ${obj.grid?.length ?? 0})`
+        if (!obj.clue) return `${prefix}Missing "clue"`
+        if (typeof obj.clueNumber !== 'number' || obj.clueNumber < 1)
+          return `${prefix}"clueNumber" must be a positive number`
+        if (!Array.isArray(obj.correctWords) || obj.correctWords.length === 0) return `${prefix}Missing "correctWords"`
+        if (obj.correctWords.length !== obj.clueNumber)
+          return `${prefix}"correctWords" count (${obj.correctWords.length}) must match "clueNumber" (${obj.clueNumber})`
+        const gridSet = new Set(obj.grid.map((w) => w.toUpperCase()))
+        const missing = obj.correctWords.filter((w) => !gridSet.has(w.toUpperCase()))
+        if (missing.length > 0) return `${prefix}correctWords not in grid: ${missing.join(', ')}`
+      }
+      return null
+    }
+    case 'ludo_puzzle': {
+      const items = Array.isArray(content) ? content : [content]
+      if (items.length === 0) return 'Add at least one puzzle'
+      for (let p = 0; p < items.length; p++) {
+        const prefix = items.length > 1 ? `Puzzle ${p + 1}: ` : ''
+        const item = items[p]
+        if (typeof item !== 'object' || item === null) return `${prefix}Invalid JSON`
+        const obj = item as {
+          startingPieces?: Array<{ id?: number; zone?: string; pos?: number }>
+          diceSequence?: number[]
+          optimalRolls?: number
+          obstacles?: Array<{ trackPos?: number }>
+        }
+        if (!Array.isArray(obj.startingPieces) || obj.startingPieces.length !== 4)
+          return `${prefix}"startingPieces" must have exactly 4 tokens (got ${obj.startingPieces?.length ?? 0})`
+        for (let i = 0; i < obj.startingPieces.length; i++) {
+          const t = obj.startingPieces[i]
+          if (typeof t.id !== 'number') return `${prefix}Token ${i + 1} missing "id"`
+          if (!['base', 'track', 'home', 'finished'].includes(t.zone ?? ''))
+            return `${prefix}Token ${i + 1} "zone" must be base/track/home/finished`
+          if (typeof t.pos !== 'number') return `${prefix}Token ${i + 1} missing "pos"`
+          if (t.zone === 'track' && (t.pos < 0 || t.pos >= 52))
+            return `${prefix}Token ${i + 1} track pos must be 0-51 (got ${t.pos})`
+          if (t.zone === 'home' && (t.pos < 0 || t.pos >= 5))
+            return `${prefix}Token ${i + 1} home pos must be 0-4 (got ${t.pos})`
+        }
+        const ids = obj.startingPieces.map((t) => t.id).sort()
+        if (ids.join(',') !== '0,1,2,3') return `${prefix}Piece IDs must be exactly 0, 1, 2, 3`
+        if (!Array.isArray(obj.diceSequence) || obj.diceSequence.length === 0)
+          return `${prefix}Missing "diceSequence" (non-empty number array)`
+        if (obj.diceSequence.some((d) => typeof d !== 'number' || d < 1 || d > 6))
+          return `${prefix}"diceSequence" values must be 1-6`
+        if (typeof obj.optimalRolls !== 'number' || obj.optimalRolls < 1)
+          return `${prefix}"optimalRolls" must be a positive number`
+        if (obj.obstacles !== undefined) {
+          if (!Array.isArray(obj.obstacles)) return `${prefix}"obstacles" must be an array`
+          for (let i = 0; i < obj.obstacles.length; i++) {
+            if (typeof obj.obstacles[i].trackPos !== 'number') return `${prefix}Obstacle ${i + 1} missing "trackPos"`
+          }
+        }
+      }
+      return null
+    }
+    default:
+      return null
+  }
 }
 
 function dayLabel(iso: string): string {
@@ -119,6 +333,8 @@ function dayLabel(iso: string): string {
 // ---------------------------------------------------------------------------
 
 export default function AdminDailyPage() {
+  const { confirm } = useConfirm()
+  const { success, error: toastError } = useToast()
   const [gameType, setGameType] = useState<GameTypeId>('crossword')
   const [items, setItems] = useState<ContentRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -169,40 +385,59 @@ export default function AdminDailyPage() {
   // ---- Create ----
   const handleCreate = async () => {
     const content = textToContent(gameType, createText)
-    if (!Array.isArray(content) || content.length === 0) {
+    if (content == null || (Array.isArray(content) && content.length === 0)) {
       setSaveMsg({ ok: false, text: 'Add at least one entry' })
+      return
+    }
+    const validationError = validateContent(gameType, content)
+    if (validationError) {
+      setSaveMsg({ ok: false, text: validationError })
       return
     }
 
     setSaving(true)
     setSaveMsg(null)
 
-    const res = await fetch('/api/admin/daily-challenges-content', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ game_type: gameType, challenge_date: createDate, content }),
-    })
+    try {
+      const res = await fetch('/api/admin/daily-challenges-content', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ game_type: gameType, challenge_date: createDate, content }),
+      })
 
-    setSaving(false)
-
-    if (res.ok) {
-      setSaveMsg({ ok: true, text: `Saved for ${dayLabel(createDate)}` })
-      setCreateText('')
-      setCreateDate(addDays(createDate, 1))
-      void load()
-    } else if (res.status === 409) {
-      setSaveMsg({ ok: false, text: 'Content already exists for that date — edit it below or pick another date' })
-    } else {
-      const json = await res.json().catch(() => ({}))
-      setSaveMsg({ ok: false, text: (json as { error?: string }).error ?? 'Failed to save' })
+      if (res.ok) {
+        setSaveMsg({ ok: true, text: `Saved for ${dayLabel(createDate)}` })
+        setCreateText('')
+        setCreateDate(addDays(createDate, 1))
+        void load()
+      } else if (res.status === 409) {
+        setSaveMsg({ ok: false, text: 'Content already exists for that date — edit it below or pick another date' })
+      } else {
+        const json = await res.json().catch(() => ({}))
+        setSaveMsg({ ok: false, text: (json as { error?: string }).error ?? 'Failed to save' })
+      }
+    } catch (err) {
+      setSaveMsg({ ok: false, text: err instanceof Error ? err.message : 'Failed to save' })
+    } finally {
+      setSaving(false)
     }
   }
 
   // ---- Update ----
+  const [editError, setEditError] = useState<string | null>(null)
   const handleUpdate = async (item: ContentRow) => {
     const content = textToContent(item.game_type, editText)
-    if (!Array.isArray(content) || content.length === 0) return
+    if (content == null || (Array.isArray(content) && content.length === 0)) {
+      setEditError('Add at least one entry')
+      return
+    }
+    const validationError = validateContent(item.game_type, content)
+    if (validationError) {
+      setEditError(validationError)
+      return
+    }
 
+    setEditError(null)
     setEditSaving(true)
     const res = await fetch(`/api/admin/daily-challenges-content/${item.id}`, {
       method: 'PATCH',
@@ -218,8 +453,20 @@ export default function AdminDailyPage() {
 
   // ---- Delete ----
   const handleDelete = async (id: string) => {
-    if (!confirm('Delete this daily content?')) return
-    await fetch(`/api/admin/daily-challenges-content/${id}`, { method: 'DELETE' })
+    const ok = await confirm({
+      title: 'Delete this daily content?',
+      message: 'The puzzle will fall back to the built-in bank for this date.',
+      confirmLabel: 'Delete',
+      destructive: true,
+    })
+    if (!ok) return
+    const res = await fetch(`/api/admin/daily-challenges-content/${id}`, { method: 'DELETE' })
+    if (!res.ok) {
+      const json = await res.json().catch(() => ({}))
+      toastError(`Delete failed: ${(json as { error?: string }).error ?? res.statusText}`)
+      return
+    }
+    success('Content deleted')
     void load()
   }
 
@@ -289,20 +536,40 @@ export default function AdminDailyPage() {
             rows={10}
             className="input-field mt-1 block w-full font-mono text-sm"
             placeholder={
-              gameType === 'crossword'
+              gameType === 'crossword' || gameType === 'mini_crossword'
                 ? 'PLANET,Earth is one\nRIVER,Flowing body of water\nCASTLE,Fortified royal home'
                 : gameType === 'word_search'
                   ? 'PLANET\nRIVER\nISLAND\nDESERT\nCASTLE'
                   : gameType === 'trivia'
                     ? 'What is the capital of France? | London | Paris | Berlin | Madrid | 1\nWhat colour is the sky? | Green | Blue | Red | Yellow | 1'
-                    : 'PLANET,A world orbiting a star\nRIVER,A large natural stream\nCASTLE,A fortified royal home'
+                    : gameType === 'word_grouping'
+                      ? '{\n  "groups": [\n    {"category": "Fruits", "words": ["APPLE", "MANGO", "GRAPE", "PEACH"], "difficulty": 1},\n    {"category": "Colours", "words": ["RED", "BLUE", "GREEN", "GOLD"], "difficulty": 2}\n  ]\n}'
+                      : gameType === 'chess_mate'
+                        ? '{\n  "fen": "r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 4 4",\n  "mateIn": 2,\n  "toMove": "white",\n  "lines": [["Qxf7#"]]\n}'
+                        : gameType === 'codenames_codeword'
+                          ? '{\n  "grid": ["WORD1", "WORD2", "...25 words"],\n  "clue": "OCEAN",\n  "clueNumber": 3,\n  "correctWords": ["WAVE", "TIDE", "SURF"]\n}'
+                          : gameType === 'ludo_puzzle'
+                            ? '{\n  "startingPieces": [\n    {"id": 0, "zone": "track", "pos": 45},\n    {"id": 1, "zone": "track", "pos": 47},\n    {"id": 2, "zone": "home", "pos": 1},\n    {"id": 3, "zone": "base", "pos": 0}\n  ],\n  "diceSequence": [6, 5, 4, 3, 2, 6, 5, 4],\n  "obstacles": [],\n  "optimalRolls": 6\n}'
+                            : 'PLANET,A world orbiting a star\nRIVER,A large natural stream\nCASTLE,A fortified royal home'
             }
           />
-          {createText && (
-            <p className="mt-1 text-xs text-[var(--muted)]">
-              {(textToContent(gameType, createText) as unknown[]).length} valid entries
-            </p>
-          )}
+          {createText &&
+            (() => {
+              const parsed = textToContent(gameType, createText)
+              const count = JSON_GAME_TYPES.includes(gameType)
+                ? parsed != null
+                  ? 'Valid JSON'
+                  : 'Invalid JSON'
+                : `${(parsed as unknown[] | null)?.length ?? 0} valid entries`
+              const vError = parsed != null ? validateContent(gameType, parsed) : null
+              return (
+                <div className="mt-1 text-xs">
+                  <span style={{ color: 'var(--text-muted)' }}>{count}</span>
+                  {vError && <span className="text-red-400 ml-2">{vError}</span>}
+                  {!vError && parsed != null && <span className="text-green-500 ml-2">Ready to save</span>}
+                </div>
+              )
+            })()}
         </div>
 
         <div className="flex items-center gap-3">
@@ -407,12 +674,18 @@ export default function AdminDailyPage() {
               </div>
 
               {editId === item.id ? (
-                <textarea
-                  value={editText}
-                  onChange={(e) => setEditText(e.target.value)}
-                  rows={8}
-                  className="input-field w-full font-mono text-sm"
-                />
+                <>
+                  <textarea
+                    value={editText}
+                    onChange={(e) => {
+                      setEditText(e.target.value)
+                      setEditError(null)
+                    }}
+                    rows={8}
+                    className="input-field w-full font-mono text-sm"
+                  />
+                  {editError && <p className="text-xs text-red-400 mt-1">{editError}</p>}
+                </>
               ) : (
                 <pre className="max-h-32 overflow-auto rounded bg-[var(--card)] p-2 text-xs">
                   {contentToText(item.game_type, item.content)}

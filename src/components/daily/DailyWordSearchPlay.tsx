@@ -131,6 +131,11 @@ export function DailyWordSearchPlay({ challengeId, puzzle, timer: maxSeconds, on
         </span>
       </div>
 
+      {/* Instructions */}
+      <p className="text-center" style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>
+        Find all the hidden words in the grid. Swipe across letters to highlight a word.
+      </p>
+
       {/* Word list — above the board so players can see target words */}
       <div className="fr-card !p-4">
         <div className="flex flex-wrap gap-1.5">

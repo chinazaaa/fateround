@@ -115,6 +115,11 @@ export function DailyTriviaPlay({ challengeId, puzzle, timer: maxSeconds, onSubm
         </div>
       </div>
 
+      {/* Instructions */}
+      <p className="text-center" style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>
+        Answer each question by tapping a choice. Every correct answer scores points — speed matters.
+      </p>
+
       {/* Question card */}
       {question ? (
         <div className="space-y-4">

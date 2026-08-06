@@ -1,16 +1,29 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useExpiryRefresh } from '@/hooks/useExpiryRefresh'
 import Link from 'next/link'
 import {
   DAILY_CHALLENGE_GAME_TYPES,
   DAILY_GAME_LABELS,
-  DAILY_GAME_EMOJIS,
   DAILY_GAME_TYPE_TO_SLUG,
   DAILY_GAME_TIMER,
   isDailyChallengeLive,
   type DailyChallengeGameType,
 } from '@/lib/daily-challenge'
+import { gameIcon } from '@/lib/game-glyphs'
+import { Glyph } from '@/components/icons/Glyph'
+import type { GameType } from '@/types'
+import { SectionHeading } from '@/components/SectionHeading'
+
+const DAILY_ICON_FALLBACK: Partial<Record<DailyChallengeGameType, GameType>> = {
+  whot_puzzle: 'whot',
+  word_grouping: 'tic_tac_toe',
+  chess_mate: 'chess',
+  codenames_codeword: 'codewords',
+  mini_crossword: 'crossword',
+  ludo_puzzle: 'ludo',
+}
 import { authHeaders } from '@/lib/identity'
 import { getDailyStartedAt } from '@/lib/daily-progress'
 
@@ -19,6 +32,22 @@ interface GameStatus {
   played: boolean
   score: number | null
   challengeId: string | null
+}
+
+/** Each daily game keeps a distinct accent so the row reads like the games grid. */
+const DAILY_GAME_ACCENTS: Record<DailyChallengeGameType, string> = {
+  sudoku: '#3b82f6',
+  word_hunt: '#8b5cf6',
+  crossword: '#14b8a6',
+  mini_crossword: '#06b6d4',
+  word_search: '#f59e0b',
+  word_scramble: '#ec4899',
+  trivia: '#10b981',
+  whot_puzzle: '#e74c3c',
+  word_grouping: '#f97316',
+  chess_mate: '#6366f1',
+  codenames_codeword: '#84cc16',
+  ludo_puzzle: '#22c55e',
 }
 
 export function DailyChallengeSection() {
@@ -53,60 +82,83 @@ export function DailyChallengeSection() {
     load()
   }, [])
 
+  // Compute expiry deadlines for all in-progress challenges so the card
+  // state auto-updates when a timer runs out.
+  const deadlines = useMemo(() => {
+    const result: number[] = []
+    for (const g of games) {
+      if (!g.challengeId || g.played) continue
+      const s = startedAtById[g.challengeId]
+      if (s != null) result.push(s + DAILY_GAME_TIMER[g.gameType] * 1000)
+    }
+    return result
+  }, [games, startedAtById])
+  const now = useExpiryRefresh(deadlines)
+
   // Hidden from the homepage until launch day.
   if (!isDailyChallengeLive()) return null
 
   return (
-    <section className="mt-10 mb-6">
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <h2 className="text-lg font-bold">Daily Challenge</h2>
-          <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-            Today&apos;s puzzles — one shot, one score
-          </p>
-        </div>
-        <Link href="/daily-challenges" className="fr-btn fr-btn--ghost fr-btn--sm">
-          See all &rarr;
-        </Link>
-      </div>
+    <section className="fr-band fr-band--sunken">
+      <div className="mk-wrap">
+        <SectionHeading
+          title="Daily Challenge"
+          subtitle="Today's puzzles. Play daily, aim for the top."
+          action={{ href: '/daily-challenges', label: 'See all' }}
+        />
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
-        {DAILY_CHALLENGE_GAME_TYPES.map((gt) => {
-          const status = games.find((g) => g.gameType === gt)
-          const played = status?.played ?? false
-          const score = status?.score ?? null
-          const startedAt = status?.challengeId ? startedAtById[status.challengeId] : undefined
-          const inProgress = startedAt != null && Date.now() < startedAt + DAILY_GAME_TIMER[gt] * 1000
-          const expired = startedAt != null && !inProgress
-          const slug = DAILY_GAME_TYPE_TO_SLUG[gt]
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-6">
+          {DAILY_CHALLENGE_GAME_TYPES.map((gameType) => {
+            const status = games.find((game) => game.gameType === gameType)
+            const played = status?.played ?? false
+            const score = status?.score ?? null
+            const startedAt = status?.challengeId ? startedAtById[status.challengeId] : undefined
+            const inProgress = startedAt != null && now < startedAt + DAILY_GAME_TIMER[gameType] * 1000
+            const expired = startedAt != null && !inProgress
+            const slug = DAILY_GAME_TYPE_TO_SLUG[gameType]
 
-          return (
-            <Link
-              key={gt}
-              href={`/daily-challenges/${slug}`}
-              className={`fr-card fr-card--interactive flex flex-col items-center text-center !p-4 gap-1.5 ${loading ? 'animate-pulse' : ''}`}
-            >
-              <div className="text-2xl">{DAILY_GAME_EMOJIS[gt]}</div>
-              <div className="text-xs font-semibold">{DAILY_GAME_LABELS[gt]}</div>
-              {!loading && (
-                <div className="mt-0.5">
-                  {played && score !== null ? (
-                    <span className="fr-badge fr-badge--soft" style={{ fontSize: 'var(--text-2xs)' }}>
-                      {score} pts
-                    </span>
-                  ) : (
+            return (
+              <Link
+                key={gameType}
+                href={`/daily-challenges/${slug}`}
+                className="fr-gamecard fr-gamecard--compact"
+                style={{ '--accent': DAILY_GAME_ACCENTS[gameType] } as React.CSSProperties}
+              >
+                <span className="fr-glyph fr-glyph--sm">
+                  <Glyph icon={gameIcon(DAILY_ICON_FALLBACK[gameType] ?? (gameType as GameType))} size={22} />
+                </span>
+                <h3 className="fr-gamecard__title">{DAILY_GAME_LABELS[gameType]}</h3>
+                {/* The badge slot keeps its height while the status request is in
+                    flight, so the grid doesn't jump when the response lands. */}
+                <div className="mt-auto flex min-h-[1.5rem] items-center justify-center">
+                  {loading ? (
                     <span
-                      className="font-bold uppercase tracking-wider"
-                      style={{ fontSize: 'var(--text-2xs)', color: 'var(--primary)' }}
+                      className="h-[1.125rem] w-12 animate-pulse rounded-full"
+                      style={{ background: 'var(--surface-sunken)' }}
+                    />
+                  ) : played && score !== null ? (
+                    <span className="fr-badge fr-badge--soft">{score} pts</span>
+                  ) : (
+                    /* Accent-tinted, not `--surface-sunken` on `--text-muted`:
+                       grey-on-grey is how this system styles a *disabled*
+                       control, so the one actionable state read as the dead
+                       one. Mirrors `.fr-gamecard__players`, and picks up the
+                       per-game accent set on the card. */
+                    <span
+                      className="fr-badge"
+                      style={{
+                        background: 'color-mix(in srgb, var(--accent) 12%, transparent)',
+                        color: 'color-mix(in srgb, var(--accent) 70%, var(--text))',
+                      }}
                     >
                       {inProgress ? 'Continue' : expired ? 'See result' : 'Play'}
                     </span>
                   )}
                 </div>
-              )}
-            </Link>
-          )
-        })}
+              </Link>
+            )
+          })}
+        </div>
       </div>
     </section>
   )

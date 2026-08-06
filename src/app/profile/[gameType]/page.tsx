@@ -4,6 +4,9 @@ import { use, useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { authHeaders } from '@/lib/identity'
 import { Skeleton } from '@/components/Skeleton'
+import { Glyph } from '@/components/icons/Glyph'
+import { LockIcon, ArrowLeft01Icon } from '@hugeicons/core-free-icons'
+import { tierIcon } from '@/lib/game-glyphs'
 
 type Trophy = {
   id: string
@@ -26,7 +29,6 @@ type Totals = {
 }
 
 const TIERS = ['bronze', 'silver', 'gold', 'platinum'] as const
-const TIER_EMOJI: Record<string, string> = { bronze: '🥉', silver: '🥈', gold: '🥇', platinum: '🏆' }
 
 function plural(count: number, word: string): string {
   return `${count} ${word}${count === 1 ? '' : 's'}`
@@ -37,7 +39,6 @@ function formatEarned(at: string): string {
   return `${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
 }
 
-/** One game's trophies: how far along you are, your rarest, then the full list. */
 export default function GameTrophiesPage({ params }: { params: Promise<{ gameType: string }> }) {
   const { gameType } = use(params)
   const [group, setGroup] = useState<Group | null>(null)
@@ -66,15 +67,11 @@ export default function GameTrophiesPage({ params }: { params: Promise<{ gameTyp
       setLoading(false)
       return
     }
-    // Paint the list immediately — don't make the whole screen wait on the sync pass.
     try {
       await fetchTrophies(headers)
     } finally {
       setLoading(false)
     }
-    // Then reconcile in the background: sync collects anything newly qualified for (e.g. a trophy
-    // added to the catalog after you last played, which would otherwise sit locked at 100%), and a
-    // quiet re-read folds it in — without ever blocking the first paint.
     await fetch('/api/profile/sync', { method: 'POST', headers }).catch(() => {})
     await fetchTrophies(headers)
   }, [fetchTrophies])
@@ -92,10 +89,10 @@ export default function GameTrophiesPage({ params }: { params: Promise<{ gameTyp
 
   if (loading) {
     return (
-      <div className="mx-auto max-w-3xl space-y-5 p-4 sm:p-6" aria-busy="true">
+      <div className="fr-portal mx-auto max-w-3xl space-y-5 p-4 sm:p-6" aria-busy="true">
         <Skeleton className="h-4 w-28" />
         <Skeleton className="h-8 w-48" />
-        <div className="glass-card p-5">
+        <div className="fr-card p-5">
           <div className="flex items-center justify-around gap-4">
             <Skeleton className="h-14 w-16" />
             <Skeleton className="h-20 w-20 rounded-full" />
@@ -115,41 +112,58 @@ export default function GameTrophiesPage({ params }: { params: Promise<{ gameTyp
   const pct = totals?.pct ?? 0
 
   return (
-    <div className="mx-auto max-w-3xl space-y-5 p-4 sm:p-6">
-      <Link href="/profile" className="text-sm font-semibold text-muted hover:text-[var(--foreground)]">
-        ← Your trophies
+    // `fr-card`/`fr-chip`/`fr-gamecard` below resolve their tokens from the `fr-*` scope
+    // (fate-round-ds.css). The shared profile layout is on the app system, so this page
+    // carries the scope itself — `fr-portal` rather than `fr-site` because it supplies the
+    // same tokens without `fr-site`'s own background and full-viewport height.
+    <div className="fr-portal mx-auto max-w-3xl space-y-5 p-4 sm:p-6">
+      <Link
+        href="/profile"
+        className="text-sm font-semibold text-[var(--primary)] hover:underline no-underline inline-flex items-center gap-1"
+      >
+        <Glyph icon={ArrowLeft01Icon} size={16} />
+        Your trophies
       </Link>
 
-      <h1 className="text-2xl font-black tracking-tight">{group?.label ?? 'Trophies'}</h1>
+      <h1
+        className="text-3xl font-extrabold tracking-tight"
+        style={{ fontFamily: 'var(--font-display)', color: 'var(--text)' }}
+      >
+        {group?.label ?? 'Trophies'}
+      </h1>
 
       {!group || group.total === 0 ? (
-        <p className="glass-card p-5 text-sm text-muted">
+        <p className="fr-card p-5 text-sm text-center" style={{ color: 'var(--text-muted)' }}>
           No trophies for this game yet. An admin can add them from the trophies panel.
         </p>
       ) : (
         <>
-          {/* Earned · progress · available, then the tier tally — the shape a trophy list is
-              read in: how far am I, and what kind of trophies are left. */}
-          <div className="glass-card p-5">
+          <div className="fr-card p-5">
             <div className="flex items-center justify-around gap-4">
               <div className="text-center">
-                <p className="text-3xl font-black">{totals?.earned ?? 0}</p>
-                <p className="text-faint text-xs uppercase tracking-wide">Earned</p>
+                <p className="text-3xl font-extrabold" style={{ color: 'var(--text)' }}>
+                  {totals?.earned ?? 0}
+                </p>
+                <p className="text-xs font-bold uppercase tracking-wider text-[var(--primary)]">Earned</p>
               </div>
               <ProgressRing pct={pct} />
               <div className="text-center">
-                <p className="text-3xl font-black">{totals?.total ?? 0}</p>
-                <p className="text-faint text-xs uppercase tracking-wide">Available</p>
+                <p className="text-3xl font-extrabold" style={{ color: 'var(--text)' }}>
+                  {totals?.total ?? 0}
+                </p>
+                <p className="text-xs font-bold uppercase tracking-wider text-[var(--primary)]">Available</p>
               </div>
             </div>
 
             <div className="mt-4 grid grid-cols-4 gap-2 border-t border-[var(--border)] pt-3 text-center">
-              {(['platinum', 'gold', 'silver', 'bronze'] as const).map((t) => (
-                <div key={t}>
-                  <p className="text-xl" aria-hidden>
-                    {TIER_EMOJI[t]}
+              {(['platinum', 'gold', 'silver', 'bronze'] as const).map((tierName) => (
+                <div key={tierName} className="flex flex-col items-center">
+                  <span className="fr-glyph text-[var(--primary)] mb-1">
+                    <Glyph icon={tierIcon(tierName)} size={20} />
+                  </span>
+                  <p className="font-extrabold" style={{ color: 'var(--text)' }}>
+                    {totals?.tiers?.[tierName] ?? 0}
                   </p>
-                  <p className="font-black">{totals?.tiers?.[t] ?? 0}</p>
                 </div>
               ))}
             </div>
@@ -157,7 +171,9 @@ export default function GameTrophiesPage({ params }: { params: Promise<{ gameTyp
 
           {rarest && (
             <section>
-              <h2 className="mb-2 text-sm font-bold uppercase tracking-wide">Rarest trophy earned</h2>
+              <h2 className="mb-2 text-xs font-bold uppercase tracking-wider text-[var(--primary)]">
+                Rarest trophy earned
+              </h2>
               <TrophyRow trophy={rarest} />
             </section>
           )}
@@ -168,20 +184,22 @@ export default function GameTrophiesPage({ params }: { params: Promise<{ gameTyp
                 {value === 'all' ? 'All' : value === 'earned' ? 'Earned' : 'Locked'}
               </Chip>
             ))}
-            <span className="mx-1 self-center text-[var(--border-strong)]">|</span>
+            <span className="mx-1 self-center text-[var(--border)]">|</span>
             {(['all', ...TIERS] as const).map((value) => (
               <Chip key={value} active={tier === value} onClick={() => setTier(value)}>
-                {value === 'all' ? 'Any tier' : TIER_EMOJI[value]}
+                {value === 'all' ? 'Any tier' : value.charAt(0).toUpperCase() + value.slice(1)}
               </Chip>
             ))}
           </div>
 
           <section>
-            <h2 className="mb-2 text-sm font-bold uppercase tracking-wide">All trophies</h2>
+            <h2 className="mb-2 text-xs font-bold uppercase tracking-wider text-[var(--primary)]">All trophies</h2>
             {visible.length === 0 ? (
-              <p className="glass-card p-5 text-sm text-muted">Nothing matches those filters.</p>
+              <p className="fr-card p-5 text-sm text-center" style={{ color: 'var(--text-muted)' }}>
+                Nothing matches those filters.
+              </p>
             ) : (
-              <ul className="space-y-2">
+              <ul className="space-y-3">
                 {visible.map((trophy) => (
                   <li key={trophy.id}>
                     <TrophyRow trophy={trophy} />
@@ -198,15 +216,13 @@ export default function GameTrophiesPage({ params }: { params: Promise<{ gameTyp
 
 function TrophyRow({ trophy }: { trophy: Trophy }) {
   return (
-    <div className="glass-card flex items-start gap-3 p-4">
-      {/* Locked trophies show a padlock rather than a greyed medal — "not yet" reads instantly,
-          where a faded medal just looks like a rendering glitch. */}
-      <span className={`text-2xl ${trophy.earned ? '' : 'opacity-50'}`} aria-hidden>
-        {trophy.earned ? (TIER_EMOJI[trophy.tier] ?? '🏅') : '🔒'}
+    <div className="fr-gamecard cursor-default flex items-start gap-3 p-4">
+      <span className={`fr-glyph mt-0.5 ${trophy.earned ? 'text-[var(--primary)]' : 'opacity-50'}`}>
+        <Glyph icon={trophy.earned ? tierIcon(trophy.tier) : LockIcon} size={22} />
       </span>
       <div className="min-w-0 flex-1">
-        <p className={`font-semibold ${trophy.earned ? '' : 'text-muted'}`}>{trophy.title}</p>
-        <p className="text-sm text-muted">{trophy.description}</p>
+        <p className={`fr-gamecard__title text-base ${trophy.earned ? '' : 'opacity-70'}`}>{trophy.title}</p>
+        <p className="fr-gamecard__tagline text-xs">{trophy.description}</p>
 
         {!trophy.earned && trophy.progress > 0 && (
           <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[var(--surface-inset-bg)]">
@@ -217,12 +233,11 @@ function TrophyRow({ trophy }: { trophy: Trophy }) {
           </div>
         )}
 
-        <div className="text-faint mt-1 flex flex-wrap items-center gap-x-2 text-xs">
-          <span aria-hidden>{TIER_EMOJI[trophy.tier] ?? '🏅'}</span>
-          <span>{plural(trophy.points, 'pt')}</span>
+        <div className="mt-2 flex flex-wrap items-center gap-x-2 text-xs" style={{ color: 'var(--text-faint)' }}>
+          <span className="font-semibold">{plural(trophy.points, 'pt')}</span>
           {trophy.rarityPct !== null && <span>· {trophy.rarityPct}% of players</span>}
           {trophy.earned && trophy.earnedAt ? (
-            <span className="ml-auto">{formatEarned(trophy.earnedAt)}</span>
+            <span className="ml-auto text-[var(--primary)] font-semibold">{formatEarned(trophy.earnedAt)}</span>
           ) : trophy.progress > 0 ? (
             <span className="ml-auto">{Math.round(trophy.progress * 100)}% there</span>
           ) : (
@@ -255,7 +270,12 @@ function ProgressRing({ pct }: { pct: number }) {
           strokeDashoffset={circumference * (1 - Math.min(1, Math.max(0, pct / 100)))}
         />
       </svg>
-      <span className="absolute inset-0 flex items-center justify-center text-lg font-black">{pct}%</span>
+      <span
+        className="absolute inset-0 flex items-center justify-center text-lg font-extrabold"
+        style={{ color: 'var(--text)' }}
+      >
+        {pct}%
+      </span>
     </div>
   )
 }
@@ -266,11 +286,7 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      className={
-        active
-          ? 'rounded-full bg-[var(--primary)] px-3 py-1 text-xs font-semibold text-white'
-          : 'rounded-full border border-[var(--border)] px-3 py-1 text-xs font-semibold text-muted hover:text-[var(--foreground)]'
-      }
+      className={`fr-chip fr-chip--control ${active ? 'fr-chip--active' : ''}`}
     >
       {children}
     </button>

@@ -98,7 +98,7 @@ export function SiteFooter() {
           <div className="foot-brand">
             <p className="foot-name">{SITE_NAME}</p>
             <p className="foot-tag">
-              Free online party games — one link, everyone plays from their phone. No sign-up, no download.
+              Free party and board games for your squad. Share the room link and play from any device.
             </p>
             <div className="foot-social">
               {SOCIAL_LINKS.map((social) => (
@@ -127,8 +127,8 @@ export function SiteFooter() {
 
         <p className="foot-legal">
           {SITE_NAME} is an independent platform and is not affiliated with, endorsed by, or sponsored by the owners of
-          Yahtzee®, Monopoly®, Scrabble®, UNO®, Whot® or any other game. All trademarks are the property of their
-          respective owners and are used here only to describe the game being played.
+          Yahtzee®, Monopoly®, Scrabble®, UNO®, Whot®, Codenames®, Quiplash® or any other game. All trademarks are the
+          property of their respective owners and are used here only to describe the game being played.
         </p>
       </div>
     </footer>

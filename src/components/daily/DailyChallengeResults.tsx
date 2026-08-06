@@ -177,6 +177,11 @@ export function DailyChallengeResults({
               100 points per correct answer
             </p>
           )}
+          {gameType === 'ludo_puzzle' && (
+            <p className="mt-1" style={{ fontSize: 'var(--text-2xs)', color: 'var(--text-faint)' }}>
+              100 points per token home
+            </p>
+          )}
 
           {/* New personal best */}
           {isNewBest && score > 0 && (

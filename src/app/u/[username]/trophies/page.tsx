@@ -2,9 +2,14 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { Avatar } from '@/components/Avatar'
+import { Glyph } from '@/components/icons/Glyph'
+import { ArrowLeft01Icon, ArrowDown01Icon } from '@hugeicons/core-free-icons'
 import { MarketingHeader } from '@/components/MarketingHeader'
 import { SiteFooter } from '@/components/SiteFooter'
 import { getPublicProfileCabinet } from '@/lib/profile/public-profile'
+import { GLOBAL_SCOPE } from '@/lib/trophies/criteria'
+import { parseGameType } from '@/lib/game-types'
+import { gameIcon, tierIcon, UI_ICONS } from '@/lib/game-glyphs'
 import { SITE_NAME } from '@/lib/seo'
 
 type Props = { params: Promise<{ username: string }> }
@@ -12,8 +17,6 @@ type Props = { params: Promise<{ username: string }> }
 // Fresh per request (not ISR): see the note in ../page.tsx — a notFound() from a not-yet-claimed
 // username must never be cached and served as a stale 404 once the profile exists.
 export const dynamic = 'force-dynamic'
-
-const TIER_EMOJI: Record<string, string> = { bronze: '🥉', silver: '🥈', gold: '🥇', platinum: '🏆' }
 
 function plural(count: number, word: string): string {
   return `${count} ${word}${count === 1 ? '' : 's'}`
@@ -59,9 +62,10 @@ export default async function PublicTrophiesPage({ params }: Props) {
           <div className="mx-auto max-w-2xl px-4 pt-6 pb-9 sm:px-6">
             <Link
               href={`/u/${cabinet.username}`}
-              className="text-sm font-semibold text-muted no-underline hover:text-[var(--foreground)]"
+              className="inline-flex items-center gap-1 text-sm font-semibold text-muted no-underline hover:text-[var(--foreground)]"
             >
-              ← {cabinet.handle}
+              <Glyph icon={ArrowLeft01Icon} size={16} />
+              {cabinet.handle}
             </Link>
             <div className="mt-5 flex flex-col items-center text-center">
               <Avatar name={cabinet.handle} photoUrl={cabinet.avatarUrl} size="lg" className="!h-20 !w-20 !text-2xl" />
@@ -78,30 +82,36 @@ export default async function PublicTrophiesPage({ params }: Props) {
         {/* Games */}
         <div className="mx-auto max-w-2xl px-4 pt-6 sm:px-6">
           {cabinet.groups.length === 0 ? (
-            <p className="glass-card p-6 text-center text-sm text-muted">No trophies earned yet.</p>
+            <p className="fr-card p-6 text-center text-sm text-muted">No trophies earned yet.</p>
           ) : (
             // Collapsible per game so a profile with many games stays scannable — native
             // <details>/<summary>, so it needs no client JS. The first (most-decorated) game opens by
             // default; the rest start collapsed.
             <div className="space-y-3">
               {cabinet.groups.map((group, index) => (
-                <details key={group.gameType} className="group glass-card overflow-hidden" open={index === 0}>
+                <details key={group.gameType} className="group fr-card overflow-hidden" open={index === 0}>
                   <summary className="flex cursor-pointer list-none items-center gap-3 p-4 [&::-webkit-details-marker]:hidden">
-                    <span className="text-xl" aria-hidden>
-                      {group.emoji}
+                    {/* No `--accent` is set on this page, so `.fr-glyph` falls back to `--primary`. */}
+                    <span className="fr-glyph fr-glyph--xs">
+                      <Glyph
+                        icon={
+                          group.gameType === GLOBAL_SCOPE
+                            ? UI_ICONS.tournament
+                            : gameIcon(parseGameType(group.gameType))
+                        }
+                        size={18}
+                      />
                     </span>
-                    <h2 className="text-sm font-bold uppercase tracking-wide">{group.label}</h2>
-                    <span className="text-faint ml-auto text-xs">
+                    <h2 className="text-sm font-bold uppercase tracking-wider text-[var(--primary)]">{group.label}</h2>
+                    <span className="ml-auto text-xs" style={{ color: 'var(--text-faint)' }}>
                       {group.trophies.length} {group.trophies.length === 1 ? 'trophy' : 'trophies'}
                     </span>
-                    <svg
-                      viewBox="0 0 20 20"
-                      fill="currentColor"
-                      className="text-faint h-4 w-4 shrink-0 transition-transform group-open:rotate-180"
-                      aria-hidden
+                    <span
+                      className="shrink-0 transition-transform group-open:rotate-180"
+                      style={{ color: 'var(--text-faint)' }}
                     >
-                      <path d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 10.94l3.71-3.71a.75.75 0 1 1 1.06 1.06l-4.24 4.25a.75.75 0 0 1-1.06 0L5.21 8.29a.75.75 0 0 1 .02-1.08z" />
-                    </svg>
+                      <Glyph icon={ArrowDown01Icon} size={16} />
+                    </span>
                   </summary>
                   <div className="border-t border-[var(--border)] px-4 pb-4 pt-3">
                     <p className="text-faint mb-3 text-xs">
@@ -111,13 +121,16 @@ export default async function PublicTrophiesPage({ params }: Props) {
                     <ul className="space-y-3">
                       {group.trophies.map((t) => (
                         <li key={t.id} className="flex items-start gap-3">
-                          <span className="text-2xl" aria-hidden>
-                            {TIER_EMOJI[t.tier] ?? '🏅'}
+                          <span className="fr-glyph fr-glyph--sm shrink-0">
+                            <Glyph icon={tierIcon(t.tier)} size={20} />
                           </span>
                           <div className="min-w-0 flex-1">
                             <p className="font-semibold">{t.title}</p>
                             <p className="text-sm text-muted">{t.description}</p>
-                            <div className="text-faint mt-1 flex flex-wrap items-center gap-x-2 text-xs">
+                            <div
+                              className="mt-1 flex flex-wrap items-center gap-x-2 text-xs"
+                              style={{ color: 'var(--text-faint)' }}
+                            >
                               <span>{plural(t.points, 'pt')}</span>
                               {t.rarityPct !== null && <span>· {t.rarityPct}% of players</span>}
                               {t.earnedAt && <span className="ml-auto">{formatEarned(t.earnedAt)}</span>}
@@ -140,9 +153,11 @@ export default async function PublicTrophiesPage({ params }: Props) {
 
 function Tile({ value, label }: { value: string; label: string }) {
   return (
-    <div className="glass-card p-3 text-center">
+    <div className="fr-card p-3 text-center">
       <p className="text-2xl font-black">{value}</p>
-      <p className="text-faint mt-0.5 text-[11px] uppercase tracking-wide">{label}</p>
+      <p className="mt-0.5 text-[11px] uppercase tracking-wider" style={{ color: 'var(--text-faint)' }}>
+        {label}
+      </p>
     </div>
   )
 }

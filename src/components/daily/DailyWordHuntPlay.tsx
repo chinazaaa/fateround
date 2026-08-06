@@ -114,6 +114,11 @@ export function DailyWordHuntPlay({
         </span>
       </div>
 
+      {/* Instructions */}
+      <p className="text-center" style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>
+        Swipe through adjacent letters to form words. Longer words score more points.
+      </p>
+
       {/* Grid */}
       <div className="mx-auto" style={{ maxWidth: '320px' }}>
         <WordHuntGrid
