@@ -237,7 +237,7 @@ export default function AdminDailyPage() {
   // ---- Update ----
   const handleUpdate = async (item: ContentRow) => {
     const content = textToContent(item.game_type, editText)
-    if (!Array.isArray(content) || content.length === 0) return
+    if (content == null || (Array.isArray(content) && content.length === 0)) return
 
     setEditSaving(true)
     const res = await fetch(`/api/admin/daily-challenges-content/${item.id}`, {
@@ -325,18 +325,28 @@ export default function AdminDailyPage() {
             rows={10}
             className="input-field mt-1 block w-full font-mono text-sm"
             placeholder={
-              gameType === 'crossword'
+              gameType === 'crossword' || gameType === 'mini_crossword'
                 ? 'PLANET,Earth is one\nRIVER,Flowing body of water\nCASTLE,Fortified royal home'
                 : gameType === 'word_search'
                   ? 'PLANET\nRIVER\nISLAND\nDESERT\nCASTLE'
                   : gameType === 'trivia'
                     ? 'What is the capital of France? | London | Paris | Berlin | Madrid | 1\nWhat colour is the sky? | Green | Blue | Red | Yellow | 1'
-                    : 'PLANET,A world orbiting a star\nRIVER,A large natural stream\nCASTLE,A fortified royal home'
+                    : gameType === 'word_grouping'
+                      ? '{\n  "groups": [\n    {"category": "Fruits", "words": ["APPLE", "MANGO", "GRAPE", "PEACH"], "difficulty": 1},\n    {"category": "Colours", "words": ["RED", "BLUE", "GREEN", "GOLD"], "difficulty": 2}\n  ]\n}'
+                      : gameType === 'chess_mate'
+                        ? '{\n  "fen": "r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 4 4",\n  "mateIn": 2,\n  "toMove": "white",\n  "lines": [["Qxf7#"]]\n}'
+                        : gameType === 'codenames_codeword'
+                          ? '{\n  "grid": ["WORD1", "WORD2", "...25 words"],\n  "clue": "OCEAN",\n  "clueNumber": 3,\n  "correctWords": ["WAVE", "TIDE", "SURF"]\n}'
+                          : 'PLANET,A world orbiting a star\nRIVER,A large natural stream\nCASTLE,A fortified royal home'
             }
           />
           {createText && (
             <p className="mt-1 text-xs text-[var(--muted)]">
-              {(textToContent(gameType, createText) as unknown[]).length} valid entries
+              {JSON_GAME_TYPES.includes(gameType)
+                ? textToContent(gameType, createText) != null
+                  ? 'Valid JSON'
+                  : 'Invalid JSON'
+                : `${(textToContent(gameType, createText) as unknown[] | null)?.length ?? 0} valid entries`}
             </p>
           )}
         </div>
