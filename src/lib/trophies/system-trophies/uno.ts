@@ -243,7 +243,7 @@ export const UNO: SystemTrophySpec[] = [
   // ── Platinum ────────────────────────────────────────────────────────────────────────────
   {
     suffix: 'flawless',
-    tier: 'platinum',
+    tier: 'gold',
     title: 'Flawless',
     description: 'Win a game of three or more players without drawing a single card.',
     counter: 'uno_flawless_wins',
@@ -253,7 +253,7 @@ export const UNO: SystemTrophySpec[] = [
   },
   {
     suffix: 'full_circle',
-    tier: 'platinum',
+    tier: 'gold',
     title: 'Full Circle',
     description: 'Win a game in which you played every action card type, including the Wild Draw Four.',
     counter: 'uno_full_circle_wins',
@@ -263,7 +263,7 @@ export const UNO: SystemTrophySpec[] = [
   },
   {
     suffix: 'last_card_four',
-    tier: 'platinum',
+    tier: 'gold',
     title: 'Last Card Four',
     description: 'Win by playing a Wild Draw Four as your final card.',
     counter: 'uno_wd4_finish_wins',

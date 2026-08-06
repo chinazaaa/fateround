@@ -76,6 +76,18 @@ export async function GET(req: NextRequest) {
       longest_streak: Number(profile?.longest_streak) || 0,
     }
 
+    // Build platinum context so platinum trophy progress displays correctly.
+    const gameTrophyIds = new Map<string, string[]>()
+    for (const row of catalog ?? []) {
+      const gt = row.game_type as string | null
+      const crit = row.criteria as Record<string, unknown> | null
+      if (crit?.type === 'platinum' || !gt) continue
+      const list = gameTrophyIds.get(gt) ?? []
+      list.push(row.id as string)
+      gameTrophyIds.set(gt, list)
+    }
+    const platinumCtx = { gameTrophyIds, earnedIds: new Set(earnedAt.keys()) }
+
     const items = (catalog ?? [])
       .filter((row) => {
         if (!scope) return true
@@ -85,7 +97,7 @@ export async function GET(req: NextRequest) {
       .map((row) => {
         const id = row.id as string
         const earned = earnedAt.has(id)
-        const verdict = evaluateRaw(row.criteria, snapshot)
+        const verdict = evaluateRaw(row.criteria, snapshot, platinumCtx)
         return {
           id,
           gameType: (row.game_type as string | null) ?? null,

@@ -266,7 +266,7 @@ export const CHESS: SystemTrophySpec[] = [
   // ── Platinum ────────────────────────────────────────────────────────────────────────────
   {
     suffix: 'miniature',
-    tier: 'platinum',
+    tier: 'gold',
     title: 'Miniature',
     description: 'Win by checkmate in twelve moves or fewer.',
     counter: 'chess_wins_mate_in_12',
@@ -276,7 +276,7 @@ export const CHESS: SystemTrophySpec[] = [
   },
   {
     suffix: 'smothered',
-    tier: 'platinum',
+    tier: 'gold',
     title: 'Smothered',
     description: 'Win by smothered mate — a knight mates a king hemmed in by its own pieces.',
     counter: 'chess_wins_smothered',
@@ -286,7 +286,7 @@ export const CHESS: SystemTrophySpec[] = [
   },
   {
     suffix: 'immortal',
-    tier: 'platinum',
+    tier: 'gold',
     title: 'Immortal',
     description: 'Win a game having given up your queen while your opponent kept theirs.',
     counter: 'chess_wins_queen_sac',

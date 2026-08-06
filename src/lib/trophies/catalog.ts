@@ -123,8 +123,8 @@ export const TROPHY_TEMPLATES: readonly TrophyTemplate[] = [
   },
   {
     suffix: 'hundred_wins',
-    tier: 'platinum',
-    title: 'Master',
+    tier: 'gold',
+    title: 'Legend',
     description: 'Win 100 games of {game}.',
     counter: 'games_won',
     gte: 100,
@@ -152,18 +152,32 @@ export const TROPHY_TEMPLATES: readonly TrophyTemplate[] = [
  * server never learns, a win trophy is not a hard trophy, it is an impossible one.
  */
 export function buildCatalogForGame(gameType: string, gameLabel: string, canScoreWins: boolean): CatalogTrophy[] {
-  return TROPHY_TEMPLATES.filter((t) => !t.requiresWins || canScoreWins).map((t) => ({
+  const trophies = TROPHY_TEMPLATES.filter((t) => !t.requiresWins || canScoreWins).map((t) => ({
     id: `${gameType}.${t.suffix}`,
     game_type: gameType,
-    tier: t.tier,
+    tier: t.tier as CatalogTrophy['tier'],
     title: t.title,
     description: t.description.replace('{game}', gameLabel),
     // Scoped at build time so the counter only ever reads this game's total.
-    criteria: { type: 'counter', counter: t.counter, gte: t.gte, gameType },
+    criteria: { type: 'counter', counter: t.counter, gte: t.gte, gameType } as unknown,
     points: t.points,
     hidden: t.hidden ?? false,
     sort_order: t.sortOrder,
   }))
+
+  trophies.push({
+    id: `${gameType}.platinum`,
+    game_type: gameType,
+    tier: 'platinum',
+    title: 'Master',
+    description: `Earn every other ${gameLabel} trophy.`,
+    criteria: { type: 'platinum', game_type: gameType } as unknown,
+    points: 500,
+    hidden: false,
+    sort_order: 999,
+  })
+
+  return trophies
 }
 
 /**
