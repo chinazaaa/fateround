@@ -495,11 +495,12 @@ export function verifyLudoPuzzleSubmission(
 ): LudoPuzzleVerification {
   const { tokensHome, rollsUsed, captures, solved } = simulateSubmission(puzzleData, submission)
 
-  if (!solved) {
-    return { score: 0, solved: false, tokensHome, rollsUsed, captures }
-  }
-
   const optimalRolls = puzzleData.optimalRolls
+
+  if (!solved) {
+    const partial = Math.max(0, captures * 50 + tokensHome * 100)
+    return { score: partial, solved: false, tokensHome, rollsUsed, captures }
+  }
   const raw = 1000 - (rollsUsed - optimalRolls) * 30 + captures * 50 + tokensHome * 100
   const score = Math.max(100, raw)
 

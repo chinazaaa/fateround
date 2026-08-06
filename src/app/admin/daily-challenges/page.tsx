@@ -296,7 +296,13 @@ function validateContent(gameType: GameTypeId, content: unknown): string | null 
           if (!['base', 'track', 'home', 'finished'].includes(t.zone ?? ''))
             return `${prefix}Token ${i + 1} "zone" must be base/track/home/finished`
           if (typeof t.pos !== 'number') return `${prefix}Token ${i + 1} missing "pos"`
+          if (t.zone === 'track' && (t.pos < 0 || t.pos >= 52))
+            return `${prefix}Token ${i + 1} track pos must be 0-51 (got ${t.pos})`
+          if (t.zone === 'home' && (t.pos < 0 || t.pos >= 5))
+            return `${prefix}Token ${i + 1} home pos must be 0-4 (got ${t.pos})`
         }
+        const ids = obj.startingPieces.map((t) => t.id).sort()
+        if (ids.join(',') !== '0,1,2,3') return `${prefix}Piece IDs must be exactly 0, 1, 2, 3`
         if (!Array.isArray(obj.diceSequence) || obj.diceSequence.length === 0)
           return `${prefix}Missing "diceSequence" (non-empty number array)`
         if (obj.diceSequence.some((d) => typeof d !== 'number' || d < 1 || d > 6))
