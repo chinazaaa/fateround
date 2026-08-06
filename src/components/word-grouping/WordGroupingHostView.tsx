@@ -412,16 +412,28 @@ export function WordGroupingHostView({ gameCode, hostToken }: { gameCode: string
         votes={[]}
         rounds={[]}
         players={players}
+        variant="winner"
         playAgainButton={
           <button
             type="button"
             onClick={() => void confirmPlayAgain()}
             disabled={playingAgain}
-            className="btn-secondary w-full py-3 text-base font-bold disabled:opacity-60"
+            className="btn-secondary w-full py-3 text-sm font-bold disabled:opacity-60"
           >
-            {playingAgain ? 'Starting…' : '↻ Play again · same settings'}
+            {playingAgain ? 'Starting…' : '↻ Play again'}
           </button>
         }
+        returnToLobbyButton={
+          <button
+            type="button"
+            onClick={() => void confirmReturnToLobby()}
+            disabled={playingAgain}
+            className="btn-secondary w-full py-3 text-sm font-bold disabled:opacity-60"
+          >
+            Return to lobby
+          </button>
+        }
+        lobbyNote="Play again keeps these settings · the lobby lets you change them first."
       >
         <FinishedWinnerHero winnerName={winner?.name} game={game} />
         <PaginatedLeaderboard
@@ -436,15 +448,6 @@ export function WordGroupingHostView({ gameCode, hostToken }: { gameCode: string
           emphasizeLeader
         />
       </FinalResultsShareBlock>
-
-      <button
-        type="button"
-        onClick={() => void confirmReturnToLobby()}
-        disabled={playingAgain}
-        className="w-full py-2.5 text-sm font-semibold text-muted transition-colors hover:text-body disabled:opacity-60"
-      >
-        Return to lobby
-      </button>
 
       {hostWon && (
         <PostWinToCommunity
