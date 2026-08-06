@@ -1195,8 +1195,9 @@ input::placeholder,
 textarea::placeholder,
 .input-field::placeholder {
   color: var(--text-faint) !important;
-  opacity: 1 !important;
+  opacity: 0.35 !important;
   -webkit-text-fill-color: var(--text-faint) !important;
+  font-style: italic;
 }
 
 .input-field:focus {

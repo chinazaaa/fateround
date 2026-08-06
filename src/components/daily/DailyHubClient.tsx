@@ -17,7 +17,17 @@ import { authHeaders } from '@/lib/identity'
 import { getDailyStartedAt } from '@/lib/daily-progress'
 import { gameIcon } from '@/lib/game-glyphs'
 import { Glyph } from '@/components/icons/Glyph'
+import type { GameType } from '@/types'
 import { useExpiryRefresh } from '@/hooks/useExpiryRefresh'
+
+const DAILY_ICON_FALLBACK: Partial<Record<DailyChallengeGameType, GameType>> = {
+  whot_puzzle: 'whot',
+  word_grouping: 'tic_tac_toe',
+  chess_mate: 'chess',
+  codenames_codeword: 'codewords',
+  mini_crossword: 'crossword',
+  ludo_puzzle: 'ludo',
+}
 
 interface GameStatus {
   gameType: DailyChallengeGameType
@@ -158,7 +168,7 @@ export function DailyHubClient() {
               style={played ? { borderColor: 'var(--border-primary)', borderWidth: 1 } : undefined}
             >
               <span className="fr-glyph fr-glyph--sm">
-                <Glyph icon={gameIcon(gameType)} size={22} />
+                <Glyph icon={gameIcon(DAILY_ICON_FALLBACK[gameType] ?? (gameType as GameType))} size={22} />
               </span>
               <div className="flex-1 min-w-0">
                 <h3 className="font-bold" style={{ fontSize: 'var(--text-sm)' }}>

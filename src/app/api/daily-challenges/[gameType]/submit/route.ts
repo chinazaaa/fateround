@@ -181,6 +181,227 @@ function verifyTrivia(
   }
 }
 
+function verifyWhotPuzzle(
+  puzzleData: Record<string, unknown>,
+  submission: Record<string, unknown>
+): VerifiedMetrics | { error: string } {
+  const solution = puzzleData.solution as { optimalMoves: number }
+  const moves = submission.moves as Array<{ type: string }>
+  if (!Array.isArray(moves)) return { error: 'Missing moves array' }
+
+  const handSize = (puzzleData.hand as unknown[])?.length ?? 6
+  const cardsPlayed = moves.filter((m) => m.type === 'play').length
+  const drawsMade = moves.filter((m) => m.type === 'draw').length
+  const cleared = cardsPlayed >= handSize
+  const optimalMoves = solution?.optimalMoves ?? moves.length
+
+  const baseScore = 1000
+  const movePenalty = 40
+  const drawPenalty = 60
+  const rawPoints = Math.max(
+    0,
+    baseScore - Math.max(0, moves.length - optimalMoves) * movePenalty - drawsMade * drawPenalty
+  )
+
+  return {
+    rawPoints: cleared ? rawPoints : Math.floor(rawPoints * 0.3),
+    itemsSolved: cleared ? handSize : cardsPlayed,
+    itemsTotal: handSize,
+    hintsUsed: drawsMade,
+  }
+}
+
+function verifyWordGrouping(
+  puzzleData: Record<string, unknown>,
+  submission: Record<string, unknown>
+): VerifiedMetrics | { error: string } {
+  const solution = puzzleData.solution as { groups: Array<{ words: string[] }> }
+  const guesses = submission.guesses as Array<{ words: string[] }>
+  if (!Array.isArray(guesses)) return { error: 'Missing guesses array' }
+  if (!solution?.groups) return { error: 'Missing solution' }
+
+  const solutionSets = solution.groups.map((g) => new Set(g.words.map((w) => w.toLowerCase())))
+  const matched = new Set<number>()
+  let groupsFound = 0
+  let mistakes = 0
+
+  for (const guess of guesses) {
+    const guessSet = new Set((guess.words ?? []).map((w: string) => w.toLowerCase()))
+    const idx = solutionSets.findIndex(
+      (s, i) => !matched.has(i) && s.size === guessSet.size && [...guessSet].every((w) => s.has(w))
+    )
+    if (idx >= 0) {
+      matched.add(idx)
+      groupsFound++
+    } else {
+      mistakes++
+    }
+  }
+
+  const baseScore = 1000
+  const mistakePenalty = 150
+  const rawPoints = Math.max(0, baseScore - mistakes * mistakePenalty)
+
+  return {
+    rawPoints: groupsFound > 0 ? rawPoints : 0,
+    itemsSolved: groupsFound,
+    itemsTotal: 4,
+    hintsUsed: mistakes,
+  }
+}
+
+function verifyChessMate(
+  puzzleData: Record<string, unknown>,
+  submission: Record<string, unknown>
+): VerifiedMetrics | { error: string } {
+  const solution = puzzleData.solution as { lines: string[][] }
+  const playerMoves = submission.moves as string[]
+  if (!Array.isArray(playerMoves)) return { error: 'Missing moves array' }
+  if (!solution?.lines?.length) return { error: 'Missing solution' }
+
+  const mateIn = (puzzleData.mateIn as number) ?? 2
+  const totalPlayerMoves = mateIn
+
+  let bestMatch = 0
+  for (const line of solution.lines) {
+    const attackerMoves = line.filter((_, i) => i % 2 === 0)
+    let matched = 0
+    for (let i = 0; i < Math.min(playerMoves.length, attackerMoves.length); i++) {
+      if (playerMoves[i] === attackerMoves[i]) {
+        matched++
+      } else {
+        break
+      }
+    }
+    bestMatch = Math.max(bestMatch, matched)
+  }
+
+  const solved = bestMatch >= totalPlayerMoves
+  const wrongAttempts = typeof submission.wrongAttempts === 'number' ? submission.wrongAttempts : 0
+  const penalty = wrongAttempts * 150
+  return {
+    rawPoints: solved ? Math.max(100, 1000 - penalty) : 0,
+    itemsSolved: bestMatch,
+    itemsTotal: totalPlayerMoves,
+    hintsUsed: wrongAttempts,
+  }
+}
+
+function verifyCodenamesCodeword(
+  puzzleData: Record<string, unknown>,
+  submission: Record<string, unknown>
+): VerifiedMetrics | { error: string } {
+  const solution = puzzleData.solution as { correctWords: string[] }
+  const selectedWords = submission.selectedWords as string[]
+  if (!Array.isArray(selectedWords)) return { error: 'Missing selectedWords array' }
+  if (!solution?.correctWords) return { error: 'Missing solution' }
+
+  const correctSet = new Set(solution.correctWords.map((w) => w.toLowerCase()))
+  const total = correctSet.size
+  const seen = new Set<string>()
+  let correct = 0
+  let wrong = 0
+
+  for (const w of selectedWords) {
+    const lower = w.toLowerCase()
+    if (seen.has(lower)) continue
+    seen.add(lower)
+    if (correctSet.has(lower)) {
+      correct++
+    } else {
+      wrong++
+    }
+  }
+
+  const baseScore = 1000
+  const wrongPenalty = 150
+  const rawPoints = Math.max(0, Math.round((correct / Math.max(total, 1)) * baseScore) - wrong * wrongPenalty)
+
+  return {
+    rawPoints,
+    itemsSolved: correct,
+    itemsTotal: total,
+    hintsUsed: wrong,
+  }
+}
+
+function verifyLudoPuzzle(
+  puzzleData: Record<string, unknown>,
+  submission: Record<string, unknown>
+): VerifiedMetrics | { error: string } {
+  const moves = submission.moves as Array<number | null>
+  if (!Array.isArray(moves)) return { error: 'Missing moves array' }
+
+  // Dynamic import would be async — inline the scoring logic instead.
+  // The server holds the full puzzleData including solution.optimalRolls.
+  const solution = puzzleData.solution as { optimalRolls: number } | undefined
+  const diceSequence = puzzleData.diceSequence as number[]
+  const startingPieces = puzzleData.startingPieces as Array<{
+    id: number
+    zone: 'base' | 'track' | 'home' | 'finished'
+    pos: number
+  }>
+  const obstacles = (puzzleData.obstacles as Array<{ trackPos: number }>) ?? []
+
+  if (!Array.isArray(diceSequence) || !Array.isArray(startingPieces)) return { error: 'Invalid puzzle data' }
+
+  const FINISH_STEPS = 56
+  const HOME_ENTRY_STEPS = 51
+  const stepsOf = (p: { zone: string; pos: number }) => {
+    if (p.zone === 'base') return -1
+    if (p.zone === 'track') return p.pos
+    if (p.zone === 'home') return HOME_ENTRY_STEPS + p.pos
+    return FINISH_STEPS
+  }
+
+  const steps = [...startingPieces].sort((a, b) => a.id - b.id).map(stepsOf)
+  let obs = obstacles.map((o) => o.trackPos)
+  let captures = 0
+  let rollsUsed = 0
+
+  for (let i = 0; i < diceSequence.length && !steps.every((s) => s === FINISH_STEPS); i++) {
+    const roll = diceSequence[i]
+    const choice = i < moves.length ? moves[i] : null
+    rollsUsed = i + 1
+
+    if (typeof choice === 'number' && choice >= 0 && choice < 4) {
+      const cur = steps[choice]
+      let next: number | null = null
+      if (cur === -1) {
+        if (roll === 6) next = 0
+      } else if (cur < FINISH_STEPS) {
+        const c = cur + roll
+        if (c <= FINISH_STEPS) next = c
+      }
+      if (next !== null) {
+        steps[choice] = next
+        if (next < HOME_ENTRY_STEPS && obs.includes(next)) {
+          obs = obs.filter((o) => o !== next)
+          captures++
+        }
+      }
+    }
+  }
+
+  const tokensHome = steps.filter((s) => s === FINISH_STEPS).length
+  const solved = tokensHome === 4
+  const optimalRolls = solution?.optimalRolls ?? diceSequence.length
+
+  let rawPoints: number
+  if (solved) {
+    rawPoints = Math.max(100, 1000 - (rollsUsed - optimalRolls) * 30 + captures * 50 + tokensHome * 100)
+  } else {
+    rawPoints = Math.max(0, captures * 50 + tokensHome * 100)
+  }
+
+  return {
+    rawPoints,
+    itemsSolved: tokensHome,
+    itemsTotal: 4,
+    hintsUsed: 0,
+  }
+}
+
 function verifySubmission(
   gameType: DailyChallengeGameType,
   puzzleData: Record<string, unknown>,
@@ -193,12 +414,24 @@ function verifySubmission(
       return verifyWordHunt(puzzleData, submission)
     case 'crossword':
       return verifyCrossword(puzzleData, submission)
+    case 'mini_crossword':
+      return verifyCrossword(puzzleData, submission)
     case 'word_search':
       return verifyWordSearch(puzzleData, submission)
     case 'word_scramble':
       return verifyWordScramble(puzzleData, submission)
     case 'trivia':
       return verifyTrivia(puzzleData, submission)
+    case 'whot_puzzle':
+      return verifyWhotPuzzle(puzzleData, submission)
+    case 'word_grouping':
+      return verifyWordGrouping(puzzleData, submission)
+    case 'chess_mate':
+      return verifyChessMate(puzzleData, submission)
+    case 'codenames_codeword':
+      return verifyCodenamesCodeword(puzzleData, submission)
+    case 'ludo_puzzle':
+      return verifyLudoPuzzle(puzzleData, submission)
   }
 }
 
@@ -286,7 +519,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ gam
   // Word Hunt is a points game with no natural "complete" — rank/record it by raw points, not the
   // completion-based normalized score (which is tiny when there are hundreds of possible words).
   // normalized_score is still stored (its column is capped 0–1000); raw_points/best_score are not.
-  const isPointsGame = gameType === 'word_hunt' || gameType === 'trivia'
+  const isPointsGame = DAILY_GAME_PRIMARY_METRIC[gameType] === 'score'
   const boardScore = isPointsGame ? metrics.rawPoints : normalizedScore
 
   // Insert score (PK enforces one attempt)

@@ -42,7 +42,7 @@ export async function generateDailyPuzzle(gameType: DailyChallengeGameType, seed
 
     case 'crossword': {
       const { buildCrosswordPuzzle } = await import('@/lib/crossword-puzzles')
-      const result = buildCrosswordPuzzle('general', 'medium', seed)
+      const result = buildCrosswordPuzzle('general', 'hard', seed)
       return {
         puzzleData: {
           metadata: result.metadata,
@@ -51,7 +51,24 @@ export async function generateDailyPuzzle(gameType: DailyChallengeGameType, seed
         config: {
           timer: DAILY_GAME_TIMER.crossword,
           theme: 'general',
-          difficulty: 'medium',
+          difficulty: 'hard',
+          totalClues: result.metadata.clues?.length ?? 0,
+        },
+      }
+    }
+
+    case 'mini_crossword': {
+      const { buildCrosswordPuzzle } = await import('@/lib/crossword-puzzles')
+      const result = buildCrosswordPuzzle('general', 'easy', seed)
+      return {
+        puzzleData: {
+          metadata: result.metadata,
+          solution: result.solution,
+        },
+        config: {
+          timer: DAILY_GAME_TIMER.mini_crossword,
+          theme: 'general',
+          difficulty: 'easy',
           totalClues: result.metadata.clues?.length ?? 0,
         },
       }
@@ -93,6 +110,32 @@ export async function generateDailyPuzzle(gameType: DailyChallengeGameType, seed
 
     case 'trivia':
       throw new Error('Daily trivia requires admin content — no algorithmic fallback')
+
+    case 'whot_puzzle': {
+      const { generateWhotPuzzle } = await import('@/lib/daily-whot-puzzle')
+      return generateWhotPuzzle(seed, DAILY_GAME_TIMER.whot_puzzle)
+    }
+
+    case 'word_grouping': {
+      const { generateWordGroupingPuzzle } = await import('@/lib/daily-word-grouping')
+      return generateWordGroupingPuzzle(seed, DAILY_GAME_TIMER.word_grouping)
+    }
+
+    case 'chess_mate': {
+      const { generateChessMatePuzzle } = await import('@/lib/daily-chess-mate')
+      return generateChessMatePuzzle(seed, DAILY_GAME_TIMER.chess_mate)
+    }
+
+    case 'codenames_codeword': {
+      const { generateCodenamesPuzzle } = await import('@/lib/daily-codenames')
+      return generateCodenamesPuzzle(seed, DAILY_GAME_TIMER.codenames_codeword)
+    }
+
+    case 'ludo_puzzle': {
+      const { generateLudoPuzzle } = await import('@/lib/daily-ludo-puzzle')
+      const result = generateLudoPuzzle(seed, DAILY_GAME_TIMER.ludo_puzzle)
+      return { puzzleData: result.puzzleData as unknown as Record<string, unknown>, config: result.config }
+    }
   }
 }
 
@@ -106,7 +149,8 @@ export async function generateDailyPuzzleFromContent(
   seed: number,
   adminContent: unknown
 ): Promise<PuzzleResult | null> {
-  if (!Array.isArray(adminContent) || adminContent.length === 0) return null
+  if (adminContent == null) return null
+  if (Array.isArray(adminContent) && adminContent.length === 0) return null
 
   switch (gameType) {
     case 'crossword': {
@@ -135,6 +179,40 @@ export async function generateDailyPuzzleFromContent(
               timer: DAILY_GAME_TIMER.crossword,
               theme: 'admin',
               difficulty: 'medium',
+              totalClues: result.metadata.clues?.length ?? 0,
+            },
+          }
+        }
+      }
+      return null
+    }
+
+    case 'mini_crossword': {
+      const { generateCrossword, CROSSWORD_DIFFICULTY_SPECS } = await import('@/lib/crossword')
+      const spec = CROSSWORD_DIFFICULTY_SPECS.easy
+      const entries = (adminContent as { answer?: string; clue?: string }[])
+        .filter((e) => e.answer && e.clue)
+        .map((e) => ({ answer: e.answer!, clue: e.clue! }))
+      if (entries.length < 4) return null
+
+      for (let i = 0; i < 8; i++) {
+        const result = generateCrossword(entries, {
+          size: spec.size,
+          seed: seed + i * 7919,
+          targetWords: spec.targetWords,
+          maxWordLength: spec.maxWordLength,
+          minWords: Math.min(4, spec.targetWords),
+        })
+        if (result) {
+          return {
+            puzzleData: {
+              metadata: { ...result.metadata, theme: 'admin', difficulty: 'easy' },
+              solution: result.solution,
+            },
+            config: {
+              timer: DAILY_GAME_TIMER.mini_crossword,
+              theme: 'admin',
+              difficulty: 'easy',
               totalClues: result.metadata.clues?.length ?? 0,
             },
           }
@@ -231,6 +309,31 @@ export async function generateDailyPuzzleFromContent(
           totalQuestions: questions.length,
         },
       }
+    }
+
+    case 'whot_puzzle':
+      return null
+
+    case 'word_grouping': {
+      const { generateWordGroupingFromContent } = await import('@/lib/daily-word-grouping')
+      return generateWordGroupingFromContent(adminContent, seed, DAILY_GAME_TIMER.word_grouping)
+    }
+
+    case 'chess_mate': {
+      const { generateChessMateFromContent } = await import('@/lib/daily-chess-mate')
+      return generateChessMateFromContent(adminContent, seed, DAILY_GAME_TIMER.chess_mate)
+    }
+
+    case 'codenames_codeword': {
+      const { generateCodenamesFromContent } = await import('@/lib/daily-codenames')
+      return generateCodenamesFromContent(adminContent, seed, DAILY_GAME_TIMER.codenames_codeword)
+    }
+
+    case 'ludo_puzzle': {
+      const { generateLudoFromContent } = await import('@/lib/daily-ludo-puzzle')
+      const result = generateLudoFromContent(adminContent, seed, DAILY_GAME_TIMER.ludo_puzzle)
+      if (!result) return null
+      return { puzzleData: result.puzzleData as unknown as Record<string, unknown>, config: result.config }
     }
 
     default:

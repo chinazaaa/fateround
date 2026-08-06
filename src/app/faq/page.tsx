@@ -10,6 +10,7 @@ import {
   ChampionIcon,
   RankingIcon,
   LockPasswordIcon,
+  Calendar01Icon,
 } from '@hugeicons/core-free-icons'
 import type { IconSvgElement } from '@hugeicons/react'
 import { SITE_NAME, faqPageJsonLd, breadcrumbJsonLd } from '@/lib/seo'
@@ -28,6 +29,7 @@ const FAQ_GROUP_CONFIG: Record<string, { icon: IconSvgElement; accent: string }>
   content: { icon: Quiz01Icon, accent: '#8b5cf6' },
   hosting: { icon: ChampionIcon, accent: '#f59e0b' },
   trophies: { icon: RankingIcon, accent: '#ec4899' },
+  'daily-challenges': { icon: Calendar01Icon, accent: '#6366f1' },
   privacy: { icon: LockPasswordIcon, accent: '#10b981' },
 }
 

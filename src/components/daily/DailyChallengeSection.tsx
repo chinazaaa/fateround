@@ -13,7 +13,17 @@ import {
 } from '@/lib/daily-challenge'
 import { gameIcon } from '@/lib/game-glyphs'
 import { Glyph } from '@/components/icons/Glyph'
+import type { GameType } from '@/types'
 import { SectionHeading } from '@/components/SectionHeading'
+
+const DAILY_ICON_FALLBACK: Partial<Record<DailyChallengeGameType, GameType>> = {
+  whot_puzzle: 'whot',
+  word_grouping: 'tic_tac_toe',
+  chess_mate: 'chess',
+  codenames_codeword: 'codewords',
+  mini_crossword: 'crossword',
+  ludo_puzzle: 'ludo',
+}
 import { authHeaders } from '@/lib/identity'
 import { getDailyStartedAt } from '@/lib/daily-progress'
 
@@ -29,9 +39,15 @@ const DAILY_GAME_ACCENTS: Record<DailyChallengeGameType, string> = {
   sudoku: '#3b82f6',
   word_hunt: '#8b5cf6',
   crossword: '#14b8a6',
+  mini_crossword: '#06b6d4',
   word_search: '#f59e0b',
   word_scramble: '#ec4899',
   trivia: '#10b981',
+  whot_puzzle: '#e74c3c',
+  word_grouping: '#f97316',
+  chess_mate: '#6366f1',
+  codenames_codeword: '#84cc16',
+  ludo_puzzle: '#22c55e',
 }
 
 export function DailyChallengeSection() {
@@ -109,7 +125,7 @@ export function DailyChallengeSection() {
                 style={{ '--accent': DAILY_GAME_ACCENTS[gameType] } as React.CSSProperties}
               >
                 <span className="fr-glyph fr-glyph--sm">
-                  <Glyph icon={gameIcon(gameType)} size={22} />
+                  <Glyph icon={gameIcon(DAILY_ICON_FALLBACK[gameType] ?? (gameType as GameType))} size={22} />
                 </span>
                 <h3 className="fr-gamecard__title">{DAILY_GAME_LABELS[gameType]}</h3>
                 {/* The badge slot keeps its height while the status request is in

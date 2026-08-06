@@ -127,8 +127,8 @@ export function SiteFooter() {
 
         <p className="foot-legal">
           {SITE_NAME} is an independent platform and is not affiliated with, endorsed by, or sponsored by the owners of
-          Yahtzee®, Monopoly®, Scrabble®, UNO®, Whot® or any other game. All trademarks are the property of their
-          respective owners and are used here only to describe the game being played.
+          Yahtzee®, Monopoly®, Scrabble®, UNO®, Whot®, Codenames®, Quiplash® or any other game. All trademarks are the
+          property of their respective owners and are used here only to describe the game being played.
         </p>
       </div>
     </footer>

@@ -431,6 +431,12 @@ export const GAME_LANDING_OG_BY_SLUG: Record<string, string> = {
   'daily-sudoku': '/og/daily-sudoku.png',
   'daily-trivia': '/og/daily-trivia.png',
   'daily-word-hunt': '/og/daily-word-hunt.png',
+  'daily-mini-crossword': '/og/daily-mini-crossword.png',
+  'daily-word-grouping': '/og/daily-word-grouping.png',
+  'daily-chess-mate': '/og/daily-chess-mate.png',
+  'daily-codenames-codeword': '/og/daily-codenames-codeword.png',
+  'daily-whot-puzzle': '/og/daily-whot-puzzle.png',
+  'daily-ludo-puzzle': '/og/daily-ludo-puzzle.png',
 }
 
 export function gameLandingOgPath(slug: string): string {
