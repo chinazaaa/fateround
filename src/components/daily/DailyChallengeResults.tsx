@@ -177,9 +177,29 @@ export function DailyChallengeResults({
               100 points per correct answer
             </p>
           )}
+          {gameType === 'word_grouping' && (
+            <p className="mt-1" style={{ fontSize: 'var(--text-2xs)', color: 'var(--text-faint)' }}>
+              250 per correct group, −150 per mistake
+            </p>
+          )}
+          {gameType === 'word_hunt' && (
+            <p className="mt-1" style={{ fontSize: 'var(--text-2xs)', color: 'var(--text-faint)' }}>
+              100–800+ pts per word by length
+            </p>
+          )}
+          {gameType === 'whot_puzzle' && (
+            <p className="mt-1" style={{ fontSize: 'var(--text-2xs)', color: 'var(--text-faint)' }}>
+              1000 base, −40 per extra move, −60 per draw
+            </p>
+          )}
+          {gameType === 'codenames_codeword' && (
+            <p className="mt-1" style={{ fontSize: 'var(--text-2xs)', color: 'var(--text-faint)' }}>
+              Find all spy words, −150 per wrong pick
+            </p>
+          )}
           {gameType === 'ludo_puzzle' && (
             <p className="mt-1" style={{ fontSize: 'var(--text-2xs)', color: 'var(--text-faint)' }}>
-              100 points per token home
+              250 per token home + 50 per capture
             </p>
           )}
 
