@@ -28,11 +28,7 @@ import { GameLobbyWaitingPanel } from '@/components/game-lobby/GameLobbyWaitingP
 import { NameJoinForm } from '@/components/game-lobby/NameJoinForm'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { gameTypeConfig } from '@/lib/game-types'
-import {
-  WORD_GROUPING_MAX_MISTAKES,
-  WORD_GROUPING_TOTAL_GROUPS,
-  tallyWordGroupingScores,
-} from '@fate-round/shared/word-grouping'
+import { WORD_GROUPING_MAX_MISTAKES, WORD_GROUPING_TOTAL_GROUPS, tallyWordGroupingScores } from '@/lib/word-grouping'
 import type { Game, Player } from '@/types'
 
 const GROUP_COLORS: Record<number, string> = {

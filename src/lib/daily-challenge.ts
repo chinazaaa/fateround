@@ -92,7 +92,7 @@ export const DAILY_GAME_EMOJIS: Record<DailyChallengeGameType, string> = {
 export const DAILY_GAME_TIMER: Record<DailyChallengeGameType, number> = {
   sudoku: 300,
   word_hunt: 180,
-  crossword: 900,
+  crossword: 300,
   mini_crossword: 120,
   word_search: 300,
   word_scramble: 300,

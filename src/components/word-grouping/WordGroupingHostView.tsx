@@ -17,7 +17,7 @@ import {
   WORD_GROUPING_TOTAL_GROUPS,
   WORD_GROUPING_GAME_DURATION_OPTIONS,
   tallyWordGroupingScores,
-} from '@fate-round/shared/word-grouping'
+} from '@/lib/word-grouping'
 import { WordGroupingPlayerView } from './WordGroupingPlayerView'
 import { formatMinutesSeconds } from '@/lib/timer-format'
 import type { Game, Player } from '@/types'

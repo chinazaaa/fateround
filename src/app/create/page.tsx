@@ -301,7 +301,7 @@ import {
   formatWordGroupingGameDuration,
   WORD_GROUPING_GAME_DURATION_OPTIONS,
   WORD_GROUPING_DEFAULT_DURATION,
-} from '@fate-round/shared/word-grouping'
+} from '@/lib/word-grouping'
 import { MATCHING_PAIRS_GAME_DURATION_OPTIONS, formatMatchingPairsGameDuration } from '@/lib/memory-match'
 import {
   DESCRIBE_IT_DEFAULT_ROUNDS,
@@ -5482,28 +5482,6 @@ function CreateGameInner() {
                       noun="puzzles"
                     />
                   </div>
-                )}
-                {questionSource === 'custom' && (
-                  <PuzzleUpload
-                    sample={questionSampleFile('word_grouping')}
-                    hint={questionUploadHint('word_grouping')}
-                    buttonLabel="Choose JSON"
-                    fileRef={crosswordFileRef}
-                    error={puzzleUploadError}
-                    summary={puzzleUploadSummary}
-                    onFile={async (file) => {
-                      setPuzzleUploadError(null)
-                      setPuzzleUploadSummary(null)
-                      try {
-                        const raw = JSON.parse(await file.text())
-                        const groups = Array.isArray(raw) ? raw : raw?.groups ? [raw] : []
-                        if (groups.length === 0) throw new Error('No valid puzzles found')
-                        setPuzzleUploadSummary(`${groups.length} puzzle${groups.length === 1 ? '' : 's'} loaded`)
-                      } catch (err) {
-                        setPuzzleUploadError(err instanceof Error ? err.message : 'Could not read that file')
-                      }
-                    }}
-                  />
                 )}
                 {categoryUploadField}
                 <Field label="Max time limit">

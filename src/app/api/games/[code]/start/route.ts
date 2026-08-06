@@ -156,7 +156,7 @@ import {
   findWordScrambleTheme,
   wordScrambleThemeOptions,
 } from '@/lib/word-scramble-puzzles'
-import { WORD_GROUPING_MIN_PLAYERS } from '@fate-round/shared/word-grouping'
+import { WORD_GROUPING_MIN_PLAYERS } from '@/lib/word-grouping'
 import { generateWordGroupingPuzzle, generateWordGroupingFromContent } from '@/lib/daily-word-grouping'
 import { buildWordHuntRoundRow, WORD_HUNT_MIN_PLAYERS } from '@/lib/word-hunt'
 import { buildWordHuntMetadata } from '@/lib/word-hunt-dictionary'

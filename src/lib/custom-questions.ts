@@ -20,6 +20,7 @@ import {
   isCrosswordGame,
   isWordSearchGame,
   isWordScrambleGame,
+  isWordGroupingGame,
   isWhoSaidThis,
   parseGameType,
 } from '@/lib/game-types'
@@ -1005,6 +1006,12 @@ export function questionSourceOptions(gameType: GameType | string): {
       { value: 'platform', label: 'Platform', hint: 'Use our built-in themed word banks.' },
       { value: 'library', label: 'Library', hint: 'Pick a community word pack.' },
       { value: 'custom', label: 'Your own', hint: 'Upload a CSV of words + optional hints (4+ words).' },
+    ]
+  }
+  if (isWordGroupingGame(gameType)) {
+    return [
+      { value: 'platform', label: 'Platform', hint: 'Use our built-in puzzle bank.' },
+      { value: 'library', label: 'Library', hint: 'Pick a community puzzle pack.' },
     ]
   }
   const platformCount = isTriviaGame(gameType)
