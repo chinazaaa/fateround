@@ -29,6 +29,7 @@ import { wordHuntFacts } from './word-hunt'
 import { wordRushFacts } from './word-rush'
 import { wordScrambleFacts } from './word-scramble'
 import { wordSearchFacts } from './word-search'
+import { wordGroupingFacts } from './word-grouping'
 import { snakeAndLadderFacts } from './snake-and-ladder'
 
 /**
@@ -110,6 +111,7 @@ const BUILDERS: Partial<Record<GameType, FactsBuilder>> = {
   word_rush: wordRushFacts,
   word_scramble: wordScrambleFacts,
   word_search: wordSearchFacts,
+  word_grouping: wordGroupingFacts,
   snake_and_ladder: snakeAndLadderFacts,
 }
 

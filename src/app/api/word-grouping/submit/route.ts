@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { assertPlayer } from '@/lib/game-admin'
 import { parseJsonBody } from '@/lib/parse-body'
+import { markGameFinished } from '@/lib/game-finish'
 import { WORD_GROUPING_MAX_MISTAKES, WORD_GROUPING_TOTAL_GROUPS } from '@/lib/word-grouping'
 
 const submitSchema = z.object({
@@ -38,7 +39,10 @@ export async function POST(req: NextRequest) {
   if (!game) return NextResponse.json({ error: 'Game not found' }, { status: 404 })
   if (game.status !== 'active') return NextResponse.json({ error: 'Game is not active' }, { status: 400 })
   if (wordGroupingSessionExpired(game.session_started_at, game.game_duration_seconds)) {
-    await supabase.from('games').update({ status: 'finished', finished_at: new Date().toISOString() }).eq('id', code)
+    // markGameFinished (over a raw UPDATE) snapshots trophy facts + awards room points on the
+    // active→finished transition. Multiple players can race here at the buzzer, so gate on
+    // status='active' — only the CAS winner runs the finish side-effects, not every racer.
+    await markGameFinished(supabase, code, new Date().toISOString(), { onlyIfActive: true })
     return NextResponse.json({ error: 'Time is up' }, { status: 400 })
   }
 
@@ -131,10 +135,10 @@ export async function POST(req: NextRequest) {
       })
 
       if (allDone) {
-        await supabase
-          .from('games')
-          .update({ status: 'finished', finished_at: new Date().toISOString() })
-          .eq('id', code)
+        // Two players can independently observe "allDone" on their final submits — same race
+        // as the timer path above. onlyIfActive lets only the CAS winner run the
+        // finish side-effects (round facts + room points).
+        await markGameFinished(supabase, code, new Date().toISOString(), { onlyIfActive: true })
       }
     }
   }

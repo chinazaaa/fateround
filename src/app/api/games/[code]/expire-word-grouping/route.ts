@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { parseGameType, isWordGroupingGame } from '@/lib/game-types'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { markGameFinished } from '@/lib/game-finish'
 
 function wordGroupingSessionExpired(sessionStartedAt: string | null, durationSeconds: number | null): boolean {
   if (!sessionStartedAt || !durationSeconds || durationSeconds <= 0) return false
@@ -30,10 +31,10 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ co
     return NextResponse.json({ expired: false, finished: false })
   }
 
-  const { error } = await supabase
-    .from('games')
-    .update({ status: 'finished', finished_at: new Date().toISOString() })
-    .eq('id', gameId)
+  // markGameFinished (not a raw UPDATE) snapshots trophy round-facts + awards room points.
+  // Player + host both poll this at the buzzer, so onlyIfActive gates the finish side-effects
+  // to whichever request wins the CAS.
+  const { error } = await markGameFinished(supabase, gameId, new Date().toISOString(), { onlyIfActive: true })
 
   if (error) return NextResponse.json({ error: 'Failed to end game' }, { status: 500 })
 
