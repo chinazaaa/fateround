@@ -5,6 +5,9 @@ import { useDailyChallengeTimer } from '@/hooks/useDailyChallengeTimer'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { DAILY_SUBMIT_CONFIRM } from '@/components/daily/daily-submit-confirm'
 import { getOrCreateStartedAt, loadDailyAnswers, saveDailyAnswers, clearDailyProgress } from '@/lib/daily-progress'
+import { LudoBoard } from '@/components/ludo/LudoBoard'
+import { TRACK_GRID, HOME_GRID } from '@/lib/ludo-board-layout'
+import type { LudoSession, LudoPlayerState, LudoPiece, Player } from '@/types'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -48,17 +51,11 @@ interface SavedState {
 
 const HOME_ENTRY_STEPS = 51
 const FINISH_STEPS = 56
-const TOTAL_STEPS = FINISH_STEPS + 1 // for progress bar
-
-const TRACK_CELLS = 52 // 0..51
-const CELLS_PER_ROW = 13
-const HOME_LANE_CELLS = 5
-
-const TOKEN_GREEN = '#22c55e'
-const TOKEN_GREEN_DARK = '#16a34a'
+const PUZZLE_PLAYER_ID = 'puzzle-player'
+const PUZZLE_COLOR = 'green' as const
 
 // ---------------------------------------------------------------------------
-// Helpers (game logic — unchanged)
+// Helpers (game logic)
 // ---------------------------------------------------------------------------
 
 function stepsFromPiece(piece: LudoPuzzlePiece): number {
@@ -92,29 +89,66 @@ function allFinished(pieces: LudoPuzzlePiece[]): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// Board layout helpers
+// Bridge: puzzle pieces → LudoBoard props
 // ---------------------------------------------------------------------------
 
-/** Returns the (row, col) position in the winding grid for a given track index. */
-function trackCellPosition(trackIndex: number): { row: number; col: number } {
-  const rowNum = Math.floor(trackIndex / CELLS_PER_ROW)
-  const posInRow = trackIndex % CELLS_PER_ROW
-  // Even rows go left-to-right, odd rows go right-to-left
-  const col = rowNum % 2 === 0 ? posInRow : CELLS_PER_ROW - 1 - posInRow
-  return { row: rowNum, col }
+function buildLudoPlayerState(pieces: LudoPuzzlePiece[]): LudoPlayerState {
+  return {
+    id: 'state-1',
+    game_id: 'puzzle',
+    player_id: PUZZLE_PLAYER_ID,
+    color: PUZZLE_COLOR,
+    pieces: pieces as LudoPiece[],
+    player_order: 0,
+    created_at: '',
+  }
 }
 
-/** Returns the (row, col) for a home lane cell (0..4). Home lane is on a new row below track. */
-function homeCellPosition(homeIndex: number): { row: number; col: number } {
-  const trackRows = Math.ceil(TRACK_CELLS / CELLS_PER_ROW) // 4 rows
-  // Home lane starts at beginning of a new row
-  return { row: trackRows, col: homeIndex }
+const STUB_SESSION: LudoSession = {
+  id: 'puzzle',
+  game_id: 'puzzle',
+  turn_order: [PUZZLE_PLAYER_ID],
+  current_turn_index: 0,
+  phase: 'move',
+  last_dice: null,
+  remaining_dice: null,
+  consecutive_sixes: 0,
+  extra_turn: false,
+  status_message: null,
+  winner_player_id: null,
+  turn_deadline_at: null,
+  created_at: '',
+  updated_at: '',
 }
 
-/** Returns the (row, col) for the finish star. */
-function finishPosition(): { row: number; col: number } {
-  const trackRows = Math.ceil(TRACK_CELLS / CELLS_PER_ROW)
-  return { row: trackRows, col: HOME_LANE_CELLS }
+const STUB_PLAYERS: Player[] = [
+  {
+    id: PUZZLE_PLAYER_ID,
+    name: 'You',
+    game_id: 'puzzle',
+    gender: 'both',
+    identity_gender: null,
+    participant_id: null,
+    joined_at: '',
+  },
+]
+
+function buildHighlightCells(pieces: LudoPuzzlePiece[], roll: number): Set<string> {
+  const cells = new Set<string>()
+  for (const p of pieces) {
+    if (!canMove(p, roll)) continue
+    const steps = stepsFromPiece(p)
+    const newSteps = steps === -1 ? 0 : steps + roll
+    const landing = pieceFromSteps(p.id, newSteps)
+    if (landing.zone === 'track') {
+      const grid = TRACK_GRID[landing.pos]
+      if (grid) cells.add(`${grid.row},${grid.col}`)
+    } else if (landing.zone === 'home') {
+      const grid = HOME_GRID[PUZZLE_COLOR][landing.pos]
+      if (grid) cells.add(`${grid.row},${grid.col}`)
+    }
+  }
+  return cells
 }
 
 // ---------------------------------------------------------------------------
@@ -202,447 +236,6 @@ function DiceSequencePreview({ sequence, currentIndex }: { sequence: number[]; c
       {remaining > previewCount && (
         <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-faint)' }}>+{remaining - previewCount} more</span>
       )}
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Base Yard — shows tokens still in base
-// ---------------------------------------------------------------------------
-
-function BaseYard({
-  basePieces,
-  highlighted,
-  onTap,
-}: {
-  basePieces: LudoPuzzlePiece[]
-  highlighted: Set<number>
-  onTap: (id: number) => void
-}) {
-  return (
-    <div
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: 6,
-        padding: '6px 10px',
-        borderRadius: 10,
-        background: TOKEN_GREEN,
-        border: '2px solid ' + TOKEN_GREEN_DARK,
-        minHeight: 44,
-      }}
-    >
-      <span
-        style={{
-          fontSize: 9,
-          fontWeight: 800,
-          color: '#fff',
-          textTransform: 'uppercase',
-          letterSpacing: '0.08em',
-        }}
-      >
-        BASE
-      </span>
-      <div style={{ display: 'flex', gap: 4 }}>
-        {[0, 1, 2, 3].map((id) => {
-          const inBase = basePieces.some((p) => p.id === id)
-          const canTap = highlighted.has(id)
-          return (
-            <button
-              key={id}
-              type="button"
-              disabled={!canTap}
-              onClick={() => canTap && onTap(id)}
-              style={{
-                width: 28,
-                height: 28,
-                borderRadius: '50%',
-                border: inBase ? '2px solid rgba(255,255,255,0.5)' : '2px dashed rgba(255,255,255,0.3)',
-                background: inBase ? '#fff' : 'rgba(255,255,255,0.1)',
-                color: inBase ? TOKEN_GREEN_DARK : 'transparent',
-                fontSize: 13,
-                fontWeight: 800,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: canTap ? 'pointer' : 'default',
-                animation: canTap ? 'ludo-token-pulse 1.5s ease-in-out infinite' : undefined,
-                boxShadow: canTap ? '0 0 0 2px #fff, 0 0 8px rgba(22,163,74,0.6)' : undefined,
-                transition: 'all 0.2s',
-              }}
-            >
-              {inBase ? id + 1 : ''}
-            </button>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Board Cell
-// ---------------------------------------------------------------------------
-
-function BoardCell({
-  trackIndex,
-  isStart,
-  isObstacle,
-  isHomeLane,
-  isFinish,
-  showNumber,
-  tokens,
-  highlightedTokens,
-  onTokenTap,
-  lastTrackRow,
-}: {
-  trackIndex?: number
-  isStart?: boolean
-  isObstacle?: boolean
-  isHomeLane?: boolean
-  isFinish?: boolean
-  showNumber?: number | null
-  tokens: LudoPuzzlePiece[]
-  highlightedTokens: Set<number>
-  onTokenTap: (id: number) => void
-  lastTrackRow?: boolean
-}) {
-  let bg = 'var(--card)'
-  let borderColor = 'var(--border)'
-  let cellContent: React.ReactNode = null
-
-  if (isStart) {
-    bg = TOKEN_GREEN
-    borderColor = TOKEN_GREEN_DARK
-    cellContent = <span style={{ fontSize: 14, color: '#fff' }}>★</span>
-  } else if (isFinish) {
-    bg = TOKEN_GREEN_DARK
-    borderColor = TOKEN_GREEN
-    cellContent = <span style={{ fontSize: 16, color: '#fbbf24' }}>★</span>
-  } else if (isHomeLane) {
-    bg = `${TOKEN_GREEN}22`
-    borderColor = TOKEN_GREEN
-  } else if (isObstacle) {
-    bg = '#fef2f2'
-    borderColor = '#f87171'
-    cellContent = <span style={{ fontSize: 11, color: '#ef4444', fontWeight: 800 }}>X</span>
-  }
-
-  const hasTokens = tokens.length > 0
-
-  return (
-    <div
-      style={{
-        position: 'relative',
-        width: '100%',
-        aspectRatio: '1',
-        borderRadius: 6,
-        border: `1.5px solid ${borderColor}`,
-        background: bg,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        fontSize: 9,
-        overflow: 'visible',
-      }}
-    >
-      {/* Cell number label */}
-      {showNumber != null && !hasTokens && !isStart && !isFinish && !isObstacle && (
-        <span
-          style={{
-            fontSize: 8,
-            fontWeight: 600,
-            color: 'var(--text-faint)',
-            position: 'absolute',
-            bottom: 1,
-            right: 2,
-            lineHeight: 1,
-          }}
-        >
-          {showNumber}
-        </span>
-      )}
-
-      {/* Static cell content (star, X) if no tokens */}
-      {!hasTokens && cellContent}
-
-      {/* Connector arrow for row transitions */}
-      {lastTrackRow !== undefined && lastTrackRow && (
-        <span
-          style={{
-            position: 'absolute',
-            right: -10,
-            top: '50%',
-            transform: 'translateY(-50%)',
-            fontSize: 10,
-            color: 'var(--text-faint)',
-          }}
-        >
-          ↓
-        </span>
-      )}
-
-      {/* Tokens on this cell */}
-      {tokens.length > 0 && (
-        <div
-          style={{
-            display: 'flex',
-            flexWrap: 'wrap',
-            gap: 1,
-            alignItems: 'center',
-            justifyContent: 'center',
-            position: 'absolute',
-            inset: 0,
-            zIndex: 10,
-          }}
-        >
-          {tokens.map((t) => {
-            const canTap = highlightedTokens.has(t.id)
-            return (
-              <button
-                key={t.id}
-                type="button"
-                disabled={!canTap}
-                onClick={(e) => {
-                  e.stopPropagation()
-                  if (canTap) onTokenTap(t.id)
-                }}
-                style={{
-                  width: tokens.length > 2 ? 14 : tokens.length > 1 ? 16 : 22,
-                  height: tokens.length > 2 ? 14 : tokens.length > 1 ? 16 : 22,
-                  borderRadius: '50%',
-                  background: TOKEN_GREEN,
-                  border: `2px solid ${canTap ? '#fff' : 'rgba(255,255,255,0.4)'}`,
-                  color: '#fff',
-                  fontSize: tokens.length > 2 ? 7 : tokens.length > 1 ? 8 : 10,
-                  fontWeight: 800,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor: canTap ? 'pointer' : 'default',
-                  boxShadow: canTap
-                    ? '0 0 0 2px rgba(22,163,74,0.5), 0 0 8px rgba(22,163,74,0.4)'
-                    : '0 1px 2px rgba(0,0,0,0.15)',
-                  animation: canTap ? 'ludo-token-pulse 1.5s ease-in-out infinite' : undefined,
-                  padding: 0,
-                  lineHeight: 1,
-                  transition: 'all 0.2s',
-                  zIndex: canTap ? 20 : 10,
-                }}
-              >
-                {t.id + 1}
-              </button>
-            )
-          })}
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// The Board — winding path
-// ---------------------------------------------------------------------------
-
-function LudoPathBoard({
-  pieces,
-  obstacles,
-  highlightedTokens,
-  onTokenTap,
-}: {
-  pieces: LudoPuzzlePiece[]
-  obstacles: LudoObstacle[]
-  highlightedTokens: Set<number>
-  onTokenTap: (id: number) => void
-}) {
-  const obstacleSet = useMemo(() => new Set(obstacles.map((o) => o.trackPos)), [obstacles])
-
-  // Build rows of track cells
-  const trackRows = Math.ceil(TRACK_CELLS / CELLS_PER_ROW) // 4
-  const rows: Array<Array<{ type: 'track'; index: number } | { type: 'empty' }>> = []
-
-  for (let r = 0; r < trackRows; r++) {
-    const row: Array<{ type: 'track'; index: number } | { type: 'empty' }> = []
-    for (let c = 0; c < CELLS_PER_ROW; c++) {
-      const { row: rr, col: cc } = trackCellPosition(r * CELLS_PER_ROW + c)
-      if (rr === r && r * CELLS_PER_ROW + c < TRACK_CELLS) {
-        // Find which track index maps to this (r, c)
-        // We need to find the trackIndex that produces (r, c)
-        const trackIndex = r * CELLS_PER_ROW + (r % 2 === 0 ? c : CELLS_PER_ROW - 1 - c)
-        if (trackIndex < TRACK_CELLS) {
-          row.push({ type: 'track', index: trackIndex })
-        } else {
-          row.push({ type: 'empty' })
-        }
-      } else {
-        row.push({ type: 'empty' })
-      }
-    }
-    rows.push(row)
-  }
-
-  // Build home lane row
-  const homeRow: Array<{ type: 'home'; index: number } | { type: 'finish' } | { type: 'empty' }> = []
-  for (let c = 0; c < CELLS_PER_ROW; c++) {
-    if (c < HOME_LANE_CELLS) {
-      homeRow.push({ type: 'home', index: c })
-    } else if (c === HOME_LANE_CELLS) {
-      homeRow.push({ type: 'finish' })
-    } else {
-      homeRow.push({ type: 'empty' })
-    }
-  }
-
-  // Group pieces by their board position
-  const trackPieces = useMemo(() => {
-    const map = new Map<string, LudoPuzzlePiece[]>()
-    for (const p of pieces) {
-      if (p.zone === 'track') {
-        const key = `track-${p.pos}`
-        if (!map.has(key)) map.set(key, [])
-        map.get(key)!.push(p)
-      } else if (p.zone === 'home') {
-        const key = `home-${p.pos}`
-        if (!map.has(key)) map.set(key, [])
-        map.get(key)!.push(p)
-      } else if (p.zone === 'finished') {
-        const key = 'finish'
-        if (!map.has(key)) map.set(key, [])
-        map.get(key)!.push(p)
-      }
-    }
-    return map
-  }, [pieces])
-
-  // Determine if a row's last cell should show a down-arrow connector
-  // Row 0 last cell (rightmost) -> row 1 starts from right
-  // Row 1 last cell (leftmost, col 0) -> row 2 starts from left
-  // Row 2 last cell (rightmost) -> row 3 starts from right
-
-  return (
-    <div
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 2,
-        padding: 8,
-        borderRadius: 12,
-        background: 'var(--card)',
-        border: '1px solid var(--border)',
-      }}
-    >
-      {/* Track rows */}
-      {rows.map((row, rowIdx) => {
-        // Determine which end of this row connects to the next row
-        const isEvenRow = rowIdx % 2 === 0
-        // Even rows: last cell is on the right (col 12), connector goes down-right
-        // Odd rows: last cell is on the left (col 0), connector goes down-left
-        const connectorCol = isEvenRow ? CELLS_PER_ROW - 1 : 0
-        const isLastTrackRow = rowIdx === trackRows - 1
-
-        return (
-          <div key={`row-${rowIdx}`}>
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: `repeat(${CELLS_PER_ROW}, 1fr)`,
-                gap: 2,
-              }}
-            >
-              {row.map((cell, colIdx) => {
-                if (cell.type === 'empty') {
-                  return <div key={colIdx} style={{ aspectRatio: '1' }} />
-                }
-                const ti = cell.index
-                const tokensHere = trackPieces.get(`track-${ti}`) ?? []
-                const isRowEnd = colIdx === connectorCol && rowIdx < trackRows - 1
-
-                return (
-                  <BoardCell
-                    key={colIdx}
-                    trackIndex={ti}
-                    isStart={ti === 0}
-                    isObstacle={obstacleSet.has(ti)}
-                    tokens={tokensHere}
-                    highlightedTokens={highlightedTokens}
-                    onTokenTap={onTokenTap}
-                    showNumber={ti % 5 === 0 ? ti : null}
-                  />
-                )
-              })}
-            </div>
-            {/* Row connector arrow */}
-            {rowIdx < trackRows - 1 && (
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: isEvenRow ? 'flex-end' : 'flex-start',
-                  padding: isEvenRow ? '0 8px 0 0' : '0 0 0 8px',
-                }}
-              >
-                <span style={{ fontSize: 12, color: 'var(--text-faint)', lineHeight: 1 }}>↓</span>
-              </div>
-            )}
-          </div>
-        )
-      })}
-
-      {/* Connector from track to home lane */}
-      {(() => {
-        // Last track row is row 3 (odd), ends on the left (col 0)
-        // Home lane starts on the left too
-        const lastRowIsEven = (trackRows - 1) % 2 === 0
-        return (
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: lastRowIsEven ? 'flex-end' : 'flex-start',
-              padding: lastRowIsEven ? '0 8px 0 0' : '0 0 0 8px',
-            }}
-          >
-            <span style={{ fontSize: 10, color: TOKEN_GREEN, fontWeight: 700, lineHeight: 1 }}>↓ HOME</span>
-          </div>
-        )
-      })()}
-
-      {/* Home lane + finish */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: `repeat(${CELLS_PER_ROW}, 1fr)`,
-          gap: 2,
-        }}
-      >
-        {homeRow.map((cell, colIdx) => {
-          if (cell.type === 'empty') {
-            return <div key={colIdx} style={{ aspectRatio: '1' }} />
-          }
-          if (cell.type === 'finish') {
-            const finishedTokens = trackPieces.get('finish') ?? []
-            return (
-              <BoardCell
-                key={colIdx}
-                isFinish
-                tokens={finishedTokens}
-                highlightedTokens={highlightedTokens}
-                onTokenTap={onTokenTap}
-              />
-            )
-          }
-          // home lane cell
-          const homeTokens = trackPieces.get(`home-${cell.index}`) ?? []
-          return (
-            <BoardCell
-              key={colIdx}
-              isHomeLane
-              tokens={homeTokens}
-              highlightedTokens={highlightedTokens}
-              onTokenTap={onTokenTap}
-              showNumber={null}
-            />
-          )
-        })}
-      </div>
     </div>
   )
 }
@@ -786,17 +379,17 @@ export function DailyLudoPuzzlePlay({ challengeId, puzzle, timer: maxSeconds, on
     return new Set(state.pieces.filter((p) => canMove(p, currentRoll)).map((p) => p.id))
   }, [state.pieces, currentRoll, submitted, skipMessage])
 
-  const basePieces = useMemo(() => state.pieces.filter((p) => p.zone === 'base'), [state.pieces])
+  // Bridge to LudoBoard
+  const ludoStates = useMemo(() => [buildLudoPlayerState(state.pieces)], [state.pieces])
+  const selectablePieceIds = useMemo(() => [...highlightedPieces], [highlightedPieces])
+  const highlightCells = useMemo(
+    () =>
+      currentRoll !== null && !submitted && !skipMessage ? buildHighlightCells(state.pieces, currentRoll) : undefined,
+    [state.pieces, currentRoll, submitted, skipMessage]
+  )
 
   return (
     <div className="space-y-3">
-      <style>{`
-        @keyframes ludo-token-pulse {
-          0%, 100% { box-shadow: 0 0 0 2px rgba(22,163,74,0.4), 0 0 8px rgba(22,163,74,0.3); }
-          50% { box-shadow: 0 0 0 4px rgba(22,163,74,0.15), 0 0 12px rgba(22,163,74,0.1); }
-        }
-      `}</style>
-
       {/* Header bar */}
       <div
         className="flex items-center justify-between rounded-xl px-4 py-2.5"
@@ -826,10 +419,10 @@ export function DailyLudoPuzzlePlay({ challengeId, puzzle, timer: maxSeconds, on
             <DiceFace value={currentRoll} size={56} />
             <div>
               <div style={{ fontSize: 'var(--text-sm)', fontWeight: 700, color: 'var(--text)' }}>
-                You rolled a {currentRoll}
+                Move {currentRoll}
               </div>
               <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginTop: 2 }}>
-                {highlightedPieces.size > 0 ? 'Tap a glowing token on the board' : 'No moves available — skipping...'}
+                {highlightedPieces.size > 0 ? 'Tap a glowing piece to move it' : 'No moves available — skipping...'}
               </div>
             </div>
           </div>
@@ -861,7 +454,7 @@ export function DailyLudoPuzzlePlay({ challengeId, puzzle, timer: maxSeconds, on
         )}
       </div>
 
-      {/* How it works (only show at start) */}
+      {/* How it works (first roll only) */}
       {state.rollIndex === 0 && (
         <div
           className="rounded-xl px-4 py-3"
@@ -869,28 +462,23 @@ export function DailyLudoPuzzlePlay({ challengeId, puzzle, timer: maxSeconds, on
         >
           <div style={{ fontWeight: 600, marginBottom: 4 }}>How to play</div>
           <div>
-            Get all 4 tokens from base → track → home lane → finish. Roll 6 to leave base.
-            {state.obstacles.length > 0 && ' Land on obstacles to capture them (+50 pts).'} Fewer rolls = higher score.
-            Par: {puzzleData.optimalRolls} rolls.
+            Get all 4 green tokens around the board and into the home lane. Roll 6 to leave base. Tap a glowing piece to
+            move it.
+            {state.obstacles.length > 0 && ' Land on red obstacles to capture them (+50 pts).'} Fewer rolls = higher
+            score. Par: {puzzleData.optimalRolls} rolls.
           </div>
         </div>
       )}
 
-      {/* Base yard */}
-      {basePieces.length > 0 && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <BaseYard basePieces={basePieces} highlighted={highlightedPieces} onTap={handlePieceTap} />
-          <span style={{ fontSize: 18, color: 'var(--text-faint)' }}>→</span>
-          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>Roll a 6 to enter</span>
-        </div>
-      )}
-
-      {/* The winding path board */}
-      <LudoPathBoard
-        pieces={state.pieces}
-        obstacles={state.obstacles}
-        highlightedTokens={highlightedPieces}
-        onTokenTap={handlePieceTap}
+      {/* The actual Ludo board */}
+      <LudoBoard
+        session={STUB_SESSION}
+        states={ludoStates}
+        players={STUB_PLAYERS}
+        myPlayerId={PUZZLE_PLAYER_ID}
+        onMovePiece={!submitted ? handlePieceTap : undefined}
+        selectablePieceIds={selectablePieceIds}
+        highlightCells={highlightCells}
       />
 
       {/* Captures counter */}
