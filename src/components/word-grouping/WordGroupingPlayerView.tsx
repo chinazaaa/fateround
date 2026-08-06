@@ -470,7 +470,9 @@ export function WordGroupingPlayerView({ gameCode }: { gameCode: string }) {
 
   if (screen === 'finished' && game) {
     const leader = leaderboardRows[0]
-    const iWon = !!leader && leader.id === myPlayerId && leader.groups > 0
+    // Single winner only: I must be the top row outright, in a room with someone to beat,
+    // and have actually scored — a 0-point finish is not a community leaderboard result.
+    const iWon = !!myRow && leaderboardRows.length > 1 && leader != null && myRow === leader && leader.points > 0
     return (
       <div className="mx-auto max-w-lg space-y-4 px-4 py-6">
         <ShareResultsCaptureHeader game={game} />
@@ -548,45 +550,35 @@ export function WordGroupingPlayerView({ gameCode }: { gameCode: string }) {
       `}</style>
 
       {/* Timer + mistakes bar */}
-      <div
-        className="flex items-center justify-between rounded-xl px-4 py-2.5 sticky top-[3.75rem] z-30"
-        style={{ background: 'var(--card)', border: '1px solid var(--border)' }}
-      >
+      <div className="sticky top-[3.75rem] z-30 flex items-center justify-between rounded-xl border border-[var(--border-strong)] bg-[var(--card-strong)] px-4 py-2.5">
         <div className="flex items-center gap-2">
           <span className="font-bold text-sm">Mistakes</span>
           <div className="flex gap-1">
             {Array.from({ length: WORD_GROUPING_MAX_MISTAKES }).map((_, i) => (
               <span
                 key={i}
-                className="inline-block h-2.5 w-2.5 rounded-full"
-                style={{
-                  background: i < mistakesRemaining ? 'var(--text-muted)' : 'var(--error)',
-                  opacity: i < mistakesRemaining ? 1 : 0.3,
-                }}
+                className={[
+                  'inline-block h-2.5 w-2.5 rounded-full border',
+                  i < mistakesRemaining
+                    ? 'border-[var(--muted)] bg-[var(--muted)]'
+                    : 'border-[var(--border-strong)] bg-transparent',
+                ].join(' ')}
               />
             ))}
           </div>
         </div>
         {timeRemaining !== null && (
-          <div
-            className="font-bold tabular-nums text-sm"
-            style={{ color: timeRemaining <= 10 ? 'var(--error)' : undefined }}
-          >
+          <div className={`font-bold tabular-nums text-sm ${timeRemaining <= 10 ? 'text-[var(--marry)]' : ''}`}>
             {formatMinutesSeconds(timeRemaining)}
           </div>
         )}
       </div>
 
-      <p className="text-center text-xs" style={{ color: 'var(--text-faint)' }}>
-        Find four groups of four words that share something in common.
-      </p>
+      <p className="text-center text-xs text-faint">Find four groups of four words that share something in common.</p>
 
       {/* One away toast */}
       {oneAway && (
-        <div
-          className="wg-one-away rounded-lg px-4 py-2 text-center font-bold text-sm"
-          style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
-        >
+        <div className="wg-one-away rounded-lg border border-[var(--border-strong)] bg-[var(--card-strong)] px-4 py-2 text-center font-bold text-sm">
           One away!
         </div>
       )}
@@ -608,22 +600,22 @@ export function WordGroupingPlayerView({ gameCode }: { gameCode: string }) {
       {/* Word grid */}
       {!isMyPuzzleDone && remainingWords.length > 0 && (
         <div className={`grid grid-cols-4 gap-2 ${shaking ? 'wg-shake' : ''}`}>
-          {remainingWords.map((word) => {
+          {remainingWords.map((word, i) => {
             const isSelected = selected.includes(word)
             return (
               <button
-                key={word}
+                // Index-suffixed: a bank puzzle should never repeat a word, but a bad
+                // custom pack must not collapse two tiles into one React key.
+                key={`${word}-${i}`}
                 type="button"
                 onClick={() => toggleWord(word)}
                 disabled={isMyPuzzleDone || isViewer}
-                className="flex items-center justify-center rounded-lg px-1 py-3 font-bold uppercase transition-colors disabled:cursor-default"
-                style={{
-                  background: isSelected ? 'var(--surface)' : 'var(--card)',
-                  border: `2px solid ${isSelected ? 'var(--primary)' : 'var(--border)'}`,
-                  fontSize: 'var(--text-sm)',
-                  minHeight: '3.5rem',
-                  wordBreak: 'break-word',
-                }}
+                className={[
+                  'flex min-h-[3.5rem] items-center justify-center break-words rounded-lg border-2 px-1 py-3 text-sm font-bold uppercase transition-colors disabled:cursor-default',
+                  isSelected
+                    ? 'border-[var(--primary)] bg-[color-mix(in_srgb,var(--primary)_14%,var(--card-strong))]'
+                    : 'border-[var(--border-strong)] bg-[var(--card-strong)] hover:border-[var(--muted)]',
+                ].join(' ')}
               >
                 {word}
               </button>
@@ -639,7 +631,7 @@ export function WordGroupingPlayerView({ gameCode }: { gameCode: string }) {
             type="button"
             onClick={() => setSelected([])}
             disabled={selected.length === 0}
-            className="fr-btn fr-btn--secondary fr-btn--sm flex-1"
+            className="btn-secondary flex-1 py-3 text-sm font-bold disabled:opacity-60"
           >
             Deselect all
           </button>
@@ -647,9 +639,9 @@ export function WordGroupingPlayerView({ gameCode }: { gameCode: string }) {
             type="button"
             onClick={handleGuessSubmit}
             disabled={selected.length !== 4 || submitting}
-            className="fr-btn fr-btn--primary fr-btn--sm flex-1"
+            className="btn-primary flex-1 py-3 text-sm font-bold disabled:opacity-60"
           >
-            Submit
+            {submitting ? 'Checking…' : 'Submit'}
           </button>
         </div>
       )}

@@ -17,8 +17,18 @@ export {
   type WordGroupingPuzzle,
 } from '../../packages/shared/src/word-grouping'
 
+import { WORD_GROUPING_GAME_DURATION_OPTIONS as DURATION_OPTIONS } from '../../packages/shared/src/word-grouping'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { clearSessionTables } from './session-clear'
+
+export function clampWordGroupingGameDuration(seconds: number): number {
+  const opts = [...DURATION_OPTIONS]
+  let best = opts[0]
+  for (const o of opts) {
+    if (Math.abs(o - seconds) < Math.abs(best - seconds)) best = o
+  }
+  return best
+}
 
 export async function clearWordGroupingSessionData(
   supabase: SupabaseClient,

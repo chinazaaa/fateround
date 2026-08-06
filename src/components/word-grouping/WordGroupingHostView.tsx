@@ -9,6 +9,9 @@ import { HostLobby } from '@/components/host/HostLobby'
 import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
+import { HostSudokuLobbyPanel } from '@/components/host-lobby/HostSudokuLobbyPanel'
+import { WordGroupingLobbySettings } from './WordGroupingLobbySettings'
+import { TransferHostControl } from '@/components/TransferHostControl'
 import { GameInfoChips } from '@/components/game-lobby/GameInfoChips'
 import { useHostSeat } from '@/hooks/useHostSeat'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
@@ -19,10 +22,16 @@ import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { useToast } from '@/components/ui/Toast'
 import { gameTypeConfig } from '@/lib/game-types'
 import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
-import { WORD_GROUPING_MAX_MISTAKES, WORD_GROUPING_TOTAL_GROUPS, tallyWordGroupingScores } from '@/lib/word-grouping'
+import {
+  WORD_GROUPING_MAX_MISTAKES,
+  WORD_GROUPING_TOTAL_GROUPS,
+  WORD_GROUPING_GAME_DURATION_OPTIONS,
+  tallyWordGroupingScores,
+} from '@/lib/word-grouping'
 import { WordGroupingPlayerView } from './WordGroupingPlayerView'
 import { formatMinutesSeconds } from '@/lib/timer-format'
-import { ReplayReadyRing } from '@/components/ReplayReadyRing'
+import { FinalResultsShareBlock } from '@/components/FinalResultsShareBlock'
+import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import type { Game, Player } from '@/types'
 
@@ -55,6 +64,7 @@ interface SolutionGroup {
 export function WordGroupingHostView({ gameCode, hostToken }: { gameCode: string; hostToken: string }) {
   const cfg = gameTypeConfig('word_grouping')
   const { success, error: toastError } = useToast()
+  const { confirm } = useConfirm()
   const [game, setGame] = useState<Game | null>(null)
   const [players, setPlayers] = useState<Player[]>([])
   const [submissions, setSubmissions] = useState<Submission[]>([])
@@ -62,6 +72,7 @@ export function WordGroupingHostView({ gameCode, hostToken }: { gameCode: string
   const [solution, setSolution] = useState<SolutionGroup[] | null>(null)
   const [nowMs, setNowMs] = useState<number>(Date.now())
   const [starting, setStarting] = useState(false)
+  const [playingAgain, setPlayingAgain] = useState(false)
 
   const load = useCallback(async () => {
     const [gameRes, plrsRes] = await Promise.all([
@@ -241,7 +252,65 @@ export function WordGroupingHostView({ gameCode, hostToken }: { gameCode: string
     }
   }
 
+  // Play again keeps the host seated (the play-again route re-seats the passed hostPlayerId),
+  // so we never clear the local session here — only the join name when we drop back to lobby.
+  async function resetGame(sameSettings: boolean) {
+    if (playingAgain) return
+    setPlayingAgain(true)
+    try {
+      const res = await fetch(`/api/games/${gameCode}/play-again`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hostToken, hostPlayerId: hostPlayerId ?? undefined, same_settings: sameSettings }),
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        toastError(d.error || 'Failed to reset')
+        return
+      }
+      if (!sameSettings) setHostJoinName('')
+      await load()
+    } finally {
+      setPlayingAgain(false)
+    }
+  }
+
+  const confirmPlayAgain = async () => {
+    const ok = await confirm({
+      title: 'Play again — same settings?',
+      message: 'Reopens the game with the same settings and a fresh puzzle. Everyone taps “ready” and you start again.',
+      confirmLabel: 'Play again',
+    })
+    if (ok) void resetGame(true)
+  }
+
+  const confirmReturnToLobby = async () => {
+    const ok = await confirm({
+      title: 'Return to lobby?',
+      message: 'Sends everyone back to the game lobby where you can tweak settings before starting again.',
+      confirmLabel: 'Return to lobby',
+    })
+    if (ok) void resetGame(false)
+  }
+
   if (!game) return <HostLobbySkeleton />
+
+  const lobbySettings = (
+    <>
+      <HostSudokuLobbyPanel
+        gameCode={gameCode}
+        hostToken={hostToken}
+        game={game}
+        playerCount={players.length}
+        onGameUpdate={setGame}
+        durationChoices={WORD_GROUPING_GAME_DURATION_OPTIONS}
+        puzzleSettings={
+          <WordGroupingLobbySettings gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
+        }
+      />
+      <TransferHostControl triggerClassName="btn-secondary w-full flex items-center justify-center gap-2" />
+    </>
+  )
 
   if (game.status === 'waiting') {
     return (
@@ -253,6 +322,7 @@ export function WordGroupingHostView({ gameCode, hostToken }: { gameCode: string
         titleMeta={<GameInfoChips game={game} className="mt-2" />}
         players={players}
         maxPlayers={lobbyMaxPlayersFromGameClient('word_grouping', game) ?? game.max_players}
+        settingsChildren={lobbySettings}
         playCard={
           <HostModeSelector
             mode={hostMode}
@@ -287,10 +357,7 @@ export function WordGroupingHostView({ gameCode, hostToken }: { gameCode: string
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-bold">Word Grouping — Live</h2>
           {timeRemaining !== null && (
-            <span
-              className="font-bold tabular-nums"
-              style={{ color: timeRemaining <= 10 ? 'var(--error)' : undefined }}
-            >
+            <span className={`font-bold tabular-nums ${timeRemaining <= 10 ? 'text-[var(--marry)]' : ''}`}>
               {formatMinutesSeconds(timeRemaining)}
             </span>
           )}
@@ -326,36 +393,58 @@ export function WordGroupingHostView({ gameCode, hostToken }: { gameCode: string
   }
 
   const winner = leaderboardRows[0]
-  const hostWon = !!hostPlayerId && leaderboardRows.length > 0 && leaderboardRows[0].id === hostPlayerId
+  // One winner per puzzle: the single top row after tiebreaks. Post the host's community
+  // win only when the host is that row AND actually scored — a 0-point solo finish is not
+  // a leaderboard result.
+  const hostRow = leaderboardRows.find((row) => row.id === hostPlayerId)
+  const hostWon =
+    !!hostRow &&
+    leaderboardRows.length > 1 &&
+    leaderboardRows[0] != null &&
+    hostRow === leaderboardRows[0] &&
+    leaderboardRows[0].points > 0
 
   return (
     <div className="mx-auto max-w-lg space-y-4 px-4 py-6">
-      <FinishedWinnerHero winnerName={winner?.name} game={game} />
+      <FinalResultsShareBlock
+        game={game}
+        participants={[]}
+        votes={[]}
+        rounds={[]}
+        players={players}
+        playAgainButton={
+          <button
+            type="button"
+            onClick={() => void confirmPlayAgain()}
+            disabled={playingAgain}
+            className="btn-secondary w-full py-3 text-base font-bold disabled:opacity-60"
+          >
+            {playingAgain ? 'Starting…' : '↻ Play again · same settings'}
+          </button>
+        }
+      >
+        <FinishedWinnerHero winnerName={winner?.name} game={game} />
+        <PaginatedLeaderboard
+          title="Final Standings"
+          rows={leaderboardRows.map((r, i) => ({
+            id: r.id,
+            name: r.name,
+            score: r.points,
+            rank: i + 1,
+          }))}
+          scoreLabel={(n) => `${n} pts`}
+          emphasizeLeader
+        />
+      </FinalResultsShareBlock>
 
-      {solution &&
-        solution
-          .sort((a, b) => a.difficulty - b.difficulty)
-          .map((group) => (
-            <div
-              key={group.category}
-              className="rounded-xl px-4 py-3 text-center"
-              style={{ background: GROUP_COLORS[group.difficulty] ?? GROUP_COLORS[1], color: '#1a1a1a' }}
-            >
-              <div className="font-bold uppercase tracking-wider text-sm">{group.category}</div>
-              <div className="mt-1 font-medium text-sm">{group.words.join(', ')}</div>
-            </div>
-          ))}
-
-      <PaginatedLeaderboard
-        title="Final Standings"
-        rows={leaderboardRows.map((r) => ({
-          id: r.id,
-          name: r.name,
-          score: r.points,
-        }))}
-        scoreLabel={(n) => `${n} pts`}
-        emphasizeLeader
-      />
+      <button
+        type="button"
+        onClick={() => void confirmReturnToLobby()}
+        disabled={playingAgain}
+        className="w-full py-2.5 text-sm font-semibold text-muted transition-colors hover:text-body disabled:opacity-60"
+      >
+        Return to lobby
+      </button>
 
       {hostWon && (
         <PostWinToCommunity
@@ -366,18 +455,22 @@ export function WordGroupingHostView({ gameCode, hostToken }: { gameCode: string
         />
       )}
 
-      <ReplayReadyRing
-        players={players}
-        meId={hostPlayerId}
-        isHost
-        gameCode={gameCode}
-        hostToken={hostToken}
-        minPlayers={1}
-        capacityGame={game}
-        onToggleReady={() => {}}
-        onStart={() => void handleStart()}
-        starting={starting}
-      />
+      {solution && (
+        <div className="space-y-2">
+          {solution
+            .sort((a, b) => a.difficulty - b.difficulty)
+            .map((group) => (
+              <div
+                key={group.category}
+                className="rounded-xl px-4 py-3 text-center"
+                style={{ background: GROUP_COLORS[group.difficulty] ?? GROUP_COLORS[1], color: '#1a1a1a' }}
+              >
+                <div className="font-bold uppercase tracking-wider text-sm">{group.category}</div>
+                <div className="mt-1 font-medium text-sm">{group.words.join(', ')}</div>
+              </div>
+            ))}
+        </div>
+      )}
     </div>
   )
 }

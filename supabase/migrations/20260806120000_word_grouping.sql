@@ -41,6 +41,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_word_grouping_subs_unique_correct
 ALTER TABLE word_grouping_submissions ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "word_grouping_submissions_read" ON word_grouping_submissions;
 CREATE POLICY "word_grouping_submissions_read" ON word_grouping_submissions FOR SELECT USING (true);
+DROP POLICY IF EXISTS "word_grouping_submissions_delete" ON word_grouping_submissions;
+CREATE POLICY "word_grouping_submissions_delete" ON word_grouping_submissions FOR DELETE USING (true);
+
+DROP POLICY IF EXISTS "word_grouping_solutions_delete" ON word_grouping_solutions;
+CREATE POLICY "word_grouping_solutions_delete" ON word_grouping_solutions FOR DELETE USING (true);
 
 do $$ begin alter publication supabase_realtime add table word_grouping_submissions; exception when duplicate_object then null; end $$;
 

@@ -94,7 +94,9 @@ const PUZZLE_BANK: BankPuzzle[] = [
   // 5
   {
     groups: [
-      { category: 'Fruits', words: ['Mango', 'Plum', 'Date', 'Fig'], difficulty: 1 },
+      // 'Date' would also fit Fruits, but a word can only occupy one of the 16 tiles —
+      // keep it in the blind-___ group and use a fruit that doesn't collide.
+      { category: 'Fruits', words: ['Mango', 'Plum', 'Peach', 'Fig'], difficulty: 1 },
       { category: 'Parts of a book', words: ['Spine', 'Cover', 'Index', 'Title'], difficulty: 2 },
       { category: 'Things that can be blind', words: ['Spot', 'Fold', 'Side', 'Date'], difficulty: 3 },
       { category: 'Email actions', words: ['Draft', 'Forward', 'Reply', 'Archive'], difficulty: 4 },

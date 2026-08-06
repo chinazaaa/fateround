@@ -1139,7 +1139,7 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
       return NextResponse.json({ error: roundError?.message ?? 'Failed to create round' }, { status: 500 })
     }
 
-    const { error: solutionError } = await supabase
+    const { error: solutionError } = await getSupabaseAdmin()
       .from('word_grouping_solutions')
       .insert({ round_id: insertedRound.id, solution: { groups: puzzleResult.puzzleData.solution.groups } })
     if (solutionError)

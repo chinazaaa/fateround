@@ -496,6 +496,7 @@ function CreateGameInner() {
   const [wordScrambleMaxPlayers, setWordScrambleMaxPlayers] = useState(20)
   const [wordScrambleGameDuration, setWordScrambleGameDuration] = useState<number>(WORD_SCRAMBLE_DEFAULT_DURATION)
   const [wordScrambleTheme, setWordScrambleTheme] = useState<string>(WORD_SCRAMBLE_DEFAULT_THEME)
+  const [wordGroupingMaxPlayers, setWordGroupingMaxPlayers] = useState(20)
   const [wordGroupingGameDuration, setWordGroupingGameDuration] = useState<number>(WORD_GROUPING_DEFAULT_DURATION)
   const [wordScrambleDifficulty, setWordScrambleDifficulty] = useState<WordScrambleDifficulty>(
     WORD_SCRAMBLE_DEFAULT_DIFFICULTY
@@ -2601,15 +2602,17 @@ function CreateGameInner() {
                                               ? wordSearchMaxPlayers
                                               : isWordScramble
                                                 ? wordScrambleMaxPlayers
-                                                : isWordHunt
-                                                  ? wordHuntMaxPlayers
-                                                  : isWordRush
-                                                    ? wordRushMaxPlayers
-                                                    : isDescribeIt
-                                                      ? describeItMaxPlayers
-                                                      : isMatchingPairs
-                                                        ? (settings.max_players ?? effectiveLimits.matching_pairs.max)
-                                                        : undefined,
+                                                : isWordGrouping
+                                                  ? wordGroupingMaxPlayers
+                                                  : isWordHunt
+                                                    ? wordHuntMaxPlayers
+                                                    : isWordRush
+                                                      ? wordRushMaxPlayers
+                                                      : isDescribeIt
+                                                        ? describeItMaxPlayers
+                                                        : isMatchingPairs
+                                                          ? (settings.max_players ?? effectiveLimits.matching_pairs.max)
+                                                          : undefined,
           operative_timer_seconds: isCodewords
             ? codewordsOperativeTimer
             : isNpat
@@ -5457,6 +5460,23 @@ function CreateGameInner() {
               </SettingsGroup>
             ) : isWordGrouping ? (
               <SettingsGroup title="Word Grouping room">
+                <Field
+                  label={`Max players (${effectiveLimits.word_grouping.min}–${effectiveLimits.word_grouping.max})`}
+                >
+                  <select
+                    value={wordGroupingMaxPlayers}
+                    onChange={(e) => setWordGroupingMaxPlayers(Number(e.target.value))}
+                    className="input-field w-full"
+                  >
+                    {playerCountOptions(effectiveLimits.word_grouping.min, effectiveLimits.word_grouping.max).map(
+                      (n) => (
+                        <option key={n} value={n}>
+                          {n} players
+                        </option>
+                      )
+                    )}
+                  </select>
+                </Field>
                 <Field label="Answers & clues">
                   <SegmentedControl
                     value={questionSource}

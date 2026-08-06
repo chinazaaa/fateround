@@ -59,6 +59,7 @@ import {
   isCrosswordGame,
   isWordSearchGame,
   isWordScrambleGame,
+  isWordGroupingGame,
   isLandmineGame,
 } from '@/lib/game-types'
 import { wstAutoRoundCount } from '@/lib/who-said-this'
@@ -323,6 +324,16 @@ function parseCustomQuestionsBody(
     const parsed = parseStoredWordScrambleEntries(raw)
     return parsed.length >= 4 ? parsed : null
   }
+  if (isWordGroupingGame(gameType)) {
+    const valid = raw.filter(
+      (item: unknown) =>
+        item != null &&
+        typeof item === 'object' &&
+        'groups' in (item as Record<string, unknown>) &&
+        Array.isArray((item as Record<string, unknown>).groups)
+    ) as Record<string, unknown>[]
+    return valid.length > 0 ? valid : null
+  }
   return null
 }
 
@@ -484,7 +495,11 @@ export async function POST(req: NextRequest) {
   const question_source = parseQuestionSource(rawQuestionSource, game_type)
   let custom_questions: unknown[] | null = null
 
-  const isPuzzlePool = isCrosswordGame(game_type) || isWordSearchGame(game_type) || isWordScrambleGame(game_type)
+  const isPuzzlePool =
+    isCrosswordGame(game_type) ||
+    isWordSearchGame(game_type) ||
+    isWordScrambleGame(game_type) ||
+    isWordGroupingGame(game_type)
   if (
     question_source === 'custom' &&
     (isBinaryChoiceGame(game_type) ||
@@ -559,6 +574,7 @@ export async function POST(req: NextRequest) {
     isCrosswordGame(game_type) ||
     isWordSearchGame(game_type) ||
     isWordScrambleGame(game_type) ||
+    isWordGroupingGame(game_type) ||
     isLandmineGame(game_type)
       ? 'joiners'
       : isWhoSaidThis(game_type)
