@@ -5,6 +5,9 @@ import { useDailyChallengeTimer } from '@/hooks/useDailyChallengeTimer'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { DAILY_SUBMIT_CONFIRM } from '@/components/daily/daily-submit-confirm'
 import { getOrCreateStartedAt, loadDailyAnswers, saveDailyAnswers, clearDailyProgress } from '@/lib/daily-progress'
+import { LudoBoard } from '@/components/ludo/LudoBoard'
+import { TRACK_GRID, HOME_GRID } from '@/lib/ludo-board-layout'
+import type { LudoSession, LudoPlayerState, LudoPiece, Player } from '@/types'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -46,12 +49,13 @@ interface SavedState {
 // Constants
 // ---------------------------------------------------------------------------
 
-const TRACK_LENGTH = 52
 const HOME_ENTRY_STEPS = 51
 const FINISH_STEPS = 56
+const PUZZLE_PLAYER_ID = 'puzzle-player'
+const PUZZLE_COLOR = 'green' as const
 
 // ---------------------------------------------------------------------------
-// Helpers
+// Helpers (game logic)
 // ---------------------------------------------------------------------------
 
 function stepsFromPiece(piece: LudoPuzzlePiece): number {
@@ -85,7 +89,70 @@ function allFinished(pieces: LudoPuzzlePiece[]): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// Dice face SVG (dots pattern)
+// Bridge: puzzle pieces → LudoBoard props
+// ---------------------------------------------------------------------------
+
+function buildLudoPlayerState(pieces: LudoPuzzlePiece[]): LudoPlayerState {
+  return {
+    id: 'state-1',
+    game_id: 'puzzle',
+    player_id: PUZZLE_PLAYER_ID,
+    color: PUZZLE_COLOR,
+    pieces: pieces as LudoPiece[],
+    player_order: 0,
+    created_at: '',
+  }
+}
+
+const STUB_SESSION: LudoSession = {
+  id: 'puzzle',
+  game_id: 'puzzle',
+  turn_order: [PUZZLE_PLAYER_ID],
+  current_turn_index: 0,
+  phase: 'move',
+  last_dice: null,
+  remaining_dice: null,
+  consecutive_sixes: 0,
+  extra_turn: false,
+  status_message: null,
+  winner_player_id: null,
+  turn_deadline_at: null,
+  created_at: '',
+  updated_at: '',
+}
+
+const STUB_PLAYERS: Player[] = [
+  {
+    id: PUZZLE_PLAYER_ID,
+    name: 'You',
+    game_id: 'puzzle',
+    gender: 'both',
+    identity_gender: null,
+    participant_id: null,
+    joined_at: '',
+  },
+]
+
+function buildHighlightCells(pieces: LudoPuzzlePiece[], roll: number): Set<string> {
+  const cells = new Set<string>()
+  for (const p of pieces) {
+    if (!canMove(p, roll)) continue
+    const steps = stepsFromPiece(p)
+    const newSteps = steps === -1 ? 0 : steps + roll
+    const landing = pieceFromSteps(p.id, newSteps)
+    if (landing.zone === 'track') {
+      const grid = TRACK_GRID[landing.pos]
+      if (grid) cells.add(`${grid.row},${grid.col}`)
+    } else if (landing.zone === 'home') {
+      const grid = HOME_GRID[PUZZLE_COLOR][landing.pos]
+      if (grid) cells.add(`${grid.row},${grid.col}`)
+    }
+  }
+  return cells
+}
+
+// ---------------------------------------------------------------------------
+// Dice face SVG
 // ---------------------------------------------------------------------------
 
 const DOT_LAYOUTS: Record<number, Array<[number, number]>> = {
@@ -122,7 +189,7 @@ const DOT_LAYOUTS: Record<number, Array<[number, number]>> = {
   ],
 }
 
-function DiceFace({ value, size = 64 }: { value: number; size?: number }) {
+function DiceFace({ value, size = 56 }: { value: number; size?: number }) {
   const dots = DOT_LAYOUTS[value] ?? DOT_LAYOUTS[1]
   return (
     <svg width={size} height={size} viewBox="0 0 100 100" style={{ display: 'block' }}>
@@ -135,94 +202,39 @@ function DiceFace({ value, size = 64 }: { value: number; size?: number }) {
 }
 
 // ---------------------------------------------------------------------------
-// Board visualization
-//
-// Simplified linear track: a path of cells wrapping in rows, plus a home
-// lane and base/finish indicators. Mobile-friendly, max-w-lg.
+// Dice sequence preview
 // ---------------------------------------------------------------------------
 
-const CELL_SIZE = 28
-const CELL_GAP = 2
-
-/** Render a single cell on the track/home lane. */
-function BoardCell({
-  index,
-  type,
-  pieces,
-  obstacles,
-  highlighted,
-  onPieceTap,
-}: {
-  index: number
-  type: 'track' | 'home'
-  pieces: LudoPuzzlePiece[]
-  obstacles: LudoObstacle[]
-  highlighted: Set<number>
-  onPieceTap: (id: number) => void
-}) {
-  const isStart = type === 'track' && index === 0
-  const hasObstacle = type === 'track' && obstacles.some((o) => o.trackPos === index)
-  const piecesHere = pieces.filter((p) => {
-    if (type === 'track') return p.zone === 'track' && p.pos === index
-    return p.zone === 'home' && p.pos === index
-  })
-
-  let bg = 'var(--bg-surface)'
-  if (isStart) bg = '#4ade80'
-  if (hasObstacle && piecesHere.length === 0) bg = '#f87171'
-  if (type === 'home') bg = '#86efac'
+function DiceSequencePreview({ sequence, currentIndex }: { sequence: number[]; currentIndex: number }) {
+  const previewCount = 5
+  const upcoming = sequence.slice(currentIndex, currentIndex + previewCount)
+  const remaining = sequence.length - currentIndex
 
   return (
-    <div
-      style={{
-        width: CELL_SIZE,
-        height: CELL_SIZE,
-        borderRadius: 4,
-        background: bg,
-        border: '1px solid var(--border)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        position: 'relative',
-        fontSize: 10,
-        fontWeight: 700,
-        flexShrink: 0,
-      }}
-    >
-      {hasObstacle && piecesHere.length === 0 && <span style={{ color: '#fff', fontSize: 11 }}>X</span>}
-      {piecesHere.length > 0 && (
-        <div style={{ display: 'flex', gap: 1 }}>
-          {piecesHere.map((p) => {
-            const isHighlighted = highlighted.has(p.id)
-            return (
-              <button
-                key={p.id}
-                type="button"
-                onClick={() => isHighlighted && onPieceTap(p.id)}
-                disabled={!isHighlighted}
-                style={{
-                  width: piecesHere.length > 1 ? 12 : 18,
-                  height: piecesHere.length > 1 ? 12 : 18,
-                  borderRadius: '50%',
-                  background: isHighlighted ? '#16a34a' : '#22c55e',
-                  color: '#fff',
-                  fontSize: piecesHere.length > 1 ? 7 : 9,
-                  fontWeight: 800,
-                  border: isHighlighted ? '2px solid var(--primary)' : '1px solid #15803d',
-                  cursor: isHighlighted ? 'pointer' : 'default',
-                  padding: 0,
-                  lineHeight: 1,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  animation: isHighlighted ? 'ludo-pulse 1s infinite' : undefined,
-                }}
-              >
-                {p.id + 1}
-              </button>
-            )
-          })}
+    <div className="flex items-center gap-2">
+      {upcoming.map((v, i) => (
+        <div
+          key={currentIndex + i}
+          style={{
+            width: i === 0 ? 24 : 18,
+            height: i === 0 ? 24 : 18,
+            borderRadius: 4,
+            background: i === 0 ? 'var(--text)' : 'var(--bg-surface)',
+            color: i === 0 ? 'var(--card)' : 'var(--text-muted)',
+            fontSize: i === 0 ? 13 : 10,
+            fontWeight: 800,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            border: '1px solid var(--border)',
+            opacity: i === 0 ? 1 : 0.5 + 0.1 * (previewCount - i),
+          }}
+        >
+          {v}
         </div>
+      ))}
+      {remaining > previewCount && (
+        <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-faint)' }}>+{remaining - previewCount} more</span>
       )}
     </div>
   )
@@ -260,12 +272,10 @@ export function DailyLudoPuzzlePlay({ challengeId, puzzle, timer: maxSeconds, on
   const submitRef = useRef(false)
   const { confirm } = useConfirm()
 
-  // Persist state on every change
   useEffect(() => {
     if (!submitted) saveDailyAnswers(challengeId, state)
   }, [challengeId, state, submitted])
 
-  // Timer
   const { elapsed, formatted, isTimeUp } = useDailyChallengeTimer({
     mode: 'countdown',
     maxSeconds,
@@ -273,7 +283,6 @@ export function DailyLudoPuzzlePlay({ challengeId, puzzle, timer: maxSeconds, on
     startAtMs,
   })
 
-  // Submit handler
   const handleSubmit = useCallback(() => {
     if (submitRef.current) return
     submitRef.current = true
@@ -285,26 +294,22 @@ export function DailyLudoPuzzlePlay({ challengeId, puzzle, timer: maxSeconds, on
     })
   }, [challengeId, elapsed, maxSeconds, onSubmit, state.moves])
 
-  // Auto-submit on time up
   useEffect(() => {
     if (isTimeUp && !submitRef.current) handleSubmit()
   }, [isTimeUp, handleSubmit])
 
-  // Auto-submit when all pieces finished
   useEffect(() => {
     if (allFinished(state.pieces) && state.moves.length > 0 && !submitRef.current) {
       handleSubmit()
     }
   }, [state.pieces, state.moves.length, handleSubmit])
 
-  // Auto-submit when dice sequence exhausted
   useEffect(() => {
     if (state.rollIndex >= puzzleData.diceSequence.length && !submitRef.current && state.moves.length > 0) {
       handleSubmit()
     }
   }, [state.rollIndex, puzzleData.diceSequence.length, state.moves.length, handleSubmit])
 
-  // Auto-skip when no legal move exists for current roll
   useEffect(() => {
     if (submitted) return
     if (state.rollIndex >= puzzleData.diceSequence.length) return
@@ -312,7 +317,7 @@ export function DailyLudoPuzzlePlay({ challengeId, puzzle, timer: maxSeconds, on
 
     const currentRoll = puzzleData.diceSequence[state.rollIndex]
     if (!anyLegalMove(state.pieces, currentRoll)) {
-      setSkipMessage(`No legal move for ${currentRoll} — skipped`)
+      setSkipMessage(`No legal move for ${currentRoll} — skipping`)
       const timeout = setTimeout(() => {
         setState((prev) => ({
           ...prev,
@@ -325,7 +330,6 @@ export function DailyLudoPuzzlePlay({ challengeId, puzzle, timer: maxSeconds, on
     }
   }, [state.rollIndex, state.pieces, puzzleData.diceSequence, submitted])
 
-  // Move a piece
   const handlePieceTap = useCallback(
     (pieceId: number) => {
       if (submitted) return
@@ -342,7 +346,6 @@ export function DailyLudoPuzzlePlay({ challengeId, puzzle, timer: maxSeconds, on
 
         const newPieces = prev.pieces.map((p) => (p.id === pieceId ? newPiece : p))
 
-        // Check for obstacle capture
         let newObstacles = prev.obstacles
         let captureGain = 0
         if (newPiece.zone === 'track' && prev.obstacles.some((o) => o.trackPos === newPiece.pos)) {
@@ -369,7 +372,6 @@ export function DailyLudoPuzzlePlay({ challengeId, puzzle, timer: maxSeconds, on
     if (ok) handleSubmit()
   }
 
-  // Derived values
   const currentRoll = state.rollIndex < puzzleData.diceSequence.length ? puzzleData.diceSequence[state.rollIndex] : null
   const tokensHome = state.pieces.filter((p) => p.zone === 'finished').length
   const highlightedPieces = useMemo(() => {
@@ -377,25 +379,18 @@ export function DailyLudoPuzzlePlay({ challengeId, puzzle, timer: maxSeconds, on
     return new Set(state.pieces.filter((p) => canMove(p, currentRoll)).map((p) => p.id))
   }, [state.pieces, currentRoll, submitted, skipMessage])
 
-  // Base pieces (still in base zone)
-  const basePieces = state.pieces.filter((p) => p.zone === 'base')
-  const finishedPieces = state.pieces.filter((p) => p.zone === 'finished')
-
-  // Track cells to render: show all 52 in wrapped rows
-  const trackCells = useMemo(() => Array.from({ length: TRACK_LENGTH }, (_, i) => i), [])
-  const homeCells = useMemo(() => Array.from({ length: 5 }, (_, i) => i), [])
+  // Bridge to LudoBoard
+  const ludoStates = useMemo(() => [buildLudoPlayerState(state.pieces)], [state.pieces])
+  const selectablePieceIds = useMemo(() => [...highlightedPieces], [highlightedPieces])
+  const highlightCells = useMemo(
+    () =>
+      currentRoll !== null && !submitted && !skipMessage ? buildHighlightCells(state.pieces, currentRoll) : undefined,
+    [state.pieces, currentRoll, submitted, skipMessage]
+  )
 
   return (
-    <div className="space-y-4">
-      {/* Pulse animation for highlighted tokens */}
-      <style>{`
-        @keyframes ludo-pulse {
-          0%, 100% { box-shadow: 0 0 0 0 rgba(22,163,74,0.5); }
-          50% { box-shadow: 0 0 0 6px rgba(22,163,74,0); }
-        }
-      `}</style>
-
-      {/* Header bar: stats + timer */}
+    <div className="space-y-3">
+      {/* Header bar */}
       <div
         className="flex items-center justify-between rounded-xl px-4 py-2.5"
         style={{ background: 'var(--card)', border: '1px solid var(--border)' }}
@@ -414,38 +409,29 @@ export function DailyLudoPuzzlePlay({ challengeId, puzzle, timer: maxSeconds, on
         </div>
       </div>
 
-      {/* Instructions */}
-      <p className="text-center" style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>
-        Move all 4 tokens home. Tap a highlighted token to move it. Roll 6 to leave base. Fewer rolls = higher score.
-        Par: {puzzleData.optimalRolls} rolls.
-      </p>
-
-      {/* Dice display */}
+      {/* Dice + instructions */}
       <div
-        className="flex flex-col items-center gap-2 rounded-xl p-4"
+        className="flex flex-col items-center gap-3 rounded-xl p-4"
         style={{ background: 'var(--card)', border: '1px solid var(--border)' }}
       >
-        <div className="font-medium uppercase tracking-wider" style={{ fontSize: '11px', color: 'var(--text-faint)' }}>
-          Current Roll
-        </div>
         {currentRoll !== null ? (
-          <DiceFace value={currentRoll} size={64} />
+          <div className="flex items-center gap-4">
+            <DiceFace value={currentRoll} size={56} />
+            <div>
+              <div style={{ fontSize: 'var(--text-sm)', fontWeight: 700, color: 'var(--text)' }}>
+                Move {currentRoll}
+              </div>
+              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginTop: 2 }}>
+                {highlightedPieces.size > 0 ? 'Tap a glowing piece to move it' : 'No moves available — skipping...'}
+              </div>
+            </div>
+          </div>
         ) : (
-          <div
-            className="flex items-center justify-center rounded-xl"
-            style={{
-              width: 64,
-              height: 64,
-              background: 'var(--bg-surface)',
-              border: '2px solid var(--border)',
-              color: 'var(--text-muted)',
-              fontWeight: 700,
-              fontSize: 'var(--text-sm)',
-            }}
-          >
-            Done
+          <div className="text-center">
+            <div style={{ fontSize: 'var(--text-sm)', fontWeight: 700, color: 'var(--text)' }}>No more rolls</div>
           </div>
         )}
+
         {skipMessage && (
           <div
             className="rounded-lg px-3 py-1.5 text-center font-medium"
@@ -458,172 +444,58 @@ export function DailyLudoPuzzlePlay({ challengeId, puzzle, timer: maxSeconds, on
             {skipMessage}
           </div>
         )}
-        {state.captures > 0 && (
-          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>Captures: {state.captures}</div>
+
+        {/* Upcoming dice preview */}
+        {currentRoll !== null && puzzleData.diceSequence.length > 1 && (
+          <div className="flex items-center gap-2">
+            <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-faint)' }}>Upcoming:</span>
+            <DiceSequencePreview sequence={puzzleData.diceSequence} currentIndex={state.rollIndex} />
+          </div>
         )}
       </div>
 
-      {/* Base + Finished indicators */}
-      <div className="flex items-center justify-between gap-4">
-        {/* Base */}
-        <div className="flex-1 rounded-xl p-3" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
-          <div
-            className="mb-1.5 font-medium uppercase tracking-wider"
-            style={{ fontSize: '10px', color: 'var(--text-faint)' }}
-          >
-            Base
-          </div>
-          <div className="flex gap-1.5">
-            {[0, 1, 2, 3].map((id) => {
-              const inBase = basePieces.some((p) => p.id === id)
-              const isHighlighted = highlightedPieces.has(id) && inBase
-              return (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => isHighlighted && handlePieceTap(id)}
-                  disabled={!isHighlighted}
-                  style={{
-                    width: 28,
-                    height: 28,
-                    borderRadius: '50%',
-                    background: inBase ? (isHighlighted ? '#16a34a' : '#22c55e') : 'var(--bg-surface)',
-                    color: inBase ? '#fff' : 'var(--text-faint)',
-                    fontSize: 11,
-                    fontWeight: 800,
-                    border: isHighlighted ? '2px solid var(--primary)' : '1px solid var(--border)',
-                    cursor: isHighlighted ? 'pointer' : 'default',
-                    padding: 0,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    opacity: inBase ? 1 : 0.3,
-                    animation: isHighlighted ? 'ludo-pulse 1s infinite' : undefined,
-                  }}
-                >
-                  {id + 1}
-                </button>
-              )
-            })}
-          </div>
-        </div>
-
-        {/* Finished */}
-        <div className="flex-1 rounded-xl p-3" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
-          <div
-            className="mb-1.5 font-medium uppercase tracking-wider"
-            style={{ fontSize: '10px', color: 'var(--text-faint)' }}
-          >
-            Finished
-          </div>
-          <div className="flex gap-1.5">
-            {[0, 1, 2, 3].map((id) => {
-              const isDone = finishedPieces.some((p) => p.id === id)
-              return (
-                <div
-                  key={id}
-                  style={{
-                    width: 28,
-                    height: 28,
-                    borderRadius: '50%',
-                    background: isDone ? '#16a34a' : 'var(--bg-surface)',
-                    color: isDone ? '#fff' : 'var(--text-faint)',
-                    fontSize: 11,
-                    fontWeight: 800,
-                    border: '1px solid var(--border)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    opacity: isDone ? 1 : 0.3,
-                  }}
-                >
-                  {isDone ? '✓' : id + 1}
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      </div>
-
-      {/* Track board */}
-      <div className="rounded-xl p-3" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
+      {/* How it works (first roll only) */}
+      {state.rollIndex === 0 && (
         <div
-          className="mb-2 font-medium uppercase tracking-wider"
-          style={{ fontSize: '10px', color: 'var(--text-faint)' }}
+          className="rounded-xl px-4 py-3"
+          style={{ background: 'var(--bg-surface)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}
         >
-          Track (0-51)
-        </div>
-        <div
-          style={{
-            display: 'flex',
-            flexWrap: 'wrap',
-            gap: CELL_GAP,
-          }}
-        >
-          {trackCells.map((i) => (
-            <BoardCell
-              key={i}
-              index={i}
-              type="track"
-              pieces={state.pieces}
-              obstacles={state.obstacles}
-              highlighted={highlightedPieces}
-              onPieceTap={handlePieceTap}
-            />
-          ))}
-        </div>
-      </div>
-
-      {/* Home lane */}
-      <div className="rounded-xl p-3" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
-        <div
-          className="mb-2 font-medium uppercase tracking-wider"
-          style={{ fontSize: '10px', color: 'var(--text-faint)' }}
-        >
-          Home Lane (slots 0-4)
-        </div>
-        <div style={{ display: 'flex', gap: CELL_GAP }}>
-          {homeCells.map((i) => (
-            <BoardCell
-              key={i}
-              index={i}
-              type="home"
-              pieces={state.pieces}
-              obstacles={state.obstacles}
-              highlighted={highlightedPieces}
-              onPieceTap={handlePieceTap}
-            />
-          ))}
-          {/* Finish indicator */}
-          <div
-            style={{
-              width: CELL_SIZE,
-              height: CELL_SIZE,
-              borderRadius: 4,
-              background: '#fbbf24',
-              border: '1px solid var(--border)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: 11,
-              fontWeight: 800,
-              color: '#000',
-              flexShrink: 0,
-            }}
-          >
-            {'★'}
+          <div style={{ fontWeight: 600, marginBottom: 4 }}>How to play</div>
+          <div>
+            Get all 4 green tokens around the board and into the home lane. Roll 6 to leave base. Tap a glowing piece to
+            move it.
+            {state.obstacles.length > 0 && ' Land on red obstacles to capture them (+50 pts).'} Fewer rolls = higher
+            score. Par: {puzzleData.optimalRolls} rolls.
           </div>
         </div>
-      </div>
+      )}
 
-      {/* Submit early button */}
+      {/* The actual Ludo board */}
+      <LudoBoard
+        session={STUB_SESSION}
+        states={ludoStates}
+        players={STUB_PLAYERS}
+        myPlayerId={PUZZLE_PLAYER_ID}
+        onMovePiece={!submitted ? handlePieceTap : undefined}
+        selectablePieceIds={selectablePieceIds}
+        highlightCells={highlightCells}
+      />
+
+      {/* Captures counter */}
+      {state.captures > 0 && (
+        <div className="text-center" style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
+          Obstacles captured: {state.captures} (+{state.captures * 50} pts)
+        </div>
+      )}
+
+      {/* Submit early */}
       {state.moves.length > 0 && !submitted && !allFinished(state.pieces) && (
         <button type="button" onClick={handleManualSubmit} className="fr-btn fr-btn--secondary fr-btn--sm w-full">
           Submit early ({state.moves.length} rolls used)
         </button>
       )}
 
-      {/* All done message */}
+      {/* All done */}
       {allFinished(state.pieces) && !submitted && (
         <div className="py-8 text-center">
           <p className="font-bold" style={{ fontSize: 'var(--text-lg)' }}>
