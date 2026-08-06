@@ -1,25 +1,29 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { GAME_SELECT, PLAYER_SELECT, WORD_GROUPING_SUBMISSION_SELECT } from '@/lib/supabase-selects'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
-import { FinishedWinnerHero } from '@/components/FinishedWinnerHero'
-import { HostLobby } from '@/components/game-lobby/HostLobby'
-import { HostModeSelector } from '@/components/game-lobby/HostModeSelector'
+import { FinishedWinnerHero } from '@/components/FinishedWinner'
+import { HostLobby } from '@/components/host/HostLobby'
+import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
+import { HostModeSelector } from '@/components/host/HostModeSelector'
+import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
+import { GameInfoChips } from '@/components/game-lobby/GameInfoChips'
 import { useHostSeat } from '@/hooks/useHostSeat'
+import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
+import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import { useGameRosterPoll } from '@/hooks/useGameRosterPoll'
 import { useGameScores, useGameStats } from '@/components/roster/RosterDrawerContext'
 import { useRegisterGameSettings } from '@/components/GameSettingsContext'
+import { useToast } from '@/components/ui/Toast'
 import { gameTypeConfig } from '@/lib/game-types'
-import {
-  WORD_GROUPING_MAX_MISTAKES,
-  WORD_GROUPING_TOTAL_GROUPS,
-  WORD_GROUPING_GAME_DURATION_OPTIONS,
-  tallyWordGroupingScores,
-} from '@/lib/word-grouping'
+import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
+import { WORD_GROUPING_MAX_MISTAKES, WORD_GROUPING_TOTAL_GROUPS, tallyWordGroupingScores } from '@/lib/word-grouping'
 import { WordGroupingPlayerView } from './WordGroupingPlayerView'
 import { formatMinutesSeconds } from '@/lib/timer-format'
+import { ReplayReadyRing } from '@/components/ReplayReadyRing'
+import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import type { Game, Player } from '@/types'
 
 const GROUP_COLORS: Record<number, string> = {
@@ -50,14 +54,14 @@ interface SolutionGroup {
 
 export function WordGroupingHostView({ gameCode, hostToken }: { gameCode: string; hostToken: string }) {
   const cfg = gameTypeConfig('word_grouping')
+  const { success, error: toastError } = useToast()
   const [game, setGame] = useState<Game | null>(null)
   const [players, setPlayers] = useState<Player[]>([])
   const [submissions, setSubmissions] = useState<Submission[]>([])
   const [roundId, setRoundId] = useState<string | null>(null)
   const [solution, setSolution] = useState<SolutionGroup[] | null>(null)
   const [nowMs, setNowMs] = useState<number>(Date.now())
-
-  const { hostMode, setHostMode, hostPlayerId } = useHostSeat(gameCode, hostToken, game)
+  const [starting, setStarting] = useState(false)
 
   const load = useCallback(async () => {
     const [gameRes, plrsRes] = await Promise.all([
@@ -98,32 +102,63 @@ export function WordGroupingHostView({ gameCode, hostToken }: { gameCode: string
     load()
   }, [load])
 
-  useGameRosterPoll(gameCode, game?.status === 'waiting' || game?.status === 'active')
-  useRegisterGameSettings(game)
+  const {
+    hostMode,
+    hostPlayerId,
+    hostPlayerName,
+    hostJoinName,
+    setHostJoinName,
+    hostJoining,
+    changeHostMode,
+    hostJoinGame,
+    renameHost,
+    handlePlayerRemoved: onHostSeatRemoved,
+  } = useHostSeat({
+    gameCode,
+    hostToken,
+    gameStatus: game?.status,
+    players,
+    onReload: load,
+    toast: { success, error: toastError },
+  })
 
-  // Realtime: game changes
+  const handlePlayerRemoved = useCallback(
+    (playerId: string) => {
+      onHostSeatRemoved(playerId)
+      setPlayers((prev) => prev.filter((p) => p.id !== playerId))
+    },
+    [onHostSeatRemoved]
+  )
+  const { removePlayer, removingPlayerId } = useHostRemovePlayer(gameCode, hostToken, handlePlayerRemoved)
+
+  useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
+  useGameRosterPoll(gameCode, game?.status, { setGame, setPlayers, reload: load })
+  useRegisterGameSettings(null)
+
+  const gameStatusRef = useRef(game?.status)
+  gameStatusRef.current = game?.status
   useEffect(() => {
-    if (!game) return
-    const channel = supabase
-      .channel(`wg-host-game-${gameCode}`)
+    const ch = supabase
+      .channel(`wg_host_game_${gameCode}`)
       .on(
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
-        () => {
-          load()
+        (payload) => {
+          const next = payload.new as Game
+          setGame(next)
+          if (next.status !== gameStatusRef.current) load()
         }
       )
       .subscribe()
     return () => {
-      supabase.removeChannel(channel)
+      void supabase.removeChannel(ch)
     }
-  }, [game, gameCode, load])
+  }, [gameCode, load])
 
-  // Realtime: submissions
   useEffect(() => {
     if (!roundId) return
-    const channel = supabase
-      .channel(`wg-host-subs-${roundId}`)
+    const ch = supabase
+      .channel(`wg_host_subs_${roundId}`)
       .on(
         'postgres_changes',
         {
@@ -139,51 +174,15 @@ export function WordGroupingHostView({ gameCode, hostToken }: { gameCode: string
       )
       .subscribe()
     return () => {
-      supabase.removeChannel(channel)
+      void supabase.removeChannel(ch)
     }
   }, [roundId])
 
-  // Timer tick
   useEffect(() => {
     if (game?.status !== 'active') return
     const interval = setInterval(() => setNowMs(Date.now()), 1000)
     return () => clearInterval(interval)
   }, [game?.status])
-
-  // Scoring
-  const scores = useMemo(() => {
-    const playersArr = players.map((p) => ({ id: p.id, name: p.name }))
-    const tally = tallyWordGroupingScores(playersArr, submissions)
-    return tally.map((t) => ({
-      playerId: t.id,
-      kiss: t.points,
-      marry: t.groups,
-      kill: t.mistakes,
-    }))
-  }, [players, submissions])
-
-  useGameScores(scores)
-  useGameStats(
-    useMemo(
-      () =>
-        players.map((p) => {
-          const mySubs = submissions.filter((s) => s.player_id === p.id)
-          const groups = mySubs.filter((s) => s.is_correct).length
-          const mistakes = mySubs.filter((s) => !s.is_correct).length
-          const done = groups >= WORD_GROUPING_TOTAL_GROUPS || mistakes >= WORD_GROUPING_MAX_MISTAKES
-          return {
-            playerId: p.id,
-            label: done ? `${groups}/4 ✓` : `${groups}/4`,
-          }
-        }),
-      [players, submissions]
-    )
-  )
-
-  const leaderboardRows = useMemo(() => {
-    const playersArr = players.map((p) => ({ id: p.id, name: p.name }))
-    return tallyWordGroupingScores(playersArr, submissions)
-  }, [players, submissions])
 
   const sessionElapsedSeconds = useMemo(() => {
     if (!game?.session_started_at) return 0
@@ -193,46 +192,95 @@ export function WordGroupingHostView({ gameCode, hostToken }: { gameCode: string
   const timerSeconds = game?.game_duration_seconds ?? 0
   const timeRemaining = timerSeconds > 0 ? Math.max(0, timerSeconds - sessionElapsedSeconds) : null
 
-  // Handle start game
+  const hostExpiredRef = useRef(false)
+  useEffect(() => {
+    if (game?.status === 'active' && timeRemaining !== null && timeRemaining <= 0 && !hostExpiredRef.current) {
+      hostExpiredRef.current = true
+      fetch(`/api/games/${gameCode}/expire-word-grouping`, { method: 'POST' }).then(() => load())
+    }
+  }, [game?.status, timeRemaining, gameCode, load])
+
+  const rosterScores = useMemo(() => {
+    const playersArr = players.map((p) => ({ id: p.id, name: p.name }))
+    const tally = tallyWordGroupingScores(playersArr, submissions)
+    const out: Record<string, number> = {}
+    for (const t of tally) out[t.id] = t.points
+    return out
+  }, [players, submissions])
+
+  const rosterDetails = useMemo(() => {
+    const out: Record<string, string> = {}
+    for (const p of players) {
+      const mySubs = submissions.filter((s) => s.player_id === p.id)
+      const groups = mySubs.filter((s) => s.is_correct).length
+      const mistakes = mySubs.filter((s) => !s.is_correct).length
+      const done = groups >= WORD_GROUPING_TOTAL_GROUPS || mistakes >= WORD_GROUPING_MAX_MISTAKES
+      out[p.id] = done ? `${groups}/4 ✓` : `${groups}/4`
+    }
+    return out
+  }, [players, submissions])
+
+  useGameScores(rosterScores, { suffix: ' pts' })
+  useGameStats(rosterDetails)
+
+  const leaderboardRows = useMemo(() => {
+    const playersArr = players.map((p) => ({ id: p.id, name: p.name }))
+    return tallyWordGroupingScores(playersArr, submissions)
+  }, [players, submissions])
+
   const handleStart = async () => {
-    await fetch(`/api/games/${gameCode}/start`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ hostToken }),
-    })
+    setStarting(true)
+    try {
+      await fetch(`/api/games/${gameCode}/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hostToken }),
+      })
+    } finally {
+      setStarting(false)
+    }
   }
 
-  const handlePlayAgain = async () => {
-    await fetch(`/api/games/${gameCode}/play-again`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ hostToken }),
-    })
-  }
+  if (!game) return <HostLobbySkeleton />
 
-  if (!game) {
-    return (
-      <div className="flex min-h-[60vh] items-center justify-center">
-        <div className="animate-pulse text-muted">Loading…</div>
-      </div>
-    )
-  }
-
-  // Waiting / lobby
   if (game.status === 'waiting') {
     return (
-      <HostLobby game={game} players={players} hostToken={hostToken} gameCode={gameCode} onStart={handleStart}>
-        <HostModeSelector mode={hostMode} onChange={setHostMode} />
-      </HostLobby>
+      <HostLobby
+        gameCode={gameCode}
+        hostToken={hostToken}
+        game={game}
+        gameTypeLabel={cfg.label}
+        titleMeta={<GameInfoChips game={game} className="mt-2" />}
+        players={players}
+        maxPlayers={lobbyMaxPlayersFromGameClient('word_grouping', game) ?? game.max_players}
+        playCard={
+          <HostModeSelector
+            mode={hostMode}
+            onChange={changeHostMode}
+            joinedPlayerId={hostPlayerId}
+            joinedPlayerName={hostPlayerName}
+            joinName={hostJoinName}
+            onJoinNameChange={setHostJoinName}
+            onJoin={() => void hostJoinGame()}
+            joining={hostJoining}
+            onEditName={renameHost}
+            spectatorHint="Watch the puzzle unfold"
+            playerHint="Race to find the groups"
+          />
+        }
+        onStart={handleStart}
+        starting={starting}
+        onRemovePlayer={removePlayer}
+        removingPlayerId={removingPlayerId}
+        highlightPlayerId={hostPlayerId}
+      />
     )
   }
 
-  // Host plays along
   if (game.status === 'active' && hostMode === 'player') {
     return <WordGroupingPlayerView gameCode={gameCode} />
   }
 
-  // Active — host spectating
   if (game.status === 'active') {
     return (
       <div className="mx-auto max-w-2xl space-y-4 px-4 py-6">
@@ -271,14 +319,18 @@ export function WordGroupingHostView({ gameCode, hostToken }: { gameCode: string
               )
             })}
         </div>
+
+        <HostEndGameButton gameCode={gameCode} hostToken={hostToken} />
       </div>
     )
   }
 
-  // Finished
+  const winner = leaderboardRows[0]
+  const hostWon = !!hostPlayerId && leaderboardRows.length > 0 && leaderboardRows[0].id === hostPlayerId
+
   return (
     <div className="mx-auto max-w-lg space-y-4 px-4 py-6">
-      <FinishedWinnerHero leaderboard={leaderboardRows} game={game} gameType="word_grouping" />
+      <FinishedWinnerHero winnerName={winner?.name} game={game} />
 
       {solution &&
         solution
@@ -295,19 +347,37 @@ export function WordGroupingHostView({ gameCode, hostToken }: { gameCode: string
           ))}
 
       <PaginatedLeaderboard
-        rows={leaderboardRows.map((r, i) => ({
-          rank: i + 1,
+        title="Final Standings"
+        rows={leaderboardRows.map((r) => ({
+          id: r.id,
           name: r.name,
-          value: `${r.points} pts`,
-          detail: `${r.groups}/4 groups · ${r.mistakes} mistakes`,
+          score: r.points,
         }))}
+        scoreLabel={(n) => `${n} pts`}
+        emphasizeLeader
       />
 
-      <div className="flex gap-2">
-        <button type="button" onClick={handlePlayAgain} className="fr-btn fr-btn--primary flex-1">
-          Play again
-        </button>
-      </div>
+      {hostWon && (
+        <PostWinToCommunity
+          gameType="word_grouping"
+          gameCode={gameCode}
+          winnerName={winner?.name ?? ''}
+          roundKey={game?.session_started_at ?? undefined}
+        />
+      )}
+
+      <ReplayReadyRing
+        players={players}
+        meId={hostPlayerId}
+        isHost
+        gameCode={gameCode}
+        hostToken={hostToken}
+        minPlayers={1}
+        capacityGame={game}
+        onToggleReady={() => {}}
+        onStart={() => void handleStart()}
+        starting={starting}
+      />
     </div>
   )
 }

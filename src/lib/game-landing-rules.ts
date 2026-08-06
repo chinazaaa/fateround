@@ -1781,6 +1781,33 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
       ],
     },
   ],
+  word_grouping: [
+    {
+      title: 'Objective',
+      points: [
+        'You are shown 16 words. Find the 4 hidden groups of 4 words that share a common connection.',
+        'You have a maximum of 4 mistakes — after that the puzzle is over and any remaining groups are revealed.',
+        'Harder groups score more points, so solving the trickiest connection first pays off.',
+      ],
+    },
+    {
+      title: 'How it works',
+      points: [
+        'Select 4 words you think belong together and submit your guess.',
+        'If the group is correct it locks in and you see the connection. If not, you lose one of your 4 lives.',
+        'Groups are colour-coded by difficulty: the easiest group scores 1 point and the hardest scores 4.',
+        'Keep going until you find all 4 groups or run out of mistakes.',
+      ],
+    },
+    {
+      title: 'Tips',
+      points: [
+        'Start with the group you are most confident about — locking it in removes 4 words and makes the rest easier.',
+        'Watch for red herrings: some words could fit more than one category, but each word belongs to exactly one group.',
+        'If you are stuck, look for the oddest connection — the hardest group is often the least obvious theme.',
+      ],
+    },
+  ],
   landmine: [
     {
       title: 'Objective',

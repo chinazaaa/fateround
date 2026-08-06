@@ -16,3 +16,13 @@ export {
   type WordGroupingGroup,
   type WordGroupingPuzzle,
 } from '../../packages/shared/src/word-grouping'
+
+import type { SupabaseClient } from '@supabase/supabase-js'
+import { clearSessionTables } from './session-clear'
+
+export async function clearWordGroupingSessionData(
+  supabase: SupabaseClient,
+  gameId: string
+): Promise<{ error: string | null }> {
+  return clearSessionTables(supabase, gameId, ['word_grouping_submissions', 'word_grouping_solutions'])
+}

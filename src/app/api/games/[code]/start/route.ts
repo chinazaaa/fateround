@@ -1113,7 +1113,7 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
     // Fall back to the built-in puzzle bank.
     if (!puzzleResult) {
       // Try platform_content entries first.
-      const platformEntries = await loadPlatformEntries<{ groups: unknown[] }>('word_grouping')
+      const platformEntries = await loadPlatformEntries<{ groups: unknown[] }>(getSupabaseAdmin(), 'word_grouping')
       if (platformEntries.length > 0) {
         puzzleResult = generateWordGroupingFromContent(platformEntries, seed, game.game_duration_seconds ?? 300)
       }

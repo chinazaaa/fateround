@@ -52,6 +52,7 @@ import { clearSudokuSessionData } from '@/lib/sudoku'
 import { clearCrosswordSessionData } from '@/lib/crossword'
 import { clearWordSearchSessionData } from '@/lib/word-search'
 import { clearWordScrambleSessionData } from '@/lib/word-scramble'
+import { clearWordGroupingSessionData } from '@/lib/word-grouping'
 import { clearWordHuntSessionData } from '@/lib/word-hunt'
 import { clearMafiaSessionData } from '@/lib/mafia'
 import { clearTriviaSessionData } from '@/lib/trivia'
@@ -124,6 +125,7 @@ type ClearableSessionGameType = Extract<
   | 'crossword'
   | 'word_search'
   | 'word_scramble'
+  | 'word_grouping'
   | 'landmine'
   | 'ping_pong'
 >
@@ -165,6 +167,7 @@ const SESSION_CLEARERS: Record<ClearableSessionGameType, SessionClearer> = {
   crossword: clearCrosswordSessionData,
   word_search: clearWordSearchSessionData,
   word_scramble: clearWordScrambleSessionData,
+  word_grouping: clearWordGroupingSessionData,
   landmine: clearLandmineSessionData,
   ping_pong: clearPingPongSessionData,
 }

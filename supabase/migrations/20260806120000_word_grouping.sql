@@ -92,6 +92,6 @@ INSERT INTO game_player_limits (game_type, max_players)
 VALUES ('word_grouping', 20)
 ON CONFLICT (game_type) DO NOTHING;
 
-INSERT INTO community_games (name, slug, accent_color, sort_order, game_type, visible)
+INSERT INTO community_games (name, slug, accent, sort_order, game_type, is_active)
 VALUES ('Word Grouping', 'word-grouping', '#f97316', 60, 'word_grouping', true)
 ON CONFLICT (slug) DO NOTHING;

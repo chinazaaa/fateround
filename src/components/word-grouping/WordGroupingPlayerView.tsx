@@ -1,14 +1,12 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
 import { useGameScores, useGameStats } from '@/components/roster/RosterDrawerContext'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
-import { ShareResults } from '@/components/ShareResults'
 import { ShareResultsCaptureHeader } from '@/components/ShareResultsCaptureHeader'
-import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { PLAYER_SELECT, WORD_GROUPING_SUBMISSION_SELECT } from '@/lib/supabase-selects'
 import { clearPlayerSession } from '@/lib/utils'
 import { formatMinutesSeconds } from '@/lib/timer-format'
@@ -17,7 +15,6 @@ import { useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { useRoomMemberAutoJoin, useRoomMemberJoin, useRoomMemberNamePrefill } from '@/hooks/useRoomMemberJoin'
 import { allowLatePlayers, playerIsViewer, preJoinScreen } from '@/lib/viewers'
 import { LateJoinChoice } from '@/components/LateJoinChoice'
-import { ViewerModeBanner } from '@/components/ViewerModeBanner'
 import { EditNameInline } from '@/components/ui/EditNameInline'
 import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
 import { useRegisterGameSettings } from '@/components/GameSettingsContext'
@@ -80,7 +77,6 @@ export function WordGroupingPlayerView({ gameCode }: { gameCode: string }) {
   const [solution, setSolution] = useState<SolutionGroup[] | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [nowMs, setNowMs] = useState<number>(Date.now())
-  const finishedCaptureRef = useRef<HTMLDivElement>(null)
   const { displayName: roomDisplayName, joinExtras, resolving: resolvingRoomMember } = useRoomMemberJoin(gameCode)
 
   const addSubmission = useCallback((row: Submission) => {
@@ -186,53 +182,68 @@ export function WordGroupingPlayerView({ gameCode }: { gameCode: string }) {
     return 'waiting'
   }, [])
 
-  const { screen, game, players, myPlayerId, myResumeToken, joinName, setJoinName, joining, join, load, lobbyFull } =
-    useGameViewBootstrap<View, WordGroupingGameState>({
-      gameCode,
-      loadingScreen: 'loading',
-      notFoundScreen: 'loading',
-      loadGameState,
-      computeScreen,
-      afterResolve,
-      joinExtras,
-    })
+  const {
+    screen,
+    game,
+    setGame,
+    players,
+    setPlayers,
+    myPlayerId,
+    myResumeToken,
+    joinName,
+    setJoinName,
+    joining,
+    join,
+    load,
+    lobbyFull,
+  } = useGameViewBootstrap<View, WordGroupingGameState>({
+    gameCode,
+    loadingScreen: 'loading',
+    notFoundScreen: 'loading',
+    loadGameState,
+    computeScreen,
+    afterResolve,
+    joinExtras,
+  })
 
   useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
-  useRoomMemberAutoJoin(roomDisplayName, game, myPlayerId, joining, join, resolvingRoomMember)
+  useRoomMemberAutoJoin({
+    gameCode,
+    displayName: roomDisplayName,
+    resolving: resolvingRoomMember,
+    screen,
+    gameStatus: game?.status,
+    hasPlayerSession: !!myPlayerId,
+    joining,
+    onJoin: (name) => join({ name }),
+  })
 
-  useGameRosterPoll(gameCode, screen === 'waiting' || screen === 'playing')
+  useGameRosterPoll(gameCode, game?.status, { setGame, setPlayers, reload: load })
 
-  // Register game settings for roster drawer scoring
-  const scores = useMemo(() => {
+  const rosterScores = useMemo(() => {
     const playersArr = players.map((p) => ({ id: p.id, name: p.name }))
     const tally = tallyWordGroupingScores(playersArr, submissions)
-    return tally.map((t) => ({
-      playerId: t.id,
-      kiss: t.points,
-      marry: t.groups,
-      kill: t.mistakes,
-    }))
+    const out: Record<string, number> = {}
+    for (const t of tally) out[t.id] = t.points
+    return out
   }, [players, submissions])
 
-  useGameScores(scores)
-  useGameStats(
-    useMemo(
-      () =>
-        players.map((p) => {
-          const mySubs = submissions.filter((s) => s.player_id === p.id)
-          const groups = mySubs.filter((s) => s.is_correct).length
-          const mistakes = mySubs.filter((s) => !s.is_correct).length
-          const done = groups >= WORD_GROUPING_TOTAL_GROUPS || mistakes >= WORD_GROUPING_MAX_MISTAKES
-          return {
-            playerId: p.id,
-            label: done ? `${groups}/4 groups` : `${groups}/4`,
-          }
-        }),
-      [players, submissions]
-    )
-  )
+  const rosterDetails = useMemo(() => {
+    const out: Record<string, string> = {}
+    for (const p of players) {
+      const mySubs = submissions.filter((s) => s.player_id === p.id)
+      const groups = mySubs.filter((s) => s.is_correct).length
+      const mistakes = mySubs.filter((s) => !s.is_correct).length
+      const done = groups >= WORD_GROUPING_TOTAL_GROUPS || mistakes >= WORD_GROUPING_MAX_MISTAKES
+      out[p.id] = done ? `${groups}/4 ✓` : `${groups}/4`
+    }
+    return out
+  }, [players, submissions])
 
-  useRegisterGameSettings(game)
+  useGameScores(rosterScores, { suffix: ' pts' })
+  useGameStats(rosterDetails)
+
+  useRegisterGameSettings(null)
 
   // Realtime: game status changes
   useEffect(() => {
@@ -294,7 +305,8 @@ export function WordGroupingPlayerView({ gameCode }: { gameCode: string }) {
   const remainingWords = useMemo(() => words.filter((w) => !revealedWords.has(w)), [words, revealedWords])
   const mistakesRemaining = WORD_GROUPING_MAX_MISTAKES - myMistakes
 
-  const isViewer = game ? playerIsViewer(game, myPlayerId, players) : false
+  const me = players.find((p) => p.id === myPlayerId)
+  const isViewer = !!(me && game && playerIsViewer(me, game))
 
   const sessionElapsedSeconds = useMemo(() => {
     if (!game?.session_started_at) return 0
@@ -303,6 +315,14 @@ export function WordGroupingPlayerView({ gameCode }: { gameCode: string }) {
 
   const timerSeconds = game?.game_duration_seconds ?? 0
   const timeRemaining = timerSeconds > 0 ? Math.max(0, timerSeconds - sessionElapsedSeconds) : null
+
+  const expiredRef = useRef(false)
+  useEffect(() => {
+    if (timeRemaining !== null && timeRemaining <= 0 && screen === 'playing' && !expiredRef.current) {
+      expiredRef.current = true
+      fetch(`/api/games/${gameCode}/expire-word-grouping`, { method: 'POST' }).then(() => load())
+    }
+  }, [timeRemaining, screen, gameCode, load])
 
   // Selection
   const toggleWord = (word: string) => {
@@ -373,95 +393,134 @@ export function WordGroupingPlayerView({ gameCode }: { gameCode: string }) {
     )
   }
 
+  const handlePlayerLeft = () => {
+    clearPlayerSession(gameCode)
+    router.push('/create')
+  }
+
   if (screen === 'join') {
     return (
-      <GameJoinLobbyShell gameType="word_grouping">
-        <GameJoinHeader game={game} gameType="word_grouping" />
-        <GameInfoChips game={game} gameType="word_grouping" players={players} />
+      <GameJoinLobbyShell
+        gameCode={gameCode}
+        header={
+          <GameJoinHeader
+            emoji={cfg.headerEmoji}
+            title={game?.title ?? 'Word Grouping'}
+            gameType="word_grouping"
+            subtitle="Find 4 groups of 4 words."
+            meta={<GameInfoChips game={game} />}
+          />
+        }
+      >
         <NameJoinForm
           value={joinName}
           onChange={setJoinName}
-          onSubmit={() => join(joinName)}
-          joining={joining}
+          onSubmit={() => void join()}
           lobbyFull={lobbyFull}
-          gameStatus={game?.status}
-          allowViewers={game?.allow_viewers}
+          onJoinAsViewer={() => void join({ joinAsViewer: true })}
+          joining={joining}
+          gameType="word_grouping"
+          submitLabel="Join game"
+          footer={
+            <p className="text-center pt-1">
+              <GameRulesLink gameType="word_grouping" variant="subtle" />
+            </p>
+          }
         />
-        <GameRulesLink gameType="word_grouping" />
       </GameJoinLobbyShell>
     )
   }
 
-  if (screen === 'late_join_choice') {
-    return <LateJoinChoice game={game!} gameCode={gameCode} joinName={joinName} />
+  if (screen === 'late_join_choice' && game) {
+    return (
+      <LateJoinChoice
+        gameCode={gameCode}
+        game={game}
+        playersAllowed={allowLatePlayers(game)}
+        showNameField
+        nameInput={joinName}
+        onNameChange={setJoinName}
+        joining={joining}
+        onJoinAsViewer={() => void join({ joinAsViewer: true })}
+        onJoinAsPlayer={() => void join({ joinAsViewer: false })}
+      />
+    )
   }
 
   if (screen === 'waiting') {
     return (
-      <GameJoinLobbyShell gameType="word_grouping">
-        <GameJoinHeader game={game} gameType="word_grouping" />
-        <GameInfoChips game={game} gameType="word_grouping" players={players} />
-        <GameLobbyWaitingPanel game={game} players={players} myPlayerId={myPlayerId} />
+      <GameJoinLobbyShell gameCode={gameCode} onResumed={load}>
+        <GameLobbyWaitingPanel
+          gameCode={gameCode}
+          gameType={game?.game_type}
+          capacityGame={game}
+          game={game}
+          players={players}
+          myPlayerId={myPlayerId}
+          myPlayerName={me?.name ?? ''}
+          onRenamed={() => void load()}
+          onLeft={handlePlayerLeft}
+          title={game?.title ?? 'Word Grouping'}
+          description="Waiting for the host to start the puzzle…"
+          rulesLink={<GameRulesLink gameType="word_grouping" variant="subtle" />}
+        />
       </GameJoinLobbyShell>
     )
   }
 
   if (screen === 'finished' && game) {
+    const leader = leaderboardRows[0]
+    const iWon = !!leader && leader.id === myPlayerId && leader.groups > 0
     return (
       <div className="mx-auto max-w-lg space-y-4 px-4 py-6">
-        <div ref={finishedCaptureRef}>
-          <ShareResultsCaptureHeader game={game} gameType="word_grouping" />
-          <h2 className="text-center text-xl font-bold mb-4">Game Over</h2>
+        <ShareResultsCaptureHeader game={game} />
+        <h2 className="text-center text-xl font-bold mb-4">Game Over</h2>
 
-          {/* Revealed solution */}
-          {revealedGroups
-            .sort((a, b) => a.difficulty - b.difficulty)
-            .map((group) => (
-              <div
-                key={group.category || group.groupIndex}
-                className="rounded-xl px-4 py-3 text-center mb-2"
-                style={{ background: GROUP_COLORS[group.difficulty] ?? GROUP_COLORS[1], color: '#1a1a1a' }}
-              >
-                <div className="font-bold uppercase tracking-wider text-sm">{group.category}</div>
-                <div className="mt-1 font-medium text-sm">{group.words.join(', ')}</div>
-              </div>
-            ))}
-
-          {myRow && (
-            <div className="mt-4 text-center">
-              <p className="text-lg font-bold">{myRow.points} points</p>
-              <p className="text-muted text-sm">
-                {myRow.groups}/4 groups · {myRow.mistakes} mistake{myRow.mistakes !== 1 ? 's' : ''}
-              </p>
+        {revealedGroups
+          .sort((a, b) => a.difficulty - b.difficulty)
+          .map((group) => (
+            <div
+              key={group.category || group.groupIndex}
+              className="rounded-xl px-4 py-3 text-center mb-2"
+              style={{ background: GROUP_COLORS[group.difficulty] ?? GROUP_COLORS[1], color: '#1a1a1a' }}
+            >
+              <div className="font-bold uppercase tracking-wider text-sm">{group.category}</div>
+              <div className="mt-1 font-medium text-sm">{group.words.join(', ')}</div>
             </div>
-          )}
+          ))}
 
-          <PaginatedLeaderboard
-            rows={leaderboardRows.map((r, i) => ({
-              rank: i + 1,
-              name: r.name,
-              value: `${r.points} pts`,
-              isMe: r.id === myPlayerId,
-              detail: `${r.groups}/4 groups`,
-            }))}
-          />
-        </div>
-
-        {myRow && leaderboardRows[0]?.id === myPlayerId && (
-          <PostWinToCommunity game={game} myRow={myRow} leaderboard={leaderboardRows} gameType="word_grouping" />
+        {myRow && (
+          <div className="mt-4 text-center">
+            <p className="text-lg font-bold">{myRow.points} points</p>
+            <p className="text-muted text-sm">
+              {myRow.groups}/4 groups · {myRow.mistakes} mistake{myRow.mistakes !== 1 ? 's' : ''}
+            </p>
+          </div>
         )}
 
-        <ShareResults game={game} captureRef={finishedCaptureRef} />
+        <PaginatedLeaderboard
+          title="Final Standings"
+          rows={leaderboardRows.map((r) => ({
+            id: r.id,
+            name: r.name,
+            score: r.points,
+          }))}
+          highlightId={myPlayerId ?? undefined}
+          scoreLabel={(n) => `${n} pts`}
+          emphasizeLeader
+        />
 
-        <ReplayReadyRing game={game} myPlayerId={myPlayerId} myResumeToken={myResumeToken} />
+        {iWon && (
+          <PostWinToCommunity
+            gameType="word_grouping"
+            gameCode={gameCode}
+            winnerName={leader?.name ?? ''}
+            roundKey={game?.session_started_at ?? undefined}
+          />
+        )}
 
         <div className="flex gap-2">
-          <LeaveGameButton
-            onLeave={() => {
-              clearPlayerSession(gameCode)
-              router.push('/create')
-            }}
-          />
+          {myPlayerId && <LeaveGameButton gameCode={gameCode} playerId={myPlayerId} onLeft={handlePlayerLeft} />}
         </div>
       </div>
     )
@@ -487,8 +546,6 @@ export function WordGroupingPlayerView({ gameCode }: { gameCode: string }) {
         .wg-shake { animation: wg-shake 0.4s ease-in-out; }
         .wg-one-away { animation: wg-one-away 1.5s ease-in-out forwards; }
       `}</style>
-
-      {isViewer && <ViewerModeBanner />}
 
       {/* Timer + mistakes bar */}
       <div
@@ -610,7 +667,15 @@ export function WordGroupingPlayerView({ gameCode }: { gameCode: string }) {
         </div>
       )}
 
-      <EditNameInline gameCode={gameCode} myPlayerId={myPlayerId} myResumeToken={myResumeToken} />
+      {me && myPlayerId && (
+        <EditNameInline
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          currentName={me.name ?? ''}
+          onRenamed={() => void load()}
+          spectating={isViewer}
+        />
+      )}
     </div>
   )
 }
