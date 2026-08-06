@@ -12,9 +12,11 @@ CREATE TABLE IF NOT EXISTS word_grouping_solutions (
 );
 
 ALTER TABLE word_grouping_solutions ENABLE ROW LEVEL SECURITY;
+-- No policies at all: every read and write goes through service-role routes
+-- (/api/games/[code]/start writes it, /api/word-grouping/solution reveals it once the game
+-- is finished), and the service role bypasses RLS. Leaving anon an INSERT policy would let
+-- anyone plant a fake solution for a round.
 DROP POLICY IF EXISTS "word_grouping_solutions_insert" ON word_grouping_solutions;
-CREATE POLICY "word_grouping_solutions_insert" ON word_grouping_solutions FOR INSERT WITH CHECK (true);
--- No SELECT/UPDATE/DELETE policy — solution readable only by service-role API routes.
 
 -- Per-guess submissions (correct group reveals + wrong guesses).
 CREATE TABLE IF NOT EXISTS word_grouping_submissions (
@@ -49,14 +51,15 @@ CREATE INDEX IF NOT EXISTS idx_word_grouping_subs_player ON word_grouping_submis
 CREATE UNIQUE INDEX IF NOT EXISTS idx_word_grouping_subs_unique_correct
   ON word_grouping_submissions(player_id, round_id, group_index) WHERE is_correct = true;
 
+-- SELECT-only for anon: guesses are written by /api/word-grouping/submit and cleared on
+-- play-again, both service-role. An anon DELETE policy would let any player wipe another
+-- player's guesses (or the whole round's) straight from the browser.
 ALTER TABLE word_grouping_submissions ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "word_grouping_submissions_read" ON word_grouping_submissions;
 CREATE POLICY "word_grouping_submissions_read" ON word_grouping_submissions FOR SELECT USING (true);
 DROP POLICY IF EXISTS "word_grouping_submissions_delete" ON word_grouping_submissions;
-CREATE POLICY "word_grouping_submissions_delete" ON word_grouping_submissions FOR DELETE USING (true);
 
 DROP POLICY IF EXISTS "word_grouping_solutions_delete" ON word_grouping_solutions;
-CREATE POLICY "word_grouping_solutions_delete" ON word_grouping_solutions FOR DELETE USING (true);
 
 do $$ begin alter publication supabase_realtime add table word_grouping_submissions; exception when duplicate_object then null; end $$;
 

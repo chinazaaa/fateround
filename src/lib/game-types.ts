@@ -2782,6 +2782,75 @@ const LOBBY_GAMES: Record<GameType, boolean> = {
   mafia: false,
 }
 
+// Does this game record its history as rows in the `votes` table (plus `participants` /
+// `hot_seat_submissions`)? Only the poll family does. Everything else keeps its results in
+// its own tables, so the vote-shaped history view ("Votes recorded", "individual voters are
+// hidden", "no votes recorded yet") is meaningless for them and must not be rendered.
+//
+// Games with a bespoke *SessionSummary on the history page (trivia, monopoly, whot, …) never
+// reach either branch, but they are still classified honestly here: they don't use `votes`.
+const VOTE_HISTORY_GAMES: Record<GameType, boolean> = {
+  smash_marry_kill: true,
+  red_flag_green_flag: true,
+  smash_or_pass: true,
+  would_you_rather: true,
+  never_have_i_ever: true,
+  pick_a_number: true,
+  this_or_that: true,
+  most_likely_to: true,
+  who_said_this: true,
+  // Stores hot_seat_submissions rather than votes, but the poll history view has a
+  // dedicated branch that renders them.
+  hot_seat: true,
+  custom: true,
+  parent_approval: true,
+  anonymous_messages: false,
+  secret_message: false,
+  bingo: false,
+  codewords: false,
+  trivia: false,
+  two_truths: false,
+  monopoly: false,
+  yahtzee: false,
+  whot: false,
+  ludo: false,
+  mahjong: false,
+  i_call_on: false,
+  sudoku: false,
+  tic_tac_toe: false,
+  word_hunt: false,
+  chess: false,
+  describe_it: false,
+  word_rush: false,
+  scrabble: false,
+  snake_and_ladder: false,
+  crazy_eights: false,
+  checkers: false,
+  checkers_international: false,
+  checkers_nigeria: false,
+  matching_pairs: false,
+  quiplash: false,
+  quick_draw: false,
+  ayo: false,
+  crossword: false,
+  word_search: false,
+  word_scramble: false,
+  word_grouping: false,
+  landmine: false,
+  ping_pong: false,
+  uno: false,
+  mafia: false,
+}
+
+/**
+ * True when a game's results live in the `votes` table, so the vote-shaped history view
+ * applies. New game types default to `false` only by being classified above — the
+ * exhaustive map makes forgetting one a compile error.
+ */
+export function usesVoteHistory(gameType: GameType | string | undefined): boolean {
+  return VOTE_HISTORY_GAMES[parseGameType(gameType)]
+}
+
 /** WYR + MLT + This or That player join: free name entry, no list. Hot Seat uses import + name claim (see isImportNameClaimGame). */
 export function isNameOnlyPlayerJoin(gameType: GameType | string | undefined): boolean {
   return NAME_ONLY_PLAYER_JOIN_GAMES[parseGameType(gameType)]
