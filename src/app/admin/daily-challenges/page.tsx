@@ -205,7 +205,7 @@ export default function AdminDailyPage() {
   // ---- Create ----
   const handleCreate = async () => {
     const content = textToContent(gameType, createText)
-    if (!Array.isArray(content) || content.length === 0) {
+    if (content == null || (Array.isArray(content) && content.length === 0)) {
       setSaveMsg({ ok: false, text: 'Add at least one entry' })
       return
     }

@@ -5,6 +5,7 @@ import Link from 'next/link'
 import {
   DAILY_CHALLENGE_GAME_TYPES,
   DAILY_GAME_LABELS,
+  DAILY_GAME_EMOJIS,
   DAILY_GAME_TYPE_TO_SLUG,
   DAILY_GAME_PRIMARY_METRIC,
   DAILY_GAME_TIMER,
@@ -15,8 +16,6 @@ import {
 import { formatDayLabel } from '@/lib/community-dates'
 import { authHeaders } from '@/lib/identity'
 import { getDailyStartedAt } from '@/lib/daily-progress'
-import { gameIcon } from '@/lib/game-glyphs'
-import { Glyph } from '@/components/icons/Glyph'
 import { useExpiryRefresh } from '@/hooks/useExpiryRefresh'
 
 interface GameStatus {
@@ -157,8 +156,8 @@ export function DailyHubClient() {
               className="fr-card fr-card--interactive flex items-center gap-4 !px-5 !py-4 no-underline"
               style={played ? { borderColor: 'var(--border-primary)', borderWidth: 1 } : undefined}
             >
-              <span className="fr-glyph fr-glyph--sm">
-                <Glyph icon={gameIcon(gameType)} size={22} />
+              <span className="fr-glyph fr-glyph--sm" style={{ fontSize: '22px' }}>
+                {DAILY_GAME_EMOJIS[gameType]}
               </span>
               <div className="flex-1 min-w-0">
                 <h3 className="font-bold" style={{ fontSize: 'var(--text-sm)' }}>
