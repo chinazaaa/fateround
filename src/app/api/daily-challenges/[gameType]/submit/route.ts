@@ -10,7 +10,7 @@ import {
   type DailyChallengeGameType,
   type DailyScoreInput,
 } from '@/lib/daily-challenge'
-import { advanceStreak, watDate, type StreakState } from '@/lib/trophies/streak'
+import { advanceStreak, type StreakState } from '@/lib/trophies/streak'
 
 export const dynamic = 'force-dynamic'
 
@@ -581,7 +581,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ gam
       .eq('game_type', gameType)
   }
 
-  // Advance the profile's day streak (best-effort — a failure here must not break the submission)
+  // Advance the profile's day streak (best-effort — a failure here must not break the submission).
+  // Reuses `today` captured at the top so the streak date matches the challenge date even if the
+  // request crosses WAT midnight.
   try {
     const { data: profile } = await admin
       .from('profiles')
@@ -596,7 +598,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ gam
           longest_streak: Number(profile.longest_streak) || 0,
           last_active_date: (profile.last_active_date as string) ?? null,
         } satisfies StreakState,
-        watDate()
+        today
       )
       if (streak.last_active_date !== (profile.last_active_date ?? null)) {
         await admin
