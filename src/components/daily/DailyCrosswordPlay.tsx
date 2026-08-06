@@ -110,6 +110,9 @@ export function DailyCrosswordPlay({ challengeId, puzzle, timer: maxSeconds, onS
     return { solvedCells: cellsGrid, solvedClues: solved, solvedCount: solved.size }
   }, [clues, answerHashes, letterGrid, size])
 
+  const solvedCellsRef = useRef(solvedCells)
+  solvedCellsRef.current = solvedCells
+
   const handleSubmit = useCallback(() => {
     if (submitRef.current) return
     submitRef.current = true
@@ -195,6 +198,15 @@ export function DailyCrosswordPlay({ challengeId, puzzle, timer: maxSeconds, onS
       const letter = raw.toUpperCase()
       if (!/^[A-Z]$/.test(letter)) return
       const [row, col] = cell
+      if (solvedCellsRef.current[row]?.[col]) {
+        const dir = directionRef.current
+        const dr = dir === 'down' ? 1 : 0
+        const dc = dir === 'across' ? 1 : 0
+        const nr = row + dr
+        const nc = col + dc
+        if (nr >= 0 && nr < size && nc >= 0 && nc < size && !metadata.blocked[nr][nc]) setSelectedCell([nr, nc])
+        return
+      }
       setLetterGrid((prev) => {
         const next = prev.map((r) => [...r])
         next[row][col] = letter
@@ -214,6 +226,7 @@ export function DailyCrosswordPlay({ challengeId, puzzle, timer: maxSeconds, onS
     const cell = selectedCellRef.current
     if (submitted || !cell) return
     const [row, col] = cell
+    if (solvedCellsRef.current[row]?.[col]) return
     setLetterGrid((prev) => {
       const next = prev.map((r) => [...r])
       next[row][col] = ''
