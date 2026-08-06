@@ -6,7 +6,6 @@ import Link from 'next/link'
 import {
   DAILY_CHALLENGE_GAME_TYPES,
   DAILY_GAME_LABELS,
-  DAILY_GAME_EMOJIS,
   DAILY_GAME_TYPE_TO_SLUG,
   DAILY_GAME_TIMER,
   isDailyChallengeLive,
@@ -123,8 +122,8 @@ export function DailyChallengeSection() {
                 className="fr-gamecard fr-gamecard--compact"
                 style={{ '--accent': DAILY_GAME_ACCENTS[gameType] } as React.CSSProperties}
               >
-                <span className="fr-glyph fr-glyph--sm" style={{ fontSize: '22px' }}>
-                  {DAILY_GAME_EMOJIS[gameType]}
+                <span className="fr-glyph fr-glyph--sm">
+                  <Glyph icon={gameIcon(DAILY_ICON_FALLBACK[gameType] ?? (gameType as GameType))} size={22} />
                 </span>
                 <h3 className="fr-gamecard__title">{DAILY_GAME_LABELS[gameType]}</h3>
                 {/* The badge slot keeps its height while the status request is in
