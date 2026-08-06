@@ -54,7 +54,7 @@ const GAME_SEO: Record<string, { title: string; description: string }> = {
   'codenames-codeword': {
     title: 'Daily Codewords — Free Codenames-Style Word Puzzle Every Day',
     description:
-      "A free daily Codewords puzzle — the clue hints at words in the grid. Pick the matching words and submit. Same puzzle for everyone; climb today's leaderboard.",
+      "A free daily Codewords puzzle — one clue points to words hidden in the grid. Pick the ones you think match and submit. Same clue for everyone; climb today's leaderboard.",
   },
   'whot-puzzle': {
     title: 'Daily Whot Puzzle — Free Card Puzzle, New Every Day',
