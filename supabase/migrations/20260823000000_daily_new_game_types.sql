@@ -31,7 +31,7 @@ alter table daily_challenge_content
   add constraint daily_content_valid_game_type check (
     game_type in (
       'crossword', 'mini_crossword', 'word_search', 'word_scramble', 'trivia',
-      'whot_puzzle', 'word_grouping', 'chess_mate', 'codenames_codeword',
+      'word_grouping', 'chess_mate', 'codenames_codeword',
       'ludo_puzzle'
     )
   );
