@@ -116,6 +116,14 @@ export function WordGroupingHostView({ gameCode, hostToken }: { gameCode: string
           if (sol?.groups) setSolution(sol.groups)
         }
       }
+    } else {
+      // Play-again returns the room to `waiting`, and without an explicit reset the previous
+      // session's `roundId` / `submissions` / `solution` linger — inflating roster scores and
+      // stats until the game re-enters `active`. Clear them here so a fresh lobby is a fresh
+      // slate.
+      setRoundId(null)
+      setSubmissions([])
+      setSolution(null)
     }
   }, [gameCode])
 
@@ -310,11 +318,20 @@ export function WordGroupingHostView({ gameCode, hostToken }: { gameCode: string
   const handleStart = async () => {
     setStarting(true)
     try {
-      await fetch(`/api/games/${gameCode}/start`, {
+      const res = await fetch(`/api/games/${gameCode}/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ hostToken }),
       })
+      // Without surfacing the error, a failed start (invalid host token, too few ready
+      // players, bad content) just clears the spinner and leaves the host staring at an
+      // unchanged lobby with no explanation. Mirrors the `resetGame` error handling below.
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        toastError(d.error || 'Failed to start game')
+      }
+    } catch {
+      toastError('Failed to start game')
     } finally {
       setStarting(false)
     }
@@ -535,7 +552,7 @@ export function WordGroupingHostView({ gameCode, hostToken }: { gameCode: string
 
       {solution && (
         <div className="space-y-2">
-          {solution
+          {[...solution]
             .sort((a, b) => a.difficulty - b.difficulty)
             .map((group) => (
               <div

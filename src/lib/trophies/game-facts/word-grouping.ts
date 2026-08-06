@@ -88,7 +88,11 @@ export async function wordGroupingFacts(
   }
 
   for (const [playerId, rowsUnsorted] of byPlayer) {
-    const rows = [...rowsUnsorted].sort((a, b) => a.submitted_at.localeCompare(b.submitted_at))
+    // Plain lexicographic compare — ISO timestamps sort correctly with `<`/`>` and skip the
+    // ICU collation `localeCompare` would apply.
+    const rows = [...rowsUnsorted].sort((a, b) =>
+      a.submitted_at < b.submitted_at ? -1 : a.submitted_at > b.submitted_at ? 1 : 0
+    )
     const facts: Record<string, number> = {}
 
     const correctRows = rows.filter((r) => r.is_correct)
@@ -165,7 +169,10 @@ export async function wordGroupingFacts(
 
     if (won) {
       if (mistakes === WORD_GROUPING_MAX_MISTAKES - 1) facts.word_grouping_one_life_wins = 1
-      if (!oneAwayHit) facts.word_grouping_no_red_herrings_wins = 1
+      // Only credit "No Red Herrings" when we could actually check for one-away — when the
+      // solution row is missing/unreadable, `oneAwayHit` stays false regardless of what the
+      // player guessed and this would grant the trophy unearned.
+      if (!oneAwayHit && solutionGroups.length > 0) facts.word_grouping_no_red_herrings_wins = 1
       if (mistakes === 0) facts.word_grouping_flawless_wins = 1
       if (mistakes === 0 && descending) facts.word_grouping_perfect_descent_wins = 1
 

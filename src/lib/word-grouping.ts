@@ -17,13 +17,28 @@ export {
   type WordGroupingPuzzle,
 } from '../../packages/shared/src/word-grouping'
 
-import { WORD_GROUPING_GAME_DURATION_OPTIONS as DURATION_OPTIONS } from '../../packages/shared/src/word-grouping'
+import {
+  WORD_GROUPING_GAME_DURATION_OPTIONS as DURATION_OPTIONS,
+  WORD_GROUPING_DEFAULT_DURATION as DEFAULT_DURATION,
+} from '../../packages/shared/src/word-grouping'
 
 export function clampWordGroupingGameDuration(seconds: number): number {
+  // Guard: `Math.abs(NaN - x)` is NaN → every comparison is false → `best` sticks at opts[0]
+  // (which is 0 = "No limit"). A missing or NaN input should fall back to the platform default,
+  // not silently disable the timer.
+  if (!Number.isFinite(seconds)) return DEFAULT_DURATION
   const opts = [...DURATION_OPTIONS]
   let best = opts[0]
+  let bestDist = Math.abs(best - seconds)
   for (const o of opts) {
-    if (Math.abs(o - seconds) < Math.abs(best - seconds)) best = o
+    const dist = Math.abs(o - seconds)
+    // `<=` so a tie prefers the LATER option (higher-index = longer timer): with the previous
+    // strict `<`, `seconds = 60` snapped to 0 (No limit) rather than 120s, because both were
+    // 60 away and the first-seen won. Ordering the options ascending keeps this deterministic.
+    if (dist <= bestDist) {
+      best = o
+      bestDist = dist
+    }
   }
   return best
 }

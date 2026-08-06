@@ -865,7 +865,16 @@ export async function POST(req: NextRequest) {
                                                                     rawMaxPlayers,
                                                                     lobbyDefaultMaxPlayers('word_scramble', lobbyLimits)
                                                                   )
-                                                                : null
+                                                                : isWordGroupingGame(game_type)
+                                                                  ? resolveMaxPlayers(
+                                                                      'word_grouping',
+                                                                      rawMaxPlayers,
+                                                                      lobbyDefaultMaxPlayers(
+                                                                        'word_grouping',
+                                                                        lobbyLimits
+                                                                      )
+                                                                    )
+                                                                  : null
   const isSecret = isSecretMessageGame(game_type)
   const lateJoinFields = gameSupportsViewerSetting(game_type)
     ? rawLateJoinPolicy

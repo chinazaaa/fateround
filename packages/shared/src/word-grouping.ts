@@ -96,13 +96,19 @@ export function tallyWordGroupingScores(
         return { id: p.id, name: p.name, points: e.points, groups: e.groups, mistakes: e.mistakes, lastAt: e.lastAt }
       })
       // Final tiebreak on finish time: whoever got there first wins an otherwise exact tie,
-      // instead of the order being whatever the players array happened to be.
-      .sort(
-        (a, b) =>
-          b.points - a.points ||
-          b.groups - a.groups ||
-          a.mistakes - b.mistakes ||
-          (a.lastAt || '￿').localeCompare(b.lastAt || '￿')
-      )
+      // instead of the order being whatever the players array happened to be. Plain lexicographic
+      // compare — ISO timestamps sort correctly with `<`/`>`, and `localeCompare` here would
+      // apply ICU collation (ignorables, variable weights) that's the wrong tool for this string
+      // shape. Empty `lastAt` sorts LAST so never-solved players fall to the bottom on ties.
+      .sort((a, b) => {
+        const primary = b.points - a.points || b.groups - a.groups || a.mistakes - b.mistakes
+        if (primary !== 0) return primary
+        const ea = a.lastAt === ''
+        const eb = b.lastAt === ''
+        if (ea && eb) return 0
+        if (ea) return 1
+        if (eb) return -1
+        return a.lastAt < b.lastAt ? -1 : a.lastAt > b.lastAt ? 1 : 0
+      })
   )
 }

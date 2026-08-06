@@ -143,10 +143,14 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // Use the same trimmed values match-comparison uses at line 71/76 — matching against untrimmed
+  // `words` here would report overlap=0 for a guess that has surrounding whitespace but exactly
+  // matches on the sorted-and-trimmed path above.
   const oneAway =
     !isCorrect &&
     solution.groups.some((g) => {
-      const overlap = words.filter((w) => g.words.includes(w)).length
+      const groupSet = new Set(g.words.map((w) => w.trim()))
+      const overlap = sortedGuess.filter((w) => groupSet.has(w)).length
       return overlap === 3
     })
 

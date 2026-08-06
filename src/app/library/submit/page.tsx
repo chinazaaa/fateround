@@ -319,6 +319,13 @@ function validateWordGrouping(rows: Record<string, string>[]): ValidationResult 
   if (puzzles.length === 0 && errors.length === 0) {
     errors.push('No complete puzzles found')
   }
+  // Aligns with the WG host-lobby picker's own gate (`incoming.length < 4` in
+  // `WordGroupingLobbySettings.tsx`) — accepting 1–3 here would let a pack pass moderation
+  // that the lobby then refuses to load. 4 also matches the "puzzle-source has at least a
+  // round of variety" line taken by crossword / word_search / word_scramble validators above.
+  if (puzzles.length > 0 && puzzles.length < 4) {
+    errors.push('Must have at least 4 puzzles')
+  }
   if (puzzles.length > 100) errors.push('Maximum 100 puzzles allowed')
 
   return { ok: errors.length === 0, errors, questions: puzzles, rowCount: rows.length }

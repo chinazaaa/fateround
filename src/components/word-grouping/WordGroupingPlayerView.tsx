@@ -158,16 +158,17 @@ export function WordGroupingPlayerView({ gameCode }: { gameCode: string }) {
               setSubmissions(subs as Submission[])
               const mySubs = (subs as Submission[]).filter((s) => s.player_id === playerId)
               const myCorrect = mySubs.filter((s) => s.is_correct)
-              if (myCorrect.length > 0) {
-                setRevealedGroups(
-                  myCorrect.map((s) => ({
-                    category: '',
-                    words: s.guess_words as unknown as string[],
-                    difficulty: s.difficulty,
-                    groupIndex: s.group_index,
-                  }))
-                )
-              }
+              // Always overwrite (not "only when nonzero"): after play-again reopens the room
+              // as `active`, the prior session's revealed group tiles would linger otherwise —
+              // stale on the board and inflating the "solved" count for the new round.
+              setRevealedGroups(
+                myCorrect.map((s) => ({
+                  category: '',
+                  words: s.guess_words as unknown as string[],
+                  difficulty: s.difficulty,
+                  groupIndex: s.group_index,
+                }))
+              )
             }
           }
         }
@@ -329,9 +330,12 @@ export function WordGroupingPlayerView({ gameCode }: { gameCode: string }) {
   }, [myPlayerId, gameCode, me?.name, isViewer, load, router])
   useRegisterGameSettings(playerSettingsNode)
 
-  // Realtime: game status changes
+  // Realtime: game status changes. Key on `hasGame` (bool) rather than the whole `game` object
+  // — `useGameRosterPoll` replaces `game` on every tick, and depending on the object here would
+  // tear down and resubscribe the channel each time, dropping updates in the gap.
+  const hasGame = !!game
   useEffect(() => {
-    if (!game) return
+    if (!hasGame) return
     const channel = supabase
       .channel(`wg-game-${gameCode}`)
       .on(
@@ -345,7 +349,7 @@ export function WordGroupingPlayerView({ gameCode }: { gameCode: string }) {
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [game, gameCode, load])
+  }, [hasGame, gameCode, load])
 
   // Realtime: submissions
   useEffect(() => {
@@ -471,7 +475,10 @@ export function WordGroupingPlayerView({ gameCode }: { gameCode: string }) {
 
   // Submit guess
   const handleGuessSubmit = async () => {
-    if (selected.length !== 4 || submitting || isMyPuzzleDone || !myResumeToken) return
+    // `shaking` covers the 500ms window where `submitting` has already cleared but `selected`
+    // still holds the wrong-guess words — defence in depth against a second click racing the
+    // button's own disabled state.
+    if (selected.length !== 4 || submitting || shaking || isMyPuzzleDone || !myResumeToken) return
     setSubmitting(true)
     try {
       const res = await fetch('/api/word-grouping/submit', {
@@ -663,7 +670,7 @@ export function WordGroupingPlayerView({ gameCode }: { gameCode: string }) {
 
         {revealedGroups.length > 0 && (
           <div className="space-y-2">
-            {revealedGroups
+            {[...revealedGroups]
               .sort((a, b) => a.difficulty - b.difficulty)
               .map((group) => (
                 <div
@@ -749,7 +756,7 @@ export function WordGroupingPlayerView({ gameCode }: { gameCode: string }) {
       )}
 
       {/* Solved groups */}
-      {revealedGroups
+      {[...revealedGroups]
         .sort((a, b) => a.difficulty - b.difficulty)
         .map((group) => (
           <div
@@ -803,7 +810,11 @@ export function WordGroupingPlayerView({ gameCode }: { gameCode: string }) {
           <button
             type="button"
             onClick={handleGuessSubmit}
-            disabled={selected.length !== 4 || submitting}
+            // `shaking` gates the 500ms wrong-guess animation window. Without it, the button
+            // re-enables the instant `submitting` clears in the finally block — while the same
+            // 4-word `selected` still sits in state — so a second click re-submits the same
+            // guess and burns another mistake.
+            disabled={selected.length !== 4 || submitting || shaking}
             className="btn-primary flex-1 py-3 text-sm font-bold disabled:opacity-60"
           >
             {submitting ? 'Checking…' : 'Submit'}

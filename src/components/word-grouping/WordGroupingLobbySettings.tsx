@@ -65,9 +65,12 @@ export function WordGroupingLobbySettings({
     setSource(next)
     // Switching back to Platform after a library pack was loaded: clear the pool so start
     // falls back to the built-in bank. Matches savedSource === 'library' now that we surface
-    // library (rather than 'custom') as the UI state.
+    // library (rather than 'custom') as the UI state. If the clear fails, roll the segmented
+    // control back to 'library' so the UI keeps matching the still-persisted pack.
     if (next === 'platform' && savedSource === 'library') {
-      void patch({ puzzle_custom_questions: [] })
+      void patch({ puzzle_custom_questions: [] }).then((ok) => {
+        if (!ok) setSource('library')
+      })
     }
   }
 
