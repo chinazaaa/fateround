@@ -258,7 +258,7 @@ export const WHOT: SystemTrophySpec[] = [
   // ── Platinum ────────────────────────────────────────────────────────────────────────────
   {
     suffix: 'untouchable',
-    tier: 'platinum',
+    tier: 'gold',
     title: 'Untouchable',
     description: 'Win a game of three or more players without drawing a single card.',
     counter: 'whot_untouchable_wins',
@@ -268,7 +268,7 @@ export const WHOT: SystemTrophySpec[] = [
   },
   {
     suffix: 'naija_legend',
-    tier: 'platinum',
+    tier: 'gold',
     title: 'Naija Legend',
     description: 'Win a Whot game at every player count from two to six.',
     criteria: distinctCrit('whot_win_counts', 5),
@@ -278,7 +278,7 @@ export const WHOT: SystemTrophySpec[] = [
   },
   {
     suffix: 'market_forces',
-    tier: 'platinum',
+    tier: 'gold',
     title: 'Market Forces',
     description: 'Make opponents draw fifteen or more cards through General Market in one game.',
     counter: 'whot_market_forces_games',

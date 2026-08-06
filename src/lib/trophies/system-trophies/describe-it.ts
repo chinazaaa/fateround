@@ -210,7 +210,7 @@ export const DESCRIBE_IT: SystemTrophySpec[] = [
   // ── Platinum ────────────────────────────────────────────────────────────────────────────
   {
     suffix: 'flawless',
-    tier: 'platinum',
+    tier: 'gold',
     title: 'Flawless',
     description: 'Win with your team never failing a word.',
     counter: 'describe_it_flawless_wins',
@@ -219,7 +219,7 @@ export const DESCRIBE_IT: SystemTrophySpec[] = [
   },
   {
     suffix: 'twelve_in_a_round',
-    tier: 'platinum',
+    tier: 'gold',
     title: 'Twelve in a round',
     description: 'Get twelve words guessed as describer in one round.',
     counter: 'describe_it_describer_12_round',

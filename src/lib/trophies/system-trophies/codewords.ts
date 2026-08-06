@@ -198,7 +198,7 @@ export const CODEWORDS: SystemTrophySpec[] = [
   // ── Platinum ────────────────────────────────────────────────────────────────────────────
   {
     suffix: 'clue_for_five',
-    tier: 'platinum',
+    tier: 'gold',
     title: 'Clue for five',
     description: 'Your team lands a clue for five with all five found.',
     counter: 'codewords_clue5_full',
@@ -207,7 +207,7 @@ export const CODEWORDS: SystemTrophySpec[] = [
   },
   {
     suffix: 'flawless_sweep',
-    tier: 'platinum',
+    tier: 'gold',
     title: 'Flawless sweep',
     description: 'Win in three clue runs or fewer with your team never hitting a wrong word.',
     counter: 'codewords_flawless_sweep_wins',
@@ -219,7 +219,7 @@ export const CODEWORDS: SystemTrophySpec[] = [
     // Win from both seats: at least one win as the Spymaster giving clues AND at least one as an
     // Operative guessing. A CONJUNCTION over the two per-role win counters.
     suffix: 'both_chairs',
-    tier: 'platinum',
+    tier: 'gold',
     title: 'Both Chairs',
     description: 'Win a game as the Spymaster and win a game as an Operative.',
     criteria: allOf(g('codewords_spymaster_wins'), g('codewords_operative_wins')),

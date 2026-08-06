@@ -231,7 +231,7 @@ export const YAHTZEE: SystemTrophySpec[] = [
   // ── Platinum ────────────────────────────────────────────────────────────────────────────
   {
     suffix: 'three_hundred_club',
-    tier: 'platinum',
+    tier: 'gold',
     title: '300 club',
     description: 'Finish a card with 300 or more points.',
     counter: 'yahtzee_games_300_plus',
@@ -240,7 +240,7 @@ export const YAHTZEE: SystemTrophySpec[] = [
   },
   {
     suffix: 'flawless_card',
-    tier: 'platinum',
+    tier: 'gold',
     title: 'Flawless card',
     description: 'Earn the upper bonus and score every category above zero.',
     counter: 'yahtzee_flawless_card_games',

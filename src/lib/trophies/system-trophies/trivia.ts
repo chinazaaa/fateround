@@ -182,7 +182,7 @@ export const TRIVIA: SystemTrophySpec[] = [
   // ── Platinum ────────────────────────────────────────────────────────────────────────────
   {
     suffix: 'flawless_victory',
-    tier: 'platinum',
+    tier: 'gold',
     title: 'Flawless victory',
     description: 'Win with perfect accuracy in a game of fifteen or more questions.',
     counter: 'trivia_flawless_wins',
@@ -191,7 +191,7 @@ export const TRIVIA: SystemTrophySpec[] = [
   },
   {
     suffix: 'twenty_streak',
-    tier: 'platinum',
+    tier: 'gold',
     title: 'Twenty streak',
     description: 'Get twenty questions right in a row.',
     counter: 'trivia_streak_20_games',
