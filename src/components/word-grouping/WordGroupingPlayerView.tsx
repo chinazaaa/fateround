@@ -26,8 +26,16 @@ import { GameLobbyWaitingPanel } from '@/components/game-lobby/GameLobbyWaitingP
 import { NameJoinForm } from '@/components/game-lobby/NameJoinForm'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { gameTypeConfig } from '@/lib/game-types'
-import { WORD_GROUPING_MAX_MISTAKES, WORD_GROUPING_TOTAL_GROUPS, tallyWordGroupingScores } from '@/lib/word-grouping'
+import {
+  WORD_GROUPING_MAX_MISTAKES,
+  WORD_GROUPING_TOTAL_GROUPS,
+  tallyWordGroupingScores,
+  wordGroupingFinishSeconds,
+} from '@/lib/word-grouping'
 import type { Game, Player } from '@/types'
+
+/** How long the solved board stays up before the standings take over. */
+const ANSWER_REVEAL_MS = 2800
 
 const GROUP_COLORS: Record<number, string> = {
   1: '#f9df6d',
@@ -326,6 +334,21 @@ export function WordGroupingPlayerView({ gameCode }: { gameCode: string }) {
     }
   }, [timeRemaining, screen, gameCode, load])
 
+  // Hold the board for a beat when the game ends mid-play. Without this the standings
+  // replace the grid the instant the last player finishes, so you never see the fourth
+  // group land. Only applies to the play -> finished transition: opening an already-finished
+  // game (or refreshing) goes straight to the results.
+  const [revealingAnswers, setRevealingAnswers] = useState(false)
+  const prevScreenRef = useRef<View | null>(null)
+  useEffect(() => {
+    const prev = prevScreenRef.current
+    prevScreenRef.current = screen
+    if (screen !== 'finished' || prev !== 'playing') return
+    setRevealingAnswers(true)
+    const t = setTimeout(() => setRevealingAnswers(false), ANSWER_REVEAL_MS)
+    return () => clearTimeout(t)
+  }, [screen])
+
   // Selection
   const toggleWord = (word: string) => {
     if (submitting || isMyPuzzleDone || isViewer) return
@@ -476,7 +499,7 @@ export function WordGroupingPlayerView({ gameCode }: { gameCode: string }) {
     )
   }
 
-  if (screen === 'finished' && game) {
+  if (screen === 'finished' && game && !revealingAnswers) {
     const leader = leaderboardRows[0]
     // Single winner only: I must be the top row outright, in a room with someone to beat,
     // and have actually scored — a 0-point finish is not a community leaderboard result.
@@ -510,11 +533,15 @@ export function WordGroupingPlayerView({ gameCode }: { gameCode: string }) {
 
         <PaginatedLeaderboard
           title="Final Standings"
-          rows={leaderboardRows.map((r) => ({
-            id: r.id,
-            name: r.name,
-            score: r.points,
-          }))}
+          rows={leaderboardRows.map((r, i) => {
+            const secs = wordGroupingFinishSeconds(game?.session_started_at, r.lastAt)
+            return {
+              id: r.id,
+              name: secs === null ? r.name : `${r.name} (⏱️ ${formatMinutesSeconds(secs)})`,
+              score: r.points,
+              rank: i + 1,
+            }
+          })}
           highlightId={myPlayerId ?? undefined}
           scoreLabel={(n) => `${n} pts`}
           emphasizeLeader
@@ -582,7 +609,11 @@ export function WordGroupingPlayerView({ gameCode }: { gameCode: string }) {
         )}
       </div>
 
-      <p className="text-center text-xs text-faint">Find four groups of four words that share something in common.</p>
+      {revealingAnswers ? (
+        <p className="text-center text-sm font-bold">That&rsquo;s the puzzle — here are all four groups.</p>
+      ) : (
+        <p className="text-center text-xs text-faint">Find four groups of four words that share something in common.</p>
+      )}
 
       {/* One away toast */}
       {oneAway && (

@@ -27,6 +27,7 @@ import {
   WORD_GROUPING_TOTAL_GROUPS,
   WORD_GROUPING_GAME_DURATION_OPTIONS,
   tallyWordGroupingScores,
+  wordGroupingFinishSeconds,
 } from '@/lib/word-grouping'
 import { WordGroupingPlayerView } from './WordGroupingPlayerView'
 import { formatMinutesSeconds } from '@/lib/timer-format'
@@ -438,12 +439,15 @@ export function WordGroupingHostView({ gameCode, hostToken }: { gameCode: string
         <FinishedWinnerHero winnerName={winner?.name} game={game} />
         <PaginatedLeaderboard
           title="Final Standings"
-          rows={leaderboardRows.map((r, i) => ({
-            id: r.id,
-            name: r.name,
-            score: r.points,
-            rank: i + 1,
-          }))}
+          rows={leaderboardRows.map((r, i) => {
+            const secs = wordGroupingFinishSeconds(game?.session_started_at, r.lastAt)
+            return {
+              id: r.id,
+              name: secs === null ? r.name : `${r.name} (⏱️ ${formatMinutesSeconds(secs)})`,
+              score: r.points,
+              rank: i + 1,
+            }
+          })}
           scoreLabel={(n) => `${n} pts`}
           emphasizeLeader
         />

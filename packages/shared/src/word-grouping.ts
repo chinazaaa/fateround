@@ -47,7 +47,7 @@ export function tallyWordGroupingScores(
     mistakes_at_time: number
     submitted_at: string
   }[]
-): { id: string; name: string; points: number; groups: number; mistakes: number }[] {
+): { id: string; name: string; points: number; groups: number; mistakes: number; lastAt: string }[] {
   const map = new Map<string, { points: number; groups: number; mistakes: number; lastAt: string }>()
 
   for (const p of players) {
@@ -87,10 +87,22 @@ export function tallyWordGroupingScores(
     }
   }
 
-  return players
-    .map((p) => {
-      const e = map.get(p.id)!
-      return { id: p.id, name: p.name, points: e.points, groups: e.groups, mistakes: e.mistakes }
-    })
-    .sort((a, b) => b.points - a.points || b.groups - a.groups || a.mistakes - b.mistakes)
+  return (
+    players
+      .map((p) => {
+        const e = map.get(p.id)!
+        // lastAt = when this player's final correct group landed, so callers can show how
+        // long they took. Empty string when they never solved one.
+        return { id: p.id, name: p.name, points: e.points, groups: e.groups, mistakes: e.mistakes, lastAt: e.lastAt }
+      })
+      // Final tiebreak on finish time: whoever got there first wins an otherwise exact tie,
+      // instead of the order being whatever the players array happened to be.
+      .sort(
+        (a, b) =>
+          b.points - a.points ||
+          b.groups - a.groups ||
+          a.mistakes - b.mistakes ||
+          (a.lastAt || '￿').localeCompare(b.lastAt || '￿')
+      )
+  )
 }
