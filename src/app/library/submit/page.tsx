@@ -854,7 +854,7 @@ export default function SubmitPackPage() {
                   <div className="flex items-center gap-2">
                     <span className="text-emerald-500 text-sm font-bold">✓</span>
                     <p className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">
-                      {validation.questions.length} questions ready
+                      {validation.questions.length} {gameType === 'word_grouping' ? 'puzzles' : 'questions'} ready
                     </p>
                   </div>
                   <div className="space-y-1.5">
@@ -893,6 +893,12 @@ export default function SubmitPackPage() {
                         <p key={i} className="text-xs text-muted truncate leading-relaxed">
                           {i + 1}. {q.word}
                           {q.hint ? <span className="text-faint"> — {q.hint}</span> : null}
+                        </p>
+                      ))}
+                    {gameType === 'word_grouping' &&
+                      (validation.questions as WordGroupingPuzzleEntry[]).slice(0, 3).map((p, i) => (
+                        <p key={i} className="text-xs text-muted truncate leading-relaxed">
+                          {i + 1}. {p.groups.map((g) => g.category).join(' · ')}
                         </p>
                       ))}
                   </div>

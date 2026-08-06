@@ -231,6 +231,19 @@ export function WordGroupingPlayerView({ gameCode }: { gameCode: string }) {
 
   useGameRosterPoll(gameCode, game?.status, { setGame, setPlayers, reload: load })
 
+  // Ready-up: without this the waiting lobby has nothing to click and everyone stays "not ready",
+  // so the host can never start a fresh room OR a play-again reopen. Same shape the other puzzle
+  // views use (crossword / word_search / word_scramble / sudoku).
+  async function handleReady() {
+    if (!myResumeToken) return
+    await fetch('/api/players/ready', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ gameId: gameCode, resumeToken: myResumeToken }),
+    })
+    await load()
+  }
+
   const rosterScores = useMemo(() => {
     const playersArr = players.map((p) => ({ id: p.id, name: p.name }))
     const tally = tallyWordGroupingScores(playersArr, submissions)
@@ -486,6 +499,7 @@ export function WordGroupingPlayerView({ gameCode }: { gameCode: string }) {
           gameCode={gameCode}
           gameType={game?.game_type}
           capacityGame={game}
+          onReady={handleReady}
           game={game}
           players={players}
           myPlayerId={myPlayerId}
