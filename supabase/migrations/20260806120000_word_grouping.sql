@@ -23,11 +23,22 @@ CREATE TABLE IF NOT EXISTS word_grouping_submissions (
   round_id uuid NOT NULL REFERENCES rounds(id) ON DELETE CASCADE,
   player_id uuid NOT NULL REFERENCES players(id) ON DELETE CASCADE,
   group_index integer NOT NULL,
-  difficulty integer NOT NULL CHECK (difficulty BETWEEN 1 AND 4),
+  -- difficulty is only meaningful on a correct guess (it drives the point value).
+  -- A wrong guess has no group, so it stores group_index -1 / difficulty 0.
+  difficulty integer NOT NULL,
   guess_words jsonb NOT NULL,
   is_correct boolean NOT NULL DEFAULT false,
   mistakes_at_time integer NOT NULL DEFAULT 0,
   submitted_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- Re-runnable: CREATE TABLE IF NOT EXISTS won't touch an already-created table, so drop
+-- the old `difficulty BETWEEN 1 AND 4` check (it rejected the difficulty 0 a wrong guess
+-- writes, so mistakes silently failed to record) and restate the real rule.
+ALTER TABLE word_grouping_submissions DROP CONSTRAINT IF EXISTS word_grouping_submissions_difficulty_check;
+ALTER TABLE word_grouping_submissions DROP CONSTRAINT IF EXISTS word_grouping_subs_difficulty_valid;
+ALTER TABLE word_grouping_submissions ADD CONSTRAINT word_grouping_subs_difficulty_valid CHECK (
+  (is_correct AND difficulty BETWEEN 1 AND 4) OR (NOT is_correct AND difficulty = 0)
 );
 
 CREATE INDEX IF NOT EXISTS idx_word_grouping_subs_game ON word_grouping_submissions(game_id);

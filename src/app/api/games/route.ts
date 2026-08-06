@@ -175,6 +175,7 @@ import {
   clampWordScrambleGameDuration,
   WORD_SCRAMBLE_DEFAULT_DURATION,
 } from '@/lib/word-scramble'
+import { clampWordGroupingGameDuration, WORD_GROUPING_DEFAULT_DURATION } from '@/lib/word-grouping'
 import { findWordScrambleTheme } from '@/lib/word-scramble-puzzles'
 import { findWordSearchTheme } from '@/lib/word-search-puzzles'
 import { clampChessTimer, clampChessBoardTheme, clampChessPieceSet } from '@/lib/chess'
@@ -1225,21 +1226,27 @@ export async function POST(req: NextRequest) {
                                   rawGameDurationSeconds ?? WORD_SCRAMBLE_DEFAULT_DURATION
                                 ),
                               }
-                            : isMafiaGame(game_type)
+                            : isWordGroupingGame(game_type)
                               ? {
-                                  // Role selection is automatic (see resolveMafiaRoundToggles in
-                                  // @/lib/mafia) — the only role-affecting setting left is this
-                                  // single Classic/Advanced switch.
-                                  mafia_advanced_mode: parsed.data.mafia_advanced_mode === true,
-                                  mafia_anonymous_votes: parsed.data.mafia_anonymous_votes === true,
-                                  ...(parsed.data.mafia_day_seconds !== undefined
-                                    ? { mafia_day_seconds: parsed.data.mafia_day_seconds }
-                                    : {}),
-                                  ...(parsed.data.mafia_voting_seconds !== undefined
-                                    ? { mafia_voting_seconds: parsed.data.mafia_voting_seconds }
-                                    : {}),
+                                  game_duration_seconds: clampWordGroupingGameDuration(
+                                    rawGameDurationSeconds ?? WORD_GROUPING_DEFAULT_DURATION
+                                  ),
                                 }
-                              : {}),
+                              : isMafiaGame(game_type)
+                                ? {
+                                    // Role selection is automatic (see resolveMafiaRoundToggles in
+                                    // @/lib/mafia) — the only role-affecting setting left is this
+                                    // single Classic/Advanced switch.
+                                    mafia_advanced_mode: parsed.data.mafia_advanced_mode === true,
+                                    mafia_anonymous_votes: parsed.data.mafia_anonymous_votes === true,
+                                    ...(parsed.data.mafia_day_seconds !== undefined
+                                      ? { mafia_day_seconds: parsed.data.mafia_day_seconds }
+                                      : {}),
+                                    ...(parsed.data.mafia_voting_seconds !== undefined
+                                      ? { mafia_voting_seconds: parsed.data.mafia_voting_seconds }
+                                      : {}),
+                                  }
+                                : {}),
     ...(isCustomGame(game_type) && parsed.data.custom_slots
       ? {
           custom_slots: {

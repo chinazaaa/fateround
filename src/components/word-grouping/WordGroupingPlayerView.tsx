@@ -18,6 +18,7 @@ import { LateJoinChoice } from '@/components/LateJoinChoice'
 import { EditNameInline } from '@/components/ui/EditNameInline'
 import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
 import { useRegisterGameSettings } from '@/components/GameSettingsContext'
+import { useToast } from '@/components/ui/Toast'
 import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
 import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
 import { GameInfoChips } from '@/components/game-lobby/GameInfoChips'
@@ -67,6 +68,7 @@ type WordGroupingGameState = { hasValidRound: boolean }
 export function WordGroupingPlayerView({ gameCode }: { gameCode: string }) {
   const cfg = gameTypeConfig('word_grouping')
   const router = useRouter()
+  const { error: toastError } = useToast()
   const [roundId, setRoundId] = useState<string | null>(null)
   const [words, setWords] = useState<string[]>([])
   const [submissions, setSubmissions] = useState<Submission[]>([])
@@ -344,7 +346,13 @@ export function WordGroupingPlayerView({ gameCode }: { gameCode: string }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ gameId: gameCode, resumeToken: myResumeToken, words: selected }),
       })
-      const data = await res.json()
+      const data = await res.json().catch(() => ({}))
+      // A failed write must not look like a wrong guess: without this, a rejected insert
+      // shook the grid and recorded no mistake, so the puzzle became unloseable.
+      if (!res.ok) {
+        toastError(data.error || 'Could not submit that guess')
+        return
+      }
       if (data.isCorrect && data.group) {
         setRevealedGroups((prev) => [
           ...prev,
