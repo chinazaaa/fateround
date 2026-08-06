@@ -398,24 +398,28 @@ export default function AdminDailyPage() {
     setSaving(true)
     setSaveMsg(null)
 
-    const res = await fetch('/api/admin/daily-challenges-content', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ game_type: gameType, challenge_date: createDate, content }),
-    })
+    try {
+      const res = await fetch('/api/admin/daily-challenges-content', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ game_type: gameType, challenge_date: createDate, content }),
+      })
 
-    setSaving(false)
-
-    if (res.ok) {
-      setSaveMsg({ ok: true, text: `Saved for ${dayLabel(createDate)}` })
-      setCreateText('')
-      setCreateDate(addDays(createDate, 1))
-      void load()
-    } else if (res.status === 409) {
-      setSaveMsg({ ok: false, text: 'Content already exists for that date — edit it below or pick another date' })
-    } else {
-      const json = await res.json().catch(() => ({}))
-      setSaveMsg({ ok: false, text: (json as { error?: string }).error ?? 'Failed to save' })
+      if (res.ok) {
+        setSaveMsg({ ok: true, text: `Saved for ${dayLabel(createDate)}` })
+        setCreateText('')
+        setCreateDate(addDays(createDate, 1))
+        void load()
+      } else if (res.status === 409) {
+        setSaveMsg({ ok: false, text: 'Content already exists for that date — edit it below or pick another date' })
+      } else {
+        const json = await res.json().catch(() => ({}))
+        setSaveMsg({ ok: false, text: (json as { error?: string }).error ?? 'Failed to save' })
+      }
+    } catch (err) {
+      setSaveMsg({ ok: false, text: err instanceof Error ? err.message : 'Failed to save' })
+    } finally {
+      setSaving(false)
     }
   }
 
