@@ -392,7 +392,7 @@ function verifyLudoPuzzle(
   if (solved) {
     rawPoints = Math.max(100, 1000 - (rollsUsed - optimalRolls) * 30 + captures * 50 + tokensHome * 100)
   } else {
-    rawPoints = Math.max(0, captures * 50 + tokensHome * 100)
+    rawPoints = Math.max(0, captures * 50 + tokensHome * 250)
   }
 
   return {

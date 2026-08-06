@@ -72,3 +72,20 @@ SET    current_streak  = CASE
        last_active_date = s.last_play
 FROM   summary s
 WHERE  p.id = s.profile_id;
+
+-- ── Ludo puzzle score backfill ──────────────────────────────────────────────
+-- Rescale unsolved (items_solved < 4) ludo_puzzle scores from 100/piece to
+-- 250/piece. Solved puzzles (items_solved = 4) use a different formula and
+-- are unchanged.
+--
+-- Old: captures*50 + tokensHome*100
+-- New: captures*50 + tokensHome*250
+-- Diff: tokensHome * 150  (tokensHome = items_solved)
+
+UPDATE daily_scores ds
+SET    raw_points = raw_points + items_solved * 150
+FROM   daily_challenges dc
+WHERE  ds.challenge_id = dc.id
+  AND  dc.game_type = 'ludo_puzzle'
+  AND  ds.items_solved < 4
+  AND  ds.items_solved > 0;
