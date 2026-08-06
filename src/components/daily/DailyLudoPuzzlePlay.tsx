@@ -46,12 +46,19 @@ interface SavedState {
 // Constants
 // ---------------------------------------------------------------------------
 
-const TRACK_LENGTH = 52
 const HOME_ENTRY_STEPS = 51
 const FINISH_STEPS = 56
+const TOTAL_STEPS = FINISH_STEPS + 1 // for progress bar
+
+const TRACK_CELLS = 52 // 0..51
+const CELLS_PER_ROW = 13
+const HOME_LANE_CELLS = 5
+
+const TOKEN_GREEN = '#22c55e'
+const TOKEN_GREEN_DARK = '#16a34a'
 
 // ---------------------------------------------------------------------------
-// Helpers
+// Helpers (game logic — unchanged)
 // ---------------------------------------------------------------------------
 
 function stepsFromPiece(piece: LudoPuzzlePiece): number {
@@ -85,7 +92,33 @@ function allFinished(pieces: LudoPuzzlePiece[]): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// Dice face SVG (dots pattern)
+// Board layout helpers
+// ---------------------------------------------------------------------------
+
+/** Returns the (row, col) position in the winding grid for a given track index. */
+function trackCellPosition(trackIndex: number): { row: number; col: number } {
+  const rowNum = Math.floor(trackIndex / CELLS_PER_ROW)
+  const posInRow = trackIndex % CELLS_PER_ROW
+  // Even rows go left-to-right, odd rows go right-to-left
+  const col = rowNum % 2 === 0 ? posInRow : CELLS_PER_ROW - 1 - posInRow
+  return { row: rowNum, col }
+}
+
+/** Returns the (row, col) for a home lane cell (0..4). Home lane is on a new row below track. */
+function homeCellPosition(homeIndex: number): { row: number; col: number } {
+  const trackRows = Math.ceil(TRACK_CELLS / CELLS_PER_ROW) // 4 rows
+  // Home lane starts at beginning of a new row
+  return { row: trackRows, col: homeIndex }
+}
+
+/** Returns the (row, col) for the finish star. */
+function finishPosition(): { row: number; col: number } {
+  const trackRows = Math.ceil(TRACK_CELLS / CELLS_PER_ROW)
+  return { row: trackRows, col: HOME_LANE_CELLS }
+}
+
+// ---------------------------------------------------------------------------
+// Dice face SVG
 // ---------------------------------------------------------------------------
 
 const DOT_LAYOUTS: Record<number, Array<[number, number]>> = {
@@ -122,7 +155,7 @@ const DOT_LAYOUTS: Record<number, Array<[number, number]>> = {
   ],
 }
 
-function DiceFace({ value, size = 64 }: { value: number; size?: number }) {
+function DiceFace({ value, size = 56 }: { value: number; size?: number }) {
   const dots = DOT_LAYOUTS[value] ?? DOT_LAYOUTS[1]
   return (
     <svg width={size} height={size} viewBox="0 0 100 100" style={{ display: 'block' }}>
@@ -135,95 +168,481 @@ function DiceFace({ value, size = 64 }: { value: number; size?: number }) {
 }
 
 // ---------------------------------------------------------------------------
-// Board visualization
-//
-// Simplified linear track: a path of cells wrapping in rows, plus a home
-// lane and base/finish indicators. Mobile-friendly, max-w-lg.
+// Dice sequence preview
 // ---------------------------------------------------------------------------
 
-const CELL_SIZE = 28
-const CELL_GAP = 2
+function DiceSequencePreview({ sequence, currentIndex }: { sequence: number[]; currentIndex: number }) {
+  const previewCount = 5
+  const upcoming = sequence.slice(currentIndex, currentIndex + previewCount)
+  const remaining = sequence.length - currentIndex
 
-/** Render a single cell on the track/home lane. */
-function BoardCell({
-  index,
-  type,
-  pieces,
-  obstacles,
+  return (
+    <div className="flex items-center gap-2">
+      {upcoming.map((v, i) => (
+        <div
+          key={currentIndex + i}
+          style={{
+            width: i === 0 ? 24 : 18,
+            height: i === 0 ? 24 : 18,
+            borderRadius: 4,
+            background: i === 0 ? 'var(--text)' : 'var(--bg-surface)',
+            color: i === 0 ? 'var(--card)' : 'var(--text-muted)',
+            fontSize: i === 0 ? 13 : 10,
+            fontWeight: 800,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            border: '1px solid var(--border)',
+            opacity: i === 0 ? 1 : 0.5 + 0.1 * (previewCount - i),
+          }}
+        >
+          {v}
+        </div>
+      ))}
+      {remaining > previewCount && (
+        <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-faint)' }}>+{remaining - previewCount} more</span>
+      )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Base Yard — shows tokens still in base
+// ---------------------------------------------------------------------------
+
+function BaseYard({
+  basePieces,
   highlighted,
-  onPieceTap,
+  onTap,
 }: {
-  index: number
-  type: 'track' | 'home'
-  pieces: LudoPuzzlePiece[]
-  obstacles: LudoObstacle[]
+  basePieces: LudoPuzzlePiece[]
   highlighted: Set<number>
-  onPieceTap: (id: number) => void
+  onTap: (id: number) => void
 }) {
-  const isStart = type === 'track' && index === 0
-  const hasObstacle = type === 'track' && obstacles.some((o) => o.trackPos === index)
-  const piecesHere = pieces.filter((p) => {
-    if (type === 'track') return p.zone === 'track' && p.pos === index
-    return p.zone === 'home' && p.pos === index
-  })
+  return (
+    <div
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 6,
+        padding: '6px 10px',
+        borderRadius: 10,
+        background: TOKEN_GREEN,
+        border: '2px solid ' + TOKEN_GREEN_DARK,
+        minHeight: 44,
+      }}
+    >
+      <span
+        style={{
+          fontSize: 9,
+          fontWeight: 800,
+          color: '#fff',
+          textTransform: 'uppercase',
+          letterSpacing: '0.08em',
+        }}
+      >
+        BASE
+      </span>
+      <div style={{ display: 'flex', gap: 4 }}>
+        {[0, 1, 2, 3].map((id) => {
+          const inBase = basePieces.some((p) => p.id === id)
+          const canTap = highlighted.has(id)
+          return (
+            <button
+              key={id}
+              type="button"
+              disabled={!canTap}
+              onClick={() => canTap && onTap(id)}
+              style={{
+                width: 28,
+                height: 28,
+                borderRadius: '50%',
+                border: inBase ? '2px solid rgba(255,255,255,0.5)' : '2px dashed rgba(255,255,255,0.3)',
+                background: inBase ? '#fff' : 'rgba(255,255,255,0.1)',
+                color: inBase ? TOKEN_GREEN_DARK : 'transparent',
+                fontSize: 13,
+                fontWeight: 800,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: canTap ? 'pointer' : 'default',
+                animation: canTap ? 'ludo-token-pulse 1.5s ease-in-out infinite' : undefined,
+                boxShadow: canTap ? '0 0 0 2px #fff, 0 0 8px rgba(22,163,74,0.6)' : undefined,
+                transition: 'all 0.2s',
+              }}
+            >
+              {inBase ? id + 1 : ''}
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
 
-  let bg = 'var(--bg-surface)'
-  if (isStart) bg = '#4ade80'
-  if (hasObstacle && piecesHere.length === 0) bg = '#f87171'
-  if (type === 'home') bg = '#86efac'
+// ---------------------------------------------------------------------------
+// Board Cell
+// ---------------------------------------------------------------------------
+
+function BoardCell({
+  trackIndex,
+  isStart,
+  isObstacle,
+  isHomeLane,
+  isFinish,
+  showNumber,
+  tokens,
+  highlightedTokens,
+  onTokenTap,
+  lastTrackRow,
+}: {
+  trackIndex?: number
+  isStart?: boolean
+  isObstacle?: boolean
+  isHomeLane?: boolean
+  isFinish?: boolean
+  showNumber?: number | null
+  tokens: LudoPuzzlePiece[]
+  highlightedTokens: Set<number>
+  onTokenTap: (id: number) => void
+  lastTrackRow?: boolean
+}) {
+  let bg = 'var(--card)'
+  let borderColor = 'var(--border)'
+  let cellContent: React.ReactNode = null
+
+  if (isStart) {
+    bg = TOKEN_GREEN
+    borderColor = TOKEN_GREEN_DARK
+    cellContent = <span style={{ fontSize: 14, color: '#fff' }}>★</span>
+  } else if (isFinish) {
+    bg = TOKEN_GREEN_DARK
+    borderColor = TOKEN_GREEN
+    cellContent = <span style={{ fontSize: 16, color: '#fbbf24' }}>★</span>
+  } else if (isHomeLane) {
+    bg = `${TOKEN_GREEN}22`
+    borderColor = TOKEN_GREEN
+  } else if (isObstacle) {
+    bg = '#fef2f2'
+    borderColor = '#f87171'
+    cellContent = <span style={{ fontSize: 11, color: '#ef4444', fontWeight: 800 }}>X</span>
+  }
+
+  const hasTokens = tokens.length > 0
 
   return (
     <div
       style={{
-        width: CELL_SIZE,
-        height: CELL_SIZE,
-        borderRadius: 4,
+        position: 'relative',
+        width: '100%',
+        aspectRatio: '1',
+        borderRadius: 6,
+        border: `1.5px solid ${borderColor}`,
         background: bg,
-        border: '1px solid var(--border)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        position: 'relative',
-        fontSize: 10,
-        fontWeight: 700,
-        flexShrink: 0,
+        fontSize: 9,
+        overflow: 'visible',
       }}
     >
-      {hasObstacle && piecesHere.length === 0 && <span style={{ color: '#fff', fontSize: 11 }}>X</span>}
-      {piecesHere.length > 0 && (
-        <div style={{ display: 'flex', gap: 1 }}>
-          {piecesHere.map((p) => {
-            const isHighlighted = highlighted.has(p.id)
+      {/* Cell number label */}
+      {showNumber != null && !hasTokens && !isStart && !isFinish && !isObstacle && (
+        <span
+          style={{
+            fontSize: 8,
+            fontWeight: 600,
+            color: 'var(--text-faint)',
+            position: 'absolute',
+            bottom: 1,
+            right: 2,
+            lineHeight: 1,
+          }}
+        >
+          {showNumber}
+        </span>
+      )}
+
+      {/* Static cell content (star, X) if no tokens */}
+      {!hasTokens && cellContent}
+
+      {/* Connector arrow for row transitions */}
+      {lastTrackRow !== undefined && lastTrackRow && (
+        <span
+          style={{
+            position: 'absolute',
+            right: -10,
+            top: '50%',
+            transform: 'translateY(-50%)',
+            fontSize: 10,
+            color: 'var(--text-faint)',
+          }}
+        >
+          ↓
+        </span>
+      )}
+
+      {/* Tokens on this cell */}
+      {tokens.length > 0 && (
+        <div
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: 1,
+            alignItems: 'center',
+            justifyContent: 'center',
+            position: 'absolute',
+            inset: 0,
+            zIndex: 10,
+          }}
+        >
+          {tokens.map((t) => {
+            const canTap = highlightedTokens.has(t.id)
             return (
               <button
-                key={p.id}
+                key={t.id}
                 type="button"
-                onClick={() => isHighlighted && onPieceTap(p.id)}
-                disabled={!isHighlighted}
+                disabled={!canTap}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  if (canTap) onTokenTap(t.id)
+                }}
                 style={{
-                  width: piecesHere.length > 1 ? 12 : 18,
-                  height: piecesHere.length > 1 ? 12 : 18,
+                  width: tokens.length > 2 ? 14 : tokens.length > 1 ? 16 : 22,
+                  height: tokens.length > 2 ? 14 : tokens.length > 1 ? 16 : 22,
                   borderRadius: '50%',
-                  background: isHighlighted ? '#16a34a' : '#22c55e',
+                  background: TOKEN_GREEN,
+                  border: `2px solid ${canTap ? '#fff' : 'rgba(255,255,255,0.4)'}`,
                   color: '#fff',
-                  fontSize: piecesHere.length > 1 ? 7 : 9,
+                  fontSize: tokens.length > 2 ? 7 : tokens.length > 1 ? 8 : 10,
                   fontWeight: 800,
-                  border: isHighlighted ? '2px solid var(--primary)' : '1px solid #15803d',
-                  cursor: isHighlighted ? 'pointer' : 'default',
-                  padding: 0,
-                  lineHeight: 1,
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  animation: isHighlighted ? 'ludo-pulse 1s infinite' : undefined,
+                  cursor: canTap ? 'pointer' : 'default',
+                  boxShadow: canTap
+                    ? '0 0 0 2px rgba(22,163,74,0.5), 0 0 8px rgba(22,163,74,0.4)'
+                    : '0 1px 2px rgba(0,0,0,0.15)',
+                  animation: canTap ? 'ludo-token-pulse 1.5s ease-in-out infinite' : undefined,
+                  padding: 0,
+                  lineHeight: 1,
+                  transition: 'all 0.2s',
+                  zIndex: canTap ? 20 : 10,
                 }}
               >
-                {p.id + 1}
+                {t.id + 1}
               </button>
             )
           })}
         </div>
       )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// The Board — winding path
+// ---------------------------------------------------------------------------
+
+function LudoPathBoard({
+  pieces,
+  obstacles,
+  highlightedTokens,
+  onTokenTap,
+}: {
+  pieces: LudoPuzzlePiece[]
+  obstacles: LudoObstacle[]
+  highlightedTokens: Set<number>
+  onTokenTap: (id: number) => void
+}) {
+  const obstacleSet = useMemo(() => new Set(obstacles.map((o) => o.trackPos)), [obstacles])
+
+  // Build rows of track cells
+  const trackRows = Math.ceil(TRACK_CELLS / CELLS_PER_ROW) // 4
+  const rows: Array<Array<{ type: 'track'; index: number } | { type: 'empty' }>> = []
+
+  for (let r = 0; r < trackRows; r++) {
+    const row: Array<{ type: 'track'; index: number } | { type: 'empty' }> = []
+    for (let c = 0; c < CELLS_PER_ROW; c++) {
+      const { row: rr, col: cc } = trackCellPosition(r * CELLS_PER_ROW + c)
+      if (rr === r && r * CELLS_PER_ROW + c < TRACK_CELLS) {
+        // Find which track index maps to this (r, c)
+        // We need to find the trackIndex that produces (r, c)
+        const trackIndex = r * CELLS_PER_ROW + (r % 2 === 0 ? c : CELLS_PER_ROW - 1 - c)
+        if (trackIndex < TRACK_CELLS) {
+          row.push({ type: 'track', index: trackIndex })
+        } else {
+          row.push({ type: 'empty' })
+        }
+      } else {
+        row.push({ type: 'empty' })
+      }
+    }
+    rows.push(row)
+  }
+
+  // Build home lane row
+  const homeRow: Array<{ type: 'home'; index: number } | { type: 'finish' } | { type: 'empty' }> = []
+  for (let c = 0; c < CELLS_PER_ROW; c++) {
+    if (c < HOME_LANE_CELLS) {
+      homeRow.push({ type: 'home', index: c })
+    } else if (c === HOME_LANE_CELLS) {
+      homeRow.push({ type: 'finish' })
+    } else {
+      homeRow.push({ type: 'empty' })
+    }
+  }
+
+  // Group pieces by their board position
+  const trackPieces = useMemo(() => {
+    const map = new Map<string, LudoPuzzlePiece[]>()
+    for (const p of pieces) {
+      if (p.zone === 'track') {
+        const key = `track-${p.pos}`
+        if (!map.has(key)) map.set(key, [])
+        map.get(key)!.push(p)
+      } else if (p.zone === 'home') {
+        const key = `home-${p.pos}`
+        if (!map.has(key)) map.set(key, [])
+        map.get(key)!.push(p)
+      } else if (p.zone === 'finished') {
+        const key = 'finish'
+        if (!map.has(key)) map.set(key, [])
+        map.get(key)!.push(p)
+      }
+    }
+    return map
+  }, [pieces])
+
+  // Determine if a row's last cell should show a down-arrow connector
+  // Row 0 last cell (rightmost) -> row 1 starts from right
+  // Row 1 last cell (leftmost, col 0) -> row 2 starts from left
+  // Row 2 last cell (rightmost) -> row 3 starts from right
+
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 2,
+        padding: 8,
+        borderRadius: 12,
+        background: 'var(--card)',
+        border: '1px solid var(--border)',
+      }}
+    >
+      {/* Track rows */}
+      {rows.map((row, rowIdx) => {
+        // Determine which end of this row connects to the next row
+        const isEvenRow = rowIdx % 2 === 0
+        // Even rows: last cell is on the right (col 12), connector goes down-right
+        // Odd rows: last cell is on the left (col 0), connector goes down-left
+        const connectorCol = isEvenRow ? CELLS_PER_ROW - 1 : 0
+        const isLastTrackRow = rowIdx === trackRows - 1
+
+        return (
+          <div key={`row-${rowIdx}`}>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: `repeat(${CELLS_PER_ROW}, 1fr)`,
+                gap: 2,
+              }}
+            >
+              {row.map((cell, colIdx) => {
+                if (cell.type === 'empty') {
+                  return <div key={colIdx} style={{ aspectRatio: '1' }} />
+                }
+                const ti = cell.index
+                const tokensHere = trackPieces.get(`track-${ti}`) ?? []
+                const isRowEnd = colIdx === connectorCol && rowIdx < trackRows - 1
+
+                return (
+                  <BoardCell
+                    key={colIdx}
+                    trackIndex={ti}
+                    isStart={ti === 0}
+                    isObstacle={obstacleSet.has(ti)}
+                    tokens={tokensHere}
+                    highlightedTokens={highlightedTokens}
+                    onTokenTap={onTokenTap}
+                    showNumber={ti % 5 === 0 ? ti : null}
+                  />
+                )
+              })}
+            </div>
+            {/* Row connector arrow */}
+            {rowIdx < trackRows - 1 && (
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: isEvenRow ? 'flex-end' : 'flex-start',
+                  padding: isEvenRow ? '0 8px 0 0' : '0 0 0 8px',
+                }}
+              >
+                <span style={{ fontSize: 12, color: 'var(--text-faint)', lineHeight: 1 }}>↓</span>
+              </div>
+            )}
+          </div>
+        )
+      })}
+
+      {/* Connector from track to home lane */}
+      {(() => {
+        // Last track row is row 3 (odd), ends on the left (col 0)
+        // Home lane starts on the left too
+        const lastRowIsEven = (trackRows - 1) % 2 === 0
+        return (
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: lastRowIsEven ? 'flex-end' : 'flex-start',
+              padding: lastRowIsEven ? '0 8px 0 0' : '0 0 0 8px',
+            }}
+          >
+            <span style={{ fontSize: 10, color: TOKEN_GREEN, fontWeight: 700, lineHeight: 1 }}>↓ HOME</span>
+          </div>
+        )
+      })()}
+
+      {/* Home lane + finish */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: `repeat(${CELLS_PER_ROW}, 1fr)`,
+          gap: 2,
+        }}
+      >
+        {homeRow.map((cell, colIdx) => {
+          if (cell.type === 'empty') {
+            return <div key={colIdx} style={{ aspectRatio: '1' }} />
+          }
+          if (cell.type === 'finish') {
+            const finishedTokens = trackPieces.get('finish') ?? []
+            return (
+              <BoardCell
+                key={colIdx}
+                isFinish
+                tokens={finishedTokens}
+                highlightedTokens={highlightedTokens}
+                onTokenTap={onTokenTap}
+              />
+            )
+          }
+          // home lane cell
+          const homeTokens = trackPieces.get(`home-${cell.index}`) ?? []
+          return (
+            <BoardCell
+              key={colIdx}
+              isHomeLane
+              tokens={homeTokens}
+              highlightedTokens={highlightedTokens}
+              onTokenTap={onTokenTap}
+              showNumber={null}
+            />
+          )
+        })}
+      </div>
     </div>
   )
 }
@@ -260,12 +679,10 @@ export function DailyLudoPuzzlePlay({ challengeId, puzzle, timer: maxSeconds, on
   const submitRef = useRef(false)
   const { confirm } = useConfirm()
 
-  // Persist state on every change
   useEffect(() => {
     if (!submitted) saveDailyAnswers(challengeId, state)
   }, [challengeId, state, submitted])
 
-  // Timer
   const { elapsed, formatted, isTimeUp } = useDailyChallengeTimer({
     mode: 'countdown',
     maxSeconds,
@@ -273,7 +690,6 @@ export function DailyLudoPuzzlePlay({ challengeId, puzzle, timer: maxSeconds, on
     startAtMs,
   })
 
-  // Submit handler
   const handleSubmit = useCallback(() => {
     if (submitRef.current) return
     submitRef.current = true
@@ -285,26 +701,22 @@ export function DailyLudoPuzzlePlay({ challengeId, puzzle, timer: maxSeconds, on
     })
   }, [challengeId, elapsed, maxSeconds, onSubmit, state.moves])
 
-  // Auto-submit on time up
   useEffect(() => {
     if (isTimeUp && !submitRef.current) handleSubmit()
   }, [isTimeUp, handleSubmit])
 
-  // Auto-submit when all pieces finished
   useEffect(() => {
     if (allFinished(state.pieces) && state.moves.length > 0 && !submitRef.current) {
       handleSubmit()
     }
   }, [state.pieces, state.moves.length, handleSubmit])
 
-  // Auto-submit when dice sequence exhausted
   useEffect(() => {
     if (state.rollIndex >= puzzleData.diceSequence.length && !submitRef.current && state.moves.length > 0) {
       handleSubmit()
     }
   }, [state.rollIndex, puzzleData.diceSequence.length, state.moves.length, handleSubmit])
 
-  // Auto-skip when no legal move exists for current roll
   useEffect(() => {
     if (submitted) return
     if (state.rollIndex >= puzzleData.diceSequence.length) return
@@ -312,7 +724,7 @@ export function DailyLudoPuzzlePlay({ challengeId, puzzle, timer: maxSeconds, on
 
     const currentRoll = puzzleData.diceSequence[state.rollIndex]
     if (!anyLegalMove(state.pieces, currentRoll)) {
-      setSkipMessage(`No legal move for ${currentRoll} — skipped`)
+      setSkipMessage(`No legal move for ${currentRoll} — skipping`)
       const timeout = setTimeout(() => {
         setState((prev) => ({
           ...prev,
@@ -325,7 +737,6 @@ export function DailyLudoPuzzlePlay({ challengeId, puzzle, timer: maxSeconds, on
     }
   }, [state.rollIndex, state.pieces, puzzleData.diceSequence, submitted])
 
-  // Move a piece
   const handlePieceTap = useCallback(
     (pieceId: number) => {
       if (submitted) return
@@ -342,7 +753,6 @@ export function DailyLudoPuzzlePlay({ challengeId, puzzle, timer: maxSeconds, on
 
         const newPieces = prev.pieces.map((p) => (p.id === pieceId ? newPiece : p))
 
-        // Check for obstacle capture
         let newObstacles = prev.obstacles
         let captureGain = 0
         if (newPiece.zone === 'track' && prev.obstacles.some((o) => o.trackPos === newPiece.pos)) {
@@ -369,7 +779,6 @@ export function DailyLudoPuzzlePlay({ challengeId, puzzle, timer: maxSeconds, on
     if (ok) handleSubmit()
   }
 
-  // Derived values
   const currentRoll = state.rollIndex < puzzleData.diceSequence.length ? puzzleData.diceSequence[state.rollIndex] : null
   const tokensHome = state.pieces.filter((p) => p.zone === 'finished').length
   const highlightedPieces = useMemo(() => {
@@ -377,25 +786,18 @@ export function DailyLudoPuzzlePlay({ challengeId, puzzle, timer: maxSeconds, on
     return new Set(state.pieces.filter((p) => canMove(p, currentRoll)).map((p) => p.id))
   }, [state.pieces, currentRoll, submitted, skipMessage])
 
-  // Base pieces (still in base zone)
-  const basePieces = state.pieces.filter((p) => p.zone === 'base')
-  const finishedPieces = state.pieces.filter((p) => p.zone === 'finished')
-
-  // Track cells to render: show all 52 in wrapped rows
-  const trackCells = useMemo(() => Array.from({ length: TRACK_LENGTH }, (_, i) => i), [])
-  const homeCells = useMemo(() => Array.from({ length: 5 }, (_, i) => i), [])
+  const basePieces = useMemo(() => state.pieces.filter((p) => p.zone === 'base'), [state.pieces])
 
   return (
-    <div className="space-y-4">
-      {/* Pulse animation for highlighted tokens */}
+    <div className="space-y-3">
       <style>{`
-        @keyframes ludo-pulse {
-          0%, 100% { box-shadow: 0 0 0 0 rgba(22,163,74,0.5); }
-          50% { box-shadow: 0 0 0 6px rgba(22,163,74,0); }
+        @keyframes ludo-token-pulse {
+          0%, 100% { box-shadow: 0 0 0 2px rgba(22,163,74,0.4), 0 0 8px rgba(22,163,74,0.3); }
+          50% { box-shadow: 0 0 0 4px rgba(22,163,74,0.15), 0 0 12px rgba(22,163,74,0.1); }
         }
       `}</style>
 
-      {/* Header bar: stats + timer */}
+      {/* Header bar */}
       <div
         className="flex items-center justify-between rounded-xl px-4 py-2.5"
         style={{ background: 'var(--card)', border: '1px solid var(--border)' }}
@@ -414,38 +816,29 @@ export function DailyLudoPuzzlePlay({ challengeId, puzzle, timer: maxSeconds, on
         </div>
       </div>
 
-      {/* Instructions */}
-      <p className="text-center" style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>
-        Move all 4 tokens home. Tap a highlighted token to move it. Roll 6 to leave base. Fewer rolls = higher score.
-        Par: {puzzleData.optimalRolls} rolls.
-      </p>
-
-      {/* Dice display */}
+      {/* Dice + instructions */}
       <div
-        className="flex flex-col items-center gap-2 rounded-xl p-4"
+        className="flex flex-col items-center gap-3 rounded-xl p-4"
         style={{ background: 'var(--card)', border: '1px solid var(--border)' }}
       >
-        <div className="font-medium uppercase tracking-wider" style={{ fontSize: '11px', color: 'var(--text-faint)' }}>
-          Current Roll
-        </div>
         {currentRoll !== null ? (
-          <DiceFace value={currentRoll} size={64} />
+          <div className="flex items-center gap-4">
+            <DiceFace value={currentRoll} size={56} />
+            <div>
+              <div style={{ fontSize: 'var(--text-sm)', fontWeight: 700, color: 'var(--text)' }}>
+                You rolled a {currentRoll}
+              </div>
+              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginTop: 2 }}>
+                {highlightedPieces.size > 0 ? 'Tap a glowing token on the board' : 'No moves available — skipping...'}
+              </div>
+            </div>
+          </div>
         ) : (
-          <div
-            className="flex items-center justify-center rounded-xl"
-            style={{
-              width: 64,
-              height: 64,
-              background: 'var(--bg-surface)',
-              border: '2px solid var(--border)',
-              color: 'var(--text-muted)',
-              fontWeight: 700,
-              fontSize: 'var(--text-sm)',
-            }}
-          >
-            Done
+          <div className="text-center">
+            <div style={{ fontSize: 'var(--text-sm)', fontWeight: 700, color: 'var(--text)' }}>No more rolls</div>
           </div>
         )}
+
         {skipMessage && (
           <div
             className="rounded-lg px-3 py-1.5 text-center font-medium"
@@ -458,172 +851,63 @@ export function DailyLudoPuzzlePlay({ challengeId, puzzle, timer: maxSeconds, on
             {skipMessage}
           </div>
         )}
-        {state.captures > 0 && (
-          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>Captures: {state.captures}</div>
+
+        {/* Upcoming dice preview */}
+        {currentRoll !== null && puzzleData.diceSequence.length > 1 && (
+          <div className="flex items-center gap-2">
+            <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-faint)' }}>Upcoming:</span>
+            <DiceSequencePreview sequence={puzzleData.diceSequence} currentIndex={state.rollIndex} />
+          </div>
         )}
       </div>
 
-      {/* Base + Finished indicators */}
-      <div className="flex items-center justify-between gap-4">
-        {/* Base */}
-        <div className="flex-1 rounded-xl p-3" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
-          <div
-            className="mb-1.5 font-medium uppercase tracking-wider"
-            style={{ fontSize: '10px', color: 'var(--text-faint)' }}
-          >
-            Base
-          </div>
-          <div className="flex gap-1.5">
-            {[0, 1, 2, 3].map((id) => {
-              const inBase = basePieces.some((p) => p.id === id)
-              const isHighlighted = highlightedPieces.has(id) && inBase
-              return (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => isHighlighted && handlePieceTap(id)}
-                  disabled={!isHighlighted}
-                  style={{
-                    width: 28,
-                    height: 28,
-                    borderRadius: '50%',
-                    background: inBase ? (isHighlighted ? '#16a34a' : '#22c55e') : 'var(--bg-surface)',
-                    color: inBase ? '#fff' : 'var(--text-faint)',
-                    fontSize: 11,
-                    fontWeight: 800,
-                    border: isHighlighted ? '2px solid var(--primary)' : '1px solid var(--border)',
-                    cursor: isHighlighted ? 'pointer' : 'default',
-                    padding: 0,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    opacity: inBase ? 1 : 0.3,
-                    animation: isHighlighted ? 'ludo-pulse 1s infinite' : undefined,
-                  }}
-                >
-                  {id + 1}
-                </button>
-              )
-            })}
-          </div>
-        </div>
-
-        {/* Finished */}
-        <div className="flex-1 rounded-xl p-3" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
-          <div
-            className="mb-1.5 font-medium uppercase tracking-wider"
-            style={{ fontSize: '10px', color: 'var(--text-faint)' }}
-          >
-            Finished
-          </div>
-          <div className="flex gap-1.5">
-            {[0, 1, 2, 3].map((id) => {
-              const isDone = finishedPieces.some((p) => p.id === id)
-              return (
-                <div
-                  key={id}
-                  style={{
-                    width: 28,
-                    height: 28,
-                    borderRadius: '50%',
-                    background: isDone ? '#16a34a' : 'var(--bg-surface)',
-                    color: isDone ? '#fff' : 'var(--text-faint)',
-                    fontSize: 11,
-                    fontWeight: 800,
-                    border: '1px solid var(--border)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    opacity: isDone ? 1 : 0.3,
-                  }}
-                >
-                  {isDone ? '✓' : id + 1}
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      </div>
-
-      {/* Track board */}
-      <div className="rounded-xl p-3" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
+      {/* How it works (only show at start) */}
+      {state.rollIndex === 0 && (
         <div
-          className="mb-2 font-medium uppercase tracking-wider"
-          style={{ fontSize: '10px', color: 'var(--text-faint)' }}
+          className="rounded-xl px-4 py-3"
+          style={{ background: 'var(--bg-surface)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}
         >
-          Track (0-51)
-        </div>
-        <div
-          style={{
-            display: 'flex',
-            flexWrap: 'wrap',
-            gap: CELL_GAP,
-          }}
-        >
-          {trackCells.map((i) => (
-            <BoardCell
-              key={i}
-              index={i}
-              type="track"
-              pieces={state.pieces}
-              obstacles={state.obstacles}
-              highlighted={highlightedPieces}
-              onPieceTap={handlePieceTap}
-            />
-          ))}
-        </div>
-      </div>
-
-      {/* Home lane */}
-      <div className="rounded-xl p-3" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
-        <div
-          className="mb-2 font-medium uppercase tracking-wider"
-          style={{ fontSize: '10px', color: 'var(--text-faint)' }}
-        >
-          Home Lane (slots 0-4)
-        </div>
-        <div style={{ display: 'flex', gap: CELL_GAP }}>
-          {homeCells.map((i) => (
-            <BoardCell
-              key={i}
-              index={i}
-              type="home"
-              pieces={state.pieces}
-              obstacles={state.obstacles}
-              highlighted={highlightedPieces}
-              onPieceTap={handlePieceTap}
-            />
-          ))}
-          {/* Finish indicator */}
-          <div
-            style={{
-              width: CELL_SIZE,
-              height: CELL_SIZE,
-              borderRadius: 4,
-              background: '#fbbf24',
-              border: '1px solid var(--border)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: 11,
-              fontWeight: 800,
-              color: '#000',
-              flexShrink: 0,
-            }}
-          >
-            {'★'}
+          <div style={{ fontWeight: 600, marginBottom: 4 }}>How to play</div>
+          <div>
+            Get all 4 tokens from base → track → home lane → finish. Roll 6 to leave base.
+            {state.obstacles.length > 0 && ' Land on obstacles to capture them (+50 pts).'} Fewer rolls = higher score.
+            Par: {puzzleData.optimalRolls} rolls.
           </div>
         </div>
-      </div>
+      )}
 
-      {/* Submit early button */}
+      {/* Base yard */}
+      {basePieces.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <BaseYard basePieces={basePieces} highlighted={highlightedPieces} onTap={handlePieceTap} />
+          <span style={{ fontSize: 18, color: 'var(--text-faint)' }}>→</span>
+          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>Roll a 6 to enter</span>
+        </div>
+      )}
+
+      {/* The winding path board */}
+      <LudoPathBoard
+        pieces={state.pieces}
+        obstacles={state.obstacles}
+        highlightedTokens={highlightedPieces}
+        onTokenTap={handlePieceTap}
+      />
+
+      {/* Captures counter */}
+      {state.captures > 0 && (
+        <div className="text-center" style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
+          Obstacles captured: {state.captures} (+{state.captures * 50} pts)
+        </div>
+      )}
+
+      {/* Submit early */}
       {state.moves.length > 0 && !submitted && !allFinished(state.pieces) && (
         <button type="button" onClick={handleManualSubmit} className="fr-btn fr-btn--secondary fr-btn--sm w-full">
           Submit early ({state.moves.length} rolls used)
         </button>
       )}
 
-      {/* All done message */}
+      {/* All done */}
       {allFinished(state.pieces) && !submitted && (
         <div className="py-8 text-center">
           <p className="font-bold" style={{ fontSize: 'var(--text-lg)' }}>
