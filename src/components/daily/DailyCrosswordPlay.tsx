@@ -24,8 +24,26 @@ export function DailyCrosswordPlay({ challengeId, puzzle, timer: maxSeconds, onS
   const [letterGrid, setLetterGrid] = useState<string[][]>(
     () => loadDailyAnswers<string[][]>(challengeId) ?? Array.from({ length: size }, () => Array(size).fill(''))
   )
-  const [selectedCell, setSelectedCell] = useState<[number, number] | null>(null)
-  const [direction, setDirection] = useState<'across' | 'down'>('across')
+  const [selectedCell, _setSelectedCell] = useState<[number, number] | null>(null)
+  const selectedCellRef = useRef<[number, number] | null>(null)
+  const setSelectedCell = useCallback((cell: [number, number] | null) => {
+    selectedCellRef.current = cell
+    _setSelectedCell(cell)
+  }, [])
+  const [direction, _setDirection] = useState<'across' | 'down'>('across')
+  const directionRef = useRef<'across' | 'down'>('across')
+  const setDirection = useCallback((d: 'across' | 'down' | ((prev: 'across' | 'down') => 'across' | 'down')) => {
+    if (typeof d === 'function') {
+      _setDirection((prev) => {
+        const next = d(prev)
+        directionRef.current = next
+        return next
+      })
+    } else {
+      directionRef.current = d
+      _setDirection(d)
+    }
+  }, [])
   const [submitted, setSubmitted] = useState(false)
   const [hintsUsed, setHintsUsed] = useState(0)
   const submitRef = useRef(false)
@@ -129,23 +147,20 @@ export function DailyCrosswordPlay({ challengeId, puzzle, timer: maxSeconds, onS
   const handleCellSelect = useCallback(
     (row: number, col: number) => {
       if (submitted || metadata.blocked[row][col]) return
-      if (selectedCell && selectedCell[0] === row && selectedCell[1] === col) {
-        // Re-tapping the same cell flips orientation (only meaningful where both words cross).
+      const cur = selectedCellRef.current
+      if (cur && cur[0] === row && cur[1] === col) {
         setDirection((d) => (d === 'across' ? 'down' : 'across'))
         return
       }
       setSelectedCell([row, col])
-      // Point the cursor along the word this cell actually belongs to, so typing auto-advances
-      // correctly (a down-only cell shouldn't try to step sideways into a block).
       const hasAcross =
         (col > 0 && !metadata.blocked[row][col - 1]) || (col < size - 1 && !metadata.blocked[row][col + 1])
       const hasDown =
         (row > 0 && !metadata.blocked[row - 1][col]) || (row < size - 1 && !metadata.blocked[row + 1][col])
       if (hasAcross && !hasDown) setDirection('across')
       else if (hasDown && !hasAcross) setDirection('down')
-      // crossing cell (both) → keep current direction; re-tap to flip
     },
-    [selectedCell, submitted, metadata, size]
+    [submitted, metadata, size, setSelectedCell, setDirection]
   )
 
   // Active cells highlight for current word
@@ -173,49 +188,52 @@ export function DailyCrosswordPlay({ challengeId, puzzle, timer: maxSeconds, onS
     return cells
   }, [selectedCell, direction, metadata, size])
 
-  // Shared letter-entry actions, used by both the physical keyboard and the on-screen keyboard
-  // (the latter is the only way to type on touch devices, which have no hardware keys).
   const enterLetter = useCallback(
     (raw: string) => {
-      if (submitted || !selectedCell) return
+      const cell = selectedCellRef.current
+      if (submitted || !cell) return
       const letter = raw.toUpperCase()
       if (!/^[A-Z]$/.test(letter)) return
-      const [row, col] = selectedCell
+      const [row, col] = cell
       setLetterGrid((prev) => {
         const next = prev.map((r) => [...r])
         next[row][col] = letter
         return next
       })
-      const dr = direction === 'down' ? 1 : 0
-      const dc = direction === 'across' ? 1 : 0
+      const dir = directionRef.current
+      const dr = dir === 'down' ? 1 : 0
+      const dc = dir === 'across' ? 1 : 0
       const nr = row + dr
       const nc = col + dc
       if (nr >= 0 && nr < size && nc >= 0 && nc < size && !metadata.blocked[nr][nc]) setSelectedCell([nr, nc])
     },
-    [submitted, selectedCell, direction, size, metadata]
+    [submitted, size, metadata, setSelectedCell]
   )
 
   const deleteLetter = useCallback(() => {
-    if (submitted || !selectedCell) return
-    const [row, col] = selectedCell
+    const cell = selectedCellRef.current
+    if (submitted || !cell) return
+    const [row, col] = cell
     setLetterGrid((prev) => {
       const next = prev.map((r) => [...r])
       next[row][col] = ''
       return next
     })
-    const dr = direction === 'down' ? -1 : 0
-    const dc = direction === 'across' ? -1 : 0
+    const dir = directionRef.current
+    const dr = dir === 'down' ? -1 : 0
+    const dc = dir === 'across' ? -1 : 0
     const nr = row + dr
     const nc = col + dc
     if (nr >= 0 && nr < size && nc >= 0 && nc < size && !metadata.blocked[nr][nc]) setSelectedCell([nr, nc])
-  }, [submitted, selectedCell, direction, size, metadata])
+  }, [submitted, size, metadata, setSelectedCell])
 
-  // Physical keyboard input (desktop). Touch devices use the on-screen keyboard below.
   useEffect(() => {
-    if (submitted || !selectedCell) return
+    if (submitted) return
 
     const handler = (e: KeyboardEvent) => {
-      const [row, col] = selectedCell
+      const cell = selectedCellRef.current
+      if (!cell) return
+      const [row, col] = cell
 
       if (e.key === 'Backspace' || e.key === 'Delete') {
         e.preventDefault()
@@ -255,7 +273,7 @@ export function DailyCrosswordPlay({ challengeId, puzzle, timer: maxSeconds, onS
 
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [selectedCell, direction, submitted, metadata, size, enterLetter, deleteLetter])
+  }, [submitted, metadata, size, enterLetter, deleteLetter, setSelectedCell, setDirection])
 
   const cluesPanel = (
     <div className="fr-card !p-4 max-h-[600px] overflow-y-auto lg:max-h-none lg:h-full">
