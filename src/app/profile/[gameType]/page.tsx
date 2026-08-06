@@ -216,11 +216,11 @@ export default function GameTrophiesPage({ params }: { params: Promise<{ gameTyp
 
 function TrophyRow({ trophy }: { trophy: Trophy }) {
   return (
-    <div className="fr-gamecard cursor-default flex items-start gap-3 p-4">
-      <span className={`fr-glyph mt-0.5 ${trophy.earned ? 'text-[var(--primary)]' : 'opacity-50'}`}>
+    <div className="fr-gamecard cursor-default gap-3 p-4" style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
+      <span className={`fr-glyph mt-0.5 shrink-0 ${trophy.earned ? 'text-[var(--primary)]' : 'opacity-50'}`}>
         <Glyph icon={trophy.earned ? tierIcon(trophy.tier) : LockIcon} size={22} />
       </span>
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 flex-1 self-stretch">
         <p className={`fr-gamecard__title text-base ${trophy.earned ? '' : 'opacity-70'}`}>{trophy.title}</p>
         <p className="fr-gamecard__tagline text-xs">{trophy.description}</p>
 
