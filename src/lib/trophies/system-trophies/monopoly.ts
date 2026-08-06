@@ -146,7 +146,7 @@ export const MONOPOLY: SystemTrophySpec[] = [
   // ── Platinum ────────────────────────────────────────────────────────────────────────────
   {
     suffix: 'last_one_standing',
-    tier: 'platinum',
+    tier: 'gold',
     title: 'Last one standing',
     description: 'Win a game of three or more by bankrupting every other player.',
     counter: 'monopoly_last_one_standing',

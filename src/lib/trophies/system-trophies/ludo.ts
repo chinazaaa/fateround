@@ -242,7 +242,7 @@ export const LUDO: SystemTrophySpec[] = [
   // ── Platinum ────────────────────────────────────────────────────────────────────────────
   {
     suffix: 'perfect_run',
-    tier: 'platinum',
+    tier: 'gold',
     title: 'Perfect run',
     description: 'Win a four-player game without a single one of your pieces being captured.',
     counter: 'ludo_perfect_run_wins',
@@ -251,7 +251,7 @@ export const LUDO: SystemTrophySpec[] = [
   },
   {
     suffix: 'untouched_sweep',
-    tier: 'platinum',
+    tier: 'gold',
     title: 'Untouched sweep',
     description: 'Win having captured five or more pieces and lost none (three or more players).',
     counter: 'ludo_untouched_sweep_wins',

@@ -271,7 +271,7 @@ export const MAHJONG: SystemTrophySpec[] = [
   // ── Platinum ────────────────────────────────────────────────────────────────────────────
   {
     suffix: 'heavenly_hand',
-    tier: 'platinum',
+    tier: 'gold',
     title: 'Heavenly hand',
     description: 'Win on your opening draw as East (Riichi rules).',
     counter: 'mahjong_heavenly_hand',
@@ -280,7 +280,7 @@ export const MAHJONG: SystemTrophySpec[] = [
   },
   {
     suffix: 'orphan_master',
-    tier: 'platinum',
+    tier: 'gold',
     title: 'Orphan master',
     description: 'Win two thirteen orphans hands.',
     counter: 'mahjong_thirteen_orphans_wins',
@@ -290,7 +290,7 @@ export const MAHJONG: SystemTrophySpec[] = [
   },
   {
     suffix: 'grand_slam',
-    tier: 'platinum',
+    tier: 'gold',
     title: 'Grand slam',
     description: 'Win a fully concealed hand with all four melds.',
     counter: 'mahjong_grand_slam',
@@ -302,7 +302,7 @@ export const MAHJONG: SystemTrophySpec[] = [
     // Win a hand under every ruleset the platform offers — Simple (FateRound), Hong Kong, Riichi
     // and MCR. A CONJUNCTION over the four per-ruleset win counters.
     suffix: 'all_rulesets',
-    tier: 'platinum',
+    tier: 'gold',
     title: 'Rules of the World',
     description: 'Win a hand under all four rulesets: Simple, Hong Kong, Riichi and MCR.',
     criteria: allOf(
