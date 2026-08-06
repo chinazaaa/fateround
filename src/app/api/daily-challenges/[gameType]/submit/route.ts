@@ -10,6 +10,7 @@ import {
   type DailyChallengeGameType,
   type DailyScoreInput,
 } from '@/lib/daily-challenge'
+import { advanceStreak, type StreakState } from '@/lib/trophies/streak'
 
 export const dynamic = 'force-dynamic'
 
@@ -391,7 +392,7 @@ function verifyLudoPuzzle(
   if (solved) {
     rawPoints = Math.max(100, 1000 - (rollsUsed - optimalRolls) * 30 + captures * 50 + tokensHome * 100)
   } else {
-    rawPoints = Math.max(0, captures * 50 + tokensHome * 100)
+    rawPoints = Math.max(0, captures * 50 + tokensHome * 250)
   }
 
   return {
@@ -578,6 +579,40 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ gam
       })
       .eq('profile_id', profileId)
       .eq('game_type', gameType)
+  }
+
+  // Advance the profile's day streak (best-effort — a failure here must not break the submission).
+  // Reuses `today` captured at the top so the streak date matches the challenge date even if the
+  // request crosses WAT midnight.
+  try {
+    const { data: profile } = await admin
+      .from('profiles')
+      .select('current_streak, longest_streak, last_active_date')
+      .eq('id', profileId)
+      .maybeSingle()
+
+    if (profile) {
+      const streak = advanceStreak(
+        {
+          current_streak: Number(profile.current_streak) || 0,
+          longest_streak: Number(profile.longest_streak) || 0,
+          last_active_date: (profile.last_active_date as string) ?? null,
+        } satisfies StreakState,
+        today
+      )
+      if (streak.last_active_date !== (profile.last_active_date ?? null)) {
+        await admin
+          .from('profiles')
+          .update({
+            current_streak: streak.current_streak,
+            longest_streak: streak.longest_streak,
+            last_active_date: streak.last_active_date,
+          })
+          .eq('id', profileId)
+      }
+    }
+  } catch {
+    // Swallow — streak is best-effort
   }
 
   // Compute rank with the SAME comparator the leaderboard uses, so the finished-screen rank matches
