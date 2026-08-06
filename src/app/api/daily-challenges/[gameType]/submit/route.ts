@@ -221,13 +221,17 @@ function verifyWordGrouping(
   if (!solution?.groups) return { error: 'Missing solution' }
 
   const solutionSets = solution.groups.map((g) => new Set(g.words.map((w) => w.toLowerCase())))
+  const matched = new Set<number>()
   let groupsFound = 0
   let mistakes = 0
 
   for (const guess of guesses) {
     const guessSet = new Set((guess.words ?? []).map((w: string) => w.toLowerCase()))
-    const isCorrect = solutionSets.some((s) => s.size === guessSet.size && [...guessSet].every((w) => s.has(w)))
-    if (isCorrect) {
+    const idx = solutionSets.findIndex(
+      (s, i) => !matched.has(i) && s.size === guessSet.size && [...guessSet].every((w) => s.has(w))
+    )
+    if (idx >= 0) {
+      matched.add(idx)
       groupsFound++
     } else {
       mistakes++
@@ -294,11 +298,15 @@ function verifyCodenamesCodeword(
 
   const correctSet = new Set(solution.correctWords.map((w) => w.toLowerCase()))
   const total = correctSet.size
+  const seen = new Set<string>()
   let correct = 0
   let wrong = 0
 
   for (const w of selectedWords) {
-    if (correctSet.has(w.toLowerCase())) {
+    const lower = w.toLowerCase()
+    if (seen.has(lower)) continue
+    seen.add(lower)
+    if (correctSet.has(lower)) {
       correct++
     } else {
       wrong++
