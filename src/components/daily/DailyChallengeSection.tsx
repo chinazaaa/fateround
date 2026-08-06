@@ -29,9 +29,14 @@ const DAILY_GAME_ACCENTS: Record<DailyChallengeGameType, string> = {
   sudoku: '#3b82f6',
   word_hunt: '#8b5cf6',
   crossword: '#14b8a6',
+  mini_crossword: '#06b6d4',
   word_search: '#f59e0b',
   word_scramble: '#ec4899',
   trivia: '#10b981',
+  whot_puzzle: '#e74c3c',
+  word_grouping: '#f97316',
+  chess_mate: '#6366f1',
+  codenames_codeword: '#84cc16',
 }
 
 export function DailyChallengeSection() {
