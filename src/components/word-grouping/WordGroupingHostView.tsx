@@ -9,6 +9,8 @@ import { HostLobby } from '@/components/host/HostLobby'
 import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
+import { HostGameLayout, type HostTab } from '@/components/host/HostGameLayout'
+import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostSudokuLobbyPanel } from '@/components/host-lobby/HostSudokuLobbyPanel'
 import { WordGroupingLobbySettings } from './WordGroupingLobbySettings'
 import { TransferHostControl } from '@/components/TransferHostControl'
@@ -74,6 +76,10 @@ export function WordGroupingHostView({ gameCode, hostToken }: { gameCode: string
   const [nowMs, setNowMs] = useState<number>(Date.now())
   const [starting, setStarting] = useState(false)
   const [playingAgain, setPlayingAgain] = useState(false)
+  // HostGameLayout is a controlled tabs shell, but word_grouping has no host-run controls
+  // beyond End game (surfaced in the header ⚙ gear), so we render with noManageTab and
+  // this state stays stubbed — HostGameLayout still requires the prop pair.
+  const [tab, setTab] = useState<HostTab>('play')
 
   const load = useCallback(async () => {
     const [gameRes, plrsRes] = await Promise.all([
@@ -348,55 +354,10 @@ export function WordGroupingHostView({ gameCode, hostToken }: { gameCode: string
     )
   }
 
-  if (game.status === 'active' && hostMode === 'player') {
-    return <WordGroupingPlayerView gameCode={gameCode} />
-  }
-
-  if (game.status === 'active') {
-    return (
-      <div className="mx-auto max-w-2xl space-y-4 px-4 py-6">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-bold">Word Grouping — Live</h2>
-          {timeRemaining !== null && (
-            <span className={`font-bold tabular-nums ${timeRemaining <= 10 ? 'text-[var(--marry)]' : ''}`}>
-              {formatMinutesSeconds(timeRemaining)}
-            </span>
-          )}
-        </div>
-
-        <div className="space-y-2">
-          {players
-            .filter((p) => !p.spectator)
-            .map((p) => {
-              const pSubs = submissions.filter((s) => s.player_id === p.id)
-              const groups = pSubs.filter((s) => s.is_correct).length
-              const mistakes = pSubs.filter((s) => !s.is_correct).length
-              const done = groups >= WORD_GROUPING_TOTAL_GROUPS || mistakes >= WORD_GROUPING_MAX_MISTAKES
-              return (
-                <div
-                  key={p.id}
-                  className="flex items-center justify-between rounded-xl px-4 py-3"
-                  style={{ background: 'var(--card)', border: '1px solid var(--border)' }}
-                >
-                  <span className="font-medium">{p.name}</span>
-                  <span className="text-sm text-muted">
-                    {groups}/4 groups · {mistakes} mistake{mistakes !== 1 ? 's' : ''}
-                    {done && ' ✓'}
-                  </span>
-                </div>
-              )
-            })}
-        </div>
-
-        <HostEndGameButton gameCode={gameCode} hostToken={hostToken} />
-      </div>
-    )
-  }
-
-  const winner = leaderboardRows[0]
   // One winner per puzzle: the single top row after tiebreaks. Post the host's community
   // win only when the host is that row AND actually scored — a 0-point solo finish is not
   // a leaderboard result.
+  const winner = leaderboardRows[0]
   const hostRow = leaderboardRows.find((row) => row.id === hostPlayerId)
   const hostWon =
     !!hostRow &&
@@ -405,7 +366,56 @@ export function WordGroupingHostView({ gameCode, hostToken }: { gameCode: string
     hostRow === leaderboardRows[0] &&
     leaderboardRows[0].points > 0
 
-  return (
+  const hostPlays = hostMode === 'player' && !!hostPlayerId
+
+  // Watch view for a host who isn't playing along. Rendered as HostGameLayout's `primary`
+  // so the shared header + roster drawer (names, points, mistakes, Remove) wrap it, matching
+  // every other puzzle game. The playing-host case still renders WordGroupingPlayerView directly.
+  const watchBoard = (
+    <div className="mx-auto max-w-2xl space-y-4 px-4 py-6">
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-bold">Word Grouping — Live</h2>
+        {timeRemaining !== null && (
+          <span className={`font-bold tabular-nums ${timeRemaining <= 10 ? 'text-[var(--marry)]' : ''}`}>
+            {formatMinutesSeconds(timeRemaining)}
+          </span>
+        )}
+      </div>
+
+      <div className="space-y-2">
+        {players
+          .filter((p) => !p.spectator)
+          .map((p) => {
+            const pSubs = submissions.filter((s) => s.player_id === p.id)
+            const groups = pSubs.filter((s) => s.is_correct).length
+            const mistakes = pSubs.filter((s) => !s.is_correct).length
+            const done = groups >= WORD_GROUPING_TOTAL_GROUPS || mistakes >= WORD_GROUPING_MAX_MISTAKES
+            return (
+              <div
+                key={p.id}
+                className="flex items-center justify-between rounded-xl px-4 py-3"
+                style={{ background: 'var(--card)', border: '1px solid var(--border)' }}
+              >
+                <span className="font-medium">{p.name}</span>
+                <span className="text-sm text-muted">
+                  {groups}/4 groups · {mistakes} mistake{mistakes !== 1 ? 's' : ''}
+                  {done && ' ✓'}
+                </span>
+              </div>
+            )
+          })}
+      </div>
+
+      <HostEndGameButton gameCode={gameCode} hostToken={hostToken} />
+    </div>
+  )
+
+  // Host is playing along — the player view already has its own header/drawer scaffolding.
+  if (game.status === 'active' && hostPlays) {
+    return <WordGroupingPlayerView gameCode={gameCode} />
+  }
+
+  const finishedScreen = (
     <div className="mx-auto max-w-lg space-y-4 px-4 py-6">
       <FinalResultsShareBlock
         game={game}
@@ -479,5 +489,28 @@ export function WordGroupingHostView({ gameCode, hostToken }: { gameCode: string
         </div>
       )}
     </div>
+  )
+
+  return (
+    <HostGameLayout
+      gameCode={gameCode}
+      status={game.status}
+      tab={tab}
+      onTabChange={setTab}
+      // Host-only "Watch" board — the playing-host case exits above.
+      primaryKind="watch"
+      game={game}
+      players={players}
+      hostPlayerId={hostPlayerId}
+      onHostRejoined={load}
+      onRemovePlayer={removePlayer}
+      showTabs={game.status !== 'finished'}
+      gameStarted={game.status === 'active'}
+      header={<HostGameHeader game={game} />}
+      primary={watchBoard}
+      manage={watchBoard}
+      noManageTab
+      finished={finishedScreen}
+    />
   )
 }

@@ -52,7 +52,6 @@ import { clearSudokuSessionData } from '@/lib/sudoku'
 import { clearCrosswordSessionData } from '@/lib/crossword'
 import { clearWordSearchSessionData } from '@/lib/word-search'
 import { clearWordScrambleSessionData } from '@/lib/word-scramble'
-import { clearWordGroupingSessionData } from '@/lib/word-grouping'
 import { clearWordHuntSessionData } from '@/lib/word-hunt'
 import { clearMafiaSessionData } from '@/lib/mafia'
 import { clearTriviaSessionData } from '@/lib/trivia'
@@ -125,7 +124,6 @@ type ClearableSessionGameType = Extract<
   | 'crossword'
   | 'word_search'
   | 'word_scramble'
-  | 'word_grouping'
   | 'landmine'
   | 'ping_pong'
 >
@@ -167,7 +165,10 @@ const SESSION_CLEARERS: Record<ClearableSessionGameType, SessionClearer> = {
   crossword: clearCrosswordSessionData,
   word_search: clearWordSearchSessionData,
   word_scramble: clearWordScrambleSessionData,
-  word_grouping: clearWordGroupingSessionData,
+  // No word_grouping entry: word_grouping_solutions is keyed by round_id (no game_id
+  // column) and word_grouping_submissions cascades ON DELETE from rounds. The unconditional
+  // `rounds` delete above already cleans both — a custom clearer here 500'd on the missing
+  // game_id column and blocked play-again.
   landmine: clearLandmineSessionData,
   ping_pong: clearPingPongSessionData,
 }

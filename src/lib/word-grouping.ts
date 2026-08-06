@@ -18,8 +18,6 @@ export {
 } from '../../packages/shared/src/word-grouping'
 
 import { WORD_GROUPING_GAME_DURATION_OPTIONS as DURATION_OPTIONS } from '../../packages/shared/src/word-grouping'
-import type { SupabaseClient } from '@supabase/supabase-js'
-import { clearSessionTables } from './session-clear'
 
 export function clampWordGroupingGameDuration(seconds: number): number {
   const opts = [...DURATION_OPTIONS]
@@ -42,11 +40,4 @@ export function wordGroupingFinishSeconds(
   if (!sessionStartedAt || !lastAt) return null
   const secs = Math.floor((new Date(lastAt).getTime() - new Date(sessionStartedAt).getTime()) / 1000)
   return Number.isFinite(secs) ? Math.max(0, secs) : null
-}
-
-export async function clearWordGroupingSessionData(
-  supabase: SupabaseClient,
-  gameId: string
-): Promise<{ error: string | null }> {
-  return clearSessionTables(supabase, gameId, ['word_grouping_submissions', 'word_grouping_solutions'])
 }
