@@ -273,11 +273,13 @@ function verifyChessMate(
   }
 
   const solved = bestMatch >= totalPlayerMoves
+  const wrongAttempts = typeof submission.wrongAttempts === 'number' ? submission.wrongAttempts : 0
+  const penalty = wrongAttempts * 150
   return {
-    rawPoints: solved ? 1000 : 0,
+    rawPoints: solved ? Math.max(100, 1000 - penalty) : 0,
     itemsSolved: bestMatch,
     itemsTotal: totalPlayerMoves,
-    hintsUsed: 0,
+    hintsUsed: wrongAttempts,
   }
 }
 

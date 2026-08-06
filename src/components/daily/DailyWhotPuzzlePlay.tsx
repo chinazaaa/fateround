@@ -214,6 +214,12 @@ export function DailyWhotPuzzlePlay({ challengeId, puzzle, timer: maxSeconds, on
         </div>
       </div>
 
+      {/* Instructions */}
+      <p className="text-center" style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>
+        Clear your hand by matching the top card&apos;s shape or number. Whot (20) is wild — pick any shape. Fewer moves
+        = higher score.
+      </p>
+
       <div
         className="flex flex-col items-center gap-2 rounded-xl p-5"
         style={{ background: 'var(--card)', border: '1px solid var(--border)' }}

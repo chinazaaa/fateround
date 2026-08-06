@@ -28,7 +28,8 @@ type SolutionLine = string[]
 
 interface SavedProgress {
   moves: string[]
-  status: 'playing' | 'solved' | 'failed'
+  wrongAttempts: number
+  status: 'playing' | 'solved'
 }
 
 /* ------------------------------------------------------------------ */
@@ -36,12 +37,12 @@ interface SavedProgress {
 /* ------------------------------------------------------------------ */
 
 const PIECE_CHAR: Record<string, string> = {
-  K: '♔',
-  Q: '♕',
-  R: '♖',
-  B: '♗',
-  N: '♘',
-  P: '♙',
+  K: '♚',
+  Q: '♛',
+  R: '♜',
+  B: '♝',
+  N: '♞',
+  P: '♟',
   k: '♚',
   q: '♛',
   r: '♜',
@@ -225,20 +226,25 @@ export function DailyChessMatePlay({ challengeId, puzzle, timer: maxSeconds, onS
     const saved = loadDailyAnswers<SavedProgress>(challengeId)
     return saved?.moves ?? []
   })
-  const [status, setStatus] = useState<'playing' | 'solved' | 'failed'>(() => {
+  const [wrongAttempts, setWrongAttempts] = useState<number>(() => {
+    const saved = loadDailyAnswers<SavedProgress>(challengeId)
+    return saved?.wrongAttempts ?? 0
+  })
+  const [status, setStatus] = useState<'playing' | 'solved'>(() => {
     const saved = loadDailyAnswers<SavedProgress>(challengeId)
     return saved?.status ?? 'playing'
   })
   const [selectedSquare, setSelectedSquare] = useState<[number, number] | null>(null)
   const [animating, setAnimating] = useState(false)
+  const [wrongFlash, setWrongFlash] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const submitRef = useRef(false)
   const { confirm } = useConfirm()
 
   // Persist progress
   useEffect(() => {
-    if (!submitted) saveDailyAnswers(challengeId, { moves, status })
-  }, [challengeId, moves, status, submitted])
+    if (!submitted) saveDailyAnswers(challengeId, { moves, wrongAttempts, status })
+  }, [challengeId, moves, wrongAttempts, status, submitted])
 
   const { elapsed, formatted, isTimeUp } = useDailyChallengeTimer({
     mode: 'countdown',
@@ -287,6 +293,7 @@ export function DailyChessMatePlay({ challengeId, puzzle, timer: maxSeconds, onS
       timeSeconds: Math.min(elapsed, maxSeconds),
       submission: {
         moves: moves.filter((_, i) => i % 2 === 0), // only attacker moves
+        wrongAttempts,
       },
     })
   }, [challengeId, elapsed, maxSeconds, moves, onSubmit])
@@ -296,9 +303,9 @@ export function DailyChessMatePlay({ challengeId, puzzle, timer: maxSeconds, onS
     if (isTimeUp && !submitRef.current) handleSubmit()
   }, [isTimeUp, handleSubmit])
 
-  // Auto-submit on solved or failed
+  // Auto-submit on solved
   useEffect(() => {
-    if ((status === 'solved' || status === 'failed') && !submitRef.current && !animating) {
+    if (status === 'solved' && !submitRef.current && !animating) {
       const timer = setTimeout(handleSubmit, 1200)
       return () => clearTimeout(timer)
     }
@@ -380,9 +387,11 @@ export function DailyChessMatePlay({ challengeId, puzzle, timer: maxSeconds, onS
         }
       }
     } else {
-      // Wrong move — puzzle failed
+      // Wrong move — flash red, penalize, let them retry
       setSelectedSquare(null)
-      setStatus('failed')
+      setWrongAttempts((n) => n + 1)
+      setWrongFlash(true)
+      setTimeout(() => setWrongFlash(false), 800)
     }
   }
 
@@ -398,19 +407,25 @@ export function DailyChessMatePlay({ challengeId, puzzle, timer: maxSeconds, onS
 
   let statusText: string
   if (status === 'solved') {
-    statusText = 'Checkmate!'
-  } else if (status === 'failed') {
-    statusText = 'Wrong move — puzzle failed'
+    statusText =
+      wrongAttempts === 0
+        ? 'Checkmate! Perfect solve!'
+        : `Checkmate! (${wrongAttempts} wrong ${wrongAttempts === 1 ? 'attempt' : 'attempts'})`
+  } else if (wrongFlash) {
+    statusText = 'Not quite — try again'
   } else if (animating) {
     statusText = 'Correct! Opponent responds…'
   } else {
-    statusText = 'Your turn — find the mate!'
+    statusText =
+      wrongAttempts > 0
+        ? `Your turn — find the mate! (${wrongAttempts} miss${wrongAttempts === 1 ? '' : 'es'})`
+        : 'Your turn — find the mate!'
   }
 
   const statusColor =
     status === 'solved'
       ? 'var(--success, #22c55e)'
-      : status === 'failed'
+      : wrongFlash
         ? 'var(--error, #ef4444)'
         : animating
           ? 'var(--warning, #eab308)'
@@ -441,77 +456,104 @@ export function DailyChessMatePlay({ challengeId, puzzle, timer: maxSeconds, onS
         </div>
       </div>
 
-      {/* Chess board */}
-      <div
-        className="mx-auto aspect-square w-full max-w-[400px] overflow-hidden rounded-lg"
-        style={{ border: '2px solid var(--border)' }}
-      >
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(8, 1fr)',
-            gridTemplateRows: 'repeat(8, 1fr)',
-            width: '100%',
-            height: '100%',
-          }}
-        >
-          {Array.from({ length: 64 }, (_, idx) => {
-            const row = Math.floor(idx / 8)
-            const col = idx % 8
-            const piece = currentBoard[row]?.[col] ?? null
-            const isLight = (row + col) % 2 === 0
-            const isSelected = selectedSquare !== null && selectedSquare[0] === row && selectedSquare[1] === col
+      {/* Instructions */}
+      <p className="text-center" style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>
+        Tap a piece, then tap its destination to move. Find the checkmate sequence.
+      </p>
 
-            return (
-              <button
-                key={idx}
-                type="button"
-                onClick={() => handleSquareClick(row, col)}
-                disabled={submitted || status !== 'playing'}
-                aria-label={`${squareName(row, col)}${piece ? ` ${PIECE_CHAR[piece]}` : ''}`}
-                style={{
-                  background: isSelected ? 'rgba(30, 144, 255, 0.5)' : isLight ? '#f0d9b5' : '#b58863',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: 'clamp(1.5rem, 5vw, 2.5rem)',
-                  lineHeight: 1,
-                  cursor: status === 'playing' && !submitted ? 'pointer' : 'default',
-                  border: 'none',
-                  padding: 0,
-                  position: 'relative',
-                  outline: isSelected ? '2px solid dodgerblue' : 'none',
-                  outlineOffset: '-2px',
-                }}
-              >
-                {piece ? (
-                  <span
+      {/* Chess board with rank + file labels */}
+      {(() => {
+        const flipped = data.toMove === 'black'
+        const ranks = flipped ? [1, 2, 3, 4, 5, 6, 7, 8] : [8, 7, 6, 5, 4, 3, 2, 1]
+        const files = flipped ? ['h', 'g', 'f', 'e', 'd', 'c', 'b', 'a'] : ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']
+
+        return (
+          <div className="mx-auto w-full max-w-[400px]">
+            <div style={{ display: 'grid', gridTemplateColumns: '16px 1fr', gap: 0 }}>
+              {/* Rank labels + board */}
+              <div style={{ display: 'grid', gridTemplateRows: 'repeat(8, 1fr)' }}>
+                {ranks.map((rank) => (
+                  <div
+                    key={rank}
                     style={{
-                      filter:
-                        piece === piece.toLowerCase()
-                          ? 'drop-shadow(0 0 1px rgba(255,255,255,0.8))'
-                          : 'drop-shadow(0 0 1px rgba(0,0,0,0.3))',
-                      userSelect: 'none',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: '11px',
+                      color: 'var(--text-faint)',
+                      fontWeight: 500,
                     }}
                   >
-                    {PIECE_CHAR[piece]}
-                  </span>
-                ) : null}
-              </button>
-            )
-          })}
-        </div>
-      </div>
+                    {rank}
+                  </div>
+                ))}
+              </div>
+              <div className="aspect-square overflow-hidden rounded-lg" style={{ border: '2px solid var(--border)' }}>
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(8, 1fr)',
+                    gridTemplateRows: 'repeat(8, 1fr)',
+                    width: '100%',
+                    height: '100%',
+                  }}
+                >
+                  {Array.from({ length: 64 }, (_, idx) => {
+                    const row = Math.floor(idx / 8)
+                    const col = idx % 8
+                    const piece = currentBoard[row]?.[col] ?? null
+                    const isLight = (row + col) % 2 === 0
+                    const isSelected = selectedSquare !== null && selectedSquare[0] === row && selectedSquare[1] === col
 
-      {/* File labels */}
-      <div
-        className="mx-auto flex max-w-[400px] justify-between px-1"
-        style={{ color: 'var(--text-faint)', fontSize: '11px' }}
-      >
-        {['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'].map((f) => (
-          <span key={f}>{f}</span>
-        ))}
-      </div>
+                    return (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => handleSquareClick(row, col)}
+                        disabled={submitted || status !== 'playing'}
+                        aria-label={`${squareName(row, col)}${piece ? ` ${PIECE_CHAR[piece]}` : ''}`}
+                        style={{
+                          background: isSelected ? 'rgba(30, 144, 255, 0.5)' : isLight ? '#f0d9b5' : '#b58863',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontSize: 'clamp(1.5rem, 5vw, 2.5rem)',
+                          lineHeight: 1,
+                          cursor: status === 'playing' && !submitted ? 'pointer' : 'default',
+                          border: 'none',
+                          padding: 0,
+                          position: 'relative',
+                          outline: isSelected ? '2px solid dodgerblue' : 'none',
+                          outlineOffset: '-2px',
+                        }}
+                      >
+                        {piece ? (
+                          <span
+                            style={{
+                              color: piece === piece.toUpperCase() ? '#fff' : '#1a1a1a',
+                              WebkitTextStroke: piece === piece.toUpperCase() ? '1px #333' : '0.5px rgba(0,0,0,0.3)',
+                              userSelect: 'none',
+                            }}
+                          >
+                            {PIECE_CHAR[piece]}
+                          </span>
+                        ) : null}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+              {/* File labels */}
+              <div /> {/* empty cell under rank labels */}
+              <div className="flex justify-between px-1 pt-1" style={{ color: 'var(--text-faint)', fontSize: '11px' }}>
+                {files.map((f) => (
+                  <span key={f}>{f}</span>
+                ))}
+              </div>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* Status text */}
       <div

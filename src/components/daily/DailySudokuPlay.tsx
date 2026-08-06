@@ -269,6 +269,11 @@ export function DailySudokuPlay({ challengeId, puzzle, timer: maxSeconds, onSubm
         </span>
       </div>
 
+      {/* Instructions */}
+      <p className="text-center" style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>
+        Fill every row, column, and 3x3 box with the numbers 1-9. Tap a cell, then tap a number.
+      </p>
+
       <SudokuBoard
         puzzle={puzzle}
         userGrid={displayGrid}

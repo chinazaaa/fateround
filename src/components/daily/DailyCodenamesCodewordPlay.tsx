@@ -76,6 +76,11 @@ export function DailyCodenamesCodewordPlay({
 
   return (
     <div className="space-y-4">
+      {/* Instructions */}
+      <p className="text-center" style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>
+        The clue hints at words in the grid. Select the matching words (up to the clue number), then submit.
+      </p>
+
       {/* Clue card */}
       <div
         className="rounded-xl p-5 text-center"

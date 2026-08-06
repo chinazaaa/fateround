@@ -312,6 +312,11 @@ export function DailyCrosswordPlay({ challengeId, puzzle, timer: maxSeconds, onS
         </span>
       </div>
 
+      {/* Instructions */}
+      <p className="text-center" style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>
+        Fill the grid using the clues. Tap a cell to select it, type your answer. Tap again to toggle direction.
+      </p>
+
       {/* Desktop: board+keyboard left, clues right. Mobile: stacked. */}
       <div className="lg:grid lg:grid-cols-[1fr_280px] lg:gap-4 lg:items-start">
         {/* Left column: board + keyboard */}

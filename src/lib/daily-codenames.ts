@@ -706,23 +706,30 @@ export function generateCodenamesFromContent(
   seed: number,
   timer: number
 ): CodenamesPuzzleResult | null {
-  if (!isValidAdminContent(adminContent)) return null
+  let puzzle: unknown = adminContent
 
+  if (Array.isArray(adminContent)) {
+    if (adminContent.length === 0) return null
+    const idx = ((seed % adminContent.length) + adminContent.length) % adminContent.length
+    puzzle = adminContent[idx]
+  }
+
+  if (!isValidAdminContent(puzzle)) return null
   const rng = createRng(seed)
-  const shuffledGrid = shuffleArray(adminContent.grid, rng)
+  const shuffledGrid = shuffleArray(puzzle.grid, rng)
 
   return {
     puzzleData: {
       grid: shuffledGrid,
-      clue: adminContent.clue,
-      clueNumber: adminContent.clueNumber,
+      clue: puzzle.clue,
+      clueNumber: puzzle.clueNumber,
       solution: {
-        correctWords: [...adminContent.correctWords],
+        correctWords: [...puzzle.correctWords],
       },
     },
     config: {
       timer,
-      totalWords: adminContent.clueNumber,
+      totalWords: puzzle.clueNumber,
       gridSize: 25,
     },
   }

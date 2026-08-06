@@ -160,6 +160,11 @@ export function DailyWordScramblePlay({
         </span>
       </div>
 
+      {/* Instructions */}
+      <p className="text-center" style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>
+        Unscramble each word using the hint. Type your answer and press Enter. Skip to come back later.
+      </p>
+
       {/* Current scramble — shown until every word is solved. Skipping cycles through the remaining
           unsolved (incl. previously skipped) words, so you can always come back to them. */}
       {!allSolved && !submitted && (

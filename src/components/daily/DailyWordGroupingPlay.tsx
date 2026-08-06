@@ -252,6 +252,11 @@ export function DailyWordGroupingPlay({
         </div>
       </div>
 
+      {/* Instructions */}
+      <p className="text-center" style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>
+        Find four groups of four words that share something in common. Select 4 words and tap Submit.
+      </p>
+
       {/* One away toast */}
       {oneAway && (
         <div

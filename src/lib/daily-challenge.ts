@@ -224,6 +224,10 @@ export function stripSolution(
   }
 
   if (gameType === 'chess_mate') {
+    const solution = puzzleData.solution as { lines?: string[][] } | undefined
+    if (solution?.lines) {
+      safe.solutionLines = solution.lines
+    }
     delete safe.solution
   }
 

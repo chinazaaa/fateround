@@ -254,9 +254,18 @@ export function generateWordGroupingFromContent(
   seed: number,
   timer: number
 ): WordGroupingPuzzleResult | null {
-  if (!adminContent || typeof adminContent !== 'object') return null
+  let puzzle: unknown = adminContent
 
-  const content = adminContent as Record<string, unknown>
+  // Support an array of puzzles (pick one by seed)
+  if (Array.isArray(adminContent)) {
+    if (adminContent.length === 0) return null
+    const idx = ((seed % adminContent.length) + adminContent.length) % adminContent.length
+    puzzle = adminContent[idx]
+  }
+
+  if (!puzzle || typeof puzzle !== 'object') return null
+
+  const content = puzzle as Record<string, unknown>
   if (!Array.isArray(content.groups)) return null
 
   const groups = content.groups as unknown[]

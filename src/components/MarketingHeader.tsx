@@ -107,7 +107,6 @@ const NAV: NavItem[] = [
   { href: '/games', label: 'Games', icon: UI_ICONS.games },
   { href: '/tournament', label: 'Tournaments', icon: UI_ICONS.tournament },
   { href: '/daily-challenges', label: 'Daily Challenges', icon: UI_ICONS.dailyChallenges },
-  { href: '/rooms', label: 'Rooms', icon: UI_ICONS.home },
   { href: '/leaderboard', label: 'Leaderboard', icon: UI_ICONS.leaderboard },
   { href: '/updates', label: "What's new", icon: UI_ICONS.whatsNew },
 ]

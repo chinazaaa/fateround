@@ -378,16 +378,25 @@ export function generateChessMateFromContent(
   seed: number,
   timer: number
 ): ChessMatePuzzleResult | null {
-  if (!isValidAdminContent(adminContent)) return null
+  let puzzle: unknown = adminContent
 
-  const mateIn = adminContent.mateIn as 2 | 3
+  // Support both a single puzzle object and an array of puzzles (pick one by seed)
+  if (Array.isArray(adminContent)) {
+    if (adminContent.length === 0) return null
+    const idx = ((seed % adminContent.length) + adminContent.length) % adminContent.length
+    puzzle = adminContent[idx]
+  }
+
+  if (!isValidAdminContent(puzzle)) return null
+
+  const mateIn = puzzle.mateIn as 2 | 3
 
   return {
     puzzleData: {
-      fen: adminContent.fen,
+      fen: puzzle.fen,
       mateIn,
-      toMove: adminContent.toMove,
-      solution: { lines: adminContent.lines },
+      toMove: puzzle.toMove,
+      solution: { lines: puzzle.lines },
     },
     config: {
       timer,
