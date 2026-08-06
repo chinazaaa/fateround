@@ -88,4 +88,5 @@ FROM   daily_challenges dc
 WHERE  ds.challenge_id = dc.id
   AND  dc.game_type = 'ludo_puzzle'
   AND  ds.items_solved < 4
-  AND  ds.items_solved > 0;
+  AND  ds.items_solved > 0
+  AND  ds.raw_points < ds.items_solved * 250;

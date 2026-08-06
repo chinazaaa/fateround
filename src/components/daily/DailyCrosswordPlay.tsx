@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
+import { useState, useCallback, useEffect, useLayoutEffect, useRef, useMemo } from 'react'
 import { CrosswordBoard } from '@/components/crossword/CrosswordBoard'
 import { useDailyChallengeTimer } from '@/hooks/useDailyChallengeTimer'
 import { hashWord } from '@/lib/daily-word-hash'
@@ -34,11 +34,9 @@ export function DailyCrosswordPlay({ challengeId, puzzle, timer: maxSeconds, onS
   const directionRef = useRef<'across' | 'down'>('across')
   const setDirection = useCallback((d: 'across' | 'down' | ((prev: 'across' | 'down') => 'across' | 'down')) => {
     if (typeof d === 'function') {
-      _setDirection((prev) => {
-        const next = d(prev)
-        directionRef.current = next
-        return next
-      })
+      const next = d(directionRef.current)
+      directionRef.current = next
+      _setDirection(next)
     } else {
       directionRef.current = d
       _setDirection(d)
@@ -111,7 +109,9 @@ export function DailyCrosswordPlay({ challengeId, puzzle, timer: maxSeconds, onS
   }, [clues, answerHashes, letterGrid, size])
 
   const solvedCellsRef = useRef(solvedCells)
-  solvedCellsRef.current = solvedCells
+  useLayoutEffect(() => {
+    solvedCellsRef.current = solvedCells
+  }, [solvedCells])
 
   const handleSubmit = useCallback(() => {
     if (submitRef.current) return
@@ -197,24 +197,25 @@ export function DailyCrosswordPlay({ challengeId, puzzle, timer: maxSeconds, onS
       if (submitted || !cell) return
       const letter = raw.toUpperCase()
       if (!/^[A-Z]$/.test(letter)) return
-      const [row, col] = cell
-      if (solvedCellsRef.current[row]?.[col]) {
-        const dir = directionRef.current
-        const dr = dir === 'down' ? 1 : 0
-        const dc = dir === 'across' ? 1 : 0
+      const dir = directionRef.current
+      const dr = dir === 'down' ? 1 : 0
+      const dc = dir === 'across' ? 1 : 0
+
+      let [row, col] = cell
+      while (solvedCellsRef.current[row]?.[col]) {
         const nr = row + dr
         const nc = col + dc
-        if (nr >= 0 && nr < size && nc >= 0 && nc < size && !metadata.blocked[nr][nc]) setSelectedCell([nr, nc])
-        return
+        if (nr < 0 || nr >= size || nc < 0 || nc >= size || metadata.blocked[nr][nc]) return
+        row = nr
+        col = nc
       }
+
+      setSelectedCell([row, col])
       setLetterGrid((prev) => {
         const next = prev.map((r) => [...r])
         next[row][col] = letter
         return next
       })
-      const dir = directionRef.current
-      const dr = dir === 'down' ? 1 : 0
-      const dc = dir === 'across' ? 1 : 0
       const nr = row + dr
       const nc = col + dc
       if (nr >= 0 && nr < size && nc >= 0 && nc < size && !metadata.blocked[nr][nc]) setSelectedCell([nr, nc])
