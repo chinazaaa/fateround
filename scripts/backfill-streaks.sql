@@ -7,7 +7,7 @@
 
 WITH play_dates AS (
   SELECT profile_id,
-         ((created_at AT TIME ZONE 'UTC') + INTERVAL '1 hour')::date AS d
+         ((submitted_at AT TIME ZONE 'UTC') + INTERVAL '1 hour')::date AS d
   FROM   daily_scores
   WHERE  profile_id IS NOT NULL
   UNION
