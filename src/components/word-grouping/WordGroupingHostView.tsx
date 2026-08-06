@@ -21,6 +21,9 @@ import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import { useGameRosterPoll } from '@/hooks/useGameRosterPoll'
 import { useGameScores, useGameStats } from '@/components/roster/RosterDrawerContext'
 import { useRegisterGameSettings } from '@/components/GameSettingsContext'
+import { HostActiveSettings } from '@/components/host/HostActiveSettings'
+import { HostLateJoinSettingsCard } from '@/components/HostLateJoinSettingsCard'
+import { HostLeaveSeatButton } from '@/components/host/HostLeaveSeatButton'
 import { useToast } from '@/components/ui/Toast'
 import { gameTypeConfig } from '@/lib/game-types'
 import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
@@ -130,6 +133,7 @@ export function WordGroupingHostView({ gameCode, hostToken }: { gameCode: string
     changeHostMode,
     hostJoinGame,
     renameHost,
+    leaveSeatKeepHosting,
     handlePlayerRemoved: onHostSeatRemoved,
   } = useHostSeat({
     gameCode,
@@ -151,7 +155,29 @@ export function WordGroupingHostView({ gameCode, hostToken }: { gameCode: string
 
   useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
   useGameRosterPoll(gameCode, game?.status, { setGame, setPlayers, reload: load })
-  useRegisterGameSettings(null)
+  // In-game host settings — surfaces late-joiner toggle + End Game + a "leave seat, keep hosting"
+  // action when the host is playing along. Matches the shape word-scramble / crossword / sudoku
+  // use. Gated on an active game so the sheet is only registered while there's something to
+  // manage; waiting lobby has its own dedicated settings sheet.
+  const hostSettingsNode = useMemo(
+    () =>
+      game && game.status === 'active' ? (
+        <HostActiveSettings
+          gameCode={gameCode}
+          hostToken={hostToken}
+          gameType="word_grouping"
+          onEnded={load}
+          endGameConfirmMessage="Players will see the final results."
+        >
+          <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
+          {hostMode === 'player' && !!hostPlayerId && (
+            <HostLeaveSeatButton onLeave={leaveSeatKeepHosting} className="btn-secondary w-full py-3 text-base" />
+          )}
+        </HostActiveSettings>
+      ) : null,
+    [game, gameCode, hostToken, load, hostMode, hostPlayerId, leaveSeatKeepHosting]
+  )
+  useRegisterGameSettings(hostSettingsNode)
 
   const gameStatusRef = useRef(game?.status)
   gameStatusRef.current = game?.status
@@ -210,11 +236,46 @@ export function WordGroupingHostView({ gameCode, hostToken }: { gameCode: string
   const timerSeconds = game?.game_duration_seconds ?? 0
   const timeRemaining = timerSeconds > 0 ? Math.max(0, timerSeconds - sessionElapsedSeconds) : null
 
-  const hostExpiredRef = useRef(false)
+  // Same retry-until-finished pattern as the player view — a single one-shot call at
+  // timer=0 can hit the expire route's 5s clock-skew buffer and no-op, leaving the host on
+  // the active screen until a manual refresh. Poll every 3s while local time is up so at
+  // least one call lands after the buffer clears.
+  const hostExpireIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   useEffect(() => {
-    if (game?.status === 'active' && timeRemaining !== null && timeRemaining <= 0 && !hostExpiredRef.current) {
-      hostExpiredRef.current = true
-      fetch(`/api/games/${gameCode}/expire-word-grouping`, { method: 'POST' }).then(() => load())
+    if (game?.status !== 'active' || timeRemaining === null || timeRemaining > 0) {
+      if (hostExpireIntervalRef.current) {
+        clearInterval(hostExpireIntervalRef.current)
+        hostExpireIntervalRef.current = null
+      }
+      return
+    }
+    if (hostExpireIntervalRef.current) return
+
+    let cancelled = false
+    const attempt = async () => {
+      try {
+        const res = await fetch(`/api/games/${gameCode}/expire-word-grouping`, { method: 'POST' })
+        const data = (await res.json().catch(() => ({}))) as { finished?: boolean }
+        if (cancelled) return
+        await load()
+        if (data.finished) {
+          if (hostExpireIntervalRef.current) {
+            clearInterval(hostExpireIntervalRef.current)
+            hostExpireIntervalRef.current = null
+          }
+        }
+      } catch {
+        // Best-effort — the next tick retries.
+      }
+    }
+    void attempt()
+    hostExpireIntervalRef.current = setInterval(attempt, 3000)
+    return () => {
+      cancelled = true
+      if (hostExpireIntervalRef.current) {
+        clearInterval(hostExpireIntervalRef.current)
+        hostExpireIntervalRef.current = null
+      }
     }
   }, [game?.status, timeRemaining, gameCode, load])
 
@@ -410,10 +471,10 @@ export function WordGroupingHostView({ gameCode, hostToken }: { gameCode: string
     </div>
   )
 
-  // Host is playing along — the player view already has its own header/drawer scaffolding.
-  if (game.status === 'active' && hostPlays) {
-    return <WordGroupingPlayerView gameCode={gameCode} />
-  }
+  // Host playing along: the player view is rendered as HostGameLayout's `primary` (not
+  // returned above the layout) so the shared header + drawer's Remove action still wire up
+  // via useRosterManage. Word Scramble uses the same shape.
+  const interactivePlay = <WordGroupingPlayerView gameCode={gameCode} />
 
   const finishedScreen = (
     <div className="mx-auto max-w-lg space-y-4 px-4 py-6">
@@ -497,8 +558,7 @@ export function WordGroupingHostView({ gameCode, hostToken }: { gameCode: string
       status={game.status}
       tab={tab}
       onTabChange={setTab}
-      // Host-only "Watch" board — the playing-host case exits above.
-      primaryKind="watch"
+      primaryKind={hostPlays ? 'play' : 'watch'}
       game={game}
       players={players}
       hostPlayerId={hostPlayerId}
@@ -507,10 +567,13 @@ export function WordGroupingHostView({ gameCode, hostToken }: { gameCode: string
       showTabs={game.status !== 'finished'}
       gameStarted={game.status === 'active'}
       header={<HostGameHeader game={game} />}
-      primary={watchBoard}
+      primary={hostPlays ? interactivePlay : watchBoard}
       manage={watchBoard}
       noManageTab
       finished={finishedScreen}
+      // The playing host's PlayerView already renders its own "Watching" banner; skip the
+      // layout's copy so the two don't stack when the host is spectating a live seat.
+      suppressViewerBanner={hostPlays}
     />
   )
 }

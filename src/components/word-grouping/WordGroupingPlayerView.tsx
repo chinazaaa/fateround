@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
-import { useGameScores, useGameStats } from '@/components/roster/RosterDrawerContext'
+import { useGameScores, useGameStats, useRosterBase } from '@/components/roster/RosterDrawerContext'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { ShareResultsCaptureHeader } from '@/components/ShareResultsCaptureHeader'
 import { PLAYER_SELECT, WORD_GROUPING_SUBMISSION_SELECT } from '@/lib/supabase-selects'
@@ -231,6 +231,33 @@ export function WordGroupingPlayerView({ gameCode }: { gameCode: string }) {
 
   useGameRosterPoll(gameCode, game?.status, { setGame, setPlayers, reload: load })
 
+  // Self-removal detection. Without this a host who kicks a player leaves that player's tab
+  // stuck on their old screen — the roster poll updates the list but no side effect fires
+  // when THEIR row is the one that vanished, so they'd sit there until they refreshed.
+  //
+  // The wasSeatedRef guard is what stops the toast from misfiring: on initial load `players`
+  // is empty for one render before it hydrates, and finishing a room doesn't drop seats — so
+  // "not in the list" alone would fire on both. We only treat a disappearance as removal if
+  // we PREVIOUSLY observed our own row in the list.
+  const wasSeatedRef = useRef(false)
+  useEffect(() => {
+    if (!myPlayerId) {
+      wasSeatedRef.current = false
+      return
+    }
+    const stillSeated = players.some((p) => p.id === myPlayerId)
+    if (stillSeated) {
+      wasSeatedRef.current = true
+      return
+    }
+    if (wasSeatedRef.current) {
+      wasSeatedRef.current = false
+      toastError('You were removed from the game')
+      clearPlayerSession(gameCode)
+      router.push('/')
+    }
+  }, [players, myPlayerId, gameCode, router, toastError])
+
   // Ready-up: without this the waiting lobby has nothing to click and everyone stays "not ready",
   // so the host can never start a fresh room OR a play-again reopen. Same shape the other puzzle
   // views use (crossword / word_search / word_scramble / sudoku).
@@ -264,10 +291,43 @@ export function WordGroupingPlayerView({ gameCode }: { gameCode: string }) {
     return out
   }, [players, submissions])
 
+  // Feed the shared drawer's base rows so the people-icon in the header renders. Without this
+  // `ctx.rows` stays empty and `RosterButton` self-hides — the same reason the host header had
+  // no drawer button when the host played along (that path renders this view directly, before
+  // HostGameLayout — which is the OTHER place that calls useRosterBase — ever mounts).
+  useRosterBase(game?.status === 'active' || game?.status === 'finished' ? players : undefined, game, myPlayerId)
   useGameScores(rosterScores, { suffix: ' pts' })
   useGameStats(rosterDetails)
 
-  useRegisterGameSettings(null)
+  // Player settings live behind the header ⚙ gear — same pattern as word-scramble / crossword.
+  // Registered here instead of rendered inline so there aren't two "change your name" affordances
+  // on screen and non-hosts have a leave button that isn't hidden behind the finished screen.
+  const me = players.find((p) => p.id === myPlayerId)
+  const isViewer = !!(me && game && playerIsViewer(me, game))
+  const playerSettingsNode = useMemo(() => {
+    if (!myPlayerId) return null
+    return (
+      <div className="space-y-3">
+        <EditNameInline
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          currentName={me?.name ?? ''}
+          onRenamed={() => void load()}
+          spectating={isViewer}
+        />
+        <LeaveGameButton
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          onLeft={() => {
+            clearPlayerSession(gameCode)
+            router.push('/')
+          }}
+          confirmMessage="You can rejoin with your player code if the host opens the lobby again."
+        />
+      </div>
+    )
+  }, [myPlayerId, gameCode, me?.name, isViewer, load, router])
+  useRegisterGameSettings(playerSettingsNode)
 
   // Realtime: game status changes
   useEffect(() => {
@@ -328,9 +388,8 @@ export function WordGroupingPlayerView({ gameCode }: { gameCode: string }) {
   const revealedWords = useMemo(() => new Set(revealedGroups.flatMap((g) => g.words)), [revealedGroups])
   const remainingWords = useMemo(() => words.filter((w) => !revealedWords.has(w)), [words, revealedWords])
   const mistakesRemaining = WORD_GROUPING_MAX_MISTAKES - myMistakes
-
-  const me = players.find((p) => p.id === myPlayerId)
-  const isViewer = !!(me && game && playerIsViewer(me, game))
+  // `me` / `isViewer` are declared next to the settings-node memo above so it can gate
+  // the "spectating" flag; reused here for the puzzle body.
 
   const sessionElapsedSeconds = useMemo(() => {
     if (!game?.session_started_at) return 0
@@ -340,11 +399,48 @@ export function WordGroupingPlayerView({ gameCode }: { gameCode: string }) {
   const timerSeconds = game?.game_duration_seconds ?? 0
   const timeRemaining = timerSeconds > 0 ? Math.max(0, timerSeconds - sessionElapsedSeconds) : null
 
-  const expiredRef = useRef(false)
+  // Auto-finish when the local timer hits zero. The expire route has a 5s server-side
+  // clock-skew buffer, so a single one-shot call can hit that window and return `finished:
+  // false` — leaving every client on the "playing" screen until the user refreshes. Retry on
+  // an interval so at least one call lands after the buffer clears; stop the moment the
+  // response reports finished OR the screen moves on. Reset on new sessions (play-again) so
+  // the same room can expire again next round.
+  const expireIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   useEffect(() => {
-    if (timeRemaining !== null && timeRemaining <= 0 && screen === 'playing' && !expiredRef.current) {
-      expiredRef.current = true
-      fetch(`/api/games/${gameCode}/expire-word-grouping`, { method: 'POST' }).then(() => load())
+    if (timeRemaining === null || timeRemaining > 0 || screen !== 'playing') {
+      if (expireIntervalRef.current) {
+        clearInterval(expireIntervalRef.current)
+        expireIntervalRef.current = null
+      }
+      return
+    }
+    if (expireIntervalRef.current) return
+
+    let cancelled = false
+    const attempt = async () => {
+      try {
+        const res = await fetch(`/api/games/${gameCode}/expire-word-grouping`, { method: 'POST' })
+        const data = (await res.json().catch(() => ({}))) as { finished?: boolean }
+        if (cancelled) return
+        await load()
+        if (data.finished) {
+          if (expireIntervalRef.current) {
+            clearInterval(expireIntervalRef.current)
+            expireIntervalRef.current = null
+          }
+        }
+      } catch {
+        // Best-effort — the next tick retries.
+      }
+    }
+    void attempt()
+    expireIntervalRef.current = setInterval(attempt, 3000)
+    return () => {
+      cancelled = true
+      if (expireIntervalRef.current) {
+        clearInterval(expireIntervalRef.current)
+        expireIntervalRef.current = null
+      }
     }
   }, [timeRemaining, screen, gameCode, load])
 
@@ -500,6 +596,10 @@ export function WordGroupingPlayerView({ gameCode }: { gameCode: string }) {
           gameType={game?.game_type}
           capacityGame={game}
           onReady={handleReady}
+          // Play-again drops seated non-hosts back to spectator so they can re-ready — the
+          // waiting panel only shows the "I'm in — ready to play" button while a player reads
+          // as spectating. Without this the reopened room felt like a dead end.
+          isSpectator={me?.spectator === true}
           game={game}
           players={players}
           myPlayerId={myPlayerId}
@@ -578,9 +678,8 @@ export function WordGroupingPlayerView({ gameCode }: { gameCode: string }) {
           </div>
         )}
 
-        <div className="flex gap-2">
-          {myPlayerId && <LeaveGameButton gameCode={gameCode} playerId={myPlayerId} onLeft={handlePlayerLeft} />}
-        </div>
+        {/* Leave game lives in the ⚙ gear (see playerSettingsNode above), matching crossword
+            and word-scramble — no leftover full-width button on the finished screen. */}
       </div>
     )
   }
@@ -725,15 +824,8 @@ export function WordGroupingPlayerView({ gameCode }: { gameCode: string }) {
         </div>
       )}
 
-      {me && myPlayerId && (
-        <EditNameInline
-          gameCode={gameCode}
-          playerId={myPlayerId}
-          currentName={me.name ?? ''}
-          onRenamed={() => void load()}
-          spectating={isViewer}
-        />
-      )}
+      {/* Edit name lives in the ⚙ gear settings sheet — see playerSettingsNode above — so the
+          play body isn't cluttered with two ways to change your name. */}
     </div>
   )
 }

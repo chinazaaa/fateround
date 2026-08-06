@@ -22,8 +22,13 @@ export function WordGroupingLobbySettings({
   const { error: toastError } = useToast()
   const [saving, setSaving] = useState(false)
 
+  // Persisted question_source is 'platform' or 'custom' (library folds into 'custom' at save
+  // time). WG's segmented control only offers Platform + Library — no separate custom upload
+  // — so a saved 'custom' can only have come from a library pack pick. Map it back to
+  // 'library' for the UI, otherwise the segmented control snaps back to Platform and the
+  // "N puzzles loaded" chip never fires even though a pack is live.
   const savedSource: QuestionSource =
-    parseQuestionSource(game.question_source, 'word_grouping') === 'custom' ? 'custom' : 'platform'
+    parseQuestionSource(game.question_source, 'word_grouping') === 'custom' ? 'library' : 'platform'
   const [source, setSource] = useState<QuestionSource>(savedSource)
   useEffect(() => {
     setSource(savedSource)
@@ -32,7 +37,7 @@ export function WordGroupingLobbySettings({
   if (game.status !== 'waiting') return null
 
   const loadedCount =
-    savedSource === 'custom' && Array.isArray(game.custom_questions) ? game.custom_questions.length : 0
+    savedSource === 'library' && Array.isArray(game.custom_questions) ? game.custom_questions.length : 0
 
   const patch = async (body: Record<string, unknown>): Promise<boolean> => {
     if (saving) return false
@@ -58,7 +63,10 @@ export function WordGroupingLobbySettings({
   const onSourceChange = (next: QuestionSource) => {
     if (saving || next === source) return
     setSource(next)
-    if (next === 'platform' && savedSource === 'custom') {
+    // Switching back to Platform after a library pack was loaded: clear the pool so start
+    // falls back to the built-in bank. Matches savedSource === 'library' now that we surface
+    // library (rather than 'custom') as the UI state.
+    if (next === 'platform' && savedSource === 'library') {
       void patch({ puzzle_custom_questions: [] })
     }
   }
