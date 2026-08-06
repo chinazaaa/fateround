@@ -1968,6 +1968,49 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
       },
     },
   },
+  word_grouping: {
+    id: 'word_grouping',
+    label: 'Word Grouping',
+    tagline: 'Find four groups of four — connections-style',
+    headerEmoji: '🔗🧩',
+    card: {
+      accent: '#f97316',
+      accentSoft: 'rgba(249, 115, 22, 0.15)',
+      emoji: '🔗',
+      players: '1–20 players',
+      vibe: 'Group puzzle race',
+      featured: true,
+    },
+    slots: {
+      kiss: {
+        emoji: '🏆',
+        label: 'Points',
+        color: '#f97316',
+        leaderboardLabel: 'Total points',
+        activeClass: 'bg-orange-500/20 text-orange-100 border-orange-400',
+        borderClass: 'border-orange-500/50 bg-orange-500/10',
+        textColor: '#fdba74',
+      },
+      marry: {
+        emoji: '🔗',
+        label: 'Groups',
+        color: '#22c55e',
+        leaderboardLabel: 'Groups found',
+        activeClass: 'bg-emerald-500/20 text-emerald-100 border-emerald-400',
+        borderClass: 'border-emerald-500/50 bg-emerald-500/10',
+        textColor: '#86efac',
+      },
+      kill: {
+        emoji: '❌',
+        label: 'Mistakes',
+        color: '#ef4444',
+        leaderboardLabel: 'Mistakes made',
+        activeClass: 'bg-red-500/20 text-red-100 border-red-400',
+        borderClass: 'border-red-500/50 bg-red-500/10',
+        textColor: '#fca5a5',
+      },
+    },
+  },
   landmine: {
     id: 'landmine',
     label: 'Landmine',
@@ -2113,6 +2156,7 @@ export const GAME_TYPE_OPTIONS: GameType[] = [
   'crossword',
   'word_search',
   'word_scramble',
+  'word_grouping',
   'landmine',
   'ping_pong',
   'uno',
@@ -2221,6 +2265,7 @@ const GAME_CATEGORY_BY_TYPE: Partial<Record<GameType, GameCategory>> = {
   crossword: 'puzzle',
   word_search: 'puzzle',
   word_scramble: 'puzzle',
+  word_grouping: 'puzzle',
   word_hunt: 'puzzle',
   word_rush: 'puzzle',
 }
@@ -2286,6 +2331,8 @@ export function parseGameType(raw: unknown): GameType {
   if (raw === 'crossword' || raw === 'crosswords') return 'crossword'
   if (raw === 'word_search' || raw === 'word-search' || raw === 'wordsearch') return 'word_search'
   if (raw === 'word_scramble' || raw === 'word-scramble' || raw === 'wordscramble') return 'word_scramble'
+  if (raw === 'word_grouping' || raw === 'word-grouping' || raw === 'wordgrouping' || raw === 'connections')
+    return 'word_grouping'
   if (raw === 'landmine' || raw === 'land-mine') return 'landmine'
   if (raw === 'ping_pong' || raw === 'ping-pong') return 'ping_pong'
   return 'smash_marry_kill'
@@ -2399,6 +2446,8 @@ export function gameHowItWorks(
       return 'Players join with their name — everyone gets the same letter grid and word list. Drag from the first letter to the last to select a hidden word (across, down, or diagonal, sometimes backwards). Each word you find scores points, with a speed bonus for finding it first. First to find every word wins — or the highest score when the timer runs out.'
     case 'word_scramble':
       return 'Players join with their name — everyone gets the same jumbled words. Type the unscrambled answer; correct answers lock in and score, with a speed bonus for solving each scramble first and a bonus for longer words. First to unscramble them all wins — or the highest score when the timer runs out.'
+    case 'word_grouping':
+      return 'Players join with their name — everyone gets the same 16 words arranged in a 4×4 grid. Find 4 groups of 4 words that share something in common. Select 4 words and tap Submit — correct groups are revealed, wrong guesses cost a mistake. Harder groups score more points, with a speed bonus for finding a group first and a perfect-game bonus for zero mistakes. Most points when everyone finishes or the timer runs out wins.'
     case 'i_call_on':
       return "Players join with their name. Set a game timer (or play all 26 letters). Each letter cycle someone calls A–Z, everyone fills Name, Animal, Place, Thing, and Food, then marks the next player's sheet. Duplicates score 5 automatically; unique valid answers score 10. Everyone sees all marks live."
     case 'landmine':
@@ -2675,6 +2724,7 @@ const NAME_ONLY_PLAYER_JOIN_GAMES: Record<GameType, boolean> = {
   crossword: true,
   word_search: true,
   word_scramble: true,
+  word_grouping: true,
   landmine: true,
   ping_pong: true,
   uno: true,
@@ -2725,6 +2775,7 @@ const LOBBY_GAMES: Record<GameType, boolean> = {
   crossword: false,
   word_search: false,
   word_scramble: false,
+  word_grouping: false,
   landmine: false,
   ping_pong: false,
   uno: false,
@@ -2932,6 +2983,10 @@ export function isWordSearchGame(gameType: GameType | string | undefined): boole
 
 export function isWordScrambleGame(gameType: GameType | string | undefined): boolean {
   return parseGameType(gameType) === 'word_scramble'
+}
+
+export function isWordGroupingGame(gameType: GameType | string | undefined): boolean {
+  return parseGameType(gameType) === 'word_grouping'
 }
 
 /** Anonymous room or host-only secret message inbox — shared message storage. */

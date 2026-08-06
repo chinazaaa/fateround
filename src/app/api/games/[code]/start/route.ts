@@ -32,6 +32,7 @@ import {
   isCrosswordGame,
   isWordSearchGame,
   isWordScrambleGame,
+  isWordGroupingGame,
   isLandmineGame,
 } from '@/lib/game-types'
 import { isGameGenderBased } from '@/lib/gender-based'
@@ -155,6 +156,8 @@ import {
   findWordScrambleTheme,
   wordScrambleThemeOptions,
 } from '@/lib/word-scramble-puzzles'
+import { WORD_GROUPING_MIN_PLAYERS } from '@fate-round/shared/word-grouping'
+import { generateWordGroupingPuzzle, generateWordGroupingFromContent } from '@/lib/daily-word-grouping'
 import { buildWordHuntRoundRow, WORD_HUNT_MIN_PLAYERS } from '@/lib/word-hunt'
 import { buildWordHuntMetadata } from '@/lib/word-hunt-dictionary'
 import {
@@ -1081,6 +1084,74 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
         current_round_number: 1,
         rounds_count: 1,
         ...(nextUsage ? { pool_usage: { ...parsePoolUsage(game.pool_usage), word_scramble: nextUsage } } : {}),
+      })
+      .eq('id', code.toUpperCase())
+
+    if (gameError)
+      return NextResponse.json({ error: internalErrorMessage('games/code/start', gameError) }, { status: 500 })
+    return NextResponse.json({ success: true })
+  }
+
+  if (isWordGroupingGame(gameType)) {
+    const playingPlayers = playersData.filter((p) => p.spectator !== true)
+    if (playingPlayers.length < WORD_GROUPING_MIN_PLAYERS) {
+      return NextResponse.json(
+        { error: `Need at least ${WORD_GROUPING_MIN_PLAYERS} players to start` },
+        { status: 400 }
+      )
+    }
+
+    const seed = Date.now() ^ Math.floor(Math.random() * 0xffffffff)
+
+    // Custom content (JSON groups) overrides the platform puzzle bank.
+    const customRows = Array.isArray(game.custom_questions) ? game.custom_questions : []
+    let puzzleResult =
+      customRows.length > 0
+        ? generateWordGroupingFromContent(customRows, seed, game.game_duration_seconds ?? 300)
+        : null
+
+    // Fall back to the built-in puzzle bank.
+    if (!puzzleResult) {
+      // Try platform_content entries first.
+      const platformEntries = await loadPlatformEntries<{ groups: unknown[] }>('word_grouping')
+      if (platformEntries.length > 0) {
+        puzzleResult = generateWordGroupingFromContent(platformEntries, seed, game.game_duration_seconds ?? 300)
+      }
+    }
+    if (!puzzleResult) {
+      puzzleResult = generateWordGroupingPuzzle(seed, game.game_duration_seconds ?? 300)
+    }
+
+    const roundRow = {
+      game_id: code.toUpperCase(),
+      round_number: 1,
+      status: 'active' as const,
+      started_at: sessionStartedAt,
+      word_grouping_metadata: { words: puzzleResult.puzzleData.words },
+    }
+
+    const { data: insertedRound, error: roundError } = await getSupabaseAdmin()
+      .from('rounds')
+      .insert(roundRow)
+      .select('id')
+      .single()
+    if (roundError || !insertedRound) {
+      return NextResponse.json({ error: roundError?.message ?? 'Failed to create round' }, { status: 500 })
+    }
+
+    const { error: solutionError } = await supabase
+      .from('word_grouping_solutions')
+      .insert({ round_id: insertedRound.id, solution: { groups: puzzleResult.puzzleData.solution.groups } })
+    if (solutionError)
+      return NextResponse.json({ error: internalErrorMessage('games/code/start', solutionError) }, { status: 500 })
+
+    const { error: gameError } = await getSupabaseAdmin()
+      .from('games')
+      .update({
+        status: 'active',
+        session_started_at: sessionStartedAt,
+        current_round_number: 1,
+        rounds_count: 1,
       })
       .eq('id', code.toUpperCase())
 

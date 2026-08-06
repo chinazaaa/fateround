@@ -1,0 +1,620 @@
+'use client'
+
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { useRouter } from 'next/navigation'
+import { supabase } from '@/lib/supabase'
+import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
+import { useGameScores, useGameStats } from '@/components/roster/RosterDrawerContext'
+import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
+import { ShareResults } from '@/components/ShareResults'
+import { ShareResultsCaptureHeader } from '@/components/ShareResultsCaptureHeader'
+import { ReplayReadyRing } from '@/components/ReplayReadyRing'
+import { PLAYER_SELECT, WORD_GROUPING_SUBMISSION_SELECT } from '@/lib/supabase-selects'
+import { clearPlayerSession } from '@/lib/utils'
+import { formatMinutesSeconds } from '@/lib/timer-format'
+import { useGameRosterPoll } from '@/hooks/useGameRosterPoll'
+import { useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
+import { useRoomMemberAutoJoin, useRoomMemberJoin, useRoomMemberNamePrefill } from '@/hooks/useRoomMemberJoin'
+import { allowLatePlayers, playerIsViewer, preJoinScreen } from '@/lib/viewers'
+import { LateJoinChoice } from '@/components/LateJoinChoice'
+import { ViewerModeBanner } from '@/components/ViewerModeBanner'
+import { EditNameInline } from '@/components/ui/EditNameInline'
+import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
+import { useRegisterGameSettings } from '@/components/GameSettingsContext'
+import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
+import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
+import { GameInfoChips } from '@/components/game-lobby/GameInfoChips'
+import { GameLobbyWaitingPanel } from '@/components/game-lobby/GameLobbyWaitingPanel'
+import { NameJoinForm } from '@/components/game-lobby/NameJoinForm'
+import { GameRulesLink } from '@/components/ui/GameRulesLink'
+import { gameTypeConfig } from '@/lib/game-types'
+import {
+  WORD_GROUPING_MAX_MISTAKES,
+  WORD_GROUPING_TOTAL_GROUPS,
+  tallyWordGroupingScores,
+} from '@fate-round/shared/word-grouping'
+import type { Game, Player } from '@/types'
+
+const GROUP_COLORS: Record<number, string> = {
+  1: '#f9df6d',
+  2: '#a0c35a',
+  3: '#b0c4ef',
+  4: '#ba81c5',
+}
+
+interface Submission {
+  id: string
+  game_id: string
+  round_id: string
+  player_id: string
+  group_index: number
+  difficulty: number
+  guess_words: string[]
+  is_correct: boolean
+  mistakes_at_time: number
+  submitted_at: string
+}
+
+interface RevealedGroup {
+  category: string
+  words: string[]
+  difficulty: number
+  groupIndex: number
+}
+
+interface SolutionGroup {
+  category: string
+  words: string[]
+  difficulty: 1 | 2 | 3 | 4
+}
+
+type View = 'loading' | 'join' | 'late_join_choice' | 'waiting' | 'playing' | 'finished'
+type WordGroupingGameState = { hasValidRound: boolean }
+
+export function WordGroupingPlayerView({ gameCode }: { gameCode: string }) {
+  const cfg = gameTypeConfig('word_grouping')
+  const router = useRouter()
+  const [roundId, setRoundId] = useState<string | null>(null)
+  const [words, setWords] = useState<string[]>([])
+  const [submissions, setSubmissions] = useState<Submission[]>([])
+  const [selected, setSelected] = useState<string[]>([])
+  const [shaking, setShaking] = useState(false)
+  const [oneAway, setOneAway] = useState(false)
+  const [revealedGroups, setRevealedGroups] = useState<RevealedGroup[]>([])
+  const [solution, setSolution] = useState<SolutionGroup[] | null>(null)
+  const [submitting, setSubmitting] = useState(false)
+  const [nowMs, setNowMs] = useState<number>(Date.now())
+  const finishedCaptureRef = useRef<HTMLDivElement>(null)
+  const { displayName: roomDisplayName, joinExtras, resolving: resolvingRoomMember } = useRoomMemberJoin(gameCode)
+
+  const addSubmission = useCallback((row: Submission) => {
+    setSubmissions((prev) => (prev.some((s) => s.id === row.id) ? prev : [...prev, row]))
+  }, [])
+
+  const loadGameState = useCallback(async (): Promise<{ state: WordGroupingGameState; ok: boolean }> => {
+    return { state: { hasValidRound: false }, ok: true }
+  }, [])
+
+  const afterResolve = useCallback(
+    async (gameData: Game, playerId: string | null): Promise<WordGroupingGameState> => {
+      if (gameData.status === 'finished') {
+        const { data: roundData } = await supabase
+          .from('rounds')
+          .select('id, word_grouping_metadata')
+          .eq('game_id', gameCode)
+          .eq('round_number', 1)
+          .maybeSingle()
+        if (roundData) {
+          setRoundId(roundData.id)
+          const meta = roundData.word_grouping_metadata as { words: string[] } | null
+          if (meta?.words) setWords(meta.words)
+
+          const { data: subs } = await supabase
+            .from('word_grouping_submissions')
+            .select(WORD_GROUPING_SUBMISSION_SELECT)
+            .eq('round_id', roundData.id)
+          if (subs) setSubmissions(subs as Submission[])
+
+          const res = await fetch(`/api/word-grouping/solution?gameId=${gameCode}`)
+          if (res.ok) {
+            const { solution: sol } = await res.json()
+            if (sol?.groups) {
+              setSolution(sol.groups)
+              setRevealedGroups(
+                sol.groups.map((g: SolutionGroup, i: number) => ({
+                  category: g.category,
+                  words: g.words,
+                  difficulty: g.difficulty,
+                  groupIndex: i,
+                }))
+              )
+            }
+          }
+        }
+        return { hasValidRound: !!roundData }
+      }
+
+      if (gameData.status === 'active') {
+        const { data: roundData } = await supabase
+          .from('rounds')
+          .select('id, word_grouping_metadata')
+          .eq('game_id', gameCode)
+          .eq('round_number', 1)
+          .maybeSingle()
+        if (roundData) {
+          setRoundId(roundData.id)
+          const meta = roundData.word_grouping_metadata as { words: string[] } | null
+          if (meta?.words) setWords(meta.words)
+
+          if (playerId) {
+            const { data: subs } = await supabase
+              .from('word_grouping_submissions')
+              .select(WORD_GROUPING_SUBMISSION_SELECT)
+              .eq('round_id', roundData.id)
+            if (subs) {
+              setSubmissions(subs as Submission[])
+              const mySubs = (subs as Submission[]).filter((s) => s.player_id === playerId)
+              const myCorrect = mySubs.filter((s) => s.is_correct)
+              if (myCorrect.length > 0) {
+                setRevealedGroups(
+                  myCorrect.map((s) => ({
+                    category: '',
+                    words: s.guess_words as unknown as string[],
+                    difficulty: s.difficulty,
+                    groupIndex: s.group_index,
+                  }))
+                )
+              }
+            }
+          }
+        }
+        return { hasValidRound: !!roundData }
+      }
+
+      return { hasValidRound: false }
+    },
+    [gameCode]
+  )
+
+  const computeScreen = useCallback((gameData: Game, playerId: string | null, _state: WordGroupingGameState): View => {
+    if (gameData.status === 'finished') return 'finished'
+    if (gameData.status === 'active') {
+      if (!playerId) {
+        const pre = preJoinScreen(gameData, false)
+        if (pre === 'late_join_choice') return 'late_join_choice'
+        return 'join'
+      }
+      return 'playing'
+    }
+    if (!playerId) return 'join'
+    return 'waiting'
+  }, [])
+
+  const { screen, game, players, myPlayerId, myResumeToken, joinName, setJoinName, joining, join, load, lobbyFull } =
+    useGameViewBootstrap<View, WordGroupingGameState>({
+      gameCode,
+      loadingScreen: 'loading',
+      notFoundScreen: 'loading',
+      loadGameState,
+      computeScreen,
+      afterResolve,
+      joinExtras,
+    })
+
+  useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
+  useRoomMemberAutoJoin(roomDisplayName, game, myPlayerId, joining, join, resolvingRoomMember)
+
+  useGameRosterPoll(gameCode, screen === 'waiting' || screen === 'playing')
+
+  // Register game settings for roster drawer scoring
+  const scores = useMemo(() => {
+    const playersArr = players.map((p) => ({ id: p.id, name: p.name }))
+    const tally = tallyWordGroupingScores(playersArr, submissions)
+    return tally.map((t) => ({
+      playerId: t.id,
+      kiss: t.points,
+      marry: t.groups,
+      kill: t.mistakes,
+    }))
+  }, [players, submissions])
+
+  useGameScores(scores)
+  useGameStats(
+    useMemo(
+      () =>
+        players.map((p) => {
+          const mySubs = submissions.filter((s) => s.player_id === p.id)
+          const groups = mySubs.filter((s) => s.is_correct).length
+          const mistakes = mySubs.filter((s) => !s.is_correct).length
+          const done = groups >= WORD_GROUPING_TOTAL_GROUPS || mistakes >= WORD_GROUPING_MAX_MISTAKES
+          return {
+            playerId: p.id,
+            label: done ? `${groups}/4 groups` : `${groups}/4`,
+          }
+        }),
+      [players, submissions]
+    )
+  )
+
+  useRegisterGameSettings(game)
+
+  // Realtime: game status changes
+  useEffect(() => {
+    if (!game) return
+    const channel = supabase
+      .channel(`wg-game-${gameCode}`)
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
+        () => {
+          load()
+        }
+      )
+      .subscribe()
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [game, gameCode, load])
+
+  // Realtime: submissions
+  useEffect(() => {
+    if (!roundId || screen !== 'playing') return
+    const channel = supabase
+      .channel(`wg-subs-${roundId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'word_grouping_submissions',
+          filter: `round_id=eq.${roundId}`,
+        },
+        (payload) => {
+          addSubmission(payload.new as Submission)
+        }
+      )
+      .subscribe()
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [roundId, screen, addSubmission])
+
+  // Timer tick
+  useEffect(() => {
+    if (screen !== 'playing') return
+    const interval = setInterval(() => setNowMs(Date.now()), 1000)
+    return () => clearInterval(interval)
+  }, [screen])
+
+  // Derived state
+  const mySubmissions = useMemo(
+    () => (myPlayerId ? submissions.filter((s) => s.player_id === myPlayerId) : []),
+    [myPlayerId, submissions]
+  )
+  const myMistakes = useMemo(() => mySubmissions.filter((s) => !s.is_correct).length, [mySubmissions])
+  const myCorrectCount = useMemo(() => mySubmissions.filter((s) => s.is_correct).length, [mySubmissions])
+  const isMyPuzzleDone = myCorrectCount >= WORD_GROUPING_TOTAL_GROUPS || myMistakes >= WORD_GROUPING_MAX_MISTAKES
+  const revealedWords = useMemo(() => new Set(revealedGroups.flatMap((g) => g.words)), [revealedGroups])
+  const remainingWords = useMemo(() => words.filter((w) => !revealedWords.has(w)), [words, revealedWords])
+  const mistakesRemaining = WORD_GROUPING_MAX_MISTAKES - myMistakes
+
+  const isViewer = game ? playerIsViewer(game, myPlayerId, players) : false
+
+  const sessionElapsedSeconds = useMemo(() => {
+    if (!game?.session_started_at) return 0
+    return Math.floor((nowMs - new Date(game.session_started_at).getTime()) / 1000)
+  }, [game?.session_started_at, nowMs])
+
+  const timerSeconds = game?.game_duration_seconds ?? 0
+  const timeRemaining = timerSeconds > 0 ? Math.max(0, timerSeconds - sessionElapsedSeconds) : null
+
+  // Selection
+  const toggleWord = (word: string) => {
+    if (submitting || isMyPuzzleDone || isViewer) return
+    setSelected((prev) => {
+      if (prev.includes(word)) return prev.filter((w) => w !== word)
+      if (prev.length >= 4) return prev
+      return [...prev, word]
+    })
+  }
+
+  // Submit guess
+  const handleGuessSubmit = async () => {
+    if (selected.length !== 4 || submitting || isMyPuzzleDone || !myResumeToken) return
+    setSubmitting(true)
+    try {
+      const res = await fetch('/api/word-grouping/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gameId: gameCode, resumeToken: myResumeToken, words: selected }),
+      })
+      const data = await res.json()
+      if (data.isCorrect && data.group) {
+        setRevealedGroups((prev) => [
+          ...prev,
+          {
+            category: data.group.category,
+            words: data.group.words,
+            difficulty: data.group.difficulty,
+            groupIndex: prev.length,
+          },
+        ])
+        setSelected([])
+      } else if (!data.isCorrect) {
+        if (data.oneAway) {
+          setOneAway(true)
+          setTimeout(() => setOneAway(false), 1500)
+        }
+        setShaking(true)
+        setTimeout(() => {
+          setShaking(false)
+          setSelected([])
+        }, 500)
+      }
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  // Leaderboard for finished screen
+  const leaderboardRows = useMemo(() => {
+    const playersArr = players.map((p) => ({ id: p.id, name: p.name }))
+    return tallyWordGroupingScores(playersArr, submissions)
+  }, [players, submissions])
+
+  const myRow = useMemo(
+    () => (myPlayerId ? leaderboardRows.find((r) => r.id === myPlayerId) : undefined),
+    [myPlayerId, leaderboardRows]
+  )
+
+  // ---------- render ----------
+
+  if (screen === 'loading') {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <div className="animate-pulse text-muted">Loading…</div>
+      </div>
+    )
+  }
+
+  if (screen === 'join') {
+    return (
+      <GameJoinLobbyShell gameType="word_grouping">
+        <GameJoinHeader game={game} gameType="word_grouping" />
+        <GameInfoChips game={game} gameType="word_grouping" players={players} />
+        <NameJoinForm
+          value={joinName}
+          onChange={setJoinName}
+          onSubmit={() => join(joinName)}
+          joining={joining}
+          lobbyFull={lobbyFull}
+          gameStatus={game?.status}
+          allowViewers={game?.allow_viewers}
+        />
+        <GameRulesLink gameType="word_grouping" />
+      </GameJoinLobbyShell>
+    )
+  }
+
+  if (screen === 'late_join_choice') {
+    return <LateJoinChoice game={game!} gameCode={gameCode} joinName={joinName} />
+  }
+
+  if (screen === 'waiting') {
+    return (
+      <GameJoinLobbyShell gameType="word_grouping">
+        <GameJoinHeader game={game} gameType="word_grouping" />
+        <GameInfoChips game={game} gameType="word_grouping" players={players} />
+        <GameLobbyWaitingPanel game={game} players={players} myPlayerId={myPlayerId} />
+      </GameJoinLobbyShell>
+    )
+  }
+
+  if (screen === 'finished' && game) {
+    return (
+      <div className="mx-auto max-w-lg space-y-4 px-4 py-6">
+        <div ref={finishedCaptureRef}>
+          <ShareResultsCaptureHeader game={game} gameType="word_grouping" />
+          <h2 className="text-center text-xl font-bold mb-4">Game Over</h2>
+
+          {/* Revealed solution */}
+          {revealedGroups
+            .sort((a, b) => a.difficulty - b.difficulty)
+            .map((group) => (
+              <div
+                key={group.category || group.groupIndex}
+                className="rounded-xl px-4 py-3 text-center mb-2"
+                style={{ background: GROUP_COLORS[group.difficulty] ?? GROUP_COLORS[1], color: '#1a1a1a' }}
+              >
+                <div className="font-bold uppercase tracking-wider text-sm">{group.category}</div>
+                <div className="mt-1 font-medium text-sm">{group.words.join(', ')}</div>
+              </div>
+            ))}
+
+          {myRow && (
+            <div className="mt-4 text-center">
+              <p className="text-lg font-bold">{myRow.points} points</p>
+              <p className="text-muted text-sm">
+                {myRow.groups}/4 groups · {myRow.mistakes} mistake{myRow.mistakes !== 1 ? 's' : ''}
+              </p>
+            </div>
+          )}
+
+          <PaginatedLeaderboard
+            rows={leaderboardRows.map((r, i) => ({
+              rank: i + 1,
+              name: r.name,
+              value: `${r.points} pts`,
+              isMe: r.id === myPlayerId,
+              detail: `${r.groups}/4 groups`,
+            }))}
+          />
+        </div>
+
+        {myRow && leaderboardRows[0]?.id === myPlayerId && (
+          <PostWinToCommunity game={game} myRow={myRow} leaderboard={leaderboardRows} gameType="word_grouping" />
+        )}
+
+        <ShareResults game={game} captureRef={finishedCaptureRef} />
+
+        <ReplayReadyRing game={game} myPlayerId={myPlayerId} myResumeToken={myResumeToken} />
+
+        <div className="flex gap-2">
+          <LeaveGameButton
+            onLeave={() => {
+              clearPlayerSession(gameCode)
+              router.push('/create')
+            }}
+          />
+        </div>
+      </div>
+    )
+  }
+
+  // ---------- playing ----------
+  return (
+    <div className="mx-auto max-w-lg space-y-4 px-4 py-4">
+      <style>{`
+        @keyframes wg-shake {
+          0%, 100% { transform: translateX(0); }
+          20% { transform: translateX(-6px); }
+          40% { transform: translateX(6px); }
+          60% { transform: translateX(-4px); }
+          80% { transform: translateX(4px); }
+        }
+        @keyframes wg-one-away {
+          0% { opacity: 0; transform: translateY(-8px); }
+          15% { opacity: 1; transform: translateY(0); }
+          85% { opacity: 1; transform: translateY(0); }
+          100% { opacity: 0; transform: translateY(-8px); }
+        }
+        .wg-shake { animation: wg-shake 0.4s ease-in-out; }
+        .wg-one-away { animation: wg-one-away 1.5s ease-in-out forwards; }
+      `}</style>
+
+      {isViewer && <ViewerModeBanner />}
+
+      {/* Timer + mistakes bar */}
+      <div
+        className="flex items-center justify-between rounded-xl px-4 py-2.5 sticky top-[3.75rem] z-30"
+        style={{ background: 'var(--card)', border: '1px solid var(--border)' }}
+      >
+        <div className="flex items-center gap-2">
+          <span className="font-bold text-sm">Mistakes</span>
+          <div className="flex gap-1">
+            {Array.from({ length: WORD_GROUPING_MAX_MISTAKES }).map((_, i) => (
+              <span
+                key={i}
+                className="inline-block h-2.5 w-2.5 rounded-full"
+                style={{
+                  background: i < mistakesRemaining ? 'var(--text-muted)' : 'var(--error)',
+                  opacity: i < mistakesRemaining ? 1 : 0.3,
+                }}
+              />
+            ))}
+          </div>
+        </div>
+        {timeRemaining !== null && (
+          <div
+            className="font-bold tabular-nums text-sm"
+            style={{ color: timeRemaining <= 10 ? 'var(--error)' : undefined }}
+          >
+            {formatMinutesSeconds(timeRemaining)}
+          </div>
+        )}
+      </div>
+
+      <p className="text-center text-xs" style={{ color: 'var(--text-faint)' }}>
+        Find four groups of four words that share something in common.
+      </p>
+
+      {/* One away toast */}
+      {oneAway && (
+        <div
+          className="wg-one-away rounded-lg px-4 py-2 text-center font-bold text-sm"
+          style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
+        >
+          One away!
+        </div>
+      )}
+
+      {/* Solved groups */}
+      {revealedGroups
+        .sort((a, b) => a.difficulty - b.difficulty)
+        .map((group) => (
+          <div
+            key={group.category || group.groupIndex}
+            className="rounded-xl px-4 py-3 text-center"
+            style={{ background: GROUP_COLORS[group.difficulty] ?? GROUP_COLORS[1], color: '#1a1a1a' }}
+          >
+            <div className="font-bold uppercase tracking-wider text-sm">{group.category}</div>
+            <div className="mt-1 font-medium text-sm">{group.words.join(', ')}</div>
+          </div>
+        ))}
+
+      {/* Word grid */}
+      {!isMyPuzzleDone && remainingWords.length > 0 && (
+        <div className={`grid grid-cols-4 gap-2 ${shaking ? 'wg-shake' : ''}`}>
+          {remainingWords.map((word) => {
+            const isSelected = selected.includes(word)
+            return (
+              <button
+                key={word}
+                type="button"
+                onClick={() => toggleWord(word)}
+                disabled={isMyPuzzleDone || isViewer}
+                className="flex items-center justify-center rounded-lg px-1 py-3 font-bold uppercase transition-colors disabled:cursor-default"
+                style={{
+                  background: isSelected ? 'var(--surface)' : 'var(--card)',
+                  border: `2px solid ${isSelected ? 'var(--primary)' : 'var(--border)'}`,
+                  fontSize: 'var(--text-sm)',
+                  minHeight: '3.5rem',
+                  wordBreak: 'break-word',
+                }}
+              >
+                {word}
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Action buttons */}
+      {!isMyPuzzleDone && remainingWords.length > 0 && !isViewer && (
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => setSelected([])}
+            disabled={selected.length === 0}
+            className="fr-btn fr-btn--secondary fr-btn--sm flex-1"
+          >
+            Deselect all
+          </button>
+          <button
+            type="button"
+            onClick={handleGuessSubmit}
+            disabled={selected.length !== 4 || submitting}
+            className="fr-btn fr-btn--primary fr-btn--sm flex-1"
+          >
+            Submit
+          </button>
+        </div>
+      )}
+
+      {/* Done states */}
+      {isMyPuzzleDone && screen === 'playing' && (
+        <div className="py-8 text-center">
+          <p className="font-bold text-lg">
+            {myCorrectCount >= WORD_GROUPING_TOTAL_GROUPS ? 'Puzzle solved!' : 'Out of guesses'}
+          </p>
+          <p className="mt-1 text-muted text-sm">Waiting for other players…</p>
+          <p className="mt-2 text-sm">
+            {myCorrectCount}/4 groups · {myMistakes} mistake{myMistakes !== 1 ? 's' : ''}
+          </p>
+        </div>
+      )}
+
+      <EditNameInline gameCode={gameCode} myPlayerId={myPlayerId} myResumeToken={myResumeToken} />
+    </div>
+  )
+}

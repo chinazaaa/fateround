@@ -84,6 +84,7 @@ import {
   isCrosswordGame,
   isWordSearchGame,
   isWordScrambleGame,
+  isWordGroupingGame,
   isWordHuntGame,
   isMafiaGame,
   isMatchingPairsGame,
@@ -296,6 +297,11 @@ import {
   type WordScrambleDifficulty,
 } from '@/lib/word-scramble'
 import { wordScrambleThemeOptions, WORD_SCRAMBLE_DEFAULT_THEME } from '@/lib/word-scramble-puzzles'
+import {
+  formatWordGroupingGameDuration,
+  WORD_GROUPING_GAME_DURATION_OPTIONS,
+  WORD_GROUPING_DEFAULT_DURATION,
+} from '@fate-round/shared/word-grouping'
 import { MATCHING_PAIRS_GAME_DURATION_OPTIONS, formatMatchingPairsGameDuration } from '@/lib/memory-match'
 import {
   DESCRIBE_IT_DEFAULT_ROUNDS,
@@ -490,6 +496,7 @@ function CreateGameInner() {
   const [wordScrambleMaxPlayers, setWordScrambleMaxPlayers] = useState(20)
   const [wordScrambleGameDuration, setWordScrambleGameDuration] = useState<number>(WORD_SCRAMBLE_DEFAULT_DURATION)
   const [wordScrambleTheme, setWordScrambleTheme] = useState<string>(WORD_SCRAMBLE_DEFAULT_THEME)
+  const [wordGroupingGameDuration, setWordGroupingGameDuration] = useState<number>(WORD_GROUPING_DEFAULT_DURATION)
   const [wordScrambleDifficulty, setWordScrambleDifficulty] = useState<WordScrambleDifficulty>(
     WORD_SCRAMBLE_DEFAULT_DIFFICULTY
   )
@@ -952,6 +959,7 @@ function CreateGameInner() {
   const isCrossword = isCrosswordGame(settings.game_type)
   const isWordSearch = isWordSearchGame(settings.game_type)
   const isWordScramble = isWordScrambleGame(settings.game_type)
+  const isWordGrouping = isWordGroupingGame(settings.game_type)
   // Difficulty = grid size, which is independent of where the words come from, so it stays editable
   // under every source. A theme only locks difficulty on the Platform tab (admin themes carry one);
   // under Library/Your own there's no theme, so never treat a stale theme value as a lock there.
@@ -1761,7 +1769,14 @@ function CreateGameInner() {
   // packs it's auto-filled from the pack name; for a CSV upload we ask the host directly,
   // right under the upload — hence gated on the custom source. Reused across game blocks.
   const showsContentLabel =
-    isLobbyQuestions || isCrossword || isWordSearch || isWordScramble || isCodewords || isDescribeIt || isWst
+    isLobbyQuestions ||
+    isCrossword ||
+    isWordSearch ||
+    isWordScramble ||
+    isWordGrouping ||
+    isCodewords ||
+    isDescribeIt ||
+    isWst
   const categoryUploadField =
     showsContentLabel && questionSource === 'custom' ? (
       <Field label="Category">
@@ -1810,6 +1825,7 @@ function CreateGameInner() {
     isCrossword ||
     isWordSearch ||
     isWordScramble ||
+    isWordGrouping ||
     isWordHunt ||
     isMatchingPairs
   const isTriviaQuickCreate = isTrivia
@@ -2454,25 +2470,29 @@ function CreateGameInner() {
                   ? (questionSource === 'custom' || questionSource === 'library') && customWordScrambleWords.length >= 4
                     ? 'custom'
                     : 'platform'
-                  : isCodewords
-                    ? questionSource === 'library'
+                  : isWordGrouping
+                    ? questionSource === 'library' && libraryPackQuestions.length > 0
                       ? 'custom'
-                      : questionSource
-                    : isDescribeIt
-                      ? (questionSource === 'custom' || questionSource === 'library') &&
-                        parseDescribeItWords(describeItWords).length > 0
+                      : 'platform'
+                    : isCodewords
+                      ? questionSource === 'library'
                         ? 'custom'
-                        : 'platform'
-                      : isQuickDraw
+                        : questionSource
+                      : isDescribeIt
                         ? (questionSource === 'custom' || questionSource === 'library') &&
-                          parseDescribeItWords(quickDrawWords).length > 0
+                          parseDescribeItWords(describeItWords).length > 0
                           ? 'custom'
                           : 'platform'
-                        : isLobbyQuestions
-                          ? questionSource === 'library'
+                        : isQuickDraw
+                          ? (questionSource === 'custom' || questionSource === 'library') &&
+                            parseDescribeItWords(quickDrawWords).length > 0
                             ? 'custom'
-                            : questionSource
-                          : 'platform',
+                            : 'platform'
+                          : isLobbyQuestions
+                            ? questionSource === 'library'
+                              ? 'custom'
+                              : questionSource
+                            : 'platform',
           custom_questions: isWst
             ? isWstDeck && wstDeckContent.length >= WST_DECK_MIN_ENTRIES
               ? wstDeckContent
@@ -2489,29 +2509,33 @@ function CreateGameInner() {
                   ? (questionSource === 'custom' || questionSource === 'library') && customWordScrambleWords.length >= 4
                     ? customWordScrambleWords
                     : null
-                  : isCodewords
-                    ? questionSource === 'custom' || questionSource === 'library'
-                      ? customCodewordsWords
+                  : isWordGrouping
+                    ? questionSource === 'library' && libraryPackQuestions.length > 0
+                      ? libraryPackQuestions
                       : null
-                    : isDescribeIt
-                      ? (questionSource === 'custom' || questionSource === 'library') &&
-                        parseDescribeItWords(describeItWords).length > 0
-                        ? parseDescribeItWords(describeItWords)
+                    : isCodewords
+                      ? questionSource === 'custom' || questionSource === 'library'
+                        ? customCodewordsWords
                         : null
-                      : isQuickDraw
+                      : isDescribeIt
                         ? (questionSource === 'custom' || questionSource === 'library') &&
-                          parseDescribeItWords(quickDrawWords).length > 0
-                          ? parseDescribeItWords(quickDrawWords)
+                          parseDescribeItWords(describeItWords).length > 0
+                          ? parseDescribeItWords(describeItWords)
                           : null
-                        : isLobbyQuestions && (questionSource === 'custom' || questionSource === 'library')
-                          ? isWyr || isTot
-                            ? customWyrQuestions
-                            : isTrivia
-                              ? customTriviaQuestions
-                              : isQuiplash
-                                ? customMltQuestions
-                                : customMltQuestions
-                          : null,
+                        : isQuickDraw
+                          ? (questionSource === 'custom' || questionSource === 'library') &&
+                            parseDescribeItWords(quickDrawWords).length > 0
+                            ? parseDescribeItWords(quickDrawWords)
+                            : null
+                          : isLobbyQuestions && (questionSource === 'custom' || questionSource === 'library')
+                            ? isWyr || isTot
+                              ? customWyrQuestions
+                              : isTrivia
+                                ? customTriviaQuestions
+                                : isQuiplash
+                                  ? customMltQuestions
+                                  : customMltQuestions
+                            : null,
           trivia_category: isTrivia ? triviaCategory : undefined,
           describe_it_mode: isDescribeIt ? settings.describe_it_mode : undefined,
           landmine_mode: isLandmine ? landmineMode : undefined,
@@ -2627,13 +2651,15 @@ function CreateGameInner() {
                             ? wordSearchGameDuration
                             : isWordScramble
                               ? wordScrambleGameDuration
-                              : isMatchingPairs
-                                ? (settings.game_duration_seconds ?? 0)
-                                : isQuickDraw
-                                  ? quickDrawVoteTimer
-                                  : isLandmine
-                                    ? landmineCategoryTimer
-                                    : undefined,
+                              : isWordGrouping
+                                ? wordGroupingGameDuration
+                                : isMatchingPairs
+                                  ? (settings.game_duration_seconds ?? 0)
+                                  : isQuickDraw
+                                    ? quickDrawVoteTimer
+                                    : isLandmine
+                                      ? landmineCategoryTimer
+                                      : undefined,
           whot_pick3_enabled: isWhot ? whotPick3Enabled : undefined,
           whot_pick2_stacking: isWhot ? whotPick2Stacking : undefined,
           whot_cards_enabled: isWhot ? whotCardsEnabled : undefined,
@@ -5427,6 +5453,78 @@ function CreateGameInner() {
                 <p className="text-faint text-sm leading-relaxed">
                   Everyone races the same jumbled words. Type the answer fastest — each solve scores points, with a
                   speed bonus for solving first and extra for longer words.
+                </p>
+              </SettingsGroup>
+            ) : isWordGrouping ? (
+              <SettingsGroup title="Word Grouping room">
+                <Field label="Answers & clues">
+                  <SegmentedControl
+                    value={questionSource}
+                    onChange={(v) => {
+                      setQuestionSource(v as QuestionSource)
+                      setSelectedPackId(null)
+                      setLibraryPackQuestions([])
+                      setPuzzleUploadError(null)
+                      setPuzzleUploadSummary(null)
+                    }}
+                    options={questionSourceOptions('word_grouping')}
+                  />
+                </Field>
+                {questionSource === 'library' && (
+                  <div className="space-y-2 pt-1">
+                    <LibraryPackPicker
+                      loading={libraryPacksLoading}
+                      packs={libraryPacks}
+                      search={libraryPackSearch}
+                      onSearchChange={setLibraryPackSearch}
+                      selectedPackId={selectedPackId}
+                      onSelect={selectLibraryPack}
+                      noun="puzzles"
+                    />
+                  </div>
+                )}
+                {questionSource === 'custom' && (
+                  <PuzzleUpload
+                    sample={questionSampleFile('word_grouping')}
+                    hint={questionUploadHint('word_grouping')}
+                    buttonLabel="Choose JSON"
+                    fileRef={crosswordFileRef}
+                    error={puzzleUploadError}
+                    summary={puzzleUploadSummary}
+                    onFile={async (file) => {
+                      setPuzzleUploadError(null)
+                      setPuzzleUploadSummary(null)
+                      try {
+                        const raw = JSON.parse(await file.text())
+                        const groups = Array.isArray(raw) ? raw : raw?.groups ? [raw] : []
+                        if (groups.length === 0) throw new Error('No valid puzzles found')
+                        setPuzzleUploadSummary(`${groups.length} puzzle${groups.length === 1 ? '' : 's'} loaded`)
+                      } catch (err) {
+                        setPuzzleUploadError(err instanceof Error ? err.message : 'Could not read that file')
+                      }
+                    }}
+                  />
+                )}
+                {categoryUploadField}
+                <Field label="Max time limit">
+                  <select
+                    value={wordGroupingGameDuration}
+                    onChange={(e) => setWordGroupingGameDuration(Number(e.target.value))}
+                    className="input-field w-full"
+                  >
+                    {WORD_GROUPING_GAME_DURATION_OPTIONS.map((seconds) => (
+                      <option key={seconds} value={seconds}>
+                        {seconds === 0 ? 'No timer' : formatWordGroupingGameDuration(seconds)}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                {showViewerToggle && (
+                  <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="word_grouping" />
+                )}
+                <p className="text-faint text-sm leading-relaxed">
+                  Everyone gets the same 16 words in 4 hidden groups. Find all 4 groups with the fewest mistakes —
+                  harder groups score more points, and the first to find each group gets a bonus.
                 </p>
               </SettingsGroup>
             ) : isCrossword ? (
