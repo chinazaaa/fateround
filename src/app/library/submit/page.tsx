@@ -14,6 +14,12 @@ import { parseWordScrambleEntries } from '@/lib/word-scramble-puzzles'
 import type { TriviaQuestion } from '@/types'
 import type { WyrQuestion } from '@/lib/would-you-rather-questions'
 import type { WstDeckEntry } from '@/lib/who-said-this'
+import type { WordGroupingGroup } from '@/lib/word-grouping'
+
+// Library-side shape for a Word Grouping puzzle. Each pack is an array of these — the multiplayer
+// start route + `generateWordGroupingFromContent` pick one puzzle per game by seed. Must match
+// `parseCustomQuestionsBody` on the create route, which accepts `{ groups: [...] }` entries.
+type WordGroupingPuzzleEntry = { groups: WordGroupingGroup[] }
 
 type GameType =
   | 'trivia'
@@ -28,6 +34,7 @@ type GameType =
   | 'crossword'
   | 'word_search'
   | 'word_scramble'
+  | 'word_grouping'
   | 'who_said_this'
 
 interface ValidationResult {
@@ -40,6 +47,7 @@ interface ValidationResult {
     | { answer: string; clue: string }[]
     | { word: string }[]
     | WstDeckEntry[]
+    | WordGroupingPuzzleEntry[]
   rowCount: number
 }
 
@@ -221,6 +229,101 @@ function validateWordSearch(rows: Record<string, string>[]): ValidationResult {
   return { ok: errors.length === 0, errors, questions, rowCount: rows.length }
 }
 
+/**
+ * Word Grouping CSV: one row PER GROUP. Rows with the same `puzzle` column form one puzzle;
+ * a full puzzle is 4 rows sharing that value, with every difficulty 1–4 present once, 16
+ * unique words across the four groups, and 4 words per group. The output is fed to
+ * `generateWordGroupingFromContent` at game start, which requires the same shape.
+ */
+function validateWordGrouping(rows: Record<string, string>[]): ValidationResult {
+  if (rows.length === 0) return { ok: false, errors: ['No rows found'], questions: [], rowCount: 0 }
+  const required = ['puzzle', 'category', 'difficulty', 'word1', 'word2', 'word3', 'word4']
+  const missing = required.filter((col) => !(col in rows[0]))
+  if (missing.length > 0)
+    return { ok: false, errors: [`Missing columns: ${missing.join(', ')}`], questions: [], rowCount: 0 }
+
+  const errors: string[] = []
+  // Group rows by their `puzzle` column, preserving first-seen order so the numeric label
+  // "puzzle 1 / puzzle 2" the user typed lines up with the pack's on-disk order.
+  const byPuzzle = new Map<string, { rowNum: number; row: Record<string, string> }[]>()
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i]
+    const key = (r.puzzle ?? '').trim()
+    if (!key) {
+      errors.push(`Row ${i + 2}: puzzle is empty`)
+      continue
+    }
+    const list = byPuzzle.get(key) ?? []
+    list.push({ rowNum: i + 2, row: r })
+    byPuzzle.set(key, list)
+  }
+
+  const puzzles: WordGroupingPuzzleEntry[] = []
+  for (const [puzzleKey, entries] of byPuzzle) {
+    if (entries.length !== 4) {
+      errors.push(`Puzzle ${puzzleKey}: needs exactly 4 rows (found ${entries.length})`)
+      continue
+    }
+
+    const groups: WordGroupingGroup[] = []
+    const seenDifficulties = new Set<number>()
+    const seenWords = new Set<string>()
+    let puzzleValid = true
+
+    for (const { rowNum, row } of entries) {
+      const category = (row.category ?? '').trim()
+      if (!category) {
+        errors.push(`Row ${rowNum}: category is empty`)
+        puzzleValid = false
+      }
+
+      const diffRaw = (row.difficulty ?? '').trim()
+      const diff = Number(diffRaw)
+      if (![1, 2, 3, 4].includes(diff)) {
+        errors.push(`Row ${rowNum}: difficulty must be 1, 2, 3 or 4 (got "${diffRaw}")`)
+        puzzleValid = false
+        continue
+      }
+      if (seenDifficulties.has(diff)) {
+        errors.push(`Puzzle ${puzzleKey}: difficulty ${diff} appears twice`)
+        puzzleValid = false
+      }
+      seenDifficulties.add(diff)
+
+      const words = [row.word1, row.word2, row.word3, row.word4].map((w) => (w ?? '').trim())
+      if (words.some((w) => !w)) {
+        errors.push(`Row ${rowNum}: all four words are required`)
+        puzzleValid = false
+        continue
+      }
+      for (const w of words) {
+        const lower = w.toLowerCase()
+        if (seenWords.has(lower)) {
+          errors.push(`Puzzle ${puzzleKey}: "${w}" appears in more than one group`)
+          puzzleValid = false
+        }
+        seenWords.add(lower)
+      }
+
+      groups.push({ category, words, difficulty: diff as 1 | 2 | 3 | 4 })
+    }
+
+    if (puzzleValid && groups.length === 4) {
+      // Sort groups by difficulty so the pack's on-disk order is deterministic — matches
+      // how solved groups render on the finished screen (easiest to hardest).
+      groups.sort((a, b) => a.difficulty - b.difficulty)
+      puzzles.push({ groups })
+    }
+  }
+
+  if (puzzles.length === 0 && errors.length === 0) {
+    errors.push('No complete puzzles found')
+  }
+  if (puzzles.length > 100) errors.push('Maximum 100 puzzles allowed')
+
+  return { ok: errors.length === 0, errors, questions: puzzles, rowCount: rows.length }
+}
+
 function validateWordScramble(rows: Record<string, string>[]): ValidationResult {
   if (rows.length === 0) return { ok: false, errors: ['No rows found'], questions: [], rowCount: 0 }
   if (!('word' in rows[0]) && !('answer' in rows[0])) {
@@ -320,7 +423,35 @@ const GAME_TYPES: { value: GameType; label: string; description: string; columns
     description: 'Words to unscramble, with optional hints',
     columns: 'word, hint',
   },
+  {
+    value: 'word_grouping',
+    label: 'Word Grouping',
+    // One row per group; 4 rows share the same `puzzle` number and cover difficulties 1–4.
+    description: 'Puzzles of 4 groups × 4 words. One row per group.',
+    columns: 'puzzle, category, difficulty, word1, word2, word3, word4',
+  },
 ]
+
+/**
+ * Sample CSV strings per game type — served client-side as a Blob download so submitters
+ * can start from a working template. Populated per game as the shape gets fiddly enough to
+ * matter (Word Grouping's four-rows-per-puzzle layout is the clearest example); games with
+ * a single-column CSV don't need one.
+ */
+const SAMPLE_CSV: Partial<Record<GameType, string>> = {
+  word_grouping: [
+    'puzzle,category,difficulty,word1,word2,word3,word4',
+    '1,Fruits,1,Apple,Pear,Peach,Plum',
+    '1,Colors,2,Red,Blue,Purple,Orange',
+    '1,Animals,3,Cat,Dog,Bird,Fish',
+    '1,___ ball,4,Foot,Basket,Base,Snow',
+    '2,Days of the week,1,Monday,Friday,Sunday,Wednesday',
+    '2,Continents,2,Asia,Europe,Africa,Australia',
+    '2,Kitchen tools,3,Knife,Fork,Spoon,Plate',
+    '2,___ time,4,Bed,Show,Dinner,Prime',
+    '',
+  ].join('\n'),
+}
 
 const DIFFICULTY_TAGS = ['easy', 'intermediate', 'advanced'] as const
 const VIBE_TAGS = ['family-friendly', '18+', 'party', 'spicy'] as const
@@ -418,6 +549,7 @@ export default function SubmitPackPage() {
       else if (gameType === 'crossword') setValidation(validateCrossword(rows))
       else if (gameType === 'word_search') setValidation(validateWordSearch(rows))
       else if (gameType === 'word_scramble') setValidation(validateWordScramble(rows))
+      else if (gameType === 'word_grouping') setValidation(validateWordGrouping(rows))
       else if (gameType === 'pick_a_number') setValidation(validatePrompts(rows, PAN_MIN_POOL))
       else setValidation(validatePrompts(rows)) // covers most_likely_to and never_have_i_ever
     }
@@ -664,6 +796,31 @@ export default function SubmitPackPage() {
               <p className="text-sm font-medium text-muted">Upload CSV</p>
               {selectedType && <p className="text-faint text-xs font-mono">{selectedType.columns}</p>}
             </div>
+
+            {selectedType && SAMPLE_CSV[selectedType.value] && (
+              <p className="text-xs text-muted">
+                Not sure of the shape?{' '}
+                <button
+                  type="button"
+                  onClick={() => {
+                    // Client-side download: no server round-trip, no auth/rate-limit surface.
+                    const csv = SAMPLE_CSV[selectedType.value]!
+                    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+                    const url = URL.createObjectURL(blob)
+                    const a = document.createElement('a')
+                    a.href = url
+                    a.download = `${selectedType.value}-sample.csv`
+                    document.body.appendChild(a)
+                    a.click()
+                    document.body.removeChild(a)
+                    URL.revokeObjectURL(url)
+                  }}
+                  className="underline hover:text-body transition-colors"
+                >
+                  Download a sample .csv
+                </button>
+              </p>
+            )}
 
             <input ref={fileRef} type="file" accept=".csv" onChange={handleFile} className="hidden" />
 
