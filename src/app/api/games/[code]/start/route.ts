@@ -1127,6 +1127,10 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
       round_number: 1,
       status: 'active' as const,
       started_at: sessionStartedAt,
+      // `rounds.participant_ids` is NOT NULL — poll games fill it with the round's participants;
+      // puzzle games don't have that concept, so mirror crossword/word_scramble/word_hunt and
+      // insert an empty array rather than let the default fall to NULL.
+      participant_ids: [] as string[],
       word_grouping_metadata: { words: puzzleResult.puzzleData.words },
     }
 
