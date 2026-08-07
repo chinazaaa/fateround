@@ -25,6 +25,7 @@ interface GameStatus {
   available: boolean
   played: boolean
   score: number | null
+  rank: number | null
   challengeId: string | null
 }
 
@@ -147,6 +148,7 @@ export function DailyHubClient() {
           const status = games.find((game) => game.gameType === gameType)
           const played = status?.played ?? false
           const score = status?.score ?? null
+          const rank = status?.rank ?? null
           const startedAt = status?.challengeId ? startedAtById[status.challengeId] : undefined
           // In progress = time still left; expired = time's up but never submitted (opening it
           // just finalizes the result).
@@ -184,9 +186,15 @@ export function DailyHubClient() {
                 ) : played && score !== null ? (
                   <div className="text-right">
                     <span className="fr-badge fr-badge--soft">{score} pts</span>
-                    <span className="mt-1 block text-xs font-semibold" style={{ color: 'var(--success)' }}>
-                      Completed
-                    </span>
+                    {rank ? (
+                      <span className="mt-1 block text-xs font-bold" style={{ color: 'var(--primary)' }}>
+                        #{rank}
+                      </span>
+                    ) : (
+                      <span className="mt-1 block text-xs font-semibold" style={{ color: 'var(--success)' }}>
+                        Completed
+                      </span>
+                    )}
                   </div>
                 ) : (
                   <span className="fr-btn fr-btn--primary fr-btn--sm">
