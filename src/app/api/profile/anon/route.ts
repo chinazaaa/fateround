@@ -44,13 +44,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: internalErrorMessage('profile/anon', error) }, { status: 500 })
     }
 
+    const admin = getSupabaseAdmin()
+
     // Give brand-new profiles a friendly random name so leaderboards aren't a wall of "Guest".
     // Scoped to handle IS NULL, so it only ever fires on first creation and never overwrites a
     // name the player has chosen (or a returning player's existing handle).
-    const firstTimeFields: Record<string, string> = { handle: randomDisplayName() }
-    if (country) firstTimeFields.country = country
+    await admin.from('profiles').update({ handle: randomDisplayName() }).eq('id', identity.profileId).is('handle', null)
 
-    await getSupabaseAdmin().from('profiles').update(firstTimeFields).eq('id', identity.profileId).is('handle', null)
+    // Backfill country for any profile that doesn't have one yet (old or new).
+    if (country) {
+      await admin.from('profiles').update({ country }).eq('id', identity.profileId).is('country', null)
+    }
 
     return NextResponse.json({ profileId: identity.profileId }, { status: 200 })
   } catch (err) {
