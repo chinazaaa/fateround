@@ -42,7 +42,7 @@ import { clampSudokuGameDuration } from '@/lib/sudoku'
 import { clampCrosswordGameDuration, parseCrosswordDifficulty } from '@/lib/crossword'
 import { clampWordSearchGameDuration, parseWordSearchDifficulty } from '@/lib/word-search'
 import { clampWordScrambleGameDuration, parseWordScrambleDifficulty } from '@/lib/word-scramble'
-import { clampWordGroupingGameDuration } from '@/lib/word-grouping'
+import { clampWordGroupingGameDuration, parseStoredWordGroupingPuzzles } from '@/lib/word-grouping'
 import { findCrosswordTheme } from '@/lib/crossword-puzzles'
 import { findWordSearchTheme } from '@/lib/word-search-puzzles'
 import { findWordScrambleTheme } from '@/lib/word-scramble-puzzles'
@@ -520,6 +520,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   // Re-validate + normalise per game type (never trust the client's array), require 4+ entries,
   // then store it as a custom pool. question_source='custom' makes start ignore the built-in theme.
   if (puzzle_custom_questions !== undefined) {
+    // Every WG puzzle here is validated with the same shape check the create route + game
+    // start route use (parseStoredWordGroupingPuzzles) — previously we cast to `unknown[]`,
+    // which let malformed puzzles reach `custom_questions` and silently fall back to the
+    // built-in bank at game start.
     const normalised =
       limitOnlyType === 'crossword'
         ? parseStoredCrosswordEntries(puzzle_custom_questions)
@@ -528,7 +532,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
           : limitOnlyType === 'word_scramble'
             ? parseStoredWordScrambleEntries(puzzle_custom_questions)
             : limitOnlyType === 'word_grouping'
-              ? (puzzle_custom_questions as unknown[])
+              ? parseStoredWordGroupingPuzzles(puzzle_custom_questions)
               : null
     if (!normalised) {
       return NextResponse.json({ error: 'This game type has no custom word pool' }, { status: 400 })

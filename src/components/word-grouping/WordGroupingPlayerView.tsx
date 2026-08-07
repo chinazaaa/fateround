@@ -180,7 +180,7 @@ export function WordGroupingPlayerView({ gameCode }: { gameCode: string }) {
     [gameCode]
   )
 
-  const computeScreen = useCallback((gameData: Game, playerId: string | null, _state: WordGroupingGameState): View => {
+  const computeScreen = useCallback((gameData: Game, playerId: string | null, state: WordGroupingGameState): View => {
     if (gameData.status === 'finished') return 'finished'
     if (gameData.status === 'active') {
       if (!playerId) {
@@ -188,6 +188,12 @@ export function WordGroupingPlayerView({ gameCode }: { gameCode: string }) {
         if (pre === 'late_join_choice') return 'late_join_choice'
         return 'join'
       }
+      // Gate 'playing' on the round row actually loading — an active game whose round hasn't
+      // materialised yet (rare, but happens during the games.status='active' → INSERT rounds
+      // window) would show a blank grid otherwise, since `remainingWords` is empty and the
+      // action bar hides. `waiting` is a safer holding pattern; the next roster-poll tick
+      // re-derives once the round shows up.
+      if (!state.hasValidRound) return 'waiting'
       return 'playing'
     }
     if (!playerId) return 'join'

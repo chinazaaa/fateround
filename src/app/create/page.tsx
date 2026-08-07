@@ -2472,7 +2472,9 @@ function CreateGameInner() {
                     ? 'custom'
                     : 'platform'
                   : isWordGrouping
-                    ? questionSource === 'library' && libraryPackQuestions.length > 0
+                    ? // Symmetric with the payload gate below: only mark the game as custom
+                      // when the pack meets the same 4-puzzle floor.
+                      questionSource === 'library' && libraryPackQuestions.length >= 4
                       ? 'custom'
                       : 'platform'
                     : isCodewords
@@ -2511,7 +2513,10 @@ function CreateGameInner() {
                     ? customWordScrambleWords
                     : null
                   : isWordGrouping
-                    ? questionSource === 'library' && libraryPackQuestions.length > 0
+                    ? // Match the same 4-puzzle floor crossword/word-search/word-scramble use above
+                      // (and the lobby picker's guard in WordGroupingLobbySettings). Accepting 1–3
+                      // here would let the create route persist a pool the lobby then refuses.
+                      questionSource === 'library' && libraryPackQuestions.length >= 4
                       ? libraryPackQuestions
                       : null
                     : isCodewords

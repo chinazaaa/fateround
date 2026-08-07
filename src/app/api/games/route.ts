@@ -175,7 +175,11 @@ import {
   clampWordScrambleGameDuration,
   WORD_SCRAMBLE_DEFAULT_DURATION,
 } from '@/lib/word-scramble'
-import { clampWordGroupingGameDuration, WORD_GROUPING_DEFAULT_DURATION } from '@/lib/word-grouping'
+import {
+  clampWordGroupingGameDuration,
+  parseStoredWordGroupingPuzzles,
+  WORD_GROUPING_DEFAULT_DURATION,
+} from '@/lib/word-grouping'
 import { findWordScrambleTheme } from '@/lib/word-scramble-puzzles'
 import { findWordSearchTheme } from '@/lib/word-search-puzzles'
 import { clampChessTimer, clampChessBoardTheme, clampChessPieceSet } from '@/lib/chess'
@@ -326,14 +330,11 @@ function parseCustomQuestionsBody(
     return parsed.length >= 4 ? parsed : null
   }
   if (isWordGroupingGame(gameType)) {
-    const valid = raw.filter(
-      (item: unknown) =>
-        item != null &&
-        typeof item === 'object' &&
-        'groups' in (item as Record<string, unknown>) &&
-        Array.isArray((item as Record<string, unknown>).groups)
-    ) as Record<string, unknown>[]
-    return valid.length > 0 ? valid : null
+    // Same shape validator both write paths use — every puzzle must be a full 4×4 with 16
+    // unique words and difficulties 1-4. Previously we only checked "groups is an array",
+    // so a malformed pool reached custom_questions and silently fell back to the built-in
+    // bank at game start (generateWordGroupingFromContent returns null on bad shapes).
+    return parseStoredWordGroupingPuzzles(raw)
   }
   return null
 }

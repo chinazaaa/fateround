@@ -56,3 +56,49 @@ export function wordGroupingFinishSeconds(
   const secs = Math.floor((new Date(lastAt).getTime() - new Date(sessionStartedAt).getTime()) / 1000)
   return Number.isFinite(secs) ? Math.max(0, secs) : null
 }
+
+/**
+ * Canonical shape validator for a persisted WG puzzle pool — used by every write path
+ * (create route, lobby-settings route). Both call sites used to shortcut with `groups is an
+ * array` / `as unknown[]`, so malformed puzzles could reach `custom_questions` and only fail
+ * at game start when `generateWordGroupingFromContent` rejected them silently (falling back
+ * to the built-in bank). This runs the same shape check `generateWordGroupingFromContent`
+ * does — the pool is a non-empty array of `{ groups: [{category, words:[4], difficulty:1-4}]×4 }`
+ * puzzles with 16 unique words across the four groups. Returns the normalised (trimmed)
+ * pool on success or null.
+ */
+export type WordGroupingPuzzleEntry = { groups: { category: string; words: string[]; difficulty: 1 | 2 | 3 | 4 }[] }
+export function parseStoredWordGroupingPuzzles(raw: unknown): WordGroupingPuzzleEntry[] | null {
+  if (!Array.isArray(raw) || raw.length === 0) return null
+  const out: WordGroupingPuzzleEntry[] = []
+  const wordsPerGroup = 4
+  const groupsPerPuzzle = 4
+  for (const rawPuzzle of raw) {
+    if (!rawPuzzle || typeof rawPuzzle !== 'object') return null
+    const puzzle = rawPuzzle as Record<string, unknown>
+    if (!Array.isArray(puzzle.groups) || puzzle.groups.length !== groupsPerPuzzle) return null
+    const groups: WordGroupingPuzzleEntry['groups'] = []
+    const allWords: string[] = []
+    for (const rawGroup of puzzle.groups) {
+      if (!rawGroup || typeof rawGroup !== 'object') return null
+      const g = rawGroup as Record<string, unknown>
+      const category = typeof g.category === 'string' ? g.category.trim() : ''
+      if (!category) return null
+      if (!Array.isArray(g.words) || g.words.length !== wordsPerGroup) return null
+      const words: string[] = []
+      for (const w of g.words) {
+        if (typeof w !== 'string') return null
+        const trimmed = w.trim()
+        if (!trimmed) return null
+        words.push(trimmed)
+        allWords.push(trimmed.toLowerCase())
+      }
+      const diff = Number(g.difficulty)
+      if (![1, 2, 3, 4].includes(diff)) return null
+      groups.push({ category, words, difficulty: diff as 1 | 2 | 3 | 4 })
+    }
+    if (new Set(allWords).size !== groupsPerPuzzle * wordsPerGroup) return null
+    out.push({ groups })
+  }
+  return out
+}
