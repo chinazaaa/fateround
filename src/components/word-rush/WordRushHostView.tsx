@@ -654,7 +654,7 @@ export function WordRushHostView({ gameCode, hostToken }: { gameCode: string; ho
             hostToken={hostToken}
             onEnded={load}
             label="End game"
-            icon={<ExitIcon size={16} />}
+            icon={<ExitIcon size={14} />}
             className="btn-danger-soft"
           />
         </div>

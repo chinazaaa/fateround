@@ -5,7 +5,7 @@
 
 type IconProps = { className?: string; size?: number }
 
-export function PlayIcon({ className, size = 16 }: IconProps) {
+export function PlayIcon({ className, size = 11 }: IconProps) {
   return (
     <svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
       <path d="M8 5.14v13.72a1 1 0 0 0 1.54.84l10.3-6.86a1 1 0 0 0 0-1.68L9.54 4.3A1 1 0 0 0 8 5.14Z" />
@@ -13,7 +13,7 @@ export function PlayIcon({ className, size = 16 }: IconProps) {
   )
 }
 
-export function EyeIcon({ className, size = 16 }: IconProps) {
+export function EyeIcon({ className, size = 11 }: IconProps) {
   return (
     <svg
       className={className}
@@ -33,7 +33,7 @@ export function EyeIcon({ className, size = 16 }: IconProps) {
   )
 }
 
-export function SlidersIcon({ className, size = 16 }: IconProps) {
+export function SlidersIcon({ className, size = 11 }: IconProps) {
   return (
     <svg
       className={className}
@@ -60,7 +60,7 @@ export function SlidersIcon({ className, size = 16 }: IconProps) {
   )
 }
 
-export function CheckIcon({ className, size = 12 }: IconProps) {
+export function CheckIcon({ className, size = 10 }: IconProps) {
   return (
     <svg
       className={className}
@@ -79,7 +79,7 @@ export function CheckIcon({ className, size = 12 }: IconProps) {
   )
 }
 
-function strokeProps(size: number, width = 2) {
+function strokeProps(size: number = 11, width = 2) {
   return {
     width: size,
     height: size,
@@ -93,7 +93,7 @@ function strokeProps(size: number, width = 2) {
   }
 }
 
-export function UsersIcon({ className, size = 16 }: IconProps) {
+export function UsersIcon({ className, size = 11 }: IconProps) {
   return (
     <svg className={className} {...strokeProps(size)}>
       <path d="M17 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
@@ -104,7 +104,7 @@ export function UsersIcon({ className, size = 16 }: IconProps) {
   )
 }
 
-export function BookIcon({ className, size = 16 }: IconProps) {
+export function BookIcon({ className, size = 11 }: IconProps) {
   return (
     <svg className={className} {...strokeProps(size)}>
       <path d="M2 4.5A1.5 1.5 0 0 1 3.5 3H9a3 3 0 0 1 3 3v14a2.5 2.5 0 0 0-2.5-2.5H2Z" />
@@ -113,7 +113,7 @@ export function BookIcon({ className, size = 16 }: IconProps) {
   )
 }
 
-export function ExitIcon({ className, size = 16 }: IconProps) {
+export function ExitIcon({ className, size = 11 }: IconProps) {
   return (
     <svg className={className} {...strokeProps(size)}>
       <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
@@ -123,7 +123,7 @@ export function ExitIcon({ className, size = 16 }: IconProps) {
   )
 }
 
-export function ChevronRightIcon({ className, size = 16 }: IconProps) {
+export function ChevronRightIcon({ className, size = 11 }: IconProps) {
   return (
     <svg className={className} {...strokeProps(size, 2.5)}>
       <polyline points="9 18 15 12 9 6" />
@@ -131,7 +131,7 @@ export function ChevronRightIcon({ className, size = 16 }: IconProps) {
   )
 }
 
-export function TrashIcon({ className, size = 16 }: IconProps) {
+export function TrashIcon({ className, size = 11 }: IconProps) {
   return (
     <svg className={className} {...strokeProps(size)}>
       <polyline points="3 6 5 6 21 6" />
@@ -140,7 +140,7 @@ export function TrashIcon({ className, size = 16 }: IconProps) {
   )
 }
 
-export function PencilIcon({ className, size = 16 }: IconProps) {
+export function PencilIcon({ className, size = 11 }: IconProps) {
   return (
     <svg className={className} {...strokeProps(size)}>
       <path d="M12 20h9" />

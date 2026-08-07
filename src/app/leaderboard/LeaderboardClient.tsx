@@ -8,6 +8,7 @@ import { Glyph } from '@/components/icons/Glyph'
 import { UI_ICONS } from '@/lib/game-glyphs'
 import { addDays, addMonths, watToday } from '@/lib/community-dates'
 import { DEFAULT_WHATSAPP_INVITE_URL } from '@/lib/community-constants'
+import { WhatsAppChannelLink } from '@/components/WhatsAppChannelLink'
 import type { LeaderboardResponse, LeaderboardWindow } from '@/types/community'
 
 const TABS: { key: LeaderboardWindow; label: string }[] = [
@@ -352,15 +353,7 @@ export function LeaderboardClient() {
               Nightly champions from our community games
             </p>
             <div className="pt-1">
-              <a
-                href={data?.whatsappInviteUrl || DEFAULT_WHATSAPP_INVITE_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 rounded-full bg-emerald-500/15 px-4 py-2 text-sm font-semibold text-emerald-600 transition-colors hover:bg-emerald-500/25 no-underline"
-              >
-                <Glyph icon={WhatsappIcon} size={16} />
-                Join the community on WhatsApp
-              </a>
+              <WhatsAppChannelLink className="no-underline">Join the community on WhatsApp</WhatsAppChannelLink>
             </div>
           </div>
 
@@ -485,7 +478,7 @@ export function LeaderboardClient() {
               </p>
               <Link
                 href="/input"
-                className="inline-flex items-center gap-2 rounded-full bg-emerald-500/15 px-4 py-2 text-sm font-semibold text-emerald-600 transition-colors hover:bg-emerald-500/25 no-underline"
+                className="inline-flex items-center gap-1.5 rounded-full border border-[#25D366]/40 px-3.5 py-1.5 text-xs font-semibold text-[#1a9e4e] transition-colors hover:bg-[#25D366]/10 dark:text-[#25D366] dark:hover:bg-[#25D366]/10 no-underline"
               >
                 Enter scores
               </Link>

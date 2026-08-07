@@ -510,7 +510,7 @@ export function CodewordsHostManagePanel({
                 hostToken={hostToken}
                 onEnded={onReload}
                 label="End lobby"
-                icon={<ExitIcon size={16} />}
+                icon={<ExitIcon size={14} />}
                 confirmTitle="Close this lobby?"
                 confirmMessage="Players will be disconnected. You can start a new game from Play again afterward."
                 className="btn-danger-soft"
@@ -538,7 +538,7 @@ export function CodewordsHostManagePanel({
               disabled={playingAgain || ending}
               className="btn-danger-soft flex-1"
             >
-              <ExitIcon size={16} />
+              <ExitIcon size={14} />
               {ending ? 'Closing…' : 'Close session'}
             </button>
           </div>

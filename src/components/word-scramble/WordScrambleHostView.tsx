@@ -473,7 +473,7 @@ export function WordScrambleHostView({ gameCode, hostToken }: { gameCode: string
             hostToken={hostToken}
             onEnded={load}
             label="End game"
-            icon={<ExitIcon size={16} />}
+            icon={<ExitIcon size={14} />}
             confirmTitle="End this game?"
             confirmMessage="Players will see the final results."
             className="btn-danger-soft"

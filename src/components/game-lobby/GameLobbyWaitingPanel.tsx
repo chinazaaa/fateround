@@ -116,7 +116,7 @@ export function GameLobbyWaitingPanel({
         {gameCfg && parsedGameType && (
           <p className="flex items-center justify-center gap-1.5 pt-1 text-sm font-bold text-[var(--foreground)]">
             <span className="fr-glyph text-[var(--primary)]">
-              <Glyph icon={gameIcon(parsedGameType)} size={16} />
+              <Glyph icon={gameIcon(parsedGameType)} size={14} />
             </span>
             <span>{gameCfg.label}</span>
           </p>

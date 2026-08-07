@@ -4,6 +4,8 @@ import { useEffect } from 'react'
 import { GameTypeBadge } from '@/components/GameTypeBadge'
 import { PlayerResumeEntry } from '@/components/PlayerResumeEntry'
 import { gameTypeConfig, parseGameType } from '@/lib/game-types'
+import { gameIcon } from '@/lib/game-glyphs'
+import { Glyph } from '@/components/icons/Glyph'
 import { useLobbyOpenNotification } from '@/hooks/useLobbyOpenNotification'
 import { supabase } from '@/lib/supabase'
 import { GAME_SELECT } from '@/lib/supabase-selects'
@@ -42,7 +44,11 @@ export function GameStartedWaiting({ gameCode, game, onLobbyOpen }: Props) {
     <div className="page-wrap flex items-center justify-center px-4">
       <div className="glass-card p-6 w-full max-w-md space-y-5 text-center">
         <div className="space-y-2">
-          <div className="text-4xl">{cfg.headerEmoji}</div>
+          <div className="flex justify-center text-[var(--primary)] pb-1">
+            <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[color-mix(in_srgb,var(--primary)_12%,transparent)]">
+              <Glyph icon={gameIcon(gameType)} size={24} />
+            </span>
+          </div>
           <h1 className="text-2xl font-black text-body">{game?.title ?? 'Game in progress'}</h1>
           <GameTypeBadge gameType={gameType as GameType} />
         </div>

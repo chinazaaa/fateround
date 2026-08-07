@@ -34,7 +34,7 @@ export function TrophiesForThisGameLink({ gameCode, className }: { gameCode: str
     <Link href={`/profile/${encodeURIComponent(gameType)}`} className={className}>
       {/* Bare glyph, no `.fr-glyph` plate: this row lives in the in-game settings sheet, which is
           styled from globals.css and has none of the `fr-*` tokens the plate needs. */}
-      <Glyph icon={ChampionIcon} size={16} />
+      <Glyph icon={ChampionIcon} size={11} />
       Trophies in this game
     </Link>
   )

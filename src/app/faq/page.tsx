@@ -95,7 +95,7 @@ export default function FaqPage() {
                 </p>
                 <Link
                   href="/games"
-                  className="inline-flex items-center gap-2 rounded-full bg-emerald-500/15 px-4 py-2 text-sm font-semibold text-emerald-600 transition-colors hover:bg-emerald-500/25"
+                  className="inline-flex items-center gap-1.5 rounded-full border border-[#25D366]/40 px-3.5 py-1.5 text-xs font-semibold text-[#1a9e4e] transition-colors hover:bg-[#25D366]/10 dark:text-[#25D366] dark:hover:bg-[#25D366]/10"
                 >
                   Browse all games
                 </Link>

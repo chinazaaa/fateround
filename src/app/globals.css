@@ -12,6 +12,17 @@ body:has(.fr-site) .app-fixed-theme-toggle {
   display: none !important;
 }
 
+.app-fixed-theme-toggle {
+  position: fixed !important;
+  top: 1rem !important;
+  right: 1rem !important;
+  z-index: 50 !important;
+  width: 38px !important;
+  min-width: 38px !important;
+  height: 38px !important;
+  margin: 0 !important;
+}
+
 /* ── Light theme (default) ─────────────────────────────────────── */
 :root {
   color-scheme: light;
@@ -1206,6 +1217,41 @@ textarea::placeholder,
   box-shadow: 0 0 0 3px rgba(244, 63, 94, 0.12);
 }
 
+select,
+select.input-field,
+.fr-select {
+  appearance: none !important;
+  -webkit-appearance: none !important;
+  -moz-appearance: none !important;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.75 4.5 6 7.75 9.25 4.5' fill='none' stroke='%23f43f5e' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") !important;
+  background-repeat: no-repeat !important;
+  background-position: right 0.875rem center !important;
+  background-size: 12px 12px !important;
+  padding-right: 2.5rem !important;
+  cursor: pointer;
+}
+
+[data-theme='dark'] select,
+[data-theme='dark'] select.input-field,
+[data-theme='dark'] .fr-select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.75 4.5 6 7.75 9.25 4.5' fill='none' stroke='%23f43f5e' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") !important;
+}
+
+select option,
+select.input-field option,
+.fr-select option {
+  background-color: var(--background-soft, #ffffff);
+  color: var(--foreground, #0a0a12);
+  padding: 0.5rem 0.75rem;
+}
+
+[data-theme='dark'] select option,
+[data-theme='dark'] select.input-field option,
+[data-theme='dark'] .fr-select option {
+  background-color: #14141f;
+  color: #f4f4f7;
+}
+
 /* ── Buttons ────────────────────────────────────────────────────── */
 
 /* Hover aura — one accent-coloured glow that blooms out of the button edge and
@@ -1227,10 +1273,44 @@ textarea::placeholder,
    source the cards use, so a button glows whatever the surrounding surface is
    themed to. It sits at a high alpha because the blur spreads that colour over a
    wide area and thins it out. */
+.fr-icon-btn {
+  display: inline-flex;
+  position: relative;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  height: 38px;
+  min-width: 38px;
+  padding: 0 10px;
+  border-radius: 10px;
+  cursor: pointer;
+  background: var(--card-strong, rgba(255, 255, 255, 0.92));
+  border: 1.5px solid var(--border-strong, rgba(0, 0, 0, 0.12));
+  color: var(--foreground, #0a0a12);
+  font-size: 0.875rem;
+  font-weight: 500;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    color 0.15s ease,
+    var(--lift-transition);
+}
+.fr-icon-btn:hover {
+  border-color: var(--primary, #f43f5e);
+  background: var(--card-hover, rgba(255, 255, 255, 0.85));
+  transform: var(--lift-hover);
+}
+.fr-icon-btn:active {
+  transform: var(--lift-press);
+}
+
 .btn-primary,
 .btn-secondary,
 .btn-danger-soft,
-.btn-ghost {
+.btn-ghost,
+.btn-nav,
+.fr-icon-btn {
   position: relative;
   /* Declared on the button, not on :root — a custom property substitutes its
      own var()s at the element where it is *declared*, so a :root definition
@@ -1247,7 +1327,8 @@ textarea::placeholder,
 .btn-primary::after,
 .btn-secondary::after,
 .btn-danger-soft::after,
-.btn-ghost::after {
+.btn-ghost::after,
+.btn-nav::after {
   content: '';
   position: absolute;
   inset: -1px;
@@ -1259,7 +1340,8 @@ textarea::placeholder,
 .btn-primary:hover:not(:disabled)::after,
 .btn-secondary:hover:not(:disabled)::after,
 .btn-danger-soft:hover:not(:disabled)::after,
-.btn-ghost:hover:not(:disabled)::after {
+.btn-ghost:hover:not(:disabled)::after,
+.btn-nav:hover:not(:disabled)::after {
   animation: aura-radiate 0.55s ease-out;
 }
 
@@ -1301,28 +1383,33 @@ textarea::placeholder,
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
-  padding: 0;
-  background: #f43f5e;
-  color: #ffffff;
-  border: none;
-  border-radius: 9999px;
-  box-shadow: 0 2px 6px rgba(244, 63, 94, 0.3);
+  gap: 0.375rem;
+  padding: 0.4375rem 0.8125rem;
+  min-height: 36px;
+  background: transparent !important;
+  color: var(--primary-strong, #e11d48) !important;
+  border: 1.5px solid var(--primary, #f43f5e) !important;
+  border-radius: var(--radius-md, 0.75rem);
+  box-shadow: none !important;
   cursor: pointer;
   user-select: none;
-  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .btn-nav:hover:not(:disabled) {
-  background: #e11d48;
-  color: #ffffff;
+  background: var(--primary, #f43f5e) !important;
+  border-color: var(--primary, #f43f5e) !important;
+  color: #ffffff !important;
   transform: translateY(-1px);
-  box-shadow: 0 4px 10px rgba(225, 29, 72, 0.4);
+  box-shadow: none !important;
 }
 
 .btn-nav:active:not(:disabled) {
   transform: translateY(0);
+  background: var(--primary-strong, #e11d48) !important;
+  border-color: var(--primary-strong, #e11d48) !important;
+  color: #ffffff !important;
+  box-shadow: none !important;
 }
 
 .btn-nav:disabled {
@@ -1336,38 +1423,41 @@ textarea::placeholder,
 .btn-primary {
   width: 100%;
   display: inline-flex;
+  position: relative;
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
   border-radius: 0.75rem;
-  border: none;
-  background: var(--primary);
+  border: 1.5px solid var(--primary) !important;
+  background: transparent !important;
   padding: 1rem 1.25rem;
   font-size: 1rem;
   font-weight: 700;
-  color: #ffffff;
+  color: var(--primary-strong) !important;
   letter-spacing: 0.01em;
-  box-shadow:
-    0 2px 0 var(--primary-strong),
-    0 6px 16px var(--primary-glow);
+  box-shadow: none !important;
   transition:
-    background 0.15s,
+    background 0.2s ease,
+    border-color 0.2s ease,
+    color 0.15s ease,
     var(--lift-transition),
-    box-shadow 0.2s,
-    opacity 0.15s;
+    opacity 0.15s ease;
 }
 
-/* No box-shadow override: the resting `0 6px 16px var(--primary-glow)` carries
-   through unchanged so hover adds no standing glow of its own. The aura pulse is
-   the only glow hover introduces, and it clears itself. */
 .btn-primary:hover:not(:disabled) {
-  background: var(--primary-strong);
+  background: var(--primary) !important;
+  border-color: var(--primary) !important;
+  color: #ffffff !important;
   transform: var(--lift-hover);
+  box-shadow: none !important;
 }
 
 .btn-primary:active:not(:disabled) {
   transform: var(--lift-press);
-  box-shadow: 0 2px 6px var(--primary-glow);
+  background: var(--primary-strong) !important;
+  border-color: var(--primary-strong) !important;
+  color: #ffffff !important;
+  box-shadow: none !important;
 }
 
 .btn-primary:disabled {

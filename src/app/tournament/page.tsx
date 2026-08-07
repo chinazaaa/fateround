@@ -1,34 +1,15 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { WhatsappIcon } from '@hugeicons/core-free-icons'
 import { SiteChrome } from '@/components/SiteChrome'
 import { Glyph } from '@/components/icons/Glyph'
 import { UI_ICONS } from '@/lib/game-glyphs'
-import { DEFAULT_WHATSAPP_INVITE_URL } from '@/lib/community-constants'
+import { WhatsAppChannelLink } from '@/components/WhatsAppChannelLink'
 
 export default function TournamentLandingPage() {
   const router = useRouter()
   const [code, setCode] = useState('')
-  // Community invite link — admin-configured (same link the leaderboard uses),
-  // with the default as a fallback so the prompt always works.
-  const [communityUrl, setCommunityUrl] = useState(DEFAULT_WHATSAPP_INVITE_URL)
-
-  useEffect(() => {
-    let cancelled = false
-    fetch('/api/community/link', { cache: 'no-store' })
-      .then((r) => r.json())
-      .then((d) => {
-        if (!cancelled && d.whatsappInviteUrl) setCommunityUrl(d.whatsappInviteUrl)
-      })
-      .catch(() => {
-        /* keep the default */
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [])
 
   const trimmed = code.trim().toUpperCase()
 
@@ -119,15 +100,7 @@ export default function TournamentLandingPage() {
             <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
               Join our community to get active tournament codes and connect with players anytime.
             </p>
-            <a
-              href={communityUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 rounded-full bg-emerald-500/15 px-4 py-2 text-sm font-semibold text-emerald-600 transition-colors hover:bg-emerald-500/25"
-            >
-              <Glyph icon={WhatsappIcon} size={16} />
-              Join our community
-            </a>
+            <WhatsAppChannelLink />
           </div>
         </div>
       </div>

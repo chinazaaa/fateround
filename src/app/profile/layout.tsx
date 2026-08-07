@@ -10,11 +10,7 @@ export default function ProfileLayout({ children }: { children: React.ReactNode 
   return (
     <>
       <SiteLogoHeader />
-      {/* SiteLogoHeader is fixed, so the page needs to clear it — without this the heading sits
-          underneath the logo. */}
-      <div className="pt-14">
-        <Suspense>{children}</Suspense>
-      </div>
+      <Suspense>{children}</Suspense>
     </>
   )
 }

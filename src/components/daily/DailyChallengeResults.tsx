@@ -14,6 +14,8 @@ import { captureElementAsImage } from '@/lib/capture-element-image'
 import { shareImageBlob } from '@/lib/share-image'
 import { useToast } from '@/components/ui/Toast'
 import { DailyNamePrompt } from './DailyNamePrompt'
+import { ChampionIcon, Target01Icon, ThumbsUpIcon, BicepsFlexedIcon, StarIcon } from '@hugeicons/core-free-icons'
+import { Glyph } from '@/components/icons/Glyph'
 
 interface DailyChallengeResultsProps {
   gameType: DailyChallengeGameType
@@ -129,15 +131,21 @@ export function DailyChallengeResults({
     )
   }
 
-  const emoji = score >= 900 ? '🏆' : score >= 700 ? '🎯' : score >= 400 ? '👍' : '💪'
+  const ResultIcon =
+    score >= 900 ? ChampionIcon : score >= 700 ? Target01Icon : score >= 400 ? ThumbsUpIcon : BicepsFlexedIcon
 
   return (
     <div className="mx-auto max-w-sm px-4 py-8">
       <div className="fr-card fr-card--xl">
         <div className="flex flex-col items-center text-center">
-          {/* Trophy emoji */}
-          <div className="text-4xl mb-2" style={{ filter: 'drop-shadow(0 4px 10px rgba(225, 29, 72, 0.2))' }}>
-            {emoji}
+          {/* Result icon */}
+          <div className="flex justify-center text-[var(--primary)] mb-2">
+            <span
+              className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[color-mix(in_srgb,var(--primary)_12%,transparent)]"
+              style={{ filter: 'drop-shadow(0 4px 10px rgba(225, 29, 72, 0.2))' }}
+            >
+              <Glyph icon={ResultIcon} size={28} />
+            </span>
           </div>
 
           {/* Title */}
@@ -205,7 +213,9 @@ export function DailyChallengeResults({
 
           {/* New personal best */}
           {isNewBest && score > 0 && (
-            <div className="mt-2 fr-badge fr-badge--soft font-semibold animate-bounce">⭐ New Personal Best!</div>
+            <div className="mt-2 fr-badge fr-badge--soft font-semibold animate-bounce inline-flex items-center gap-1">
+              <Glyph icon={StarIcon} size={13} className="shrink-0" /> New Personal Best!
+            </div>
           )}
 
           {/* Stats grid */}

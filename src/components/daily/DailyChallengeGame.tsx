@@ -2,6 +2,8 @@
 
 import Link from 'next/link'
 import { formatDayLabel } from '@/lib/community-dates'
+import { dailyChallengeIcon } from '@/lib/game-glyphs'
+import { Glyph } from '@/components/icons/Glyph'
 import { useDailyChallengeSession } from '@/hooks/useDailyChallengeSession'
 import { DailyChallengeResults } from './DailyChallengeResults'
 import { DailySudokuPlay } from './DailySudokuPlay'
@@ -15,17 +17,16 @@ import { DailyWordGroupingPlay } from './DailyWordGroupingPlay'
 import { DailyChessMatePlay } from './DailyChessMatePlay'
 import { DailyCodenamesCodewordPlay } from './DailyCodenamesCodewordPlay'
 import { DailyLudoPuzzlePlay } from './DailyLudoPuzzlePlay'
-import {
-  DAILY_GAME_LABELS,
-  DAILY_GAME_EMOJIS,
-  DAILY_GAME_TIMER,
-  type DailyChallengeGameType,
-} from '@/lib/daily-challenge'
+import { DAILY_GAME_LABELS, DAILY_GAME_TIMER, type DailyChallengeGameType } from '@/lib/daily-challenge'
 
 function LoadingState({ gameType }: { gameType: DailyChallengeGameType }) {
   return (
     <div className="mx-auto max-w-lg px-4 py-16 text-center">
-      <div className="text-4xl mb-4">{DAILY_GAME_EMOJIS[gameType]}</div>
+      <div className="flex justify-center text-[var(--primary)] mb-2">
+        <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[color-mix(in_srgb,var(--primary)_12%,transparent)]">
+          <Glyph icon={dailyChallengeIcon(gameType)} size={24} />
+        </span>
+      </div>
       <h1 className="font-bold" style={{ fontSize: 'var(--text-xl)' }}>
         Loading Daily {DAILY_GAME_LABELS[gameType]}...
       </h1>
@@ -50,7 +51,11 @@ function ErrorState({ error }: { error: string | null }) {
 function NotLiveState({ gameType, launchDate }: { gameType: DailyChallengeGameType; launchDate: string | null }) {
   return (
     <div className="mx-auto max-w-lg px-4 py-16 text-center">
-      <div className="text-4xl mb-3">{DAILY_GAME_EMOJIS[gameType]}</div>
+      <div className="flex justify-center text-[var(--primary)] mb-2">
+        <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[color-mix(in_srgb,var(--primary)_12%,transparent)]">
+          <Glyph icon={dailyChallengeIcon(gameType)} size={24} />
+        </span>
+      </div>
       <h1 className="font-bold" style={{ fontSize: 'var(--text-xl)' }}>
         Daily Challenge starts {launchDate ? formatDayLabel(launchDate) : 'soon'}
       </h1>
@@ -152,7 +157,11 @@ export function DailyChallengeGame({ gameType }: { gameType: DailyChallengeGameT
       className={`mx-auto px-4 py-4 ${gameType === 'crossword' || gameType === 'mini_crossword' ? 'max-w-4xl' : 'max-w-2xl'}`}
     >
       <div className="mb-4 text-center">
-        <div className="text-3xl mb-1">{DAILY_GAME_EMOJIS[gameType]}</div>
+        <div className="flex justify-center text-[var(--primary)] mb-2">
+          <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[color-mix(in_srgb,var(--primary)_12%,transparent)]">
+            <Glyph icon={dailyChallengeIcon(gameType)} size={24} />
+          </span>
+        </div>
         <h1 className="font-bold" style={{ fontSize: 'var(--text-lg)' }}>
           Daily {DAILY_GAME_LABELS[gameType]} #{challengeData.challengeNumber}
         </h1>
