@@ -15,11 +15,14 @@ interface DailyWordScramblePlayProps {
   onSubmit: (payload: { timeSeconds: number; submission: Record<string, unknown> }) => void
 }
 
+const HINT_COST = 80
+
 // `skipped` is a Set, which JSON can't serialize — persist it as an array.
 type ScrambleProgress = {
   solved: Array<{ index: number; word: string }>
   skipped: number[]
   currentIndex: number
+  hintedIndices: number[]
 }
 
 export function DailyWordScramblePlay({
@@ -33,6 +36,7 @@ export function DailyWordScramblePlay({
   const answerHashes = (puzzle.answer_hashes as string[] | undefined) ?? []
   const totalWords = scrambles.length
 
+  const hints = metadata.hints ?? []
   const savedProgress = loadDailyAnswers<ScrambleProgress>(challengeId)
   const [startAtMs] = useState(() => getOrCreateStartedAt(challengeId))
   const [currentIndex, setCurrentIndex] = useState(savedProgress?.currentIndex ?? 0)
@@ -40,6 +44,8 @@ export function DailyWordScramblePlay({
   const [wrongGuess, setWrongGuess] = useState(false)
   const [solved, setSolved] = useState<Array<{ index: number; word: string }>>(savedProgress?.solved ?? [])
   const [skipped, setSkipped] = useState<Set<number>>(() => new Set(savedProgress?.skipped ?? []))
+  const [hintedIndices, setHintedIndices] = useState<Set<number>>(() => new Set(savedProgress?.hintedIndices ?? []))
+  const [showingHint, setShowingHint] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const submitRef = useRef(false)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -51,8 +57,9 @@ export function DailyWordScramblePlay({
         solved,
         skipped: [...skipped],
         currentIndex,
+        hintedIndices: [...hintedIndices],
       })
-  }, [challengeId, solved, skipped, currentIndex, submitted])
+  }, [challengeId, solved, skipped, currentIndex, hintedIndices, submitted])
 
   const { elapsed, formatted, isTimeUp } = useDailyChallengeTimer({
     mode: 'countdown',
@@ -70,9 +77,9 @@ export function DailyWordScramblePlay({
     clearDailyProgress(challengeId)
     onSubmit({
       timeSeconds: elapsed,
-      submission: { answers: solved, hintsUsed: 0 },
+      submission: { answers: solved, hintsUsed: hintedIndices.size },
     })
-  }, [solved, elapsed, onSubmit, challengeId])
+  }, [solved, elapsed, onSubmit, challengeId, hintedIndices.size])
 
   const confirmAndSubmit = useCallback(async () => {
     if (await confirm(DAILY_SUBMIT_CONFIRM)) handleSubmitAll()
@@ -115,6 +122,7 @@ export function DailyWordScramblePlay({
     setSolved((prev) => [...prev, { index: currentIndex, word }])
     setGuess('')
     setWrongGuess(false)
+    setShowingHint(false)
 
     const next = findNextUnsolved(currentIndex + 1)
     if (next >= 0) setCurrentIndex(next)
@@ -127,11 +135,31 @@ export function DailyWordScramblePlay({
     setSkipped((prev) => new Set(prev).add(currentIndex))
     setGuess('')
     setWrongGuess(false)
+    setShowingHint(false)
     const next = findNextUnsolved(currentIndex + 1)
     if (next >= 0) setCurrentIndex(next)
   }, [currentIndex, submitted, findNextUnsolved])
 
+  const handleUseHint = useCallback(async () => {
+    if (submitted || hintedIndices.has(currentIndex)) return
+    const index = currentIndex
+    const hint = hints[currentIndex]
+    if (!hint) return
+    const yes = await confirm({
+      title: 'Use hint?',
+      message: `This will deduct ${HINT_COST} pts from your final score (out of 1000). Show the hint?`,
+      confirmLabel: 'Show hint',
+    })
+    if (!yes || submitRef.current) return
+    setHintedIndices((prev) => new Set(prev).add(index))
+    setShowingHint(true)
+  }, [submitted, currentIndex, hintedIndices, hints, confirm])
+
   const currentScramble = scrambles[currentIndex] ?? ''
+  const currentHint = hints[currentIndex] ?? ''
+  const isHinted = hintedIndices.has(currentIndex)
+  const hintVisible = isHinted || showingHint
+  const hintPenalty = hintedIndices.size * HINT_COST
   const allSolved = solved.length >= totalWords
   const hasSkipped = skipped.size > 0
 
@@ -146,11 +174,20 @@ export function DailyWordScramblePlay({
           border: '1px solid var(--border)',
         }}
       >
-        <div>
-          <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>Solved: </span>
-          <span className="font-bold" style={{ fontFeatureSettings: '"tnum"' }}>
-            {solved.length}/{totalWords}
-          </span>
+        <div className="flex items-center gap-4">
+          <div>
+            <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>Solved: </span>
+            <span className="font-bold" style={{ fontFeatureSettings: '"tnum"' }}>
+              {solved.length}/{totalWords}
+            </span>
+          </div>
+          {hintPenalty > 0 && (
+            <div>
+              <span className="font-bold" style={{ fontFeatureSettings: '"tnum"', color: 'var(--error, #ef4444)' }}>
+                -{hintPenalty} pts
+              </span>
+            </div>
+          )}
         </div>
         <span
           className={`font-mono font-bold ${isTimeUp ? 'text-error' : ''}`}
@@ -162,7 +199,7 @@ export function DailyWordScramblePlay({
 
       {/* Instructions */}
       <p className="text-center" style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>
-        Unscramble each word using the hint. Type your answer and press Enter. Skip to come back later.
+        Unscramble each word. Type your answer and press Enter. Hints available but costly!
       </p>
 
       {/* Current scramble — shown until every word is solved. Skipping cycles through the remaining
@@ -216,7 +253,18 @@ export function DailyWordScramblePlay({
               </p>
             )}
 
+            {hintVisible && currentHint && (
+              <p className="mt-3 italic" style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>
+                Hint: {currentHint}
+              </p>
+            )}
+
             <div className="flex gap-3 mt-3">
+              {currentHint && !isHinted && (
+                <button className="fr-btn fr-btn--ghost fr-btn--sm" onClick={handleUseHint}>
+                  Hint (-{HINT_COST} pts)
+                </button>
+              )}
               <button className="fr-btn fr-btn--ghost fr-btn--sm" onClick={handleSkip}>
                 Skip
               </button>

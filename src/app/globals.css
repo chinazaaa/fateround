@@ -1429,11 +1429,11 @@ select.input-field option,
   gap: 0.5rem;
   border-radius: 0.75rem;
   border: 1.5px solid var(--primary) !important;
-  background: transparent !important;
+  background: var(--primary) !important;
   padding: 1rem 1.25rem;
   font-size: 1rem;
   font-weight: 700;
-  color: var(--primary-strong) !important;
+  color: #ffffff !important;
   letter-spacing: 0.01em;
   box-shadow: none !important;
   transition:
@@ -1445,8 +1445,8 @@ select.input-field option,
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: var(--primary) !important;
-  border-color: var(--primary) !important;
+  background: var(--primary-strong) !important;
+  border-color: var(--primary-strong) !important;
   color: #ffffff !important;
   transform: var(--lift-hover);
   box-shadow: none !important;

@@ -14,16 +14,9 @@ type NavItem = { href: string; label: string; icon: IconSvgElement }
 
 function BackBar() {
   const router = useRouter()
-  const pathname = usePathname()
-
-  // Daily leaderboard pages should go back to /daily-challenges, not browser history
-  const fixedHref =
-    pathname.startsWith('/daily-challenges/') && pathname.endsWith('/leaderboard') ? '/daily-challenges' : null
 
   const handleClick = () => {
-    if (fixedHref) {
-      router.push(fixedHref)
-    } else if (typeof window !== 'undefined' && window.history.length > 1) {
+    if (typeof window !== 'undefined' && window.history.length > 1) {
       router.back()
     } else {
       router.push('/')
