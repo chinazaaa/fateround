@@ -61,12 +61,38 @@ export async function GET(req: NextRequest) {
     current_streak: number
     trophy_points: number
     last_active_date: string | null
+    country: string | null
+  }
+
+  async function fetchAllSafe<T>(
+    table: string,
+    selectWithCountry: string,
+    selectWithout: string
+  ): Promise<{ data: T[]; count: number }> {
+    try {
+      return await fetchAll<T>(supabase, table, selectWithCountry)
+    } catch (e: unknown) {
+      const msg =
+        e instanceof Error
+          ? e.message
+          : typeof e === 'object' && e !== null && 'message' in e
+            ? String((e as { message: unknown }).message)
+            : ''
+      if (msg.includes('country')) {
+        return fetchAll<T>(supabase, table, selectWithout)
+      }
+      throw e
+    }
   }
 
   const [gamesAll, playersAll, profilesAll] = await Promise.all([
     fetchAll<GameRow>(supabase, 'games', 'id, game_type, status, created_at, sessions_played'),
-    fetchAll<PlayerGameRow>(supabase, 'players', 'game_id, country'),
-    fetchAll<ProfileRow>(supabase, 'profiles', 'id, created_at, current_streak, trophy_points, last_active_date'),
+    fetchAllSafe<PlayerGameRow>('players', 'game_id, country', 'game_id'),
+    fetchAllSafe<ProfileRow>(
+      'profiles',
+      'id, created_at, current_streak, trophy_points, last_active_date, country',
+      'id, created_at, current_streak, trophy_points, last_active_date'
+    ),
   ])
 
   const [
@@ -265,6 +291,15 @@ export async function GET(req: NextRequest) {
   const activeProfiles = profiles.filter((p) => p.last_active_date && p.last_active_date >= sevenDaysAgo).length
   const profilesWithTrophies = profiles.filter((p) => p.trophy_points > 0).length
 
+  // Country breakdown from registered users (profiles)
+  const usersByCountry: Record<string, number> = {}
+  for (const p of profiles) {
+    if (p.country) {
+      usersByCountry[p.country] = (usersByCountry[p.country] ?? 0) + 1
+    }
+  }
+  const uniqueCountries = Object.keys(usersByCountry).length
+
   // DAU / WAU / MAU from last_active_date
   const dau = profiles.filter((p) => p.last_active_date === today).length
   const wau = activeProfiles
@@ -401,5 +436,7 @@ export async function GET(req: NextRequest) {
     userGrowth,
     dauTrend,
     playersByCountry,
+    usersByCountry,
+    uniqueCountries,
   })
 }
