@@ -247,7 +247,7 @@ export default function AdminDashboardPage() {
         <StatMiniCard label="Votes cast" value={stats.totals.votes} />
         <StatMiniCard label="Feedback received" value={stats.totals.feedback} />
         <StatMiniCard label="Users with trophies" value={stats.totals.profilesWithTrophies} />
-        {stats.uniqueCountries > 0 && <StatMiniCard label="Countries reached" value={stats.uniqueCountries} />}
+        <StatMiniCard label="Countries reached" value={stats.uniqueCountries} />
         <StatMiniCard
           label="Active tournaments"
           value={stats.totals.activeTournaments}
@@ -256,36 +256,30 @@ export default function AdminDashboardPage() {
       </div>
 
       {/* ── Country breakdown ────────────────────────────────────── */}
-      {(Object.keys(stats.usersByCountry).length > 0 || Object.keys(stats.playersByCountry).length > 0) && (
-        <div className="grid gap-6 lg:grid-cols-2">
-          {Object.keys(stats.usersByCountry).length > 0 && (
-            <BarBreakdownCard
-              title="Users by country"
-              items={stats.usersByCountry}
-              formatLabel={(code) => {
-                try {
-                  return new Intl.DisplayNames(['en'], { type: 'region' }).of(code) ?? code
-                } catch {
-                  return code
-                }
-              }}
-            />
-          )}
-          {Object.keys(stats.playersByCountry).length > 0 && (
-            <BarBreakdownCard
-              title="Game joins by country"
-              items={stats.playersByCountry}
-              formatLabel={(code) => {
-                try {
-                  return new Intl.DisplayNames(['en'], { type: 'region' }).of(code) ?? code
-                } catch {
-                  return code
-                }
-              }}
-            />
-          )}
-        </div>
-      )}
+      <div className="grid gap-6 lg:grid-cols-2">
+        <BarBreakdownCard
+          title="Users by country"
+          items={stats.usersByCountry}
+          formatLabel={(code) => {
+            try {
+              return new Intl.DisplayNames(['en'], { type: 'region' }).of(code) ?? code
+            } catch {
+              return code
+            }
+          }}
+        />
+        <BarBreakdownCard
+          title="Game joins by country"
+          items={stats.playersByCountry}
+          formatLabel={(code) => {
+            try {
+              return new Intl.DisplayNames(['en'], { type: 'region' }).of(code) ?? code
+            } catch {
+              return code
+            }
+          }}
+        />
+      </div>
 
       {/* ── Other breakdowns ──────────────────────────────────────── */}
       <div className="grid gap-6 lg:grid-cols-2">
