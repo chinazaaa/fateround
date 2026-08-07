@@ -344,8 +344,11 @@ export function WordGroupingPlayerView({ gameCode, embedded = false }: { gameCod
   // Skip the registration when embedded by the host view. The host chrome already renders
   // its own `EditNameInline` for the host's seat, plus the host-scoped `HostActiveSettings`
   // (late-joiner + end-game + leave-seat), so re-registering the player-side rename+leave
-  // here would either stack a second "Playing as" row or racy-overwrite the host node.
-  useRegisterGameSettings(embedded ? null : playerSettingsNode)
+  // here would either stack a second "Playing as" row or race-overwrite the host node.
+  // `enabled = !embedded` keeps this hook fully silent when embedded — passing `null` as the
+  // node would still fire `register(null)` and clobber whatever the host had already put in
+  // the slot.
+  useRegisterGameSettings(playerSettingsNode, !embedded)
 
   // Realtime: game status changes. Key on `hasGame` (bool) rather than the whole `game` object
   // — `useGameRosterPoll` replaces `game` on every tick, and depending on the object here would
