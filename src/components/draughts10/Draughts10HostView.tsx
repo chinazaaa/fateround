@@ -450,7 +450,7 @@ export function Draughts10HostView({ gameCode, hostToken }: { gameCode: string; 
             hostToken={hostToken}
             onEnded={load}
             label="End game early"
-            icon={<ExitIcon size={16} />}
+            icon={<ExitIcon size={14} />}
             confirmTitle="End this game early?"
             confirmMessage="The current game will end and players will see the results screen."
             className="btn-danger-soft"

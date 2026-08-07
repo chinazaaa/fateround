@@ -135,7 +135,7 @@ export function HostLobby({
       {/* Pinned top bar: home logo (far left) + Host settings (right). Stays put while the
           lobby body scrolls. The right side keeps clear of the app's global fixed theme
           toggle (top-right, z-50) — the lobby's single light/dark control. */}
-      <header className="shrink-0 flex items-center justify-between gap-3 bg-[var(--background)] px-4 py-3 sm:px-6">
+      <header className="shrink-0 flex items-center justify-between gap-3 bg-[var(--background)] px-4 py-3 sm:px-6 border-b border-[var(--border)]/50">
         <Link href="/" aria-label="FateRound home" className="min-w-0 shrink">
           <FateRoundLogo className="h-8 w-auto max-w-[7.5rem] sm:max-w-[9rem]" />
         </Link>
@@ -241,7 +241,7 @@ export function HostLobby({
         {resumeToken ? (
           <RotatePlayerCodeButton
             gameCode={gameCode}
-            className="flex w-full items-center justify-start gap-2.5 rounded-xl border border-[var(--border)] bg-[var(--surface-inset-bg)] px-3.5 py-3 text-sm font-semibold text-body transition-colors hover:text-[var(--foreground)]"
+            className="flex w-full items-center justify-center gap-2.5 rounded-xl border border-[var(--border)] bg-[var(--surface-inset-bg)] px-3.5 py-3 text-sm font-semibold text-body transition-colors hover:text-[var(--foreground)]"
           />
         ) : null}
       </HostLobbySettingsSheet>

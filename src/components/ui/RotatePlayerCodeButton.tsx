@@ -55,8 +55,11 @@ export function RotatePlayerCodeButton({ gameCode, className }: { gameCode: stri
     }
   }
 
+  const defaultClass =
+    'flex w-full items-center justify-center gap-2.5 rounded-xl border border-[var(--border)] bg-[var(--surface-inset-bg)] px-3.5 py-3 text-sm font-semibold text-body transition-colors hover:text-[var(--foreground)]'
+
   return (
-    <button type="button" onClick={() => void rotate()} disabled={rotating} className={className}>
+    <button type="button" onClick={() => void rotate()} disabled={rotating} className={className || defaultClass}>
       <RotateIcon />
       <span>{rotating ? 'Rotating…' : 'Rotate player code'}</span>
     </button>
@@ -65,7 +68,7 @@ export function RotatePlayerCodeButton({ gameCode, className }: { gameCode: stri
 
 function RotateIcon() {
   return (
-    <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} aria-hidden>
+    <svg width={11} height={11} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} aria-hidden>
       <path strokeLinecap="round" strokeLinejoin="round" d="M3 12a9 9 0 0 1 15.5-6.2M21 12a9 9 0 0 1-15.5 6.2" />
       <path strokeLinecap="round" strokeLinejoin="round" d="M18.5 2.5v4.5H14M5.5 21.5V17H10" />
     </svg>

@@ -9,6 +9,8 @@ import { BingoCardGrid, BingoCardLegend, CalledNumbersBoard } from '@/components
 import { BingoFinalResultsShareBlock } from '@/components/bingo/BingoFinalResultsShareBlock'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { gameTypeConfig } from '@/lib/game-types'
+import { gameIcon } from '@/lib/game-glyphs'
+import { Glyph } from '@/components/icons/Glyph'
 import { formatBingoNumber, hasBingoWin, BINGO_MIN_PLAYERS } from '@/lib/bingo'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { supabase } from '@/lib/supabase'
@@ -597,7 +599,11 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
           />
         )}
         <div className="text-center space-y-1">
-          <div className="text-3xl">{cfg.headerEmoji}</div>
+          <div className="flex justify-center text-[var(--primary)] pb-1">
+            <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[color-mix(in_srgb,var(--primary)_12%,transparent)]">
+              <Glyph icon={gameIcon('bingo')} size={24} />
+            </span>
+          </div>
           <h1 className="text-xl font-black gradient-title">{game?.title}</h1>
         </div>
 

@@ -675,7 +675,7 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
             hostToken={hostToken}
             onEnded={load}
             label="End game"
-            icon={<ExitIcon size={16} />}
+            icon={<ExitIcon size={14} />}
           />
         ) : null
       }

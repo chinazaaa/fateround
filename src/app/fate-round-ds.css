@@ -295,12 +295,14 @@
    why `--aura-glow` is declared on the button rather than on the token
    wrappers. */
 .fr-btn,
-.fr-icon-btn {
+.fr-icon-btn,
+.fr-btn--nav {
   --aura-glow: color-mix(in srgb, var(--accent, var(--primary)) 70%, transparent);
 }
 
 .fr-btn::after,
-.fr-icon-btn::after {
+.fr-icon-btn::after,
+.fr-btn--nav::after {
   content: '';
   position: absolute;
   inset: -1px;
@@ -310,7 +312,8 @@
 }
 
 .fr-btn:hover:not(:disabled)::after,
-.fr-icon-btn:hover::after {
+.fr-icon-btn:hover::after,
+.fr-btn--nav:hover:not(:disabled)::after {
   animation: aura-radiate 0.55s ease-out;
 }
 .fr-btn:disabled {
@@ -333,23 +336,24 @@
 }
 
 .fr-btn--primary {
-  background: var(--primary);
-  color: var(--primary-contrast);
-  box-shadow: var(--shadow-raised);
+  background: transparent !important;
+  border: 1.5px solid var(--primary) !important;
+  color: var(--primary-strong) !important;
+  box-shadow: none !important;
 }
-/* Keeps `--shadow-raised` from the resting state rather than escalating to
-   `--shadow-raised-hover`, whose wider rose layer would read as a standing glow
-   for as long as the pointer rests here. The aura pulse supplies the glow, and
-   removes it again. */
 .fr-btn--primary:hover:not(:disabled) {
-  background: var(--primary-strong);
+  background: var(--primary) !important;
+  border-color: var(--primary) !important;
+  color: var(--primary-contrast) !important;
   transform: var(--lift-hover);
+  box-shadow: none !important;
 }
 .fr-btn--primary:active:not(:disabled) {
   transform: var(--lift-press);
-  box-shadow:
-    0 0 0 var(--rose-700),
-    0 2px 6px rgba(225, 29, 72, 0.3);
+  background: var(--primary-strong) !important;
+  border-color: var(--primary-strong) !important;
+  color: var(--primary-contrast) !important;
+  box-shadow: none !important;
 }
 
 .fr-btn--secondary {
@@ -392,26 +396,31 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
-  padding: 0;
-  background: var(--primary, #f43f5e);
-  color: #ffffff;
-  border: none;
-  border-radius: 9999px;
-  box-shadow: 0 2px 6px rgba(244, 63, 94, 0.3);
+  gap: 0.375rem;
+  padding: 0.4375rem 0.8125rem;
+  min-height: 36px;
+  background: transparent !important;
+  color: var(--primary-strong, #e11d48) !important;
+  border: 1.5px solid var(--primary, #f43f5e) !important;
+  border-radius: var(--radius-md, 0.75rem);
+  box-shadow: none !important;
   cursor: pointer;
   user-select: none;
-  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 .fr-btn--nav:hover:not(:disabled) {
-  background: var(--primary-strong, #e11d48);
-  color: #ffffff;
+  background: var(--primary, #f43f5e) !important;
+  border-color: var(--primary, #f43f5e) !important;
+  color: #ffffff !important;
   transform: translateY(-1px);
-  box-shadow: 0 4px 10px rgba(225, 29, 72, 0.4);
+  box-shadow: none !important;
 }
 .fr-btn--nav:active:not(:disabled) {
   transform: translateY(0);
+  background: var(--primary-strong, #e11d48) !important;
+  border-color: var(--primary-strong, #e11d48) !important;
+  color: #ffffff !important;
+  box-shadow: none !important;
 }
 
 /* Input / Field */
@@ -1045,16 +1054,22 @@
    would sit 24px left of the content it is meant to line up with. `max()`
    holds the gutter at that 24px until the viewport outgrows the measure. */
 .site-header {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  background: color-mix(in srgb, var(--background) 90%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px max(24px, calc((100% - var(--measure)) / 2 + 24px));
+  padding: 14px 24px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
 }
 
-/* Back bar — sits below the header on every page except home. Shares the
-   header's gutter so "Back" lines up under the logo. */
+/* Back bar — sits below the header on every page except home. */
 .fr-backbar {
-  padding: 8px max(24px, calc((100% - var(--measure)) / 2 + 24px)) 0;
+  padding: 8px 24px 0;
 }
 .site-nav {
   display: flex;
@@ -1277,7 +1292,10 @@
     display: inline-flex;
   }
   .site-header {
-    padding: 14px 18px;
+    padding: 12px 16px;
+  }
+  .fr-backbar {
+    padding: 8px 16px 0;
   }
 }
 

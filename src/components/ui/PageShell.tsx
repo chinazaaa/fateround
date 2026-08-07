@@ -1,3 +1,6 @@
+export { CustomSelect } from './CustomSelect'
+export type { SelectOption } from './CustomSelect'
+
 interface PageShellProps {
   children: React.ReactNode
   narrow?: boolean
@@ -10,7 +13,7 @@ export function PageShell({ children, narrow, wide, centered }: PageShellProps) 
   const maxWidth = narrow ? 'max-w-md' : wide ? 'max-w-3xl' : 'max-w-lg'
   return (
     <div
-      className={`page-wrap flex flex-col items-center px-4 py-10 overflow-y-auto ${
+      className={`page-wrap flex flex-col items-center px-4 py-8 overflow-y-auto ${
         centered ? 'justify-center min-h-screen py-16' : 'justify-start'
       }`}
     >
@@ -19,7 +22,10 @@ export function PageShell({ children, narrow, wide, centered }: PageShellProps) 
   )
 }
 
-export function BackBtn({ onClick, label }: { onClick: () => void; label?: string }) {
+// BackBtn - Navigation button with transparent-to-fill glow style
+export function BackBtn({ onClick, label, showArrow }: { onClick: () => void; label?: string; showArrow?: boolean }) {
+  const isHome = label?.toLowerCase() === 'home'
+  const renderArrow = showArrow ?? !isHome
   return (
     <button type="button" onClick={onClick} className="fr-btn--nav" aria-label={label || 'Go back'}>
       <svg

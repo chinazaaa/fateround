@@ -15,6 +15,7 @@ const MarketingGameTypeModal = dynamic(
   { ssr: false }
 )
 
+// HomePageJoinPanel - Create game CTA (transparent resting state) & code joiner
 const MIN_CODE_LENGTH = 4
 
 type QuickLink = {

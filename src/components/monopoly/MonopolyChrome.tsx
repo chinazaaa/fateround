@@ -4,6 +4,8 @@ import type { ReactNode } from 'react'
 import { useTimerTickSound } from '@/hooks/useTimerTickSound'
 import { GameTypeBadge } from '@/components/GameTypeBadge'
 import { gameTypeConfig } from '@/lib/game-types'
+import { gameIcon } from '@/lib/game-glyphs'
+import { Glyph } from '@/components/icons/Glyph'
 import { formatThemedMoney, formatThemedText, getMonopolyEdition } from '@/components/monopoly/monopoly-themes'
 
 export function MonopolyPageHeader({ title, children }: { title?: string; children?: ReactNode }) {
@@ -13,8 +15,8 @@ export function MonopolyPageHeader({ title, children }: { title?: string; childr
     <header className="space-y-3">
       <div className="text-center space-y-2">
         <div className="inline-flex items-center justify-center gap-2 flex-wrap">
-          <span className="text-2xl sm:text-3xl drop-shadow-lg" aria-hidden>
-            {cfg.card.emoji}
+          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[color-mix(in_srgb,var(--primary)_12%,transparent)] text-[var(--primary)]">
+            <Glyph icon={gameIcon('monopoly')} size={20} />
           </span>
           <GameTypeBadge gameType="monopoly" />
         </div>
