@@ -147,10 +147,10 @@ function FeaturedCard({ post, theme }: { post: BlogPost; theme: { accent: string
   return (
     <Link
       href={`/blog/${post.slug}`}
-      className="fr-gamecard grid gap-6 md:grid-cols-2 md:items-center no-underline"
+      className="fr-gamecard !grid gap-6 md:grid-cols-2 md:items-center no-underline max-w-3xl mx-auto"
       style={{ '--accent': theme.accent } as React.CSSProperties}
     >
-      <Cover post={post} icon={theme.icon} className="aspect-[16/10] w-full rounded-[12px]" />
+      <Cover post={post} icon={theme.icon} className="aspect-[4/3] w-full rounded-[12px]" />
       <div className="flex flex-col space-y-3">
         <div className="flex flex-wrap items-center gap-2">
           <FeaturedBadge />

@@ -35,6 +35,7 @@ const PRIMARY_LINKS: FooterLink[] = [
   { href: '/rooms', label: 'Rooms' },
   { href: '/leaderboard', label: 'Leaderboard' },
   { href: '/daily-challenges', label: 'Daily Challenges' },
+  { href: '/library', label: 'Question Library' },
   { href: '/blog', label: 'Blog' },
   { href: '/faq', label: 'FAQ & help' },
   { href: '/contact', label: 'Contact us' },

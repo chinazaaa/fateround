@@ -23,6 +23,7 @@ interface PackSummary {
   question_count: number
   approved_at: string
   tags: string[]
+  collections: { slug: string; name: string }[]
 }
 
 const GAME_TYPE_META: Record<string, { label: string; color: string }> = {
@@ -158,6 +159,8 @@ export default function LibraryPage() {
   const [packs, setPacks] = useState<PackSummary[]>([])
   const [gameType, setGameType] = useState('')
   const [tag, setTag] = useState('')
+  const [collection, setCollection] = useState('')
+  const [collectionOptions, setCollectionOptions] = useState<{ value: string; label: string }[]>([])
   const [search, setSearch] = useState('')
   const [searchInput, setSearchInput] = useState('')
   const [page, setPage] = useState(1)
@@ -166,12 +169,30 @@ export default function LibraryPage() {
   const [loading, setLoading] = useState(true)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const load = useCallback((gt: string, tg: string, q: string, pg: number) => {
+  useEffect(() => {
+    window.scrollTo(0, 0)
+  }, [])
+
+  useEffect(() => {
+    fetch('/api/collections')
+      .then((r) => r.json())
+      .then((d) => {
+        const cols = (d.collections ?? []) as { slug: string; name: string }[]
+        setCollectionOptions([
+          { value: '', label: 'All collections' },
+          ...cols.map((c) => ({ value: c.slug, label: c.name })),
+        ])
+      })
+      .catch(() => {})
+  }, [])
+
+  const load = useCallback((gt: string, tg: string, q: string, pg: number, col: string) => {
     setLoading(true)
     const params = new URLSearchParams()
     if (gt) params.set('game_type', gt)
     if (tg) params.set('tag', tg)
     if (q) params.set('q', q)
+    if (col) params.set('collection', col)
     params.set('page', String(pg))
     fetch(`/api/library?${params}`)
       .then((r) => r.json())
@@ -184,8 +205,8 @@ export default function LibraryPage() {
   }, [])
 
   useEffect(() => {
-    load(gameType, tag, search, page)
-  }, [gameType, tag, search, page, load])
+    load(gameType, tag, search, page, collection)
+  }, [gameType, tag, search, page, collection, load])
 
   const handleGameType = (val: string) => {
     setGameType(val)
@@ -194,6 +215,11 @@ export default function LibraryPage() {
 
   const handleTag = (val: string) => {
     setTag(val)
+    setPage(1)
+  }
+
+  const handleCollection = (val: string) => {
+    setCollection(val)
     setPage(1)
   }
 
@@ -242,6 +268,14 @@ export default function LibraryPage() {
             options={GAME_TYPE_FILTERS}
           />
           <FilterSelect ariaLabel="Filter by level" value={tag} onChange={handleTag} options={TAG_FILTERS} />
+          {collectionOptions.length > 1 && (
+            <FilterSelect
+              ariaLabel="Filter by collection"
+              value={collection}
+              onChange={handleCollection}
+              options={collectionOptions}
+            />
+          )}
         </div>
       </div>
 
@@ -290,9 +324,17 @@ export default function LibraryPage() {
                   {pack.description && (
                     <p className="text-muted text-sm line-clamp-2 leading-relaxed">{pack.description}</p>
                   )}
-                  {pack.tags && pack.tags.length > 0 && (
+                  {((pack.tags && pack.tags.length > 0) || (pack.collections && pack.collections.length > 0)) && (
                     <div className="flex flex-wrap items-center gap-1.5">
-                      {pack.tags.map((t) => {
+                      {pack.collections?.map((c) => (
+                        <span
+                          key={c.slug}
+                          className="rounded-full border px-2 py-0.5 text-[10px] font-semibold tracking-wide uppercase text-rose-600 dark:text-rose-400 bg-rose-500/10 border-rose-500/25"
+                        >
+                          {c.name}
+                        </span>
+                      ))}
+                      {pack.tags?.map((t) => {
                         const tm = TAG_META[t]
                         return (
                           <span

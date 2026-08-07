@@ -71,12 +71,13 @@ export async function GET(req: NextRequest) {
     } else {
       rankPromises.set(
         gameType,
-        admin
-          .from('daily_scores')
-          .select('*', { count: 'exact', head: true })
-          .eq('challenge_id', challenge.id)
-          .gt('raw_points', entry.raw_points)
-          .then(({ count }) => (count ?? 0) + 1)
+        Promise.resolve(
+          admin
+            .from('daily_scores')
+            .select('*', { count: 'exact', head: true })
+            .eq('challenge_id', challenge.id)
+            .gt('raw_points', entry.raw_points)
+        ).then(({ count }) => (count ?? 0) + 1)
       )
     }
   }

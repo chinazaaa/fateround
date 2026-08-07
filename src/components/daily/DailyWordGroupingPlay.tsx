@@ -103,8 +103,18 @@ export function DailyWordGroupingPlay({
     if (isTimeUp && !submitRef.current) handleSubmit()
   }, [isTimeUp, handleSubmit])
 
+  // Reveal delay: without it, the moment the 4th group lands `handleSubmit` fires, `submitted`
+  // flips true, and the results screen replaces the board — the player never gets a beat to
+  // see the completed puzzle they just solved. Mirrors the same hold the multiplayer WG
+  // player view applies on its play→finished transition. Only applies to the solve path; a
+  // time-up or lose-out submit stays immediate so the player isn't waiting for a "you won"
+  // pause after failing.
   useEffect(() => {
-    if (isSolved && !submitRef.current) handleSubmit()
+    if (!isSolved || submitRef.current) return
+    const t = setTimeout(() => {
+      if (!submitRef.current) handleSubmit()
+    }, 2800)
+    return () => clearTimeout(t)
   }, [isSolved, handleSubmit])
 
   useEffect(() => {
