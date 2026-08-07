@@ -248,6 +248,7 @@ export async function POST(req: NextRequest) {
   } = body
 
   let name = playerName?.trim() ?? ''
+  const country = req.headers.get('cf-ipcountry') ?? null
   const gameId = gameCode.toUpperCase()
   const { data: gameRow } = await getSupabaseAdmin().from('games').select('*').eq('id', gameId).maybeSingle()
   if (!gameRow) return NextResponse.json({ error: 'Game not found' }, { status: 404 })
@@ -380,6 +381,7 @@ export async function POST(req: NextRequest) {
       .from('players')
       .insert({
         game_id: gameId,
+        country,
         name: generatedName,
         gender: 'both',
         identity_gender: null,
@@ -417,6 +419,7 @@ export async function POST(req: NextRequest) {
       .from('players')
       .insert({
         game_id: gameId,
+        country,
         name: generatedName,
         gender: 'both',
         identity_gender: null,
@@ -473,6 +476,7 @@ export async function POST(req: NextRequest) {
       .from('players')
       .insert({
         game_id: gameId,
+        country,
         name,
         gender: 'both',
         identity_gender: null,
@@ -547,6 +551,7 @@ export async function POST(req: NextRequest) {
       .from('players')
       .insert({
         game_id: gameId,
+        country,
         name,
         gender: 'both',
         identity_gender: null,
@@ -607,6 +612,7 @@ export async function POST(req: NextRequest) {
       .from('players')
       .insert({
         game_id: gameId,
+        country,
         name,
         gender: 'both',
         identity_gender: null,
@@ -662,6 +668,7 @@ export async function POST(req: NextRequest) {
       .from('players')
       .insert({
         game_id: gameId,
+        country,
         name,
         gender: 'both',
         identity_gender: null,
@@ -721,6 +728,7 @@ export async function POST(req: NextRequest) {
       .from('players')
       .insert({
         game_id: gameId,
+        country,
         name,
         gender: 'both',
         identity_gender: null,
@@ -793,6 +801,7 @@ export async function POST(req: NextRequest) {
       .from('players')
       .insert({
         game_id: gameId,
+        country,
         name,
         gender: 'both',
         identity_gender: null,
@@ -844,6 +853,7 @@ export async function POST(req: NextRequest) {
       .from('players')
       .insert({
         game_id: gameId,
+        country,
         name,
         gender: 'both',
         identity_gender: null,
@@ -898,6 +908,7 @@ export async function POST(req: NextRequest) {
       .from('players')
       .insert({
         game_id: gameId,
+        country,
         name,
         gender: 'both',
         identity_gender: null,
@@ -951,6 +962,7 @@ export async function POST(req: NextRequest) {
       .from('players')
       .insert({
         game_id: gameId,
+        country,
         name,
         gender: 'both',
         identity_gender: null,
@@ -1009,6 +1021,7 @@ export async function POST(req: NextRequest) {
       .from('players')
       .insert({
         game_id: id,
+        country,
         name,
         gender: 'both',
         identity_gender: null,
@@ -1063,6 +1076,7 @@ export async function POST(req: NextRequest) {
       .from('players')
       .insert({
         game_id: id,
+        country,
         name,
         gender: 'both',
         identity_gender: null,
@@ -1092,6 +1106,7 @@ export async function POST(req: NextRequest) {
       .from('players')
       .insert({
         game_id: id,
+        country,
         name,
         gender: 'both',
         identity_gender: null,
@@ -1138,6 +1153,7 @@ export async function POST(req: NextRequest) {
       .from('players')
       .insert({
         game_id: id,
+        country,
         name: claimName,
         gender: 'both',
         identity_gender: null,
@@ -1198,6 +1214,7 @@ export async function POST(req: NextRequest) {
       .from('players')
       .insert({
         game_id: id,
+        country,
         name: claimName,
         gender,
         identity_gender: identityGender,
@@ -1234,6 +1251,7 @@ export async function POST(req: NextRequest) {
       .from('players')
       .insert({
         game_id: id,
+        country,
         name,
         gender,
         identity_gender: identityGender,
@@ -1276,6 +1294,7 @@ export async function POST(req: NextRequest) {
       .from('players')
       .insert({
         game_id: id,
+        country,
         name,
         gender,
         identity_gender: identityGender,
