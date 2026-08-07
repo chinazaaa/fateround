@@ -74,7 +74,14 @@ interface SolutionGroup {
 type View = 'loading' | 'join' | 'late_join_choice' | 'waiting' | 'playing' | 'finished'
 type WordGroupingGameState = { hasValidRound: boolean }
 
-export function WordGroupingPlayerView({ gameCode }: { gameCode: string }) {
+/**
+ * Player experience. Reused by `WordGroupingHostView` for the host-plays-along case (rendered
+ * as `HostGameLayout.primary`) — the `embedded` flag suppresses this view's own settings-node
+ * registration in that path so the sheet doesn't stack the player-side rename+leave on top of
+ * the host chrome's rename + host-scoped controls, and doesn't race the host node's registration
+ * for the single content slot.
+ */
+export function WordGroupingPlayerView({ gameCode, embedded = false }: { gameCode: string; embedded?: boolean }) {
   const cfg = gameTypeConfig('word_grouping')
   const router = useRouter()
   const { error: toastError } = useToast()
@@ -334,7 +341,11 @@ export function WordGroupingPlayerView({ gameCode }: { gameCode: string }) {
       </div>
     )
   }, [myPlayerId, gameCode, me?.name, isViewer, load, router])
-  useRegisterGameSettings(playerSettingsNode)
+  // Skip the registration when embedded by the host view. The host chrome already renders
+  // its own `EditNameInline` for the host's seat, plus the host-scoped `HostActiveSettings`
+  // (late-joiner + end-game + leave-seat), so re-registering the player-side rename+leave
+  // here would either stack a second "Playing as" row or racy-overwrite the host node.
+  useRegisterGameSettings(embedded ? null : playerSettingsNode)
 
   // Realtime: game status changes. Key on `hasGame` (bool) rather than the whole `game` object
   // — `useGameRosterPoll` replaces `game` on every tick, and depending on the object here would
