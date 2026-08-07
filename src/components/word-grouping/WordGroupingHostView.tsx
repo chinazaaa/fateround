@@ -491,7 +491,9 @@ export function WordGroupingHostView({ gameCode, hostToken }: { gameCode: string
   // Host playing along: the player view is rendered as HostGameLayout's `primary` (not
   // returned above the layout) so the shared header + drawer's Remove action still wire up
   // via useRosterManage. Word Scramble uses the same shape.
-  const interactivePlay = <WordGroupingPlayerView gameCode={gameCode} />
+  // `embedded` tells the player view not to register its own player-settings node — the host
+  // chrome + this view's own hostSettingsNode are already what the ⚙ gear shows.
+  const interactivePlay = <WordGroupingPlayerView gameCode={gameCode} embedded />
 
   const finishedScreen = (
     <div className="mx-auto max-w-lg space-y-4 px-4 py-6">
