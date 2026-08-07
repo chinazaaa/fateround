@@ -54,6 +54,15 @@ interface BankPuzzle {
   groups: [WordGroup, WordGroup, WordGroup, WordGroup]
 }
 
+/**
+ * Read-only view of the built-in puzzle bank. The multiplayer start route uses this to run
+ * the shared pool_usage-aware picker over the built-in bank, so play-again avoids repeats
+ * even when no custom/platform pool is configured.
+ */
+export function getWordGroupingPuzzleBank(): { groups: WordGroup[] }[] {
+  return PUZZLE_BANK.map((p) => ({ groups: p.groups.map((g) => ({ ...g, words: [...g.words] })) }))
+}
+
 const PUZZLE_BANK: BankPuzzle[] = [
   // 1
   {
