@@ -1506,10 +1506,10 @@ until next year. Scarcity drives purchases.
 
 | Item | Description | ₦ | $ |
 |---|---|---|---|
-| **New Club starter bundle** | 1 crest pack + 1 premium background + 1 crest border + 1 club banner. ~40% off vs buying individually | ₦800 | $2.99 |
-| **Player drip bundle** | 1 profile border + 1 name glow + 1 player title + 1 entry animation. ~35% off | ₦800 | $2.99 |
-| **Match day bundle** | 1 victory celebration + 1 correct answer effect + 1 word trail + 1 solve animation. ~30% off | ₦800 | $2.99 |
-| **Chat starter bundle** | 1 chat bubble style + 2 sticker packs + custom reactions. ~30% off | ₦800 | $2.99 |
+| **New Club starter bundle** | 1 crest pack + 1 premium background + 1 crest border + 1 club banner. ~53% off vs buying individually (₦1,700 → ₦800) | ₦800 | $2.99 |
+| **Player drip bundle** | 1 profile border + 1 name glow + 1 player title + 1 entry animation. ~47% off (₦1,500 → ₦800) | ₦800 | $2.99 |
+| **Match day bundle** | 1 victory celebration + 1 correct answer effect + 1 word trail + 1 solve animation. ~43-47% off (₦1,400-₦1,500 → ₦800) | ₦800 | $2.99 |
+| **Chat starter bundle** | 1 chat bubble style + 2 sticker packs + custom reactions. ~43% off (₦1,400 → ₦800) | ₦800 | $2.99 |
 | **Full drip mega bundle** | One of everything — the full cosmetic experience. Steep discount but premium price | ₦3,500 | $9.99 |
 
 **Why a separate currency?** Selling FateRound Coins for real money would break competitive
