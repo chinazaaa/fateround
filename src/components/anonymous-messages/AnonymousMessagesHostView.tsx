@@ -403,7 +403,7 @@ export function AnonymousMessagesHostView({ gameCode, hostToken }: { gameCode: s
           hostToken={hostToken}
           onEnded={load}
           label="End lobby"
-          icon={<ExitIcon size={16} />}
+          icon={<ExitIcon size={14} />}
           confirmTitle="Close this lobby?"
           confirmMessage="Players will be disconnected. You can start a new session from Play again afterward."
           className="btn-danger-soft"
@@ -416,7 +416,7 @@ export function AnonymousMessagesHostView({ gameCode, hostToken }: { gameCode: s
           hostToken={hostToken}
           onEnded={load}
           label="End session"
-          icon={<ExitIcon size={16} />}
+          icon={<ExitIcon size={14} />}
           confirmTitle="End this session?"
           confirmMessage="Players will see the session summary. You can start a new session from the lobby afterward."
           className="btn-danger-soft"

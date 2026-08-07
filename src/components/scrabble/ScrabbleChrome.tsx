@@ -3,6 +3,8 @@
 import type { ReactNode } from 'react'
 import { GameTypeBadge } from '@/components/GameTypeBadge'
 import { gameTypeConfig } from '@/lib/game-types'
+import { gameIcon } from '@/lib/game-glyphs'
+import { Glyph } from '@/components/icons/Glyph'
 
 export function ScrabbleShell({
   children,
@@ -46,9 +48,10 @@ export function ScrabbleShell({
               {subtitle && <p className="text-sm text-muted max-w-md mx-auto">{subtitle}</p>}
             </header>
           )}
+
           {compact && title && (
             <div className="flex items-center justify-center gap-2">
-              <span className="text-xl leading-none">{cfg.headerEmoji}</span>
+              <Glyph icon={gameIcon('scrabble')} size={16} className="shrink-0 text-[var(--primary)]" />
               <p className="text-base font-black text-[var(--foreground)] truncate">{title}</p>
               <GameTypeBadge gameType="scrabble" />
             </div>

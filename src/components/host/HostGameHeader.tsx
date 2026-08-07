@@ -26,9 +26,7 @@ export function HostGameHeader({ game, subtitle, className = '' }: Props) {
       <h1 className="truncate text-lg sm:text-xl font-black tracking-tight text-body">{game.title}</h1>
       <div className="flex flex-wrap items-center gap-1.5">
         <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--chip-active-border)] bg-[color-mix(in_srgb,var(--primary)_10%,transparent)] px-2.5 py-0.5 text-[11px] font-extrabold uppercase tracking-wide text-[var(--primary)]">
-          <span className="fr-glyph">
-            <Glyph icon={gameIcon(parsedType)} size={14} />
-          </span>
+          <Glyph icon={gameIcon(parsedType)} size={10} className="shrink-0" />
           {cfg.label}
         </span>
         <ContentLabelChip label={game.content_label} />

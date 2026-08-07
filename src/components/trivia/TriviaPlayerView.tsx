@@ -11,6 +11,8 @@ import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
 import { NameJoinForm } from '@/components/game-lobby/NameJoinForm'
 import { TriviaActiveRound } from '@/components/trivia/TriviaActiveRound'
 import { gameTypeConfig } from '@/lib/game-types'
+import { gameIcon } from '@/lib/game-glyphs'
+import { Glyph } from '@/components/icons/Glyph'
 import { supabase } from '@/lib/supabase'
 import { ROUND_SELECT, TRIVIA_ANSWER_SELECT } from '@/lib/supabase-selects'
 import { clearPlayerSession } from '@/lib/utils'
@@ -259,7 +261,11 @@ export function TriviaPlayerView({ gameCode }: { gameCode: string }) {
             page header and session controls would just duplicate it and crowd the page. */}
         {!isFinished && (
           <div className="text-center space-y-1">
-            <div className="text-4xl sm:text-5xl">{cfg.headerEmoji}</div>
+            <div className="flex justify-center text-[var(--primary)] pb-1">
+              <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[color-mix(in_srgb,var(--primary)_12%,transparent)]">
+                <Glyph icon={gameIcon('trivia')} size={24} />
+              </span>
+            </div>
             <h1 className="text-2xl sm:text-3xl font-black tracking-tight gradient-title">{game.title}</h1>
             <p className="text-muted text-sm sm:text-base">{cfg.label}</p>
           </div>

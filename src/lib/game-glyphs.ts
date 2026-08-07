@@ -57,6 +57,7 @@ import {
 } from '@hugeicons/core-free-icons'
 import type { IconSvgElement } from '@hugeicons/react'
 import type { GameType } from '@/types'
+import type { DailyChallengeGameType } from '@/lib/daily-challenge'
 
 /**
  * Maps every game to an icon from the free Hugeicons set.
@@ -121,6 +122,20 @@ const GAME_ICONS: Record<GameType, IconSvgElement> = {
 
 export function gameIcon(type: GameType): IconSvgElement {
   return GAME_ICONS[type]
+}
+
+/** Daily challenge variants that borrow the icon of the full game they derive from. */
+const DAILY_ICON_FALLBACK: Partial<Record<DailyChallengeGameType, GameType>> = {
+  whot_puzzle: 'whot',
+  word_grouping: 'tic_tac_toe',
+  chess_mate: 'chess',
+  codenames_codeword: 'codewords',
+  mini_crossword: 'crossword',
+  ludo_puzzle: 'ludo',
+}
+
+export function dailyChallengeIcon(gameType: DailyChallengeGameType): IconSvgElement {
+  return gameIcon(DAILY_ICON_FALLBACK[gameType] ?? (gameType as GameType))
 }
 
 /** Icons for chrome that isn't tied to a specific game (nav, footer, tiles). */

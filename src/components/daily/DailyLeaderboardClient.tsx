@@ -5,15 +5,19 @@ import Link from 'next/link'
 import { addDays, watToday, formatDayLabel } from '@/lib/community-dates'
 import {
   DAILY_GAME_LABELS,
-  DAILY_GAME_EMOJIS,
   DAILY_GAME_TYPE_TO_SLUG,
   DAILY_CHALLENGE_GAME_TYPES,
   DAILY_GAME_PRIMARY_METRIC,
   type DailyChallengeGameType,
 } from '@/lib/daily-challenge'
 import { authHeaders } from '@/lib/identity'
+import { Medal01Icon, Medal02Icon, Medal03Icon, InboxIcon } from '@hugeicons/core-free-icons'
+import { dailyChallengeIcon } from '@/lib/game-glyphs'
+import { Glyph } from '@/components/icons/Glyph'
+import type { GameType } from '@/types'
 
-const MEDALS = ['🥇', '🥈', '🥉']
+const MEDAL_ICONS = [Medal01Icon, Medal02Icon, Medal03Icon]
+
 const PODIUM_BG = [
   'linear-gradient(135deg, rgba(255,215,0,0.12) 0%, rgba(255,215,0,0.04) 100%)',
   'linear-gradient(135deg, rgba(192,192,192,0.12) 0%, rgba(192,192,192,0.04) 100%)',
@@ -115,7 +119,11 @@ export function DailyLeaderboardClient({ gameType }: { gameType: DailyChallengeG
     <div className="mx-auto max-w-md px-4 py-6">
       {/* Header */}
       <div className="text-center mb-5">
-        <div className="text-3xl mb-1">{DAILY_GAME_EMOJIS[gameType]}</div>
+        <div className="flex justify-center text-[var(--primary)] mb-2">
+          <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[color-mix(in_srgb,var(--primary)_12%,transparent)]">
+            <Glyph icon={dailyChallengeIcon(gameType)} size={20} />
+          </span>
+        </div>
         <h1 className="font-bold" style={{ fontSize: 'var(--text-lg)', fontFamily: 'var(--font-display)' }}>
           {DAILY_GAME_LABELS[gameType]} Leaderboard
         </h1>
@@ -123,14 +131,15 @@ export function DailyLeaderboardClient({ gameType }: { gameType: DailyChallengeG
 
       {/* Game type chips */}
       <div className="flex gap-1.5 overflow-x-auto pb-2 mb-4 scrollbar-hide justify-center flex-wrap">
-        {DAILY_CHALLENGE_GAME_TYPES.map((gt) => (
+        {DAILY_CHALLENGE_GAME_TYPES.map((gameTypeOption) => (
           <Link
-            key={gt}
-            href={`/daily-challenges/${DAILY_GAME_TYPE_TO_SLUG[gt]}/leaderboard`}
-            className={`shrink-0 fr-btn fr-btn--sm ${gt === gameType ? 'fr-btn--primary' : 'fr-btn--ghost'}`}
+            key={gameTypeOption}
+            href={`/daily-challenges/${DAILY_GAME_TYPE_TO_SLUG[gameTypeOption]}/leaderboard`}
+            className={`shrink-0 fr-btn fr-btn--sm ${gameTypeOption === gameType ? 'fr-btn--primary' : 'fr-btn--ghost'}`}
             style={{ fontSize: 'var(--text-2xs)' }}
           >
-            {DAILY_GAME_EMOJIS[gt]} {DAILY_GAME_LABELS[gt]}
+            <Glyph icon={dailyChallengeIcon(gameTypeOption)} size={12} className="shrink-0" />{' '}
+            {DAILY_GAME_LABELS[gameTypeOption]}
           </Link>
         ))}
       </div>
@@ -181,7 +190,11 @@ export function DailyLeaderboardClient({ gameType }: { gameType: DailyChallengeG
       {/* Empty state */}
       {!loading && entries.length === 0 && (
         <div className="fr-card text-center py-10">
-          <div className="text-4xl mb-3">🏜️</div>
+          <div className="flex justify-center text-[var(--text-faint)] mb-3">
+            <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[color-mix(in_srgb,var(--foreground)_6%,transparent)]">
+              <Glyph icon={InboxIcon} size={24} />
+            </span>
+          </div>
           <p className="font-semibold mb-1" style={{ fontSize: 'var(--text-sm)' }}>
             {tab === 'today' && !isToday ? 'No scores for this day' : 'No scores yet'}
           </p>
@@ -231,7 +244,7 @@ export function DailyLeaderboardClient({ gameType }: { gameType: DailyChallengeG
                     color: isTop3 ? undefined : 'var(--text-faint)',
                   }}
                 >
-                  {isTop3 ? MEDALS[entry.rank - 1] : `#${entry.rank}`}
+                  {isTop3 ? <Glyph icon={MEDAL_ICONS[entry.rank - 1]} size={20} /> : `#${entry.rank}`}
                 </div>
 
                 {/* Avatar */}

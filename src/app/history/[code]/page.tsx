@@ -179,7 +179,7 @@ function HistoryPageShell({
       {children}
       <p className="text-center pb-4">
         <Link href="/" className="text-faint text-sm hover:text-body transition-colors">
-          ← Back home
+          Back home
         </Link>
       </p>
     </div>

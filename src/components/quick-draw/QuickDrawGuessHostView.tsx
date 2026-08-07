@@ -410,7 +410,7 @@ export function QuickDrawGuessHostView({ gameCode, hostToken }: { gameCode: stri
             hostToken={hostToken}
             onEnded={load}
             label="End game"
-            icon={<ExitIcon size={16} />}
+            icon={<ExitIcon size={14} />}
             className="btn-danger-soft"
           />
         </div>
