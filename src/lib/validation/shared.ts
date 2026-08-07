@@ -112,6 +112,7 @@ export const gameTypeEnum = z.enum([
   'crossword',
   'word_search',
   'word_scramble',
+  'word_grouping',
   'landmine',
   'ping_pong',
 ])

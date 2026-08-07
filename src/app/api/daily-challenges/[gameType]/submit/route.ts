@@ -11,6 +11,7 @@ import {
   type DailyScoreInput,
 } from '@/lib/daily-challenge'
 import { advanceStreak, type StreakState } from '@/lib/trophies/streak'
+import { syncEligibleTrophies } from '@/lib/trophies/award'
 
 export const dynamic = 'force-dynamic'
 
@@ -540,6 +541,31 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ gam
       return NextResponse.json({ error: 'Already submitted' }, { status: 409 })
     }
     return NextResponse.json({ error: 'Failed to save score' }, { status: 500 })
+  }
+
+  // Word Grouping is the only daily challenge with a system trophy tied to daily plays today
+  // (#20 Daily Player, `word_grouping.sys.daily_player`). The daily submit path never touches
+  // `awardForFinishedGame`, so we bump the counter directly via `bump_player_stats` and
+  // fire-and-forget a trophy sync afterwards. Best-effort — a trophy delay must not fail the
+  // score submission the user is watching for.
+  if (gameType === 'word_grouping') {
+    try {
+      // `.rpc()` resolves with `{ data, error }` by default rather than throwing — without
+      // this explicit check, a failed `bump_player_stats` call would skip the counter update
+      // silently and then the trophy sync would run against un-bumped counters, so the
+      // daily-player trophy never fires and no diagnostic is logged.
+      const { error: statsError } = await admin.rpc('bump_player_stats', {
+        p_profile_id: profileId,
+        p_game_type: 'word_grouping',
+        p_played: 0,
+        p_won: 0,
+        p_counters: { word_grouping_daily_played: 1 },
+      })
+      if (statsError) throw statsError
+      await syncEligibleTrophies(admin, profileId)
+    } catch (err) {
+      console.error(`daily-challenge WG trophy sync failed for profile ${profileId}`, err)
+    }
   }
 
   // Upsert personal best (best-effort)

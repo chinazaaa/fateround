@@ -336,6 +336,27 @@ const GAMES = {
       </div>
     </div>`
 },
+'word-grouping': {
+  accent:'#f97316', soft:'rgba(249,115,22,.14)', eyebrow:'Find the Link',
+  title:'Word Grouping', titleSize:64,
+  desc:'Sixteen words, four hidden groups. Spot the connections before your mistakes run out.',
+  pills:['1–20 players','Max 4 mistakes','Harder groups score more'],
+  panel:`
+    <div class="rhead" style="background:rgba(249,115,22,.10)">
+      <span class="tag" style="background:rgba(249,115,22,.18);color:#fdba74">4 GROUPS</span>
+      <span class="mid">Find the link</span>
+      <span class="mid" style="color:#fdba74;font-weight:700">0/4 ✓</span>
+    </div>
+    <div class="rbody">
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:2px">
+        ${['ROSE','BLUE','CHESS','RUBY','NAVY','POKER','DAISY','TEAL','BRIDGE','TULIP','JADE','HEARTS','LILY','CORAL','SPADES','IRIS'].map(w=>`<div style="background:rgba(249,115,22,.12);border:1px solid rgba(249,115,22,.3);border-radius:10px;padding:10px 4px;text-align:center;font-size:12px;font-weight:700;letter-spacing:.5px">${w}</div>`).join('')}
+      </div>
+      <div style="margin-top:16px;display:flex;gap:12px;justify-content:center">
+        <div style="background:rgba(249,115,22,.12);border:1px solid rgba(249,115,22,.4);border-radius:14px;padding:10px 16px;font-size:15px;font-weight:600">Mistakes: <span style="color:#fdba74">●●●○</span></div>
+        <div style="background:rgba(249,115,22,.12);border:1px solid rgba(249,115,22,.4);border-radius:14px;padding:10px 16px;font-size:15px;font-weight:600;color:#fdba74">+50 first ⚡</div>
+      </div>
+    </div>`
+},
 'landmine': {
   accent:'#ef4444', soft:'rgba(239,68,68,.14)', eyebrow:'Risky Word Bluff',
   title:'Landmine', titleSize:104,

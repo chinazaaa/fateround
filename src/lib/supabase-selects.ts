@@ -23,7 +23,7 @@ export const PARTICIPANT_SELECT =
   'id,game_id,name,gender,photo_url,description,display_order,in_mlt_poll,submitted_by_player_id'
 
 export const ROUND_SELECT =
-  'id,game_id,round_number,participant_ids,wyr_option_a,wyr_option_b,mlt_question,submitter_player_id,quote_text,quote_author_participant_id,quote_submitted_at,status,started_at,ended_at,anime_metadata,trivia_metadata,ttl_metadata,npat_metadata,sudoku_metadata,word_hunt_metadata,memory_match_metadata,quiplash_metadata,quick_draw_metadata,crossword_metadata,landmine_metadata'
+  'id,game_id,round_number,participant_ids,wyr_option_a,wyr_option_b,mlt_question,submitter_player_id,quote_text,quote_author_participant_id,quote_submitted_at,status,started_at,ended_at,anime_metadata,trivia_metadata,ttl_metadata,npat_metadata,sudoku_metadata,word_hunt_metadata,memory_match_metadata,quiplash_metadata,quick_draw_metadata,crossword_metadata,word_grouping_metadata,landmine_metadata'
 
 export const SUDOKU_SUBMISSION_SELECT =
   'id,game_id,round_id,player_id,block_index,cell_row,cell_col,submitted_value,is_correct,points_awarded,submitted_at'
@@ -32,6 +32,9 @@ export const WORD_HUNT_SUBMISSION_SELECT = 'id,game_id,round_id,player_id,word,p
 
 export const CROSSWORD_SUBMISSION_SELECT =
   'id,game_id,round_id,player_id,cell_row,cell_col,submitted_letter,is_correct,via_hint,submitted_at'
+
+export const WORD_GROUPING_SUBMISSION_SELECT =
+  'id,game_id,round_id,player_id,group_index,difficulty,guess_words,is_correct,mistakes_at_time,submitted_at'
 
 export const PING_PONG_SESSION_SELECT =
   'id,game_id,player_x_id,player_o_id,score_x,score_o,points_to_win,status,winner_player_id,status_message,created_at,updated_at'
