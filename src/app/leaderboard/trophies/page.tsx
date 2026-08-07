@@ -18,11 +18,17 @@ interface TrophyEntry {
 export default function TrophyLeaderboardPage() {
   const [entries, setEntries] = useState<TrophyEntry[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     fetch('/api/leaderboard/trophies')
-      .then((r) => r.json())
+      .then(async (r) => {
+        const data = await r.json()
+        if (!r.ok) throw new Error(data.error ?? 'Failed to load')
+        return data
+      })
       .then((d) => setEntries(d.entries ?? []))
+      .catch((err) => setError(err.message))
       .finally(() => setLoading(false))
   }, [])
 
@@ -51,6 +57,10 @@ export default function TrophyLeaderboardPage() {
               <p className="text-center text-sm" style={{ color: 'var(--text-muted)' }}>
                 Loading…
               </p>
+            ) : error ? (
+              <div className="fr-card p-8 text-center text-sm" style={{ color: 'var(--error, #ef4444)' }}>
+                {error}
+              </div>
             ) : entries.length === 0 ? (
               <div className="fr-card p-8 text-center text-sm" style={{ color: 'var(--text-muted)' }}>
                 No trophy holders yet. Play games and earn trophies to appear here!

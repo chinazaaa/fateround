@@ -142,16 +142,16 @@ export function DailyWordScramblePlay({
 
   const handleUseHint = useCallback(async () => {
     if (submitted || hintedIndices.has(currentIndex)) return
+    const index = currentIndex
     const hint = hints[currentIndex]
     if (!hint) return
     const yes = await confirm({
       title: 'Use hint?',
       message: `This will deduct ${HINT_COST} pts from your final score (out of 1000). Show the hint?`,
       confirmLabel: 'Show hint',
-      variant: 'warning',
     })
-    if (!yes) return
-    setHintedIndices((prev) => new Set(prev).add(currentIndex))
+    if (!yes || submitRef.current) return
+    setHintedIndices((prev) => new Set(prev).add(index))
     setShowingHint(true)
   }, [submitted, currentIndex, hintedIndices, hints, confirm])
 

@@ -143,7 +143,11 @@ function verifyWordScramble(
 ): VerifiedMetrics | { error: string } {
   const solution = puzzleData.solution as string[]
   const answers = submission.answers as Array<{ index: number; word: string }>
-  const hintsUsed = (submission.hintsUsed as number) ?? 0
+  const rawHints = submission.hintsUsed
+  const hintsUsed =
+    typeof rawHints === 'number' && Number.isInteger(rawHints) && rawHints >= 0
+      ? Math.min(rawHints, solution.length)
+      : 0
   if (!Array.isArray(answers)) return { error: 'Missing answers array' }
 
   let correct = 0
@@ -517,8 +521,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ gam
     itemsTotal: metrics.itemsTotal,
     timeSeconds: killSpeed ? maxTime : clampedTime,
     maxTimeSeconds: maxTime,
-    hintsUsed: metrics.hintsUsed,
-    maxHints: Math.max(metrics.itemsTotal, 1),
+    hintsUsed: gameType === 'word_scramble' ? 0 : metrics.hintsUsed,
+    maxHints: gameType === 'word_scramble' ? 0 : Math.max(metrics.itemsTotal, 1),
   }
   let normalizedScore = computeNormalizedScore(scoreInput)
   if (killSpeed) {

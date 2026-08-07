@@ -3,7 +3,8 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
 export async function GET(req: NextRequest) {
   const url = new URL(req.url)
-  const limit = Math.min(Number(url.searchParams.get('limit')) || 50, 100)
+  const requestedLimit = Number(url.searchParams.get('limit'))
+  const limit = Number.isInteger(requestedLimit) && requestedLimit > 0 ? Math.min(requestedLimit, 100) : 50
 
   const supabase = getSupabaseAdmin()
   const { data, error } = await supabase

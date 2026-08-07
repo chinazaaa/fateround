@@ -186,7 +186,12 @@ export default function LibraryPage() {
       .catch(() => {})
   }, [])
 
+  const abortRef = useRef<AbortController | null>(null)
+
   const load = useCallback((gt: string, tg: string, q: string, pg: number, col: string) => {
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
     setLoading(true)
     const params = new URLSearchParams()
     if (gt) params.set('game_type', gt)
@@ -194,14 +199,19 @@ export default function LibraryPage() {
     if (q) params.set('q', q)
     if (col) params.set('collection', col)
     params.set('page', String(pg))
-    fetch(`/api/library?${params}`)
+    fetch(`/api/library?${params}`, { signal: controller.signal })
       .then((r) => r.json())
       .then((d) => {
         setPacks(d.packs ?? [])
         setTotalPages(d.pages ?? 1)
         setTotal(d.total ?? 0)
       })
-      .finally(() => setLoading(false))
+      .catch((e) => {
+        if (e.name === 'AbortError') return
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false)
+      })
   }, [])
 
   useEffect(() => {
@@ -293,7 +303,7 @@ export default function LibraryPage() {
           <p className="text-4xl">📚</p>
           <p className="font-semibold">No packs found</p>
           <p className="text-muted text-sm">
-            {gameType || tag ? 'No approved packs match these filters.' : 'Be the first to submit one!'}
+            {gameType || tag || collection ? 'No approved packs match these filters.' : 'Be the first to submit one!'}
           </p>
           <Link
             href="/library/submit"

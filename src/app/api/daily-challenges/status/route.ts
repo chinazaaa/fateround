@@ -58,26 +58,28 @@ export async function GET(req: NextRequest) {
             .select('*', { count: 'exact', head: true })
             .eq('challenge_id', challenge.id)
             .gt('normalized_score', 0)
-            .gt('items_solved', entry.items_solved),
+            .gt('items_solved', entry.items_solved)
+            .throwOnError(),
           admin
             .from('daily_scores')
             .select('*', { count: 'exact', head: true })
             .eq('challenge_id', challenge.id)
             .gt('normalized_score', 0)
             .eq('items_solved', entry.items_solved)
-            .lt('time_seconds', entry.time_seconds),
+            .lt('time_seconds', entry.time_seconds)
+            .throwOnError(),
         ]).then(([{ count: a }, { count: b }]) => (a ?? 0) + (b ?? 0) + 1)
       )
     } else {
       rankPromises.set(
         gameType,
-        Promise.resolve(
-          admin
-            .from('daily_scores')
-            .select('*', { count: 'exact', head: true })
-            .eq('challenge_id', challenge.id)
-            .gt('raw_points', entry.raw_points)
-        ).then(({ count }) => (count ?? 0) + 1)
+        admin
+          .from('daily_scores')
+          .select('*', { count: 'exact', head: true })
+          .eq('challenge_id', challenge.id)
+          .gt('raw_points', entry.raw_points)
+          .throwOnError()
+          .then(({ count }) => (count ?? 0) + 1)
       )
     }
   }
@@ -89,7 +91,7 @@ export async function GET(req: NextRequest) {
     })
   )
 
-  // Total players for today (across all games — just the count of distinct profiles who scored).
+  // Total players for today's first challenge (approximate; not cross-game distinct).
   const firstChallenge = challenges?.[0]
   let totalPlayers: number | null = null
   if (firstChallenge) {

@@ -75,7 +75,7 @@ export function DailyWordGroupingPlay({
   const { elapsed, formatted, isTimeUp } = useDailyChallengeTimer({
     mode: 'countdown',
     maxSeconds,
-    running: !submitted,
+    running: !submitted && !isSolved,
     startAtMs,
   })
 
