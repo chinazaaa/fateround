@@ -1,4 +1,6 @@
 import { gameLobbySummaryChips, customGameDisplayTitle } from '@/lib/game-lobby-summary'
+import { Glyph } from '@/components/icons/Glyph'
+import { UsersIcon } from '@/components/host/host-icons'
 import type { Game } from '@/types'
 
 export function GameLobbySummary({ game, className = '' }: { game: Game; className?: string }) {
@@ -15,9 +17,15 @@ export function GameLobbySummary({ game, className = '' }: { game: Game; classNa
           {chips.map((chip) => (
             <span
               key={chip.key}
-              className="inline-flex items-center gap-1 rounded-full border border-theme bg-[var(--surface-inset)] px-2.5 py-1 text-xs font-medium text-body"
+              className="inline-flex items-center gap-1.5 rounded-full border border-theme bg-[var(--surface-inset)] px-2.5 py-1 text-xs font-medium text-body"
             >
-              {chip.emoji ? <span aria-hidden>{chip.emoji}</span> : null}
+              {chip.key === 'room-capacity' ? (
+                <UsersIcon size={11} className="shrink-0 text-[var(--primary)]" />
+              ) : chip.emoji ? (
+                <span aria-hidden className="text-[0.85em] leading-none shrink-0">
+                  {chip.emoji}
+                </span>
+              ) : null}
               <span>{chip.label}</span>
             </span>
           ))}

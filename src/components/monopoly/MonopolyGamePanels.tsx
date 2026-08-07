@@ -1,6 +1,8 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { Exchange01Icon } from '@hugeicons/core-free-icons'
+import { HugeiconsIcon } from '@hugeicons/react'
 import {
   MonopolyModal,
   MonopolyPrimaryButton,
@@ -28,6 +30,7 @@ import {
   unmortgageCost,
   type MonopolyColorGroup,
 } from '@/lib/monopoly'
+import { monopolyTokenEmoji } from '@/lib/monopoly-tokens'
 import {
   canonicalToDisplayMoney,
   displayToCanonicalMoney,
@@ -334,6 +337,157 @@ export function MonopolyTurnModals({
   )
 }
 
+function TradeTargetSelector({
+  players,
+  myPlayerId,
+  tradeTarget,
+  states,
+  owners,
+  themeId,
+  onSelectTarget,
+}: {
+  players: Player[]
+  myPlayerId: string
+  tradeTarget: string
+  states: MonopolyPlayerState[]
+  owners: Record<string, string>
+  themeId?: string | null
+  onSelectTarget: (id: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false)
+      }
+    }
+    if (open) {
+      document.addEventListener('mousedown', handleClickOutside)
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [open])
+
+  const selectedPlayer = players.find((p) => p.id === tradeTarget)
+  const selectedState = selectedPlayer ? states.find((s) => s.player_id === selectedPlayer.id) : null
+  const selectedPropsCount = selectedPlayer ? playerProperties(owners, selectedPlayer.id).length : 0
+
+  const availablePlayers = players.filter((p) => p.id !== myPlayerId)
+
+  return (
+    <div ref={containerRef} className="relative w-full">
+      {/* Trigger Button — compact layout */}
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center justify-between gap-2 rounded-xl border border-[var(--border-strong)] bg-[var(--surface-inset-bg)] hover:bg-[color-mix(in_srgb,var(--primary)_6%,var(--surface-inset-bg))] px-3 py-2 text-left transition-all shadow-sm focus:outline-none focus:ring-1 focus:ring-[var(--primary)] text-xs"
+      >
+        {selectedPlayer ? (
+          <div className="flex items-center gap-2 min-w-0 flex-1">
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-[color-mix(in_srgb,var(--primary)_15%,transparent)] text-sm">
+              {monopolyTokenEmoji(selectedPlayer.monopoly_token)}
+            </span>
+            <div className="min-w-0 flex-1 flex items-center gap-1.5">
+              <span className="font-bold text-body truncate">{selectedPlayer.name}</span>
+              <span className="text-[11px] text-muted truncate">
+                ({selectedState ? formatThemedMoney(selectedState.cash, themeId) : ''} • {selectedPropsCount}{' '}
+                {selectedPropsCount === 1 ? 'prop' : 'props'})
+              </span>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 text-muted font-semibold">
+            <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-[var(--surface-sunken)] text-[var(--primary)]">
+              <HugeiconsIcon icon={Exchange01Icon} size={14} />
+            </span>
+            <span>Trade with…</span>
+          </div>
+        )}
+        <span
+          className={`text-muted transition-transform duration-200 ${open ? 'rotate-180 text-[var(--primary)]' : ''}`}
+        >
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </span>
+      </button>
+
+      {/* Floating Custom Menu Popover */}
+      {open && (
+        <div className="absolute left-0 right-0 top-full mt-1.5 z-50 overflow-hidden rounded-xl border border-[var(--border-strong)] bg-[var(--surface)] p-1 shadow-xl backdrop-blur-xl animate-in fade-in slide-in-from-top-1 duration-150">
+          <div className="max-h-52 overflow-y-auto space-y-0.5 scrollbar-thin">
+            {/* "Trade with..." reset option */}
+            <button
+              type="button"
+              onClick={() => {
+                onSelectTarget('')
+                setOpen(false)
+              }}
+              className={[
+                'w-full flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs font-semibold transition-all',
+                !tradeTarget
+                  ? 'bg-[color-mix(in_srgb,var(--primary)_12%,var(--surface))] text-[var(--primary)]'
+                  : 'text-muted hover:bg-[color-mix(in_srgb,var(--primary)_6%,var(--surface))]',
+              ].join(' ')}
+            >
+              <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-[var(--surface-sunken)] text-[var(--primary)]">
+                <HugeiconsIcon icon={Exchange01Icon} size={13} />
+              </span>
+              <span>Trade with…</span>
+            </button>
+
+            {/* Player options */}
+            {availablePlayers.map((p) => {
+              const tokenEmoji = monopolyTokenEmoji(p.monopoly_token)
+              const pState = states.find((s) => s.player_id === p.id)
+              const pPropsCount = playerProperties(owners, p.id).length
+              const cashText = pState ? formatThemedMoney(pState.cash, themeId) : ''
+              const isBankrupt = pState?.bankrupt ?? false
+              const isSelected = p.id === tradeTarget
+
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  disabled={isBankrupt}
+                  onClick={() => {
+                    onSelectTarget(p.id)
+                    setOpen(false)
+                  }}
+                  className={[
+                    'w-full flex items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-left transition-all text-xs',
+                    isBankrupt
+                      ? 'opacity-40 cursor-not-allowed bg-[var(--surface-sunken)]'
+                      : isSelected
+                        ? 'bg-[color-mix(in_srgb,var(--primary)_14%,var(--surface))] border border-[color-mix(in_srgb,var(--primary)_25%,transparent)] font-bold'
+                        : 'hover:bg-[color-mix(in_srgb,var(--primary)_6%,var(--surface))] font-medium',
+                  ].join(' ')}
+                >
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-[color-mix(in_srgb,var(--primary)_12%,transparent)] text-sm">
+                      {tokenEmoji}
+                    </span>
+                    <div className="min-w-0 flex-1 flex items-center gap-1.5">
+                      <span className="font-bold text-body truncate">{p.name}</span>
+                      <span className="text-[11px] text-muted truncate">
+                        {isBankrupt
+                          ? '(Bankrupt)'
+                          : `${cashText} • ${pPropsCount} ${pPropsCount === 1 ? 'prop' : 'props'}`}
+                      </span>
+                    </div>
+                  </div>
+                  {isSelected && <span className="text-[var(--primary)] text-xs font-bold shrink-0">✓</span>}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function MonopolyManagePanel({
   board,
   myPlayerId,
@@ -530,26 +684,21 @@ export function MonopolyManagePanel({
               )}
             </p>
           </div>
-          <select
-            value={tradeTarget}
-            onChange={(e) => {
-              setTradeTarget(e.target.value)
+          <TradeTargetSelector
+            players={players}
+            myPlayerId={myPlayerId}
+            tradeTarget={tradeTarget}
+            states={states}
+            owners={owners}
+            themeId={themeId}
+            onSelectTarget={(id) => {
+              setTradeTarget(id)
               setRequestProps([])
               setRequestJailCards(0)
               setTradeConfirmOpen(false)
               setConfirmOneWayGift(false)
             }}
-            className="btn-secondary w-full text-sm text-left"
-          >
-            <option value="">Trade with…</option>
-            {players
-              .filter((p) => p.id !== myPlayerId)
-              .map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-          </select>
+          />
 
           {tradeTarget && (
             <>

@@ -5,7 +5,7 @@
  */
 type IconProps = { size?: number; className?: string }
 
-function Svg({ size = 17, className, children }: IconProps & { children: React.ReactNode }) {
+function Svg({ size = 11, className, children }: IconProps & { children: React.ReactNode }) {
   return (
     <svg
       viewBox="0 0 24 24"

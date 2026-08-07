@@ -15,6 +15,8 @@ import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
 import { LeaderboardJoinNote } from '@/components/game-lobby/LeaderboardJoinNote'
 import { MonopolyPageHeader } from '@/components/monopoly/MonopolyChrome'
 import { gameTypeConfig } from '@/lib/game-types'
+import { gameIcon } from '@/lib/game-glyphs'
+import { Glyph } from '@/components/icons/Glyph'
 import { MonopolyFinalResultsShareBlock } from '@/components/monopoly/MonopolyFinalResultsShareBlock'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
@@ -460,8 +462,9 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
                 </p>
               </>
             )}
+
             <p className="flex items-center justify-center gap-1.5 pt-1 text-sm font-bold text-[var(--foreground)]">
-              <span className="leading-none">{cfg.headerEmoji}</span>
+              <Glyph icon={gameIcon('monopoly')} size={14} className="shrink-0 text-[var(--primary)]" />
               <span>{cfg.label}</span>
             </p>
             {game ? <GameInfoChips game={game} className="pt-2" /> : null}

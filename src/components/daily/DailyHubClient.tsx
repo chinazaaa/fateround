@@ -15,19 +15,10 @@ import {
 import { formatDayLabel } from '@/lib/community-dates'
 import { authHeaders } from '@/lib/identity'
 import { getDailyStartedAt } from '@/lib/daily-progress'
-import { gameIcon } from '@/lib/game-glyphs'
+import { dailyChallengeIcon } from '@/lib/game-glyphs'
 import { Glyph } from '@/components/icons/Glyph'
-import type { GameType } from '@/types'
+import { Calendar03Icon } from '@hugeicons/core-free-icons'
 import { useExpiryRefresh } from '@/hooks/useExpiryRefresh'
-
-const DAILY_ICON_FALLBACK: Partial<Record<DailyChallengeGameType, GameType>> = {
-  whot_puzzle: 'whot',
-  word_grouping: 'tic_tac_toe',
-  chess_mate: 'chess',
-  codenames_codeword: 'codewords',
-  mini_crossword: 'crossword',
-  ludo_puzzle: 'ludo',
-}
 
 interface GameStatus {
   gameType: DailyChallengeGameType
@@ -93,7 +84,11 @@ export function DailyHubClient() {
   if (!isDailyChallengeLive()) {
     return (
       <div className="mx-auto max-w-lg px-4 py-16 text-center">
-        <div className="text-4xl mb-3">🗓️</div>
+        <div className="flex justify-center text-[var(--primary)] mb-3">
+          <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[color-mix(in_srgb,var(--primary)_12%,transparent)]">
+            <Glyph icon={Calendar03Icon} size={24} />
+          </span>
+        </div>
         <h1 className="font-bold" style={{ fontSize: 'var(--text-2xl)', fontFamily: 'var(--font-display)' }}>
           Daily Challenge starts {formatDayLabel(DAILY_CHALLENGE_LAUNCH)}
         </h1>
@@ -168,7 +163,7 @@ export function DailyHubClient() {
               style={played ? { borderColor: 'var(--border-primary)', borderWidth: 1 } : undefined}
             >
               <span className="fr-glyph fr-glyph--sm">
-                <Glyph icon={gameIcon(DAILY_ICON_FALLBACK[gameType] ?? (gameType as GameType))} size={22} />
+                <Glyph icon={dailyChallengeIcon(gameType)} size={22} />
               </span>
               <div className="flex-1 min-w-0">
                 <h3 className="font-bold" style={{ fontSize: 'var(--text-sm)' }}>

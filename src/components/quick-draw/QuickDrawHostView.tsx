@@ -421,7 +421,7 @@ function QuickDrawLieHostView({ gameCode, hostToken }: { gameCode: string; hostT
             hostToken={hostToken}
             onEnded={load}
             label="End game"
-            icon={<ExitIcon size={16} />}
+            icon={<ExitIcon size={14} />}
             className="btn-danger-soft"
           />
         </div>
