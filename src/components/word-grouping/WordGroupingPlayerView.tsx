@@ -229,6 +229,10 @@ export function WordGroupingPlayerView({ gameCode, embedded = false }: { gameCod
     computeScreen,
     afterResolve,
     joinExtras,
+    // Without this, a rejected late-join (e.g. host disabled late players — server returns
+    // "This game only allows late joiners to watch") is silently swallowed and the user is
+    // stuck on the choice screen tapping "Join as player" over and over with no feedback.
+    onJoinError: (message) => toastError(message),
   })
 
   useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
