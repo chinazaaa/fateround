@@ -1259,6 +1259,77 @@ fundamental loop.
 
 ---
 
+### Launch phases — validate first, monetize what works
+
+> **Don't build payment for features nobody uses yet.** The club competitive system is a big bet.
+> Before investing in billing infrastructure for Club Pro and Season Pass, run the system for
+> free and watch whether people actually engage. Emotional investment comes first; willingness
+> to pay follows. The phased approach below separates "safe revenue" (proven models that work
+> regardless of clubs) from "club-dependent revenue" (only converts if the competitive system
+> is thriving).
+
+**Phase A — Ship first (independent of clubs, proven models):**
+
+These convert regardless of whether the club system takes off. Ship them as soon as billing
+infrastructure exists.
+
+1. **FateRound+** — the daily challenge streak is the proven conversion driver (NYT/Wordle
+   model). The +25% coin earning and market visibility become more valuable later when clubs
+   exist, but daily streaks sell on their own from day one.
+2. **Cosmetic Shop — sticker packs and seasonal kits.** The Naija vibes sticker pack, game
+   night stickers, and seasonal kits (Detty December, Independence Day) are cheap impulse
+   buys that tap into Nigerian social/flex culture. They work in ANY chat context — club chat,
+   casual game chat, profile display — and don't depend on the competitive system being popular.
+   Seasonal kits create natural FOMO through time-limited availability.
+
+**Phase B — Run 2-3 free club seasons (validate the competitive system):**
+
+Build the club system. Run seasons with **zero payment** — no Club Pro, no Season Pass, no
+entry fees. Everything is free. Watch for signals:
+
+- Are clubs forming organically? How many? How fast?
+- Are people showing up for scheduled matches? What's the attendance rate?
+- Is the transfer market active? Are captains actually browsing and making offers?
+- Is club chat buzzing? Are people emotionally invested in the league table?
+- Are people talking about promotion/relegation like it matters?
+- Do clubs survive to Season 2, or do they go dormant after one season?
+
+**The critical mass threshold:** you need at least 8 clubs (40+ committed players) to fill
+one division. If you can't consistently get that, the competitive system needs rethinking
+before you layer payments on top.
+
+**Phase C — Monetize what's working (only after validation):**
+
+If Phase B shows real engagement:
+
+3. **Club Pro** — the roster expansion (15→25) and scouting analytics only matter if clubs are
+   competing seriously. If captains are already agonising over lineup decisions with 15 players,
+   they'll pay for 25. If nobody cares about lineups, this feature is dead weight.
+4. **Season Pass** — exclusive seasonal badges and cosmetics only have value if there's a social
+   context to show them off in. If club chat is active and league tables are watched, the flex
+   matters. If the league is a ghost town, badges nobody sees are worthless.
+
+If Phase B shows low engagement, don't build Phase C. Instead, investigate why: is the
+scheduling too demanding? Is the game pool too narrow? Are people forming clubs but not
+registering for seasons? Fix the engagement problem before adding payment.
+
+**Phase D — Expand based on data:**
+
+5. **Individual cosmetics** (profile borders, name glow, entry animations) — these sell when
+   there's a large enough social context to flex in. Wait until the player base is big enough
+   that cosmetic differentiation matters.
+6. **Bundles and mega packs** — bundle deals make sense when you have enough individual items
+   that packaging them creates perceived value. Don't launch bundles with 4 items in the shop.
+
+> **The club system's real value might not be direct revenue.** Even if nobody pays for Club
+> Pro, if clubs keep people opening the app weekly (checking the league table, chatting with
+> clubmates, preparing for matchday), that retention drives FateRound+ and cosmetic shop revenue
+> indirectly. A user who opens the app daily to check their club is far more likely to buy a
+> Detty December sticker pack than someone who plays once a month. Measure club impact on
+> overall retention and daily challenge engagement, not just Club Pro conversion.
+
+---
+
 ### Tier 1: FateRound+ (individual subscription)
 
 **₦1,000/mo · ₦7,500/yr** (£2.49/mo · £19.99/yr · $2.99/mo · $19.99/yr)
@@ -1353,15 +1424,93 @@ completely separate from FateRound Coins — cosmetic currency cannot be used fo
 recruitment, or any competitive action. FateRound Coins cannot be used for cosmetic purchases.
 Two economies, zero crossover.
 
-**What's in the shop:**
+**Full item catalogue:**
 
-| Category | Examples | Nigeria (₦) | International ($) |
+#### Club identity
+
+| Item | Description | ₦ | $ |
 |---|---|---|---|
-| **Crest packs** | Themed emoji sets (sports, animals, flags, food), premium colours, gradient backgrounds | ₦300-₦800 | $0.99-$2.99 |
-| **Profile effects** | Animated profile borders, custom backgrounds, entrance effects (shown when you join a match lobby) | ₦300-₦500 | $0.99-$1.99 |
-| **Seasonal kits** | Limited-time visual themes for your club — "Detty December" kit, "New Year" kit, event-specific designs | ₦500-₦1,200 | $1.99-$3.99 |
-| **Victory celebrations** | Custom animations that play when your club wins a match (confetti style, fireworks, club-themed) | ₦500 | $1.99 |
-| **Badge frames** | Decorative frames around your league position badge, division badge, or champion badge | ₦300 | $0.99 |
+| **Emoji crest pack — Sports** | Football, basketball, boxing gloves, trophy, medal, whistle, goal net, jersey, boot, stopwatch | ₦300 | $0.99 |
+| **Emoji crest pack — Animals** | Lion, eagle, panther, wolf, cobra, scorpion, shark, bull, hawk, dragon | ₦300 | $0.99 |
+| **Emoji crest pack — Culture** | Masks, drums, crown, shield, flame, star, diamond, lightning, sword, globe | ₦300 | $0.99 |
+| **Emoji crest pack — Food & vibes** | Pepper, suya, jollof pot, palm tree, coconut, sunrise, wave, fire, rocket, party popper | ₦300 | $0.99 |
+| **Premium crest backgrounds** | Gradient fills (gold→black, green→white, blue→purple), textured backgrounds (leather, metallic, carbon fibre) — replaces flat colour | ₦500 | $1.99 |
+| **Animated crest effect** | Glow, pulse, sparkle, or shimmer on your club crest. Visible on the league table, match lobby, and club profile | ₦500 | $1.99 |
+| **Crest border — Gold/Silver/Diamond** | Ornamental border around your club crest. Gold = classic, Silver = sleek, Diamond = premium shine | ₦400 each | $1.49 |
+| **Club banner** | Background image for your club's profile page. Themed options: stadium, skyline, abstract patterns, nature, night sky | ₦500 | $1.99 |
+
+#### Player profile
+
+| Item | Description | ₦ | $ |
+|---|---|---|---|
+| **Profile border — Animated** | Glowing, rotating, or pulsing border around your profile picture. Visible on rosters, league tables, and match lobbies | ₦400 | $1.49 |
+| **Profile border — Themed** | Football pitch, word cloud, puzzle grid, flames, ice, neon — static but visually distinct | ₦300 | $0.99 |
+| **Profile background** | Custom background on your player profile page. Gradients, patterns, cityscapes, abstract art | ₦300 | $0.99 |
+| **Name glow** | Your display name gets a subtle colour glow in rosters and league tables. Pick from 8 colours | ₦300 | $0.99 |
+| **Player title** | A custom title displayed under your name: "The Strategist", "Word Wizard", "Trivia King", "Silent Assassin", "Captain Clutch", "The Wall", etc. ~20 titles available, collect multiple, equip one | ₦400 each | $1.49 |
+| **Avatar accessories** | Hats, glasses, headbands, chains, earrings overlaid on your profile picture/avatar. Mix and match | ₦300 each | $0.99 |
+
+#### Match & gameplay
+
+| Item | Description | ₦ | $ |
+|---|---|---|---|
+| **Victory celebration — Confetti** | Classic confetti burst when your club wins a match | ₦500 | $1.99 |
+| **Victory celebration — Fireworks** | Fireworks animation over the result screen | ₦500 | $1.99 |
+| **Victory celebration — Club anthem** | A short celebratory sound effect + visual when your club wins (choose from 5 styles: afrobeats, drumroll, horn blast, crowd roar, whistle) | ₦600 | $2.49 |
+| **Entry animation** | How your name appears when you join the match lobby. Options: slide in, fade with sparkle, drop from above, typewriter, glitch effect | ₦400 | $1.49 |
+| **Correct answer effect (Trivia)** | When you answer correctly in a Trivia match, a special visual plays: green flash, star burst, fire trail, lightning bolt | ₦300 | $0.99 |
+| **Word trail effect (Word Search/Hunt)** | When you find a word, the highlight trail has a custom style: neon glow, rainbow, fire, ice, gold shimmer | ₦300 | $0.99 |
+| **Solve animation (Word Scramble/Crossword)** | When your team solves a scramble or fills a crossword word, a brief custom animation plays: pulse, ripple, shatter, glow-out | ₦300 | $0.99 |
+
+#### League & standings
+
+| Item | Description | ₦ | $ |
+|---|---|---|---|
+| **League position badge frame** | Decorative frame around your position number on the league table. Gold crown (1st), silver laurel (2nd), bronze shield (3rd), or custom frames for any position | ₦300 | $0.99 |
+| **Club row highlight** | Your club's row on the league table has a subtle background glow/tint. Makes your row instantly findable in a long table | ₦300 | $0.99 |
+| **Division badge — Premium** | Upgraded visual for your division badge (shown on your profile). Standard badges are plain; premium versions have metallic/animated finishes | ₦400 | $1.49 |
+
+#### Chat & social
+
+| Item | Description | ₦ | $ |
+|---|---|---|---|
+| **Chat bubble style** | Custom chat bubble appearance in club chat: rounded, sharp, gradient, speech-balloon, thought-cloud. Replaces the default flat style | ₦300 | $0.99 |
+| **Sticker pack — Reactions** | Animated reaction stickers for club chat: clapping, laughing, facepalm, mind-blown, crying, fire, 100, skull, dancing, flexing (10 per pack) | ₦400 | $1.49 |
+| **Sticker pack — Game night** | Game-themed stickers: dice rolling, cards flying, buzzer, countdown, trophy lift, whistle, "GG", "MVP", "carry us", "abeg" (10 per pack) | ₦400 | $1.49 |
+| **Sticker pack — Naija vibes** | Nigerian-flavoured stickers: "e choke", "wahala", "sapa no dey finish", "omo see gobe", "na you baddest", "shey you dey whine me", "ehen!", "las las", "japa energy", "God when" (10 per pack) | ₦400 | $1.49 |
+| **Custom chat reactions** | Unlock 5 extra reaction emojis beyond the default set, usable in club chat | ₦300 | $0.99 |
+
+#### Seasonal / limited edition
+
+These rotate in and out of the shop. Available for a limited window (2-4 weeks), then gone
+until next year. Scarcity drives purchases.
+
+| Item | Description | ₦ | $ |
+|---|---|---|---|
+| **Detty December kit** | Full club visual theme: crest border, league table row highlight, victory celebration, chat bubbles — all in festive party style. Available December only | ₦1,200 | $3.99 |
+| **New Year kit** | Fireworks theme across crest, profile, and match effects. January only | ₦1,000 | $3.49 |
+| **Valentine's kit** | Hearts, pink/red palette. Crest effect + profile border + chat bubbles. February only | ₦800 | $2.99 |
+| **Independence Day kit** | Green-white-green themed everything: crest, banner, profile border, victory celebration. October only (Nigeria Oct 1) | ₦1,000 | $3.49 |
+| **Easter kit** | Pastel colours, spring-themed crest effect and match animations | ₦800 | $2.99 |
+| **Eid kit** | Crescent and star motifs, gold/green palette, celebratory effects | ₦800 | $2.99 |
+| **Back to School kit** | Chalkboard/notebook aesthetic, pencil trail effects in Word Search. September | ₦800 | $2.99 |
+| **Halloween kit** | Spooky crest effects, dark purple/orange palette, skeleton victory dance. October | ₦800 | $2.99 |
+
+> **Seasonal kits are the best-value bundle.** A kit packages 4-5 cosmetic items that would
+> cost ₦1,500-₦2,000 individually into one ₦800-₦1,200 purchase. The time-limited availability
+> creates FOMO — "I missed the Detty December kit last year, I'm not missing it this year."
+> Players who buy seasonal kits will have visually distinctive clubs/profiles that non-buyers
+> notice, creating organic demand.
+
+#### Bundles & starter packs
+
+| Item | Description | ₦ | $ |
+|---|---|---|---|
+| **New Club starter bundle** | 1 crest pack + 1 premium background + 1 crest border + 1 club banner. ~40% off vs buying individually | ₦800 | $2.99 |
+| **Player drip bundle** | 1 profile border + 1 name glow + 1 player title + 1 entry animation. ~35% off | ₦800 | $2.99 |
+| **Match day bundle** | 1 victory celebration + 1 correct answer effect + 1 word trail + 1 solve animation. ~30% off | ₦800 | $2.99 |
+| **Chat starter bundle** | 1 chat bubble style + 2 sticker packs + custom reactions. ~30% off | ₦800 | $2.99 |
+| **Full drip mega bundle** | One of everything — the full cosmetic experience. Steep discount but premium price | ₦3,500 | $9.99 |
 
 **Why a separate currency?** Selling FateRound Coins for real money would break competitive
 integrity — the club with the richest owner would dominate the transfer market. By keeping the
@@ -1374,12 +1523,16 @@ can beat a Division 1 club on merit. The Division 1 club might *look* fancier, b
 
 ### Revenue summary
 
-| Revenue stream | Type | Nigeria (₦) | International ($) | Who pays |
-|---|---|---|---|---|
-| FateRound+ | Subscription (monthly/annual) | ₦1,000/mo · ₦7,500/yr | $2.99/mo · $19.99/yr | Individual player |
-| Club Pro | Per-season, per club | ₦1,500/season | $3.99/season | Club owner |
-| Season Pass | Per-season | ₦800/season | $1.99/season | Individual player |
-| Cosmetic Shop | À la carte | ₦300-₦1,200 | $0.99-$3.99 | Individual player |
+| Revenue stream | Phase | Type | Nigeria (₦) | International ($) | Who pays |
+|---|---|---|---|---|---|
+| FateRound+ | **A** (ship first) | Subscription (monthly/annual) | ₦1,000/mo · ₦7,500/yr | $2.99/mo · $19.99/yr | Individual player |
+| Cosmetic Shop | **A** (ship first) | À la carte | ₦300-₦1,200 | $0.99-$3.99 | Individual player |
+| Club Pro | **C** (after validation) | Per-season, per club | ₦1,500/season | $3.99/season | Club owner |
+| Season Pass | **C** (after validation) | Per-season | ₦800/season | $1.99/season | Individual player |
+
+**Phase B reminder:** Clubs launch with zero monetization. Run 2-3 full seasons free. Only
+build Club Pro and Season Pass billing infrastructure if Phase B shows genuine engagement
+(see "Launch phases" above for the success signals to watch).
 
 **What's NOT monetized** (decided):
 - Creating or joining a club
