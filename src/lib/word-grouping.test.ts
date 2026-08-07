@@ -70,4 +70,28 @@ describe('pickWordGroupingPuzzle — replay variety', () => {
     const reordered: WordGroupingPuzzleEntry = { groups: [...p.groups].reverse() }
     expect(wordGroupingPuzzleKey(p)).toBe(wordGroupingPuzzleKey(reordered))
   })
+
+  it('does not collide when a category contains the joiner character', () => {
+    // Regression for CodeRabbit's delimiter-injection catch on PR #835: with a plain
+    // `join('|')` these two distinct puzzles both flattened to `"a|b|c|d|e"` and the picker
+    // would have marked the second one used the moment the first was dealt, exhausting the
+    // pool early. `JSON.stringify` on the sorted array encodes the boundaries unambiguously.
+    const withPipe: WordGroupingPuzzleEntry = {
+      groups: [
+        { category: 'a|b', words: ['1', '2', '3', '4'], difficulty: 1 },
+        { category: 'c', words: ['5', '6', '7', '8'], difficulty: 2 },
+        { category: 'd', words: ['9', 'A', 'B', 'C'], difficulty: 3 },
+        { category: 'e', words: ['D', 'E', 'F', 'G'], difficulty: 4 },
+      ],
+    }
+    const splitPipe: WordGroupingPuzzleEntry = {
+      groups: [
+        { category: 'a', words: ['1', '2', '3', '4'], difficulty: 1 },
+        { category: 'b|c', words: ['5', '6', '7', '8'], difficulty: 2 },
+        { category: 'd', words: ['9', 'A', 'B', 'C'], difficulty: 3 },
+        { category: 'e', words: ['D', 'E', 'F', 'G'], difficulty: 4 },
+      ],
+    }
+    expect(wordGroupingPuzzleKey(withPipe)).not.toBe(wordGroupingPuzzleKey(splitPipe))
+  })
 })

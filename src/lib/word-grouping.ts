@@ -75,10 +75,11 @@ export type WordGroupingPuzzleEntry = { groups: { category: string; words: strin
  * reorders groups by difficulty for display.
  */
 export function wordGroupingPuzzleKey(puzzle: WordGroupingPuzzleEntry | { groups: { category: string }[] }): string {
-  return puzzle.groups
-    .map((g) => g.category.trim().toLowerCase())
-    .sort()
-    .join('|')
+  // JSON-encode the sorted category array rather than joining with a delimiter — a category
+  // that itself contains the delimiter would collide otherwise (e.g. `["a|b","c","d","e"]`
+  // and `["a","b|c","d","e"]` both flatten to `"a|b|c|d|e"`), which would let the picker
+  // exhaust the pool early and start repeating before every distinct puzzle was dealt.
+  return JSON.stringify(puzzle.groups.map((g) => g.category.trim().toLowerCase()).sort())
 }
 
 /**
