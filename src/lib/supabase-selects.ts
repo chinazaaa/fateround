@@ -167,8 +167,10 @@ export const BINGO_CARD_SELECT = 'id,game_id,player_id,cells,marked_indices,crea
 export const TRIVIA_ANSWER_SELECT =
   'id,game_id,round_id,player_id,choice_index,is_correct,answered_at,response_ms,points'
 
-export const TTL_STATEMENT_SELECT =
-  'id,game_id,player_id,statement_a,statement_b,statement_c,lie_index,created_at,updated_at'
+// `lie_index` is deliberately absent: it is revoked from the anon role (a bulk read of this
+// table handed over every player's lie). This roster read only needs to know WHO submitted;
+// the caller's own row, with its lie, comes from POST /api/two-truths/my-statement.
+export const TTL_STATEMENT_SELECT = 'id,game_id,player_id,statement_a,statement_b,statement_c,created_at,updated_at'
 
 export const TTL_GUESS_SELECT = 'id,game_id,round_id,player_id,guessed_index,is_correct,points,guessed_at'
 

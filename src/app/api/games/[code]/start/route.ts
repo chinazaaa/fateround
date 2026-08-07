@@ -639,9 +639,9 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
 
     const submittedPlayerIds = statements.map((s) => s.player_id).filter((id) => playerIds.includes(id))
     const playerOrder = shufflePlayerOrder(submittedPlayerIds)
-    let roundRows: ReturnType<typeof buildTtlRoundRows>
+    let built: ReturnType<typeof buildTtlRoundRows>
     try {
-      roundRows = buildTtlRoundRows({
+      built = buildTtlRoundRows({
         gameId: code.toUpperCase(),
         statements,
         playerOrder,
@@ -653,10 +653,31 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
         { status: 400 }
       )
     }
+    const roundRows = built.rows
 
-    const { error: roundError } = await getSupabaseAdmin().from('rounds').insert(roundRows)
+    // The round rows carry only the shuffled statements — the lie is NOT in ttl_metadata,
+    // which is anon-readable. `.select()` gives us the generated ids so each round's lie can
+    // be stored in ttl_round_lies (service-role only) and matched back by round_number.
+    const { data: insertedRounds, error: roundError } = await getSupabaseAdmin()
+      .from('rounds')
+      .insert(roundRows)
+      .select('id, round_number')
     if (roundError)
       return NextResponse.json({ error: internalErrorMessage('games/code/start', roundError) }, { status: 500 })
+
+    const roundIdByNumber = new Map((insertedRounds ?? []).map((r) => [r.round_number as number, r.id as string]))
+    const lieRows = built.lies.map(({ round_number, lie_index }) => ({
+      round_id: roundIdByNumber.get(round_number),
+      lie_index,
+    }))
+    // Fail the start rather than leave a round with no answer key: without it /guess cannot
+    // score and the reveal has nothing to show.
+    if (lieRows.some((r) => !r.round_id)) {
+      return NextResponse.json({ error: 'Failed to create rounds' }, { status: 500 })
+    }
+    const { error: lieError } = await getSupabaseAdmin().from('ttl_round_lies').insert(lieRows)
+    if (lieError)
+      return NextResponse.json({ error: internalErrorMessage('games/code/start', lieError) }, { status: 500 })
 
     // Only players who submitted statements enter the game; everyone else (the "Waiting…"
     // players in the lobby) becomes a watch-only viewer so they don't count as guessers.

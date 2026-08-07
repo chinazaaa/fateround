@@ -30,7 +30,7 @@ import { useDeadlineExpiry } from '@/hooks/useDeadlineExpiry'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { useAdvancePolling } from '@/hooks/useAdvancePolling'
 import { useLateJoinContext } from '@/hooks/useLateJoinContext'
-import { postTtlGuess, postTtlStatements } from '@/lib/game-api'
+import { postTtlGuess, postTtlMyStatement, postTtlStatements } from '@/lib/game-api'
 import { playSound } from '@/lib/sounds'
 import { getSupabase } from '@/lib/supabase'
 import { ROUND_SELECT, TTL_GUESS_SELECT, TTL_STATEMENT_SELECT } from '@/lib/supabase-selects'
@@ -133,7 +133,32 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
     onAdvanced: () => bootstrap.load(),
   })
 
-  const myStatement = bootstrap.myPlayerId ? statements.find((s) => s.player_id === bootstrap.myPlayerId) : undefined
+  // The bulk read above is the roster ("who has submitted") and no longer carries `lie_index`
+  // — it's revoked from the anon role. The caller's own row, lie included, comes from the
+  // token-gated route; prefer it and fall back to the roster row until it lands.
+  const rosterStatement = bootstrap.myPlayerId
+    ? statements.find((s) => s.player_id === bootstrap.myPlayerId)
+    : undefined
+  const [ownStatement, setOwnStatement] = useState<TtlStatement | null>(null)
+  const rosterStatementId = rosterStatement?.id ?? null
+  const rosterStatementStamp = rosterStatement?.updated_at ?? null
+  const myResumeToken = bootstrap.myResumeToken
+  useEffect(() => {
+    if (!myResumeToken || !rosterStatementId) return
+    let cancelled = false
+    postTtlMyStatement(gameCode, { resumeToken: myResumeToken })
+      .then((res) => {
+        if (!cancelled) setOwnStatement(res.statement ?? null)
+      })
+      .catch(() => {
+        // Leave the roster row in place; the next load retries.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [gameCode, myResumeToken, rosterStatementId, rosterStatementStamp])
+  // Ignore a stale own-row (different player, or a lobby reset that cleared the submission).
+  const myStatement = (ownStatement?.id === rosterStatementId ? ownStatement : null) ?? rosterStatement
 
   const me = bootstrap.myPlayerId ? bootstrap.players.find((p) => p.id === bootstrap.myPlayerId) : undefined
   // Watch-only: a spectator/eliminated/late player watches the live round read-only.
@@ -225,7 +250,7 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
     setStmtA(myStatement.statement_a)
     setStmtB(myStatement.statement_b)
     setStmtC(myStatement.statement_c)
-    setLieIndex(myStatement.lie_index)
+    setLieIndex(myStatement.lie_index ?? null)
     setEditingStatements(true)
   }
 

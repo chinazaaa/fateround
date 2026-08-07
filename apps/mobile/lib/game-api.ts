@@ -1,5 +1,5 @@
 import { apiUrl } from '@/lib/config'
-import type { GameType, WhotPlayerHand } from '@fateround/shared'
+import type { GameType, TtlStatement, WhotPlayerHand } from '@fateround/shared'
 import type { GamePlayerLimitsMap } from '@fateround/shared/lobby-limits'
 import { getCodeDefaultLimits } from '@fateround/shared/lobby-limits'
 import type { MafiaStateResponse } from '@fateround/shared/mafia'
@@ -1001,6 +1001,20 @@ export function postQuickDrawGuessTeam(gameId: string, resumeToken: string, team
  */
 export function postWhotHands(gameCode: string, auth: { resumeToken?: string | null }) {
   return postJson<{ hands: WhotPlayerHand[] }>('/api/whot/hands', {
+    gameCode: gameCode.toUpperCase(),
+    resumeToken: auth.resumeToken ?? undefined,
+  })
+}
+
+/**
+ * The caller's OWN Two Truths submission, including `lie_index`.
+ *
+ * `ttl_statements.lie_index` is revoked from the anon role, so the bulk table read used for
+ * the roster comes back without it. Mirrors postWhotHands: POST so the resume token stays out
+ * of the query string.
+ */
+export function postTtlMyStatement(gameCode: string, auth: { resumeToken?: string | null }) {
+  return postJson<{ statement: TtlStatement | null }>('/api/two-truths/my-statement', {
     gameCode: gameCode.toUpperCase(),
     resumeToken: auth.resumeToken ?? undefined,
   })

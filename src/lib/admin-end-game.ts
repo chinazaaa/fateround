@@ -3,7 +3,14 @@ import { internalErrorMessage } from '@/lib/api-errors'
 import { finishAnonymousRoomSession, finishSecretMessageBoard } from '@/lib/anonymous-messages'
 import { finishCodewordsGame } from '@/lib/codewords'
 import { markGameFinished } from '@/lib/game-finish'
-import { isAnonymousMessagesGame, isCodewordsGame, isSecretMessageGame, parseGameType } from '@/lib/game-types'
+import {
+  isAnonymousMessagesGame,
+  isCodewordsGame,
+  isSecretMessageGame,
+  isTwoTruthsGame,
+  parseGameType,
+} from '@/lib/game-types'
+import { revealFinishedTtlRounds } from '@/lib/two-truths-advance'
 
 export type AdminGameToEnd = {
   id: string
@@ -34,6 +41,12 @@ export async function adminEndGame(supabase: SupabaseClient, game: AdminGameToEn
   if (roundError) return { error: internalErrorMessage('admin-end-game', roundError) }
 
   const gameType = parseGameType(game.game_type)
+  // The bulk round update above finishes rounds without going through the Two Truths reveal,
+  // so fold each finished round's lie back into its metadata — otherwise an admin-ended game
+  // renders its last round with no lie highlighted.
+  if (isTwoTruthsGame(gameType)) {
+    await revealFinishedTtlRounds(supabase, gameId)
+  }
   if (isAnonymousMessagesGame(gameType)) {
     return finishAnonymousRoomSession(supabase, gameId)
   }

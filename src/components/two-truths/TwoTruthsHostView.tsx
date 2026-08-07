@@ -23,6 +23,7 @@ import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
 import { gameTypeConfig } from '@/lib/game-types'
 import { useTwoTruthsAdvance } from '@/hooks/useTwoTruthsAdvance'
 import { lobbyReadyForTwoTruths, TTL_TIMER_OPTIONS } from '@/lib/two-truths'
+import { fetchMyTtlStatement } from '@/lib/two-truths-client'
 import { supabase } from '@/lib/supabase'
 import {
   GAME_SELECT,
@@ -209,7 +210,25 @@ export function TwoTruthsHostView({ gameCode, hostToken }: { gameCode: string; h
     }
   }
 
-  const myStatement = hostPlayerId ? statements.find((s) => s.player_id === hostPlayerId) : null
+  // The bulk read is the roster ("who has submitted") and no longer carries `lie_index` —
+  // it's revoked from the anon role. The host's own row, lie included, comes from the
+  // token-gated route; prefer it and fall back to the roster row until it lands.
+  const rosterStatement = hostPlayerId ? (statements.find((s) => s.player_id === hostPlayerId) ?? null) : null
+  const [ownStatement, setOwnStatement] = useState<TtlStatement | null>(null)
+  const rosterStatementId = rosterStatement?.id ?? null
+  const rosterStatementStamp = rosterStatement?.updated_at ?? null
+  useEffect(() => {
+    if (!hostResumeToken || !rosterStatementId) return
+    let cancelled = false
+    void fetchMyTtlStatement(gameCode, hostResumeToken).then((row) => {
+      if (!cancelled) setOwnStatement(row)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [gameCode, hostResumeToken, rosterStatementId, rosterStatementStamp])
+  // Ignore a stale own-row (different player, or a lobby reset that cleared the submission).
+  const myStatement = (ownStatement?.id === rosterStatementId ? ownStatement : null) ?? rosterStatement
   const existingStatements = myStatement
     ? ([myStatement.statement_a, myStatement.statement_b, myStatement.statement_c] as [string, string, string])
     : null

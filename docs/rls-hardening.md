@@ -171,6 +171,42 @@ route.** Shipping it earlier breaks live games in the two ways described above.
 Playtest per game before its row is ticked: deal → several plays → a player goes out → finish,
 on web **and** mobile, watching that nobody is wrongly shown as out and opponent counts track.
 
+---
+
+## Phase 8 — Two Truths & a Lie answer redaction — ⏳ SHIPPED, AWAITING PLAYTEST
+
+Same class as Phase 7 (the row *is* the secret), but it did not need the redaction plumbing —
+just a hidden table plus a reveal write-back. Migration:
+`20260807120000_sec_ttl_hide_lie.sql`.
+
+Two independent leaks, both closed:
+
+1. `rounds.ttl_metadata` was `{statements, lie_index}` and `ttl_metadata` is in the
+   anon-readable `ROUND_SELECT`. All rounds are created up front (one per submitter) by
+   `buildTtlRoundRows`, so the anon key could read the lie for **every** round — including the
+   one being guessed — from the moment the game started.
+2. `ttl_statements.lie_index` was anon-readable, handing over every player's lie directly.
+
+The fix follows `0103_sudoku_hide_solution.sql`: the lie moves to `ttl_round_lies`
+(RLS on, **zero** policies — every write is service-role, so anon needs no access at all), and
+`/api/two-truths/guess` scores against that table, failing closed if the row is missing.
+
+**No reveal route was needed.** `endActiveRound` (lib/two-truths-advance.ts) sets a round
+`status:'finished'` — that IS the reveal moment the UI already renders
+(`showLie = screen === 'revealed' || 'finished'`). It now folds the lie back into
+`ttl_metadata` in the *same* update, so there is no window where the answer is readable early,
+and none where the round reads as revealed with nothing to show. `parseTtlMetadata` therefore
+tolerates a missing `lie_index` (`number | null`) instead of rejecting the whole metadata,
+which would have blanked the board mid-round.
+
+`ttl_statements.lie_index` is column-revoked from anon/authenticated; the caller's own row is
+served by `POST /api/two-truths/my-statement` (resume-token gated, same shape as
+`/api/whot/hands`). The bulk `ttl_statements` read stays — it is only the roster.
+
+Playtest: 3+ players submit → start → confirm devtools/network shows no `lie_index` on the
+active round → guess → reveal highlights the right statement → next round → finish →
+`/history/[code]` and the session summary still show every round's lie.
+
 ## Progress log
 
 ### Snake & Ladder (canary) — code-complete, ⏳ live verification pending

@@ -12,6 +12,7 @@ import { TwoTruthsLobbySubmit } from '@/components/two-truths/TwoTruthsLobbySubm
 import { gameTypeConfig } from '@/lib/game-types'
 import { supabase } from '@/lib/supabase'
 import { ROUND_SELECT, TTL_GUESS_SELECT, TTL_STATEMENT_SELECT } from '@/lib/supabase-selects'
+import { fetchMyTtlStatement } from '@/lib/two-truths-client'
 import { clearPlayerSession } from '@/lib/utils'
 import type { Game, Round, TtlGuess, TtlStatement } from '@/types'
 import { useToast } from '@/components/ui/Toast'
@@ -157,7 +158,25 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
   }
 
   const cfg = gameTypeConfig('two_truths')
-  const myStatement = myPlayerId ? statements.find((s) => s.player_id === myPlayerId) : null
+  // The bulk read above is the roster ("who has submitted") and no longer carries `lie_index`
+  // — it's revoked from the anon role. The caller's own row, lie included, comes from the
+  // token-gated route; prefer it and fall back to the roster row until it lands.
+  const rosterStatement = myPlayerId ? (statements.find((s) => s.player_id === myPlayerId) ?? null) : null
+  const [ownStatement, setOwnStatement] = useState<TtlStatement | null>(null)
+  const rosterStatementId = rosterStatement?.id ?? null
+  const rosterStatementStamp = rosterStatement?.updated_at ?? null
+  useEffect(() => {
+    if (!myResumeToken || !rosterStatementId) return
+    let cancelled = false
+    void fetchMyTtlStatement(gameCode, myResumeToken).then((row) => {
+      if (!cancelled) setOwnStatement(row)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [gameCode, myResumeToken, rosterStatementId, rosterStatementStamp])
+  // Ignore a stale own-row (different player, or a lobby reset that cleared the submission).
+  const myStatement = (ownStatement?.id === rosterStatementId ? ownStatement : null) ?? rosterStatement
   const existingStatements = myStatement
     ? ([myStatement.statement_a, myStatement.statement_b, myStatement.statement_c] as [string, string, string])
     : null

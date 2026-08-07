@@ -55,7 +55,20 @@ export async function POST(req: NextRequest) {
     .maybeSingle()
   if (existing) return NextResponse.json({ error: 'Already guessed this round' }, { status: 400 })
 
-  const isCorrect = guessedIndex === metadata.lie_index
+  // The answer lives in ttl_round_lies (service-role only), NOT in round.ttl_metadata —
+  // metadata is anon-readable, so a lie stored there would be visible to every player before
+  // they guessed. Fail closed if the row is missing: never score a guess correct by default.
+  const { data: lieRow, error: lieError } = await supabase
+    .from('ttl_round_lies')
+    .select('lie_index')
+    .eq('round_id', round.id)
+    .maybeSingle()
+  if (lieError) return NextResponse.json({ error: internalErrorMessage('two-truths/guess', lieError) }, { status: 500 })
+  if (!lieRow || typeof lieRow.lie_index !== 'number') {
+    return NextResponse.json({ error: 'Round is missing its answer key' }, { status: 500 })
+  }
+
+  const isCorrect = guessedIndex === lieRow.lie_index
   const points = isCorrect ? TTL_GUESS_POINTS : 0
 
   const { error } = await supabase.from('ttl_guesses').insert({

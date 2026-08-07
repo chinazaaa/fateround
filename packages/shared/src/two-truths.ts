@@ -10,14 +10,26 @@ export const TTL_GUESS_POINTS = 100
 export const TTL_FOOL_POINTS = 50
 export const TTL_MAX_STATEMENT_LENGTH = 200
 
+/**
+ * Parse a round's client-readable metadata.
+ *
+ * `lie_index` is ABSENT while the round is unrevealed — it lives in the service-role-only
+ * `ttl_round_lies` table until the server folds it back in at the moment the round is marked
+ * finished. A missing lie is normal, not invalid metadata, so it must not blank the board
+ * mid-round: it comes back as `lie_index: null`. When present it is still validated as 0..2.
+ */
 export function parseTtlMetadata(raw: unknown): TtlMetadata | null {
   if (!raw || typeof raw !== 'object') return null
   const m = raw as Record<string, unknown>
-  if (!Array.isArray(m.statements) || typeof m.lie_index !== 'number') return null
+  if (!Array.isArray(m.statements)) return null
   const statements = m.statements.filter((s): s is string => typeof s === 'string')
   if (statements.length !== 3) return null
-  const lie_index = m.lie_index
-  if (lie_index < 0 || lie_index > 2) return null
+  let lie_index: number | null = null
+  if (m.lie_index !== undefined && m.lie_index !== null) {
+    if (typeof m.lie_index !== 'number') return null
+    if (m.lie_index < 0 || m.lie_index > 2) return null
+    lie_index = m.lie_index
+  }
   return { statements: statements as [string, string, string], lie_index }
 }
 

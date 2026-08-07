@@ -869,7 +869,12 @@ export interface UnoPlayerHand {
 
 export interface TtlMetadata {
   statements: [string, string, string]
-  lie_index: number
+  /**
+   * null while the round is unrevealed. The lie lives in the service-role-only
+   * `ttl_round_lies` table and is folded back into the round metadata only when the server
+   * marks the round finished — the reveal moment the UI already renders.
+   */
+  lie_index: number | null
 }
 
 export interface TtlStatement {
@@ -879,7 +884,14 @@ export interface TtlStatement {
   statement_a: string
   statement_b: string
   statement_c: string
-  lie_index: number
+  /**
+   * null unless this is the CALLER'S OWN statement. `lie_index` is revoked from the anon
+   * role, so the bulk `ttl_statements` read (the roster) never carries it; the caller's own
+   * row comes from POST /api/two-truths/my-statement, gated on their resume token.
+   */
+  lie_index?: number | null
+  created_at?: string
+  updated_at?: string
 }
 
 export interface TtlGuess {

@@ -71,11 +71,74 @@ async function shouldEndActiveRound(
   return guessCount >= guesserCount
 }
 
+/**
+ * Build the round's REVEALED metadata: its statements plus the lie, read from the
+ * service-role-only `ttl_round_lies` table.
+ *
+ * While a round is unrevealed its `ttl_metadata` deliberately has no `lie_index` — the
+ * metadata is anon-readable (it's in ROUND_SELECT), so anything stored there is public from
+ * the moment the round row exists. Returns null if there is nothing to fold in, in which case
+ * the caller leaves the metadata untouched.
+ */
+async function revealedTtlMetadata(supabase: SupabaseClient, roundId: string): Promise<Record<string, unknown> | null> {
+  const { data: lieRow } = await supabase
+    .from('ttl_round_lies')
+    .select('lie_index')
+    .eq('round_id', roundId)
+    .maybeSingle()
+  if (!lieRow || typeof lieRow.lie_index !== 'number') return null
+
+  const { data: round } = await supabase.from('rounds').select('ttl_metadata').eq('id', roundId).maybeSingle()
+  const metadata = round?.ttl_metadata
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return null
+  return { ...(metadata as Record<string, unknown>), lie_index: lieRow.lie_index }
+}
+
+/**
+ * Fold the lie into every finished round of a game that is still missing it.
+ *
+ * The normal reveal happens inside `endActiveRound`, atomically with the status flip. This is
+ * for paths that finish rounds generically without going through it — today that is the admin
+ * kill-switch for stale games (`adminEndGame`), which bulk-updates active rounds to finished.
+ * Without this, the last round of an admin-ended game would render with no lie highlighted,
+ * because the answer now lives in `ttl_round_lies` rather than in the anon-readable metadata.
+ */
+export async function revealFinishedTtlRounds(supabase: SupabaseClient, gameId: string): Promise<void> {
+  const { data: rounds } = await supabase
+    .from('rounds')
+    .select('id, ttl_metadata')
+    .eq('game_id', gameId)
+    .eq('status', 'finished')
+
+  for (const round of rounds ?? []) {
+    const metadata = round.ttl_metadata
+    // Already revealed (or not a TTL round) — nothing to fold in.
+    if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) continue
+    if (typeof (metadata as Record<string, unknown>).lie_index === 'number') continue
+
+    const revealed = await revealedTtlMetadata(supabase, round.id)
+    if (revealed) await supabase.from('rounds').update({ ttl_metadata: revealed }).eq('id', round.id)
+  }
+}
+
+/**
+ * End the active round — which is also the REVEAL moment (the client shows the lie once the
+ * round's screen is 'revealed'/'finished').
+ *
+ * The lie is folded into `ttl_metadata` in the SAME update that flips the status, so there is
+ * never a window where the answer is readable before the round ends, nor one where the round
+ * reads as revealed but has no answer to show. The `.eq('status', 'active')` guard keeps the
+ * whole thing a single atomic, idempotent transition.
+ */
 async function endActiveRound(supabase: SupabaseClient, roundId: string): Promise<boolean> {
   const now = new Date().toISOString()
+  const revealed = await revealedTtlMetadata(supabase, roundId)
+  const update: Record<string, unknown> = { status: 'finished', ended_at: now }
+  if (revealed) update.ttl_metadata = revealed
+
   const { data, error } = await supabase
     .from('rounds')
-    .update({ status: 'finished', ended_at: now })
+    .update(update)
     .eq('id', roundId)
     .eq('status', 'active')
     .select('id')

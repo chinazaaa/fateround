@@ -46,44 +46,81 @@ export function clampTtlTimer(seconds: number | undefined | null): number {
   return (TTL_TIMER_OPTIONS as readonly number[]).includes(n) ? n : TTL_DEFAULT_TIMER
 }
 
+/**
+ * Parse a round's client-readable metadata.
+ *
+ * `lie_index` is ABSENT while the round is unrevealed — it lives in the service-role-only
+ * `ttl_round_lies` table until the server folds it back in at the moment the round is marked
+ * finished (see two-truths-advance.ts). A missing lie is therefore normal, not invalid, and
+ * must not blank the board mid-round: it comes back as `lie_index: null`. When present it is
+ * still validated as 0..2.
+ */
 export function parseTtlMetadata(raw: unknown): TtlMetadata | null {
   if (!raw || typeof raw !== 'object') return null
   const m = raw as Record<string, unknown>
-  if (!Array.isArray(m.statements) || typeof m.lie_index !== 'number') return null
+  if (!Array.isArray(m.statements)) return null
   const statements = m.statements.filter((s): s is string => typeof s === 'string')
   if (statements.length !== 3) return null
-  const lie_index = m.lie_index
-  if (lie_index < 0 || lie_index > 2) return null
+  let lie_index: number | null = null
+  if (m.lie_index !== undefined && m.lie_index !== null) {
+    if (typeof m.lie_index !== 'number') return null
+    if (m.lie_index < 0 || m.lie_index > 2) return null
+    lie_index = m.lie_index
+  }
   return { statements: statements as [string, string, string], lie_index }
 }
 
+/**
+ * Shuffle a submitter's three statements for display.
+ *
+ * The shuffled lie index is returned SEPARATELY from the metadata so the caller can store it
+ * in `ttl_round_lies` rather than in `rounds.ttl_metadata` — the metadata is anon-readable
+ * (it's in ROUND_SELECT), so anything placed there is public the moment the round row exists.
+ */
 export function buildTtlMetadata(
   stmt: Pick<TtlStatement, 'statement_a' | 'statement_b' | 'statement_c' | 'lie_index'>
-): TtlMetadata {
+): { metadata: TtlMetadata; lieIndex: number } {
+  if (stmt.lie_index == null) throw new Error('Missing lie index for player')
   const original: [string, string, string] = [stmt.statement_a, stmt.statement_b, stmt.statement_c]
   const order = shuffle([0, 1, 2] as const)
   const statements = order.map((i) => original[i]) as [string, string, string]
-  const lie_index = order.indexOf(stmt.lie_index as 0 | 1 | 2)
-  return { statements, lie_index }
+  const lieIndex = order.indexOf(stmt.lie_index as 0 | 1 | 2)
+  return { metadata: { statements, lie_index: null }, lieIndex }
 }
 
 export function shufflePlayerOrder(playerIds: string[]): string[] {
   return shuffle([...playerIds])
 }
 
+/** One round's hidden answer, keyed by round_number so the caller can match it to the row
+ *  ids returned by the `rounds` insert. */
+export type TtlRoundLie = { round_number: number; lie_index: number }
+
+/**
+ * Build every round row for a Two Truths session, plus the hidden lie for each.
+ *
+ * The rows carry ONLY `{ statements }` in `ttl_metadata`. Every round is created up front
+ * (one per submitter), so a lie stored in the round row would be readable with the anon key
+ * for all rounds — including the one being guessed — from the moment the game starts. The
+ * caller must write `lies` into `ttl_round_lies`, which anon cannot read.
+ */
 export function buildTtlRoundRows(opts: {
   gameId: string
   statements: TtlStatement[]
   playerOrder: string[]
   now: string
-}): Omit<Round, 'id'>[] {
+}): { rows: Omit<Round, 'id'>[]; lies: TtlRoundLie[] } {
   const byPlayer = new Map(opts.statements.map((s) => [s.player_id, s]))
-  return opts.playerOrder.map((playerId, index) => {
+  const rows: Omit<Round, 'id'>[] = []
+  const lies: TtlRoundLie[] = []
+  opts.playerOrder.forEach((playerId, index) => {
     const stmt = byPlayer.get(playerId)
     if (!stmt) throw new Error('Missing statements for player')
-    return {
+    const { metadata, lieIndex } = buildTtlMetadata(stmt)
+    const roundNumber = index + 1
+    rows.push({
       game_id: opts.gameId,
-      round_number: index + 1,
+      round_number: roundNumber,
       participant_ids: [],
       wyr_option_a: null,
       wyr_option_b: null,
@@ -95,9 +132,11 @@ export function buildTtlRoundRows(opts: {
       status: index === 0 ? 'active' : 'pending',
       started_at: index === 0 ? opts.now : null,
       ended_at: null,
-      ttl_metadata: buildTtlMetadata(stmt),
-    }
+      ttl_metadata: metadata,
+    })
+    lies.push({ round_number: roundNumber, lie_index: lieIndex })
   })
+  return { rows, lies }
 }
 
 export function lobbyReadyForTwoTruths(
