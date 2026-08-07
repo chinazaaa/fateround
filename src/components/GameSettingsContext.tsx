@@ -55,13 +55,18 @@ export function useCloseGameSettings(): () => void {
 /**
  * Register a settings node for as long as the caller is mounted. Pass a memoised
  * node so the registering effect only re-runs when the content actually changes.
- * Pass `null` to contribute nothing (the sheet falls back to its default rows).
+ * Pass `null` to actively clear whatever this caller previously contributed.
+ *
+ * Pass `enabled = false` when the caller should not participate at all — different
+ * from `null`: a `null` call runs `register(null)`, which would clobber a sibling's
+ * active registration (e.g. an embedded view running while its wrapper's host node
+ * is still meant to hold the slot). A disabled caller stays silent.
  */
-export function useRegisterGameSettings(node: ReactNode | null) {
+export function useRegisterGameSettings(node: ReactNode | null, enabled: boolean = true) {
   const register = useContext(RegisterContext)
   useEffect(() => {
-    if (!register) return
+    if (!register || !enabled) return
     register(node)
     return () => register(null)
-  }, [register, node])
+  }, [register, node, enabled])
 }
