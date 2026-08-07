@@ -181,6 +181,13 @@ The competitive-advantage model — turns a casual crew into a league-ready squa
 > cosmetic currency is a separate economy. A Division 4 club can beat a Division 1 club on
 > merit. This line must not blur.
 
+> **Phased monetization — validate before billing.**
+> Club Pro and Season Pass are **Phase C** revenue — they only ship after 2-3 free club seasons
+> prove genuine engagement. FateRound+ and the Cosmetic Shop (sticker packs, seasonal kits) are
+> **Phase A** — they convert independently of whether the club system thrives. See
+> [`clubs-spec.md`](./clubs-spec.md) §24 "Launch phases" for the full phasing plan and the
+> engagement signals that gate Phase C.
+
 ### Schools
 
 **Classroom — Free**
