@@ -143,7 +143,11 @@ function verifyWordScramble(
 ): VerifiedMetrics | { error: string } {
   const solution = puzzleData.solution as string[]
   const answers = submission.answers as Array<{ index: number; word: string }>
-  const hintsUsed = (submission.hintsUsed as number) ?? 0
+  const rawHints = submission.hintsUsed
+  const hintsUsed =
+    typeof rawHints === 'number' && Number.isInteger(rawHints) && rawHints >= 0
+      ? Math.min(rawHints, solution.length)
+      : 0
   if (!Array.isArray(answers)) return { error: 'Missing answers array' }
 
   let correct = 0
@@ -154,7 +158,7 @@ function verifyWordScramble(
   }
 
   return {
-    rawPoints: correct * 10 - hintsUsed * 4,
+    rawPoints: correct * 10 - hintsUsed * 8,
     itemsSolved: correct,
     itemsTotal: solution.length,
     hintsUsed,
@@ -508,15 +512,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ gam
 
   // Compute normalized score
   const maxTime = DAILY_GAME_TIMER[gameType]
+  const clampedTime = Math.min(timeSeconds, maxTime)
+  // Word scramble: using any hint kills the speed bonus (timeSeconds = maxTime → speedRatio = 0)
+  // and each hint costs a flat 80 from the normalized score.
+  const killSpeed = gameType === 'word_scramble' && metrics.hintsUsed > 0
   const scoreInput: DailyScoreInput = {
     itemsSolved: metrics.itemsSolved,
     itemsTotal: metrics.itemsTotal,
-    timeSeconds: Math.min(timeSeconds, maxTime),
+    timeSeconds: killSpeed ? maxTime : clampedTime,
     maxTimeSeconds: maxTime,
-    hintsUsed: metrics.hintsUsed,
-    maxHints: Math.max(metrics.itemsTotal, 1),
+    hintsUsed: gameType === 'word_scramble' ? 0 : metrics.hintsUsed,
+    maxHints: gameType === 'word_scramble' ? 0 : Math.max(metrics.itemsTotal, 1),
   }
-  const normalizedScore = computeNormalizedScore(scoreInput)
+  let normalizedScore = computeNormalizedScore(scoreInput)
+  if (killSpeed) {
+    normalizedScore = Math.max(0, normalizedScore - metrics.hintsUsed * 80)
+  }
 
   // Word Hunt is a points game with no natural "complete" — rank/record it by raw points, not the
   // completion-based normalized score (which is tiny when there are hundreds of possible words).
@@ -569,7 +580,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ gam
   }
 
   // Upsert personal best (best-effort)
-  const clampedTime = Math.min(timeSeconds, maxTime)
   const { data: currentBest } = await admin
     .from('personal_bests')
     .select('best_score, best_time, total_plays')

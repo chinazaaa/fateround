@@ -336,14 +336,14 @@
 }
 
 .fr-btn--primary {
-  background: transparent !important;
+  background: var(--primary) !important;
   border: 1.5px solid var(--primary) !important;
-  color: var(--primary-strong) !important;
+  color: var(--primary-contrast) !important;
   box-shadow: none !important;
 }
 .fr-btn--primary:hover:not(:disabled) {
-  background: var(--primary) !important;
-  border-color: var(--primary) !important;
+  background: var(--primary-strong) !important;
+  border-color: var(--primary-strong) !important;
   color: var(--primary-contrast) !important;
   transform: var(--lift-hover);
   box-shadow: none !important;

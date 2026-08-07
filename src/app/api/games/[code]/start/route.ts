@@ -156,8 +156,18 @@ import {
   findWordScrambleTheme,
   wordScrambleThemeOptions,
 } from '@/lib/word-scramble-puzzles'
-import { WORD_GROUPING_MIN_PLAYERS } from '@/lib/word-grouping'
-import { generateWordGroupingPuzzle, generateWordGroupingFromContent } from '@/lib/daily-word-grouping'
+import {
+  WORD_GROUPING_MIN_PLAYERS,
+  parseStoredWordGroupingPuzzles,
+  pickWordGroupingPuzzle,
+  type WordGroupingPuzzleEntry,
+} from '@/lib/word-grouping'
+import {
+  generateWordGroupingPuzzle,
+  generateWordGroupingFromContent,
+  getWordGroupingPuzzleBank,
+  type WordGroupingPuzzleResult,
+} from '@/lib/daily-word-grouping'
 import { buildWordHuntRoundRow, WORD_HUNT_MIN_PLAYERS } from '@/lib/word-hunt'
 import { buildWordHuntMetadata } from '@/lib/word-hunt-dictionary'
 import {
@@ -1103,21 +1113,44 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
 
     const seed = Date.now() ^ Math.floor(Math.random() * 0xffffffff)
 
-    // Custom content (JSON groups) overrides the platform puzzle bank.
+    // Pool priority: custom (library pack or CSV upload) → platform_content (admin-seeded) →
+    // built-in PUZZLE_BANK. Normalise every source through the shared validator so a bad
+    // custom row can't sneak past — anything invalid falls through to the next source.
     const customRows = Array.isArray(game.custom_questions) ? game.custom_questions : []
-    let puzzleResult =
-      customRows.length > 0
-        ? generateWordGroupingFromContent(customRows, seed, game.game_duration_seconds ?? 300)
-        : null
-
-    // Fall back to the built-in puzzle bank.
-    if (!puzzleResult) {
-      // Try platform_content entries first.
+    let pool: WordGroupingPuzzleEntry[] = parseStoredWordGroupingPuzzles(customRows) ?? []
+    if (pool.length === 0) {
       const platformEntries = await loadPlatformEntries<{ groups: unknown[] }>(getSupabaseAdmin(), 'word_grouping')
-      if (platformEntries.length > 0) {
-        puzzleResult = generateWordGroupingFromContent(platformEntries, seed, game.game_duration_seconds ?? 300)
+      pool = parseStoredWordGroupingPuzzles(platformEntries) ?? []
+    }
+
+    // Replay variety: skip puzzles this game has already dealt. Persists across play-again
+    // rounds in `game.pool_usage.word_grouping`, resetting the cycle once every puzzle in the
+    // pool has been used. Without this, play-again on a small custom pack (or unlucky seeds
+    // against the built-in bank) kept dealing the same puzzle back.
+    const wgUsage = parsePoolUsage(game.pool_usage).word_grouping
+    let puzzleResult: WordGroupingPuzzleResult | null = null
+    let nextUsage: Record<string, number> | undefined
+    if (pool.length > 0) {
+      const picked = pickWordGroupingPuzzle(pool, seed, wgUsage)
+      if (picked) {
+        // generateWordGroupingFromContent handles the single-puzzle shape by shuffling its
+        // 16 words with the seed — pass it as a one-element array so idx = 0 = our pick.
+        puzzleResult = generateWordGroupingFromContent([picked.puzzle], seed, game.game_duration_seconds ?? 300)
+        nextUsage = picked.nextUsage
       }
     }
+    // Built-in bank fallback: also apply usage tracking against the whole PUZZLE_BANK so the
+    // same repeat-avoidance behaviour holds even when no custom/platform pool is configured.
+    if (!puzzleResult) {
+      const bankPool: WordGroupingPuzzleEntry[] = getWordGroupingPuzzleBank()
+      const picked = pickWordGroupingPuzzle(bankPool, seed, wgUsage)
+      if (picked) {
+        puzzleResult = generateWordGroupingFromContent([picked.puzzle], seed, game.game_duration_seconds ?? 300)
+        nextUsage = picked.nextUsage
+      }
+    }
+    // Last-resort belt-and-braces: if every path above failed (shouldn't be possible — the
+    // built-in bank is 48 puzzles and always parses), fall back to the seed-only generator.
     if (!puzzleResult) {
       puzzleResult = generateWordGroupingPuzzle(seed, game.game_duration_seconds ?? 300)
     }
@@ -1156,6 +1189,17 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
         session_started_at: sessionStartedAt,
         current_round_number: 1,
         rounds_count: 1,
+        // Persist the used-puzzles set so the next play-again round can skip what this one
+        // just dealt. Merge with the game's existing pool_usage so we don't clobber other
+        // games' tracking (single jsonb column shared across game types).
+        ...(nextUsage
+          ? {
+              pool_usage: {
+                ...(parsePoolUsage(game.pool_usage) as Record<string, unknown>),
+                word_grouping: nextUsage,
+              },
+            }
+          : {}),
       })
       .eq('id', code.toUpperCase())
 
