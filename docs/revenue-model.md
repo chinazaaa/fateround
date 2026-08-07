@@ -46,7 +46,8 @@ not FX maths.
 |---|---|---|---|
 | **FateRound+** monthly | ₦1,000 | £2.49 | $2.99 |
 | **FateRound+** annual | ₦7,500 | £19.99 | $19.99 |
-| **Club Pro** monthly | ₦3,000 | £6.99 | $7.99 |
+| **Club Pro** per season, per club | ₦1,500 | £3.49 | $3.99 |
+| **Season Pass** per season | ₦800 | £1.49 | $1.99 |
 | **Classroom+** per teacher/mo (annual) | ₦1,000 | £2.49 | $3.00 |
 | **Team** per seat/mo (annual, min 10) | ₦1,500 | £3.49 | $4.00 |
 
@@ -125,13 +126,18 @@ On "No ads": there is no ad system on the free tier, so don't advertise the abse
 downside that doesn't exist — it just plants the idea that free users should expect ads.
 
 ### Club Pro
-**₦3,000/mo per club** (£6.99 / $7.99), paid by the club owner
+**₦1,500/season per club** (£3.49 / $3.99), paid by the club owner when registering for a season
 
 > **2026-08-07 — redesigned for the competitive club system.** The club concept has been
 > completely rebuilt around inter-club matches, leagues, transfer markets, and a virtual economy.
 > [`clubs-spec.md`](./clubs-spec.md) §24 is now the canonical, detailed monetization spec for
 > Club Pro and all club-related revenue (Season Pass, Cosmetic Shop). This section retains the
 > pricing and anti-loophole rules; for the full feature breakdown, see the clubs spec.
+>
+> **Billing is per-season, not monthly.** Seasons are the natural billing cycle — "pay for
+> Season 8" is clearer than "pay monthly forever." If a club skips a season, they don't pay.
+> ₦1,500 is an impulse price — the captain can ask 5 members to chip in ₦300 each. Start low,
+> prove the value, raise later.
 
 The competitive-advantage model — turns a casual crew into a league-ready squad.
 

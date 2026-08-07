@@ -1259,7 +1259,9 @@ fundamental loop.
 
 ---
 
-### Tier 1: FateRound+ (individual subscription) — ~$2.99/mo or ~$19.99/yr
+### Tier 1: FateRound+ (individual subscription)
+
+**₦1,000/mo · ₦7,500/yr** (£2.49/mo · £19.99/yr · $2.99/mo · $19.99/yr)
 
 Personal benefits that make the individual player more effective and expressive:
 
@@ -1272,16 +1274,31 @@ Personal benefits that make the individual player more effective and expressive:
 | **Profile cosmetics** | Custom profile borders, animated avatars, trophy showcase layouts. Visible on your profile and in club rosters / league tables. |
 | **4 saved game templates** (vs 2 free) | Unchanged from original pricing plan. |
 
-**Early-bird pricing:** $14.99/yr locked for life for the first cohort (unchanged — this
-mechanism still works and creates urgency).
+**Early-bird pricing:** ₦5,000/yr (£14.99 / $14.99) locked for life for the first cohort
+(unchanged — this mechanism still works and creates urgency).
 
 ---
 
-### Tier 2: Club Pro (club-level subscription) — ~$7.99/mo per club
+### Tier 2: Club Pro (per-season, per club)
 
-Paid by the club **owner**. Benefits apply to the club as an entity, not to individual members.
-The anti-loophole rule still holds: Club Pro does **not** grant members FateRound+ — only the
-paying owner gets + bundled. Members stay on whatever personal tier they're on.
+**₦1,500/season per club** (£3.49 / $3.99), paid by the club **owner** when registering for
+a season.
+
+> **Why per-season, not monthly:** seasons are the natural billing cycle. "Pay for Season 8"
+> is a clearer value proposition than "pay monthly forever." If a club skips a season (doesn't
+> register), they don't pay. No auto-deducting subscription — you choose each season whether the
+> competitive advantage is worth it. This also fits Nigerian payment habits better: a deliberate
+> per-event purchase via Paystack, not a recurring card charge that might bounce.
+>
+> **Why ₦1,500:** Netflix Mobile Nigeria is ₦2,200/mo, Spotify is ~₦1,300/mo. A game club
+> feature should sit well below daily-use streaming services. ₦1,500 per season (~monthly) is
+> an impulse purchase — the captain can ask 5 members to chip in ₦300 each. Start low, prove
+> the value, raise later. Going up from ₦1,500 to ₦2,500 is easy; coming down from ₦3,000
+> signals the product wasn't worth it.
+
+Benefits apply to the club as an entity, not to individual members. The anti-loophole rule
+still holds: Club Pro does **not** grant members FateRound+ — only the paying owner gets +
+bundled. Members stay on whatever personal tier they're on.
 
 | Perk | What it does |
 |---|---|
@@ -1293,15 +1310,17 @@ paying owner gets + bundled. Members stay on whatever personal tier they're on.
 | **Owner gets FateRound+ bundled** | The person paying for Club Pro gets all individual + perks included — no need to pay for both separately. |
 
 **The 50%-off member discount** (retained from original plan):
-- Any member of an active Club Pro club can buy personal FateRound+ at $1.49/mo (vs $2.99).
-- Discount **reverts to $2.99** at next renewal if they leave the club.
+- Any member of an active Club Pro club can buy personal FateRound+ at ₦500/mo (£1.24 / $1.49).
+- Discount **reverts to full price** at next renewal if they leave the club.
 - **Does not stack** across clubs — one discount per person, "member of any Club Pro club."
 - This creates a natural upsell funnel: join a Club Pro club → see the + perks → discounted
   conversion.
 
 ---
 
-### Tier 3: Season Pass — ~$1.99/season
+### Tier 3: Season Pass
+
+**₦800/season** (£1.49 / $1.99), personal purchase per season
 
 A battle-pass-style product tied to a specific league season. Resets each season — recurring
 revenue without a subscription commitment.
@@ -1336,13 +1355,13 @@ Two economies, zero crossover.
 
 **What's in the shop:**
 
-| Category | Examples | Price range |
-|---|---|---|
-| **Crest packs** | Themed emoji sets (sports, animals, flags, food), premium colours, gradient backgrounds | $0.99-$2.99 per pack |
-| **Profile effects** | Animated profile borders, custom backgrounds, entrance effects (shown when you join a match lobby) | $0.99-$1.99 each |
-| **Seasonal kits** | Limited-time visual themes for your club — "Detty December" kit, "New Year" kit, event-specific designs | $1.99-$3.99 each |
-| **Victory celebrations** | Custom animations that play when your club wins a match (confetti style, fireworks, club-themed) | $1.99 each |
-| **Badge frames** | Decorative frames around your league position badge, division badge, or champion badge | $0.99 each |
+| Category | Examples | Nigeria (₦) | International ($) |
+|---|---|---|---|
+| **Crest packs** | Themed emoji sets (sports, animals, flags, food), premium colours, gradient backgrounds | ₦300-₦800 | $0.99-$2.99 |
+| **Profile effects** | Animated profile borders, custom backgrounds, entrance effects (shown when you join a match lobby) | ₦300-₦500 | $0.99-$1.99 |
+| **Seasonal kits** | Limited-time visual themes for your club — "Detty December" kit, "New Year" kit, event-specific designs | ₦500-₦1,200 | $1.99-$3.99 |
+| **Victory celebrations** | Custom animations that play when your club wins a match (confetti style, fireworks, club-themed) | ₦500 | $1.99 |
+| **Badge frames** | Decorative frames around your league position badge, division badge, or champion badge | ₦300 | $0.99 |
 
 **Why a separate currency?** Selling FateRound Coins for real money would break competitive
 integrity — the club with the richest owner would dominate the transfer market. By keeping the
@@ -1355,12 +1374,12 @@ can beat a Division 1 club on merit. The Division 1 club might *look* fancier, b
 
 ### Revenue summary
 
-| Revenue stream | Type | Price | Who pays |
-|---|---|---|---|
-| FateRound+ | Subscription (monthly/annual) | $2.99/mo or $19.99/yr | Individual player |
-| Club Pro | Subscription (monthly, per club) | $7.99/mo | Club owner |
-| Season Pass | Per-season purchase | $1.99/season | Individual player |
-| Cosmetic Shop | À la carte | $0.99-$3.99 per item | Individual player |
+| Revenue stream | Type | Nigeria (₦) | International ($) | Who pays |
+|---|---|---|---|---|
+| FateRound+ | Subscription (monthly/annual) | ₦1,000/mo · ₦7,500/yr | $2.99/mo · $19.99/yr | Individual player |
+| Club Pro | Per-season, per club | ₦1,500/season | $3.99/season | Club owner |
+| Season Pass | Per-season | ₦800/season | $1.99/season | Individual player |
+| Cosmetic Shop | À la carte | ₦300-₦1,200 | $0.99-$3.99 | Individual player |
 
 **What's NOT monetized** (decided):
 - Creating or joining a club
