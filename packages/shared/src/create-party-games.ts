@@ -100,6 +100,7 @@ export const BATCH_20_PARTY_GAMES: GameType[] = [
   'crossword',
   'word_search',
   'word_scramble',
+  'word_grouping',
 ]
 
 export function hasPartyRoomSettings(gameType: GameType): boolean {

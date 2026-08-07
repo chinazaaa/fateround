@@ -37,6 +37,7 @@ import {
   isQuiplashGame,
   isQuickDrawGame,
   isMafiaGame,
+  isWordGroupingGame,
   parseGameType,
 } from '@/lib/game-types'
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -141,7 +142,8 @@ export function gameOffersLateJoinChoice(gameType: GameType): boolean {
     isLandmineGame(gameType) ||
     isSudokuGame(gameType) ||
     isQuiplashGame(gameType) ||
-    isQuickDrawGame(gameType)
+    isQuickDrawGame(gameType) ||
+    isWordGroupingGame(gameType)
   )
 }
 

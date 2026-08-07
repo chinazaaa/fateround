@@ -57,6 +57,7 @@ export type GameType =
   | 'word_scramble'
   | 'landmine'
   | 'ping_pong'
+  | 'word_grouping'
 
 export interface Game {
   id: string
@@ -801,7 +802,12 @@ export type UnoCardKind = 'number' | 'skip' | 'reverse' | 'draw2' | 'wild' | 'wi
  * type for parity with web's session shape but are not driven by any mobile UI yet.
  */
 export type UnoPhase =
-  'playing' | 'choose_color' | 'challenge_window' | 'swap_target' | 'team_leave_decision' | 'finished'
+  | 'playing'
+  | 'choose_color'
+  | 'challenge_window'
+  | 'swap_target'
+  | 'team_leave_decision'
+  | 'finished'
 
 export interface UnoCard {
   id: string

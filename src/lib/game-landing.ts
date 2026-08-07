@@ -82,6 +82,7 @@ export const GAME_TYPE_TO_SLUG: Record<GameType, string> = {
   crossword: 'crossword',
   word_search: 'word-search',
   word_scramble: 'word-scramble',
+  word_grouping: 'word-grouping',
   landmine: 'landmine',
 }
 
@@ -3176,6 +3177,42 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       { title: 'Create a room', description: 'Pick a theme, difficulty, and time limit.' },
       { title: 'Share the code', description: 'Friends join from their phones with a nickname.' },
       { title: 'Solve to win', description: 'Unscramble words for points — highest score takes the crown.' },
+    ],
+    perfectFor: ['Puzzle lovers', 'Family game night', 'Commutes', 'Remote teams'],
+  }),
+
+  word_grouping: landing('word_grouping', {
+    seoTitle: 'Word Grouping Online — Free Connections-Style Puzzle Game',
+    seoDescription:
+      'Find the 4 hidden groups of 4 words. Spot the connections, avoid the red herrings — you only get 4 mistakes. Free, no sign-up.',
+    keywords: [
+      'word grouping game online',
+      'connections puzzle game',
+      'find the groups word game',
+      'word association game free',
+      'group puzzle game online',
+      'connections style game multiplayer',
+      'word categories puzzle',
+    ],
+    heroSubtitle:
+      'Sixteen words, four hidden groups. Spot the connections before your mistakes run out — harder groups score more.',
+    highlights: ['16 words, 4 groups', 'Max 4 mistakes', 'Harder groups score more'],
+    features: [
+      {
+        title: 'Find the connections',
+        description: 'Pick 4 words that share a hidden link — lock them in to reveal the group and score points.',
+        emoji: '🔗',
+      },
+      SHARED_FEATURES.realtime,
+      SHARED_FEATURES.noSignup,
+    ],
+    steps: [
+      { title: 'Create a room', description: 'Pick a puzzle or let the host choose a theme.' },
+      { title: 'Share the code', description: 'Friends join from their phones with a nickname.' },
+      {
+        title: 'Group to win',
+        description: 'Find all 4 groups before you run out of mistakes — harder groups score more.',
+      },
     ],
     perfectFor: ['Puzzle lovers', 'Family game night', 'Commutes', 'Remote teams'],
   }),

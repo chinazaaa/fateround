@@ -21,7 +21,7 @@ export function PageShell({ children, narrow, wide, centered }: PageShellProps) 
 
 export function BackBtn({ onClick, label }: { onClick: () => void; label?: string }) {
   return (
-    <button type="button" onClick={onClick} className="btn-nav" aria-label={label || 'Go back'}>
+    <button type="button" onClick={onClick} className="fr-btn--nav" aria-label={label || 'Go back'}>
       <svg
         width="18"
         height="18"
@@ -35,7 +35,6 @@ export function BackBtn({ onClick, label }: { onClick: () => void; label?: strin
       >
         <path d="M19 12H5M11 18l-6-6 6-6" />
       </svg>
-      {label && <span>{label}</span>}
     </button>
   )
 }

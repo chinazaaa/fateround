@@ -59,6 +59,7 @@ import {
   isCrosswordGame,
   isWordSearchGame,
   isWordScrambleGame,
+  isWordGroupingGame,
   isLandmineGame,
 } from '@/lib/game-types'
 import { wstAutoRoundCount } from '@/lib/who-said-this'
@@ -174,6 +175,11 @@ import {
   clampWordScrambleGameDuration,
   WORD_SCRAMBLE_DEFAULT_DURATION,
 } from '@/lib/word-scramble'
+import {
+  clampWordGroupingGameDuration,
+  parseStoredWordGroupingPuzzles,
+  WORD_GROUPING_DEFAULT_DURATION,
+} from '@/lib/word-grouping'
 import { findWordScrambleTheme } from '@/lib/word-scramble-puzzles'
 import { findWordSearchTheme } from '@/lib/word-search-puzzles'
 import { clampChessTimer, clampChessBoardTheme, clampChessPieceSet } from '@/lib/chess'
@@ -322,6 +328,13 @@ function parseCustomQuestionsBody(
   if (isWordScrambleGame(gameType)) {
     const parsed = parseStoredWordScrambleEntries(raw)
     return parsed.length >= 4 ? parsed : null
+  }
+  if (isWordGroupingGame(gameType)) {
+    // Same shape validator both write paths use — every puzzle must be a full 4×4 with 16
+    // unique words and difficulties 1-4. Previously we only checked "groups is an array",
+    // so a malformed pool reached custom_questions and silently fell back to the built-in
+    // bank at game start (generateWordGroupingFromContent returns null on bad shapes).
+    return parseStoredWordGroupingPuzzles(raw)
   }
   return null
 }
@@ -484,7 +497,11 @@ export async function POST(req: NextRequest) {
   const question_source = parseQuestionSource(rawQuestionSource, game_type)
   let custom_questions: unknown[] | null = null
 
-  const isPuzzlePool = isCrosswordGame(game_type) || isWordSearchGame(game_type) || isWordScrambleGame(game_type)
+  const isPuzzlePool =
+    isCrosswordGame(game_type) ||
+    isWordSearchGame(game_type) ||
+    isWordScrambleGame(game_type) ||
+    isWordGroupingGame(game_type)
   if (
     question_source === 'custom' &&
     (isBinaryChoiceGame(game_type) ||
@@ -559,6 +576,7 @@ export async function POST(req: NextRequest) {
     isCrosswordGame(game_type) ||
     isWordSearchGame(game_type) ||
     isWordScrambleGame(game_type) ||
+    isWordGroupingGame(game_type) ||
     isLandmineGame(game_type)
       ? 'joiners'
       : isWhoSaidThis(game_type)
@@ -848,7 +866,16 @@ export async function POST(req: NextRequest) {
                                                                     rawMaxPlayers,
                                                                     lobbyDefaultMaxPlayers('word_scramble', lobbyLimits)
                                                                   )
-                                                                : null
+                                                                : isWordGroupingGame(game_type)
+                                                                  ? resolveMaxPlayers(
+                                                                      'word_grouping',
+                                                                      rawMaxPlayers,
+                                                                      lobbyDefaultMaxPlayers(
+                                                                        'word_grouping',
+                                                                        lobbyLimits
+                                                                      )
+                                                                    )
+                                                                  : null
   const isSecret = isSecretMessageGame(game_type)
   const lateJoinFields = gameSupportsViewerSetting(game_type)
     ? rawLateJoinPolicy
@@ -1209,21 +1236,27 @@ export async function POST(req: NextRequest) {
                                   rawGameDurationSeconds ?? WORD_SCRAMBLE_DEFAULT_DURATION
                                 ),
                               }
-                            : isMafiaGame(game_type)
+                            : isWordGroupingGame(game_type)
                               ? {
-                                  // Role selection is automatic (see resolveMafiaRoundToggles in
-                                  // @/lib/mafia) — the only role-affecting setting left is this
-                                  // single Classic/Advanced switch.
-                                  mafia_advanced_mode: parsed.data.mafia_advanced_mode === true,
-                                  mafia_anonymous_votes: parsed.data.mafia_anonymous_votes === true,
-                                  ...(parsed.data.mafia_day_seconds !== undefined
-                                    ? { mafia_day_seconds: parsed.data.mafia_day_seconds }
-                                    : {}),
-                                  ...(parsed.data.mafia_voting_seconds !== undefined
-                                    ? { mafia_voting_seconds: parsed.data.mafia_voting_seconds }
-                                    : {}),
+                                  game_duration_seconds: clampWordGroupingGameDuration(
+                                    rawGameDurationSeconds ?? WORD_GROUPING_DEFAULT_DURATION
+                                  ),
                                 }
-                              : {}),
+                              : isMafiaGame(game_type)
+                                ? {
+                                    // Role selection is automatic (see resolveMafiaRoundToggles in
+                                    // @/lib/mafia) — the only role-affecting setting left is this
+                                    // single Classic/Advanced switch.
+                                    mafia_advanced_mode: parsed.data.mafia_advanced_mode === true,
+                                    mafia_anonymous_votes: parsed.data.mafia_anonymous_votes === true,
+                                    ...(parsed.data.mafia_day_seconds !== undefined
+                                      ? { mafia_day_seconds: parsed.data.mafia_day_seconds }
+                                      : {}),
+                                    ...(parsed.data.mafia_voting_seconds !== undefined
+                                      ? { mafia_voting_seconds: parsed.data.mafia_voting_seconds }
+                                      : {}),
+                                  }
+                                : {}),
     ...(isCustomGame(game_type) && parsed.data.custom_slots
       ? {
           custom_slots: {

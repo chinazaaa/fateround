@@ -21,6 +21,7 @@ import {
   isCrosswordGame,
   isWordSearchGame,
   isWordScrambleGame,
+  isWordGroupingGame,
   isPingPongGame,
   isCheckersGame,
   isDraughts10Game,
@@ -41,6 +42,7 @@ import { clampSudokuGameDuration } from '@/lib/sudoku'
 import { clampCrosswordGameDuration, parseCrosswordDifficulty } from '@/lib/crossword'
 import { clampWordSearchGameDuration, parseWordSearchDifficulty } from '@/lib/word-search'
 import { clampWordScrambleGameDuration, parseWordScrambleDifficulty } from '@/lib/word-scramble'
+import { clampWordGroupingGameDuration, parseStoredWordGroupingPuzzles } from '@/lib/word-grouping'
 import { findCrosswordTheme } from '@/lib/crossword-puzzles'
 import { findWordSearchTheme } from '@/lib/word-search-puzzles'
 import { findWordScrambleTheme } from '@/lib/word-scramble-puzzles'
@@ -109,6 +111,7 @@ function limitOnlyLobbyType(gameType: string): LobbyLimitGameType | null {
   if (isCrosswordGame(parsed)) return 'crossword'
   if (isWordSearchGame(parsed)) return 'word_search'
   if (isWordScrambleGame(parsed)) return 'word_scramble'
+  if (isWordGroupingGame(parsed)) return 'word_grouping'
   return null
 }
 
@@ -416,6 +419,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       gameUpdate.game_duration_seconds = clampWordSearchGameDuration(game_duration_seconds)
     } else if (limitOnlyType === 'word_scramble') {
       gameUpdate.game_duration_seconds = clampWordScrambleGameDuration(game_duration_seconds)
+    } else if (limitOnlyType === 'word_grouping') {
+      gameUpdate.game_duration_seconds = clampWordGroupingGameDuration(game_duration_seconds)
     } else if (limitOnlyType === 'matching_pairs') {
       // Matching Pairs stores grid size as game_duration_seconds (0=8 pairs, 16=16 pairs)
       gameUpdate.game_duration_seconds = game_duration_seconds === 16 ? 16 : 0
@@ -490,7 +495,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
           ? 'word_search'
           : limitOnlyType === 'word_scramble'
             ? 'word_scramble'
-            : null
+            : limitOnlyType === 'word_grouping'
+              ? 'word_grouping'
+              : null
     if (!puzzleKind) {
       return NextResponse.json({ error: 'This game type has no puzzle themes' }, { status: 400 })
     }
@@ -513,6 +520,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   // Re-validate + normalise per game type (never trust the client's array), require 4+ entries,
   // then store it as a custom pool. question_source='custom' makes start ignore the built-in theme.
   if (puzzle_custom_questions !== undefined) {
+    // Every WG puzzle here is validated with the same shape check the create route + game
+    // start route use (parseStoredWordGroupingPuzzles) — previously we cast to `unknown[]`,
+    // which let malformed puzzles reach `custom_questions` and silently fall back to the
+    // built-in bank at game start.
     const normalised =
       limitOnlyType === 'crossword'
         ? parseStoredCrosswordEntries(puzzle_custom_questions)
@@ -520,7 +531,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
           ? parseStoredWordSearchEntries(puzzle_custom_questions)
           : limitOnlyType === 'word_scramble'
             ? parseStoredWordScrambleEntries(puzzle_custom_questions)
-            : null
+            : limitOnlyType === 'word_grouping'
+              ? parseStoredWordGroupingPuzzles(puzzle_custom_questions)
+              : null
     if (!normalised) {
       return NextResponse.json({ error: 'This game type has no custom word pool' }, { status: 400 })
     }

@@ -23,6 +23,8 @@ export async function POST(req: NextRequest) {
     // and must carry on playing normally.
     if (!identity) return NextResponse.json({ profileId: null }, { status: 200 })
 
+    const country = req.headers.get('cf-ipcountry') ?? null
+
     const { error } = await getSupabaseAdmin()
       .from('profiles')
       // Only `id` and `is_anonymous` are written, so an existing row keeps its handle, streak
@@ -45,11 +47,10 @@ export async function POST(req: NextRequest) {
     // Give brand-new profiles a friendly random name so leaderboards aren't a wall of "Guest".
     // Scoped to handle IS NULL, so it only ever fires on first creation and never overwrites a
     // name the player has chosen (or a returning player's existing handle).
-    await getSupabaseAdmin()
-      .from('profiles')
-      .update({ handle: randomDisplayName() })
-      .eq('id', identity.profileId)
-      .is('handle', null)
+    const firstTimeFields: Record<string, string> = { handle: randomDisplayName() }
+    if (country) firstTimeFields.country = country
+
+    await getSupabaseAdmin().from('profiles').update(firstTimeFields).eq('id', identity.profileId).is('handle', null)
 
     return NextResponse.json({ profileId: identity.profileId }, { status: 200 })
   } catch (err) {

@@ -165,6 +165,10 @@ const SESSION_CLEARERS: Record<ClearableSessionGameType, SessionClearer> = {
   crossword: clearCrosswordSessionData,
   word_search: clearWordSearchSessionData,
   word_scramble: clearWordScrambleSessionData,
+  // No word_grouping entry: word_grouping_solutions is keyed by round_id (no game_id
+  // column) and word_grouping_submissions cascades ON DELETE from rounds. The unconditional
+  // `rounds` delete above already cleans both — a custom clearer here 500'd on the missing
+  // game_id column and blocked play-again.
   landmine: clearLandmineSessionData,
   ping_pong: clearPingPongSessionData,
 }
