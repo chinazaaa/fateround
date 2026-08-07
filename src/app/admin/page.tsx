@@ -51,6 +51,7 @@ type StatsResponse = {
   dailyActivity: { date: string; games: number }[]
   userGrowth: { week: string; cumulative: number; newUsers: number }[]
   dauTrend: { date: string; dau: number }[]
+  playersByCountry: Record<string, number>
 }
 
 type GamesByDate = {
@@ -172,7 +173,9 @@ export default function AdminDashboardPage() {
             <GrowthBadge value={stats.totals.monthOverMonthGrowth} />
           </div>
           <p className="text-3xl font-black mt-2">{stats.totals.gamesThisMonth.toLocaleString()}</p>
-          <p className="text-muted text-xs mt-1">vs {stats.totals.gamesLastMonth.toLocaleString()} last month</p>
+          <p className="text-muted text-xs mt-1">
+            vs {stats.totals.gamesLastMonth.toLocaleString()} same period last month
+          </p>
         </div>
         <div className="glass-card p-5">
           <p className="text-faint text-xs uppercase tracking-wide">Active right now</p>
@@ -248,6 +251,21 @@ export default function AdminDashboardPage() {
           detail={`${stats.totals.finishedTournaments} finished`}
         />
       </div>
+
+      {/* ── Country breakdown ────────────────────────────────────── */}
+      {Object.keys(stats.playersByCountry).length > 0 && (
+        <BarBreakdownCard
+          title="Players by country"
+          items={stats.playersByCountry}
+          formatLabel={(code) => {
+            try {
+              return new Intl.DisplayNames(['en'], { type: 'region' }).of(code) ?? code
+            } catch {
+              return code
+            }
+          }}
+        />
+      )}
 
       {/* ── Other breakdowns ──────────────────────────────────────── */}
       <div className="grid gap-6 lg:grid-cols-2">

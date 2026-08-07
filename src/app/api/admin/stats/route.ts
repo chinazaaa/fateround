@@ -41,10 +41,12 @@ export async function GET(req: NextRequest) {
   const month = monthBounds(today)
   const monthRange = watRangeToUtc(month.start, month.end)
 
-  // Previous month for MoM growth
+  // Previous month for MoM growth — compare equivalent period (first N days)
+  const dayOfMonth = Number(today.slice(8, 10))
   const prevMonthEnd = addDays(month.start, -1)
   const prevMonth = monthBounds(prevMonthEnd)
-  const prevMonthRange = watRangeToUtc(prevMonth.start, prevMonth.end)
+  const prevMonthSamePeriodEnd = addDays(prevMonth.start, dayOfMonth - 1)
+  const prevMonthRange = watRangeToUtc(prevMonth.start, prevMonthSamePeriodEnd)
 
   // Previous 7 days (8-14 days ago) for WoW growth
   const prev7DaysStart = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString()
@@ -52,7 +54,7 @@ export async function GET(req: NextRequest) {
 
   // Paginated fetches — bypass Supabase's max_rows cap (default 1000)
   type GameRow = { id: string; game_type: string; status: string; created_at: string; sessions_played: number }
-  type PlayerGameRow = { game_id: string }
+  type PlayerGameRow = { game_id: string; country: string | null }
   type ProfileRow = {
     id: string
     created_at: string
@@ -63,7 +65,7 @@ export async function GET(req: NextRequest) {
 
   const [gamesAll, playersAll, profilesAll] = await Promise.all([
     fetchAll<GameRow>(supabase, 'games', 'id, game_type, status, created_at, sessions_played'),
-    fetchAll<PlayerGameRow>(supabase, 'players', 'game_id'),
+    fetchAll<PlayerGameRow>(supabase, 'players', 'game_id, country'),
     fetchAll<ProfileRow>(supabase, 'profiles', 'id, created_at, current_streak, trophy_points, last_active_date'),
   ])
 
@@ -238,6 +240,14 @@ export async function GET(req: NextRequest) {
       ? Math.round((gamePlayerCounts.reduce((s, n) => s + n, 0) / gamePlayerCounts.length) * 10) / 10
       : 0
 
+  // Country breakdown from player joins
+  const playersByCountry: Record<string, number> = {}
+  for (const row of playerRows) {
+    if (row.country) {
+      playersByCountry[row.country] = (playersByCountry[row.country] ?? 0) + 1
+    }
+  }
+
   // Growth rates
   const gamesLast7 = gamesLast7DaysRes.count ?? 0
   const gamesPrev7 = gamesPrev7DaysRes.count ?? 0
@@ -390,5 +400,6 @@ export async function GET(req: NextRequest) {
     dailyActivity,
     userGrowth,
     dauTrend,
+    playersByCountry,
   })
 }
