@@ -68,6 +68,45 @@ export function wordGroupingFinishSeconds(
  * pool on success or null.
  */
 export type WordGroupingPuzzleEntry = { groups: { category: string; words: string[]; difficulty: 1 | 2 | 3 | 4 }[] }
+
+/**
+ * Stable content key for a WG puzzle — used to remember which puzzles a game has already
+ * dealt so play-again avoids repeats. Sort categories so the key doesn't drift when a client
+ * reorders groups by difficulty for display.
+ */
+export function wordGroupingPuzzleKey(puzzle: WordGroupingPuzzleEntry | { groups: { category: string }[] }): string {
+  return puzzle.groups
+    .map((g) => g.category.trim().toLowerCase())
+    .sort()
+    .join('|')
+}
+
+/**
+ * From `pool` pick one puzzle the game hasn't dealt yet — reset the cycle if every puzzle in
+ * the pool has already been used. Deterministic given `seed`, so retries on the same round
+ * (e.g. inside a serverless retry window) don't shuffle. Returns the chosen puzzle plus the
+ * updated usage map so the caller can persist it back on `game.pool_usage.word_grouping`.
+ */
+export function pickWordGroupingPuzzle(
+  pool: WordGroupingPuzzleEntry[],
+  seed: number,
+  used: Record<string, number> | undefined
+): { puzzle: WordGroupingPuzzleEntry; nextUsage: Record<string, number> } | null {
+  if (pool.length === 0) return null
+  const usedKeys = new Set(Object.keys(used ?? {}))
+  const fresh = pool.filter((p) => !usedKeys.has(wordGroupingPuzzleKey(p)))
+  // Every puzzle in the pool has been dealt at least once — reset the cycle so the pool can
+  // start over. Without this, a small library pack (or a small built-in bank) would deadlock
+  // once the whole pool is exhausted.
+  const candidates = fresh.length > 0 ? fresh : pool
+  const cycleReset = fresh.length === 0
+  const idx = ((seed % candidates.length) + candidates.length) % candidates.length
+  const puzzle = candidates[idx]
+  const base = cycleReset ? {} : { ...(used ?? {}) }
+  const key = wordGroupingPuzzleKey(puzzle)
+  base[key] = (base[key] ?? 0) + 1
+  return { puzzle, nextUsage: base }
+}
 export function parseStoredWordGroupingPuzzles(raw: unknown): WordGroupingPuzzleEntry[] | null {
   if (!Array.isArray(raw) || raw.length === 0) return null
   const out: WordGroupingPuzzleEntry[] = []
