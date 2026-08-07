@@ -38,6 +38,7 @@ const PRIMARY_LINKS: FooterLink[] = [
   { href: '/library', label: 'Question Library' },
   { href: '/blog', label: 'Blog' },
   { href: '/faq', label: 'FAQ & help' },
+  { href: '/feedback', label: 'Feedback' },
   { href: '/contact', label: 'Contact us' },
 ]
 

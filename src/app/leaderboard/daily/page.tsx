@@ -2,12 +2,9 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { SITE_NAME, OG_IMAGE } from '@/lib/seo'
 import { SiteChrome } from '@/components/SiteChrome'
-import {
-  DAILY_GAME_LABELS,
-  DAILY_GAME_TYPE_TO_SLUG,
-  DAILY_GAME_EMOJIS,
-  DAILY_CHALLENGE_GAME_TYPES,
-} from '@/lib/daily-challenge'
+import { Glyph } from '@/components/icons/Glyph'
+import { dailyChallengeIcon } from '@/lib/game-glyphs'
+import { DAILY_GAME_LABELS, DAILY_GAME_TYPE_TO_SLUG, DAILY_CHALLENGE_GAME_TYPES } from '@/lib/daily-challenge'
 
 export const metadata: Metadata = {
   title: 'Daily Challenge Leaderboards',
@@ -52,7 +49,9 @@ export default function DailyLeaderboardIndex() {
                   className="fr-card p-5 text-center no-underline transition-all hover:shadow-md"
                   style={{ '--lift-hover': 'translateY(-2px)' } as React.CSSProperties}
                 >
-                  <span className="text-2xl block mb-2">{DAILY_GAME_EMOJIS[gt]}</span>
+                  <span className="fr-glyph fr-glyph--sm block mb-2 mx-auto">
+                    <Glyph icon={dailyChallengeIcon(gt)} size={22} />
+                  </span>
                   <span className="text-sm font-semibold block" style={{ color: 'var(--text)' }}>
                     {DAILY_GAME_LABELS[gt]}
                   </span>
