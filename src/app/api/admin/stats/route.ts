@@ -393,6 +393,72 @@ export async function GET(req: NextRequest) {
 
   const typicalPlayTime = computeTypicalPlayTime(playSessions, latestRoundEndedAtByGame)
 
+  // Daily challenge stats (service-role tables — safe here)
+  const dailyChallengeStats = {
+    challenges: 0,
+    submissions: 0,
+    uniquePlayers: 0,
+    submissionsToday: 0,
+    avgScore: 0,
+    byGameType: {} as Record<string, { challenges: number; submissions: number }>,
+  }
+  try {
+    const [challengesRes, scoresRes, scoresTodayRes, uniquePlayersRes] = await Promise.all([
+      supabase.from('daily_challenges').select('game_type', { count: 'exact' }),
+      supabase.from('daily_scores').select('normalized_score', { count: 'exact' }),
+      supabase
+        .from('daily_scores')
+        .select('challenge_id', { count: 'exact', head: true })
+        .gte('submitted_at', todayRange.gte)
+        .lt('submitted_at', todayRange.lt),
+      supabase.from('daily_scores').select('profile_id', { count: 'exact', head: true }),
+    ])
+
+    dailyChallengeStats.challenges = challengesRes.count ?? 0
+    dailyChallengeStats.submissions = scoresRes.count ?? 0
+    dailyChallengeStats.submissionsToday = scoresTodayRes.count ?? 0
+
+    if (scoresRes.data && scoresRes.data.length > 0) {
+      const totalScore = scoresRes.data.reduce((s, r) => s + (Number(r.normalized_score) || 0), 0)
+      dailyChallengeStats.avgScore = Math.round(totalScore / scoresRes.data.length)
+    }
+
+    // Unique players — distinct profile_ids from daily_scores
+    // head:true count gives total rows, not distinct. Fetch profile_ids and dedupe.
+    const { data: playerIds } = await supabase.from('daily_scores').select('profile_id')
+    if (playerIds) {
+      dailyChallengeStats.uniquePlayers = new Set(playerIds.map((r) => r.profile_id)).size
+    }
+
+    // Breakdown by game type
+    const challengesByType: Record<string, number> = {}
+    for (const row of challengesRes.data ?? []) {
+      challengesByType[row.game_type as string] = (challengesByType[row.game_type as string] ?? 0) + 1
+    }
+
+    // Get submissions per game type via challenge join
+    const { data: scoresByChallenge } = await supabase.from('daily_scores').select('challenge_id')
+    const challengeIdToType = new Map<string, string>()
+    const { data: challengeRows } = await supabase.from('daily_challenges').select('id, game_type')
+    for (const c of challengeRows ?? []) {
+      challengeIdToType.set(c.id, c.game_type as string)
+    }
+    const submissionsByType: Record<string, number> = {}
+    for (const s of scoresByChallenge ?? []) {
+      const gt = challengeIdToType.get(s.challenge_id as string)
+      if (gt) submissionsByType[gt] = (submissionsByType[gt] ?? 0) + 1
+    }
+
+    for (const gt of new Set([...Object.keys(challengesByType), ...Object.keys(submissionsByType)])) {
+      dailyChallengeStats.byGameType[gt] = {
+        challenges: challengesByType[gt] ?? 0,
+        submissions: submissionsByType[gt] ?? 0,
+      }
+    }
+  } catch {
+    // daily_challenges tables might not exist yet — silently skip
+  }
+
   return NextResponse.json({
     totals: {
       games: gamesAll.count,
@@ -438,5 +504,6 @@ export async function GET(req: NextRequest) {
     playersByCountry,
     usersByCountry,
     uniqueCountries,
+    dailyChallengeStats,
   })
 }

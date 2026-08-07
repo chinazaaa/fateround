@@ -1233,14 +1233,160 @@ commitment.
   A browse/search directory is a later growth feature with moderation questions.
 - **Loans** (temporarily borrowing a player from another club) — adds complexity without
   enough payoff for v1.
-- **Real-money purchases of coins** — coins are earned only. Revisit if/when the economy
-  needs a sink or a boost.
+- **Real-money purchases of competitive coins** — FateRound Coins (the competitive currency)
+  are earned only. A separate cosmetic currency exists for purchased items (see §24).
 - **Pre-set teams** for casual club games — the old spec had this for Codewords/Describe It
   team assignments. Still useful for casual play but not part of the competitive system.
 
 ---
 
-## 23. Open questions
+## 24. Monetization — updated for the competitive club system
+
+> **Supersedes the club-related sections of [`revenue-model.md`](./revenue-model.md).** The old
+> Club Pro model (branding + 50-member roster for $7.99/mo) was designed for a bookkeeping club.
+> This section redefines monetization around the competitive system: leagues, transfers, matches,
+> and the virtual economy. Non-club monetization (daily challenge gating, custom content quotas,
+> room player caps) still lives in [`pricing-implementation-plan.md`](./pricing-implementation-plan.md)
+> and is unchanged.
+
+### The core rule: the competitive loop is free
+
+Creating a club, joining the league, playing matches, using the transfer market, entering cups,
+club chat — all free. The free experience must be complete enough that a club can form, compete
+for a full season, get promoted, and have fun without spending a cent. Monetization is about
+making the experience **better, faster, or more expressive** — never about unlocking the
+fundamental loop.
+
+---
+
+### Tier 1: FateRound+ (individual subscription) — ~$2.99/mo or ~$19.99/yr
+
+Personal benefits that make the individual player more effective and expressive:
+
+| Perk | What it does |
+|---|---|
+| **+25% coin earning** | Every game win, daily challenge, trophy, level-up earns 25% more FateRound Coins. Over a season, this compounds significantly — a + subscriber accumulates noticeably more coins, making them wealthier personally and more valuable to their club (bigger donations to treasury). |
+| **Daily challenge archive + streak tracking** | Today's challenge is free for everyone. The archive (replay past days) and streak history/protection are gated. This is unchanged from the original pricing plan — it's the Wordle/NYT hook. |
+| **Premium content packs** | Exclusive Trivia question packs, Word Search theme packs, seasonal specials. For casual play and club practice — season matches always use platform content. |
+| **Market visibility boost** | Your profile appears higher when captains browse the free agent market. You're not better — just more visible. Like LinkedIn Premium. Subtle but real: if 50 free agents are listed, the + subscribers surface first. |
+| **Profile cosmetics** | Custom profile borders, animated avatars, trophy showcase layouts. Visible on your profile and in club rosters / league tables. |
+| **4 saved game templates** (vs 2 free) | Unchanged from original pricing plan. |
+
+**Early-bird pricing:** $14.99/yr locked for life for the first cohort (unchanged — this
+mechanism still works and creates urgency).
+
+---
+
+### Tier 2: Club Pro (club-level subscription) — ~$7.99/mo per club
+
+Paid by the club **owner**. Benefits apply to the club as an entity, not to individual members.
+The anti-loophole rule still holds: Club Pro does **not** grant members FateRound+ — only the
+paying owner gets + bundled. Members stay on whatever personal tier they're on.
+
+| Perk | What it does |
+|---|---|
+| **Roster expansion: 15 → 25** | The single biggest competitive lever. More depth, more options for the captain, more resilience across a season. A 25-player squad vs 15 is a real structural advantage — you can weather injuries, scheduling conflicts, and build specialised squads for different game types. |
+| **Scouting & analytics** | Detailed stats on opponent clubs before a match: their best scorers per game type, recent form, win/loss patterns, weak matchdays. Player search with filters free clubs don't get: filter by specific game-type win rate, view historical transfer values, see which clubs are interested in a player. Free clubs can browse the market; Club Pro clubs can *scout*. |
+| **Custom crest** | Image upload (not just emoji + colour). Club banner, custom colours. The prestige cosmetic — your club looks professional on the league table. Requires moderation (admin can flag/replace offensive uploads). |
+| **Treasury bonus (+10%)** | All treasury earnings — match wins, season prizes, player sales — net 10% more. Compounds over a season. A club that earns 2,000 coins in prizes gets 2,200 instead. |
+| **Match replays** | Review round-by-round what happened in past matches. Who answered which Trivia question (right/wrong/skipped), where words were found on the grid, which cells were filled in Crossword. Useful for strategy ("their player #3 always skips science questions"). |
+| **Owner gets FateRound+ bundled** | The person paying for Club Pro gets all individual + perks included — no need to pay for both separately. |
+
+**The 50%-off member discount** (retained from original plan):
+- Any member of an active Club Pro club can buy personal FateRound+ at $1.49/mo (vs $2.99).
+- Discount **reverts to $2.99** at next renewal if they leave the club.
+- **Does not stack** across clubs — one discount per person, "member of any Club Pro club."
+- This creates a natural upsell funnel: join a Club Pro club → see the + perks → discounted
+  conversion.
+
+---
+
+### Tier 3: Season Pass — ~$1.99/season
+
+A battle-pass-style product tied to a specific league season. Resets each season — recurring
+revenue without a subscription commitment.
+
+**Free track** (everyone who registers for the season):
+- Basic matchday rewards (coins already specified in §8)
+- Standard seasonal participation badge
+
+**Premium track** (Season Pass holders):
+- **Bonus coins** at matchday milestones (+50 coins per match played, win or lose)
+- **Exclusive seasonal badge** — visually distinct, changes each season, visible on profile and
+  in league tables. Season 7's badge looks different from Season 8's. Collectors value.
+- **Animated crest effects** — your club's crest gets a seasonal visual effect (glow, shimmer,
+  border) in the league table and match lobby. Cosmetic flex.
+- **Early fixture reveal** — see next season's game rotation 24 hours before the public
+  announcement. Gives a head start on transfer market strategy.
+- **Post-match MVP highlight** — if you're the top contributor in a round, your name gets a
+  special callout in the match result screen and club chat auto-post. Cosmetic recognition.
+
+The Season Pass is **personal** (not club-wide). Each member decides if they want it. It's cheap
+enough to impulse-buy and creates FOMO through exclusive seasonal cosmetics that go away when
+the season ends.
+
+---
+
+### Tier 4: Cosmetic Shop (à la carte)
+
+A separate **cosmetic currency** (e.g. "Stars" or "Gems") purchased with real money. This is
+completely separate from FateRound Coins — cosmetic currency cannot be used for transfers,
+recruitment, or any competitive action. FateRound Coins cannot be used for cosmetic purchases.
+Two economies, zero crossover.
+
+**What's in the shop:**
+
+| Category | Examples | Price range |
+|---|---|---|
+| **Crest packs** | Themed emoji sets (sports, animals, flags, food), premium colours, gradient backgrounds | $0.99-$2.99 per pack |
+| **Profile effects** | Animated profile borders, custom backgrounds, entrance effects (shown when you join a match lobby) | $0.99-$1.99 each |
+| **Seasonal kits** | Limited-time visual themes for your club — "Detty December" kit, "New Year" kit, event-specific designs | $1.99-$3.99 each |
+| **Victory celebrations** | Custom animations that play when your club wins a match (confetti style, fireworks, club-themed) | $1.99 each |
+| **Badge frames** | Decorative frames around your league position badge, division badge, or champion badge | $0.99 each |
+
+**Why a separate currency?** Selling FateRound Coins for real money would break competitive
+integrity — the club with the richest owner would dominate the transfer market. By keeping the
+competitive economy (earned coins → transfers → roster building) completely separate from the
+cosmetic economy (purchased currency → visual items), the league stays fair. A Division 4 club
+can beat a Division 1 club on merit. The Division 1 club might *look* fancier, but they can't
+*buy* better players. This is the line that must not blur.
+
+---
+
+### Revenue summary
+
+| Revenue stream | Type | Price | Who pays |
+|---|---|---|---|
+| FateRound+ | Subscription (monthly/annual) | $2.99/mo or $19.99/yr | Individual player |
+| Club Pro | Subscription (monthly, per club) | $7.99/mo | Club owner |
+| Season Pass | Per-season purchase | $1.99/season | Individual player |
+| Cosmetic Shop | À la carte | $0.99-$3.99 per item | Individual player |
+
+**What's NOT monetized** (decided):
+- Creating or joining a club
+- Entering the league or cup (costs earned coins, not real money)
+- Playing matches
+- The transfer market
+- FateRound Coins (the competitive currency — earned only, never sold)
+- Basic game access (all 38+ games remain free)
+- Voice chat
+- Club chat
+
+---
+
+### Schools & Corporate — unchanged
+
+The B2B tiers (Classroom, Classroom+, Site License, Team, Enterprise) from
+[`pricing-implementation-plan.md`](./pricing-implementation-plan.md) §Phase 4 are unchanged.
+They sit on the **organization/seat layer**, not on the club system. A school's "classroom"
+is not a competitive club — it's a managed group with safe-content defaults and admin controls.
+A company's "team" could optionally participate in the club system (enter the league as a club)
+but the corporate subscription is about admin tools, analytics, and integrations, not
+competitive features.
+
+---
+
+## 25. Open questions
 
 | # | Question | Recommendation |
 |---|---|---|
