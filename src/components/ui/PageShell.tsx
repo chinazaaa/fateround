@@ -27,23 +27,20 @@ export function BackBtn({ onClick, label, showArrow }: { onClick: () => void; la
   const isHome = label?.toLowerCase() === 'home'
   const renderArrow = showArrow ?? !isHome
   return (
-    <button type="button" onClick={onClick} className="btn-nav" aria-label={label || 'Go back'}>
-      {renderArrow && (
-        <svg
-          width="18"
-          height="18"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden="true"
-        >
-          <path d="M19 12H5M11 18l-6-6 6-6" />
-        </svg>
-      )}
-      {label && <span>{label}</span>}
+    <button type="button" onClick={onClick} className="fr-btn--nav" aria-label={label || 'Go back'}>
+      <svg
+        width="18"
+        height="18"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M19 12H5M11 18l-6-6 6-6" />
+      </svg>
     </button>
   )
 }

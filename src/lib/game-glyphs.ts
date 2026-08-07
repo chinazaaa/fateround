@@ -1,6 +1,7 @@
 import {
   AbacusIcon,
   BalanceScaleIcon,
+  GroupLayersIcon,
   BombIcon,
   Calendar01Icon,
   CardExchange01Icon,
@@ -115,6 +116,7 @@ const GAME_ICONS: Record<GameType, IconSvgElement> = {
   crossword: PuzzleIcon,
   word_search: SearchAreaIcon,
   word_scramble: ShuffleIcon,
+  word_grouping: GroupLayersIcon,
   landmine: BombIcon,
   ping_pong: TableTennisBatIcon,
   uno: CardExchange01Icon,

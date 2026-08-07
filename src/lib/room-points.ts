@@ -8,6 +8,7 @@ import { totalScore } from '@/lib/yahtzee'
 import { tallyTriviaPlayerScores } from '@/lib/trivia'
 import { tallySudokuScores } from '@/lib/sudoku'
 import { tallyWordHuntScores } from '@/lib/word-hunt'
+import { tallyWordGroupingScores } from '@/lib/word-grouping'
 import {
   parseGameType,
   isMonopolyGame,
@@ -21,6 +22,7 @@ import {
   isCodewordsGame,
   isSudokuGame,
   isWordHuntGame,
+  isWordGroupingGame,
   isTriviaGame,
 } from '@/lib/game-types'
 import type {
@@ -67,6 +69,7 @@ export function isCompetitiveRoomGame(gameType: GameType): boolean {
     isCodewordsGame(gameType) ||
     isSudokuGame(gameType) ||
     isWordHuntGame(gameType) ||
+    isWordGroupingGame(gameType) ||
     isTriviaGame(gameType)
   )
 }
@@ -345,6 +348,19 @@ export async function getCompetitiveStandings(
       spectator: p.spectator,
     }))
     return tallyWordHuntScores(submissions, playerRows).map((row) => row.player_id)
+  }
+
+  if (isWordGroupingGame(gameType)) {
+    // tallyWordGroupingScores already ranks by (points desc, groups desc, mistakes asc,
+    // finish-time asc) — the same order the finished screens use, so the trophy pass and the
+    // leaderboard agree on who won.
+    const { data: submissions } = await supabase
+      .from('word_grouping_submissions')
+      .select('player_id, group_index, difficulty, is_correct, mistakes_at_time, submitted_at')
+      .eq('game_id', gameId)
+    if (!submissions?.length) return []
+    const seated = players.filter((p) => p.spectator !== true).map((p) => ({ id: p.id, name: p.name }))
+    return tallyWordGroupingScores(seated, submissions).map((row) => row.id)
   }
 
   return []

@@ -410,7 +410,13 @@ export const boardGameLobbySettingsSchema = z.object({
   puzzle_theme_id: z.string().uuid().optional(),
   // Host-supplied puzzle word pool ("Your own" upload or a Library pack pick). Re-validated and
   // normalised server-side per game type; capped to keep the request payload bounded.
-  puzzle_custom_questions: z.array(z.record(z.string(), z.string())).max(500).optional(),
+  //
+  // Element shape varies per game and is checked in the route's per-type branch, not here:
+  //  - crossword / word_search / word_scramble → CSV rows of `Record<string, string>`
+  //  - word_grouping → nested puzzle objects like `{ groups: [{category, words[], difficulty}] }`
+  // We accept any object shape at the wire level so the WG nested-array/number values don't get
+  // 400'd here — the per-game parsers reject anything invalid downstream.
+  puzzle_custom_questions: z.array(z.record(z.string(), z.unknown())).max(500).optional(),
   ping_pong_points_to_win: z.coerce
     .number()
     .int()

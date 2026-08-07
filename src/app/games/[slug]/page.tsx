@@ -41,6 +41,7 @@ const GAME_TO_DAILY: Partial<Record<string, string[]>> = {
   chess: ['chess_mate'],
   codewords: ['codenames_codeword'],
   ludo: ['ludo_puzzle'],
+  word_grouping: ['word_grouping'],
 }
 
 export const revalidate = 3600

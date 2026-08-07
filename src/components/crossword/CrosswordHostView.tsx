@@ -722,16 +722,28 @@ export function CrosswordHostView({ gameCode, hostToken }: { gameCode: string; h
             votes={[]}
             rounds={[]}
             players={players}
+            variant="winner"
             playAgainButton={
               <button
                 type="button"
                 onClick={() => void confirmPlayAgain()}
                 disabled={playingAgain}
-                className="btn-secondary w-full py-3 text-base font-bold disabled:opacity-60"
+                className="btn-secondary w-full py-3 text-sm font-bold disabled:opacity-60"
               >
-                {playingAgain ? 'Starting…' : '↻ Play again · same settings'}
+                {playingAgain ? 'Starting…' : '↻ Play again'}
               </button>
             }
+            returnToLobbyButton={
+              <button
+                type="button"
+                onClick={() => void confirmReturnToLobby()}
+                disabled={playingAgain}
+                className="btn-secondary w-full py-3 text-sm font-bold disabled:opacity-60"
+              >
+                Return to lobby
+              </button>
+            }
+            lobbyNote="Same settings reopens the game for ready-up — watchers and new people can join · lobby lets you tweak settings first."
           >
             <FinishedWinnerHero winnerName={leaderboard[0]?.name} game={game} />
             <PaginatedLeaderboard
@@ -757,18 +769,6 @@ export function CrosswordHostView({ gameCode, hostToken }: { gameCode: string; h
               emphasizeLeader
             />
           </FinalResultsShareBlock>
-          <button
-            type="button"
-            onClick={() => void confirmReturnToLobby()}
-            disabled={playingAgain}
-            className="w-full py-2.5 text-sm font-semibold text-muted transition-colors hover:text-body disabled:opacity-60"
-          >
-            Return to lobby
-          </button>
-          <p className="text-center text-xs text-faint leading-relaxed px-2">
-            Same settings reopens the game for ready-up — watchers and new people can join · lobby lets you tweak
-            settings first.
-          </p>
           {hostWon && (
             <PostWinToCommunity
               gameType="crossword"

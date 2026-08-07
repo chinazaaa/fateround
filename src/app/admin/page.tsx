@@ -51,6 +51,17 @@ type StatsResponse = {
   dailyActivity: { date: string; games: number }[]
   userGrowth: { week: string; cumulative: number; newUsers: number }[]
   dauTrend: { date: string; dau: number }[]
+  playersByCountry: Record<string, number>
+  usersByCountry: Record<string, number>
+  uniqueCountries: number
+  dailyChallengeStats: {
+    challenges: number
+    submissions: number
+    uniquePlayers: number
+    submissionsToday: number
+    avgScore: number
+    byGameType: Record<string, { challenges: number; submissions: number }>
+  }
 }
 
 type GamesByDate = {
@@ -100,6 +111,15 @@ export default function AdminDashboardPage() {
   if (loading) return <p className="text-muted">Loading statistics…</p>
   if (error) return <p className="text-red-500">{error}</p>
   if (!stats) return null
+
+  const dc = stats.dailyChallengeStats ?? {
+    challenges: 0,
+    submissions: 0,
+    uniquePlayers: 0,
+    submissionsToday: 0,
+    avgScore: 0,
+    byGameType: {},
+  }
 
   const typicalPlayTimeLabel =
     stats.totals.typicalPlayTimeSeconds != null ? formatPlayDuration(stats.totals.typicalPlayTimeSeconds) : '—'
@@ -172,7 +192,9 @@ export default function AdminDashboardPage() {
             <GrowthBadge value={stats.totals.monthOverMonthGrowth} />
           </div>
           <p className="text-3xl font-black mt-2">{stats.totals.gamesThisMonth.toLocaleString()}</p>
-          <p className="text-muted text-xs mt-1">vs {stats.totals.gamesLastMonth.toLocaleString()} last month</p>
+          <p className="text-muted text-xs mt-1">
+            vs {stats.totals.gamesLastMonth.toLocaleString()} same period last month
+          </p>
         </div>
         <div className="glass-card p-5">
           <p className="text-faint text-xs uppercase tracking-wide">Active right now</p>
@@ -242,11 +264,82 @@ export default function AdminDashboardPage() {
         <StatMiniCard label="Votes cast" value={stats.totals.votes} />
         <StatMiniCard label="Feedback received" value={stats.totals.feedback} />
         <StatMiniCard label="Users with trophies" value={stats.totals.profilesWithTrophies} />
+        <StatMiniCard label="Countries reached" value={stats.uniqueCountries} />
         <StatMiniCard
           label="Active tournaments"
           value={stats.totals.activeTournaments}
           detail={`${stats.totals.finishedTournaments} finished`}
         />
+      </div>
+
+      {/* ── Country breakdown ────────────────────────────────────── */}
+      <div className="grid gap-6 lg:grid-cols-2">
+        <BarBreakdownCard
+          title="Users by country"
+          items={stats.usersByCountry}
+          formatLabel={(code) => {
+            try {
+              return new Intl.DisplayNames(['en'], { type: 'region' }).of(code) ?? code
+            } catch {
+              return code
+            }
+          }}
+        />
+        <BarBreakdownCard
+          title="Game joins by country"
+          items={stats.playersByCountry}
+          formatLabel={(code) => {
+            try {
+              return new Intl.DisplayNames(['en'], { type: 'region' }).of(code) ?? code
+            } catch {
+              return code
+            }
+          }}
+        />
+      </div>
+
+      {/* ── Daily challenges ─────────────────────────────────────── */}
+      <div className="glass-card-strong p-5 space-y-4">
+        <h2 className="font-bold">Daily challenges</h2>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          <div>
+            <p className="text-2xl font-black">{dc.challenges}</p>
+            <p className="text-xs uppercase tracking-wide text-muted">Puzzles generated</p>
+          </div>
+          <div>
+            <p className="text-2xl font-black">{dc.submissions}</p>
+            <p className="text-xs uppercase tracking-wide text-muted">Total submissions</p>
+          </div>
+          <div>
+            <p className="text-2xl font-black">{dc.uniquePlayers}</p>
+            <p className="text-xs uppercase tracking-wide text-muted">Unique players</p>
+          </div>
+          <div>
+            <p className="text-2xl font-black">{dc.submissionsToday}</p>
+            <p className="text-xs uppercase tracking-wide text-muted">Submissions today</p>
+          </div>
+          <div>
+            <p className="text-2xl font-black">{dc.avgScore}</p>
+            <p className="text-xs uppercase tracking-wide text-muted">Avg. score (0–1000)</p>
+          </div>
+        </div>
+        {Object.keys(dc.byGameType).length > 0 && (
+          <div className="mt-4">
+            <h3 className="text-sm font-semibold text-muted mb-2">By game type</h3>
+            <div className="space-y-1.5 text-sm">
+              {Object.entries(dc.byGameType)
+                .sort((a, b) => b[1].submissions - a[1].submissions)
+                .map(([gt, data]) => (
+                  <div key={gt} className="flex items-center justify-between gap-3">
+                    <span className="capitalize">{formatGameType(gt)}</span>
+                    <span className="text-muted">
+                      {data.challenges} puzzles · {data.submissions} submissions
+                    </span>
+                  </div>
+                ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ── Other breakdowns ──────────────────────────────────────── */}

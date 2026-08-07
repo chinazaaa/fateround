@@ -66,13 +66,13 @@ export function ServerErrorPage({
             </div>
 
             <p className="text-xs pt-2" style={{ color: 'var(--text-faint)' }}>
-              If this issue persists, check our{' '}
-              <Link
-                href="/updates"
+              If this issue persists, contact us at{' '}
+              <a
+                href="mailto:support@fateround.com"
                 className="font-semibold text-[var(--primary)] hover:underline no-underline transition-colors"
               >
-                status &amp; updates page
-              </Link>
+                support@fateround.com
+              </a>
               .
             </p>
           </div>
