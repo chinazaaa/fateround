@@ -522,7 +522,8 @@ export function isUnoPlayerOut(handCount: number, spectator?: boolean | null): b
 
 /**
  * Advance `steps` active players from `fromIndex` in `direction` (1 forward,
- * -1 reversed), skipping players who are out of cards.
+ * -1 reversed), skipping players who are out of cards or knocked out by the
+ * High Stakes 25-card limit.
  */
 export function unoNextTurnIndex(
   session: UnoSession,
@@ -535,13 +536,15 @@ export function unoNextTurnIndex(
   const len = order.length
   if (len === 0) return 0
   const dir = direction < 0 ? -1 : 1
+  const eliminated = new Set<string>((session.eliminated_player_ids as string[] | null) ?? [])
 
   let idx = fromIndex
   for (let s = 0; s < steps; s += 1) {
     let advanced = false
     for (let attempt = 0; attempt < len; attempt += 1) {
       idx = (((idx + dir) % len) + len) % len
-      if (unoHandCount(hands, order[idx]!) > 0) {
+      const pid = order[idx]!
+      if (!eliminated.has(pid) && unoHandCount(hands, pid) > 0) {
         advanced = true
         break
       }
@@ -552,7 +555,8 @@ export function unoNextTurnIndex(
 }
 
 function activePlayerCount(session: UnoSession, hands: UnoPlayerHand[]): number {
-  return (session.turn_order ?? []).filter((id) => unoHandCount(hands, id) > 0).length
+  const eliminated = new Set<string>((session.eliminated_player_ids as string[] | null) ?? [])
+  return (session.turn_order ?? []).filter((id) => !eliminated.has(id) && unoHandCount(hands, id) > 0).length
 }
 
 export function anyPlayerCanPlay(hands: UnoPlayerHand[], session: UnoSession): boolean {
@@ -1020,7 +1024,10 @@ function playerOutPatch(
     }
   }
 
-  const remaining = (session.turn_order ?? []).filter((id) => id !== playerId && unoHandCount(hands, id) > 0)
+  const eliminated = new Set<string>((session.eliminated_player_ids as string[] | null) ?? [])
+  const remaining = (session.turn_order ?? []).filter(
+    (id) => id !== playerId && !eliminated.has(id) && unoHandCount(hands, id) > 0
+  )
 
   if (gameDurationSeconds <= 0 || remaining.length < 2) {
     return {
@@ -1440,7 +1447,10 @@ export function rotateActiveHands(
   handMap: Map<string, UnoCard[]>,
   direction: number
 ): { playerId: string; cards: UnoCard[] }[] {
-  const seq = (session.turn_order ?? []).filter((id) => (handMap.get(id)?.length ?? 0) > 0)
+  const eliminated = new Set<string>((session.eliminated_player_ids as string[] | null) ?? [])
+  const seq = (session.turn_order ?? []).filter(
+    (id) => !eliminated.has(id) && (handMap.get(id)?.length ?? 0) > 0
+  )
   const n = seq.length
   if (n < 2) return seq.map((id) => ({ playerId: id, cards: handMap.get(id) ?? [] }))
   const H = seq.map((id) => handMap.get(id) ?? [])
@@ -1704,6 +1714,16 @@ export async function processUnoPlay(
   } else {
     await writeHand(supabase, gameId, playerId, newHand)
     if (missed) await writeHand(supabase, gameId, missed.playerId, missed.hand)
+  }
+
+  // Mercy: a 0-rotation can hand a seat 25+ cards. Attribute to whoever played the 0.
+  if (rules.mode === 'no_mercy' && isZero && rotatedWrites) {
+    for (const w of rotatedWrites) {
+      if (w.playerId === playerId) continue
+      if (w.cards.length >= UNO_MERCY_HAND_LIMIT) {
+        await applyMercyKnockout(supabase, gameId, w.playerId, w.cards.length, playerNames, rules.noMercyWin, playerId)
+      }
+    }
   }
 
   // Fold this play's trophy counters. `session` is pre-write, so its pending penalty reads the
@@ -2847,6 +2867,9 @@ export async function processUnoSwap(
   if (currentId !== playerId) return { error: 'Not your turn' }
   if (targetId === playerId) return { error: 'Pick another player to swap with' }
   if (!(session.turn_order ?? []).includes(targetId)) return { error: 'That player is not in the game' }
+  if (((session.eliminated_player_ids as string[] | null) ?? []).includes(targetId)) {
+    return { error: 'That player is knocked out' }
+  }
   if (unoHandCount(hands, targetId) === 0) return { error: 'That player has no cards to swap' }
 
   const myCards = handForPlayer(hands, playerId)
@@ -2878,6 +2901,19 @@ export async function processUnoSwap(
 
   await writeHand(supabase, gameId, playerId, theirCards)
   await writeHand(supabase, gameId, targetId, myCards)
+
+  // Mercy: a 7-swap can hand a player 25+ cards — knock them out. The swapper CHOSE to take
+  // the pile, so no attribution to another player; the target only crosses the threshold if
+  // the swapper's own hand was already at the limit, so attribute that back to the swapper.
+  if (rules.mode === 'no_mercy') {
+    if (theirCards.length >= UNO_MERCY_HAND_LIMIT) {
+      await applyMercyKnockout(supabase, gameId, playerId, theirCards.length, playerNames, rules.noMercyWin, null)
+    }
+    if (myCards.length >= UNO_MERCY_HAND_LIMIT) {
+      await applyMercyKnockout(supabase, gameId, targetId, myCards.length, playerNames, rules.noMercyWin, playerId)
+    }
+  }
+
   return {}
 }
 

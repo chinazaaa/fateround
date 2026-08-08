@@ -273,7 +273,11 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
   const isMyTurn = myPlayerId != null && turnPlayerId === myPlayerId
   const activePlayer = myPlayerId ? players.find((p) => p.id === myPlayerId) : undefined
   const isViewer = !!(game && activePlayer && playerIsViewer(activePlayer, game))
-  const isOut = !!myHandRow && myHand.length === 0 && game?.status === 'active'
+  const isKnockedOut =
+    !!myPlayerId && ((session?.eliminated_player_ids as string[] | null) ?? []).includes(myPlayerId)
+  const isOut =
+    (!!myHandRow && myHand.length === 0 && game?.status === 'active') ||
+    (isKnockedOut && game?.status === 'active')
   const isWatching = isViewer || isOut
 
   // Team-Up: your teammate's hand is visible to you (read-only), never to opponents.
