@@ -343,6 +343,18 @@ describe('unoPlacementOrder / buildUnoStandings', () => {
     expect(standings[1].handSum).toBe(3)
     expect(standings[2].handSum).toBe(50)
   })
+
+  it('sorts eliminated players (Mercy KO) behind every live player regardless of hand-sum', () => {
+    // High Stakes scenario: `b` was knocked out but still holds their (arbitrarily small)
+    // hand. On a timed finish `b` must NOT win over `c` — the KO puts them last.
+    const order = unoPlacementOrder(hands, ['a', 'b', 'c'], [], false, [], ['b'])
+    // `a` still finishes first (empty hand), then LIVE `c` (50 pts) beats KO'd `b` (3 pts).
+    expect(order).toEqual(['a', 'c', 'b'])
+
+    const standings = buildUnoStandings(hands, players, ['a', 'b', 'c'], [], false, [], ['b'])
+    expect(standings.map((s) => s.name)).toEqual(['Ann', 'Cara', 'Bob'])
+    expect(standings.map((s) => s.rank)).toEqual([1, 2, 3])
+  })
 })
 
 describe('Team-Up helpers', () => {
