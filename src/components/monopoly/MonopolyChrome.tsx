@@ -245,7 +245,7 @@ export function MonopolyJailCardInventory({
   if (count <= 0) {
     return (
       <p className={['text-xs text-muted leading-relaxed', className].join(' ')}>
-        {formatThemedText('No Get Out of Jail cards — draw one from Chance or Community Chest.', themeId)}
+        {formatThemedText('No Get Out of Jail cards — draw one from Fate or Kitty.', themeId)}
       </p>
     )
   }

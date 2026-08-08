@@ -187,7 +187,7 @@ describe('updatePlayerAndBoard-backed handlers — atomic claim', () => {
     expect(m.rpcCalls).toHaveLength(1)
     expect(m.rpcCalls[0]!.fn).toBe('monopoly_claim_and_apply')
     const params = m.rpcCalls[0]!.params
-    // Old Kent Road: price £60 → mortgage value £30.
+    // Barking Road: price £60 → mortgage value £30.
     expect(params.p_player_patches).toEqual([{ player_id: 'payer', cash: 530 }])
     expect(
       ((params.p_board_patch as Record<string, unknown>).mortgaged_properties as Record<string, boolean>)['1']
@@ -207,7 +207,7 @@ describe('processMonopolyForfeit — atomic bankruptcy transfer', () => {
           player_id: 'payer',
           creditor_player_id: 'owner',
           amount: 4,
-          reason: 'Owe £4 rent on Whitechapel Road',
+          reason: 'Owe £4 rent on Dagenham Avenue',
           debt_type: 'rent',
           space_index: 3,
         },
@@ -250,7 +250,7 @@ describe('processMonopolyForfeit — atomic bankruptcy transfer', () => {
           player_id: 'payer',
           creditor_player_id: 'owner',
           amount: 4,
-          reason: 'Owe £4 rent on Whitechapel Road',
+          reason: 'Owe £4 rent on Dagenham Avenue',
           debt_type: 'rent',
           space_index: 3,
           next_debts: [nextDebt],

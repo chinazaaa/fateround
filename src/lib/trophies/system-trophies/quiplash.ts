@@ -68,7 +68,7 @@ export const QUIPLASH: SystemTrophySpec[] = [
   {
     suffix: 'quiplash',
     tier: 'silver',
-    title: 'Quiplash',
+    title: 'Landslide',
     description: 'Win a battle unanimously (every voter picks your answer).',
     counter: 'quiplash_unanimous_wins',
     points: 30,
