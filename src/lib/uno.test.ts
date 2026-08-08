@@ -181,6 +181,57 @@ describe('canPlayCard', () => {
     expect(canPlayCard(card({ color: 'red', kind: 'draw2' }), s)).toBe(false)
     expect(canPlayCard(card({ color: 'red', kind: 'number', value: 1 }), s)).toBe(false)
   })
+
+  // High Stakes / No Mercy cross-kind stacking. Every Draw card of equal-or-higher value can
+  // chain onto the pending penalty; smaller-value Draws + all non-Draw cards can't play.
+  describe('cross-kind stacking (High Stakes)', () => {
+    it('pending +4 accepts +4, +4 Reverse, +6, +10 but blocks non-Draw cards', () => {
+      const s = session({
+        top_card: card({ color: 'wild', kind: 'wild_draw4' }),
+        required_color: 'red',
+        draw_penalty: 4,
+        draw_penalty_kind: 'wild_draw4',
+      })
+      expect(canPlayCard(card({ color: 'wild', kind: 'wild_draw4' }), s)).toBe(true)
+      expect(canPlayCard(card({ color: 'wild', kind: 'wild_reverse_draw4' }), s)).toBe(true)
+      expect(canPlayCard(card({ color: 'wild', kind: 'draw6' }), s)).toBe(true)
+      expect(canPlayCard(card({ color: 'wild', kind: 'draw10' }), s)).toBe(true)
+      // Non-Draw cards must draw the pending penalty.
+      expect(canPlayCard(card({ color: 'red', kind: 'number', value: 5 }), s)).toBe(false)
+      expect(canPlayCard(card({ color: 'red', kind: 'skip' }), s)).toBe(false)
+      expect(canPlayCard(card({ color: 'wild', kind: 'wild' }), s)).toBe(false)
+    })
+
+    it('pending +10 accepts only +10 (nothing higher exists)', () => {
+      const s = session({
+        top_card: card({ color: 'wild', kind: 'draw10' }),
+        required_color: 'blue',
+        draw_penalty: 10,
+        draw_penalty_kind: 'draw10',
+      })
+      expect(canPlayCard(card({ color: 'wild', kind: 'draw10' }), s)).toBe(true)
+      // Everything with a smaller value must draw.
+      expect(canPlayCard(card({ color: 'wild', kind: 'draw6' }), s)).toBe(false)
+      expect(canPlayCard(card({ color: 'wild', kind: 'wild_reverse_draw4' }), s)).toBe(false)
+      expect(canPlayCard(card({ color: 'wild', kind: 'wild_draw4' }), s)).toBe(false)
+      expect(canPlayCard(card({ color: 'blue', kind: 'draw2' }), s)).toBe(false)
+      expect(canPlayCard(card({ color: 'blue', kind: 'number', value: 5 }), s)).toBe(false)
+    })
+
+    it('pending +6 accepts +6 and +10 but blocks +4 / +4 Reverse / smaller draws', () => {
+      const s = session({
+        top_card: card({ color: 'wild', kind: 'draw6' }),
+        required_color: 'yellow',
+        draw_penalty: 6,
+        draw_penalty_kind: 'draw6',
+      })
+      expect(canPlayCard(card({ color: 'wild', kind: 'draw6' }), s)).toBe(true)
+      expect(canPlayCard(card({ color: 'wild', kind: 'draw10' }), s)).toBe(true)
+      expect(canPlayCard(card({ color: 'wild', kind: 'wild_reverse_draw4' }), s)).toBe(false)
+      expect(canPlayCard(card({ color: 'wild', kind: 'wild_draw4' }), s)).toBe(false)
+      expect(canPlayCard(card({ color: 'yellow', kind: 'draw2' }), s)).toBe(false)
+    })
+  })
 })
 
 describe('unoNextTurnIndex', () => {
