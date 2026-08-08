@@ -103,7 +103,7 @@ const JACKBOX: MarketingPageContent = {
   steps: [
     {
       title: 'Pick a game',
-      description: "Monopoly, Whot, Trivia, Would You Rather — whatever the group's in the mood for.",
+      description: "Estate Kings, Whot, Trivia, Would You Rather — whatever the group's in the mood for.",
     },
     {
       title: 'Share the code',
@@ -169,14 +169,14 @@ const JACKBOX: MarketingPageContent = {
       answer: 'Exactly like that — minus the host screen you have to buy and run. Your phone is the whole game.',
     },
     {
-      question: 'Is there a free version of Quiplash?',
+      question: 'Is there a free Quiplash-style game?',
       answer:
-        'FateRound has Quiplash — the same write-funny-answers, vote-for-your-favourite format — completely free, no pack to buy. Share a code and everyone plays from their phone.',
+        'FateRound has Punchline, a Quiplash-style game — the same write-funny-answers, vote-for-your-favourite format — completely free, no pack to buy. Share a code and everyone plays from their phone.',
     },
     {
       question: 'What games are like Jackbox but free?',
       answer:
-        'FateRound gives you 20+ party games for free — including Quiplash, trivia, voting games like Would You Rather and Most Likely To, plus board and card classics like Monopoly and Whot.',
+        'FateRound gives you 20+ party games for free — including Punchline (a Quiplash-style game), trivia, voting games like Would You Rather and Most Likely To, plus board and card classics like Estate Kings (a Monopoly-style game) and Whot.',
     },
     {
       question: 'Can I play Jackbox-style games on my phone without buying packs?',
@@ -297,7 +297,7 @@ const VIDEO_CALL: MarketingPageContent = {
     {
       question: 'What games can you play on FaceTime?',
       answer:
-        'Any FateRound mode works over FaceTime — Would You Rather, Most Likely To, Smash Marry Kill, Trivia, and board games like Monopoly and Ludo. Keep FaceTime open and play in the browser beside it.',
+        'Any FateRound mode works over FaceTime — Would You Rather, Most Likely To, Smash Marry Kill, Trivia, and board games like Estate Kings and Ludo. Keep FaceTime open and play in the browser beside it.',
     },
     {
       question: 'Do we need to download an app for Zoom or Discord games?',
@@ -329,7 +329,7 @@ const LONG_DISTANCE: MarketingPageContent = {
   breadcrumbName: 'Long distance games',
   seoTitle: 'Free Online Games for Long Distance Couples & Friends',
   seoDescription:
-    'Miles apart? FateRound keeps you close — one link, play together in real time. Free, no download, no sign-up. Two-player Chess, Monopoly, Yahtzee, Scrabble & Whot, plus voting games for two.',
+    'Miles apart? FateRound keeps you close — one link, play together in real time. Free, no download, no sign-up. Two-player Chess, Estate Kings, Five Dice, Word Tiles & Whot, plus voting games for two.',
   keywords: [
     'online games for long distance couples',
     'games to play with friends far away free',
@@ -346,7 +346,7 @@ const LONG_DISTANCE: MarketingPageContent = {
     'Made for two (and up)',
     'Real-time play from anywhere',
     'Free forever, no account',
-    'Chess, Monopoly, Yahtzee, Scrabble & Whot',
+    'Chess, Estate Kings, Five Dice, Word Tiles & Whot',
   ],
   featureCards: [
     {
@@ -357,7 +357,7 @@ const LONG_DISTANCE: MarketingPageContent = {
     {
       emoji: '♟️',
       title: 'Two-player classics',
-      description: 'Chess, Monopoly, Yahtzee, Scrabble, Whot — a full game night for two.',
+      description: 'Chess, Estate Kings, Five Dice, Word Tiles, Whot — a full game night for two.',
     },
     {
       emoji: '🤍',
@@ -466,12 +466,12 @@ const LONG_DISTANCE: MarketingPageContent = {
     {
       question: 'What are good online games for long distance couples?',
       answer:
-        "For two people, FateRound's Chess, Checkers, Crazy Eights, and Whot are great head-to-head, and the board and word classics all play two — Monopoly, Yahtzee, Scrabble, Ludo, and Snakes & Ladders — for a proper game night. When you want to learn each other, Would You Rather, Never Have I Ever, and This or That are perfect. All free, all in the browser.",
+        "For two people, FateRound's Chess, Checkers, Crazy Eights, and Whot are great head-to-head, and the board and word classics all play two — Estate Kings, Five Dice, Word Tiles, Ludo, and Snakes & Ladders — for a proper game night. When you want to learn each other, Would You Rather, Never Have I Ever, and This or That are perfect. All free, all in the browser.",
     },
     {
       question: 'Can just two people play?',
       answer:
-        'Yes — plenty of modes are built for two, including Monopoly, Yahtzee, Scrabble, Chess, Checkers, Whot, Crazy Eights, Ludo, Would You Rather, and Never Have I Ever. Group modes like Most Likely To unlock once a third friend joins.',
+        'Yes — plenty of modes are built for two, including Estate Kings, Five Dice, Word Tiles, Chess, Checkers, Whot, Crazy Eights, Ludo, Would You Rather, and Never Have I Ever. Group modes like Most Likely To unlock once a third friend joins.',
     },
     {
       question: 'Do we need to download an app or make an account?',
@@ -627,7 +627,7 @@ const PARTY_HUB: MarketingPageContent = {
   breadcrumbName: 'Free party games',
   seoTitle: 'Free Online Party Games — No Sign-Up, No Download',
   seoDescription:
-    'Play 20+ free online party games in one place — Smash Marry Kill, Would You Rather, Trivia, Monopoly, Whot and more. Share a link, everyone joins from their phone. No sign-up, no download.',
+    'Play 20+ free online party games in one place — Smash Marry Kill, Would You Rather, Trivia, Estate Kings, Whot and more. Share a link, everyone joins from their phone. No sign-up, no download.',
   keywords: [
     'free online party games',
     'party games online',
@@ -656,7 +656,7 @@ const PARTY_HUB: MarketingPageContent = {
     {
       emoji: '♟️',
       title: 'Board & card classics',
-      description: 'Monopoly, Yahtzee, Whot, Scrabble, Chess, Ludo — a full game night, no board required.',
+      description: 'Estate Kings, Five Dice, Whot, Word Tiles, Chess, Ludo — a full game night, no board required.',
     },
     {
       emoji: '🧠',
@@ -734,7 +734,7 @@ const PARTY_HUB: MarketingPageContent = {
     {
       question: 'What party games can we play?',
       answer:
-        '20+ modes — Smash Marry Kill, Would You Rather, Most Likely To, and Never Have I Ever, plus board and card games like Monopoly, Whot, and Yahtzee, and word/trivia games like Codewords and Trivia.',
+        '20+ modes — Smash Marry Kill, Would You Rather, Most Likely To, and Never Have I Ever, plus board and card games like Estate Kings, Whot, and Five Dice, and word/trivia games like Codewords and Trivia.',
     },
     {
       question: 'How many people can play?',
@@ -1023,7 +1023,7 @@ const GAME_NIGHT: MarketingPageContent = {
     {
       emoji: '🗳️',
       title: 'Warm up, then go deep',
-      description: 'Open with Would You Rather, escalate to Smash Marry Kill, finish on a Monopoly marathon.',
+      description: 'Open with Would You Rather, escalate to Smash Marry Kill, finish on an Estate Kings marathon.',
     },
     {
       emoji: '📱',
@@ -1104,7 +1104,7 @@ const GAME_NIGHT: MarketingPageContent = {
     {
       question: 'What games work for mixed ages?',
       answer:
-        'Bingo, Trivia, Monopoly, Ludo, and Would You Rather are family-friendly; save Smash Marry Kill and Never Have I Ever for grown-up groups.',
+        'Bingo, Trivia, Estate Kings, Ludo, and Would You Rather are family-friendly; save Smash Marry Kill and Never Have I Ever for grown-up groups.',
     },
     {
       question: 'Is it free?',
@@ -1215,7 +1215,7 @@ const BORED: MarketingPageContent = {
     {
       question: 'What can I play with friends online right now?',
       answer:
-        'Share a FateRound link and pick any of 20+ games — Would You Rather and Smash Marry Kill for quick chaos, Monopoly or Whot for a longer session, Trivia for a big group.',
+        'Share a FateRound link and pick any of 20+ games — Would You Rather and Smash Marry Kill for quick chaos, Estate Kings or Whot for a longer session, Trivia for a big group.',
     },
     {
       question: 'Do we need to download or sign up?',
@@ -1293,7 +1293,7 @@ const HOUSEPARTY: MarketingPageContent = {
   steps: [
     { title: 'Start a video call', description: 'Any app you already use — FaceTime, Zoom, Discord, Meet.' },
     { title: 'Share a FateRound link', description: 'One code in the chat. Friends join from any browser.' },
-    { title: 'Play like the old days', description: 'Trivia, Would You Rather, Monopoly and more — live, together.' },
+    { title: 'Play like the old days', description: 'Trivia, Would You Rather, Estate Kings and more — live, together.' },
   ],
   body: (
     <>
@@ -1371,7 +1371,7 @@ const HOUSEPARTY: MarketingPageContent = {
     {
       question: 'Can I play games over FaceTime like Houseparty?',
       answer:
-        'Yes. Keep FaceTime open and share a FateRound link — everyone plays from their phone browser right alongside the call. Trivia, Would You Rather, Monopoly, and more.',
+        'Yes. Keep FaceTime open and share a FateRound link — everyone plays from their phone browser right alongside the call. Trivia, Would You Rather, Estate Kings, and more.',
     },
   ],
   ctaHeading: 'Bring back game night',
@@ -1505,7 +1505,7 @@ const NAIJA: MarketingPageContent = {
     {
       question: 'What Nigerian games can I play online?',
       answer:
-        'FateRound has Whot (with real Naija house rules), Ludo, Draughts (Checkers), Snakes & Ladders, and Stop / Name-Place-Animal-Thing, plus classics like Monopoly. All free, all in the browser — no app to download.',
+        'FateRound has Whot (with real Naija house rules), Ludo, Draughts (Checkers), Snakes & Ladders, and Stop / Name-Place-Animal-Thing, plus Estate Kings (a Monopoly-style game). All free, all in the browser — no app to download.',
     },
     {
       question: 'Can I play Whot online with friends and family abroad?',
@@ -1858,7 +1858,7 @@ const CHRISTMAS: MarketingPageContent = {
     {
       question: 'What games can I play online with family at Christmas?',
       answer:
-        'FateRound has Whot, Ludo, Bingo, trivia, Monopoly, and party games like Most Likely To — all free in the browser. Share one link and the whole family joins from their phones, in one house or across the world.',
+        'FateRound has Whot, Ludo, Bingo, trivia, Estate Kings, and party games like Most Likely To — all free in the browser. Share one link and the whole family joins from their phones, in one house or across the world.',
     },
     {
       question: 'Can we play if family are in different countries?',
@@ -1883,9 +1883,9 @@ const CHRISTMAS: MarketingPageContent = {
 const TOURNAMENTS: MarketingPageContent = {
   slug: 'online-tournaments',
   breadcrumbName: 'Online tournaments',
-  seoTitle: 'Free Online Tournaments — Chess, Scrabble, Whot & Trivia',
+  seoTitle: 'Free Online Tournaments — Chess, Word Tiles, Whot & Trivia',
   seoDescription:
-    'Run a free online tournament for your group — Chess, Scrabble, Whot, or Trivia. Head-to-head brackets, knockout, round-robin, and school championships. Share one link, no app, no sign-up.',
+    'Run a free online tournament for your group — Chess, Word Tiles (a Scrabble-style word game), Whot, or Trivia. Head-to-head brackets, knockout, round-robin, and school championships. Share one link, no app, no sign-up.',
   keywords: [
     'online tournament',
     'chess tournament online',
@@ -1900,11 +1900,11 @@ const TOURNAMENTS: MarketingPageContent = {
     'school games tournament online',
     'free online tournament maker',
   ],
-  heroTitle: 'Run a free online tournament — Chess, Scrabble, Whot & Trivia',
+  heroTitle: 'Run a free online tournament — Chess, Word Tiles, Whot & Trivia',
   heroSubtitle:
     'Turn game night into a competition. Set up a bracket, share one link, and your group battles it out across multiple rounds — free, no app, no sign-up. Great for friends, teams, and schools.',
   highlights: [
-    'Chess, Scrabble, Whot, Trivia',
+    'Chess, Word Tiles, Whot, Trivia',
     'Brackets, knockout & round-robin',
     'Share one link to join',
     'Free, no app, no sign-up',
@@ -1918,7 +1918,7 @@ const TOURNAMENTS: MarketingPageContent = {
     {
       emoji: '♟️',
       title: 'Real competitive games',
-      description: 'Chess, Scrabble, and Whot head-to-head, or Trivia for the whole group — with proper scoring.',
+      description: 'Chess, Word Tiles, and Whot head-to-head, or Trivia for the whole group — with proper scoring.',
     },
     {
       emoji: '🔗',
@@ -1935,7 +1935,7 @@ const TOURNAMENTS: MarketingPageContent = {
   steps: [
     {
       title: 'Pick a game and format',
-      description: 'Chess, Scrabble, Whot, or Trivia — bracket, knockout, round-robin, or school.',
+      description: 'Chess, Word Tiles, Whot, or Trivia — bracket, knockout, round-robin, or school.',
     },
     { title: 'Share the join code', description: 'Players join from any browser with a nickname. No app, no sign-up.' },
     {
@@ -1979,7 +1979,7 @@ const TOURNAMENTS: MarketingPageContent = {
     {
       question: 'What games can I run a tournament for?',
       answer:
-        'Chess, Scrabble, and Whot as head-to-head brackets, and Trivia as a round-robin or knockout. There’s also a school-championship format for class-based competitions.',
+        'Chess, Word Tiles, and Whot as head-to-head brackets, and Trivia as a round-robin or knockout. There’s also a school-championship format for class-based competitions.',
     },
     {
       question: 'What tournament formats are there?',
@@ -2013,7 +2013,7 @@ const SCHOOL: MarketingPageContent = {
   breadcrumbName: 'School Whot championship',
   seoTitle: 'School Whot Championship — Free Online Games for Schools',
   seoDescription:
-    'Run a School Whot championship online — students climb the class ladder from Primary 1 to Graduate. Free, no app, no sign-up. Plus Trivia, Chess & Scrabble tournaments for schools.',
+    'Run a School Whot championship online — students climb the class ladder from Primary 1 to Graduate. Free, no app, no sign-up. Plus Trivia, Chess & Word Tiles tournaments for schools.',
   keywords: [
     'school whot championship',
     'school whot tournament',
@@ -2111,7 +2111,7 @@ const SCHOOL: MarketingPageContent = {
     {
       question: 'Can schools run other games as tournaments too?',
       answer:
-        'Yes. Beyond School Whot, the Tournaments feature runs Trivia as a round-robin league or knockout, and Chess and Scrabble as head-to-head brackets — all free and in the browser.',
+        'Yes. Beyond School Whot, the Tournaments feature runs Trivia as a round-robin league or knockout, and Chess and Word Tiles as head-to-head brackets — all free and in the browser.',
     },
     {
       question: 'Is it free?',
