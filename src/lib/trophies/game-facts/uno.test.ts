@@ -8,9 +8,19 @@ import { unoFacts } from './uno'
  * nothing else, so the mock is just the round's accumulator rows plus each final hand. Every case
  * is a rule someone could write in admin: a wrong derivation makes the trophy silently unearnable.
  */
-function db(rows: { player_id: string; stats: Record<string, number> | null; cards?: UnoCard[] | null }[]) {
+function db(
+  rows: { player_id: string; stats: Record<string, number> | null; cards?: UnoCard[] | null }[],
+  gameRow: { uno_mode?: string | null; uno_no_mercy_win?: string | null } | null = null
+) {
   return {
-    from() {
+    from(table: string) {
+      if (table === 'games') {
+        return {
+          select: () => ({
+            eq: () => ({ maybeSingle: () => Promise.resolve({ data: gameRow }) }),
+          }),
+        }
+      }
       return {
         select: () => ({ eq: () => Promise.resolve({ data: rows }) }),
       }

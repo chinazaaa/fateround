@@ -824,6 +824,8 @@ export interface UnoSession {
   eliminated_player_ids?: string[]
   /** No Mercy: who chose the colour for a Wild Color Roulette (they draw until match). */
   color_roulette_player_id?: string | null
+  /** Id of the player who played the current top card — for High Stakes knockout attribution. */
+  last_play_player_id?: string | null
   /** Set to the card the current player just drew while they may still play it or keep it (pass). */
   drawn_card_id: string | null
   /**

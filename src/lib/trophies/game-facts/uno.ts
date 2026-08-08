@@ -44,6 +44,19 @@ type RoundStats = {
   uno_rainbow?: number
   uno_out_wild?: number
   uno_out_wd4?: number
+  // High Stakes plays / running maxes (only ever non-zero when uno_mode='no_mercy').
+  uno_hs_draw6_plays?: number
+  uno_hs_draw10_plays?: number
+  uno_hs_rev_draw4_plays?: number
+  uno_hs_roulette_plays?: number
+  uno_hs_discard_all_plays?: number
+  uno_hs_skip_all_plays?: number
+  uno_hs_stack_plays?: number
+  uno_hs_seven_swap_plays?: number
+  uno_hs_zero_pass_plays?: number
+  uno_hs_max_stack_absorbed?: number
+  uno_hs_max_roulette_dealt?: number
+  uno_hs_knockouts?: number
 }
 
 type HandRow = { player_id: string; stats: RoundStats | null; cards: UnoCard[] | null }
@@ -77,11 +90,20 @@ export async function unoFacts(
 ): Promise<Map<string, Record<string, number>>> {
   const out = new Map<string, Record<string, number>>()
 
-  const { data } = await supabase.from('uno_player_hands').select('player_id, stats, cards').eq('game_id', gameId)
-  const rows = (data ?? []) as HandRow[]
+  // Fetch hands + the game-row bits that drive High Stakes gating (mode + win condition).
+  const [handsRes, gameRes] = await Promise.all([
+    supabase.from('uno_player_hands').select('player_id, stats, cards').eq('game_id', gameId),
+    supabase.from('games').select('uno_mode, uno_no_mercy_win').eq('id', gameId).maybeSingle(),
+  ])
+  const rows = (handsRes.data ?? []) as HandRow[]
+  const isHighStakes = gameRes.data?.uno_mode === 'no_mercy'
+  const lastStandingWin = gameRes.data?.uno_no_mercy_win === 'last_standing'
 
   for (const row of rows) {
-    const facts = playerFacts(row.stats ?? {}, row.cards ?? [], ctx, ctx.winners.includes(row.player_id))
+    const facts = playerFacts(row.stats ?? {}, row.cards ?? [], ctx, ctx.winners.includes(row.player_id), {
+      isHighStakes,
+      lastStandingWin,
+    })
     if (Object.keys(facts).length > 0) out.set(row.player_id, facts)
   }
 
@@ -89,7 +111,13 @@ export async function unoFacts(
 }
 
 /** One player's counters, from their own accumulator, their final hand, and whether they won. */
-function playerFacts(stats: RoundStats, finalHand: UnoCard[], ctx: FactsContext, won: boolean): Record<string, number> {
+function playerFacts(
+  stats: RoundStats,
+  finalHand: UnoCard[],
+  ctx: FactsContext,
+  won: boolean,
+  hs: { isHighStakes: boolean; lastStandingWin: boolean }
+): Record<string, number> {
   const facts: Record<string, number> = {}
 
   const turns = stats.uno_turns_taken ?? 0
@@ -149,6 +177,65 @@ function playerFacts(stats: RoundStats, finalHand: UnoCard[], ctx: FactsContext,
     // #17 Colour Blind: a blocked/timed win still holds cards; fire only when the held cards are a
     // single colour (a normal empty-hand win holds nothing, so `length > 0` excludes it).
     if (finalHand.length > 0 && distinctColors(finalHand) === 1) facts.uno_one_color_wins = 1
+  }
+
+  // ── High Stakes mode-gated facts (only ever emitted when uno_mode='no_mercy') ───────────
+  // Trophy-plumbing counters — see src/lib/trophies/system-trophies/uno.ts for the trophy
+  // definitions and gte thresholds. Counters ending _todo are declared but not yet emitted
+  // (engine plumbing pending); Double Stack, Twenty Load, Lucky Seven, and Stack Kingpin.
+  if (hs.isHighStakes) {
+    // Cross-game aggregates.
+    if (turns > 0 || drawn > 0 || finalHand.length > 0) facts.uno_hs_games = 1
+    if (won) facts.uno_hs_wins = 1
+
+    // Per-play facts (folded by the engine on the moving player's row).
+    if (
+      (stats.uno_draw_twos ?? 0) +
+        (stats.uno_wild_draw_fours ?? 0) +
+        (stats.uno_hs_draw6_plays ?? 0) +
+        (stats.uno_hs_draw10_plays ?? 0) +
+        (stats.uno_hs_rev_draw4_plays ?? 0) >
+      0
+    ) {
+      facts.uno_hs_first_blood_games = 1
+    }
+    if ((stats.uno_hs_seven_swap_plays ?? 0) > 0) facts.uno_hs_swap_games = 1
+    if ((stats.uno_hs_zero_pass_plays ?? 0) > 0) facts.uno_hs_pass_games = 1
+    if ((stats.uno_hs_draw6_plays ?? 0) + (stats.uno_hs_draw10_plays ?? 0) > 0) facts.uno_hs_big_draw_games = 1
+    if ((stats.uno_hs_roulette_plays ?? 0) > 0) facts.uno_hs_roulette_games = 1
+    if ((stats.uno_hs_discard_all_plays ?? 0) > 0) facts.uno_hs_discard_all_games = 1
+    if ((stats.uno_hs_skip_all_plays ?? 0) > 0) facts.uno_hs_skip_all_games = 1
+    if (peak >= 20) facts.uno_hs_brink_games = 1
+    if ((stats.uno_hs_stack_plays ?? 0) > 0) facts.uno_hs_stack_games = 1
+
+    // Knockouts inflicted (attributed by the engine when the setter's Draw / Roulette pushed
+    // an opponent past 25). Sum reaches trophy thresholds cross-game.
+    const knockouts = stats.uno_hs_knockouts ?? 0
+    if (knockouts > 0) {
+      facts.uno_hs_knockouts = knockouts
+      if (knockouts >= 2) facts.uno_hs_double_ko_games = 1
+      if (knockouts >= 3) facts.uno_hs_mass_extinction_games = 1
+    }
+
+    // Roulette dealt (caster's largest single reveal count this round).
+    const rouletteMaxDealt = stats.uno_hs_max_roulette_dealt ?? 0
+    if (rouletteMaxDealt >= 5) facts.uno_hs_roulette5_games = 1
+    if (rouletteMaxDealt >= 8) facts.uno_hs_roulette8_games = 1
+
+    // Win-only HS facts.
+    if (won) {
+      if (peak >= 20) facts.uno_hs_comeback_wins = 1
+      if (seats >= 6) facts.uno_hs_full_house_wins = 1
+      if (peak >= 22) facts.uno_hs_mercy_dodge_wins = 1
+      if ((stats.uno_hs_max_stack_absorbed ?? 0) >= 10) facts.uno_hs_chain_breaker_wins = 1
+      if (forcedHits === 0) facts.uno_hs_untouchable_wins = 1
+      if (peak > 0 && peak <= 10) facts.uno_hs_flawless_wins = 1
+      // Last One Standing: a `last_standing` win-condition round that reached the finished
+      // phase via a knockout cascade. Approx: the player is the winner AND the win-condition
+      // is last_standing. (Empty-hand wins don't set noMercyWin='last_standing' as the trigger,
+      // but a lucky empty-hand under last_standing still fires it — spec is soft on this edge.)
+      if (hs.lastStandingWin) facts.uno_hs_last_standing_wins = 1
+    }
   }
 
   return facts

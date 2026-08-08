@@ -1148,7 +1148,18 @@ function foldUnoPlay(
   cards: UnoCard[],
   handBefore: UnoCard[],
   wentOut: boolean,
-  opts: { calledUno: boolean; caught: boolean; stackedDraw2: boolean; rainbow: boolean }
+  opts: {
+    calledUno: boolean
+    caught: boolean
+    stackedDraw2: boolean
+    rainbow: boolean
+    /** Any Draw card stacked onto a pending Draw penalty this play (No Mercy cross-kind). */
+    stackedAnyDraw?: boolean
+    /** True when this play triggered the 7-swap phase (isSeven with a target). */
+    playedSevenSwap?: boolean
+    /** True when this play triggered the 0-pass rotation (isZero). */
+    playedZeroPass?: boolean
+  }
 ): UnoRoundStats {
   const stats = { ...prev }
   incU(stats, 'uno_turns_taken')
@@ -1159,8 +1170,20 @@ function foldUnoPlay(
     else if (c.kind === 'draw2') incU(stats, 'uno_draw_twos')
     else if (c.kind === 'wild') incU(stats, 'uno_wilds')
     else if (c.kind === 'wild_draw4') incU(stats, 'uno_wild_draw_fours')
+    // High Stakes card kinds. These counters only ever accumulate when the game is High Stakes
+    // (there's no way to hold a No-Mercy-only card in a Classic deck) — so unoFacts can gate on
+    // uno_mode without any extra flag needed here.
+    else if (c.kind === 'draw6') incU(stats, 'uno_hs_draw6_plays')
+    else if (c.kind === 'draw10') incU(stats, 'uno_hs_draw10_plays')
+    else if (c.kind === 'wild_reverse_draw4') incU(stats, 'uno_hs_rev_draw4_plays')
+    else if (c.kind === 'wild_color_roulette') incU(stats, 'uno_hs_roulette_plays')
+    else if (c.kind === 'discard_all') incU(stats, 'uno_hs_discard_all_plays')
+    else if (c.kind === 'skip_everyone') incU(stats, 'uno_hs_skip_all_plays')
   }
   if (opts.stackedDraw2) incU(stats, 'uno_draw2_stacked')
+  if (opts.stackedAnyDraw) incU(stats, 'uno_hs_stack_plays')
+  if (opts.playedSevenSwap) incU(stats, 'uno_hs_seven_swap_plays')
+  if (opts.playedZeroPass) incU(stats, 'uno_hs_zero_pass_plays')
   if (opts.calledUno) incU(stats, 'uno_uno_calls')
   if (opts.caught) incU(stats, 'uno_catches')
   if (opts.rainbow) stats.uno_rainbow = 1
@@ -1184,7 +1207,11 @@ function foldUnoDraw(prev: UnoRoundStats, drawnCount: number, newHandLen: number
   const stats = { ...prev }
   incU(stats, 'uno_cards_drawn', drawnCount)
   bumpMaxU(stats, 'uno_peak_hand_size', newHandLen)
-  if (forced) incU(stats, 'uno_forced_hits')
+  if (forced) {
+    incU(stats, 'uno_forced_hits')
+    // High Stakes Chain Breaker keys off the largest single stacked penalty a player absorbed.
+    bumpMaxU(stats, 'uno_hs_max_stack_absorbed', drawnCount)
+  }
   return stats
 }
 
@@ -1293,7 +1320,8 @@ async function applyMercyKnockout(
   playerId: string,
   handSize: number,
   playerNames: Map<string, string>,
-  winCondition: UnoNoMercyWin
+  winCondition: UnoNoMercyWin,
+  attributionPlayerId?: string | null
 ): Promise<void> {
   const { data: fresh } = await supabase
     .from('uno_sessions')
@@ -1332,6 +1360,25 @@ async function applyMercyKnockout(
   await supabase.from('uno_sessions').update(patch).eq('game_id', gameId).eq('updated_at', fresh.updated_at)
 
   await supabase.from('players').update({ spectator: true }).eq('id', playerId).eq('game_id', gameId)
+
+  // High Stakes Knockout / Double KO / Mass Extinction: credit the player who inflicted this
+  // knockout (the setter of the fatal draw penalty or the roulette caster). Best-effort — pass
+  // `attributionPlayerId` from the caller (processUnoDraw / processUnoColorRoulette).
+  if (attributionPlayerId && attributionPlayerId !== playerId) {
+    const { data: attHandRow } = await supabase
+      .from('uno_player_hands')
+      .select('stats')
+      .eq('game_id', gameId)
+      .eq('player_id', attributionPlayerId)
+      .maybeSingle()
+    const attStats = { ...((attHandRow?.stats as Record<string, number> | null) ?? {}) }
+    attStats.uno_hs_knockouts = (attStats.uno_hs_knockouts ?? 0) + 1
+    await supabase
+      .from('uno_player_hands')
+      .update({ stats: attStats })
+      .eq('game_id', gameId)
+      .eq('player_id', attributionPlayerId)
+  }
 
   if (endsRound) {
     // Award series points to the last-standing winner. Reload hands for the point tally.
@@ -1484,6 +1531,7 @@ export async function processUnoPlay(
       patch = {
         top_card: card,
         last_play_cards: [card],
+        last_play_player_id: playerId,
         discard_pile: discardWith(baseDiscard, session.top_card),
         draw_pile: basePile,
         required_color: null,
@@ -1503,6 +1551,7 @@ export async function processUnoPlay(
       patch = {
         top_card: card,
         last_play_cards: [card],
+        last_play_player_id: playerId,
         discard_pile: discardWith(baseDiscard, session.top_card),
         draw_pile: basePile,
         required_color: null,
@@ -1528,6 +1577,7 @@ export async function processUnoPlay(
     const board: Partial<UnoSession> = {
       top_card: card,
       last_play_cards: [card],
+      last_play_player_id: playerId,
       required_color: null,
       pending_wild: null,
       challenge_prev_color: null,
@@ -1620,6 +1670,11 @@ export async function processUnoPlay(
 
   // Fold this play's trophy counters. `session` is pre-write, so its pending penalty reads the
   // stack this Draw Two landed on; `missed` means this move caught a forgotten UNO call.
+  // High Stakes stack detection: ANY Draw card played onto a pending draw penalty counts
+  // (cross-kind chains are legal here). Classic games only fold this when it also stacks a
+  // Draw Two — the No-Mercy-only kinds can't appear in a Classic deck, so cross-kind stacks
+  // never trigger there.
+  const drewOntoPendingStack = isDrawCard(card) && (session.draw_penalty ?? 0) > 0 && !!session.draw_penalty_kind
   await writeUnoStats(
     supabase,
     gameId,
@@ -1628,6 +1683,9 @@ export async function processUnoPlay(
       calledUno: owesUno && callUno,
       caught: !!missed,
       stackedDraw2: card.kind === 'draw2' && session.draw_penalty_kind === 'draw2' && (session.draw_penalty ?? 0) > 0,
+      stackedAnyDraw: drewOntoPendingStack,
+      playedSevenSwap: isSeven,
+      playedZeroPass: isZero,
       rainbow: false,
     })
   )
@@ -1740,6 +1798,7 @@ export async function processUnoPlayMulti(
     top_card: lastCard,
     // The whole set, in play order — the client fans the covered cards behind the top one.
     last_play_cards: cards,
+    last_play_player_id: playerId,
     required_color: null,
     pending_wild: null,
     challenge_prev_color: null,
@@ -2042,9 +2101,19 @@ export async function processUnoDraw(
   )
 
   // Mercy: No Mercy players who cross the 25-card threshold are knocked out. This runs after
-  // the session write so realtime shows the draw + the elimination together.
+  // the session write so realtime shows the draw + the elimination together. Attribution goes
+  // to whoever played the Draw card that set the pending penalty (see last_play_player_id).
   if (rules.mode === 'no_mercy' && newHand.length >= UNO_MERCY_HAND_LIMIT) {
-    await applyMercyKnockout(supabase, gameId, playerId, newHand.length, playerNames, rules.noMercyWin)
+    const attributionPlayerId = forced ? (session.last_play_player_id ?? null) : null
+    await applyMercyKnockout(
+      supabase,
+      gameId,
+      playerId,
+      newHand.length,
+      playerNames,
+      rules.noMercyWin,
+      attributionPlayerId
+    )
   }
 
   return {}
@@ -2374,9 +2443,22 @@ export async function processUnoColorRoulette(
   if (!won) return {}
   await writeHand(supabase, gameId, playerId, targetHand)
 
+  // High Stakes — record the largest single roulette reveal count on the CASTER's row
+  // (last_play_player_id captured whoever played the Wild Colour Roulette). unoFacts turns
+  // this into Roulette Master (>=5) and Roulette Executioner (>=8).
+  const revealMax = revealed.length
+  const casterId = session.last_play_player_id ?? null
+  if (revealMax > 0 && casterId && casterId !== playerId) {
+    const casterStats = { ...currentUnoStats(hands, casterId) }
+    bumpMaxU(casterStats, 'uno_hs_max_roulette_dealt', revealMax)
+    await writeUnoStats(supabase, gameId, casterId, casterStats)
+  }
+
   // Mercy: adding a huge stack of cards can push the player past the knockout limit.
+  // Attribution: the Colour Roulette caster (whoever played the wild that queued this phase).
   if (rules.mode === 'no_mercy' && targetHand.length >= UNO_MERCY_HAND_LIMIT) {
-    await applyMercyKnockout(supabase, gameId, playerId, targetHand.length, playerNames, rules.noMercyWin)
+    const casterId = session.last_play_player_id ?? null
+    await applyMercyKnockout(supabase, gameId, playerId, targetHand.length, playerNames, rules.noMercyWin, casterId)
   }
   return {}
 }
