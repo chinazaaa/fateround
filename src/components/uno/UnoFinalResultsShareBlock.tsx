@@ -40,9 +40,19 @@ export function UnoFinalResultsShareBlock({
         session?.turn_order ?? [],
         session?.finish_order ?? [],
         game.uno_team_mode === true,
-        session?.left_player_ids ?? []
+        session?.left_player_ids ?? [],
+        // No Mercy — knocked-out seats always rank behind live players in the standings.
+        session?.eliminated_player_ids ?? []
       ),
-    [hands, players, session?.turn_order, session?.finish_order, game.uno_team_mode, session?.left_player_ids]
+    [
+      hands,
+      players,
+      session?.turn_order,
+      session?.finish_order,
+      game.uno_team_mode,
+      session?.left_player_ids,
+      session?.eliminated_player_ids,
+    ]
   )
 
   const teamMode = game.uno_team_mode === true

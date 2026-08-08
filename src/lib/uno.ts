@@ -589,18 +589,24 @@ type UnoRankableHand = { player_id: string; cards: UnoCard[] }
  * Final placement order (1st → last). Players who emptied their hand rank FIRST, in the
  * exact order they finished (`finishOrder`); everyone still holding cards follows, ordered
  * by lowest hand total then fewest cards. Mirrors crazyEightsPlacementOrder.
+ *
+ * `eliminatedPlayerIds` (No Mercy Mercy knockouts) are ALWAYS sorted after every live
+ * player — a knocked-out seat can't win a timed game just because their hand summed to a
+ * low value. Within the eliminated group they still sort by hand-sum for a stable order.
  */
 export function unoPlacementOrder(
   hands: UnoRankableHand[],
   turnOrder: string[],
   finishOrder: string[],
   teamMode = false,
-  leftPlayerIds: string[] = []
+  leftPlayerIds: string[] = [],
+  eliminatedPlayerIds: string[] = []
 ): string[] {
   const activeIds = new Set(turnOrder ?? [])
   const finished = (finishOrder ?? []).filter((id) => activeIds.has(id))
   const finishedSet = new Set(finished)
   const leftSet = new Set(leftPlayerIds)
+  const eliminatedSet = new Set(eliminatedPlayerIds)
 
   // Team-Up: rank the winning team's two members first, then the losing team. The winning team
   // is whoever emptied a hand first, or — if a timer ended it — the lower combined hand total.
@@ -635,19 +641,29 @@ export function unoPlacementOrder(
       .sort((a, b) => byLeft(a, b) || sumOf(a) - sumOf(b) || a.localeCompare(b))
     return [...winners, ...losers]
   }
-  const remaining = hands
+  // Split the still-holding-cards group into LIVE seats (playable at time of
+  // finalisation) and ELIMINATED seats (Mercy knockouts) so eliminated players always
+  // sort behind every live player regardless of their hand-sum. Within each subgroup
+  // the sort is identical: lowest hand-sum, then fewest cards, then id for stability.
+  const stillHolding = hands
     .filter((h) => activeIds.has(h.player_id) && !finishedSet.has(h.player_id))
     .map((h) => {
       const cards = (h.cards as UnoCard[]) ?? []
-      return { playerId: h.player_id, handSum: unoHandSum(cards), cardCount: cards.length }
+      return {
+        playerId: h.player_id,
+        handSum: unoHandSum(cards),
+        cardCount: cards.length,
+        eliminated: eliminatedSet.has(h.player_id),
+      }
     })
     .sort((a, b) => {
       if (a.handSum !== b.handSum) return a.handSum - b.handSum
       if (a.cardCount !== b.cardCount) return a.cardCount - b.cardCount
       return a.playerId.localeCompare(b.playerId)
     })
-    .map((r) => r.playerId)
-  return [...finished, ...remaining]
+  const live = stillHolding.filter((r) => !r.eliminated).map((r) => r.playerId)
+  const eliminated = stillHolding.filter((r) => r.eliminated).map((r) => r.playerId)
+  return [...finished, ...live, ...eliminated]
 }
 
 export function buildUnoStandings(
@@ -656,20 +672,23 @@ export function buildUnoStandings(
   turnOrder: string[],
   finishOrder: string[] = [],
   teamMode = false,
-  leftPlayerIds: string[] = []
+  leftPlayerIds: string[] = [],
+  eliminatedPlayerIds: string[] = []
 ): UnoStanding[] {
   const activeIds = new Set(turnOrder ?? [])
   const byId = new Map(hands.filter((h) => activeIds.has(h.player_id)).map((h) => [h.player_id, h]))
-  return unoPlacementOrder(hands, turnOrder, finishOrder, teamMode, leftPlayerIds).map((playerId, index) => {
-    const cards = (byId.get(playerId)?.cards as UnoCard[]) ?? []
-    return {
-      playerId,
-      name: players.find((p) => p.id === playerId)?.name ?? 'Player',
-      cardCount: cards.length,
-      handSum: unoHandSum(cards),
-      rank: index + 1,
+  return unoPlacementOrder(hands, turnOrder, finishOrder, teamMode, leftPlayerIds, eliminatedPlayerIds).map(
+    (playerId, index) => {
+      const cards = (byId.get(playerId)?.cards as UnoCard[]) ?? []
+      return {
+        playerId,
+        name: players.find((p) => p.id === playerId)?.name ?? 'Player',
+        cardCount: cards.length,
+        handSum: unoHandSum(cards),
+        rank: index + 1,
+      }
     }
-  })
+  )
 }
 
 export function unoGameSessionExpired(
@@ -935,7 +954,11 @@ async function finishByLowestHand(
 ): Promise<boolean> {
   const finishOrder = session.finish_order ?? []
   const leftIds = unoLeftPlayerIds(session)
-  const placement = unoPlacementOrder(hands, session.turn_order ?? [], finishOrder, teamMode, leftIds)
+  // No Mercy: knocked-out seats must never rank as the winner on a timed finish. Pass
+  // the current eliminated list through so unoPlacementOrder sorts them behind every
+  // live seat regardless of hand-sum.
+  const eliminatedIds = (session.eliminated_player_ids as string[] | null) ?? []
+  const placement = unoPlacementOrder(hands, session.turn_order ?? [], finishOrder, teamMode, leftIds, eliminatedIds)
   const winnerId = placement[0] ?? null
   const winnerName = winnerId ? playerName(playerNames, winnerId) : 'Nobody'
 
@@ -1359,7 +1382,9 @@ async function applyMercyKnockout(
 ): Promise<void> {
   const { data: fresh } = await supabase
     .from('uno_sessions')
-    .select('phase, turn_order, eliminated_player_ids, finish_order, updated_at, status_message')
+    .select(
+      'phase, turn_order, eliminated_player_ids, finish_order, updated_at, status_message, draw_pile, discard_pile'
+    )
     .eq('game_id', gameId)
     .maybeSingle()
   if (!fresh || fresh.phase === 'finished') return
@@ -1368,6 +1393,21 @@ async function applyMercyKnockout(
   const nextEliminated = [...already, playerId]
   const name = playerName(playerNames, playerId)
   const note = `${name} hit ${handSize} cards — knocked out (High Stakes 25-card limit)`
+
+  // Return the KO'd player's hand to the draw pile so the deck can keep dealing to
+  // survivors — otherwise the pile shrinks every round and a +10 landing on a near-empty
+  // pile only pays out a partial draw. Shuffled in (not appended) so the returning cards
+  // sit anywhere in the pile. Best-effort: read the fresh hand row and drop it back on
+  // the session in one atomic patch alongside the KO bookkeeping.
+  const { data: koHandRow } = await supabase
+    .from('uno_player_hands')
+    .select('cards')
+    .eq('game_id', gameId)
+    .eq('player_id', playerId)
+    .maybeSingle()
+  const koCards = ((koHandRow?.cards as UnoCard[] | null) ?? []).filter(Boolean)
+  const currentPile = ((fresh.draw_pile as UnoCard[] | null) ?? []).filter(Boolean)
+  const returnedPile = koCards.length > 0 ? shuffle([...currentPile, ...koCards]) : currentPile
 
   // Standing players = seated - eliminated - already-finished (emptied their hand).
   const seated = new Set<string>((fresh.turn_order as string[] | null) ?? [])
@@ -1378,7 +1418,12 @@ async function applyMercyKnockout(
     winCondition === 'last_standing' && standing.length <= 1 && (finished.size === 0 || standing.length === 0)
   const patch: Record<string, unknown> = {
     eliminated_player_ids: nextEliminated,
-    status_message: `${fresh.status_message ?? ''} · ${note}`.replace(/^ · /, ''),
+    draw_pile: returnedPile,
+    status_message:
+      `${fresh.status_message ?? ''} · ${note}${koCards.length > 0 ? ` (${koCards.length} cards returned to the deck)` : ''}`.replace(
+        /^ · /,
+        ''
+      ),
     updated_at: new Date().toISOString(),
   }
   if (endsRound) {
@@ -1392,6 +1437,13 @@ async function applyMercyKnockout(
   }
 
   await supabase.from('uno_sessions').update(patch).eq('game_id', gameId).eq('updated_at', fresh.updated_at)
+
+  // Zero the KO'd player's hand row so the roster + standings show them at 0 (their
+  // cards are now back in the deck). Best-effort — the session update above is the
+  // source of truth for the KO itself; this is presentation cleanup.
+  if (koCards.length > 0) {
+    await supabase.from('uno_player_hands').update({ cards: [] }).eq('game_id', gameId).eq('player_id', playerId)
+  }
 
   await supabase.from('players').update({ spectator: true }).eq('id', playerId).eq('game_id', gameId)
 
@@ -2099,6 +2151,26 @@ export async function processUnoDraw(
   let patch: Partial<UnoSession>
 
   if (forced) {
+    // High Stakes — the pile (plus everything already reshuffled from the discard AND
+    // the KO'd hands returned on Mercy) couldn't cover the full pending penalty. There
+    // is no more deck to draw from, so the round can't continue: end it by lowest hand
+    // total. Only in No Mercy — Classic keeps the existing "draw what you can" beat,
+    // which is fine for smaller +2/+4 penalties.
+    if (rules.mode === 'no_mercy' && drawn.length < penalty) {
+      // Persist what was drawn so hands reflect the partial payout in the standings.
+      await writeHand(supabase, gameId, playerId, newHand)
+      if (missed) await writeHand(supabase, gameId, missed.playerId, missed.hand)
+      await finishByLowestHand(
+        supabase,
+        gameId,
+        { ...session, draw_pile: drawPile, discard_pile: discardPile } as UnoSession,
+        updateHand(hands, playerId, newHand),
+        playerNames,
+        `Deck ran out mid-penalty (${drawn.length}/${penalty}) —`,
+        rules.teamMode
+      )
+      return {}
+    }
     // A forced penalty draw (Draw Two / Draw Four target) ends the turn — pass play on.
     const nextIndex = unoNextTurnIndex(
       session,
@@ -2570,7 +2642,22 @@ async function processUnoColorRouletteReveal(
     discard = refill.discardPile
   }
   if (pile.length === 0) {
-    // Nothing left to reveal — resolve as "no colour found", advance the turn.
+    // Nothing left to reveal — the pile plus the entire discard couldn't produce a card,
+    // and the eliminated hands (returned to the pile on Mercy) don't rescue us either.
+    // On No Mercy the round can't meaningfully continue from here, so end it via
+    // lowest-hand-wins. Classic falls back to "no colour found, next player's turn".
+    if (rules.mode === 'no_mercy') {
+      await finishByLowestHand(
+        supabase,
+        gameId,
+        { ...session, draw_pile: pile, discard_pile: discard } as UnoSession,
+        hands,
+        playerNames,
+        `Deck ran out mid-Roulette (no ${UNO_COLOR_LABELS[color]}) —`,
+        rules.teamMode
+      )
+      return {}
+    }
     const direction = session.direction < 0 ? -1 : 1
     const nextIndex = unoNextTurnIndex(session, hands, session.current_turn_index, 1, direction)
     const nextPlayerId = session.turn_order[nextIndex]
@@ -2622,6 +2709,13 @@ async function processUnoColorRouletteReveal(
     )
     if (!won) return {}
     await writeHand(supabase, gameId, playerId, targetHand)
+
+    // A long unlucky reveal streak can push the target past 25 mid-roulette — same Mercy
+    // check as the match branch. Attribution: the Colour Roulette caster.
+    if (rules.mode === 'no_mercy' && targetHand.length >= UNO_MERCY_HAND_LIMIT) {
+      const casterId = session.last_play_player_id ?? null
+      await applyMercyKnockout(supabase, gameId, playerId, targetHand.length, playerNames, rules.noMercyWin, casterId)
+    }
     return {}
   }
 

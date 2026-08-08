@@ -204,7 +204,11 @@ export function UnoPlaySurface({
   const byId = new Map(players.map((p) => [p.id, p]))
   const winnerId = (session.finish_order ?? [])[0]
   const eliminatedIds = new Set<string>((session.eliminated_player_ids as string[] | null) ?? [])
-  const seats: TurnSeat[] = session.turn_order
+  // Build seat rows in turn-order first, then partition — LIVE seats cluster at the
+  // front, ELIMINATED seats at the back. Turn flow within each group is preserved
+  // (still turn_order relative), so "who's next" reads left-to-right through the live
+  // block; the greyed KO'd block sits after them as a running scoreboard of who's out.
+  const seatRows: TurnSeat[] = session.turn_order
     .map((id) => byId.get(id))
     .filter((p): p is Player => !!p)
     .map((p) => {
@@ -215,13 +219,12 @@ export function UnoPlaySurface({
         turn: isTurn,
         you: p.id === myPlayerId,
         winner: p.id === winnerId,
-        // High Stakes Mercy — greys the avatar + strikes the name + adds a 💥 badge in
-        // the turn rail so the room sees at a glance who's out of the round.
         out: eliminatedIds.has(p.id),
         timeLabel: isTurn ? turnTimeLabel : undefined,
         timeLow: isTurn ? turnTimer?.urgent : undefined,
       }
     })
+  const seats: TurnSeat[] = [...seatRows.filter((s) => !s.out), ...seatRows.filter((s) => s.out)]
 
   const top = session.top_card
   // Multi-Play visibility: when a set covered earlier cards (e.g. a Draw Two under a Skip), only
