@@ -2642,7 +2642,22 @@ async function processUnoColorRouletteReveal(
     discard = refill.discardPile
   }
   if (pile.length === 0) {
-    // Nothing left to reveal — resolve as "no colour found", advance the turn.
+    // Nothing left to reveal — the pile plus the entire discard couldn't produce a card,
+    // and the eliminated hands (returned to the pile on Mercy) don't rescue us either.
+    // On No Mercy the round can't meaningfully continue from here, so end it via
+    // lowest-hand-wins. Classic falls back to "no colour found, next player's turn".
+    if (rules.mode === 'no_mercy') {
+      await finishByLowestHand(
+        supabase,
+        gameId,
+        { ...session, draw_pile: pile, discard_pile: discard } as UnoSession,
+        hands,
+        playerNames,
+        `Deck ran out mid-Roulette (no ${UNO_COLOR_LABELS[color]}) —`,
+        rules.teamMode
+      )
+      return {}
+    }
     const direction = session.direction < 0 ? -1 : 1
     const nextIndex = unoNextTurnIndex(session, hands, session.current_turn_index, 1, direction)
     const nextPlayerId = session.turn_order[nextIndex]
@@ -2694,6 +2709,13 @@ async function processUnoColorRouletteReveal(
     )
     if (!won) return {}
     await writeHand(supabase, gameId, playerId, targetHand)
+
+    // A long unlucky reveal streak can push the target past 25 mid-roulette — same Mercy
+    // check as the match branch. Attribution: the Colour Roulette caster.
+    if (rules.mode === 'no_mercy' && targetHand.length >= UNO_MERCY_HAND_LIMIT) {
+      const casterId = session.last_play_player_id ?? null
+      await applyMercyKnockout(supabase, gameId, playerId, targetHand.length, playerNames, rules.noMercyWin, casterId)
+    }
     return {}
   }
 
