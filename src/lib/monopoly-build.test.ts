@@ -18,7 +18,7 @@ import {
 
 type Row = { data: unknown; error: unknown }
 
-// Old Kent Road (1) and Whitechapel Road (3) are the brown group — the whole
+// Barking Road (1) and Dagenham Avenue (3) are the brown group — the whole
 // group must be owned to build, and the even-build rule spans both sites.
 const BROWN_A = 1
 const BROWN_B = 3
@@ -311,7 +311,7 @@ describe('bankruptcy — returning a hotel site to the bank', () => {
         player_id: 'debtor',
         creditor_player_id: 'creditor',
         amount: 4,
-        reason: 'Owe £4 rent on Whitechapel Road',
+        reason: 'Owe £4 rent on Dagenham Avenue',
         debt_type: 'rent',
         space_index: BROWN_B,
       },

@@ -7,23 +7,23 @@ describe('monopoly-themes formatting', () => {
     expect(formatThemedMoney(200, 'naija')).toBe('₦200,000')
   })
 
-  it('formats themed text replacing £ amounts and GO space for Naija edition', () => {
-    const text = 'Players join with their name and start on GO with £1,500.'
+  it('formats themed text replacing £ amounts and PAYDAY space for Naija edition', () => {
+    const text = 'Players join with their name and start on PAYDAY with £1,500.'
     const result = formatThemedText(text, 'naija')
     expect(result).toBe('Players join with their name and start on Oshodi Bus Terminal with ₦1,500,000.')
   })
 
   it('returns correct themed space names and lines for space index 0 and 1 across editions', () => {
-    expect(themedSpaceName('GO', 0, 'naija')).toBe('Oshodi Bus Terminal')
-    expect(themedSpaceLines('GO', 'go', 0, 'naija')).toEqual(['OSHODI BUS', 'TERMINAL'])
+    expect(themedSpaceName('PAYDAY', 0, 'naija')).toBe('Oshodi Bus Terminal')
+    expect(themedSpaceLines('PAYDAY', 'go', 0, 'naija')).toEqual(['OSHODI BUS', 'TERMINAL'])
 
-    expect(themedSpaceName('Old Kent Road', 1, 'naija')).toBe('Oshodi Market')
-    expect(themedSpaceLines('Old Kent Road', 'property', 1, 'naija')).toEqual(['OSHODI', 'MARKET'])
+    expect(themedSpaceName('Barking Road', 1, 'naija')).toBe('Oshodi Market')
+    expect(themedSpaceLines('Barking Road', 'property', 1, 'naija')).toEqual(['OSHODI', 'MARKET'])
 
-    expect(themedSpaceName('GO', 0, 'pirate')).toBe('Port Royale')
-    expect(themedSpaceLines('GO', 'go', 0, 'pirate')).toEqual(['Port', 'Royale'])
+    expect(themedSpaceName('PAYDAY', 0, 'pirate')).toBe('Port Royale')
+    expect(themedSpaceLines('PAYDAY', 'go', 0, 'pirate')).toEqual(['Port', 'Royale'])
 
-    expect(themedSpaceName('GO', 0, 'arctic')).toBe('Base Camp')
-    expect(themedSpaceLines('GO', 'go', 0, 'arctic')).toEqual(['BASE', 'CAMP'])
+    expect(themedSpaceName('PAYDAY', 0, 'arctic')).toBe('Base Camp')
+    expect(themedSpaceLines('PAYDAY', 'go', 0, 'arctic')).toEqual(['BASE', 'CAMP'])
   })
 })

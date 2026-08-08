@@ -22,7 +22,7 @@ export interface MonopolyThemeEdition {
   typeIcons: Partial<Record<MonopolySpaceType, string>>
   /** Themed two-line labels for the board grid, keyed by space index. */
   spaceLines: Partial<Record<number, string[]>>
-  /** Edition subtitle shown in the board center (e.g. "UK Edition", "Pirate Edition"). */
+  /** Edition subtitle shown in the board center (e.g. "London Edition", "Pirate Edition"). */
   editionSubtitle: string
   /** Short board title shown in the center (e.g. "MONOPOLY"). */
   boardTitle: string
@@ -147,7 +147,7 @@ const PIRATE_PALETTE: MonopolyBoardPalette = {
 }
 
 // ---------------------------------------------------------------------------
-// Classic (default) — UK Edition
+// Classic (default) — London Edition
 // ---------------------------------------------------------------------------
 
 const CLASSIC_EDITION: MonopolyThemeEdition = {
@@ -159,8 +159,8 @@ const CLASSIC_EDITION: MonopolyThemeEdition = {
   spaceNames: {}, // use canonical names
   typeIcons: {}, // use default icons
   spaceLines: {}, // use default lines
-  editionSubtitle: 'UK Edition',
-  boardTitle: 'MONOPOLY',
+  editionSubtitle: 'London Edition',
+  boardTitle: 'ESTATE KINGS',
   boardPalette: CLASSIC_PALETTE,
 }
 
@@ -645,7 +645,7 @@ function escapeRegExp(str: string): string {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
-/** Translate canonical UK space names and £ currency in any text string to the active theme. */
+/** Translate canonical London space names and £ currency in any text string to the active theme. */
 export function formatThemedText(text: string | null | undefined, themeId?: string | null): string {
   if (!text) return ''
   const edition = getMonopolyEdition(themeId)
@@ -661,9 +661,9 @@ export function formatThemedText(text: string | null | undefined, themeId?: stri
     }
   }
 
-  formatted = formatted.replace(/\bUK board\b/g, `${edition.editionName} board`)
-  formatted = formatted.replace(/\bUK Edition\b/g, `${edition.editionName} Edition`)
-  formatted = formatted.replace(/\bUK edition\b/g, `${edition.editionName} edition`)
+  formatted = formatted.replace(/\bLondon board\b/g, `${edition.editionName} board`)
+  formatted = formatted.replace(/\bLondon Edition\b/g, `${edition.editionName} Edition`)
+  formatted = formatted.replace(/\bLondon edition\b/g, `${edition.editionName} edition`)
 
   if (edition.themeId === 'naija') {
     formatted = formatted.replace(/£(\d+(?:,\d+)*(?:\.\d+)?)/g, (_, numStr) => {
