@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
+  buildNoMercyDeck,
   buildUnoDeck,
   canPlayCard,
   isJumpInMatch,
@@ -92,6 +93,43 @@ describe('buildUnoDeck', () => {
 
   it('has unique card ids', () => {
     expect(new Set(deck.map((c) => c.id)).size).toBe(108)
+  })
+})
+
+describe('buildNoMercyDeck', () => {
+  const deck = buildNoMercyDeck()
+
+  it('has exactly 168 cards (the documented HS total)', () => {
+    expect(deck.length).toBe(168)
+  })
+
+  it('drops the plain Wild — Colour Roulette replaces its "pick a colour" surface', () => {
+    expect(deck.filter((c) => c.kind === 'wild').length).toBe(0)
+  })
+
+  it('carries Skip + Skip Everyone (classic single-skip + HS everyone-skip)', () => {
+    // 2 Skips per colour = 8 from the base deck; 2 Skip Everyone per colour = 8 added.
+    expect(deck.filter((c) => c.kind === 'skip').length).toBe(8)
+    expect(deck.filter((c) => c.kind === 'skip_everyone').length).toBe(8)
+  })
+
+  it('has 12 each of Wild Draw 4, Reverse Draw 4, Draw 6, Draw 10', () => {
+    expect(deck.filter((c) => c.kind === 'wild_draw4').length).toBe(4) // base deck only
+    expect(deck.filter((c) => c.kind === 'wild_reverse_draw4').length).toBe(12)
+    expect(deck.filter((c) => c.kind === 'draw6').length).toBe(12)
+    expect(deck.filter((c) => c.kind === 'draw10').length).toBe(12)
+  })
+
+  it('has 16 Colour Roulettes (12 + 4 backfill for the removed plain Wilds)', () => {
+    expect(deck.filter((c) => c.kind === 'wild_color_roulette').length).toBe(16)
+  })
+
+  it('has 4 Discard All (1 per colour)', () => {
+    expect(deck.filter((c) => c.kind === 'discard_all').length).toBe(4)
+  })
+
+  it('has unique card ids', () => {
+    expect(new Set(deck.map((c) => c.id)).size).toBe(168)
   })
 })
 

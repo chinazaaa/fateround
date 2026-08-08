@@ -310,21 +310,26 @@ export function buildUnoDeck(): UnoCard[] {
 }
 
 /**
- * Build the 168-card UNO "Show 'em No Mercy" deck. Starts from the 108-card classic and layers on
- * the No-Mercy-only cards. Card counts per new kind are picked so the total lands at 168:
+ * Build the 168-card UNO "Show 'em No Mercy" deck. Starts from the 108-card classic
+ * (minus the plain Wild — Colour Roulette replaces it here since the two looked
+ * interchangeable at the table) and layers on the No-Mercy-only cards. Card counts
+ * per new kind are picked so the total still lands at 168:
  *
  *   Discard All          — 1 per colour  =  4
  *   Skip Everyone        — 2 per colour  =  8
  *   Wild Reverse Draw 4  — 12
  *   Wild Draw 6          — 12
  *   Wild Draw 10         — 12
- *   Wild Color Roulette  — 12
- *   ─────────────────────────────────── + 60
- *   Base UNO deck        — 108
+ *   Wild Color Roulette  — 16   (was 12; +4 to backfill the removed plain Wilds)
+ *   ─────────────────────────────────── + 64
+ *   Base UNO deck − plain Wild — 104
  *   ═════════════════════════════════ = 168
  */
 export function buildNoMercyDeck(): UnoCard[] {
-  const deck = buildUnoDeck()
+  // Plain Wild is dropped here; every "pick a colour" surface in HS goes through
+  // Colour Roulette (the wild+colour-choice surface players already know), so the
+  // classic Wild's own "just change colour" beat isn't reachable in HS.
+  const deck = buildUnoDeck().filter((c) => c.kind !== 'wild')
   for (const color of UNO_COLORS) {
     deck.push({ id: `${color}-discard_all`, color, kind: 'discard_all' })
     deck.push({ id: `${color}-skip_everyone-a`, color, kind: 'skip_everyone' })
@@ -334,6 +339,10 @@ export function buildNoMercyDeck(): UnoCard[] {
     deck.push({ id: `wildrev4-${i}`, color: 'wild', kind: 'wild_reverse_draw4' })
     deck.push({ id: `wild6-${i}`, color: 'wild', kind: 'draw6' })
     deck.push({ id: `wild10-${i}`, color: 'wild', kind: 'draw10' })
+  }
+  // 16 Roulettes (12 originals + 4 replacements for the removed plain Wilds), keeps
+  // the deck at the documented 168-card total.
+  for (let i = 0; i < 16; i += 1) {
     deck.push({ id: `wildroul-${i}`, color: 'wild', kind: 'wild_color_roulette' })
   }
   return deck
