@@ -2250,10 +2250,16 @@ export async function processUnoChoose(
   if (!UNO_COLORS.includes(color)) return { error: 'Choose a colour' }
 
   // For a Wild Reverse Draw Four the direction flips BEFORE the next seat is picked.
-  // Two-player: the flip lands the penalty back on the mover — same behaviour as classic Reverse.
+  // Two-player: like classic Reverse, the mover plays the card back onto themselves —
+  // advance TWO seats so the Draw-4 penalty lands on the mover instead of the sole
+  // opponent. `activePlayerCount<=2` guards the case where a knockout has left just
+  // two active seats mid-round in No Mercy.
   const baseDirection = session.direction < 0 ? -1 : 1
-  const direction = session.pending_wild === 'wild_reverse_draw4' ? -baseDirection : baseDirection
-  const nextIndex = unoNextTurnIndex(session, hands, session.current_turn_index, 1, direction)
+  const isRevDraw4 = session.pending_wild === 'wild_reverse_draw4'
+  const direction = isRevDraw4 ? -baseDirection : baseDirection
+  const twoPlayerReverse = isRevDraw4 && activePlayerCount(session, hands) <= 2
+  const steps = twoPlayerReverse ? 2 : 1
+  const nextIndex = unoNextTurnIndex(session, hands, session.current_turn_index, steps, direction)
   const nextPlayerId = session.turn_order[nextIndex]
 
   // No Mercy wilds — Draw Six, Draw Ten, Wild Reverse Draw Four. All behave like a Wild Draw
