@@ -191,7 +191,9 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
     enabled: bootstrap.screen === 'playing',
   })
 
-  const choosingColor = session?.phase === 'choose_color' && isMyTurn
+  // color_roulette lands the picker on the next player — same shape as choose_color
+  // (isMyTurn tracks that seat since unoPlay bumps current_turn_index into the phase).
+  const choosingColor = (session?.phase === 'choose_color' || session?.phase === 'color_roulette') && isMyTurn
   const inChallengeWindow = session?.phase === 'challenge_window' && isMyTurn
   const inSwapTarget = session?.phase === 'swap_target' && isMyTurn
   const owesUnoCall = !!session && session.uno_pending_player === bootstrap.myPlayerId && !session.uno_called

@@ -225,6 +225,9 @@ export function UnoPlaySurface({
   const lastPlaySet = (session.last_play_cards as UnoCard[] | null) ?? []
   const showLastPlay = lastPlaySet.length > 1
   const choosing = isMyTurn && !watching && session.phase === 'choose_color'
+  // Colour Roulette lands the picker on the NEXT player, and isMyTurn tracks that seat
+  // (unoPlay bumps current_turn_index into the roulette phase). Same shape as `choosing`.
+  const rouletteChoosing = isMyTurn && !watching && session.phase === 'color_roulette'
   const deciding = isMyTurn && !watching && session.phase === 'challenge_window'
   const swapping = isMyTurn && !watching && session.phase === 'swap_target'
   const canAct = isMyTurn && !watching && session.phase === 'playing'
@@ -725,6 +728,29 @@ export function UnoPlaySurface({
 
       {choosing && (
         <PickerOverlay title="Choose a colour" desc="The next player must match the colour you pick.">
+          <div className="picker-grid uno">
+            {UNO_COLORS.map((color) => (
+              <button
+                key={color}
+                type="button"
+                className={`uno-${color}`}
+                disabled={acting}
+                aria-label={UNO_COLOR_LABELS[color]}
+                title={UNO_COLOR_LABELS[color]}
+                onClick={() => onChooseColor(color)}
+              >
+                {UNO_COLOR_LABELS[color]}
+              </button>
+            ))}
+          </div>
+        </PickerOverlay>
+      )}
+
+      {rouletteChoosing && (
+        <PickerOverlay
+          title="Colour Roulette — pick a colour"
+          desc="You'll reveal cards from the draw pile until you turn up a card of this colour. Everything revealed lands in your hand."
+        >
           <div className="picker-grid uno">
             {UNO_COLORS.map((color) => (
               <button
