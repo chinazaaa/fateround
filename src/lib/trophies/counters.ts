@@ -722,11 +722,11 @@ export const COUNTERS: readonly CounterDef[] = [
   },
   {
     key: 'yahtzee_scored_yahtzee',
-    label: 'Yahtzee scored',
-    description: 'Games where you took a Yahtzee for fifty.',
+    label: 'Five of a kind scored',
+    description: 'Games where you took five of a kind for fifty.',
     scope: 'per-game',
     availability: 'partial',
-    phrase: 'scored a Yahtzee in at least {n} game{s}',
+    phrase: 'scored five of a kind in at least {n} game{s}',
   },
   {
     key: 'yahtzee_upper_bonus_games',
@@ -850,16 +850,16 @@ export const COUNTERS: readonly CounterDef[] = [
   },
   {
     key: 'yahtzee_bonus_earned',
-    label: 'Yahtzee — bonus earned',
-    description: 'Games where you earned at least one 100-point Yahtzee bonus.',
+    label: 'Five Dice — bonus earned',
+    description: 'Games where you earned at least one 100-point bonus.',
     scope: 'per-game',
     availability: 'partial',
-    phrase: 'earned a Yahtzee bonus in at least {n} game{s}',
+    phrase: 'earned a bonus in at least {n} game{s}',
   },
   {
     key: 'yahtzee_joker_used',
-    label: 'Yahtzee — Joker scored',
-    description: 'Games where you scored a Yahtzee under the Joker rule.',
+    label: 'Five Dice — Joker scored',
+    description: 'Games where you scored five of a kind under the Joker rule.',
     scope: 'per-game',
     availability: 'partial',
     phrase: 'used the Joker rule in at least {n} game{s}',
@@ -1282,66 +1282,66 @@ export const COUNTERS: readonly CounterDef[] = [
     availability: 'partial',
     phrase: 'won without drawing a card at least {n} time{s}',
   },
-  // ── UNO — from uno_player_hands.stats at finish ─────────────────────────────────────────────
+  // ── Match Up — from uno_player_hands.stats at finish ─────────────────────────────────────────────
   {
     key: 'uno_uno_calls',
-    label: 'UNO — UNO calls',
-    description: 'Correct UNO calls on your second-to-last card.',
+    label: 'Match Up — last-card calls',
+    description: 'Correct last-card calls on your second-to-last card.',
     scope: 'per-game',
     availability: 'partial',
-    phrase: 'called UNO correctly at least {n} time{s}',
+    phrase: 'called the last card correctly at least {n} time{s}',
   },
   {
     key: 'uno_skips',
-    label: 'UNO — Skips played',
-    description: 'Skip cards played across UNO games.',
+    label: 'Match Up — Skips played',
+    description: 'Skip cards played across Match Up games.',
     scope: 'per-game',
     availability: 'partial',
     phrase: 'played at least {n} Skip{s}',
   },
   {
     key: 'uno_reverses',
-    label: 'UNO — Reverses played',
-    description: 'Reverse cards played across UNO games.',
+    label: 'Match Up — Reverses played',
+    description: 'Reverse cards played across Match Up games.',
     scope: 'per-game',
     availability: 'partial',
     phrase: 'played at least {n} Reverse{s}',
   },
   {
     key: 'uno_draw_twos',
-    label: 'UNO — Draw Twos played',
-    description: 'Draw Two cards played across UNO games.',
+    label: 'Match Up — Draw Twos played',
+    description: 'Draw Two cards played across Match Up games.',
     scope: 'per-game',
     availability: 'partial',
     phrase: 'played at least {n} Draw Two{s}',
   },
   {
     key: 'uno_wilds',
-    label: 'UNO — Wilds played',
-    description: 'Wild cards played across UNO games.',
+    label: 'Match Up — Wilds played',
+    description: 'Wild cards played across Match Up games.',
     scope: 'per-game',
     availability: 'partial',
     phrase: 'played at least {n} Wild{s}',
   },
   {
     key: 'uno_wild_draw_fours',
-    label: 'UNO — Wild Draw Fours played',
-    description: 'Wild Draw Four cards played across UNO games.',
+    label: 'Match Up — Wild Draw Fours played',
+    description: 'Wild Draw Four cards played across Match Up games.',
     scope: 'per-game',
     availability: 'partial',
     phrase: 'played at least {n} Wild Draw Four{s}',
   },
   {
     key: 'uno_catches',
-    label: 'UNO — caught a missed call',
-    description: 'Opponents caught who forgot to call UNO.',
+    label: 'Match Up — caught a missed call',
+    description: 'Opponents caught who forgot to call the last card.',
     scope: 'per-game',
     availability: 'partial',
-    phrase: 'caught a missed UNO call at least {n} time{s}',
+    phrase: 'caught a missed last-card call at least {n} time{s}',
   },
   {
     key: 'uno_draw2_stacked',
-    label: 'UNO — Draw Twos stacked',
+    label: 'Match Up — Draw Twos stacked',
     description: 'Draw Twos stacked onto an active Draw Two.',
     scope: 'per-game',
     availability: 'partial',
@@ -1349,7 +1349,7 @@ export const COUNTERS: readonly CounterDef[] = [
   },
   {
     key: 'uno_challenges_won',
-    label: 'UNO — challenges won',
+    label: 'Match Up — challenges won',
     description: 'Wild Draw Fours you successfully challenged.',
     scope: 'per-game',
     availability: 'partial',
@@ -1357,7 +1357,7 @@ export const COUNTERS: readonly CounterDef[] = [
   },
   {
     key: 'uno_bluff_survived',
-    label: 'UNO — bluffs survived',
+    label: 'Match Up — bluffs survived',
     description: 'Challenges survived on your own Wild Draw Four.',
     scope: 'per-game',
     availability: 'partial',
@@ -1365,7 +1365,7 @@ export const COUNTERS: readonly CounterDef[] = [
   },
   {
     key: 'uno_color_changes_5_games',
-    label: 'UNO — colour changer',
+    label: 'Match Up — colour changer',
     description: 'Games where you changed the colour five times.',
     scope: 'per-game',
     availability: 'partial',
@@ -1373,7 +1373,7 @@ export const COUNTERS: readonly CounterDef[] = [
   },
   {
     key: 'uno_drew_5_games',
-    label: 'UNO — deck diver',
+    label: 'Match Up — deck diver',
     description: 'Games where you drew five cards.',
     scope: 'per-game',
     availability: 'partial',
@@ -1381,7 +1381,7 @@ export const COUNTERS: readonly CounterDef[] = [
   },
   {
     key: 'uno_two_reverses_games',
-    label: 'UNO — two Reverses',
+    label: 'Match Up — two Reverses',
     description: 'Games where you played two Reverses.',
     scope: 'per-game',
     availability: 'partial',
@@ -1389,7 +1389,7 @@ export const COUNTERS: readonly CounterDef[] = [
   },
   {
     key: 'uno_rainbow_games',
-    label: 'UNO — rainbow',
+    label: 'Match Up — rainbow',
     description: 'Games where a single Multi-Play set spanned all four colours.',
     scope: 'per-game',
     availability: 'partial',
@@ -1397,7 +1397,7 @@ export const COUNTERS: readonly CounterDef[] = [
   },
   {
     key: 'uno_never_drawn_games',
-    label: 'UNO — never drawn',
+    label: 'Match Up — never drawn',
     description: 'Games of three or more players finished without ever being made to draw.',
     scope: 'per-game',
     availability: 'partial',
@@ -1405,7 +1405,7 @@ export const COUNTERS: readonly CounterDef[] = [
   },
   {
     key: 'uno_action_hero_games',
-    label: 'UNO — action hero',
+    label: 'Match Up — action hero',
     description: 'Games where you played a Skip, a Reverse, a Draw Two and a Wild.',
     scope: 'per-game',
     availability: 'partial',
@@ -1413,7 +1413,7 @@ export const COUNTERS: readonly CounterDef[] = [
   },
   {
     key: 'uno_quickfire_wins',
-    label: 'UNO — quickfire',
+    label: 'Match Up — quickfire',
     description: 'Wins in eight turns or fewer.',
     scope: 'per-game',
     availability: 'partial',
@@ -1421,7 +1421,7 @@ export const COUNTERS: readonly CounterDef[] = [
   },
   {
     key: 'uno_one_color_wins',
-    label: 'UNO — colour blind',
+    label: 'Match Up — colour blind',
     description: 'Wins of a blocked or timed game holding only one colour.',
     scope: 'per-game',
     availability: 'partial',
@@ -1429,7 +1429,7 @@ export const COUNTERS: readonly CounterDef[] = [
   },
   {
     key: 'uno_survivor_wins',
-    label: 'UNO — survivor',
+    label: 'Match Up — survivor',
     description: 'Wins after drawing ten or more cards in the game.',
     scope: 'per-game',
     availability: 'partial',
@@ -1437,7 +1437,7 @@ export const COUNTERS: readonly CounterDef[] = [
   },
   {
     key: 'uno_wild_finish_wins',
-    label: 'UNO — wild finish',
+    label: 'Match Up — wild finish',
     description: 'Wins on a Wild as the final card.',
     scope: 'per-game',
     availability: 'partial',
@@ -1445,7 +1445,7 @@ export const COUNTERS: readonly CounterDef[] = [
   },
   {
     key: 'uno_full_lobby_wins',
-    label: 'UNO — full lobby',
+    label: 'Match Up — full lobby',
     description: 'Wins in a game of eight or more players.',
     scope: 'per-game',
     availability: 'partial',
@@ -1453,7 +1453,7 @@ export const COUNTERS: readonly CounterDef[] = [
   },
   {
     key: 'uno_comeback_wins',
-    label: 'UNO — comeback',
+    label: 'Match Up — comeback',
     description: 'Wins after holding twelve or more cards at some point.',
     scope: 'per-game',
     availability: 'partial',
@@ -1461,7 +1461,7 @@ export const COUNTERS: readonly CounterDef[] = [
   },
   {
     key: 'uno_untouchable_wins',
-    label: 'UNO — untouchable',
+    label: 'Match Up — untouchable',
     description: 'Wins of a three-plus-player game without taking a Draw Two or Draw Four.',
     scope: 'per-game',
     availability: 'partial',
@@ -1469,7 +1469,7 @@ export const COUNTERS: readonly CounterDef[] = [
   },
   {
     key: 'uno_flawless_wins',
-    label: 'UNO — flawless',
+    label: 'Match Up — flawless',
     description: 'Wins of a three-plus-player game without drawing a single card.',
     scope: 'per-game',
     availability: 'partial',
@@ -1477,7 +1477,7 @@ export const COUNTERS: readonly CounterDef[] = [
   },
   {
     key: 'uno_full_circle_wins',
-    label: 'UNO — full circle',
+    label: 'Match Up — full circle',
     description: 'Wins having played every action card type, including the Wild Draw Four.',
     scope: 'per-game',
     availability: 'partial',
@@ -1485,7 +1485,7 @@ export const COUNTERS: readonly CounterDef[] = [
   },
   {
     key: 'uno_wd4_finish_wins',
-    label: 'UNO — last card four',
+    label: 'Match Up — last card four',
     description: 'Wins on a Wild Draw Four as the final card.',
     scope: 'per-game',
     availability: 'partial',
@@ -1695,7 +1695,7 @@ export const COUNTERS: readonly CounterDef[] = [
   // ── Monopoly — from the finished board + player_state ───────────────────────────────────────────
   {
     key: 'monopoly_passed_go',
-    label: 'Monopoly — passed GO',
+    label: 'Estate Kings — passed GO',
     description: 'Games where you passed GO at least once.',
     scope: 'per-game',
     availability: 'partial',
@@ -1703,7 +1703,7 @@ export const COUNTERS: readonly CounterDef[] = [
   },
   {
     key: 'monopoly_three_properties',
-    label: 'Monopoly — three properties',
+    label: 'Estate Kings — three properties',
     description: 'Games ending with three or more properties owned.',
     scope: 'per-game',
     availability: 'partial',
@@ -1711,7 +1711,7 @@ export const COUNTERS: readonly CounterDef[] = [
   },
   {
     key: 'monopoly_ten_properties',
-    label: 'Monopoly — ten properties',
+    label: 'Estate Kings — ten properties',
     description: 'Games ending with ten or more properties owned.',
     scope: 'per-game',
     availability: 'partial',
@@ -1719,7 +1719,7 @@ export const COUNTERS: readonly CounterDef[] = [
   },
   {
     key: 'monopoly_full_color_set',
-    label: 'Monopoly — colour set',
+    label: 'Estate Kings — colour set',
     description: 'Games where you owned a full colour group.',
     scope: 'per-game',
     availability: 'partial',
@@ -1727,7 +1727,7 @@ export const COUNTERS: readonly CounterDef[] = [
   },
   {
     key: 'monopoly_both_utilities',
-    label: 'Monopoly — both utilities',
+    label: 'Estate Kings — both utilities',
     description: 'Games ending with both utilities owned.',
     scope: 'per-game',
     availability: 'partial',
@@ -1735,7 +1735,7 @@ export const COUNTERS: readonly CounterDef[] = [
   },
   {
     key: 'monopoly_two_stations',
-    label: 'Monopoly — two stations',
+    label: 'Estate Kings — two stations',
     description: 'Games ending with two or more stations owned.',
     scope: 'per-game',
     availability: 'partial',
@@ -1743,7 +1743,7 @@ export const COUNTERS: readonly CounterDef[] = [
   },
   {
     key: 'monopoly_all_stations',
-    label: 'Monopoly — all stations',
+    label: 'Estate Kings — all stations',
     description: 'Games ending with all four stations owned.',
     scope: 'per-game',
     availability: 'partial',
@@ -1751,7 +1751,7 @@ export const COUNTERS: readonly CounterDef[] = [
   },
   {
     key: 'monopoly_blue_chip',
-    label: 'Monopoly — blue chip',
+    label: 'Estate Kings — blue chip',
     description: 'Games where you owned both the dark blue and green monopolies.',
     scope: 'per-game',
     availability: 'partial',
@@ -1759,7 +1759,7 @@ export const COUNTERS: readonly CounterDef[] = [
   },
   {
     key: 'monopoly_one_side',
-    label: 'Monopoly — whole side',
+    label: 'Estate Kings — whole side',
     description: 'Games where you owned every property on one side of the board.',
     scope: 'per-game',
     availability: 'partial',
@@ -1767,7 +1767,7 @@ export const COUNTERS: readonly CounterDef[] = [
   },
   {
     key: 'monopoly_four_houses',
-    label: 'Monopoly — four houses',
+    label: 'Estate Kings — four houses',
     description: 'Games where you built four houses on a single property.',
     scope: 'per-game',
     availability: 'partial',
@@ -1775,7 +1775,7 @@ export const COUNTERS: readonly CounterDef[] = [
   },
   {
     key: 'monopoly_naija_wins',
-    label: 'Monopoly — Naija win',
+    label: 'Estate Kings — Naija win',
     description: 'Wins on the Naija board.',
     scope: 'per-game',
     availability: 'partial',
@@ -1783,7 +1783,7 @@ export const COUNTERS: readonly CounterDef[] = [
   },
   {
     key: 'monopoly_london_wins',
-    label: 'Monopoly — London win',
+    label: 'Estate Kings — London win',
     description: 'Wins on the classic London board.',
     scope: 'per-game',
     availability: 'partial',
@@ -1791,7 +1791,7 @@ export const COUNTERS: readonly CounterDef[] = [
   },
   {
     key: 'monopoly_last_one_standing',
-    label: 'Monopoly — last one standing',
+    label: 'Estate Kings — last one standing',
     description: 'Wins of three or more players by bankrupting everyone else.',
     scope: 'per-game',
     availability: 'partial',
