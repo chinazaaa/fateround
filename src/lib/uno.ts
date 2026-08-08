@@ -1716,6 +1716,16 @@ export async function processUnoPlay(
     if (missed) await writeHand(supabase, gameId, missed.playerId, missed.hand)
   }
 
+  // Mercy: a 0-rotation can hand a seat 25+ cards. Attribute to whoever played the 0.
+  if (rules.mode === 'no_mercy' && isZero && rotatedWrites) {
+    for (const w of rotatedWrites) {
+      if (w.playerId === playerId) continue
+      if (w.cards.length >= UNO_MERCY_HAND_LIMIT) {
+        await applyMercyKnockout(supabase, gameId, w.playerId, w.cards.length, playerNames, rules.noMercyWin, playerId)
+      }
+    }
+  }
+
   // Fold this play's trophy counters. `session` is pre-write, so its pending penalty reads the
   // stack this Draw Two landed on; `missed` means this move caught a forgotten UNO call.
   // High Stakes stack detection: ANY Draw card played onto a pending draw penalty counts
@@ -2891,6 +2901,19 @@ export async function processUnoSwap(
 
   await writeHand(supabase, gameId, playerId, theirCards)
   await writeHand(supabase, gameId, targetId, myCards)
+
+  // Mercy: a 7-swap can hand a player 25+ cards — knock them out. The swapper CHOSE to take
+  // the pile, so no attribution to another player; the target only crosses the threshold if
+  // the swapper's own hand was already at the limit, so attribute that back to the swapper.
+  if (rules.mode === 'no_mercy') {
+    if (theirCards.length >= UNO_MERCY_HAND_LIMIT) {
+      await applyMercyKnockout(supabase, gameId, playerId, theirCards.length, playerNames, rules.noMercyWin, null)
+    }
+    if (myCards.length >= UNO_MERCY_HAND_LIMIT) {
+      await applyMercyKnockout(supabase, gameId, targetId, myCards.length, playerNames, rules.noMercyWin, playerId)
+    }
+  }
+
   return {}
 }
 
