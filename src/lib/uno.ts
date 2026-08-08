@@ -172,7 +172,9 @@ export function parseUnoRules(
     wd4ChallengePenalty: wd4Penalty === 4 ? 4 : 6,
     zeroSeven: noMercy ? true : game?.uno_zero_seven === true,
     stacking: noMercy ? true : game?.uno_stacking === true,
-    multiPlay: noMercy ? 'off' : parseMultiPlayMode(game?.uno_multi_play_mode),
+    // Multi-Play is allowed in High Stakes too — same host-picked mode as Classic. The
+    // earlier "forced off in HS" branch has been dropped per spec update.
+    multiPlay: parseMultiPlayMode(game?.uno_multi_play_mode),
     teamMode: noMercy ? false : game?.uno_team_mode === true,
     // Jump-In is OFF in High Stakes. The extra chaos + out-of-turn plays don't compose
     // with the +6/+10 draws and knockouts — it made the mode unplayable in testing.

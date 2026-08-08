@@ -532,10 +532,9 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
       onCallUno={() => void postAction('/api/uno/call-uno', {})}
       onSwap={(targetId) => void postAction('/api/uno/swap', { targetId })}
       onPass={() => void postAction('/api/uno/pass', {})}
-      // High Stakes forces Multi-Play + Jump-In OFF in parseUnoRules; mirror that here
-      // so the client doesn't offer either affordance on a HS game whose raw DB flags
-      // still carry their Classic values (persist through mode switch).
-      multiPlayMode={game?.uno_mode === 'no_mercy' ? 'off' : parseMultiPlayMode(game?.uno_multi_play_mode)}
+      // Multi-Play is allowed in HS (spec update) — just read the raw host setting.
+      // Jump-In stays forced OFF in HS.
+      multiPlayMode={parseMultiPlayMode(game?.uno_multi_play_mode)}
       onPlayMulti={(cardIds) => void postAction('/api/uno/play-multi', { cardIds })}
       jumpInEnabled={game?.uno_mode !== 'no_mercy' && game?.uno_jump_in === true}
       onJumpIn={(cardId) => void postAction('/api/uno/jump-in', { cardId })}

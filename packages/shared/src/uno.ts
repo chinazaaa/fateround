@@ -122,7 +122,8 @@ export function parseUnoRules(
     stacking: noMercy ? true : game?.uno_stacking === true,
     // High Stakes has Discard Colour (drop every card of a colour in one turn) built in, so
     // Multi-Play adds little on top and interacts badly with cross-kind Draw stacking. Forced off.
-    multiPlay: noMercy ? 'off' : parseMultiPlayMode(game?.uno_multi_play_mode),
+    // Multi-Play is allowed in High Stakes too — mirrors src/lib/uno.ts.
+    multiPlay: parseMultiPlayMode(game?.uno_multi_play_mode),
     teamMode: noMercy ? false : game?.uno_team_mode === true,
     // Jump-In is OFF in High Stakes (see src/lib/uno.ts sibling for the reason).
     jumpIn: noMercy ? false : game?.uno_jump_in === true,
