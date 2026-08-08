@@ -4,6 +4,7 @@ import { crosswordThemeOptions } from '@/lib/crossword-puzzles'
 import { wordSearchThemeOptions } from '@/lib/word-search-puzzles'
 import { wordScrambleThemeOptions } from '@/lib/word-scramble-puzzles'
 import { THEME_MAP } from '@/lib/themes'
+import { parseUnoRules } from '@/lib/uno'
 import { Glyph } from '@/components/icons/Glyph'
 import {
   UserMultipleIcon,
@@ -314,12 +315,19 @@ export function gameInfoItems(game: GameMeta | null | undefined): string[] {
     if (game.crazy8_jokers) items.push('🃏 Jokers')
     if (game.crazy8_pick2_stacking) items.push('📚 Pick 2 stacking')
   } else if (gt === 'uno') {
-    if (game.uno_team_mode) items.push('🤝 Team-Up')
-    if (game.uno_stacking) items.push('📚 Stacking')
-    if (game.uno_zero_seven) items.push('🔁 0-7 rule')
-    if (game.uno_wd4_challenge !== false) items.push('⚖️ WD4 challenge')
-    if (game.uno_multi_play_mode && game.uno_multi_play_mode !== 'off') items.push('🃏 Multi-Play')
-    if (game.uno_jump_in) items.push('⚡ Jump-In')
+    // Rule chips must reflect the EFFECTIVE rules, not the raw column values. In High
+    // Stakes several rules are forced (stacking + 0-7 + Jump-In locked ON, WD4 challenge
+    // + Team-Up + Multi-Play forced OFF) — reading the DB flags directly showed stale
+    // Classic values (e.g. "WD4 challenge" on a High Stakes game where challenges are
+    // disabled in the engine).
+    const uno = parseUnoRules(game)
+    if (uno.mode === 'no_mercy') items.push('💥 High Stakes')
+    if (uno.teamMode) items.push('🤝 Team-Up')
+    if (uno.stacking) items.push('📚 Stacking')
+    if (uno.zeroSeven) items.push('🔁 0-7 rule')
+    if (uno.wd4Challenge) items.push('⚖️ WD4 challenge')
+    if (uno.multiPlay !== 'off') items.push('🃏 Multi-Play')
+    if (uno.jumpIn) items.push('⚡ Jump-In')
   } else if (gt === 'monopoly') {
     if (game.monopoly_double_go_salary) items.push('💰 Double GO salary')
     if (game.monopoly_forced_auctions) items.push('🔨 Forced auctions')
