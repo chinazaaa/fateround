@@ -419,7 +419,7 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
   const canExchange = tilesInBag >= 7
 
   return (
-    <GameShell bootstrap={bootstrap} title="Scrabble" subtitle={`Code ${bootstrap.code}`}>
+    <GameShell bootstrap={bootstrap} title="Word Tiles" subtitle={`Code ${bootstrap.code}`}>
       <ScrollView
         style={styles.pageScroll}
         contentContainerStyle={styles.pageScrollContent}
