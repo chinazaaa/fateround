@@ -193,7 +193,20 @@ export function formatUnoGameDuration(seconds: number): string {
 }
 
 // ── Card helpers ──────────────────────────────────────────────────────────────
-const WILD_KINDS: UnoCard['kind'][] = ['wild', 'wild_draw4', 'wild_reverse_draw4', 'wild_color_roulette']
+// Every "colourless" card kind — plays on any top card and, when it has a Draw value,
+// carries pending penalties through choose_color. Draw 6 and Draw 10 belong here too:
+// they were originally forgotten, which routed them through processUnoPlay's non-wild
+// branch — that never opened the colour picker AND silently zeroed any pending Draw
+// penalty they were supposed to stack onto (source of "I played +10 and it didn't stack
+// / didn't ask a colour / opponent could play anything after").
+const WILD_KINDS: UnoCard['kind'][] = [
+  'wild',
+  'wild_draw4',
+  'wild_reverse_draw4',
+  'wild_color_roulette',
+  'draw6',
+  'draw10',
+]
 
 export function isWildCard(card: UnoCard): boolean {
   return WILD_KINDS.includes(card.kind)

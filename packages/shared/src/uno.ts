@@ -142,7 +142,16 @@ export function formatUnoGameDuration(seconds: number): string {
 }
 
 // ── Card helpers ──────────────────────────────────────────────────────────────
-const WILD_KINDS: UnoCard['kind'][] = ['wild', 'wild_draw4', 'wild_reverse_draw4', 'wild_color_roulette']
+// Keep in lockstep with src/lib/uno.ts. draw6 + draw10 are colourless — they take a
+// colour choice and can carry pending penalties through choose_color.
+const WILD_KINDS: UnoCard['kind'][] = [
+  'wild',
+  'wild_draw4',
+  'wild_reverse_draw4',
+  'wild_color_roulette',
+  'draw6',
+  'draw10',
+]
 
 export function isWildCard(card: UnoCard): boolean {
   return WILD_KINDS.includes(card.kind)
