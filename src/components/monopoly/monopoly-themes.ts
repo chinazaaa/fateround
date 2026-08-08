@@ -91,28 +91,32 @@ export interface MonopolyBoardPalette {
 // Board palettes
 // ---------------------------------------------------------------------------
 
+// FateRound-branded Classic (London Edition) palette: slate/neutral board with
+// rose accents and violet price highlights. Distinct from the well-known emerald
+// + gold-band commercial look; the property colour groups themselves stay standard
+// (functional).
 const CLASSIC_PALETTE: MonopolyBoardPalette = {
-  boardBg: 'bg-gradient-to-br from-emerald-800 via-emerald-900 to-teal-950',
-  boardBorder: 'border-amber-700/90',
-  boardShadow: 'shadow-[0_20px_60px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.12)]',
-  centerBg: 'bg-gradient-to-br from-emerald-700/90 to-emerald-950/95',
-  centerBorder: 'border-emerald-600/40',
+  boardBg: 'bg-gradient-to-br from-slate-800 via-slate-900 to-neutral-950',
+  boardBorder: 'border-rose-500/70',
+  boardShadow: 'shadow-[0_20px_60px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.10)]',
+  centerBg: 'bg-gradient-to-br from-slate-700/90 to-slate-950/95',
+  centerBorder: 'border-slate-600/40',
   centerText: 'text-white',
-  centerSubtleText: 'text-emerald-200/80',
-  centerPriceText: 'text-amber-300',
-  centerDebtPriceText: 'text-red-300',
-  titleColor: 'text-amber-300',
-  subtitleColor: 'text-emerald-200/70',
+  centerSubtleText: 'text-slate-200/80',
+  centerPriceText: 'text-violet-300',
+  centerDebtPriceText: 'text-rose-300',
+  titleColor: 'text-rose-300',
+  subtitleColor: 'text-violet-200/70',
   tileBg: 'bg-[#faf8f2]',
   tileBorder: 'border-neutral-300/80',
   tileText: 'text-neutral-800',
-  highlightRing: 'ring-amber-400',
-  highlightOffset: 'ring-offset-emerald-900',
+  highlightRing: 'ring-rose-400',
+  highlightOffset: 'ring-offset-slate-900',
   priceText: 'text-neutral-500',
-  rentText: 'text-emerald-800',
+  rentText: 'text-slate-800',
   cornerDivider: 'bg-neutral-200',
-  myTokenRing: 'ring-amber-300',
-  myTokenOffset: 'ring-offset-emerald-900',
+  myTokenRing: 'ring-violet-300',
+  myTokenOffset: 'ring-offset-slate-900',
 }
 
 const PIRATE_PALETTE: MonopolyBoardPalette = {

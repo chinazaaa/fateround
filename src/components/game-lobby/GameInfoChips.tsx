@@ -323,7 +323,7 @@ export function gameInfoItems(game: GameMeta | null | undefined): string[] {
   } else if (gt === 'monopoly') {
     if (game.monopoly_double_go_salary) items.push('💰 Double GO salary')
     if (game.monopoly_forced_auctions) items.push('🔨 Forced auctions')
-    if (game.monopoly_no_rent_in_jail) items.push('🚫 No rent in jail')
+    if (game.monopoly_no_rent_in_jail) items.push('🚫 No rent in NICKED')
     if (game.monopoly_estate_dividend) items.push('🏦 Estate dividend')
   } else if (gt === 'landmine') {
     items.push(game.landmine_mode === 'elimination' ? '💥 Elimination' : '0️⃣ Zero points')

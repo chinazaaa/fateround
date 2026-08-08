@@ -383,7 +383,7 @@ export function MonopolyBoardCenter({
       {showJail && (
         <div className={panelClass}>
           <p className={labelClass}>In Jail</p>
-          <p className={titleClass}>{themedSpaceName('Jail', 10, themeId)}</p>
+          <p className={titleClass}>{themedSpaceName('NICKED', 10, themeId)}</p>
           <p className={isDock ? 'text-xs text-muted leading-tight' : 'text-xs text-muted leading-snug'}>
             Attempt {(myState?.jail_turns ?? 0) + 1}/3 — roll once for doubles, or pay{' '}
             {formatThemedMoney(MONOPOLY_JAIL_FINE, themeId)} now.

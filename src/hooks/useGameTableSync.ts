@@ -110,45 +110,81 @@ export function useGameTableSync(
       }, 90)
     }
 
-    let channel = supabase.channel(`sync-${gameCode}${opts?.channelKey ? `-${opts.channelKey}` : ''}`)
-    for (const { table, column } of norm) {
-      channel = channel.on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table, filter: `${column}=eq.${gameCode}` },
-        (payload: ChangePayload) => {
-          const apply = applyRef.current.get(table)
-          let handled = false
-          if (apply && payload?.eventType !== 'DELETE' && payload?.new && Object.keys(payload.new).length > 0) {
-            try {
-              // `=== true` so a legacy void-returning apply (or a thrown one) falls through
-              // to the reconciling reload exactly as before — the skip is strictly opt-in.
-              handled = apply(payload.new) === true
-            } catch {
-              // a bad pushed row must not kill the channel — the reload reconciles
-              handled = false
-            }
-          }
-          // Skip the debounced reconciliation reload only when apply fully absorbed the row.
-          // DELETEs, other tables, and non-opted-in applies still reload.
-          if (!handled) schedule()
-        }
-      )
-    }
     // Track SUBSCRIBED from the status callback, but AND it with live socket state so a silent
     // socket drop (no status callback) still flips `connected` false. `supabase.realtime` auto-
     // reconnects and re-fires SUBSCRIBED on recovery, so `subscribed` self-heals; the heartbeat
     // just keeps `connected` honest in between.
     let subscribed = false
     const evalConnected = () => setConnected(subscribed && supabase.realtime.isConnected())
-    channel.subscribe((status) => {
-      subscribed = status === 'SUBSCRIBED'
-      evalConnected()
-    })
+
+    const buildChannel = () => {
+      let ch = supabase.channel(`sync-${gameCode}${opts?.channelKey ? `-${opts.channelKey}` : ''}`)
+      for (const { table, column } of norm) {
+        ch = ch.on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table, filter: `${column}=eq.${gameCode}` },
+          (payload: ChangePayload) => {
+            const apply = applyRef.current.get(table)
+            let handled = false
+            if (apply && payload?.eventType !== 'DELETE' && payload?.new && Object.keys(payload.new).length > 0) {
+              try {
+                // `=== true` so a legacy void-returning apply (or a thrown one) falls through
+                // to the reconciling reload exactly as before — the skip is strictly opt-in.
+                handled = apply(payload.new) === true
+              } catch {
+                // a bad pushed row must not kill the channel — the reload reconciles
+                handled = false
+              }
+            }
+            // Skip the debounced reconciliation reload only when apply fully absorbed the row.
+            // DELETEs, other tables, and non-opted-in applies still reload.
+            if (!handled) schedule()
+          }
+        )
+      }
+      ch.subscribe((status) => {
+        subscribed = status === 'SUBSCRIBED'
+        evalConnected()
+      })
+      return ch
+    }
+
+    let channel = buildChannel()
     const heartbeat = window.setInterval(evalConnected, HEARTBEAT_MS)
+
+    // Foreground / reconnect recovery. iOS Safari (and to a lesser extent desktop Chrome
+    // when a tab is backgrounded for a while) can leave the realtime socket "connected"
+    // while silently dropping WAL rows — the status callback never fires, so nothing
+    // triggers a reload and the UI shows stale turn/deadline data (the "0s next to the
+    // wrong player" symptom). On visibility/pageshow/online we tear down and rebuild the
+    // channel and force a reload, matching what the mobile RN version does via AppState.
+    const recover = () => {
+      subscribed = false
+      setConnected(false)
+      supabase.removeChannel(channel)
+      channel = buildChannel()
+      void Promise.resolve()
+        .then(() => reloadRef.current())
+        .catch(() => {})
+    }
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') recover()
+    }
+    // `pageshow` with persisted=true fires when iOS Safari restores from BFCache — the
+    // page's JS is still intact but its network state is not, so re-subscribe.
+    const onPageShow = (e: PageTransitionEvent) => {
+      if (e.persisted) recover()
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    window.addEventListener('pageshow', onPageShow)
+    window.addEventListener('online', recover)
 
     return () => {
       if (debounce) clearTimeout(debounce)
       window.clearInterval(heartbeat)
+      document.removeEventListener('visibilitychange', onVisibility)
+      window.removeEventListener('pageshow', onPageShow)
+      window.removeEventListener('online', recover)
       setConnected(false)
       supabase.removeChannel(channel)
     }

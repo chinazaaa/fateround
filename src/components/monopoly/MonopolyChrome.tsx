@@ -245,7 +245,7 @@ export function MonopolyJailCardInventory({
   if (count <= 0) {
     return (
       <p className={['text-xs text-muted leading-relaxed', className].join(' ')}>
-        {formatThemedText('No Get Out of Jail cards — draw one from Fate or Kitty.', themeId)}
+        {formatThemedText('No skip-the-queue cards — draw one from Fate or Kitty.', themeId)}
       </p>
     )
   }
@@ -264,7 +264,7 @@ export function MonopolyJailCardInventory({
           compact ? 'text-[11px]' : 'text-xs',
         ].join(' ')}
       >
-        {formatThemedText(`🎫 ${count} Get Out of Jail card${count === 1 ? '' : 's'}`, themeId)}
+        {formatThemedText(`🎫 ${count} skip-the-queue card${count === 1 ? '' : 's'}`, themeId)}
       </p>
       {!compact && (
         <p className="text-[10px] text-muted mt-0.5 leading-snug">Use from the jail panel, or include in a trade.</p>
@@ -317,7 +317,7 @@ export function MonopolyTurnStrip({
     </span>
   ) : (
     <span className="text-[10px] text-faint capitalize">
-      {phase === 'roll' ? 'rolling' : phase === 'jail' ? 'in jail' : (phase?.replace('_', ' ') ?? 'wait')}
+      {phase === 'roll' ? 'rolling' : phase === 'jail' ? 'in NICKED' : (phase?.replace('_', ' ') ?? 'wait')}
     </span>
   )
 

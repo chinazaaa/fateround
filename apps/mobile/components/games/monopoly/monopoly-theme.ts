@@ -44,12 +44,14 @@ interface MonopolyEdition {
   boardPalette: MonopolyBoardPalette
 }
 
+// FateRound-branded slate + rose Classic palette (mobile mirror of the web
+// CLASSIC_PALETTE — see src/components/monopoly/monopoly-themes.ts).
 const CLASSIC_PALETTE: MonopolyBoardPalette = {
-  boardBg: '#14532d',
-  boardBorder: '#166534',
-  centerBg: '#166534',
-  tileBg: '#f5f5dc',
-  cornerBg: '#fef9c3',
+  boardBg: '#1e293b',
+  boardBorder: '#f43f5e',
+  centerBg: '#0f172a',
+  tileBg: '#faf8f2',
+  cornerBg: '#f5f5f4',
   tileText: '#171717',
   highlightBorder: '#f43f5e',
   decoration: 'none',
