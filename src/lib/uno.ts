@@ -589,18 +589,24 @@ type UnoRankableHand = { player_id: string; cards: UnoCard[] }
  * Final placement order (1st → last). Players who emptied their hand rank FIRST, in the
  * exact order they finished (`finishOrder`); everyone still holding cards follows, ordered
  * by lowest hand total then fewest cards. Mirrors crazyEightsPlacementOrder.
+ *
+ * `eliminatedPlayerIds` (No Mercy Mercy knockouts) are ALWAYS sorted after every live
+ * player — a knocked-out seat can't win a timed game just because their hand summed to a
+ * low value. Within the eliminated group they still sort by hand-sum for a stable order.
  */
 export function unoPlacementOrder(
   hands: UnoRankableHand[],
   turnOrder: string[],
   finishOrder: string[],
   teamMode = false,
-  leftPlayerIds: string[] = []
+  leftPlayerIds: string[] = [],
+  eliminatedPlayerIds: string[] = []
 ): string[] {
   const activeIds = new Set(turnOrder ?? [])
   const finished = (finishOrder ?? []).filter((id) => activeIds.has(id))
   const finishedSet = new Set(finished)
   const leftSet = new Set(leftPlayerIds)
+  const eliminatedSet = new Set(eliminatedPlayerIds)
 
   // Team-Up: rank the winning team's two members first, then the losing team. The winning team
   // is whoever emptied a hand first, or — if a timer ended it — the lower combined hand total.
@@ -635,19 +641,29 @@ export function unoPlacementOrder(
       .sort((a, b) => byLeft(a, b) || sumOf(a) - sumOf(b) || a.localeCompare(b))
     return [...winners, ...losers]
   }
-  const remaining = hands
+  // Split the still-holding-cards group into LIVE seats (playable at time of
+  // finalisation) and ELIMINATED seats (Mercy knockouts) so eliminated players always
+  // sort behind every live player regardless of their hand-sum. Within each subgroup
+  // the sort is identical: lowest hand-sum, then fewest cards, then id for stability.
+  const stillHolding = hands
     .filter((h) => activeIds.has(h.player_id) && !finishedSet.has(h.player_id))
     .map((h) => {
       const cards = (h.cards as UnoCard[]) ?? []
-      return { playerId: h.player_id, handSum: unoHandSum(cards), cardCount: cards.length }
+      return {
+        playerId: h.player_id,
+        handSum: unoHandSum(cards),
+        cardCount: cards.length,
+        eliminated: eliminatedSet.has(h.player_id),
+      }
     })
     .sort((a, b) => {
       if (a.handSum !== b.handSum) return a.handSum - b.handSum
       if (a.cardCount !== b.cardCount) return a.cardCount - b.cardCount
       return a.playerId.localeCompare(b.playerId)
     })
-    .map((r) => r.playerId)
-  return [...finished, ...remaining]
+  const live = stillHolding.filter((r) => !r.eliminated).map((r) => r.playerId)
+  const eliminated = stillHolding.filter((r) => r.eliminated).map((r) => r.playerId)
+  return [...finished, ...live, ...eliminated]
 }
 
 export function buildUnoStandings(
@@ -656,20 +672,23 @@ export function buildUnoStandings(
   turnOrder: string[],
   finishOrder: string[] = [],
   teamMode = false,
-  leftPlayerIds: string[] = []
+  leftPlayerIds: string[] = [],
+  eliminatedPlayerIds: string[] = []
 ): UnoStanding[] {
   const activeIds = new Set(turnOrder ?? [])
   const byId = new Map(hands.filter((h) => activeIds.has(h.player_id)).map((h) => [h.player_id, h]))
-  return unoPlacementOrder(hands, turnOrder, finishOrder, teamMode, leftPlayerIds).map((playerId, index) => {
-    const cards = (byId.get(playerId)?.cards as UnoCard[]) ?? []
-    return {
-      playerId,
-      name: players.find((p) => p.id === playerId)?.name ?? 'Player',
-      cardCount: cards.length,
-      handSum: unoHandSum(cards),
-      rank: index + 1,
+  return unoPlacementOrder(hands, turnOrder, finishOrder, teamMode, leftPlayerIds, eliminatedPlayerIds).map(
+    (playerId, index) => {
+      const cards = (byId.get(playerId)?.cards as UnoCard[]) ?? []
+      return {
+        playerId,
+        name: players.find((p) => p.id === playerId)?.name ?? 'Player',
+        cardCount: cards.length,
+        handSum: unoHandSum(cards),
+        rank: index + 1,
+      }
     }
-  })
+  )
 }
 
 export function unoGameSessionExpired(
@@ -935,7 +954,11 @@ async function finishByLowestHand(
 ): Promise<boolean> {
   const finishOrder = session.finish_order ?? []
   const leftIds = unoLeftPlayerIds(session)
-  const placement = unoPlacementOrder(hands, session.turn_order ?? [], finishOrder, teamMode, leftIds)
+  // No Mercy: knocked-out seats must never rank as the winner on a timed finish. Pass
+  // the current eliminated list through so unoPlacementOrder sorts them behind every
+  // live seat regardless of hand-sum.
+  const eliminatedIds = (session.eliminated_player_ids as string[] | null) ?? []
+  const placement = unoPlacementOrder(hands, session.turn_order ?? [], finishOrder, teamMode, leftIds, eliminatedIds)
   const winnerId = placement[0] ?? null
   const winnerName = winnerId ? playerName(playerNames, winnerId) : 'Nobody'
 

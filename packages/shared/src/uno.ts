@@ -484,12 +484,16 @@ export function unoPlacementOrder(
   turnOrder: string[],
   finishOrder: string[],
   teamMode = false,
-  leftPlayerIds: string[] = []
+  leftPlayerIds: string[] = [],
+  // No Mercy — Mercy-knockout ids ALWAYS sort after every live seat, regardless of
+  // hand-sum. Mirrors src/lib/uno.ts.
+  eliminatedPlayerIds: string[] = []
 ): string[] {
   const activeIds = new Set(turnOrder ?? [])
   const finished = (finishOrder ?? []).filter((id) => activeIds.has(id))
   const finishedSet = new Set(finished)
   const leftSet = new Set(leftPlayerIds)
+  const eliminatedSet = new Set(eliminatedPlayerIds)
 
   const order = turnOrder ?? []
   if (teamMode && order.length === UNO_TEAM_PLAYERS) {
@@ -519,19 +523,25 @@ export function unoPlacementOrder(
       .sort((a, b) => byLeft(a, b) || sumOf(a) - sumOf(b) || a.localeCompare(b))
     return [...winners, ...losers]
   }
-  const remaining = hands
+  const stillHolding = hands
     .filter((h) => activeIds.has(h.player_id) && !finishedSet.has(h.player_id))
     .map((h) => {
       const cards = (h.cards as UnoCard[]) ?? []
-      return { playerId: h.player_id, handSum: unoHandSum(cards), cardCount: cards.length }
+      return {
+        playerId: h.player_id,
+        handSum: unoHandSum(cards),
+        cardCount: cards.length,
+        eliminated: eliminatedSet.has(h.player_id),
+      }
     })
     .sort((a, b) => {
       if (a.handSum !== b.handSum) return a.handSum - b.handSum
       if (a.cardCount !== b.cardCount) return a.cardCount - b.cardCount
       return a.playerId.localeCompare(b.playerId)
     })
-    .map((r) => r.playerId)
-  return [...finished, ...remaining]
+  const live = stillHolding.filter((r) => !r.eliminated).map((r) => r.playerId)
+  const eliminated = stillHolding.filter((r) => r.eliminated).map((r) => r.playerId)
+  return [...finished, ...live, ...eliminated]
 }
 
 export function buildUnoStandings(
@@ -540,20 +550,23 @@ export function buildUnoStandings(
   turnOrder: string[],
   finishOrder: string[] = [],
   teamMode = false,
-  leftPlayerIds: string[] = []
+  leftPlayerIds: string[] = [],
+  eliminatedPlayerIds: string[] = []
 ): UnoStanding[] {
   const activeIds = new Set(turnOrder ?? [])
   const byId = new Map(hands.filter((h) => activeIds.has(h.player_id)).map((h) => [h.player_id, h]))
-  return unoPlacementOrder(hands, turnOrder, finishOrder, teamMode, leftPlayerIds).map((playerId, index) => {
-    const cards = (byId.get(playerId)?.cards as UnoCard[]) ?? []
-    return {
-      playerId,
-      name: players.find((p) => p.id === playerId)?.name ?? 'Player',
-      cardCount: cards.length,
-      handSum: unoHandSum(cards),
-      rank: index + 1,
+  return unoPlacementOrder(hands, turnOrder, finishOrder, teamMode, leftPlayerIds, eliminatedPlayerIds).map(
+    (playerId, index) => {
+      const cards = (byId.get(playerId)?.cards as UnoCard[]) ?? []
+      return {
+        playerId,
+        name: players.find((p) => p.id === playerId)?.name ?? 'Player',
+        cardCount: cards.length,
+        handSum: unoHandSum(cards),
+        rank: index + 1,
+      }
     }
-  })
+  )
 }
 
 /** Colour accent for the required-colour card-table hint (falls back to a neutral slate). */
