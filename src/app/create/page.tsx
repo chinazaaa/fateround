@@ -3662,9 +3662,9 @@ function CreateGameInner() {
                     ]}
                   />
                   <p className="mt-1 text-xs text-faint">
-                    High Stakes is a Show ’em No Mercy-style variant: locks in stacking + 0-7, disables Wild Draw Four
-                    challenges and Team-Up, and adds Discard All, Skip Everyone, Wild Reverse Draw 4, Draw 6, Draw 10,
-                    and Color Roulette cards.
+                    High Stakes is a Show ’em No Mercy-style variant: locks in stacking + 0-7, disables Draw 4
+                    challenges and Team-Up, and adds Discard Colour, Skip All, Reverse Draw 4, Draw 6, Draw 10, and
+                    Colour Roulette cards.
                   </p>
                 </Field>
                 {unoMode === 'no_mercy' ? (
@@ -3747,8 +3747,8 @@ function CreateGameInner() {
                     {unoMode === 'classic' ? (
                       <>
                         <Toggle
-                          label="Wild Draw Four challenge"
-                          description="Let the next player challenge a Wild Draw Four — the system reveals the hand. Off: they always draw 4."
+                          label="Draw 4 challenge"
+                          description="Let the next player challenge a Draw 4 — the system reveals the hand. Off: they always draw 4."
                           value={unoWd4Challenge}
                           onChange={setUnoWd4Challenge}
                         />
@@ -3760,7 +3760,7 @@ function CreateGameInner() {
                         />
                         <Toggle
                           label="Stacking"
-                          description="Stack Draw Two on Draw Two and Draw Four on Draw Four — the penalty piles up and passes on. Whoever would draw the pile can still challenge a Draw Four (if challenge is on)."
+                          description="Stack Draw 2 on Draw 2 and Draw 4 on Draw 4 — the penalty piles up and passes on. Whoever would draw the pile can still challenge a Draw 4 (if challenge is on)."
                           value={unoStacking}
                           onChange={setUnoStacking}
                         />
@@ -3768,7 +3768,7 @@ function CreateGameInner() {
                     ) : (
                       <p className="text-xs text-faint">
                         High Stakes locks in 0-7, Draw-card stacking (any Draw card of equal or higher value chains onto
-                        a stack), and Jump-In. Wild Draw Four challenges are off.
+                        a stack), and Jump-In. Draw 4 challenges are off.
                       </p>
                     )}
                     {unoMode === 'classic' ? (
@@ -3821,10 +3821,10 @@ function CreateGameInner() {
                   ) : null}
                 </Field>
                 <p className="text-faint text-sm leading-relaxed">
-                  The party card classic — match the top card by colour, number, or symbol. Skip, Reverse, Draw Two, and
-                  Wild cards keep it lively; call &quot;UNO&quot; on your second-to-last card or draw a penalty. First
-                  to empty their hand wins! With a game length set, time running out ends the game — lowest hand total
-                  wins.
+                  The party card classic — match the top card by colour, number, or symbol. Skip, Reverse, Draw 2, and
+                  Wild cards keep it lively; call &quot;last card&quot; on your second-to-last play or draw a penalty.
+                  First to empty their hand wins! With a game length set, time running out ends the game — lowest hand
+                  total wins.
                 </p>
               </SettingsGroup>
             ) : isLudo ? (

@@ -1660,7 +1660,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
   uno: landing('uno', {
     seoTitle: 'Match Up — Free UNO-Style Card Game Online (Classic + High Stakes)',
     seoDescription:
-      'Play Match Up, a UNO-style card game, online free with friends — no sign-up, no download. Classic mode or High Stakes (a Show ’em No Mercy-style 168-card variant with +6/+10, Discard All, Skip Everyone, Color Roulette, and knockouts). 2–10 players.',
+      'Play Match Up, a UNO-style card game, online free with friends — no sign-up, no download. Classic mode or High Stakes (a Show ’em No Mercy-style 168-card variant with +6/+10, Discard Colour, Skip All, Color Roulette, and knockouts). 2–10 players.',
     keywords: [
       'uno online',
       'uno rules',
@@ -1685,7 +1685,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     heroSubtitle:
       'The UNO-style party card classic — match colours and numbers, go wild, empty your hand first. Or flip on High Stakes for a Show ’em No Mercy-style 168-card deck with Draw Sixes, Draw Tens, and hand-size knockouts.',
     bodyParagraph:
-      'Match Up on FateRound is a UNO-style shedding card game that plays by the rules everyone knows: match the top card by colour, number, or symbol, and use Skip, Reverse, and Draw Two cards to control the table. Wild cards let you name the next colour, and a Wild Draw Four forces the next player to draw four — unless they challenge it. Call the last card the moment you have one left, or draw a penalty. First to shed every card wins. Hosts can switch to High Stakes — a Show ’em No Mercy-style variant on a 168-card deck with Discard All, Skip Everyone, Wild Reverse Draw Four, Wild Draw Six, Wild Draw Ten, and Wild Color Roulette, plus the knockout rule: reach 25 cards in your hand and you are out of the round.',
+      'Match Up on FateRound is a UNO-style shedding card game that plays by the rules everyone knows: match the top card by colour, number, or symbol, and use Skip, Reverse, and Draw 2 cards to control the table. Wild cards let you name the next colour, and a Draw 4 forces the next player to draw four — unless they challenge it. Call the last card the moment you have one left, or draw a penalty. First to shed every card wins. Hosts can switch to High Stakes — a Show ’em No Mercy-style variant on a 168-card deck with Discard Colour, Skip All, Reverse Draw 4, Draw 6, Draw 10, and Colour Roulette, plus the knockout rule: reach 25 cards in your hand and you are out of the round.',
     highlights: ['108 or 168-card deck', '2–10 players', 'Classic + High Stakes modes'],
     features: [
       {
@@ -1695,13 +1695,13 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       },
       {
         title: 'Action cards',
-        description: 'Skip and Reverse control the turn order; Draw Two and Wild Draw Four stack the pressure.',
+        description: 'Skip and Reverse control the turn order; Draw 2 and Draw 4 stack the pressure.',
         emoji: '🌈',
       },
       {
         title: 'High Stakes mode',
         description:
-          'A Show ’em No Mercy-style 168-card variant: Discard All, Skip Everyone, Wild Reverse Draw Four, +6, +10, and Color Roulette. Stack any Draw of equal-or-higher value; hit 25 cards and you are knocked out.',
+          'A Show ’em No Mercy-style 168-card variant: Discard Colour, Skip All, Reverse Draw 4, +6, +10, and Color Roulette. Stack any Draw of equal-or-higher value; hit 25 cards and you are knocked out.',
         emoji: '🔥',
       },
       SHARED_FEATURES.mobile,
@@ -1729,9 +1729,9 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
           'You call it when you play your second-to-last card, leaving you with one. If you forget before the next player takes their turn, you draw a penalty of 2 cards.',
       },
       {
-        question: 'What is the Wild Draw Four challenge?',
+        question: 'What is the Draw 4 challenge?',
         answer:
-          'A Wild Draw Four can only legally be played if you have no card matching the current colour. The next player can challenge it: the system reveals the player’s hand — if they were bluffing, they draw four instead; if the challenge was wrong, the challenger draws four (or six) as a penalty. Hosts can turn challenges off.',
+          'A Draw 4 can only legally be played if you have no card matching the current colour. The next player can challenge it: the system reveals the player’s hand — if they were bluffing, they draw four instead; if the challenge was wrong, the challenger draws four (or six) as a penalty. Hosts can turn challenges off.',
       },
       {
         question: 'How many cards do you start with?',
@@ -1746,7 +1746,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       {
         question: 'What is High Stakes mode?',
         answer:
-          'A tougher, Show ’em No Mercy-style variant played from a 168-card deck. It adds Discard All (drop every card of a colour in one turn), Skip Everyone (go again), Wild Reverse Draw Four, Wild Draw Six, Wild Draw Ten, and Wild Color Roulette (the target names a colour and reveals from the pile until they hit it). Draw stacking is always on and cross-kind — any Draw card of equal or higher value chains onto a stack. The knockout rule takes out any player who reaches 25 cards. Hosts choose the win condition: empty your hand first, or be the last player standing.',
+          'A tougher, Show ’em No Mercy-style variant played from a 168-card deck. It adds Discard Colour (drop every card of a colour in one turn), Skip All (go again), Reverse Draw 4, Draw 6, Draw 10, and Colour Roulette (the target names a colour and reveals from the pile until they hit it). Draw stacking is always on and cross-kind — any Draw card of equal or higher value chains onto a stack. The knockout rule takes out any player who reaches 25 cards. Hosts choose the win condition: empty your hand first, or be the last player standing.',
       },
       {
         question: 'How does the 25-card knockout rule work?',

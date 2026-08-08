@@ -13,7 +13,7 @@ import type { SystemTrophySpec } from './types'
  *  - "Perfect Call" (call UNO correctly five GAMES in a row) is a cross-game streak, not a per-game
  *    fact. Counters are lifetime sums, so a run of consecutive games is not expressible as one
  *    summable integer and there is no such streak counter to hang it on.
- *  - "Cleanout" (make opponents draw 12+ cards) cannot be counted: Draw Two / Draw Four penalties are
+ *  - "Cleanout" (make opponents draw 12+ cards) cannot be counted: Draw 2 / Draw 4 penalties are
  *    drawn in the VICTIM's turn handler, in the victim's own row, with no atomic link back to whoever
  *    set the penalty (and a penalty may be stacked, challenged or defended before it lands). Same
  *    reasoning as Crazy Eights' dropped "Heavy Hand" — UNO has no equivalent of Whot's General Market
@@ -58,8 +58,8 @@ export const UNO: SystemTrophySpec[] = [
   {
     suffix: 'draw_two',
     tier: 'bronze',
-    title: 'Draw Two',
-    description: 'Play a Draw Two.',
+    title: 'Draw 2',
+    description: 'Play a Draw 2.',
     counter: 'uno_draw_twos',
     points: 10,
     sortOrder: 40,
@@ -106,7 +106,7 @@ export const UNO: SystemTrophySpec[] = [
     suffix: 'four_play',
     tier: 'silver',
     title: 'Four Play',
-    description: 'Play a Wild Draw Four.',
+    description: 'Play a Draw 4.',
     counter: 'uno_wild_draw_fours',
     points: 25,
     sortOrder: 90,
@@ -115,7 +115,7 @@ export const UNO: SystemTrophySpec[] = [
     suffix: 'challenger',
     tier: 'silver',
     title: 'Challenger',
-    description: 'Successfully challenge a Wild Draw Four.',
+    description: 'Successfully challenge a Draw 4.',
     counter: 'uno_challenges_won',
     points: 35,
     sortOrder: 100,
@@ -124,7 +124,7 @@ export const UNO: SystemTrophySpec[] = [
     suffix: 'called_your_bluff',
     tier: 'silver',
     title: 'Called Your Bluff',
-    description: 'Survive a challenge on your own Wild Draw Four.',
+    description: 'Survive a challenge on your own Draw 4.',
     counter: 'uno_bluff_survived',
     points: 35,
     sortOrder: 110,
@@ -133,7 +133,7 @@ export const UNO: SystemTrophySpec[] = [
     suffix: 'stack_em',
     tier: 'silver',
     title: "Stack 'Em",
-    description: 'Stack a Draw Two on a Draw Two.',
+    description: 'Stack a Draw 2 on a Draw 2.',
     counter: 'uno_draw2_stacked',
     points: 30,
     sortOrder: 120,
@@ -225,7 +225,7 @@ export const UNO: SystemTrophySpec[] = [
     suffix: 'action_hero',
     tier: 'gold',
     title: 'Action Hero',
-    description: 'Play a Skip, a Reverse, a Draw Two and a Wild in one game.',
+    description: 'Play a Skip, a Reverse, a Draw 2 and a Wild in one game.',
     counter: 'uno_action_hero_games',
     points: 60,
     sortOrder: 220,
@@ -234,7 +234,7 @@ export const UNO: SystemTrophySpec[] = [
     suffix: 'untouchable',
     tier: 'gold',
     title: 'Untouchable',
-    description: 'Win a game of three or more players without ever taking a Draw Two or Draw Four.',
+    description: 'Win a game of three or more players without ever taking a Draw 2 or Draw 4.',
     counter: 'uno_untouchable_wins',
     points: 80,
     sortOrder: 230,
@@ -255,7 +255,7 @@ export const UNO: SystemTrophySpec[] = [
     suffix: 'full_circle',
     tier: 'gold',
     title: 'Full Circle',
-    description: 'Win a game in which you played every action card type, including the Wild Draw Four.',
+    description: 'Win a game in which you played every action card type, including the Draw 4.',
     counter: 'uno_full_circle_wins',
     points: 150,
     sortOrder: 250,
@@ -265,7 +265,7 @@ export const UNO: SystemTrophySpec[] = [
     suffix: 'last_card_four',
     tier: 'gold',
     title: 'Last Card Four',
-    description: 'Win by playing a Wild Draw Four as your final card.',
+    description: 'Win by playing a Draw 4 as your final card.',
     counter: 'uno_wd4_finish_wins',
     points: 150,
     sortOrder: 260,

@@ -399,15 +399,15 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
   const penaltyKindLabel = (() => {
     switch (session.draw_penalty_kind) {
       case 'draw2':
-        return 'Draw Two'
+        return 'Draw 2'
       case 'wild_draw4':
-        return 'Wild Draw Four'
+        return 'Draw 4'
       case 'draw6':
-        return 'Wild Draw Six'
+        return 'Draw 6'
       case 'draw10':
-        return 'Wild Draw Ten'
+        return 'Draw 10'
       case 'wild_reverse_draw4':
-        return 'Wild Reverse Draw Four'
+        return 'Reverse Draw 4'
       default:
         return null
     }
@@ -533,7 +533,7 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
 
         {!isWatching && inChallengeWindow ? (
           <View style={styles.choosePanel}>
-            <Text style={styles.section}>Wild Draw Four played — accept the draw or challenge?</Text>
+            <Text style={styles.section}>Draw 4 played — accept the draw or challenge?</Text>
             <View style={styles.colorRow}>
               <Pressable style={styles.actionBtn} disabled={acting} onPress={() => void challenge(false)}>
                 <Text style={styles.actionText}>Draw {session.draw_penalty || 4}</Text>

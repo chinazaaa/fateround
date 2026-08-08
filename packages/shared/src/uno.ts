@@ -185,23 +185,23 @@ const KIND_SHORT: Record<UnoCard['kind'], string> = {
   reverse: 'Reverse',
   draw2: '+2',
   wild: 'Wild',
-  wild_draw4: 'Wild +4',
-  discard_all: 'Discard All',
+  wild_draw4: '+4',
+  discard_all: 'Discard Colour',
   skip_everyone: 'Skip All',
   draw6: '+6',
   draw10: '+10',
-  wild_reverse_draw4: 'Wild Rev +4',
+  wild_reverse_draw4: 'Reverse +4',
   wild_color_roulette: 'Roulette',
 }
 
 export function cardLabel(card: UnoCard): string {
   if (card.kind === 'number') return `${UNO_COLOR_LABELS[card.color as UnoColor]} ${card.value}`
   if (card.kind === 'wild') return 'Wild'
-  if (card.kind === 'wild_draw4') return 'Wild Draw Four'
-  if (card.kind === 'wild_reverse_draw4') return 'Wild Reverse Draw Four'
-  if (card.kind === 'wild_color_roulette') return 'Wild Color Roulette'
-  if (card.kind === 'draw6') return 'Wild Draw Six'
-  if (card.kind === 'draw10') return 'Wild Draw Ten'
+  if (card.kind === 'wild_draw4') return 'Draw 4'
+  if (card.kind === 'wild_reverse_draw4') return 'Reverse Draw 4'
+  if (card.kind === 'wild_color_roulette') return 'Colour Roulette'
+  if (card.kind === 'draw6') return 'Draw 6'
+  if (card.kind === 'draw10') return 'Draw 10'
   return `${UNO_COLOR_LABELS[card.color as UnoColor]} ${KIND_SHORT[card.kind]}`
 }
 
@@ -285,23 +285,23 @@ export function specialCardMessage(card: UnoCard): string | null {
     case 'reverse':
       return 'Reverse — direction of play flips'
     case 'draw2':
-      return 'Draw Two — next player draws 2 and loses their turn'
+      return 'Draw 2 — next player draws 2 and loses their turn'
     case 'wild':
       return 'Wild — choose a colour'
     case 'wild_draw4':
-      return 'Wild Draw Four — next player draws 4'
+      return 'Draw 4 — next player draws 4 and loses their turn'
     case 'discard_all':
-      return 'Discard All — drop every matching-colour card in your hand'
+      return 'Discard Colour — drop every matching-colour card in your hand'
     case 'skip_everyone':
-      return 'Skip Everyone — everyone else is skipped, go again'
+      return 'Skip All — everyone else is skipped, go again'
     case 'draw6':
-      return 'Wild Draw Six — next player draws 6 and loses their turn'
+      return 'Draw 6 — next player draws 6 and loses their turn'
     case 'draw10':
-      return 'Wild Draw Ten — next player draws 10 and loses their turn'
+      return 'Draw 10 — next player draws 10 and loses their turn'
     case 'wild_reverse_draw4':
-      return 'Wild Reverse Draw Four — reverse, then next player draws 4'
+      return 'Reverse Draw 4 — reverse, then next player draws 4'
     case 'wild_color_roulette':
-      return 'Wild Color Roulette — next player picks a colour and draws until they hit it'
+      return 'Colour Roulette — next player picks a colour and draws until they hit it'
     default:
       return null
   }
@@ -365,8 +365,8 @@ export function playPenaltyError(card: UnoCard, session: UnoSession): string | n
   if (penalty <= 0) return null
   if (canPlayCard(card, session)) return null // a legal stack
   const kind = session.draw_penalty_kind
-  if (kind === 'draw2') return `Draw ${penalty} — stack with a Draw Two (or higher in High Stakes)`
-  if (kind === 'wild_draw4') return `Draw ${penalty} — stack with a Wild Draw Four (or higher in High Stakes)`
+  if (kind === 'draw2') return `Draw ${penalty} — stack with a Draw 2 (or higher in High Stakes)`
+  if (kind === 'wild_draw4') return `Draw ${penalty} — stack with a Draw 4 (or higher in High Stakes)`
   return `Draw ${penalty} — stack with a Draw card of equal or higher value`
 }
 

@@ -1309,11 +1309,11 @@ export const COUNTERS: readonly CounterDef[] = [
   },
   {
     key: 'uno_draw_twos',
-    label: 'UNO — Draw Twos played',
-    description: 'Draw Two cards played across UNO games.',
+    label: 'UNO — Draw 2s played',
+    description: 'Draw 2 cards played across UNO games.',
     scope: 'per-game',
     availability: 'partial',
-    phrase: 'played at least {n} Draw Two{s}',
+    phrase: 'played at least {n} Draw 2{s}',
   },
   {
     key: 'uno_wilds',
@@ -1325,11 +1325,11 @@ export const COUNTERS: readonly CounterDef[] = [
   },
   {
     key: 'uno_wild_draw_fours',
-    label: 'UNO — Wild Draw Fours played',
-    description: 'Wild Draw Four cards played across UNO games.',
+    label: 'UNO — Draw 4s played',
+    description: 'Draw 4 cards played across UNO games.',
     scope: 'per-game',
     availability: 'partial',
-    phrase: 'played at least {n} Wild Draw Four{s}',
+    phrase: 'played at least {n} Draw 4{s}',
   },
   {
     key: 'uno_catches',
@@ -1341,24 +1341,24 @@ export const COUNTERS: readonly CounterDef[] = [
   },
   {
     key: 'uno_draw2_stacked',
-    label: 'UNO — Draw Twos stacked',
-    description: 'Draw Twos stacked onto an active Draw Two.',
+    label: 'UNO — Draw 2s stacked',
+    description: 'Draw 2s stacked onto an active Draw 2.',
     scope: 'per-game',
     availability: 'partial',
-    phrase: 'stacked a Draw Two at least {n} time{s}',
+    phrase: 'stacked a Draw 2 at least {n} time{s}',
   },
   {
     key: 'uno_challenges_won',
     label: 'UNO — challenges won',
-    description: 'Wild Draw Fours you successfully challenged.',
+    description: 'Draw 4s you successfully challenged.',
     scope: 'per-game',
     availability: 'partial',
-    phrase: 'won a Wild Draw Four challenge at least {n} time{s}',
+    phrase: 'won a Draw 4 challenge at least {n} time{s}',
   },
   {
     key: 'uno_bluff_survived',
     label: 'UNO — bluffs survived',
-    description: 'Challenges survived on your own Wild Draw Four.',
+    description: 'Challenges survived on your own Draw 4.',
     scope: 'per-game',
     availability: 'partial',
     phrase: 'survived a Draw Four challenge at least {n} time{s}',
@@ -1406,7 +1406,7 @@ export const COUNTERS: readonly CounterDef[] = [
   {
     key: 'uno_action_hero_games',
     label: 'UNO — action hero',
-    description: 'Games where you played a Skip, a Reverse, a Draw Two and a Wild.',
+    description: 'Games where you played a Skip, a Reverse, a Draw 2 and a Wild.',
     scope: 'per-game',
     availability: 'partial',
     phrase: 'played all four action cards in at least {n} game{s}',
@@ -1462,7 +1462,7 @@ export const COUNTERS: readonly CounterDef[] = [
   {
     key: 'uno_untouchable_wins',
     label: 'UNO — untouchable',
-    description: 'Wins of a three-plus-player game without taking a Draw Two or Draw Four.',
+    description: 'Wins of a three-plus-player game without taking a Draw 2 or Draw Four.',
     scope: 'per-game',
     availability: 'partial',
     phrase: 'won taking no penalty draws at least {n} time{s}',
@@ -1478,7 +1478,7 @@ export const COUNTERS: readonly CounterDef[] = [
   {
     key: 'uno_full_circle_wins',
     label: 'UNO — full circle',
-    description: 'Wins having played every action card type, including the Wild Draw Four.',
+    description: 'Wins having played every action card type, including the Draw 4.',
     scope: 'per-game',
     availability: 'partial',
     phrase: 'won having played every action card at least {n} time{s}',
@@ -1486,10 +1486,10 @@ export const COUNTERS: readonly CounterDef[] = [
   {
     key: 'uno_wd4_finish_wins',
     label: 'UNO — last card four',
-    description: 'Wins on a Wild Draw Four as the final card.',
+    description: 'Wins on a Draw 4 as the final card.',
     scope: 'per-game',
     availability: 'partial',
-    phrase: 'won on a Wild Draw Four at least {n} time{s}',
+    phrase: 'won on a Draw 4 at least {n} time{s}',
   },
   // ── Ludo — from ludo_player_state.game_counters at finish ───────────────────────────────────────────
   {

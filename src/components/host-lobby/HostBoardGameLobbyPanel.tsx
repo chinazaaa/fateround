@@ -447,9 +447,9 @@ export function HostBoardGameLobbyPanel({
                   onChange={(v) => onUnoRuleChange({ uno_mode: v })}
                 />
                 <p className="mt-1 text-xs text-faint">
-                  High Stakes is a Show ’em No Mercy-style variant: 168-card deck (Discard All, Skip Everyone, Wild
-                  Reverse Draw 4, Draw 6, Draw 10, Color Roulette) with 0-7, stacking and Jump-In locked in. Wild Draw
-                  Four challenges + Team-Up are off.
+                  High Stakes is a Show ’em No Mercy-style variant: 168-card deck (Discard Colour, Skip All, Reverse
+                  Draw 4, Draw 6, Draw 10, Colour Roulette) with 0-7, stacking and Jump-In locked in. Draw 4 challenges
+                  + Team-Up are off.
                 </p>
               </div>
               {unoMode === 'no_mercy' ? (
@@ -493,8 +493,8 @@ export function HostBoardGameLobbyPanel({
                 {unoMode === 'classic' ? (
                   <>
                     <Toggle
-                      label="Wild Draw Four challenge"
-                      description="Let the next player challenge a Wild Draw Four. Off: they always draw 4."
+                      label="Draw 4 challenge"
+                      description="Let the next player challenge a Draw 4. Off: they always draw 4."
                       value={unoWd4Challenge}
                       onChange={(v) => onUnoRuleChange({ uno_wd4_challenge: v })}
                     />
@@ -506,7 +506,7 @@ export function HostBoardGameLobbyPanel({
                     />
                     <Toggle
                       label="Stacking"
-                      description="Stack Draw Two on Draw Two and Draw Four on Draw Four — the penalty piles up and passes on."
+                      description="Stack Draw 2 on Draw 2 and Draw 4 on Draw 4 — the penalty piles up and passes on."
                       value={unoStacking}
                       onChange={(v) => onUnoRuleChange({ uno_stacking: v })}
                     />

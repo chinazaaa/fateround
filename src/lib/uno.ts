@@ -234,23 +234,23 @@ const KIND_SHORT: Record<UnoCard['kind'], string> = {
   reverse: 'Reverse',
   draw2: '+2',
   wild: 'Wild',
-  wild_draw4: 'Wild +4',
-  discard_all: 'Discard All',
+  wild_draw4: '+4',
+  discard_all: 'Discard Colour',
   skip_everyone: 'Skip All',
   draw6: '+6',
   draw10: '+10',
-  wild_reverse_draw4: 'Wild Rev +4',
+  wild_reverse_draw4: 'Reverse +4',
   wild_color_roulette: 'Roulette',
 }
 
 export function cardLabel(card: UnoCard): string {
   if (card.kind === 'number') return `${UNO_COLOR_LABELS[card.color as UnoColor]} ${card.value}`
   if (card.kind === 'wild') return 'Wild'
-  if (card.kind === 'wild_draw4') return 'Wild Draw Four'
-  if (card.kind === 'wild_reverse_draw4') return 'Wild Reverse Draw Four'
-  if (card.kind === 'wild_color_roulette') return 'Wild Color Roulette'
-  if (card.kind === 'draw6') return 'Wild Draw Six'
-  if (card.kind === 'draw10') return 'Wild Draw Ten'
+  if (card.kind === 'wild_draw4') return 'Draw 4'
+  if (card.kind === 'wild_reverse_draw4') return 'Reverse Draw 4'
+  if (card.kind === 'wild_color_roulette') return 'Colour Roulette'
+  if (card.kind === 'draw6') return 'Draw 6'
+  if (card.kind === 'draw10') return 'Draw 10'
   return `${UNO_COLOR_LABELS[card.color as UnoColor]} ${KIND_SHORT[card.kind]}`
 }
 
@@ -357,23 +357,23 @@ export function specialCardMessage(card: UnoCard): string | null {
     case 'reverse':
       return 'Reverse — direction of play flips'
     case 'draw2':
-      return 'Draw Two — next player draws 2 and loses their turn'
+      return 'Draw 2 — next player draws 2 and loses their turn'
     case 'wild':
       return 'Wild — choose a colour'
     case 'wild_draw4':
-      return 'Wild Draw Four — next player draws 4'
+      return 'Draw 4 — next player draws 4 and loses their turn'
     case 'discard_all':
-      return 'Discard All — drop every matching-colour card in your hand'
+      return 'Discard Colour — drop every matching-colour card in your hand'
     case 'skip_everyone':
-      return 'Skip Everyone — everyone else is skipped, go again'
+      return 'Skip All — everyone else is skipped, go again'
     case 'draw6':
-      return 'Wild Draw Six — next player draws 6 and loses their turn'
+      return 'Draw 6 — next player draws 6 and loses their turn'
     case 'draw10':
-      return 'Wild Draw Ten — next player draws 10 and loses their turn'
+      return 'Draw 10 — next player draws 10 and loses their turn'
     case 'wild_reverse_draw4':
-      return 'Wild Reverse Draw Four — reverse, then next player draws 4'
+      return 'Reverse Draw 4 — reverse, then next player draws 4'
     case 'wild_color_roulette':
-      return 'Wild Color Roulette — next player picks a colour and draws until they hit it'
+      return 'Colour Roulette — next player picks a colour and draws until they hit it'
     default:
       return null
   }
@@ -440,8 +440,8 @@ export function playPenaltyError(card: UnoCard, session: UnoSession): string | n
   if (penalty <= 0) return null
   if (canPlayCard(card, session)) return null // a legal stack
   const kind = session.draw_penalty_kind
-  if (kind === 'draw2') return `Draw ${penalty} — stack with a Draw Two (or higher in High Stakes)`
-  if (kind === 'wild_draw4') return `Draw ${penalty} — stack with a Wild Draw Four (or higher in High Stakes)`
+  if (kind === 'draw2') return `Draw ${penalty} — stack with a Draw 2 (or higher in High Stakes)`
+  if (kind === 'wild_draw4') return `Draw ${penalty} — stack with a Draw 4 (or higher in High Stakes)`
   return `Draw ${penalty} — stack with a Draw card of equal or higher value`
 }
 
@@ -1496,7 +1496,7 @@ export async function processUnoPlay(
         phase: 'color_roulette',
         current_turn_index: nextIdx,
         color_roulette_player_id: nextId,
-        status_message: `${name} played Wild Color Roulette — ${playerName(playerNames, nextId)} picks a colour and draws until they hit it`,
+        status_message: `${name} played Colour Roulette — ${playerName(playerNames, nextId)} picks a colour and draws until they hit it`,
         ...unoPatch,
       }
     } else {
@@ -1573,7 +1573,7 @@ export async function processUnoPlay(
       let status = `${playerName(playerNames, nextPlayerId)}'s turn — match ${cardLabel(card)}`
       if (special) status = `${status} · ${special}`
       if (card.kind === 'draw2') {
-        status = `${playerName(playerNames, nextPlayerId)} must draw ${draw2Penalty}${rules.stacking ? ' or stack a Draw Two' : ''} (Draw Two)`
+        status = `${playerName(playerNames, nextPlayerId)} must draw ${draw2Penalty}${rules.stacking ? ' or stack a Draw 2' : ''} (Draw 2)`
       }
       if (card.kind === 'discard_all' && discardAllExtras.length > 0) {
         status = `${status} · ${name} dropped ${discardAllExtras.length} extra ${card.color} card${discardAllExtras.length === 1 ? '' : 's'}`
@@ -1785,7 +1785,7 @@ export async function processUnoPlayMulti(
       current_turn_index: drawerIndex,
       direction,
       phase: 'playing',
-      status_message: `${name} played ${cards.length} cards — ${playerName(playerNames, drawerId)} must draw ${penalty}${stackNote} (${draw2Count} × Draw Two)`,
+      status_message: `${name} played ${cards.length} cards — ${playerName(playerNames, drawerId)} must draw ${penalty}${stackNote} (${draw2Count} × Draw 2)`,
       ...unoPatch,
     }
   } else if (autoResolve) {
@@ -1971,10 +1971,16 @@ export async function processUnoDraw(
     const nextPlayerId = session.turn_order[nextIndex]
     const penaltyName =
       session.draw_penalty_kind === 'wild_draw4'
-        ? ' (Draw Four)'
+        ? ' (Draw 4)'
         : session.draw_penalty_kind === 'draw2'
-          ? ' (Draw Two)'
-          : ''
+          ? ' (Draw 2)'
+          : session.draw_penalty_kind === 'draw6'
+            ? ' (Draw 6)'
+            : session.draw_penalty_kind === 'draw10'
+              ? ' (Draw 10)'
+              : session.draw_penalty_kind === 'wild_reverse_draw4'
+                ? ' (Reverse Draw 4)'
+                : ''
     patch = {
       draw_pile: drawPile,
       discard_pile: discardPile,
@@ -2154,11 +2160,7 @@ export async function processUnoChoose(
     const add = session.pending_wild === 'draw6' ? 6 : session.pending_wild === 'draw10' ? 10 : 4
     const accumulated = (session.draw_penalty ?? 0) + add
     const kindLabel =
-      session.pending_wild === 'draw6'
-        ? 'Wild Draw Six'
-        : session.pending_wild === 'draw10'
-          ? 'Wild Draw Ten'
-          : 'Wild Reverse Draw Four'
+      session.pending_wild === 'draw6' ? 'Draw 6' : session.pending_wild === 'draw10' ? 'Draw 10' : 'Reverse Draw 4'
     const status = `${playerName(playerNames, nextPlayerId)} must draw ${accumulated} — colour ${UNO_COLOR_LABELS[color]} (${kindLabel})`
     const won = await persistSession(
       supabase,
