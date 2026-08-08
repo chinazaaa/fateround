@@ -172,7 +172,7 @@ export function parseUnoRules(
     wd4ChallengePenalty: wd4Penalty === 4 ? 4 : 6,
     zeroSeven: noMercy ? true : game?.uno_zero_seven === true,
     stacking: noMercy ? true : game?.uno_stacking === true,
-    multiPlay: parseMultiPlayMode(game?.uno_multi_play_mode),
+    multiPlay: noMercy ? 'off' : parseMultiPlayMode(game?.uno_multi_play_mode),
     teamMode: noMercy ? false : game?.uno_team_mode === true,
     jumpIn: noMercy ? true : game?.uno_jump_in === true,
     noMercyWin: parseUnoNoMercyWin(game?.uno_no_mercy_win),

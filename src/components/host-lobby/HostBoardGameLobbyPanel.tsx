@@ -524,20 +524,22 @@ export function HostBoardGameLobbyPanel({
                   </p>
                 )}
               </div>
-              <div>
-                <p className="label-caps text-[10px] mb-1.5">Multi-Play</p>
-                <HostLobbyOptionChips
-                  value={unoMultiPlayMode}
-                  options={[
-                    { value: 'off', label: 'Off' },
-                    { value: 'same_color_or_number', label: 'Colour or №' },
-                    { value: 'same_color', label: 'Colour' },
-                    { value: 'same_number', label: 'Number' },
-                  ]}
-                  onChange={(v) => onUnoRuleChange({ uno_multi_play_mode: v })}
-                />
-                <p className="mt-1 text-xs text-faint">Lay several matching cards in one turn.</p>
-              </div>
+              {unoMode === 'classic' ? (
+                <div>
+                  <p className="label-caps text-[10px] mb-1.5">Multi-Play</p>
+                  <HostLobbyOptionChips
+                    value={unoMultiPlayMode}
+                    options={[
+                      { value: 'off', label: 'Off' },
+                      { value: 'same_color_or_number', label: 'Colour or №' },
+                      { value: 'same_color', label: 'Colour' },
+                      { value: 'same_number', label: 'Number' },
+                    ]}
+                    onChange={(v) => onUnoRuleChange({ uno_multi_play_mode: v })}
+                  />
+                  <p className="mt-1 text-xs text-faint">Lay several matching cards in one turn.</p>
+                </div>
+              ) : null}
               <div className="space-y-1.5">
                 <Toggle
                   label="Series scoring"

@@ -2704,7 +2704,7 @@ function CreateGameInner() {
           uno_zero_seven: isUno ? unoZeroSeven : undefined,
           uno_stacking: isUno ? unoStacking : undefined,
           uno_jump_in: isUno ? unoJumpIn : undefined,
-          uno_multi_play_mode: isUno ? unoMultiPlayMode : undefined,
+          uno_multi_play_mode: isUno && unoMode === 'classic' ? unoMultiPlayMode : undefined,
           uno_team_mode: isUno ? unoTeamMode : undefined,
           uno_mode: isUno ? unoMode : undefined,
           uno_no_mercy_win: isUno && unoMode === 'no_mercy' ? unoNoMercyWin : undefined,
@@ -3781,21 +3781,23 @@ function CreateGameInner() {
                     ) : null}
                   </div>
                 </Field>
-                <Field label="Multi-Play">
-                  <CustomSelect
-                    value={unoMultiPlayMode}
-                    onChange={(val) => setUnoMultiPlayMode(val as typeof unoMultiPlayMode)}
-                    options={[
-                      { value: 'off', label: 'Off — one card per turn' },
-                      { value: 'same_color_or_number', label: 'Same colour or number' },
-                      { value: 'same_color', label: 'Same colour only' },
-                      { value: 'same_number', label: 'Same number only' },
-                    ]}
-                  />
-                  <p className="mt-1 text-xs text-faint">
-                    Lay several matching cards in a single turn — the last one played sets the next colour.
-                  </p>
-                </Field>
+                {unoMode === 'classic' ? (
+                  <Field label="Multi-Play">
+                    <CustomSelect
+                      value={unoMultiPlayMode}
+                      onChange={(val) => setUnoMultiPlayMode(val as typeof unoMultiPlayMode)}
+                      options={[
+                        { value: 'off', label: 'Off — one card per turn' },
+                        { value: 'same_color_or_number', label: 'Same colour or number' },
+                        { value: 'same_color', label: 'Same colour only' },
+                        { value: 'same_number', label: 'Same number only' },
+                      ]}
+                    />
+                    <p className="mt-1 text-xs text-faint">
+                      Lay several matching cards in a single turn — the last one played sets the next colour.
+                    </p>
+                  </Field>
+                ) : null}
                 <Field label="Series scoring (optional)">
                   <Toggle
                     label="Track points across hands"
