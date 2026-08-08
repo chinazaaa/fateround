@@ -477,6 +477,8 @@ function CreateGameInner() {
     'off' | 'same_color' | 'same_number' | 'same_color_or_number'
   >('off')
   const [unoTeamMode, setUnoTeamMode] = useState(false)
+  const [unoMode, setUnoMode] = useState<'classic' | 'no_mercy'>('classic')
+  const [unoNoMercyWin, setUnoNoMercyWin] = useState<'first_out' | 'last_standing'>('first_out')
   const [ludoMaxPlayers, setLudoMaxPlayers] = useState(LUDO_DEFAULT_MAX_PLAYERS)
   const [ludoVariant, setLudoVariant] = useState<LudoVariant>('modern')
   const [ayoVariant, setAyoVariant] = useState<AyoVariant>('traditional')
@@ -1480,6 +1482,16 @@ function CreateGameInner() {
       appliesTo: isUnoGame,
     },
     uno_team_mode: { get: () => unoTeamMode, set: (v) => setUnoTeamMode(v as boolean), appliesTo: isUnoGame },
+    uno_mode: {
+      get: () => unoMode,
+      set: (v) => setUnoMode(v as 'classic' | 'no_mercy'),
+      appliesTo: isUnoGame,
+    },
+    uno_no_mercy_win: {
+      get: () => unoNoMercyWin,
+      set: (v) => setUnoNoMercyWin(v as 'first_out' | 'last_standing'),
+      appliesTo: isUnoGame,
+    },
     // Monopoly
     monopoly_max_players: {
       get: () => monopolyMaxPlayers,
@@ -2682,6 +2694,8 @@ function CreateGameInner() {
           uno_jump_in: isUno ? unoJumpIn : undefined,
           uno_multi_play_mode: isUno ? unoMultiPlayMode : undefined,
           uno_team_mode: isUno ? unoTeamMode : undefined,
+          uno_mode: isUno ? unoMode : undefined,
+          uno_no_mercy_win: isUno && unoMode === 'no_mercy' ? unoNoMercyWin : undefined,
           // Team-Up is strictly 2v2.
           ...(isUno && unoTeamMode ? { max_players: 4 } : {}),
           ludo_variant: isLudo ? ludoVariant : undefined,
@@ -3621,14 +3635,46 @@ function CreateGameInner() {
               </SettingsGroup>
             ) : isUno ? (
               <SettingsGroup title="UNO room">
-                <Field label="Team-Up (2v2)">
-                  <Toggle
-                    label="Team-Up mode"
-                    description="4 players in 2 teams of 2. Teammates sit across and see each other's hands; a team wins the round the moment either partner empties their hand."
-                    value={unoTeamMode}
-                    onChange={setUnoTeamMode}
+                <Field label="UNO mode">
+                  <CustomSelect
+                    value={unoMode}
+                    onChange={(val) => setUnoMode(val as 'classic' | 'no_mercy')}
+                    options={[
+                      { value: 'classic', label: 'Classic — standard UNO with optional Team-Up' },
+                      { value: 'no_mercy', label: "Show 'em No Mercy — 168-card deck, +6/+10, Mercy knockouts" },
+                    ]}
                   />
+                  <p className="mt-1 text-xs text-faint">
+                    No Mercy locks in stacking + 0-7, disables Wild Draw Four challenges and Team-Up, and adds Discard
+                    All, Skip Everyone, Wild Reverse Draw 4, Draw 6, Draw 10, and Color Roulette cards.
+                  </p>
                 </Field>
+                {unoMode === 'no_mercy' ? (
+                  <Field label="Win condition">
+                    <CustomSelect
+                      value={unoNoMercyWin}
+                      onChange={(val) => setUnoNoMercyWin(val as 'first_out' | 'last_standing')}
+                      options={[
+                        { value: 'first_out', label: 'First out — empty your hand to win' },
+                        { value: 'last_standing', label: 'Last standing — outlast every Mercy knockout' },
+                      ]}
+                    />
+                    <p className="mt-1 text-xs text-faint">
+                      Mercy: any player holding 25+ cards is knocked out. Last standing wins when only one player is
+                      still holding cards.
+                    </p>
+                  </Field>
+                ) : null}
+                {unoMode === 'classic' ? (
+                  <Field label="Team-Up (2v2)">
+                    <Toggle
+                      label="Team-Up mode"
+                      description="4 players in 2 teams of 2. Teammates sit across and see each other's hands; a team wins the round the moment either partner empties their hand."
+                      value={unoTeamMode}
+                      onChange={setUnoTeamMode}
+                    />
+                  </Field>
+                ) : null}
                 {unoTeamMode ? (
                   <Field label="Players">
                     <div className="input-field w-full bg-[var(--surface-inset-bg)] text-muted">
@@ -3680,24 +3726,33 @@ function CreateGameInner() {
                 </Field>
                 <Field label="House rules">
                   <div className="space-y-2">
-                    <Toggle
-                      label="Wild Draw Four challenge"
-                      description="Let the next player challenge a Wild Draw Four — the system reveals the hand. Off: they always draw 4."
-                      value={unoWd4Challenge}
-                      onChange={setUnoWd4Challenge}
-                    />
-                    <Toggle
-                      label="0-7 rule"
-                      description="Play a 0 → everyone passes their whole hand in the direction of play. Play a 7 → swap hands with any player."
-                      value={unoZeroSeven}
-                      onChange={setUnoZeroSeven}
-                    />
-                    <Toggle
-                      label="Stacking"
-                      description="Stack Draw Two on Draw Two and Draw Four on Draw Four — the penalty piles up and passes on. Whoever would draw the pile can still challenge a Draw Four (if challenge is on)."
-                      value={unoStacking}
-                      onChange={setUnoStacking}
-                    />
+                    {unoMode === 'classic' ? (
+                      <>
+                        <Toggle
+                          label="Wild Draw Four challenge"
+                          description="Let the next player challenge a Wild Draw Four — the system reveals the hand. Off: they always draw 4."
+                          value={unoWd4Challenge}
+                          onChange={setUnoWd4Challenge}
+                        />
+                        <Toggle
+                          label="0-7 rule"
+                          description="Play a 0 → everyone passes their whole hand in the direction of play. Play a 7 → swap hands with any player."
+                          value={unoZeroSeven}
+                          onChange={setUnoZeroSeven}
+                        />
+                        <Toggle
+                          label="Stacking"
+                          description="Stack Draw Two on Draw Two and Draw Four on Draw Four — the penalty piles up and passes on. Whoever would draw the pile can still challenge a Draw Four (if challenge is on)."
+                          value={unoStacking}
+                          onChange={setUnoStacking}
+                        />
+                      </>
+                    ) : (
+                      <p className="text-xs text-faint">
+                        No Mercy locks in 0-7 and Draw-card stacking (any Draw card of equal or higher value chains onto
+                        a stack). Wild Draw Four challenges are off.
+                      </p>
+                    )}
                     <Toggle
                       label="Jump-In"
                       description="Hold an exact match for the top card (same colour + number, or same colour + symbol)? Play it instantly, even out of turn — the players you skip lose that turn. Wilds can't be jumped. Off keeps strict turn order."

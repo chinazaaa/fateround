@@ -63,6 +63,18 @@ function miniGlyph(card: UnoCard): string {
       return '🌈'
     case 'wild_draw4':
       return '+4'
+    case 'draw6':
+      return '+6'
+    case 'draw10':
+      return '+10'
+    case 'wild_reverse_draw4':
+      return '↺+4'
+    case 'wild_color_roulette':
+      return '🎲'
+    case 'discard_all':
+      return 'DA'
+    case 'skip_everyone':
+      return '⊘⊘'
     default:
       return ''
   }
@@ -418,6 +430,12 @@ export function UnoPlaySurface({
         ) : session.phase === 'swap_target' ? (
           <TurnStatus>
             {isMyTurn ? 'You played a 7 — choose a player to swap hands with' : `${turnName} is swapping hands…`}
+          </TurnStatus>
+        ) : session.phase === 'color_roulette' ? (
+          <TurnStatus>
+            {isMyTurn
+              ? 'Wild Color Roulette on you — pick a colour and reveal until you hit it'
+              : `${turnName} is spinning the Color Roulette…`}
           </TurnStatus>
         ) : drawPenalty > 0 && canAct ? (
           <ActionToast tone="hot">

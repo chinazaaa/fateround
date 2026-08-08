@@ -8,6 +8,7 @@ import {
   BalanceScaleIcon,
   Cards01Icon,
   ZapIcon,
+  FireIcon,
 } from '@hugeicons/core-free-icons'
 
 /**
@@ -18,10 +19,20 @@ import {
  */
 export function UnoRulePills({ game, className }: { game: Game; className?: string }) {
   const pills: { key: string; icon: IconSvgElement; label: string }[] = []
-  if (game.uno_team_mode) pills.push({ key: 'team', icon: UserGroupIcon, label: 'Team-Up' })
-  if (game.uno_stacking) pills.push({ key: 'stack', icon: Layers01Icon, label: 'Stacking' })
-  if (game.uno_zero_seven) pills.push({ key: 'zeroseven', icon: CardExchange01Icon, label: '0-7 rule' })
-  if (game.uno_wd4_challenge !== false) pills.push({ key: 'wd4', icon: BalanceScaleIcon, label: 'WD4 challenge' })
+  const noMercy = game.uno_mode === 'no_mercy'
+  if (noMercy) {
+    pills.push({
+      key: 'nomercy',
+      icon: FireIcon,
+      label: game.uno_no_mercy_win === 'last_standing' ? 'No Mercy · last standing' : 'No Mercy',
+    })
+  }
+  if (!noMercy && game.uno_team_mode) pills.push({ key: 'team', icon: UserGroupIcon, label: 'Team-Up' })
+  if (game.uno_stacking || noMercy) pills.push({ key: 'stack', icon: Layers01Icon, label: 'Stacking' })
+  if (game.uno_zero_seven || noMercy) pills.push({ key: 'zeroseven', icon: CardExchange01Icon, label: '0-7 rule' })
+  if (!noMercy && game.uno_wd4_challenge !== false) {
+    pills.push({ key: 'wd4', icon: BalanceScaleIcon, label: 'WD4 challenge' })
+  }
   if (game.uno_multi_play_mode && game.uno_multi_play_mode !== 'off') {
     pills.push({ key: 'multi', icon: Cards01Icon, label: 'Multi-Play' })
   }

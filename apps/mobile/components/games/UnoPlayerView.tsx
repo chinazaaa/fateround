@@ -369,11 +369,13 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
         return {
           id: p.id,
           name: p.name,
-          points: cards.reduce(
-            (sum, c) =>
-              sum + (c.kind === 'number' ? (c.value ?? 0) : c.kind === 'wild' || c.kind === 'wild_draw4' ? 50 : 20),
-            0
-          ),
+          points: cards.reduce((sum, c) => {
+            if (c.kind === 'number') return sum + (c.value ?? 0)
+            const wildKinds = ['wild', 'wild_draw4', 'wild_reverse_draw4', 'wild_color_roulette']
+            const drawWilds = ['draw6', 'draw10']
+            if (wildKinds.includes(c.kind) || drawWilds.includes(c.kind)) return sum + 50
+            return sum + 20 // coloured action card
+          }, 0),
           cardCount: cards.length,
         }
       })
@@ -394,9 +396,25 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
   const turnName = bootstrap.players.find((p) => p.id === turnPlayerId)?.name ?? 'Someone'
   const demandColor = activeColor(session)
   const demandLabel = demandColor ? `Must play ${UNO_COLOR_LABELS[demandColor]}` : null
+  const penaltyKindLabel = (() => {
+    switch (session.draw_penalty_kind) {
+      case 'draw2':
+        return 'Draw Two'
+      case 'wild_draw4':
+        return 'Wild Draw Four'
+      case 'draw6':
+        return 'Wild Draw Six'
+      case 'draw10':
+        return 'Wild Draw Ten'
+      case 'wild_reverse_draw4':
+        return 'Wild Reverse Draw Four'
+      default:
+        return null
+    }
+  })()
   const penaltyLabel =
     (session.draw_penalty ?? 0) > 0
-      ? `Draw ${session.draw_penalty}${session.draw_penalty_kind ? ` — stack a ${session.draw_penalty_kind === 'draw2' ? 'Draw Two' : 'Wild Draw Four'} or draw` : ''}`
+      ? `Draw ${session.draw_penalty}${penaltyKindLabel ? ` — stack a ${penaltyKindLabel} (or higher in No Mercy) or draw` : ''}`
       : null
   const tableHint = [demandLabel, penaltyLabel].filter(Boolean).join(' · ')
 
