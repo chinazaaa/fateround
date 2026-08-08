@@ -522,7 +522,8 @@ export function isUnoPlayerOut(handCount: number, spectator?: boolean | null): b
 
 /**
  * Advance `steps` active players from `fromIndex` in `direction` (1 forward,
- * -1 reversed), skipping players who are out of cards.
+ * -1 reversed), skipping players who are out of cards or knocked out by the
+ * High Stakes 25-card limit.
  */
 export function unoNextTurnIndex(
   session: UnoSession,
@@ -535,13 +536,15 @@ export function unoNextTurnIndex(
   const len = order.length
   if (len === 0) return 0
   const dir = direction < 0 ? -1 : 1
+  const eliminated = new Set<string>((session.eliminated_player_ids as string[] | null) ?? [])
 
   let idx = fromIndex
   for (let s = 0; s < steps; s += 1) {
     let advanced = false
     for (let attempt = 0; attempt < len; attempt += 1) {
       idx = (((idx + dir) % len) + len) % len
-      if (unoHandCount(hands, order[idx]!) > 0) {
+      const pid = order[idx]!
+      if (!eliminated.has(pid) && unoHandCount(hands, pid) > 0) {
         advanced = true
         break
       }
@@ -552,7 +555,8 @@ export function unoNextTurnIndex(
 }
 
 function activePlayerCount(session: UnoSession, hands: UnoPlayerHand[]): number {
-  return (session.turn_order ?? []).filter((id) => unoHandCount(hands, id) > 0).length
+  const eliminated = new Set<string>((session.eliminated_player_ids as string[] | null) ?? [])
+  return (session.turn_order ?? []).filter((id) => !eliminated.has(id) && unoHandCount(hands, id) > 0).length
 }
 
 export function anyPlayerCanPlay(hands: UnoPlayerHand[], session: UnoSession): boolean {
