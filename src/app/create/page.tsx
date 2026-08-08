@@ -3446,7 +3446,7 @@ function CreateGameInner() {
                 <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="monopoly" />
                 <p className="text-faint text-sm leading-relaxed">
                   {formatThemedText(
-                    'Players join with their name and start on GO with £1,500. Take turns rolling dice, buying properties, paying rent, and drawing cards. Last player standing wins! If someone stalls, their turn auto-resolves. Set a game length to end automatically — the richest player wins when time runs out.',
+                    'Players join with their name and start on PAYDAY with £1,500. Take turns rolling dice, buying properties, paying rent, and drawing cards. Last player standing wins! If someone stalls, their turn auto-resolves. Set a game length to end automatically — the richest player wins when time runs out.',
                     settings.theme
                   )}
                 </p>

@@ -20,7 +20,7 @@ const COMPACT_LABELS: Partial<Record<YahtzeeCategory, string>> = {
   full_house: 'Full House',
   small_straight: 'Sm. Str.',
   large_straight: 'Lg. Str.',
-  yahtzee: 'YAHTZEE',
+  yahtzee: '5 of a Kind',
 }
 
 function categoryLabel(category: YahtzeeCategory) {

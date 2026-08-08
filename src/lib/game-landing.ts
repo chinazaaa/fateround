@@ -1268,7 +1268,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       },
       {
         title: 'Start the game',
-        description: 'Everyone begins on GO with 1,500 starting cash. The host starts when ready.',
+        description: 'Everyone begins on PAYDAY with 1,500 starting cash. The host starts when ready.',
       },
       {
         title: 'Last one wins',
@@ -1285,17 +1285,17 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       {
         question: 'How much money do you start with in Monopoly?',
         answer:
-          'Every player starts on GO with 1,500 starting cash in your selected edition’s currency (e.g., £1,500 or ₦1.5m), and collects 200 each time they pass GO (after their first lap around the board).',
+          'Every player starts on PAYDAY with 1,500 starting cash in your selected edition’s currency (e.g., £1,500 or ₦1.5m), and collects 200 each time they pass PAYDAY (after their first lap around the board).',
       },
       {
         question: 'What happens when you land on an unowned property?',
         answer:
-          'You can buy it from the Bank at its listed price. If you decline, it goes to auction and any player — including you — can bid. Note you can’t buy, pay tax, or draw cards until you’ve passed GO once on your first lap.',
+          'You can buy it from the Bank at its listed price. If you decline, it goes to auction and any player — including you — can bid. Note you can’t buy, pay tax, or draw cards until you’ve passed PAYDAY once on your first lap.',
       },
       {
         question: 'How do you get out of Jail in Monopoly?',
         answer:
-          'Pay the 50 fine before your next roll, use a Get Out of Jail Free card, or roll doubles on any of your next three turns. After three turns without doubles, you pay 50 and move by your roll.',
+          'On Estate Kings the Jail space is called NICKED. Pay the 50 fine before your next roll, use a skip-the-queue card, or roll doubles on any of your next three turns. After three turns without doubles, you pay 50 and move by your roll.',
       },
       {
         question: 'Can I set how long a Monopoly game lasts?',
@@ -1404,7 +1404,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       {
         question: 'What is the Yahtzee bonus?',
         answer:
-          'There are two bonuses. The upper-section bonus adds 35 points if your Ones-through-Sixes total reaches 63 or more. The Yahtzee bonus rewards extra Yahtzees: once you have already scored 50 in the Yahtzee box, every additional five-of-a-kind you roll is worth a 100-point bonus. FateRound applies both automatically.',
+          'There are two bonuses. The upper-section bonus adds 35 points if your Ones-through-Sixes total reaches 63 or more. The Five Dice bonus rewards extra five-of-a-kinds: once you have already scored 50 in the Five of a Kind box, every additional five-of-a-kind you roll is worth a 100-point bonus. FateRound applies both automatically.',
       },
       {
         question: 'Is there any strategy to Yahtzee?',
