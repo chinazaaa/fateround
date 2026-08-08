@@ -324,6 +324,9 @@ export type TurnSeat = {
   timeLabel?: string
   /** flag the countdown as running low (turns it red) */
   timeLow?: boolean
+  /** No-Mercy knockout — grey the seat, strike the name, add a 💥 badge so the
+   *  room can see at a glance who's out of the round. */
+  out?: boolean
 }
 
 export type TurnRailProps = {
@@ -339,7 +342,11 @@ export function TurnRail({ seats }: TurnRailProps) {
   return (
     <div className="turnrail">
       {seats.map((s, i) => (
-        <div className={'seat' + (s.turn ? ' turn' : '')} key={s.name + i}>
+        <div
+          className={'seat' + (s.turn ? ' turn' : '') + (s.out ? ' out' : '')}
+          key={s.name + i}
+          aria-label={s.out ? `${s.name} — knocked out` : undefined}
+        >
           <div className="sav">
             {s.name.charAt(0).toUpperCase()}
             {s.cards != null && <span className="cc">{s.cards}</span>}
@@ -348,6 +355,7 @@ export function TurnRail({ seats }: TurnRailProps) {
             {s.name}
             {s.you ? ' (you)' : ''}
             {s.host || s.winner ? ' 👑' : ''}
+            {s.out ? ' 💥' : ''}
           </span>
           {s.turn && s.timeLabel != null && (
             <span className={'seat-timer' + (s.timeLow ? ' low' : '')}>{s.timeLabel}</span>

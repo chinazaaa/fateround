@@ -203,6 +203,7 @@ export function UnoPlaySurface({
 
   const byId = new Map(players.map((p) => [p.id, p]))
   const winnerId = (session.finish_order ?? [])[0]
+  const eliminatedIds = new Set<string>((session.eliminated_player_ids as string[] | null) ?? [])
   const seats: TurnSeat[] = session.turn_order
     .map((id) => byId.get(id))
     .filter((p): p is Player => !!p)
@@ -214,6 +215,9 @@ export function UnoPlaySurface({
         turn: isTurn,
         you: p.id === myPlayerId,
         winner: p.id === winnerId,
+        // High Stakes Mercy — greys the avatar + strikes the name + adds a 💥 badge in
+        // the turn rail so the room sees at a glance who's out of the round.
+        out: eliminatedIds.has(p.id),
         timeLabel: isTurn ? turnTimeLabel : undefined,
         timeLow: isTurn ? turnTimer?.urgent : undefined,
       }
