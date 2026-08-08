@@ -799,7 +799,7 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
         'Teams are drawn at random and seated alternating, so teammates always sit across the table and play in strict order (you never skip to your partner).',
         'You can see your teammate’s hand at all times (shown as a read-only “Partner” panel) — a digital-only edge; opponents still can’t see either of your hands.',
         'The round ends the moment either member of a team empties their hand — that team wins, no matter how many cards their partner is still holding.',
-        'Penalties still hit only the targeted player; with Stacking on, the target can play their own matching Draw card on their turn to pass it to an opponent. Everyone still calls “UNO” for themselves.',
+        'Penalties still hit only the targeted player; with Stacking on, the target can play their own matching Draw card on their turn to pass it to an opponent. Everyone still calls the last card for themselves.',
       ],
     },
     {
@@ -810,7 +810,7 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
         'Only exact matches qualify: a different-coloured 7, or a red card of another number, does not count. Wild and Draw 4 cards can never be jumped on.',
         'Play then continues from whoever sits after you (in the current direction) — everyone you jumped over loses that turn entirely.',
         'If two players hold the same card, whoever taps first gets it; the window then closes on the old card (but a match for the new card is fair game).',
-        'Jump-In plays a single card — it never triggers a Multi-Play dump — and it’s disabled while a Draw 2/Four penalty is still pending. Drop to one card on a Jump-In and you must still call “UNO”; jump in a 0 or 7 and its effect fires as normal.',
+        'Jump-In plays a single card — it never triggers a Multi-Play dump — and it’s disabled while a Draw 2/Four penalty is still pending. Drop to one card on a Jump-In and you must still call the last card; jump in a 0 or 7 and its effect fires as normal.',
       ],
     },
     {
@@ -841,7 +841,7 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
       ],
     },
     {
-      title: 'High Stakes mode (Show ’em No Mercy variant)',
+      title: 'High Stakes mode',
       points: [
         'A host toggle at room creation — flips the whole game to a 168-card deck with new action + wild cards, harder stacking, and knockouts. Classic mode is untouched.',
         '0-7 rule, Draw-card stacking (any equal-or-higher chain), and single-card play are all locked ON. Draw 4 challenge, Team-Up, Jump-In, and Multi-Play are OFF.',
