@@ -8,6 +8,7 @@ import {
   DAILY_GAME_PRIMARY_METRIC,
   type DailyChallengeGameType,
 } from '@/lib/daily-challenge'
+import { computeDailyRank } from '@/lib/daily-rank'
 
 export const dynamic = 'force-dynamic'
 
@@ -28,13 +29,20 @@ export async function GET(req: NextRequest) {
   // Load scores for this player if authenticated
   let scoreMap = new Map<
     string,
-    { normalized_score: number; raw_points: number; items_solved: number; time_seconds: number }
+    {
+      normalized_score: number
+      raw_points: number
+      items_solved: number
+      time_seconds: number
+      hints_used: number
+      submitted_at: string
+    }
   >()
   if (profileId && challenges?.length) {
     const challengeIds = challenges.map((c) => c.id)
     const { data: scores } = await admin
       .from('daily_scores')
-      .select('challenge_id, normalized_score, raw_points, items_solved, time_seconds')
+      .select('challenge_id, normalized_score, raw_points, items_solved, time_seconds, hints_used, submitted_at')
       .eq('profile_id', profileId)
       .in('challenge_id', challengeIds)
 
@@ -47,42 +55,7 @@ export async function GET(req: NextRequest) {
     const challenge = challengeMap.get(gameType)
     const entry = challenge ? scoreMap.get(challenge.id) : undefined
     if (!challenge || !entry) continue
-
-    const metric = DAILY_GAME_PRIMARY_METRIC[gameType]
-    if (metric === 'time') {
-      rankPromises.set(
-        gameType,
-        Promise.all([
-          admin
-            .from('daily_scores')
-            .select('*', { count: 'exact', head: true })
-            .eq('challenge_id', challenge.id)
-            .gt('normalized_score', 0)
-            .gt('items_solved', entry.items_solved)
-            .throwOnError(),
-          admin
-            .from('daily_scores')
-            .select('*', { count: 'exact', head: true })
-            .eq('challenge_id', challenge.id)
-            .gt('normalized_score', 0)
-            .eq('items_solved', entry.items_solved)
-            .lt('time_seconds', entry.time_seconds)
-            .throwOnError(),
-        ]).then(([{ count: a }, { count: b }]) => (a ?? 0) + (b ?? 0) + 1)
-      )
-    } else {
-      rankPromises.set(
-        gameType,
-        Promise.resolve(
-          admin
-            .from('daily_scores')
-            .select('*', { count: 'exact', head: true })
-            .eq('challenge_id', challenge.id)
-            .gt('raw_points', entry.raw_points)
-            .throwOnError()
-        ).then(({ count }) => (count ?? 0) + 1)
-      )
-    }
+    rankPromises.set(gameType, computeDailyRank(admin, gameType, challenge.id, entry).catch(() => null))
   }
 
   const rankResults = new Map<DailyChallengeGameType, number | null>()
