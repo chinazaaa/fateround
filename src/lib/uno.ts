@@ -1382,7 +1382,9 @@ async function applyMercyKnockout(
 ): Promise<void> {
   const { data: fresh } = await supabase
     .from('uno_sessions')
-    .select('phase, turn_order, eliminated_player_ids, finish_order, updated_at, status_message')
+    .select(
+      'phase, turn_order, eliminated_player_ids, finish_order, updated_at, status_message, draw_pile, discard_pile'
+    )
     .eq('game_id', gameId)
     .maybeSingle()
   if (!fresh || fresh.phase === 'finished') return
@@ -1391,6 +1393,21 @@ async function applyMercyKnockout(
   const nextEliminated = [...already, playerId]
   const name = playerName(playerNames, playerId)
   const note = `${name} hit ${handSize} cards — knocked out (High Stakes 25-card limit)`
+
+  // Return the KO'd player's hand to the draw pile so the deck can keep dealing to
+  // survivors — otherwise the pile shrinks every round and a +10 landing on a near-empty
+  // pile only pays out a partial draw. Shuffled in (not appended) so the returning cards
+  // sit anywhere in the pile. Best-effort: read the fresh hand row and drop it back on
+  // the session in one atomic patch alongside the KO bookkeeping.
+  const { data: koHandRow } = await supabase
+    .from('uno_player_hands')
+    .select('cards')
+    .eq('game_id', gameId)
+    .eq('player_id', playerId)
+    .maybeSingle()
+  const koCards = ((koHandRow?.cards as UnoCard[] | null) ?? []).filter(Boolean)
+  const currentPile = ((fresh.draw_pile as UnoCard[] | null) ?? []).filter(Boolean)
+  const returnedPile = koCards.length > 0 ? shuffle([...currentPile, ...koCards]) : currentPile
 
   // Standing players = seated - eliminated - already-finished (emptied their hand).
   const seated = new Set<string>((fresh.turn_order as string[] | null) ?? [])
@@ -1401,7 +1418,12 @@ async function applyMercyKnockout(
     winCondition === 'last_standing' && standing.length <= 1 && (finished.size === 0 || standing.length === 0)
   const patch: Record<string, unknown> = {
     eliminated_player_ids: nextEliminated,
-    status_message: `${fresh.status_message ?? ''} · ${note}`.replace(/^ · /, ''),
+    draw_pile: returnedPile,
+    status_message:
+      `${fresh.status_message ?? ''} · ${note}${koCards.length > 0 ? ` (${koCards.length} cards returned to the deck)` : ''}`.replace(
+        /^ · /,
+        ''
+      ),
     updated_at: new Date().toISOString(),
   }
   if (endsRound) {
@@ -1415,6 +1437,13 @@ async function applyMercyKnockout(
   }
 
   await supabase.from('uno_sessions').update(patch).eq('game_id', gameId).eq('updated_at', fresh.updated_at)
+
+  // Zero the KO'd player's hand row so the roster + standings show them at 0 (their
+  // cards are now back in the deck). Best-effort — the session update above is the
+  // source of truth for the KO itself; this is presentation cleanup.
+  if (koCards.length > 0) {
+    await supabase.from('uno_player_hands').update({ cards: [] }).eq('game_id', gameId).eq('player_id', playerId)
+  }
 
   await supabase.from('players').update({ spectator: true }).eq('id', playerId).eq('game_id', gameId)
 
@@ -2122,6 +2151,26 @@ export async function processUnoDraw(
   let patch: Partial<UnoSession>
 
   if (forced) {
+    // High Stakes — the pile (plus everything already reshuffled from the discard AND
+    // the KO'd hands returned on Mercy) couldn't cover the full pending penalty. There
+    // is no more deck to draw from, so the round can't continue: end it by lowest hand
+    // total. Only in No Mercy — Classic keeps the existing "draw what you can" beat,
+    // which is fine for smaller +2/+4 penalties.
+    if (rules.mode === 'no_mercy' && drawn.length < penalty) {
+      // Persist what was drawn so hands reflect the partial payout in the standings.
+      await writeHand(supabase, gameId, playerId, newHand)
+      if (missed) await writeHand(supabase, gameId, missed.playerId, missed.hand)
+      await finishByLowestHand(
+        supabase,
+        gameId,
+        { ...session, draw_pile: drawPile, discard_pile: discardPile } as UnoSession,
+        updateHand(hands, playerId, newHand),
+        playerNames,
+        `Deck ran out mid-penalty (${drawn.length}/${penalty}) —`,
+        rules.teamMode
+      )
+      return {}
+    }
     // A forced penalty draw (Draw Two / Draw Four target) ends the turn — pass play on.
     const nextIndex = unoNextTurnIndex(
       session,
