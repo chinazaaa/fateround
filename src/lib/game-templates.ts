@@ -119,7 +119,8 @@ const FIELD_LABELS: Record<string, string> = {
   uno_zero_seven: '0-7 rule',
   uno_stacking: 'Stacking',
   uno_jump_in: 'Jump-In',
-  uno_team_mode: 'Team mode',
+  uno_team_mode: 'Team-Up',
+  uno_series_scoring: 'Series scoring',
   whot_pick3_enabled: 'Pick 3',
   whot_pick2_stacking: 'Stack Pick 2',
   whot_cards_enabled: 'WHOT cards',
@@ -196,8 +197,44 @@ const LATE_JOIN_LABELS: Record<string, string> = {
   viewers_and_players: 'Viewers & players',
 }
 
+// Strip a leading game-name prefix from a field key before humanizing — the template card
+// already sits under a game-typed header, so "Uno Wd4 Challenge" / "Monopoly Double Go
+// Salary" reads redundant. Any new game whose fields get a `<gametype>_` prefix should be
+// added here so the auto-fallback stays clean. Order longest-first so `quick_draw_*` wins
+// over a hypothetical `quick_*` prefix if we ever add one.
+const GAME_KEY_PREFIXES = [
+  'quick_draw_',
+  'word_rush_',
+  'describe_it_',
+  'ping_pong_',
+  'crazy8_',
+  'landmine_',
+  'codewords_',
+  'mahjong_',
+  'checkers_',
+  'scrabble_',
+  'yahtzee_',
+  'quiplash_',
+  'monopoly_',
+  'ludo_',
+  'whot_',
+  'chess_',
+  'mafia_',
+  'ayo_',
+  'uno_',
+]
+
+function stripGamePrefix(key: string): string {
+  for (const p of GAME_KEY_PREFIXES) {
+    if (key.startsWith(p)) return key.slice(p.length)
+  }
+  return key
+}
+
 function humanize(text: string): string {
-  return text.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+  return stripGamePrefix(text)
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
 function formatDurationShort(seconds: number): string {
@@ -256,6 +293,25 @@ export function summarizeTemplate(values: Record<string, unknown>): string {
     }
     if (key === 'uno_uno_penalty') {
       if (value === 4) distinguishing.push('Draw 4 penalty')
+      continue
+    }
+    // Mode chip reads as "High Stakes" (the marketing name) instead of "Uno Mode: No Mercy".
+    // Classic is the default and stays silent so the summary only calls out non-defaults.
+    if (key === 'uno_mode') {
+      if (value === 'no_mercy') distinguishing.push('High Stakes')
+      continue
+    }
+    if (key === 'uno_no_mercy_win') {
+      // Only meaningful in High Stakes, and only when the host picked the non-default.
+      if (value === 'last_standing' && values.uno_mode === 'no_mercy') distinguishing.push('Last standing')
+      continue
+    }
+    if (key === 'uno_series_target') {
+      // Only surfaces when series scoring is on; label reads "Series to N" — cleaner than
+      // "Uno Series Target: 1000" which the auto-humanize path would produce.
+      if (typeof value === 'number' && values.uno_series_scoring === true) {
+        distinguishing.push(`Series to ${value}`)
+      }
       continue
     }
     if (typeof value === 'boolean') {

@@ -1190,6 +1190,12 @@ export type BoardLobbyPatch = {
   uno_jump_in?: boolean
   uno_multi_play_mode?: string
   uno_team_mode?: boolean
+  uno_mode?: string
+  uno_no_mercy_win?: string
+  uno_series_scoring?: boolean
+  uno_series_target?: number
+  uno_series_scores?: Record<string, number> | null
+  uno_series_winner_id?: string | null
   ludo_variant?: 'modern' | 'traditional'
   ayo_variant?: 'traditional' | 'oware'
   checkers_nigeria_street_rules?: boolean

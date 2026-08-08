@@ -19,7 +19,7 @@ export function MonopolyJoinForm({
   players,
   joining,
   joiningAsViewer = false,
-  submitLabel = 'Join Monopoly',
+  submitLabel = 'Join Estate Kings',
   onSubmit,
 }: {
   name: string

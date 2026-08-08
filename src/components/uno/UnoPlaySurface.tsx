@@ -63,6 +63,18 @@ function miniGlyph(card: UnoCard): string {
       return '🌈'
     case 'wild_draw4':
       return '+4'
+    case 'draw6':
+      return '+6'
+    case 'draw10':
+      return '+10'
+    case 'wild_reverse_draw4':
+      return '↺+4'
+    case 'wild_color_roulette':
+      return '🎲'
+    case 'discard_all':
+      return 'DA'
+    case 'skip_everyone':
+      return '⊘⊘'
     default:
       return ''
   }
@@ -213,6 +225,12 @@ export function UnoPlaySurface({
   const lastPlaySet = (session.last_play_cards as UnoCard[] | null) ?? []
   const showLastPlay = lastPlaySet.length > 1
   const choosing = isMyTurn && !watching && session.phase === 'choose_color'
+  // Colour Roulette lands the picker on the NEXT player, and isMyTurn tracks that seat
+  // (unoPlay bumps current_turn_index into the roulette phase). Two sub-states: BEFORE
+  // the target has picked a colour (required_color null → picker overlay) and AFTER
+  // (required_color set → the target clicks Draw one at a time to reveal until they hit).
+  const rouletteChoosing = isMyTurn && !watching && session.phase === 'color_roulette' && !session.required_color
+  const rouletteDrawing = isMyTurn && !watching && session.phase === 'color_roulette' && !!session.required_color
   const deciding = isMyTurn && !watching && session.phase === 'challenge_window'
   const swapping = isMyTurn && !watching && session.phase === 'swap_target'
   const canAct = isMyTurn && !watching && session.phase === 'playing'
@@ -245,7 +263,7 @@ export function UnoPlaySurface({
     wd4PlayerName != null ? (
       <div className="uno-challenge-hint">
         <p className="uno-challenge-hint__lead">
-          <strong>{wd4PlayerName}</strong> played a Wild Draw Four
+          <strong>{wd4PlayerName}</strong> played a Draw 4
           {wd4PrevColor ? (
             <>
               {' '}
@@ -414,21 +432,35 @@ export function UnoPlaySurface({
             {isMyTurn ? 'You played a wild card — choose the colour to match' : `${turnName} is choosing a colour…`}
           </TurnStatus>
         ) : session.phase === 'challenge_window' ? (
-          <TurnStatus>{isMyTurn ? 'Wild Draw Four played against you' : `${turnName} is deciding…`}</TurnStatus>
+          <TurnStatus>{isMyTurn ? 'Draw 4 played against you' : `${turnName} is deciding…`}</TurnStatus>
         ) : session.phase === 'swap_target' ? (
           <TurnStatus>
             {isMyTurn ? 'You played a 7 — choose a player to swap hands with' : `${turnName} is swapping hands…`}
+          </TurnStatus>
+        ) : session.phase === 'color_roulette' ? (
+          <TurnStatus>
+            {isMyTurn
+              ? session.required_color
+                ? `Colour Roulette on you — click Draw until you hit ${UNO_COLOR_LABELS[session.required_color]}`
+                : 'Colour Roulette on you — pick a colour'
+              : `${turnName} is spinning the Color Roulette…`}
           </TurnStatus>
         ) : drawPenalty > 0 && canAct ? (
           <ActionToast tone="hot">
             🔥 Draw {drawPenalty}
             {session.draw_penalty_kind === 'draw2'
-              ? ' — or stack a Draw Two'
+              ? ' — or stack a Draw 2'
               : session.draw_penalty_kind === 'wild_draw4'
                 ? canChallengeStack
-                  ? ' — stack a Wild Draw Four, or challenge'
-                  : ' — or stack a Wild Draw Four'
-                : ' — no defence'}
+                  ? ' — stack a Draw 4, or challenge'
+                  : ' — or stack a Draw 4'
+                : session.draw_penalty_kind === 'draw6'
+                  ? ' — or stack a Draw of 6 or higher'
+                  : session.draw_penalty_kind === 'draw10'
+                    ? ' — or stack a Draw 10'
+                    : session.draw_penalty_kind === 'wild_reverse_draw4'
+                      ? ' — or stack a Draw of 4 or higher'
+                      : ' — no defence'}
           </ActionToast>
         ) : isMyTurn ? (
           <TurnStatus>Your turn</TurnStatus>
@@ -561,19 +593,21 @@ export function UnoPlaySurface({
               ? selectedCards.length
                 ? `${selectedCards.length} selected — the last card you pick lands on top`
                 : 'Tap matching cards to lay them down together'
-              : hasDrawn
-                ? 'You drew a card — play it or keep it'
-                : canAct
-                  ? `Tap a highlighted card to play it${many ? ' · swipe to see more' : ''}`
-                  : canJumpNow
-                    ? `⚡ Jump-In! Tap your ${cardLabel(top!)} to play it out of turn`
-                    : undefined
+              : rouletteDrawing && session.required_color
+                ? `Colour Roulette — click Draw until you turn up a ${UNO_COLOR_LABELS[session.required_color]}`
+                : hasDrawn
+                  ? 'You drew a card — play it or keep it'
+                  : canAct
+                    ? `Tap a highlighted card to play it${many ? ' · swipe to see more' : ''}`
+                    : canJumpNow
+                      ? `⚡ Jump-In! Tap your ${cardLabel(top!)} to play it out of turn`
+                      : undefined
           }
           actions={
             <>
               {owesUnoCall && (
                 <button type="button" className="uno-call-btn" disabled={acting} onClick={onCallUno}>
-                  Call UNO!
+                  Last card!
                 </button>
               )}
               {canChallengeStack ? (
@@ -635,6 +669,18 @@ export function UnoPlaySurface({
                   onClick={onPass}
                 >
                   Keep it
+                </button>
+              ) : rouletteDrawing ? (
+                // Colour Roulette reveal: one card per click until the target hits their
+                // chosen colour. Server-side processUnoDraw routes to the roulette-reveal
+                // helper when phase === 'color_roulette'.
+                <button
+                  type="button"
+                  className="fr-btn fr-btn--primary fr-btn--block"
+                  disabled={acting}
+                  onClick={onDraw}
+                >
+                  Draw a card
                 </button>
               ) : (
                 <>
@@ -701,6 +747,29 @@ export function UnoPlaySurface({
 
       {choosing && (
         <PickerOverlay title="Choose a colour" desc="The next player must match the colour you pick.">
+          <div className="picker-grid uno">
+            {UNO_COLORS.map((color) => (
+              <button
+                key={color}
+                type="button"
+                className={`uno-${color}`}
+                disabled={acting}
+                aria-label={UNO_COLOR_LABELS[color]}
+                title={UNO_COLOR_LABELS[color]}
+                onClick={() => onChooseColor(color)}
+              >
+                {UNO_COLOR_LABELS[color]}
+              </button>
+            ))}
+          </div>
+        </PickerOverlay>
+      )}
+
+      {rouletteChoosing && (
+        <PickerOverlay
+          title="Colour Roulette — pick a colour"
+          desc="You'll reveal cards from the draw pile until you turn up a card of this colour. Everything revealed lands in your hand."
+        >
           <div className="picker-grid uno">
             {UNO_COLORS.map((color) => (
               <button

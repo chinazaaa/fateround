@@ -388,7 +388,7 @@ export function tradeSideCountLabel(cash: number, propertyIndexes: unknown, jail
   const parts: string[] = []
   if (propertyCount > 0) parts.push(`${propertyCount} propert${propertyCount === 1 ? 'y' : 'ies'}`)
   if (cash > 0) parts.push('cash')
-  if (jailCards > 0) parts.push(`${jailCards} Jail card${jailCards === 1 ? '' : 's'}`)
+  if (jailCards > 0) parts.push(`${jailCards} skip-the-queue card${jailCards === 1 ? '' : 's'}`)
   if (parts.length === 0) return null
   return parts.join(' · ')
 }

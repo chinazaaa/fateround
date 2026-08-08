@@ -159,6 +159,10 @@ export function CustomSelect<TValue extends string | number = string | number>({
                 role="option"
                 aria-selected={isSelected}
                 onMouseEnter={() => setActiveIndex(index)}
+                // Options are non-focusable divs — a bare mousedown pulls focus off the trigger
+                // button, which fires the wrapper's onBlur, which unmounts the listbox before
+                // the click can land. Prevent the mousedown default so focus stays put.
+                onMouseDown={(event) => event.preventDefault()}
                 onClick={() => commit(index)}
                 className={`flex items-center justify-between w-full px-3 py-2 rounded-lg text-sm font-medium text-left cursor-pointer transition-colors ${
                   isSelected

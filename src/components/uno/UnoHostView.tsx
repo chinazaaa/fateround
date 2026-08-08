@@ -24,7 +24,13 @@ import {
   UNO_TEAM_PLAYERS,
 } from '@/lib/uno'
 import { supabase } from '@/lib/supabase'
-import { GAME_SELECT, PLAYER_SELECT, UNO_PLAYER_HANDS_SELECT, UNO_SESSION_SELECT } from '@/lib/supabase-selects'
+import {
+  GAME_SELECT,
+  PLAYER_SELECT,
+  UNO_PLAYER_HANDS_SELECT,
+  UNO_SESSION_SELECT,
+  isCompleteUnoSessionRow,
+} from '@/lib/supabase-selects'
 import { appOrigin } from '@/lib/site'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
@@ -107,8 +113,14 @@ export function UnoHostView({ gameCode, hostToken }: { gameCode: string; hostTok
     const next = row as unknown as UnoSession
     const prev = sessionRef.current
     if (prev && next.updated_at < prev.updated_at) return true
-    setSession(next)
-    sessionRef.current = next
+    // Realtime UPDATE payloads drop unchanged TOAST-ed columns (draw_pile, discard_pile,
+    // turn_order once they grow) — arrive as null and would wipe local state, leaving
+    // canPlayCard() to read a stale/blank session and every card looks unplayable.
+    // Discard and let the debounced full reload refetch the complete row.
+    if (!isCompleteUnoSessionRow(row)) return false
+    const merged = prev ? { ...prev, ...next } : next
+    setSession(merged)
+    sessionRef.current = merged
     return prev != null
   }, [])
   const applyHandRow = useCallback((row: Record<string, unknown>): boolean => {
@@ -501,9 +513,11 @@ export function UnoHostView({ gameCode, hostToken }: { gameCode: string; hostTok
             onCallUno={() => void postHostAction('/api/uno/call-uno')}
             onSwap={(targetId) => void postHostAction('/api/uno/swap', { targetId })}
             onPass={() => void postHostAction('/api/uno/pass')}
-            multiPlayMode={parseMultiPlayMode(game.uno_multi_play_mode)}
+            // Mirror parseUnoRules: HS forces Multi-Play + Jump-In OFF, so the host UI
+            // must not offer either even if the raw DB flags still carry Classic values.
+            multiPlayMode={game.uno_mode === 'no_mercy' ? 'off' : parseMultiPlayMode(game.uno_multi_play_mode)}
             onPlayMulti={(cardIds) => void postHostAction('/api/uno/play-multi', { cardIds })}
-            jumpInEnabled={game.uno_jump_in === true}
+            jumpInEnabled={game.uno_mode !== 'no_mercy' && game.uno_jump_in === true}
             onJumpIn={(cardId) => void postHostAction('/api/uno/jump-in', { cardId })}
             partner={partner}
             quickChat={quickChat}

@@ -477,6 +477,10 @@ function CreateGameInner() {
     'off' | 'same_color' | 'same_number' | 'same_color_or_number'
   >('off')
   const [unoTeamMode, setUnoTeamMode] = useState(false)
+  const [unoMode, setUnoMode] = useState<'classic' | 'no_mercy'>('classic')
+  const [unoNoMercyWin, setUnoNoMercyWin] = useState<'first_out' | 'last_standing'>('first_out')
+  const [unoSeriesScoring, setUnoSeriesScoring] = useState(false)
+  const [unoSeriesTarget, setUnoSeriesTarget] = useState(1000)
   const [ludoMaxPlayers, setLudoMaxPlayers] = useState(LUDO_DEFAULT_MAX_PLAYERS)
   const [ludoVariant, setLudoVariant] = useState<LudoVariant>('modern')
   const [ayoVariant, setAyoVariant] = useState<AyoVariant>('traditional')
@@ -1480,6 +1484,26 @@ function CreateGameInner() {
       appliesTo: isUnoGame,
     },
     uno_team_mode: { get: () => unoTeamMode, set: (v) => setUnoTeamMode(v as boolean), appliesTo: isUnoGame },
+    uno_mode: {
+      get: () => unoMode,
+      set: (v) => setUnoMode(v as 'classic' | 'no_mercy'),
+      appliesTo: isUnoGame,
+    },
+    uno_no_mercy_win: {
+      get: () => unoNoMercyWin,
+      set: (v) => setUnoNoMercyWin(v as 'first_out' | 'last_standing'),
+      appliesTo: isUnoGame,
+    },
+    uno_series_scoring: {
+      get: () => unoSeriesScoring,
+      set: (v) => setUnoSeriesScoring(v as boolean),
+      appliesTo: isUnoGame,
+    },
+    uno_series_target: {
+      get: () => unoSeriesTarget,
+      set: (v) => setUnoSeriesTarget(v as number),
+      appliesTo: isUnoGame,
+    },
     // Monopoly
     monopoly_max_players: {
       get: () => monopolyMaxPlayers,
@@ -2680,8 +2704,12 @@ function CreateGameInner() {
           uno_zero_seven: isUno ? unoZeroSeven : undefined,
           uno_stacking: isUno ? unoStacking : undefined,
           uno_jump_in: isUno ? unoJumpIn : undefined,
-          uno_multi_play_mode: isUno ? unoMultiPlayMode : undefined,
+          uno_multi_play_mode: isUno && unoMode === 'classic' ? unoMultiPlayMode : undefined,
           uno_team_mode: isUno ? unoTeamMode : undefined,
+          uno_mode: isUno ? unoMode : undefined,
+          uno_no_mercy_win: isUno && unoMode === 'no_mercy' ? unoNoMercyWin : undefined,
+          uno_series_scoring: isUno ? unoSeriesScoring : undefined,
+          uno_series_target: isUno && unoSeriesScoring ? unoSeriesTarget : undefined,
           // Team-Up is strictly 2v2.
           ...(isUno && unoTeamMode ? { max_players: 4 } : {}),
           ludo_variant: isLudo ? ludoVariant : undefined,
@@ -3047,7 +3075,7 @@ function CreateGameInner() {
                 </p>
               </SettingsGroup>
             ) : isQuiplash ? (
-              <SettingsGroup title="Quiplash">
+              <SettingsGroup title="Punchline">
                 <Field label={`Max players (${effectiveLimits.quiplash.min}–${effectiveLimits.quiplash.max})`}>
                   <CustomSelect
                     value={quiplashMaxPlayers}
@@ -3407,7 +3435,7 @@ function CreateGameInner() {
                 </p>
               </SettingsGroup>
             ) : isMonopoly ? (
-              <SettingsGroup title="Monopoly room">
+              <SettingsGroup title="Estate Kings room">
                 <Field label={`Max players (${effectiveLimits.monopoly.min}–${effectiveLimits.monopoly.max})`}>
                   <CustomSelect
                     value={monopolyMaxPlayers}
@@ -3446,13 +3474,13 @@ function CreateGameInner() {
                 <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="monopoly" />
                 <p className="text-faint text-sm leading-relaxed">
                   {formatThemedText(
-                    'Players join with their name and start on GO with £1,500. Take turns rolling dice, buying properties, paying rent, and drawing cards. Last player standing wins! If someone stalls, their turn auto-resolves. Set a game length to end automatically — the richest player wins when time runs out.',
+                    'Players join with their name and start on PAYDAY with £1,500. Take turns rolling dice, buying properties, paying rent, and drawing cards. Last player standing wins! If someone stalls, their turn auto-resolves. Set a game length to end automatically — the richest player wins when time runs out.',
                     settings.theme
                   )}
                 </p>
               </SettingsGroup>
             ) : isYahtzee ? (
-              <SettingsGroup title="Yahtzee room">
+              <SettingsGroup title="Five Dice room">
                 <Field label={`Max players (${effectiveLimits.yahtzee.min}–${effectiveLimits.yahtzee.max})`}>
                   <CustomSelect
                     value={yahtzeeMaxPlayers}
@@ -3621,14 +3649,50 @@ function CreateGameInner() {
               </SettingsGroup>
             ) : isUno ? (
               <SettingsGroup title="UNO room">
-                <Field label="Team-Up (2v2)">
-                  <Toggle
-                    label="Team-Up mode"
-                    description="4 players in 2 teams of 2. Teammates sit across and see each other's hands; a team wins the round the moment either partner empties their hand."
-                    value={unoTeamMode}
-                    onChange={setUnoTeamMode}
+                <Field label="Mode">
+                  <CustomSelect
+                    value={unoMode}
+                    onChange={(val) => setUnoMode(val as 'classic' | 'no_mercy')}
+                    options={[
+                      { value: 'classic', label: 'Classic — the standard game with optional Team-Up' },
+                      {
+                        value: 'no_mercy',
+                        label: 'High Stakes — 168-card deck, +6/+10, hand-size knockouts',
+                      },
+                    ]}
                   />
+                  <p className="mt-1 text-xs text-faint">
+                    High Stakes is a Show ’em No Mercy-style variant: locks in stacking + 0-7, disables Draw 4
+                    challenges and Team-Up, and adds Discard Colour, Skip All, Reverse Draw 4, Draw 6, Draw 10, and
+                    Colour Roulette cards.
+                  </p>
                 </Field>
+                {unoMode === 'no_mercy' ? (
+                  <Field label="Win condition">
+                    <CustomSelect
+                      value={unoNoMercyWin}
+                      onChange={(val) => setUnoNoMercyWin(val as 'first_out' | 'last_standing')}
+                      options={[
+                        { value: 'first_out', label: 'First out — empty your hand to win' },
+                        { value: 'last_standing', label: 'Last standing — outlast every knockout' },
+                      ]}
+                    />
+                    <p className="mt-1 text-xs text-faint">
+                      Any player holding 25+ cards is knocked out. Last standing wins when only one player is still
+                      holding cards.
+                    </p>
+                  </Field>
+                ) : null}
+                {unoMode === 'classic' ? (
+                  <Field label="Team-Up (2v2)">
+                    <Toggle
+                      label="Team-Up mode"
+                      description="4 players in 2 teams of 2. Teammates sit across and see each other's hands; a team wins the round the moment either partner empties their hand."
+                      value={unoTeamMode}
+                      onChange={setUnoTeamMode}
+                    />
+                  </Field>
+                ) : null}
                 {unoTeamMode ? (
                   <Field label="Players">
                     <div className="input-field w-full bg-[var(--surface-inset-bg)] text-muted">
@@ -3668,7 +3732,7 @@ function CreateGameInner() {
                   />
                 </Field>
                 <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="uno" />
-                <Field label="Missed “UNO” penalty">
+                <Field label="Missed last-card penalty">
                   <CustomSelect
                     value={unoUnoPenalty}
                     onChange={setUnoUnoPenalty}
@@ -3680,52 +3744,89 @@ function CreateGameInner() {
                 </Field>
                 <Field label="House rules">
                   <div className="space-y-2">
-                    <Toggle
-                      label="Wild Draw Four challenge"
-                      description="Let the next player challenge a Wild Draw Four — the system reveals the hand. Off: they always draw 4."
-                      value={unoWd4Challenge}
-                      onChange={setUnoWd4Challenge}
-                    />
-                    <Toggle
-                      label="0-7 rule"
-                      description="Play a 0 → everyone passes their whole hand in the direction of play. Play a 7 → swap hands with any player."
-                      value={unoZeroSeven}
-                      onChange={setUnoZeroSeven}
-                    />
-                    <Toggle
-                      label="Stacking"
-                      description="Stack Draw Two on Draw Two and Draw Four on Draw Four — the penalty piles up and passes on. Whoever would draw the pile can still challenge a Draw Four (if challenge is on)."
-                      value={unoStacking}
-                      onChange={setUnoStacking}
-                    />
-                    <Toggle
-                      label="Jump-In"
-                      description="Hold an exact match for the top card (same colour + number, or same colour + symbol)? Play it instantly, even out of turn — the players you skip lose that turn. Wilds can't be jumped. Off keeps strict turn order."
-                      value={unoJumpIn}
-                      onChange={setUnoJumpIn}
-                    />
+                    {unoMode === 'classic' ? (
+                      <>
+                        <Toggle
+                          label="Draw 4 challenge"
+                          description="Let the next player challenge a Draw 4 — the system reveals the hand. Off: they always draw 4."
+                          value={unoWd4Challenge}
+                          onChange={setUnoWd4Challenge}
+                        />
+                        <Toggle
+                          label="0-7 rule"
+                          description="Play a 0 → everyone passes their whole hand in the direction of play. Play a 7 → swap hands with any player."
+                          value={unoZeroSeven}
+                          onChange={setUnoZeroSeven}
+                        />
+                        <Toggle
+                          label="Stacking"
+                          description="Stack Draw 2 on Draw 2 and Draw 4 on Draw 4 — the penalty piles up and passes on. Whoever would draw the pile can still challenge a Draw 4 (if challenge is on)."
+                          value={unoStacking}
+                          onChange={setUnoStacking}
+                        />
+                      </>
+                    ) : (
+                      <p className="text-xs text-faint">
+                        High Stakes locks in 0-7 and Draw-card stacking (any Draw card of equal or higher value chains
+                        onto a stack). Draw 4 challenges and Jump-In are off.
+                      </p>
+                    )}
+                    {unoMode === 'classic' ? (
+                      <Toggle
+                        label="Jump-In"
+                        description="Hold an exact match for the top card (same colour + number, or same colour + symbol)? Play it instantly, even out of turn — the players you skip lose that turn. Wilds can't be jumped. Off keeps strict turn order."
+                        value={unoJumpIn}
+                        onChange={setUnoJumpIn}
+                      />
+                    ) : null}
                   </div>
                 </Field>
-                <Field label="Multi-Play">
-                  <CustomSelect
-                    value={unoMultiPlayMode}
-                    onChange={(val) => setUnoMultiPlayMode(val as typeof unoMultiPlayMode)}
-                    options={[
-                      { value: 'off', label: 'Off — one card per turn' },
-                      { value: 'same_color_or_number', label: 'Same colour or number' },
-                      { value: 'same_color', label: 'Same colour only' },
-                      { value: 'same_number', label: 'Same number only' },
-                    ]}
+                {unoMode === 'classic' ? (
+                  <Field label="Multi-Play">
+                    <CustomSelect
+                      value={unoMultiPlayMode}
+                      onChange={(val) => setUnoMultiPlayMode(val as typeof unoMultiPlayMode)}
+                      options={[
+                        { value: 'off', label: 'Off — one card per turn' },
+                        { value: 'same_color_or_number', label: 'Same colour or number' },
+                        { value: 'same_color', label: 'Same colour only' },
+                        { value: 'same_number', label: 'Same number only' },
+                      ]}
+                    />
+                    <p className="mt-1 text-xs text-faint">
+                      Lay several matching cards in a single turn — the last one played sets the next colour.
+                    </p>
+                  </Field>
+                ) : null}
+                <Field label="Series scoring (optional)">
+                  <Toggle
+                    label="Track points across hands"
+                    description={
+                      'At each hand end the winner scores the sum of every opponent’s cards (number = face, coloured action = 20, wild = 50). In High Stakes, each 25-card knockout adds +250.'
+                    }
+                    value={unoSeriesScoring}
+                    onChange={setUnoSeriesScoring}
                   />
-                  <p className="mt-1 text-xs text-faint">
-                    Lay several matching cards in a single turn — the last one played sets the next colour.
-                  </p>
+                  {unoSeriesScoring ? (
+                    <div className="mt-2">
+                      <CustomSelect
+                        value={unoSeriesTarget}
+                        onChange={setUnoSeriesTarget}
+                        options={[
+                          { value: 300, label: 'First to 300 wins the series' },
+                          { value: 500, label: 'First to 500 wins the series' },
+                          { value: 1000, label: 'First to 1000 wins the series (classic)' },
+                          { value: 2000, label: 'First to 2000 wins the series' },
+                        ]}
+                      />
+                    </div>
+                  ) : null}
                 </Field>
                 <p className="text-faint text-sm leading-relaxed">
-                  The party card classic — match the top card by colour, number, or symbol. Skip, Reverse, Draw Two, and
-                  Wild cards keep it lively; call &quot;UNO&quot; on your second-to-last card or draw a penalty. First
-                  to empty their hand wins! With a game length set, time running out ends the game — lowest hand total
-                  wins.
+                  The party card classic — match the top card by colour, number, or symbol. Skip, Reverse, Draw 2, and
+                  Wild cards keep it lively; call &quot;last card&quot; on your second-to-last play or draw a penalty.
+                  First to empty their hand wins! With a game length set, time running out ends the game — lowest hand
+                  total wins.
                 </p>
               </SettingsGroup>
             ) : isLudo ? (
@@ -4058,7 +4159,7 @@ function CreateGameInner() {
                 </p>
               </SettingsGroup>
             ) : isScrabble ? (
-              <SettingsGroup title="Scrabble room">
+              <SettingsGroup title="Word Tiles room">
                 <p className="text-faint text-sm">2–4 players — the host can join as one of them.</p>
                 <Field label="Game mode">
                   <CustomSelect

@@ -90,11 +90,11 @@ export function rootMetadata(): Metadata {
 }
 
 const HOME_DESCRIPTION =
-  'Play Yahtzee, Whot, Monopoly, Codewords and 25+ party games free with friends. Create a game, share the code — no sign-up, no download.'
+  'Play Five Dice, Whot, Estate Kings, Codewords and 25+ party games free with friends. Create a game, share the code — no sign-up, no download.'
 
 export function homeMetadata(): Metadata {
   return {
-    title: 'Free Online Party Games — Yahtzee, Whot, Monopoly & More',
+    title: 'Free Online Party Games — Five Dice, Whot, Estate Kings & More',
     description: HOME_DESCRIPTION,
     alternates: { canonical: '/' },
     openGraph: {

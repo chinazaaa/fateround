@@ -29,7 +29,7 @@ export const YAHTZEE_CATEGORY_LABELS: Record<YahtzeeCategory, string> = {
   full_house: 'Full House',
   small_straight: 'Sm. Straight',
   large_straight: 'Lg. Straight',
-  yahtzee: 'YAHTZEE',
+  yahtzee: '5 of a Kind',
   chance: 'Chance',
 }
 

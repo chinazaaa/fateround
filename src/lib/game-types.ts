@@ -806,7 +806,7 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
   },
   monopoly: {
     id: 'monopoly',
-    label: 'Monopoly',
+    label: 'Estate Kings',
     tagline: 'Buy, build, bankrupt your friends',
     headerEmoji: '🎲🏠',
     card: {
@@ -849,7 +849,7 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
   },
   yahtzee: {
     id: 'yahtzee',
-    label: 'Yahtzee',
+    label: 'Five Dice',
     tagline: 'Roll, hold, and score the combos',
     headerEmoji: '🎲🧠',
     card: {
@@ -978,7 +978,7 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
   },
   uno: {
     id: 'uno',
-    label: 'UNO',
+    label: 'Match Up',
     tagline: 'Match colour or number — first to empty their hand wins',
     headerEmoji: '🎴🌈',
     card: {
@@ -1323,7 +1323,7 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
 
   quiplash: {
     id: 'quiplash',
-    label: 'Quiplash',
+    label: 'Punchline',
     tagline: 'Fill in the blank — vote for the funniest answer',
     headerEmoji: '✍️😂',
     card: {
@@ -1755,7 +1755,7 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
   },
   scrabble: {
     id: 'scrabble',
-    label: 'Scrabble',
+    label: 'Word Tiles',
     tagline: 'Spell words, rack up points, outscore all',
     headerEmoji: '🔠',
     card: {
@@ -2401,13 +2401,13 @@ export function gameHowItWorks(
     case 'two_truths':
       return 'Everyone joins with their name and submits two truths plus one lie in the lobby. Each round features one player — everyone else guesses which statement is the lie. Spot the fib for points; fool the room for bonus points.'
     case 'monopoly':
-      return 'Players join with their name. Everyone starts on GO with £1,500. UK board — roll, buy or auction, build houses, mortgage, trade, and draw full Chance & Community Chest decks. Last player standing wins!'
+      return 'Players join with their name. Everyone starts on PAYDAY with £1,500. London board — roll, buy or auction, build houses, mortgage, trade, and draw full Fate & Kitty decks. Last player standing wins!'
     case 'yahtzee':
       return 'Players roll, hold dice, and choose a score category each turn. Build the best total across all combos.'
     case 'whot':
       return 'Players join with their name. Match the top card by shape or number — WHOT lets you call the next match. Pick 2 and Pick 3 stacks are separate. First to empty their hand wins — or lowest hand total when the game clock runs out.'
     case 'uno':
-      return 'Players join with their name and are dealt 7 cards. Match the top card by colour, number, or symbol. Skip, Reverse, Draw Two, and Wild cards shake things up — call "UNO" on your second-to-last card or draw a penalty. First to empty their hand wins.'
+      return 'Players join with their name and are dealt 7 cards. Match the top card by colour, number, or symbol. Skip, Reverse, Draw 2, and Wild cards shake things up — call "last card" on your second-to-last card or draw a penalty. First to empty their hand wins.'
     case 'ludo':
       return 'Players join with their name. Roll two dice each turn and use each die separately — a 6 brings pieces out; doubles earn another roll after both dice are played. Capture opponents, block with pairs — first to finish all four pieces wins!'
     case 'mahjong':

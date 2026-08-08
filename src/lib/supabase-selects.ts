@@ -6,7 +6,7 @@
 // server-side via the service role. Anon `select('*')` on games/players now ERRORS, so
 // client reads must use these curated lists.
 export const GAME_SELECT =
-  'id,title,content_label,rounds_count,timer_seconds,operative_timer_seconds,anonymous,auto_reveal,auto_submit_behavior,participant_mode,participant_filter,pair_vote_mode,question_source,custom_questions,player_questions_enabled,player_questions_order,game_type,theme,status,current_round_number,created_at,finished_at,session_started_at,allow_viewers,allow_late_players,max_players,anonymous_messages_trimmed_at,wst_quote_source,custom_slots,gender_based,codewords_player_picks,codewords_late_join,codewords_randomize_teams,describe_it_num_teams,describe_it_mode,quick_draw_variant,quick_draw_play_mode,quick_draw_num_teams,word_rush_mode,word_rush_prompt_mode,word_rush_difficulty,word_rush_num_teams,pool_usage,trivia_category,bingo_call_mode,bingo_call_interval_seconds,game_duration_seconds,whot_pick3_enabled,whot_cards_enabled,whot_number_calls_enabled,whot_pick2_stacking,crazy8_action_cards,crazy8_jokers,crazy8_pick2_stacking,uno_wd4_challenge,uno_uno_penalty,uno_wd4_challenge_penalty,uno_zero_seven,uno_stacking,uno_multi_play,uno_multi_play_mode,uno_team_mode,uno_jump_in,ludo_variant,ayo_variant,mahjong_ruleset,mahjong_rule_options,scrabble_dictionary_id,scrabble_clock_mode,scrabble_clock_seconds,chess_board_theme,chess_piece_set,tournament_id,pending_host_player_id,host_player_id,is_public,music_enabled,replay_pending,crossword_theme,crossword_difficulty,word_search_theme,word_search_difficulty,word_scramble_theme,word_scramble_difficulty,monopoly_double_go_salary,monopoly_forced_auctions,monopoly_auction_timer_seconds,monopoly_no_rent_in_jail,monopoly_estate_dividend,landmine_mode,landmine_mine_count,landmine_originality_bonus,landmine_mine_source,landmine_elim_seconds,landmine_review,landmine_review_seconds,ping_pong_points_to_win,checkers_nigeria_street_rules'
+  'id,title,content_label,rounds_count,timer_seconds,operative_timer_seconds,anonymous,auto_reveal,auto_submit_behavior,participant_mode,participant_filter,pair_vote_mode,question_source,custom_questions,player_questions_enabled,player_questions_order,game_type,theme,status,current_round_number,created_at,finished_at,session_started_at,allow_viewers,allow_late_players,max_players,anonymous_messages_trimmed_at,wst_quote_source,custom_slots,gender_based,codewords_player_picks,codewords_late_join,codewords_randomize_teams,describe_it_num_teams,describe_it_mode,quick_draw_variant,quick_draw_play_mode,quick_draw_num_teams,word_rush_mode,word_rush_prompt_mode,word_rush_difficulty,word_rush_num_teams,pool_usage,trivia_category,bingo_call_mode,bingo_call_interval_seconds,game_duration_seconds,whot_pick3_enabled,whot_cards_enabled,whot_number_calls_enabled,whot_pick2_stacking,crazy8_action_cards,crazy8_jokers,crazy8_pick2_stacking,uno_wd4_challenge,uno_uno_penalty,uno_wd4_challenge_penalty,uno_zero_seven,uno_stacking,uno_multi_play,uno_multi_play_mode,uno_team_mode,uno_jump_in,uno_mode,uno_no_mercy_win,uno_series_scoring,uno_series_target,uno_series_scores,uno_series_winner_id,ludo_variant,ayo_variant,mahjong_ruleset,mahjong_rule_options,scrabble_dictionary_id,scrabble_clock_mode,scrabble_clock_seconds,chess_board_theme,chess_piece_set,tournament_id,pending_host_player_id,host_player_id,is_public,music_enabled,replay_pending,crossword_theme,crossword_difficulty,word_search_theme,word_search_difficulty,word_scramble_theme,word_scramble_difficulty,monopoly_double_go_salary,monopoly_forced_auctions,monopoly_auction_timer_seconds,monopoly_no_rent_in_jail,monopoly_estate_dividend,landmine_mode,landmine_mine_count,landmine_originality_bonus,landmine_mine_source,landmine_elim_seconds,landmine_review,landmine_review_seconds,ping_pong_points_to_win,checkers_nigeria_street_rules'
 
 export const PLAYER_SELECT =
   'id,game_id,name,gender,identity_gender,participant_id,joined_at,spectator,monopoly_token,is_eliminated,eliminated_at,lives_remaining'
@@ -102,7 +102,31 @@ export const CRAZY8_SESSION_SELECT =
 export const CRAZY8_PLAYER_HANDS_SELECT = 'id,game_id,player_id,cards,player_order,created_at'
 
 export const UNO_SESSION_SELECT =
-  'id,game_id,turn_order,current_turn_index,direction,phase,draw_pile,discard_pile,top_card,required_color,draw_penalty,draw_penalty_kind,drawn_card_id,last_play_cards,pending_wild,challenge_prev_color,wd4_player_id,uno_pending_player,uno_called,status_message,winner_player_id,finish_order,left_player_ids,team_decider_id,turn_deadline_at,created_at,updated_at'
+  'id,game_id,turn_order,current_turn_index,direction,phase,draw_pile,discard_pile,top_card,required_color,draw_penalty,draw_penalty_kind,drawn_card_id,last_play_cards,last_play_player_id,pending_wild,challenge_prev_color,wd4_player_id,uno_pending_player,uno_called,status_message,winner_player_id,finish_order,left_player_ids,team_decider_id,eliminated_player_ids,color_roulette_player_id,color_roulette_reveals,draw_stack_chain,turn_deadline_at,created_at,updated_at'
+
+/**
+ * `uno_sessions` columns that are NOT NULL in the DB.
+ *
+ * Realtime UPDATE payloads omit unchanged TOAST-ed columns — once the draw / discard piles
+ * are big enough for Postgres to store them out-of-line, a partial update that doesn't touch
+ * them delivers them as `null` (same failure mode as `monopoly_boards.property_owners`, see
+ * MONOPOLY_BOARD_NOT_NULL_KEYS). Applying such a row would wipe the piles / turn order on
+ * screen and make every card look unplayable (canPlayCard sees a stale session). Callers
+ * use {@link isCompleteUnoSessionRow} to detect that and fall back to a full reload.
+ */
+export const UNO_SESSION_NOT_NULL_KEYS = [
+  'turn_order',
+  'draw_pile',
+  'discard_pile',
+  'left_player_ids',
+  'eliminated_player_ids',
+] as const
+
+/** True when a pushed `uno_sessions` row carries every NOT-NULL column (i.e. is not a
+ *  TOAST-truncated partial realtime payload — see {@link UNO_SESSION_NOT_NULL_KEYS}). */
+export function isCompleteUnoSessionRow(row: Record<string, unknown>): boolean {
+  return UNO_SESSION_NOT_NULL_KEYS.every((key) => row[key] != null)
+}
 
 export const UNO_PLAYER_HANDS_SELECT = 'id,game_id,player_id,cards,player_order,created_at'
 

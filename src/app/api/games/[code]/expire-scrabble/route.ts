@@ -20,7 +20,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ co
 
   if (!game) return NextResponse.json({ error: 'Game not found' }, { status: 404 })
   if (!isScrabbleGame(parseGameType(game.game_type))) {
-    return NextResponse.json({ error: 'Not a Scrabble game' }, { status: 400 })
+    return NextResponse.json({ error: 'Not a Word Tiles game' }, { status: 400 })
   }
   if (game.status !== 'active') {
     return NextResponse.json({ expired: false, finished: game.status === 'finished' })

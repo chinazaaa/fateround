@@ -330,8 +330,8 @@ export function MonopolyManagePanel({
         <Text style={styles.labelCaps}>Inventory</Text>
         <Text style={styles.inventoryText}>
           {myJailCards > 0
-            ? `🎟️ ${myJailCards} Get Out of Jail card${myJailCards === 1 ? '' : 's'}`
-            : 'No Get Out of Jail cards'}
+            ? `🎟️ ${myJailCards} skip-the-queue card${myJailCards === 1 ? '' : 's'}`
+            : 'No skip-the-queue cards'}
         </Text>
       </View>
 
@@ -462,7 +462,7 @@ export function MonopolyManagePanel({
           <View style={styles.section}>
             <Text style={styles.labelCaps}>Propose a trade</Text>
             <Text style={styles.muted}>
-              Pick what you give and what you get back — cash, properties, or Get Out of Jail cards. Both sides must be
+              Pick what you give and what you get back — cash, properties, or skip-the-queue cards. Both sides must be
               filled in for a normal swap.
             </Text>
 
@@ -515,7 +515,7 @@ export function MonopolyManagePanel({
                         <View style={[styles.checkbox, offerJailCards > 0 && styles.checkboxOn]}>
                           {offerJailCards > 0 ? <Text style={styles.checkMark}>✓</Text> : null}
                         </View>
-                        <Text style={styles.checkLabel}>Include 1 Get Out of Jail card</Text>
+                        <Text style={styles.checkLabel}>Include 1 skip-the-queue card</Text>
                       </Pressable>
                     ) : null}
                   </View>
@@ -553,7 +553,7 @@ export function MonopolyManagePanel({
                         <View style={[styles.checkbox, requestJailCards > 0 && styles.checkboxOn]}>
                           {requestJailCards > 0 ? <Text style={styles.checkMark}>✓</Text> : null}
                         </View>
-                        <Text style={styles.checkLabel}>Ask for 1 Get Out of Jail card</Text>
+                        <Text style={styles.checkLabel}>Ask for 1 skip-the-queue card</Text>
                       </Pressable>
                     ) : null}
                   </View>

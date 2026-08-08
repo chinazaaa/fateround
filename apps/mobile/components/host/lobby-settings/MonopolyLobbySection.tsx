@@ -56,7 +56,7 @@ export function MonopolyLobbySection({
         />
         <SettingToggle
           label="No Rent in Jail"
-          description="Prevent players in jail from collecting rent on their properties."
+          description="Prevent players in NICKED from collecting rent on their properties."
           value={value.noRentInJail}
           onChange={(noRentInJail) => onChange({ noRentInJail })}
         />

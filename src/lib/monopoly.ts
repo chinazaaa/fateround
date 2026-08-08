@@ -205,9 +205,9 @@ export function applyGoPass(
 
 function goPassStatusSuffix(collected: number, exactGo?: boolean): string {
   if (exactGo && collected > MONOPOLY_GO_SALARY) {
-    return ` Landed on GO! Collected ${formatMonopolyMoney(collected)}.`
+    return ` Landed on PAYDAY! Collected ${formatMonopolyMoney(collected)}.`
   }
-  return ` Passed GO — collected ${formatMonopolyMoney(collected)}.`
+  return ` Passed PAYDAY — collected ${formatMonopolyMoney(collected)}.`
 }
 
 export function nextTurnIndex(board: MonopolyBoard, states: MonopolyPlayerState[]): number {
@@ -580,13 +580,13 @@ function resolveSpaceLanding(
       phase: 'roll',
       pendingSpace: null,
       extraTurn: false,
-      statusSuffix: ' Go to Jail!',
+      statusSuffix: ' Off to NICKED!',
     }
   }
 
   if (landed.type === 'tax') {
     if (!ctx.passedGoOnce) {
-      statusSuffix = ' Pass GO once before tax applies on your first lap.'
+      statusSuffix = ' Pass PAYDAY once before tax applies on your first lap.'
       return {
         cash,
         position,
@@ -632,7 +632,7 @@ function resolveSpaceLanding(
     const ownerId = recordedOwnerId && ownerState && !ownerState.bankrupt ? recordedOwnerId : undefined
     if (!ownerId) {
       if (!ctx.passedGoOnce) {
-        statusSuffix = ' Pass GO once before you can buy property.'
+        statusSuffix = ' Pass PAYDAY once before you can buy property.'
         return {
           cash,
           position,
@@ -1024,7 +1024,7 @@ export async function initializeMonopolyGame(
     current_turn_index: 0,
     phase: 'roll',
     property_owners: {},
-    status_message: 'Game started — pass GO once before you can buy property.',
+    status_message: 'Game started — pass PAYDAY once before you can buy property.',
     turn_deadline_at: monopolyTurnDeadline(timerSeconds),
     ...defaultBoardFields(),
   })
@@ -1195,7 +1195,7 @@ export async function processMonopolyRoll(
           player_id: playerId,
           creditor_player_id: null,
           amount: MONOPOLY_JAIL_FINE,
-          reason: `Need ${formatMonopolyMoney(MONOPOLY_JAIL_FINE)} to leave jail`,
+          reason: `Need ${formatMonopolyMoney(MONOPOLY_JAIL_FINE)} to leave NICKED`,
           debt_type: 'jail',
           space_index: MONOPOLY_JAIL_POSITION,
         }
@@ -1235,7 +1235,7 @@ export async function processMonopolyRoll(
       cash -= MONOPOLY_JAIL_FINE
       inJail = false
       jailTurns = 0
-      statusMessage = `Paid ${formatMonopolyMoney(MONOPOLY_JAIL_FINE)} to leave jail. Rolled ${dice.d1}+${dice.d2}.`
+      statusMessage = `Paid ${formatMonopolyMoney(MONOPOLY_JAIL_FINE)} to leave NICKED. Rolled ${dice.d1}+${dice.d2}.`
       const move = movePosition(position, dice.total)
       position = move.to
       if (move.passedGo) {
@@ -1258,7 +1258,7 @@ export async function processMonopolyRoll(
           consecutive_doubles: 0,
           phase: nextPhase,
           current_turn_index: turnIndex,
-          status_message: `Still in jail — rolled ${dice.d1}+${dice.d2} (no doubles). Attempt ${jailTurns}/3.`,
+          status_message: `Still in NICKED — rolled ${dice.d1}+${dice.d2} (no doubles). Attempt ${jailTurns}/3.`,
           turn_deadline_at: monopolyDeadlineForPhase(settings, nextPhase),
         },
         board.updated_at
@@ -1279,7 +1279,7 @@ export async function processMonopolyRoll(
             consecutive_doubles: 0,
             phase: 'roll',
             current_turn_index: nextTurnIndex(board, states),
-            status_message: 'Three doubles in a row — Go to Jail!',
+            status_message: 'Three doubles in a row — Off to NICKED!',
             pending_space: null,
             auction_state: null,
           },
@@ -1324,8 +1324,8 @@ export async function processMonopolyRoll(
 
   if (landed.type === 'chance' || landed.type === 'community') {
     if (!passedGoOnce) {
-      const label = landed.type === 'chance' ? 'Chance' : 'Community Chest'
-      statusMessage += ` Pass GO once before drawing ${label} cards.`
+      const label = landed.type === 'chance' ? 'Fate' : 'Kitty'
+      statusMessage += ` Pass PAYDAY once before drawing ${label} cards.`
       phase = 'roll'
     } else {
       const kind: CardKind = landed.type
@@ -1353,7 +1353,7 @@ export async function processMonopolyRoll(
         amount: card.amount,
         other_player_count: otherCount,
       }
-      statusMessage += ` Drew ${kind === 'chance' ? 'Chance' : 'Community Chest'}.`
+      statusMessage += ` Drew ${kind === 'chance' ? 'Fate' : 'Kitty'}.`
 
       const effect = applyCardEffect(card, {
         playerId,
@@ -1510,8 +1510,8 @@ export async function processMonopolyRoll(
       ? 'Card effect'
       : landed.type === 'tax'
         ? `Tax (${landed.name})`
-        : statusMessage.includes('Passed GO')
-          ? 'Passed GO'
+        : statusMessage.includes('Passed PAYDAY')
+          ? 'Passed PAYDAY'
           : statusMessage.includes('jail')
             ? 'Jail fine'
             : 'Your turn'
@@ -1818,7 +1818,7 @@ export async function processMonopolyPayRent(
         phase: turnFinish.phase,
         current_turn_index: turnFinish.turnIndex,
         consecutive_doubles: turnFinish.consecutiveDoubles,
-        status_message: 'Rent waived because the owner is in jail.',
+        status_message: 'Rent waived because the owner is in NICKED.',
         pending_space: null,
         pending_debt: null,
         turn_deadline_at: monopolyDeadlineForPhase(settings, turnFinish.phase),
@@ -1910,13 +1910,13 @@ export async function processMonopolyJailPay(
   if (!state?.in_jail) return { error: 'Not in jail' }
 
   if (method === 'card') {
-    if (state.get_out_of_jail_free < 1) return { error: 'No Get Out of Jail Free card' }
+    if (state.get_out_of_jail_free < 1) return { error: 'No skip-the-queue card' }
     await updatePlayerAndBoard(
       supabase,
       gameId,
       playerId,
       { in_jail: false, jail_turns: 0, get_out_of_jail_free: state.get_out_of_jail_free - 1 },
-      { phase: 'roll', consecutive_doubles: 0, status_message: 'Used Get Out of Jail Free card — roll to move!' },
+      { phase: 'roll', consecutive_doubles: 0, status_message: 'Used skip-the-queue card — roll to move!' },
       board.updated_at
     )
     return {}
@@ -2961,7 +2961,7 @@ async function bankruptPlayer(
     if (state.cash > 0) transferred.push(formatMonopolyMoney(state.cash))
     if (state.get_out_of_jail_free > 0) {
       transferred.push(
-        `${state.get_out_of_jail_free} Get Out of Jail card${state.get_out_of_jail_free === 1 ? '' : 's'}`
+        `${state.get_out_of_jail_free} skip-the-queue card${state.get_out_of_jail_free === 1 ? '' : 's'}`
       )
     }
     if (transferred.length > 0) {

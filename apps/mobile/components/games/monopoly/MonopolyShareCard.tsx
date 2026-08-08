@@ -71,7 +71,7 @@ export function MonopolyShareCard({ standings, winnerName, gameTitle, themeId, h
           <Text style={styles.headerTitle} numberOfLines={1}>
             {gameTitle}
           </Text>
-          <Text style={styles.headerLabel}>MONOPOLY</Text>
+          <Text style={styles.headerLabel}>ESTATE KINGS</Text>
         </View>
 
         <Text style={styles.hero}>{winnerName ? '🏆' : '🏁'}</Text>
@@ -120,7 +120,7 @@ export function MonopolyShareCard({ standings, winnerName, gameTitle, themeId, h
         <View ref={captureCardRef} collapsable={false} style={styles.captureCard}>
           <Text style={styles.captureEmoji}>{HEADER_EMOJI}</Text>
           <Text style={styles.captureGame}>{gameTitle}</Text>
-          <Text style={styles.captureLabel}>MONOPOLY</Text>
+          <Text style={styles.captureLabel}>ESTATE KINGS</Text>
           <View style={styles.captureDivider} />
           <Text style={styles.captureHero}>{winnerName ? '🏆' : '🏁'}</Text>
           <Text style={styles.captureTitle}>{winnerName ? `${winnerName} wins!` : 'Game over!'}</Text>
@@ -152,12 +152,14 @@ export function MonopolyShareCard({ standings, winnerName, gameTitle, themeId, h
 }
 
 function buildShareText(standings: MonopolyStanding[], winnerName: string | null, themeId?: string | null): string {
-  const lines: string[] = ['Monopoly', '']
+  const lines: string[] = ['Estate Kings', '']
   lines.push(winnerName ? `🏆 ${winnerName} wins!` : '🏁 Game over')
   if (standings.length > 0) {
     lines.push('', 'Final standings:')
     standings.slice(0, 8).forEach((row) => {
-      lines.push(`  ${row.rank}. ${row.name} — ${formatThemedMoney(row.netWorth, themeId)} · ${detailLine(row, themeId)}`)
+      lines.push(
+        `  ${row.rank}. ${row.name} — ${formatThemedMoney(row.netWorth, themeId)} · ${detailLine(row, themeId)}`
+      )
     })
   }
   lines.push('', `Play at ${shareDomain()}`)

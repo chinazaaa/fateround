@@ -194,13 +194,13 @@ const THIS_OR_THAT_DEF: PlatformGameDef = {
 
 const QUIPLASH_DEF: PlatformGameDef = {
   gameType: 'quiplash',
-  label: 'Quiplash',
+  label: 'Punchline',
   columns: 'one prompt per line',
   minEntries: 5,
   parse: (text) => parseStringLines(text, 'prompt'),
   toText: (entries) => stringLinesToText(entries, 'prompt'),
   // Stored as plain strings (pickCustomQuiplashPrompts wraps them into {prompt} at draw time).
-  builtins: [{ key: 'default', label: 'Quiplash — Built-in', entries: QUIPLASH_PROMPTS.map((p) => p.prompt) }],
+  builtins: [{ key: 'default', label: 'Punchline — Built-in', entries: QUIPLASH_PROMPTS.map((p) => p.prompt) }],
 }
 
 // Quick Draw has two modes with separate banks. Lie mode = surreal scene prompts (this one);

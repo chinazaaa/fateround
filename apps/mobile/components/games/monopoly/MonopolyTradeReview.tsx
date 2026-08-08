@@ -38,7 +38,7 @@ function TradeSideItems({
         }
         return (
           <Text key="jail" style={styles.item}>
-            {item.count} Get Out of Jail card{item.count === 1 ? '' : 's'}
+            {item.count} skip-the-queue card{item.count === 1 ? '' : 's'}
           </Text>
         )
       })}

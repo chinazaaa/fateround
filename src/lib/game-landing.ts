@@ -1223,9 +1223,9 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
   }),
 
   monopoly: landing('monopoly', {
-    seoTitle: 'Monopoly — Free Online Board Game for Groups',
+    seoTitle: 'Estate Kings — Free Monopoly-Style Board Game Online',
     seoDescription:
-      'Play Monopoly online with friends. Roll dice, buy properties, pay rent, and bankrupt your opponents — all on your phones.',
+      'Play Estate Kings, a Monopoly-style property game, online with friends. Roll dice, buy properties, pay rent, and bankrupt your opponents — all on your phones.',
     keywords: [
       'online monopoly game',
       'monopoly rules',
@@ -1241,21 +1241,21 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       'play monopoly online with friends free no download',
     ],
     heroSubtitle:
-      'Classic Monopoly on your phones. Join a room, roll the dice, buy properties, and be the last player standing.',
+      'A classic Monopoly-style property game on your phones. Join a room, roll the dice, buy properties, and be the last player standing.',
     bodyParagraph:
-      'Monopoly on FateRound features customizable themed editions — including classic London streets and Naija Edition — with full Chance and Community Chest decks, property auctions, houses, hotels, mortgages, and player trading. Join 2–6 players and play turn-by-turn in real time.',
+      'Estate Kings on FateRound is a Monopoly-style property trading game with customizable themed editions — including classic London streets and Naija Edition — with full Fate and Kitty card decks, property auctions, houses, hotels, mortgages, and player trading. Join 2–6 players and play turn-by-turn in real time.',
     highlights: ['Full 40-space board', '2–6 players', 'Real-time turns'],
     features: [
       {
         title: 'Classic board',
         description:
-          'All the familiar spaces across editions — famous properties, transport terminals, utilities, Chance, and Community Chest.',
+          'All the familiar spaces across editions — famous properties, transport terminals, utilities, Fate, and Kitty.',
         emoji: '🏠',
       },
       {
         title: 'Turn-based play',
         description:
-          'Roll dice, buy or pass on properties, pay rent, draw cards, and manage Jail — core Monopoly rules on your phones.',
+          'Roll dice, buy or pass on properties, pay rent, draw cards, and manage NICKED — core Monopoly-style rules on your phones.',
         emoji: '🎲',
       },
       SHARED_FEATURES.realtime,
@@ -1268,7 +1268,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       },
       {
         title: 'Start the game',
-        description: 'Everyone begins on GO with 1,500 starting cash. The host starts when ready.',
+        description: 'Everyone begins on PAYDAY with 1,500 starting cash. The host starts when ready.',
       },
       {
         title: 'Last one wins',
@@ -1285,17 +1285,17 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       {
         question: 'How much money do you start with in Monopoly?',
         answer:
-          'Every player starts on GO with 1,500 starting cash in your selected edition’s currency (e.g., £1,500 or ₦1.5m), and collects 200 each time they pass GO (after their first lap around the board).',
+          'Every player starts on PAYDAY with 1,500 starting cash in your selected edition’s currency (e.g., £1,500 or ₦1.5m), and collects 200 each time they pass PAYDAY (after their first lap around the board).',
       },
       {
         question: 'What happens when you land on an unowned property?',
         answer:
-          'You can buy it from the Bank at its listed price. If you decline, it goes to auction and any player — including you — can bid. Note you can’t buy, pay tax, or draw cards until you’ve passed GO once on your first lap.',
+          'You can buy it from the Bank at its listed price. If you decline, it goes to auction and any player — including you — can bid. Note you can’t buy, pay tax, or draw cards until you’ve passed PAYDAY once on your first lap.',
       },
       {
         question: 'How do you get out of Jail in Monopoly?',
         answer:
-          'Pay the 50 fine before your next roll, use a Get Out of Jail Free card, or roll doubles on any of your next three turns. After three turns without doubles, you pay 50 and move by your roll.',
+          'On Estate Kings the Jail space is called NICKED. Pay the 50 fine before your next roll, use a skip-the-queue card, or roll doubles on any of your next three turns. After three turns without doubles, you pay 50 and move by your roll.',
       },
       {
         question: 'Can I set how long a Monopoly game lasts?',
@@ -1306,9 +1306,9 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
   }),
 
   yahtzee: landing('yahtzee', {
-    seoTitle: 'Play Yahtzee Online Free with Friends — No Sign-Up',
+    seoTitle: 'Five Dice — Free Yahtzee-Style Dice Game Online',
     seoDescription:
-      'Play Yahtzee online free with friends — no sign-up, no download. Roll five dice, hold what you want, and fill your scorecard. Solo or up to 6 players.',
+      'Play Five Dice, a Yahtzee-style dice scoring game, online free with friends — no sign-up, no download. Roll five dice, hold what you want, and fill your scorecard. Solo or up to 6 players.',
     keywords: [
       'yahtzee game online',
       'yahtzee online multiplayer',
@@ -1336,9 +1336,9 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       'yahtzee 2 player',
       'is yahtzee a game of luck or skill',
     ],
-    heroSubtitle: 'The classic dice puzzle — score straights, full houses, and Yahtzees together.',
+    heroSubtitle: 'The classic Yahtzee-style dice puzzle — score straights, full houses, and five-of-a-kinds together.',
     bodyParagraph:
-      'Yahtzee on FateRound brings roll-and-hold dice scoring to your group online — often mistyped as Yatzee, Yahtzy, Yachtzee, Yathzee, or Tahtzee, it’s the same classic five-dice game. Roll five dice up to three times per turn, hold the ones you want, and fill your scorecard category by category — three of a kind, full house, small and large straights, chance, and the coveted Yahtzee (five of a kind). Play solo or with up to six friends — no physical scorecard or dice cup needed.',
+      'Five Dice on FateRound is a Yahtzee-style roll-and-hold dice scoring game for your group online. Roll five dice up to three times per turn, hold the ones you want, and fill your scorecard category by category — three of a kind, full house, small and large straights, chance, and the coveted five-of-a-kind. Play solo or with up to six friends — no physical scorecard or dice cup needed.',
     highlights: ['5 dice', '1–6 players', 'Turn-based scoring'],
     features: [
       {
@@ -1379,7 +1379,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       {
         question: 'How does scoring work in online Yahtzee?',
         answer:
-          'Each turn you roll up to three times, holding dice between rolls, then fill one unused category. The upper section (Ones–Sixes) scores the total of those dice — reach 63+ there for a 35-point bonus. Lower-section combos pay fixed amounts: Full House 25, Small Straight 30, Large Straight 40, Yahtzee 50, with Three/Four of a Kind and Chance scoring the sum of all five dice. Highest total when every category is filled wins.',
+          'Each turn you roll up to three times, holding dice between rolls, then fill one unused category. The upper section (Ones–Sixes) scores the total of those dice — reach 63+ there for a 35-point bonus. Lower-section combos pay fixed amounts: Full House 25, Small Straight 30, Large Straight 40, Five of a Kind 50, with Three/Four of a Kind and Chance scoring the sum of all five dice. Highest total when every category is filled wins.',
       },
       {
         question: 'What are the odds of rolling a Yahtzee?',
@@ -1394,7 +1394,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       {
         question: 'What are all the categories on a Yahtzee scorecard?',
         answer:
-          'A Yahtzee scorecard has 13 categories in two sections. The upper section is Ones, Twos, Threes, Fours, Fives, and Sixes — each scores the sum of dice showing that number. The lower section is Three of a Kind, Four of a Kind, Full House (25), Small Straight (30), Large Straight (40), Yahtzee (50), and Chance. You fill exactly one category per turn, and FateRound tracks the whole card for every player automatically.',
+          'A Yahtzee-style scorecard has 13 categories in two sections. The upper section is Ones, Twos, Threes, Fours, Fives, and Sixes — each scores the sum of dice showing that number. The lower section is Three of a Kind, Four of a Kind, Full House (25), Small Straight (30), Large Straight (40), Five of a Kind (50), and Chance. You fill exactly one category per turn, and FateRound tracks the whole card for every player automatically.',
       },
       {
         question: 'What is the difference between a small straight and a large straight in Yahtzee?',
@@ -1404,17 +1404,17 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       {
         question: 'What is the Yahtzee bonus?',
         answer:
-          'There are two bonuses. The upper-section bonus adds 35 points if your Ones-through-Sixes total reaches 63 or more. The Yahtzee bonus rewards extra Yahtzees: once you have already scored 50 in the Yahtzee box, every additional five-of-a-kind you roll is worth a 100-point bonus. FateRound applies both automatically.',
+          'There are two bonuses. The upper-section bonus adds 35 points if your Ones-through-Sixes total reaches 63 or more. The Five Dice bonus rewards extra five-of-a-kinds: once you have already scored 50 in the Five of a Kind box, every additional five-of-a-kind you roll is worth a 100-point bonus. FateRound applies both automatically.',
       },
       {
         question: 'Is there any strategy to Yahtzee?',
         answer:
-          'Yes. Prioritize the upper section early to chase the 63-point threshold for the 35-point bonus, keep Chance as a flexible fallback for a bad roll, and only zero out a category (like Yahtzee) when you have no better option. Deciding which dice to hold between rolls is where most of the skill lives.',
+          'Yes. Prioritize the upper section early to chase the 63-point threshold for the 35-point bonus, keep Chance as a flexible fallback for a bad roll, and only zero out a category (like Five of a Kind) when you have no better option. Deciding which dice to hold between rolls is where most of the skill lives.',
       },
       {
         question: 'Can you play Yahtzee solo?',
         answer:
-          'Yes. FateRound lets you start a Yahtzee room on your own and play through the full scorecard to chase a high score — no other players required. Add friends any time by sharing the room code.',
+          'Yes. FateRound lets you start a Five Dice room on your own and play through the full scorecard to chase a high score — no other players required. Add friends any time by sharing the room code.',
       },
       {
         question: 'Where can I find a Yahtzee scorecard?',
@@ -1658,9 +1658,9 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     ],
   }),
   uno: landing('uno', {
-    seoTitle: 'Play UNO Online Free with Friends — No Sign-Up',
+    seoTitle: 'Match Up — Free UNO-Style Card Game Online (Classic + High Stakes)',
     seoDescription:
-      'Play UNO online free with friends — no sign-up, no download. Match by colour, number, or symbol; Skip, Reverse, Draw Two, and Wild cards; call UNO on your second-to-last card. 2–10 players.',
+      'Play Match Up, a UNO-style card game, online free with friends — no sign-up, no download. Classic mode or High Stakes (a 168-card no-mercy variant with +6/+10, Discard Colour, Skip All, Colour Roulette, and knockouts). 2–10 players.',
     keywords: [
       'uno online',
       'uno rules',
@@ -1674,11 +1674,19 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       'uno game online',
       'uno wild card',
       'uno draw four challenge',
+      "uno show 'em no mercy",
+      'show em no mercy online',
+      'uno no mercy rules',
+      'uno no mercy online',
+      'uno 168 card deck',
+      'match up card game',
+      'match up high stakes',
     ],
-    heroSubtitle: 'The party card classic — match colours and numbers, go wild, and empty your hand first.',
+    heroSubtitle:
+      'The UNO-style party card classic — match colours and numbers, go wild, empty your hand first. Or flip on High Stakes for a 168-card no-mercy deck with Draw Sixes, Draw Tens, and hand-size knockouts.',
     bodyParagraph:
-      'UNO on FateRound plays by the rules everyone knows: match the top card by colour, number, or symbol, and use Skip, Reverse, and Draw Two cards to control the table. Wild cards let you name the next colour, and a Wild Draw Four forces the next player to draw four — unless they challenge it. Call "UNO" the moment you have one card left, or draw a penalty. First to shed every card wins.',
-    highlights: ['108-card deck', '2–10 players', 'Wild + Draw Four challenge'],
+      'Match Up on FateRound is a UNO-style shedding card game that plays by the rules everyone knows: match the top card by colour, number, or symbol, and use Skip, Reverse, and Draw 2 cards to control the table. Wild cards let you name the next colour, and a Draw 4 forces the next player to draw four — unless they challenge it. Call the last card the moment you have one left, or draw a penalty. First to shed every card wins. Hosts can switch to High Stakes — a no-mercy variant on a 168-card deck with Discard Colour, Skip All, Reverse Draw 4, Draw 6, Draw 10, and Colour Roulette, plus the knockout rule: reach 25 cards in your hand and you are out of the round.',
+    highlights: ['108 or 168-card deck', '2–10 players', 'Classic + High Stakes modes'],
     features: [
       {
         title: 'Match or go wild',
@@ -1687,8 +1695,14 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       },
       {
         title: 'Action cards',
-        description: 'Skip and Reverse control the turn order; Draw Two and Wild Draw Four stack the pressure.',
+        description: 'Skip and Reverse control the turn order; Draw 2 and Draw 4 stack the pressure.',
         emoji: '🌈',
+      },
+      {
+        title: 'High Stakes mode',
+        description:
+          'A 168-card no-mercy variant: Discard Colour, Skip All, Reverse Draw 4, +6, +10, and Colour Roulette. Stack any Draw of equal-or-higher value; hit 25 cards and you are knocked out.',
+        emoji: '🔥',
       },
       SHARED_FEATURES.mobile,
       SHARED_FEATURES.noSignup,
@@ -1696,34 +1710,48 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     steps: [
       { title: 'Join a room', description: 'Enter your name and wait for the host to deal 7 cards each.' },
       { title: 'Play your turn', description: 'Match by colour, number, or symbol, play a Wild, or draw a card.' },
-      { title: 'Call UNO & win', description: 'Call "UNO" on your second-to-last card, then empty your hand to win.' },
+      {
+        title: 'Call the last card & win',
+        description:
+          'Call the last card on your second-to-last play, then empty your hand to win — or in High Stakes, outlast every knockout.',
+      },
     ],
-    perfectFor: ['Game nights', 'Family card games', 'Quick card breaks'],
+    perfectFor: ['Game nights', 'Family card games', 'Quick card breaks', 'High Stakes blowouts'],
     extraFaqs: [
       {
-        question: 'How do you win at UNO?',
+        question: 'How do you win at Match Up (or UNO-style card games in general)?',
         answer:
           'Be the first to play every card in your hand. If a game clock is running and time runs out, the player with the lowest points left in hand wins instead — number cards score their face value, action cards 20, and Wild cards 50.',
       },
       {
-        question: 'When do you call UNO?',
+        question: 'When do you call the last card?',
         answer:
-          'You must call "UNO" when you play your second-to-last card, leaving you with one. If you forget before the next player takes their turn, you draw a penalty of 2 cards.',
+          'You call it when you play your second-to-last card, leaving you with one. If you forget before the next player takes their turn, you draw a penalty of 2 cards.',
       },
       {
-        question: 'What is the Wild Draw Four challenge?',
+        question: 'What is the Draw 4 challenge?',
         answer:
-          'A Wild Draw Four can only legally be played if you have no card matching the current colour. The next player can challenge it: the system reveals the player’s hand — if they were bluffing, they draw four instead; if the challenge was wrong, the challenger draws four (or six) as a penalty. Hosts can turn challenges off.',
+          'A Draw 4 can only legally be played if you have no card matching the current colour. The next player can challenge it: the system reveals the player’s hand — if they were bluffing, they draw four instead; if the challenge was wrong, the challenger draws four (or six) as a penalty. Hosts can turn challenges off.',
       },
       {
-        question: 'How many cards do you start with in UNO?',
+        question: 'How many cards do you start with?',
         answer:
           'Each player is dealt 7 cards, with one card turned face-up to start the discard pile. The host deals when everyone is ready.',
       },
       {
-        question: 'Is UNO like Crazy Eights?',
+        question: 'Is Match Up like Crazy Eights?',
         answer:
-          'Yes — UNO is a branded descendant of Crazy Eights. Both are match-by-colour-or-number shedding games where you race to empty your hand. FateRound has both.',
+          'Yes — UNO-style card games (Match Up included) are branded descendants of Crazy Eights. Both are match-by-colour-or-number shedding games where you race to empty your hand. FateRound has both.',
+      },
+      {
+        question: 'What is High Stakes mode?',
+        answer:
+          'A tougher, no-mercy variant played from a 168-card deck. It adds Discard Colour (drop every card of a colour in one turn), Skip All (go again), Reverse Draw 4, Draw 6, Draw 10, and Colour Roulette (the target names a colour and reveals from the pile until they hit it). Draw stacking is always on and cross-kind — any Draw card of equal or higher value chains onto a stack. The knockout rule takes out any player who reaches 25 cards. Hosts choose the win condition: empty your hand first, or be the last player standing.',
+      },
+      {
+        question: 'How does the 25-card knockout rule work?',
+        answer:
+          'In High Stakes mode, any player who accumulates 25 or more cards in their hand is knocked out of the round. If the host chose the "last standing" win condition, the round ends when only one player is still holding cards. Otherwise the round ends the usual way — the first player to empty their hand wins.',
       },
     ],
   }),
@@ -2736,9 +2764,9 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
   }),
 
   scrabble: landing('scrabble', {
-    seoTitle: 'Scrabble Online — Play with Friends',
+    seoTitle: 'Word Tiles — Free Scrabble-Style Word Game Online',
     seoDescription:
-      'Play Scrabble online with 2–4 friends. Standard 15×15 board, premium squares, blanks, and full dictionary word-checking. No sign-up.',
+      'Play Word Tiles, a Scrabble-style crossword word game, online with 2–4 friends. Standard 15×15 board, premium squares, blanks, and full dictionary word-checking. No sign-up.',
     keywords: [
       'scrabble online',
       'play scrabble with friends',
@@ -2753,9 +2781,10 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       'online word game with friends free',
       'scrabble online no sign up',
     ],
-    heroSubtitle: 'The classic crossword tile game — build words, hit the premium squares, outscore your friends.',
+    heroSubtitle:
+      'The classic Scrabble-style crossword tile game — build words, hit the premium squares, outscore your friends.',
     bodyParagraph:
-      'Scrabble on FateRound is the classic word game for 2–4 players on a full standard 15×15 board. Draw seven tiles, take turns building interlocking words outward from the center star, and rack up points — letters are worth their standard values, and double/triple letter and word squares multiply your score. Every word you form is checked against a real dictionary, so only valid plays count. Use a blank tile as any letter, swap tiles you do not want, or pass. When the bag is empty and someone uses their last tile, the game ends and the highest score wins.',
+      'Word Tiles on FateRound is a Scrabble-style crossword word game for 2–4 players on a full standard 15×15 board. Draw seven tiles, take turns building interlocking words outward from the center star, and rack up points — letters are worth their standard values, and double/triple letter and word squares multiply your score. Every word you form is checked against a real dictionary, so only valid plays count. Use a blank tile as any letter, swap tiles you do not want, or pass. When the bag is empty and someone uses their last tile, the game ends and the highest score wins.',
     highlights: ['2–4 players', 'Real dictionary', 'Premium squares'],
     features: [
       {
@@ -2808,7 +2837,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       {
         question: 'Can I run a Scrabble tournament online?',
         answer:
-          'Yes. FateRound can run a Scrabble tournament as a head-to-head bracket, with your chosen dictionary and clock. Create one from the Tournaments page and share the join code — free, no app, no sign-up.',
+          'Yes. FateRound can run a Word Tiles tournament as a head-to-head bracket, with your chosen dictionary and clock. Create one from the Tournaments page and share the join code — free, no app, no sign-up.',
       },
     ],
   }),
@@ -3021,9 +3050,9 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
   }),
 
   quiplash: landing('quiplash', {
-    seoTitle: 'Quiplash Online — Free Fill-in-the-Blank Party Game',
+    seoTitle: 'Punchline — Free Quiplash-Style Party Game Online',
     seoDescription:
-      'Play Quiplash-style fill-in-the-blank battles online with friends. Write funny answers, vote head-to-head, and crown the wittiest player. Free, no sign-up.',
+      'Play Punchline, a Quiplash-style fill-in-the-blank party game, online with friends. Write funny answers, vote head-to-head, and crown the wittiest player. Free, no sign-up.',
     keywords: [
       'quiplash online',
       'quiplash game online free',
