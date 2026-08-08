@@ -327,3 +327,55 @@ const COLOR_GROUP_SIZES: Record<MonopolyColorGroup, number> = {
 export function formatMonopolyMoney(amount: number): string {
   return `£${amount.toLocaleString('en-GB')}`
 }
+
+export function spaceAt(index: number): MonopolySpace {
+  const normalized = ((index % MONOPOLY_BOARD_SIZE) + MONOPOLY_BOARD_SIZE) % MONOPOLY_BOARD_SIZE
+  return MONOPOLY_BOARD[normalized]!
+}
+
+export function spacesInGroup(group: MonopolyColorGroup): MonopolySpace[] {
+  return MONOPOLY_BOARD.filter(
+    (s) => s.color === group && (s.type === 'property' || s.type === 'station' || s.type === 'utility')
+  )
+}
+
+export function mortgageValue(space: MonopolySpace): number {
+  return Math.floor((space.price ?? 0) / 2)
+}
+
+export function unmortgageCost(space: MonopolySpace): number {
+  const base = mortgageValue(space)
+  return base + Math.ceil(base * MONOPOLY_MORTGAGE_INTEREST_RATE)
+}
+
+export function countOwnedInGroup(owners: Record<string, string>, ownerId: string, group: MonopolyColorGroup): number {
+  return MONOPOLY_BOARD.filter((s) => s.color === group && owners[String(s.index)] === ownerId).length
+}
+
+export function ownsColorMonopoly(owners: Record<string, string>, ownerId: string, group: MonopolyColorGroup): boolean {
+  if (group === 'station' || group === 'utility') {
+    return countOwnedInGroup(owners, ownerId, group) === COLOR_GROUP_SIZES[group]
+  }
+  return countOwnedInGroup(owners, ownerId, group) === COLOR_GROUP_SIZES[group]
+}
+
+export function groupHasMortgage(
+  group: MonopolyColorGroup,
+  ownerId: string,
+  owners: Record<string, string>,
+  mortgaged: Record<string, boolean>
+): boolean {
+  return MONOPOLY_BOARD.some(
+    (s) => s.color === group && owners[String(s.index)] === ownerId && mortgaged[String(s.index)]
+  )
+}
+
+export function nearestSpaceFrom(from: number, type: 'station' | 'utility', forward = true): number {
+  const indices = MONOPOLY_BOARD.filter((s) => s.type === type).map((s) => s.index)
+  if (!forward) {
+    const sorted = [...indices].filter((i) => i <= from).sort((a, b) => b - a)
+    return sorted[0] ?? indices[indices.length - 1]!
+  }
+  const next = indices.find((i) => i > from)
+  return next ?? indices[0]!
+}
