@@ -113,7 +113,7 @@ describe('buildNoMercyDeck', () => {
     expect(deck.filter((c) => c.kind === 'skip_everyone').length).toBe(8)
   })
 
-  it('has 12 each of Wild Draw 4, Reverse Draw 4, Draw 6, Draw 10', () => {
+  it('carries 4 base Wild Draw 4 + 12 each of Reverse Draw 4, Draw 6, Draw 10', () => {
     expect(deck.filter((c) => c.kind === 'wild_draw4').length).toBe(4) // base deck only
     expect(deck.filter((c) => c.kind === 'wild_reverse_draw4').length).toBe(12)
     expect(deck.filter((c) => c.kind === 'draw6').length).toBe(12)

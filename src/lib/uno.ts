@@ -1578,6 +1578,8 @@ export async function processUnoPlay(
         phase: 'color_roulette',
         current_turn_index: nextIdx,
         color_roulette_player_id: nextId,
+        // Fresh event — reveals start at 0 and increment on every no-match Draw click.
+        color_roulette_reveals: 0,
         status_message: `${name} played Colour Roulette — ${playerName(playerNames, nextId)} picks a colour and draws until they hit it`,
         ...unoPatch,
       }
@@ -2383,6 +2385,7 @@ export async function processUnoChoose(
         phase: 'color_roulette',
         current_turn_index: nextIndex,
         color_roulette_player_id: nextPlayerId,
+        color_roulette_reveals: 0,
         status_message: `${playerName(playerNames, nextPlayerId)} — pick a colour to reveal until`,
       },
       timerSeconds,
@@ -2562,6 +2565,7 @@ async function processUnoColorRouletteReveal(
         discard_pile: discard,
         pending_wild: null,
         color_roulette_player_id: null,
+        color_roulette_reveals: null,
         phase: 'playing',
         current_turn_index: nextIndex,
         status_message: status,
@@ -2576,6 +2580,13 @@ async function processUnoColorRouletteReveal(
   const targetHand = [...handForPlayer(hands, playerId), card]
   const matched = !isWildCard(card) && card.color === color
 
+  // Running per-event reveal counter (starts at 0 when the roulette opens, incremented
+  // below on every no-match Draw, cleared on match). This is what Roulette Master (>=5)
+  // and Roulette Executioner (>=8) key off — inflated the target's hand-size delta with
+  // unrelated draws would silently earn either trophy on a mid-round roulette.
+  const priorReveals = session.color_roulette_reveals ?? 0
+  const revealCount = priorReveals + 1
+
   if (!matched) {
     // Keep revealing — same seat, same phase; the card lands in the hand and the player
     // clicks Draw again for the next reveal.
@@ -2585,6 +2596,7 @@ async function processUnoColorRouletteReveal(
       {
         draw_pile: pile,
         discard_pile: discard,
+        color_roulette_reveals: revealCount,
         status_message: `${playerName(playerNames, playerId)} revealed a ${cardLabel(card)} — still hunting ${UNO_COLOR_LABELS[color]}`,
       },
       timerSeconds,
@@ -2600,7 +2612,6 @@ async function processUnoColorRouletteReveal(
   const direction = session.direction < 0 ? -1 : 1
   const nextIndex = unoNextTurnIndex(session, hands, session.current_turn_index, 1, direction)
   const nextPlayerId = session.turn_order[nextIndex]
-  const revealCount = targetHand.length - handForPlayer(hands, playerId).length + revealsSoFar(session, hands, playerId)
   const status = `${playerName(playerNames, playerId)} hit ${UNO_COLOR_LABELS[color]} — ${playerName(playerNames, nextPlayerId)}'s turn`
 
   const won = await persistSession(
@@ -2611,6 +2622,7 @@ async function processUnoColorRouletteReveal(
       discard_pile: discard,
       pending_wild: null,
       color_roulette_player_id: null,
+      color_roulette_reveals: null,
       phase: 'playing',
       current_turn_index: nextIndex,
       status_message: status,
@@ -2623,9 +2635,7 @@ async function processUnoColorRouletteReveal(
 
   // High Stakes — record the largest single roulette reveal count on the CASTER's row
   // (last_play_player_id captured whoever played the Wild Colour Roulette). unoFacts turns
-  // this into Roulette Master (>=5) and Roulette Executioner (>=8). We can't know the exact
-  // reveal count from prior clicks without a running counter — use the caster's row's
-  // running max helper, which absorbs the update from any single reveal batch.
+  // this into Roulette Master (>=5) and Roulette Executioner (>=8).
   const casterId = session.last_play_player_id ?? null
   if (revealCount > 0 && casterId && casterId !== playerId) {
     const casterStats = { ...currentUnoStats(hands, casterId) }
@@ -2639,15 +2649,6 @@ async function processUnoColorRouletteReveal(
     await applyMercyKnockout(supabase, gameId, playerId, targetHand.length, playerNames, rules.noMercyWin, casterId)
   }
   return {}
-}
-
-/** Best-effort reveal count so far: (targetHand size prior to this call) − (opening deal
- *  size). Opening hand is 7. Any drawing between the roulette start and now inflates this
- *  slightly — good enough for the Roulette Master / Executioner thresholds (>=5, >=8),
- *  which only care whether it crossed a bar in one roulette event. */
-function revealsSoFar(_session: UnoSession, hands: UnoPlayerHand[], playerId: string): number {
-  const currentSize = handForPlayer(hands, playerId).length
-  return Math.max(0, currentSize - 7)
 }
 
 // ── Wild Draw Four challenge ──────────────────────────────────────────────────────

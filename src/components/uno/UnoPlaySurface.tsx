@@ -441,7 +441,7 @@ export function UnoPlaySurface({
           <TurnStatus>
             {isMyTurn
               ? session.required_color
-                ? `Colour Roulette on you — click Draw until you hit ${session.required_color}`
+                ? `Colour Roulette on you — click Draw until you hit ${UNO_COLOR_LABELS[session.required_color]}`
                 : 'Colour Roulette on you — pick a colour'
               : `${turnName} is spinning the Color Roulette…`}
           </TurnStatus>
@@ -593,8 +593,8 @@ export function UnoPlaySurface({
               ? selectedCards.length
                 ? `${selectedCards.length} selected — the last card you pick lands on top`
                 : 'Tap matching cards to lay them down together'
-              : rouletteDrawing
-                ? `Colour Roulette — click Draw until you turn up a ${session.required_color}`
+              : rouletteDrawing && session.required_color
+                ? `Colour Roulette — click Draw until you turn up a ${UNO_COLOR_LABELS[session.required_color]}`
                 : hasDrawn
                   ? 'You drew a card — play it or keep it'
                   : canAct

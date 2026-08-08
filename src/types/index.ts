@@ -824,6 +824,10 @@ export interface UnoSession {
   eliminated_player_ids?: string[]
   /** No Mercy: who chose the colour for a Wild Color Roulette (they draw until match). */
   color_roulette_player_id?: string | null
+  /** No Mercy: reveals so far in the current Colour Roulette event (NULL when none in
+   *  progress). Trophies for Roulette Master (>=5) / Executioner (>=8) key off this
+   *  exact per-event count. */
+  color_roulette_reveals?: number | null
   /** Id of the player who played the current top card — for High Stakes knockout attribution. */
   last_play_player_id?: string | null
   /** Draw-card stack chain depth so far — resets when the penalty resolves or a non-Draw plays. */

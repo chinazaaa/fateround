@@ -191,9 +191,15 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
     enabled: bootstrap.screen === 'playing',
   })
 
-  // color_roulette lands the picker on the next player — same shape as choose_color
-  // (isMyTurn tracks that seat since unoPlay bumps current_turn_index into the phase).
-  const choosingColor = (session?.phase === 'choose_color' || session?.phase === 'color_roulette') && isMyTurn
+  // Colour choice — two sub-states.
+  // * choosingColor: classic Wild/+4 flow (choose_color) OR the very start of a Colour
+  //   Roulette when the target hasn't picked yet (required_color null).
+  // * rouletteDrawing: after the roulette target picks, they reveal cards one at a time
+  //   via the Draw button (the picker must be hidden or it would still cover the screen
+  //   and the Draw guard at `canDraw` — phase='playing' only — would refuse).
+  const choosingColor =
+    isMyTurn && (session?.phase === 'choose_color' || (session?.phase === 'color_roulette' && !session.required_color))
+  const rouletteDrawing = isMyTurn && session?.phase === 'color_roulette' && !!session.required_color
   const inChallengeWindow = session?.phase === 'challenge_window' && isMyTurn
   const inSwapTarget = session?.phase === 'swap_target' && isMyTurn
   const owesUnoCall = !!session && session.uno_pending_player === bootstrap.myPlayerId && !session.uno_called
@@ -734,6 +740,15 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
               </View>
             ) : (
               <>
+                {rouletteDrawing ? (
+                  // Colour Roulette reveal — one card per tap until the target hits
+                  // their chosen colour. Server routes phase='color_roulette' draws
+                  // to processUnoColorRouletteReveal.
+                  <Pressable style={styles.drawBtn} disabled={acting} onPress={() => void drawCard()}>
+                    <Text style={styles.drawText}>Draw a card</Text>
+                  </Pressable>
+                ) : null}
+
                 {canDraw ? (
                   <Pressable style={styles.drawBtn} disabled={acting} onPress={() => void drawCard()}>
                     <Text style={styles.drawText}>{drawLabel}</Text>
