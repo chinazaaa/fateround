@@ -55,7 +55,10 @@ export async function GET(req: NextRequest) {
     const challenge = challengeMap.get(gameType)
     const entry = challenge ? scoreMap.get(challenge.id) : undefined
     if (!challenge || !entry) continue
-    rankPromises.set(gameType, computeDailyRank(admin, gameType, challenge.id, entry).catch(() => null))
+    rankPromises.set(
+      gameType,
+      computeDailyRank(admin, gameType, challenge.id, entry).catch(() => null)
+    )
   }
 
   const rankResults = new Map<DailyChallengeGameType, number | null>()

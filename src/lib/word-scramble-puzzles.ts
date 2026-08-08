@@ -324,9 +324,7 @@ export function buildWordScrambleFromEntries(
   opts: { useAll?: boolean } = {}
 ): { metadata: WordScrambleMetadata; solution: string[] } | null {
   const diff = parseWordScrambleDifficulty(difficulty)
-  return (
-    buildFromWords(entries, diff, seed, exclude, opts) ?? buildFromWords(entries, diff, seed + 101, [], opts)
-  )
+  return buildFromWords(entries, diff, seed, exclude, opts) ?? buildFromWords(entries, diff, seed + 101, [], opts)
 }
 
 /** Parse a custom CSV/rows pool (word[,hint]) into scramble entries. */
