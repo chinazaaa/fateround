@@ -704,17 +704,20 @@ const makeStyles = (theme: Theme) =>
     shuffleTextActive: { color: theme.primaryMuted },
     board: { alignSelf: 'center', borderWidth: 2, borderColor: theme.border, marginVertical: 8 },
     boardRow: { flexDirection: 'row' },
+    // Neutral warm-grey empty square + rose/violet FateRound-branded premium colours
+    // (word bonuses in violet, letter bonuses in rose) — distinct from the commercial
+    // tan-board + red/pink/blue premium palette.
     cell: {
       alignItems: 'center',
       justifyContent: 'center',
-      backgroundColor: '#c9b896',
+      backgroundColor: '#e7e5e4',
       borderWidth: 0.5,
-      borderColor: '#8b7355',
+      borderColor: '#a8a29e',
     },
-    tw: { backgroundColor: '#dc2626' },
-    dw: { backgroundColor: '#f472b6' },
-    tl: { backgroundColor: '#2563eb' },
-    dl: { backgroundColor: '#38bdf8' },
+    tw: { backgroundColor: '#6d28d9' },
+    dw: { backgroundColor: '#a78bfa' },
+    tl: { backgroundColor: '#e11d48' },
+    dl: { backgroundColor: '#fda4af' },
     lastCell: { backgroundColor: '#fde68a' },
     premLabel: { fontSize: 7, fontWeight: '800', color: 'rgba(255,255,255,0.85)' },
     rack: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, justifyContent: 'center', marginVertical: 8 },
