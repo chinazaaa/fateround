@@ -320,18 +320,20 @@ export function gameInfoItems(game: GameMeta | null | undefined): string[] {
     if (game.crazy8_pick2_stacking) items.push('📚 Pick 2 stacking')
   } else if (gt === 'uno') {
     // Rule chips must reflect the EFFECTIVE rules, not the raw column values. In High
-    // Stakes stacking + 0-7 are locked ON; WD4 challenge, Team-Up, Multi-Play and
-    // Jump-In are forced OFF. Reading the DB flags directly showed stale Classic values
-    // (e.g. "WD4 challenge" on a High Stakes game where challenges are disabled in the
-    // engine).
+    // Stakes stacking + 0-7 are locked ON; WD4 challenge, Team-Up, and Jump-In are
+    // forced OFF. Multi-Play is host-picked in HS just like Classic. Reading the DB
+    // flags directly showed stale Classic values (e.g. "WD4 challenge" on a High Stakes
+    // game where challenges are disabled in the engine).
     // GameMeta only carries the uno_* subset the chips need, so cast to satisfy the
     // parseUnoRules signature — the fields it actually reads (uno_mode etc.) are all here.
     const uno = parseUnoRules(game as Parameters<typeof parseUnoRules>[0])
     if (uno.mode === 'no_mercy') {
-      // High Stakes locks in stacking + 0-7 and disables WD4/Team-Up/Multi-Play/Jump-In.
-      // Every one of those is implied by "High Stakes", so surface the single mode chip
-      // instead of the redundant per-rule chips.
+      // High Stakes locks in stacking + 0-7 and disables WD4/Team-Up/Jump-In. Multi-Play
+      // is still host-picked in HS — surface its chip below alongside the "High Stakes"
+      // one so the room can see when it's on. Everything else is implied by "High
+      // Stakes" and would be duplicative.
       items.push('💥 High Stakes')
+      if (uno.multiPlay !== 'off') items.push('🃏 Multi-Play')
     } else {
       if (uno.teamMode) items.push('🤝 Team-Up')
       if (uno.stacking) items.push('📚 Stacking')

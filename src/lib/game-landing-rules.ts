@@ -844,7 +844,7 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
       title: 'High Stakes mode',
       points: [
         'A host toggle at room creation — flips the whole game to a 168-card deck with new action + wild cards, harder stacking, and knockouts. Classic mode is untouched.',
-        '0-7 rule, Draw-card stacking (any equal-or-higher chain), and single-card play are all locked ON. Draw 4 challenge, Team-Up, Jump-In, and Multi-Play are OFF.',
+        '0-7 rule and Draw-card stacking (any equal-or-higher chain) are locked ON. Draw 4 challenge, Team-Up, and Jump-In are OFF. Multi-Play is host-picked in High Stakes just like Classic — pick Off / colour / number / colour-or-number when creating the room.',
         'Mercy knockout — the moment you hold 25 or more cards you are knocked out for the round. Host chooses the win condition when creating: “first out” (classic — empty your hand to win) or “last standing” (outlast every knockout).',
         'If you can’t play, draw — the deck keeps dealing you cards until you finally turn up one that fits, then it stops on that playable card so you can play it or keep it.',
       ],
