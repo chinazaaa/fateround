@@ -316,6 +316,7 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
     myPlayerId,
     myHandCount: myHand.length,
     enabled: game?.status === 'active' && screen === 'active',
+    players,
   })
 
   const drawDepleted = session ? isDrawPileDepleted(session) : false

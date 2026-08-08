@@ -327,6 +327,7 @@ export function UnoHostView({ gameCode, hostToken }: { gameCode: string; hostTok
     myPlayerId: hostPlayerId,
     myHandCount: myHand.length,
     enabled: hostPlays && game?.status === 'active',
+    players,
   })
 
   const handCounts = useMemo(() => {

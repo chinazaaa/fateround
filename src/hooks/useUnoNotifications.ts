@@ -12,12 +12,16 @@ export function useUnoNotifications({
   myPlayerId,
   myHandCount = 0,
   enabled = true,
+  players,
 }: {
   game: Game | null
   session: UnoSession | null
   myPlayerId: string | null | undefined
   myHandCount?: number
   enabled?: boolean
+  /** Passed in so a High Stakes Mercy knockout can show "<Name> was knocked out"
+   *  to the whole room. Optional — without it we skip the name in the toast. */
+  players?: Array<{ id: string; name: string }>
 }) {
   const { info } = useToast()
   const readyRef = useRef(false)
@@ -27,6 +31,10 @@ export function useUnoNotifications({
   const prevHandCountRef = useRef<number | null>(null)
   const prevUnoCallRef = useRef<string | null>(null)
   const prevStatusMessageRef = useRef<string | null>(null)
+  // Track eliminated_player_ids across renders so a growth event announces the NEW
+  // knockouts (High Stakes Mercy rule — hitting 25 cards is a per-hit event, so we
+  // announce each one, and use your own id vs. someone else's for the copy).
+  const prevEliminatedRef = useRef<string[]>([])
   // The round whose opening deal we've already accounted for. The initial deal fills your hand
   // (0 → 7, or leftover → 7 on play-again) and must NOT be announced as a draw; only increases
   // AFTER the deal are real draws. Keyed on the session id (recreated each round).
@@ -49,6 +57,9 @@ export function useUnoNotifications({
       prevHandCountRef.current = myHandCount
       prevUnoCallRef.current = unoCallKey
       prevStatusMessageRef.current = session?.status_message ?? null
+      // Seed with the current knocked-out list so mounting into a round that already had
+      // eliminations doesn't re-announce them.
+      prevEliminatedRef.current = (session?.eliminated_player_ids as string[] | null) ?? []
       // Mounting into an already-dealt active round: treat its deal as done so the player's
       // first real draw still notifies (only a fresh 0 → 7 deal should ever be suppressed).
       if (activeRoundKey !== null && myHandCount > 0) dealtRoundRef.current = activeRoundKey
@@ -137,12 +148,32 @@ export function useUnoNotifications({
       }
     }
 
+    // High Stakes Mercy — announce every player newly appended to
+    // eliminated_player_ids so the whole room sees who just got knocked out. Own-seat
+    // knockouts get a personal note; everyone else's is prefixed with their name (if we
+    // have the players list) or a generic "A player" fallback.
+    const nextEliminated = (session?.eliminated_player_ids as string[] | null) ?? []
+    const prevEliminatedSet = new Set(prevEliminatedRef.current)
+    const newlyOut = nextEliminated.filter((id) => !prevEliminatedSet.has(id))
+    if (newlyOut.length && game.status === 'active') {
+      for (const id of newlyOut) {
+        if (id === myPlayerId) {
+          info('💥 You were knocked out — 25 cards is the Mercy limit')
+        } else {
+          const name = players?.find((p) => p.id === id)?.name
+          info(`💥 ${name ?? 'A player'} was knocked out (25+ cards)`)
+        }
+      }
+      playRoundEndSound()
+    }
+    prevEliminatedRef.current = nextEliminated
+
     prevTurnIndexRef.current = currentTurnIndex
     prevStatusRef.current = game.status
     prevPhaseRef.current = session?.phase ?? null
     prevHandCountRef.current = myHandCount
     prevStatusMessageRef.current = statusMsg
-  }, [enabled, game, info, myHandCount, myPlayerId, session, unoCallKey])
+  }, [enabled, game, info, myHandCount, myPlayerId, players, session, unoCallKey])
 }
 
 export { playVoteSubmittedSound as playUnoActionSound }
