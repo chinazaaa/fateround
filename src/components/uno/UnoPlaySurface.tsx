@@ -226,8 +226,11 @@ export function UnoPlaySurface({
   const showLastPlay = lastPlaySet.length > 1
   const choosing = isMyTurn && !watching && session.phase === 'choose_color'
   // Colour Roulette lands the picker on the NEXT player, and isMyTurn tracks that seat
-  // (unoPlay bumps current_turn_index into the roulette phase). Same shape as `choosing`.
-  const rouletteChoosing = isMyTurn && !watching && session.phase === 'color_roulette'
+  // (unoPlay bumps current_turn_index into the roulette phase). Two sub-states: BEFORE
+  // the target has picked a colour (required_color null → picker overlay) and AFTER
+  // (required_color set → the target clicks Draw one at a time to reveal until they hit).
+  const rouletteChoosing = isMyTurn && !watching && session.phase === 'color_roulette' && !session.required_color
+  const rouletteDrawing = isMyTurn && !watching && session.phase === 'color_roulette' && !!session.required_color
   const deciding = isMyTurn && !watching && session.phase === 'challenge_window'
   const swapping = isMyTurn && !watching && session.phase === 'swap_target'
   const canAct = isMyTurn && !watching && session.phase === 'playing'
@@ -437,7 +440,9 @@ export function UnoPlaySurface({
         ) : session.phase === 'color_roulette' ? (
           <TurnStatus>
             {isMyTurn
-              ? 'Colour Roulette on you — pick a colour and reveal until you hit it'
+              ? session.required_color
+                ? `Colour Roulette on you — click Draw until you hit ${session.required_color}`
+                : 'Colour Roulette on you — pick a colour'
               : `${turnName} is spinning the Color Roulette…`}
           </TurnStatus>
         ) : drawPenalty > 0 && canAct ? (
@@ -588,13 +593,15 @@ export function UnoPlaySurface({
               ? selectedCards.length
                 ? `${selectedCards.length} selected — the last card you pick lands on top`
                 : 'Tap matching cards to lay them down together'
-              : hasDrawn
-                ? 'You drew a card — play it or keep it'
-                : canAct
-                  ? `Tap a highlighted card to play it${many ? ' · swipe to see more' : ''}`
-                  : canJumpNow
-                    ? `⚡ Jump-In! Tap your ${cardLabel(top!)} to play it out of turn`
-                    : undefined
+              : rouletteDrawing
+                ? `Colour Roulette — click Draw until you turn up a ${session.required_color}`
+                : hasDrawn
+                  ? 'You drew a card — play it or keep it'
+                  : canAct
+                    ? `Tap a highlighted card to play it${many ? ' · swipe to see more' : ''}`
+                    : canJumpNow
+                      ? `⚡ Jump-In! Tap your ${cardLabel(top!)} to play it out of turn`
+                      : undefined
           }
           actions={
             <>
@@ -662,6 +669,18 @@ export function UnoPlaySurface({
                   onClick={onPass}
                 >
                   Keep it
+                </button>
+              ) : rouletteDrawing ? (
+                // Colour Roulette reveal: one card per click until the target hits their
+                // chosen colour. Server-side processUnoDraw routes to the roulette-reveal
+                // helper when phase === 'color_roulette'.
+                <button
+                  type="button"
+                  className="fr-btn fr-btn--primary fr-btn--block"
+                  disabled={acting}
+                  onClick={onDraw}
+                >
+                  Draw a card
                 </button>
               ) : (
                 <>

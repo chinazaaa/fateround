@@ -1976,6 +1976,14 @@ export async function processUnoDraw(
     return { error: "Time's up — the game has ended" }
   }
 
+  // Colour Roulette: the target reveals cards one at a time by clicking Draw. Route to
+  // the dedicated reveal helper; it handles the match/no-match branches and the caster's
+  // reveal-count stats + mercy check.
+  if (session.phase === 'color_roulette') {
+    if (session.color_roulette_player_id !== playerId) return { error: 'Not your Colour Roulette' }
+    return processUnoColorRouletteReveal(supabase, gameId, playerId, session, hands, playerNames, rules, timerSeconds)
+  }
+
   if (session.phase !== 'playing') return { error: 'Resolve the current card first' }
 
   const currentId = currentPlayerId(session)
@@ -2472,43 +2480,106 @@ export async function processUnoColorRoulette(
   if (session.color_roulette_player_id !== playerId) return { error: 'Not your Color Roulette' }
   if (!UNO_COLORS.includes(color)) return { error: 'Choose a colour' }
 
-  // Reveal loop: pull cards until we hit `color` (wilds don't satisfy). Add everything revealed
-  // to the acting player's hand. Reshuffle once from discard if the pile empties mid-reveal.
+  // Colour pick only sets the target colour and keeps the phase — the target draws cards
+  // one at a time via processUnoDraw (each Draw click reveals one). Better UX than the
+  // server auto-drawing and reporting "revealed N" back — the player wants to feel the
+  // reveals happen. See processUnoDraw's color_roulette branch for the reveal loop.
+  const status = `${playerName(playerNames, playerId)} picked ${UNO_COLOR_LABELS[color]} — click Draw until you hit it`
+
+  const won = await persistSession(
+    supabase,
+    gameId,
+    {
+      required_color: color,
+      status_message: status,
+    },
+    timerSeconds,
+    session.updated_at
+  )
+  if (!won) return {}
+  return {}
+}
+
+/**
+ * Reveal ONE card during a color_roulette phase. Called from processUnoDraw when the target
+ * clicks the Draw button. Adds the card to the target's hand; if it matches required_color
+ * (wilds don't count), the roulette resolves — clear the phase, advance the turn, credit
+ * the caster's running max reveal count, and check the Mercy hand limit.
+ */
+async function processUnoColorRouletteReveal(
+  supabase: SupabaseClient,
+  gameId: string,
+  playerId: string,
+  session: UnoSession,
+  hands: UnoPlayerHand[],
+  playerNames: Map<string, string>,
+  rules: UnoRules,
+  timerSeconds: number
+): Promise<{ error?: string }> {
+  const color = session.required_color as UnoColor | null
+  if (!color) return { error: 'Pick a colour first' }
+
   let pile = [...((session.draw_pile as UnoCard[]) ?? [])]
   let discard = [...((session.discard_pile as UnoCard[]) ?? [])]
-  const revealed: UnoCard[] = []
-  let matched = false
-  // Cap on reveals so a pathological deck can't loop forever.
-  const cap = pile.length + discard.length + 1
-  for (let i = 0; i < cap; i += 1) {
-    if (pile.length === 0) {
-      const refill = refillDrawPile(pile, discard)
-      pile = refill.drawPile
-      discard = refill.discardPile
-      if (pile.length === 0) break
-    }
-    const c = pile.pop()!
-    revealed.push(c)
-    if (!isWildCard(c) && c.color === color) {
-      matched = true
-      break
-    }
+  if (pile.length === 0) {
+    const refill = refillDrawPile(pile, discard)
+    pile = refill.drawPile
+    discard = refill.discardPile
+  }
+  if (pile.length === 0) {
+    // Nothing left to reveal — resolve as "no colour found", advance the turn.
+    const direction = session.direction < 0 ? -1 : 1
+    const nextIndex = unoNextTurnIndex(session, hands, session.current_turn_index, 1, direction)
+    const nextPlayerId = session.turn_order[nextIndex]
+    const status = `${playerName(playerNames, playerId)} — pile ran out, no ${UNO_COLOR_LABELS[color]} · ${playerName(playerNames, nextPlayerId)}'s turn`
+    await persistSession(
+      supabase,
+      gameId,
+      {
+        draw_pile: pile,
+        discard_pile: discard,
+        pending_wild: null,
+        color_roulette_player_id: null,
+        phase: 'playing',
+        current_turn_index: nextIndex,
+        status_message: status,
+      },
+      timerSeconds,
+      session.updated_at
+    )
+    return {}
   }
 
-  const targetHand = [...handForPlayer(hands, playerId), ...revealed]
+  const card = pile.pop()!
+  const targetHand = [...handForPlayer(hands, playerId), card]
+  const matched = !isWildCard(card) && card.color === color
+
+  if (!matched) {
+    // Keep revealing — same seat, same phase; the card lands in the hand and the player
+    // clicks Draw again for the next reveal.
+    const won = await persistSession(
+      supabase,
+      gameId,
+      {
+        draw_pile: pile,
+        discard_pile: discard,
+        status_message: `${playerName(playerNames, playerId)} revealed a ${cardLabel(card)} — still hunting ${UNO_COLOR_LABELS[color]}`,
+      },
+      timerSeconds,
+      session.updated_at
+    )
+    if (!won) return {}
+    await writeHand(supabase, gameId, playerId, targetHand)
+    return {}
+  }
+
+  // Match: resolve the roulette. Card lands in hand, required_color persists (the next
+  // player must match this colour on their normal turn), turn advances.
   const direction = session.direction < 0 ? -1 : 1
-  const nextIndex = unoNextTurnIndex(
-    { ...session, current_turn_index: session.current_turn_index } as UnoSession,
-    hands,
-    session.current_turn_index,
-    1,
-    direction
-  )
+  const nextIndex = unoNextTurnIndex(session, hands, session.current_turn_index, 1, direction)
   const nextPlayerId = session.turn_order[nextIndex]
-  const revealNote = matched
-    ? `revealed ${revealed.length} to hit ${UNO_COLOR_LABELS[color]}`
-    : `revealed ${revealed.length} — no ${UNO_COLOR_LABELS[color]} in the pile`
-  const status = `${playerName(playerNames, playerId)} ${revealNote} · ${playerName(playerNames, nextPlayerId)}'s turn`
+  const revealCount = targetHand.length - handForPlayer(hands, playerId).length + revealsSoFar(session, hands, playerId)
+  const status = `${playerName(playerNames, playerId)} hit ${UNO_COLOR_LABELS[color]} — ${playerName(playerNames, nextPlayerId)}'s turn`
 
   const won = await persistSession(
     supabase,
@@ -2516,7 +2587,6 @@ export async function processUnoColorRoulette(
     {
       draw_pile: pile,
       discard_pile: discard,
-      required_color: color,
       pending_wild: null,
       color_roulette_player_id: null,
       phase: 'playing',
@@ -2531,22 +2601,31 @@ export async function processUnoColorRoulette(
 
   // High Stakes — record the largest single roulette reveal count on the CASTER's row
   // (last_play_player_id captured whoever played the Wild Colour Roulette). unoFacts turns
-  // this into Roulette Master (>=5) and Roulette Executioner (>=8).
-  const revealMax = revealed.length
+  // this into Roulette Master (>=5) and Roulette Executioner (>=8). We can't know the exact
+  // reveal count from prior clicks without a running counter — use the caster's row's
+  // running max helper, which absorbs the update from any single reveal batch.
   const casterId = session.last_play_player_id ?? null
-  if (revealMax > 0 && casterId && casterId !== playerId) {
+  if (revealCount > 0 && casterId && casterId !== playerId) {
     const casterStats = { ...currentUnoStats(hands, casterId) }
-    bumpMaxU(casterStats, 'uno_hs_max_roulette_dealt', revealMax)
+    bumpMaxU(casterStats, 'uno_hs_max_roulette_dealt', revealCount)
     await writeUnoStats(supabase, gameId, casterId, casterStats)
   }
 
-  // Mercy: adding a huge stack of cards can push the player past the knockout limit.
+  // Mercy: revealing a huge stack of cards can push the target past the knockout limit.
   // Attribution: the Colour Roulette caster (whoever played the wild that queued this phase).
   if (rules.mode === 'no_mercy' && targetHand.length >= UNO_MERCY_HAND_LIMIT) {
-    const casterId = session.last_play_player_id ?? null
     await applyMercyKnockout(supabase, gameId, playerId, targetHand.length, playerNames, rules.noMercyWin, casterId)
   }
   return {}
+}
+
+/** Best-effort reveal count so far: (targetHand size prior to this call) − (opening deal
+ *  size). Opening hand is 7. Any drawing between the roulette start and now inflates this
+ *  slightly — good enough for the Roulette Master / Executioner thresholds (>=5, >=8),
+ *  which only care whether it crossed a bar in one roulette event. */
+function revealsSoFar(_session: UnoSession, hands: UnoPlayerHand[], playerId: string): number {
+  const currentSize = handForPlayer(hands, playerId).length
+  return Math.max(0, currentSize - 7)
 }
 
 // ── Wild Draw Four challenge ──────────────────────────────────────────────────────
