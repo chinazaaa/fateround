@@ -421,12 +421,16 @@ export function UnoPlaySurface({
           </div>
         )}
 
-        {watching ? (
+        {/* Commentary — the third-person status_message is what a spectator wants to
+            follow ("Naza played +10", "EpicPuma must draw 10"), so show it for BOTH
+            watchers and active players. The "Spectating —" line only fills in when
+            there's no status yet (opening deal, brief lulls). */}
+        {session.status_message ? (
+          <ActionToast tone="ok">{session.status_message}</ActionToast>
+        ) : watching ? (
           <TurnStatus muted>
             Spectating — {turnName}&apos;s turn · <span className="g">you can join the voice room</span>
           </TurnStatus>
-        ) : session.status_message ? (
-          <ActionToast tone="ok">{session.status_message}</ActionToast>
         ) : session.phase === 'choose_color' ? (
           <TurnStatus>
             {isMyTurn ? 'You played a wild card — choose the colour to match' : `${turnName} is choosing a colour…`}

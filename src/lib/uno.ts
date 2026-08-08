@@ -1448,9 +1448,7 @@ export function rotateActiveHands(
   direction: number
 ): { playerId: string; cards: UnoCard[] }[] {
   const eliminated = new Set<string>((session.eliminated_player_ids as string[] | null) ?? [])
-  const seq = (session.turn_order ?? []).filter(
-    (id) => !eliminated.has(id) && (handMap.get(id)?.length ?? 0) > 0
-  )
+  const seq = (session.turn_order ?? []).filter((id) => !eliminated.has(id) && (handMap.get(id)?.length ?? 0) > 0)
   const n = seq.length
   if (n < 2) return seq.map((id) => ({ playerId: id, cards: handMap.get(id) ?? [] }))
   const H = seq.map((id) => handMap.get(id) ?? [])
