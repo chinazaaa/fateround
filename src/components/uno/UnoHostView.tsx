@@ -514,9 +514,8 @@ export function UnoHostView({ gameCode, hostToken }: { gameCode: string; hostTok
             onCallUno={() => void postHostAction('/api/uno/call-uno')}
             onSwap={(targetId) => void postHostAction('/api/uno/swap', { targetId })}
             onPass={() => void postHostAction('/api/uno/pass')}
-            // Mirror parseUnoRules: HS forces Multi-Play + Jump-In OFF, so the host UI
-            // must not offer either even if the raw DB flags still carry Classic values.
-            multiPlayMode={game.uno_mode === 'no_mercy' ? 'off' : parseMultiPlayMode(game.uno_multi_play_mode)}
+            // Multi-Play is allowed in HS (spec update). Jump-In stays forced OFF in HS.
+            multiPlayMode={parseMultiPlayMode(game.uno_multi_play_mode)}
             onPlayMulti={(cardIds) => void postHostAction('/api/uno/play-multi', { cardIds })}
             jumpInEnabled={game.uno_mode !== 'no_mercy' && game.uno_jump_in === true}
             onJumpIn={(cardId) => void postHostAction('/api/uno/jump-in', { cardId })}
