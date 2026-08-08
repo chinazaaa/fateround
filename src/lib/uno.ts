@@ -1024,7 +1024,10 @@ function playerOutPatch(
     }
   }
 
-  const remaining = (session.turn_order ?? []).filter((id) => id !== playerId && unoHandCount(hands, id) > 0)
+  const eliminated = new Set<string>((session.eliminated_player_ids as string[] | null) ?? [])
+  const remaining = (session.turn_order ?? []).filter(
+    (id) => id !== playerId && !eliminated.has(id) && unoHandCount(hands, id) > 0
+  )
 
   if (gameDurationSeconds <= 0 || remaining.length < 2) {
     return {
@@ -1444,7 +1447,10 @@ export function rotateActiveHands(
   handMap: Map<string, UnoCard[]>,
   direction: number
 ): { playerId: string; cards: UnoCard[] }[] {
-  const seq = (session.turn_order ?? []).filter((id) => (handMap.get(id)?.length ?? 0) > 0)
+  const eliminated = new Set<string>((session.eliminated_player_ids as string[] | null) ?? [])
+  const seq = (session.turn_order ?? []).filter(
+    (id) => !eliminated.has(id) && (handMap.get(id)?.length ?? 0) > 0
+  )
   const n = seq.length
   if (n < 2) return seq.map((id) => ({ playerId: id, cards: handMap.get(id) ?? [] }))
   const H = seq.map((id) => handMap.get(id) ?? [])
@@ -2851,6 +2857,9 @@ export async function processUnoSwap(
   if (currentId !== playerId) return { error: 'Not your turn' }
   if (targetId === playerId) return { error: 'Pick another player to swap with' }
   if (!(session.turn_order ?? []).includes(targetId)) return { error: 'That player is not in the game' }
+  if (((session.eliminated_player_ids as string[] | null) ?? []).includes(targetId)) {
+    return { error: 'That player is knocked out' }
+  }
   if (unoHandCount(hands, targetId) === 0) return { error: 'That player has no cards to swap' }
 
   const myCards = handForPlayer(hands, playerId)
