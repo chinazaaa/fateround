@@ -1658,9 +1658,9 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     ],
   }),
   uno: landing('uno', {
-    seoTitle: 'Play UNO Online Free with Friends — No Sign-Up',
+    seoTitle: 'Play UNO Online Free with Friends — Classic + No Mercy',
     seoDescription:
-      'Play UNO online free with friends — no sign-up, no download. Match by colour, number, or symbol; Skip, Reverse, Draw Two, and Wild cards; call UNO on your second-to-last card. 2–10 players.',
+      'Play UNO online free with friends — no sign-up, no download. Classic UNO or Show ’em No Mercy (168-card deck, +6/+10, Discard All, Skip Everyone, Color Roulette, Mercy knockouts). 2–10 players.',
     keywords: [
       'uno online',
       'uno rules',
@@ -1674,11 +1674,16 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       'uno game online',
       'uno wild card',
       'uno draw four challenge',
+      "uno show 'em no mercy",
+      'uno no mercy rules',
+      'uno no mercy online',
+      'uno 168 card deck',
     ],
-    heroSubtitle: 'The party card classic — match colours and numbers, go wild, and empty your hand first.',
+    heroSubtitle:
+      'The party card classic — match colours and numbers, go wild, empty your hand first. Or turn on Show ’em No Mercy for a 168-card deck, Draw Sixes, Draw Tens, and knockouts.',
     bodyParagraph:
-      'UNO on FateRound plays by the rules everyone knows: match the top card by colour, number, or symbol, and use Skip, Reverse, and Draw Two cards to control the table. Wild cards let you name the next colour, and a Wild Draw Four forces the next player to draw four — unless they challenge it. Call "UNO" the moment you have one card left, or draw a penalty. First to shed every card wins.',
-    highlights: ['108-card deck', '2–10 players', 'Wild + Draw Four challenge'],
+      'UNO on FateRound plays by the rules everyone knows: match the top card by colour, number, or symbol, and use Skip, Reverse, and Draw Two cards to control the table. Wild cards let you name the next colour, and a Wild Draw Four forces the next player to draw four — unless they challenge it. Call "UNO" the moment you have one card left, or draw a penalty. First to shed every card wins. Hosts can switch on Show ’em No Mercy for a 168-card deck with Discard All, Skip Everyone, Wild Reverse Draw Four, Wild Draw Six, Wild Draw Ten, and Wild Color Roulette — plus the Mercy rule: hit 25 cards in your hand and you’re knocked out.',
+    highlights: ['108 or 168-card deck', '2–10 players', 'Classic + No Mercy modes'],
     features: [
       {
         title: 'Match or go wild',
@@ -1690,15 +1695,25 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         description: 'Skip and Reverse control the turn order; Draw Two and Wild Draw Four stack the pressure.',
         emoji: '🌈',
       },
+      {
+        title: 'Show ’em No Mercy',
+        description:
+          '168-card deck with Discard All, Skip Everyone, Wild Reverse Draw Four, +6, +10, and Color Roulette. Stack any Draw of equal-or-higher value; 25-card hands are knocked out by the Mercy rule.',
+        emoji: '🔥',
+      },
       SHARED_FEATURES.mobile,
       SHARED_FEATURES.noSignup,
     ],
     steps: [
       { title: 'Join a room', description: 'Enter your name and wait for the host to deal 7 cards each.' },
       { title: 'Play your turn', description: 'Match by colour, number, or symbol, play a Wild, or draw a card.' },
-      { title: 'Call UNO & win', description: 'Call "UNO" on your second-to-last card, then empty your hand to win.' },
+      {
+        title: 'Call UNO & win',
+        description:
+          'Call "UNO" on your second-to-last card, then empty your hand to win — or in No Mercy, outlast every Mercy knockout.',
+      },
     ],
-    perfectFor: ['Game nights', 'Family card games', 'Quick card breaks'],
+    perfectFor: ['Game nights', 'Family card games', 'Quick card breaks', 'No Mercy blowouts'],
     extraFaqs: [
       {
         question: 'How do you win at UNO?',
@@ -1724,6 +1739,16 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         question: 'Is UNO like Crazy Eights?',
         answer:
           'Yes — UNO is a branded descendant of Crazy Eights. Both are match-by-colour-or-number shedding games where you race to empty your hand. FateRound has both.',
+      },
+      {
+        question: 'What is Show ’em No Mercy mode?',
+        answer:
+          'A tougher variant of UNO played from a 168-card deck. It adds Discard All (drop every card of a colour in one turn), Skip Everyone (go again), Wild Reverse Draw Four, Wild Draw Six, Wild Draw Ten, and Wild Color Roulette (the target names a colour and reveals from the pile until they hit it). Draw stacking is always on and cross-kind — any Draw card of equal or higher value chains onto a stack. The Mercy rule knocks out any player who reaches 25 cards. Hosts choose the win condition: empty your hand first, or be the last player standing.',
+      },
+      {
+        question: 'How does the Mercy rule work?',
+        answer:
+          'In No Mercy mode, any player who accumulates 25 or more cards in their hand is knocked out of the round. If the host chose the "last standing" win condition, the round ends when only one player is still holding cards. Otherwise the round ends the usual way — the first player to empty their hand wins.',
       },
     ],
   }),

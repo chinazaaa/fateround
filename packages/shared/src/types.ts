@@ -105,6 +105,10 @@ export interface Game {
   uno_jump_in?: boolean | null
   uno_mode?: string | null
   uno_no_mercy_win?: string | null
+  uno_series_scoring?: boolean | null
+  uno_series_target?: number | null
+  uno_series_scores?: Record<string, number> | null
+  uno_series_winner_id?: string | null
   describe_it_mode?: string | null
   describe_it_num_teams?: number | null
   word_rush_mode?: string | null

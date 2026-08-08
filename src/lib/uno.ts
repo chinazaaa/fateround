@@ -174,7 +174,7 @@ export function parseUnoRules(
     stacking: noMercy ? true : game?.uno_stacking === true,
     multiPlay: parseMultiPlayMode(game?.uno_multi_play_mode),
     teamMode: noMercy ? false : game?.uno_team_mode === true,
-    jumpIn: game?.uno_jump_in === true,
+    jumpIn: noMercy ? true : game?.uno_jump_in === true,
     noMercyWin: parseUnoNoMercyWin(game?.uno_no_mercy_win),
   }
 }
@@ -944,6 +944,7 @@ async function finishByLowestHand(
     .select('game_id')
 
   if ((data?.length ?? 0) === 0) return false
+  if (winnerId) await awardSeriesPoints(supabase, gameId, winnerId, hands)
   await markGameFinished(supabase, gameId)
   return true
 }
@@ -1229,6 +1230,55 @@ async function writeHand(supabase: SupabaseClient, gameId: string, playerId: str
   await supabase.from('uno_player_hands').update({ cards }).eq('game_id', gameId).eq('player_id', playerId)
 }
 
+/** Bonus per opponent knocked out by the Mercy rule this round (No Mercy scoring only). */
+const UNO_KNOCKOUT_BONUS = 250
+
+/**
+ * Optional UNO scoring: award points to the round winner and persist the running totals on the
+ * games row. Called by every round-finish path when uno_series_scoring is on and no series
+ * winner has been declared yet. Idempotent per round via `expectedUpdatedAt` — a losing CAS
+ * write just skips the update.
+ *
+ * Points: sum of card values still in every opponent's hand (numbers = face, coloured actions
+ * = 20, wilds = 50) PLUS 250 per player knocked out by Mercy during the round. When any
+ * player reaches uno_series_target the id lands in uno_series_winner_id.
+ */
+async function awardSeriesPoints(
+  supabase: SupabaseClient,
+  gameId: string,
+  winnerId: string,
+  hands: UnoPlayerHand[]
+): Promise<void> {
+  const { data: g } = await supabase
+    .from('games')
+    .select('uno_series_scoring, uno_series_target, uno_series_scores, uno_series_winner_id')
+    .eq('id', gameId)
+    .maybeSingle()
+  if (!g || g.uno_series_scoring !== true || g.uno_series_winner_id) return
+
+  // Points from opponents' hands (winner scores their own hand as 0, since it's empty).
+  let handPoints = 0
+  for (const h of hands) {
+    if (h.player_id === winnerId) continue
+    handPoints += unoHandSum((h.cards as UnoCard[]) ?? [])
+  }
+  const { data: sess } = await supabase
+    .from('uno_sessions')
+    .select('eliminated_player_ids')
+    .eq('game_id', gameId)
+    .maybeSingle()
+  const knockouts = ((sess?.eliminated_player_ids as string[] | null) ?? []).length
+  const roundPoints = handPoints + knockouts * UNO_KNOCKOUT_BONUS
+  const totals = { ...((g.uno_series_scores as Record<string, number> | null) ?? {}) }
+  totals[winnerId] = (totals[winnerId] ?? 0) + roundPoints
+
+  const target = Number(g.uno_series_target ?? 1000)
+  const seriesWinner = totals[winnerId] >= target ? winnerId : null
+  const patch: Record<string, unknown> = { uno_series_scores: totals }
+  if (seriesWinner) patch.uno_series_winner_id = seriesWinner
+  await supabase.from('games').update(patch).eq('id', gameId)
+}
+
 /**
  * No Mercy — a player just crossed the 25-card knockout threshold. Add them to
  * eliminated_player_ids, mark them a spectator so realtime hides their hand, and — when the
@@ -1283,7 +1333,13 @@ async function applyMercyKnockout(
 
   await supabase.from('players').update({ spectator: true }).eq('id', playerId).eq('game_id', gameId)
 
-  if (endsRound) await markGameFinished(supabase, gameId)
+  if (endsRound) {
+    // Award series points to the last-standing winner. Reload hands for the point tally.
+    const { data: freshHands } = await supabase.from('uno_player_hands').select('*').eq('game_id', gameId)
+    const winnerId = (patch.winner_player_id as string | null) ?? null
+    if (winnerId) await awardSeriesPoints(supabase, gameId, winnerId, (freshHands as UnoPlayerHand[]) ?? [])
+    await markGameFinished(supabase, gameId)
+  }
 }
 
 /** Snapshot of every player's hand AFTER the current play + any missed-UNO penalty. */
@@ -1578,7 +1634,13 @@ export async function processUnoPlay(
 
   if (wentOut) {
     await supabase.from('players').update({ spectator: true }).eq('id', playerId).eq('game_id', gameId)
-    if (patch.phase === 'finished') await markGameFinished(supabase, gameId)
+    if (patch.phase === 'finished') {
+      const winnerId = patch.winner_player_id ?? playerId
+      // Read fresh hands so opponents' post-play totals are captured (this move emptied `newHand`).
+      const freshHands = updateHand(hands, playerId, newHand)
+      await awardSeriesPoints(supabase, gameId, winnerId as string, freshHands)
+      await markGameFinished(supabase, gameId)
+    }
   }
 
   return {}
@@ -1794,7 +1856,11 @@ export async function processUnoPlayMulti(
 
   if (wentOut) {
     await supabase.from('players').update({ spectator: true }).eq('id', playerId).eq('game_id', gameId)
-    if (patch.phase === 'finished') await markGameFinished(supabase, gameId)
+    if (patch.phase === 'finished') {
+      const winnerId = patch.winner_player_id ?? playerId
+      await awardSeriesPoints(supabase, gameId, winnerId as string, updateHand(hands, playerId, newHand))
+      await markGameFinished(supabase, gameId)
+    }
   }
 
   return {}

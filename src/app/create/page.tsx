@@ -479,6 +479,8 @@ function CreateGameInner() {
   const [unoTeamMode, setUnoTeamMode] = useState(false)
   const [unoMode, setUnoMode] = useState<'classic' | 'no_mercy'>('classic')
   const [unoNoMercyWin, setUnoNoMercyWin] = useState<'first_out' | 'last_standing'>('first_out')
+  const [unoSeriesScoring, setUnoSeriesScoring] = useState(false)
+  const [unoSeriesTarget, setUnoSeriesTarget] = useState(1000)
   const [ludoMaxPlayers, setLudoMaxPlayers] = useState(LUDO_DEFAULT_MAX_PLAYERS)
   const [ludoVariant, setLudoVariant] = useState<LudoVariant>('modern')
   const [ayoVariant, setAyoVariant] = useState<AyoVariant>('traditional')
@@ -1490,6 +1492,16 @@ function CreateGameInner() {
     uno_no_mercy_win: {
       get: () => unoNoMercyWin,
       set: (v) => setUnoNoMercyWin(v as 'first_out' | 'last_standing'),
+      appliesTo: isUnoGame,
+    },
+    uno_series_scoring: {
+      get: () => unoSeriesScoring,
+      set: (v) => setUnoSeriesScoring(v as boolean),
+      appliesTo: isUnoGame,
+    },
+    uno_series_target: {
+      get: () => unoSeriesTarget,
+      set: (v) => setUnoSeriesTarget(v as number),
       appliesTo: isUnoGame,
     },
     // Monopoly
@@ -2696,6 +2708,8 @@ function CreateGameInner() {
           uno_team_mode: isUno ? unoTeamMode : undefined,
           uno_mode: isUno ? unoMode : undefined,
           uno_no_mercy_win: isUno && unoMode === 'no_mercy' ? unoNoMercyWin : undefined,
+          uno_series_scoring: isUno ? unoSeriesScoring : undefined,
+          uno_series_target: isUno && unoSeriesScoring ? unoSeriesTarget : undefined,
           // Team-Up is strictly 2v2.
           ...(isUno && unoTeamMode ? { max_players: 4 } : {}),
           ludo_variant: isLudo ? ludoVariant : undefined,
@@ -3749,16 +3763,18 @@ function CreateGameInner() {
                       </>
                     ) : (
                       <p className="text-xs text-faint">
-                        No Mercy locks in 0-7 and Draw-card stacking (any Draw card of equal or higher value chains onto
-                        a stack). Wild Draw Four challenges are off.
+                        No Mercy locks in 0-7, Draw-card stacking (any Draw card of equal or higher value chains onto a
+                        stack), and Jump-In. Wild Draw Four challenges are off.
                       </p>
                     )}
-                    <Toggle
-                      label="Jump-In"
-                      description="Hold an exact match for the top card (same colour + number, or same colour + symbol)? Play it instantly, even out of turn — the players you skip lose that turn. Wilds can't be jumped. Off keeps strict turn order."
-                      value={unoJumpIn}
-                      onChange={setUnoJumpIn}
-                    />
+                    {unoMode === 'classic' ? (
+                      <Toggle
+                        label="Jump-In"
+                        description="Hold an exact match for the top card (same colour + number, or same colour + symbol)? Play it instantly, even out of turn — the players you skip lose that turn. Wilds can't be jumped. Off keeps strict turn order."
+                        value={unoJumpIn}
+                        onChange={setUnoJumpIn}
+                      />
+                    ) : null}
                   </div>
                 </Field>
                 <Field label="Multi-Play">
@@ -3775,6 +3791,30 @@ function CreateGameInner() {
                   <p className="mt-1 text-xs text-faint">
                     Lay several matching cards in a single turn — the last one played sets the next colour.
                   </p>
+                </Field>
+                <Field label="Series scoring (optional)">
+                  <Toggle
+                    label="Track points across hands"
+                    description={
+                      'At each hand end the winner scores the sum of every opponent’s cards (number = face, coloured action = 20, wild = 50). In No Mercy, each Mercy knockout adds +250.'
+                    }
+                    value={unoSeriesScoring}
+                    onChange={setUnoSeriesScoring}
+                  />
+                  {unoSeriesScoring ? (
+                    <div className="mt-2">
+                      <CustomSelect
+                        value={unoSeriesTarget}
+                        onChange={setUnoSeriesTarget}
+                        options={[
+                          { value: 300, label: 'First to 300 wins the series' },
+                          { value: 500, label: 'First to 500 wins the series' },
+                          { value: 1000, label: 'First to 1000 wins the series (classic)' },
+                          { value: 2000, label: 'First to 2000 wins the series' },
+                        ]}
+                      />
+                    </div>
+                  ) : null}
                 </Field>
                 <p className="text-faint text-sm leading-relaxed">
                   The party card classic — match the top card by colour, number, or symbol. Skip, Reverse, Draw Two, and

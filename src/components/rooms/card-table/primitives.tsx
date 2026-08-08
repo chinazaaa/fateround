@@ -180,10 +180,47 @@ export function UnoCardFace({ card, sel, dim, big, playable, onClick }: UnoCardF
   const wild = card.color === 'wild'
   const colorClass = wild ? 'uno-wild' : `uno-${card.color}`
   const glyph = cardShortLabel(card)
-  const cornerGlyph = wild ? (card.kind === 'wild_draw4' ? '+4' : 'W') : glyph
+
+  // Centre glyph — every kind picks the tightest symbol that still reads. Wilds get the rainbow
+  // ring background; coloured cards get their solid-colour face. Corner glyph is a compact echo.
+  const centreGlyph = (() => {
+    if (card.kind === 'wild') return '🌈'
+    if (card.kind === 'wild_draw4') return '+4'
+    if (card.kind === 'wild_reverse_draw4') return '↺+4'
+    if (card.kind === 'draw6') return '+6'
+    if (card.kind === 'draw10') return '+10'
+    if (card.kind === 'wild_color_roulette') return '🎡'
+    if (card.kind === 'discard_all') return '⇊'
+    if (card.kind === 'skip_everyone') return '⊘⊘'
+    return glyph
+  })()
+  const cornerGlyph = wild ? centreGlyph : glyph
+
+  // No Mercy modifier gets its own class so hosts can restyle just those faces without touching
+  // classic .uno-wild. Kept additive — the base .uno-wild treatment (rainbow ring) still applies.
+  const noMercyClass = (() => {
+    switch (card.kind) {
+      case 'wild_reverse_draw4':
+        return ' uno-wildrev4'
+      case 'draw6':
+        return ' uno-draw6'
+      case 'draw10':
+        return ' uno-draw10'
+      case 'wild_color_roulette':
+        return ' uno-roulette'
+      case 'discard_all':
+        return ' uno-discardall'
+      case 'skip_everyone':
+        return ' uno-skipall'
+      default:
+        return ''
+    }
+  })()
+
   const cls =
     'pc uno ' +
     colorClass +
+    noMercyClass +
     (big ? ' lg' : '') +
     (sel ? ' sel' : '') +
     (dim ? ' dim' : '') +
@@ -195,7 +232,7 @@ export function UnoCardFace({ card, sel, dim, big, playable, onClick }: UnoCardF
       <span className="c tl">{cornerGlyph}</span>
       <div className="mid">
         <span className="uno-oval">
-          <span>{wild ? (card.kind === 'wild_draw4' ? '+4' : '🌈') : glyph}</span>
+          <span>{centreGlyph}</span>
         </span>
       </div>
       <span className="c br">{cornerGlyph}</span>

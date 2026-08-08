@@ -122,7 +122,7 @@ export function parseUnoRules(
     stacking: noMercy ? true : game?.uno_stacking === true,
     multiPlay: parseMultiPlayMode(game?.uno_multi_play_mode),
     teamMode: noMercy ? false : game?.uno_team_mode === true,
-    jumpIn: game?.uno_jump_in === true,
+    jumpIn: noMercy ? true : game?.uno_jump_in === true,
     noMercyWin: parseUnoNoMercyWin(game?.uno_no_mercy_win),
   }
 }

@@ -480,6 +480,14 @@ export interface Game {
   uno_mode?: 'classic' | 'no_mercy'
   /** UNO — No Mercy win condition: first player out or last player standing after Mercy knockouts. */
   uno_no_mercy_win?: 'first_out' | 'last_standing'
+  /** UNO — optional series scoring (award points at hand end; first to target wins the series). */
+  uno_series_scoring?: boolean
+  /** UNO — points needed to win the series when scoring is on (default 1000). */
+  uno_series_target?: number
+  /** UNO — running per-player series totals (map playerId → int). */
+  uno_series_scores?: Record<string, number> | null
+  /** UNO — series winner id (set when someone first crosses uno_series_target). */
+  uno_series_winner_id?: string | null
   /** Ludo — 'modern' (start + mid-arm safe stars) or 'traditional' (no track safe squares). */
   ludo_variant?: LudoVariant
   /** Ayo — 'traditional' (capture on 4, houses, match rounds) or 'oware' (2/3 seeds). */
