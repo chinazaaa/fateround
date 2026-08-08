@@ -62,7 +62,7 @@ export const MONOPOLY: SystemTrophySpec[] = [
   {
     suffix: 'full_color_set',
     tier: 'silver',
-    title: 'Monopoly',
+    title: 'Colour set',
     description: 'Own every property in a colour group.',
     counter: 'monopoly_full_color_set',
     points: 25,

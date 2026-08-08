@@ -207,7 +207,7 @@ function goPassStatusSuffix(collected: number, exactGo?: boolean): string {
   if (exactGo && collected > MONOPOLY_GO_SALARY) {
     return ` Landed on PAYDAY! Collected ${formatMonopolyMoney(collected)}.`
   }
-  return ` Passed GO — collected ${formatMonopolyMoney(collected)}.`
+  return ` Passed PAYDAY — collected ${formatMonopolyMoney(collected)}.`
 }
 
 export function nextTurnIndex(board: MonopolyBoard, states: MonopolyPlayerState[]): number {
