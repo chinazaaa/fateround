@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { getProfileFromRequest } from '@/lib/identity-server'
 import { isDailyChallengeGameType, watToday, DAILY_GAME_PRIMARY_METRIC } from '@/lib/daily-challenge'
 import { isValidDateStr } from '@/lib/community-dates'
+import { computeDailyRank } from '@/lib/daily-rank'
 
 export const dynamic = 'force-dynamic'
 
@@ -94,7 +95,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ game
     if (profileId) {
       const { data: myEntry } = await admin
         .from('daily_scores')
-        .select('normalized_score, raw_points, items_solved, time_seconds')
+        .select('normalized_score, raw_points, items_solved, time_seconds, hints_used, submitted_at')
         .eq('challenge_id', challenge.id)
         .eq('profile_id', profileId)
         .single()
@@ -102,32 +103,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ game
       if (myEntry) {
         // The footer shows the board metric: raw points for Word Hunt, normalized score otherwise.
         myScore = isPointsGame ? myEntry.raw_points : myEntry.normalized_score
-        if (metric === 'time') {
-          // Ahead of me = more solved, or same solved but faster. Two counts, same ordering as above.
-          const [{ count: moreSolved }, { count: sameSolvedFaster }] = await Promise.all([
-            admin
-              .from('daily_scores')
-              .select('*', { count: 'exact', head: true })
-              .eq('challenge_id', challenge.id)
-              .gt('normalized_score', 0)
-              .gt('items_solved', myEntry.items_solved),
-            admin
-              .from('daily_scores')
-              .select('*', { count: 'exact', head: true })
-              .eq('challenge_id', challenge.id)
-              .gt('normalized_score', 0)
-              .eq('items_solved', myEntry.items_solved)
-              .lt('time_seconds', myEntry.time_seconds),
-          ])
-          myRank = (moreSolved ?? 0) + (sameSolvedFaster ?? 0) + 1
-        } else {
-          const { count: betterCount } = await admin
-            .from('daily_scores')
-            .select('*', { count: 'exact', head: true })
-            .eq('challenge_id', challenge.id)
-            .gt('raw_points', myEntry.raw_points)
-          myRank = (betterCount ?? 0) + 1
-        }
+        myRank = await computeDailyRank(admin, gameType, challenge.id, myEntry)
       }
     }
 
