@@ -84,7 +84,7 @@ function TradeSideItems({
         }
         return (
           <li key="jail">
-            {formatThemedText(`${item.count} Get Out of Jail card${item.count === 1 ? '' : 's'}`, themeId)}
+            {formatThemedText(`${item.count} skip-the-queue card${item.count === 1 ? '' : 's'}`, themeId)}
           </li>
         )
       })}
@@ -102,7 +102,8 @@ function tradeSideCountLabel(
   const parts: string[] = []
   if (propertyCount > 0) parts.push(`${propertyCount} propert${propertyCount === 1 ? 'y' : 'ies'}`)
   if (cash > 0) parts.push('cash')
-  if (jailCards > 0) parts.push(formatThemedText(`${jailCards} Jail card${jailCards === 1 ? '' : 's'}`, themeId))
+  if (jailCards > 0)
+    parts.push(formatThemedText(`${jailCards} skip-the-queue card${jailCards === 1 ? '' : 's'}`, themeId))
   if (parts.length === 0) return null
   return parts.join(' · ')
 }
@@ -679,7 +680,7 @@ export function MonopolyManagePanel({
             <p className="text-xs font-semibold text-[var(--foreground)]">Propose a trade</p>
             <p className="text-xs text-muted leading-relaxed">
               {formatThemedText(
-                'Pick what you give and what you get back — cash, properties, or Get Out of Jail cards. Both sides must be filled in for a normal swap.',
+                'Pick what you give and what you get back — cash, properties, or skip-the-queue cards. Both sides must be filled in for a normal swap.',
                 themeId
               )}
             </p>
@@ -745,7 +746,7 @@ export function MonopolyManagePanel({
                           setConfirmOneWayGift(false)
                         }}
                       />
-                      {formatThemedText('Include 1 Get Out of Jail card', themeId)}
+                      {formatThemedText('Include 1 skip-the-queue card', themeId)}
                     </label>
                   )}
                 </div>
@@ -794,7 +795,7 @@ export function MonopolyManagePanel({
                           setConfirmOneWayGift(false)
                         }}
                       />
-                      {formatThemedText('Ask for 1 Get Out of Jail card', themeId)}
+                      {formatThemedText('Ask for 1 skip-the-queue card', themeId)}
                     </label>
                   )}
                 </div>

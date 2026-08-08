@@ -550,7 +550,7 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
     {
       title: 'Trading',
       points: [
-        'Propose trades with other players at any time — cash, properties, and Get Out of Jail Free cards.',
+        'Propose trades with other players at any time — cash, properties, and skip-the-queue cards.',
         'The other player must accept or decline. You cannot trade properties that still have buildings on the colour-group.',
       ],
     },
@@ -569,7 +569,7 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
       title: 'Bankruptcy & winning',
       points: [
         'If you owe more than you can raise from cash and assets, you are bankrupt and out of the game.',
-        'If bankrupt to another player, they receive your cash, properties, and Get Out of Jail Free cards.',
+        'If bankrupt to another player, they receive your cash, properties, and skip-the-queue cards.',
         'If bankrupt to the Bank, the Bank takes your assets and auctions each property.',
         'The game ends when only one solvent player remains.',
       ],

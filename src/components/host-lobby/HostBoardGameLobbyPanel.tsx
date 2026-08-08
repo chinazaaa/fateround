@@ -340,8 +340,8 @@ export function HostBoardGameLobbyPanel({
                 }}
               />
               <Toggle
-                label="No Rent in Jail"
-                description="Prevent players in jail from collecting rent on their properties."
+                label="No Rent in NICKED"
+                description="Prevent players in NICKED from collecting rent on their properties."
                 value={monopolyNoRentInJail}
                 onChange={(v: boolean) => {
                   setMonopolyNoRentInJail(v)

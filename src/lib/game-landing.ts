@@ -1255,7 +1255,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       {
         title: 'Turn-based play',
         description:
-          'Roll dice, buy or pass on properties, pay rent, draw cards, and manage Jail — core Monopoly-style rules on your phones.',
+          'Roll dice, buy or pass on properties, pay rent, draw cards, and manage NICKED — core Monopoly-style rules on your phones.',
         emoji: '🎲',
       },
       SHARED_FEATURES.realtime,

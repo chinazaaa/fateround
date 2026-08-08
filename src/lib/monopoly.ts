@@ -1195,7 +1195,7 @@ export async function processMonopolyRoll(
           player_id: playerId,
           creditor_player_id: null,
           amount: MONOPOLY_JAIL_FINE,
-          reason: `Need ${formatMonopolyMoney(MONOPOLY_JAIL_FINE)} to leave jail`,
+          reason: `Need ${formatMonopolyMoney(MONOPOLY_JAIL_FINE)} to leave NICKED`,
           debt_type: 'jail',
           space_index: MONOPOLY_JAIL_POSITION,
         }
@@ -1258,7 +1258,7 @@ export async function processMonopolyRoll(
           consecutive_doubles: 0,
           phase: nextPhase,
           current_turn_index: turnIndex,
-          status_message: `Still in jail — rolled ${dice.d1}+${dice.d2} (no doubles). Attempt ${jailTurns}/3.`,
+          status_message: `Still in NICKED — rolled ${dice.d1}+${dice.d2} (no doubles). Attempt ${jailTurns}/3.`,
           turn_deadline_at: monopolyDeadlineForPhase(settings, nextPhase),
         },
         board.updated_at
@@ -1818,7 +1818,7 @@ export async function processMonopolyPayRent(
         phase: turnFinish.phase,
         current_turn_index: turnFinish.turnIndex,
         consecutive_doubles: turnFinish.consecutiveDoubles,
-        status_message: 'Rent waived because the owner is in jail.',
+        status_message: 'Rent waived because the owner is in NICKED.',
         pending_space: null,
         pending_debt: null,
         turn_deadline_at: monopolyDeadlineForPhase(settings, turnFinish.phase),
@@ -1910,13 +1910,13 @@ export async function processMonopolyJailPay(
   if (!state?.in_jail) return { error: 'Not in jail' }
 
   if (method === 'card') {
-    if (state.get_out_of_jail_free < 1) return { error: 'No Get Out of Jail Free card' }
+    if (state.get_out_of_jail_free < 1) return { error: 'No skip-the-queue card' }
     await updatePlayerAndBoard(
       supabase,
       gameId,
       playerId,
       { in_jail: false, jail_turns: 0, get_out_of_jail_free: state.get_out_of_jail_free - 1 },
-      { phase: 'roll', consecutive_doubles: 0, status_message: 'Used Get Out of Jail Free card — roll to move!' },
+      { phase: 'roll', consecutive_doubles: 0, status_message: 'Used skip-the-queue card — roll to move!' },
       board.updated_at
     )
     return {}
@@ -2961,7 +2961,7 @@ async function bankruptPlayer(
     if (state.cash > 0) transferred.push(formatMonopolyMoney(state.cash))
     if (state.get_out_of_jail_free > 0) {
       transferred.push(
-        `${state.get_out_of_jail_free} Get Out of Jail card${state.get_out_of_jail_free === 1 ? '' : 's'}`
+        `${state.get_out_of_jail_free} skip-the-queue card${state.get_out_of_jail_free === 1 ? '' : 's'}`
       )
     }
     if (transferred.length > 0) {
