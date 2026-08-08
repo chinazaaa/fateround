@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { SaveToProfileModal } from '@/components/profile/SaveToProfileModal'
 import { useProfile } from '@/hooks/useProfile'
+import { Avatar } from '@/components/Avatar'
 
 /**
  * The "you" button in the header (`docs/trophies-and-streaks.md` §2.5).
@@ -31,8 +32,12 @@ type Props = {
   tone?: 'site' | 'app'
 }
 
+// Signed-in players get an avatar-only chip — a long handle would eat the header, and the
+// avatar already IS the personal marker. Guests keep the "Guest" text; that word is doing
+// real work (see below) and it's short enough to fit without crowding.
 const APP_CLASS =
-  'inline-flex h-9 max-w-44 items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface-inset-bg)] px-3.5 text-sm font-semibold text-muted transition-colors hover:text-[var(--foreground)] hover:border-[var(--border-strong)]'
+  'inline-flex h-9 items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface-inset-bg)] px-2 text-sm font-semibold text-muted transition-colors hover:text-[var(--foreground)] hover:border-[var(--border-strong)]'
+const APP_CLASS_GUEST = `${APP_CLASS} px-3.5`
 
 export function ProfileChip({ tone = 'site' }: Props) {
   const [open, setOpen] = useState(false)
@@ -45,22 +50,28 @@ export function ProfileChip({ tone = 'site' }: Props) {
   const label = signedIn ? profile?.handle || 'You' : 'Guest'
 
   const streak = profile?.current_streak ?? 0
-  const trophies = profile?.trophy_points ?? 0
+
+  const buttonClass = tone === 'app' ? (signedIn ? APP_CLASS : APP_CLASS_GUEST) : 'fr-nav-btn'
 
   return (
     <>
       <button
         type="button"
-        className={tone === 'app' ? APP_CLASS : 'fr-nav-btn'}
+        className={buttonClass}
         onClick={() => setOpen(true)}
         aria-label={signedIn ? `${label}${streak > 0 ? `, ${streak} day streak` : ''}` : 'Save your progress'}
+        title={signedIn ? label : undefined}
       >
         {streak > 0 ? (
           <span className="shrink-0" aria-hidden>
             🔥 {streak}
           </span>
         ) : null}
-        <span className="truncate">{label}</span>
+        {signedIn ? (
+          <Avatar name={label} photoUrl={profile?.avatar_url} size="sm" className="!w-7 !h-7 !text-xs" />
+        ) : (
+          <span className="truncate">{label}</span>
+        )}
       </button>
 
       <SaveToProfileModal open={open} onClose={() => setOpen(false)} profile={profile} onChanged={refresh} />
