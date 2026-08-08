@@ -426,7 +426,7 @@ export function UnoPlaySurface({
             watchers and active players. The "Spectating —" line only fills in when
             there's no status yet (opening deal, brief lulls). */}
         {session.status_message ? (
-          <ActionToast tone={watching ? 'muted' : 'ok'}>{session.status_message}</ActionToast>
+          <ActionToast tone="ok">{session.status_message}</ActionToast>
         ) : watching ? (
           <TurnStatus muted>
             Spectating — {turnName}&apos;s turn · <span className="g">you can join the voice room</span>
