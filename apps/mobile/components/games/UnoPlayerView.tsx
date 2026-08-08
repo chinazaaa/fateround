@@ -414,7 +414,7 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
   })()
   const penaltyLabel =
     (session.draw_penalty ?? 0) > 0
-      ? `Draw ${session.draw_penalty}${penaltyKindLabel ? ` — stack a ${penaltyKindLabel} (or higher in No Mercy) or draw` : ''}`
+      ? `Draw ${session.draw_penalty}${penaltyKindLabel ? ` — stack a ${penaltyKindLabel} (or higher in High Stakes) or draw` : ''}`
       : null
   const tableHint = [demandLabel, penaltyLabel].filter(Boolean).join(' · ')
 

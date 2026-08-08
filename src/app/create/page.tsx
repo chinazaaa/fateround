@@ -3649,18 +3649,22 @@ function CreateGameInner() {
               </SettingsGroup>
             ) : isUno ? (
               <SettingsGroup title="UNO room">
-                <Field label="UNO mode">
+                <Field label="Mode">
                   <CustomSelect
                     value={unoMode}
                     onChange={(val) => setUnoMode(val as 'classic' | 'no_mercy')}
                     options={[
-                      { value: 'classic', label: 'Classic — standard UNO with optional Team-Up' },
-                      { value: 'no_mercy', label: "Show 'em No Mercy — 168-card deck, +6/+10, Mercy knockouts" },
+                      { value: 'classic', label: 'Classic — the standard game with optional Team-Up' },
+                      {
+                        value: 'no_mercy',
+                        label: 'High Stakes — 168-card deck, +6/+10, hand-size knockouts',
+                      },
                     ]}
                   />
                   <p className="mt-1 text-xs text-faint">
-                    No Mercy locks in stacking + 0-7, disables Wild Draw Four challenges and Team-Up, and adds Discard
-                    All, Skip Everyone, Wild Reverse Draw 4, Draw 6, Draw 10, and Color Roulette cards.
+                    High Stakes is a Show ’em No Mercy-style variant: locks in stacking + 0-7, disables Wild Draw Four
+                    challenges and Team-Up, and adds Discard All, Skip Everyone, Wild Reverse Draw 4, Draw 6, Draw 10,
+                    and Color Roulette cards.
                   </p>
                 </Field>
                 {unoMode === 'no_mercy' ? (
@@ -3670,12 +3674,12 @@ function CreateGameInner() {
                       onChange={(val) => setUnoNoMercyWin(val as 'first_out' | 'last_standing')}
                       options={[
                         { value: 'first_out', label: 'First out — empty your hand to win' },
-                        { value: 'last_standing', label: 'Last standing — outlast every Mercy knockout' },
+                        { value: 'last_standing', label: 'Last standing — outlast every knockout' },
                       ]}
                     />
                     <p className="mt-1 text-xs text-faint">
-                      Mercy: any player holding 25+ cards is knocked out. Last standing wins when only one player is
-                      still holding cards.
+                      Any player holding 25+ cards is knocked out. Last standing wins when only one player is still
+                      holding cards.
                     </p>
                   </Field>
                 ) : null}
@@ -3763,8 +3767,8 @@ function CreateGameInner() {
                       </>
                     ) : (
                       <p className="text-xs text-faint">
-                        No Mercy locks in 0-7, Draw-card stacking (any Draw card of equal or higher value chains onto a
-                        stack), and Jump-In. Wild Draw Four challenges are off.
+                        High Stakes locks in 0-7, Draw-card stacking (any Draw card of equal or higher value chains onto
+                        a stack), and Jump-In. Wild Draw Four challenges are off.
                       </p>
                     )}
                     {unoMode === 'classic' ? (
@@ -3796,7 +3800,7 @@ function CreateGameInner() {
                   <Toggle
                     label="Track points across hands"
                     description={
-                      'At each hand end the winner scores the sum of every opponent’s cards (number = face, coloured action = 20, wild = 50). In No Mercy, each Mercy knockout adds +250.'
+                      'At each hand end the winner scores the sum of every opponent’s cards (number = face, coloured action = 20, wild = 50). In High Stakes, each 25-card knockout adds +250.'
                     }
                     value={unoSeriesScoring}
                     onChange={setUnoSeriesScoring}

@@ -365,8 +365,8 @@ export function playPenaltyError(card: UnoCard, session: UnoSession): string | n
   if (penalty <= 0) return null
   if (canPlayCard(card, session)) return null // a legal stack
   const kind = session.draw_penalty_kind
-  if (kind === 'draw2') return `Draw ${penalty} — stack with a Draw Two (or higher in No Mercy)`
-  if (kind === 'wild_draw4') return `Draw ${penalty} — stack with a Wild Draw Four (or higher in No Mercy)`
+  if (kind === 'draw2') return `Draw ${penalty} — stack with a Draw Two (or higher in High Stakes)`
+  if (kind === 'wild_draw4') return `Draw ${penalty} — stack with a Wild Draw Four (or higher in High Stakes)`
   return `Draw ${penalty} — stack with a Draw card of equal or higher value`
 }
 

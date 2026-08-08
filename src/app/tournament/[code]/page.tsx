@@ -66,13 +66,13 @@ function winReasonLabel(reason?: string | null): string {
 
 const GAME_TYPE_LABELS: Record<string, string> = {
   trivia: 'Trivia',
-  scrabble: 'Scrabble',
-  yahtzee: 'Yahtzee',
+  scrabble: 'Word Tiles',
+  yahtzee: 'Five Dice',
   ludo: 'Ludo',
   whot: 'Whot',
   'crazy-eights': 'Crazy Eights',
-  uno: 'UNO',
-  monopoly: 'Monopoly',
+  uno: 'Match Up',
+  monopoly: 'Estate Kings',
   'word-hunt': 'Word Hunt',
   'i-call-on': 'I Call On',
   chess: 'Chess',

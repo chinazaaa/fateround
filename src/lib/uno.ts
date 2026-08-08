@@ -440,8 +440,8 @@ export function playPenaltyError(card: UnoCard, session: UnoSession): string | n
   if (penalty <= 0) return null
   if (canPlayCard(card, session)) return null // a legal stack
   const kind = session.draw_penalty_kind
-  if (kind === 'draw2') return `Draw ${penalty} — stack with a Draw Two (or higher in No Mercy)`
-  if (kind === 'wild_draw4') return `Draw ${penalty} — stack with a Wild Draw Four (or higher in No Mercy)`
+  if (kind === 'draw2') return `Draw ${penalty} — stack with a Draw Two (or higher in High Stakes)`
+  if (kind === 'wild_draw4') return `Draw ${penalty} — stack with a Wild Draw Four (or higher in High Stakes)`
   return `Draw ${penalty} — stack with a Draw card of equal or higher value`
 }
 
@@ -1305,7 +1305,7 @@ async function applyMercyKnockout(
   if (already.has(playerId)) return
   const nextEliminated = [...already, playerId]
   const name = playerName(playerNames, playerId)
-  const note = `${name} hit ${handSize} cards — knocked out by Mercy`
+  const note = `${name} hit ${handSize} cards — knocked out (High Stakes 25-card limit)`
 
   // Standing players = seated - eliminated - already-finished (emptied their hand).
   const seated = new Set<string>((fresh.turn_order as string[] | null) ?? [])

@@ -806,7 +806,7 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
   },
   monopoly: {
     id: 'monopoly',
-    label: 'Monopoly',
+    label: 'Estate Kings',
     tagline: 'Buy, build, bankrupt your friends',
     headerEmoji: '🎲🏠',
     card: {
@@ -849,7 +849,7 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
   },
   yahtzee: {
     id: 'yahtzee',
-    label: 'Yahtzee',
+    label: 'Five Dice',
     tagline: 'Roll, hold, and score the combos',
     headerEmoji: '🎲🧠',
     card: {
@@ -978,7 +978,7 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
   },
   uno: {
     id: 'uno',
-    label: 'UNO',
+    label: 'Match Up',
     tagline: 'Match colour or number — first to empty their hand wins',
     headerEmoji: '🎴🌈',
     card: {
@@ -1323,7 +1323,7 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
 
   quiplash: {
     id: 'quiplash',
-    label: 'Quiplash',
+    label: 'Punchline',
     tagline: 'Fill in the blank — vote for the funniest answer',
     headerEmoji: '✍️😂',
     card: {
@@ -1755,7 +1755,7 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
   },
   scrabble: {
     id: 'scrabble',
-    label: 'Scrabble',
+    label: 'Word Tiles',
     tagline: 'Spell words, rack up points, outscore all',
     headerEmoji: '🔠',
     card: {

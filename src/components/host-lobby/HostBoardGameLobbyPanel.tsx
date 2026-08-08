@@ -437,19 +437,19 @@ export function HostBoardGameLobbyPanel({
           <HostLobbySettingBlock title="House rules" className="sm:col-span-2">
             <div className="space-y-3">
               <div>
-                <p className="label-caps text-[10px] mb-1.5">UNO mode</p>
+                <p className="label-caps text-[10px] mb-1.5">Mode</p>
                 <HostLobbyOptionChips
                   value={unoMode}
                   options={[
                     { value: 'classic', label: 'Classic' },
-                    { value: 'no_mercy', label: "Show 'em No Mercy" },
+                    { value: 'no_mercy', label: 'High Stakes' },
                   ]}
                   onChange={(v) => onUnoRuleChange({ uno_mode: v })}
                 />
                 <p className="mt-1 text-xs text-faint">
-                  No Mercy switches to the 168-card deck (Discard All, Skip Everyone, Wild Reverse Draw 4, Draw 6, Draw
-                  10, Color Roulette) and locks in 0-7, stacking, and Jump-In. Wild Draw Four challenges + Team-Up are
-                  off in No Mercy.
+                  High Stakes is a Show ’em No Mercy-style variant: 168-card deck (Discard All, Skip Everyone, Wild
+                  Reverse Draw 4, Draw 6, Draw 10, Color Roulette) with 0-7, stacking and Jump-In locked in. Wild Draw
+                  Four challenges + Team-Up are off.
                 </p>
               </div>
               {unoMode === 'no_mercy' ? (
@@ -464,7 +464,7 @@ export function HostBoardGameLobbyPanel({
                     onChange={(v) => onUnoRuleChange({ uno_no_mercy_win: v })}
                   />
                   <p className="mt-1 text-xs text-faint">
-                    Mercy: 25+ cards knocks you out. Last standing wins when only one player still holds cards.
+                    25+ cards knocks you out. Last standing wins when only one player still holds cards.
                   </p>
                 </div>
               ) : null}
@@ -519,7 +519,7 @@ export function HostBoardGameLobbyPanel({
                   </>
                 ) : (
                   <p className="text-xs text-faint">
-                    Locked in No Mercy: 0-7, Draw-card stacking (equal-or-higher chains), and Jump-In. WD4 challenges
+                    Locked in High Stakes: 0-7, Draw-card stacking (equal-or-higher chains), and Jump-In. WD4 challenges
                     off.
                   </p>
                 )}

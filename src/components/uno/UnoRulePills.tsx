@@ -24,7 +24,7 @@ export function UnoRulePills({ game, className }: { game: Game; className?: stri
     pills.push({
       key: 'nomercy',
       icon: FireIcon,
-      label: game.uno_no_mercy_win === 'last_standing' ? 'No Mercy · last standing' : 'No Mercy',
+      label: game.uno_no_mercy_win === 'last_standing' ? 'High Stakes · last standing' : 'High Stakes',
     })
   }
   if (!noMercy && game.uno_team_mode) pills.push({ key: 'team', icon: UserGroupIcon, label: 'Team-Up' })
