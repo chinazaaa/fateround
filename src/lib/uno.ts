@@ -1995,11 +1995,15 @@ export async function processUnoDraw(
   const drawCount = penalty > 0 ? penalty : 1
 
   const {
-    drawn,
+    drawn: initialDrawn,
     drawPile: nextDrawPile,
     discardPile: nextDiscardPile,
     reshuffled,
   } = drawCardsWithRefill(drawPile, discardPile, drawCount)
+  // `drawn` is `let` (not const) because the No Mercy voluntary-draw path may sweep more
+  // cards below until a playable one is found; the trophy fold at the bottom of this
+  // function reads the final swept total, not the initial draw count.
+  let drawn = initialDrawn
   drawPile = nextDrawPile
   discardPile = nextDiscardPile
 
@@ -2036,7 +2040,8 @@ export async function processUnoDraw(
     return {}
   }
 
-  const newHand = [...hand, ...drawn]
+  // `let` because the No Mercy sweep below may append more drawn cards before we persist.
+  let newHand = [...hand, ...drawn]
   const missedNote = missed ? ` · ${missed.note}` : ''
   const reshuffledNote = reshuffled ? ' · deck reshuffled' : ''
   const forced = penalty > 0
@@ -2078,22 +2083,56 @@ export async function processUnoDraw(
       status_message: `${playerName(playerNames, nextPlayerId)}'s turn — ${playerName(playerNames, playerId)} drew ${drawn.length}${penaltyName}${reshuffledNote}${missedNote}`,
     }
   } else {
-    // Voluntary single draw. If the drawn card is playable, keep the turn so the player may
-    // play it or keep it (pass). Otherwise the turn ends — they keep the card.
-    const drawnCard = drawn[0]!
-    const drawnPlayable = canPlayCard(drawnCard, { ...session, draw_penalty: 0 })
+    // Voluntary draw.
+    //
+    // Classic: draw exactly one card. If it's playable, keep the turn so the player may play
+    // it or keep it (pass). Otherwise the turn ends — they keep the card.
+    //
+    // High Stakes (No Mercy): "draw until you get a playable card". Keep drawing one at a
+    // time until we hit a card that plays on the current top, or the draw pile + discard
+    // both run dry. If we found one, treat it exactly like the classic playable-draw case
+    // (drawn_card_id = the last card, keep turn). If we ran dry without finding one, take
+    // everything drawn and end the turn — matches classic "you drew, turn passes on".
+    //
+    // Safety cap keeps a pathological session (draw==0 loop, corrupted data) from spinning:
+    // the deck has 108 cards Classic / 168 HS, so any real game exits far before this.
+    const DRAW_UNTIL_CAP = 200
+    let sweptDraw: UnoCard[] = [...drawn]
+    let sweptReshuffled = reshuffled
+    if (rules.mode === 'no_mercy') {
+      while (
+        sweptDraw.length < DRAW_UNTIL_CAP &&
+        !canPlayCard(sweptDraw[sweptDraw.length - 1]!, { ...session, draw_penalty: 0 })
+      ) {
+        const step = drawCardsWithRefill(drawPile, discardPile, 1)
+        if (step.drawn.length === 0) break
+        sweptDraw = [...sweptDraw, ...step.drawn]
+        drawPile = step.drawPile
+        discardPile = step.discardPile
+        if (step.reshuffled) sweptReshuffled = true
+      }
+    }
+    const lastCard = sweptDraw[sweptDraw.length - 1]!
+    const drawnPlayable = canPlayCard(lastCard, { ...session, draw_penalty: 0 })
+    const finalReshuffledNote = sweptReshuffled ? ' · deck reshuffled' : ''
+    const finalHand = [...hand, ...sweptDraw]
+    // On the No Mercy path the drawer may have taken many cards — announce the count so the
+    // board shows "drew 7" instead of a silent single-card note.
+    const drawCountNote =
+      rules.mode === 'no_mercy' && sweptDraw.length > 1 ? ` drew ${sweptDraw.length}` : ` drew a card`
+
     if (drawnPlayable) {
       patch = {
         draw_pile: drawPile,
         discard_pile: discardPile,
         draw_penalty: 0,
-        drawn_card_id: drawnCard.id,
+        drawn_card_id: lastCard.id,
         current_turn_index: session.current_turn_index,
         uno_pending_player: null,
         uno_called: false,
         // Never disclose the drawn card in the shared board status — only the drawer sees it
         // (in their own hand + private "play it or keep it" hint).
-        status_message: `${playerName(playerNames, playerId)} drew a card${reshuffledNote}${missedNote}`,
+        status_message: `${playerName(playerNames, playerId)}${drawCountNote}${finalReshuffledNote}${missedNote}`,
       }
     } else {
       const nextIndex = unoNextTurnIndex(session, hands, session.current_turn_index, 1, direction)
@@ -2106,9 +2145,12 @@ export async function processUnoDraw(
         current_turn_index: nextIndex,
         uno_pending_player: null,
         uno_called: false,
-        status_message: `${playerName(playerNames, playerId)} drew a card — ${playerName(playerNames, nextPlayerId)}'s turn${reshuffledNote}${missedNote}`,
+        status_message: `${playerName(playerNames, playerId)}${drawCountNote} — ${playerName(playerNames, nextPlayerId)}'s turn${finalReshuffledNote}${missedNote}`,
       }
     }
+    // Rebind for the trophy fold + writeHand at the bottom of this function.
+    drawn = sweptDraw
+    newHand = finalHand
   }
 
   const won = await persistSession(supabase, gameId, patch, timerSeconds, session.updated_at)

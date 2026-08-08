@@ -128,6 +128,10 @@ type GameMeta = {
   uno_wd4_challenge?: boolean | null
   uno_multi_play_mode?: string | null
   uno_jump_in?: boolean | null
+  uno_uno_penalty?: number | null
+  uno_wd4_challenge_penalty?: number | null
+  uno_mode?: string | null
+  uno_no_mercy_win?: string | null
   monopoly_double_go_salary?: boolean | null
   monopoly_forced_auctions?: boolean | null
   monopoly_auction_timer_seconds?: number | null
@@ -320,7 +324,9 @@ export function gameInfoItems(game: GameMeta | null | undefined): string[] {
     // + Team-Up + Multi-Play forced OFF) — reading the DB flags directly showed stale
     // Classic values (e.g. "WD4 challenge" on a High Stakes game where challenges are
     // disabled in the engine).
-    const uno = parseUnoRules(game)
+    // GameMeta only carries the uno_* subset the chips need, so cast to satisfy the
+    // parseUnoRules signature — the fields it actually reads (uno_mode etc.) are all here.
+    const uno = parseUnoRules(game as Parameters<typeof parseUnoRules>[0])
     if (uno.mode === 'no_mercy') {
       // High Stakes locks in stacking + 0-7 + Jump-In and disables WD4/Team-Up/
       // Multi-Play. Every one of those is implied by "High Stakes", so surface the
