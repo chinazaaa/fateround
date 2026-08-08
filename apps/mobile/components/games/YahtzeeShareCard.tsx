@@ -114,7 +114,7 @@ export function YahtzeeShareCard({ scores, players, winnerName, highlightPlayerI
       <View style={styles.offscreen} pointerEvents="none">
         <View ref={captureCardRef} collapsable={false} style={styles.captureCard}>
           <Text style={styles.captureEmoji}>🎲</Text>
-          <Text style={styles.captureGame}>Yahtzee</Text>
+          <Text style={styles.captureGame}>Five Dice</Text>
           <View style={styles.captureDivider} />
           <Text style={styles.captureHero}>🏆</Text>
           <Text style={styles.captureTitle}>{winnerName ? `${winnerName} wins!` : 'Game over'}</Text>
@@ -145,7 +145,7 @@ export function YahtzeeShareCard({ scores, players, winnerName, highlightPlayerI
 }
 
 function buildShareText(rows: Row[], winnerName: string | null): string {
-  const lines: string[] = ['Yahtzee', '']
+  const lines: string[] = ['Five Dice', '']
   lines.push(winnerName ? `🏆 ${winnerName} wins!` : '🏁 Game over')
   if (rows.length > 0) {
     lines.push('', 'Final scores:')
