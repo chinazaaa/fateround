@@ -48,6 +48,7 @@ import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
 import { useGameTurnAlerts } from '@/hooks/useGameTurnAlerts'
+import { useUnoMercyKnockoutAlerts } from '@/hooks/useUnoMercyKnockoutAlerts'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import {
   postUnoCallUno,
@@ -188,6 +189,13 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
     gameCode: bootstrap.code,
     status: bootstrap.game?.status,
     isMyTurn,
+    enabled: bootstrap.screen === 'playing',
+  })
+
+  useUnoMercyKnockoutAlerts({
+    session,
+    players: bootstrap.players,
+    myPlayerId: bootstrap.myPlayerId,
     enabled: bootstrap.screen === 'playing',
   })
 
@@ -506,6 +514,7 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
           myPlayerId={bootstrap.myPlayerId}
           handCounts={handCounts}
           finishOrder={session.finish_order ?? []}
+          eliminatedIds={session.eliminated_player_ids ?? []}
         />
 
         <CardTableArea
