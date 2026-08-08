@@ -451,8 +451,8 @@ export function HostBoardGameLobbyPanel({
                 />
                 <p className="mt-1 text-xs text-faint">
                   High Stakes is a Show ’em No Mercy-style variant: 168-card deck (Discard Colour, Skip All, Reverse
-                  Draw 4, Draw 6, Draw 10, Colour Roulette) with 0-7, stacking and Jump-In locked in. Draw 4 challenges
-                  + Team-Up are off.
+                  Draw 4, Draw 6, Draw 10, Colour Roulette) with 0-7 and stacking locked in. Draw 4 challenges, Team-Up,
+                  and Jump-In are off.
                 </p>
               </div>
               {unoMode === 'no_mercy' ? (
@@ -522,8 +522,8 @@ export function HostBoardGameLobbyPanel({
                   </>
                 ) : (
                   <p className="text-xs text-faint">
-                    Locked in High Stakes: 0-7, Draw-card stacking (equal-or-higher chains), and Jump-In. WD4 challenges
-                    off.
+                    Locked in High Stakes: 0-7 and Draw-card stacking (equal-or-higher chains). WD4 challenges and
+                    Jump-In are off.
                   </p>
                 )}
               </div>

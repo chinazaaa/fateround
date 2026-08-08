@@ -174,7 +174,9 @@ export function parseUnoRules(
     stacking: noMercy ? true : game?.uno_stacking === true,
     multiPlay: noMercy ? 'off' : parseMultiPlayMode(game?.uno_multi_play_mode),
     teamMode: noMercy ? false : game?.uno_team_mode === true,
-    jumpIn: noMercy ? true : game?.uno_jump_in === true,
+    // Jump-In is OFF in High Stakes. The extra chaos + out-of-turn plays don't compose
+    // with the +6/+10 draws and knockouts — it made the mode unplayable in testing.
+    jumpIn: noMercy ? false : game?.uno_jump_in === true,
     noMercyWin: parseUnoNoMercyWin(game?.uno_no_mercy_win),
   }
 }
