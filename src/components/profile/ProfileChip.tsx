@@ -33,11 +33,14 @@ type Props = {
 }
 
 // Signed-in players get an avatar-only chip — a long handle would eat the header, and the
-// avatar already IS the personal marker. Guests keep the "Guest" text; that word is doing
-// real work (see below) and it's short enough to fit without crowding.
-const APP_CLASS =
-  'inline-flex h-9 items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface-inset-bg)] px-2 text-sm font-semibold text-muted transition-colors hover:text-[var(--foreground)] hover:border-[var(--border-strong)]'
-const APP_CLASS_GUEST = `${APP_CLASS} px-3.5`
+// avatar already IS the personal marker. In the in-game chrome (`tone='app'`) the space is
+// tightest (roster button + share + settings all live in the same row), so drop the pill's
+// border/background too and let the avatar circle stand on its own. Guests keep the "Guest"
+// text; that word is doing real work (see below) and it's short enough to fit without crowding.
+const APP_CLASS_SIGNEDIN =
+  'inline-flex h-9 items-center gap-1.5 rounded-full p-0.5 text-sm font-semibold text-muted transition-colors hover:text-[var(--foreground)]'
+const APP_CLASS_GUEST =
+  'inline-flex h-9 items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface-inset-bg)] px-3.5 text-sm font-semibold text-muted transition-colors hover:text-[var(--foreground)] hover:border-[var(--border-strong)]'
 
 export function ProfileChip({ tone = 'site' }: Props) {
   const [open, setOpen] = useState(false)
@@ -51,7 +54,7 @@ export function ProfileChip({ tone = 'site' }: Props) {
 
   const streak = profile?.current_streak ?? 0
 
-  const buttonClass = tone === 'app' ? (signedIn ? APP_CLASS : APP_CLASS_GUEST) : 'fr-nav-btn'
+  const buttonClass = tone === 'app' ? (signedIn ? APP_CLASS_SIGNEDIN : APP_CLASS_GUEST) : 'fr-nav-btn'
 
   return (
     <>
