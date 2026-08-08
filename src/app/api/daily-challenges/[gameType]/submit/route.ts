@@ -12,6 +12,7 @@ import {
 } from '@/lib/daily-challenge'
 import { advanceStreak, type StreakState } from '@/lib/trophies/streak'
 import { syncEligibleTrophies } from '@/lib/trophies/award'
+import { computeDailyRank } from '@/lib/daily-rank'
 
 export const dynamic = 'force-dynamic'
 
@@ -652,38 +653,25 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ gam
   }
 
   // Compute rank with the SAME comparator the leaderboard uses, so the finished-screen rank matches
-  // the board: time games by most-solved then fastest; Word Hunt by raw points.
-  let rank: number
-  if (DAILY_GAME_PRIMARY_METRIC[gameType] === 'time') {
-    const [{ count: moreSolved }, { count: sameSolvedFaster }] = await Promise.all([
-      admin
-        .from('daily_scores')
-        .select('*', { count: 'exact', head: true })
-        .eq('challenge_id', challengeId)
-        .gt('normalized_score', 0)
-        .gt('items_solved', metrics.itemsSolved),
-      admin
-        .from('daily_scores')
-        .select('*', { count: 'exact', head: true })
-        .eq('challenge_id', challengeId)
-        .gt('normalized_score', 0)
-        .eq('items_solved', metrics.itemsSolved)
-        .lt('time_seconds', clampedTime),
-    ])
-    rank = (moreSolved ?? 0) + (sameSolvedFaster ?? 0) + 1
-  } else {
-    const { count: betterCount } = await admin
-      .from('daily_scores')
-      .select('*', { count: 'exact', head: true })
-      .eq('challenge_id', challengeId)
-      .gt('raw_points', metrics.rawPoints)
-    rank = (betterCount ?? 0) + 1
-  }
+  // the board. Re-read the row we just inserted so submitted_at (the final tiebreaker) matches
+  // what the leaderboard query will see.
+  const { data: mine } = await admin
+    .from('daily_scores')
+    .select('normalized_score, raw_points, items_solved, time_seconds, hints_used, submitted_at')
+    .eq('challenge_id', challengeId)
+    .eq('profile_id', profileId)
+    .single()
+  const rank = mine ? await computeDailyRank(admin, gameType, challengeId, mine) : 1
 
+  // Match the leaderboard's row set — zero-score/zero-point rows are filtered off the board, so
+  // the "of N" denominator has to filter the same column that ranks the board or the finished
+  // screen's "#K of N" will disagree with the leaderboard the player scrolls to next.
+  const totalCountColumn = DAILY_GAME_PRIMARY_METRIC[gameType] === 'score' ? 'raw_points' : 'normalized_score'
   const { count: totalPlayers } = await admin
     .from('daily_scores')
     .select('*', { count: 'exact', head: true })
     .eq('challenge_id', challengeId)
+    .gt(totalCountColumn, 0)
 
   // Fetch personal best for comparison
   const { data: personalBest } = await admin

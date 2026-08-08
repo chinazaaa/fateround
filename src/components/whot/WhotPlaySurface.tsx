@@ -176,22 +176,35 @@ export function WhotPlaySurface({
           </div>
         )}
 
-        {watching ? (
-          <TurnStatus muted>
-            Spectating — {turnName}&apos;s turn · <span className="g">you can join the voice room</span>
-          </TurnStatus>
-        ) : session.status_message ? (
+        {/* Commentary — status_message, pick penalties and the WHOT-call prompt — is shown to
+            spectators too so they can follow the action ("Ibrahim to draw 3", etc.), not just
+            players. Only fall back to the plain "Spectating" hint when there's no live event. */}
+        {session.status_message ? (
           <ActionToast tone="ok">{session.status_message}</ActionToast>
         ) : session.phase === 'choose_whot' ? (
           <TurnStatus>
-            {isMyTurn
+            {!watching && isMyTurn
               ? `You played WHOT — choose ${rules.numberCallsEnabled ? 'a shape or number' : 'a shape'}`
               : `${turnName} is calling the next play…`}
           </TurnStatus>
         ) : pickPenalty.type === 'pick2' ? (
-          <ActionToast tone="hot">🔥 Pick 2 — play a 2 or draw {pickPenalty.count}</ActionToast>
+          <ActionToast tone="hot">
+            🔥 Pick 2 —{' '}
+            {watching
+              ? `${turnName} must play a 2 or draw ${pickPenalty.count}`
+              : `play a 2 or draw ${pickPenalty.count}`}
+          </ActionToast>
         ) : pickPenalty.type === 'pick3' ? (
-          <ActionToast tone="hot">🔥 Pick 3 — play a 5 or draw {pickPenalty.count}</ActionToast>
+          <ActionToast tone="hot">
+            🔥 Pick 3 —{' '}
+            {watching
+              ? `${turnName} must play a 5 or draw ${pickPenalty.count}`
+              : `play a 5 or draw ${pickPenalty.count}`}
+          </ActionToast>
+        ) : watching ? (
+          <TurnStatus muted>
+            Spectating — {turnName}&apos;s turn · <span className="g">you can join the voice room</span>
+          </TurnStatus>
         ) : isMyTurn ? (
           // The required shape/number is shown persistently by the demand badge
           // above, so the turn prompt no longer repeats it inline.
