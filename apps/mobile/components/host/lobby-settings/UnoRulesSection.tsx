@@ -70,14 +70,14 @@ export function UnoRulesSection({ value, onChange }: Props) {
       <Text style={styles.label}>House rules</Text>
       <View style={styles.toggles}>
         <SettingToggle
-          label="Wild Draw Four challenge"
-          description="Let the next player challenge a Wild Draw Four instead of drawing"
+          label="Draw 4 challenge"
+          description="Let the next player challenge a Draw 4 instead of drawing"
           value={value.wd4Challenge}
           onChange={(wd4Challenge) => onChange({ wd4Challenge })}
         />
         <SettingToggle
           label="Stacking"
-          description="Stack Draw Two on Draw Two, Wild Draw Four on Wild Draw Four"
+          description="Stack Draw 2 on Draw 2, Draw 4 on Draw 4"
           value={value.stacking}
           onChange={(stacking) => onChange({ stacking })}
         />
