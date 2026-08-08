@@ -1404,7 +1404,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       {
         question: 'What is the Yahtzee bonus?',
         answer:
-          'There are two bonuses. The upper-section bonus adds 35 points if your Ones-through-Sixes total reaches 63 or more. The Yahtzee bonus rewards extra Yahtzees: once you have already scored 50 in the Yahtzee box, every additional five-of-a-kind you roll is worth a 100-point bonus. FateRound applies both automatically.',
+          'There are two bonuses. The upper-section bonus adds 35 points if your Ones-through-Sixes total reaches 63 or more. The Five Dice bonus rewards extra five-of-a-kinds: once you have already scored 50 in the Five of a Kind box, every additional five-of-a-kind you roll is worth a 100-point bonus. FateRound applies both automatically.',
       },
       {
         question: 'Is there any strategy to Yahtzee?',
