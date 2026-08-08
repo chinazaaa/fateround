@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
   const { data: game } = await supabase.from('games').select('*').eq('id', code).maybeSingle()
   if (!game) return NextResponse.json({ error: 'Game not found' }, { status: 404 })
   if (!isQuiplashGame(parseGameType(game.game_type))) {
-    return NextResponse.json({ error: 'Not a Quiplash game' }, { status: 400 })
+    return NextResponse.json({ error: 'Not a Punchline game' }, { status: 400 })
   }
   if (game.status !== 'active') return NextResponse.json({ error: 'Game not active' }, { status: 400 })
 

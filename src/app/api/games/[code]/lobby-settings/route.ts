@@ -390,7 +390,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     }
   } else if (rounds_count !== undefined) {
     return NextResponse.json(
-      { error: 'Rounds count only applies to Matching Pairs, Quiplash, and Quick Draw games' },
+      { error: 'Rounds count only applies to Matching Pairs, Punchline, and Quick Draw games' },
       { status: 400 }
     )
   }
@@ -402,7 +402,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       gameUpdate.operative_timer_seconds = clampQuickDrawTitleTimer(operative_timer_seconds)
     } else {
       return NextResponse.json(
-        { error: 'Secondary timer only applies to Quiplash and Quick Draw games' },
+        { error: 'Secondary timer only applies to Punchline and Quick Draw games' },
         { status: 400 }
       )
     }
@@ -558,7 +558,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     monopoly_no_rent_in_jail !== undefined ||
     monopoly_estate_dividend !== undefined
   ) {
-    return NextResponse.json({ error: 'These rules only apply to Monopoly games' }, { status: 400 })
+    return NextResponse.json({ error: 'These rules only apply to Estate Kings games' }, { status: 400 })
   }
 
   if (boardLobbyType === 'whot') {
