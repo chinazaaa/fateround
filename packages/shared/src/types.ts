@@ -799,13 +799,32 @@ export interface WhotPlayerHand {
 export type UnoColor = 'red' | 'yellow' | 'green' | 'blue'
 export type UnoCardColor = UnoColor | 'wild'
 
-/** What a card does. Number cards carry `value` 0–9; everything else is an action. */
-export type UnoCardKind = 'number' | 'skip' | 'reverse' | 'draw2' | 'wild' | 'wild_draw4'
+/**
+ * What a card does. Number cards carry `value` 0–9; everything else is an action.
+ * The High-Stakes-only kinds (`wild_reverse_draw4`, `draw6`, `draw10`, `discard_all`,
+ * `skip_everyone`, `wild_color_roulette`) only appear in a No Mercy deck — mobile
+ * consumers (UnoCardFace glyph mapping, etc.) already reference them by name so
+ * they must live in the shared type alongside the Classic ones.
+ */
+export type UnoCardKind =
+  | 'number'
+  | 'skip'
+  | 'reverse'
+  | 'draw2'
+  | 'wild'
+  | 'wild_draw4'
+  | 'wild_reverse_draw4'
+  | 'draw6'
+  | 'draw10'
+  | 'discard_all'
+  | 'skip_everyone'
+  | 'wild_color_roulette'
 
 /**
  * Phase-1 (this port) only reaches `playing` / `choose_color` / `challenge_window` / `finished`.
- * `swap_target` (0-7 rule) and `team_leave_decision` (Team-Up, Phase 2) are carried in the shared
- * type for parity with web's session shape but are not driven by any mobile UI yet.
+ * `swap_target` (0-7 rule), `team_leave_decision` (Team-Up, Phase 2) and `color_roulette`
+ * (No Mercy Wild Colour Roulette reveal window) are carried in the shared type for parity
+ * with web's session shape.
  */
 export type UnoPhase =
   | 'playing'
@@ -813,6 +832,7 @@ export type UnoPhase =
   | 'challenge_window'
   | 'swap_target'
   | 'team_leave_decision'
+  | 'color_roulette'
   | 'finished'
 
 export interface UnoCard {
@@ -838,13 +858,19 @@ export interface UnoSession {
   required_color: UnoColor | null
   /** Pending forced draw the current player must take (Draw Two / Draw Four target). */
   draw_penalty: number
-  /** Which card can stack onto the pending penalty ('draw2' | 'wild_draw4'); null = must draw it. */
-  draw_penalty_kind: 'draw2' | 'wild_draw4' | null
+  /** Which card can stack onto the pending penalty; null = must draw it. Classic tracks
+   *  same-kind stacking ('draw2' | 'wild_draw4'); No Mercy adds value-based cross-kind
+   *  chains via the extra kinds. */
+  draw_penalty_kind: 'draw2' | 'wild_draw4' | 'draw6' | 'draw10' | 'wild_reverse_draw4' | null
   /** Set to the card the current player just drew while they may still play it or keep it (pass). */
   drawn_card_id: string | null
   last_play_cards?: UnoCard[] | null
-  /** During `choose_color`, which wild is being coloured. */
-  pending_wild: 'wild' | 'wild_draw4' | null
+  /** Who played the current top card (for High Stakes knockout / stack attribution). */
+  last_play_player_id?: string | null
+  /** During `choose_color`, which wild is being coloured. In No Mercy this also carries
+   *  the extra wild kinds — including `wild_color_roulette` which enters `color_roulette`
+   *  phase instead of `choose_color`. */
+  pending_wild: 'wild' | 'wild_draw4' | 'wild_reverse_draw4' | 'draw6' | 'draw10' | 'wild_color_roulette' | null
   /** Colour in effect immediately before a Wild Draw Four (for challenge reveal). */
   challenge_prev_color: UnoColor | null
   /** Who played the Wild Draw Four currently in `challenge_window`. */
@@ -861,6 +887,15 @@ export interface UnoSession {
   left_player_ids?: string[]
   /** Team-Up (Phase 2, unwired on mobile). */
   team_decider_id?: string | null
+  /** No Mercy: players knocked out by the 25-card Mercy rule this round. */
+  eliminated_player_ids?: string[]
+  /** No Mercy: who chose the colour for a Wild Colour Roulette (they draw until match). */
+  color_roulette_player_id?: string | null
+  /** No Mercy: reveals so far in the current Colour Roulette event (NULL when none in
+   *  progress). Trophies for Roulette Master (>=5) / Executioner (>=8) key off this. */
+  color_roulette_reveals?: number | null
+  /** No Mercy — running length of the current Draw-stack chain (see engine notes). */
+  draw_stack_chain?: number
   turn_deadline_at: string | null
   created_at?: string
   updated_at?: string
