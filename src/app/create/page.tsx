@@ -3732,7 +3732,7 @@ function CreateGameInner() {
                   />
                 </Field>
                 <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="uno" />
-                <Field label="Missed “UNO” penalty">
+                <Field label="Missed last-card penalty">
                   <CustomSelect
                     value={unoUnoPenalty}
                     onChange={setUnoUnoPenalty}

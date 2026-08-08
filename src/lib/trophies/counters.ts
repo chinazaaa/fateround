@@ -1285,11 +1285,11 @@ export const COUNTERS: readonly CounterDef[] = [
   // ── UNO — from uno_player_hands.stats at finish ─────────────────────────────────────────────
   {
     key: 'uno_uno_calls',
-    label: 'UNO — UNO calls',
-    description: 'Correct UNO calls on your second-to-last card.',
+    label: 'Match Up — last-card calls',
+    description: 'Correct “last card” calls on your second-to-last card.',
     scope: 'per-game',
     availability: 'partial',
-    phrase: 'called UNO correctly at least {n} time{s}',
+    phrase: 'called last card correctly at least {n} time{s}',
   },
   {
     key: 'uno_skips',
@@ -1334,10 +1334,10 @@ export const COUNTERS: readonly CounterDef[] = [
   {
     key: 'uno_catches',
     label: 'UNO — caught a missed call',
-    description: 'Opponents caught who forgot to call UNO.',
+    description: 'Opponents caught who forgot to call last card.',
     scope: 'per-game',
     availability: 'partial',
-    phrase: 'caught a missed UNO call at least {n} time{s}',
+    phrase: 'caught a missed last-card call at least {n} time{s}',
   },
   {
     key: 'uno_draw2_stacked',

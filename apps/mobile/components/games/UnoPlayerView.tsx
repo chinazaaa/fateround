@@ -564,7 +564,7 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
 
         {!isWatching && owesUnoCall && session.phase === 'playing' ? (
           <Pressable style={styles.unoCallBtn} disabled={acting} onPress={() => void callUno()}>
-            <Text style={styles.unoCallText}>Call UNO!</Text>
+            <Text style={styles.unoCallText}>Last card!</Text>
           </Pressable>
         ) : null}
 

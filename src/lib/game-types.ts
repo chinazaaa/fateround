@@ -2407,7 +2407,7 @@ export function gameHowItWorks(
     case 'whot':
       return 'Players join with their name. Match the top card by shape or number — WHOT lets you call the next match. Pick 2 and Pick 3 stacks are separate. First to empty their hand wins — or lowest hand total when the game clock runs out.'
     case 'uno':
-      return 'Players join with their name and are dealt 7 cards. Match the top card by colour, number, or symbol. Skip, Reverse, Draw Two, and Wild cards shake things up — call "UNO" on your second-to-last card or draw a penalty. First to empty their hand wins.'
+      return 'Players join with their name and are dealt 7 cards. Match the top card by colour, number, or symbol. Skip, Reverse, Draw Two, and Wild cards shake things up — call "last card" on your second-to-last card or draw a penalty. First to empty their hand wins.'
     case 'ludo':
       return 'Players join with their name. Roll two dice each turn and use each die separately — a 6 brings pieces out; doubles earn another roll after both dice are played. Capture opponents, block with pairs — first to finish all four pieces wins!'
     case 'mahjong':

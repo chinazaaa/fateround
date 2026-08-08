@@ -479,7 +479,7 @@ export function HostBoardGameLobbyPanel({
                 </div>
               ) : null}
               <div>
-                <p className="label-caps text-[10px] mb-1.5">Missed “UNO” penalty</p>
+                <p className="label-caps text-[10px] mb-1.5">Missed last-card penalty</p>
                 <HostLobbyOptionChips
                   value={unoUnoPenalty}
                   options={[

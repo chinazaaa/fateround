@@ -757,9 +757,9 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
       ],
     },
     {
-      title: 'Calling UNO',
+      title: 'Calling last card',
       points: [
-        'When you play your second-to-last card, call "UNO" — leaving you with one card.',
+        'When you play your second-to-last card, call "last card" — leaving you with one card.',
         'If you forget before the next player takes their turn, you draw a penalty (2 cards by default; the host can raise it to 4).',
       ],
     },

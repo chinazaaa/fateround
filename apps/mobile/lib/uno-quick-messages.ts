@@ -25,7 +25,7 @@ export const UNO_QUICK_MESSAGES: readonly UnoQuickMessage[] = [
   { id: 'draw2', label: 'Draw 2', kind: 'glyph', glyph: '+2' },
   { id: 'wild', label: 'Wild', kind: 'glyph', glyph: '🌈' },
   { id: 'swap', label: 'Swap', kind: 'glyph', glyph: '🔄' },
-  { id: 'uno', label: 'I have one card!', kind: 'glyph', glyph: '🎉' },
+  { id: 'uno', label: 'Last card!', kind: 'glyph', glyph: '🎉' },
   { id: 'go', label: 'Go for it', kind: 'glyph', glyph: '👍' },
   { id: 'ok', label: 'OK', kind: 'glyph', glyph: '👌' },
   { id: 'thanks', label: 'Thank you', kind: 'glyph', glyph: '🙏' },

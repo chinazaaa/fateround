@@ -591,7 +591,7 @@ export function UnoPlaySurface({
             <>
               {owesUnoCall && (
                 <button type="button" className="uno-call-btn" disabled={acting} onClick={onCallUno}>
-                  Call UNO!
+                  Last card!
                 </button>
               )}
               {canChallengeStack ? (

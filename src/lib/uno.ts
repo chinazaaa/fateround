@@ -891,7 +891,7 @@ function settleMissedUno(
     discardPile,
     playerId: pending,
     hand,
-    note: `${playerName(playerNames, pending)} forgot to call UNO — drew ${drawn.length}`,
+    note: `${playerName(playerNames, pending)} forgot to call last card — drew ${drawn.length}`,
   }
 }
 
@@ -2626,7 +2626,7 @@ export async function processUnoCall(
 
   const { data: landed } = await supabase
     .from('uno_sessions')
-    .update({ uno_called: true, status_message: `${nm} called UNO! 🎉`, updated_at: new Date().toISOString() })
+    .update({ uno_called: true, status_message: `${nm} called last card! 🎉`, updated_at: new Date().toISOString() })
     .eq('game_id', gameId)
     .eq('updated_at', session.updated_at)
     .select('game_id')
