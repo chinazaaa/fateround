@@ -1159,6 +1159,8 @@ function foldUnoPlay(
     playedSevenSwap?: boolean
     /** True when this play triggered the 0-pass rotation (isZero). */
     playedZeroPass?: boolean
+    /** True when this play brought the Draw stack chain to 3+ (Double Stack). */
+    threePlusStack?: boolean
   }
 ): UnoRoundStats {
   const stats = { ...prev }
@@ -1184,6 +1186,7 @@ function foldUnoPlay(
   if (opts.stackedAnyDraw) incU(stats, 'uno_hs_stack_plays')
   if (opts.playedSevenSwap) incU(stats, 'uno_hs_seven_swap_plays')
   if (opts.playedZeroPass) incU(stats, 'uno_hs_zero_pass_plays')
+  if (opts.threePlusStack) stats.uno_hs_stack3plus = 1
   if (opts.calledUno) incU(stats, 'uno_uno_calls')
   if (opts.caught) incU(stats, 'uno_catches')
   if (opts.rainbow) stats.uno_rainbow = 1
@@ -1512,6 +1515,12 @@ export async function processUnoPlay(
   const isSeven = rules.zeroSeven && card.kind === 'number' && card.value === 7 && !wentOut && sevenHasTarget
   let rotatedWrites: { playerId: string; cards: UnoCard[] }[] | null = null
 
+  // Double Stack chain: any Draw card played onto a pending Draw penalty extends the running
+  // chain; a fresh Draw starts a new chain at 1; a non-Draw play breaks any pending chain.
+  // Persisted on the session so the drawer can be credited too when the stack resolves.
+  const _drewOntoPendingStack = isDrawCard(card) && (session.draw_penalty ?? 0) > 0 && !!session.draw_penalty_kind
+  const newChain = isDrawCard(card) ? (_drewOntoPendingStack ? (session.draw_stack_chain ?? 0) + 1 : 1) : 0
+
   if (isWildCard(card) && !wentOut) {
     // Wild / Wild Draw Four / Draw Six / Draw Ten / Wild Reverse Draw Four / Color Roulette.
     // All wilds pause on the same seat for the colour choice (choose endpoint drives the rest).
@@ -1532,6 +1541,7 @@ export async function processUnoPlay(
         top_card: card,
         last_play_cards: [card],
         last_play_player_id: playerId,
+        draw_stack_chain: 0,
         discard_pile: discardWith(baseDiscard, session.top_card),
         draw_pile: basePile,
         required_color: null,
@@ -1552,6 +1562,7 @@ export async function processUnoPlay(
         top_card: card,
         last_play_cards: [card],
         last_play_player_id: playerId,
+        draw_stack_chain: newChain,
         discard_pile: discardWith(baseDiscard, session.top_card),
         draw_pile: basePile,
         required_color: null,
@@ -1578,6 +1589,7 @@ export async function processUnoPlay(
       top_card: card,
       last_play_cards: [card],
       last_play_player_id: playerId,
+      draw_stack_chain: newChain,
       required_color: null,
       pending_wild: null,
       challenge_prev_color: null,
@@ -1674,7 +1686,9 @@ export async function processUnoPlay(
   // (cross-kind chains are legal here). Classic games only fold this when it also stacks a
   // Draw Two — the No-Mercy-only kinds can't appear in a Classic deck, so cross-kind stacks
   // never trigger there.
-  const drewOntoPendingStack = isDrawCard(card) && (session.draw_penalty ?? 0) > 0 && !!session.draw_penalty_kind
+  const drewOntoPendingStack = _drewOntoPendingStack
+  // Double Stack participation credit for the mover — when this play brings chain to 3+.
+  const inThreePlusStack = newChain >= 3
   await writeUnoStats(
     supabase,
     gameId,
@@ -1686,6 +1700,7 @@ export async function processUnoPlay(
       stackedAnyDraw: drewOntoPendingStack,
       playedSevenSwap: isSeven,
       playedZeroPass: isZero,
+      threePlusStack: inThreePlusStack,
       rainbow: false,
     })
   )
@@ -1794,11 +1809,19 @@ export async function processUnoPlayMulti(
   const autoResolve = penalty > 0 && skipsAfter > 0 && !wentOut
   const pendingPenalty = penalty > 0 && !autoResolve && !wentOut
 
+  // Multi-Play chain: count the Draw 2s in this set as one continuous chain contribution.
+  // (Multi-Play is Draw 2 only — wild draws must play alone.) If the pile was pending a stack
+  // when this set landed, extend it; otherwise it starts fresh.
+  const draw2InSet = cards.filter((c) => c.kind === 'draw2').length
+  const priorChain = (session.draw_penalty ?? 0) > 0 && session.draw_penalty_kind ? (session.draw_stack_chain ?? 0) : 0
+  const nextChain = pendingPenalty ? priorChain + draw2InSet : 0
+
   const board: Partial<UnoSession> = {
     top_card: lastCard,
     // The whole set, in play order — the client fans the covered cards behind the top one.
     last_play_cards: cards,
     last_play_player_id: playerId,
+    draw_stack_chain: nextChain,
     required_color: null,
     pending_wild: null,
     challenge_prev_color: null,
@@ -2045,6 +2068,7 @@ export async function processUnoDraw(
       discard_pile: discardPile,
       draw_penalty: 0,
       draw_penalty_kind: null,
+      draw_stack_chain: 0,
       drawn_card_id: null,
       current_turn_index: nextIndex,
       uno_pending_player: null,
@@ -2093,12 +2117,24 @@ export async function processUnoDraw(
 
   // Fold the draw. `forced` marks a Draw Two / Draw Four penalty draw, which the "never made to
   // draw" and "no penalties" trophies key off, distinct from a voluntary single draw.
-  await writeUnoStats(
-    supabase,
-    gameId,
-    playerId,
-    foldUnoDraw(currentUnoStats(hands, playerId), drawn.length, newHand.length, forced)
-  )
+  const drawerStats = foldUnoDraw(currentUnoStats(hands, playerId), drawn.length, newHand.length, forced)
+  // Double Stack (drawer credit): if the chain about to reset was already 3+, the drawer was
+  // also "part of" that stack per spec.
+  if (forced && (session.draw_stack_chain ?? 0) >= 3) drawerStats.uno_hs_stack3plus = 1
+  await writeUnoStats(supabase, gameId, playerId, drawerStats)
+
+  // High Stakes attribution folds on the SETTER of the pending penalty (last_play_player_id).
+  if (forced && session.last_play_player_id && session.last_play_player_id !== playerId) {
+    const setterId = session.last_play_player_id
+    const setterStats = { ...currentUnoStats(hands, setterId) }
+    // Twenty Load: cumulate the count of forced draws this attacker has dealt to THIS victim.
+    const victimKey = `uno_hs_forced_of_${playerId}`
+    setterStats[victimKey] = (setterStats[victimKey] ?? 0) + drawn.length
+    // Stack Kingpin: bump the largest single penalty landed on any opponent from a Draw the
+    // setter played (any chain length; 16+ triggers the trophy at facts time).
+    bumpMaxU(setterStats, 'uno_hs_max_stack_sent', drawn.length)
+    await writeUnoStats(supabase, gameId, setterId, setterStats)
+  }
 
   // Mercy: No Mercy players who cross the 25-card threshold are knocked out. This runs after
   // the session write so realtime shows the draw + the elimination together. Attribution goes

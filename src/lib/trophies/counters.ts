@@ -1583,7 +1583,7 @@ export const COUNTERS: readonly CounterDef[] = [
     phrase: 'stacked a Draw in at least {n} HS game{s}',
   },
   {
-    key: 'uno_hs_stack3plus_games_todo',
+    key: 'uno_hs_stack3plus_games',
     label: 'Match Up — HS 3+ stack chain',
     description: 'HS games featuring a Draw stack of 3+ cards. Engine plumbing pending.',
     scope: 'per-game',
@@ -1591,7 +1591,7 @@ export const COUNTERS: readonly CounterDef[] = [
     phrase: 'played in a 3+ Draw stack in at least {n} HS game{s}',
   },
   {
-    key: 'uno_hs_twenty_load_games_todo',
+    key: 'uno_hs_twenty_load_games',
     label: 'Match Up — HS twenty-load',
     description: 'HS games where you dealt 20+ cards to one opponent. Engine plumbing pending.',
     scope: 'per-game',
@@ -1607,7 +1607,7 @@ export const COUNTERS: readonly CounterDef[] = [
     phrase: 'knocked out at least {n} opponent{s} in HS games',
   },
   {
-    key: 'uno_hs_lucky_seven_games_todo',
+    key: 'uno_hs_lucky_seven_games',
     label: 'Match Up — HS lucky seven',
     description: 'HS wins on the same turn or next after swapping in with a 7. Engine plumbing pending.',
     scope: 'per-game',
@@ -1679,7 +1679,7 @@ export const COUNTERS: readonly CounterDef[] = [
     phrase: 'won an HS game with no forced draws at least {n} time{s}',
   },
   {
-    key: 'uno_hs_stack_kingpin_wins_todo',
+    key: 'uno_hs_stack_kingpin_wins',
     label: 'Match Up — HS stack kingpin',
     description: 'HS wins after sending a stacked penalty of 16+. Engine plumbing pending.',
     scope: 'per-game',

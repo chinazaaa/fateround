@@ -1,4 +1,7 @@
-import type { SystemTrophySpec } from './types'
+import { allOf, counterCrit, type SystemTrophySpec } from './types'
+
+/** Compact helper: an HS counter must hit at least 1 (or a custom gte) on the uno game_type. */
+const hs = (counter: string, gte = 1) => counterCrit(counter, gte, 'uno')
 
 /**
  * UNO — derived at finish from the per-game accumulator the engine folds forward on every action.
@@ -393,7 +396,7 @@ export const UNO: SystemTrophySpec[] = [
     tier: 'silver',
     title: 'Double Stack',
     description: 'Be part of a Draw-card stack of 3 or more cards.',
-    counter: 'uno_hs_stack3plus_games_todo',
+    counter: 'uno_hs_stack3plus_games',
     points: 30,
     sortOrder: 170.3,
   },
@@ -402,7 +405,7 @@ export const UNO: SystemTrophySpec[] = [
     tier: 'silver',
     title: 'Twenty Load',
     description: 'Make one opponent draw 20+ cards across a single High Stakes game.',
-    counter: 'uno_hs_twenty_load_games_todo',
+    counter: 'uno_hs_twenty_load_games',
     points: 35,
     sortOrder: 170.4,
   },
@@ -420,7 +423,7 @@ export const UNO: SystemTrophySpec[] = [
     tier: 'silver',
     title: 'Lucky Seven',
     description: 'Swap into a winning hand with a 7 and win the same turn or next.',
-    counter: 'uno_hs_lucky_seven_games_todo',
+    counter: 'uno_hs_lucky_seven_games',
     points: 35,
     sortOrder: 170.6,
   },
@@ -513,7 +516,7 @@ export const UNO: SystemTrophySpec[] = [
     tier: 'gold',
     title: 'Stack Kingpin',
     description: 'Win a High Stakes game after sending a stacked penalty of 16+ cards.',
-    counter: 'uno_hs_stack_kingpin_wins_todo',
+    counter: 'uno_hs_stack_kingpin_wins',
     points: 80,
     sortOrder: 264,
   },
@@ -553,5 +556,55 @@ export const UNO: SystemTrophySpec[] = [
     gte: 25,
     points: 150,
     sortOrder: 268,
+  },
+
+  // ── High Stakes platinum ────────────────────────────────────────────────────────────────
+  // Fires only when every other High Stakes trophy (all 29 non-platinum HS achievements) has
+  // been earned. The generic auto `uno.platinum` "Master" trophy the catalog builds on top
+  // requires ALL uno trophies (classic + HS) — this is the HS-only capstone.
+  {
+    suffix: 'hs_champion',
+    tier: 'gold', // rendered under gold — the auto uno.platinum is the only real platinum row
+    title: 'High Stakes Champion',
+    description: 'Earn every other High Stakes trophy.',
+    // Nested allOf to stay under the DSL's 20-branch cap (29 leaves split ~15/14).
+    criteria: allOf(
+      allOf(
+        hs('uno_hs_games'),
+        hs('uno_hs_first_blood_games'),
+        hs('uno_hs_swap_games'),
+        hs('uno_hs_pass_games'),
+        hs('uno_hs_big_draw_games'),
+        hs('uno_hs_roulette_games'),
+        hs('uno_hs_discard_all_games'),
+        hs('uno_hs_skip_all_games'),
+        hs('uno_hs_brink_games'),
+        hs('uno_hs_wins'),
+        hs('uno_hs_stack_games'),
+        hs('uno_hs_stack3plus_games'),
+        hs('uno_hs_twenty_load_games'),
+        hs('uno_hs_knockouts'),
+        hs('uno_hs_lucky_seven_games')
+      ),
+      allOf(
+        hs('uno_hs_roulette5_games'),
+        hs('uno_hs_comeback_wins'),
+        hs('uno_hs_games', 10),
+        hs('uno_hs_full_house_wins'),
+        hs('uno_hs_mercy_dodge_wins'),
+        hs('uno_hs_chain_breaker_wins'),
+        hs('uno_hs_last_standing_wins'),
+        hs('uno_hs_double_ko_games'),
+        hs('uno_hs_untouchable_wins'),
+        hs('uno_hs_stack_kingpin_wins'),
+        hs('uno_hs_mass_extinction_games'),
+        hs('uno_hs_roulette8_games'),
+        hs('uno_hs_flawless_wins'),
+        hs('uno_hs_wins', 25)
+      )
+    ),
+    points: 500,
+    sortOrder: 269,
+    hidden: true,
   },
 ]

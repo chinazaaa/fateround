@@ -826,6 +826,8 @@ export interface UnoSession {
   color_roulette_player_id?: string | null
   /** Id of the player who played the current top card — for High Stakes knockout attribution. */
   last_play_player_id?: string | null
+  /** Draw-card stack chain depth so far — resets when the penalty resolves or a non-Draw plays. */
+  draw_stack_chain?: number
   /** Set to the card the current player just drew while they may still play it or keep it (pass). */
   drawn_card_id: string | null
   /**

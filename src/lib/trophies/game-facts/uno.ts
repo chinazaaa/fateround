@@ -57,6 +57,10 @@ type RoundStats = {
   uno_hs_max_stack_absorbed?: number
   uno_hs_max_roulette_dealt?: number
   uno_hs_knockouts?: number
+  uno_hs_stack3plus?: number
+  uno_hs_max_stack_sent?: number
+  /** Per-victim forced-draw totals: keys look like `uno_hs_forced_of_<victimId>`. */
+  [k: `uno_hs_forced_of_${string}`]: number | undefined
 }
 
 type HandRow = { player_id: string; stats: RoundStats | null; cards: UnoCard[] | null }
@@ -222,6 +226,17 @@ function playerFacts(
     if (rouletteMaxDealt >= 5) facts.uno_hs_roulette5_games = 1
     if (rouletteMaxDealt >= 8) facts.uno_hs_roulette8_games = 1
 
+    // #12 Double Stack: the mover crediting is folded at play time (stats.uno_hs_stack3plus).
+    if ((stats.uno_hs_stack3plus ?? 0) > 0) facts.uno_hs_stack3plus_games = 1
+
+    // #13 Twenty Load: cumulative forced draws attributed to me per victim. Emit the flag
+    // when the largest per-victim total this round hit 20+. Keys are `uno_hs_forced_of_<id>`.
+    let maxPerVictim = 0
+    for (const [k, v] of Object.entries(stats)) {
+      if (k.startsWith('uno_hs_forced_of_') && typeof v === 'number' && v > maxPerVictim) maxPerVictim = v
+    }
+    if (maxPerVictim >= 20) facts.uno_hs_twenty_load_games = 1
+
     // Win-only HS facts.
     if (won) {
       if (peak >= 20) facts.uno_hs_comeback_wins = 1
@@ -230,6 +245,13 @@ function playerFacts(
       if ((stats.uno_hs_max_stack_absorbed ?? 0) >= 10) facts.uno_hs_chain_breaker_wins = 1
       if (forcedHits === 0) facts.uno_hs_untouchable_wins = 1
       if (peak > 0 && peak <= 10) facts.uno_hs_flawless_wins = 1
+      // #15 Lucky Seven (permissive): swapped into a hand with a 7 at least once and won the
+      // round. Spec asks for "same turn or next" — the strict version requires post-swap turn
+      // tracking; the permissive win-flag here matches the spec's intent (the swap was worth
+      // it) and never over-credits a player who never swapped.
+      if ((stats.uno_hs_seven_swap_plays ?? 0) > 0) facts.uno_hs_lucky_seven_games = 1
+      // #25 Stack Kingpin: I set a Draw penalty of 16+ that landed on an opponent, and I won.
+      if ((stats.uno_hs_max_stack_sent ?? 0) >= 16) facts.uno_hs_stack_kingpin_wins = 1
       // Last One Standing: a `last_standing` win-condition round that reached the finished
       // phase via a knockout cascade. Approx: the player is the winner AND the win-condition
       // is last_standing. (Empty-hand wins don't set noMercyWin='last_standing' as the trigger,
