@@ -260,7 +260,9 @@ export async function generateDailyPuzzleFromContent(
         .map((e) => ({ word: e.word!, hint: e.clue ?? '' }))
       if (entries.length < 3) return null
 
-      const result = buildWordScrambleFromEntries(entries, 'medium', seed)
+      // Admin-curated content: use every entry the admin provided, not just those in the
+      // 'medium' difficulty's 5–7 letter window (which was silently dropping the rest).
+      const result = buildWordScrambleFromEntries(entries, 'medium', seed, [], { useAll: true })
       if (!result) return null
 
       return {

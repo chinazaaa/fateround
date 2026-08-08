@@ -239,20 +239,22 @@ function buildFromWords(
   words: WordScrambleEntryInput[],
   difficulty: WordScrambleDifficulty,
   seed: number,
-  exclude: string[] = []
+  exclude: string[] = [],
+  opts: { useAll?: boolean } = {}
 ): { metadata: WordScrambleMetadata; solution: string[] } | null {
   const spec = WORD_SCRAMBLE_DIFFICULTY_SPECS[difficulty]
   const excluded = new Set(exclude.map((w) => normalizeScrambleWord(w)))
   const seen = new Set<string>()
   const pool = words
     .map((w) => ({ word: normalizeScrambleWord(w.word), hint: w.hint?.trim() }))
-    .filter((w) => w.word.length >= spec.minLen && w.word.length <= spec.maxLen)
+    .filter((w) => (opts.useAll ? w.word.length >= 2 : w.word.length >= spec.minLen && w.word.length <= spec.maxLen))
     .filter((w) => !excluded.has(w.word))
     .filter((w) => (seen.has(w.word) ? false : (seen.add(w.word), true)))
 
   if (pool.length === 0) return null
   const rng = xorshift(seed)
-  const chosen = shuffle(pool, rng).slice(0, Math.min(spec.count, pool.length))
+  const limit = opts.useAll ? pool.length : Math.min(spec.count, pool.length)
+  const chosen = shuffle(pool, rng).slice(0, limit)
 
   const scrambles: string[] = []
   const solution: string[] = []
@@ -311,15 +313,20 @@ export function buildWordScramblePuzzle(
   }
 }
 
-/** Build from a custom pool (CSV / library pack rows). */
+/** Build from a custom pool (CSV / library pack rows). Pass `useAll` to include every provided
+ *  entry (bypassing the difficulty length window and count cap) — used for admin-curated daily
+ *  challenges where the curator's list is the whole puzzle. */
 export function buildWordScrambleFromEntries(
   entries: WordScrambleEntryInput[],
   difficulty: string | null | undefined,
   seed: number,
-  exclude: string[] = []
+  exclude: string[] = [],
+  opts: { useAll?: boolean } = {}
 ): { metadata: WordScrambleMetadata; solution: string[] } | null {
   const diff = parseWordScrambleDifficulty(difficulty)
-  return buildFromWords(entries, diff, seed, exclude) ?? buildFromWords(entries, diff, seed + 101, [])
+  return (
+    buildFromWords(entries, diff, seed, exclude, opts) ?? buildFromWords(entries, diff, seed + 101, [], opts)
+  )
 }
 
 /** Parse a custom CSV/rows pool (word[,hint]) into scramble entries. */
