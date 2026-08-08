@@ -37,7 +37,14 @@ import { usePlayerSessionActions } from '@/lib/player-session'
 import { scoreListLeaderboard } from '@/lib/finish-leaderboards'
 
 type Screen =
-  'loading' | 'join' | 'game_started_waiting' | 'game_ended' | 'waiting' | 'playing' | 'finished' | 'not_found'
+  | 'loading'
+  | 'join'
+  | 'game_started_waiting'
+  | 'game_ended'
+  | 'waiting'
+  | 'playing'
+  | 'finished'
+  | 'not_found'
 
 export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
   const styles = useThemedStyles(makeStyles)
@@ -108,7 +115,7 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
     status: bootstrap.game?.status,
     isMyTurn,
     enabled: bootstrap.screen === 'waiting' || bootstrap.screen === 'playing',
-    startMessage: 'Yahtzee starting! 🎲',
+    startMessage: 'Five Dice starting! 🎲',
   })
 
   // Game-finished toast — fires once when the game reaches the finished screen
@@ -304,7 +311,9 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
         {session.status_message ? <Text style={styles.status}>{session.status_message}</Text> : null}
 
         {jokerForcedBox ? (
-          <Text style={styles.jokerHint}>🃏 Joker rule. Score this Yahtzee in your {jokerForcedBox} box first.</Text>
+          <Text style={styles.jokerHint}>
+            🃏 Joker rule. Score this five-of-a-kind in your {jokerForcedBox} box first.
+          </Text>
         ) : null}
 
         <YahtzeeScorecardGrid

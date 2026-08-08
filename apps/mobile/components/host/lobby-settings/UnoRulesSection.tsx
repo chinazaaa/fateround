@@ -89,7 +89,7 @@ export function UnoRulesSection({ value, onChange }: Props) {
         />
         <SettingToggle
           label="Double penalty"
-          description="Missed UNO calls draw 4 cards instead of 2"
+          description="Missed last-card calls draw 4 cards instead of 2"
           value={value.unoPenalty === 4}
           onChange={(on) => onChange({ unoPenalty: on ? 4 : 2 })}
         />

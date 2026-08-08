@@ -322,7 +322,7 @@ export function GameRoomSettingsPanel({ gameType, room, onChange }: Props) {
               />
               <SettingToggle
                 label="Double penalty"
-                description="Missed UNO calls draw 4 cards instead of 2"
+                description="Missed last-card calls draw 4 cards instead of 2"
                 value={room.unoUnoPenalty === 4}
                 onChange={(on) => onChange({ unoUnoPenalty: on ? 4 : 2 })}
               />
