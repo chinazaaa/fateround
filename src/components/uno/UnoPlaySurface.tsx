@@ -225,6 +225,12 @@ export function UnoPlaySurface({
   const lastPlaySet = (session.last_play_cards as UnoCard[] | null) ?? []
   const showLastPlay = lastPlaySet.length > 1
   const choosing = isMyTurn && !watching && session.phase === 'choose_color'
+  // Colour Roulette lands the picker on the NEXT player, and isMyTurn tracks that seat
+  // (unoPlay bumps current_turn_index into the roulette phase). Two sub-states: BEFORE
+  // the target has picked a colour (required_color null → picker overlay) and AFTER
+  // (required_color set → the target clicks Draw one at a time to reveal until they hit).
+  const rouletteChoosing = isMyTurn && !watching && session.phase === 'color_roulette' && !session.required_color
+  const rouletteDrawing = isMyTurn && !watching && session.phase === 'color_roulette' && !!session.required_color
   const deciding = isMyTurn && !watching && session.phase === 'challenge_window'
   const swapping = isMyTurn && !watching && session.phase === 'swap_target'
   const canAct = isMyTurn && !watching && session.phase === 'playing'
@@ -434,7 +440,9 @@ export function UnoPlaySurface({
         ) : session.phase === 'color_roulette' ? (
           <TurnStatus>
             {isMyTurn
-              ? 'Colour Roulette on you — pick a colour and reveal until you hit it'
+              ? session.required_color
+                ? `Colour Roulette on you — click Draw until you hit ${UNO_COLOR_LABELS[session.required_color]}`
+                : 'Colour Roulette on you — pick a colour'
               : `${turnName} is spinning the Color Roulette…`}
           </TurnStatus>
         ) : drawPenalty > 0 && canAct ? (
@@ -585,13 +593,15 @@ export function UnoPlaySurface({
               ? selectedCards.length
                 ? `${selectedCards.length} selected — the last card you pick lands on top`
                 : 'Tap matching cards to lay them down together'
-              : hasDrawn
-                ? 'You drew a card — play it or keep it'
-                : canAct
-                  ? `Tap a highlighted card to play it${many ? ' · swipe to see more' : ''}`
-                  : canJumpNow
-                    ? `⚡ Jump-In! Tap your ${cardLabel(top!)} to play it out of turn`
-                    : undefined
+              : rouletteDrawing && session.required_color
+                ? `Colour Roulette — click Draw until you turn up a ${UNO_COLOR_LABELS[session.required_color]}`
+                : hasDrawn
+                  ? 'You drew a card — play it or keep it'
+                  : canAct
+                    ? `Tap a highlighted card to play it${many ? ' · swipe to see more' : ''}`
+                    : canJumpNow
+                      ? `⚡ Jump-In! Tap your ${cardLabel(top!)} to play it out of turn`
+                      : undefined
           }
           actions={
             <>
@@ -660,6 +670,18 @@ export function UnoPlaySurface({
                 >
                   Keep it
                 </button>
+              ) : rouletteDrawing ? (
+                // Colour Roulette reveal: one card per click until the target hits their
+                // chosen colour. Server-side processUnoDraw routes to the roulette-reveal
+                // helper when phase === 'color_roulette'.
+                <button
+                  type="button"
+                  className="fr-btn fr-btn--primary fr-btn--block"
+                  disabled={acting}
+                  onClick={onDraw}
+                >
+                  Draw a card
+                </button>
               ) : (
                 <>
                   {canAct && !(drawDepleted && myCanPlay) ? (
@@ -725,6 +747,29 @@ export function UnoPlaySurface({
 
       {choosing && (
         <PickerOverlay title="Choose a colour" desc="The next player must match the colour you pick.">
+          <div className="picker-grid uno">
+            {UNO_COLORS.map((color) => (
+              <button
+                key={color}
+                type="button"
+                className={`uno-${color}`}
+                disabled={acting}
+                aria-label={UNO_COLOR_LABELS[color]}
+                title={UNO_COLOR_LABELS[color]}
+                onClick={() => onChooseColor(color)}
+              >
+                {UNO_COLOR_LABELS[color]}
+              </button>
+            ))}
+          </div>
+        </PickerOverlay>
+      )}
+
+      {rouletteChoosing && (
+        <PickerOverlay
+          title="Colour Roulette — pick a colour"
+          desc="You'll reveal cards from the draw pile until you turn up a card of this colour. Everything revealed lands in your hand."
+        >
           <div className="picker-grid uno">
             {UNO_COLORS.map((color) => (
               <button

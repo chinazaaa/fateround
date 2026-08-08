@@ -59,8 +59,12 @@ export function useUnoNotifications({
     const dealtThisRound = activeRoundKey !== null && dealtRoundRef.current === activeRoundKey
 
     if (unoCallKey && unoCallKey !== prevUnoCallRef.current && game.status === 'active') {
+      // "UNO" was renamed to "Last card" per the Match Up trademark sweep — mirror that
+      // in the toast so the notification matches the button and the status line.
       const msg =
-        session?.status_message && session.status_message.includes('UNO') ? session.status_message : '🎉 UNO called!'
+        session?.status_message && session.status_message.includes('Last card')
+          ? session.status_message
+          : '🎉 Last card called!'
       info(msg)
       playRoundStartSound()
     }

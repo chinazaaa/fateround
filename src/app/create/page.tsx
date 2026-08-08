@@ -3767,8 +3767,8 @@ function CreateGameInner() {
                       </>
                     ) : (
                       <p className="text-xs text-faint">
-                        High Stakes locks in 0-7, Draw-card stacking (any Draw card of equal or higher value chains onto
-                        a stack), and Jump-In. Draw 4 challenges are off.
+                        High Stakes locks in 0-7 and Draw-card stacking (any Draw card of equal or higher value chains
+                        onto a stack). Draw 4 challenges and Jump-In are off.
                       </p>
                     )}
                     {unoMode === 'classic' ? (

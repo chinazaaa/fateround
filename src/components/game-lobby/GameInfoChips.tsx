@@ -4,6 +4,7 @@ import { crosswordThemeOptions } from '@/lib/crossword-puzzles'
 import { wordSearchThemeOptions } from '@/lib/word-search-puzzles'
 import { wordScrambleThemeOptions } from '@/lib/word-scramble-puzzles'
 import { THEME_MAP } from '@/lib/themes'
+import { parseUnoRules } from '@/lib/uno'
 import { Glyph } from '@/components/icons/Glyph'
 import {
   UserMultipleIcon,
@@ -127,6 +128,10 @@ type GameMeta = {
   uno_wd4_challenge?: boolean | null
   uno_multi_play_mode?: string | null
   uno_jump_in?: boolean | null
+  uno_uno_penalty?: number | null
+  uno_wd4_challenge_penalty?: number | null
+  uno_mode?: string | null
+  uno_no_mercy_win?: string | null
   monopoly_double_go_salary?: boolean | null
   monopoly_forced_auctions?: boolean | null
   monopoly_auction_timer_seconds?: number | null
@@ -314,12 +319,27 @@ export function gameInfoItems(game: GameMeta | null | undefined): string[] {
     if (game.crazy8_jokers) items.push('🃏 Jokers')
     if (game.crazy8_pick2_stacking) items.push('📚 Pick 2 stacking')
   } else if (gt === 'uno') {
-    if (game.uno_team_mode) items.push('🤝 Team-Up')
-    if (game.uno_stacking) items.push('📚 Stacking')
-    if (game.uno_zero_seven) items.push('🔁 0-7 rule')
-    if (game.uno_wd4_challenge !== false) items.push('⚖️ WD4 challenge')
-    if (game.uno_multi_play_mode && game.uno_multi_play_mode !== 'off') items.push('🃏 Multi-Play')
-    if (game.uno_jump_in) items.push('⚡ Jump-In')
+    // Rule chips must reflect the EFFECTIVE rules, not the raw column values. In High
+    // Stakes stacking + 0-7 are locked ON; WD4 challenge, Team-Up, Multi-Play and
+    // Jump-In are forced OFF. Reading the DB flags directly showed stale Classic values
+    // (e.g. "WD4 challenge" on a High Stakes game where challenges are disabled in the
+    // engine).
+    // GameMeta only carries the uno_* subset the chips need, so cast to satisfy the
+    // parseUnoRules signature — the fields it actually reads (uno_mode etc.) are all here.
+    const uno = parseUnoRules(game as Parameters<typeof parseUnoRules>[0])
+    if (uno.mode === 'no_mercy') {
+      // High Stakes locks in stacking + 0-7 and disables WD4/Team-Up/Multi-Play/Jump-In.
+      // Every one of those is implied by "High Stakes", so surface the single mode chip
+      // instead of the redundant per-rule chips.
+      items.push('💥 High Stakes')
+    } else {
+      if (uno.teamMode) items.push('🤝 Team-Up')
+      if (uno.stacking) items.push('📚 Stacking')
+      if (uno.zeroSeven) items.push('🔁 0-7 rule')
+      if (uno.wd4Challenge) items.push('⚖️ WD4 challenge')
+      if (uno.multiPlay !== 'off') items.push('🃏 Multi-Play')
+      if (uno.jumpIn) items.push('⚡ Jump-In')
+    }
   } else if (gt === 'monopoly') {
     if (game.monopoly_double_go_salary) items.push('💰 Double GO salary')
     if (game.monopoly_forced_auctions) items.push('🔨 Forced auctions')

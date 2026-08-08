@@ -799,7 +799,7 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
         'Teams are drawn at random and seated alternating, so teammates always sit across the table and play in strict order (you never skip to your partner).',
         'You can see your teammate’s hand at all times (shown as a read-only “Partner” panel) — a digital-only edge; opponents still can’t see either of your hands.',
         'The round ends the moment either member of a team empties their hand — that team wins, no matter how many cards their partner is still holding.',
-        'Penalties still hit only the targeted player; with Stacking on, the target can play their own matching Draw card on their turn to pass it to an opponent. Everyone still calls “UNO” for themselves.',
+        'Penalties still hit only the targeted player; with Stacking on, the target can play their own matching Draw card on their turn to pass it to an opponent. Everyone still calls the last card for themselves.',
       ],
     },
     {
@@ -810,7 +810,7 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
         'Only exact matches qualify: a different-coloured 7, or a red card of another number, does not count. Wild and Draw 4 cards can never be jumped on.',
         'Play then continues from whoever sits after you (in the current direction) — everyone you jumped over loses that turn entirely.',
         'If two players hold the same card, whoever taps first gets it; the window then closes on the old card (but a match for the new card is fair game).',
-        'Jump-In plays a single card — it never triggers a Multi-Play dump — and it’s disabled while a Draw 2/Four penalty is still pending. Drop to one card on a Jump-In and you must still call “UNO”; jump in a 0 or 7 and its effect fires as normal.',
+        'Jump-In plays a single card — it never triggers a Multi-Play dump — and it’s disabled while a Draw 2/Four penalty is still pending. Drop to one card on a Jump-In and you must still call the last card; jump in a 0 or 7 and its effect fires as normal.',
       ],
     },
     {
@@ -838,6 +838,34 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
         'The host can set a game length (10, 15, 30 minutes, etc.) or play with no limit.',
         'First to empty their hand wins during normal play (no game clock).',
         'With a game clock, time running out ends the game — lowest hand total wins.',
+      ],
+    },
+    {
+      title: 'High Stakes mode',
+      points: [
+        'A host toggle at room creation — flips the whole game to a 168-card deck with new action + wild cards, harder stacking, and knockouts. Classic mode is untouched.',
+        '0-7 rule, Draw-card stacking (any equal-or-higher chain), and single-card play are all locked ON. Draw 4 challenge, Team-Up, Jump-In, and Multi-Play are OFF.',
+        'Mercy knockout — the moment you hold 25 or more cards you are knocked out for the round. Host chooses the win condition when creating: “first out” (classic — empty your hand to win) or “last standing” (outlast every knockout).',
+        'If you can’t play, draw — the deck keeps dealing you cards until you finally turn up one that fits, then it stops on that playable card so you can play it or keep it.',
+      ],
+    },
+    {
+      title: 'High Stakes — new cards',
+      points: [
+        'Discard Colour — play it and every other card of its colour in your hand goes to the discard pile with it. A hand dump in one turn.',
+        'Skip All — skip every other player at the table; play returns to you and you go again.',
+        'Reverse Draw 4 (Wild) — flip the direction of play, then the next player in the new direction draws 4. In a 2-player game the flip puts you back in the hot seat — YOU take the 4 (or stack an equal-or-higher Draw on top to bounce it).',
+        'Draw 6 (Wild) — the next player draws 6 and is skipped.',
+        'Draw 10 (Wild) — the next player draws 10 and is skipped.',
+        'Colour Roulette (Wild) — the next player picks a colour, then clicks Draw one card at a time until they turn up a card of that colour. Everything revealed lands in their hand and their turn ends.',
+      ],
+    },
+    {
+      title: 'High Stakes — stacking',
+      points: [
+        'Any Draw card can stack onto a pending Draw penalty, as long as its value is EQUAL OR HIGHER than the pending value: +2 → +4 → +4 Reverse → +6 → +10. You can never reduce the stack (no +4 on a pending +6).',
+        'Every stacked card adds its own value to the running penalty — pending +4 with a +10 played on top becomes 14 for the next player to draw (or continue stacking to +24 with a second +10).',
+        'The chain resolves the moment someone can’t (or won’t) add to it — that player draws the whole running total. If the draw pushes them past 25 cards, the Mercy rule knocks them out.',
       ],
     },
   ],

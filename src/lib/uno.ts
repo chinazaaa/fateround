@@ -174,7 +174,9 @@ export function parseUnoRules(
     stacking: noMercy ? true : game?.uno_stacking === true,
     multiPlay: noMercy ? 'off' : parseMultiPlayMode(game?.uno_multi_play_mode),
     teamMode: noMercy ? false : game?.uno_team_mode === true,
-    jumpIn: noMercy ? true : game?.uno_jump_in === true,
+    // Jump-In is OFF in High Stakes. The extra chaos + out-of-turn plays don't compose
+    // with the +6/+10 draws and knockouts — it made the mode unplayable in testing.
+    jumpIn: noMercy ? false : game?.uno_jump_in === true,
     noMercyWin: parseUnoNoMercyWin(game?.uno_no_mercy_win),
   }
 }
@@ -191,7 +193,20 @@ export function formatUnoGameDuration(seconds: number): string {
 }
 
 // ── Card helpers ──────────────────────────────────────────────────────────────
-const WILD_KINDS: UnoCard['kind'][] = ['wild', 'wild_draw4', 'wild_reverse_draw4', 'wild_color_roulette']
+// Every "colourless" card kind — plays on any top card and, when it has a Draw value,
+// carries pending penalties through choose_color. Draw 6 and Draw 10 belong here too:
+// they were originally forgotten, which routed them through processUnoPlay's non-wild
+// branch — that never opened the colour picker AND silently zeroed any pending Draw
+// penalty they were supposed to stack onto (source of "I played +10 and it didn't stack
+// / didn't ask a colour / opponent could play anything after").
+const WILD_KINDS: UnoCard['kind'][] = [
+  'wild',
+  'wild_draw4',
+  'wild_reverse_draw4',
+  'wild_color_roulette',
+  'draw6',
+  'draw10',
+]
 
 export function isWildCard(card: UnoCard): boolean {
   return WILD_KINDS.includes(card.kind)
@@ -295,21 +310,26 @@ export function buildUnoDeck(): UnoCard[] {
 }
 
 /**
- * Build the 168-card UNO "Show 'em No Mercy" deck. Starts from the 108-card classic and layers on
- * the No-Mercy-only cards. Card counts per new kind are picked so the total lands at 168:
+ * Build the 168-card UNO "Show 'em No Mercy" deck. Starts from the 108-card classic
+ * (minus the plain Wild — Colour Roulette replaces it here since the two looked
+ * interchangeable at the table) and layers on the No-Mercy-only cards. Card counts
+ * per new kind are picked so the total still lands at 168:
  *
  *   Discard All          — 1 per colour  =  4
  *   Skip Everyone        — 2 per colour  =  8
  *   Wild Reverse Draw 4  — 12
  *   Wild Draw 6          — 12
  *   Wild Draw 10         — 12
- *   Wild Color Roulette  — 12
- *   ─────────────────────────────────── + 60
- *   Base UNO deck        — 108
+ *   Wild Color Roulette  — 16   (was 12; +4 to backfill the removed plain Wilds)
+ *   ─────────────────────────────────── + 64
+ *   Base UNO deck − plain Wild — 104
  *   ═════════════════════════════════ = 168
  */
 export function buildNoMercyDeck(): UnoCard[] {
-  const deck = buildUnoDeck()
+  // Plain Wild is dropped here; every "pick a colour" surface in HS goes through
+  // Colour Roulette (the wild+colour-choice surface players already know), so the
+  // classic Wild's own "just change colour" beat isn't reachable in HS.
+  const deck = buildUnoDeck().filter((c) => c.kind !== 'wild')
   for (const color of UNO_COLORS) {
     deck.push({ id: `${color}-discard_all`, color, kind: 'discard_all' })
     deck.push({ id: `${color}-skip_everyone-a`, color, kind: 'skip_everyone' })
@@ -319,6 +339,10 @@ export function buildNoMercyDeck(): UnoCard[] {
     deck.push({ id: `wildrev4-${i}`, color: 'wild', kind: 'wild_reverse_draw4' })
     deck.push({ id: `wild6-${i}`, color: 'wild', kind: 'draw6' })
     deck.push({ id: `wild10-${i}`, color: 'wild', kind: 'draw10' })
+  }
+  // 16 Roulettes (12 originals + 4 replacements for the removed plain Wilds), keeps
+  // the deck at the documented 168-card total.
+  for (let i = 0; i < 16; i += 1) {
     deck.push({ id: `wildroul-${i}`, color: 'wild', kind: 'wild_color_roulette' })
   }
   return deck
@@ -1554,6 +1578,8 @@ export async function processUnoPlay(
         phase: 'color_roulette',
         current_turn_index: nextIdx,
         color_roulette_player_id: nextId,
+        // Fresh event — reveals start at 0 and increment on every no-match Draw click.
+        color_roulette_reveals: 0,
         status_message: `${name} played Colour Roulette — ${playerName(playerNames, nextId)} picks a colour and draws until they hit it`,
         ...unoPatch,
       }
@@ -1974,6 +2000,14 @@ export async function processUnoDraw(
     return { error: "Time's up — the game has ended" }
   }
 
+  // Colour Roulette: the target reveals cards one at a time by clicking Draw. Route to
+  // the dedicated reveal helper; it handles the match/no-match branches and the caster's
+  // reveal-count stats + mercy check.
+  if (session.phase === 'color_roulette') {
+    if (session.color_roulette_player_id !== playerId) return { error: 'Not your Colour Roulette' }
+    return processUnoColorRouletteReveal(supabase, gameId, playerId, session, hands, playerNames, rules, timerSeconds)
+  }
+
   if (session.phase !== 'playing') return { error: 'Resolve the current card first' }
 
   const currentId = currentPlayerId(session)
@@ -1993,11 +2027,15 @@ export async function processUnoDraw(
   const drawCount = penalty > 0 ? penalty : 1
 
   const {
-    drawn,
+    drawn: initialDrawn,
     drawPile: nextDrawPile,
     discardPile: nextDiscardPile,
     reshuffled,
   } = drawCardsWithRefill(drawPile, discardPile, drawCount)
+  // `drawn` is `let` (not const) because the No Mercy voluntary-draw path may sweep more
+  // cards below until a playable one is found; the trophy fold at the bottom of this
+  // function reads the final swept total, not the initial draw count.
+  let drawn = initialDrawn
   drawPile = nextDrawPile
   discardPile = nextDiscardPile
 
@@ -2034,7 +2072,8 @@ export async function processUnoDraw(
     return {}
   }
 
-  const newHand = [...hand, ...drawn]
+  // `let` because the No Mercy sweep below may append more drawn cards before we persist.
+  let newHand = [...hand, ...drawn]
   const missedNote = missed ? ` · ${missed.note}` : ''
   const reshuffledNote = reshuffled ? ' · deck reshuffled' : ''
   const forced = penalty > 0
@@ -2076,22 +2115,56 @@ export async function processUnoDraw(
       status_message: `${playerName(playerNames, nextPlayerId)}'s turn — ${playerName(playerNames, playerId)} drew ${drawn.length}${penaltyName}${reshuffledNote}${missedNote}`,
     }
   } else {
-    // Voluntary single draw. If the drawn card is playable, keep the turn so the player may
-    // play it or keep it (pass). Otherwise the turn ends — they keep the card.
-    const drawnCard = drawn[0]!
-    const drawnPlayable = canPlayCard(drawnCard, { ...session, draw_penalty: 0 })
+    // Voluntary draw.
+    //
+    // Classic: draw exactly one card. If it's playable, keep the turn so the player may play
+    // it or keep it (pass). Otherwise the turn ends — they keep the card.
+    //
+    // High Stakes (No Mercy): "draw until you get a playable card". Keep drawing one at a
+    // time until we hit a card that plays on the current top, or the draw pile + discard
+    // both run dry. If we found one, treat it exactly like the classic playable-draw case
+    // (drawn_card_id = the last card, keep turn). If we ran dry without finding one, take
+    // everything drawn and end the turn — matches classic "you drew, turn passes on".
+    //
+    // Safety cap keeps a pathological session (draw==0 loop, corrupted data) from spinning:
+    // the deck has 108 cards Classic / 168 HS, so any real game exits far before this.
+    const DRAW_UNTIL_CAP = 200
+    let sweptDraw: UnoCard[] = [...drawn]
+    let sweptReshuffled = reshuffled
+    if (rules.mode === 'no_mercy') {
+      while (
+        sweptDraw.length < DRAW_UNTIL_CAP &&
+        !canPlayCard(sweptDraw[sweptDraw.length - 1]!, { ...session, draw_penalty: 0 })
+      ) {
+        const step = drawCardsWithRefill(drawPile, discardPile, 1)
+        if (step.drawn.length === 0) break
+        sweptDraw = [...sweptDraw, ...step.drawn]
+        drawPile = step.drawPile
+        discardPile = step.discardPile
+        if (step.reshuffled) sweptReshuffled = true
+      }
+    }
+    const lastCard = sweptDraw[sweptDraw.length - 1]!
+    const drawnPlayable = canPlayCard(lastCard, { ...session, draw_penalty: 0 })
+    const finalReshuffledNote = sweptReshuffled ? ' · deck reshuffled' : ''
+    const finalHand = [...hand, ...sweptDraw]
+    // On the No Mercy path the drawer may have taken many cards — announce the count so the
+    // board shows "drew 7" instead of a silent single-card note.
+    const drawCountNote =
+      rules.mode === 'no_mercy' && sweptDraw.length > 1 ? ` drew ${sweptDraw.length}` : ` drew a card`
+
     if (drawnPlayable) {
       patch = {
         draw_pile: drawPile,
         discard_pile: discardPile,
         draw_penalty: 0,
-        drawn_card_id: drawnCard.id,
+        drawn_card_id: lastCard.id,
         current_turn_index: session.current_turn_index,
         uno_pending_player: null,
         uno_called: false,
         // Never disclose the drawn card in the shared board status — only the drawer sees it
         // (in their own hand + private "play it or keep it" hint).
-        status_message: `${playerName(playerNames, playerId)} drew a card${reshuffledNote}${missedNote}`,
+        status_message: `${playerName(playerNames, playerId)}${drawCountNote}${finalReshuffledNote}${missedNote}`,
       }
     } else {
       const nextIndex = unoNextTurnIndex(session, hands, session.current_turn_index, 1, direction)
@@ -2104,9 +2177,12 @@ export async function processUnoDraw(
         current_turn_index: nextIndex,
         uno_pending_player: null,
         uno_called: false,
-        status_message: `${playerName(playerNames, playerId)} drew a card — ${playerName(playerNames, nextPlayerId)}'s turn${reshuffledNote}${missedNote}`,
+        status_message: `${playerName(playerNames, playerId)}${drawCountNote} — ${playerName(playerNames, nextPlayerId)}'s turn${finalReshuffledNote}${missedNote}`,
       }
     }
+    // Rebind for the trophy fold + writeHand at the bottom of this function.
+    drawn = sweptDraw
+    newHand = finalHand
   }
 
   const won = await persistSession(supabase, gameId, patch, timerSeconds, session.updated_at)
@@ -2248,10 +2324,16 @@ export async function processUnoChoose(
   if (!UNO_COLORS.includes(color)) return { error: 'Choose a colour' }
 
   // For a Wild Reverse Draw Four the direction flips BEFORE the next seat is picked.
-  // Two-player: the flip lands the penalty back on the mover — same behaviour as classic Reverse.
+  // Two-player: like classic Reverse, the mover plays the card back onto themselves —
+  // advance TWO seats so the Draw-4 penalty lands on the mover instead of the sole
+  // opponent. `activePlayerCount<=2` guards the case where a knockout has left just
+  // two active seats mid-round in No Mercy.
   const baseDirection = session.direction < 0 ? -1 : 1
-  const direction = session.pending_wild === 'wild_reverse_draw4' ? -baseDirection : baseDirection
-  const nextIndex = unoNextTurnIndex(session, hands, session.current_turn_index, 1, direction)
+  const isRevDraw4 = session.pending_wild === 'wild_reverse_draw4'
+  const direction = isRevDraw4 ? -baseDirection : baseDirection
+  const twoPlayerReverse = isRevDraw4 && activePlayerCount(session, hands) <= 2
+  const steps = twoPlayerReverse ? 2 : 1
+  const nextIndex = unoNextTurnIndex(session, hands, session.current_turn_index, steps, direction)
   const nextPlayerId = session.turn_order[nextIndex]
 
   // No Mercy wilds — Draw Six, Draw Ten, Wild Reverse Draw Four. All behave like a Wild Draw
@@ -2303,6 +2385,7 @@ export async function processUnoChoose(
         phase: 'color_roulette',
         current_turn_index: nextIndex,
         color_roulette_player_id: nextPlayerId,
+        color_roulette_reveals: 0,
         status_message: `${playerName(playerNames, nextPlayerId)} — pick a colour to reveal until`,
       },
       timerSeconds,
@@ -2422,43 +2505,114 @@ export async function processUnoColorRoulette(
   if (session.color_roulette_player_id !== playerId) return { error: 'Not your Color Roulette' }
   if (!UNO_COLORS.includes(color)) return { error: 'Choose a colour' }
 
-  // Reveal loop: pull cards until we hit `color` (wilds don't satisfy). Add everything revealed
-  // to the acting player's hand. Reshuffle once from discard if the pile empties mid-reveal.
+  // Colour pick only sets the target colour and keeps the phase — the target draws cards
+  // one at a time via processUnoDraw (each Draw click reveals one). Better UX than the
+  // server auto-drawing and reporting "revealed N" back — the player wants to feel the
+  // reveals happen. See processUnoDraw's color_roulette branch for the reveal loop.
+  const status = `${playerName(playerNames, playerId)} picked ${UNO_COLOR_LABELS[color]} — click Draw until you hit it`
+
+  const won = await persistSession(
+    supabase,
+    gameId,
+    {
+      required_color: color,
+      status_message: status,
+    },
+    timerSeconds,
+    session.updated_at
+  )
+  if (!won) return {}
+  return {}
+}
+
+/**
+ * Reveal ONE card during a color_roulette phase. Called from processUnoDraw when the target
+ * clicks the Draw button. Adds the card to the target's hand; if it matches required_color
+ * (wilds don't count), the roulette resolves — clear the phase, advance the turn, credit
+ * the caster's running max reveal count, and check the Mercy hand limit.
+ */
+async function processUnoColorRouletteReveal(
+  supabase: SupabaseClient,
+  gameId: string,
+  playerId: string,
+  session: UnoSession,
+  hands: UnoPlayerHand[],
+  playerNames: Map<string, string>,
+  rules: UnoRules,
+  timerSeconds: number
+): Promise<{ error?: string }> {
+  const color = session.required_color as UnoColor | null
+  if (!color) return { error: 'Pick a colour first' }
+
   let pile = [...((session.draw_pile as UnoCard[]) ?? [])]
   let discard = [...((session.discard_pile as UnoCard[]) ?? [])]
-  const revealed: UnoCard[] = []
-  let matched = false
-  // Cap on reveals so a pathological deck can't loop forever.
-  const cap = pile.length + discard.length + 1
-  for (let i = 0; i < cap; i += 1) {
-    if (pile.length === 0) {
-      const refill = refillDrawPile(pile, discard)
-      pile = refill.drawPile
-      discard = refill.discardPile
-      if (pile.length === 0) break
-    }
-    const c = pile.pop()!
-    revealed.push(c)
-    if (!isWildCard(c) && c.color === color) {
-      matched = true
-      break
-    }
+  if (pile.length === 0) {
+    const refill = refillDrawPile(pile, discard)
+    pile = refill.drawPile
+    discard = refill.discardPile
+  }
+  if (pile.length === 0) {
+    // Nothing left to reveal — resolve as "no colour found", advance the turn.
+    const direction = session.direction < 0 ? -1 : 1
+    const nextIndex = unoNextTurnIndex(session, hands, session.current_turn_index, 1, direction)
+    const nextPlayerId = session.turn_order[nextIndex]
+    const status = `${playerName(playerNames, playerId)} — pile ran out, no ${UNO_COLOR_LABELS[color]} · ${playerName(playerNames, nextPlayerId)}'s turn`
+    await persistSession(
+      supabase,
+      gameId,
+      {
+        draw_pile: pile,
+        discard_pile: discard,
+        pending_wild: null,
+        color_roulette_player_id: null,
+        color_roulette_reveals: null,
+        phase: 'playing',
+        current_turn_index: nextIndex,
+        status_message: status,
+      },
+      timerSeconds,
+      session.updated_at
+    )
+    return {}
   }
 
-  const targetHand = [...handForPlayer(hands, playerId), ...revealed]
+  const card = pile.pop()!
+  const targetHand = [...handForPlayer(hands, playerId), card]
+  const matched = !isWildCard(card) && card.color === color
+
+  // Running per-event reveal counter (starts at 0 when the roulette opens, incremented
+  // below on every no-match Draw, cleared on match). This is what Roulette Master (>=5)
+  // and Roulette Executioner (>=8) key off — inflated the target's hand-size delta with
+  // unrelated draws would silently earn either trophy on a mid-round roulette.
+  const priorReveals = session.color_roulette_reveals ?? 0
+  const revealCount = priorReveals + 1
+
+  if (!matched) {
+    // Keep revealing — same seat, same phase; the card lands in the hand and the player
+    // clicks Draw again for the next reveal.
+    const won = await persistSession(
+      supabase,
+      gameId,
+      {
+        draw_pile: pile,
+        discard_pile: discard,
+        color_roulette_reveals: revealCount,
+        status_message: `${playerName(playerNames, playerId)} revealed a ${cardLabel(card)} — still hunting ${UNO_COLOR_LABELS[color]}`,
+      },
+      timerSeconds,
+      session.updated_at
+    )
+    if (!won) return {}
+    await writeHand(supabase, gameId, playerId, targetHand)
+    return {}
+  }
+
+  // Match: resolve the roulette. Card lands in hand, required_color persists (the next
+  // player must match this colour on their normal turn), turn advances.
   const direction = session.direction < 0 ? -1 : 1
-  const nextIndex = unoNextTurnIndex(
-    { ...session, current_turn_index: session.current_turn_index } as UnoSession,
-    hands,
-    session.current_turn_index,
-    1,
-    direction
-  )
+  const nextIndex = unoNextTurnIndex(session, hands, session.current_turn_index, 1, direction)
   const nextPlayerId = session.turn_order[nextIndex]
-  const revealNote = matched
-    ? `revealed ${revealed.length} to hit ${UNO_COLOR_LABELS[color]}`
-    : `revealed ${revealed.length} — no ${UNO_COLOR_LABELS[color]} in the pile`
-  const status = `${playerName(playerNames, playerId)} ${revealNote} · ${playerName(playerNames, nextPlayerId)}'s turn`
+  const status = `${playerName(playerNames, playerId)} hit ${UNO_COLOR_LABELS[color]} — ${playerName(playerNames, nextPlayerId)}'s turn`
 
   const won = await persistSession(
     supabase,
@@ -2466,9 +2620,9 @@ export async function processUnoColorRoulette(
     {
       draw_pile: pile,
       discard_pile: discard,
-      required_color: color,
       pending_wild: null,
       color_roulette_player_id: null,
+      color_roulette_reveals: null,
       phase: 'playing',
       current_turn_index: nextIndex,
       status_message: status,
@@ -2482,18 +2636,16 @@ export async function processUnoColorRoulette(
   // High Stakes — record the largest single roulette reveal count on the CASTER's row
   // (last_play_player_id captured whoever played the Wild Colour Roulette). unoFacts turns
   // this into Roulette Master (>=5) and Roulette Executioner (>=8).
-  const revealMax = revealed.length
   const casterId = session.last_play_player_id ?? null
-  if (revealMax > 0 && casterId && casterId !== playerId) {
+  if (revealCount > 0 && casterId && casterId !== playerId) {
     const casterStats = { ...currentUnoStats(hands, casterId) }
-    bumpMaxU(casterStats, 'uno_hs_max_roulette_dealt', revealMax)
+    bumpMaxU(casterStats, 'uno_hs_max_roulette_dealt', revealCount)
     await writeUnoStats(supabase, gameId, casterId, casterStats)
   }
 
-  // Mercy: adding a huge stack of cards can push the player past the knockout limit.
+  // Mercy: revealing a huge stack of cards can push the target past the knockout limit.
   // Attribution: the Colour Roulette caster (whoever played the wild that queued this phase).
   if (rules.mode === 'no_mercy' && targetHand.length >= UNO_MERCY_HAND_LIMIT) {
-    const casterId = session.last_play_player_id ?? null
     await applyMercyKnockout(supabase, gameId, playerId, targetHand.length, playerNames, rules.noMercyWin, casterId)
   }
   return {}

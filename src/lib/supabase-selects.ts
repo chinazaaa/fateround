@@ -102,7 +102,31 @@ export const CRAZY8_SESSION_SELECT =
 export const CRAZY8_PLAYER_HANDS_SELECT = 'id,game_id,player_id,cards,player_order,created_at'
 
 export const UNO_SESSION_SELECT =
-  'id,game_id,turn_order,current_turn_index,direction,phase,draw_pile,discard_pile,top_card,required_color,draw_penalty,draw_penalty_kind,drawn_card_id,last_play_cards,last_play_player_id,pending_wild,challenge_prev_color,wd4_player_id,uno_pending_player,uno_called,status_message,winner_player_id,finish_order,left_player_ids,team_decider_id,eliminated_player_ids,color_roulette_player_id,draw_stack_chain,turn_deadline_at,created_at,updated_at'
+  'id,game_id,turn_order,current_turn_index,direction,phase,draw_pile,discard_pile,top_card,required_color,draw_penalty,draw_penalty_kind,drawn_card_id,last_play_cards,last_play_player_id,pending_wild,challenge_prev_color,wd4_player_id,uno_pending_player,uno_called,status_message,winner_player_id,finish_order,left_player_ids,team_decider_id,eliminated_player_ids,color_roulette_player_id,color_roulette_reveals,draw_stack_chain,turn_deadline_at,created_at,updated_at'
+
+/**
+ * `uno_sessions` columns that are NOT NULL in the DB.
+ *
+ * Realtime UPDATE payloads omit unchanged TOAST-ed columns — once the draw / discard piles
+ * are big enough for Postgres to store them out-of-line, a partial update that doesn't touch
+ * them delivers them as `null` (same failure mode as `monopoly_boards.property_owners`, see
+ * MONOPOLY_BOARD_NOT_NULL_KEYS). Applying such a row would wipe the piles / turn order on
+ * screen and make every card look unplayable (canPlayCard sees a stale session). Callers
+ * use {@link isCompleteUnoSessionRow} to detect that and fall back to a full reload.
+ */
+export const UNO_SESSION_NOT_NULL_KEYS = [
+  'turn_order',
+  'draw_pile',
+  'discard_pile',
+  'left_player_ids',
+  'eliminated_player_ids',
+] as const
+
+/** True when a pushed `uno_sessions` row carries every NOT-NULL column (i.e. is not a
+ *  TOAST-truncated partial realtime payload — see {@link UNO_SESSION_NOT_NULL_KEYS}). */
+export function isCompleteUnoSessionRow(row: Record<string, unknown>): boolean {
+  return UNO_SESSION_NOT_NULL_KEYS.every((key) => row[key] != null)
+}
 
 export const UNO_PLAYER_HANDS_SELECT = 'id,game_id,player_id,cards,player_order,created_at'
 

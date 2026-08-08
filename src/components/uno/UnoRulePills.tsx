@@ -33,10 +33,14 @@ export function UnoRulePills({ game, className }: { game: Game; className?: stri
   if (!noMercy && game.uno_wd4_challenge !== false) {
     pills.push({ key: 'wd4', icon: BalanceScaleIcon, label: 'WD4 challenge' })
   }
-  if (game.uno_multi_play_mode && game.uno_multi_play_mode !== 'off') {
+  // Multi-Play is forced OFF in High Stakes (parseUnoRules in @/lib/uno). The DB flag
+  // can still be non-'off' when a Classic room was flipped to No Mercy, so gate on the
+  // effective mode instead of the raw column.
+  if (!noMercy && game.uno_multi_play_mode && game.uno_multi_play_mode !== 'off') {
     pills.push({ key: 'multi', icon: Cards01Icon, label: 'Multi-Play' })
   }
-  if (game.uno_jump_in || noMercy) pills.push({ key: 'jumpin', icon: ZapIcon, label: 'Jump-In' })
+  // Jump-In is OFF in High Stakes — gate the pill on the classic flag only.
+  if (!noMercy && game.uno_jump_in) pills.push({ key: 'jumpin', icon: ZapIcon, label: 'Jump-In' })
 
   if (pills.length === 0) return null
 
