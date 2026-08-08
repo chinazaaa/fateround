@@ -463,6 +463,10 @@ export async function POST(req: NextRequest) {
     uno_multi_play_mode: rawUnoMultiPlayMode,
     uno_team_mode: rawUnoTeamMode,
     uno_jump_in: rawUnoJumpIn,
+    uno_mode: rawUnoMode,
+    uno_no_mercy_win: rawUnoNoMercyWin,
+    uno_series_scoring: rawUnoSeriesScoring,
+    uno_series_target: rawUnoSeriesTarget,
     ludo_variant: rawLudoVariant,
     ayo_variant: rawAyoVariant,
     mahjong_ruleset: rawMahjongRuleset,
@@ -1204,6 +1208,10 @@ export async function POST(req: NextRequest) {
                 uno_multi_play_mode: parseMultiPlayMode(rawUnoMultiPlayMode),
                 uno_team_mode: rawUnoTeamMode === true,
                 uno_jump_in: rawUnoJumpIn === true,
+                uno_mode: rawUnoMode === 'no_mercy' ? 'no_mercy' : 'classic',
+                uno_no_mercy_win: rawUnoNoMercyWin === 'last_standing' ? 'last_standing' : 'first_out',
+                uno_series_scoring: rawUnoSeriesScoring === true,
+                uno_series_target: Number.isFinite(Number(rawUnoSeriesTarget)) ? Number(rawUnoSeriesTarget) : 1000,
               }
             : isLudoGame(game_type)
               ? { ludo_variant: parseLudoVariant(rawLudoVariant) }
