@@ -380,7 +380,7 @@ export const UNO: SystemTrophySpec[] = [
     description: 'Win a High Stakes game.',
     counter: 'uno_hs_wins',
     points: 30,
-    sortOrder: 170.1,
+    sortOrder: 171,
   },
   {
     suffix: 'hs_stacked',
@@ -389,7 +389,7 @@ export const UNO: SystemTrophySpec[] = [
     description: 'Stack a Draw card on top of another Draw card in a High Stakes game.',
     counter: 'uno_hs_stack_games',
     points: 25,
-    sortOrder: 170.2,
+    sortOrder: 172,
   },
   {
     suffix: 'hs_double_stack',
@@ -398,7 +398,7 @@ export const UNO: SystemTrophySpec[] = [
     description: 'Be part of a Draw-card stack of 3 or more cards.',
     counter: 'uno_hs_stack3plus_games',
     points: 30,
-    sortOrder: 170.3,
+    sortOrder: 173,
   },
   {
     suffix: 'hs_twenty_load',
@@ -407,7 +407,7 @@ export const UNO: SystemTrophySpec[] = [
     description: 'Make one opponent draw 20+ cards across a single High Stakes game.',
     counter: 'uno_hs_twenty_load_games',
     points: 35,
-    sortOrder: 170.4,
+    sortOrder: 174,
   },
   {
     suffix: 'hs_knockout',
@@ -416,7 +416,7 @@ export const UNO: SystemTrophySpec[] = [
     description: 'Knock an opponent out via the 25-card Mercy rule.',
     counter: 'uno_hs_knockouts',
     points: 40,
-    sortOrder: 170.5,
+    sortOrder: 175,
   },
   {
     suffix: 'hs_lucky_seven',
@@ -425,7 +425,7 @@ export const UNO: SystemTrophySpec[] = [
     description: 'Swap into a winning hand with a 7 and win the same turn or next.',
     counter: 'uno_hs_lucky_seven_games',
     points: 35,
-    sortOrder: 170.6,
+    sortOrder: 176,
   },
   {
     suffix: 'hs_roulette_master',
@@ -434,7 +434,7 @@ export const UNO: SystemTrophySpec[] = [
     description: 'Force an opponent to reveal 5+ cards with a single Colour Roulette.',
     counter: 'uno_hs_roulette5_games',
     points: 30,
-    sortOrder: 170.7,
+    sortOrder: 177,
   },
   {
     suffix: 'hs_comeback',
@@ -443,7 +443,7 @@ export const UNO: SystemTrophySpec[] = [
     description: 'Win a High Stakes game after holding 20+ cards.',
     counter: 'uno_hs_comeback_wins',
     points: 40,
-    sortOrder: 170.8,
+    sortOrder: 178,
   },
   {
     suffix: 'hs_ten_games',
@@ -453,7 +453,7 @@ export const UNO: SystemTrophySpec[] = [
     counter: 'uno_hs_games',
     gte: 10,
     points: 30,
-    sortOrder: 170.9,
+    sortOrder: 179,
   },
   {
     suffix: 'hs_full_house',
@@ -462,7 +462,7 @@ export const UNO: SystemTrophySpec[] = [
     description: 'Win a High Stakes game with 6 or more players.',
     counter: 'uno_hs_full_house_wins',
     points: 35,
-    sortOrder: 171.1,
+    sortOrder: 181,
   },
   {
     suffix: 'hs_mercy_dodge',
@@ -471,7 +471,7 @@ export const UNO: SystemTrophySpec[] = [
     description: 'Win a High Stakes game after being within 3 cards of the 25 knockout.',
     counter: 'uno_hs_mercy_dodge_wins',
     points: 35,
-    sortOrder: 171.2,
+    sortOrder: 182,
   },
   {
     suffix: 'hs_chain_breaker',
@@ -480,7 +480,7 @@ export const UNO: SystemTrophySpec[] = [
     description: 'Absorb a stacked Draw penalty of 10+ cards and still win the game.',
     counter: 'uno_hs_chain_breaker_wins',
     points: 40,
-    sortOrder: 171.3,
+    sortOrder: 183,
   },
 
   // Gold (9)
