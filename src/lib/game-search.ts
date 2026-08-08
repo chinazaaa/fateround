@@ -9,6 +9,13 @@ const SEARCH_ALIASES: Partial<Record<GameType, string[]>> = {
   checkers: ['draughts'],
   checkers_international: ['international draughts', 'flying kings', 'polish draughts', 'fmjd'],
   checkers_nigeria: ['nigerian draughts', 'naija checkers', 'draughts nigeria', 'seed draughts'],
+  // Product labels moved off the trademarks; keep the trademark searchable so returning
+  // players still land on the renamed tile.
+  monopoly: ['monopoly'],
+  scrabble: ['scrabble'],
+  yahtzee: ['yahtzee'],
+  uno: ['uno'],
+  quiplash: ['quiplash'],
 }
 
 /**
