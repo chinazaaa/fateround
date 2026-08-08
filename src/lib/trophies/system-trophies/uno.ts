@@ -462,7 +462,10 @@ export const UNO: SystemTrophySpec[] = [
     description: 'Win a High Stakes game with 6 or more players.',
     counter: 'uno_hs_full_house_wins',
     points: 35,
-    sortOrder: 181,
+    // Kept under 180 so this silver stays before the classic golds (180-260). Duplicates
+    // inside a tier are fine — the tier-monotonicity test only rejects a lower tier that
+    // sorts AFTER a higher tier, which shifting past 180 (Never Drawn, gold) would do.
+    sortOrder: 179,
   },
   {
     suffix: 'hs_mercy_dodge',
@@ -471,7 +474,7 @@ export const UNO: SystemTrophySpec[] = [
     description: 'Win a High Stakes game after being within 3 cards of the 25 knockout.',
     counter: 'uno_hs_mercy_dodge_wins',
     points: 35,
-    sortOrder: 182,
+    sortOrder: 179,
   },
   {
     suffix: 'hs_chain_breaker',
@@ -480,7 +483,7 @@ export const UNO: SystemTrophySpec[] = [
     description: 'Absorb a stacked Draw penalty of 10+ cards and still win the game.',
     counter: 'uno_hs_chain_breaker_wins',
     points: 40,
-    sortOrder: 183,
+    sortOrder: 179,
   },
 
   // Gold (9)
