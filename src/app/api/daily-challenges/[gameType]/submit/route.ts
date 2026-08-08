@@ -663,10 +663,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ gam
     .single()
   const rank = mine ? await computeDailyRank(admin, gameType, challengeId, mine) : 1
 
+  // Match the leaderboard's row set — zero-score/zero-point rows are filtered off the board, so
+  // the "of N" denominator has to filter the same column that ranks the board or the finished
+  // screen's "#K of N" will disagree with the leaderboard the player scrolls to next.
+  const totalCountColumn = DAILY_GAME_PRIMARY_METRIC[gameType] === 'score' ? 'raw_points' : 'normalized_score'
   const { count: totalPlayers } = await admin
     .from('daily_scores')
     .select('*', { count: 'exact', head: true })
     .eq('challenge_id', challengeId)
+    .gt(totalCountColumn, 0)
 
   // Fetch personal best for comparison
   const { data: personalBest } = await admin
