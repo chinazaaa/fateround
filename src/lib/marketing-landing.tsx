@@ -1293,7 +1293,10 @@ const HOUSEPARTY: MarketingPageContent = {
   steps: [
     { title: 'Start a video call', description: 'Any app you already use — FaceTime, Zoom, Discord, Meet.' },
     { title: 'Share a FateRound link', description: 'One code in the chat. Friends join from any browser.' },
-    { title: 'Play like the old days', description: 'Trivia, Would You Rather, Estate Kings and more — live, together.' },
+    {
+      title: 'Play like the old days',
+      description: 'Trivia, Would You Rather, Estate Kings and more — live, together.',
+    },
   ],
   body: (
     <>

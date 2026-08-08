@@ -2753,7 +2753,8 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       'online word game with friends free',
       'scrabble online no sign up',
     ],
-    heroSubtitle: 'The classic Scrabble-style crossword tile game — build words, hit the premium squares, outscore your friends.',
+    heroSubtitle:
+      'The classic Scrabble-style crossword tile game — build words, hit the premium squares, outscore your friends.',
     bodyParagraph:
       'Word Tiles on FateRound is a Scrabble-style crossword word game for 2–4 players on a full standard 15×15 board. Draw seven tiles, take turns building interlocking words outward from the center star, and rack up points — letters are worth their standard values, and double/triple letter and word squares multiply your score. Every word you form is checked against a real dictionary, so only valid plays count. Use a blank tile as any letter, swap tiles you do not want, or pass. When the bag is empty and someone uses their last tile, the game ends and the highest score wins.',
     highlights: ['2–4 players', 'Real dictionary', 'Premium squares'],
