@@ -484,15 +484,15 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
     {
       title: 'Setup',
       points: [
-        '2–6 players join a room and pick a board token (car, hat, dog, etc.). Each player starts on GO with £1,500.',
+        '2–6 players join a room and pick a board token (car, hat, dog, etc.). Each player starts on PAYDAY with £1,500.',
         'The Bank holds all Title Deeds until purchased. The host starts when everyone is ready; turn order is set at game start.',
       ],
     },
     {
-      title: 'Moving & GO',
+      title: 'Moving & PAYDAY',
       points: [
         'On your turn, roll two dice and move clockwise around the 40-space board.',
-        'Collect £200 from the Bank every time you land on or pass GO while moving forward — but not on your first lap around the board.',
+        'Collect £200 from the Bank every time you land on or pass PAYDAY while moving forward — but not on your first lap around the board.',
         'Two or more tokens may occupy the same space.',
       ],
     },
@@ -500,13 +500,13 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
       title: 'Doubles',
       points: [
         'If you roll doubles, move, resolve the space, then roll again for another turn.',
-        'If you roll doubles three times in a row on the same turn, go straight to Jail — your turn ends immediately.',
+        'If you roll doubles three times in a row on the same turn, go straight to NICKED — your turn ends immediately.',
       ],
     },
     {
       title: 'Buying property',
       points: [
-        'You cannot buy from the Bank, pay Income Tax or Super Tax, or draw Chance / Community Chest cards until you have passed GO at least once on your first lap.',
+        'You cannot buy from the Bank, pay TAX OFFICE or SURCHARGE, or draw Fate / Kitty cards until you have passed PAYDAY at least once on your first lap.',
         'Landing on an unowned Property, Station, or Utility after that lets you buy it at the listed price.',
         'If you decline to buy, the property is auctioned to the highest bidder — including you.',
         'Own all Sites in a colour-group (a monopoly) to charge double rent on unimproved properties in that group.',
@@ -516,27 +516,27 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
       title: 'Rent',
       points: [
         "Landing on another player's property requires paying rent before the next player rolls.",
-        'Railroad rent increases with each Station owned: £25, £50, £100, or £200 for one through four.',
+        'Station rent increases with each Station owned: £25, £50, £100, or £200 for one through four.',
         'Utility rent is 4× your dice roll if the owner has one Utility, or 10× if they own both.',
         'Build houses and hotels on complete colour-groups (evenly) to increase rent. Mortgaged properties collect no rent.',
       ],
     },
     {
-      title: 'Chance & Community Chest',
+      title: 'Fate & Kitty',
       points: [
-        'You must pass GO once before drawing cards on your first lap — landing on Chance or Community Chest before that ends your turn without drawing.',
-        'Draw from the full UK 16-card Chance and 16-card Community Chest decks.',
+        'You must pass PAYDAY once before drawing cards on your first lap — landing on Fate or Kitty before that ends your turn without drawing.',
+        'Draw from the full 16-card Fate and 16-card Kitty decks.',
         'Cards may move you, pay or collect money, charge per house/hotel, or collect from every player.',
-        'If a card moves you forward past GO, collect £200 (after your first lap). You do not collect GO salary when sent to Jail.',
-        'Get Out of Jail Free cards are kept until used or traded.',
+        'If a card moves you forward past PAYDAY, collect £200 (after your first lap). You do not collect PAYDAY salary when sent to NICKED.',
+        'Skip-the-queue cards are kept until used or traded.',
       ],
     },
     {
-      title: 'Taxes & Free Parking',
+      title: 'Taxes & LAY-BY',
       points: [
-        'Income Tax (space 4) and Super Tax (space 38) do not apply until you have passed GO once on your first lap.',
-        'After that: Income Tax is £200 and Super Tax is £100, paid to the Bank.',
-        'Free Parking has no penalty — simply rest there until your next turn.',
+        'TAX OFFICE (space 4) and SURCHARGE (space 38) do not apply until you have passed PAYDAY once on your first lap.',
+        'After that: TAX OFFICE is £200 and SURCHARGE is £100, paid to the Bank.',
+        'LAY-BY has no penalty — simply rest there until your next turn.',
       ],
     },
     {
@@ -555,14 +555,14 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
       ],
     },
     {
-      title: 'Jail',
+      title: 'NICKED',
       points: [
-        'You are sent to Jail by landing on "Go To Jail", drawing a card, or rolling three doubles in one turn.',
-        'Landing on the Jail space while not sent there is "Just Visiting" — no penalty.',
-        'A "Get Out of Jail Free" card may be kept until used or traded.',
-        'To get out: pay a £50 fine before your next roll, use a Get Out of Jail Free card, or roll doubles on any of your next three turns.',
-        'After three turns in Jail without doubles, pay £50 and move according to your roll.',
-        'While in Jail you may still collect rent on properties you own (unless mortgaged).',
+        'You are sent to NICKED by landing on "OFF TO JAIL", drawing a card, or rolling three doubles in one turn.',
+        'Landing on the NICKED space while not sent there is "Just Visiting" — no penalty.',
+        'A skip-the-queue card may be kept until used or traded.',
+        'To get out: pay a £50 fine before your next roll, use a skip-the-queue card, or roll doubles on any of your next three turns.',
+        'After three turns in NICKED without doubles, pay £50 and move according to your roll.',
+        'While in NICKED you may still collect rent on properties you own (unless mortgaged).',
       ],
     },
     {

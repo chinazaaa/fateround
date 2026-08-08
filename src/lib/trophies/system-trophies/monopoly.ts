@@ -34,7 +34,7 @@ export const MONOPOLY: SystemTrophySpec[] = [
     suffix: 'passed_go',
     tier: 'bronze',
     title: 'Passing GO',
-    description: 'Pass GO and collect your salary.',
+    description: 'Pass PAYDAY and collect your salary.',
     counter: 'monopoly_passed_go',
     points: 10,
     sortOrder: 10,

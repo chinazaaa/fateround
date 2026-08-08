@@ -205,7 +205,7 @@ export function applyGoPass(
 
 function goPassStatusSuffix(collected: number, exactGo?: boolean): string {
   if (exactGo && collected > MONOPOLY_GO_SALARY) {
-    return ` Landed on GO! Collected ${formatMonopolyMoney(collected)}.`
+    return ` Landed on PAYDAY! Collected ${formatMonopolyMoney(collected)}.`
   }
   return ` Passed GO — collected ${formatMonopolyMoney(collected)}.`
 }
@@ -580,13 +580,13 @@ function resolveSpaceLanding(
       phase: 'roll',
       pendingSpace: null,
       extraTurn: false,
-      statusSuffix: ' Go to Jail!',
+      statusSuffix: ' Off to NICKED!',
     }
   }
 
   if (landed.type === 'tax') {
     if (!ctx.passedGoOnce) {
-      statusSuffix = ' Pass GO once before tax applies on your first lap.'
+      statusSuffix = ' Pass PAYDAY once before tax applies on your first lap.'
       return {
         cash,
         position,
@@ -632,7 +632,7 @@ function resolveSpaceLanding(
     const ownerId = recordedOwnerId && ownerState && !ownerState.bankrupt ? recordedOwnerId : undefined
     if (!ownerId) {
       if (!ctx.passedGoOnce) {
-        statusSuffix = ' Pass GO once before you can buy property.'
+        statusSuffix = ' Pass PAYDAY once before you can buy property.'
         return {
           cash,
           position,
@@ -1024,7 +1024,7 @@ export async function initializeMonopolyGame(
     current_turn_index: 0,
     phase: 'roll',
     property_owners: {},
-    status_message: 'Game started — pass GO once before you can buy property.',
+    status_message: 'Game started — pass PAYDAY once before you can buy property.',
     turn_deadline_at: monopolyTurnDeadline(timerSeconds),
     ...defaultBoardFields(),
   })
@@ -1235,7 +1235,7 @@ export async function processMonopolyRoll(
       cash -= MONOPOLY_JAIL_FINE
       inJail = false
       jailTurns = 0
-      statusMessage = `Paid ${formatMonopolyMoney(MONOPOLY_JAIL_FINE)} to leave jail. Rolled ${dice.d1}+${dice.d2}.`
+      statusMessage = `Paid ${formatMonopolyMoney(MONOPOLY_JAIL_FINE)} to leave NICKED. Rolled ${dice.d1}+${dice.d2}.`
       const move = movePosition(position, dice.total)
       position = move.to
       if (move.passedGo) {
@@ -1279,7 +1279,7 @@ export async function processMonopolyRoll(
             consecutive_doubles: 0,
             phase: 'roll',
             current_turn_index: nextTurnIndex(board, states),
-            status_message: 'Three doubles in a row — Go to Jail!',
+            status_message: 'Three doubles in a row — Off to NICKED!',
             pending_space: null,
             auction_state: null,
           },
@@ -1324,8 +1324,8 @@ export async function processMonopolyRoll(
 
   if (landed.type === 'chance' || landed.type === 'community') {
     if (!passedGoOnce) {
-      const label = landed.type === 'chance' ? 'Chance' : 'Community Chest'
-      statusMessage += ` Pass GO once before drawing ${label} cards.`
+      const label = landed.type === 'chance' ? 'Fate' : 'Kitty'
+      statusMessage += ` Pass PAYDAY once before drawing ${label} cards.`
       phase = 'roll'
     } else {
       const kind: CardKind = landed.type
@@ -1353,7 +1353,7 @@ export async function processMonopolyRoll(
         amount: card.amount,
         other_player_count: otherCount,
       }
-      statusMessage += ` Drew ${kind === 'chance' ? 'Chance' : 'Community Chest'}.`
+      statusMessage += ` Drew ${kind === 'chance' ? 'Fate' : 'Kitty'}.`
 
       const effect = applyCardEffect(card, {
         playerId,
@@ -1510,8 +1510,8 @@ export async function processMonopolyRoll(
       ? 'Card effect'
       : landed.type === 'tax'
         ? `Tax (${landed.name})`
-        : statusMessage.includes('Passed GO')
-          ? 'Passed GO'
+        : statusMessage.includes('Passed PAYDAY')
+          ? 'Passed PAYDAY'
           : statusMessage.includes('jail')
             ? 'Jail fine'
             : 'Your turn'

@@ -1012,9 +1012,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
 
         {board.last_card_event && activeEventKind === 'card' ? (
           <View style={styles.cardEvent}>
-            <Text style={styles.cardKind}>
-              {board.last_card_event.kind === 'chance' ? 'Chance' : 'Community Chest'}
-            </Text>
+            <Text style={styles.cardKind}>{board.last_card_event.kind === 'chance' ? 'Fate' : 'Kitty'}</Text>
             <Text style={styles.cardText}>{formatThemedText(board.last_card_event.card_message, themeId)}</Text>
           </View>
         ) : null}
