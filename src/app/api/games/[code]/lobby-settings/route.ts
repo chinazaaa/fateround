@@ -149,6 +149,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     uno_multi_play_mode,
     uno_team_mode,
     uno_jump_in,
+    uno_mode,
+    uno_no_mercy_win,
+    uno_series_scoring,
+    uno_series_target,
     ludo_variant,
     mahjong_ruleset,
     mahjong_rule_options,
@@ -224,6 +228,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     uno_multi_play_mode === undefined &&
     uno_team_mode === undefined &&
     uno_jump_in === undefined &&
+    uno_mode === undefined &&
+    uno_no_mercy_win === undefined &&
+    uno_series_scoring === undefined &&
+    uno_series_target === undefined &&
     ludo_variant === undefined &&
     mahjong_ruleset === undefined &&
     mahjong_rule_options === undefined &&
@@ -598,6 +606,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       if (uno_team_mode === true) gameUpdate.max_players = UNO_TEAM_PLAYERS
     }
     if (uno_jump_in !== undefined) gameUpdate.uno_jump_in = uno_jump_in
+    if (uno_mode !== undefined) gameUpdate.uno_mode = uno_mode === 'no_mercy' ? 'no_mercy' : 'classic'
+    if (uno_no_mercy_win !== undefined) {
+      gameUpdate.uno_no_mercy_win = uno_no_mercy_win === 'last_standing' ? 'last_standing' : 'first_out'
+    }
+    if (uno_series_scoring !== undefined) gameUpdate.uno_series_scoring = uno_series_scoring
+    if (uno_series_target !== undefined) gameUpdate.uno_series_target = Number(uno_series_target) || 1000
   } else if (
     uno_wd4_challenge !== undefined ||
     uno_uno_penalty !== undefined ||
@@ -605,7 +619,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     uno_stacking !== undefined ||
     uno_multi_play_mode !== undefined ||
     uno_team_mode !== undefined ||
-    uno_jump_in !== undefined
+    uno_jump_in !== undefined ||
+    uno_mode !== undefined ||
+    uno_no_mercy_win !== undefined ||
+    uno_series_scoring !== undefined ||
+    uno_series_target !== undefined
   ) {
     return NextResponse.json({ error: 'House rules only apply to UNO games' }, { status: 400 })
   }
