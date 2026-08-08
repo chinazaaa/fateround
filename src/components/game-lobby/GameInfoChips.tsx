@@ -321,13 +321,19 @@ export function gameInfoItems(game: GameMeta | null | undefined): string[] {
     // Classic values (e.g. "WD4 challenge" on a High Stakes game where challenges are
     // disabled in the engine).
     const uno = parseUnoRules(game)
-    if (uno.mode === 'no_mercy') items.push('💥 High Stakes')
-    if (uno.teamMode) items.push('🤝 Team-Up')
-    if (uno.stacking) items.push('📚 Stacking')
-    if (uno.zeroSeven) items.push('🔁 0-7 rule')
-    if (uno.wd4Challenge) items.push('⚖️ WD4 challenge')
-    if (uno.multiPlay !== 'off') items.push('🃏 Multi-Play')
-    if (uno.jumpIn) items.push('⚡ Jump-In')
+    if (uno.mode === 'no_mercy') {
+      // High Stakes locks in stacking + 0-7 + Jump-In and disables WD4/Team-Up/
+      // Multi-Play. Every one of those is implied by "High Stakes", so surface the
+      // single mode chip instead of the redundant per-rule chips.
+      items.push('💥 High Stakes')
+    } else {
+      if (uno.teamMode) items.push('🤝 Team-Up')
+      if (uno.stacking) items.push('📚 Stacking')
+      if (uno.zeroSeven) items.push('🔁 0-7 rule')
+      if (uno.wd4Challenge) items.push('⚖️ WD4 challenge')
+      if (uno.multiPlay !== 'off') items.push('🃏 Multi-Play')
+      if (uno.jumpIn) items.push('⚡ Jump-In')
+    }
   } else if (gt === 'monopoly') {
     if (game.monopoly_double_go_salary) items.push('💰 Double GO salary')
     if (game.monopoly_forced_auctions) items.push('🔨 Forced auctions')
