@@ -103,6 +103,8 @@ export interface Game {
   uno_multi_play_mode?: string | null
   uno_team_mode?: boolean | null
   uno_jump_in?: boolean | null
+  uno_mode?: string | null
+  uno_no_mercy_win?: string | null
   describe_it_mode?: string | null
   describe_it_num_teams?: number | null
   word_rush_mode?: string | null

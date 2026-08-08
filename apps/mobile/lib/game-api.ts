@@ -1190,6 +1190,8 @@ export type BoardLobbyPatch = {
   uno_jump_in?: boolean
   uno_multi_play_mode?: string
   uno_team_mode?: boolean
+  uno_mode?: string
+  uno_no_mercy_win?: string
   ludo_variant?: 'modern' | 'traditional'
   ayo_variant?: 'traditional' | 'oware'
   checkers_nigeria_street_rules?: boolean

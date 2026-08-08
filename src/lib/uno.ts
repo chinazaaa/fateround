@@ -34,23 +34,35 @@ export const UNO_COLOR_HEX: Record<UnoColor, string> = {
 }
 
 // ── Rules ───────────────────────────────────────────────────────────────────────
+export type UnoMode = 'classic' | 'no_mercy'
+export type UnoNoMercyWin = 'first_out' | 'last_standing'
+
+/** Mercy rule: hitting this many cards in No Mercy knocks the player out. */
+export const UNO_MERCY_HAND_LIMIT = 25
+
 export type UnoRules = {
-  /** Allow challenging a Wild Draw Four. */
+  /** Top-level UNO shape. */
+  mode: UnoMode
+  /** Allow challenging a Wild Draw Four. Forced OFF in No Mercy. */
   wd4Challenge: boolean
   /** Cards drawn for a missed "UNO" call. */
   unoPenalty: number
   /** Cards a failed challenger draws. */
   wd4ChallengePenalty: number
-  /** 0 = all hands pass in play direction; 7 = swap hands with a chosen player. */
+  /** 0 = all hands pass in play direction; 7 = swap hands with a chosen player.
+   *  Forced ON in No Mercy. */
   zeroSeven: boolean
-  /** Allow stacking Draw Two on Draw Two / Draw Four on Draw Four (penalty accumulates). */
+  /** Allow stacking Draw cards. Forced ON in No Mercy (cross-kind equal-or-higher chaining). */
   stacking: boolean
   /** Multi-Play grouping rule (lay several matching cards in one turn). */
   multiPlay: UnoMultiPlayMode
-  /** 2v2 Team-Up mode: a team wins the moment either member empties their hand. */
+  /** 2v2 Team-Up mode: a team wins the moment either member empties their hand.
+   *  Forced OFF in No Mercy. */
   teamMode: boolean
   /** Jump-In: any player may play an exact-match card out of turn (same colour + value/symbol). */
   jumpIn: boolean
+  /** No Mercy: how the round ends. Ignored in Classic. */
+  noMercyWin: UnoNoMercyWin
 }
 
 /** Team-Up requires exactly this many players (2 teams of 2). */
@@ -122,6 +134,14 @@ export function parseMultiPlayMode(raw: unknown): UnoMultiPlayMode {
   return (MULTI_PLAY_MODES as readonly string[]).includes(String(raw)) ? (raw as UnoMultiPlayMode) : 'off'
 }
 
+export function parseUnoMode(raw: unknown): UnoMode {
+  return raw === 'no_mercy' ? 'no_mercy' : 'classic'
+}
+
+export function parseUnoNoMercyWin(raw: unknown): UnoNoMercyWin {
+  return raw === 'last_standing' ? 'last_standing' : 'first_out'
+}
+
 export function parseUnoRules(
   game:
     | Pick<
@@ -134,22 +154,28 @@ export function parseUnoRules(
         | 'uno_multi_play_mode'
         | 'uno_team_mode'
         | 'uno_jump_in'
+        | 'uno_mode'
+        | 'uno_no_mercy_win'
       >
     | null
     | undefined
 ): UnoRules {
   const penalty = Number(game?.uno_uno_penalty ?? 2)
   const wd4Penalty = Number(game?.uno_wd4_challenge_penalty ?? 6)
+  const mode = parseUnoMode(game?.uno_mode)
+  const noMercy = mode === 'no_mercy'
   return {
-    wd4Challenge: game?.uno_wd4_challenge !== false,
+    mode,
+    // No Mercy: no WD4 challenge, always 0-7, always stacking, no Team-Up.
+    wd4Challenge: noMercy ? false : game?.uno_wd4_challenge !== false,
     unoPenalty: penalty === 4 ? 4 : 2,
-    // Standard UNO: a failed challenger draws 6 (the 4 they refused + a 2 penalty). 4 is a milder variant.
     wd4ChallengePenalty: wd4Penalty === 4 ? 4 : 6,
-    zeroSeven: game?.uno_zero_seven === true,
-    stacking: game?.uno_stacking === true,
+    zeroSeven: noMercy ? true : game?.uno_zero_seven === true,
+    stacking: noMercy ? true : game?.uno_stacking === true,
     multiPlay: parseMultiPlayMode(game?.uno_multi_play_mode),
-    teamMode: game?.uno_team_mode === true,
+    teamMode: noMercy ? false : game?.uno_team_mode === true,
     jumpIn: game?.uno_jump_in === true,
+    noMercyWin: parseUnoNoMercyWin(game?.uno_no_mercy_win),
   }
 }
 
@@ -165,12 +191,41 @@ export function formatUnoGameDuration(seconds: number): string {
 }
 
 // ── Card helpers ──────────────────────────────────────────────────────────────
+const WILD_KINDS: UnoCard['kind'][] = ['wild', 'wild_draw4', 'wild_reverse_draw4', 'wild_color_roulette']
+
 export function isWildCard(card: UnoCard): boolean {
-  return card.kind === 'wild' || card.kind === 'wild_draw4'
+  return WILD_KINDS.includes(card.kind)
 }
 
 export function isActionCard(card: UnoCard): boolean {
-  return card.kind === 'skip' || card.kind === 'reverse' || card.kind === 'draw2'
+  return (
+    card.kind === 'skip' ||
+    card.kind === 'reverse' ||
+    card.kind === 'draw2' ||
+    card.kind === 'discard_all' ||
+    card.kind === 'skip_everyone'
+  )
+}
+
+/** Draw penalty this kind carries when played / stacked. 0 = not a draw card. */
+export function drawCardValue(kind: UnoCard['kind']): number {
+  switch (kind) {
+    case 'draw2':
+      return 2
+    case 'wild_draw4':
+    case 'wild_reverse_draw4':
+      return 4
+    case 'draw6':
+      return 6
+    case 'draw10':
+      return 10
+    default:
+      return 0
+  }
+}
+
+export function isDrawCard(card: UnoCard): boolean {
+  return drawCardValue(card.kind) > 0
 }
 
 const KIND_SHORT: Record<UnoCard['kind'], string> = {
@@ -180,12 +235,22 @@ const KIND_SHORT: Record<UnoCard['kind'], string> = {
   draw2: '+2',
   wild: 'Wild',
   wild_draw4: 'Wild +4',
+  discard_all: 'Discard All',
+  skip_everyone: 'Skip All',
+  draw6: '+6',
+  draw10: '+10',
+  wild_reverse_draw4: 'Wild Rev +4',
+  wild_color_roulette: 'Roulette',
 }
 
 export function cardLabel(card: UnoCard): string {
   if (card.kind === 'number') return `${UNO_COLOR_LABELS[card.color as UnoColor]} ${card.value}`
   if (card.kind === 'wild') return 'Wild'
   if (card.kind === 'wild_draw4') return 'Wild Draw Four'
+  if (card.kind === 'wild_reverse_draw4') return 'Wild Reverse Draw Four'
+  if (card.kind === 'wild_color_roulette') return 'Wild Color Roulette'
+  if (card.kind === 'draw6') return 'Wild Draw Six'
+  if (card.kind === 'draw10') return 'Wild Draw Ten'
   return `${UNO_COLOR_LABELS[card.color as UnoColor]} ${KIND_SHORT[card.kind]}`
 }
 
@@ -198,7 +263,7 @@ export function cardShortLabel(card: UnoCard): string {
 export function cardPoints(card: UnoCard): number {
   if (card.kind === 'number') return card.value ?? 0
   if (isWildCard(card)) return 50
-  return 20 // skip / reverse / draw2
+  return 20 // coloured action card
 }
 
 export function unoHandSum(cards: UnoCard[]): number {
@@ -225,6 +290,36 @@ export function buildUnoDeck(): UnoCard[] {
   for (let i = 0; i < 4; i += 1) {
     deck.push({ id: `wild-${i}`, color: 'wild', kind: 'wild' })
     deck.push({ id: `wild4-${i}`, color: 'wild', kind: 'wild_draw4' })
+  }
+  return deck
+}
+
+/**
+ * Build the 168-card UNO "Show 'em No Mercy" deck. Starts from the 108-card classic and layers on
+ * the No-Mercy-only cards. Card counts per new kind are picked so the total lands at 168:
+ *
+ *   Discard All          — 1 per colour  =  4
+ *   Skip Everyone        — 2 per colour  =  8
+ *   Wild Reverse Draw 4  — 12
+ *   Wild Draw 6          — 12
+ *   Wild Draw 10         — 12
+ *   Wild Color Roulette  — 12
+ *   ─────────────────────────────────── + 60
+ *   Base UNO deck        — 108
+ *   ═════════════════════════════════ = 168
+ */
+export function buildNoMercyDeck(): UnoCard[] {
+  const deck = buildUnoDeck()
+  for (const color of UNO_COLORS) {
+    deck.push({ id: `${color}-discard_all`, color, kind: 'discard_all' })
+    deck.push({ id: `${color}-skip_everyone-a`, color, kind: 'skip_everyone' })
+    deck.push({ id: `${color}-skip_everyone-b`, color, kind: 'skip_everyone' })
+  }
+  for (let i = 0; i < 12; i += 1) {
+    deck.push({ id: `wildrev4-${i}`, color: 'wild', kind: 'wild_reverse_draw4' })
+    deck.push({ id: `wild6-${i}`, color: 'wild', kind: 'draw6' })
+    deck.push({ id: `wild10-${i}`, color: 'wild', kind: 'draw10' })
+    deck.push({ id: `wildroul-${i}`, color: 'wild', kind: 'wild_color_roulette' })
   }
   return deck
 }
@@ -267,6 +362,18 @@ export function specialCardMessage(card: UnoCard): string | null {
       return 'Wild — choose a colour'
     case 'wild_draw4':
       return 'Wild Draw Four — next player draws 4'
+    case 'discard_all':
+      return 'Discard All — drop every matching-colour card in your hand'
+    case 'skip_everyone':
+      return 'Skip Everyone — everyone else is skipped, go again'
+    case 'draw6':
+      return 'Wild Draw Six — next player draws 6 and loses their turn'
+    case 'draw10':
+      return 'Wild Draw Ten — next player draws 10 and loses their turn'
+    case 'wild_reverse_draw4':
+      return 'Wild Reverse Draw Four — reverse, then next player draws 4'
+    case 'wild_color_roulette':
+      return 'Wild Color Roulette — next player picks a colour and draws until they hit it'
     default:
       return null
   }
@@ -281,11 +388,21 @@ export function activeColor(session: UnoSession): UnoColor | null {
 }
 
 export function canPlayCard(card: UnoCard, session: UnoSession): boolean {
-  // A pending forced draw (Draw Two / Draw Four) must be taken — unless stacking is on, in
-  // which case only a matching card stacks onto it. `draw_penalty_kind` is set to the
-  // stackable card only when the host enabled stacking, so no rules lookup is needed here.
+  // A pending forced draw must be taken — unless a stack card is played. Classic stacking is
+  // same-kind only (draw2-on-draw2, wild_draw4-on-wild_draw4). No Mercy stacking is value-based:
+  // any Draw card whose value is >= the pending value can stack.
   if ((session.draw_penalty ?? 0) > 0) {
-    return card.kind === session.draw_penalty_kind
+    const pendingKind = session.draw_penalty_kind
+    if (!pendingKind) return false
+    const cardVal = drawCardValue(card.kind)
+    if (cardVal === 0) return false
+    if (card.kind === pendingKind) return true
+    // Cross-kind stacking (No Mercy). The new draw kinds only exist in a No Mercy deck.
+    if (card.kind === 'draw6' || card.kind === 'draw10' || card.kind === 'wild_reverse_draw4') {
+      return cardVal >= drawCardValue(pendingKind)
+    }
+    // For classic-only kinds ('draw2' / 'wild_draw4') a mismatched pending kind is illegal.
+    return false
   }
 
   // Wild cards play on anything, anytime.
@@ -321,11 +438,11 @@ export function isJumpInMatch(card: UnoCard, top: UnoCard | null): boolean {
 export function playPenaltyError(card: UnoCard, session: UnoSession): string | null {
   const penalty = session.draw_penalty ?? 0
   if (penalty <= 0) return null
-  if (card.kind === session.draw_penalty_kind) return null // a legal stack
+  if (canPlayCard(card, session)) return null // a legal stack
   const kind = session.draw_penalty_kind
-  if (kind === 'draw2') return `Draw ${penalty} — play another Draw Two to stack, or draw`
-  if (kind === 'wild_draw4') return `Draw ${penalty} — play another Wild Draw Four to stack, or draw`
-  return `Draw the ${penalty}-card penalty`
+  if (kind === 'draw2') return `Draw ${penalty} — stack with a Draw Two (or higher in No Mercy)`
+  if (kind === 'wild_draw4') return `Draw ${penalty} — stack with a Wild Draw Four (or higher in No Mercy)`
+  return `Draw ${penalty} — stack with a Draw card of equal or higher value`
 }
 
 export function hasPlayableCard(hand: UnoCard[], session: UnoSession): boolean {
@@ -569,11 +686,14 @@ export async function initializeUnoGame(
 ): Promise<{ error?: string }> {
   const { data: gameRow } = await supabase
     .from('games')
-    .select('timer_seconds, uno_team_mode')
+    .select('timer_seconds, uno_team_mode, uno_mode')
     .eq('id', gameId)
     .maybeSingle()
   const timerSeconds = gameRow?.timer_seconds ?? 0
-  const teamMode = gameRow?.uno_team_mode === true
+  const mode = parseUnoMode(gameRow?.uno_mode)
+  const noMercy = mode === 'no_mercy'
+  // No Mercy disables Team-Up (Mercy elimination replaces team-based winning).
+  const teamMode = !noMercy && gameRow?.uno_team_mode === true
 
   if (teamMode && playerIds.length !== UNO_TEAM_PLAYERS) {
     return { error: `Team-Up needs exactly ${UNO_TEAM_PLAYERS} players (2 teams of 2)` }
@@ -587,7 +707,7 @@ export async function initializeUnoGame(
         return [s[0]!, s[2]!, s[1]!, s[3]!]
       })()
     : shuffle(playerIds)
-  const deck = shuffle(buildUnoDeck())
+  const deck = shuffle(noMercy ? buildNoMercyDeck() : buildUnoDeck())
 
   const hands: UnoCard[][] = turnOrder.map(() => [])
   let drawPile = [...deck]
@@ -628,6 +748,8 @@ export async function initializeUnoGame(
     status_message: `${firstName}'s turn — match ${cardLabel(top)}`,
     winner_player_id: null,
     finish_order: [],
+    eliminated_player_ids: [],
+    color_roulette_player_id: null,
     turn_deadline_at: unoTurnDeadline(timerSeconds),
   }
 
@@ -675,7 +797,7 @@ async function loadGameState(
     supabase
       .from('games')
       .select(
-        'timer_seconds, game_duration_seconds, session_started_at, uno_wd4_challenge, uno_uno_penalty, uno_wd4_challenge_penalty, uno_zero_seven, uno_stacking, uno_multi_play_mode, uno_team_mode, uno_jump_in'
+        'timer_seconds, game_duration_seconds, session_started_at, uno_wd4_challenge, uno_uno_penalty, uno_wd4_challenge_penalty, uno_zero_seven, uno_stacking, uno_multi_play_mode, uno_team_mode, uno_jump_in, uno_mode, uno_no_mercy_win'
       )
       .eq('id', gameId)
       .maybeSingle(),
@@ -1221,26 +1343,28 @@ export async function processUnoPlay(
   let rotatedWrites: { playerId: string; cards: UnoCard[] }[] | null = null
 
   if (isWildCard(card) && !wentOut) {
-    // Wild / Wild Draw Four with cards left: pause for the colour choice.
+    // Wild / Wild Draw Four / Draw Six / Draw Ten / Wild Reverse Draw Four / Color Roulette.
+    // All wilds pause on the same seat for the colour choice (choose endpoint drives the rest).
+    // A Draw-carrying wild carries the accumulated stack forward when the choose fires.
+    const drawVal = drawCardValue(card.kind)
+    // No Mercy stacking: any draw wild played onto a pending draw penalty of equal-or-lower value
+    // adds to the running stack. Classic path: only wild_draw4-on-wild_draw4 adds.
+    const carriedPenalty =
+      drawVal > 0 && (session.draw_penalty ?? 0) > 0 && session.draw_penalty_kind ? (session.draw_penalty ?? 0) : 0
     patch = {
       top_card: card,
       last_play_cards: [card],
       discard_pile: discardWith(baseDiscard, session.top_card),
       draw_pile: basePile,
       required_color: null,
-      pending_wild: card.kind === 'wild_draw4' ? 'wild_draw4' : 'wild',
-      challenge_prev_color: card.kind === 'wild_draw4' ? activeColor(session) : null,
-      wd4_player_id: card.kind === 'wild_draw4' ? playerId : null,
-      // Carry the accumulated Draw Four penalty when stacking a WD4 onto a WD4 (choose adds its 4).
-      draw_penalty:
-        card.kind === 'wild_draw4' && session.draw_penalty_kind === 'wild_draw4' ? (session.draw_penalty ?? 0) : 0,
+      pending_wild: card.kind === 'wild' ? 'wild' : (card.kind as UnoSession['pending_wild']),
+      challenge_prev_color: card.kind === 'wild_draw4' && rules.wd4Challenge ? activeColor(session) : null,
+      wd4_player_id: card.kind === 'wild_draw4' && rules.wd4Challenge ? playerId : null,
+      draw_penalty: carriedPenalty,
       draw_penalty_kind: null,
       drawn_card_id: null,
       phase: 'choose_color',
-      status_message:
-        card.kind === 'wild_draw4'
-          ? `${name} played a Wild Draw Four — choose a colour`
-          : `${name} played a Wild — choose a colour`,
+      status_message: `${name} played ${cardLabel(card)} — choose a colour`,
       ...unoPatch,
     }
   } else {
