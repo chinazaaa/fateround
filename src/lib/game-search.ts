@@ -14,7 +14,7 @@ const SEARCH_ALIASES: Partial<Record<GameType, string[]>> = {
   monopoly: ['monopoly'],
   scrabble: ['scrabble'],
   yahtzee: ['yahtzee'],
-  uno: ['uno'],
+  uno: ['uno', 'no mercy', "show 'em no mercy", 'show em no mercy', 'match up', 'high stakes uno'],
   quiplash: ['quiplash'],
 }
 

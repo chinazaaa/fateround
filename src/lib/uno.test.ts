@@ -561,6 +561,7 @@ describe('parseUnoRules', () => {
   it('defaults: challenge on, penalty 2, wd4 penalty 6, 0-7 off, stacking off', () => {
     const r = parseUnoRules(null)
     expect(r).toEqual({
+      mode: 'classic',
       wd4Challenge: true,
       unoPenalty: 2,
       wd4ChallengePenalty: 6,
@@ -569,6 +570,7 @@ describe('parseUnoRules', () => {
       multiPlay: 'off',
       teamMode: false,
       jumpIn: false,
+      noMercyWin: 'first_out',
     })
   })
   it('reads host overrides', () => {
@@ -583,6 +585,7 @@ describe('parseUnoRules', () => {
       uno_jump_in: true,
     })
     expect(r).toEqual({
+      mode: 'classic',
       wd4Challenge: false,
       unoPenalty: 4,
       wd4ChallengePenalty: 6,
@@ -591,6 +594,7 @@ describe('parseUnoRules', () => {
       multiPlay: 'same_color_or_number',
       teamMode: true,
       jumpIn: true,
+      noMercyWin: 'first_out',
     })
   })
   it('reads the milder wd4 penalty variant (4) and clamps junk to 6', () => {

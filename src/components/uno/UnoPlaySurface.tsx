@@ -63,6 +63,18 @@ function miniGlyph(card: UnoCard): string {
       return '🌈'
     case 'wild_draw4':
       return '+4'
+    case 'draw6':
+      return '+6'
+    case 'draw10':
+      return '+10'
+    case 'wild_reverse_draw4':
+      return '↺+4'
+    case 'wild_color_roulette':
+      return '🎲'
+    case 'discard_all':
+      return 'DA'
+    case 'skip_everyone':
+      return '⊘⊘'
     default:
       return ''
   }
@@ -245,7 +257,7 @@ export function UnoPlaySurface({
     wd4PlayerName != null ? (
       <div className="uno-challenge-hint">
         <p className="uno-challenge-hint__lead">
-          <strong>{wd4PlayerName}</strong> played a Wild Draw Four
+          <strong>{wd4PlayerName}</strong> played a Draw 4
           {wd4PrevColor ? (
             <>
               {' '}
@@ -414,21 +426,33 @@ export function UnoPlaySurface({
             {isMyTurn ? 'You played a wild card — choose the colour to match' : `${turnName} is choosing a colour…`}
           </TurnStatus>
         ) : session.phase === 'challenge_window' ? (
-          <TurnStatus>{isMyTurn ? 'Wild Draw Four played against you' : `${turnName} is deciding…`}</TurnStatus>
+          <TurnStatus>{isMyTurn ? 'Draw 4 played against you' : `${turnName} is deciding…`}</TurnStatus>
         ) : session.phase === 'swap_target' ? (
           <TurnStatus>
             {isMyTurn ? 'You played a 7 — choose a player to swap hands with' : `${turnName} is swapping hands…`}
+          </TurnStatus>
+        ) : session.phase === 'color_roulette' ? (
+          <TurnStatus>
+            {isMyTurn
+              ? 'Colour Roulette on you — pick a colour and reveal until you hit it'
+              : `${turnName} is spinning the Color Roulette…`}
           </TurnStatus>
         ) : drawPenalty > 0 && canAct ? (
           <ActionToast tone="hot">
             🔥 Draw {drawPenalty}
             {session.draw_penalty_kind === 'draw2'
-              ? ' — or stack a Draw Two'
+              ? ' — or stack a Draw 2'
               : session.draw_penalty_kind === 'wild_draw4'
                 ? canChallengeStack
-                  ? ' — stack a Wild Draw Four, or challenge'
-                  : ' — or stack a Wild Draw Four'
-                : ' — no defence'}
+                  ? ' — stack a Draw 4, or challenge'
+                  : ' — or stack a Draw 4'
+                : session.draw_penalty_kind === 'draw6'
+                  ? ' — or stack a Draw of 6 or higher'
+                  : session.draw_penalty_kind === 'draw10'
+                    ? ' — or stack a Draw 10'
+                    : session.draw_penalty_kind === 'wild_reverse_draw4'
+                      ? ' — or stack a Draw of 4 or higher'
+                      : ' — no defence'}
           </ActionToast>
         ) : isMyTurn ? (
           <TurnStatus>Your turn</TurnStatus>
@@ -573,7 +597,7 @@ export function UnoPlaySurface({
             <>
               {owesUnoCall && (
                 <button type="button" className="uno-call-btn" disabled={acting} onClick={onCallUno}>
-                  Call UNO!
+                  Last card!
                 </button>
               )}
               {canChallengeStack ? (
