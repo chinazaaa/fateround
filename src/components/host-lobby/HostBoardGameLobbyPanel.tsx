@@ -298,6 +298,9 @@ export function HostBoardGameLobbyPanel({
   return (
     <HostLobbySettingsSection
       status={statusLabel}
+      // Open by default — otherwise the sheet reads as "there are no game settings here"
+      // for hosts who don't spot the tiny "Expand" chevron.
+      defaultOpen
       alwaysVisible={
         // Surfaced above the collapse: the player cap is the setting hosts reach for most
         // (let more people in / trim an empty lobby), so it must never hide behind "Edit".
