@@ -1925,8 +1925,8 @@ export default function TournamentLobbyPage() {
               <li className="flex gap-2.5">
                 <span aria-hidden>⚔️</span>
                 <span>
-                  You play Scrabble in a room of up to {groupSize} — but you&apos;re ranked against the whole field, not
-                  just your room.
+                  You play Word Tiles in a room of up to {groupSize} — but you&apos;re ranked against the whole field,
+                  not just your room.
                 </span>
               </li>
               <li className="flex gap-2.5">

@@ -2066,7 +2066,7 @@ export const COUNTERS: readonly CounterDef[] = [
   // ── Scrabble — from scrabble_player_state.stats + final score/rack at finish ───────────────────────────────────────────────
   {
     key: 'scrabble_opening_move_games',
-    label: 'Scrabble — opening move',
+    label: 'Word Tiles — opening move',
     description: 'Games where you played the first word across the centre star.',
     scope: 'per-game',
     availability: 'partial',
@@ -2074,7 +2074,7 @@ export const COUNTERS: readonly CounterDef[] = [
   },
   {
     key: 'scrabble_double_letter_games',
-    label: 'Scrabble — double letter',
+    label: 'Word Tiles — double letter',
     description: 'Games where you covered a double-letter square.',
     scope: 'per-game',
     availability: 'partial',
@@ -2082,7 +2082,7 @@ export const COUNTERS: readonly CounterDef[] = [
   },
   {
     key: 'scrabble_triple_letter_games',
-    label: 'Scrabble — triple letter',
+    label: 'Word Tiles — triple letter',
     description: 'Games where you covered a triple-letter square.',
     scope: 'per-game',
     availability: 'partial',
@@ -2090,7 +2090,7 @@ export const COUNTERS: readonly CounterDef[] = [
   },
   {
     key: 'scrabble_double_word_games',
-    label: 'Scrabble — double word',
+    label: 'Word Tiles — double word',
     description: 'Games where you covered a double-word square.',
     scope: 'per-game',
     availability: 'partial',
@@ -2098,7 +2098,7 @@ export const COUNTERS: readonly CounterDef[] = [
   },
   {
     key: 'scrabble_triple_word_games',
-    label: 'Scrabble — triple word',
+    label: 'Word Tiles — triple word',
     description: 'Games where you covered a triple-word square.',
     scope: 'per-game',
     availability: 'partial',
@@ -2106,7 +2106,7 @@ export const COUNTERS: readonly CounterDef[] = [
   },
   {
     key: 'scrabble_blank_games',
-    label: 'Scrabble — blank tile',
+    label: 'Word Tiles — blank tile',
     description: 'Games where you played a blank tile.',
     scope: 'per-game',
     availability: 'partial',
@@ -2114,7 +2114,7 @@ export const COUNTERS: readonly CounterDef[] = [
   },
   {
     key: 'scrabble_swap_games',
-    label: 'Scrabble — exchange',
+    label: 'Word Tiles — exchange',
     description: 'Games where you exchanged tiles.',
     scope: 'per-game',
     availability: 'partial',
@@ -2122,7 +2122,7 @@ export const COUNTERS: readonly CounterDef[] = [
   },
   {
     key: 'scrabble_two_word_games',
-    label: 'Scrabble — crossworder',
+    label: 'Word Tiles — crossworder',
     description: 'Games where a single play formed two or more words.',
     scope: 'per-game',
     availability: 'partial',
@@ -2130,7 +2130,7 @@ export const COUNTERS: readonly CounterDef[] = [
   },
   {
     key: 'scrabble_parallel_games',
-    label: 'Scrabble — parallel play',
+    label: 'Word Tiles — parallel play',
     description: 'Games where a single play formed three or more words.',
     scope: 'per-game',
     availability: 'partial',
@@ -2138,7 +2138,7 @@ export const COUNTERS: readonly CounterDef[] = [
   },
   {
     key: 'scrabble_hook_games',
-    label: 'Scrabble — hook',
+    label: 'Word Tiles — hook',
     description: 'Games where you extended a word with a single tile.',
     scope: 'per-game',
     availability: 'partial',
@@ -2146,7 +2146,7 @@ export const COUNTERS: readonly CounterDef[] = [
   },
   {
     key: 'scrabble_long_word_games',
-    label: 'Scrabble — long word',
+    label: 'Word Tiles — long word',
     description: 'Games where you played an eight-letter-or-longer word.',
     scope: 'per-game',
     availability: 'partial',
@@ -2154,7 +2154,7 @@ export const COUNTERS: readonly CounterDef[] = [
   },
   {
     key: 'scrabble_q_no_u_games',
-    label: 'Scrabble — Q without U',
+    label: 'Word Tiles — Q without U',
     description: 'Games where you played a valid Q word with no U.',
     scope: 'per-game',
     availability: 'partial',
@@ -2162,7 +2162,7 @@ export const COUNTERS: readonly CounterDef[] = [
   },
   {
     key: 'scrabble_high_value_games',
-    label: 'Scrabble — high value',
+    label: 'Word Tiles — high value',
     description: 'Games where you played a Z, Q, X or J on a premium square.',
     scope: 'per-game',
     availability: 'partial',
@@ -2170,7 +2170,7 @@ export const COUNTERS: readonly CounterDef[] = [
   },
   {
     key: 'scrabble_triple_triple_games',
-    label: 'Scrabble — triple-triple',
+    label: 'Word Tiles — triple-triple',
     description: 'Games where one word covered two triple-word squares.',
     scope: 'per-game',
     availability: 'partial',
@@ -2178,7 +2178,7 @@ export const COUNTERS: readonly CounterDef[] = [
   },
   {
     key: 'scrabble_bingo_games',
-    label: 'Scrabble — bingo',
+    label: 'Word Tiles — bingo',
     description: 'Games where you played all seven tiles in one turn.',
     scope: 'per-game',
     availability: 'partial',
@@ -2186,7 +2186,7 @@ export const COUNTERS: readonly CounterDef[] = [
   },
   {
     key: 'scrabble_double_bingo_games',
-    label: 'Scrabble — double bingo',
+    label: 'Word Tiles — double bingo',
     description: 'Games where you played two bingos.',
     scope: 'per-game',
     availability: 'partial',
@@ -2194,7 +2194,7 @@ export const COUNTERS: readonly CounterDef[] = [
   },
   {
     key: 'scrabble_triple_bingo_games',
-    label: 'Scrabble — triple bingo',
+    label: 'Word Tiles — triple bingo',
     description: 'Games where you played three bingos.',
     scope: 'per-game',
     availability: 'partial',
@@ -2202,7 +2202,7 @@ export const COUNTERS: readonly CounterDef[] = [
   },
   {
     key: 'scrabble_big_play_games',
-    label: 'Scrabble — big play',
+    label: 'Word Tiles — big play',
     description: 'Games with a 40+ point single word.',
     scope: 'per-game',
     availability: 'partial',
@@ -2210,7 +2210,7 @@ export const COUNTERS: readonly CounterDef[] = [
   },
   {
     key: 'scrabble_monster_play_games',
-    label: 'Scrabble — monster play',
+    label: 'Word Tiles — monster play',
     description: 'Games with an 80+ point single word.',
     scope: 'per-game',
     availability: 'partial',
@@ -2218,7 +2218,7 @@ export const COUNTERS: readonly CounterDef[] = [
   },
   {
     key: 'scrabble_century_word_games',
-    label: 'Scrabble — century word',
+    label: 'Word Tiles — century word',
     description: 'Games with a 100+ point single word.',
     scope: 'per-game',
     availability: 'partial',
@@ -2226,7 +2226,7 @@ export const COUNTERS: readonly CounterDef[] = [
   },
   {
     key: 'scrabble_half_century_games',
-    label: 'Scrabble — half century',
+    label: 'Word Tiles — half century',
     description: 'Games finishing on fifty or more.',
     scope: 'per-game',
     availability: 'partial',
@@ -2234,7 +2234,7 @@ export const COUNTERS: readonly CounterDef[] = [
   },
   {
     key: 'scrabble_century_games',
-    label: 'Scrabble — century',
+    label: 'Word Tiles — century',
     description: 'Games finishing on two hundred or more.',
     scope: 'per-game',
     availability: 'partial',
@@ -2242,7 +2242,7 @@ export const COUNTERS: readonly CounterDef[] = [
   },
   {
     key: 'scrabble_three_hundred_games',
-    label: 'Scrabble — three hundred',
+    label: 'Word Tiles — three hundred',
     description: 'Games finishing on three hundred or more.',
     scope: 'per-game',
     availability: 'partial',
@@ -2250,7 +2250,7 @@ export const COUNTERS: readonly CounterDef[] = [
   },
   {
     key: 'scrabble_four_hundred_games',
-    label: 'Scrabble — four hundred',
+    label: 'Word Tiles — four hundred',
     description: 'Games finishing on four hundred or more.',
     scope: 'per-game',
     availability: 'partial',
@@ -2258,7 +2258,7 @@ export const COUNTERS: readonly CounterDef[] = [
   },
   {
     key: 'scrabble_clean_rack_games',
-    label: 'Scrabble — clean rack',
+    label: 'Word Tiles — clean rack',
     description: 'Games finished with an empty rack (went out).',
     scope: 'per-game',
     availability: 'partial',
@@ -2266,7 +2266,7 @@ export const COUNTERS: readonly CounterDef[] = [
   },
   {
     key: 'scrabble_comeback_wins',
-    label: 'Scrabble — comeback',
+    label: 'Word Tiles — comeback',
     description: 'Wins from sixty or more points behind.',
     scope: 'per-game',
     availability: 'partial',
@@ -2274,7 +2274,7 @@ export const COUNTERS: readonly CounterDef[] = [
   },
   {
     key: 'scrabble_full_table_wins',
-    label: 'Scrabble — full table',
+    label: 'Word Tiles — full table',
     description: 'Wins in a four-player game.',
     scope: 'per-game',
     availability: 'partial',
@@ -2282,7 +2282,7 @@ export const COUNTERS: readonly CounterDef[] = [
   },
   {
     key: 'scrabble_no_swap_wins',
-    label: 'Scrabble — no swaps',
+    label: 'Word Tiles — no swaps',
     description: 'Wins without exchanging tiles or passing.',
     scope: 'per-game',
     availability: 'partial',
@@ -3902,7 +3902,7 @@ export const COUNTERS: readonly CounterDef[] = [
   // ── Quiplash ───────────────────────────────────────────────────────────
   {
     key: 'quiplash_answers_submitted',
-    label: 'Quiplash — answers submitted',
+    label: 'Punchline — answers submitted',
     description: 'Total answers submitted across all games.',
     scope: 'per-game',
     availability: 'partial',
@@ -3910,7 +3910,7 @@ export const COUNTERS: readonly CounterDef[] = [
   },
   {
     key: 'quiplash_battle_wins',
-    label: 'Quiplash — battles won',
+    label: 'Punchline — battles won',
     description: 'Head-to-head battles won across all games.',
     scope: 'per-game',
     availability: 'partial',
@@ -3918,7 +3918,7 @@ export const COUNTERS: readonly CounterDef[] = [
   },
   {
     key: 'quiplash_three_battle_games',
-    label: 'Quiplash — 3+ battles won',
+    label: 'Punchline — 3+ battles won',
     description: 'Games winning 3 or more battles.',
     scope: 'per-game',
     availability: 'partial',
@@ -3926,7 +3926,7 @@ export const COUNTERS: readonly CounterDef[] = [
   },
   {
     key: 'quiplash_full_voter_games',
-    label: 'Quiplash — full voter',
+    label: 'Punchline — full voter',
     description: 'Games where you voted in every battle.',
     scope: 'per-game',
     availability: 'partial',
@@ -3934,7 +3934,7 @@ export const COUNTERS: readonly CounterDef[] = [
   },
   {
     key: 'quiplash_all_answers_submitted_games',
-    label: 'Quiplash — all prompts answered',
+    label: 'Punchline — all prompts answered',
     description: 'Games submitting answers for all prompts.',
     scope: 'per-game',
     availability: 'partial',
@@ -3942,7 +3942,7 @@ export const COUNTERS: readonly CounterDef[] = [
   },
   {
     key: 'quiplash_unanimous_wins',
-    label: 'Quiplash — unanimous wins',
+    label: 'Punchline — unanimous wins',
     description: 'Battles won unanimously.',
     scope: 'per-game',
     availability: 'partial',
@@ -3950,7 +3950,7 @@ export const COUNTERS: readonly CounterDef[] = [
   },
   {
     key: 'quiplash_undefeated_games',
-    label: 'Quiplash — undefeated',
+    label: 'Punchline — undefeated',
     description: 'Games winning every battle you entered.',
     scope: 'per-game',
     availability: 'partial',
@@ -3958,7 +3958,7 @@ export const COUNTERS: readonly CounterDef[] = [
   },
   {
     key: 'quiplash_full_lobby_games',
-    label: 'Quiplash — full lobby',
+    label: 'Punchline — full lobby',
     description: 'Games played with 8 or more players.',
     scope: 'per-game',
     availability: 'partial',
@@ -3966,7 +3966,7 @@ export const COUNTERS: readonly CounterDef[] = [
   },
   {
     key: 'quiplash_double_unanimous_games',
-    label: 'Quiplash — double unanimous',
+    label: 'Punchline — double unanimous',
     description: 'Games with 2 or more unanimous wins.',
     scope: 'per-game',
     availability: 'partial',
@@ -3974,7 +3974,7 @@ export const COUNTERS: readonly CounterDef[] = [
   },
   {
     key: 'quiplash_ten_votes_games',
-    label: 'Quiplash — 10+ votes received',
+    label: 'Punchline — 10+ votes received',
     description: 'Games receiving 10 or more total votes.',
     scope: 'per-game',
     availability: 'partial',
@@ -3982,7 +3982,7 @@ export const COUNTERS: readonly CounterDef[] = [
   },
   {
     key: 'quiplash_comeback_games',
-    label: 'Quiplash — comeback',
+    label: 'Punchline — comeback',
     description: 'Games winning overall after losing the first battle.',
     scope: 'per-game',
     availability: 'partial',

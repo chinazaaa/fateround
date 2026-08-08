@@ -3047,7 +3047,7 @@ function CreateGameInner() {
                 </p>
               </SettingsGroup>
             ) : isQuiplash ? (
-              <SettingsGroup title="Quiplash">
+              <SettingsGroup title="Punchline">
                 <Field label={`Max players (${effectiveLimits.quiplash.min}–${effectiveLimits.quiplash.max})`}>
                   <CustomSelect
                     value={quiplashMaxPlayers}
@@ -3407,7 +3407,7 @@ function CreateGameInner() {
                 </p>
               </SettingsGroup>
             ) : isMonopoly ? (
-              <SettingsGroup title="Monopoly room">
+              <SettingsGroup title="Estate Kings room">
                 <Field label={`Max players (${effectiveLimits.monopoly.min}–${effectiveLimits.monopoly.max})`}>
                   <CustomSelect
                     value={monopolyMaxPlayers}
@@ -3452,7 +3452,7 @@ function CreateGameInner() {
                 </p>
               </SettingsGroup>
             ) : isYahtzee ? (
-              <SettingsGroup title="Yahtzee room">
+              <SettingsGroup title="Five Dice room">
                 <Field label={`Max players (${effectiveLimits.yahtzee.min}–${effectiveLimits.yahtzee.max})`}>
                   <CustomSelect
                     value={yahtzeeMaxPlayers}
@@ -4058,7 +4058,7 @@ function CreateGameInner() {
                 </p>
               </SettingsGroup>
             ) : isScrabble ? (
-              <SettingsGroup title="Scrabble room">
+              <SettingsGroup title="Word Tiles room">
                 <p className="text-faint text-sm">2–4 players — the host can join as one of them.</p>
                 <Field label="Game mode">
                   <CustomSelect

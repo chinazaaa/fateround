@@ -1379,7 +1379,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       {
         question: 'How does scoring work in online Yahtzee?',
         answer:
-          'Each turn you roll up to three times, holding dice between rolls, then fill one unused category. The upper section (Ones–Sixes) scores the total of those dice — reach 63+ there for a 35-point bonus. Lower-section combos pay fixed amounts: Full House 25, Small Straight 30, Large Straight 40, Yahtzee 50, with Three/Four of a Kind and Chance scoring the sum of all five dice. Highest total when every category is filled wins.',
+          'Each turn you roll up to three times, holding dice between rolls, then fill one unused category. The upper section (Ones–Sixes) scores the total of those dice — reach 63+ there for a 35-point bonus. Lower-section combos pay fixed amounts: Full House 25, Small Straight 30, Large Straight 40, Five of a Kind 50, with Three/Four of a Kind and Chance scoring the sum of all five dice. Highest total when every category is filled wins.',
       },
       {
         question: 'What are the odds of rolling a Yahtzee?',
@@ -1394,7 +1394,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       {
         question: 'What are all the categories on a Yahtzee scorecard?',
         answer:
-          'A Yahtzee scorecard has 13 categories in two sections. The upper section is Ones, Twos, Threes, Fours, Fives, and Sixes — each scores the sum of dice showing that number. The lower section is Three of a Kind, Four of a Kind, Full House (25), Small Straight (30), Large Straight (40), Yahtzee (50), and Chance. You fill exactly one category per turn, and FateRound tracks the whole card for every player automatically.',
+          'A Yahtzee-style scorecard has 13 categories in two sections. The upper section is Ones, Twos, Threes, Fours, Fives, and Sixes — each scores the sum of dice showing that number. The lower section is Three of a Kind, Four of a Kind, Full House (25), Small Straight (30), Large Straight (40), Five of a Kind (50), and Chance. You fill exactly one category per turn, and FateRound tracks the whole card for every player automatically.',
       },
       {
         question: 'What is the difference between a small straight and a large straight in Yahtzee?',
@@ -1409,12 +1409,12 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       {
         question: 'Is there any strategy to Yahtzee?',
         answer:
-          'Yes. Prioritize the upper section early to chase the 63-point threshold for the 35-point bonus, keep Chance as a flexible fallback for a bad roll, and only zero out a category (like Yahtzee) when you have no better option. Deciding which dice to hold between rolls is where most of the skill lives.',
+          'Yes. Prioritize the upper section early to chase the 63-point threshold for the 35-point bonus, keep Chance as a flexible fallback for a bad roll, and only zero out a category (like Five of a Kind) when you have no better option. Deciding which dice to hold between rolls is where most of the skill lives.',
       },
       {
         question: 'Can you play Yahtzee solo?',
         answer:
-          'Yes. FateRound lets you start a Yahtzee room on your own and play through the full scorecard to chase a high score — no other players required. Add friends any time by sharing the room code.',
+          'Yes. FateRound lets you start a Five Dice room on your own and play through the full scorecard to chase a high score — no other players required. Add friends any time by sharing the room code.',
       },
       {
         question: 'Where can I find a Yahtzee scorecard?',
@@ -2809,7 +2809,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       {
         question: 'Can I run a Scrabble tournament online?',
         answer:
-          'Yes. FateRound can run a Scrabble tournament as a head-to-head bracket, with your chosen dictionary and clock. Create one from the Tournaments page and share the join code — free, no app, no sign-up.',
+          'Yes. FateRound can run a Word Tiles tournament as a head-to-head bracket, with your chosen dictionary and clock. Create one from the Tournaments page and share the join code — free, no app, no sign-up.',
       },
     ],
   }),

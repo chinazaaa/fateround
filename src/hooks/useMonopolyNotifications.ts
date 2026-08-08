@@ -80,7 +80,7 @@ export function useMonopolyNotifications({
     const prevPhase = prevPhaseRef.current
 
     if (prevStatus === 'waiting' && game.status === 'active') {
-      info('Monopoly started! 🎲')
+      info('Estate Kings started! 🎲')
       playMonopolyActionSound('turn', themeId)
     }
 

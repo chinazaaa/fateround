@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
   if (!game) return NextResponse.json({ error: 'Game not found' }, { status: 404 })
   if (game.status !== 'active') return NextResponse.json({ ok: true, skipped: true })
   if (!isYahtzeeGame(parseGameType(game.game_type))) {
-    return NextResponse.json({ error: 'Not a Yahtzee game' }, { status: 400 })
+    return NextResponse.json({ error: 'Not a Five Dice game' }, { status: 400 })
   }
 
   const result = await processYahtzeeExpireTurn(supabase, code)

@@ -375,7 +375,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
           players={players}
           joining={joining}
           joiningAsViewer={joiningAsViewer}
-          submitLabel={joiningAsViewer ? 'Join as viewer' : 'Join Monopoly'}
+          submitLabel={joiningAsViewer ? 'Join as viewer' : 'Join Estate Kings'}
           onSubmit={() => {
             // Non-viewer joins require a board token before we hit the hook's join.
             if (!joiningAsViewer && !joinToken) return
