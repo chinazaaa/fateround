@@ -2994,13 +2994,21 @@ async function bankruptPlayer(
   let nextDebtObj: MonopolyPendingDebt | null = null
 
   if (board.pending_debt?.next_debts && board.pending_debt.next_debts.length > 0 && !winner) {
-    const nextDebt = board.pending_debt.next_debts[0]
-    nextDebtObj = { ...nextDebt }
-    if (board.pending_debt.next_debts.length > 1) {
-      nextDebtObj.next_debts = board.pending_debt.next_debts.slice(1)
+    // Drop any queued debts the just-bankrupted player owed — their cash went to
+    // the first creditor and their assets returned to the Bank, so nothing is
+    // left to raise. Without this, the "drawer can't pay everyone" card path
+    // (planMultiPlayerCashDeltas Scenario A) leaves current_turn_index parked on
+    // the bankrupt player with a fresh pending_debt against them, and the game
+    // stalls because they're marked bankrupt on the client and can never act.
+    const remaining = board.pending_debt.next_debts.filter((d) => d.player_id !== playerId)
+    if (remaining.length > 0) {
+      nextDebtObj = { ...remaining[0] }
+      if (remaining.length > 1) {
+        nextDebtObj.next_debts = remaining.slice(1)
+      }
+      nextPhase = 'raise_funds'
+      upcomingTurnIndex = board.current_turn_index
     }
-    nextPhase = 'raise_funds'
-    upcomingTurnIndex = board.current_turn_index
   }
 
   const { data: won, error: rpcError } = await supabase.rpc('monopoly_claim_and_apply', {
