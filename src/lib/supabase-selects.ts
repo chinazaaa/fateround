@@ -134,8 +134,13 @@ export const DRAUGHTS10_SESSION_SELECT =
 export const AYO_SESSION_SELECT =
   'id,game_id,player_a_id,player_b_id,pits,captured_a,captured_b,houses_a,houses_b,match_round,a_row_size,b_row_size,current_turn,a_win_streak,b_win_streak,a_time_ms,b_time_ms,turn_started_at,last_pit,status,result_reason,winner_player_id,is_draw,status_message,turn_deadline_at,created_at,updated_at'
 
+/**
+ * NOTE: no `current_word`. The secret word is revoked from anon/authenticated by migration
+ * 20260807130000 — it used to ship to every guesser's client and was merely hidden in the UI.
+ * The describer fetches it from POST /api/describe-it/my-word instead.
+ */
 export const DESCRIBE_IT_SESSION_SELECT =
-  'id,game_id,mode,num_teams,total_rounds,turn_seconds,phase,turn_index,current_round,active_team,describer_player_id,roster,current_word,current_clue,current_clues,used_words,turn_deadline_at,break_deadline_at,status,status_message,created_at,updated_at'
+  'id,game_id,mode,num_teams,total_rounds,turn_seconds,phase,turn_index,current_round,active_team,describer_player_id,roster,current_clue,current_clues,word_seq,turn_deadline_at,break_deadline_at,status,status_message,created_at,updated_at'
 
 export const DESCRIBE_IT_PLAYER_SELECT = 'id,game_id,player_id,team,score,created_at'
 

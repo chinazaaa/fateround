@@ -1280,11 +1280,25 @@ export interface DescribeItSession {
   describer_player_id: string | null
   /** Ordered player ids that take turns describing (individual mode only). */
   roster: string[]
-  current_word: string | null
+  /**
+   * The secret word. NOT present on a client-side session — `current_word` is revoked from
+   * anon/authenticated by migration 20260807130000, and DESCRIBE_IT_SESSION_SELECT no longer
+   * asks for it. Only service-role reads see it (see `DescribeItServerSession` in
+   * src/lib/describe-it.ts); the describer gets it back via POST /api/describe-it/my-word.
+   */
+  current_word?: string | null
   current_clue: string | null
   /** All clues given for the current word (reset each word). */
   current_clues: string[]
-  used_words: string[]
+  /**
+   * A SHADOW COPY of the secret: every write that sets `current_word` appends it here, so the
+   * last element IS the current word. Revoked from anon alongside `current_word` and therefore
+   * absent client-side; the service role still sees the full history. Use `word_seq` for the
+   * per-word counter the clients actually need.
+   */
+  used_words?: string[]
+  /** Public per-word counter (`cardinality(used_words)`) — ticks once per word rotation. */
+  word_seq?: number
   turn_deadline_at: string | null
   break_deadline_at: string | null
   status: 'active' | 'finished'

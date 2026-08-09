@@ -908,10 +908,22 @@ export interface DescribeItSession {
   active_team: number
   describer_player_id: string | null
   roster: string[]
-  current_word: string | null
+  /**
+   * The secret word. NOT present on a client-side session — `current_word` is revoked from
+   * anon/authenticated by migration 20260807130000, and DESCRIBE_IT_SESSION_SELECT no longer
+   * asks for it. The describer fetches it via POST /api/describe-it/my-word.
+   */
+  current_word?: string | null
   current_clue: string | null
   current_clues: string[]
+  /**
+   * A SHADOW COPY of the secret — every write that sets `current_word` appends it here, so the
+   * last element IS the current word. Revoked from anon with `current_word`, so it is absent
+   * client-side. Use `word_seq` for the per-word counter.
+   */
   used_words?: string[]
+  /** Public per-word counter (`cardinality(used_words)`) — ticks once per word rotation. */
+  word_seq?: number
   status: 'active' | 'finished'
   status_message: string | null
   turn_deadline_at: string | null

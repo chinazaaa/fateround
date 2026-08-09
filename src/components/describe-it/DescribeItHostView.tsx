@@ -36,6 +36,7 @@ import { useGameTableSync } from '@/hooks/useGameTableSync'
 import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { useDescribeItTimer } from '@/hooks/useDescribeItTimer'
+import { useDescribeItWord } from '@/hooks/useDescribeItWord'
 import { useDescribeItSounds } from '@/hooks/useDescribeItSounds'
 import { useTurnNotifications } from '@/hooks/useTurnNotifications'
 import {
@@ -372,6 +373,15 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
     enabled: hostMode === 'player' && !!hostPlayerId && game?.status === 'active',
   })
 
+  // The secret word is no longer in the session read. A host-player pulls it through the route;
+  // the host token is sent alongside the seat's resume token so the route can still resolve the
+  // seat (games.host_player_id) if the resume token hasn't loaded yet. A watch-only host is
+  // never the describer, so this stays null for them.
+  const myWord = useDescribeItWord(gameCode, session, hostPlayerId, {
+    resumeToken: hostResumeToken,
+    hostToken,
+  })
+
   const gameFinished = isDescribeItResultsPhase(game?.status, session)
 
   // Land on the primary (Play/Watch) tab when the game starts, and on Manage when it ends.
@@ -453,6 +463,7 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
       words={words}
       guesses={guesses}
       myPlayerId={hostPlayerId}
+      myWord={myWord}
       secondsLeft={secondsLeft}
       breakLeft={breakLeft}
       urgent={urgent}

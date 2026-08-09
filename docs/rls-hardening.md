@@ -171,6 +171,41 @@ route.** Shipping it earlier breaks live games in the two ways described above.
 Playtest per game before its row is ticked: deal → several plays → a player goes out → finish,
 on web **and** mobile, watching that nobody is wrongly shown as out and opponent counts track.
 
+## Phase 8 — per-turn secret state (the word / the key card)
+
+Same class as H2 (`codewords_boards.key`), but the secret is one column on a shared session row
+rather than a whole table, so the fix IS a column revoke — the shape used for `games.host_token`
+(0122) and `codewords_boards.key` (20260803170000):
+
+1. Revoke table SELECT from anon + authenticated, re-grant every column except the secret,
+   built dynamically from `information_schema` in an idempotent `do $$` block.
+2. Add `POST /api/<game>/<secret>` that resolves the caller from a **secret** (resume token, or
+   host token → `games.host_player_id` for a host who took a seat) and returns the secret only
+   when that resolves to the entitled player. Everyone else gets a `200` with `null` — asking is
+   normal traffic, so the status code must not become an oracle.
+3. Every browser reader drops the column from its `*_SELECT` and refetches through the route.
+
+Why it is safe here where Phase 7's hand tables are not: these session rows are consumed as a
+**reload trigger** (`useGameTableSync` → `load()`), never applied to state, so a realtime payload
+missing the column cannot corrupt anything.
+
+### Per-game status
+
+| Game | Column | Route | Web readers | Mobile reader | Playtested | Migration |
+|---|---|---|---|---|---|---|
+| Codewords | `codewords_boards.key` | ✅ `/api/codewords/board` | ✅ | ✅ | ✅ | ✅ 20260803170000 |
+| Describe It | `describe_it_sessions.current_word` | ✅ `/api/describe-it/my-word` | ✅ player, host | ✅ | ❌ **required** | ✅ 20260807130000 |
+| Quick Draw | `quick_draw_guess_sessions.current_word` | ❌ | ❌ | ❌ | ❌ | ❌ **open leak** |
+
+**Quick Draw is the same leak, still open**: `current_word` is in `QUICK_DRAW_GUESS_SESSION_SELECT`
+on web and mobile, and `QuickDrawGuessPlay.tsx` / `QuickDrawPlayerView.tsx` only *render* it for
+the drawer. Copy the Describe It slice verbatim to close it.
+
+Describe It playtest focus: the word rotates on every correct guess **and** every skip without
+`turn_index` changing, so the refetch is keyed on `used_words.length` (every write that sets
+`current_word` also appends to `used_words`). Watch that the describer's word changes the instant
+a guess lands, on a skip, and at a turn/describer change — on web, mobile, and as a host-player.
+
 ## Progress log
 
 ### Snake & Ladder (canary) — code-complete, ⏳ live verification pending

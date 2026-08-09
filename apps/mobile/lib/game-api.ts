@@ -995,6 +995,21 @@ export function postQuickDrawGuessTeam(gameId: string, resumeToken: string, team
 }
 
 /**
+ * The Describe It secret word via the server route.
+ *
+ * `describe_it_sessions.current_word` is not anon-selectable since 20260807130000 — it used to
+ * ship to every guesser's device and was merely hidden in the UI. The route returns the word only
+ * when the caller's resume token resolves to the current describer; everyone else gets `null`,
+ * which is a normal (non-error) answer.
+ */
+export function postDescribeItWord(gameCode: string, auth: { resumeToken?: string | null }) {
+  return postJson<{ word: string | null }>('/api/describe-it/my-word', {
+    gameCode: gameCode.toUpperCase(),
+    resumeToken: auth.resumeToken ?? undefined,
+  })
+}
+
+/**
  * Whot hands via the server route — own cards in full, everyone else's as a count.
  * Returns null on failure so callers can keep the previous hands rather than rendering an
  * empty one (which reads as "you are out"). See src/lib/hand-redaction.ts.
