@@ -995,6 +995,21 @@ export function postQuickDrawGuessTeam(gameId: string, resumeToken: string, team
 }
 
 /**
+ * The Quick Draw (guess mode) secret prompt via the server route.
+ *
+ * `quick_draw_guess_sessions.current_word` is not anon-selectable since 20260807140000 — it used
+ * to ship to every guesser's device and was merely hidden in the UI. The route returns the word
+ * only when the caller's resume token resolves to the current drawer; everyone else gets `null`,
+ * which is a normal (non-error) answer.
+ */
+export function postQuickDrawWord(gameCode: string, auth: { resumeToken?: string | null }) {
+  return postJson<{ word: string | null }>('/api/quick-draw/my-word', {
+    gameCode: gameCode.toUpperCase(),
+    resumeToken: auth.resumeToken ?? undefined,
+  })
+}
+
+/**
  * Whot hands via the server route — own cards in full, everyone else's as a count.
  * Returns null on failure so callers can keep the previous hands rather than rendering an
  * empty one (which reads as "you are out"). See src/lib/hand-redaction.ts.

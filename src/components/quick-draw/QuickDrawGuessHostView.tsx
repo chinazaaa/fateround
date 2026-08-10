@@ -52,6 +52,7 @@ import { useToast } from '@/components/ui/Toast'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
 import { useGameTableSync } from '@/hooks/useGameTableSync'
 import { useQuickDrawGuessTimer } from '@/hooks/useQuickDrawGuessTimer'
+import { useQuickDrawWord } from '@/hooks/useQuickDrawWord'
 import { useHostSeat } from '@/hooks/useHostSeat'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
@@ -178,6 +179,15 @@ export function QuickDrawGuessHostView({ gameCode, hostToken }: { gameCode: stri
 
   const { secondsLeft, breakLeft, urgent } = useQuickDrawGuessTimer(gameCode, session, game?.status === 'active')
 
+  // The secret prompt is no longer in the session read. A host-player pulls it through the route;
+  // the host token is sent alongside the seat's resume token so the route can still resolve the
+  // seat (games.host_player_id) if the resume token hasn't loaded yet. A watch-only host is never
+  // the drawer, so this stays null for them.
+  const myWord = useQuickDrawWord(gameCode, session, hostPlayerId, {
+    resumeToken: hostResumeToken,
+    hostToken,
+  })
+
   const startGame = async () => {
     if (starting || !canStart) return
     if (hostMode === 'player' && !hostPlayerId) {
@@ -299,6 +309,7 @@ export function QuickDrawGuessHostView({ gameCode, hostToken }: { gameCode: stri
       words={words}
       guesses={guesses}
       myPlayerId={hostPlays ? hostPlayerId : null}
+      myWord={myWord}
       myResumeToken={hostPlays ? hostResumeToken : null}
       secondsLeft={secondsLeft}
       breakLeft={breakLeft}
