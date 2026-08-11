@@ -51,7 +51,10 @@ export async function POST(req: NextRequest) {
   const start = new Date(`${body.from}T00:00:00`)
   const end = new Date(`${body.to}T00:00:00`)
   for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-    dates.push(d.toISOString().slice(0, 10))
+    const y = d.getFullYear()
+    const m = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    dates.push(`${y}-${m}-${day}`)
   }
 
   if (dates.length === 0) {
