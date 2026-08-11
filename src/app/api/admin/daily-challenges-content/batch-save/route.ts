@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
           challenge_date: e.challenge_date,
           content: e.content,
         })),
-        { onConflict: 'game_type,challenge_date' }
+        { onConflict: 'game_type,challenge_date', ignoreDuplicates: true }
       )
       .select('id')
 
@@ -72,6 +72,10 @@ export async function POST(req: NextRequest) {
     } else {
       saved += data?.length ?? chunk.length
     }
+  }
+
+  if (saved === 0 && errors.length > 0) {
+    return NextResponse.json({ saved, skipped, errors }, { status: 500 })
   }
 
   return NextResponse.json({

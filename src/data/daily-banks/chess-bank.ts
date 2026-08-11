@@ -513,10 +513,10 @@ export const CHESS_BANK: ChessMatePuzzle[] = [
   // 50 — Queen sacrifice into back rank
   {
     fen: '2rr2k1/5ppp/8/8/4Q3/8/5PPP/4R1K1 w - - 0 1',
-    mateIn: 2,
+    mateIn: 3,
     toMove: 'white',
     lines: [['Qe8+', 'Rxe8', 'Rxe8+', 'Rd8', 'Rxd8#']],
-    difficulty: 'standard',
+    difficulty: 'hard',
   },
 
   // 51 — Knight + rook mate

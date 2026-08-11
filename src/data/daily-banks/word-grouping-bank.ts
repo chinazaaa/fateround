@@ -741,7 +741,7 @@ export const WORD_GROUPING_BANK: WordGroupingPuzzle[] = [
       { category: 'Things in space', words: ['ASTEROID', 'SATELLITE', 'STATION', 'PROBE'], difficulty: 1 },
       { category: 'Words meaning "study"', words: ['EXAMINE', 'REVIEW', 'SURVEY', 'SCAN'], difficulty: 2 },
       { category: 'Space ___', words: ['CADET', 'CRAFT', 'BAR', 'SUIT'], difficulty: 3 },
-      { category: 'Words containing "orbit"', words: ['ORBIT', 'MORBID', 'FORBID', 'EXORBITANT'], difficulty: 4 },
+      { category: 'Words containing "orbit"', words: ['ORBIT', 'ORBITAL', 'EXORBITANT', 'EXORBITATE'], difficulty: 4 },
     ],
   },
   // Puzzle 82
@@ -954,7 +954,7 @@ export const WORD_GROUPING_BANK: WordGroupingPuzzle[] = [
       { category: 'Woodwind instruments', words: ['FLUTE', 'CLARINET', 'BASSOON', 'PICCOLO'], difficulty: 1 },
       { category: 'Things with a reed', words: ['SAXOPHONE', 'BASKET', 'MARSH', 'ORGAN'], difficulty: 2 },
       { category: 'Note ___', words: ['PAD', 'BOOK', 'WORTHY', 'CARD'], difficulty: 3 },
-      { category: 'Musical terms that are also food', words: ['CLEF', 'TEMPO', 'FORTE', 'STACCATO'], difficulty: 4 },
+      { category: 'Musical terms that are also food', words: ['BASS', 'DRUMSTICK', 'JAM', 'ROLL'], difficulty: 4 },
     ],
   },
   // Puzzle 103

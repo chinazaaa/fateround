@@ -300,7 +300,7 @@ function generateChessMateContent(date: string, usedKeys: Set<string>): { conten
 
 function generateCodenamesContent(date: string, usedKeys: Set<string>): { content: unknown; theme: string } | null {
   const rng = createRng(dateSeed(date, 'codenames_codeword'))
-  const available = CODENAMES_BANK.filter((p) => !usedKeys.has(p.clue + ':' + p.correctWords.sort().join(',')))
+  const available = CODENAMES_BANK.filter((p) => !usedKeys.has(p.clue + ':' + [...p.correctWords].sort().join(',')))
   if (available.length === 0) return null
 
   const idx = Math.floor(rng() * available.length)
@@ -394,11 +394,12 @@ function solveLudoPuzzle(
   }
 
   const queue: State[] = [initial]
+  let head = 0
   const visited = new Set<string>()
   visited.add(stateKey(initial))
 
-  while (queue.length > 0) {
-    const current = queue.shift()!
+  while (head < queue.length) {
+    const current = queue[head++]
     if (current.pieces.every((p) => p.zone === 'finished')) {
       return current.diceIdx
     }

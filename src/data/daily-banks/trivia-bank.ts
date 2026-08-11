@@ -1194,7 +1194,7 @@ export const TRIVIA_BANK: TriviaQuestion[] = [
   },
   {
     question: 'What is the longest novel ever published by word count, according to Guinness World Records?',
-    choices: ['War and Peace', 'Les Misérables', 'In Search of Lost Time', 'A la recherche du temps perdu'],
+    choices: ['War and Peace', 'Les Misérables', 'In Search of Lost Time', 'Artamène'],
     correct_index: 2,
     category: 'literature',
   },
