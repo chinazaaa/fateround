@@ -396,6 +396,8 @@ export default function AdminDailyPage() {
   })()
   const [filterFrom, setFilterFrom] = useState(monthStart)
   const [filterTo, setFilterTo] = useState(monthEnd)
+  const [manualPage, setManualPage] = useState(0)
+  const MANUAL_PAGE_SIZE = 20
 
   // Create form
   const [createDate, setCreateDate] = useState(today)
@@ -441,6 +443,7 @@ export default function AdminDailyPage() {
     } finally {
       setLoading(false)
     }
+    setManualPage(0)
   }, [gameType, filterFrom, filterTo])
 
   useEffect(() => {
@@ -1092,86 +1095,115 @@ export default function AdminDailyPage() {
             </button>
           </div>
 
-          {/* Existing content list */}
+          {/* Existing content list (paginated) */}
           {loading ? (
             <p className="text-sm text-[var(--muted)]">Loading…</p>
           ) : items.length === 0 ? (
             <p className="text-sm text-[var(--muted)]">No content for {meta.label} in this date range.</p>
           ) : (
-            <div className="space-y-2">
-              {items.map((item) => (
-                <div key={item.id} className="glass-card flex flex-col gap-3 p-4">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div>
-                      <span className="font-semibold">{formatDate(item.challenge_date)}</span>
-                      <span className="ml-2 text-xs text-[var(--muted)]">
-                        {entryCount(item.game_type, item.content)} entries
-                      </span>
+            <>
+              <p className="text-xs text-[var(--muted)]">
+                Showing {Math.min(manualPage * MANUAL_PAGE_SIZE + 1, items.length)}–
+                {Math.min((manualPage + 1) * MANUAL_PAGE_SIZE, items.length)} of {items.length} entries
+              </p>
+              <div className="space-y-2">
+                {items.slice(manualPage * MANUAL_PAGE_SIZE, (manualPage + 1) * MANUAL_PAGE_SIZE).map((item) => (
+                  <div key={item.id} className="glass-card flex flex-col gap-3 p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <span className="font-semibold">{formatDate(item.challenge_date)}</span>
+                        <span className="ml-2 text-xs text-[var(--muted)]">
+                          {entryCount(item.game_type, item.content)} entries
+                        </span>
+                      </div>
+                      <div className="flex gap-2">
+                        {editId === item.id ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => handleUpdate(item)}
+                              disabled={editSaving}
+                              className="btn-primary px-3 py-1 text-xs disabled:opacity-50"
+                            >
+                              {editSaving ? 'Saving…' : 'Save'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setEditId(null)}
+                              className="btn-secondary px-3 py-1 text-xs"
+                            >
+                              Cancel
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditId(item.id)
+                                setEditText(contentToText(item.game_type, item.content))
+                              }}
+                              className="btn-secondary px-3 py-1 text-xs"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDelete(item.id)}
+                              className="btn-ghost px-3 py-1 text-xs text-red-400"
+                            >
+                              Delete
+                            </button>
+                          </>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex gap-2">
-                      {editId === item.id ? (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() => handleUpdate(item)}
-                            disabled={editSaving}
-                            className="btn-primary px-3 py-1 text-xs disabled:opacity-50"
-                          >
-                            {editSaving ? 'Saving…' : 'Save'}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setEditId(null)}
-                            className="btn-secondary px-3 py-1 text-xs"
-                          >
-                            Cancel
-                          </button>
-                        </>
-                      ) : (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setEditId(item.id)
-                              setEditText(contentToText(item.game_type, item.content))
-                            }}
-                            className="btn-secondary px-3 py-1 text-xs"
-                          >
-                            Edit
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleDelete(item.id)}
-                            className="btn-ghost px-3 py-1 text-xs text-red-400"
-                          >
-                            Delete
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </div>
 
-                  {editId === item.id ? (
-                    <>
-                      <textarea
-                        value={editText}
-                        onChange={(e) => {
-                          setEditText(e.target.value)
-                          setEditError(null)
-                        }}
-                        rows={8}
-                        className="input-field w-full font-mono text-sm"
-                      />
-                      {editError && <p className="text-xs text-red-400 mt-1">{editError}</p>}
-                    </>
-                  ) : (
-                    <pre className="max-h-32 overflow-auto rounded bg-[var(--card)] p-2 text-xs">
-                      {contentToText(item.game_type, item.content)}
-                    </pre>
-                  )}
+                    {editId === item.id ? (
+                      <>
+                        <textarea
+                          value={editText}
+                          onChange={(e) => {
+                            setEditText(e.target.value)
+                            setEditError(null)
+                          }}
+                          rows={8}
+                          className="input-field w-full font-mono text-sm"
+                        />
+                        {editError && <p className="text-xs text-red-400 mt-1">{editError}</p>}
+                      </>
+                    ) : (
+                      <pre className="max-h-32 overflow-auto rounded bg-[var(--card)] p-2 text-xs">
+                        {contentToText(item.game_type, item.content)}
+                      </pre>
+                    )}
+                  </div>
+                ))}
+              </div>
+              {items.length > MANUAL_PAGE_SIZE && (
+                <div className="flex items-center justify-center gap-3 pt-2">
+                  <button
+                    type="button"
+                    disabled={manualPage === 0}
+                    onClick={() => setManualPage((p) => p - 1)}
+                    className="btn-secondary px-3 py-1 text-sm disabled:opacity-40"
+                  >
+                    ← Prev
+                  </button>
+                  <span className="text-sm text-[var(--muted)]">
+                    Page {manualPage + 1} of {Math.ceil(items.length / MANUAL_PAGE_SIZE)}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={(manualPage + 1) * MANUAL_PAGE_SIZE >= items.length}
+                    onClick={() => setManualPage((p) => p + 1)}
+                    className="btn-secondary px-3 py-1 text-sm disabled:opacity-40"
+                  >
+                    Next →
+                  </button>
                 </div>
-              ))}
-            </div>
+              )}
+            </>
           )}
         </>
       )}
