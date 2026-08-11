@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { useToast } from '@/components/ui/Toast'
 
@@ -55,6 +55,8 @@ const GAME_TYPES: { id: GameTypeId; label: string; hint: string }[] = [
   },
 ]
 
+const ALL_GAME_IDS = GAME_TYPES.map((g) => g.id)
+
 type ContentRow = {
   id: string
   game_type: GameTypeId
@@ -62,6 +64,25 @@ type ContentRow = {
   content: unknown
   created_at: string
   updated_at: string
+}
+
+type GeneratedEntry = {
+  game_type: GameTypeId
+  challenge_date: string
+  content: unknown
+  theme: string
+}
+
+type BankCapacity = {
+  game_type: GameTypeId
+  label: string
+  totalInBank: number
+  alreadyUsed: number
+  remaining: number
+  generatedThisBatch: number
+  remainingAfterBatch: number
+  exhausted: boolean
+  daysCouldNotFill: number
 }
 
 // ---------------------------------------------------------------------------
@@ -328,13 +349,39 @@ function dayLabel(iso: string): string {
   return d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })
 }
 
+function monthLabel(iso: string): string {
+  const d = new Date(`${iso}T00:00:00`)
+  return d.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
+}
+
+function getMonthRange(yearMonth: string): { from: string; to: string } {
+  const d = new Date(`${yearMonth}-01T00:00:00`)
+  const from = toIso(d)
+  d.setMonth(d.getMonth() + 1)
+  d.setDate(0)
+  return { from, to: toIso(d) }
+}
+
+function getDatesInRange(from: string, to: string): string[] {
+  const dates: string[] = []
+  const start = new Date(`${from}T00:00:00`)
+  const end = new Date(`${to}T00:00:00`)
+  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+    dates.push(toIso(d))
+  }
+  return dates
+}
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
+type Tab = 'manual' | 'batch'
+
 export default function AdminDailyPage() {
   const { confirm } = useConfirm()
   const { success, error: toastError } = useToast()
+  const [tab, setTab] = useState<Tab>('batch')
   const [gameType, setGameType] = useState<GameTypeId>('crossword')
   const [items, setItems] = useState<ContentRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -361,6 +408,27 @@ export default function AdminDailyPage() {
   const [editText, setEditText] = useState('')
   const [editSaving, setEditSaving] = useState(false)
 
+  // ---------- Batch state ----------
+  const nextMonth = (() => {
+    const d = new Date(`${today}T00:00:00`)
+    d.setMonth(d.getMonth() + 1)
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+  })()
+  const thisMonth = today.slice(0, 7)
+  const [batchMonth, setBatchMonth] = useState(nextMonth)
+  const batchRange = useMemo(() => getMonthRange(batchMonth), [batchMonth])
+  const batchDates = useMemo(() => getDatesInRange(batchRange.from, batchRange.to), [batchRange])
+  const [batchExisting, setBatchExisting] = useState<ContentRow[]>([])
+  const [batchGenerated, setBatchGenerated] = useState<GeneratedEntry[]>([])
+  const [batchLoading, setBatchLoading] = useState(false)
+  const [batchGenerating, setBatchGenerating] = useState(false)
+  const [batchSaving, setBatchSaving] = useState(false)
+  const [batchStats, setBatchStats] = useState<Record<string, unknown> | null>(null)
+  const [batchCapacity, setBatchCapacity] = useState<BankCapacity[]>([])
+  const [batchRemoved, setBatchRemoved] = useState<Set<string>>(new Set())
+  const [batchExpandedGame, setBatchExpandedGame] = useState<GameTypeId | null>(null)
+
+  // ---------- Manual tab data load ----------
   const load = useCallback(async () => {
     setLoading(true)
     try {
@@ -376,8 +444,25 @@ export default function AdminDailyPage() {
   }, [gameType, filterFrom, filterTo])
 
   useEffect(() => {
-    void load()
-  }, [load])
+    if (tab === 'manual') void load()
+  }, [load, tab])
+
+  // ---------- Batch tab data load ----------
+  const loadBatchExisting = useCallback(async () => {
+    setBatchLoading(true)
+    try {
+      const qs = new URLSearchParams({ from: batchRange.from, to: batchRange.to })
+      const res = await fetch(`/api/admin/daily-challenges-content?${qs}`)
+      const json = await res.json()
+      setBatchExisting(res.ok ? (json.items ?? []) : [])
+    } finally {
+      setBatchLoading(false)
+    }
+  }, [batchRange])
+
+  useEffect(() => {
+    if (tab === 'batch') void loadBatchExisting()
+  }, [loadBatchExisting, tab])
 
   // Check if selected create date already has content
   const dateHasContent = items.some((i) => i.challenge_date === createDate)
@@ -470,7 +555,154 @@ export default function AdminDailyPage() {
     void load()
   }
 
+  // ---- Batch generate ----
+  const handleBatchGenerate = async () => {
+    setBatchGenerating(true)
+    setBatchGenerated([])
+    setBatchCapacity([])
+    setBatchRemoved(new Set())
+    try {
+      const res = await fetch('/api/admin/daily-challenges-content/batch-generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          from: batchRange.from,
+          to: batchRange.to,
+          game_types: ALL_GAME_IDS,
+        }),
+      })
+      const json = await res.json()
+      if (res.ok) {
+        setBatchGenerated(json.generated ?? [])
+        setBatchCapacity(json.capacity ?? [])
+        setBatchStats(json.stats ?? null)
+        if ((json.generated ?? []).length === 0) {
+          toastError('All dates already have content — nothing to generate')
+        } else {
+          const exhaustedGames = (json.capacity ?? []).filter((c: BankCapacity) => c.daysCouldNotFill > 0)
+          const msg =
+            exhaustedGames.length > 0
+              ? `Generated ${json.generated.length} entries. ${exhaustedGames.length} game(s) ran out of content — see warnings below.`
+              : `Generated ${json.generated.length} entries (${json.skippedDates} already filled)`
+          if (exhaustedGames.length > 0) toastError(msg)
+          else success(msg)
+        }
+      } else {
+        toastError((json as { error?: string }).error ?? 'Generation failed')
+      }
+    } catch (err) {
+      toastError(err instanceof Error ? err.message : 'Generation failed')
+    } finally {
+      setBatchGenerating(false)
+    }
+  }
+
+  // ---- Batch save ----
+  const handleBatchSave = async () => {
+    const toSave = batchGenerated.filter((e) => {
+      const key = `${e.game_type}:${e.challenge_date}`
+      return !batchRemoved.has(key)
+    })
+    if (toSave.length === 0) {
+      toastError('No entries to save — generate first or un-remove entries')
+      return
+    }
+
+    const ok = await confirm({
+      title: `Save ${toSave.length} entries?`,
+      message: `This will save generated content for ${monthLabel(batchRange.from)} across all game types. Existing content for those dates will NOT be overwritten.`,
+      confirmLabel: `Save ${toSave.length} entries`,
+    })
+    if (!ok) return
+
+    setBatchSaving(true)
+    try {
+      const res = await fetch('/api/admin/daily-challenges-content/batch-save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          entries: toSave.map((e) => ({
+            game_type: e.game_type,
+            challenge_date: e.challenge_date,
+            content: e.content,
+          })),
+        }),
+      })
+      const json = await res.json()
+      if (res.ok) {
+        success(`Saved ${json.saved} entries`)
+        setBatchGenerated([])
+        setBatchRemoved(new Set())
+        void loadBatchExisting()
+      } else {
+        toastError((json as { error?: string }).error ?? 'Save failed')
+      }
+    } catch (err) {
+      toastError(err instanceof Error ? err.message : 'Save failed')
+    } finally {
+      setBatchSaving(false)
+    }
+  }
+
+  const toggleBatchRemove = (gameType: GameTypeId, date: string) => {
+    const key = `${gameType}:${date}`
+    setBatchRemoved((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+
+  // ---- Batch calendar helpers ----
+  const existingByGameDate = useMemo(() => {
+    const map = new Map<string, ContentRow>()
+    for (const row of batchExisting) {
+      map.set(`${row.game_type}:${row.challenge_date}`, row)
+    }
+    return map
+  }, [batchExisting])
+
+  const generatedByGameDate = useMemo(() => {
+    const map = new Map<string, GeneratedEntry>()
+    for (const entry of batchGenerated) {
+      map.set(`${entry.game_type}:${entry.challenge_date}`, entry)
+    }
+    return map
+  }, [batchGenerated])
+
+  // Summary: per game type, how many dates are filled / generated / empty
+  const batchSummary = useMemo(() => {
+    return ALL_GAME_IDS.map((gt) => {
+      let filled = 0
+      let generated = 0
+      let empty = 0
+      for (const date of batchDates) {
+        const key = `${gt}:${date}`
+        if (existingByGameDate.has(key)) filled++
+        else if (generatedByGameDate.has(key) && !batchRemoved.has(key)) generated++
+        else empty++
+      }
+      return { gameType: gt, label: GAME_TYPES.find((g) => g.id === gt)!.label, filled, generated, empty }
+    })
+  }, [batchDates, existingByGameDate, generatedByGameDate, batchRemoved])
+
+  const totalGenerated = batchGenerated.filter((e) => !batchRemoved.has(`${e.game_type}:${e.challenge_date}`)).length
+
   const meta = GAME_TYPES.find((g) => g.id === gameType)!
+
+  // Available months for batch picker
+  const monthOptions = useMemo(() => {
+    const options: string[] = []
+    const d = new Date(`${today}T00:00:00`)
+    // Current month and next 3 months
+    for (let i = 0; i < 4; i++) {
+      const m = new Date(d)
+      m.setMonth(m.getMonth() + i)
+      options.push(`${m.getFullYear()}-${String(m.getMonth() + 1).padStart(2, '0')}`)
+    }
+    return options
+  }, [today])
 
   return (
     <div className="space-y-6">
@@ -483,217 +715,465 @@ export default function AdminDailyPage() {
         </p>
       </div>
 
-      {/* Game type tabs */}
-      <div className="flex flex-wrap gap-2">
-        {GAME_TYPES.map((g) => (
-          <button
-            key={g.id}
-            type="button"
-            onClick={() => {
-              setGameType(g.id)
-              setEditId(null)
-            }}
-            className={`chip ${gameType === g.id ? 'chip-active' : ''}`}
-          >
-            {g.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Create form */}
-      <div className="glass-card space-y-4 p-5">
-        <h2 className="text-base font-bold">Add content</h2>
-
-        <div className="flex flex-wrap items-end gap-3">
-          <label className="block">
-            <span className="label-caps">Date</span>
-            <input
-              type="date"
-              value={createDate}
-              min={today}
-              onChange={(e) => {
-                setCreateDate(e.target.value)
-                setSaveMsg(null)
-              }}
-              className="input-field mt-1 block"
-            />
-          </label>
-          <span className="pb-2 text-sm font-medium">{dayLabel(createDate)}</span>
-          {dateHasContent && (
-            <span className="pb-2 text-xs text-amber-400">Content already exists — edit it below</span>
-          )}
-        </div>
-
-        <div>
-          <label className="label-caps" htmlFor="create-text">
-            {meta.label} entries
-          </label>
-          <p className="mb-1 text-xs text-[var(--muted)]">{meta.hint}</p>
-          <textarea
-            id="create-text"
-            value={createText}
-            onChange={(e) => setCreateText(e.target.value)}
-            rows={10}
-            className="input-field mt-1 block w-full font-mono text-sm"
-            placeholder={
-              gameType === 'crossword' || gameType === 'mini_crossword'
-                ? 'PLANET,Earth is one\nRIVER,Flowing body of water\nCASTLE,Fortified royal home'
-                : gameType === 'word_search'
-                  ? 'PLANET\nRIVER\nISLAND\nDESERT\nCASTLE'
-                  : gameType === 'trivia'
-                    ? 'What is the capital of France? | London | Paris | Berlin | Madrid | 1\nWhat colour is the sky? | Green | Blue | Red | Yellow | 1'
-                    : gameType === 'word_grouping'
-                      ? '{\n  "groups": [\n    {"category": "Fruits", "words": ["APPLE", "MANGO", "GRAPE", "PEACH"], "difficulty": 1},\n    {"category": "Colours", "words": ["RED", "BLUE", "GREEN", "GOLD"], "difficulty": 2}\n  ]\n}'
-                      : gameType === 'chess_mate'
-                        ? '{\n  "fen": "r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 4 4",\n  "mateIn": 2,\n  "toMove": "white",\n  "lines": [["Qxf7#"]]\n}'
-                        : gameType === 'codenames_codeword'
-                          ? '{\n  "grid": ["WORD1", "WORD2", "...25 words"],\n  "clue": "OCEAN",\n  "clueNumber": 3,\n  "correctWords": ["WAVE", "TIDE", "SURF"]\n}'
-                          : gameType === 'ludo_puzzle'
-                            ? '{\n  "startingPieces": [\n    {"id": 0, "zone": "track", "pos": 45},\n    {"id": 1, "zone": "track", "pos": 47},\n    {"id": 2, "zone": "home", "pos": 1},\n    {"id": 3, "zone": "base", "pos": 0}\n  ],\n  "diceSequence": [6, 5, 4, 3, 2, 6, 5, 4],\n  "obstacles": [],\n  "optimalRolls": 6\n}'
-                            : 'PLANET,A world orbiting a star\nRIVER,A large natural stream\nCASTLE,A fortified royal home'
-            }
-          />
-          {createText &&
-            (() => {
-              const parsed = textToContent(gameType, createText)
-              const count = JSON_GAME_TYPES.includes(gameType)
-                ? parsed != null
-                  ? 'Valid JSON'
-                  : 'Invalid JSON'
-                : `${(parsed as unknown[] | null)?.length ?? 0} valid entries`
-              const vError = parsed != null ? validateContent(gameType, parsed) : null
-              return (
-                <div className="mt-1 text-xs">
-                  <span style={{ color: 'var(--text-muted)' }}>{count}</span>
-                  {vError && <span className="text-red-400 ml-2">{vError}</span>}
-                  {!vError && parsed != null && <span className="text-green-500 ml-2">Ready to save</span>}
-                </div>
-              )
-            })()}
-        </div>
-
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={handleCreate}
-            disabled={saving || !createText.trim() || dateHasContent}
-            className="btn-primary px-4 py-2 text-sm disabled:opacity-50"
-          >
-            {saving ? 'Saving…' : `Save for ${dayLabel(createDate)}`}
-          </button>
-          {saveMsg && (
-            <span className={`text-sm ${saveMsg.ok ? 'text-green-500' : 'text-red-400'}`}>{saveMsg.text}</span>
-          )}
-        </div>
-
-        {saveMsg?.ok && (
-          <p className="text-xs text-[var(--muted)]">
-            Date advanced to {dayLabel(createDate)} — fill in the next day&apos;s content and save again.
-          </p>
-        )}
-      </div>
-
-      {/* Date filter */}
-      <div className="flex flex-wrap items-end gap-3">
-        <label className="block">
-          <span className="label-caps">From</span>
-          <input
-            type="date"
-            value={filterFrom}
-            onChange={(e) => setFilterFrom(e.target.value)}
-            className="input-field mt-1 block"
-          />
-        </label>
-        <label className="block">
-          <span className="label-caps">To</span>
-          <input
-            type="date"
-            value={filterTo}
-            onChange={(e) => setFilterTo(e.target.value)}
-            className="input-field mt-1 block"
-          />
-        </label>
-        <button type="button" onClick={() => void load()} className="btn-secondary px-3 py-2 text-sm">
-          Refresh
+      {/* Mode tabs */}
+      <div className="flex gap-2 border-b border-[var(--border)]">
+        <button
+          type="button"
+          onClick={() => setTab('batch')}
+          className={`px-4 py-2 text-sm font-semibold border-b-2 transition-colors ${
+            tab === 'batch'
+              ? 'border-[var(--accent)] text-[var(--accent)]'
+              : 'border-transparent text-[var(--muted)] hover:text-[var(--text)]'
+          }`}
+        >
+          Batch generate
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab('manual')}
+          className={`px-4 py-2 text-sm font-semibold border-b-2 transition-colors ${
+            tab === 'manual'
+              ? 'border-[var(--accent)] text-[var(--accent)]'
+              : 'border-transparent text-[var(--muted)] hover:text-[var(--text)]'
+          }`}
+        >
+          Manual entry
         </button>
       </div>
 
-      {/* Existing content list */}
-      {loading ? (
-        <p className="text-sm text-[var(--muted)]">Loading…</p>
-      ) : items.length === 0 ? (
-        <p className="text-sm text-[var(--muted)]">No content for {meta.label} in this date range.</p>
-      ) : (
-        <div className="space-y-2">
-          {items.map((item) => (
-            <div key={item.id} className="glass-card flex flex-col gap-3 p-4">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <span className="font-semibold">{formatDate(item.challenge_date)}</span>
-                  <span className="ml-2 text-xs text-[var(--muted)]">
-                    {entryCount(item.game_type, item.content)} entries
-                  </span>
-                </div>
-                <div className="flex gap-2">
-                  {editId === item.id ? (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => handleUpdate(item)}
-                        disabled={editSaving}
-                        className="btn-primary px-3 py-1 text-xs disabled:opacity-50"
-                      >
-                        {editSaving ? 'Saving…' : 'Save'}
-                      </button>
-                      <button type="button" onClick={() => setEditId(null)} className="btn-secondary px-3 py-1 text-xs">
-                        Cancel
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setEditId(item.id)
-                          setEditText(contentToText(item.game_type, item.content))
-                        }}
-                        className="btn-secondary px-3 py-1 text-xs"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDelete(item.id)}
-                        className="btn-ghost px-3 py-1 text-xs text-red-400"
-                      >
-                        Delete
-                      </button>
-                    </>
-                  )}
-                </div>
-              </div>
-
-              {editId === item.id ? (
-                <>
-                  <textarea
-                    value={editText}
-                    onChange={(e) => {
-                      setEditText(e.target.value)
-                      setEditError(null)
-                    }}
-                    rows={8}
-                    className="input-field w-full font-mono text-sm"
-                  />
-                  {editError && <p className="text-xs text-red-400 mt-1">{editError}</p>}
-                </>
-              ) : (
-                <pre className="max-h-32 overflow-auto rounded bg-[var(--card)] p-2 text-xs">
-                  {contentToText(item.game_type, item.content)}
-                </pre>
+      {/* ================================================================= */}
+      {/* BATCH TAB                                                         */}
+      {/* ================================================================= */}
+      {tab === 'batch' && (
+        <div className="space-y-6">
+          {/* Month picker + generate button */}
+          <div className="glass-card p-5 space-y-4">
+            <h2 className="text-base font-bold">Generate a month of content</h2>
+            <p className="text-sm text-[var(--muted)]">
+              Pick a month, click Generate, review the results, then Save All. Already-filled dates are skipped
+              automatically — your existing content is never overwritten.
+            </p>
+            <div className="flex flex-wrap items-end gap-4">
+              <label className="block">
+                <span className="label-caps">Month</span>
+                <select
+                  value={batchMonth}
+                  onChange={(e) => {
+                    setBatchMonth(e.target.value)
+                    setBatchGenerated([])
+                    setBatchRemoved(new Set())
+                  }}
+                  className="input-field mt-1 block"
+                >
+                  {monthOptions.map((m) => (
+                    <option key={m} value={m}>
+                      {monthLabel(m)}
+                      {m === thisMonth ? ' (current)' : m === nextMonth ? ' (next)' : ''}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button
+                type="button"
+                onClick={handleBatchGenerate}
+                disabled={batchGenerating || batchLoading}
+                className="btn-primary px-5 py-2 text-sm disabled:opacity-50"
+              >
+                {batchGenerating ? 'Generating…' : `Generate ${monthLabel(batchMonth)}`}
+              </button>
+              {batchGenerated.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleBatchSave}
+                  disabled={batchSaving || totalGenerated === 0}
+                  className="btn-primary px-5 py-2 text-sm bg-green-600 hover:bg-green-700 disabled:opacity-50"
+                >
+                  {batchSaving ? 'Saving…' : `Save ${totalGenerated} entries`}
+                </button>
               )}
             </div>
-          ))}
+
+            {/* Capacity warnings */}
+            {batchCapacity.length > 0 && (
+              <div className="space-y-2">
+                {batchCapacity
+                  .filter((c) => c.daysCouldNotFill > 0 || (c.remainingAfterBatch <= 30 && c.totalInBank < 9999))
+                  .map((c) => (
+                    <div
+                      key={c.game_type}
+                      className={`flex items-start gap-2 rounded-lg px-3 py-2 text-sm ${
+                        c.daysCouldNotFill > 0
+                          ? 'bg-red-500/10 text-red-400'
+                          : c.remainingAfterBatch <= 10
+                            ? 'bg-amber-500/10 text-amber-400'
+                            : 'bg-amber-500/5 text-amber-300'
+                      }`}
+                    >
+                      <span className="shrink-0 mt-0.5">{c.daysCouldNotFill > 0 ? '!!' : '!'}</span>
+                      <div>
+                        <span className="font-semibold">{c.label}</span>
+                        {c.daysCouldNotFill > 0 ? (
+                          <span>
+                            {' '}
+                            — bank exhausted! Could not fill {c.daysCouldNotFill} day(s). {c.totalInBank} total in bank,{' '}
+                            {c.alreadyUsed} already used.
+                          </span>
+                        ) : (
+                          <span>
+                            {' '}
+                            — running low: {c.remainingAfterBatch} puzzles left after this batch ({c.totalInBank} total,{' '}
+                            {c.alreadyUsed} used, {c.generatedThisBatch} in this batch)
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                {batchCapacity.every((c) => c.daysCouldNotFill === 0 && c.remainingAfterBatch > 30) && (
+                  <p className="text-xs text-green-500">
+                    All banks have 30+ days of content remaining after this batch.
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Summary grid */}
+          {batchLoading ? (
+            <p className="text-sm text-[var(--muted)]">Loading existing content…</p>
+          ) : (
+            <div className="space-y-3">
+              <h3 className="text-sm font-bold uppercase tracking-wider text-[var(--muted)]">
+                {monthLabel(batchMonth)} — {batchDates.length} days
+              </h3>
+              <div className="grid gap-2">
+                {batchSummary.map((s) => {
+                  const total = batchDates.length
+                  const pctFilled = Math.round((s.filled / total) * 100)
+                  const pctGen = Math.round((s.generated / total) * 100)
+                  const isExpanded = batchExpandedGame === s.gameType
+                  return (
+                    <div key={s.gameType} className="glass-card p-3">
+                      <button
+                        type="button"
+                        onClick={() => setBatchExpandedGame(isExpanded ? null : s.gameType)}
+                        className="w-full text-left"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-semibold text-sm">{s.label}</span>
+                          <div className="flex items-center gap-3 text-xs">
+                            {s.filled > 0 && <span className="text-green-500">{s.filled} filled</span>}
+                            {s.generated > 0 && <span className="text-blue-400">{s.generated} generated</span>}
+                            {s.empty > 0 && <span className="text-[var(--muted)]">{s.empty} empty</span>}
+                            <span className="text-[var(--muted)]">{isExpanded ? '▲' : '▼'}</span>
+                          </div>
+                        </div>
+                        {/* Progress bar */}
+                        <div className="mt-2 h-1.5 w-full rounded-full bg-[var(--border)] overflow-hidden">
+                          <div className="h-full flex">
+                            {pctFilled > 0 && (
+                              <div className="h-full bg-green-500" style={{ width: `${pctFilled}%` }} />
+                            )}
+                            {pctGen > 0 && <div className="h-full bg-blue-400" style={{ width: `${pctGen}%` }} />}
+                          </div>
+                        </div>
+                      </button>
+
+                      {/* Expanded: show per-date detail */}
+                      {isExpanded && (
+                        <div className="mt-3 space-y-1 max-h-96 overflow-y-auto">
+                          {batchDates.map((date) => {
+                            const key = `${s.gameType}:${date}`
+                            const existing = existingByGameDate.get(key)
+                            const generated = generatedByGameDate.get(key)
+                            const removed = batchRemoved.has(key)
+                            const dayD = new Date(`${date}T00:00:00`)
+                            const dayStr = dayD.toLocaleDateString('en-GB', {
+                              weekday: 'short',
+                              day: 'numeric',
+                            })
+                            return (
+                              <div
+                                key={date}
+                                className={`flex items-center justify-between gap-2 px-2 py-1 rounded text-xs ${
+                                  existing ? 'bg-green-500/10' : generated && !removed ? 'bg-blue-400/10' : ''
+                                }`}
+                              >
+                                <span className="font-mono w-16 shrink-0">{dayStr}</span>
+                                {existing ? (
+                                  <span className="text-green-500 flex-1">
+                                    Filled — {entryCount(s.gameType, existing.content)} entries
+                                  </span>
+                                ) : generated ? (
+                                  <>
+                                    <span
+                                      className={`flex-1 ${removed ? 'line-through text-[var(--muted)]' : 'text-blue-400'}`}
+                                    >
+                                      {generated.theme}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleBatchRemove(s.gameType, date)}
+                                      className={`text-xs px-2 py-0.5 rounded ${
+                                        removed
+                                          ? 'text-blue-400 hover:bg-blue-400/10'
+                                          : 'text-red-400 hover:bg-red-400/10'
+                                      }`}
+                                    >
+                                      {removed ? 'Restore' : 'Remove'}
+                                    </button>
+                                  </>
+                                ) : (
+                                  <span className="text-[var(--muted)] flex-1">Empty</span>
+                                )}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+
+              {/* Legend */}
+              <div className="flex gap-4 text-xs text-[var(--muted)]">
+                <span className="flex items-center gap-1">
+                  <span className="inline-block w-3 h-3 rounded bg-green-500" /> Existing (won&apos;t be touched)
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="inline-block w-3 h-3 rounded bg-blue-400" /> Generated (review before saving)
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="inline-block w-3 h-3 rounded bg-[var(--border)]" /> Empty
+                </span>
+              </div>
+            </div>
+          )}
         </div>
+      )}
+
+      {/* ================================================================= */}
+      {/* MANUAL TAB                                                        */}
+      {/* ================================================================= */}
+      {tab === 'manual' && (
+        <>
+          {/* Game type tabs */}
+          <div className="flex flex-wrap gap-2">
+            {GAME_TYPES.map((g) => (
+              <button
+                key={g.id}
+                type="button"
+                onClick={() => {
+                  setGameType(g.id)
+                  setEditId(null)
+                }}
+                className={`chip ${gameType === g.id ? 'chip-active' : ''}`}
+              >
+                {g.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Create form */}
+          <div className="glass-card space-y-4 p-5">
+            <h2 className="text-base font-bold">Add content</h2>
+
+            <div className="flex flex-wrap items-end gap-3">
+              <label className="block">
+                <span className="label-caps">Date</span>
+                <input
+                  type="date"
+                  value={createDate}
+                  min={today}
+                  onChange={(e) => {
+                    setCreateDate(e.target.value)
+                    setSaveMsg(null)
+                  }}
+                  className="input-field mt-1 block"
+                />
+              </label>
+              <span className="pb-2 text-sm font-medium">{dayLabel(createDate)}</span>
+              {dateHasContent && (
+                <span className="pb-2 text-xs text-amber-400">Content already exists — edit it below</span>
+              )}
+            </div>
+
+            <div>
+              <label className="label-caps" htmlFor="create-text">
+                {meta.label} entries
+              </label>
+              <p className="mb-1 text-xs text-[var(--muted)]">{meta.hint}</p>
+              <textarea
+                id="create-text"
+                value={createText}
+                onChange={(e) => setCreateText(e.target.value)}
+                rows={10}
+                className="input-field mt-1 block w-full font-mono text-sm"
+                placeholder={
+                  gameType === 'crossword' || gameType === 'mini_crossword'
+                    ? 'PLANET,Earth is one\nRIVER,Flowing body of water\nCASTLE,Fortified royal home'
+                    : gameType === 'word_search'
+                      ? 'PLANET\nRIVER\nISLAND\nDESERT\nCASTLE'
+                      : gameType === 'trivia'
+                        ? 'What is the capital of France? | London | Paris | Berlin | Madrid | 1\nWhat colour is the sky? | Green | Blue | Red | Yellow | 1'
+                        : gameType === 'word_grouping'
+                          ? '{\n  "groups": [\n    {"category": "Fruits", "words": ["APPLE", "MANGO", "GRAPE", "PEACH"], "difficulty": 1},\n    {"category": "Colours", "words": ["RED", "BLUE", "GREEN", "GOLD"], "difficulty": 2}\n  ]\n}'
+                          : gameType === 'chess_mate'
+                            ? '{\n  "fen": "r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 4 4",\n  "mateIn": 2,\n  "toMove": "white",\n  "lines": [["Qxf7#"]]\n}'
+                            : gameType === 'codenames_codeword'
+                              ? '{\n  "grid": ["WORD1", "WORD2", "...25 words"],\n  "clue": "OCEAN",\n  "clueNumber": 3,\n  "correctWords": ["WAVE", "TIDE", "SURF"]\n}'
+                              : gameType === 'ludo_puzzle'
+                                ? '{\n  "startingPieces": [\n    {"id": 0, "zone": "track", "pos": 45},\n    {"id": 1, "zone": "track", "pos": 47},\n    {"id": 2, "zone": "home", "pos": 1},\n    {"id": 3, "zone": "base", "pos": 0}\n  ],\n  "diceSequence": [6, 5, 4, 3, 2, 6, 5, 4],\n  "obstacles": [],\n  "optimalRolls": 6\n}'
+                                : 'PLANET,A world orbiting a star\nRIVER,A large natural stream\nCASTLE,A fortified royal home'
+                }
+              />
+              {createText &&
+                (() => {
+                  const parsed = textToContent(gameType, createText)
+                  const count = JSON_GAME_TYPES.includes(gameType)
+                    ? parsed != null
+                      ? 'Valid JSON'
+                      : 'Invalid JSON'
+                    : `${(parsed as unknown[] | null)?.length ?? 0} valid entries`
+                  const vError = parsed != null ? validateContent(gameType, parsed) : null
+                  return (
+                    <div className="mt-1 text-xs">
+                      <span style={{ color: 'var(--text-muted)' }}>{count}</span>
+                      {vError && <span className="text-red-400 ml-2">{vError}</span>}
+                      {!vError && parsed != null && <span className="text-green-500 ml-2">Ready to save</span>}
+                    </div>
+                  )
+                })()}
+            </div>
+
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={handleCreate}
+                disabled={saving || !createText.trim() || dateHasContent}
+                className="btn-primary px-4 py-2 text-sm disabled:opacity-50"
+              >
+                {saving ? 'Saving…' : `Save for ${dayLabel(createDate)}`}
+              </button>
+              {saveMsg && (
+                <span className={`text-sm ${saveMsg.ok ? 'text-green-500' : 'text-red-400'}`}>{saveMsg.text}</span>
+              )}
+            </div>
+
+            {saveMsg?.ok && (
+              <p className="text-xs text-[var(--muted)]">
+                Date advanced to {dayLabel(createDate)} — fill in the next day&apos;s content and save again.
+              </p>
+            )}
+          </div>
+
+          {/* Date filter */}
+          <div className="flex flex-wrap items-end gap-3">
+            <label className="block">
+              <span className="label-caps">From</span>
+              <input
+                type="date"
+                value={filterFrom}
+                onChange={(e) => setFilterFrom(e.target.value)}
+                className="input-field mt-1 block"
+              />
+            </label>
+            <label className="block">
+              <span className="label-caps">To</span>
+              <input
+                type="date"
+                value={filterTo}
+                onChange={(e) => setFilterTo(e.target.value)}
+                className="input-field mt-1 block"
+              />
+            </label>
+            <button type="button" onClick={() => void load()} className="btn-secondary px-3 py-2 text-sm">
+              Refresh
+            </button>
+          </div>
+
+          {/* Existing content list */}
+          {loading ? (
+            <p className="text-sm text-[var(--muted)]">Loading…</p>
+          ) : items.length === 0 ? (
+            <p className="text-sm text-[var(--muted)]">No content for {meta.label} in this date range.</p>
+          ) : (
+            <div className="space-y-2">
+              {items.map((item) => (
+                <div key={item.id} className="glass-card flex flex-col gap-3 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <span className="font-semibold">{formatDate(item.challenge_date)}</span>
+                      <span className="ml-2 text-xs text-[var(--muted)]">
+                        {entryCount(item.game_type, item.content)} entries
+                      </span>
+                    </div>
+                    <div className="flex gap-2">
+                      {editId === item.id ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => handleUpdate(item)}
+                            disabled={editSaving}
+                            className="btn-primary px-3 py-1 text-xs disabled:opacity-50"
+                          >
+                            {editSaving ? 'Saving…' : 'Save'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setEditId(null)}
+                            className="btn-secondary px-3 py-1 text-xs"
+                          >
+                            Cancel
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditId(item.id)
+                              setEditText(contentToText(item.game_type, item.content))
+                            }}
+                            className="btn-secondary px-3 py-1 text-xs"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDelete(item.id)}
+                            className="btn-ghost px-3 py-1 text-xs text-red-400"
+                          >
+                            Delete
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {editId === item.id ? (
+                    <>
+                      <textarea
+                        value={editText}
+                        onChange={(e) => {
+                          setEditText(e.target.value)
+                          setEditError(null)
+                        }}
+                        rows={8}
+                        className="input-field w-full font-mono text-sm"
+                      />
+                      {editError && <p className="text-xs text-red-400 mt-1">{editError}</p>}
+                    </>
+                  ) : (
+                    <pre className="max-h-32 overflow-auto rounded bg-[var(--card)] p-2 text-xs">
+                      {contentToText(item.game_type, item.content)}
+                    </pre>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </>
       )}
     </div>
   )
