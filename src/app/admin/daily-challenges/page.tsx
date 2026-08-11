@@ -579,6 +579,11 @@ export default function AdminDailyPage() {
         setBatchGenerated(json.generated ?? [])
         setBatchCapacity(json.capacity ?? [])
         setBatchStats(json.stats ?? null)
+        // Auto-expand first game type that has generated content
+        if ((json.generated ?? []).length > 0) {
+          const firstGame = (json.generated as GeneratedEntry[])[0]?.game_type
+          if (firstGame) setBatchExpandedGame(firstGame)
+        }
         if ((json.generated ?? []).length === 0) {
           toastError('All dates already have content — nothing to generate')
         } else {
@@ -848,6 +853,12 @@ export default function AdminDailyPage() {
               <h3 className="text-sm font-bold uppercase tracking-wider text-[var(--muted)]">
                 {monthLabel(batchMonth)} — {batchDates.length} days
               </h3>
+              {batchGenerated.length > 0 && (
+                <p className="text-xs text-blue-400">
+                  Click a game type below to expand and review generated content. Remove any entries you don&apos;t want
+                  before saving.
+                </p>
+              )}
               <div className="grid gap-2">
                 {batchSummary.map((s) => {
                   const total = batchDates.length

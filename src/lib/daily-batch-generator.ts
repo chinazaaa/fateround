@@ -83,9 +83,10 @@ function shuffle<T>(arr: T[], rng: () => number): T[] {
 // Extraction helpers — pull used content from existing rows
 // ---------------------------------------------------------------------------
 
-function extractUsedWords(rows: ExistingRow[]): Set<string> {
+function extractUsedWords(rows: ExistingRow[], gameType?: string): Set<string> {
   const used = new Set<string>()
   for (const r of rows) {
+    if (gameType && r.game_type !== gameType) continue
     const c = r.content
     if (!Array.isArray(c)) continue
     for (const item of c) {
@@ -226,9 +227,12 @@ function generateTriviaContent(date: string, usedQuestions: Set<string>): { cont
   const categories = shuffle([...byCategory.keys()], rng)
   const picked: typeof TRIVIA_BANK = []
 
-  // Pick 1 question from each category until we have 6
+  const TARGET = 15
+  const MIN = 10
+
+  // Pick 1 question from each category in round-robin until we hit target
   for (const cat of categories) {
-    if (picked.length >= 6) break
+    if (picked.length >= TARGET) break
     const catQuestions = byCategory.get(cat)!
     if (catQuestions.length === 0) continue
     const idx = Math.floor(rng() * catQuestions.length)
@@ -236,12 +240,12 @@ function generateTriviaContent(date: string, usedQuestions: Set<string>): { cont
     catQuestions.splice(idx, 1)
   }
 
-  // If we need more, do a second pass
-  if (picked.length < 5) {
+  // Second pass to fill remaining slots
+  if (picked.length < TARGET) {
     for (const cat of categories) {
-      if (picked.length >= 6) break
+      if (picked.length >= TARGET) break
       const catQuestions = byCategory.get(cat)!
-      while (catQuestions.length > 0 && picked.length < 6) {
+      while (catQuestions.length > 0 && picked.length < TARGET) {
         const idx = Math.floor(rng() * catQuestions.length)
         picked.push(catQuestions[idx])
         catQuestions.splice(idx, 1)
@@ -249,7 +253,7 @@ function generateTriviaContent(date: string, usedQuestions: Set<string>): { cont
     }
   }
 
-  if (picked.length < 5) return null
+  if (picked.length < MIN) return null
 
   const usedCategories = [...new Set(picked.map((q) => q.category))].join(', ')
   return {
@@ -606,7 +610,10 @@ export function generateBatch(dates: string[], gameTypes: GameTypeId[], existing
     filledDates.set(r.game_type, dateSet)
   }
 
-  const allUsedWords = extractUsedWords(existingRows)
+  const usedWordsCrossword = extractUsedWords(existingRows, 'crossword')
+  const usedWordsMini = extractUsedWords(existingRows, 'mini_crossword')
+  const usedWordsSearch = extractUsedWords(existingRows, 'word_search')
+  const usedWordsScramble = extractUsedWords(existingRows, 'word_scramble')
   const allUsedQuestions = extractUsedQuestions(existingRows)
   const usedGroupingKeys = extractUsedPuzzleKeys(
     existingRows.filter((r) => r.game_type === 'word_grouping'),
@@ -645,9 +652,27 @@ export function generateBatch(dates: string[], gameTypes: GameTypeId[], existing
   const results: GeneratedEntry[] = []
   const couldNotFill = new Map<GameTypeId, number>()
 
-  // Track words/questions we add during this batch to avoid intra-batch repeats
-  const batchUsedWords = new Set(allUsedWords)
+  // Track words/questions per game type to avoid intra-batch repeats
+  const batchUsedCrossword = new Set(usedWordsCrossword)
+  const batchUsedMini = new Set(usedWordsMini)
+  const batchUsedSearch = new Set(usedWordsSearch)
+  const batchUsedScramble = new Set(usedWordsScramble)
   const batchUsedQuestions = new Set(allUsedQuestions)
+
+  const wordSetForGame = (gt: GameTypeId) => {
+    switch (gt) {
+      case 'crossword':
+        return batchUsedCrossword
+      case 'mini_crossword':
+        return batchUsedMini
+      case 'word_search':
+        return batchUsedSearch
+      case 'word_scramble':
+        return batchUsedScramble
+      default:
+        return new Set<string>()
+    }
+  }
 
   for (const date of dates) {
     for (const gameType of gameTypes) {
@@ -659,16 +684,16 @@ export function generateBatch(dates: string[], gameTypes: GameTypeId[], existing
 
       switch (gameType) {
         case 'crossword':
-          result = generateCrosswordContent(date, batchUsedWords, false)
+          result = generateCrosswordContent(date, batchUsedCrossword, false)
           break
         case 'mini_crossword':
-          result = generateCrosswordContent(date, batchUsedWords, true)
+          result = generateCrosswordContent(date, batchUsedMini, true)
           break
         case 'word_search':
-          result = generateWordSearchContent(date, batchUsedWords)
+          result = generateWordSearchContent(date, batchUsedSearch)
           break
         case 'word_scramble':
-          result = generateWordScrambleContent(date, batchUsedWords)
+          result = generateWordScrambleContent(date, batchUsedScramble)
           break
         case 'trivia':
           result = generateTriviaContent(date, batchUsedQuestions)
@@ -694,13 +719,14 @@ export function generateBatch(dates: string[], gameTypes: GameTypeId[], existing
 
       // Track what we just generated to prevent intra-batch duplicates
       const content = result.content
+      const wordSet = wordSetForGame(gameType)
       if (Array.isArray(content)) {
         for (const item of content) {
-          if (typeof item === 'string') batchUsedWords.add(item.toUpperCase())
+          if (typeof item === 'string') wordSet.add(item.toUpperCase())
           else if (typeof item === 'object' && item !== null) {
             const obj = item as Record<string, unknown>
-            if (typeof obj.answer === 'string') batchUsedWords.add(obj.answer.toUpperCase())
-            if (typeof obj.word === 'string') batchUsedWords.add(obj.word.toUpperCase())
+            if (typeof obj.answer === 'string') wordSet.add(obj.answer.toUpperCase())
+            if (typeof obj.word === 'string') wordSet.add(obj.word.toUpperCase())
             if (typeof obj.question === 'string') batchUsedQuestions.add(obj.question.toLowerCase().trim())
           }
         }
@@ -749,24 +775,21 @@ export function generateBatch(dates: string[], gameTypes: GameTypeId[], existing
     generatedCounts.set(r.game_type, (generatedCounts.get(r.game_type) ?? 0) + 1)
   }
 
-  const usedCounts: Record<GameTypeId, number> = {
-    crossword: filledDates.get('crossword')?.size ?? 0,
-    mini_crossword: filledDates.get('mini_crossword')?.size ?? 0,
-    word_search: filledDates.get('word_search')?.size ?? 0,
-    word_scramble: filledDates.get('word_scramble')?.size ?? 0,
-    trivia: filledDates.get('trivia')?.size ?? 0,
-    word_grouping: filledDates.get('word_grouping')?.size ?? 0,
-    chess_mate: filledDates.get('chess_mate')?.size ?? 0,
-    codenames_codeword: filledDates.get('codenames_codeword')?.size ?? 0,
-    ludo_puzzle: filledDates.get('ludo_puzzle')?.size ?? 0,
+  // For word-based games, count actual words consumed (not just days filled)
+  const wordUsedCounts: Record<string, number> = {
+    crossword: batchUsedCrossword.size,
+    mini_crossword: batchUsedMini.size,
+    word_search: batchUsedSearch.size,
+    word_scramble: batchUsedScramble.size,
   }
 
   const capacity: BankCapacity[] = gameTypes.map((gt) => {
     const total = bankSize(gt)
-    const used = usedCounts[gt]
+    const isWordGame = ['crossword', 'mini_crossword', 'word_search', 'word_scramble'].includes(gt)
+    const used = isWordGame ? (wordUsedCounts[gt] ?? 0) : (filledDates.get(gt)?.size ?? 0)
     const remaining = Math.max(0, total - used)
     const gen = generatedCounts.get(gt) ?? 0
-    const remainingAfter = Math.max(0, remaining - gen)
+    const remainingAfter = isWordGame ? remaining : Math.max(0, remaining - gen)
     const missed = couldNotFill.get(gt) ?? 0
     return {
       game_type: gt,
