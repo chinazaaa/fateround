@@ -429,6 +429,7 @@ export default function AdminDailyPage() {
   const [batchCapacity, setBatchCapacity] = useState<BankCapacity[]>([])
   const [batchRemoved, setBatchRemoved] = useState<Set<string>>(new Set())
   const [batchExpandedGame, setBatchExpandedGame] = useState<GameTypeId | null>(null)
+  const [batchPreviewKey, setBatchPreviewKey] = useState<string | null>(null)
 
   // ---------- Manual tab data load ----------
   const load = useCallback(async () => {
@@ -905,39 +906,51 @@ export default function AdminDailyPage() {
                               weekday: 'short',
                               day: 'numeric',
                             })
+                            const isPreviewing = batchPreviewKey === key
+                            const previewContent = isPreviewing ? (existing ?? generated) : null
                             return (
-                              <div
-                                key={date}
-                                className={`flex items-center justify-between gap-2 px-2 py-1 rounded text-xs ${
-                                  existing ? 'bg-green-500/10' : generated && !removed ? 'bg-blue-400/10' : ''
-                                }`}
-                              >
-                                <span className="font-mono w-16 shrink-0">{dayStr}</span>
-                                {existing ? (
-                                  <span className="text-green-500 flex-1">
-                                    Filled — {entryCount(s.gameType, existing.content)} entries
-                                  </span>
-                                ) : generated ? (
-                                  <>
-                                    <span
-                                      className={`flex-1 ${removed ? 'line-through text-[var(--muted)]' : 'text-blue-400'}`}
-                                    >
-                                      {generated.theme}
+                              <div key={date}>
+                                <div
+                                  className={`flex items-center justify-between gap-2 px-2 py-1 rounded text-xs cursor-pointer hover:opacity-80 ${
+                                    existing ? 'bg-green-500/10' : generated && !removed ? 'bg-blue-400/10' : ''
+                                  }`}
+                                  onClick={() => setBatchPreviewKey(isPreviewing ? null : key)}
+                                >
+                                  <span className="font-mono w-16 shrink-0">{dayStr}</span>
+                                  {existing ? (
+                                    <span className="text-green-500 flex-1">
+                                      Filled — {entryCount(s.gameType, existing.content)} entries
                                     </span>
-                                    <button
-                                      type="button"
-                                      onClick={() => toggleBatchRemove(s.gameType, date)}
-                                      className={`text-xs px-2 py-0.5 rounded ${
-                                        removed
-                                          ? 'text-blue-400 hover:bg-blue-400/10'
-                                          : 'text-red-400 hover:bg-red-400/10'
-                                      }`}
-                                    >
-                                      {removed ? 'Restore' : 'Remove'}
-                                    </button>
-                                  </>
-                                ) : (
-                                  <span className="text-[var(--muted)] flex-1">Empty</span>
+                                  ) : generated ? (
+                                    <>
+                                      <span
+                                        className={`flex-1 ${removed ? 'line-through text-[var(--muted)]' : 'text-blue-400'}`}
+                                      >
+                                        {generated.theme} — {entryCount(s.gameType, generated.content)} entries
+                                      </span>
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation()
+                                          toggleBatchRemove(s.gameType, date)
+                                        }}
+                                        className={`text-xs px-2 py-0.5 rounded ${
+                                          removed
+                                            ? 'text-blue-400 hover:bg-blue-400/10'
+                                            : 'text-red-400 hover:bg-red-400/10'
+                                        }`}
+                                      >
+                                        {removed ? 'Restore' : 'Remove'}
+                                      </button>
+                                    </>
+                                  ) : (
+                                    <span className="text-[var(--muted)] flex-1">Empty</span>
+                                  )}
+                                </div>
+                                {previewContent && (
+                                  <pre className="mx-2 mt-1 mb-2 max-h-48 overflow-auto rounded bg-[var(--card)] p-2 text-xs font-mono">
+                                    {contentToText(s.gameType, previewContent.content)}
+                                  </pre>
                                 )}
                               </div>
                             )
