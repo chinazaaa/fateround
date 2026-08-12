@@ -670,6 +670,7 @@ export function CrosswordHostView({ gameCode, hostToken }: { gameCode: string; h
     return (
       <HostLobby
         gameCode={gameCode}
+        questionSource={game.question_source}
         hostToken={hostToken}
         game={game}
         gameTypeLabel={cfg.label}

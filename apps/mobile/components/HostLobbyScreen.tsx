@@ -4,7 +4,7 @@ import { useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import type { Game, Player } from '@fateround/shared'
 import { getSupabase, GAME_SELECT, PLAYER_SELECT } from '@/lib/supabase'
-import { startGame, postPlayAgain, postFinishGame, removePlayerAsHost } from '@/lib/game-api'
+import { startGame, postPlayAgain, postFinishGame, removePlayerAsHost, checkFreshness } from '@/lib/game-api'
 import { gameLabel } from '@/lib/mobile-registry'
 import { GameInfoChips } from '@/components/GameInfoChips'
 import { VoiceRail } from '@/components/voice/VoiceRail'
@@ -154,7 +154,7 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
     [gameCode, hostToken, load]
   )
 
-  const onStart = useCallback(async () => {
+  const doStart = useCallback(async () => {
     setStarting(true)
     setError(null)
     try {
@@ -166,6 +166,36 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
       setStarting(false)
     }
   }, [gameCode, hostToken, load, firstTeam])
+
+  const onStart = useCallback(async () => {
+    if (game?.question_source !== 'platform') {
+      await doStart()
+      return
+    }
+    setStarting(true)
+    try {
+      const result = await checkFreshness(gameCode, hostToken)
+      if (result.fresh) {
+        setStarting(false)
+        await doStart()
+        return
+      }
+      setStarting(false)
+      Alert.alert(
+        result.seenPercent >= 95 ? 'Content exhausted' : 'Most content already played',
+        result.seenPercent >= 95
+          ? 'All available content has been seen by most players. Consider uploading your own or picking from the library.'
+          : `${result.seenPercent}% of available content has been seen by most players. You can still start, or switch to fresh content.`,
+        [
+          { text: 'Start anyway', onPress: () => void doStart() },
+          { text: 'Cancel', style: 'cancel' },
+        ]
+      )
+    } catch {
+      setStarting(false)
+      await doStart()
+    }
+  }, [game?.question_source, gameCode, hostToken, doStart])
 
   const onPlayAgain = useCallback(async () => {
     setReplaying(true)

@@ -557,6 +557,7 @@ export function WordScrambleHostView({ gameCode, hostToken }: { gameCode: string
     return (
       <HostLobby
         gameCode={gameCode}
+        questionSource={game.question_source}
         hostToken={hostToken}
         game={game}
         gameTypeLabel={cfg.label}

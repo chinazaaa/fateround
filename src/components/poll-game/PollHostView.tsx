@@ -1806,6 +1806,7 @@ export function PollHostView({ gameCode, hostToken }: { gameCode: string; hostTo
         <>
           <HostLobby
             gameCode={gameCode}
+            questionSource={game.question_source}
             hostToken={hostToken}
             game={game}
             gameTypeLabel={gameTypeLabel(gameType) ?? 'Poll'}
@@ -2862,6 +2863,7 @@ export function PollHostView({ gameCode, hostToken }: { gameCode: string; hostTo
         <>
           <HostLobby
             gameCode={gameCode}
+            questionSource={game.question_source}
             hostToken={hostToken}
             game={game}
             gameTypeLabel={gameTypeLabel(gameType) ?? 'Poll'}
