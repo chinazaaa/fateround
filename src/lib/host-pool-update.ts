@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import type { TriviaCategory } from '@/types'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { stripHtml } from '@/lib/validation'
 import {
@@ -210,7 +211,7 @@ export function applyTriviaCustomQuestionsUpdate(
 
 export type TriviaSettingsInput = {
   question_source?: 'platform' | 'custom'
-  trivia_category?: 'tech' | 'general'
+  trivia_category?: TriviaCategory
   timer_seconds?: number
   rounds_count?: number
   custom_questions?: TriviaQuestion[]

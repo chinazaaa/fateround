@@ -3,6 +3,26 @@ import { clearSessionTables } from './session-clear'
 import type { Player, Round, TriviaAnswer, TriviaCategory, TriviaMetadata, TriviaQuestion } from '@/types'
 import { triviaQuestionKey } from '@/lib/trivia-questions'
 
+const VALID_TRIVIA_CATS = new Set<string>([
+  'tech',
+  'general',
+  'art',
+  'food',
+  'geography',
+  'history',
+  'language',
+  'literature',
+  'math',
+  'movies',
+  'music',
+  'nature',
+  'pop_culture',
+  'science',
+  'sports',
+  'technology',
+  'world_culture',
+])
+
 export const TRIVIA_MIN_PLAYERS = 2
 export const TRIVIA_MAX_PLAYERS = 40
 export const TRIVIA_DEFAULT_MAX_PLAYERS = 30
@@ -65,7 +85,8 @@ export function parseTriviaMetadata(raw: unknown): TriviaMetadata | null {
   if (choices.length < 2 || choices.length > 4) return null
   const correctIndex = m.correct_index
   if (correctIndex < 0 || correctIndex >= choices.length) return null
-  const category = m.category === 'tech' || m.category === 'general' ? m.category : 'general'
+  const category =
+    typeof m.category === 'string' && VALID_TRIVIA_CATS.has(m.category) ? (m.category as TriviaCategory) : 'general'
   return { question: m.question, choices, correct_index: correctIndex, category }
 }
 
@@ -167,7 +188,8 @@ export function formatTriviaChoiceLabel(index: number): string {
 }
 
 export function triviaCategoryFromGame(game: { trivia_category?: string | null }): TriviaCategory {
-  return game.trivia_category === 'tech' ? 'tech' : 'general'
+  const cat = game.trivia_category
+  return typeof cat === 'string' && VALID_TRIVIA_CATS.has(cat) ? (cat as TriviaCategory) : 'general'
 }
 
 export async function clearTriviaSessionData(
