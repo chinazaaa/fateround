@@ -175,17 +175,31 @@ export function PartyRoomSettingsPanel({ gameType, party, onChange, contentSourc
               format={formatPollRoundTimer}
               onChange={(timerSeconds) => onChange({ timerSeconds })}
             />
-            <View style={styles.field}>
-              <Text style={styles.label}>Category</Text>
-              <SegmentedControl
-                value={party.triviaCategory}
-                options={[
-                  { value: 'tech', label: 'Tech', hint: 'Programming, gadgets, internet culture' },
-                  { value: 'general', label: 'General', hint: 'Geography, history, pop culture & more' },
-                ]}
-                onChange={(value) => onChange({ triviaCategory: value as PartyRoomSettings['triviaCategory'] })}
-              />
-            </View>
+            <SelectField
+              label="Category"
+              value={party.triviaCategory}
+              options={[
+                { value: 'general', label: 'General (All Categories)' },
+                { value: 'tech', label: 'Tech' },
+                { value: 'art', label: 'Art' },
+                { value: 'food', label: 'Food' },
+                { value: 'geography', label: 'Geography' },
+                { value: 'history', label: 'History' },
+                { value: 'language', label: 'Language' },
+                { value: 'literature', label: 'Literature' },
+                { value: 'math', label: 'Math' },
+                { value: 'movies', label: 'Movies' },
+                { value: 'music', label: 'Music' },
+                { value: 'nature', label: 'Nature' },
+                { value: 'pop_culture', label: 'Pop Culture' },
+                { value: 'science', label: 'Science' },
+                { value: 'sports', label: 'Sports' },
+                { value: 'technology', label: 'Technology' },
+                { value: 'world_culture', label: 'World Culture' },
+              ]}
+              searchable
+              onChange={(value) => onChange({ triviaCategory: value as PartyRoomSettings['triviaCategory'] })}
+            />
           </>
         ) : null}
 
