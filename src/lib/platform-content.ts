@@ -259,9 +259,39 @@ const DESCRIBE_IT_DEF: PlatformGameDef = {
   builtins: [{ key: 'default', label: 'Text Charades — Built-in', entries: [...DESCRIBE_IT_WORD_POOL] }],
 }
 
-// Trivia has two fixed categories; each is its own editable bank (the game's trivia_category
-// selects which one is drawn — same shape as Quick Draw's lie/guess variants).
+// Trivia: one variant per category. The game's trivia_category selects which bank to draw from.
+// 'general' = all categories combined; 'tech' = legacy built-in; the rest are daily-bank sourced.
 const TRIVIA_COLUMNS = 'question,option_a,option_b,option_c,option_d,correct'
+
+const TRIVIA_CATEGORY_LABELS: Record<string, string> = {
+  tech: 'Tech',
+  general: 'General (All)',
+  art: 'Art',
+  food: 'Food',
+  geography: 'Geography',
+  history: 'History',
+  language: 'Language',
+  literature: 'Literature',
+  math: 'Math',
+  movies: 'Movies',
+  music: 'Music',
+  nature: 'Nature',
+  pop_culture: 'Pop Culture',
+  science: 'Science',
+  sports: 'Sports',
+  technology: 'Technology',
+  world_culture: 'World Culture',
+}
+
+function dailyBankForCategory(cat: string): TriviaQuestion[] {
+  return TRIVIA_BANK.filter((q) => q.category === cat).map((q) => ({
+    question: q.question,
+    choices: q.choices,
+    correctIndex: q.correct_index,
+    category: q.category as TriviaCategory,
+  }))
+}
+
 const TRIVIA_TECH_DEF: PlatformGameDef = {
   gameType: 'trivia',
   variant: 'tech',
@@ -270,12 +300,16 @@ const TRIVIA_TECH_DEF: PlatformGameDef = {
   minEntries: 5,
   parse: parseTrivia('tech'),
   toText: triviaToText,
-  builtins: [{ key: 'default', label: 'Trivia Tech — Built-in', entries: [...TRIVIA_TECH_QUESTIONS] }],
+  builtins: [
+    { key: 'default', label: 'Trivia Tech — Built-in', entries: [...TRIVIA_TECH_QUESTIONS] },
+    { key: 'daily-bank', label: 'Trivia Tech — Daily Bank', entries: dailyBankForCategory('technology') },
+  ],
 }
+
 const TRIVIA_GENERAL_DEF: PlatformGameDef = {
   gameType: 'trivia',
   variant: 'general',
-  label: 'Trivia · General',
+  label: 'Trivia · General (All)',
   columns: TRIVIA_COLUMNS,
   minEntries: 5,
   parse: parseTrivia('general'),
@@ -294,6 +328,40 @@ const TRIVIA_GENERAL_DEF: PlatformGameDef = {
     },
   ],
 }
+
+const DAILY_TRIVIA_CATEGORIES = [
+  'art',
+  'food',
+  'geography',
+  'history',
+  'language',
+  'literature',
+  'math',
+  'movies',
+  'music',
+  'nature',
+  'pop_culture',
+  'science',
+  'sports',
+  'world_culture',
+] as const
+
+const TRIVIA_CATEGORY_DEFS: PlatformGameDef[] = DAILY_TRIVIA_CATEGORIES.map((cat) => ({
+  gameType: 'trivia' as const,
+  variant: cat,
+  label: `Trivia · ${TRIVIA_CATEGORY_LABELS[cat] ?? cat}`,
+  columns: TRIVIA_COLUMNS,
+  minEntries: 5,
+  parse: parseTrivia(cat as TriviaCategory),
+  toText: triviaToText,
+  builtins: [
+    {
+      key: 'daily-bank',
+      label: `Trivia ${TRIVIA_CATEGORY_LABELS[cat]} — Daily Bank`,
+      entries: dailyBankForCategory(cat),
+    },
+  ],
+}))
 
 // --- Word Grouping banks (stored as { groups: [{category, words, difficulty}] } objects) ---
 
@@ -353,6 +421,7 @@ const PLATFORM_GAME_DEFS: PlatformGameDef[] = [
   DESCRIBE_IT_DEF,
   TRIVIA_TECH_DEF,
   TRIVIA_GENERAL_DEF,
+  ...TRIVIA_CATEGORY_DEFS,
   WORD_GROUPING_DEF,
 ]
 
