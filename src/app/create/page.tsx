@@ -5145,6 +5145,7 @@ function CreateGameInner() {
                           label: `${t.name}${t.difficulty ? ` (${t.difficulty})` : ''}`,
                         })),
                       ]}
+                      searchable
                     />
                   </Field>
                 )}
@@ -5287,6 +5288,7 @@ function CreateGameInner() {
                           label: `${t.name}${t.difficulty ? ` (${t.difficulty})` : ''}`,
                         })),
                       ]}
+                      searchable
                     />
                   </Field>
                 )}
@@ -5494,6 +5496,7 @@ function CreateGameInner() {
                           label: `${t.name}${t.difficulty ? ` (${t.difficulty})` : ''}`,
                         })),
                       ]}
+                      searchable
                     />
                   </Field>
                 )}

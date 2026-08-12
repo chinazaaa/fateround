@@ -554,6 +554,7 @@ export function PartyRoomSettingsPanel({ gameType, party, onChange, contentSourc
                     const locked = lockedPuzzleDifficulty(crosswordTheme)
                     onChange({ crosswordTheme, ...(locked ? { crosswordDifficulty: locked } : {}) })
                   }}
+                  searchable
                 />
               </View>
             ) : null}
@@ -600,6 +601,7 @@ export function PartyRoomSettingsPanel({ gameType, party, onChange, contentSourc
                     const locked = lockedPuzzleDifficulty(wordSearchTheme)
                     onChange({ wordSearchTheme, ...(locked ? { wordSearchDifficulty: locked } : {}) })
                   }}
+                  searchable
                 />
               </View>
             ) : null}
@@ -646,6 +648,7 @@ export function PartyRoomSettingsPanel({ gameType, party, onChange, contentSourc
                     const locked = lockedPuzzleDifficulty(wordScrambleTheme)
                     onChange({ wordScrambleTheme, ...(locked ? { wordScrambleDifficulty: locked } : {}) })
                   }}
+                  searchable
                 />
               </View>
             ) : null}
