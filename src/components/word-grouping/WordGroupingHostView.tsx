@@ -401,6 +401,7 @@ export function WordGroupingHostView({ gameCode, hostToken }: { gameCode: string
     return (
       <HostLobby
         gameCode={gameCode}
+        questionSource={game.question_source}
         hostToken={hostToken}
         game={game}
         gameTypeLabel={cfg.label}

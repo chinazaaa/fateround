@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import Link from 'next/link'
 import { FateRoundLogo } from '@/components/FateRoundLogo'
@@ -15,6 +15,7 @@ import { HostLateJoinSettingsCard } from '@/components/HostLateJoinSettingsCard'
 import { HostLobbySettingsSheet } from '@/components/host/HostLobbySettingsSheet'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
 import { SlidersIcon } from '@/components/host/host-icons'
+import { FreshnessWarningModal, type FreshnessResult } from '@/components/host-lobby/FreshnessWarningModal'
 import type { Game, Player } from '@/types'
 
 /**
@@ -55,6 +56,9 @@ export function HostLobby({
   highlightPlayerId,
   hidePlayersSection = false,
   onEnded,
+  questionSource,
+  onSwitchToUpload,
+  onSwitchToLibrary,
 }: {
   gameCode: string
   hostToken: string
@@ -91,9 +95,43 @@ export function HostLobby({
   hidePlayersSection?: boolean
   /** Called after the host ends the lobby (finish-game). */
   onEnded?: () => void | Promise<unknown>
+  /** When set to 'platform', the freshness check runs before starting. */
+  questionSource?: string | null
+  /** Navigate the host to the CSV upload UI. */
+  onSwitchToUpload?: () => void
+  /** Navigate the host to the Library picker UI. */
+  onSwitchToLibrary?: () => void
 }) {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [shareOpen, setShareOpen] = useState(false)
+  const [freshnessResult, setFreshnessResult] = useState<FreshnessResult | null>(null)
+  const [freshnessChecking, setFreshnessChecking] = useState(false)
+
+  const handleStartClick = useCallback(async () => {
+    if (questionSource !== 'platform') {
+      onStart()
+      return
+    }
+    setFreshnessChecking(true)
+    try {
+      const res = await fetch(`/api/games/${gameCode.toUpperCase()}/freshness-check`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hostToken }),
+      })
+      const data: FreshnessResult = await res.json()
+      if (data.fresh) {
+        onStart()
+      } else {
+        setFreshnessResult(data)
+      }
+    } catch {
+      onStart()
+    } finally {
+      setFreshnessChecking(false)
+    }
+  }, [questionSource, gameCode, hostToken, onStart])
+
   // Portals need document.body, which doesn't exist during SSR — render nothing until
   // mounted on the client (same guard as ui/Modal). Also gates the footer-measuring effect
   // so it runs only after the footer is actually in the DOM.
@@ -126,7 +164,8 @@ export function HostLobby({
     }
   }, [mounted])
 
-  const showStartHint = startDisabled && !starting && startDisabledHint
+  const isStarting = starting || freshnessChecking
+  const showStartHint = startDisabled && !isStarting && startDisabledHint
 
   if (!mounted) return null
 
@@ -204,11 +243,11 @@ export function HostLobby({
           {showStartHint ? <p className="text-faint text-xs text-center leading-relaxed">{startDisabledHint}</p> : null}
           <button
             type="button"
-            onClick={onStart}
-            disabled={startDisabled || starting}
+            onClick={handleStartClick}
+            disabled={startDisabled || isStarting}
             className="btn-primary w-full disabled:opacity-45 disabled:saturate-50 disabled:cursor-not-allowed disabled:shadow-none"
           >
-            {starting ? 'Starting…' : startLabel}
+            {isStarting ? (freshnessChecking ? 'Checking…' : 'Starting…') : startLabel}
           </button>
           <HostEndGameButton
             gameCode={gameCode}
@@ -252,6 +291,23 @@ export function HostLobby({
         gameCode={gameCode}
         hostToken={hostToken}
         resumeToken={resumeToken}
+      />
+      <FreshnessWarningModal
+        open={freshnessResult != null}
+        onClose={() => setFreshnessResult(null)}
+        result={
+          freshnessResult ?? {
+            fresh: true,
+            totalPool: 0,
+            seenByMost: 0,
+            seenPercent: 0,
+            authenticatedPlayers: 0,
+            totalPlayers: 0,
+          }
+        }
+        onStartAnyway={onStart}
+        onUploadCsv={onSwitchToUpload}
+        onBrowseLibrary={onSwitchToLibrary}
       />
     </div>,
     document.body
