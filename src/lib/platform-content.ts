@@ -13,6 +13,9 @@ import { DESCRIBE_IT_WORD_POOL } from '@/lib/describe-it-words'
 import { TRIVIA_TECH_QUESTIONS, TRIVIA_GENERAL_QUESTIONS } from '@/lib/trivia-questions'
 import { parseWyrQuestionRows, parseTriviaQuestionImport } from '@/lib/custom-questions'
 import type { TriviaQuestion, TriviaCategory } from '@/types'
+import { TRIVIA_BANK } from '@/data/daily-banks/trivia-bank'
+import { WORD_GROUPING_BANK } from '@/data/daily-banks/word-grouping-bank'
+import { CODENAMES_BANK } from '@/data/daily-banks/codenames-bank'
 
 /**
  * Admin-managed "platform" content banks (the `platform_content` table). Each supported game
@@ -236,7 +239,14 @@ const CODEWORDS_DEF: PlatformGameDef = {
   minEntries: CODEWORDS_MIN_CUSTOM_POOL, // a full board needs this many words
   parse: (text) => parseStringLines(text, 'word'),
   toText: (entries) => stringLinesToText(entries, 'word'),
-  builtins: [{ key: 'default', label: 'Codewords — Built-in', entries: CODEWORDS_WORD_POOL }],
+  builtins: [
+    { key: 'default', label: 'Codewords — Built-in', entries: CODEWORDS_WORD_POOL },
+    {
+      key: 'daily-bank',
+      label: 'Codewords — Daily Challenge Bank (898 words)',
+      entries: [...new Set(CODENAMES_BANK.flatMap((p) => p.grid))].map((w) => ({ word: w })),
+    },
+  ],
 }
 
 const DESCRIBE_IT_DEF: PlatformGameDef = {
@@ -270,7 +280,64 @@ const TRIVIA_GENERAL_DEF: PlatformGameDef = {
   minEntries: 5,
   parse: parseTrivia('general'),
   toText: triviaToText,
-  builtins: [{ key: 'default', label: 'Trivia General — Built-in', entries: [...TRIVIA_GENERAL_QUESTIONS] }],
+  builtins: [
+    { key: 'default', label: 'Trivia General — Built-in', entries: [...TRIVIA_GENERAL_QUESTIONS] },
+    {
+      key: 'daily-bank',
+      label: 'Trivia — Daily Challenge Bank (1,395 questions)',
+      entries: TRIVIA_BANK.map((q) => ({
+        question: q.question,
+        choices: q.choices,
+        correctIndex: q.correct_index,
+        category: q.category as TriviaCategory,
+      })),
+    },
+  ],
+}
+
+// --- Word Grouping banks (stored as { groups: [{category, words, difficulty}] } objects) ---
+
+function parseWordGrouping(text: string): PlatformContentParse {
+  const entries: unknown[] = []
+  let totalRows = 0
+  let skippedRows = 0
+  for (const line of text
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean)) {
+    totalRows++
+    try {
+      const obj = JSON.parse(line)
+      if (Array.isArray(obj?.groups) && obj.groups.length === 4) {
+        entries.push(obj)
+      } else {
+        skippedRows++
+      }
+    } catch {
+      skippedRows++
+    }
+  }
+  return { entries, totalRows, skippedRows, duplicateRows: 0 }
+}
+
+function wordGroupingToText(entries: unknown[]): string {
+  return entries.map((e) => JSON.stringify(e)).join('\n')
+}
+
+const WORD_GROUPING_DEF: PlatformGameDef = {
+  gameType: 'word_grouping',
+  label: 'Word Grouping',
+  columns: 'JSON — one puzzle per line: {"groups":[{"category":"...","words":["a","b","c","d"],"difficulty":1},...]}',
+  minEntries: 1,
+  parse: parseWordGrouping,
+  toText: wordGroupingToText,
+  builtins: [
+    {
+      key: 'daily-bank',
+      label: 'Word Grouping — Daily Challenge Bank (125 puzzles)',
+      entries: [...WORD_GROUPING_BANK],
+    },
+  ],
 }
 
 const PLATFORM_GAME_DEFS: PlatformGameDef[] = [
@@ -286,6 +353,7 @@ const PLATFORM_GAME_DEFS: PlatformGameDef[] = [
   DESCRIBE_IT_DEF,
   TRIVIA_TECH_DEF,
   TRIVIA_GENERAL_DEF,
+  WORD_GROUPING_DEF,
 ]
 
 /** All game defs, optionally keyed by `${gameType}:${variant}` for multi-pool games. */
