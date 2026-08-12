@@ -94,6 +94,7 @@ import { WST_DECK_MIN_ENTRIES } from '@/lib/who-said-this'
 import type { WyrQuestion } from '@/lib/would-you-rather-questions'
 import type { ParticipantMode, QuestionSource, TriviaQuestion } from '@/types'
 import { createGameSchema, stripHtml } from '@/lib/validation'
+import { triviaCategoryEnum } from '@/lib/validation/shared'
 import { supportsGenderToggle, defaultGenderBasedForType } from '@/lib/gender-based'
 import { parseParticipantMode, usesHostParticipantList } from '@/lib/participant-mode'
 import { parseThemeId } from '@/lib/themes'
@@ -1123,7 +1124,7 @@ export async function POST(req: NextRequest) {
         ? question_source
         : 'platform',
     custom_questions,
-    trivia_category: isTriviaGame(game_type) ? (rawTriviaCategory === 'tech' ? 'tech' : 'general') : null,
+    trivia_category: isTriviaGame(game_type) ? triviaCategoryEnum.catch('general').parse(rawTriviaCategory) : null,
     game_type,
     theme,
     status: isSecret ? 'active' : 'waiting',

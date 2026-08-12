@@ -353,7 +353,24 @@ export interface BingoCalledNumber {
   number: number
 }
 
-export type TriviaCategory = 'general' | 'tech'
+export type TriviaCategory =
+  | 'general'
+  | 'tech'
+  | 'art'
+  | 'food'
+  | 'geography'
+  | 'history'
+  | 'language'
+  | 'literature'
+  | 'math'
+  | 'movies'
+  | 'music'
+  | 'nature'
+  | 'pop_culture'
+  | 'science'
+  | 'sports'
+  | 'technology'
+  | 'world_culture'
 
 export interface TriviaMetadata {
   question: string

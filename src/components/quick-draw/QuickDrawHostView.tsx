@@ -550,6 +550,7 @@ function QuickDrawLieHostView({ gameCode, hostToken }: { gameCode: string; hostT
     return (
       <HostLobby
         gameCode={gameCode}
+        questionSource={game.question_source}
         hostToken={hostToken}
         game={game}
         titleMeta={<GameInfoChips game={game} className="mt-2" />}

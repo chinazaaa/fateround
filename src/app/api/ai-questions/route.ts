@@ -9,7 +9,27 @@ const requestSchema = z.object({
   count: z.number().int().min(1).max(50),
   theme: z.string().max(100).optional(),
   customPrompt: z.string().max(500).optional(),
-  triviaCategory: z.enum(['tech', 'general']).optional(),
+  triviaCategory: z
+    .enum([
+      'tech',
+      'general',
+      'art',
+      'food',
+      'geography',
+      'history',
+      'language',
+      'literature',
+      'math',
+      'movies',
+      'music',
+      'nature',
+      'pop_culture',
+      'science',
+      'sports',
+      'technology',
+      'world_culture',
+    ])
+    .optional(),
   apiKey: z.string().min(1, 'A Claude API key is required to generate questions'),
 })
 

@@ -552,6 +552,7 @@ export function QuickDrawGuessHostView({ gameCode, hostToken }: { gameCode: stri
     return (
       <HostLobby
         gameCode={gameCode}
+        questionSource={game.question_source}
         hostToken={hostToken}
         game={game}
         titleMeta={<GameInfoChips game={game} className="mt-2" />}

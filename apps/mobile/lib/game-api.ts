@@ -1130,6 +1130,19 @@ export function startGame(gameId: string, hostToken: string, firstTeam?: 'red' |
   })
 }
 
+export type FreshnessResult = {
+  fresh: boolean
+  totalPool: number
+  seenByMost: number
+  seenPercent: number
+  authenticatedPlayers: number
+  totalPlayers: number
+}
+
+export function checkFreshness(gameCode: string, hostToken: string) {
+  return postJson<FreshnessResult>(`/api/games/${gameCode.toUpperCase()}/freshness-check`, { hostToken })
+}
+
 export type LobbySettingsPatch = {
   is_public?: boolean
   content_label?: string

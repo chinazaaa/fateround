@@ -5145,6 +5145,7 @@ function CreateGameInner() {
                           label: `${t.name}${t.difficulty ? ` (${t.difficulty})` : ''}`,
                         })),
                       ]}
+                      searchable
                     />
                   </Field>
                 )}
@@ -5287,6 +5288,7 @@ function CreateGameInner() {
                           label: `${t.name}${t.difficulty ? ` (${t.difficulty})` : ''}`,
                         })),
                       ]}
+                      searchable
                     />
                   </Field>
                 )}
@@ -5494,6 +5496,7 @@ function CreateGameInner() {
                           label: `${t.name}${t.difficulty ? ` (${t.difficulty})` : ''}`,
                         })),
                       ]}
+                      searchable
                     />
                   </Field>
                 )}
@@ -6088,19 +6091,6 @@ function CreateGameInner() {
 
                 {isLobbyQuestions && (
                   <SettingsGroup title="Questions">
-                    {isTrivia && questionSource === 'platform' && (
-                      <Field label="Category">
-                        <SegmentedControl
-                          value={triviaCategory}
-                          onChange={(v) => setTriviaCategory(v as TriviaCategory)}
-                          options={[
-                            { value: 'tech', label: 'Tech', hint: 'Programming, gadgets, internet culture' },
-                            { value: 'general', label: 'General', hint: 'Geography, history, pop culture & more' },
-                          ]}
-                        />
-                      </Field>
-                    )}
-
                     {!isTrivia && (
                       <>
                         <Field label="Player submissions">
@@ -6165,6 +6155,35 @@ function CreateGameInner() {
                         }}
                         options={questionSourceOptions(settings.game_type)}
                       />
+                    )}
+
+                    {isTrivia && questionSource === 'platform' && (
+                      <Field label="Category">
+                        <CustomSelect
+                          value={triviaCategory}
+                          onChange={(v) => setTriviaCategory(v as TriviaCategory)}
+                          searchable
+                          options={[
+                            { value: 'general', label: 'General (All Categories)' },
+                            { value: 'tech', label: 'Tech' },
+                            { value: 'art', label: 'Art' },
+                            { value: 'food', label: 'Food' },
+                            { value: 'geography', label: 'Geography' },
+                            { value: 'history', label: 'History' },
+                            { value: 'language', label: 'Language' },
+                            { value: 'literature', label: 'Literature' },
+                            { value: 'math', label: 'Math' },
+                            { value: 'movies', label: 'Movies' },
+                            { value: 'music', label: 'Music' },
+                            { value: 'nature', label: 'Nature' },
+                            { value: 'pop_culture', label: 'Pop Culture' },
+                            { value: 'science', label: 'Science' },
+                            { value: 'sports', label: 'Sports' },
+                            { value: 'technology', label: 'Technology' },
+                            { value: 'world_culture', label: 'World Culture' },
+                          ]}
+                        />
+                      </Field>
                     )}
 
                     {questionSource === 'custom' && questionCustomHint && (
