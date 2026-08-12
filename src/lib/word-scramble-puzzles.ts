@@ -8,6 +8,7 @@ import {
   type WordScrambleEntryInput,
   type WordScrambleMetadata,
 } from '@/lib/word-scramble'
+import { WORD_THEMES } from '@/data/daily-banks/themed-words'
 
 export interface WordScrambleTheme {
   id: string
@@ -212,6 +213,14 @@ export const WORD_SCRAMBLE_THEMES: WordScrambleTheme[] = [
       { word: 'LIGHT', clue: 'What lets us see' },
     ],
   },
+  ...WORD_THEMES.map((t) => ({
+    id: `daily-${t.tag}-${t.name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/-$/, '')}`,
+    label: t.name,
+    entries: t.entries.map((e) => ({ word: e.word, clue: e.clue })),
+  })),
 ]
 
 export function wordScrambleThemeOptions(): { id: string; label: string }[] {

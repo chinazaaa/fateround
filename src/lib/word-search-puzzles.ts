@@ -7,6 +7,7 @@ import {
   type WordSearchMetadata,
   type WordSearchPlacement,
 } from './word-search'
+import { WORD_THEMES } from '@/data/daily-banks/themed-words'
 
 /**
  * Themed word banks. Each theme is a flat pool of words — the generator plants a subset
@@ -247,6 +248,14 @@ export const WORD_SEARCH_THEMES: WordSearchTheme[] = [
       'ANTIBODY',
     ],
   },
+  ...WORD_THEMES.map((t) => ({
+    id: `daily-${t.tag}-${t.name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/-$/, '')}`,
+    label: t.name,
+    words: t.entries.map((e) => e.word),
+  })),
 ]
 
 export const WORD_SEARCH_DEFAULT_THEME = WORD_SEARCH_THEMES[0].id
