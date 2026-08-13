@@ -59,6 +59,10 @@ export interface Tournament {
   // mode (auto-spawn each round from this list); null/empty = freestyle
   // mode (host picks each game live).
   game_queue: TournamentQueueEntry[] | null
+  // Present ONLY on the raw DB row — never on the API response, since the
+  // shared trivia pack contains answers. The public GET returns the count
+  // separately (as `customTriviaPackCount`) instead of the raw questions.
+  custom_trivia_pack?: unknown[] | null
   created_at: string
 }
 

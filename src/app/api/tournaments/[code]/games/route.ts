@@ -150,14 +150,24 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     }
   }
 
-  // Effective custom pool (trivia freestyle only): an explicit upload wins;
-  // otherwise reuse the previous one. Planned trivia rounds always use the
-  // platform bank — the queue entry format doesn't carry a CSV payload.
-  const useCustomQuestions = !queueEntry && gameType === 'trivia' && questionSource === 'custom'
+  // Effective custom trivia pool per mode:
+  //  - Planned mode: use the tournament-wide custom_trivia_pack the host
+  //    attached at creation (CSV upload or AI-generated) when it's set;
+  //    otherwise fall through to the platform bank.
+  //  - Freestyle mode: an explicit upload on this Start wins; otherwise
+  //    reuse the previous game's pack (carriedCustom).
+  const tournamentTriviaPack =
+    gameType === 'trivia' && Array.isArray(tournament.custom_trivia_pack) && tournament.custom_trivia_pack.length > 0
+      ? (tournament.custom_trivia_pack as unknown[])
+      : null
+  const useCustomQuestions =
+    gameType === 'trivia' && (queueEntry ? tournamentTriviaPack !== null : questionSource === 'custom')
   const effectiveCustom = useCustomQuestions
-    ? Array.isArray(customQuestions) && customQuestions.length > 0
-      ? customQuestions
-      : previousCustom
+    ? queueEntry
+      ? tournamentTriviaPack
+      : Array.isArray(customQuestions) && customQuestions.length > 0
+        ? customQuestions
+        : previousCustom
     : null
   const hasCustom = useCustomQuestions && Array.isArray(effectiveCustom) && effectiveCustom.length > 0
 

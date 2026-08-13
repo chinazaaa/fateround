@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { PageShell, Field, Toggle, PrimaryBtn } from '@/components/ui/PageShell'
 import {
@@ -12,11 +12,18 @@ import {
 } from '@/lib/tournament-validation'
 import type { TournamentQueueEntry } from '@/types/tournament'
 import { gameTypeLabel } from '@/lib/game-types'
+import type { TriviaQuestion } from '@/types'
+import {
+  parseTriviaQuestionImport,
+  parseExcelTriviaQuestionImport,
+  formatTriviaImportSummary,
+  questionSampleFile,
+} from '@/lib/custom-questions'
+import { AiQuestionsGenerator } from '@/components/ui/AiQuestionsGenerator'
 import {
   estimateGameSeconds,
   estimatePlaylistSeconds,
   formatEstimatedDuration,
-  isPlayerCountDependent,
   TIMING_PLAYER_FALLBACK,
 } from '@/lib/tournament-timing'
 import {
@@ -62,6 +69,13 @@ export default function TournamentCreatePage() {
   const [draftGameType, setDraftGameType] = useState<string>(TOURNAMENT_ELIGIBLE_TYPES[0])
   const [draftRounds, setDraftRounds] = useState<string>('10')
   const [draftTimer, setDraftTimer] = useState<string>('30')
+  // Optional shared trivia pack for every planned Trivia round in this
+  // tournament. Only surfaced when the playlist actually contains a Trivia
+  // entry. Empty = platform bank (today's default).
+  const [triviaSource, setTriviaSource] = useState<'platform' | 'custom' | 'ai'>('platform')
+  const [customTriviaPack, setCustomTriviaPack] = useState<TriviaQuestion[]>([])
+  const [triviaUploadMsg, setTriviaUploadMsg] = useState<string | null>(null)
+  const triviaFileRef = useRef<HTMLInputElement>(null)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
 
@@ -134,6 +148,37 @@ export default function TournamentCreatePage() {
     setQueue((prev) => prev.filter((_, i) => i !== index))
   }
 
+  async function handleTriviaFile(file: File) {
+    setTriviaUploadMsg(null)
+    setCustomTriviaPack([])
+    const ext = file.name.split('.').pop()?.toLowerCase()
+    try {
+      if (ext === 'csv' || ext === 'txt') {
+        const text = await file.text()
+        const result = parseTriviaQuestionImport(text)
+        if (result.questions.length === 0) {
+          setTriviaUploadMsg('No valid rows. Use question, option_a–option_d, and correct (A–D) columns.')
+          return
+        }
+        setCustomTriviaPack(result.questions)
+        setTriviaUploadMsg(formatTriviaImportSummary(result) ?? `${result.questions.length} questions ready`)
+      } else if (ext === 'xlsx' || ext === 'xls') {
+        const buffer = await file.arrayBuffer()
+        const result = await parseExcelTriviaQuestionImport(buffer)
+        if (result.questions.length === 0) {
+          setTriviaUploadMsg('No valid rows. Use question, option_a–option_d, and correct (A–D) columns.')
+          return
+        }
+        setCustomTriviaPack(result.questions)
+        setTriviaUploadMsg(formatTriviaImportSummary(result) ?? `${result.questions.length} questions ready`)
+      } else {
+        setTriviaUploadMsg('Please upload a .csv or .xlsx file')
+      }
+    } catch {
+      setTriviaUploadMsg('Could not read that file. Try the sample CSV.')
+    }
+  }
+
   async function handleCreate() {
     if (!title.trim()) {
       setError('Enter a tournament title')
@@ -141,6 +186,20 @@ export default function TournamentCreatePage() {
     }
     if (isRoundRobin && planned && queue.length === 0) {
       setError('Add at least one game to your playlist, or switch to “Decide as you go”')
+      return
+    }
+    if (
+      isRoundRobin &&
+      planned &&
+      triviaSource !== 'platform' &&
+      queue.some((e) => e.gameType === 'trivia') &&
+      customTriviaPack.length === 0
+    ) {
+      setError(
+        triviaSource === 'custom'
+          ? 'Upload a trivia CSV or switch back to the platform pack'
+          : 'Generate some trivia questions or switch back to the platform pack'
+      )
       return
     }
 
@@ -181,6 +240,16 @@ export default function TournamentCreatePage() {
         // Planned mode only takes effect when the host actually added games.
         if (planned && queue.length > 0) {
           body.gameQueue = queue
+        }
+        // Shared trivia pack (CSV or AI): attach it only if the host picked a
+        // non-platform source AND the playlist actually contains any trivia.
+        if (
+          planned &&
+          triviaSource !== 'platform' &&
+          queue.some((e) => e.gameType === 'trivia') &&
+          customTriviaPack.length > 0
+        ) {
+          body.customTriviaPack = customTriviaPack
         }
       }
 
@@ -467,6 +536,126 @@ export default function TournamentCreatePage() {
                 <p className="text-faint text-xs text-center">Playlist limit reached (20 games).</p>
               )}
             </div>
+          </div>
+        )}
+
+        {/* Shared trivia pack — only shown when the playlist actually contains
+            a Trivia entry, otherwise there's nothing for it to be used with. */}
+        {isRoundRobin && planned && queue.some((e) => e.gameType === 'trivia') && (
+          <div className="surface-inset p-4 space-y-3">
+            <p className="label-caps">Trivia questions</p>
+            <p className="text-faint text-xs">
+              Every Trivia round in your playlist shares this pack. Questions don&apos;t repeat between rounds — so a
+              pack of 30 works for one 30-question round or three 10-question rounds, not both.
+            </p>
+
+            <div className="flex gap-2">
+              <button
+                type="button"
+                aria-pressed={triviaSource === 'platform'}
+                onClick={() => setTriviaSource('platform')}
+                className={`chip flex-1 ${triviaSource === 'platform' ? 'chip-active' : ''}`}
+              >
+                Platform pack
+              </button>
+              <button
+                type="button"
+                aria-pressed={triviaSource === 'custom'}
+                onClick={() => setTriviaSource('custom')}
+                className={`chip flex-1 ${triviaSource === 'custom' ? 'chip-active' : ''}`}
+              >
+                Upload CSV
+              </button>
+              <button
+                type="button"
+                aria-pressed={triviaSource === 'ai'}
+                onClick={() => setTriviaSource('ai')}
+                className={`chip flex-1 ${triviaSource === 'ai' ? 'chip-active' : ''}`}
+              >
+                Generate with AI
+              </button>
+            </div>
+
+            {triviaSource === 'custom' && (
+              <div className="space-y-3">
+                <input
+                  ref={triviaFileRef}
+                  type="file"
+                  accept=".csv,.xlsx,.xls"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0]
+                    if (f) handleTriviaFile(f)
+                  }}
+                  className="hidden"
+                />
+                {customTriviaPack.length === 0 ? (
+                  <div className="space-y-2">
+                    <button
+                      type="button"
+                      onClick={() => triviaFileRef.current?.click()}
+                      className="btn-secondary w-full"
+                    >
+                      Choose CSV or Excel file
+                    </button>
+                    <p className="text-faint text-xs">
+                      Columns: question, option_a–option_d, correct (A–D).{' '}
+                      <a
+                        href={questionSampleFile('trivia').href}
+                        download={questionSampleFile('trivia').download}
+                        className="underline hover:text-body"
+                        style={{ color: 'var(--primary)' }}
+                      >
+                        Download sample
+                      </a>
+                    </p>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm text-body font-medium">
+                      ✓ {customTriviaPack.length} question{customTriviaPack.length === 1 ? '' : 's'} loaded
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCustomTriviaPack([])
+                        setTriviaUploadMsg(null)
+                        if (triviaFileRef.current) triviaFileRef.current.value = ''
+                      }}
+                      className="btn-ghost text-xs"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                )}
+                {triviaUploadMsg && <p className="text-faint text-xs">{triviaUploadMsg}</p>}
+              </div>
+            )}
+
+            {triviaSource === 'ai' && (
+              <AiQuestionsGenerator
+                gameType="trivia"
+                triviaCategory="general"
+                defaultCount={20}
+                maxCount={50}
+                onGenerated={(questions) => setCustomTriviaPack(questions as TriviaQuestion[])}
+              />
+            )}
+
+            {triviaSource !== 'platform' &&
+              customTriviaPack.length > 0 &&
+              (() => {
+                const totalTriviaQuestions = queue
+                  .filter((e) => e.gameType === 'trivia')
+                  .reduce((sum, e) => sum + (e.roundsCount ?? 10), 0)
+                const short = customTriviaPack.length < totalTriviaQuestions
+                return (
+                  <p className={`text-xs ${short ? 'text-amber-400' : 'text-faint'}`}>
+                    Pack has {customTriviaPack.length} question{customTriviaPack.length === 1 ? '' : 's'}. Your Trivia
+                    rounds ask for {totalTriviaQuestions} across the playlist
+                    {short ? ' — add more questions or lower a round count, or a later round won’t start.' : '.'}
+                  </p>
+                )
+              })()}
           </div>
         )}
 

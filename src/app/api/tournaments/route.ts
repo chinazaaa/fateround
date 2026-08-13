@@ -11,6 +11,7 @@ import {
   TOURNAMENT_ELIGIBLE_TYPES,
 } from '@/lib/tournament-validation'
 import { buildTournamentGameConfig } from '@/lib/tournament-game-config'
+import { parseStoredTriviaQuestions } from '@/lib/custom-questions'
 
 export async function POST(req: NextRequest) {
   // Service role: `tournaments` is INSERT-locked for anon since 20260803120000, and the row
@@ -31,6 +32,7 @@ export async function POST(req: NextRequest) {
     maxPlayers,
     eliminationConfig,
     gameQueue,
+    customTriviaPack,
   } = body
   const hostToken = generateToken()
 
@@ -51,6 +53,23 @@ export async function POST(req: NextRequest) {
   if (resolvedGameQueue && 'error' in resolvedGameQueue) {
     return NextResponse.json({ error: resolvedGameQueue.error }, { status: 400 })
   }
+
+  // Optional shared trivia question pack — CSV or AI upload attached at
+  // creation. Re-validated through the same parser the /api/games trivia
+  // create path uses, so a malformed upload never reaches the DB. Empty /
+  // omitted means "use the platform bank" (today's behaviour). Only stored
+  // for round-robin — other formats have their game chosen elsewhere.
+  const parsedCustomTriviaPack =
+    Array.isArray(customTriviaPack) && customTriviaPack.length > 0 && (format ?? 'round-robin') === 'round-robin'
+      ? parseStoredTriviaQuestions(customTriviaPack)
+      : []
+  if (Array.isArray(customTriviaPack) && customTriviaPack.length > 0 && parsedCustomTriviaPack.length === 0) {
+    return NextResponse.json(
+      { error: 'Trivia pack had no valid questions — check the CSV format and try again' },
+      { status: 400 }
+    )
+  }
+  const resolvedCustomTriviaPack = parsedCustomTriviaPack.length > 0 ? parsedCustomTriviaPack : null
 
   // Head-to-head (1v1 bracket) and knockout (group elimination) are each played
   // with a single game chosen at creation; knockout also stores its per-round
@@ -103,6 +122,7 @@ export async function POST(req: NextRequest) {
     max_players: maxPlayers ?? null,
     elimination_config: eliminationConfig ?? null,
     game_queue: resolvedGameQueue,
+    custom_trivia_pack: resolvedCustomTriviaPack,
   })
 
   if (error) {

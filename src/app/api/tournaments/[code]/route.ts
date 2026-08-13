@@ -56,9 +56,21 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ cod
   // started game (waiting) from a running one, and start it from the lobby.
   let carriedCustomCount: number | null = null
   let gamesOut = games
+  // Size of the tournament's shared custom trivia pack (planned mode's CSV/AI
+  // upload). Only the SIZE is returned — the raw pack itself never ships to the
+  // client, since anyone with the tournament code could then read the answers.
+  let customTriviaPackCount: number | null = null
   const gameIds = games.map((g) => g.game_id).filter((id): id is string => Boolean(id))
+  const admin = getSupabaseAdmin()
+  const { data: packRow } = await admin
+    .from('tournaments')
+    .select('custom_trivia_pack')
+    .eq('id', tournamentId)
+    .maybeSingle()
+  if (Array.isArray(packRow?.custom_trivia_pack)) {
+    customTriviaPackCount = packRow!.custom_trivia_pack.length
+  }
   if (gameIds.length > 0) {
-    const admin = getSupabaseAdmin()
     const [{ data: priorGames }, { data: roomPlayers }] = await Promise.all([
       admin.from('games').select('id, status, custom_questions, created_at').in('id', gameIds),
       // Who's actually in each room right now — used to show the host which members
@@ -120,6 +132,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ cod
     players: playersRes.data ?? [],
     games: gamesOut,
     carriedCustomCount,
+    customTriviaPackCount,
   })
 }
 

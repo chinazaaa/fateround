@@ -55,6 +55,11 @@ export const createTournamentSchema = z.object({
   // detail page's "Start Next Game" spawns each entry in turn instead of
   // asking the host to pick live. Omitted/empty = freestyle (today's flow).
   gameQueue: z.array(tournamentQueueEntrySchema).min(1).max(20).optional(),
+  // Optional shared trivia pack (CSV upload or AI-generated) used by every
+  // planned Trivia round in this tournament. Loose type here — the route
+  // re-validates via parseStoredTriviaQuestions before storing so a malformed
+  // upload can't reach the DB.
+  customTriviaPack: z.array(z.unknown()).max(500).optional(),
 })
 
 export const updateTournamentSchema = z.object({
