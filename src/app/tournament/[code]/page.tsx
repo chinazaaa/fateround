@@ -1014,7 +1014,9 @@ export default function TournamentLobbyPage() {
                 ? `${knockoutGroup ? '🎮' : '🧠'} ${gameTypeLabel(tournament.game_type) ?? 'Trivia'}`
                 : school
                   ? `🃏 ${gameTypeLabel(tournament.game_type) ?? 'Whot'}`
-                  : '🎮 Trivia'}
+                  : queueEntries
+                    ? `🎮 ${queueEntries.length}-game playlist`
+                    : '🎮 Mixed rounds'}
           </span>
           <span className="chip text-xs">
             {h2h
@@ -1023,9 +1025,11 @@ export default function TournamentLobbyPage() {
                 ? '🏆 Knockout'
                 : school
                   ? '🎓 School'
-                  : tournament.target_game_count
-                    ? `Best of ${tournament.target_game_count}`
-                    : 'Unlimited games'}
+                  : queueEntries
+                    ? '🎯 Planned playlist'
+                    : tournament.target_game_count
+                      ? `Best of ${tournament.target_game_count}`
+                      : 'Freestyle'}
           </span>
           {lives && (
             <span className="chip text-xs">
@@ -1087,6 +1091,110 @@ export default function TournamentLobbyPage() {
           copyLabel="Copy host link"
           copySuccessMessage="Host link copied"
         />
+      )}
+
+      {/* Tournament lineup — always visible (planned round-robin only). Shows
+          every game in the playlist with a status marker so a visitor deciding
+          whether to join, a joined player between games, and a host looking
+          for the reorder controls all see the same source of truth. */}
+      {roundRobin && queueEntries && (
+        <div className="glass-card p-5 space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <p className="label-caps">Tournament lineup</p>
+            <span className="text-faint text-xs">{queueEntries.length} games</span>
+          </div>
+          <ol className="space-y-1.5">
+            {queueEntries.map((e, absoluteIndex) => {
+              const played = absoluteIndex < games.length
+              const isPlayingNow = played && absoluteIndex === games.length - 1 && Boolean(activeGame)
+              const isPastFinished = played && !isPlayingNow
+              const isUpNext = !activeGame && absoluteIndex === queueIndex
+              const upcomingReorderable = isHost && absoluteIndex > queueIndex && !activeGame
+              const canMoveUp = upcomingReorderable && absoluteIndex - 1 >= queueIndex + 1
+              // Even reorderable items can't move above the "Up next" slot with a single
+              // arrow — moving to Up next uses a dedicated swap arrow on that item only.
+              const isImmediatelyAfterUpNext = isHost && !activeGame && absoluteIndex === queueIndex + 1
+              const marker = isPlayingNow ? '▶︎' : isPastFinished ? '✓' : isUpNext ? '›' : '·'
+              const markerColor = isPlayingNow
+                ? 'var(--primary)'
+                : isPastFinished
+                  ? 'var(--muted)'
+                  : isUpNext
+                    ? 'var(--foreground)'
+                    : 'var(--muted)'
+              const rowOpacity = isPastFinished ? 0.5 : 1
+              return (
+                <li
+                  key={`${e.gameType}-${absoluteIndex}`}
+                  className="flex items-center gap-2 text-body text-sm"
+                  style={{ opacity: rowOpacity }}
+                >
+                  <span
+                    className="tabular-nums font-semibold"
+                    style={{ minWidth: '1.75rem', color: markerColor }}
+                    aria-hidden
+                  >
+                    {marker} {absoluteIndex + 1}.
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium truncate">
+                      {gameTypeLabel(e.gameType) ?? e.gameType}
+                      {isPlayingNow && <span className="text-faint text-xs font-normal"> · playing now</span>}
+                      {isUpNext && !isPlayingNow && <span className="text-faint text-xs font-normal"> · up next</span>}
+                    </p>
+                    <p className="text-faint text-xs">
+                      {e.gameType === 'two_truths' || e.gameType === 'who_said_this'
+                        ? `${e.timerSeconds ?? (e.gameType === 'two_truths' ? 45 : 30)}s per guess`
+                        : `${e.roundsCount ?? 10} rounds · ${e.timerSeconds ?? 30}s`}
+                    </p>
+                  </div>
+                  {isImmediatelyAfterUpNext && (
+                    <button
+                      type="button"
+                      onClick={() => handleMoveQueue(absoluteIndex, -1)}
+                      disabled={actionLoading}
+                      aria-label={`Swap ${gameTypeLabel(e.gameType) ?? e.gameType} into up-next slot`}
+                      className="chip"
+                      title="Swap with Up next"
+                    >
+                      ↑
+                    </button>
+                  )}
+                  {upcomingReorderable && !isImmediatelyAfterUpNext && (
+                    <button
+                      type="button"
+                      onClick={() => handleMoveQueue(absoluteIndex, -1)}
+                      disabled={actionLoading || !canMoveUp}
+                      aria-label={`Move ${gameTypeLabel(e.gameType) ?? e.gameType} up`}
+                      className="chip"
+                      style={{ opacity: canMoveUp ? 1 : 0.4 }}
+                    >
+                      ↑
+                    </button>
+                  )}
+                  {upcomingReorderable && (
+                    <button
+                      type="button"
+                      onClick={() => handleMoveQueue(absoluteIndex, 1)}
+                      disabled={actionLoading || absoluteIndex === queueEntries.length - 1}
+                      aria-label={`Move ${gameTypeLabel(e.gameType) ?? e.gameType} down`}
+                      className="chip"
+                      style={{ opacity: absoluteIndex === queueEntries.length - 1 ? 0.4 : 1 }}
+                    >
+                      ↓
+                    </button>
+                  )}
+                </li>
+              )
+            })}
+          </ol>
+          {isHost && !activeGame && queueEntries.length - queueIndex > 1 && (
+            <p className="text-faint text-xs">
+              Rearrange upcoming games with the arrows — the first up-arrow swaps a game into &ldquo;Up next&rdquo;.
+              Played games stay locked.
+            </p>
+          )}
+        </div>
       )}
 
       {/* Finished — host either runs it back with this roster or starts fresh. */}
@@ -2292,81 +2400,24 @@ export default function TournamentLobbyPage() {
         </div>
       )}
 
-      {/* Host Controls — round-robin (planned mode: queue-driven Start button) */}
+      {/* Host Controls — round-robin (planned mode: queue-driven Start button).
+          The full lineup with reorder arrows lives in the always-visible
+          "Tournament lineup" card at the top of the page; this block is just
+          the trigger for the next game. */}
       {isHost && !isFinished && !activeGame && roundRobin && plannedNext && (
-        <div className="glass-card-strong p-5 space-y-4">
-          <p className="label-caps">
-            {isFirstGame ? 'Start Tournament' : `Up next — Round ${queueIndex + 1} of ${queueEntries!.length}`}
+        <div className="glass-card-strong p-5 space-y-2">
+          <PrimaryBtn onClick={handleStartGame} disabled={actionLoading || players.length === 0}>
+            {actionLoading
+              ? 'Starting…'
+              : isFirstGame
+                ? `Start Tournament — ${gameTypeLabel(plannedNext.gameType) ?? plannedNext.gameType}`
+                : `Start Next Game — ${gameTypeLabel(plannedNext.gameType) ?? plannedNext.gameType}`}
+          </PrimaryBtn>
+          <p className="text-faint text-xs text-center">
+            {players.length === 0
+              ? 'Waiting for players to join before you can start.'
+              : `Game ${queueIndex + 1} of ${queueEntries!.length}. Players see it appear when you tap Start.`}
           </p>
-
-          <div className="surface-inset p-4 space-y-1">
-            <p className="text-body text-lg font-semibold">
-              {gameTypeLabel(plannedNext.gameType) ?? plannedNext.gameType}
-            </p>
-            <p className="text-faint text-xs">
-              {plannedNext.gameType === 'two_truths' || plannedNext.gameType === 'who_said_this'
-                ? `${plannedNext.timerSeconds ?? (plannedNext.gameType === 'two_truths' ? 45 : 30)}s per guess`
-                : `${plannedNext.roundsCount ?? 10} rounds · ${plannedNext.timerSeconds ?? 30}s timer`}
-            </p>
-          </div>
-
-          {queueEntries!.length - queueIndex > 1 && (
-            <div className="surface-inset p-3 space-y-2">
-              <p className="label-caps">Coming up</p>
-              <ol className="space-y-1">
-                {queueEntries!.slice(queueIndex + 1).map((e, i) => {
-                  const absoluteIndex = queueIndex + 1 + i
-                  const isLast = absoluteIndex === queueEntries!.length - 1
-                  return (
-                    <li
-                      key={`${e.gameType}-${absoluteIndex}`}
-                      className="flex items-center gap-2 tabular-nums text-body text-xs"
-                    >
-                      <span className="text-faint" style={{ minWidth: '1.5rem' }}>
-                        {absoluteIndex + 1}.
-                      </span>
-                      <span className="flex-1 truncate">{gameTypeLabel(e.gameType) ?? e.gameType}</span>
-                      <button
-                        type="button"
-                        onClick={() => handleMoveQueue(absoluteIndex, -1)}
-                        disabled={actionLoading}
-                        aria-label={`Move ${gameTypeLabel(e.gameType) ?? e.gameType} up`}
-                        className="chip"
-                        title={i === 0 ? 'Swap with Up next' : 'Move up'}
-                      >
-                        ↑
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleMoveQueue(absoluteIndex, 1)}
-                        disabled={actionLoading || isLast}
-                        aria-label={`Move ${gameTypeLabel(e.gameType) ?? e.gameType} down`}
-                        className="chip"
-                        style={{ opacity: isLast ? 0.4 : 1 }}
-                      >
-                        ↓
-                      </button>
-                    </li>
-                  )
-                })}
-              </ol>
-              <p className="text-faint text-xs">
-                Rearrange upcoming rounds — the first arrow up swaps a game into &ldquo;Up next&rdquo;. Already-played
-                rounds stay locked.
-              </p>
-            </div>
-          )}
-
-          <div className="space-y-1.5">
-            <PrimaryBtn onClick={handleStartGame} disabled={actionLoading || players.length === 0}>
-              {actionLoading ? 'Starting…' : isFirstGame ? 'Start Tournament' : `Start Round ${queueIndex + 1}`}
-            </PrimaryBtn>
-            <p className="text-faint text-xs text-center">
-              {players.length === 0
-                ? 'Waiting for players to join before you can start.'
-                : 'Creates the game room. Open the host dashboard (new tab) to start it once players have joined.'}
-            </p>
-          </div>
         </div>
       )}
 
