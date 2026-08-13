@@ -8,6 +8,7 @@ import {
   H2H_ELIGIBLE_TYPES,
   KNOCKOUT_ELIGIBLE_TYPES,
   SCHOOL_ELIGIBLE_TYPES,
+  TOURNAMENT_ELIGIBLE_TYPES,
 } from '@/lib/tournament-validation'
 import { buildTournamentGameConfig } from '@/lib/tournament-game-config'
 
@@ -20,8 +21,36 @@ export async function POST(req: NextRequest) {
   const { data: body, error: bodyError } = await parseJsonBody(req, createTournamentSchema)
   if (bodyError) return bodyError
 
-  const { title, format, gameType, gameConfig, placementPoints, targetGameCount, maxPlayers, eliminationConfig } = body
+  const {
+    title,
+    format,
+    gameType,
+    gameConfig,
+    placementPoints,
+    targetGameCount,
+    maxPlayers,
+    eliminationConfig,
+    gameQueue,
+  } = body
   const hostToken = generateToken()
+
+  // The pre-planned round-robin playlist. Only accepted for round-robin; other
+  // formats have their game chosen at creation. Every entry must be an
+  // eligible round-robin game type — the same whitelist the freestyle "add a
+  // game" route enforces. Empty/omitted = freestyle mode (host picks live).
+  const resolvedGameQueue = (() => {
+    if (!gameQueue || gameQueue.length === 0) return null
+    if (format && format !== 'round-robin') return null
+    for (const entry of gameQueue) {
+      if (!TOURNAMENT_ELIGIBLE_TYPES.includes(entry.gameType as (typeof TOURNAMENT_ELIGIBLE_TYPES)[number])) {
+        return { error: `Game "${entry.gameType}" isn't available for tournament playlists` }
+      }
+    }
+    return gameQueue
+  })()
+  if (resolvedGameQueue && 'error' in resolvedGameQueue) {
+    return NextResponse.json({ error: resolvedGameQueue.error }, { status: 400 })
+  }
 
   // Head-to-head (1v1 bracket) and knockout (group elimination) are each played
   // with a single game chosen at creation; knockout also stores its per-round
@@ -73,6 +102,7 @@ export async function POST(req: NextRequest) {
     target_game_count: targetGameCount ?? null,
     max_players: maxPlayers ?? null,
     elimination_config: eliminationConfig ?? null,
+    game_queue: resolvedGameQueue,
   })
 
   if (error) {

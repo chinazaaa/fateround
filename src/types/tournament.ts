@@ -34,6 +34,13 @@ export interface TournamentGameConfig {
   schoolClassCount?: number
 }
 
+// One entry in a round-robin tournament's pre-planned playlist.
+export interface TournamentQueueEntry {
+  gameType: string
+  roundsCount?: number
+  timerSeconds?: number
+}
+
 export interface Tournament {
   id: string
   host_token: string
@@ -48,6 +55,10 @@ export interface Tournament {
   target_game_count: number | null
   max_players: number | null
   elimination_config: TournamentEliminationConfig | null
+  // Round-robin only: the ordered playlist of games. Non-empty = planned
+  // mode (auto-spawn each round from this list); null/empty = freestyle
+  // mode (host picks each game live).
+  game_queue: TournamentQueueEntry[] | null
   created_at: string
 }
 

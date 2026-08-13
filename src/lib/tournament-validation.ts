@@ -33,6 +33,15 @@ const gameConfigSchema = z.object({
   schoolClassCount: z.coerce.number().int().min(2).max(16).optional(),
 })
 
+// One entry in a round-robin tournament's pre-planned playlist. Each entry
+// becomes one spawned game, in order. Wide bounds here — the values are
+// re-clamped per game type server-side when the game row is inserted.
+export const tournamentQueueEntrySchema = z.object({
+  gameType: z.string().min(1).max(40),
+  roundsCount: z.coerce.number().int().min(1).max(100).optional(),
+  timerSeconds: z.coerce.number().int().min(1).max(600).optional(),
+})
+
 export const createTournamentSchema = z.object({
   title: sanitizedString(1, 100),
   format: z.enum(['round-robin', 'head-to-head', 'knockout', 'school']).optional(),
@@ -42,6 +51,10 @@ export const createTournamentSchema = z.object({
   targetGameCount: z.coerce.number().int().min(1).max(100).optional().nullable(),
   maxPlayers: z.coerce.number().int().min(2).max(100).optional().nullable(),
   eliminationConfig: eliminationConfigSchema.optional(),
+  // Round-robin only: a pre-planned ordered list of games. When present the
+  // detail page's "Start Next Game" spawns each entry in turn instead of
+  // asking the host to pick live. Omitted/empty = freestyle (today's flow).
+  gameQueue: z.array(tournamentQueueEntrySchema).min(1).max(20).optional(),
 })
 
 export const updateTournamentSchema = z.object({
@@ -56,6 +69,12 @@ export const updateTournamentSchema = z.object({
   // Edited game setup (house rules, dictionary, timers, ladder). The route rejects
   // it unless the tournament is still 'waiting', so an in-progress room is untouched.
   gameConfig: gameConfigSchema.optional(),
+  // Reorder / extend the round-robin playlist mid-tournament. The route enforces
+  // that the first N entries of the new queue match the current queue's first N
+  // (where N = number of already-spawned games), so already-played rounds can't
+  // be rewritten. Only the still-upcoming tail can change. Not accepted while a
+  // round is live (a game is in progress).
+  gameQueue: z.array(tournamentQueueEntrySchema).min(1).max(20).optional(),
 })
 
 export const joinTournamentSchema = z.object({

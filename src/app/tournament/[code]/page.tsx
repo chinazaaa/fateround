@@ -481,6 +481,44 @@ export default function TournamentLobbyPage() {
     }
   }
 
+  // Reorder the still-upcoming tail of a planned tournament's playlist.
+  // `absoluteIndex` is the index of the entry to move within the FULL queue
+  // (not the "Coming up" slice). Server enforces that already-played rounds
+  // stay first — this client only offers arrows on the upcoming tail.
+  async function handleMoveQueue(absoluteIndex: number, dir: -1 | 1) {
+    if (!hostToken || !tournament?.game_queue) return
+    const current = tournament.game_queue
+    const target = absoluteIndex + dir
+    // The next-to-play index is `games.length`. Nothing before it may move.
+    const firstReorderableIndex = games.length
+    if (
+      absoluteIndex < firstReorderableIndex ||
+      target < firstReorderableIndex ||
+      absoluteIndex >= current.length ||
+      target >= current.length
+    ) {
+      return
+    }
+    const nextQueue = current.slice()
+    ;[nextQueue[absoluteIndex], nextQueue[target]] = [nextQueue[target], nextQueue[absoluteIndex]]
+    setActionLoading(true)
+    setError('')
+    try {
+      const res = await fetch(`/api/tournaments/${tournamentId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hostToken, gameQueue: nextQueue }),
+      })
+      const data = await res.json()
+      if (!res.ok) setError(data.error ?? 'Failed to reorder playlist')
+      else fetchState()
+    } catch {
+      setError('Something went wrong')
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
   async function handleFile(file: File) {
     setUploadMsg(null)
     // Clear any previously-loaded pack up front so a failed/invalid replacement
@@ -525,7 +563,12 @@ export default function TournamentLobbyPage() {
     setActionLoading(true)
     setError('')
 
-    const useCustom = selectedGameType === 'trivia' && questionSource === 'custom'
+    // In planned mode the queue entry dictates gameType/settings — the server
+    // enforces this, but we send matching values so the freestyle picker's
+    // stale state can't accidentally override anything.
+    const useQueue = Boolean(plannedNext)
+    const effectiveGameType = useQueue ? plannedNext!.gameType : selectedGameType
+    const useCustom = !useQueue && selectedGameType === 'trivia' && questionSource === 'custom'
 
     try {
       const res = await fetch(`/api/tournaments/${tournamentId}/games`, {
@@ -533,11 +576,16 @@ export default function TournamentLobbyPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           hostToken,
-          gameType: selectedGameType,
-          gameSettings: {
-            rounds_count: parseInt(roundsCount, 10) || 10,
-            timer_seconds: parseInt(timerSeconds, 10) || 30,
-          },
+          gameType: effectiveGameType,
+          gameSettings: useQueue
+            ? {
+                rounds_count: plannedNext!.roundsCount,
+                timer_seconds: plannedNext!.timerSeconds,
+              }
+            : {
+                rounds_count: parseInt(roundsCount, 10) || 10,
+                timer_seconds: parseInt(timerSeconds, 10) || 30,
+              },
           questionSource: useCustom ? 'custom' : 'platform',
           customQuestions: useCustom ? customTrivia : null,
         }),
@@ -811,7 +859,15 @@ export default function TournamentLobbyPage() {
   // Host-control derived state
   const rounds = parseInt(roundsCount, 10) || 10
   const isFirstGame = games.length === 0
-  const isCustom = selectedGameType === 'trivia' && questionSource === 'custom'
+  // Pre-planned playlist: when the tournament was created in "Plan the games"
+  // mode, the host doesn't pick each game live — the next entry is the next
+  // round. `plannedNext` is null in freestyle mode (game_queue null/empty).
+  const queueEntries =
+    Array.isArray(tournament.game_queue) && tournament.game_queue.length > 0 ? tournament.game_queue : null
+  const queueIndex = games.length
+  const plannedNext = queueEntries && queueIndex < queueEntries.length ? queueEntries[queueIndex] : null
+  const queueExhausted = queueEntries != null && queueIndex >= queueEntries.length
+  const isCustom = !plannedNext && selectedGameType === 'trivia' && questionSource === 'custom'
   // Effective pack size for custom trivia: a freshly uploaded pack wins; otherwise the
   // pack carried over from an earlier game (which the server reuses on Start). After a
   // reload/new tab the local upload resets to empty, so without the carry-over fallback
@@ -2236,8 +2292,94 @@ export default function TournamentLobbyPage() {
         </div>
       )}
 
-      {/* Host Controls — round-robin */}
-      {isHost && !isFinished && !activeGame && roundRobin && (
+      {/* Host Controls — round-robin (planned mode: queue-driven Start button) */}
+      {isHost && !isFinished && !activeGame && roundRobin && plannedNext && (
+        <div className="glass-card-strong p-5 space-y-4">
+          <p className="label-caps">
+            {isFirstGame ? 'Start Tournament' : `Up next — Round ${queueIndex + 1} of ${queueEntries!.length}`}
+          </p>
+
+          <div className="surface-inset p-4 space-y-1">
+            <p className="text-body text-lg font-semibold">
+              {gameTypeLabel(plannedNext.gameType) ?? plannedNext.gameType}
+            </p>
+            <p className="text-faint text-xs">
+              {plannedNext.gameType === 'two_truths'
+                ? `${plannedNext.timerSeconds ?? 45}s per guess`
+                : `${plannedNext.roundsCount ?? 10} rounds · ${plannedNext.timerSeconds ?? 30}s timer`}
+            </p>
+          </div>
+
+          {queueEntries!.length - queueIndex > 1 && (
+            <div className="surface-inset p-3 space-y-2">
+              <p className="label-caps">Coming up</p>
+              <ol className="space-y-1">
+                {queueEntries!.slice(queueIndex + 1).map((e, i) => {
+                  const absoluteIndex = queueIndex + 1 + i
+                  const isLast = absoluteIndex === queueEntries!.length - 1
+                  return (
+                    <li
+                      key={`${e.gameType}-${absoluteIndex}`}
+                      className="flex items-center gap-2 tabular-nums text-body text-xs"
+                    >
+                      <span className="text-faint" style={{ minWidth: '1.5rem' }}>
+                        {absoluteIndex + 1}.
+                      </span>
+                      <span className="flex-1 truncate">{gameTypeLabel(e.gameType) ?? e.gameType}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleMoveQueue(absoluteIndex, -1)}
+                        disabled={actionLoading}
+                        aria-label={`Move ${gameTypeLabel(e.gameType) ?? e.gameType} up`}
+                        className="chip"
+                        title={i === 0 ? 'Swap with Up next' : 'Move up'}
+                      >
+                        ↑
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleMoveQueue(absoluteIndex, 1)}
+                        disabled={actionLoading || isLast}
+                        aria-label={`Move ${gameTypeLabel(e.gameType) ?? e.gameType} down`}
+                        className="chip"
+                        style={{ opacity: isLast ? 0.4 : 1 }}
+                      >
+                        ↓
+                      </button>
+                    </li>
+                  )
+                })}
+              </ol>
+              <p className="text-faint text-xs">
+                Rearrange upcoming rounds — the first arrow up swaps a game into &ldquo;Up next&rdquo;. Already-played
+                rounds stay locked.
+              </p>
+            </div>
+          )}
+
+          <div className="space-y-1.5">
+            <PrimaryBtn onClick={handleStartGame} disabled={actionLoading || players.length === 0}>
+              {actionLoading ? 'Starting…' : isFirstGame ? 'Start Tournament' : `Start Round ${queueIndex + 1}`}
+            </PrimaryBtn>
+            <p className="text-faint text-xs text-center">
+              {players.length === 0
+                ? 'Waiting for players to join before you can start.'
+                : 'Creates the game room. Open the host dashboard (new tab) to start it once players have joined.'}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Host Controls — round-robin (planned mode: playlist finished, no more rounds) */}
+      {isHost && !isFinished && !activeGame && roundRobin && queueExhausted && (
+        <div className="glass-card-strong p-5 space-y-2 text-center">
+          <p className="text-body text-sm font-medium">All planned games have been played.</p>
+          <p className="text-faint text-xs">The tournament will finish shortly.</p>
+        </div>
+      )}
+
+      {/* Host Controls — round-robin (freestyle mode: pick game live) */}
+      {isHost && !isFinished && !activeGame && roundRobin && !plannedNext && !queueExhausted && (
         <div className="glass-card-strong p-5 space-y-4">
           <p className="label-caps">Start Next Game</p>
 

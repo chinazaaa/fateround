@@ -15,6 +15,7 @@ import {
   NPAT_DEFAULT_MARKING_TIMER,
   NPAT_DEFAULT_GAME_DURATION,
 } from '@/lib/npat'
+import type { TournamentQueueEntry } from '@/types/tournament'
 
 const supabase = getSupabaseAnon()
 
@@ -25,24 +26,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const { data: body, error: bodyError } = await parseJsonBody(req, addTournamentGameSchema)
   if (bodyError) return bodyError
 
-  const { hostToken, gameType, gameSettings, questionSource, customQuestions } = body
-
-  if (!TOURNAMENT_ELIGIBLE_TYPES.includes(gameType as (typeof TOURNAMENT_ELIGIBLE_TYPES)[number])) {
-    return NextResponse.json({ error: `Game type "${gameType}" is not eligible for tournaments` }, { status: 400 })
-  }
-
-  // Two Truths always plays one lobby-wide round (players submit statements in the
-  // lobby, then everyone guesses per player), so the host doesn't pick a round count.
-  const roundsCount =
-    gameType === 'two_truths' ? 1 : (gameSettings?.rounds_count ?? (gameType === 'trivia' ? TRIVIA_DEFAULT_ROUNDS : 10))
-
-  const rawTimer = gameSettings?.timer_seconds
-  const timerSeconds =
-    gameType === 'trivia'
-      ? clampTriviaTimer(rawTimer)
-      : gameType === 'two_truths'
-        ? clampTtlTimer(rawTimer ?? TTL_DEFAULT_TIMER)
-        : clampNpatTimer(rawTimer ?? NPAT_DEFAULT_TIMER)
+  const { hostToken, gameType: clientGameType, gameSettings, questionSource, customQuestions } = body
 
   const admin = getSupabaseAdmin()
 
@@ -68,6 +52,56 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   if (activeGame) {
     return NextResponse.json({ error: 'A game is already in progress' }, { status: 400 })
   }
+
+  // Planned playlist: when the tournament carries a non-empty game_queue, the
+  // next entry (by count of already-spawned games) dictates the game type and
+  // its per-game settings — the client's picked gameType/gameSettings are
+  // ignored so the tournament can never drift off its saved playlist. Custom
+  // trivia CSVs aren't carried in the queue for MVP; a planned trivia round
+  // uses the platform question bank (with cross-round dedup below).
+  const queue = Array.isArray(tournament.game_queue)
+    ? (tournament.game_queue as unknown as TournamentQueueEntry[]).filter((e): e is TournamentQueueEntry =>
+        Boolean(e && typeof e === 'object' && typeof e.gameType === 'string')
+      )
+    : null
+  const hasQueue = Array.isArray(queue) && queue.length > 0
+  const queueEntry = hasQueue
+    ? await (async () => {
+        const { count } = await admin
+          .from('tournament_games')
+          .select('id', { count: 'exact', head: true })
+          .eq('tournament_id', tournamentId)
+        const index = count ?? 0
+        return index < queue!.length ? { entry: queue![index], index, total: queue!.length } : null
+      })()
+    : null
+
+  if (hasQueue && !queueEntry) {
+    // Playlist exhausted — mark the tournament finished so the client stops
+    // offering "Start Next Game" and shows final standings.
+    await admin.from('tournaments').update({ status: 'finished' }).eq('id', tournamentId)
+    return NextResponse.json({ error: 'All planned games have been played' }, { status: 400 })
+  }
+
+  const gameType = queueEntry ? queueEntry.entry.gameType : clientGameType
+
+  if (!TOURNAMENT_ELIGIBLE_TYPES.includes(gameType as (typeof TOURNAMENT_ELIGIBLE_TYPES)[number])) {
+    return NextResponse.json({ error: `Game type "${gameType}" is not eligible for tournaments` }, { status: 400 })
+  }
+
+  const rawRounds = queueEntry ? queueEntry.entry.roundsCount : gameSettings?.rounds_count
+  // Two Truths always plays one lobby-wide round (players submit statements in the
+  // lobby, then everyone guesses per player), so the host doesn't pick a round count.
+  const roundsCount =
+    gameType === 'two_truths' ? 1 : (rawRounds ?? (gameType === 'trivia' ? TRIVIA_DEFAULT_ROUNDS : 10))
+
+  const rawTimer = queueEntry ? queueEntry.entry.timerSeconds : gameSettings?.timer_seconds
+  const timerSeconds =
+    gameType === 'trivia'
+      ? clampTriviaTimer(rawTimer)
+      : gameType === 'two_truths'
+        ? clampTtlTimer(rawTimer ?? TTL_DEFAULT_TIMER)
+        : clampNpatTimer(rawTimer ?? NPAT_DEFAULT_TIMER)
 
   // Trivia-only: carry question usage and a reusable custom pack across this
   // tournament's *trivia* rounds so questions don't repeat and the host doesn't
@@ -106,8 +140,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     }
   }
 
-  // Effective custom pool (trivia only): an explicit upload wins; otherwise reuse the previous one.
-  const useCustomQuestions = gameType === 'trivia' && questionSource === 'custom'
+  // Effective custom pool (trivia freestyle only): an explicit upload wins;
+  // otherwise reuse the previous one. Planned trivia rounds always use the
+  // platform bank — the queue entry format doesn't carry a CSV payload.
+  const useCustomQuestions = !queueEntry && gameType === 'trivia' && questionSource === 'custom'
   const effectiveCustom = useCustomQuestions
     ? Array.isArray(customQuestions) && customQuestions.length > 0
       ? customQuestions
