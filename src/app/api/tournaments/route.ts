@@ -33,6 +33,7 @@ export async function POST(req: NextRequest) {
     eliminationConfig,
     gameQueue,
     customTriviaPack,
+    branding,
   } = body
   const hostToken = generateToken()
 
@@ -70,6 +71,12 @@ export async function POST(req: NextRequest) {
     )
   }
   const resolvedCustomTriviaPack = parsedCustomTriviaPack.length > 0 ? parsedCustomTriviaPack : null
+
+  // Event branding: drop any all-null branding blob so a "cleared" form
+  // doesn't cost a jsonb row for no reason. Otherwise store as-is (schema
+  // has already validated hex colours + URL shape).
+  const brandingHasAny = branding && (branding.primaryColor || branding.accentColor || branding.logoUrl)
+  const resolvedBranding = brandingHasAny ? branding : null
 
   // Head-to-head (1v1 bracket) and knockout (group elimination) are each played
   // with a single game chosen at creation; knockout also stores its per-round
@@ -123,6 +130,7 @@ export async function POST(req: NextRequest) {
     elimination_config: eliminationConfig ?? null,
     game_queue: resolvedGameQueue,
     custom_trivia_pack: resolvedCustomTriviaPack,
+    branding: resolvedBranding,
   })
 
   if (error) {

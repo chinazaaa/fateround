@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useRef, useState, type CSSProperties } from 'react'
 import { useRouter } from 'next/navigation'
 import { PageShell, Field, Toggle, PrimaryBtn } from '@/components/ui/PageShell'
 import {
@@ -76,6 +76,16 @@ export default function TournamentCreatePage() {
   const [customTriviaPack, setCustomTriviaPack] = useState<TriviaQuestion[]>([])
   const [triviaUploadMsg, setTriviaUploadMsg] = useState<string | null>(null)
   const triviaFileRef = useRef<HTMLInputElement>(null)
+  // Event branding — two colours + a logo file the host optionally attaches.
+  // Logo is uploaded to storage AFTER the tournament row is created (needs an
+  // id + host token to auth the upload), so we hold the picked File in memory
+  // and a data-URL preview until then.
+  const [brandPrimary, setBrandPrimary] = useState<string>('')
+  const [brandAccent, setBrandAccent] = useState<string>('')
+  const [brandLogoFile, setBrandLogoFile] = useState<File | null>(null)
+  const [brandLogoPreview, setBrandLogoPreview] = useState<string | null>(null)
+  const [brandLogoMsg, setBrandLogoMsg] = useState<string | null>(null)
+  const brandLogoRef = useRef<HTMLInputElement>(null)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
 
@@ -146,6 +156,31 @@ export default function TournamentCreatePage() {
 
   function removeQueueEntry(index: number) {
     setQueue((prev) => prev.filter((_, i) => i !== index))
+  }
+
+  function handleBrandLogoFile(file: File) {
+    setBrandLogoMsg(null)
+    // ~1 MB — mirrors the server's cap so the host sees the problem before upload.
+    if (file.size > 1 * 1024 * 1024) {
+      setBrandLogoMsg('Logo must be under 1 MB. Try a smaller file.')
+      return
+    }
+    const okTypes = ['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/svg+xml']
+    if (!okTypes.includes(file.type)) {
+      setBrandLogoMsg('Logo must be a PNG, JPG, WEBP, GIF, or SVG.')
+      return
+    }
+    setBrandLogoFile(file)
+    const reader = new FileReader()
+    reader.onload = () => setBrandLogoPreview(typeof reader.result === 'string' ? reader.result : null)
+    reader.readAsDataURL(file)
+  }
+
+  function clearBrandLogo() {
+    setBrandLogoFile(null)
+    setBrandLogoPreview(null)
+    setBrandLogoMsg(null)
+    if (brandLogoRef.current) brandLogoRef.current.value = ''
   }
 
   async function handleTriviaFile(file: File) {
@@ -221,6 +256,16 @@ export default function TournamentCreatePage() {
       if (Number.isInteger(cap) && cap >= 2 && cap <= 100) {
         body.maxPlayers = cap
       }
+
+      // Branding colours — logo is uploaded separately below (needs the new
+      // tournament id + host token). Attach whatever colours the host picked;
+      // an empty colour just doesn't ship.
+      if (brandPrimary || brandAccent) {
+        body.branding = {
+          ...(brandPrimary ? { primaryColor: brandPrimary } : {}),
+          ...(brandAccent ? { accentColor: brandAccent } : {}),
+        }
+      }
       // Placement points, target game count and lives mode only apply to the
       // round-robin format. Head-to-head and knockout run until one champion.
       if (isRoundRobin) {
@@ -266,6 +311,30 @@ export default function TournamentCreatePage() {
       }
 
       localStorage.setItem(`tournament_host_${data.tournamentCode}`, data.hostToken)
+
+      // Optional logo upload — the tournament exists now and we have a host
+      // token, so we can call the branding upload route. Non-fatal: on failure
+      // we still redirect (the tournament is created and the host can retry
+      // from the tournament page later); we don't want a slow / flaky upload
+      // to strand the host without a tournament.
+      if (brandLogoFile) {
+        try {
+          const fd = new FormData()
+          fd.append('file', brandLogoFile)
+          fd.append('hostToken', data.hostToken)
+          const logoRes = await fetch(`/api/tournaments/${data.tournamentCode}/branding/logo`, {
+            method: 'POST',
+            body: fd,
+          })
+          if (!logoRes.ok) {
+            const logoErr = await logoRes.json().catch(() => ({}))
+            console.error('Logo upload failed:', logoErr)
+          }
+        } catch (uploadErr) {
+          console.error('Logo upload threw:', uploadErr)
+        }
+      }
+
       router.push(`/tournament/${data.tournamentCode}`)
     } catch {
       setError('Something went wrong')
@@ -763,6 +832,146 @@ export default function TournamentCreatePage() {
               })}
             </div>
             <p className="text-faint text-xs mt-2 text-center">7th place and below earn 1pt each</p>
+          </div>
+        )}
+      </div>
+
+      {/* Event branding — optional. Two brand colours + a logo, applied to the
+          lobby, in-game header, and results card. Skipping any field leaves the
+          default palette in place. */}
+      <div className="glass-card-strong p-5 sm:p-6 space-y-4">
+        <div className="flex items-baseline justify-between gap-2 flex-wrap">
+          <p className="label-caps">Event branding (optional)</p>
+          <span className="text-faint text-xs">Shown to players in the lobby &amp; game</span>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Primary colour" htmlFor="brand-primary">
+            <div className="flex items-center gap-2">
+              <input
+                id="brand-primary"
+                type="color"
+                value={brandPrimary || '#7c3aed'}
+                onChange={(e) => setBrandPrimary(e.target.value)}
+                aria-label="Primary brand colour"
+                className="h-10 w-14 rounded-lg border border-theme cursor-pointer"
+              />
+              <input
+                type="text"
+                value={brandPrimary}
+                onChange={(e) => setBrandPrimary(e.target.value)}
+                placeholder="#7c3aed"
+                maxLength={7}
+                className="input-field flex-1 font-mono text-sm"
+              />
+              {brandPrimary && (
+                <button
+                  type="button"
+                  onClick={() => setBrandPrimary('')}
+                  className="btn-ghost text-xs"
+                  aria-label="Clear primary colour"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+          </Field>
+          <Field label="Accent colour" htmlFor="brand-accent">
+            <div className="flex items-center gap-2">
+              <input
+                id="brand-accent"
+                type="color"
+                value={brandAccent || '#f59e0b'}
+                onChange={(e) => setBrandAccent(e.target.value)}
+                aria-label="Accent brand colour"
+                className="h-10 w-14 rounded-lg border border-theme cursor-pointer"
+              />
+              <input
+                type="text"
+                value={brandAccent}
+                onChange={(e) => setBrandAccent(e.target.value)}
+                placeholder="#f59e0b"
+                maxLength={7}
+                className="input-field flex-1 font-mono text-sm"
+              />
+              {brandAccent && (
+                <button
+                  type="button"
+                  onClick={() => setBrandAccent('')}
+                  className="btn-ghost text-xs"
+                  aria-label="Clear accent colour"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+          </Field>
+        </div>
+
+        <Field label="Logo (optional)" htmlFor="brand-logo">
+          <input
+            ref={brandLogoRef}
+            id="brand-logo"
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
+            onChange={(e) => {
+              const f = e.target.files?.[0]
+              if (f) handleBrandLogoFile(f)
+            }}
+            className="hidden"
+          />
+          {brandLogoPreview ? (
+            <div className="surface-inset p-4 flex items-center gap-4">
+              { }
+              <img
+                src={brandLogoPreview}
+                alt="Logo preview"
+                className="h-16 w-16 object-contain rounded-lg"
+                style={{ background: 'var(--surface-inset-bg)' }}
+              />
+              <div className="flex-1 min-w-0">
+                <p className="text-body text-sm font-medium truncate">{brandLogoFile?.name}</p>
+                <p className="text-faint text-xs">
+                  {brandLogoFile ? `${Math.round(brandLogoFile.size / 1024)} KB` : ''} · uploaded when you create
+                </p>
+              </div>
+              <button type="button" onClick={clearBrandLogo} className="btn-ghost text-xs">
+                Remove
+              </button>
+            </div>
+          ) : (
+            <button type="button" onClick={() => brandLogoRef.current?.click()} className="btn-secondary w-full">
+              Choose logo file
+            </button>
+          )}
+          {brandLogoMsg && <p className="text-red-400 text-xs mt-2">{brandLogoMsg}</p>}
+          <p className="text-faint text-xs mt-2">PNG / JPG / WEBP / GIF / SVG — 1 MB max. A square logo works best.</p>
+        </Field>
+
+        {(brandPrimary || brandAccent || brandLogoPreview) && (
+          <div
+            className="surface-inset p-4 space-y-2 flex items-center gap-3"
+            style={{
+              ...(brandPrimary ? ({ '--primary': brandPrimary } as CSSProperties) : {}),
+            }}
+          >
+            {brandLogoPreview && (
+               
+              <img src={brandLogoPreview} alt="" className="h-10 w-10 object-contain" />
+            )}
+            <div className="flex-1">
+              <p className="text-body text-sm font-medium">Preview</p>
+              <p className="text-faint text-xs">
+                Your event will look <span style={{ color: 'var(--primary)', fontWeight: 700 }}>like this</span>
+                {brandAccent && (
+                  <>
+                    {' '}
+                    with <span style={{ color: brandAccent, fontWeight: 700 }}>accent bits</span>
+                  </>
+                )}
+                .
+              </p>
+            </div>
           </div>
         )}
       </div>

@@ -41,6 +41,15 @@ export interface TournamentQueueEntry {
   timerSeconds?: number
 }
 
+// Optional event branding — two colours + a logo — that the host attaches at
+// creation (or edits later). Applied to the lobby, in-game header, and results
+// card via CSS custom properties. Null / all-fields-empty = default palette.
+export interface TournamentBranding {
+  primaryColor?: string | null
+  accentColor?: string | null
+  logoUrl?: string | null
+}
+
 export interface Tournament {
   id: string
   host_token: string
@@ -63,6 +72,9 @@ export interface Tournament {
   // shared trivia pack contains answers. The public GET returns the count
   // separately (as `customTriviaPackCount`) instead of the raw questions.
   custom_trivia_pack?: unknown[] | null
+  // Event branding — two colours + logo. Public info: safe to ship to any
+  // caller with the tournament code (that's the whole point).
+  branding: TournamentBranding | null
   created_at: string
 }
 

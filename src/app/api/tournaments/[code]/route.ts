@@ -14,7 +14,7 @@ const supabase = getSupabaseAnon()
  * so supabase-js can still infer the row type from it. Keep in sync with the table.
  */
 const TOURNAMENT_PUBLIC_SELECT =
-  'id, title, status, placement_points, target_game_count, created_at, elimination_config, max_players, format, game_type, game_config, game_queue, last_knockout_cut_round'
+  'id, title, status, placement_points, target_game_count, created_at, elimination_config, max_players, format, game_type, game_config, game_queue, branding, last_knockout_cut_round'
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
   const { code } = await params
@@ -143,8 +143,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
   const { data: body, error: bodyError } = await parseJsonBody(req, updateTournamentSchema)
   if (bodyError) return bodyError
 
-  const { hostToken, title, placementPoints, targetGameCount, maxPlayers, eliminationConfig, gameConfig, gameQueue } =
-    body
+  const {
+    hostToken,
+    title,
+    placementPoints,
+    targetGameCount,
+    maxPlayers,
+    eliminationConfig,
+    gameConfig,
+    gameQueue,
+    branding,
+  } = body
 
   const admin = getSupabaseAdmin()
   const { data: tournament } = await admin
@@ -258,6 +267,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
   if (targetGameCount !== undefined) updates.target_game_count = targetGameCount
   if (maxPlayers !== undefined) updates.max_players = maxPlayers
   if (editingGameQueue) updates.game_queue = gameQueue
+  // Event branding: hosts can update colours/logo anytime, including mid-run.
+  // An empty-ish branding object clears the row back to the default palette.
+  if (branding !== undefined) {
+    const hasAny = Boolean(branding.primaryColor || branding.accentColor || branding.logoUrl)
+    updates.branding = hasAny ? branding : null
+  }
   if (editingGameConfig) {
     // Merge over the stored config so a partial edit only changes the fields it
     // sends — omitted fields keep their prior value instead of resetting to a

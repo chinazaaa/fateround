@@ -11,10 +11,20 @@ import { MatureGameGate } from '@/components/MatureGameGate'
 import { getPlayerSession } from '@/lib/utils'
 import { gameHasHeaderVoice } from '@/lib/game-types'
 import { useProfile } from '@/hooks/useProfile'
+import { TournamentBrandingWrapper } from '@/components/tournament/BrandingWrapper'
+import type { TournamentBranding } from '@/types/tournament'
 
 const TOURNAMENT_RETURN_SECONDS = 8
 
-function TournamentBanner({ gameCode, tournamentId }: { gameCode: string; tournamentId: string | null }) {
+function TournamentBanner({
+  gameCode,
+  tournamentId,
+  branding,
+}: {
+  gameCode: string
+  tournamentId: string | null
+  branding: TournamentBranding | null
+}) {
   const router = useRouter()
   const [finished, setFinished] = useState(false)
   const [secondsLeft, setSecondsLeft] = useState(TOURNAMENT_RETURN_SECONDS)
@@ -76,9 +86,11 @@ function TournamentBanner({ gameCode, tournamentId }: { gameCode: string; tourna
   }
 
   // Parked top-left (not bottom-centre) so it never sits over the centred
-  // name/join controls — players couldn't edit their name past it.
+  // name/join controls — players couldn't edit their name past it. Renders the
+  // host's event logo beside the back button when the tournament has one, so
+  // players see the brand on every game screen (not just the lobby).
   return (
-    <div className="fixed left-3 top-3 z-50">
+    <div className="fixed left-3 top-3 z-50 flex items-center gap-2">
       <button
         type="button"
         onClick={() => router.push(`/tournament/${tournamentId}`)}
@@ -86,6 +98,15 @@ function TournamentBanner({ gameCode, tournamentId }: { gameCode: string; tourna
       >
         ← Tournament
       </button>
+      {branding?.logoUrl && (
+         
+        <img
+          src={branding.logoUrl}
+          alt=""
+          className="h-8 w-8 object-contain rounded-md shadow-md"
+          style={{ background: 'var(--card-bg, rgba(255,255,255,0.9))' }}
+        />
+      )}
     </div>
   )
 }
@@ -157,8 +178,31 @@ export default function GamePage() {
     }
   }, [gameCode])
 
+  // Fetch the parent tournament's brand colours + logo when this game is part
+  // of a tournament, so the whole game tree inherits the host's palette (via
+  // the CSS-var cascade below) and the top-left banner can show the logo. Uses
+  // the public tournament GET — same endpoint the lobby uses, browser-cached.
+  const [tournamentBranding, setTournamentBranding] = useState<TournamentBranding | null>(null)
+  useEffect(() => {
+    if (!tournamentId) {
+      setTournamentBranding(null)
+      return
+    }
+    let cancelled = false
+    fetch(`/api/tournaments/${tournamentId}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (cancelled) return
+        setTournamentBranding((data?.tournament?.branding as TournamentBranding | null) ?? null)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [tournamentId])
+
   return (
-    <>
+    <TournamentBrandingWrapper branding={tournamentBranding} className="contents">
       <PollGamePlayerExperience gameCode={gameCode} initialName={initialName} autoJoinAsViewer={watch} />
       {/* Content warning for the adult party games. Sits on the shared game route so it
           reaches joiners too — a gate on /create would only ever stop the host. */}
@@ -175,9 +219,9 @@ export default function GamePage() {
           autoJoin={!!profile?.default_voice_on}
         />
       )}
-      <TournamentBanner gameCode={gameCode} tournamentId={tournamentId} />
+      <TournamentBanner gameCode={gameCode} tournamentId={tournamentId} branding={tournamentBranding} />
       {/* {resumeToken && <NowPlayingBar gameCode={gameCode} resumeToken={resumeToken} />} */}
       {playerId && <IosInstallPushNudge gameCode={gameCode} />}
-    </>
+    </TournamentBrandingWrapper>
   )
 }

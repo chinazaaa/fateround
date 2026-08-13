@@ -42,6 +42,17 @@ export const tournamentQueueEntrySchema = z.object({
   timerSeconds: z.coerce.number().int().min(1).max(600).optional(),
 })
 
+// Event branding: two brand colours (validated against #rrggbb) + optional
+// logo URL. The logo is uploaded via a separate route and its URL captured
+// here; the create/update JSON body doesn't accept arbitrary URLs — only the
+// one the upload route just produced.
+const hexColorRegex = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/
+export const tournamentBrandingSchema = z.object({
+  primaryColor: z.string().regex(hexColorRegex, 'Colour must be a hex value like #ff5c00').nullable().optional(),
+  accentColor: z.string().regex(hexColorRegex, 'Colour must be a hex value like #ff5c00').nullable().optional(),
+  logoUrl: z.string().url().max(500).nullable().optional(),
+})
+
 export const createTournamentSchema = z.object({
   title: sanitizedString(1, 100),
   format: z.enum(['round-robin', 'head-to-head', 'knockout', 'school']).optional(),
@@ -60,6 +71,10 @@ export const createTournamentSchema = z.object({
   // re-validates via parseStoredTriviaQuestions before storing so a malformed
   // upload can't reach the DB.
   customTriviaPack: z.array(z.unknown()).max(500).optional(),
+  // Event branding — two colours + a logo URL previously produced by the
+  // per-tournament logo-upload route. Every field optional; null/absent = use
+  // the app's default palette.
+  branding: tournamentBrandingSchema.optional(),
 })
 
 export const updateTournamentSchema = z.object({
@@ -80,6 +95,10 @@ export const updateTournamentSchema = z.object({
   // be rewritten. Only the still-upcoming tail can change. Not accepted while a
   // round is live (a game is in progress).
   gameQueue: z.array(tournamentQueueEntrySchema).min(1).max(20).optional(),
+  // Event branding — hosts can update at any time (colours + previously
+  // uploaded logo URL). The logo itself is uploaded via the separate
+  // /branding/logo route, not through this PATCH body.
+  branding: tournamentBrandingSchema.optional(),
 })
 
 export const joinTournamentSchema = z.object({
