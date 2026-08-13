@@ -124,7 +124,7 @@ export const addTournamentGameSchema = z.object({
 // per round, so a tournament can mix rounds of different games and share one
 // leaderboard. Restricted to "everyone in one lobby" games that produce
 // placements via awardTournamentPlacements.
-export const TOURNAMENT_ELIGIBLE_TYPES = ['trivia', 'i_call_on', 'two_truths'] as const
+export const TOURNAMENT_ELIGIBLE_TYPES = ['trivia', 'i_call_on', 'two_truths', 'who_said_this'] as const
 
 // Head-to-head eligibility + room sizes live in tournament-bracket (a dependency-
 // free module) so the bracket-resolution libs can read them without importing this

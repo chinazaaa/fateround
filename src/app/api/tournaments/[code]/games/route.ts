@@ -91,17 +91,27 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   const rawRounds = queueEntry ? queueEntry.entry.roundsCount : gameSettings?.rounds_count
   // Two Truths always plays one lobby-wide round (players submit statements in the
-  // lobby, then everyone guesses per player), so the host doesn't pick a round count.
+  // lobby, then everyone guesses per player). Who Said This overwrites rounds_count
+  // at game start (one round per submitted quote), so a placeholder of 1 is fine.
   const roundsCount =
-    gameType === 'two_truths' ? 1 : (rawRounds ?? (gameType === 'trivia' ? TRIVIA_DEFAULT_ROUNDS : 10))
+    gameType === 'two_truths' || gameType === 'who_said_this'
+      ? 1
+      : (rawRounds ?? (gameType === 'trivia' ? TRIVIA_DEFAULT_ROUNDS : 10))
 
   const rawTimer = queueEntry ? queueEntry.entry.timerSeconds : gameSettings?.timer_seconds
+  // Who Said This carries the per-round guess timer in `timer_seconds`; the main
+  // /api/games create route locks it to 15/30/60 with a 30s default.
+  const wstAllowedTimers = [15, 30, 60] as const
+  const clampWstTimer = (raw: unknown): number =>
+    wstAllowedTimers.includes(Number(raw) as (typeof wstAllowedTimers)[number]) ? Number(raw) : 30
   const timerSeconds =
     gameType === 'trivia'
       ? clampTriviaTimer(rawTimer)
       : gameType === 'two_truths'
         ? clampTtlTimer(rawTimer ?? TTL_DEFAULT_TIMER)
-        : clampNpatTimer(rawTimer ?? NPAT_DEFAULT_TIMER)
+        : gameType === 'who_said_this'
+          ? clampWstTimer(rawTimer)
+          : clampNpatTimer(rawTimer ?? NPAT_DEFAULT_TIMER)
 
   // Trivia-only: carry question usage and a reusable custom pack across this
   // tournament's *trivia* rounds so questions don't repeat and the host doesn't
@@ -180,7 +190,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const gameHostToken = generateToken()
 
   // Per-game extras: trivia carries its question source + prior pool usage;
-  // i_call_on needs its marking timer + whole-game timer; two_truths needs neither.
+  // i_call_on needs its marking timer + whole-game timer; two_truths needs
+  // neither. Who Said This runs in player-submit mode (each joiner submits one
+  // quote in the lobby, then everyone guesses) — no deck upload required.
   const perGameExtras: Record<string, unknown> =
     gameType === 'trivia'
       ? {
@@ -193,7 +205,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
             operative_timer_seconds: clampNpatMarkingTimer(NPAT_DEFAULT_MARKING_TIMER),
             game_duration_seconds: clampNpatGameDuration(NPAT_DEFAULT_GAME_DURATION),
           }
-        : {}
+        : gameType === 'who_said_this'
+          ? { wst_quote_source: 'player' }
+          : {}
 
   const { error: gameError } = await admin.from('games').insert({
     id: gameCode,

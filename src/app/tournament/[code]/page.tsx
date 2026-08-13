@@ -2304,8 +2304,8 @@ export default function TournamentLobbyPage() {
               {gameTypeLabel(plannedNext.gameType) ?? plannedNext.gameType}
             </p>
             <p className="text-faint text-xs">
-              {plannedNext.gameType === 'two_truths'
-                ? `${plannedNext.timerSeconds ?? 45}s per guess`
+              {plannedNext.gameType === 'two_truths' || plannedNext.gameType === 'who_said_this'
+                ? `${plannedNext.timerSeconds ?? (plannedNext.gameType === 'two_truths' ? 45 : 30)}s per guess`
                 : `${plannedNext.roundsCount ?? 10} rounds · ${plannedNext.timerSeconds ?? 30}s timer`}
             </p>
           </div>
@@ -2401,6 +2401,10 @@ export default function TournamentLobbyPage() {
                 } else if (next === 'two_truths') {
                   // Two Truths always plays one lobby-wide round (forced server-side).
                   setTimerSeconds('45')
+                } else if (next === 'who_said_this') {
+                  // Round count comes from submitted quotes at game start; only the
+                  // per-guess timer is host-settable here.
+                  setTimerSeconds('30')
                 }
               }}
               className="input-field"
@@ -2416,8 +2420,12 @@ export default function TournamentLobbyPage() {
             </p>
           </Field>
 
-          <div className={selectedGameType === 'two_truths' ? '' : 'grid grid-cols-2 gap-3'}>
-            {selectedGameType !== 'two_truths' && (
+          <div
+            className={
+              selectedGameType === 'two_truths' || selectedGameType === 'who_said_this' ? '' : 'grid grid-cols-2 gap-3'
+            }
+          >
+            {selectedGameType !== 'two_truths' && selectedGameType !== 'who_said_this' && (
               <Field label="Rounds" htmlFor="tg-rounds">
                 <input
                   id="tg-rounds"

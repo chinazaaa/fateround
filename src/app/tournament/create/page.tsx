@@ -93,6 +93,10 @@ export default function TournamentCreatePage() {
     } else if (next === 'two_truths') {
       // Two Truths is always one lobby-wide round; rounds input is hidden.
       setDraftTimer('45')
+    } else if (next === 'who_said_this') {
+      // Round count comes from submitted quotes at game start; only the timer
+      // is host-settable here.
+      setDraftTimer('30')
     }
   }
 
@@ -101,7 +105,9 @@ export default function TournamentCreatePage() {
       gameType: draftGameType,
       timerSeconds: Math.max(1, parseInt(draftTimer, 10) || 30),
     }
-    if (draftGameType !== 'two_truths') {
+    // Two Truths and Who Said This don't take a host-settable round count —
+    // the game engine determines rounds at start time.
+    if (draftGameType !== 'two_truths' && draftGameType !== 'who_said_this') {
       entry.roundsCount = Math.max(1, parseInt(draftRounds, 10) || 10)
     }
     setQueue((prev) => [...prev, entry])
@@ -258,7 +264,7 @@ export default function TournamentCreatePage() {
                   : 'Everyone plays together each round; the bottom half is knocked out until one champion remains. Round of 16 → Quarterfinal → Semifinal → Final.'
                 : isSchool
                   ? 'School Whot: everyone starts in the lowest class and is grouped with classmates into a timed Whot room (up to 5) each round. Empty your hand to climb a class; when time’s up the player left holding the most cards repeats. Get stuck with no one left to play and you’re out. First to graduate past the top class wins.'
-                  : 'Everyone plays each round together — pick a game per round (Trivia, I Call On, Two Truths, or repeat). Placements across all rounds feed one leaderboard.'}
+                  : 'Everyone plays each round together — pick a game per round (Trivia, I Call On, Two Truths, Who Said This, or repeat). Placements across all rounds feed one leaderboard.'}
           </p>
         </div>
 
@@ -344,8 +350,8 @@ export default function TournamentCreatePage() {
                         {gameTypeLabel(entry.gameType) ?? entry.gameType}
                       </p>
                       <p className="text-faint text-xs">
-                        {entry.gameType === 'two_truths'
-                          ? `${entry.timerSeconds ?? 45}s per guess`
+                        {entry.gameType === 'two_truths' || entry.gameType === 'who_said_this'
+                          ? `${entry.timerSeconds ?? (entry.gameType === 'two_truths' ? 45 : 30)}s per guess`
                           : `${entry.roundsCount ?? 10} rounds · ${entry.timerSeconds ?? 30}s`}
                       </p>
                     </div>
@@ -400,8 +406,12 @@ export default function TournamentCreatePage() {
                   ))}
                 </select>
               </Field>
-              <div className={draftGameType === 'two_truths' ? '' : 'grid grid-cols-2 gap-3'}>
-                {draftGameType !== 'two_truths' && (
+              <div
+                className={
+                  draftGameType === 'two_truths' || draftGameType === 'who_said_this' ? '' : 'grid grid-cols-2 gap-3'
+                }
+              >
+                {draftGameType !== 'two_truths' && draftGameType !== 'who_said_this' && (
                   <Field label="Rounds" htmlFor="queue-draft-rounds">
                     <input
                       id="queue-draft-rounds"
