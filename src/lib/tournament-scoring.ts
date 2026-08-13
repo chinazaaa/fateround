@@ -364,9 +364,9 @@ export async function awardTournamentPlacements(supabase: SupabaseClient, gameId
   const gameType = game.game_type?.toLowerCase() ?? ''
   if (gameType === 'trivia') {
     placements = await computeTriviaPlacements(supabase, gameId, playerMap)
-  } else if (gameType === 'npat') {
+  } else if (gameType === 'i_call_on') {
     placements = await computeNpatPlacements(supabase, gameId, playerMap)
-  } else if (gameType === 'two-truths') {
+  } else if (gameType === 'two_truths') {
     placements = await computeTwoTruthsPlacements(supabase, gameId, playerMap)
   }
 

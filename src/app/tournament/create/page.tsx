@@ -198,7 +198,7 @@ export default function TournamentCreatePage() {
                   : 'Everyone plays together each round; the bottom half is knocked out until one champion remains. Round of 16 → Quarterfinal → Semifinal → Final.'
                 : isSchool
                   ? 'School Whot: everyone starts in the lowest class and is grouped with classmates into a timed Whot room (up to 5) each round. Empty your hand to climb a class; when time’s up the player left holding the most cards repeats. Get stuck with no one left to play and you’re out. First to graduate past the top class wins.'
-                  : 'Everyone plays each game together and earns placement points across multiple games.'}
+                  : 'Everyone plays each round together — pick a game per round (Trivia, I Call On, Two Truths, or repeat). Placements across all rounds feed one leaderboard.'}
           </p>
         </div>
 

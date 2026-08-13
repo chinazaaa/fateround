@@ -5,6 +5,16 @@ import { generateGameCode, generateToken } from '@/lib/utils'
 import { addTournamentGameSchema, TOURNAMENT_ELIGIBLE_TYPES } from '@/lib/tournament-validation'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { parseJsonBody } from '@/lib/parse-body'
+import { clampTriviaTimer, TRIVIA_DEFAULT_ROUNDS } from '@/lib/trivia'
+import { clampTtlTimer, TTL_DEFAULT_TIMER } from '@/lib/two-truths'
+import {
+  clampNpatTimer,
+  clampNpatMarkingTimer,
+  clampNpatGameDuration,
+  NPAT_DEFAULT_TIMER,
+  NPAT_DEFAULT_MARKING_TIMER,
+  NPAT_DEFAULT_GAME_DURATION,
+} from '@/lib/npat'
 
 const supabase = getSupabaseAnon()
 
@@ -21,7 +31,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     return NextResponse.json({ error: `Game type "${gameType}" is not eligible for tournaments` }, { status: 400 })
   }
 
-  const roundsCount = gameSettings?.rounds_count ?? 10
+  // Two Truths always plays one lobby-wide round (players submit statements in the
+  // lobby, then everyone guesses per player), so the host doesn't pick a round count.
+  const roundsCount =
+    gameType === 'two_truths' ? 1 : (gameSettings?.rounds_count ?? (gameType === 'trivia' ? TRIVIA_DEFAULT_ROUNDS : 10))
+
+  const rawTimer = gameSettings?.timer_seconds
+  const timerSeconds =
+    gameType === 'trivia'
+      ? clampTriviaTimer(rawTimer)
+      : gameType === 'two_truths'
+        ? clampTtlTimer(rawTimer ?? TTL_DEFAULT_TIMER)
+        : clampNpatTimer(rawTimer ?? NPAT_DEFAULT_TIMER)
 
   const admin = getSupabaseAdmin()
 
@@ -48,49 +69,53 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     return NextResponse.json({ error: 'A game is already in progress' }, { status: 400 })
   }
 
-  // Carry question usage across the tournament's games so the same questions
-  // don't repeat from one game to the next, and let the host reuse the previous
-  // custom set when they don't upload a new one.
-  const { data: priorTournamentGames } = await admin
-    .from('tournament_games')
-    .select('game_id')
-    .eq('tournament_id', tournamentId)
-  const priorGameIds = (priorTournamentGames ?? []).map((g) => g.game_id)
-
+  // Trivia-only: carry question usage and a reusable custom pack across this
+  // tournament's *trivia* rounds so questions don't repeat and the host doesn't
+  // have to re-upload their CSV between games. Rounds of other game types are
+  // ignored here — merging their state would either be nonsense or leak content.
   let seededPoolUsage: { trivia: Record<string, number> } | null = null
   let previousCustom: unknown[] | null = null
-  if (priorGameIds.length > 0) {
-    const { data: priorGames } = await admin
-      .from('games')
-      .select('id, pool_usage, custom_questions, created_at')
-      .in('id', priorGameIds)
-    const mergedTrivia: Record<string, number> = {}
-    let latestCustom: { created_at: string; questions: unknown[] } | null = null
-    for (const g of priorGames ?? []) {
-      const trivia = (g.pool_usage as { trivia?: Record<string, number> } | null)?.trivia ?? {}
-      for (const [key, count] of Object.entries(trivia)) {
-        mergedTrivia[key] = (mergedTrivia[key] ?? 0) + (count as number)
-      }
-      if (Array.isArray(g.custom_questions) && g.custom_questions.length > 0) {
-        if (!latestCustom || String(g.created_at) > latestCustom.created_at) {
-          latestCustom = { created_at: String(g.created_at), questions: g.custom_questions }
+  if (gameType === 'trivia') {
+    const { data: priorTournamentGames } = await admin
+      .from('tournament_games')
+      .select('game_id')
+      .eq('tournament_id', tournamentId)
+    const priorGameIds = (priorTournamentGames ?? []).map((g) => g.game_id).filter((id): id is string => Boolean(id))
+
+    if (priorGameIds.length > 0) {
+      const { data: priorGames } = await admin
+        .from('games')
+        .select('id, game_type, pool_usage, custom_questions, created_at')
+        .in('id', priorGameIds)
+      const mergedTrivia: Record<string, number> = {}
+      let latestCustom: { created_at: string; questions: unknown[] } | null = null
+      for (const g of priorGames ?? []) {
+        if (g.game_type !== 'trivia') continue
+        const trivia = (g.pool_usage as { trivia?: Record<string, number> } | null)?.trivia ?? {}
+        for (const [key, count] of Object.entries(trivia)) {
+          mergedTrivia[key] = (mergedTrivia[key] ?? 0) + (count as number)
+        }
+        if (Array.isArray(g.custom_questions) && g.custom_questions.length > 0) {
+          if (!latestCustom || String(g.created_at) > latestCustom.created_at) {
+            latestCustom = { created_at: String(g.created_at), questions: g.custom_questions }
+          }
         }
       }
+      if (Object.keys(mergedTrivia).length > 0) seededPoolUsage = { trivia: mergedTrivia }
+      previousCustom = latestCustom?.questions ?? null
     }
-    if (Object.keys(mergedTrivia).length > 0) seededPoolUsage = { trivia: mergedTrivia }
-    previousCustom = latestCustom?.questions ?? null
   }
 
-  // Effective custom pool: an explicit upload wins; otherwise reuse the previous one.
-  const effectiveCustom =
-    questionSource === 'custom'
-      ? Array.isArray(customQuestions) && customQuestions.length > 0
-        ? customQuestions
-        : previousCustom
-      : null
-  const useCustomQuestions = questionSource === 'custom' && Array.isArray(effectiveCustom) && effectiveCustom.length > 0
+  // Effective custom pool (trivia only): an explicit upload wins; otherwise reuse the previous one.
+  const useCustomQuestions = gameType === 'trivia' && questionSource === 'custom'
+  const effectiveCustom = useCustomQuestions
+    ? Array.isArray(customQuestions) && customQuestions.length > 0
+      ? customQuestions
+      : previousCustom
+    : null
+  const hasCustom = useCustomQuestions && Array.isArray(effectiveCustom) && effectiveCustom.length > 0
 
-  if (questionSource === 'custom' && (!Array.isArray(effectiveCustom) || effectiveCustom.length < roundsCount)) {
+  if (useCustomQuestions && (!Array.isArray(effectiveCustom) || effectiveCustom.length < roundsCount)) {
     return NextResponse.json(
       {
         error:
@@ -118,19 +143,33 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   const gameHostToken = generateToken()
 
+  // Per-game extras: trivia carries its question source + prior pool usage;
+  // i_call_on needs its marking timer + whole-game timer; two_truths needs neither.
+  const perGameExtras: Record<string, unknown> =
+    gameType === 'trivia'
+      ? {
+          question_source: hasCustom ? 'custom' : 'platform',
+          custom_questions: hasCustom ? effectiveCustom : null,
+          ...(seededPoolUsage ? { pool_usage: seededPoolUsage } : {}),
+        }
+      : gameType === 'i_call_on'
+        ? {
+            operative_timer_seconds: clampNpatMarkingTimer(NPAT_DEFAULT_MARKING_TIMER),
+            game_duration_seconds: clampNpatGameDuration(NPAT_DEFAULT_GAME_DURATION),
+          }
+        : {}
+
   const { error: gameError } = await admin.from('games').insert({
     id: gameCode,
     host_token: gameHostToken,
     title: `${tournament.title} - Game`,
     game_type: gameType,
-    // Trivia is the only eligible type; it joins by free name like a normal lobby game.
+    // Every round-robin-eligible game joins by free name like a normal lobby game.
     participant_mode: 'joiners',
     rounds_count: roundsCount,
-    timer_seconds: gameSettings?.timer_seconds ?? 30,
+    timer_seconds: timerSeconds,
     tournament_id: tournamentId,
-    question_source: useCustomQuestions ? 'custom' : 'platform',
-    custom_questions: useCustomQuestions ? effectiveCustom : null,
-    ...(seededPoolUsage ? { pool_usage: seededPoolUsage } : {}),
+    ...perGameExtras,
   })
 
   if (gameError) {

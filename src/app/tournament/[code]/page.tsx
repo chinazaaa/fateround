@@ -64,25 +64,6 @@ function winReasonLabel(reason?: string | null): string {
   }
 }
 
-const GAME_TYPE_LABELS: Record<string, string> = {
-  trivia: 'Trivia',
-  scrabble: 'Word Tiles',
-  yahtzee: 'Five Dice',
-  ludo: 'Ludo',
-  whot: 'Whot',
-  'crazy-eights': 'Crazy Eights',
-  uno: 'Match Up',
-  monopoly: 'Estate Kings',
-  'word-hunt': 'Word Hunt',
-  'i-call-on': 'I Call On',
-  chess: 'Chess',
-  checkers: 'Checkers',
-  bingo: 'Bingo',
-  'who-said-this': 'Who Said This',
-  'describe-it': 'Describe It',
-  codewords: 'Codewords',
-}
-
 export default function TournamentLobbyPage() {
   const { code } = useParams<{ code: string }>()
   const router = useRouter()
@@ -2264,29 +2245,49 @@ export default function TournamentLobbyPage() {
             <select
               id="tg-game-type"
               value={selectedGameType}
-              onChange={(e) => setSelectedGameType(e.target.value)}
+              onChange={(e) => {
+                const next = e.target.value
+                setSelectedGameType(next)
+                // Reset the two shared fields to that game's sensible defaults —
+                // hosts can still edit them before starting.
+                if (next === 'trivia') {
+                  setRoundsCount('10')
+                  setTimerSeconds('30')
+                } else if (next === 'i_call_on') {
+                  setRoundsCount('5')
+                  setTimerSeconds('60')
+                } else if (next === 'two_truths') {
+                  // Two Truths always plays one lobby-wide round (forced server-side).
+                  setTimerSeconds('45')
+                }
+              }}
               className="input-field"
             >
               {TOURNAMENT_ELIGIBLE_TYPES.map((t) => (
                 <option key={t} value={t}>
-                  {GAME_TYPE_LABELS[t] ?? t}
+                  {gameTypeLabel(t) ?? t}
                 </option>
               ))}
             </select>
+            <p className="text-faint text-xs mt-1.5">
+              Mix game types across rounds — every round&apos;s placements feed the same leaderboard.
+            </p>
           </Field>
 
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Rounds" htmlFor="tg-rounds">
-              <input
-                id="tg-rounds"
-                type="number"
-                value={roundsCount}
-                onChange={(e) => setRoundsCount(e.target.value)}
-                min={1}
-                max={100}
-                className="input-field"
-              />
-            </Field>
+          <div className={selectedGameType === 'two_truths' ? '' : 'grid grid-cols-2 gap-3'}>
+            {selectedGameType !== 'two_truths' && (
+              <Field label="Rounds" htmlFor="tg-rounds">
+                <input
+                  id="tg-rounds"
+                  type="number"
+                  value={roundsCount}
+                  onChange={(e) => setRoundsCount(e.target.value)}
+                  min={1}
+                  max={100}
+                  className="input-field"
+                />
+              </Field>
+            )}
             <Field label="Timer (s)" htmlFor="tg-timer">
               <input
                 id="tg-timer"
