@@ -25,6 +25,12 @@ import { GameLinkQrModal } from '@/components/GameLinkQrModal'
 import { tournamentHostUrl, shareOrigin } from '@/lib/site'
 import { copyToClipboard } from '@/lib/copy'
 import {
+  estimateGameSeconds,
+  estimatePlaylistSeconds,
+  formatEstimatedDuration,
+  TIMING_PLAYER_FALLBACK,
+} from '@/lib/tournament-timing'
+import {
   TournamentGameConfigFields,
   defaultGameConfigValue,
   gameConfigValueFromStored,
@@ -1101,7 +1107,13 @@ export default function TournamentLobbyPage() {
         <div className="glass-card p-5 space-y-2">
           <div className="flex items-center justify-between gap-2">
             <p className="label-caps">Tournament lineup</p>
-            <span className="text-faint text-xs">{queueEntries.length} games</span>
+            <span className="text-faint text-xs">
+              {queueEntries.length} games · ≈{' '}
+              {formatEstimatedDuration(
+                estimatePlaylistSeconds(queueEntries, players.length > 0 ? players.length : TIMING_PLAYER_FALLBACK)
+              )}{' '}
+              total
+            </span>
           </div>
           <ol className="space-y-1.5">
             {queueEntries.map((e, absoluteIndex) => {
@@ -1143,9 +1155,15 @@ export default function TournamentLobbyPage() {
                       {isUpNext && !isPlayingNow && <span className="text-faint text-xs font-normal"> · up next</span>}
                     </p>
                     <p className="text-faint text-xs">
-                      {e.gameType === 'two_truths' || e.gameType === 'who_said_this'
-                        ? `${e.timerSeconds ?? (e.gameType === 'two_truths' ? 45 : 30)}s per guess`
-                        : `${e.roundsCount ?? 10} rounds · ${e.timerSeconds ?? 30}s`}
+                      {e.gameType === 'trivia'
+                        ? `${e.roundsCount ?? 10} questions · ${e.timerSeconds ?? 30}s each`
+                        : e.gameType === 'two_truths' || e.gameType === 'who_said_this'
+                          ? `${e.timerSeconds ?? (e.gameType === 'two_truths' ? 45 : 30)}s per guess`
+                          : `${e.roundsCount ?? 10} rounds · ${e.timerSeconds ?? 30}s`}
+                      {' · ≈ '}
+                      {formatEstimatedDuration(
+                        estimateGameSeconds(e, players.length > 0 ? players.length : TIMING_PLAYER_FALLBACK)
+                      )}
                     </p>
                   </div>
                   {isImmediatelyAfterUpNext && (
@@ -2477,7 +2495,7 @@ export default function TournamentLobbyPage() {
             }
           >
             {selectedGameType !== 'two_truths' && selectedGameType !== 'who_said_this' && (
-              <Field label="Rounds" htmlFor="tg-rounds">
+              <Field label={selectedGameType === 'trivia' ? 'Questions' : 'Rounds'} htmlFor="tg-rounds">
                 <input
                   id="tg-rounds"
                   type="number"

@@ -13,6 +13,13 @@ import {
 import type { TournamentQueueEntry } from '@/types/tournament'
 import { gameTypeLabel } from '@/lib/game-types'
 import {
+  estimateGameSeconds,
+  estimatePlaylistSeconds,
+  formatEstimatedDuration,
+  isPlayerCountDependent,
+  TIMING_PLAYER_FALLBACK,
+} from '@/lib/tournament-timing'
+import {
   Stepper,
   TournamentGameConfigFields,
   defaultGameConfigValue,
@@ -327,7 +334,15 @@ export default function TournamentCreatePage() {
 
         {isRoundRobin && planned && (
           <div className="surface-inset p-4 space-y-3">
-            <p className="label-caps">Games in this tournament</p>
+            <div className="flex items-baseline justify-between gap-2 flex-wrap">
+              <p className="label-caps">Games in this tournament</p>
+              {queue.length > 0 && (
+                <p className="text-faint text-xs">
+                  ≈ {formatEstimatedDuration(estimatePlaylistSeconds(queue, TIMING_PLAYER_FALLBACK))} for{' '}
+                  {TIMING_PLAYER_FALLBACK} players
+                </p>
+              )}
+            </div>
 
             {queue.length === 0 ? (
               <p className="text-faint text-xs">No games yet — add your first below.</p>
@@ -350,9 +365,13 @@ export default function TournamentCreatePage() {
                         {gameTypeLabel(entry.gameType) ?? entry.gameType}
                       </p>
                       <p className="text-faint text-xs">
-                        {entry.gameType === 'two_truths' || entry.gameType === 'who_said_this'
-                          ? `${entry.timerSeconds ?? (entry.gameType === 'two_truths' ? 45 : 30)}s per guess`
-                          : `${entry.roundsCount ?? 10} rounds · ${entry.timerSeconds ?? 30}s`}
+                        {entry.gameType === 'trivia'
+                          ? `${entry.roundsCount ?? 10} questions · ${entry.timerSeconds ?? 30}s each`
+                          : entry.gameType === 'two_truths' || entry.gameType === 'who_said_this'
+                            ? `${entry.timerSeconds ?? (entry.gameType === 'two_truths' ? 45 : 30)}s per guess`
+                            : `${entry.roundsCount ?? 10} rounds · ${entry.timerSeconds ?? 30}s`}
+                        {' · ≈ '}
+                        {formatEstimatedDuration(estimateGameSeconds(entry, TIMING_PLAYER_FALLBACK))}
                       </p>
                     </div>
                     <button
@@ -412,7 +431,7 @@ export default function TournamentCreatePage() {
                 }
               >
                 {draftGameType !== 'two_truths' && draftGameType !== 'who_said_this' && (
-                  <Field label="Rounds" htmlFor="queue-draft-rounds">
+                  <Field label={draftGameType === 'trivia' ? 'Questions' : 'Rounds'} htmlFor="queue-draft-rounds">
                     <input
                       id="queue-draft-rounds"
                       type="number"
