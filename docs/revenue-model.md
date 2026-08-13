@@ -1,5 +1,11 @@
 # Revenue Model — Pricing & Launch Plan
 
+> ⚠️ **Superseded by [`revenue-model-v3.md`](./revenue-model-v3.md) (Aug 2026).** v3 replaces the
+> consumer-subscription strategy below with an organiser-facing, pay-per-event model. **This file
+> is retained for its still-valid research**, which v3 carries forward by reference: §1 (Naira-first
+> pricing, Paystack + Stripe rails, IP detection) and §4 (refunds, VAT, dunning, invoicing). The
+> tier structure in §2 and the launch timeline in §3 are **no longer the plan**.
+>
 > Status: **Revised strategy (Aug 2026), v2.** Supersedes the earlier "Pro Host + Cosmetics"
 > one-time-purchase model that previously lived in this file (see git history if you need it).
 > Companion docs: [`account-tiers.md`](./account-tiers.md) · [`clubs-spec.md`](./clubs-spec.md) ·

@@ -55,9 +55,19 @@ export const RATE_LIMITS = {
   // Public write into the shared question-pack library (audit finding M3). Submitting a pack
   // is a deliberate, occasional action, so this is deliberately much tighter than gameplay.
   librarySubmit: { bucket: 'library-submit', max: 20, windowSeconds: 3600 },
-  // Unauthenticated outbound proxy to the Anthropic API (audit finding M7). The caller
-  // supplies their own key so there is no cost to us, but it shouldn't be a free relay.
-  aiQuestions: { bucket: 'ai-questions', max: 60, windowSeconds: 300 },
+  // Outbound proxy to the Anthropic API — we now supply the key, so every generation
+  // costs us money. Two buckets are checked together: a short burst limit stops
+  // scripted floods, and a per-day cap sizes overall exposure. Both are per-IP.
+  //
+  // Rough budget maths: ~15 generations/IP/day × (up to 50 items each) × sonnet
+  // pricing ≈ single-digit dollars per active IP per day. Real hosts generate one
+  // deck per event; the ceiling is a scripted-abuse backstop, not a UX gate.
+  //
+  // Until real accounts/entitlements exist (v3 revenue plan §7), this is the only
+  // gate — no plan check, no per-user cap. When billing lands, drop the daily
+  // limit for paying hosts and keep the burst limit as a safety valve.
+  aiQuestions: { bucket: 'ai-questions', max: 10, windowSeconds: 300 },
+  aiQuestionsDaily: { bucket: 'ai-questions-daily', max: 15, windowSeconds: 86_400 },
   // Returns whole-session snapshots, so it's worth a flood backstop alongside the token
   // check added for audit finding M4.
   gameSnapshots: { bucket: 'game-snapshots', max: 300, windowSeconds: 300 },

@@ -30,14 +30,22 @@ const requestSchema = z.object({
       'world_culture',
     ])
     .optional(),
-  apiKey: z.string().min(1, 'A Claude API key is required to generate questions'),
 })
 
 export async function POST(req: NextRequest) {
-  // The caller supplies their own Claude key, so this costs us nothing — but it is still an
-  // unauthenticated outbound proxy and shouldn't be usable as a free relay (audit finding M7).
-  const limited = await enforceRateLimit(req, RATE_LIMITS.aiQuestions)
-  if (limited) return limited
+  // We host the Claude key ourselves now, so every request costs real money.
+  // Two per-IP caps run in series — a short-window burst limit and a day-window
+  // ceiling. Until billing/entitlements exist (revenue-model-v3.md §7), this is
+  // the only gate against a runaway spend.
+  const burstLimited = await enforceRateLimit(req, RATE_LIMITS.aiQuestions)
+  if (burstLimited) return burstLimited
+  const dailyLimited = await enforceRateLimit(req, RATE_LIMITS.aiQuestionsDaily)
+  if (dailyLimited) return dailyLimited
+
+  const apiKey = process.env.ANTHROPIC_API_KEY
+  if (!apiKey) {
+    return NextResponse.json({ error: 'AI generation is not configured on this server.' }, { status: 503 })
+  }
 
   let body: unknown
   try {
@@ -51,7 +59,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
   }
 
-  const { gameType, count, theme, customPrompt, triviaCategory, apiKey } = parsed.data
+  const { gameType, count, theme, customPrompt, triviaCategory } = parsed.data
 
   try {
     const result = await generateAiQuestions({
