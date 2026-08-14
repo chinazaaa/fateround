@@ -105,6 +105,10 @@ export default function TournamentLobbyPage() {
   const [selectedGameType, setSelectedGameType] = useState('trivia')
   const [roundsCount, setRoundsCount] = useState('10')
   const [timerSeconds, setTimerSeconds] = useState('30')
+  // Big-screen display mode for the game this freestyle picker is about to
+  // spawn. Defaults phone_only so an event with no projector never opts
+  // into the projector rendering by accident.
+  const [selectedBigScreenMode, setSelectedBigScreenMode] = useState<'phone_only' | 'projector'>('phone_only')
   // Head-to-head: shared per-player chess clock for a round's matches.
   // Fallback per-player clock sent when starting a round for older chess
   // tournaments whose game_config has no stored timer (newer ones set it at
@@ -615,6 +619,9 @@ export default function TournamentLobbyPage() {
               },
           questionSource: useCustom ? 'custom' : 'platform',
           customQuestions: useCustom ? customTrivia : null,
+          // Freestyle mode picks its own big-screen mode; planned mode
+          // reads it off the queue entry (server ignores what we send).
+          bigScreenMode: useQueue ? undefined : selectedBigScreenMode,
         }),
       })
       const data = await res.json()
@@ -2623,6 +2630,32 @@ export default function TournamentLobbyPage() {
                 />
               </Field>
             </div>
+
+            <Field label="Big screen">
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  aria-pressed={selectedBigScreenMode === 'phone_only'}
+                  onClick={() => setSelectedBigScreenMode('phone_only')}
+                  className={`chip flex-1 ${selectedBigScreenMode === 'phone_only' ? 'chip-active' : ''}`}
+                >
+                  📱 Phone only
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={selectedBigScreenMode === 'projector'}
+                  onClick={() => setSelectedBigScreenMode('projector')}
+                  className={`chip flex-1 ${selectedBigScreenMode === 'projector' ? 'chip-active' : ''}`}
+                >
+                  🖥 On the projector
+                </button>
+              </div>
+              <p className="text-faint text-xs mt-1.5">
+                {selectedBigScreenMode === 'projector'
+                  ? 'Big screen shows the current question/letter; phones are the answer buttons.'
+                  : 'Big screen shows the leaderboard only; players read from their phones.'}
+              </p>
+            </Field>
 
             {/* Trivia question source */}
             {selectedGameType === 'trivia' && (

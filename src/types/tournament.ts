@@ -39,6 +39,10 @@ export interface TournamentQueueEntry {
   gameType: string
   roundsCount?: number
   timerSeconds?: number
+  /** Display mode for this game — 'projector' shows the game's current state
+   *  on the big screen (question / letter / etc.); 'phone_only' (default)
+   *  leaves the big screen on the leaderboard. */
+  bigScreenMode?: 'phone_only' | 'projector'
 }
 
 // Optional event branding — two colours + a logo — that the host attaches at
@@ -127,4 +131,8 @@ export interface TournamentGame {
   // How the match was decided (e.g. 'checkmate', 'timeout', 'resignation', 'walkover').
   win_reason?: string | null
   is_bye: boolean
+  // 'projector' → big-screen renders the game's current state (question /
+  // letter / etc.); 'phone_only' (default) → big-screen stays on leaderboard.
+  // Frozen at game spawn; can't change mid-game.
+  big_screen_mode?: 'phone_only' | 'projector'
 }

@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useCallback, useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
+import { supabase } from '@/lib/supabase'
 import { GameLinkQrCode } from '@/components/GameLinkQrCode'
 import { TournamentBrandingWrapper } from '@/components/tournament/BrandingWrapper'
 import { useTournamentRealtime } from '@/hooks/useTournamentRealtime'
@@ -12,6 +13,7 @@ import { estimateGameSeconds, formatEstimatedDuration, TIMING_PLAYER_FALLBACK } 
 import { formatCountdown, formatScheduledFor } from '@/lib/tournament-schedule'
 import { shareOrigin, tournamentInviteUrl } from '@/lib/site'
 import type { Tournament, TournamentGame, TournamentPlayer } from '@/types/tournament'
+import { GameProjectorPanel } from '@/components/tournament/projector/GameProjectorPanel'
 
 /**
  * Projector / TV view for a tournament. Full-viewport, dark, no host chrome,
@@ -77,6 +79,30 @@ export default function TournamentBigScreenPage() {
     return () => clearInterval(t)
   }, [fetchState])
 
+  // Active game's game_type — hoisted above the early returns so the React
+  // hook order stays stable across renders. Only used when big_screen_mode
+  // is 'projector'; harmless when the tournament isn't yet loaded (id is null).
+  const activeGameIdForType = games.find((g) => g.status === 'active' && Boolean(g.game_id))?.game_id ?? null
+  const [activeGameType, setActiveGameType] = useState<string | null>(null)
+  useEffect(() => {
+    if (!activeGameIdForType) {
+      setActiveGameType(null)
+      return
+    }
+    let cancelled = false
+    void supabase
+      .from('games')
+      .select('game_type')
+      .eq('id', activeGameIdForType)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!cancelled) setActiveGameType((data?.game_type as string | null) ?? null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [activeGameIdForType])
+
   if (loading) {
     return <div className="fixed inset-0 flex items-center justify-center bg-black text-white text-2xl">Loading…</div>
   }
@@ -136,6 +162,8 @@ export default function TournamentBigScreenPage() {
       <main className="flex-1 flex flex-col justify-center px-10 py-8 min-h-0">
         {isFinished ? (
           <FinishedPodium podium={podium} standings={standings} />
+        ) : activeGame && activeGame.big_screen_mode === 'projector' && activeGameType && activeGame.game_id ? (
+          <GameProjectorPanel gameType={activeGameType} gameCode={activeGame.game_id} />
         ) : !activeGame && !finishedGames.length ? (
           <WaitingRoom
             tournament={tournament}

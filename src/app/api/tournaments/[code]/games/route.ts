@@ -26,7 +26,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const { data: body, error: bodyError } = await parseJsonBody(req, addTournamentGameSchema)
   if (bodyError) return bodyError
 
-  const { hostToken, gameType: clientGameType, gameSettings, questionSource, customQuestions } = body
+  const {
+    hostToken,
+    gameType: clientGameType,
+    gameSettings,
+    questionSource,
+    customQuestions,
+    bigScreenMode: clientBigScreenMode,
+  } = body
 
   const admin = getSupabaseAdmin()
 
@@ -246,11 +253,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   const nextOrder = (lastGame?.game_order ?? 0) + 1
 
+  // Display mode: planned mode reads it from the queue entry (host chose it
+  // at tournament creation); freestyle reads it from the client body. Only
+  // 'phone_only' | 'projector' are valid — schema already narrows.
+  const bigScreenMode = (queueEntry ? queueEntry.entry.bigScreenMode : clientBigScreenMode) ?? 'phone_only'
+
   const { error: tgError } = await admin.from('tournament_games').insert({
     tournament_id: tournamentId,
     game_id: gameCode,
     game_order: nextOrder,
     status: 'active',
+    big_screen_mode: bigScreenMode,
   })
 
   if (tgError) {

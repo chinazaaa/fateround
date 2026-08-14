@@ -69,6 +69,10 @@ export default function TournamentCreatePage() {
   const [draftGameType, setDraftGameType] = useState<string>(TOURNAMENT_ELIGIBLE_TYPES[0])
   const [draftRounds, setDraftRounds] = useState<string>('10')
   const [draftTimer, setDraftTimer] = useState<string>('30')
+  // Per-entry display mode. Default off (phone-only) — the projector big-
+  // screen mode is a deliberate host choice per game, so hosts who never
+  // set up a projector aren't accidentally opted in.
+  const [draftBigScreenMode, setDraftBigScreenMode] = useState<'phone_only' | 'projector'>('phone_only')
   // Optional shared trivia pack for every planned Trivia round in this
   // tournament. Only surfaced when the playlist actually contains a Trivia
   // entry. Empty = platform bank (today's default).
@@ -139,6 +143,7 @@ export default function TournamentCreatePage() {
     const entry: TournamentQueueEntry = {
       gameType: draftGameType,
       timerSeconds: Math.max(1, parseInt(draftTimer, 10) || 30),
+      bigScreenMode: draftBigScreenMode,
     }
     // Two Truths and Who Said This don't take a host-settable round count —
     // the game engine determines rounds at start time.
@@ -525,6 +530,9 @@ export default function TournamentCreatePage() {
                     <div className="flex-1 min-w-0">
                       <p className="text-body text-sm font-medium truncate">
                         {gameTypeLabel(entry.gameType) ?? entry.gameType}
+                        <span className="text-faint text-xs font-normal ml-2">
+                          {entry.bigScreenMode === 'projector' ? '🖥' : '📱'}
+                        </span>
                       </p>
                       <p className="text-faint text-xs">
                         {entry.gameType === 'trivia'
@@ -617,6 +625,33 @@ export default function TournamentCreatePage() {
                   />
                 </Field>
               </div>
+              <Field label="Big screen">
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    aria-pressed={draftBigScreenMode === 'phone_only'}
+                    onClick={() => setDraftBigScreenMode('phone_only')}
+                    className={`chip flex-1 ${draftBigScreenMode === 'phone_only' ? 'chip-active' : ''}`}
+                    title="Big screen shows leaderboard only; players read from their phones"
+                  >
+                    📱 Phone only
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={draftBigScreenMode === 'projector'}
+                    onClick={() => setDraftBigScreenMode('projector')}
+                    className={`chip flex-1 ${draftBigScreenMode === 'projector' ? 'chip-active' : ''}`}
+                    title="Big screen shows the current question/letter/etc. — Kahoot style"
+                  >
+                    🖥 On the projector
+                  </button>
+                </div>
+                <p className="text-faint text-xs mt-1.5">
+                  {draftBigScreenMode === 'projector'
+                    ? 'Big screen shows the current question or letter; phones become the answer buttons. Best when you have a TV/projector in the room.'
+                    : 'Everyone reads on their phone; big screen shows the leaderboard only. Pick this if there’s no screen in the room.'}
+                </p>
+              </Field>
               <button
                 type="button"
                 onClick={addQueueEntry}

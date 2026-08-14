@@ -40,6 +40,7 @@ export const tournamentQueueEntrySchema = z.object({
   gameType: z.string().min(1).max(40),
   roundsCount: z.coerce.number().int().min(1).max(100).optional(),
   timerSeconds: z.coerce.number().int().min(1).max(600).optional(),
+  bigScreenMode: z.enum(['phone_only', 'projector']).optional(),
 })
 
 // Event branding: two brand colours (validated against #rrggbb) + optional
@@ -147,6 +148,8 @@ export const addTournamentGameSchema = z.object({
   // Custom trivia questions uploaded by the host. Loosely typed here and
   // re-validated server-side at game start via parseStoredTriviaQuestions.
   customQuestions: z.array(z.unknown()).max(1000).optional().nullable(),
+  // Freestyle-mode display mode (planned mode pulls this from the queue entry).
+  bigScreenMode: z.enum(['phone_only', 'projector']).optional(),
 })
 
 // Games eligible for the round-robin (all-vs-all) format — the host picks a game
