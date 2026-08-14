@@ -52,7 +52,6 @@ export function WinnerCertificate({
       {/* Top: logo (if set) + "Certificate of Achievement" */}
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
         {tournament.branding?.logoUrl && (
-           
           <img
             src={tournament.branding.logoUrl}
             alt=""

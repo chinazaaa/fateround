@@ -99,7 +99,6 @@ function TournamentBanner({
         ← Tournament
       </button>
       {branding?.logoUrl && (
-         
         <img
           src={branding.logoUrl}
           alt=""

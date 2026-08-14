@@ -133,7 +133,6 @@ export function UpcomingTournamentsCard() {
                     style={{ background: 'var(--surface-inset-bg)' }}
                   >
                     {r.tournament.branding?.logoUrl && (
-                       
                       <img
                         src={r.tournament.branding.logoUrl}
                         alt=""
