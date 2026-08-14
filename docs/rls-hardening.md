@@ -194,17 +194,28 @@ missing the column cannot corrupt anything.
 | Game | Column | Route | Web readers | Mobile reader | Playtested | Migration |
 |---|---|---|---|---|---|---|
 | Codewords | `codewords_boards.key` | ✅ `/api/codewords/board` | ✅ | ✅ | ✅ | ✅ 20260803170000 |
-| Describe It | `describe_it_sessions.current_word` | ✅ `/api/describe-it/my-word` | ✅ player, host | ✅ | ❌ **required** | ✅ 20260807130000 |
+| Describe It | `describe_it_sessions.current_word` + `used_words` | ✅ `/api/describe-it/my-word` | ✅ player, host | ✅ | ✅ | ✅ 20260807130000 |
 | Quick Draw | `quick_draw_guess_sessions.current_word` | ❌ | ❌ | ❌ | ❌ | ❌ **open leak** |
 
 **Quick Draw is the same leak, still open**: `current_word` is in `QUICK_DRAW_GUESS_SESSION_SELECT`
 on web and mobile, and `QuickDrawGuessPlay.tsx` / `QuickDrawPlayerView.tsx` only *render* it for
 the drawer. Copy the Describe It slice verbatim to close it.
 
+**Check for shadow copies of the secret.** `used_words` is revoked alongside `current_word`, not
+left readable: every write that sets `current_word` also appends it, so `used_words[last]` **is**
+the current word and revoking only `current_word` would have moved the leak rather than closed it.
+A generated `word_seq` (`cardinality(used_words)`) is granted in their place, because the one
+legitimate client use of `used_words` was "the word changed" — a count, which reveals nothing.
+
 Describe It playtest focus: the word rotates on every correct guess **and** every skip without
-`turn_index` changing, so the refetch is keyed on `used_words.length` (every write that sets
-`current_word` also appends to `used_words`). Watch that the describer's word changes the instant
-a guess lands, on a skip, and at a turn/describer change — on web, mobile, and as a host-player.
+`turn_index` changing, so the refetch is keyed on `word_seq`. Watch that the describer's word
+changes the instant a guess lands, on a skip, and at a turn/describer change — on web, mobile,
+and as a host-player.
+
+Playtested 2026-08-13 against a fully-migrated local database: exactly one player (the describer)
+receives the word and everyone else gets a `200` with `null`; the word rotates on both a correct
+guess and a skip with `word_seq` advancing; `current_word` and `used_words` are both refused
+(42501) to the publishable anon key, confirmed from a real browser session as a guesser.
 
 ## Progress log
 
