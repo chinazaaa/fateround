@@ -27,6 +27,7 @@ import { TournamentEventPackCard } from '@/components/tournament/EventPackCard'
 import { ScheduledEventCard } from '@/components/tournament/ScheduledEventCard'
 import { TournamentTransferHostControl } from '@/components/tournament/TournamentTransferHostControl'
 import { TournamentHostNominationBanner } from '@/components/tournament/TournamentHostNominationBanner'
+import { TournamentIosInstallPushNudge } from '@/components/tournament/TournamentIosInstallPushNudge'
 import { GameLinkQrModal } from '@/components/GameLinkQrModal'
 import { tournamentHostUrl, shareOrigin } from '@/lib/site'
 import { copyToClipboard } from '@/lib/copy'
@@ -2739,6 +2740,14 @@ export default function TournamentLobbyPage() {
         myPlayerId={me?.id ?? null}
         resumeToken={myCode || null}
       />
+      {/* iOS-only PWA install hint — only appears when the viewer holds a
+          role, is on un-installed iOS, and hasn't dismissed. */}
+      {tournament.scheduled_at && (
+        <TournamentIosInstallPushNudge
+          tournamentCode={tournamentId}
+          hasRole={Boolean((joined && myCode) || (isHost && hostToken))}
+        />
+      )}
     </PageShell>
   )
 }

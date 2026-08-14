@@ -2,11 +2,14 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import type { Tournament } from '@/types/tournament'
+
 import { buildTournamentIcs, formatCountdown, formatScheduledFor, icsBlob } from '@/lib/tournament-schedule'
 import { estimatePlaylistSeconds, TIMING_PLAYER_FALLBACK } from '@/lib/tournament-timing'
 import { downloadBlobAsFile, shareFilenameStem } from '@/lib/share-image'
 import { shareOrigin, tournamentHostUrl, tournamentInviteUrl, tournamentPlayerResumeUrl } from '@/lib/site'
 import { useToast } from '@/components/ui/Toast'
+import { isIos, isStandalone, isSubscribed, pushSupported } from '@/lib/push-client'
+import { subscribeToTournamentPush, unsubscribeFromTournamentPush } from '@/lib/tournament-push-client'
 
 /**
  * Shown at the top of the tournament lobby when the host set a scheduled_at.
@@ -119,15 +122,93 @@ export function ScheduledEventCard({
           )}
         </p>
       )}
-      <button type="button" onClick={handleDownloadIcs} className="btn-secondary btn-fit text-sm mx-auto">
-        📅{' '}
-        {role === 'host' ? 'Add to my calendar (host)' : role === 'player' ? 'Add to my calendar' : 'Add to calendar'}
-      </button>
+      <div className="flex flex-wrap items-center justify-center gap-2">
+        <button type="button" onClick={handleDownloadIcs} className="btn-secondary btn-fit text-sm">
+          📅{' '}
+          {role === 'host' ? 'Add to my calendar (host)' : role === 'player' ? 'Add to my calendar' : 'Add to calendar'}
+        </button>
+        {(playerToken || hostToken) && (
+          <PushSubscribeToggle
+            tournamentCode={tournament.id}
+            playerToken={playerToken ?? null}
+            hostToken={hostToken ?? null}
+          />
+        )}
+      </div>
       <p className="text-faint text-xs">
         Your calendar will alert you 1 hour before, 10 minutes before, and at start.
         {role === 'player' && ' Tapping the alert opens the lobby with your seat still saved.'}
         {role === 'host' && ' Tapping the alert restores your host controls.'}
       </p>
     </div>
+  )
+}
+
+/**
+ * Small pill that opts this browser into push reminders for the tournament.
+ * Hidden when push isn't supported (Firefox iOS, unsupported browser). On
+ * iOS without a home-screen install, this hides too — the sibling
+ * TournamentIosInstallPushNudge handles that case instead.
+ */
+function PushSubscribeToggle({
+  tournamentCode,
+  playerToken,
+  hostToken,
+}: {
+  tournamentCode: string
+  playerToken: string | null
+  hostToken: string | null
+}) {
+  const { success, error } = useToast()
+  const [supported, setSupported] = useState(false)
+  const [subscribed, setSubscribed] = useState(false)
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    // iOS Safari without home-screen install has no push at all — hide the
+    // toggle entirely; TournamentIosInstallPushNudge nudges those users
+    // toward installing the PWA first.
+    if (!process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY) return
+    if (isIos() && !isStandalone()) return
+    if (!pushSupported()) return
+    setSupported(true)
+    void isSubscribed().then((s) => setSubscribed(s))
+  }, [])
+
+  const toggle = useCallback(async () => {
+    if (busy) return
+    setBusy(true)
+    try {
+      if (subscribed) {
+        const ok = await unsubscribeFromTournamentPush(tournamentCode)
+        if (ok) {
+          setSubscribed(false)
+          success('Reminders off for this device')
+        } else {
+          error('Could not turn off reminders')
+        }
+      } else {
+        const ok = await subscribeToTournamentPush(tournamentCode, {
+          resumeToken: playerToken ?? undefined,
+          hostToken: hostToken ?? undefined,
+        })
+        if (ok) {
+          setSubscribed(true)
+          success("You'll get pinged 15 min before + at start")
+        } else {
+          error('Notifications blocked — check your browser settings')
+        }
+      }
+    } finally {
+      setBusy(false)
+    }
+  }, [busy, subscribed, tournamentCode, playerToken, hostToken, success, error])
+
+  if (!supported) return null
+
+  return (
+    <button type="button" onClick={toggle} disabled={busy} className="btn-secondary btn-fit text-sm">
+      {subscribed ? '🔔 Reminders on' : '🔕 Remind me'}
+    </button>
   )
 }
