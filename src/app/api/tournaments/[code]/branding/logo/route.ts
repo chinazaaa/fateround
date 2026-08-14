@@ -9,7 +9,20 @@ import { enforceRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
 // into `tournaments.branding.logoUrl` so the lobby, in-game header, and
 // results card all pick it up from the existing tournament GET.
 
-const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/svg+xml']
+// SVG is deliberately EXCLUDED. It was accepted behind a "first 200 bytes contain
+// <svg" sniff, on the reasoning that hosts uploading their own event logo are
+// trusted — but a host is anyone who created a tournament, which needs no account.
+// Since the bucket is public-read, that made this an open, unsanitised file host on
+// our own Supabase domain: an SVG is XML that can carry <script>, <foreignObject>
+// and external references, so it doubles as a phishing page hosted under our name.
+// The cross-origin boundary limits what such a script could steal from the app, but
+// it does nothing about the hosting abuse itself.
+//
+// Raster formats have no equivalent problem — they are validated by magic bytes and
+// can't carry script. Organisers essentially always have a PNG, so the cost of
+// dropping SVG is close to zero. To re-enable it, add a real sanitiser
+// (DOMPurify/svg-sanitize) first; the byte sniff is not one.
+const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
 const MAX_SIZE = 1 * 1024 * 1024 // 1MB — logos should be small; blocks anyone stuffing photos.
 
 const MAGIC_BYTES: Record<string, number[]> = {
@@ -29,28 +42,17 @@ function extFromMime(mime: string): string {
       return 'webp'
     case 'image/gif':
       return 'gif'
-    case 'image/svg+xml':
-      return 'svg'
     default:
       return 'png'
   }
 }
 
-// SVG doesn't have a magic-byte signature, so it's validated with a text sniff
-// below. Everything else goes through this table.
+// Every accepted type has a magic-byte signature, so an unknown MIME returning
+// false here means "reject" rather than "needs another code path".
 function validateMagicBytes(buffer: Uint8Array, mime: string): boolean {
   const expected = MAGIC_BYTES[mime]
   if (!expected) return false
   return expected.every((byte, i) => buffer[i] === byte)
-}
-
-// Cheap SVG guard: check the first ~200 bytes contain "<svg" — enough to
-// reject a mislabelled binary but NOT a real sanitiser. For MVP we accept
-// that hosts uploading their own event's SVG are trusted; if that changes,
-// swap in a proper sanitiser (DOMPurify/svg-sanitize).
-function looksLikeSvg(buffer: Uint8Array): boolean {
-  const head = new TextDecoder('utf-8', { fatal: false }).decode(buffer.slice(0, 200)).toLowerCase()
-  return head.includes('<svg')
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
@@ -96,7 +98,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     }
 
     if (!ALLOWED_TYPES.includes(file.type)) {
-      return NextResponse.json({ error: 'File must be an image (png, jpg, webp, gif, svg)' }, { status: 400 })
+      return NextResponse.json({ error: 'Logo must be a PNG, JPG, WebP or GIF image' }, { status: 400 })
     }
 
     if (file.size > MAX_SIZE) {
@@ -104,7 +106,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     }
 
     const buffer = new Uint8Array(await file.arrayBuffer())
-    const contentValid = file.type === 'image/svg+xml' ? looksLikeSvg(buffer) : validateMagicBytes(buffer, file.type)
+    const contentValid = validateMagicBytes(buffer, file.type)
     if (!contentValid) {
       return NextResponse.json({ error: 'File content does not match its type' }, { status: 400 })
     }
@@ -124,6 +126,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     // Only AFTER the new file is safely stored: clean up logos left at other
     // extensions by a previous format. Doing this first meant a failed upload
     // deleted the working logo and left branding.logoUrl pointing at a 404.
+    // 'svg' stays in the CLEANUP list even though it's no longer an accepted
+    // upload type: logos uploaded before SVG was dropped still exist in the
+    // bucket, and re-uploading is how a host replaces one.
     const oldPaths = ['png', 'jpg', 'webp', 'gif', 'svg']
       .filter((e) => e !== ext)
       .map((e) => `${tournamentId}/logo.${e}`)
@@ -171,7 +176,8 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ c
     if (!tournament) return NextResponse.json({ error: 'Tournament not found' }, { status: 404 })
     if (tournament.host_token !== hostToken) return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
 
-    // Try every extension since we don't know which the host originally uploaded.
+    // Try every extension since we don't know which the host originally uploaded
+    // — including 'svg', which is no longer accepted but may exist from before.
     const paths = ['png', 'jpg', 'webp', 'gif', 'svg'].map((e) => `${tournamentId}/logo.${e}`)
     await admin.storage.from('tournament-branding').remove(paths)
 

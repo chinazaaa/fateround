@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { z } from 'zod'
 import { generateAiQuestions, AI_QUESTION_GAME_TYPES } from '@/lib/ai-questions'
-import { enforceRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
+import { enforceRateLimit, enforceGlobalLimit, RATE_LIMITS } from '@/lib/rate-limit'
 
 const requestSchema = z.object({
   gameType: z.enum(AI_QUESTION_GAME_TYPES as [string, ...string[]]),
@@ -34,13 +34,21 @@ const requestSchema = z.object({
 
 export async function POST(req: NextRequest) {
   // We host the Claude key ourselves now, so every request costs real money.
-  // Two per-IP caps run in series — a short-window burst limit and a day-window
-  // ceiling. Until billing/entitlements exist (revenue-model-v3.md §7), this is
-  // the only gate against a runaway spend.
+  // Three caps run in series, and the ORDER matters: each check reserves a slot
+  // as it passes, so the cheapest, most-likely-to-reject one goes first. Putting
+  // the shared global budget last means a caller who trips their own per-IP
+  // limits never consumes any of it.
+  //
+  //   1. per-IP burst  — stops a scripted flood
+  //   2. per-IP daily  — sizes one caller's share
+  //   3. global daily  — the hard ceiling on the bill; per-IP limits can't bound
+  //                      the total, since cycling IPs resets them
   const burstLimited = await enforceRateLimit(req, RATE_LIMITS.aiQuestions)
   if (burstLimited) return burstLimited
   const dailyLimited = await enforceRateLimit(req, RATE_LIMITS.aiQuestionsDaily)
   if (dailyLimited) return dailyLimited
+  const globalLimited = await enforceGlobalLimit(RATE_LIMITS.aiQuestionsGlobalDaily)
+  if (globalLimited) return globalLimited
 
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) {

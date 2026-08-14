@@ -56,18 +56,34 @@ export const RATE_LIMITS = {
   // is a deliberate, occasional action, so this is deliberately much tighter than gameplay.
   librarySubmit: { bucket: 'library-submit', max: 20, windowSeconds: 3600 },
   // Outbound proxy to the Anthropic API — we now supply the key, so every generation
-  // costs us money. Two buckets are checked together: a short burst limit stops
-  // scripted floods, and a per-day cap sizes overall exposure. Both are per-IP.
+  // costs us money. THREE buckets guard it (see the ai-questions route for order).
   //
-  // Rough budget maths: ~15 generations/IP/day × (up to 50 items each) × sonnet
-  // pricing ≈ single-digit dollars per active IP per day. Real hosts generate one
-  // deck per event; the ceiling is a scripted-abuse backstop, not a UX gate.
-  //
-  // Until real accounts/entitlements exist (v3 revenue plan §7), this is the only
-  // gate — no plan check, no per-user cap. When billing lands, drop the daily
-  // limit for paying hosts and keep the burst limit as a safety valve.
+  // The two per-IP buckets shape individual behaviour: a short burst limit stops
+  // scripted floods, a per-day cap sizes one caller's share. Real hosts generate a
+  // deck or two per event, so these are abuse backstops rather than UX gates.
   aiQuestions: { bucket: 'ai-questions', max: 10, windowSeconds: 300 },
   aiQuestionsDaily: { bucket: 'ai-questions-daily', max: 15, windowSeconds: 86_400 },
+  // …but per-IP limits CANNOT bound total spend, and that asymmetry cuts both ways:
+  // a school or church hall behind one NAT shares a single 15/day allowance between
+  // forty people, while one attacker on mobile data resets theirs by cycling IPs.
+  // Neither case is capped by the buckets above.
+  //
+  // So this bucket is keyed to a CONSTANT, not an IP — one global counter for the
+  // whole app per day. It is the only hard ceiling on the Anthropic bill until real
+  // accounts and entitlements exist (revenue-model-v3.md §8), and unlike the others
+  // it fails CLOSED: see enforceGlobalLimit.
+  //
+  // Sizing: worst case is max × 4096 output tokens (the route's max_tokens). At 200
+  // that is ~820k output tokens/day — low tens of dollars at the very worst, and far
+  // less in practice since most decks are a fraction of that ceiling. Tune per
+  // environment with AI_QUESTIONS_GLOBAL_DAILY_MAX without a deploy.
+  //
+  // This is a backstop, not a budget: set a spend alert on the Anthropic account too.
+  aiQuestionsGlobalDaily: {
+    bucket: 'ai-questions-global-daily',
+    max: Number(process.env.AI_QUESTIONS_GLOBAL_DAILY_MAX) || 200,
+    windowSeconds: 86_400,
+  },
   // Multipart upload into storage. A host sets their event logo once or twice, so this
   // is deliberately tight — it only has to clear a host fiddling with a few images.
   tournamentLogoUpload: { bucket: 'tournament-logo-upload', max: 30, windowSeconds: 300 },
@@ -135,5 +151,56 @@ export async function enforceRateLimit(req: Request, rule: RateLimitRule): Promi
     return null
   } catch {
     return null // fail open
+  }
+}
+
+/**
+ * Reserve one hit against an APP-WIDE counter for `rule` — no IP in the key, so
+ * every caller shares one budget. Returns a ready-to-return response when the
+ * app is over the cap, or `null` to proceed.
+ *
+ * For guarding a metered third-party spend, where per-IP limits are structurally
+ * unable to bound the total: an attacker cycling IPs gets a fresh per-IP
+ * allowance every time, but the same global counter every time.
+ *
+ * **Fails CLOSED**, which is the opposite of `enforceRateLimit`. That difference
+ * is deliberate. Failing open is right for gameplay, where the cost of a DB blip
+ * is a blocked player; here the cost is an uncapped bill on someone else's API,
+ * and a DB outage is exactly when nobody is watching the dashboard. A 503 is
+ * recoverable; an unbounded spend is not. Callers should treat it as
+ * "temporarily unavailable", not as an error worth retrying hard.
+ */
+export async function enforceGlobalLimit(rule: RateLimitRule): Promise<NextResponse | null> {
+  const unavailable = () =>
+    NextResponse.json({ error: 'This feature is temporarily unavailable — please try again later.' }, { status: 503 })
+
+  try {
+    // Constant key: one row for the whole app, deliberately not per-IP. Not
+    // hashed — there's no address in it to protect.
+    const { data, error } = await getSupabaseAdmin().rpc('api_rate_limit_touch', {
+      p_key: `${rule.bucket}:global`,
+      p_window_seconds: rule.windowSeconds,
+    })
+    if (error) return unavailable() // fail closed
+
+    const row = Array.isArray(data) ? data[0] : data
+    const count = row?.attempt_count as number | undefined
+    // No row back means the reservation didn't actually happen, so we can't
+    // prove we're under the cap. Treat it like an outage rather than assuming
+    // zero usage — assuming zero is how a broken counter turns into an
+    // unbounded bill.
+    if (typeof count !== 'number') return unavailable() // fail closed
+    if (count > rule.max) {
+      const start = row?.window_started_at ? new Date(row.window_started_at as string).getTime() : Date.now()
+      const remainingMs = rule.windowSeconds * 1000 - (Date.now() - start)
+      const retryAfterSec = Math.max(1, Math.ceil(remainingMs / 1000))
+      return NextResponse.json(
+        { error: "This feature has hit today's usage limit. It resets within 24 hours." },
+        { status: 429, headers: { 'Retry-After': String(retryAfterSec) } }
+      )
+    }
+    return null
+  } catch {
+    return unavailable() // fail closed
   }
 }

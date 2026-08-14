@@ -174,9 +174,11 @@ export default function TournamentCreatePage() {
       setBrandLogoMsg('Logo must be under 1 MB. Try a smaller file.')
       return
     }
-    const okTypes = ['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/svg+xml']
+    // Keep in sync with ALLOWED_TYPES in /api/tournaments/[code]/branding/logo.
+    // SVG is excluded on purpose — see that route for why.
+    const okTypes = ['image/png', 'image/jpeg', 'image/webp', 'image/gif']
     if (!okTypes.includes(file.type)) {
-      setBrandLogoMsg('Logo must be a PNG, JPG, WEBP, GIF, or SVG.')
+      setBrandLogoMsg('Logo must be a PNG, JPG, WEBP or GIF.')
       return
     }
     setBrandLogoFile(file)
@@ -998,7 +1000,7 @@ export default function TournamentCreatePage() {
             ref={brandLogoRef}
             id="brand-logo"
             type="file"
-            accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
+            accept="image/png,image/jpeg,image/webp,image/gif"
             onChange={(e) => {
               const f = e.target.files?.[0]
               if (f) handleBrandLogoFile(f)
@@ -1030,7 +1032,7 @@ export default function TournamentCreatePage() {
             </button>
           )}
           {brandLogoMsg && <p className="text-red-400 text-xs mt-2">{brandLogoMsg}</p>}
-          <p className="text-faint text-xs mt-2">PNG / JPG / WEBP / GIF / SVG — 1 MB max. A square logo works best.</p>
+          <p className="text-faint text-xs mt-2">PNG / JPG / WEBP / GIF — 1 MB max. A square logo works best.</p>
         </Field>
 
         {(brandPrimary || brandAccent || brandLogoPreview) && (
