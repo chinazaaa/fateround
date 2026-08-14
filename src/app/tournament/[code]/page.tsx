@@ -22,6 +22,7 @@ import { TournamentShareLeaderboard } from '@/components/tournament/TournamentSh
 import { TournamentBracketBoard } from '@/components/tournament/TournamentBracketBoard'
 import { TournamentContinueCard, TournamentResumeEntry } from '@/components/tournament/TournamentPlayerCode'
 import { TournamentBrandingWrapper } from '@/components/tournament/BrandingWrapper'
+import { TournamentEventPackCard } from '@/components/tournament/EventPackCard'
 import { GameLinkQrModal } from '@/components/GameLinkQrModal'
 import { tournamentHostUrl, shareOrigin } from '@/lib/site'
 import { copyToClipboard } from '@/lib/copy'
@@ -2372,6 +2373,11 @@ export default function TournamentLobbyPage() {
           games={games}
           highlightPlayerId={me?.id ?? null}
         />
+
+        {/* Post-event pack — proof-of-event artifacts for the organiser (P4).
+            Certificate + CSV; the standings image lives on the leaderboard
+            above already. Only shown once the tournament has ended. */}
+        {isFinished && <TournamentEventPackCard tournament={tournament} players={players} games={games} />}
 
         {/* Knockout round results — how the field narrowed each round. */}
         {knockoutTrivia && knockoutResultRounds.length > 0 && (
