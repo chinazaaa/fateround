@@ -6,6 +6,7 @@ import { useParams } from 'next/navigation'
 import { GameLinkQrCode } from '@/components/GameLinkQrCode'
 import { TournamentBrandingWrapper } from '@/components/tournament/BrandingWrapper'
 import { useTournamentRealtime } from '@/hooks/useTournamentRealtime'
+import { useTournamentPresence } from '@/hooks/useTournamentPresence'
 import { gameTypeLabel } from '@/lib/game-types'
 import { estimateGameSeconds, formatEstimatedDuration, TIMING_PLAYER_FALLBACK } from '@/lib/tournament-timing'
 import { formatCountdown, formatScheduledFor } from '@/lib/tournament-schedule'
@@ -59,6 +60,13 @@ export default function TournamentBigScreenPage() {
   }, [fetchState])
 
   useTournamentRealtime(tournamentId, fetchState)
+
+  // Realtime presence — pass `null` so the big-screen device LISTENS for
+  // present players without publishing itself (a projector shouldn't be
+  // counted as a pre-registered player). The count is displayed on the
+  // waiting-room and live panels so the host + room see the real turnout.
+  const presentKeys = useTournamentPresence(tournamentId, null)
+  const presentPlayerCount = players.filter((p) => presentKeys.has(p.id)).length
 
   // Slow polling backstop: realtime covers most transitions but a game
   // starting/finishing writes to `games` (not `tournament_games` directly),
@@ -129,7 +137,14 @@ export default function TournamentBigScreenPage() {
         {isFinished ? (
           <FinishedPodium podium={podium} standings={standings} />
         ) : !activeGame && !finishedGames.length ? (
-          <WaitingRoom tournament={tournament} players={players} inviteUrl={inviteUrl} queueEntries={queueEntries} />
+          <WaitingRoom
+            tournament={tournament}
+            players={players}
+            inviteUrl={inviteUrl}
+            queueEntries={queueEntries}
+            presentKeys={presentKeys}
+            presentPlayerCount={presentPlayerCount}
+          />
         ) : (
           <LivePanel
             tournament={tournament}
@@ -164,11 +179,18 @@ function WaitingRoom({
   players,
   inviteUrl,
   queueEntries,
+  presentKeys,
+  presentPlayerCount,
 }: {
   tournament: Tournament
   players: TournamentPlayer[]
   inviteUrl: string
   queueEntries: Tournament['game_queue']
+  /** Presence keys observed on the tournament's realtime channel — used to
+   *  light up a green dot per player row so the whole room sees who's actually
+   *  in the lobby right now vs who just registered. */
+  presentKeys: Set<string>
+  presentPlayerCount: number
 }) {
   return (
     <div className="flex flex-col gap-6 h-full">
@@ -195,6 +217,11 @@ function WaitingRoom({
             <p className="text-2xl text-white/70">
               {players.length}
               {tournament.max_players ? ` / ${tournament.max_players}` : ''} player{players.length === 1 ? '' : 's'}
+              {presentPlayerCount > 0 && (
+                <span className="ml-3" style={{ color: 'var(--primary, #fff)', fontWeight: 700 }}>
+                  · {presentPlayerCount} here now
+                </span>
+              )}
             </p>
           </div>
           {players.length === 0 ? (
@@ -203,15 +230,30 @@ function WaitingRoom({
             </div>
           ) : (
             <div className="grid grid-cols-2 xl:grid-cols-3 gap-3 overflow-y-auto pr-2">
-              {players.map((p) => (
-                <div
-                  key={p.id}
-                  className="rounded-xl border border-white/20 px-4 py-3 text-xl font-medium truncate"
-                  style={{ background: 'rgba(255,255,255,0.06)' }}
-                >
-                  {p.player_name}
-                </div>
-              ))}
+              {players.map((p) => {
+                const isHere = presentKeys.has(p.id)
+                return (
+                  <div
+                    key={p.id}
+                    className="rounded-xl border border-white/20 px-4 py-3 text-xl font-medium truncate flex items-center gap-2"
+                    style={{
+                      background: isHere ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.04)',
+                      opacity: isHere ? 1 : 0.55,
+                    }}
+                  >
+                    <span
+                      aria-hidden
+                      className="inline-block h-2.5 w-2.5 rounded-full shrink-0"
+                      style={{
+                        background: isHere ? 'var(--primary, #fff)' : 'transparent',
+                        border: isHere ? undefined : '1px solid rgba(255,255,255,0.4)',
+                        boxShadow: isHere ? '0 0 8px var(--primary, #fff)' : undefined,
+                      }}
+                    />
+                    <span className="truncate">{p.player_name}</span>
+                  </div>
+                )
+              })}
             </div>
           )}
           {queueEntries && queueEntries.length > 0 && (

@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useTournamentRealtime } from '@/hooks/useTournamentRealtime'
+import { useTournamentPresence } from '@/hooks/useTournamentPresence'
 import type { Tournament, TournamentPlayer, TournamentGame } from '@/types/tournament'
 import type { TriviaQuestion } from '@/types'
 import { TOURNAMENT_ELIGIBLE_TYPES } from '@/lib/tournament-validation'
@@ -158,6 +159,20 @@ export default function TournamentLobbyPage() {
   }, [fetchState])
 
   useTournamentRealtime(tournamentId, fetchState)
+
+  // Realtime presence — who has this tournament open in a tab RIGHT NOW.
+  // Called BEFORE any early return so the React hook order stays stable across
+  // renders. Presence key is derived best-effort: joined players publish their
+  // tournament_players.id, host publishes a synthetic "host-<token>" id,
+  // unjoined visitors listen without publishing.
+  const presenceMyName =
+    typeof window !== 'undefined' ? localStorage.getItem(`tournament_player_${tournamentId}`) : null
+  const presenceMe =
+    joined && !isHost && presenceMyName
+      ? (players.find((p) => p.player_name.toLowerCase() === presenceMyName.toLowerCase()) ?? null)
+      : null
+  const presenceKey = presenceMe?.id ?? (isHost && hostToken ? `host-${hostToken}` : null)
+  const presentKeys = useTournamentPresence(tournamentId, presenceKey)
 
   // The "in the room" presence dots come from each staged game's own player roster,
   // which the tournament realtime channel doesn't watch — so a player joining their
@@ -860,6 +875,12 @@ export default function TournamentLobbyPage() {
   const myName = typeof window !== 'undefined' ? localStorage.getItem(`tournament_player_${tournamentId}`) : null
   const me =
     isParticipant && myName ? (players.find((p) => p.player_name.toLowerCase() === myName.toLowerCase()) ?? null) : null
+
+  // Derived from presenceKeys tracked above the early-return: how many of the
+  // roster is in the lobby right now (host + big-screen use this as the real
+  // "will they actually show up?" signal).
+  const playerIdSet = new Set(players.map((p) => p.id))
+  const presentPlayerCount = Array.from(presentKeys).filter((k) => playerIdSet.has(k)).length
   const iAmEliminated = Boolean(me?.is_eliminated)
   // Show a personal lives readout whenever the tournament runs in lives mode and the
   // player still has a tracked life count (null means lives mode is off for them).
@@ -1052,6 +1073,7 @@ export default function TournamentLobbyPage() {
             <span className="chip text-xs">
               👥 {players.length}
               {tournament.max_players ? `/${tournament.max_players}` : ''} player{players.length === 1 ? '' : 's'}
+              {presentPlayerCount > 0 && <span className="text-faint"> · {presentPlayerCount} here now</span>}
             </span>
             {isParticipant && myName && (
               <span className="chip text-xs" style={{ color: 'var(--primary)' }}>
@@ -1118,11 +1140,14 @@ export default function TournamentLobbyPage() {
         {/* Scheduled start (P5). Pre-start only — once the tournament is
             active/finished, the countdown becomes noise and the live cards
             below take over. Passes this viewer's role tokens so the .ics
-            they download restores THEIR seat, not just the anonymous lobby. */}
+            they download restores THEIR seat, not just the anonymous lobby.
+            Also passes presentPlayerCount so the host sees the real "N of M
+            here now" split, not just the pre-registered count. */}
         {!hasStarted && tournament.scheduled_at && (
           <ScheduledEventCard
             tournament={tournament}
             playerCount={players.length}
+            presentPlayerCount={presentPlayerCount}
             playerToken={joined ? myCode : null}
             hostToken={isHost ? hostToken : null}
           />
@@ -2357,24 +2382,39 @@ export default function TournamentLobbyPage() {
               </svg>
             </summary>
             <div className="mt-3 space-y-1.5">
-              {players.map((p) => (
-                <div key={p.id} className="result-row flex items-center justify-between gap-3 px-4 py-2.5">
-                  <span className={`text-sm ${p.is_eliminated ? 'text-faint line-through' : 'text-body'}`}>
-                    {p.player_name}
-                  </span>
-                  {p.is_eliminated ? (
-                    <span className="text-xs text-faint">out</span>
-                  ) : (
-                    <button
-                      onClick={() => handleRemovePlayer(p.id)}
-                      disabled={actionLoading}
-                      className="rounded px-2 py-0.5 text-xs font-semibold text-red-500 transition-colors hover:bg-red-500/10 hover:text-red-400 disabled:opacity-50"
-                    >
-                      Remove
-                    </button>
-                  )}
-                </div>
-              ))}
+              {players.map((p) => {
+                const isHere = presentKeys.has(p.id)
+                return (
+                  <div key={p.id} className="result-row flex items-center justify-between gap-3 px-4 py-2.5">
+                    <span className="flex items-center gap-2 min-w-0">
+                      <span
+                        aria-label={isHere ? 'In the lobby now' : 'Not currently in the lobby'}
+                        title={isHere ? 'Here now' : 'Not here right now'}
+                        className="inline-block h-2 w-2 rounded-full shrink-0"
+                        style={{
+                          background: isHere ? 'var(--primary)' : 'transparent',
+                          border: isHere ? undefined : '1px solid var(--faint)',
+                          boxShadow: isHere ? '0 0 6px var(--primary)' : undefined,
+                        }}
+                      />
+                      <span className={`text-sm truncate ${p.is_eliminated ? 'text-faint line-through' : 'text-body'}`}>
+                        {p.player_name}
+                      </span>
+                    </span>
+                    {p.is_eliminated ? (
+                      <span className="text-xs text-faint">out</span>
+                    ) : (
+                      <button
+                        onClick={() => handleRemovePlayer(p.id)}
+                        disabled={actionLoading}
+                        className="rounded px-2 py-0.5 text-xs font-semibold text-red-500 transition-colors hover:bg-red-500/10 hover:text-red-400 disabled:opacity-50"
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                )
+              })}
             </div>
           </details>
         )}

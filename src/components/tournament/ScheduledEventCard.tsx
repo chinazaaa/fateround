@@ -23,11 +23,17 @@ import { useToast } from '@/components/ui/Toast'
 export function ScheduledEventCard({
   tournament,
   playerCount,
+  presentPlayerCount = 0,
   playerToken,
   hostToken,
 }: {
   tournament: Tournament
   playerCount: number
+  /** Optional realtime-presence count — pre-registered players whose tab is
+   *  open right now. Renders as "· N here now" alongside the pre-registered
+   *  total when non-zero, so the host sees the real turnout, not just who
+   *  signed up. Omit to hide. */
+  presentPlayerCount?: number
   /** This viewer's tournament player resume token, if they've joined. Baked
    *  into the .ics URL so tapping the calendar reminder auto-restores their
    *  seat — even on a different device. */
@@ -103,7 +109,15 @@ export function ScheduledEventCard({
         {!startedAlready && <span className="text-faint"> · host taps Start on the day</span>}
       </p>
       {playerCount > 0 && !startedAlready && (
-        <p className="text-faint text-xs">{playerCount} pre-registered — they&apos;ll be here when it kicks off.</p>
+        <p className="text-faint text-xs">
+          {playerCount} pre-registered
+          {presentPlayerCount > 0 && (
+            <>
+              {' · '}
+              <span style={{ color: 'var(--primary)', fontWeight: 700 }}>{presentPlayerCount} here now</span>
+            </>
+          )}
+        </p>
       )}
       <button type="button" onClick={handleDownloadIcs} className="btn-secondary btn-fit text-sm mx-auto">
         📅{' '}
