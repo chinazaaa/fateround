@@ -14,7 +14,7 @@ const supabase = getSupabaseAnon()
  * so supabase-js can still infer the row type from it. Keep in sync with the table.
  */
 const TOURNAMENT_PUBLIC_SELECT =
-  'id, title, status, placement_points, target_game_count, created_at, elimination_config, max_players, format, game_type, game_config, game_queue, branding, scheduled_at, last_knockout_cut_round'
+  'id, title, status, placement_points, target_game_count, created_at, elimination_config, max_players, format, game_type, game_config, game_queue, branding, scheduled_at, pending_host_player_id, last_knockout_cut_round'
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
   const { code } = await params

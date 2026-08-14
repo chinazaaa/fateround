@@ -78,6 +78,10 @@ export interface Tournament {
   // Optional scheduled start time (ISO string). Display-only: the host still
   // controls the actual start via "Start Next Game" on the day.
   scheduled_at: string | null
+  // Claim-based host transfer: when non-null, this tournament_players.id is
+  // the pending nominee. On accept, host_token rotates; on decline (or
+  // cancel), this field returns to null.
+  pending_host_player_id: string | null
   created_at: string
 }
 

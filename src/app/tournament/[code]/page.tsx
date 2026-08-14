@@ -25,6 +25,8 @@ import { TournamentContinueCard, TournamentResumeEntry } from '@/components/tour
 import { TournamentBrandingWrapper } from '@/components/tournament/BrandingWrapper'
 import { TournamentEventPackCard } from '@/components/tournament/EventPackCard'
 import { ScheduledEventCard } from '@/components/tournament/ScheduledEventCard'
+import { TournamentTransferHostControl } from '@/components/tournament/TournamentTransferHostControl'
+import { TournamentHostNominationBanner } from '@/components/tournament/TournamentHostNominationBanner'
 import { GameLinkQrModal } from '@/components/GameLinkQrModal'
 import { tournamentHostUrl, shareOrigin } from '@/lib/site'
 import { copyToClipboard } from '@/lib/copy'
@@ -1116,6 +1118,12 @@ export default function TournamentLobbyPage() {
                   >
                     🖥 Big screen
                   </a>
+                  <TournamentTransferHostControl
+                    tournamentId={tournamentId}
+                    hostToken={hostToken}
+                    players={players}
+                    pendingPlayerId={tournament.pending_host_player_id ?? null}
+                  />
                   <button onClick={openEditSettings} className="btn-secondary btn-fit text-sm">
                     ⚙️ Edit settings
                   </button>
@@ -2721,6 +2729,16 @@ export default function TournamentLobbyPage() {
           </div>
         )}
       </TournamentBrandingWrapper>
+      {/* Player-side host nomination banner — mounted for every viewer;
+          renders only when THIS device's tournament_players.id matches the
+          pending nominee. Kept at the bottom so it can portal from the
+          natural bottom of the tree. */}
+      <TournamentHostNominationBanner
+        tournamentId={tournamentId}
+        pendingPlayerId={tournament.pending_host_player_id ?? null}
+        myPlayerId={me?.id ?? null}
+        resumeToken={myCode || null}
+      />
     </PageShell>
   )
 }
