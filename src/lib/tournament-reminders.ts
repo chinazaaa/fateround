@@ -2,18 +2,20 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { notifyTournamentEvent } from '@/lib/tournament-push'
 
 /**
- * Scheduled-tournament reminder ticker.
+ * Scheduled-tournament reminder DISPATCH.
  *
  * Sends the "starts in 15 min" and "starting now" pushes for tournaments with a
- * `scheduled_at`. Runs as a slow loop inside the long-running Node server
- * (`output: 'standalone'` → `node server.js`), exactly like the game ticker in
- * {@link file://./game-tick.ts} — no external cron, no scheduler bill, nothing
- * to configure per environment.
+ * `scheduled_at`. Driven by `POST /api/tournaments/reminders`, which is poked
+ * once a minute by the in-process loop in `tournament-reminder-ticker.ts` —
+ * the same shape `game-tick.ts` uses. No external cron, no scheduler bill,
+ * nothing to configure per environment: the app is deployed as a container
+ * running a persistent Node process, so `setInterval` is already a scheduler.
  *
- * Why not a cron endpoint: this app is deployed as a container running a
- * persistent Node process, so `setInterval` already gives us a scheduler for
- * free. An HTTP cron route would need a paid scheduler (or a third-party
- * pinger) plus a shared secret, to do a job the process can already do itself.
+ * The loop lives in a SEPARATE module on purpose. It is reached from
+ * `src/instrumentation.ts`, which Next compiles for the edge runtime as well as
+ * Node; this file imports `web-push` (→ node's `https`), which edge can't
+ * resolve, so pulling it into instrumentation's module graph fails the
+ * production build. Keep that split.
  *
  * ── Due-window logic ─────────────────────────────────────────────────────────
  * Deliberately NOT a narrow "target ± n seconds" band. A band has to be tuned
@@ -126,49 +128,4 @@ export async function dispatchDueTournamentReminders(
   }
 
   return dispatched
-}
-
-let inFlight = false
-
-async function tickReminders(): Promise<void> {
-  if (inFlight) return
-  inFlight = true
-  try {
-    const dispatched = await dispatchDueTournamentReminders()
-    if (dispatched.length > 0) {
-      console.log(`[tournament-reminders] sent ${dispatched.length}: ${dispatched.map((d) => d.kind).join(', ')}`)
-    }
-  } catch {
-    // Never let a bad tick kill the loop.
-  } finally {
-    inFlight = false
-  }
-}
-
-let started = false
-
-/**
- * Starts the reminder interval. Idempotent per process.
- *
- * Mirrors startGameTicker's environment rules so both background loops behave
- * the same way: on by default in production, off in dev/test unless explicitly
- * enabled (otherwise every developer's `next dev` would fire real pushes off
- * the SHARED dev Supabase). Kill-switch: TOURNAMENT_REMINDERS_DISABLED=1.
- *
- * 60s is plenty — the thresholds are minutes wide, so a minute of jitter on a
- * "starts in 15 minutes" push is invisible to the recipient.
- */
-export function startTournamentReminderTicker(): void {
-  if (started) return
-  if (process.env.TOURNAMENT_REMINDERS_DISABLED === '1') return
-  const enabled = process.env.NODE_ENV === 'production' || process.env.TOURNAMENT_REMINDERS_ENABLED === '1'
-  if (!enabled) return
-  started = true
-  const intervalMs = Number(process.env.TOURNAMENT_REMINDERS_INTERVAL_MS) || 60_000
-  console.log(`[tournament-reminders] ticker started (interval=${intervalMs}ms)`)
-  const timer = setInterval(() => {
-    void tickReminders()
-  }, intervalMs)
-  // Don't keep the process alive just for the ticker.
-  timer.unref?.()
 }
