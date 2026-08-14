@@ -364,6 +364,17 @@ export default function TournamentCreatePage() {
         <p className="text-muted text-sm">Set up a multi-game competition for your group</p>
       </div>
 
+      <div
+        className="rounded-xl border border-theme px-4 py-3 text-sm text-body"
+        style={{ background: 'var(--surface-inset-bg)', borderLeft: '3px solid var(--primary)' }}
+      >
+        <p>
+          <span className="font-semibold">Hosts run the tournament — they don&apos;t play.</span> If you want to play
+          too, join separately from another device, or hand off host mid-event with{' '}
+          <span className="font-semibold">Transfer host</span>.
+        </p>
+      </div>
+
       <div className="glass-card-strong p-5 sm:p-6 space-y-5">
         <Field label="Tournament Title" htmlFor="tournament-title">
           <input
