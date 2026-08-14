@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { MonopolyActiveLayout } from '@/components/monopoly/MonopolyActiveLayout'
 import { MonopolyJoinForm } from '@/components/monopoly/MonopolyJoinForm'
@@ -44,6 +44,7 @@ import { markPlayerReady } from '@/lib/player-ready'
 import { useMonopolyNotifications } from '@/hooks/useMonopolyNotifications'
 import { preJoinScreen, playerIsViewer } from '@/lib/viewers'
 import { ViewerModeBanner } from '@/components/ViewerModeBanner'
+import { getRememberedName, subscribeLocalIdentity } from '@/lib/identity-local'
 
 type Screen =
   | 'loading'
@@ -144,6 +145,15 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
 
   useApplyGameTheme(screen === 'game_ended' ? 'default' : game?.theme)
   useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
+  useEffect(() => {
+    const prefill = () => {
+      if (resolvingRoomMember || roomDisplayName || joinName.trim()) return
+      const remembered = getRememberedName()
+      if (remembered) setJoinName(remembered)
+    }
+    prefill()
+    return subscribeLocalIdentity(prefill)
+  }, [joinName, resolvingRoomMember, roomDisplayName, setJoinName])
 
   // The Monopoly player path doesn't go through the shared roster dispatcher, so
   // register base rows here — this gives players the header roster drawer (with the
