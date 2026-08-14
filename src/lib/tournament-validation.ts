@@ -75,6 +75,9 @@ export const createTournamentSchema = z.object({
   // per-tournament logo-upload route. Every field optional; null/absent = use
   // the app's default palette.
   branding: tournamentBrandingSchema.optional(),
+  // Optional scheduled start time (ISO 8601). Display + reminder only — the
+  // host still starts the event manually on the day. Pass null to clear.
+  scheduledAt: z.string().datetime().nullable().optional(),
 })
 
 export const updateTournamentSchema = z.object({
@@ -99,6 +102,8 @@ export const updateTournamentSchema = z.object({
   // uploaded logo URL). The logo itself is uploaded via the separate
   // /branding/logo route, not through this PATCH body.
   branding: tournamentBrandingSchema.optional(),
+  // Update or clear the scheduled start time. Pass null to remove.
+  scheduledAt: z.string().datetime().nullable().optional(),
 })
 
 export const joinTournamentSchema = z.object({

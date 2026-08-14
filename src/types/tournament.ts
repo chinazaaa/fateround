@@ -75,6 +75,9 @@ export interface Tournament {
   // Event branding — two colours + logo. Public info: safe to ship to any
   // caller with the tournament code (that's the whole point).
   branding: TournamentBranding | null
+  // Optional scheduled start time (ISO string). Display-only: the host still
+  // controls the actual start via "Start Next Game" on the day.
+  scheduled_at: string | null
   created_at: string
 }
 

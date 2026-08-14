@@ -34,6 +34,7 @@ export async function POST(req: NextRequest) {
     gameQueue,
     customTriviaPack,
     branding,
+    scheduledAt,
   } = body
   const hostToken = generateToken()
 
@@ -131,6 +132,7 @@ export async function POST(req: NextRequest) {
     game_queue: resolvedGameQueue,
     custom_trivia_pack: resolvedCustomTriviaPack,
     branding: resolvedBranding,
+    scheduled_at: scheduledAt ?? null,
   })
 
   if (error) {

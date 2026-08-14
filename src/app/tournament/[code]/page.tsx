@@ -23,6 +23,7 @@ import { TournamentBracketBoard } from '@/components/tournament/TournamentBracke
 import { TournamentContinueCard, TournamentResumeEntry } from '@/components/tournament/TournamentPlayerCode'
 import { TournamentBrandingWrapper } from '@/components/tournament/BrandingWrapper'
 import { TournamentEventPackCard } from '@/components/tournament/EventPackCard'
+import { ScheduledEventCard } from '@/components/tournament/ScheduledEventCard'
 import { GameLinkQrModal } from '@/components/GameLinkQrModal'
 import { tournamentHostUrl, shareOrigin } from '@/lib/site'
 import { copyToClipboard } from '@/lib/copy'
@@ -1112,6 +1113,13 @@ export default function TournamentLobbyPage() {
             copyLabel="Copy host link"
             copySuccessMessage="Host link copied"
           />
+        )}
+
+        {/* Scheduled start (P5). Pre-start only — once the tournament is
+            active/finished, the countdown becomes noise and the live cards
+            below take over. */}
+        {!hasStarted && tournament.scheduled_at && (
+          <ScheduledEventCard tournament={tournament} playerCount={players.length} />
         )}
 
         {/* Tournament lineup — always visible (planned round-robin only). Shows

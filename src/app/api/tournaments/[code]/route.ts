@@ -14,7 +14,7 @@ const supabase = getSupabaseAnon()
  * so supabase-js can still infer the row type from it. Keep in sync with the table.
  */
 const TOURNAMENT_PUBLIC_SELECT =
-  'id, title, status, placement_points, target_game_count, created_at, elimination_config, max_players, format, game_type, game_config, game_queue, branding, last_knockout_cut_round'
+  'id, title, status, placement_points, target_game_count, created_at, elimination_config, max_players, format, game_type, game_config, game_queue, branding, scheduled_at, last_knockout_cut_round'
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
   const { code } = await params
@@ -153,6 +153,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
     gameConfig,
     gameQueue,
     branding,
+    scheduledAt,
   } = body
 
   const admin = getSupabaseAdmin()
@@ -273,6 +274,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
     const hasAny = Boolean(branding.primaryColor || branding.accentColor || branding.logoUrl)
     updates.branding = hasAny ? branding : null
   }
+  // Scheduled start time — host can push it out or cancel it. Only meaningful
+  // pre-start; once the tournament is active/finished, the schedule is history
+  // and this write is a no-op cosmetically but still allowed for auditing.
+  if (scheduledAt !== undefined) updates.scheduled_at = scheduledAt
   if (editingGameConfig) {
     // Merge over the stored config so a partial edit only changes the fields it
     // sends — omitted fields keep their prior value instead of resetting to a

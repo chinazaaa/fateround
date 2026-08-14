@@ -8,6 +8,7 @@ import { TournamentBrandingWrapper } from '@/components/tournament/BrandingWrapp
 import { useTournamentRealtime } from '@/hooks/useTournamentRealtime'
 import { gameTypeLabel } from '@/lib/game-types'
 import { estimateGameSeconds, formatEstimatedDuration, TIMING_PLAYER_FALLBACK } from '@/lib/tournament-timing'
+import { formatCountdown, formatScheduledFor } from '@/lib/tournament-schedule'
 import { shareOrigin, tournamentInviteUrl } from '@/lib/site'
 import type { Tournament, TournamentGame, TournamentPlayer } from '@/types/tournament'
 
@@ -106,7 +107,6 @@ export default function TournamentBigScreenPage() {
       {/* Header — logo + title. Sticks to the top; body below fills. */}
       <header className="flex items-center gap-6 px-10 pt-8">
         {tournament.branding?.logoUrl && (
-           
           <img src={tournament.branding.logoUrl} alt="" className="h-20 w-20 object-contain rounded-xl bg-white p-2" />
         )}
         <div className="flex-1 min-w-0">
@@ -171,62 +171,96 @@ function WaitingRoom({
   queueEntries: Tournament['game_queue']
 }) {
   return (
-    <div className="grid grid-cols-2 gap-10 h-full">
-      {/* Left: join instructions + huge QR */}
-      <div className="flex flex-col items-center justify-center gap-6">
-        <p className="text-3xl text-white/70">Join with your phone</p>
-        <div className="rounded-3xl bg-white p-8 shadow-2xl">
-          <GameLinkQrCode url={inviteUrl} size={420} />
+    <div className="flex flex-col gap-6 h-full">
+      {tournament.scheduled_at && <ScheduledBanner iso={tournament.scheduled_at} />}
+      <div className="grid grid-cols-2 gap-10 flex-1 min-h-0">
+        {/* Left: join instructions + huge QR */}
+        <div className="flex flex-col items-center justify-center gap-6">
+          <p className="text-3xl text-white/70">Join with your phone</p>
+          <div className="rounded-3xl bg-white p-8 shadow-2xl">
+            <GameLinkQrCode url={inviteUrl} size={420} />
+          </div>
+          <p className="text-2xl text-white/60">
+            Or open <span className="text-white font-semibold">fateround.com</span> and enter code{' '}
+            <span className="text-white font-mono font-bold">{tournament.id}</span>
+          </p>
         </div>
-        <p className="text-2xl text-white/60">
-          Or open <span className="text-white font-semibold">fateround.com</span> and enter code{' '}
-          <span className="text-white font-mono font-bold">{tournament.id}</span>
-        </p>
-      </div>
 
-      {/* Right: joined players + optional playlist preview */}
-      <div className="flex flex-col gap-6 min-h-0">
-        <div className="flex items-baseline justify-between">
-          <p className="text-3xl font-bold" style={{ color: 'var(--primary, #fff)' }}>
-            Joined
-          </p>
-          <p className="text-2xl text-white/70">
-            {players.length}
-            {tournament.max_players ? ` / ${tournament.max_players}` : ''} player{players.length === 1 ? '' : 's'}
-          </p>
-        </div>
-        {players.length === 0 ? (
-          <div className="flex items-center justify-center h-40 rounded-2xl border border-white/20 border-dashed">
-            <p className="text-2xl text-white/50">Waiting for players…</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 xl:grid-cols-3 gap-3 overflow-y-auto pr-2">
-            {players.map((p) => (
-              <div
-                key={p.id}
-                className="rounded-xl border border-white/20 px-4 py-3 text-xl font-medium truncate"
-                style={{ background: 'rgba(255,255,255,0.06)' }}
-              >
-                {p.player_name}
-              </div>
-            ))}
-          </div>
-        )}
-        {queueEntries && queueEntries.length > 0 && (
-          <div className="mt-auto pt-6 border-t border-white/15 space-y-2">
-            <p className="text-sm uppercase tracking-widest text-white/50">
-              Tonight&apos;s lineup ({queueEntries.length} games)
+        {/* Right: joined players + optional playlist preview */}
+        <div className="flex flex-col gap-6 min-h-0">
+          <div className="flex items-baseline justify-between">
+            <p className="text-3xl font-bold" style={{ color: 'var(--primary, #fff)' }}>
+              Joined
             </p>
-            <ol className="text-lg text-white/85 space-y-1">
-              {queueEntries.map((e, i) => (
-                <li key={`${e.gameType}-${i}`} className="flex items-baseline gap-3">
-                  <span className="tabular-nums text-white/50 w-6 text-right">{i + 1}.</span>
-                  <span>{gameTypeLabel(e.gameType) ?? e.gameType}</span>
-                </li>
-              ))}
-            </ol>
+            <p className="text-2xl text-white/70">
+              {players.length}
+              {tournament.max_players ? ` / ${tournament.max_players}` : ''} player{players.length === 1 ? '' : 's'}
+            </p>
           </div>
-        )}
+          {players.length === 0 ? (
+            <div className="flex items-center justify-center h-40 rounded-2xl border border-white/20 border-dashed">
+              <p className="text-2xl text-white/50">Waiting for players…</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 xl:grid-cols-3 gap-3 overflow-y-auto pr-2">
+              {players.map((p) => (
+                <div
+                  key={p.id}
+                  className="rounded-xl border border-white/20 px-4 py-3 text-xl font-medium truncate"
+                  style={{ background: 'rgba(255,255,255,0.06)' }}
+                >
+                  {p.player_name}
+                </div>
+              ))}
+            </div>
+          )}
+          {queueEntries && queueEntries.length > 0 && (
+            <div className="mt-auto pt-6 border-t border-white/15 space-y-2">
+              <p className="text-sm uppercase tracking-widest text-white/50">
+                Tonight&apos;s lineup ({queueEntries.length} games)
+              </p>
+              <ol className="text-lg text-white/85 space-y-1">
+                {queueEntries.map((e, i) => (
+                  <li key={`${e.gameType}-${i}`} className="flex items-baseline gap-3">
+                    <span className="tabular-nums text-white/50 w-6 text-right">{i + 1}.</span>
+                    <span>{gameTypeLabel(e.gameType) ?? e.gameType}</span>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/** Live countdown strip shown when the tournament has a scheduled start.
+ *  Re-ticks every second so the "in Nm" phrase stays honest. Formats as a
+ *  single horizontal bar so both columns of the WaitingRoom body still fit. */
+function ScheduledBanner({ iso }: { iso: string }) {
+  const [nowMs, setNowMs] = useState<number>(() => Date.now())
+  useEffect(() => {
+    const t = setInterval(() => setNowMs(Date.now()), 1000)
+    return () => clearInterval(t)
+  }, [])
+  const startsAt = new Date(iso).getTime()
+  const deltaMs = startsAt - nowMs
+  const started = deltaMs < 0
+  return (
+    <div
+      className="rounded-2xl px-6 py-4 flex items-center gap-6 flex-wrap"
+      style={{ background: 'rgba(255,255,255,0.08)', borderLeft: '6px solid var(--primary, #fff)' }}
+    >
+      <div>
+        <p className="text-sm uppercase tracking-widest text-white/60">{started ? 'Scheduled start' : 'Starts'}</p>
+        <p className="text-3xl font-bold">{formatScheduledFor(iso)}</p>
+      </div>
+      <div className="ml-auto text-right">
+        <p className="text-sm uppercase tracking-widest text-white/60">Countdown</p>
+        <p className="text-4xl font-black tabular-nums" style={{ color: 'var(--primary, #fff)' }}>
+          {formatCountdown(deltaMs)}
+        </p>
       </div>
     </div>
   )

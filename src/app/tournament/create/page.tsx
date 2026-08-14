@@ -86,6 +86,10 @@ export default function TournamentCreatePage() {
   const [brandLogoPreview, setBrandLogoPreview] = useState<string | null>(null)
   const [brandLogoMsg, setBrandLogoMsg] = useState<string | null>(null)
   const brandLogoRef = useRef<HTMLInputElement>(null)
+  // Scheduled start (optional). Held as the datetime-local string ("YYYY-
+  // MM-DDTHH:mm") the input emits, converted to ISO-Z when POSTing so the
+  // server always sees UTC regardless of the host's timezone.
+  const [scheduledLocal, setScheduledLocal] = useState<string>('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
 
@@ -264,6 +268,15 @@ export default function TournamentCreatePage() {
         body.branding = {
           ...(brandPrimary ? { primaryColor: brandPrimary } : {}),
           ...(brandAccent ? { accentColor: brandAccent } : {}),
+        }
+      }
+
+      // Scheduled start — convert the datetime-local string (interpreted in
+      // the host's timezone) to an ISO-Z timestamp so the server stores UTC.
+      if (scheduledLocal) {
+        const asDate = new Date(scheduledLocal)
+        if (!Number.isNaN(asDate.getTime())) {
+          body.scheduledAt = asDate.toISOString()
         }
       }
       // Placement points, target game count and lives mode only apply to the
@@ -836,6 +849,30 @@ export default function TournamentCreatePage() {
         )}
       </div>
 
+      {/* Schedule the event for later — optional. Shows a countdown + "Add to
+          calendar" (.ics) download to everyone on the invite link, so players
+          can pre-register days ahead and get pinged by their own calendar
+          when it's time. Host still starts the event manually on the day. */}
+      <div className="glass-card-strong p-5 sm:p-6 space-y-3">
+        <div className="flex items-baseline justify-between gap-2 flex-wrap">
+          <p className="label-caps">Schedule (optional)</p>
+          <span className="text-faint text-xs">Pre-register players days ahead</span>
+        </div>
+        <Field label="Start date & time" htmlFor="tournament-scheduled-at">
+          <input
+            id="tournament-scheduled-at"
+            type="datetime-local"
+            value={scheduledLocal}
+            onChange={(e) => setScheduledLocal(e.target.value)}
+            className="input-field"
+          />
+          <p className="text-faint text-xs mt-1.5">
+            Leave empty for right now. Sets a countdown on the invite link so pre-registered players know when to show
+            up.
+          </p>
+        </Field>
+      </div>
+
       {/* Event branding — optional. Two brand colours + a logo, applied to the
           lobby, in-game header, and results card. Skipping any field leaves the
           default palette in place. */}
@@ -922,7 +959,7 @@ export default function TournamentCreatePage() {
           />
           {brandLogoPreview ? (
             <div className="surface-inset p-4 flex items-center gap-4">
-              { }
+              {}
               <img
                 src={brandLogoPreview}
                 alt="Logo preview"
@@ -955,10 +992,7 @@ export default function TournamentCreatePage() {
               ...(brandPrimary ? ({ '--primary': brandPrimary } as CSSProperties) : {}),
             }}
           >
-            {brandLogoPreview && (
-               
-              <img src={brandLogoPreview} alt="" className="h-10 w-10 object-contain" />
-            )}
+            {brandLogoPreview && <img src={brandLogoPreview} alt="" className="h-10 w-10 object-contain" />}
             <div className="flex-1">
               <p className="text-body text-sm font-medium">Preview</p>
               <p className="text-faint text-xs">
