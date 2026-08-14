@@ -5,7 +5,7 @@ import type { Tournament } from '@/types/tournament'
 import { buildTournamentIcs, formatCountdown, formatScheduledFor, icsBlob } from '@/lib/tournament-schedule'
 import { estimatePlaylistSeconds, TIMING_PLAYER_FALLBACK } from '@/lib/tournament-timing'
 import { downloadBlobAsFile, shareFilenameStem } from '@/lib/share-image'
-import { shareOrigin, tournamentInviteUrl } from '@/lib/site'
+import { shareOrigin, tournamentHostUrl, tournamentInviteUrl, tournamentPlayerResumeUrl } from '@/lib/site'
 import { useToast } from '@/components/ui/Toast'
 
 /**
@@ -20,7 +20,22 @@ import { useToast } from '@/components/ui/Toast'
  * (host started a game). At that point the schedule is history and the
  * lobby's live cards take over.
  */
-export function ScheduledEventCard({ tournament, playerCount }: { tournament: Tournament; playerCount: number }) {
+export function ScheduledEventCard({
+  tournament,
+  playerCount,
+  playerToken,
+  hostToken,
+}: {
+  tournament: Tournament
+  playerCount: number
+  /** This viewer's tournament player resume token, if they've joined. Baked
+   *  into the .ics URL so tapping the calendar reminder auto-restores their
+   *  seat — even on a different device. */
+  playerToken?: string | null
+  /** This viewer's host token if they're the host on this device. Same idea:
+   *  calendar reminder → tap → back in as host with no re-auth. */
+  hostToken?: string | null
+}) {
   const { success, error } = useToast()
   const [nowMs, setNowMs] = useState<number>(() => Date.now())
 
@@ -31,23 +46,36 @@ export function ScheduledEventCard({ tournament, playerCount }: { tournament: To
     return () => clearInterval(t)
   }, [])
 
+  // Which URL goes into the calendar file. Host token wins if both are set on
+  // the same device (rare — cross-device host + join). Otherwise the player
+  // resume link, otherwise the generic anonymous invite (still works — just
+  // won't auto-restore a seat on a new device).
+  const role: 'host' | 'player' | 'anon' = hostToken ? 'host' : playerToken ? 'player' : 'anon'
+  const origin = shareOrigin()
+  const personalisedUrl =
+    role === 'host'
+      ? tournamentHostUrl(tournament.id, hostToken!, origin)
+      : role === 'player'
+        ? tournamentPlayerResumeUrl(tournament.id, playerToken!, origin)
+        : tournamentInviteUrl(tournament.id, origin)
+
   const handleDownloadIcs = useCallback(() => {
     if (!tournament.scheduled_at) return
     try {
-      const inviteUrl = tournamentInviteUrl(tournament.id, shareOrigin())
-      // Use the playlist total time when planned; otherwise the calendar block
-      // is a placeholder 60 min — hosts can always drag the end time in their
-      // calendar app afterwards.
       const duration = tournament.game_queue
         ? estimatePlaylistSeconds(tournament.game_queue, playerCount || TIMING_PLAYER_FALLBACK)
         : 3600
-      const ics = buildTournamentIcs(tournament, inviteUrl, duration, new Date(nowMs).toISOString())
+      const ics = buildTournamentIcs(tournament, personalisedUrl, duration, new Date(nowMs).toISOString())
       downloadBlobAsFile(icsBlob(ics), `${shareFilenameStem(tournament.title)}.ics`)
-      success('Calendar file downloaded — add it to Google, Apple or Outlook')
+      success(
+        role === 'anon'
+          ? "Calendar file downloaded — you'll be reminded 1h + 10 min before start"
+          : 'Personal reminder saved — tapping the calendar alert takes you straight back in'
+      )
     } catch (err) {
       error(err instanceof Error ? err.message : 'Could not create calendar file')
     }
-  }, [tournament, playerCount, nowMs, success, error])
+  }, [tournament, playerCount, nowMs, personalisedUrl, role, success, error])
 
   if (!tournament.scheduled_at) return null
 
@@ -78,8 +106,14 @@ export function ScheduledEventCard({ tournament, playerCount }: { tournament: To
         <p className="text-faint text-xs">{playerCount} pre-registered — they&apos;ll be here when it kicks off.</p>
       )}
       <button type="button" onClick={handleDownloadIcs} className="btn-secondary btn-fit text-sm mx-auto">
-        📅 Add to calendar
+        📅{' '}
+        {role === 'host' ? 'Add to my calendar (host)' : role === 'player' ? 'Add to my calendar' : 'Add to calendar'}
       </button>
+      <p className="text-faint text-xs">
+        Your calendar will alert you 1 hour before, 10 minutes before, and at start.
+        {role === 'player' && ' Tapping the alert opens the lobby with your seat still saved.'}
+        {role === 'host' && ' Tapping the alert restores your host controls.'}
+      </p>
     </div>
   )
 }

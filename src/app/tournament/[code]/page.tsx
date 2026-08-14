@@ -1117,9 +1117,15 @@ export default function TournamentLobbyPage() {
 
         {/* Scheduled start (P5). Pre-start only — once the tournament is
             active/finished, the countdown becomes noise and the live cards
-            below take over. */}
+            below take over. Passes this viewer's role tokens so the .ics
+            they download restores THEIR seat, not just the anonymous lobby. */}
         {!hasStarted && tournament.scheduled_at && (
-          <ScheduledEventCard tournament={tournament} playerCount={players.length} />
+          <ScheduledEventCard
+            tournament={tournament}
+            playerCount={players.length}
+            playerToken={joined ? myCode : null}
+            hostToken={isHost ? hostToken : null}
+          />
         )}
 
         {/* Tournament lineup — always visible (planned round-robin only). Shows

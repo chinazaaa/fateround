@@ -66,12 +66,29 @@ function toIcsStamp(date: Date): string {
   )
 }
 
+/** iCalendar TRIGGER duration for a reminder N minutes before the event. */
+function alarmTriggerBefore(minutes: number): string {
+  if (minutes <= 0) return '-PT0M'
+  if (minutes >= 60 && minutes % 60 === 0) return `-PT${minutes / 60}H`
+  return `-PT${minutes}M`
+}
+
+/** Default alarm ladder — 1 hour, 10 minutes, and at-start. These are baked
+ *  into every .ics so the viewer's calendar app pings them without any push
+ *  infrastructure of ours. Users can delete alarms they don't want in their
+ *  calendar client. */
+export const DEFAULT_ALARM_MINUTES_BEFORE = [60, 10, 0] as const
+
 /**
  * Build an .ics (iCalendar) file for a scheduled tournament — so the host and
  * every pre-registering player can drop it into Google/Apple/Outlook calendars.
  * Includes the invite URL in DESCRIPTION and URL so the calendar reminder ships
  * with a working "join" link. Duration defaults to `durationSeconds` (typically
  * the playlist estimate); 60 minutes when the caller has no better guess.
+ *
+ * Also embeds native VALARM reminders (1h before, 10min before, at start by
+ * default) so the viewer's calendar app pings them at those milestones — no
+ * web-push infrastructure required, works on iOS without PWA install.
  *
  * `stampIso` is the "now" reference (DTSTAMP + created_at proxy). Passed in
  * rather than read from `new Date()` so the file is deterministic for tests
@@ -81,12 +98,27 @@ export function buildTournamentIcs(
   tournament: Tournament,
   inviteUrl: string,
   durationSeconds: number,
-  stampIso: string
+  stampIso: string,
+  alarmMinutesBefore: readonly number[] = DEFAULT_ALARM_MINUTES_BEFORE
 ): string {
   if (!tournament.scheduled_at) throw new Error('Tournament is not scheduled')
   const start = new Date(tournament.scheduled_at)
   const end = new Date(start.getTime() + Math.max(60, durationSeconds) * 1000)
   const stamp = new Date(stampIso)
+
+  const alarmBlocks = alarmMinutesBefore.flatMap((mins) => {
+    const label =
+      mins <= 0
+        ? `${tournament.title} — starting now`
+        : `${tournament.title} — starts in ${mins < 60 ? `${mins} min` : `${mins / 60} hour${mins === 60 ? '' : 's'}`}`
+    return [
+      'BEGIN:VALARM',
+      `TRIGGER:${alarmTriggerBefore(mins)}`,
+      'ACTION:DISPLAY',
+      `DESCRIPTION:${escapeIcsText(label)}`,
+      'END:VALARM',
+    ]
+  })
 
   const lines = [
     'BEGIN:VCALENDAR',
@@ -102,6 +134,7 @@ export function buildTournamentIcs(
     `SUMMARY:${escapeIcsText(tournament.title)}`,
     `DESCRIPTION:${escapeIcsText(`Join at ${inviteUrl}\n\nCode: ${tournament.id}`)}`,
     `URL:${escapeIcsText(inviteUrl)}`,
+    ...alarmBlocks,
     'END:VEVENT',
     'END:VCALENDAR',
   ].map(foldIcsLine)
