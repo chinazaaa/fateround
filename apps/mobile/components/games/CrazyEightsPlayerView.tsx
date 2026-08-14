@@ -369,7 +369,7 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
   const myCanPlay = myHand ? hasPlayableCard(myHand.cards ?? [], session, rules) : false
   const suitCallActive = hasActiveSuitCall(session)
   // Draw pile empty but played cards remain → the pile reshuffles from the discard.
-  const reshuffleNote = drawDepleted && (session.discard_pile?.length ?? 0) > 0
+  const reshuffleNote = drawDepleted && (session.discard_count ?? 0) > 0
 
   // Web shows the draw/pass button whenever it's your turn, except when the pile is depleted
   // AND you have a playable card (then you must play). Its label reflects pass vs. penalty.
@@ -434,7 +434,7 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
         />
 
         <CardTableArea
-          pileCount={session.draw_pile.length}
+          pileCount={session.draw_count ?? 0}
           hint={tableHint || null}
           topCard={
             session.top_card ? (

@@ -329,9 +329,19 @@ export function hasPlayableCard(
   return hand.some((c) => canPlayCard(c, session, rules))
 }
 
+/**
+ * Shared by the server (full row, service role) and the client (redacted row: `draw_pile` and
+ * `discard_pile` are revoked from anon/authenticated, only the generated counts come back).
+ *
+ * Prefer the counts; fall back to the array lengths for service-role rows and fixtures written
+ * before the counts existed. Where NEITHER is readable, return `false` — "I cannot see the pile"
+ * must never be reported as "the pile is empty", which would flip the UI into pass-turn/reshuffle
+ * states on a redacted field read as meaningful state.
+ */
 export function isDrawPileDepleted(session: CrazyEightsSession): boolean {
-  const drawLen = ((session.draw_pile as CrazyEightsCard[]) ?? []).length
-  const discardLen = ((session.discard_pile as CrazyEightsCard[]) ?? []).length
+  const drawLen = session.draw_count ?? (Array.isArray(session.draw_pile) ? session.draw_pile.length : null)
+  const discardLen = session.discard_count ?? (Array.isArray(session.discard_pile) ? session.discard_pile.length : null)
+  if (drawLen == null || discardLen == null) return false
   return drawLen === 0 && discardLen === 0
 }
 

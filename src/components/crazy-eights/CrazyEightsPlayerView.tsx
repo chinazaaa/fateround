@@ -49,9 +49,9 @@ import { useCrazyEightsTurnTimer } from '@/hooks/useCrazyEightsTurnTimer'
 import { useCrazyEightsGameTimer } from '@/hooks/useCrazyEightsGameTimer'
 import { useCrazyEightsNotifications, playCrazyEightsActionSound } from '@/hooks/useCrazyEightsNotifications'
 import { useGamePlacements, useGameStats } from '@/components/roster/RosterDrawerContext'
-
-const CRAZY8_SESSION_SELECT =
-  'id,game_id,turn_order,current_turn_index,direction,phase,draw_pile,discard_pile,top_card,required_suit,pick_two_stack,joker_penalty,status_message,winner_player_id,finish_order,turn_deadline_at,created_at,updated_at'
+// Imported rather than re-declared inline: this file used to carry its own copy of the column
+// list, which is exactly how a redaction gets half-applied.
+import { CRAZY8_SESSION_SELECT } from '@/lib/supabase-selects'
 
 type Screen =
   | 'loading'
@@ -523,7 +523,7 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
       isMyTurn={isMyTurn && !isWatching}
       watching={isWatching}
       acting={acting}
-      drawCount={session.draw_pile?.length ?? 0}
+      drawCount={session.draw_count ?? 0}
       drawDepleted={drawDepleted}
       myCanPlay={myCanPlay}
       suitCallActive={session.required_suit != null}

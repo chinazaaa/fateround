@@ -574,7 +574,7 @@ export function CrazyEightsHostView({ gameCode, hostToken }: { gameCode: string;
             isMyTurn={hostPlays && isHostTurn}
             watching={!hostPlays}
             acting={hostActing}
-            drawCount={session.draw_pile?.length ?? 0}
+            drawCount={session.draw_count ?? 0}
             drawDepleted={drawDepleted}
             myCanPlay={hostCanPlay}
             suitCallActive={session.required_suit != null}
