@@ -1002,7 +1002,6 @@ export default function TournamentLobbyPage() {
         {/* Header */}
         <div className="text-center space-y-2">
           {tournament.branding?.logoUrl && (
-             
             <img src={tournament.branding.logoUrl} alt="" className="mx-auto h-20 w-20 object-contain rounded-xl" />
           )}
           <h1 className="text-3xl font-black gradient-title leading-tight">{tournament.title}</h1>
@@ -1084,6 +1083,15 @@ export default function TournamentLobbyPage() {
                   <button onClick={() => setHostQrOpen(true)} className="btn-secondary btn-fit text-sm">
                     Host QR
                   </button>
+                  <a
+                    href={`/tournament/${tournamentId}/screen`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="btn-secondary btn-fit text-sm"
+                    title="Open a full-screen projector/TV view of this tournament"
+                  >
+                    🖥 Big screen
+                  </a>
                   <button onClick={openEditSettings} className="btn-secondary btn-fit text-sm">
                     ⚙️ Edit settings
                   </button>
