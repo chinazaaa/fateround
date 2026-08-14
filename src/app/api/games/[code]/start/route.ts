@@ -629,7 +629,19 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
       return NextResponse.json({ error: `Need at least ${TTL_MIN_PLAYERS} players to start` }, { status: 400 })
     }
 
-    const { data: statementRows } = await supabase.from('ttl_statements').select('*').eq('game_id', code.toUpperCase())
+    // Service role, not the anon client: `lie_index` is revoked from anon (20260807120000), and
+    // `select('*')` expands to every column — so the anon read fails wholesale with 42501 and the
+    // game can never start. The lie is also genuinely needed here; buildTtlRoundRows returns
+    // `built.lies`, which seeds ttl_round_lies below. Do not narrow this to TTL_STATEMENT_SELECT:
+    // that constant deliberately omits lie_index, which would leave every round without an answer.
+    const { data: statementRows, error: statementError } = await getSupabaseAdmin()
+      .from('ttl_statements')
+      .select('*')
+      .eq('game_id', code.toUpperCase())
+    // Surface the failure instead of treating it as "nobody submitted" — swallowing this error is
+    // what turned a permission bug into a misleading "Need at least 3 players to submit" message.
+    if (statementError)
+      return NextResponse.json({ error: internalErrorMessage('games/code/start', statementError) }, { status: 500 })
 
     const statements = statementRows ?? []
     const ready = lobbyReadyForTwoTruths(playerIds, statements)
