@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { resolveTournamentPlayerId } from '@/lib/tournament-token-lookup'
 
 /**
  * A nominated tournament player declines the host role. Authorised by the
@@ -23,14 +24,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   const supabase = getSupabaseAdmin()
 
-  const { data: tokenRow } = await supabase
-    .from('tournament_player_tokens')
-    .select('player_id')
-    .eq('tournament_id', tournamentId)
-    .ilike('token', resumeToken)
-    .maybeSingle()
-  if (!tokenRow) return NextResponse.json({ error: 'Player code not found' }, { status: 404 })
-  const playerId = tokenRow.player_id as string
+  // Exact (case-folded) match, never a pattern — see resolveTournamentPlayerId.
+  const { playerId, error: tokenError } = await resolveTournamentPlayerId(supabase, tournamentId, resumeToken)
+  if (tokenError) return NextResponse.json({ error: 'Failed to look up player code' }, { status: 500 })
+  if (!playerId) return NextResponse.json({ error: 'Player code not found' }, { status: 404 })
 
   // Conditional clear: only null the pending nominee if it's still US.
   // Prevents a slow decline race from cancelling a fresh, unrelated nomination.

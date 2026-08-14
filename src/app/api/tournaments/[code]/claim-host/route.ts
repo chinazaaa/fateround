@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { generateToken } from '@/lib/utils'
+import { resolveTournamentPlayerId } from '@/lib/tournament-token-lookup'
 
 /**
  * A nominated tournament player claims the host role. Authorised by the
@@ -28,17 +29,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   const supabase = getSupabaseAdmin()
 
-  // Resolve the resume token → tournament_players.id. Case-insensitive to
-  // match legacy lowercase-UUID codes alongside the newer short-code format.
-  const { data: tokenRow, error: tokenError } = await supabase
-    .from('tournament_player_tokens')
-    .select('player_id')
-    .eq('tournament_id', tournamentId)
-    .ilike('token', resumeToken)
-    .maybeSingle()
+  // Resolve the resume token → tournament_players.id. Case-insensitive (legacy
+  // lowercase-UUID codes alongside the newer short codes) but never a pattern
+  // match — see resolveTournamentPlayerId for why ILIKE is unsafe here.
+  const { playerId, error: tokenError } = await resolveTournamentPlayerId(supabase, tournamentId, resumeToken)
   if (tokenError) return NextResponse.json({ error: 'Failed to look up player code' }, { status: 500 })
-  if (!tokenRow) return NextResponse.json({ error: 'Player code not found' }, { status: 404 })
-  const playerId = tokenRow.player_id as string
+  if (!playerId) return NextResponse.json({ error: 'Player code not found' }, { status: 404 })
 
   const newHostToken = generateToken()
 

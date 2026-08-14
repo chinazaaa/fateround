@@ -339,9 +339,11 @@ export default function TournamentCreatePage() {
         try {
           const fd = new FormData()
           fd.append('file', brandLogoFile)
-          fd.append('hostToken', data.hostToken)
+          // Host token travels as a header, not a form field, so the route can
+          // authorise before it buffers the upload body.
           const logoRes = await fetch(`/api/tournaments/${data.tournamentCode}/branding/logo`, {
             method: 'POST',
+            headers: { 'x-host-token': data.hostToken },
             body: fd,
           })
           if (!logoRes.ok) {

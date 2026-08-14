@@ -34,16 +34,23 @@ export function formatScheduledFor(iso: string): string {
   return `${dayPart} · ${timePart}`
 }
 
-/** Fold a text line for iCalendar's 75-octet limit (RFC 5545 §3.1). */
+/**
+ * Fold a text line for iCalendar's 75-octet limit (RFC 5545 §3.1).
+ *
+ * The first line carries `limit` characters; every continuation is prefixed
+ * with a single space (which counts toward the limit, hence `limit - 1` of
+ * payload each). The cursor advances by exactly the number of payload
+ * characters consumed, so it always makes progress — an earlier version
+ * rewound by one per continuation and spun forever once the tail reached a
+ * single character.
+ */
 function foldIcsLine(line: string): string {
   const limit = 74
   if (line.length <= limit) return line
-  const out: string[] = []
-  let i = 0
-  while (i < line.length) {
-    const chunk = line.slice(i, i + (i === 0 ? limit : limit - 1))
-    out.push(i === 0 ? chunk : ` ${chunk}`)
-    i += chunk.length - (i === 0 ? 0 : 1)
+  const continuation = limit - 1
+  const out: string[] = [line.slice(0, limit)]
+  for (let i = limit; i < line.length; i += continuation) {
+    out.push(` ${line.slice(i, i + continuation)}`)
   }
   return out.join('\r\n')
 }

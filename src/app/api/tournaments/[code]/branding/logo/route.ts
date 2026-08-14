@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { enforceRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
 
 // Small, focused upload route for a tournament's brand logo. Only the host
 // (proving it via the tournament's host_token) can hit this, and the file is
@@ -56,13 +57,42 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const { code } = await params
   const tournamentId = code.toUpperCase()
 
+  // Flood backstop: this endpoint reads a multipart body and writes to storage,
+  // so it shouldn't be freely hammerable even before the host check below.
+  const limited = await enforceRateLimit(req, RATE_LIMITS.tournamentLogoUpload)
+  if (limited) return limited
+
   try {
+    const admin = getSupabaseAdmin()
+
+    // AUTHORISE FIRST. The host_token check has to happen before the body is
+    // parsed and buffered — `formData()` + `arrayBuffer()` pull the whole
+    // payload into memory, so doing them first let an unauthenticated caller
+    // who knew only the (publicly shared) tournament code burn server memory
+    // and CPU on every request and get a 403 only afterwards.
+    const hostToken = req.headers.get('x-host-token')
+    if (!hostToken) {
+      return NextResponse.json({ error: 'Missing hostToken' }, { status: 400 })
+    }
+
+    const { data: tournament } = await admin
+      .from('tournaments')
+      .select('host_token, branding')
+      .eq('id', tournamentId)
+      .maybeSingle()
+
+    if (!tournament) {
+      return NextResponse.json({ error: 'Tournament not found' }, { status: 404 })
+    }
+    if (tournament.host_token !== hostToken) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
+    }
+
     const formData = await req.formData()
     const file = formData.get('file') as File | null
-    const hostToken = formData.get('hostToken') as string | null
 
-    if (!file || !hostToken) {
-      return NextResponse.json({ error: 'Missing file or hostToken' }, { status: 400 })
+    if (!file) {
+      return NextResponse.json({ error: 'Missing file' }, { status: 400 })
     }
 
     if (!ALLOWED_TYPES.includes(file.type)) {
@@ -79,29 +109,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       return NextResponse.json({ error: 'File content does not match its type' }, { status: 400 })
     }
 
-    const admin = getSupabaseAdmin()
-
-    const { data: tournament } = await admin
-      .from('tournaments')
-      .select('host_token, branding')
-      .eq('id', tournamentId)
-      .maybeSingle()
-
-    if (!tournament) {
-      return NextResponse.json({ error: 'Tournament not found' }, { status: 404 })
-    }
-    if (tournament.host_token !== hostToken) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
-    }
-
     const ext = extFromMime(file.type)
     const storagePath = `${tournamentId}/logo.${ext}`
-
-    // Different extension than the previous upload → clean up the old file
-    // so we don't leave orphans across format swaps.
-    const otherExts = ['png', 'jpg', 'webp', 'gif', 'svg'].filter((e) => e !== ext)
-    const oldPaths = otherExts.map((e) => `${tournamentId}/logo.${e}`)
-    if (oldPaths.length > 0) await admin.storage.from('tournament-branding').remove(oldPaths)
 
     const { error: uploadError } = await admin.storage.from('tournament-branding').upload(storagePath, buffer, {
       contentType: file.type,
@@ -111,6 +120,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       console.error('Tournament logo upload error:', uploadError)
       return NextResponse.json({ error: 'Failed to upload logo' }, { status: 500 })
     }
+
+    // Only AFTER the new file is safely stored: clean up logos left at other
+    // extensions by a previous format. Doing this first meant a failed upload
+    // deleted the working logo and left branding.logoUrl pointing at a 404.
+    const oldPaths = ['png', 'jpg', 'webp', 'gif', 'svg']
+      .filter((e) => e !== ext)
+      .map((e) => `${tournamentId}/logo.${e}`)
+    if (oldPaths.length > 0) await admin.storage.from('tournament-branding').remove(oldPaths)
 
     const { data: publicUrlData } = admin.storage.from('tournament-branding').getPublicUrl(storagePath)
     // Cache-bust so a re-upload of the same filename actually refreshes for

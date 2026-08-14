@@ -68,6 +68,9 @@ export const RATE_LIMITS = {
   // limit for paying hosts and keep the burst limit as a safety valve.
   aiQuestions: { bucket: 'ai-questions', max: 10, windowSeconds: 300 },
   aiQuestionsDaily: { bucket: 'ai-questions-daily', max: 15, windowSeconds: 86_400 },
+  // Multipart upload into storage. A host sets their event logo once or twice, so this
+  // is deliberately tight — it only has to clear a host fiddling with a few images.
+  tournamentLogoUpload: { bucket: 'tournament-logo-upload', max: 30, windowSeconds: 300 },
   // Returns whole-session snapshots, so it's worth a flood backstop alongside the token
   // check added for audit finding M4.
   gameSnapshots: { bucket: 'game-snapshots', max: 300, windowSeconds: 300 },

@@ -25,6 +25,12 @@ export async function register() {
   const { startGameTicker } = await import('@/lib/game-tick')
   startGameTicker()
 
+  // Scheduled-tournament reminders (T-15 / T-0 push). Same in-process pattern as
+  // the game ticker — this deploy is a long-running `node server.js`, so it can
+  // schedule its own background work and needs no external cron service.
+  const { startTournamentReminderTicker } = await import('@/lib/tournament-reminders')
+  startTournamentReminderTicker()
+
   // Not configured for this environment → do nothing.
   if (!process.env.OTEL_EXPORTER_OTLP_ENDPOINT) return
 

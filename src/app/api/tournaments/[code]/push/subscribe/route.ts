@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { resolveTournamentPlayerId } from '@/lib/tournament-token-lookup'
 
 const bodySchema = z.object({
   // Either the tournament player's resume token, OR the tournament host_token
@@ -53,13 +54,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   if (hostToken && hostToken === tournament.host_token) {
     roleKey = `host:${hostToken}`
   } else if (resumeToken) {
-    const { data: tokenRow } = await admin
-      .from('tournament_player_tokens')
-      .select('player_id')
-      .eq('tournament_id', tournamentId)
-      .ilike('token', resumeToken)
-      .maybeSingle()
-    if (tokenRow) roleKey = `player:${tokenRow.player_id}`
+    // Exact (case-folded) match, never a pattern — see resolveTournamentPlayerId.
+    const { playerId } = await resolveTournamentPlayerId(admin, tournamentId, resumeToken)
+    if (playerId) roleKey = `player:${playerId}`
   }
   if (!roleKey) return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
 
