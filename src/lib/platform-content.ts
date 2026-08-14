@@ -244,7 +244,7 @@ const CODEWORDS_DEF: PlatformGameDef = {
     {
       key: 'daily-bank',
       label: 'Codewords — Daily Challenge Bank (898 words)',
-      entries: [...new Set(CODENAMES_BANK.flatMap((p) => p.grid))].map((w) => ({ word: w })),
+      entries: [...new Set(CODENAMES_BANK.flatMap((p) => p.grid))],
     },
   ],
 }
