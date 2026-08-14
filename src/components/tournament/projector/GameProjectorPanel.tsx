@@ -2,6 +2,8 @@
 
 import { TriviaProjectorView } from './TriviaProjectorView'
 import { NpatProjectorView } from './NpatProjectorView'
+import { TwoTruthsProjectorView } from './TwoTruthsProjectorView'
+import { WhoSaidThisProjectorView } from './WhoSaidThisProjectorView'
 
 /**
  * Dispatch a projector "spectator" view based on the game's type. Only the
@@ -13,5 +15,7 @@ import { NpatProjectorView } from './NpatProjectorView'
 export function GameProjectorPanel({ gameType, gameCode }: { gameType: string | null; gameCode: string }) {
   if (gameType === 'trivia') return <TriviaProjectorView gameCode={gameCode} />
   if (gameType === 'i_call_on') return <NpatProjectorView gameCode={gameCode} />
+  if (gameType === 'two_truths') return <TwoTruthsProjectorView gameCode={gameCode} />
+  if (gameType === 'who_said_this') return <WhoSaidThisProjectorView gameCode={gameCode} />
   return null
 }
