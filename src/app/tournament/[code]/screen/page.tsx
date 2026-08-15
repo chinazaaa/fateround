@@ -136,7 +136,12 @@ export default function TournamentBigScreenPage() {
   return (
     <TournamentBrandingWrapper
       branding={tournament.branding}
-      className="fixed inset-0 flex flex-col overflow-hidden bg-black text-white"
+      // Projector view: full-viewport dark surface. `overflow-y-auto` (not
+      // hidden) is deliberate — on smaller displays the header + waiting-room
+      // grid + QR + player list is taller than the viewport, and without the
+      // ability to scroll hosts lose access to everything below the fold.
+      // On a real projector the content still fits and no scrollbar shows.
+      className="fixed inset-0 flex flex-col overflow-y-auto bg-black text-white"
     >
       {/* Header — logo + title. Sticks to the top; body below fills. */}
       <header className="flex items-center gap-6 px-10 pt-8">

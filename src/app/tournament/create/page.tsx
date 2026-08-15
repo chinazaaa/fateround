@@ -260,6 +260,17 @@ export default function TournamentCreatePage() {
     const pad = (n: number) => String(n).padStart(2, '0')
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
   })()
+  // Live "is the currently-picked time in the past?" check. Native datetime-
+  // local pickers ignore `min` in the picker UI on most mobile browsers, so
+  // hosts CAN scroll to a past time even for today — we need to surface that
+  // inline rather than waiting until they hit Create. 60s grace matches the
+  // client submit guard + server refine.
+  const scheduledIsPast = (() => {
+    if (!scheduledLocal) return false
+    const ms = new Date(scheduledLocal).getTime()
+    if (Number.isNaN(ms)) return false
+    return ms < Date.now() - 60_000
+  })()
 
   const isH2H = format === 'head-to-head'
   const isKnockout = format === 'knockout'
@@ -706,15 +717,33 @@ export default function TournamentCreatePage() {
             value={scheduledLocal}
             // Native picker floor — most browsers dim past dates in the drop-
             // down when min is set. Server-side validation is the real fence
-            // because min can be bypassed, but this stops the honest mistake.
+            // because min can be bypassed (mobile pickers frequently ignore
+            // it), but this stops the honest mistake on desktop.
             min={scheduledMinLocal}
             onChange={(e) => setScheduledLocal(e.target.value)}
+            aria-invalid={scheduledIsPast || undefined}
+            aria-describedby={scheduledIsPast ? 'tournament-scheduled-at-error' : undefined}
             className="input-field"
+            style={
+              scheduledIsPast
+                ? { borderColor: 'var(--danger, #ef4444)', boxShadow: '0 0 0 1px var(--danger, #ef4444)' }
+                : undefined
+            }
           />
-          <p className="text-faint text-xs mt-1.5">
-            Leave empty for right now. Sets a countdown on the invite link so pre-registered players know when to show
-            up.
-          </p>
+          {scheduledIsPast ? (
+            <p
+              id="tournament-scheduled-at-error"
+              className="text-xs mt-1.5"
+              style={{ color: 'var(--danger, #ef4444)' }}
+            >
+              That&apos;s in the past — pick a later time, or clear the field for a right-now game.
+            </p>
+          ) : (
+            <p className="text-faint text-xs mt-1.5">
+              Leave empty for right now. Sets a countdown on the invite link so pre-registered players know when to show
+              up.
+            </p>
+          )}
         </Field>
 
         <div className="divider-soft" />
@@ -1584,7 +1613,7 @@ export default function TournamentCreatePage() {
 
       {error && <p className="text-red-400 text-sm text-center">{error}</p>}
 
-      <PrimaryBtn onClick={handleCreate} disabled={submitting}>
+      <PrimaryBtn onClick={handleCreate} disabled={submitting || scheduledIsPast}>
         {submitting ? 'Creating…' : 'Create Tournament'}
       </PrimaryBtn>
     </PageShell>
