@@ -5,6 +5,7 @@ import { assertHostGame, assertHostPlayerRemove } from '@/lib/game-admin'
 import { parseJsonBody } from '@/lib/parse-body'
 import { parseGameType } from '@/lib/game-types'
 import { fetchGamePlayerLimits, lobbyMaxPlayersFromGame } from '@/lib/game-limits'
+import { firstAvailableMonopolyToken } from '@/lib/monopoly-tokens'
 import { internalErrorMessage } from '@/lib/api-errors'
 
 /**
@@ -22,12 +23,12 @@ import { internalErrorMessage } from '@/lib/api-errors'
  *     a human arriving at a bot-padded room evicts a bot there.
  *
  * ── Which games? ──────────────────────────────────────────────────────────
- * Phase 1 only wires Whot. Other game types return 400 with a clear message.
- * When Monopoly / Ludo / etc. get bot drivers, add them to
- * BOTS_SUPPORTED_TYPES here and to BOT_TICK_SLUG in src/lib/game-tick.ts.
+ * Phase 1 wired Whot. Phase 2 added Monopoly. Other game types return 400
+ * with a clear message. As Ludo / Yahtzee / etc. get bot drivers, add them
+ * to BOTS_SUPPORTED_TYPES here and to BOT_TICK_SLUG in src/lib/game-tick.ts.
  */
 
-const BOTS_SUPPORTED_TYPES = new Set<string>(['whot'])
+const BOTS_SUPPORTED_TYPES = new Set<string>(['whot', 'monopoly'])
 
 const addSchema = z.object({ hostToken: z.string().min(1) })
 
@@ -71,7 +72,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const maxPlayers = lobbyMaxPlayersFromGame(gameType as Parameters<typeof lobbyMaxPlayersFromGame>[0], game, limits)
   const { data: seated, error: seatedErr } = await supabase
     .from('players')
-    .select('id, name, is_bot, spectator')
+    .select('id, name, is_bot, spectator, monopoly_token')
     .eq('game_id', code)
     .eq('spectator', false)
   if (seatedErr) return NextResponse.json({ error: internalErrorMessage('bots', seatedErr) }, { status: 500 })
@@ -92,6 +93,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const existingNames = new Set((seated ?? []).map((p) => p.name.toLowerCase()))
   const botName = pickBotName(existingNames)
 
+  // Monopoly requires each seated player to carry a token (car/hat/dog/…) so
+  // the board can render their piece. Human joiners pick one in the join form;
+  // for bots we auto-pick the first unused token. If somehow the game already
+  // has all 10 tokens taken (impossible given max 6 players), we fall through
+  // to null — the engine tolerates it and the UI falls back to an ordinal glyph.
+  const monopolyToken = parseGameType(game.game_type) === 'monopoly' ? firstAvailableMonopolyToken(seated ?? []) : null
+
   const { data: player, error } = await supabase
     .from('players')
     .insert({
@@ -103,6 +111,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       participant_id: null,
       spectator: false,
       is_bot: true,
+      monopoly_token: monopolyToken,
     })
     .select('id, name, is_bot')
     .single()

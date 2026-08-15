@@ -1,11 +1,36 @@
 # Bots-in-Room — Plan
 
-> Status: **Plan only, nothing built.** Companion to
+> Status: **Phase 1 shipped (Whot, PR #886). Phase 2 shipped (Monopoly,
+> `feat/monopoly-bot`).** Companion to
 > [`solo-bot-plan.md`](./solo-bot-plan.md), which covered
 > single-player-vs-bot pages (Whot, Ayo, Crazy Eights, UNO — all shipped).
 > This doc covers the different feature: **letting a host add computer
 > players to a real multiplayer room so a small crew can play games that
 > want more people.**
+
+## Revisions since original plan
+
+The plan below is the original design ADR. Two items have been revised
+after the fact — kept here because the *why* still matters:
+
+- **Trading is now respond-only, not banned entirely.** Original plan:
+  "no trading, ever." Actual: bots respond to human-proposed trades
+  (accept / decline via a value heuristic), but never initiate. The
+  original concern — bots at trade valuation look exploitable — is
+  addressed by two hard rules in the heuristic: (a) never break one of
+  the bot's own completed monopolies, no matter what's offered; (b)
+  require a 10% margin, so dead-even swaps decline. Bot-initiated
+  trades remain a hard no. See `src/lib/monopoly-bot.ts` and its
+  test file for the exact thresholds.
+- **At-least-one-human-seat is enforced at Start.** Original plan said
+  "server enforces at least one human seat" but Phase 1 only had the
+  add-bot cap of `max_players - 1`. The Start endpoint now blocks a
+  bot-only room outright (`startHumanSeatError` in `src/lib/game-start.ts`).
+- **Bots stay seated across Play Again / Return to Lobby.** Phase 1
+  had a bug where `resetSpectatorsForLobby` demoted bots to spectator
+  along with humans; bots then had no client to opt back in, and the
+  Start guard above (or the ready-up ring) would block the replay
+  forever. Fixed by excluding `is_bot=true` from the reset.
 
 ## Why this is a different product from solo
 
@@ -115,8 +140,11 @@ The bot decides:
 - **Jail** — pay $50 when past round 20 (mid/late game — mobility matters);
   before then, try doubles
 - **Accept bankruptcy** — engine handles this on its own; no bot decision
-- **Trading** — explicitly out of scope, never in solo either. Marked NOT
-  A ROADMAP ITEM in the code so it doesn't accidentally come back.
+- **Trading** — original plan called this out of scope entirely. Revised
+  post-Phase-2 to **respond-only** (see the Revisions section at the top):
+  bots accept or decline human proposals but never initiate. Solo bots
+  still skip trading entirely — the response-only heuristic assumes the
+  bot has a live opponent to reason against.
 - **Auction** — happens only when a human declines a purchase in a
   4+-player game. Bots auto-bid at ≤ 60% of face value; no bot-bot
   auction bidding UI needed.
@@ -196,8 +224,11 @@ locking out an extra friend who shows up late would defeat that goal.
 
 ## Explicit non-goals
 
-- **No trading, ever.** Not "trading v2" — genuinely never. Marked in
-  code and doc so it doesn't come back through drift.
+- **No BOT-INITIATED trading.** Bots respond to human proposals (added
+  post-Phase-2, see Revisions above) but never propose one. Proactive
+  trades would drop the bot into open-ended valuation across mixed
+  baskets — which is exactly the "look silly" failure mode the original
+  no-trading rule was defending against.
 - **No bot-only games.** Every room needs at least 1 human player;
   starting a room with 4 bots and watching them play is not a product.
 - **No bot skill tuning at first.** Difficulty selection is optional
