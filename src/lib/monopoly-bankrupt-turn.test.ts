@@ -192,13 +192,97 @@ describe('advanceMonopolyTurnPastBankrupt', () => {
     expect(boardUpdate.vals.current_turn_index).toBe(2)
   })
 
-  it('is a no-op when only one player remains alive (winner short-circuit)', async () => {
+  it('finishes the game when only one player remains alive', async () => {
     const b = board({ current_turn_index: 0 })
     const states = [pState('a', { bankrupt: true }), pState('b', { bankrupt: true }), pState('c')]
     const m = makeSupabase({ board: b, states })
     const result = await advanceMonopolyTurnPastBankrupt(m.supabase, 'G1')
 
+    expect(result.advanced).toBe(true)
+    const boardUpdate = m.updates.find((u) => u.table === 'monopoly_boards')!
+    expect(boardUpdate.vals.phase).toBe('finished')
+    expect(boardUpdate.vals.winner_player_id).toBe('c')
+    // Any lingering blocking state is cleared alongside the finish flip.
+    expect(boardUpdate.vals.auction_state).toBeNull()
+    expect(boardUpdate.vals.pending_trade).toBeNull()
+  })
+
+  it('is a no-op when the phase is not a turn-holder phase (e.g. auction)', async () => {
+    const b = board({ current_turn_index: 0, phase: 'auction' })
+    const states = [pState('a', { bankrupt: true }), pState('b'), pState('c')]
+    const m = makeSupabase({ board: b, states })
+    const result = await advanceMonopolyTurnPastBankrupt(m.supabase, 'G1')
+
     expect(result.advanced).toBe(false)
     expect(m.updates.filter((u) => u.table === 'monopoly_boards')).toHaveLength(0)
+  })
+
+  it('is a no-op when the player-state query errors out', async () => {
+    const b = board({ current_turn_index: 0 })
+    const updates: Array<{ table: string; vals: Record<string, unknown> }> = []
+    // Minimal per-test mock: board read succeeds, player-state read returns
+    // {data: null, error: {...}}. Recovery must not persist anything.
+    const supabase = {
+      from(table: string) {
+        if (table === 'monopoly_boards') {
+          return {
+            select() {
+              return {
+                eq() {
+                  return this
+                },
+                maybeSingle() {
+                  return Promise.resolve({ data: b, error: null })
+                },
+              }
+            },
+            update(vals: Record<string, unknown>) {
+              updates.push({ table, vals })
+              return {
+                eq() {
+                  return this
+                },
+                select() {
+                  return {
+                    eq() {
+                      return this
+                    },
+                    then(fn: (v: { data: Array<{ game_id: string }>; error: null }) => unknown) {
+                      return Promise.resolve({ data: [{ game_id: 'G1' }], error: null }).then(fn)
+                    },
+                  }
+                },
+              }
+            },
+          }
+        }
+        if (table === 'monopoly_player_state') {
+          return {
+            select() {
+              return {
+                eq() {
+                  return this
+                },
+                then(fn: (v: { data: null; error: { message: string } }) => unknown) {
+                  return Promise.resolve({ data: null, error: { message: 'db down' } }).then(fn)
+                },
+              }
+            },
+          }
+        }
+        return { select: () => ({ eq: () => ({ maybeSingle: () => Promise.resolve({ data: null, error: null }) }) }) }
+      },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any
+    const result = await advanceMonopolyTurnPastBankrupt(supabase, 'G1')
+
+    expect(result.advanced).toBe(false)
+    expect(updates.filter((u) => u.table === 'monopoly_boards')).toHaveLength(0)
+  })
+
+  it('flags out-of-range turn indices as invalid', () => {
+    const states = [pState('a'), pState('b'), pState('c')]
+    expect(isTurnHolderBankrupt(board({ current_turn_index: 3 }), states)).toBe(true)
+    expect(isTurnHolderBankrupt(board({ current_turn_index: -1 }), states)).toBe(true)
   })
 })

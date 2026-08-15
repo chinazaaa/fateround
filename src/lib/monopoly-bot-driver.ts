@@ -84,7 +84,7 @@ export async function driveMonopolyBotsOnce(gameCode: string): Promise<DriveResu
   // turn off them so the next tick sees a live holder. This is defensive —
   // normal engine paths route through nextTurnIndex which skips bankrupts.
   if (isTurnHolderBankrupt(board, states)) {
-    const { advanced } = await advanceMonopolyTurnPastBankrupt(admin, gameCode)
+    const { advanced } = await advanceMonopolyTurnPastBankrupt(admin, code)
     return advanced ? { kind: 'skipped', reason: 'advanced past bankrupt turn holder' } : { kind: 'idle' }
   }
 

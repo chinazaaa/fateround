@@ -235,11 +235,20 @@ export function nextTurnIndex(board: MonopolyBoard, states: MonopolyPlayerState[
 export function isTurnHolderBankrupt(board: MonopolyBoard, states: MonopolyPlayerState[]): boolean {
   const order = board.turn_order ?? []
   if (order.length === 0) return false
-  const playerId = order[board.current_turn_index % order.length]
+  const idx = board.current_turn_index
+  // Out-of-range or non-integer indices are invalid — treat as a bankrupt slot
+  // rather than silently wrapping past a real player.
+  if (!Number.isInteger(idx) || idx < 0 || idx >= order.length) return true
+  const playerId = order[idx]
   if (!playerId) return true
   const state = states.find((s) => s.player_id === playerId)
   return !state || state.bankrupt === true
 }
+
+// Phases where `current_turn_index` names the actor. Auction and trade run
+// outside turn order — advancing the index during those would clobber a live
+// auction/trade rather than repair a stall.
+const MONOPOLY_TURN_HOLDER_PHASES: readonly MonopolyPhase[] = ['roll', 'jail', 'buy', 'pay_rent', 'raise_funds']
 
 /**
  * If `current_turn_index` is parked on a bankrupt player, advance it to the
@@ -259,12 +268,43 @@ export async function advanceMonopolyTurnPastBankrupt(
   const board = boardRaw as MonopolyBoard
   if (board.phase === 'finished') return { advanced: false }
 
-  const { data: statesRaw } = await supabase.from('monopoly_player_state').select('*').eq('game_id', gameId)
+  // Only repair phases where current_turn_index actually names the actor.
+  // Auction and trade route through different fields and would be corrupted
+  // by a turn-index bump.
+  if (!MONOPOLY_TURN_HOLDER_PHASES.includes(board.phase)) return { advanced: false }
+
+  // Distinguish "no rows" from a query failure — treating an errored read as
+  // an empty player list would let recovery persist a bogus turn on a stale
+  // board, clobbering pending_debt/pending_space along the way.
+  const { data: statesRaw, error: statesError } = await supabase
+    .from('monopoly_player_state')
+    .select('*')
+    .eq('game_id', gameId)
+  if (statesError) return { advanced: false }
   const states = (statesRaw ?? []) as MonopolyPlayerState[]
   if (!isTurnHolderBankrupt(board, states)) return { advanced: false }
 
   const winner = checkWinner(states)
-  if (winner) return { advanced: false }
+  if (winner) {
+    // Game is actually over — mark it finished (and stamp winner_player_id) so
+    // it doesn't sit in a live phase forever with no one able to act.
+    const wroteWinner = await persistBoard(
+      supabase,
+      gameId,
+      {
+        phase: 'finished',
+        winner_player_id: winner,
+        turn_deadline_at: null,
+        pending_debt: null,
+        pending_space: null,
+        auction_state: null,
+        pending_trade: null,
+      },
+      board.updated_at
+    )
+    if (wroteWinner) await markGameFinished(supabase, gameId)
+    return { advanced: wroteWinner }
+  }
 
   const turnIndex = nextTurnIndex(board, states)
   const nextPhase = phaseForTurn(board, states, turnIndex)
