@@ -1,6 +1,27 @@
 import { z } from 'zod/v4'
 import { sanitizedString, hostTokenString } from './validation'
 
+// Optional scheduled start time (ISO 8601). Display + reminder only — the host
+// still starts the event manually on the day. Pass null to clear. Reject times
+// more than 60 seconds in the past so hosts can't schedule an event for a
+// yesterday; the grace covers clock skew + the seconds between choosing a time
+// and hitting Create.
+export const SCHEDULE_PAST_GRACE_SECONDS = 60
+export const scheduledAtSchema = z
+  .string()
+  .datetime()
+  .nullable()
+  .optional()
+  .refine(
+    (value) => {
+      if (value == null) return true
+      const parsed = Date.parse(value)
+      if (Number.isNaN(parsed)) return true
+      return parsed >= Date.now() - SCHEDULE_PAST_GRACE_SECONDS * 1000
+    },
+    { message: 'Scheduled start must be in the future' }
+  )
+
 const eliminationConfigSchema = z.object({
   mode: z.literal('lives'),
   startingLives: z.coerce.number().int().min(1).max(10),
@@ -78,7 +99,7 @@ export const createTournamentSchema = z.object({
   branding: tournamentBrandingSchema.optional(),
   // Optional scheduled start time (ISO 8601). Display + reminder only — the
   // host still starts the event manually on the day. Pass null to clear.
-  scheduledAt: z.string().datetime().nullable().optional(),
+  scheduledAt: scheduledAtSchema,
 })
 
 export const updateTournamentSchema = z.object({
@@ -104,7 +125,7 @@ export const updateTournamentSchema = z.object({
   // /branding/logo route, not through this PATCH body.
   branding: tournamentBrandingSchema.optional(),
   // Update or clear the scheduled start time. Pass null to remove.
-  scheduledAt: z.string().datetime().nullable().optional(),
+  scheduledAt: scheduledAtSchema,
 })
 
 export const joinTournamentSchema = z.object({

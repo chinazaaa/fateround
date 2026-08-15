@@ -238,6 +238,16 @@ export default function TournamentCreatePage() {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
 
+  // "Now" in the host's local timezone, formatted as the datetime-local input
+  // wants ("YYYY-MM-DDTHH:mm"). Used as the picker's `min` so hosts can't
+  // scroll to yesterday. Recomputed each render — cheap; the input floor
+  // sliding by a minute between renders is intended.
+  const scheduledMinLocal = (() => {
+    const d = new Date()
+    const pad = (n: number) => String(n).padStart(2, '0')
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+  })()
+
   const isH2H = format === 'head-to-head'
   const isKnockout = format === 'knockout'
   const isSchool = format === 'school'
@@ -443,6 +453,19 @@ export default function TournamentCreatePage() {
       )
       return
     }
+    if (scheduledLocal) {
+      const scheduledMs = new Date(scheduledLocal).getTime()
+      if (Number.isNaN(scheduledMs)) {
+        setError('That scheduled start time looks off — please pick a valid date and time.')
+        return
+      }
+      // Same 60s grace as the server refine — a submission that took a few
+      // seconds after the picker committed shouldn't false-positive as past.
+      if (scheduledMs < Date.now() - 60_000) {
+        setError('Scheduled start must be in the future. Pick a later time or clear the schedule for a right-now game.')
+        return
+      }
+    }
 
     setSubmitting(true)
     setError('')
@@ -608,6 +631,10 @@ export default function TournamentCreatePage() {
             id="tournament-scheduled-at"
             type="datetime-local"
             value={scheduledLocal}
+            // Native picker floor — most browsers dim past dates in the drop-
+            // down when min is set. Server-side validation is the real fence
+            // because min can be bypassed, but this stops the honest mistake.
+            min={scheduledMinLocal}
             onChange={(e) => setScheduledLocal(e.target.value)}
             className="input-field"
           />
