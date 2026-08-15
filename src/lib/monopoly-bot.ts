@@ -21,10 +21,14 @@
  * - **Fund-raising is greedy but ordered.** raise_funds sells houses first
  *   (cheap, doesn't burn a whole property), then mortgages the lowest-value
  *   ungrouped property, then forfeits. Each tick returns ONE step.
- * - **No trading.** Ever. Not surfaced, not returnable.
+ * - **Trade responses only.** Bot NEVER initiates a trade. It only accepts
+ *   or declines proposals humans push to it, and rejects anything that isn't
+ *   clearly positive-sum (net-gain, with a big penalty for breaking one of
+ *   its own monopolies).
  */
 
-import type { MonopolyBotView } from '@/lib/monopoly-bot-adapter'
+import type { MonopolyBotView, MonopolyBotTradeContext } from '@/lib/monopoly-bot-adapter'
+import { MONOPOLY_JAIL_FINE, spacesInGroup, type MonopolySpace } from '@/lib/monopoly-board'
 
 export type MonopolyBotAction =
   | { type: 'roll' }
@@ -42,6 +46,8 @@ export type MonopolyBotAction =
   | { type: 'build_hotel'; spaceIndex: number }
   | { type: 'auction_bid'; amount: number }
   | { type: 'auction_pass' }
+  | { type: 'trade_accept' }
+  | { type: 'trade_decline' }
 
 // ── Tunables (all ratios / small integers, no absolute-dollar figures) ────
 
@@ -65,13 +71,43 @@ const AUCTION_MAX_FACE_FRACTION = 0.6
 const AUCTION_BID_STEP_FACE_FRACTION = 0.1
 
 /**
+ * Trades: accept only when net-gain × this margin ≥ 1. A 10% margin means the
+ * bot needs the trade to be at least 10% positive from its perspective — a
+ * dead-even swap is declined. Keeps humans from wringing marginal value out
+ * with slightly-in-their-favour "fair" trades.
+ */
+const TRADE_ACCEPT_MARGIN = 1.1
+
+/**
+ * Multiplier on a property's price when the bot would BREAK ITS OWN MONOPOLY
+ * by trading it away. Set high enough that no realistic human offer can
+ * compensate — building rent on a full set easily reaches 10× the printed
+ * price over a game, plus the strategic loss of the set. This is deliberately
+ * aggressive: the point of the response-only bot is "never look exploitable",
+ * and the failure mode of "sometimes decline a trade a human would take"
+ * beats "sometimes hand over a monopoly for a fair-looking cash bag".
+ */
+const TRADE_BREAK_MONOPOLY_MULTIPLIER = 20
+
+/** Multiplier on a property's price when RECEIVING it would complete a set. */
+const TRADE_COMPLETE_SET_MULTIPLIER = 2
+
+/**
  * Pick the bot's next move. Returns null when the bot has nothing to do — the
  * caller (driver) should skip in that case; the next tick re-evaluates.
  */
 export function pickBotAction(view: MonopolyBotView): MonopolyBotAction | null {
-  // Auction runs outside the turn order — check it first so a bot that is
-  // eligible to bid on a human-triggered auction actually acts, regardless
-  // of whose turn it is.
+  // Trade proposal directed at me — highest priority. Runs outside turn order
+  // (like auctions); the human who proposed it is blocked until the bot
+  // responds, so we act on the very next tick. Bots never INITIATE trades —
+  // only respond — so there's no proactive branch.
+  if (view.pendingTradeToMe) {
+    return pickTradeResponse(view)
+  }
+
+  // Auction runs outside the turn order — check it before the turn gate so a
+  // bot that is eligible to bid on a human-triggered auction actually acts,
+  // regardless of whose turn it is.
   if (view.auction?.isMyBidTurn) {
     return pickAuctionAction(view)
   }
@@ -216,6 +252,88 @@ function pickBuildAction(view: MonopolyBotView): MonopolyBotAction | null {
   }
 
   return null
+}
+
+// ── Trade response: accept only clearly-positive-sum, never-break-my-set ─
+
+/**
+ * Value the bot places on one side of a trade. Cash is face-value, properties
+ * are their printed price × set-relevance multiplier, get-out cards are
+ * priced at the jail fine (that's what they save you).
+ *
+ * `iOwnGroup(color)` tells us for a given color whether the bot ALREADY owns
+ * the whole group — used to penalize giving away a monopoly card, or bonus
+ * to accepting a card that would COMPLETE a set for me.
+ */
+function tradeValue(
+  properties: MonopolySpace[],
+  cash: number,
+  jailCards: number,
+  ctx: {
+    isReceiving: boolean
+    iOwnGroup: (color: string | undefined) => boolean
+    ownedByMeInGroup: (color: string | undefined) => number
+    totalInGroup: (color: string | undefined) => number
+  }
+): number {
+  let total = cash + jailCards * MONOPOLY_JAIL_FINE
+  for (const space of properties) {
+    const base = space.price ?? 0
+    const color = space.color
+    if (ctx.isReceiving) {
+      // Receiving a property that would complete a set I already almost own?
+      // Note "almost own" = ownedByMeInGroup === totalInGroup - 1; the incoming
+      // card is the missing one. Big multiplier.
+      const owned = ctx.ownedByMeInGroup(color)
+      const total_ = ctx.totalInGroup(color)
+      const completes = total_ > 0 && owned === total_ - 1
+      total += completes ? base * TRADE_COMPLETE_SET_MULTIPLIER : base
+    } else {
+      // Giving up a property I own in a completed monopoly is close to fatal
+      // for my rent engine — huge penalty so no realistic trade compensates.
+      const breaksMonopoly = ctx.iOwnGroup(color)
+      total += breaksMonopoly ? base * TRADE_BREAK_MONOPOLY_MULTIPLIER : base
+    }
+  }
+  return total
+}
+
+function pickTradeResponse(view: MonopolyBotView): MonopolyBotAction {
+  const trade = view.pendingTradeToMe as MonopolyBotTradeContext
+
+  // Belt-and-braces: reject a trade we couldn't fulfil. The engine already
+  // checks this on Respond but declining early spares the human a confusing
+  // "you don't have that" bounce back from the engine.
+  if (trade.requestCash > view.me.cash) return { type: 'trade_decline' }
+  if (trade.requestGetOutCards > view.me.get_out_of_jail_free) return { type: 'trade_decline' }
+  const myPropertyIndexes = new Set(view.myProperties.map((p) => p.spaceIndex))
+  for (const p of trade.requestProperties) {
+    if (!myPropertyIndexes.has(p.index)) return { type: 'trade_decline' }
+  }
+
+  // Look up color-set state for the multiplier ctx.
+  const ownedByMeIn = new Map<string, number>()
+  const completedGroups = new Set<string>()
+  for (const csp of view.colorSetProgress) {
+    ownedByMeIn.set(csp.group, csp.ownedByMe)
+    if (csp.iOwnAll) completedGroups.add(csp.group)
+  }
+  const ctxBase = {
+    iOwnGroup: (c: string | undefined) => Boolean(c && completedGroups.has(c)),
+    ownedByMeInGroup: (c: string | undefined) => (c ? (ownedByMeIn.get(c) ?? 0) : 0),
+    totalInGroup: (c: string | undefined) => (c ? spacesInGroup(c as never).length : 0),
+  }
+
+  const gainValue = tradeValue(trade.offerProperties, trade.offerCash, trade.offerGetOutCards, {
+    ...ctxBase,
+    isReceiving: true,
+  })
+  const giveValue = tradeValue(trade.requestProperties, trade.requestCash, trade.requestGetOutCards, {
+    ...ctxBase,
+    isReceiving: false,
+  })
+
+  return gainValue >= giveValue * TRADE_ACCEPT_MARGIN ? { type: 'trade_accept' } : { type: 'trade_decline' }
 }
 
 // ── Auction: bid up to 60% of face, in ~10%-of-face steps ─────────────────

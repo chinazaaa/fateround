@@ -10,6 +10,7 @@ import {
   processMonopolyMortgage,
   processMonopolyForfeit,
   processMonopolyAuction,
+  processMonopolyTradeRespond,
 } from '@/lib/monopoly'
 import { scheduleTurnNotification } from '@/lib/push'
 import { pickBotAction, type MonopolyBotAction } from '@/lib/monopoly-bot'
@@ -76,15 +77,20 @@ export async function driveMonopolyBotsOnce(gameCode: string): Promise<DriveResu
   const states = (statesRes.data ?? []) as MonopolyPlayerState[]
   if (!board || board.phase === 'finished') return { kind: 'idle' }
 
-  // Pick the actionable slot. Auction first: if an auction is live and the
-  // current bidder is a bot, it must act now — even if the turn_order says a
-  // human's mid-round. Otherwise fall back to the turn holder.
+  // Pick the actionable slot. Priority: pending trade addressed at a bot >
+  // auction current-bidder > turn holder. Trades and auctions run outside the
+  // turn order and both block the game until resolved — trades block the
+  // human proposer's turn, auctions block the initiator's — so we resolve
+  // them BEFORE giving another bot its regular turn move.
+  const tradeToId = board.pending_trade?.to_player_id ?? null
   const auctionBidderId = board.auction_state?.current_bidder_id ?? null
   const turnHolderId = board.turn_order?.[board.current_turn_index] ?? null
 
-  // Confirm the candidate is actually a bot in this game. One `players` read
-  // covers both slots (either identity or a null slot resolves the same way).
-  const candidateIds = [auctionBidderId, turnHolderId].filter((id): id is string => Boolean(id))
+  // Confirm each candidate is actually a bot. One `players` read covers all
+  // slots (deduplicated ids; a null slot resolves the same way).
+  const candidateIds = Array.from(
+    new Set([tradeToId, auctionBidderId, turnHolderId].filter((id): id is string => Boolean(id)))
+  )
   if (candidateIds.length === 0) return { kind: 'idle' }
   const { data: candidates } = await admin
     .from('players')
@@ -94,7 +100,8 @@ export async function driveMonopolyBotsOnce(gameCode: string): Promise<DriveResu
   const isBotById = new Map((candidates ?? []).map((p) => [p.id, p.is_bot]))
 
   let actionableBotId: string | null = null
-  if (auctionBidderId && isBotById.get(auctionBidderId)) actionableBotId = auctionBidderId
+  if (tradeToId && isBotById.get(tradeToId)) actionableBotId = tradeToId
+  else if (auctionBidderId && isBotById.get(auctionBidderId)) actionableBotId = auctionBidderId
   else if (turnHolderId && isBotById.get(turnHolderId)) actionableBotId = turnHolderId
 
   if (!actionableBotId) return { kind: 'idle' }
@@ -155,5 +162,9 @@ async function applyMonopolyBotAction(
       return processMonopolyAuction(admin, gameCode, botPlayerId, 'bid', action.amount)
     case 'auction_pass':
       return processMonopolyAuction(admin, gameCode, botPlayerId, 'pass')
+    case 'trade_accept':
+      return processMonopolyTradeRespond(admin, gameCode, botPlayerId, true)
+    case 'trade_decline':
+      return processMonopolyTradeRespond(admin, gameCode, botPlayerId, false)
   }
 }

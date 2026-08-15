@@ -297,6 +297,54 @@ describe('adaptMonopolyForBot — auction', () => {
   })
 })
 
+// ── pendingTradeToMe ────────────────────────────────────────────────────────
+
+describe('adaptMonopolyForBot — pendingTradeToMe', () => {
+  it('surfaces a trade with resolved property spaces when it is addressed to the bot', () => {
+    const v = adaptMonopolyForBot(
+      board({
+        pending_trade: {
+          from_player_id: HUMAN,
+          to_player_id: BOT,
+          offer_cash: 200,
+          offer_properties: [3],
+          offer_get_out_cards: 1,
+          request_cash: 50,
+          request_properties: [1],
+          request_get_out_cards: 0,
+        },
+      }),
+      [pState(HUMAN), pState(BOT)],
+      BOT
+    )!
+    expect(v.pendingTradeToMe).toBeDefined()
+    expect(v.pendingTradeToMe!.offerCash).toBe(200)
+    expect(v.pendingTradeToMe!.offerGetOutCards).toBe(1)
+    expect(v.pendingTradeToMe!.offerProperties.map((s) => s.index)).toEqual([3])
+    expect(v.pendingTradeToMe!.requestProperties.map((s) => s.index)).toEqual([1])
+  })
+
+  it('is undefined when the trade is addressed to another player', () => {
+    const v = adaptMonopolyForBot(
+      board({
+        pending_trade: {
+          from_player_id: BOT,
+          to_player_id: HUMAN, // not to bot
+          offer_cash: 100,
+          offer_properties: [],
+          offer_get_out_cards: 0,
+          request_cash: 0,
+          request_properties: [],
+          request_get_out_cards: 0,
+        },
+      }),
+      [pState(HUMAN), pState(BOT)],
+      BOT
+    )!
+    expect(v.pendingTradeToMe).toBeUndefined()
+  })
+})
+
 // ── ownedPropertyFraction ───────────────────────────────────────────────────
 
 describe('adaptMonopolyForBot — ownedPropertyFraction', () => {

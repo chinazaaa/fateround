@@ -13,7 +13,9 @@
  * compatibility shim.
  *
  * ── Deliberately absent ──────────────────────────────────────────────────
- * - Trading (never in scope; not a Phase 2 v2 either — see bots-in-room-plan.md)
+ * - Bot-INITIATED trades (bots never propose; too easy to look silly). The
+ *   plan originally said "no trading ever"; we now respond to human-proposed
+ *   trades via `pendingTradeToMe` below. Bots-initiate is still a hard no.
  * - Other players' cash or property lists — the bot only reasons about its
  *   own position; it doesn't try to hurt specific opponents.
  * - Real "round" counter (board has none). We surface `ownedPropertyFraction`
@@ -77,6 +79,30 @@ export interface MonopolyBotAuctionContext {
   isMyBidTurn: boolean
 }
 
+/**
+ * A trade proposal directed at the bot from a human player. Bots never
+ * initiate trades — they only respond — so this is only set when
+ * pending_trade.to_player_id === botPlayerId.
+ *
+ * Property spaces are resolved to MonopolySpace so the heuristic can read
+ * price + color without a second board lookup.
+ */
+export interface MonopolyBotTradeContext {
+  fromPlayerId: string
+  /** Cash the human is offering me. */
+  offerCash: number
+  /** Properties (with full space metadata) the human is offering me. */
+  offerProperties: MonopolySpace[]
+  /** Get-out-of-jail-free cards the human is offering me. */
+  offerGetOutCards: number
+  /** Cash the human is asking me to hand over. */
+  requestCash: number
+  /** Properties (with full space metadata) the human is asking me to hand over. */
+  requestProperties: MonopolySpace[]
+  /** Get-out-of-jail-free cards the human is asking me to hand over. */
+  requestGetOutCards: number
+}
+
 export interface MonopolyBotView {
   botPlayerId: string
   phase: MonopolyPhase
@@ -106,6 +132,12 @@ export interface MonopolyBotView {
   pendingDebt?: MonopolyBotDebtContext
   /** Set when an auction is live and the bot is eligible to bid. Undefined otherwise. */
   auction?: MonopolyBotAuctionContext
+  /**
+   * Set when a human has a pending trade proposal directed at this bot.
+   * Trades run outside turn_order (like auctions) — the bot must respond
+   * regardless of whose turn it is.
+   */
+  pendingTradeToMe?: MonopolyBotTradeContext
   /**
    * 0.0 at game start, ~1.0 once the last unowned property has been claimed.
    * Proxy for "how deep into the game are we?" used to gate late-game moves
@@ -262,6 +294,26 @@ export function adaptMonopolyForBot(
     }
   }
 
+  // Pending trade — only when a human has proposed one addressed at this bot.
+  // The engine's `to_player_id` is the recipient; bots never initiate so we
+  // never populate the from-side. Property indices are resolved to spaces so
+  // the heuristic doesn't have to walk MONOPOLY_BOARD itself.
+  let pendingTradeToMe: MonopolyBotTradeContext | undefined
+  if (board.pending_trade && board.pending_trade.to_player_id === botPlayerId) {
+    const t = board.pending_trade
+    const resolveSpaces = (indices: number[] | null | undefined): MonopolySpace[] =>
+      (indices ?? []).map((i) => MONOPOLY_BOARD[i]).filter((s): s is MonopolySpace => Boolean(s))
+    pendingTradeToMe = {
+      fromPlayerId: t.from_player_id,
+      offerCash: Number(t.offer_cash ?? 0),
+      offerProperties: resolveSpaces(t.offer_properties as number[] | null | undefined),
+      offerGetOutCards: Number(t.offer_get_out_cards ?? 0),
+      requestCash: Number(t.request_cash ?? 0),
+      requestProperties: resolveSpaces(t.request_properties as number[] | null | undefined),
+      requestGetOutCards: Number(t.request_get_out_cards ?? 0),
+    }
+  }
+
   const ownedCount = ALL_BUYABLE_SPACES.reduce((acc, s) => (owners[String(s.index)] ? acc + 1 : acc), 0)
   const ownedPropertyFraction = ownedCount / ALL_BUYABLE_SPACES.length
 
@@ -283,6 +335,7 @@ export function adaptMonopolyForBot(
     pendingBuy,
     pendingDebt,
     auction,
+    pendingTradeToMe,
     ownedPropertyFraction,
   }
 }

@@ -6,6 +6,7 @@ import type {
   MonopolyBotColorSetProgress,
   MonopolyBotDebtContext,
   MonopolyBotOwnedProperty,
+  MonopolyBotTradeContext,
   MonopolyBotView,
 } from '@/lib/monopoly-bot-adapter'
 import type { MonopolyPhase } from '@/types'
@@ -447,6 +448,120 @@ describe('pickBotAction — auction', () => {
       auction: auction({ faceValue: 100, highBid: 0 }),
     })
     expect(pickBotAction(v)).toEqual({ type: 'auction_pass' })
+  })
+})
+
+// ── Trade responses ─────────────────────────────────────────────────────────
+
+function trade(overrides: Partial<MonopolyBotTradeContext> = {}): MonopolyBotTradeContext {
+  return {
+    fromPlayerId: 'human-1',
+    offerCash: 0,
+    offerProperties: [],
+    offerGetOutCards: 0,
+    requestCash: 0,
+    requestProperties: [],
+    requestGetOutCards: 0,
+    ...overrides,
+  }
+}
+
+describe('pickBotAction — trade response', () => {
+  it('takes trade priority over auction and turn', () => {
+    // Bot has an auction bid slot AND a trade addressed to it → trade wins.
+    const v = view({
+      isMyTurn: true,
+      phase: 'auction',
+      auction: auction({ faceValue: 100, highBid: 0 }),
+      pendingTradeToMe: trade({ offerCash: 500 }),
+    })
+    const a = pickBotAction(v)
+    expect(a?.type === 'trade_accept' || a?.type === 'trade_decline').toBe(true)
+  })
+
+  it('accepts a clearly positive-sum trade (human gives cash, asks for nothing)', () => {
+    const v = view({ pendingTradeToMe: trade({ offerCash: 200 }) })
+    expect(pickBotAction(v)).toEqual({ type: 'trade_accept' })
+  })
+
+  it('declines a dead-even swap (no margin ⇒ not worth the risk)', () => {
+    // Symmetric cash-for-cash swap — value equal, margin 1.1 fails.
+    const v = view({ pendingTradeToMe: trade({ offerCash: 100, requestCash: 100 }) })
+    expect(pickBotAction(v)).toEqual({ type: 'trade_decline' })
+  })
+
+  it('declines any trade that would break the bot’s completed monopoly', () => {
+    // Bot owns the whole brown set (1 + 3). Human offers £1000 cash for one brown card.
+    // Even with lopsided cash, the break-monopoly multiplier makes it a loss.
+    const v = view({
+      me: {
+        playerId: BOT,
+        cash: 100,
+        position: 0,
+        in_jail: false,
+        jail_turns: 0,
+        get_out_of_jail_free: 0,
+        bankrupt: false,
+      },
+      myProperties: [owned(1), owned(3)],
+      colorSetProgress: [csp('brown', { ownedByMe: 2, totalInGroup: 2 })],
+      pendingTradeToMe: trade({
+        offerCash: 1000,
+        requestProperties: [spaceAt(1)], // Barking Road (brown, £60)
+      }),
+    })
+    expect(pickBotAction(v)).toEqual({ type: 'trade_decline' })
+  })
+
+  it('accepts a trade that would complete a set for the bot at a reasonable premium', () => {
+    // Bot owns Barking (1). Human offers Dagenham (3) — completes the brown set —
+    // and asks for £50 cash. With the completeSet 2× bonus (£60 → £120), the £120
+    // gain covers the £50 cash out plus the 10% margin easily.
+    const v = view({
+      me: {
+        playerId: BOT,
+        cash: 500,
+        position: 0,
+        in_jail: false,
+        jail_turns: 0,
+        get_out_of_jail_free: 0,
+        bankrupt: false,
+      },
+      myProperties: [owned(1)],
+      colorSetProgress: [csp('brown', { ownedByMe: 1, totalInGroup: 2, iOwnAll: false })],
+      pendingTradeToMe: trade({
+        offerProperties: [spaceAt(3)],
+        requestCash: 50,
+      }),
+    })
+    expect(pickBotAction(v)).toEqual({ type: 'trade_accept' })
+  })
+
+  it('declines if the bot cannot fulfil the ask (not enough cash)', () => {
+    const v = view({
+      me: {
+        playerId: BOT,
+        cash: 10,
+        position: 0,
+        in_jail: false,
+        jail_turns: 0,
+        get_out_of_jail_free: 0,
+        bankrupt: false,
+      },
+      pendingTradeToMe: trade({ offerCash: 1000, requestCash: 500 }),
+    })
+    expect(pickBotAction(v)).toEqual({ type: 'trade_decline' })
+  })
+
+  it('declines if the requested property is not in the bot’s hand', () => {
+    const v = view({
+      myProperties: [owned(1)],
+      pendingTradeToMe: trade({
+        offerCash: 500,
+        requestProperties: [spaceAt(3)], // bot doesn't own Dagenham
+      }),
+    })
+    expect(pickBotAction(v)).toEqual({ type: 'trade_decline' })
   })
 })
 
