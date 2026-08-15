@@ -177,6 +177,10 @@ export const addTournamentGameSchema = z.object({
   customQuestions: z.array(z.unknown()).max(1000).optional().nullable(),
   // Freestyle-mode display mode (planned mode pulls this from the queue entry).
   bigScreenMode: z.enum(['phone_only', 'projector']).optional(),
+  // Explicit opt-in to spawn the tournament's FIRST game before its
+  // scheduled_at. The server otherwise rejects an early start with 409 so a
+  // slip of the finger doesn't yank pre-registered players in early.
+  startEarly: z.boolean().optional(),
 })
 
 // Games eligible for the round-robin (all-vs-all) format — the host picks a game

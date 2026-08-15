@@ -104,11 +104,21 @@ export default function TournamentBigScreenPage() {
   }, [activeGameIdForType])
 
   if (loading) {
-    return <div className="fixed inset-0 flex items-center justify-center bg-black text-white text-2xl">Loading…</div>
+    return (
+      <div
+        className="fixed inset-0 flex items-center justify-center text-2xl"
+        style={{ background: 'var(--background)', color: 'var(--foreground)' }}
+      >
+        Loading…
+      </div>
+    )
   }
   if (error || !tournament) {
     return (
-      <div className="fixed inset-0 flex flex-col items-center justify-center bg-black text-white gap-6 p-8 text-center">
+      <div
+        className="fixed inset-0 flex flex-col items-center justify-center gap-6 p-8 text-center"
+        style={{ background: 'var(--background)', color: 'var(--foreground)' }}
+      >
         <p className="text-3xl">{error ?? 'Tournament not found'}</p>
         <Link href="/" className="text-lg underline opacity-70">
           Back to fateround
@@ -136,7 +146,13 @@ export default function TournamentBigScreenPage() {
   return (
     <TournamentBrandingWrapper
       branding={tournament.branding}
-      className="fixed inset-0 flex flex-col overflow-hidden bg-black text-white"
+      // Projector view: full-viewport surface, theme-aware via CSS variables
+      // (--background / --foreground shift with the light/dark toggle).
+      // overflow-y-auto is deliberate — on smaller displays the content is
+      // taller than the viewport and hosts need to scroll to the player list.
+      // On a real projector the content still fits and no scrollbar shows.
+      className="fixed inset-0 flex flex-col overflow-y-auto"
+      style={{ background: 'var(--background)', color: 'var(--foreground)' }}
     >
       {/* Header — logo + title. Sticks to the top; body below fills. */}
       <header className="flex items-center gap-6 px-10 pt-8">
@@ -144,16 +160,17 @@ export default function TournamentBigScreenPage() {
           <img src={tournament.branding.logoUrl} alt="" className="h-20 w-20 object-contain rounded-xl bg-white p-2" />
         )}
         <div className="flex-1 min-w-0">
-          <p className="text-white/60 text-lg uppercase tracking-widest">Tournament</p>
-          <h1
-            className="text-6xl lg:text-7xl font-black leading-tight truncate"
-            style={{ color: 'var(--primary, #fff)' }}
-          >
+          <p className="text-lg uppercase tracking-widest" style={{ color: 'var(--muted)' }}>
+            Tournament
+          </p>
+          <h1 className="text-6xl lg:text-7xl font-black leading-tight truncate" style={{ color: 'var(--primary)' }}>
             {tournament.title}
           </h1>
         </div>
         <div className="text-right shrink-0">
-          <p className="text-white/60 text-sm uppercase tracking-widest">Code</p>
+          <p className="text-sm uppercase tracking-widest" style={{ color: 'var(--muted)' }}>
+            Code
+          </p>
           <p className="text-4xl font-mono font-bold tracking-wider">{tournament.id}</p>
         </div>
       </header>
@@ -190,10 +207,12 @@ export default function TournamentBigScreenPage() {
 
       {/* Corner exit — small, doesn't compete with the content. Host will
           typically leave this alone; useful only when they need the phone view
-          back on the same device. */}
+          back on the same device. Positioned top-LEFT so it doesn't collide
+          with the site's floating theme toggle at top-right. */}
       <Link
         href={`/tournament/${tournamentId}`}
-        className="fixed top-3 right-3 text-white/40 hover:text-white/80 text-xs underline"
+        className="fixed top-3 left-3 text-xs underline opacity-50 hover:opacity-90"
+        style={{ color: 'var(--foreground)' }}
       >
         Exit
       </Link>
@@ -226,35 +245,55 @@ function WaitingRoom({
       <div className="grid grid-cols-2 gap-10 flex-1 min-h-0">
         {/* Left: join instructions + huge QR */}
         <div className="flex flex-col items-center justify-center gap-6">
-          <p className="text-3xl text-white/70">Join with your phone</p>
+          <p className="text-3xl" style={{ color: 'var(--muted)' }}>
+            Join with your phone
+          </p>
+          {/* QR frame stays white in both themes — QR contrast requires a
+              near-white background regardless of site theme. */}
           <div className="rounded-3xl bg-white p-8 shadow-2xl">
             <GameLinkQrCode url={inviteUrl} size={420} />
           </div>
-          <p className="text-2xl text-white/60">
-            Or open <span className="text-white font-semibold">fateround.com</span> and enter code{' '}
-            <span className="text-white font-mono font-bold">{tournament.id}</span>
+          <p className="text-xl text-center leading-relaxed break-all" style={{ color: 'var(--muted)' }}>
+            Or type this link in a browser:
+            <br />
+            <span className="font-mono font-semibold text-2xl" style={{ color: 'var(--foreground)' }}>
+              {inviteUrl.replace(/^https?:\/\//, '')}
+            </span>
           </p>
         </div>
 
         {/* Right: joined players + optional playlist preview */}
         <div className="flex flex-col gap-6 min-h-0">
           <div className="flex items-baseline justify-between">
-            <p className="text-3xl font-bold" style={{ color: 'var(--primary, #fff)' }}>
+            <p className="text-3xl font-bold" style={{ color: 'var(--primary)' }}>
               Joined
             </p>
-            <p className="text-2xl text-white/70">
+            <p className="text-2xl" style={{ color: 'var(--muted)' }}>
               {players.length}
               {tournament.max_players ? ` / ${tournament.max_players}` : ''} player{players.length === 1 ? '' : 's'}
               {presentPlayerCount > 0 && (
-                <span className="ml-3" style={{ color: 'var(--primary, #fff)', fontWeight: 700 }}>
+                <span className="ml-3" style={{ color: 'var(--primary)', fontWeight: 700 }}>
                   · {presentPlayerCount} here now
+                </span>
+              )}
+              {/* Ready count — scheduled events only. Same reasoning as the
+                  host lobby: right-now tournaments don't have the pre-
+                  registered-vs-here gap to close. */}
+              {tournament.scheduled_at && (
+                <span className="ml-3" style={{ color: 'var(--primary)', fontWeight: 700 }}>
+                  · {players.filter((p) => p.is_ready).length}/{players.length} ready
                 </span>
               )}
             </p>
           </div>
           {players.length === 0 ? (
-            <div className="flex items-center justify-center h-40 rounded-2xl border border-white/20 border-dashed">
-              <p className="text-2xl text-white/50">Waiting for players…</p>
+            <div
+              className="flex items-center justify-center h-40 rounded-2xl border border-dashed"
+              style={{ borderColor: 'var(--border)' }}
+            >
+              <p className="text-2xl" style={{ color: 'var(--faint)' }}>
+                Waiting for players…
+              </p>
             </div>
           ) : (
             <div className="grid grid-cols-2 xl:grid-cols-3 gap-3 overflow-y-auto pr-2">
@@ -263,9 +302,10 @@ function WaitingRoom({
                 return (
                   <div
                     key={p.id}
-                    className="rounded-xl border border-white/20 px-4 py-3 text-xl font-medium truncate flex items-center gap-2"
+                    className="rounded-xl border px-4 py-3 text-xl font-medium truncate flex items-center gap-2"
                     style={{
-                      background: isHere ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.04)',
+                      borderColor: 'var(--border)',
+                      background: isHere ? 'var(--card-strong)' : 'var(--surface-inset-bg)',
                       opacity: isHere ? 1 : 0.55,
                     }}
                   >
@@ -273,26 +313,41 @@ function WaitingRoom({
                       aria-hidden
                       className="inline-block h-2.5 w-2.5 rounded-full shrink-0"
                       style={{
-                        background: isHere ? 'var(--primary, #fff)' : 'transparent',
-                        border: isHere ? undefined : '1px solid rgba(255,255,255,0.4)',
-                        boxShadow: isHere ? '0 0 8px var(--primary, #fff)' : undefined,
+                        background: isHere ? 'var(--primary)' : 'transparent',
+                        border: isHere ? undefined : '1px solid var(--border-strong, var(--border))',
+                        boxShadow: isHere ? '0 0 8px var(--primary)' : undefined,
                       }}
                     />
-                    <span className="truncate">{p.player_name}</span>
+                    <span className="truncate flex-1">{p.player_name}</span>
+                    {/* Ready pill — scheduled events only. Renders "✓" for
+                        confirmed-present, nothing when it doesn't apply.
+                        Kept compact so long names still fit next to it. */}
+                    {tournament.scheduled_at && p.is_ready && (
+                      <span
+                        aria-label="Marked ready"
+                        title="This player tapped I'm ready"
+                        className="text-lg font-black shrink-0"
+                        style={{ color: 'var(--primary)' }}
+                      >
+                        ✓
+                      </span>
+                    )}
                   </div>
                 )
               })}
             </div>
           )}
           {queueEntries && queueEntries.length > 0 && (
-            <div className="mt-auto pt-6 border-t border-white/15 space-y-2">
-              <p className="text-sm uppercase tracking-widest text-white/50">
+            <div className="mt-auto pt-6 border-t space-y-2" style={{ borderColor: 'var(--border)' }}>
+              <p className="text-sm uppercase tracking-widest" style={{ color: 'var(--faint)' }}>
                 Tonight&apos;s lineup ({queueEntries.length} games)
               </p>
-              <ol className="text-lg text-white/85 space-y-1">
+              <ol className="text-lg space-y-1" style={{ color: 'var(--foreground)' }}>
                 {queueEntries.map((e, i) => (
                   <li key={`${e.gameType}-${i}`} className="flex items-baseline gap-3">
-                    <span className="tabular-nums text-white/50 w-6 text-right">{i + 1}.</span>
+                    <span className="tabular-nums w-6 text-right" style={{ color: 'var(--faint)' }}>
+                      {i + 1}.
+                    </span>
                     <span>{gameTypeLabel(e.gameType) ?? e.gameType}</span>
                   </li>
                 ))}
@@ -320,15 +375,19 @@ function ScheduledBanner({ iso }: { iso: string }) {
   return (
     <div
       className="rounded-2xl px-6 py-4 flex items-center gap-6 flex-wrap"
-      style={{ background: 'rgba(255,255,255,0.08)', borderLeft: '6px solid var(--primary, #fff)' }}
+      style={{ background: 'var(--surface-inset-bg)', borderLeft: '6px solid var(--primary)' }}
     >
       <div>
-        <p className="text-sm uppercase tracking-widest text-white/60">{started ? 'Scheduled start' : 'Starts'}</p>
+        <p className="text-sm uppercase tracking-widest" style={{ color: 'var(--muted)' }}>
+          {started ? 'Scheduled start' : 'Starts'}
+        </p>
         <p className="text-3xl font-bold">{formatScheduledFor(iso)}</p>
       </div>
       <div className="ml-auto text-right">
-        <p className="text-sm uppercase tracking-widest text-white/60">Countdown</p>
-        <p className="text-4xl font-black tabular-nums" style={{ color: 'var(--primary, #fff)' }}>
+        <p className="text-sm uppercase tracking-widest" style={{ color: 'var(--muted)' }}>
+          Countdown
+        </p>
+        <p className="text-4xl font-black tabular-nums" style={{ color: 'var(--primary)' }}>
           {formatCountdown(deltaMs)}
         </p>
       </div>
@@ -366,11 +425,11 @@ function LivePanel({
       {/* Left 2/3: leaderboard */}
       <div className="col-span-2 flex flex-col gap-4 min-h-0">
         <div className="flex items-baseline justify-between">
-          <p className="text-3xl font-bold" style={{ color: 'var(--primary, #fff)' }}>
+          <p className="text-3xl font-bold" style={{ color: 'var(--primary)' }}>
             Leaderboard
           </p>
           {tournament.game_queue && (
-            <p className="text-lg text-white/60">
+            <p className="text-lg" style={{ color: 'var(--muted)' }}>
               Game {Math.min(queueIndex + (activeGame ? 0 : 0), tournament.game_queue.length)} of{' '}
               {tournament.game_queue.length}
             </p>
@@ -381,8 +440,13 @@ function LivePanel({
             <LeaderboardRow key={p.id} rank={i + 1} player={p} />
           ))}
           {standings.length === 0 && (
-            <div className="flex items-center justify-center h-40 rounded-2xl border border-white/20 border-dashed">
-              <p className="text-2xl text-white/50">No scores yet</p>
+            <div
+              className="flex items-center justify-center h-40 rounded-2xl border border-dashed"
+              style={{ borderColor: 'var(--border)' }}
+            >
+              <p className="text-2xl" style={{ color: 'var(--faint)' }}>
+                No scores yet
+              </p>
             </div>
           )}
         </div>
@@ -394,26 +458,32 @@ function LivePanel({
           <div
             className="rounded-2xl p-6 space-y-2"
             style={{
-              background: 'rgba(255,255,255,0.08)',
-              borderLeft: '6px solid var(--primary, #fff)',
+              background: 'var(--surface-inset-bg)',
+              borderLeft: '6px solid var(--primary)',
             }}
           >
-            <p className="text-sm uppercase tracking-widest text-white/60">Now playing</p>
+            <p className="text-sm uppercase tracking-widest" style={{ color: 'var(--muted)' }}>
+              Now playing
+            </p>
             <p className="text-3xl font-bold leading-tight">{nowPlayingLabel}</p>
-            <p className="text-white/70 text-sm">Everyone play on your phones — leaderboard updates here.</p>
+            <p className="text-sm" style={{ color: 'var(--muted)' }}>
+              Everyone play on your phones — leaderboard updates here.
+            </p>
           </div>
         )}
         {between && upNext && (
           <div
             className="rounded-2xl p-6 space-y-2"
             style={{
-              background: 'rgba(255,255,255,0.08)',
-              borderLeft: '6px solid var(--primary, #fff)',
+              background: 'var(--surface-inset-bg)',
+              borderLeft: '6px solid var(--primary)',
             }}
           >
-            <p className="text-sm uppercase tracking-widest text-white/60">Up next</p>
+            <p className="text-sm uppercase tracking-widest" style={{ color: 'var(--muted)' }}>
+              Up next
+            </p>
             <p className="text-3xl font-bold leading-tight">{gameTypeLabel(upNext.gameType) ?? upNext.gameType}</p>
-            <p className="text-white/70 text-sm">
+            <p className="text-sm" style={{ color: 'var(--muted)' }}>
               ≈ {formatEstimatedDuration(estimateGameSeconds(upNext, playerCount || TIMING_PLAYER_FALLBACK))} · host
               taps Start when everyone&apos;s back
             </p>
@@ -423,8 +493,11 @@ function LivePanel({
           <div className="rounded-2xl bg-white p-3">
             <GameLinkQrCode url={inviteUrl} size={168} />
           </div>
-          <p className="text-white/60 text-sm text-center">
-            Latecomers can still join · code <span className="text-white font-mono font-bold">{tournament.id}</span>
+          <p className="text-sm text-center" style={{ color: 'var(--muted)' }}>
+            Latecomers can still join · code{' '}
+            <span className="font-mono font-bold" style={{ color: 'var(--foreground)' }}>
+              {tournament.id}
+            </span>
           </p>
         </div>
       </div>
@@ -437,14 +510,18 @@ function FinishedPodium({ podium, standings }: { podium: TournamentPlayer[]; sta
   if (podium.length === 0) {
     return (
       <div className="flex items-center justify-center h-full">
-        <p className="text-3xl text-white/70">Tournament complete — no scores recorded</p>
+        <p className="text-3xl" style={{ color: 'var(--muted)' }}>
+          Tournament complete — no scores recorded
+        </p>
       </div>
     )
   }
   return (
     <div className="flex flex-col gap-10 h-full">
       <div className="text-center">
-        <p className="text-3xl uppercase tracking-widest text-white/60">Tournament complete</p>
+        <p className="text-3xl uppercase tracking-widest" style={{ color: 'var(--muted)' }}>
+          Tournament complete
+        </p>
       </div>
 
       {/* Podium — 2nd / 1st / 3rd (visual arrangement) */}
@@ -457,7 +534,9 @@ function FinishedPodium({ podium, standings }: { podium: TournamentPlayer[]; sta
       {/* Full standings below */}
       {standings.length > 3 && (
         <div className="flex-1 flex flex-col gap-2 overflow-y-auto pr-2">
-          <p className="text-white/60 text-sm uppercase tracking-widest">Full standings</p>
+          <p className="text-sm uppercase tracking-widest" style={{ color: 'var(--muted)' }}>
+            Full standings
+          </p>
           {standings.slice(3).map((p, i) => (
             <LeaderboardRow key={p.id} rank={i + 4} player={p} />
           ))}
@@ -481,23 +560,26 @@ function PodiumBlock({
   gradient?: boolean
 }) {
   if (!player) {
-    return <div className={`rounded-2xl border border-white/15 ${height}`} />
+    return <div className={`rounded-2xl border ${height}`} style={{ borderColor: 'var(--border)' }} />
   }
   return (
     <div
       className={`rounded-2xl ${height} p-6 flex flex-col items-center justify-end text-center gap-2`}
       style={
         gradient
-          ? { background: 'linear-gradient(180deg, transparent 0%, var(--primary, #fff) 100%)' }
-          : { background: 'rgba(255,255,255,0.08)' }
+          ? { background: 'linear-gradient(180deg, transparent 0%, var(--primary) 100%)' }
+          : { background: 'var(--surface-inset-bg)' }
       }
     >
       <p className="text-5xl">{emoji}</p>
       <p className="text-3xl font-bold truncate max-w-full">{player.player_name}</p>
-      <p className="text-white/80 text-2xl font-black tabular-nums">
-        {player.total_points} <span className="text-lg font-medium text-white/60">pts</span>
+      <p className="text-2xl font-black tabular-nums" style={{ color: 'var(--foreground)' }}>
+        {player.total_points}{' '}
+        <span className="text-lg font-medium" style={{ color: 'var(--muted)' }}>
+          pts
+        </span>
       </p>
-      <p className="text-white/50 text-xs uppercase tracking-widest">
+      <p className="text-xs uppercase tracking-widest" style={{ color: 'var(--faint)' }}>
         {place === 1 ? '1st' : place === 2 ? '2nd' : '3rd'}
       </p>
     </div>
@@ -508,13 +590,17 @@ function LeaderboardRow({ rank, player }: { rank: number; player: TournamentPlay
   return (
     <div
       className="rounded-xl px-5 py-3 flex items-center gap-4 text-2xl"
-      style={{ background: rank <= 3 ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.04)' }}
+      style={{ background: rank <= 3 ? 'var(--card-strong)' : 'var(--surface-inset-bg)' }}
     >
-      <span className="tabular-nums font-black text-white/60 w-10 text-right">{rank}</span>
+      <span className="tabular-nums font-black w-10 text-right" style={{ color: 'var(--muted)' }}>
+        {rank}
+      </span>
       <span className="flex-1 min-w-0 truncate font-semibold">{player.player_name}</span>
-      <span className="tabular-nums font-black" style={{ color: 'var(--primary, #fff)' }}>
+      <span className="tabular-nums font-black" style={{ color: 'var(--primary)' }}>
         {player.total_points}
-        <span className="text-base font-medium text-white/60 ml-1">pts</span>
+        <span className="text-base font-medium ml-1" style={{ color: 'var(--muted)' }}>
+          pts
+        </span>
       </span>
     </div>
   )

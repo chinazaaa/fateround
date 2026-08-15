@@ -7,6 +7,7 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { parseJsonBody } from '@/lib/parse-body'
 import { clampTriviaTimer, TRIVIA_DEFAULT_ROUNDS } from '@/lib/trivia'
 import { clampTtlTimer, TTL_DEFAULT_TIMER } from '@/lib/two-truths'
+import { WST_DECK_MIN_ENTRIES } from '@/lib/who-said-this'
 import {
   clampNpatTimer,
   clampNpatMarkingTimer,
@@ -33,6 +34,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     questionSource,
     customQuestions,
     bigScreenMode: clientBigScreenMode,
+    startEarly,
   } = body
 
   const admin = getSupabaseAdmin()
@@ -47,6 +49,34 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   }
   if (tournament.status === 'finished') {
     return NextResponse.json({ error: 'Tournament has ended' }, { status: 400 })
+  }
+
+  // Scheduled-event gate: block spawning the first game until the scheduled
+  // start time is reached (or the host explicitly opts in with startEarly).
+  // Prevents "I set it for 8pm, my finger slipped this afternoon and now
+  // everyone's phone tries to pull them into a live game" scenarios; the
+  // pre-registered players expected 8pm and would be caught off guard.
+  // Only gates the FIRST game — once a game has already been spawned, the
+  // tournament is clearly live and further games shouldn't be re-gated.
+  if (tournament.scheduled_at && !startEarly) {
+    const scheduledMs = Date.parse(tournament.scheduled_at)
+    if (!Number.isNaN(scheduledMs) && Date.now() < scheduledMs) {
+      const { count: priorCount } = await admin
+        .from('tournament_games')
+        .select('id', { count: 'exact', head: true })
+        .eq('tournament_id', tournamentId)
+      if ((priorCount ?? 0) === 0) {
+        return NextResponse.json(
+          {
+            error: 'Scheduled for later',
+            reason: 'not_yet_scheduled',
+            scheduledAt: tournament.scheduled_at,
+            hint: 'Tap "Start early" to override — pre-registered players might not be here yet.',
+          },
+          { status: 409 }
+        )
+      }
+    }
   }
 
   const { data: activeGame } = await admin
@@ -178,6 +208,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     : null
   const hasCustom = useCustomQuestions && Array.isArray(effectiveCustom) && effectiveCustom.length > 0
 
+  // WST deck resolution: planned mode uses the tournament-wide pack the host
+  // attached at creation (custom_wst_pack); freestyle mode takes a per-game
+  // `customQuestions` payload on the POST body (same shape trivia uses).
+  // Hoisted above the guards so we can reject a too-small freestyle deck
+  // before spawning the game row.
+  const tournamentWstPack =
+    gameType === 'who_said_this' && Array.isArray(tournament.custom_wst_pack) && tournament.custom_wst_pack.length > 0
+      ? (tournament.custom_wst_pack as unknown[])
+      : null
+  const freestyleWstPack =
+    gameType === 'who_said_this' && !queueEntry && Array.isArray(customQuestions) && customQuestions.length > 0
+      ? (customQuestions as unknown[])
+      : null
+  const effectiveWstPack = tournamentWstPack ?? freestyleWstPack
+
   if (useCustomQuestions && (!Array.isArray(effectiveCustom) || effectiveCustom.length < roundsCount)) {
     return NextResponse.json(
       {
@@ -185,6 +230,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
           Array.isArray(effectiveCustom) && effectiveCustom.length > 0
             ? `Need at least ${roundsCount} custom questions for ${roundsCount} rounds — upload more or lower the round count`
             : 'No previous questions to reuse — upload a CSV for this game',
+      },
+      { status: 400 }
+    )
+  }
+
+  // Same guard for freestyle WST deck mode: the game engine needs at least
+  // WST_DECK_MIN_ENTRIES (2) quotes to build a round. Rejecting early with a
+  // clear error beats spawning a game the engine will refuse to start.
+  if (freestyleWstPack && freestyleWstPack.length < WST_DECK_MIN_ENTRIES) {
+    return NextResponse.json(
+      {
+        error: `Who Said This deck needs at least ${WST_DECK_MIN_ENTRIES} quotes — upload more or switch back to Players submit`,
       },
       { status: 400 }
     )
@@ -206,19 +263,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   const gameHostToken = generateToken()
 
-  // Who Said This: if the tournament has a shared WST deck attached (CSV or
-  // platform pack picked at creation), spawn the game in deck mode with that
-  // content — same shape the /api/games "Your own" flow uses. Otherwise fall
-  // back to player-submit (each joiner writes a quote in the lobby).
-  const tournamentWstPack =
-    gameType === 'who_said_this' && Array.isArray(tournament.custom_wst_pack) && tournament.custom_wst_pack.length > 0
-      ? (tournament.custom_wst_pack as unknown[])
-      : null
-
   // Per-game extras: trivia carries its question source + prior pool usage;
   // i_call_on needs its marking timer + whole-game timer; two_truths needs
   // neither. Who Said This runs player-submit by default; deck mode kicks in
-  // when the tournament has a WST pack attached.
+  // when either the tournament's shared pack or a freestyle per-game pack is
+  // present.
   const perGameExtras: Record<string, unknown> =
     gameType === 'trivia'
       ? {
@@ -232,10 +281,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
             game_duration_seconds: clampNpatGameDuration(NPAT_DEFAULT_GAME_DURATION),
           }
         : gameType === 'who_said_this'
-          ? tournamentWstPack
+          ? effectiveWstPack
             ? {
                 wst_quote_source: 'deck',
-                custom_questions: tournamentWstPack,
+                custom_questions: effectiveWstPack,
               }
             : { wst_quote_source: 'player' }
           : {}

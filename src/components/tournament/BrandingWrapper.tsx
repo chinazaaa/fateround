@@ -6,6 +6,11 @@ interface Props {
   children: ReactNode
   /** Optional className to merge onto the wrapper div. */
   className?: string
+  /** Optional extra inline styles. Merged AFTER the branding tokens so a
+   *  caller's background/color takes precedence over any accidental branding
+   *  clash — brand tokens like --primary always win because they're set via
+   *  CSS custom properties, not the merged plain-CSS keys. */
+  style?: CSSProperties
 }
 
 /**
@@ -25,8 +30,8 @@ interface Props {
  * cascades to the default. Renders a plain div with no visual box so it stays
  * transparent to layout — callers keep their own PageShell / glass-card.
  */
-export function TournamentBrandingWrapper({ branding, children, className }: Props) {
-  const style: CSSProperties = {}
+export function TournamentBrandingWrapper({ branding, children, className, style: extraStyle }: Props) {
+  const style: CSSProperties = { ...extraStyle }
   if (branding?.primaryColor) {
     ;(style as Record<string, string>)['--primary'] = branding.primaryColor
     ;(style as Record<string, string>)['--primary-strong'] = branding.primaryColor

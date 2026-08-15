@@ -13,9 +13,17 @@ import { gameTypeLabel } from '@/lib/game-types'
 import {
   parseTriviaQuestionImport,
   parseExcelTriviaQuestionImport,
+  parseWstDeckImport,
+  parseExcelWstDeckImport,
+  formatEntryImportSummary,
   formatTriviaImportSummary,
   questionSampleFile,
 } from '@/lib/custom-questions'
+import { WST_DECK_MIN_ENTRIES, type WstDeckEntry } from '@/lib/who-said-this'
+import { WST_PLATFORM_DECK } from '@/lib/who-said-this-questions'
+import { AiQuestionsGenerator } from '@/components/ui/AiQuestionsGenerator'
+import { LibraryPackPicker } from '@/components/LibraryPackPicker'
+import { useLibraryPacks } from '@/hooks/useLibraryPacks'
 import { PageShell, Field, PrimaryBtn } from '@/components/ui/PageShell'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { useToast } from '@/components/ui/Toast'
@@ -115,8 +123,15 @@ export default function TournamentLobbyPage() {
   // creation; the round route prefers that). No UI — hence no setter.
   const [h2hTimer] = useState('600')
   const [actionLoading, setActionLoading] = useState(false)
+  // Two-click "start early" confirmation for scheduled events. First Start
+  // attempt gets a 409 from the server; we flip this so the button re-renders
+  // as "Start early anyway" and a second click passes startEarly=true.
+  const [promptStartEarly, setPromptStartEarly] = useState(false)
+  // In-flight ready-toggle guard so the player can't fire it twice while the
+  // POST is still resolving. Cleared after fetchState re-syncs the row.
+  const [readyToggling, setReadyToggling] = useState(false)
 
-  const [questionSource, setQuestionSource] = useState<'platform' | 'custom'>('platform')
+  const [questionSource, setQuestionSource] = useState<'platform' | 'custom' | 'ai' | 'library'>('platform')
   const [customTrivia, setCustomTrivia] = useState<TriviaQuestion[]>([])
   // Size of the custom pack carried over from an earlier game (null if none). Lets the
   // lobby show the pack is still loaded after a reload/new tab, where local upload state
@@ -126,6 +141,22 @@ export default function TournamentLobbyPage() {
   const [copied, setCopied] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const forwardedGameRef = useRef<string | null>(null)
+
+  // Freestyle Who Said This source picker. Mirrors the normal-game WST create
+  // flow: 'player' → each joiner writes a quote in the lobby, 'platform' →
+  // ship the built-in famous-quotes deck, 'custom' → CSV the host uploads on
+  // this Start, 'library' → a community pack picked from the library. No
+  // 'ai' option — the AI backend doesn't support WST yet.
+  const [wstSource, setWstSource] = useState<'player' | 'platform' | 'custom' | 'library'>('player')
+  const [customWst, setCustomWst] = useState<WstDeckEntry[]>([])
+  const [wstUploadMsg, setWstUploadMsg] = useState<string | null>(null)
+  const wstFileRef = useRef<HTMLInputElement>(null)
+
+  // Library packs for freestyle Trivia + WST. Each hook only fetches while
+  // the matching source chip is active, so switching to "Library" is what
+  // triggers the initial list load.
+  const triviaLibrary = useLibraryPacks('trivia', selectedGameType === 'trivia' && questionSource === 'library')
+  const wstLibrary = useLibraryPacks('who_said_this', selectedGameType === 'who_said_this' && wstSource === 'library')
 
   // Host edit-settings panel
   const [showEdit, setShowEdit] = useState(false)
@@ -589,7 +620,90 @@ export default function TournamentLobbyPage() {
     if (fileRef.current) fileRef.current.value = ''
   }
 
-  async function handleStartGame() {
+  // Mirrors handleFile for the WST deck upload. Same parser family; same
+  // shape of "clear-first-then-parse" so a failed replacement can't leave a
+  // stale pack that gets sent on Start.
+  async function handleWstFile(file: File) {
+    setWstUploadMsg(null)
+    setCustomWst([])
+    const ext = file.name.split('.').pop()?.toLowerCase()
+    try {
+      if (ext === 'csv' || ext === 'txt') {
+        const text = await file.text()
+        const result = parseWstDeckImport(text)
+        if (result.questions.length === 0) {
+          setWstUploadMsg('No valid rows. Use quote, option_a–option_d, and correct (A–D) columns.')
+          return
+        }
+        setCustomWst(result.questions)
+        setWstUploadMsg(formatEntryImportSummary(result) ?? `${result.questions.length} quotes ready`)
+      } else if (ext === 'xlsx' || ext === 'xls') {
+        const buffer = await file.arrayBuffer()
+        const result = await parseExcelWstDeckImport(buffer)
+        if (result.questions.length === 0) {
+          setWstUploadMsg('No valid rows. Use quote, option_a–option_d, and correct (A–D) columns.')
+          return
+        }
+        setCustomWst(result.questions)
+        setWstUploadMsg(formatEntryImportSummary(result) ?? `${result.questions.length} quotes ready`)
+      } else {
+        setWstUploadMsg('Please upload a .csv or .xlsx file')
+      }
+    } catch {
+      setWstUploadMsg('Could not read that file. Try the sample CSV.')
+    }
+  }
+
+  function clearCustomWst() {
+    setCustomWst([])
+    setWstUploadMsg(null)
+    if (wstFileRef.current) wstFileRef.current.value = ''
+  }
+
+  // Resolve the effective WST deck to ship on Start based on the picked
+  // source. `player` sends nothing (server spawns lobby-collect mode);
+  // `platform` ships the built-in famous-quotes pack; `custom` ships the
+  // uploaded CSV; `library` ships the currently-selected library pack's
+  // questions. Empty arrays fall through to player-submit server-side.
+  function resolveWstDeckToSend(): unknown[] | null {
+    if (wstSource === 'platform') return WST_PLATFORM_DECK
+    if (wstSource === 'custom') return customWst.length > 0 ? customWst : null
+    if (wstSource === 'library') return wstLibrary.questions.length > 0 ? wstLibrary.questions : null
+    return null
+  }
+
+  // Player-side toggle of their own "I'm ready" flag. Only meaningful on
+  // scheduled events; the tournament page renders the button only when
+  // scheduled_at is set. Uses the player's own resume token as auth so a
+  // spectator or the host can't flip someone else's flag.
+  async function handleReadyToggle(next: boolean) {
+    if (readyToggling) return
+    const token = typeof window !== 'undefined' ? localStorage.getItem(`tournament_ptoken_${tournamentId}`) : null
+    if (!token) {
+      setError('Save your player code first — reload the page and try again.')
+      return
+    }
+    setReadyToggling(true)
+    try {
+      const res = await fetch(`/api/tournaments/${tournamentId}/players/ready`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, isReady: next }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setError((data as { error?: string }).error ?? "Couldn't update ready state")
+        return
+      }
+      fetchState()
+    } catch {
+      setError('Something went wrong')
+    } finally {
+      setReadyToggling(false)
+    }
+  }
+
+  async function handleStartGame(startEarly = false) {
     if (!hostToken) return
     setActionLoading(true)
     setError('')
@@ -599,7 +713,25 @@ export default function TournamentLobbyPage() {
     // stale state can't accidentally override anything.
     const useQueue = Boolean(plannedNext)
     const effectiveGameType = useQueue ? plannedNext!.gameType : selectedGameType
-    const useCustom = !useQueue && selectedGameType === 'trivia' && questionSource === 'custom'
+
+    // Trivia: anything that isn't 'platform' ships as custom_questions —
+    // upload / AI / library all end up in the same customQuestions payload
+    // the server treats as "custom" question source.
+    const triviaFreestylePack: unknown[] | null =
+      !useQueue && selectedGameType === 'trivia' && questionSource !== 'platform'
+        ? questionSource === 'custom'
+          ? customTrivia.length > 0
+            ? customTrivia
+            : null
+          : questionSource === 'library'
+            ? triviaLibrary.questions.length > 0
+              ? triviaLibrary.questions
+              : null
+            : /* ai */ customTrivia.length > 0
+              ? customTrivia
+              : null
+        : null
+    const wstFreestylePack = !useQueue && selectedGameType === 'who_said_this' ? resolveWstDeckToSend() : null
 
     try {
       const res = await fetch(`/api/tournaments/${tournamentId}/games`, {
@@ -617,18 +749,32 @@ export default function TournamentLobbyPage() {
                 rounds_count: parseInt(roundsCount, 10) || 10,
                 timer_seconds: parseInt(timerSeconds, 10) || 30,
               },
-          questionSource: useCustom ? 'custom' : 'platform',
-          customQuestions: useCustom ? customTrivia : null,
+          questionSource: triviaFreestylePack ? 'custom' : 'platform',
+          // Either the trivia pack OR the WST deck rides the shared
+          // `customQuestions` slot — the server routes it by gameType
+          // (trivia → question_source='custom', WST → wst_quote_source='deck').
+          customQuestions: triviaFreestylePack ?? wstFreestylePack ?? null,
           // Freestyle mode picks its own big-screen mode; planned mode
           // reads it off the queue entry (server ignores what we send).
           bigScreenMode: useQueue ? undefined : selectedBigScreenMode,
+          // Explicit opt-in to spawn before scheduled_at. Server otherwise
+          // 409s on the first game so a mis-click can't yank people in early.
+          ...(startEarly ? { startEarly: true } : {}),
         }),
       })
       const data = await res.json()
       if (!res.ok) {
+        // Scheduled-not-yet-reached: surface a two-click "Start early anyway"
+        // path rather than dead-ending the host on a plain error string.
+        if (res.status === 409 && data?.reason === 'not_yet_scheduled') {
+          setError('This tournament is scheduled for later — pre-registered players might not be here yet.')
+          setPromptStartEarly(true)
+          return
+        }
         setError(data.error ?? 'Failed to start game')
         return
       }
+      setPromptStartEarly(false)
       localStorage.setItem(`host_token_${data.gameCode}`, data.gameHostToken)
       // Stay on the lobby — players auto-join the spawned game, then the host taps
       // "Start Game" here to begin it (no host dashboard needed).
@@ -1085,6 +1231,23 @@ export default function TournamentLobbyPage() {
               {tournament.max_players ? `/${tournament.max_players}` : ''} player{players.length === 1 ? '' : 's'}
               {presentPlayerCount > 0 && <span className="text-faint"> · {presentPlayerCount} here now</span>}
             </span>
+            {/* Scheduled events only — surface the "N of M ready" count so
+                hosts can see confirmed-attentive players vs. still-pre-
+                registered before starting. Suppressed for right-now
+                tournaments where everyone joining IS present by definition. */}
+            {tournament.scheduled_at && !hasStarted && (
+              <span
+                className="chip text-xs"
+                style={{
+                  color:
+                    players.filter((p) => p.is_ready).length === players.length && players.length > 0
+                      ? 'var(--primary)'
+                      : undefined,
+                }}
+              >
+                ✋ {players.filter((p) => p.is_ready).length}/{players.length} ready
+              </span>
+            )}
             {isParticipant && myName && (
               <span className="chip text-xs" style={{ color: 'var(--primary)' }}>
                 🙋 You: {myName}
@@ -1906,6 +2069,38 @@ export default function TournamentLobbyPage() {
                 </span>
               </div>
             )}
+            {/* Scheduled-event "I'm here" confirmation. Someone registered
+                last week whose phone is face-down on a couch shouldn't be
+                counted as ready when the host taps Start — the host wants
+                an explicit signal per player. Only shown when the
+                tournament is scheduled, hasn't started, and this device
+                actually IS a participant. */}
+            {isParticipant && !hasStarted && tournament.scheduled_at && me && (
+              <div className="pt-1">
+                <button
+                  type="button"
+                  onClick={() => handleReadyToggle(!me.is_ready)}
+                  disabled={readyToggling}
+                  aria-pressed={Boolean(me.is_ready)}
+                  className={me.is_ready ? 'btn-secondary btn-fit w-full' : 'btn-primary btn-fit w-full'}
+                  style={{
+                    background: me.is_ready ? undefined : 'var(--primary)',
+                    color: me.is_ready ? undefined : 'var(--primary-contrast, #fff)',
+                  }}
+                >
+                  {readyToggling
+                    ? 'Saving…'
+                    : me.is_ready
+                      ? "✓ You're marked ready — tap to un-ready"
+                      : "I'm here and ready"}
+                </button>
+                <p className="text-faint text-xs text-center mt-1.5">
+                  {me.is_ready
+                    ? 'The host sees you as here now. Change if you step away before start.'
+                    : "Tap when you're at the lobby ready to play — the host uses this to know who's actually here vs pre-registered."}
+                </p>
+              </div>
+            )}
             {myCode && (
               <div className="pt-1">
                 <TournamentContinueCard tournamentId={tournamentId} code={myCode} />
@@ -2400,6 +2595,10 @@ export default function TournamentLobbyPage() {
             <div className="mt-3 space-y-1.5">
               {players.map((p) => {
                 const isHere = presentKeys.has(p.id)
+                // Ready pill is only rendered for scheduled events. Right-now
+                // tournaments don't have a "pre-registered but not-here" gap
+                // to close, so the extra chip would just be noise.
+                const showReady = Boolean(tournament.scheduled_at) && !hasStarted
                 return (
                   <div key={p.id} className="result-row flex items-center justify-between gap-3 px-4 py-2.5">
                     <span className="flex items-center gap-2 min-w-0">
@@ -2416,6 +2615,18 @@ export default function TournamentLobbyPage() {
                       <span className={`text-sm truncate ${p.is_eliminated ? 'text-faint line-through' : 'text-body'}`}>
                         {p.player_name}
                       </span>
+                      {showReady && (
+                        <span
+                          className="shrink-0 text-[0.6875rem] font-semibold rounded-full px-2 py-0.5"
+                          title={p.is_ready ? "This player tapped I'm ready" : 'Waiting for this player to tap ready'}
+                          style={{
+                            background: p.is_ready ? 'var(--primary)' : 'var(--surface-inset-bg)',
+                            color: p.is_ready ? 'var(--primary-contrast, #fff)' : 'var(--faint)',
+                          }}
+                        >
+                          {p.is_ready ? '✓ ready' : 'not ready'}
+                        </span>
+                      )}
                     </span>
                     {p.is_eliminated ? (
                       <span className="text-xs text-faint">out</span>
@@ -2533,17 +2744,24 @@ export default function TournamentLobbyPage() {
           the trigger for the next game. */}
         {isHost && !isFinished && !activeGame && roundRobin && plannedNext && (
           <div className="glass-card-strong p-5 space-y-2">
-            <PrimaryBtn onClick={handleStartGame} disabled={actionLoading || players.length === 0}>
+            <PrimaryBtn
+              onClick={() => handleStartGame(promptStartEarly)}
+              disabled={actionLoading || players.length === 0}
+            >
               {actionLoading
                 ? 'Starting…'
-                : isFirstGame
-                  ? `Start Tournament — ${gameTypeLabel(plannedNext.gameType) ?? plannedNext.gameType}`
-                  : `Start Next Game — ${gameTypeLabel(plannedNext.gameType) ?? plannedNext.gameType}`}
+                : promptStartEarly
+                  ? 'Start early anyway'
+                  : isFirstGame
+                    ? `Start Tournament — ${gameTypeLabel(plannedNext.gameType) ?? plannedNext.gameType}`
+                    : `Start Next Game — ${gameTypeLabel(plannedNext.gameType) ?? plannedNext.gameType}`}
             </PrimaryBtn>
             <p className="text-faint text-xs text-center">
               {players.length === 0
                 ? 'Waiting for players to join before you can start.'
-                : `Game ${queueIndex + 1} of ${queueEntries!.length}. Players see it appear when you tap Start.`}
+                : promptStartEarly
+                  ? 'Pre-registered players might not be here yet — tap again to override.'
+                  : `Game ${queueIndex + 1} of ${queueEntries!.length}. Players see it appear when you tap Start.`}
             </p>
           </div>
         )}
@@ -2657,10 +2875,14 @@ export default function TournamentLobbyPage() {
               </p>
             </Field>
 
-            {/* Trivia question source */}
+            {/* Trivia question source — matches the normal-game create page's
+                four modes (Platform / Library / Your own / AI). Any non-platform
+                pick funnels into `customTrivia` (or `triviaLibrary.questions`
+                for the library case) and rides the shared customQuestions slot
+                on Start. */}
             {selectedGameType === 'trivia' && (
               <Field label="Questions">
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap">
                   <button
                     type="button"
                     aria-pressed={questionSource === 'platform'}
@@ -2671,11 +2893,27 @@ export default function TournamentLobbyPage() {
                   </button>
                   <button
                     type="button"
+                    aria-pressed={questionSource === 'library'}
+                    onClick={() => setQuestionSource('library')}
+                    className={`chip flex-1 ${questionSource === 'library' ? 'chip-active' : ''}`}
+                  >
+                    Library
+                  </button>
+                  <button
+                    type="button"
                     aria-pressed={questionSource === 'custom'}
                     onClick={() => setQuestionSource('custom')}
                     className={`chip flex-1 ${questionSource === 'custom' ? 'chip-active' : ''}`}
                   >
                     Upload CSV
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={questionSource === 'ai'}
+                    onClick={() => setQuestionSource('ai')}
+                    className={`chip flex-1 ${questionSource === 'ai' ? 'chip-active' : ''}`}
+                  >
+                    Generate with AI
                   </button>
                 </div>
 
@@ -2737,17 +2975,176 @@ export default function TournamentLobbyPage() {
                     {uploadMsg && <p className="text-faint text-xs">{uploadMsg}</p>}
                   </div>
                 )}
+
+                {questionSource === 'ai' && (
+                  <div className="mt-3">
+                    <AiQuestionsGenerator
+                      gameType="trivia"
+                      triviaCategory="general"
+                      defaultCount={20}
+                      maxCount={50}
+                      onGenerated={(questions) => setCustomTrivia(questions as TriviaQuestion[])}
+                    />
+                    {customTrivia.length > 0 && (
+                      <p className="text-faint text-xs mt-2">
+                        ✓ {customTrivia.length} question{customTrivia.length === 1 ? '' : 's'} generated and ready.
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {questionSource === 'library' && (
+                  <div className="mt-3">
+                    <LibraryPackPicker
+                      loading={triviaLibrary.loading}
+                      packs={triviaLibrary.packs}
+                      search={triviaLibrary.search}
+                      onSearchChange={triviaLibrary.setSearch}
+                      selectedPackId={triviaLibrary.selectedPackId}
+                      onSelect={triviaLibrary.selectPack}
+                    />
+                  </div>
+                )}
+              </Field>
+            )}
+
+            {/* Who Said This source picker — mirrors the normal-game shape:
+                Players submit (lobby-collect), Platform (built-in famous
+                quotes), Library (community pack), Your own (CSV upload).
+                AI generation isn't available for WST yet (the AI backend
+                doesn't support the deck shape), so no AI chip here. */}
+            {selectedGameType === 'who_said_this' && (
+              <Field label="Quotes">
+                <div className="flex gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    aria-pressed={wstSource === 'player'}
+                    onClick={() => setWstSource('player')}
+                    className={`chip flex-1 ${wstSource === 'player' ? 'chip-active' : ''}`}
+                    title="Each joiner writes a quote + four options in the lobby"
+                  >
+                    Players submit
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={wstSource === 'platform'}
+                    onClick={() => setWstSource('platform')}
+                    className={`chip flex-1 ${wstSource === 'platform' ? 'chip-active' : ''}`}
+                    title="Our built-in pack of famous quotes"
+                  >
+                    Platform pack
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={wstSource === 'library'}
+                    onClick={() => setWstSource('library')}
+                    className={`chip flex-1 ${wstSource === 'library' ? 'chip-active' : ''}`}
+                    title="Pick a community quote pack"
+                  >
+                    Library
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={wstSource === 'custom'}
+                    onClick={() => setWstSource('custom')}
+                    className={`chip flex-1 ${wstSource === 'custom' ? 'chip-active' : ''}`}
+                    title="Upload a CSV of quotes, options, and answers"
+                  >
+                    Your own (CSV)
+                  </button>
+                </div>
+
+                {wstSource === 'player' && (
+                  <p className="text-faint text-xs mt-2">
+                    Each joiner writes one quote + four options (A–D) and marks the correct answer when they land in the
+                    lobby.
+                  </p>
+                )}
+
+                {wstSource === 'platform' && (
+                  <p className="text-faint text-xs mt-2">
+                    Uses our built-in pack of {WST_PLATFORM_DECK.length} famous quotes — players just join and answer,
+                    fastest correct wins.
+                  </p>
+                )}
+
+                {wstSource === 'custom' && (
+                  <div className="surface-inset p-4 mt-3 space-y-3">
+                    <input
+                      ref={wstFileRef}
+                      type="file"
+                      accept=".csv,.xlsx,.xls"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0]
+                        if (f) handleWstFile(f)
+                      }}
+                      className="hidden"
+                    />
+                    {customWst.length === 0 ? (
+                      <div className="space-y-2">
+                        <button
+                          type="button"
+                          onClick={() => wstFileRef.current?.click()}
+                          className="btn-secondary w-full"
+                        >
+                          Choose CSV or Excel file
+                        </button>
+                        <p className="text-faint text-xs">
+                          Columns:{' '}
+                          <span className="font-mono">quote, option_a, option_b, option_c, option_d, correct</span>. The{' '}
+                          <span className="font-mono">correct</span> column is the answer letter (A–D). At least{' '}
+                          {WST_DECK_MIN_ENTRIES} quotes required.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-sm text-body font-medium">
+                          ✓ {customWst.length} quote{customWst.length === 1 ? '' : 's'} loaded
+                        </p>
+                        <button type="button" onClick={clearCustomWst} className="btn-ghost text-xs">
+                          Clear
+                        </button>
+                      </div>
+                    )}
+                    {wstUploadMsg && <p className="text-faint text-xs">{wstUploadMsg}</p>}
+                  </div>
+                )}
+
+                {wstSource === 'library' && (
+                  <div className="mt-3">
+                    <LibraryPackPicker
+                      loading={wstLibrary.loading}
+                      packs={wstLibrary.packs}
+                      search={wstLibrary.search}
+                      onSearchChange={wstLibrary.setSearch}
+                      selectedPackId={wstLibrary.selectedPackId}
+                      onSelect={wstLibrary.selectPack}
+                      noun="quotes"
+                    />
+                  </div>
+                )}
               </Field>
             )}
 
             <div className="space-y-1.5">
-              <PrimaryBtn onClick={handleStartGame} disabled={actionLoading || !canStartCustom || players.length === 0}>
-                {actionLoading ? 'Starting…' : isFirstGame ? 'Start Tournament' : 'Start Next Game'}
+              <PrimaryBtn
+                onClick={() => handleStartGame(promptStartEarly)}
+                disabled={actionLoading || !canStartCustom || players.length === 0}
+              >
+                {actionLoading
+                  ? 'Starting…'
+                  : promptStartEarly
+                    ? 'Start early anyway'
+                    : isFirstGame
+                      ? 'Start Tournament'
+                      : 'Start Next Game'}
               </PrimaryBtn>
               <p className="text-faint text-xs text-center">
                 {players.length === 0
                   ? 'Waiting for players to join before you can start.'
-                  : 'Creates the game room. Open the host dashboard (new tab) to start it once players have joined.'}
+                  : promptStartEarly
+                    ? 'Pre-registered players might not be here yet — tap again to override.'
+                    : 'Creates the game room. Open the host dashboard (new tab) to start it once players have joined.'}
               </p>
             </div>
 
