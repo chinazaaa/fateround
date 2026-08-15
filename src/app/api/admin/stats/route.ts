@@ -497,8 +497,7 @@ export async function GET(req: NextRequest) {
     // silently return misleading zeros. PostgREST returns PGRST205 when the
     // relation is missing from its schema cache; the underlying Postgres code
     // is 42P01.
-    const code =
-      typeof e === 'object' && e !== null && 'code' in e ? String((e as { code: unknown }).code) : ''
+    const code = typeof e === 'object' && e !== null && 'code' in e ? String((e as { code: unknown }).code) : ''
     const missingRelation = code === 'PGRST205' || code === '42P01'
     if (!missingRelation) throw e
   }

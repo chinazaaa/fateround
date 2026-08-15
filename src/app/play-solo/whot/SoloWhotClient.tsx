@@ -33,12 +33,7 @@ import {
 import { pickBotAction, type WhotBotDifficulty } from '@/lib/whot-bot'
 import { getActivePickPenalty, hasPlayableCard, isDrawPileDepleted, parseWhotRules } from '@/lib/whot'
 import { logSoloPlayStarted } from '@/lib/solo-play'
-import {
-  readSoloScoreboard,
-  recordSoloOutcome,
-  resetSoloScoreboard,
-  type SoloScoreboard,
-} from '@/lib/solo-scoreboard'
+import { readSoloScoreboard, recordSoloOutcome, resetSoloScoreboard, type SoloScoreboard } from '@/lib/solo-scoreboard'
 
 const STORAGE_KEY = 'solo-whot-state-v1'
 const DIFFICULTY_KEY = 'solo-whot-difficulty-v1'
@@ -128,8 +123,7 @@ export function SoloWhotClient() {
   // re-render or a bot follow-up move can't double-count the same outcome.
   useEffect(() => {
     if (!state || state.outcome == null || scoredRef.current) return
-    const outcome: 'human' | 'bot' | 'draw' =
-      state.outcome === 0 ? 'human' : state.outcome === 'draw' ? 'draw' : 'bot'
+    const outcome: 'human' | 'bot' | 'draw' = state.outcome === 0 ? 'human' : state.outcome === 'draw' ? 'draw' : 'bot'
     setScoreboard(recordSoloOutcome('whot', outcome))
     scoredRef.current = true
   }, [state])

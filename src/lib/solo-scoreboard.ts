@@ -59,10 +59,7 @@ export function writeSoloScoreboard(key: SoloScoreboardKey, next: SoloScoreboard
   }
 }
 
-export function recordSoloOutcome(
-  key: SoloScoreboardKey,
-  outcome: 'human' | 'bot' | 'draw'
-): SoloScoreboard {
+export function recordSoloOutcome(key: SoloScoreboardKey, outcome: 'human' | 'bot' | 'draw'): SoloScoreboard {
   const current = readSoloScoreboard(key)
   const next: SoloScoreboard = {
     human: current.human + (outcome === 'human' ? 1 : 0),

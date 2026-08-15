@@ -32,12 +32,7 @@ import {
 import { pickBotAction, type UnoBotDifficulty } from '@/lib/uno-bot'
 import { isDrawPileDepleted } from '@/lib/uno'
 import { logSoloPlayStarted } from '@/lib/solo-play'
-import {
-  readSoloScoreboard,
-  recordSoloOutcome,
-  resetSoloScoreboard,
-  type SoloScoreboard,
-} from '@/lib/solo-scoreboard'
+import { readSoloScoreboard, recordSoloOutcome, resetSoloScoreboard, type SoloScoreboard } from '@/lib/solo-scoreboard'
 import { SoloScoreboardRow } from '@/components/solo/SoloScoreboardRow'
 
 const STORAGE_KEY = 'solo-uno-state-v1'
@@ -106,8 +101,7 @@ export function SoloUnoClient() {
 
   useEffect(() => {
     if (!state || state.outcome == null || scoredRef.current) return
-    const outcome: 'human' | 'bot' | 'draw' =
-      state.outcome === 0 ? 'human' : state.outcome === 'draw' ? 'draw' : 'bot'
+    const outcome: 'human' | 'bot' | 'draw' = state.outcome === 0 ? 'human' : state.outcome === 'draw' ? 'draw' : 'bot'
     setScoreboard(recordSoloOutcome('uno', outcome))
     scoredRef.current = true
   }, [state])

@@ -342,11 +342,7 @@ function SoloPracticeCta({ gameType }: { gameType: GameType }) {
   return (
     <p className="text-sm">
       Want to play solo?{' '}
-      <Link
-        href={`/play-solo/${slug}`}
-        className="font-semibold no-underline"
-        style={{ color: 'var(--accent)' }}
-      >
+      <Link href={`/play-solo/${slug}`} className="font-semibold no-underline" style={{ color: 'var(--accent)' }}>
         Practice against the bot →
       </Link>
     </p>

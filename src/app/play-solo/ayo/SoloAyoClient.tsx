@@ -19,12 +19,7 @@ import { AyoGamePanel } from '@/components/ayo/AyoBoard'
 import { AYO_SOLO_BOT_ID, AYO_SOLO_HUMAN_ID, initAyoSolo, ayoSoloMove, type AyoSoloState } from '@/lib/ayo-solo'
 import { pickAyoBotMove, type AyoBotDifficulty } from '@/lib/ayo-bot'
 import { logSoloPlayStarted } from '@/lib/solo-play'
-import {
-  readSoloScoreboard,
-  recordSoloOutcome,
-  resetSoloScoreboard,
-  type SoloScoreboard,
-} from '@/lib/solo-scoreboard'
+import { readSoloScoreboard, recordSoloOutcome, resetSoloScoreboard, type SoloScoreboard } from '@/lib/solo-scoreboard'
 import { SoloScoreboardRow } from '@/components/solo/SoloScoreboardRow'
 import type { Player } from '@/types'
 
