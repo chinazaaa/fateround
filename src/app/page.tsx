@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { HomePage } from '@/components/HomePage'
 import { MarketingHeader } from '@/components/MarketingHeader'
 import { SiteFooter } from '@/components/SiteFooter'
+import { UpcomingTournamentsCard } from '@/components/tournament/UpcomingTournamentsCard'
 import { homeMetadata, organizationJsonLd, webApplicationJsonLd, websiteJsonLd } from '@/lib/seo'
 
 export const metadata: Metadata = homeMetadata()
@@ -50,6 +51,10 @@ export default function Page() {
       <div className="fr-site fr-site--textured flex min-h-dvh flex-col">
         <MarketingHeader />
         <main className="flex-1">
+          {/* Client-only island — reads localStorage to find tournaments this
+              device is registered for and shows countdowns. Silent for
+              anyone with no memberships (i.e. every new visitor). */}
+          <UpcomingTournamentsCard />
           <HomePage />
           <HomeSeoContent />
         </main>

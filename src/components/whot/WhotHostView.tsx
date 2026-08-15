@@ -10,6 +10,7 @@ import { HostManageSection } from '@/components/host/HostManageSection'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
 import { HostBoardGameLobbyPanel } from '@/components/host-lobby/HostBoardGameLobbyPanel'
 import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaitingFooter'
+import { AddBotButton } from '@/components/host-lobby/AddBotButton'
 import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
 import { gameTypeConfig } from '@/lib/game-types'
 import {
@@ -696,7 +697,23 @@ export function WhotHostView({ gameCode, hostToken }: { gameCode: string; hostTo
         removingPlayerId={removingPlayerId}
         highlightPlayerId={hostPlayerId}
         onEnded={load}
-      />
+      >
+        {/*
+          Bots-in-room "+ Add bot" — inserted as children so it lands between
+          the play card and the roster. Only renders while there's an open seat
+          AND the humans-outnumber-bots invariant holds; onAdded triggers the
+          same load() that the join realtime does, so the new bot appears in
+          the roster within a tick.
+        */}
+        <AddBotButton
+          gameCode={gameCode}
+          hostToken={hostToken}
+          seatedCount={players.filter((p) => p.spectator !== true).length}
+          botCount={players.filter((p) => p.spectator !== true && p.is_bot === true).length}
+          maxPlayers={lobbyMaxPlayersFromGameClient('whot', game) ?? game.max_players ?? 6}
+          onAdded={load}
+        />
+      </HostLobby>
     )
   }
 

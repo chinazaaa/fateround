@@ -2107,7 +2107,7 @@ export const HOMEPAGE_FEATURED_GAMES: GameType[] = [
   'codewords',
   'ludo',
   'describe_it',
-  'bingo',
+  'ayo',
   'trivia',
 ]
 

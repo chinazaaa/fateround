@@ -3,6 +3,7 @@ import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { MarketingHeader } from '@/components/MarketingHeader'
 import { gameTypeConfig, gameTypeCreateParam, GAME_TYPE_DISPLAY_ORDER } from '@/lib/game-types'
+import { soloPlaySlug } from '@/lib/solo-play'
 import {
   ALL_GAME_LANDING_SLUGS,
   GAME_LANDING_CONTENT,
@@ -198,6 +199,24 @@ export default async function GameLandingRoute({ params }: Props) {
                 </div>
 
                 <p className="text-[12.5px]">
+                  {/* Solo practice CTA. Sits inline with "Read game rules" as a
+                      quiet third option — the primary funnel is still "Play
+                      free" (host a real room) and "Join with code". Rendered
+                      only for games registered in solo-play.ts. */}
+                  {soloPlaySlug(content.gameType) ? (
+                    <>
+                      <Link
+                        href={`/play-solo/${soloPlaySlug(content.gameType)}`}
+                        className="font-semibold no-underline"
+                        style={{ color: 'var(--accent)' }}
+                      >
+                        Practice against the bot →
+                      </Link>
+                      <span aria-hidden style={{ color: 'var(--text-faint)' }}>
+                        {' · '}
+                      </span>
+                    </>
+                  ) : null}
                   <a href="#rules" className="font-semibold no-underline" style={{ color: 'var(--accent)' }}>
                     Read game rules ↓
                   </a>

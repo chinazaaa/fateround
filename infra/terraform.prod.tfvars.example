@@ -54,6 +54,15 @@ vapid_subject     = "mailto:hello@fateround.com"
 # the Spotify dashboard.
 spotify_client_secret = "REPLACE_WITH_SPOTIFY_CLIENT_SECRET"
 
+# AI deck generation (optional). Server-side Claude key used by /create's "Generate
+# with AI" — hosts no longer paste their own key, so THIS key pays for every
+# generation. Leave empty to keep AI generation off (the route returns 503 and the
+# option is inert). Metered spend: the hard ceiling is the app-wide daily cap in
+# src/lib/rate-limit.ts (aiQuestionsGlobalDaily, override with the container env
+# var AI_QUESTIONS_GLOBAL_DAILY_MAX). That is a backstop, not a budget — set a
+# spend alert on the Anthropic account before pointing real traffic at it.
+anthropic_api_key = "REPLACE_WITH_ANTHROPIC_API_KEY"
+
 # OpenTelemetry export (optional). Leave the endpoint empty to keep telemetry off —
 # the app's src/instrumentation.ts no-ops without it. To turn it on, create a Grafana
 # Cloud (or other OTLP) stack and fill in the endpoint + auth header.

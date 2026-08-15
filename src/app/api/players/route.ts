@@ -645,7 +645,34 @@ export async function POST(req: NextRequest) {
       .eq('game_id', gameId)
       .eq('spectator', false)
 
-    const seatsFull = gameRow.status === 'waiting' && (playerCount ?? 0) >= maxPlayers
+    // ── Bots-in-room: humans never lose a seat to a bot ────────────────────
+    // If the room is at cap but any of the seats are bots (Whot only for now
+    // — see docs/bots-in-room-plan.md), evict the newest bot to make room
+    // for the human, in the lobby only. Mid-game bot eviction is a Phase 2
+    // improvement: dealing a mid-game hand to a joining human needs engine
+    // help we haven't wired for `waiting` → `active` transition yet.
+    let seatsFull = gameRow.status === 'waiting' && (playerCount ?? 0) >= maxPlayers
+    if (seatsFull && isWhotGame(rowGameType) && rawJoinAsViewer !== true) {
+      const { data: newestBot } = await supabase
+        .from('players')
+        .select('id')
+        .eq('game_id', gameId)
+        .eq('is_bot', true)
+        .eq('spectator', false)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (newestBot) {
+        // LIFO — the newest bot cedes first. Comes with a small race window:
+        // if two humans arrive simultaneously to a room with N bots, both
+        // may see N bots and each try to evict; the delete is idempotent so
+        // the second just gets a 0-row result. Worst case one human still
+        // hits "room full" and retries — no data corruption.
+        await getSupabaseAdmin().from('players').delete().eq('id', newestBot.id).eq('game_id', gameId)
+        seatsFull = false
+      }
+    }
+
     const seatFullResp = seatFullGate(gameRow as Game, seatsFull, rawJoinAsViewer, 'This game is full')
     if (seatFullResp) return seatFullResp
 
