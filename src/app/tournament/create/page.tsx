@@ -73,6 +73,10 @@ export default function TournamentCreatePage() {
   // screen mode is a deliberate host choice per game, so hosts who never
   // set up a projector aren't accidentally opted in.
   const [draftBigScreenMode, setDraftBigScreenMode] = useState<'phone_only' | 'projector'>('phone_only')
+  // When editing an existing playlist entry we hold its index here; the draft
+  // row's Add button becomes Save changes and a Cancel button appears. Null
+  // in normal add mode.
+  const [editingIndex, setEditingIndex] = useState<number | null>(null)
   // Optional shared trivia pack for every planned Trivia round in this
   // tournament. Only surfaced when the playlist actually contains a Trivia
   // entry. Empty = platform bank (today's default).
@@ -139,7 +143,15 @@ export default function TournamentCreatePage() {
     }
   }
 
-  function addQueueEntry() {
+  function resetDraftRow() {
+    setEditingIndex(null)
+    setDraftGameType(TOURNAMENT_ELIGIBLE_TYPES[0])
+    setDraftRounds('10')
+    setDraftTimer('30')
+    setDraftBigScreenMode('phone_only')
+  }
+
+  function saveQueueEntry() {
     const entry: TournamentQueueEntry = {
       gameType: draftGameType,
       timerSeconds: Math.max(1, parseInt(draftTimer, 10) || 30),
@@ -150,7 +162,32 @@ export default function TournamentCreatePage() {
     if (draftGameType !== 'two_truths' && draftGameType !== 'who_said_this') {
       entry.roundsCount = Math.max(1, parseInt(draftRounds, 10) || 10)
     }
-    setQueue((prev) => [...prev, entry])
+    setQueue((prev) => {
+      if (editingIndex != null && editingIndex >= 0 && editingIndex < prev.length) {
+        const next = prev.slice()
+        next[editingIndex] = entry
+        return next
+      }
+      return [...prev, entry]
+    })
+    resetDraftRow()
+  }
+
+  function beginEditQueueEntry(index: number) {
+    const entry = queue[index]
+    if (!entry) return
+    setEditingIndex(index)
+    setDraftGameType(entry.gameType)
+    setDraftRounds(String(entry.roundsCount ?? 10))
+    setDraftTimer(String(entry.timerSeconds ?? 30))
+    setDraftBigScreenMode(entry.bigScreenMode === 'projector' ? 'projector' : 'phone_only')
+    // Scroll the draft row into view — on mobile the playlist can push it off
+    // screen. Deferred to next tick so the editingIndex render has landed.
+    if (typeof window !== 'undefined') {
+      setTimeout(() => {
+        document.getElementById('queue-draft-type')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }, 50)
+    }
   }
 
   function moveQueueEntry(index: number, dir: -1 | 1) {
@@ -161,10 +198,24 @@ export default function TournamentCreatePage() {
       ;[next[index], next[target]] = [next[target], next[index]]
       return next
     })
+    // If the moved row was the one being edited, keep the pointer on it.
+    setEditingIndex((prev) => {
+      if (prev == null) return prev
+      if (prev === index) return index + dir
+      if (prev === index + dir) return index
+      return prev
+    })
   }
 
   function removeQueueEntry(index: number) {
     setQueue((prev) => prev.filter((_, i) => i !== index))
+    // Cancel or shift the editing pointer if it referenced the removed row.
+    setEditingIndex((prev) => {
+      if (prev == null) return prev
+      if (prev === index) return null
+      if (prev > index) return prev - 1
+      return prev
+    })
   }
 
   function handleBrandLogoFile(file: File) {
@@ -384,6 +435,168 @@ export default function TournamentCreatePage() {
         </p>
       </div>
 
+      {/* Schedule + Branding sit ABOVE the main game settings so hosts see
+          them before they've scrolled past the whole playlist editor —
+          previous layout buried both at the bottom and hosts missed them.
+          Both are optional; a quick "start right now, default look" game just
+          skips these two cards. */}
+      <div className="glass-card-strong p-5 sm:p-6 space-y-3">
+        <div className="flex items-baseline justify-between gap-2 flex-wrap">
+          <p className="label-caps">Schedule (optional)</p>
+          <span className="text-faint text-xs">Pre-register players days ahead</span>
+        </div>
+        <Field label="Start date & time" htmlFor="tournament-scheduled-at">
+          <input
+            id="tournament-scheduled-at"
+            type="datetime-local"
+            value={scheduledLocal}
+            onChange={(e) => setScheduledLocal(e.target.value)}
+            className="input-field"
+          />
+          <p className="text-faint text-xs mt-1.5">
+            Leave empty for right now. Sets a countdown on the invite link so pre-registered players know when to show
+            up.
+          </p>
+        </Field>
+      </div>
+
+      {/* Event branding — colours + logo shown to players in the lobby and
+          in-game header. Optional; skipping any field leaves the default
+          palette in place. */}
+      <div className="glass-card-strong p-5 sm:p-6 space-y-4">
+        <div className="flex items-baseline justify-between gap-2 flex-wrap">
+          <p className="label-caps">Event branding (optional)</p>
+          <span className="text-faint text-xs">Shown to players in the lobby &amp; game</span>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Primary colour" htmlFor="brand-primary">
+            <div className="flex items-center gap-2">
+              <input
+                id="brand-primary"
+                type="color"
+                value={brandPrimary || '#7c3aed'}
+                onChange={(e) => setBrandPrimary(e.target.value)}
+                aria-label="Primary brand colour"
+                className="h-10 w-14 rounded-lg border border-theme cursor-pointer"
+              />
+              <input
+                type="text"
+                value={brandPrimary}
+                onChange={(e) => setBrandPrimary(e.target.value)}
+                placeholder="#7c3aed"
+                maxLength={7}
+                className="input-field flex-1 font-mono text-sm"
+              />
+              {brandPrimary && (
+                <button
+                  type="button"
+                  onClick={() => setBrandPrimary('')}
+                  className="btn-ghost text-xs"
+                  aria-label="Clear primary colour"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+          </Field>
+          <Field label="Accent colour" htmlFor="brand-accent">
+            <div className="flex items-center gap-2">
+              <input
+                id="brand-accent"
+                type="color"
+                value={brandAccent || '#f59e0b'}
+                onChange={(e) => setBrandAccent(e.target.value)}
+                aria-label="Accent brand colour"
+                className="h-10 w-14 rounded-lg border border-theme cursor-pointer"
+              />
+              <input
+                type="text"
+                value={brandAccent}
+                onChange={(e) => setBrandAccent(e.target.value)}
+                placeholder="#f59e0b"
+                maxLength={7}
+                className="input-field flex-1 font-mono text-sm"
+              />
+              {brandAccent && (
+                <button
+                  type="button"
+                  onClick={() => setBrandAccent('')}
+                  className="btn-ghost text-xs"
+                  aria-label="Clear accent colour"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+          </Field>
+        </div>
+
+        <Field label="Logo (optional)" htmlFor="brand-logo">
+          <input
+            ref={brandLogoRef}
+            id="brand-logo"
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif"
+            onChange={(e) => {
+              const f = e.target.files?.[0]
+              if (f) handleBrandLogoFile(f)
+            }}
+            className="hidden"
+          />
+          {brandLogoPreview ? (
+            <div className="surface-inset p-4 flex items-center gap-4">
+              {}
+              <img
+                src={brandLogoPreview}
+                alt="Logo preview"
+                className="h-16 w-16 object-contain rounded-lg"
+                style={{ background: 'var(--surface-inset-bg)' }}
+              />
+              <div className="flex-1 min-w-0">
+                <p className="text-body text-sm font-medium truncate">{brandLogoFile?.name}</p>
+                <p className="text-faint text-xs">
+                  {brandLogoFile ? `${Math.round(brandLogoFile.size / 1024)} KB` : ''} · uploaded when you create
+                </p>
+              </div>
+              <button type="button" onClick={clearBrandLogo} className="btn-ghost text-xs">
+                Remove
+              </button>
+            </div>
+          ) : (
+            <button type="button" onClick={() => brandLogoRef.current?.click()} className="btn-secondary w-full">
+              Choose logo file
+            </button>
+          )}
+          {brandLogoMsg && <p className="text-red-400 text-xs mt-2">{brandLogoMsg}</p>}
+          <p className="text-faint text-xs mt-2">PNG / JPG / WEBP / GIF — 1 MB max. A square logo works best.</p>
+        </Field>
+
+        {(brandPrimary || brandAccent || brandLogoPreview) && (
+          <div
+            className="surface-inset p-4 space-y-2 flex items-center gap-3"
+            style={{
+              ...(brandPrimary ? ({ '--primary': brandPrimary } as CSSProperties) : {}),
+            }}
+          >
+            {brandLogoPreview && <img src={brandLogoPreview} alt="" className="h-10 w-10 object-contain" />}
+            <div className="flex-1">
+              <p className="text-body text-sm font-medium">Preview</p>
+              <p className="text-faint text-xs">
+                Your event will look <span style={{ color: 'var(--primary)', fontWeight: 700 }}>like this</span>
+                {brandAccent && (
+                  <>
+                    {' '}
+                    with <span style={{ color: brandAccent, fontWeight: 700 }}>accent bits</span>
+                  </>
+                )}
+                .
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
+
       <div className="glass-card-strong p-5 sm:p-6 space-y-5">
         <Field label="Tournament Title" htmlFor="tournament-title">
           <input
@@ -519,72 +732,94 @@ export default function TournamentCreatePage() {
               <p className="text-faint text-xs">No games yet — add your first below.</p>
             ) : (
               <ol className="space-y-2">
-                {queue.map((entry, index) => (
-                  <li
-                    key={`${entry.gameType}-${index}`}
-                    className="flex items-center gap-2 rounded-lg border border-theme px-3 py-2"
-                    style={{ background: 'var(--surface-inset-bg)' }}
-                  >
-                    <span
-                      className="tabular-nums text-xs font-semibold"
-                      style={{ color: 'var(--muted)', minWidth: '1.5rem' }}
+                {queue.map((entry, index) => {
+                  const isEditing = editingIndex === index
+                  return (
+                    <li
+                      key={`${entry.gameType}-${index}`}
+                      className="flex items-center gap-2 rounded-lg border px-3 py-2"
+                      style={{
+                        background: isEditing ? 'rgba(124, 58, 237, 0.10)' : 'var(--surface-inset-bg)',
+                        borderColor: isEditing ? 'var(--primary)' : 'var(--border)',
+                      }}
                     >
-                      {index + 1}.
-                    </span>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-body text-sm font-medium truncate">
-                        {gameTypeLabel(entry.gameType) ?? entry.gameType}
-                        <span className="text-faint text-xs font-normal ml-2">
-                          {entry.bigScreenMode === 'projector' ? '🖥' : '📱'}
-                        </span>
-                      </p>
-                      <p className="text-faint text-xs">
-                        {entry.gameType === 'trivia'
-                          ? `${entry.roundsCount ?? 10} questions · ${entry.timerSeconds ?? 30}s each`
-                          : entry.gameType === 'two_truths' || entry.gameType === 'who_said_this'
-                            ? `${entry.timerSeconds ?? (entry.gameType === 'two_truths' ? 45 : 30)}s per guess`
-                            : `${entry.roundsCount ?? 10} rounds · ${entry.timerSeconds ?? 30}s`}
-                        {' · ≈ '}
-                        {formatEstimatedDuration(estimateGameSeconds(entry, TIMING_PLAYER_FALLBACK))}
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => moveQueueEntry(index, -1)}
-                      disabled={index === 0}
-                      aria-label={`Move ${gameTypeLabel(entry.gameType) ?? entry.gameType} up`}
-                      className="chip"
-                      style={{ opacity: index === 0 ? 0.4 : 1 }}
-                    >
-                      ↑
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => moveQueueEntry(index, 1)}
-                      disabled={index === queue.length - 1}
-                      aria-label={`Move ${gameTypeLabel(entry.gameType) ?? entry.gameType} down`}
-                      className="chip"
-                      style={{ opacity: index === queue.length - 1 ? 0.4 : 1 }}
-                    >
-                      ↓
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => removeQueueEntry(index)}
-                      aria-label={`Remove ${gameTypeLabel(entry.gameType) ?? entry.gameType}`}
-                      className="chip"
-                    >
-                      ✕
-                    </button>
-                  </li>
-                ))}
+                      <span
+                        className="tabular-nums text-xs font-semibold"
+                        style={{ color: 'var(--muted)', minWidth: '1.5rem' }}
+                      >
+                        {index + 1}.
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-body text-sm font-medium truncate">
+                          {gameTypeLabel(entry.gameType) ?? entry.gameType}
+                          <span className="text-faint text-xs font-normal ml-2">
+                            {entry.bigScreenMode === 'projector' ? '🖥' : '📱'}
+                          </span>
+                          {isEditing && (
+                            <span className="text-xs font-semibold ml-2" style={{ color: 'var(--primary)' }}>
+                              editing…
+                            </span>
+                          )}
+                        </p>
+                        <p className="text-faint text-xs">
+                          {entry.gameType === 'trivia'
+                            ? `${entry.roundsCount ?? 10} questions · ${entry.timerSeconds ?? 30}s each`
+                            : entry.gameType === 'two_truths' || entry.gameType === 'who_said_this'
+                              ? `${entry.timerSeconds ?? (entry.gameType === 'two_truths' ? 45 : 30)}s per guess`
+                              : `${entry.roundsCount ?? 10} rounds · ${entry.timerSeconds ?? 30}s`}
+                          {' · ≈ '}
+                          {formatEstimatedDuration(estimateGameSeconds(entry, TIMING_PLAYER_FALLBACK))}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => beginEditQueueEntry(index)}
+                        aria-label={`Edit ${gameTypeLabel(entry.gameType) ?? entry.gameType}`}
+                        title="Edit this game"
+                        className="chip"
+                      >
+                        ✎
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => moveQueueEntry(index, -1)}
+                        disabled={index === 0}
+                        aria-label={`Move ${gameTypeLabel(entry.gameType) ?? entry.gameType} up`}
+                        className="chip"
+                        style={{ opacity: index === 0 ? 0.4 : 1 }}
+                      >
+                        ↑
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => moveQueueEntry(index, 1)}
+                        disabled={index === queue.length - 1}
+                        aria-label={`Move ${gameTypeLabel(entry.gameType) ?? entry.gameType} down`}
+                        className="chip"
+                        style={{ opacity: index === queue.length - 1 ? 0.4 : 1 }}
+                      >
+                        ↓
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => removeQueueEntry(index)}
+                        aria-label={`Remove ${gameTypeLabel(entry.gameType) ?? entry.gameType}`}
+                        className="chip"
+                      >
+                        ✕
+                      </button>
+                    </li>
+                  )
+                })}
               </ol>
             )}
 
             <div className="divider-soft" />
 
             <div className="space-y-2">
-              <p className="text-body text-sm font-medium">Add a game</p>
+              <p className="text-body text-sm font-medium">
+                {editingIndex != null ? `Edit game #${editingIndex + 1}` : 'Add a game'}
+              </p>
               <Field label="Game" htmlFor="queue-draft-type">
                 <select
                   id="queue-draft-type"
@@ -598,6 +833,13 @@ export default function TournamentCreatePage() {
                     </option>
                   ))}
                 </select>
+                {(draftGameType === 'two_truths' || draftGameType === 'who_said_this') && (
+                  <p className="text-faint text-xs mt-1.5">
+                    {draftGameType === 'two_truths'
+                      ? 'Players type their two truths + a lie when they join the lobby — no upload needed. One round per player who submits.'
+                      : 'Players type one quote from a favourite character when they join the lobby — no upload needed. One round per submitted quote.'}
+                  </p>
+                )}
               </Field>
               <div
                 className={
@@ -656,20 +898,60 @@ export default function TournamentCreatePage() {
                     : 'Everyone reads on their phone; big screen shows the leaderboard only. Pick this if there’s no screen in the room.'}
                 </p>
               </Field>
-              <button
-                type="button"
-                onClick={addQueueEntry}
-                disabled={queue.length >= 20}
-                className="btn-secondary w-full"
-              >
-                + Add to playlist
-              </button>
-              {queue.length >= 20 && (
+              {editingIndex != null ? (
+                <div className="grid grid-cols-2 gap-2">
+                  <button type="button" onClick={resetDraftRow} className="btn-ghost w-full">
+                    Cancel
+                  </button>
+                  <button type="button" onClick={saveQueueEntry} className="btn-secondary w-full">
+                    Save changes
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={saveQueueEntry}
+                  disabled={queue.length >= 20}
+                  className="btn-secondary w-full"
+                >
+                  + Add to playlist
+                </button>
+              )}
+              {editingIndex == null && queue.length >= 20 && (
                 <p className="text-faint text-xs text-center">Playlist limit reached (20 games).</p>
               )}
             </div>
           </div>
         )}
+
+        {/* Info card when a player-submit game type sits in the planned playlist —
+            hosts hunt for a "questions upload" affordance and get confused when
+            it's not there, because these two shapes source their content from
+            the players themselves in the lobby. */}
+        {isRoundRobin &&
+          planned &&
+          queue.some((e) => e.gameType === 'who_said_this' || e.gameType === 'two_truths') && (
+            <div
+              className="rounded-xl border border-theme px-4 py-3 text-sm text-body"
+              style={{ background: 'var(--surface-inset-bg)', borderLeft: '3px solid var(--primary)' }}
+            >
+              <p className="font-semibold mb-1">Player-submitted games in your playlist</p>
+              <ul className="text-faint text-xs space-y-1">
+                {queue.some((e) => e.gameType === 'who_said_this') && (
+                  <li>
+                    <span className="text-body">Who Said This:</span> players type one quote from a favourite character
+                    when they join the lobby. Everyone else guesses who said it. Nothing for you to upload.
+                  </li>
+                )}
+                {queue.some((e) => e.gameType === 'two_truths') && (
+                  <li>
+                    <span className="text-body">Two Truths &amp; a Lie:</span> players type two truths and a lie about
+                    themselves in the lobby. Nothing for you to upload.
+                  </li>
+                )}
+              </ul>
+            </div>
+          )}
 
         {/* Shared trivia pack — only shown when the playlist actually contains
             a Trivia entry, otherwise there's nothing for it to be used with. */}
@@ -792,20 +1074,22 @@ export default function TournamentCreatePage() {
         )}
 
         {isRoundRobin && !planned && (
-          <Field label="Target Games (optional)" htmlFor="tournament-target-games">
+          <Field label="How many games to play (optional)" htmlFor="tournament-target-games">
             <input
               id="tournament-target-games"
               type="number"
               value={targetGameCount}
               onChange={(e) => setTargetGameCount(e.target.value)}
-              placeholder="Leave empty for unlimited"
+              placeholder="Leave empty — end whenever you want"
               min={1}
               max={100}
               step={1}
               className="input-field"
             />
             <p className="text-faint text-xs mt-1.5">
-              Tournament ends after this many games, or you can end it manually
+              A soft cap — the tournament auto-ends once you&apos;ve played this many. You still pick the game each
+              round from the tournament page, and the same game can be picked as many times as you like (three rounds of
+              Trivia in a row is fine). Leave empty and end it manually whenever the room&apos;s had enough.
             </p>
           </Field>
         )}
@@ -895,167 +1179,6 @@ export default function TournamentCreatePage() {
               })}
             </div>
             <p className="text-faint text-xs mt-2 text-center">7th place and below earn 1pt each</p>
-          </div>
-        )}
-      </div>
-
-      {/* Schedule the event for later — optional. Shows a countdown + "Add to
-          calendar" (.ics) download to everyone on the invite link, so players
-          can pre-register days ahead and get pinged by their own calendar
-          when it's time. Host still starts the event manually on the day. */}
-      <div className="glass-card-strong p-5 sm:p-6 space-y-3">
-        <div className="flex items-baseline justify-between gap-2 flex-wrap">
-          <p className="label-caps">Schedule (optional)</p>
-          <span className="text-faint text-xs">Pre-register players days ahead</span>
-        </div>
-        <Field label="Start date & time" htmlFor="tournament-scheduled-at">
-          <input
-            id="tournament-scheduled-at"
-            type="datetime-local"
-            value={scheduledLocal}
-            onChange={(e) => setScheduledLocal(e.target.value)}
-            className="input-field"
-          />
-          <p className="text-faint text-xs mt-1.5">
-            Leave empty for right now. Sets a countdown on the invite link so pre-registered players know when to show
-            up.
-          </p>
-        </Field>
-      </div>
-
-      {/* Event branding — optional. Two brand colours + a logo, applied to the
-          lobby, in-game header, and results card. Skipping any field leaves the
-          default palette in place. */}
-      <div className="glass-card-strong p-5 sm:p-6 space-y-4">
-        <div className="flex items-baseline justify-between gap-2 flex-wrap">
-          <p className="label-caps">Event branding (optional)</p>
-          <span className="text-faint text-xs">Shown to players in the lobby &amp; game</span>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Primary colour" htmlFor="brand-primary">
-            <div className="flex items-center gap-2">
-              <input
-                id="brand-primary"
-                type="color"
-                value={brandPrimary || '#7c3aed'}
-                onChange={(e) => setBrandPrimary(e.target.value)}
-                aria-label="Primary brand colour"
-                className="h-10 w-14 rounded-lg border border-theme cursor-pointer"
-              />
-              <input
-                type="text"
-                value={brandPrimary}
-                onChange={(e) => setBrandPrimary(e.target.value)}
-                placeholder="#7c3aed"
-                maxLength={7}
-                className="input-field flex-1 font-mono text-sm"
-              />
-              {brandPrimary && (
-                <button
-                  type="button"
-                  onClick={() => setBrandPrimary('')}
-                  className="btn-ghost text-xs"
-                  aria-label="Clear primary colour"
-                >
-                  Clear
-                </button>
-              )}
-            </div>
-          </Field>
-          <Field label="Accent colour" htmlFor="brand-accent">
-            <div className="flex items-center gap-2">
-              <input
-                id="brand-accent"
-                type="color"
-                value={brandAccent || '#f59e0b'}
-                onChange={(e) => setBrandAccent(e.target.value)}
-                aria-label="Accent brand colour"
-                className="h-10 w-14 rounded-lg border border-theme cursor-pointer"
-              />
-              <input
-                type="text"
-                value={brandAccent}
-                onChange={(e) => setBrandAccent(e.target.value)}
-                placeholder="#f59e0b"
-                maxLength={7}
-                className="input-field flex-1 font-mono text-sm"
-              />
-              {brandAccent && (
-                <button
-                  type="button"
-                  onClick={() => setBrandAccent('')}
-                  className="btn-ghost text-xs"
-                  aria-label="Clear accent colour"
-                >
-                  Clear
-                </button>
-              )}
-            </div>
-          </Field>
-        </div>
-
-        <Field label="Logo (optional)" htmlFor="brand-logo">
-          <input
-            ref={brandLogoRef}
-            id="brand-logo"
-            type="file"
-            accept="image/png,image/jpeg,image/webp,image/gif"
-            onChange={(e) => {
-              const f = e.target.files?.[0]
-              if (f) handleBrandLogoFile(f)
-            }}
-            className="hidden"
-          />
-          {brandLogoPreview ? (
-            <div className="surface-inset p-4 flex items-center gap-4">
-              {}
-              <img
-                src={brandLogoPreview}
-                alt="Logo preview"
-                className="h-16 w-16 object-contain rounded-lg"
-                style={{ background: 'var(--surface-inset-bg)' }}
-              />
-              <div className="flex-1 min-w-0">
-                <p className="text-body text-sm font-medium truncate">{brandLogoFile?.name}</p>
-                <p className="text-faint text-xs">
-                  {brandLogoFile ? `${Math.round(brandLogoFile.size / 1024)} KB` : ''} · uploaded when you create
-                </p>
-              </div>
-              <button type="button" onClick={clearBrandLogo} className="btn-ghost text-xs">
-                Remove
-              </button>
-            </div>
-          ) : (
-            <button type="button" onClick={() => brandLogoRef.current?.click()} className="btn-secondary w-full">
-              Choose logo file
-            </button>
-          )}
-          {brandLogoMsg && <p className="text-red-400 text-xs mt-2">{brandLogoMsg}</p>}
-          <p className="text-faint text-xs mt-2">PNG / JPG / WEBP / GIF — 1 MB max. A square logo works best.</p>
-        </Field>
-
-        {(brandPrimary || brandAccent || brandLogoPreview) && (
-          <div
-            className="surface-inset p-4 space-y-2 flex items-center gap-3"
-            style={{
-              ...(brandPrimary ? ({ '--primary': brandPrimary } as CSSProperties) : {}),
-            }}
-          >
-            {brandLogoPreview && <img src={brandLogoPreview} alt="" className="h-10 w-10 object-contain" />}
-            <div className="flex-1">
-              <p className="text-body text-sm font-medium">Preview</p>
-              <p className="text-faint text-xs">
-                Your event will look <span style={{ color: 'var(--primary)', fontWeight: 700 }}>like this</span>
-                {brandAccent && (
-                  <>
-                    {' '}
-                    with <span style={{ color: brandAccent, fontWeight: 700 }}>accent bits</span>
-                  </>
-                )}
-                .
-              </p>
-            </div>
           </div>
         )}
       </div>
