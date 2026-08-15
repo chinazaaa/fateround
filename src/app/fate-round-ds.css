@@ -919,11 +919,7 @@
      The wash fades to plain `--surface` by 62% — above the tagline and the meta
      row — so text contrast is measured against the same background as before
      and none of the muted type gets harder to read. */
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--accent) 6%, var(--surface)) 0%,
-    var(--surface) 62%
-  );
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 6%, var(--surface)) 0%, var(--surface) 62%);
   border: 1px solid color-mix(in srgb, var(--accent) 16%, var(--border));
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
@@ -962,11 +958,7 @@
    mix barely moves. The accents themselves are bright here, so a larger share
    still lands well short of the card looking coloured-in. */
 [data-theme='dark'] .fr-gamecard {
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--accent) 11%, var(--surface)) 0%,
-    var(--surface) 62%
-  );
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 11%, var(--surface)) 0%, var(--surface) 62%);
   border-color: color-mix(in srgb, var(--accent) 22%, var(--border));
 }
 .fr-gamecard__emoji {
@@ -1031,6 +1023,23 @@
   white-space: nowrap;
   font-size: var(--text-2xs);
   color: var(--text-faint);
+}
+/* Bot-practice chip — appears only on cards whose game has a /play-solo/<slug>
+   page (see src/lib/solo-play.ts). Deliberately visually similar to the
+   __players chip but with a warmer tint so it reads as a distinct affordance
+   rather than a second meta fact — the "practice" pitch, not another stat.
+   Not a link itself: the whole card links to the game landing, which already
+   carries the "Practice against the bot →" CTA. */
+.fr-gamecard__solo {
+  flex-shrink: 0;
+  white-space: nowrap;
+  line-height: 1.4;
+  font-size: var(--text-2xs);
+  font-weight: var(--fw-semibold);
+  border-radius: var(--radius-full);
+  padding: 0.1875rem 0.5rem;
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  color: color-mix(in srgb, var(--accent) 85%, var(--text));
 }
 
 /* ════════════════════════════════════════════════════════════════════

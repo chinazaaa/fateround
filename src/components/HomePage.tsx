@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { GAME_TYPE_OPTIONS, HOMEPAGE_FEATURED_GAMES, gameTypeConfig } from '@/lib/game-types'
 import { gameLandingSlug } from '@/lib/game-landing'
 import { gameIcon } from '@/lib/game-glyphs'
+import { hasSoloPlay } from '@/lib/solo-play'
 import { Glyph } from '@/components/icons/Glyph'
 import { HomePageJoinPanel } from '@/components/HomePageJoinPanel'
 import { SectionHeading } from '@/components/SectionHeading'
@@ -65,6 +66,17 @@ export function HomePage() {
                   <p className="fr-gamecard__tagline line-clamp-2">{config.tagline}</p>
                   <div className="fr-gamecard__meta">
                     <span className="fr-gamecard__players">{config.card.players}</span>
+                    {hasSoloPlay(type) ? (
+                      // "vs Bot" affordance — only rendered where a solo mode
+                      // actually exists (registry: src/lib/solo-play.ts). Follows
+                      // the card link to /games/<slug>, which already carries the
+                      // "Practice against the bot →" CTA, so this card stays a
+                      // single tap target and the landing page still sells the
+                      // multiplayer version too.
+                      <span className="fr-gamecard__solo" aria-label="Practice against a bot available">
+                        vs Bot
+                      </span>
+                    ) : null}
                     <span className="fr-gamecard__vibe">{config.card.vibe}</span>
                   </div>
                 </Link>
