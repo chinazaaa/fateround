@@ -206,10 +206,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   const gameHostToken = generateToken()
 
+  // Who Said This: if the tournament has a shared WST deck attached (CSV or
+  // platform pack picked at creation), spawn the game in deck mode with that
+  // content — same shape the /api/games "Your own" flow uses. Otherwise fall
+  // back to player-submit (each joiner writes a quote in the lobby).
+  const tournamentWstPack =
+    gameType === 'who_said_this' && Array.isArray(tournament.custom_wst_pack) && tournament.custom_wst_pack.length > 0
+      ? (tournament.custom_wst_pack as unknown[])
+      : null
+
   // Per-game extras: trivia carries its question source + prior pool usage;
   // i_call_on needs its marking timer + whole-game timer; two_truths needs
-  // neither. Who Said This runs in player-submit mode (each joiner submits one
-  // quote in the lobby, then everyone guesses) — no deck upload required.
+  // neither. Who Said This runs player-submit by default; deck mode kicks in
+  // when the tournament has a WST pack attached.
   const perGameExtras: Record<string, unknown> =
     gameType === 'trivia'
       ? {
@@ -223,7 +232,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
             game_duration_seconds: clampNpatGameDuration(NPAT_DEFAULT_GAME_DURATION),
           }
         : gameType === 'who_said_this'
-          ? { wst_quote_source: 'player' }
+          ? tournamentWstPack
+            ? {
+                wst_quote_source: 'deck',
+                custom_questions: tournamentWstPack,
+              }
+            : { wst_quote_source: 'player' }
           : {}
 
   const { error: gameError } = await admin.from('games').insert({

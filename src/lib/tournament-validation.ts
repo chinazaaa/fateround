@@ -93,6 +93,12 @@ export const createTournamentSchema = z.object({
   // re-validates via parseStoredTriviaQuestions before storing so a malformed
   // upload can't reach the DB.
   customTriviaPack: z.array(z.unknown()).max(500).optional(),
+  // Optional shared Who Said This deck (CSV upload or platform pack) used by
+  // every planned WST game in this tournament. When present the WST games run
+  // in deck mode (like normal-game "Your own"); when absent they run in
+  // player-submit mode. Loose type — the games route re-validates via
+  // parseStoredWstDeck before storing.
+  customWstPack: z.array(z.unknown()).max(500).optional(),
   // Event branding — two colours + a logo URL previously produced by the
   // per-tournament logo-upload route. Every field optional; null/absent = use
   // the app's default palette.
