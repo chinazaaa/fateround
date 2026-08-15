@@ -79,12 +79,22 @@ describe('pickBotAction — legality', () => {
     expect(pickBotAction(s)).toEqual({ type: 'draw' })
   })
 
-  it('draws under a Draw 2 penalty (solo does not allow stacking)', () => {
-    // Even holding a Draw 2, the bot cannot stack — the engine says it's illegal,
-    // so the only legal action is to draw the penalty.
+  it('stacks a Draw 2 back onto a pending Draw 2', () => {
+    // Classic same-kind stacking is on: a bot holding a Draw 2 should defend
+    // by stacking rather than eating the penalty.
     const s = stateWithHands({
       humanHand: [c('h1', 'red', 'number', 3)],
       botHand: [c('b1', 'green', 'draw2')],
+      top: c('top', 'red', 'draw2'),
+      drawPenalty: 2,
+    })
+    expect(pickBotAction(s)).toEqual({ type: 'play', cardId: 'b1' })
+  })
+
+  it('still draws when no legal defender exists', () => {
+    const s = stateWithHands({
+      humanHand: [c('h1', 'red', 'number', 3)],
+      botHand: [c('b1', 'green', 'number', 7), c('b2', 'blue', 'number', 4)],
       top: c('top', 'red', 'draw2'),
       drawPenalty: 2,
     })

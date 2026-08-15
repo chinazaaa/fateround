@@ -9,9 +9,9 @@ import { SoloUnoClient } from './SoloUnoClient'
  */
 
 export const metadata: Metadata = {
-  title: 'Play UNO vs Bot — Practice UNO on FateRound',
+  title: 'Play Match Up vs Bot — Practice Match Up on FateRound',
   description:
-    'Practice UNO against a computer opponent. Classic rules — Skip, Reverse, Draw Two, Wild, Wild Draw Four. Free, no sign-up, works on any device.',
+    "Practice Match Up (FateRound's UNO-style card game) against a computer opponent. Classic rules — Skip, Reverse, Draw Two, Wild, Wild Draw Four. Free, no sign-up, works on any device.",
   robots: { index: true, follow: true },
 }
 

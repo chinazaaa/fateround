@@ -251,12 +251,12 @@ function checkWin(state: UnoSoloState): UnoSoloState {
 // ── Legality (thin wrapper on the engine helper) ────────────────────────────
 
 /**
- * Solo's legality is the engine's `canPlayCard` plus one solo-only rule: any
- * pending draw penalty MUST be drawn (no stacking) — same as classic UNO
- * without house rules.
+ * Solo's legality is exactly the engine's `canPlayCard`, which already handles
+ * classic same-kind stacking (Draw 2 on Draw 2, Wild Draw 4 on Wild Draw 4).
+ * The `UnoPlaySurface` prompt tells the player they may "stack a Draw 2" when
+ * a Draw 2 penalty is active, so blocking the stack here made the UI a liar.
  */
 export function isPlayable(state: UnoSoloState, card: UnoCard): boolean {
-  if ((state.session.draw_penalty ?? 0) > 0) return false
   return canPlayCardEngine(card, state.session)
 }
 
@@ -293,8 +293,17 @@ export function unoSoloPlay(
   if (idx < 0) return { state, error: 'Card not in hand' }
   const card = hand[idx]!
 
-  if ((state.session.draw_penalty ?? 0) > 0) return { state, error: `Draw ${state.session.draw_penalty} first` }
-  if (!canPlayCardEngine(card, state.session)) return { state, error: 'Cannot play that card' }
+  // The engine's canPlayCard is the single legality authority; it lets a Draw 2
+  // stack on a Draw 2 (and WD4 on WD4). Any other card under a pending penalty
+  // is illegal, so the check catches "not a valid defender" and "no match"
+  // together with one error message.
+  if (!canPlayCardEngine(card, state.session)) {
+    return {
+      state,
+      error:
+        (state.session.draw_penalty ?? 0) > 0 ? `Draw ${state.session.draw_penalty} first` : 'Cannot play that card',
+    }
+  }
 
   const newHand = hand.filter((_, i) => i !== idx)
   const nextHands: [UnoCard[], UnoCard[]] = [...state.hands] as [UnoCard[], UnoCard[]]
@@ -303,14 +312,22 @@ export function unoSoloPlay(
 
   // Wild with cards left → pause for colour choice.
   if (isWildCard(card) && !wentOut) {
-    const penalty = card.kind === 'wild_draw4' ? 4 : 0
+    // Wild Draw 4 stacks on a pending WD4 (classic same-kind stacking); plain
+    // Wild carries the stack forward unchanged (it can be played on ANY card,
+    // but doesn't add to a Draw 4 penalty — that would let a Wild silently
+    // increment the debt with no colour risk). If a Wild is legal on top of a
+    // pending penalty it's because the top card matches, not because it
+    // defends the penalty, so preserve the existing debt.
+    const priorPenalty = state.session.draw_penalty ?? 0
+    const penalty = card.kind === 'wild_draw4' ? priorPenalty + 4 : priorPenalty
     const nextSession: UnoSession = {
       ...state.session,
       top_card: card,
       discard_pile: discardTop(state.session),
       required_color: null,
       draw_penalty: penalty,
-      draw_penalty_kind: penalty > 0 ? 'wild_draw4' : null,
+      draw_penalty_kind:
+        penalty > 0 ? (card.kind === 'wild_draw4' ? 'wild_draw4' : state.session.draw_penalty_kind) : null,
       phase: 'choose_color',
     }
     return {
@@ -321,9 +338,11 @@ export function unoSoloPlay(
     }
   }
 
-  // Non-wild play (and wild-as-last-card, which wins immediately).
+  // Non-wild play (and wild-as-last-card, which wins immediately). Draw 2 stacks
+  // on a pending Draw 2 — same rule the DB engine's canPlayCard already allows.
   const { index: nextIndex, direction } = advanceIndex(state, card)
-  const drawPenalty = card.kind === 'draw2' ? 2 : 0
+  const priorPenalty = state.session.draw_penalty ?? 0
+  const drawPenalty = card.kind === 'draw2' ? priorPenalty + 2 : 0
 
   const nextSession: UnoSession = {
     ...state.session,

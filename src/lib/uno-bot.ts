@@ -53,6 +53,16 @@ function normalPlayScore(card: UnoCard, botHand: UnoCard[], opponentHandSize: nu
   return score
 }
 
+/**
+ * Score under an active draw penalty. The only legal candidates here are the
+ * same-kind stackers (Draw 2 on Draw 2, WD4 on WD4). Higher pending stack →
+ * more attractive to defend, so a bot facing "draw 6" strongly prefers to
+ * stack it back rather than eat the cards.
+ */
+function penaltyPlayScore(card: UnoCard, pending: number): number {
+  return card.kind === 'wild_draw4' ? 100 + pending : 50 + pending
+}
+
 // ── Colour call after playing a wild ─────────────────────────────────────────
 
 /**
@@ -105,9 +115,13 @@ export function pickBotAction(state: UnoSoloState, difficulty: UnoBotDifficulty 
 
   const opponentIdx: 0 | 1 = botIdx === 0 ? 1 : 0
   const opponentSize = state.hands[opponentIdx]!.length
+  const pending = state.session.draw_penalty ?? 0
 
   const scored = playable
-    .map((card) => ({ card, score: normalPlayScore(card, hand, opponentSize) }))
+    .map((card) => ({
+      card,
+      score: pending > 0 ? penaltyPlayScore(card, pending) : normalPlayScore(card, hand, opponentSize),
+    }))
     .sort((a, b) => b.score - a.score)
 
   return { type: 'play', cardId: scored[0]!.card.id }

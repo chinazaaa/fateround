@@ -36,6 +36,13 @@ function stateWithHands(opts: {
   drawPile?: UnoCard[]
 }): UnoSoloState {
   const base = initUnoSolo({ rng: seeded(1) })
+  // Derive the penalty kind from the top card so a WD4 top with a penalty
+  // stacks correctly (only same-kind stacking is allowed by the DB engine).
+  const penaltyKind: 'draw2' | 'wild_draw4' | null = opts.drawPenalty
+    ? opts.top.kind === 'wild_draw4'
+      ? 'wild_draw4'
+      : 'draw2'
+    : null
   return {
     ...base,
     hands: [opts.humanHand, opts.botHand],
@@ -44,7 +51,7 @@ function stateWithHands(opts: {
       top_card: opts.top,
       required_color: (opts.requiredColor as any) ?? null,
       draw_penalty: opts.drawPenalty ?? 0,
-      draw_penalty_kind: opts.drawPenalty ? 'draw2' : null,
+      draw_penalty_kind: penaltyKind,
       current_turn_index: opts.turn ?? 0,
       draw_pile: opts.drawPile ?? base.session.draw_pile,
       phase: 'playing',
@@ -190,24 +197,45 @@ describe('unoSoloPlay — action cards', () => {
 })
 
 describe('unoSoloPlay — draw penalty defence', () => {
-  it('under a Draw 2, no card is playable (solo does not allow stacking)', () => {
+  it('under a Draw 2, another Draw 2 stacks the penalty (classic same-kind stacking)', () => {
+    // Any card that is NOT a Draw 2 stays illegal — the engine's canPlayCard
+    // enforces the "same-kind only" rule. The Draw 2 itself becomes legal and
+    // adds 2 to the pending stack.
     const s = stateWithHands({
-      humanHand: [c('h1', 'red', 'draw2'), c('h2', 'red', 'number', 5)],
-      botHand: [c('b1', 'blue', 'number', 3)],
+      humanHand: [c('h1', 'blue', 'number', 5), c('h2', 'blue', 'draw2')],
+      botHand: [c('b1', 'green', 'number', 3)],
       top: c('top', 'red', 'draw2'),
       drawPenalty: 2,
     })
     expect(unoSoloPlay(s, 0, 'h1', seeded(1)).error).toBe('Draw 2 first')
+    const r = unoSoloPlay(s, 0, 'h2', seeded(1))
+    expect(r.error).toBeUndefined()
+    expect(r.state.session.draw_penalty).toBe(4) // 2 + 2 stacked
+    expect(r.state.session.current_turn_index).toBe(1)
   })
 
-  it('isPlayable reflects the penalty', () => {
+  it('under a Wild Draw 4, another WD4 stacks the penalty', () => {
     const s = stateWithHands({
-      humanHand: [c('h1', 'red', 'draw2')],
-      botHand: [c('b1', 'blue', 'number', 3)],
+      humanHand: [c('h1', 'wild', 'wild_draw4'), c('h2', 'blue', 'number', 3)],
+      botHand: [c('b1', 'green', 'number', 3)],
+      top: c('top', 'blue', 'wild_draw4'),
+      drawPenalty: 4,
+    })
+    const afterPlay = unoSoloPlay(s, 0, 'h1', seeded(1))
+    expect(afterPlay.error).toBeUndefined()
+    expect(afterPlay.state.session.phase).toBe('choose_color')
+    expect(afterPlay.state.session.draw_penalty).toBe(8) // 4 + 4 stacked
+  })
+
+  it('isPlayable respects the stacking rule (Draw 2 legal, other cards not)', () => {
+    const s = stateWithHands({
+      humanHand: [c('h1', 'red', 'draw2'), c('h2', 'blue', 'number', 5)],
+      botHand: [c('b1', 'green', 'number', 3)],
       top: c('top', 'red', 'draw2'),
       drawPenalty: 2,
     })
-    expect(isPlayable(s, s.hands[0][0]!)).toBe(false)
+    expect(isPlayable(s, s.hands[0][0]!)).toBe(true) // draw2 stacks
+    expect(isPlayable(s, s.hands[0][1]!)).toBe(false) // number card cannot defend
   })
 })
 

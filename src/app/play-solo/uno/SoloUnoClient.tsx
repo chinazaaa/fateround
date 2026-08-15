@@ -187,7 +187,7 @@ export function SoloUnoClient() {
     <div className="fr-room fr-room-phone">
       <div className="flex items-center justify-between gap-3 border-b border-[var(--border)] px-4 py-3">
         <div className="min-w-0">
-          <h1 className="text-sm font-bold text-body">UNO — solo vs bot</h1>
+          <h1 className="text-sm font-bold text-body">Match Up — solo vs bot</h1>
           <p className="text-faint text-xs">Practice mode · classic rules · no room, no account</p>
         </div>
         <div className="flex items-center gap-2 text-xs">
