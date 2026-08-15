@@ -153,19 +153,41 @@ function starterSpecials(rules: WhotRules): Set<number> {
   return specials
 }
 
-export function buildWhotDeck(rules: WhotRules = parseWhotRules(null)): WhotCard[] {
+/** Player-count threshold at which we deal from two combined Nigerian Whot
+ *  decks (~108 cards) instead of one (~54). Below this we use the standard
+ *  single deck; at or above it we double up so bigger rooms don't run through
+ *  the draw pile in a couple of turns. */
+export const WHOT_DOUBLE_DECK_MIN_PLAYERS = 4
+
+/** How many combined Whot decks to shuffle together for a room of this size. */
+export function whotDeckCount(playerCount: number): number {
+  return playerCount >= WHOT_DOUBLE_DECK_MIN_PLAYERS ? 2 : 1
+}
+
+/** Build one layer of a Whot deck. The empty `suffix` preserves the historical
+ *  `${shape}-${number}` card ids so in-flight games and existing fixtures stay
+ *  valid; a second layer passes e.g. `-d1` for uniqueness. */
+function buildWhotDeckLayer(rules: WhotRules, suffix: string): WhotCard[] {
   const deck: WhotCard[] = []
   for (const [shape, numbers] of Object.entries(DECK_COMPOSITION) as [Exclude<WhotShape, 'whot'>, number[]][]) {
     for (const number of numbers) {
       // 5 cards always stay in the deck; disabling Pick 3 only turns off the
       // draw-penalty action (handled in canPlayCard/applyPickStacksAfterPlay).
-      deck.push({ id: `${shape}-${number}`, shape, number })
+      deck.push({ id: `${shape}-${number}${suffix}`, shape, number })
     }
   }
   if (rules.whotCardsEnabled) {
     for (let i = 0; i < WHOT_COUNT; i += 1) {
-      deck.push({ id: `whot-20-${i}`, shape: 'whot', number: 20 })
+      deck.push({ id: `whot-20-${i}${suffix}`, shape: 'whot', number: 20 })
     }
+  }
+  return deck
+}
+
+export function buildWhotDeck(rules: WhotRules = parseWhotRules(null), deckCount = 1): WhotCard[] {
+  const deck: WhotCard[] = []
+  for (let d = 0; d < Math.max(1, deckCount); d += 1) {
+    deck.push(...buildWhotDeckLayer(rules, d === 0 ? '' : `-d${d}`))
   }
   return deck
 }
@@ -432,7 +454,12 @@ export async function initializeWhotGame(
   const timerSeconds = gameRow?.timer_seconds ?? 0
 
   const turnOrder = shuffle(playerIds)
-  const deck = shuffle(buildWhotDeck(rules))
+  // Deal hands + the starter from ONE full deck first — a player's opening hand
+  // never contains duplicate cards. In bigger rooms, the second deck is then
+  // shuffled into whatever's left of the first, so the extra cards bulk up the
+  // draw pile for later rather than showing up mid-deal.
+  const deckCount = whotDeckCount(turnOrder.length)
+  const deck = shuffle(buildWhotDeck(rules, 1))
   const cardsEach = dealCount(turnOrder.length)
 
   const hands: WhotCard[][] = turnOrder.map(() => [])
@@ -447,6 +474,16 @@ export async function initializeWhotGame(
 
   const { top, rest } = drawStarter(drawPile, rules)
   drawPile = rest
+
+  if (deckCount > 1) {
+    // Build the extra deck(s) with `-d<n>` suffixes so ids stay unique, then
+    // shuffle them in alongside whatever's left of the first deck.
+    const extras: WhotCard[] = []
+    for (let d = 1; d < deckCount; d += 1) {
+      extras.push(...buildWhotDeckLayer(rules, `-d${d}`))
+    }
+    drawPile = shuffle([...drawPile, ...extras])
+  }
 
   const { data: playerRows } = await supabase.from('players').select('id, name').eq('game_id', gameId)
   const initNames = new Map<string, string>()
@@ -552,19 +589,30 @@ function discardPlayedTop(session: WhotSession): WhotCard[] {
   return discard
 }
 
+/** How many times the discard is allowed to be shuffled back into the draw
+ *  pile within a single Whot session. Nigerian Whot with a small deck can hit
+ *  a state where nobody can match the top card and the draw pile keeps being
+ *  refilled from the discard forever. We let a couple of reshuffles happen —
+ *  which usually unsticks things — and if the deck depletes a further time
+ *  the game ends by lowest hand total instead of spinning. */
+export const WHOT_RESHUFFLE_LIMIT = 2
+
 function refillDrawPile(
   drawPile: WhotCard[],
-  discardPile: WhotCard[]
+  discardPile: WhotCard[],
+  canReshuffle: boolean
 ): { drawPile: WhotCard[]; discardPile: WhotCard[]; reshuffled: boolean } {
   if (drawPile.length > 0) return { drawPile, discardPile, reshuffled: false }
   if (discardPile.length === 0) return { drawPile, discardPile, reshuffled: false }
+  if (!canReshuffle) return { drawPile, discardPile, reshuffled: false }
   return { drawPile: shuffle(discardPile), discardPile: [], reshuffled: true }
 }
 
 function drawCardsWithRefill(
   drawPile: WhotCard[],
   discardPile: WhotCard[],
-  count: number
+  count: number,
+  canReshuffle: boolean
 ): {
   drawn: WhotCard[]
   drawPile: WhotCard[]
@@ -578,7 +626,9 @@ function drawCardsWithRefill(
 
   for (let i = 0; i < count; i += 1) {
     if (pile.length === 0) {
-      const refilled = refillDrawPile(pile, discard)
+      // Only allow one refill per call — the extra `canReshuffle && !reshuffled`
+      // guard stops a single draw from triggering the reshuffle limit twice.
+      const refilled = refillDrawPile(pile, discard, canReshuffle && !reshuffled)
       pile = refilled.drawPile
       discard = refilled.discardPile
       if (refilled.reshuffled) reshuffled = true
@@ -751,7 +801,8 @@ function computeGeneralMarket(
   currentPlayerId: string,
   drawPile: WhotCard[],
   discardPile: WhotCard[],
-  hands: WhotPlayerHand[]
+  hands: WhotPlayerHand[],
+  canReshuffle: boolean
 ): {
   drawPile: WhotCard[]
   discardPile: WhotCard[]
@@ -771,7 +822,10 @@ function computeGeneralMarket(
     if (row.player_id === currentPlayerId) continue
     const existing = (row.cards as WhotCard[]) ?? []
     if (existing.length === 0) continue
-    const result = drawCardsWithRefill(pile, discard, 1)
+    // Once we've reshuffled in this general market, treat further reshuffles as
+    // disallowed — the session's per-game cap still permits one refill total,
+    // and we consume it here on the first depletion.
+    const result = drawCardsWithRefill(pile, discard, 1, canReshuffle && !reshuffled)
     pile = result.drawPile
     discard = result.discardPile
     if (result.reshuffled) reshuffled = true
@@ -1047,7 +1101,8 @@ export async function processWhotPlay(
     let marketDeckExhausted = false
 
     if (card.number === 14) {
-      const market = computeGeneralMarket(playerId, drawPile, discardPile, nextHands)
+      const canReshuffle = (session.reshuffle_count ?? 0) < WHOT_RESHUFFLE_LIMIT
+      const market = computeGeneralMarket(playerId, drawPile, discardPile, nextHands, canReshuffle)
       drawPile = market.drawPile
       discardPile = market.discardPile
       nextHands = market.hands
@@ -1064,6 +1119,7 @@ export async function processWhotPlay(
       pick_five_stack: pickFive,
       draw_pile: drawPile,
       discard_pile: discardPile,
+      ...(marketReshuffled ? { reshuffle_count: (session.reshuffle_count ?? 0) + 1 } : {}),
     }
 
     if (wentOut) {
@@ -1151,13 +1207,14 @@ export async function processWhotDraw(
   let discardPile = (session.discard_pile as WhotCard[]) ?? []
   const { pickTwo, pickFive } = getNormalizedPickStacks(session)
   const drawCount = pickPenaltyDrawCount(session)
+  const canReshuffle = (session.reshuffle_count ?? 0) < WHOT_RESHUFFLE_LIMIT
 
   const {
     drawn,
     drawPile: nextDrawPile,
     discardPile: nextDiscardPile,
     reshuffled,
-  } = drawCardsWithRefill(drawPile, discardPile, drawCount)
+  } = drawCardsWithRefill(drawPile, discardPile, drawCount, canReshuffle)
   drawPile = nextDrawPile
   discardPile = nextDiscardPile
 
@@ -1171,8 +1228,14 @@ export async function processWhotDraw(
       return { error: 'Draw pile is empty — play a card from your hand' }
     }
 
-    if (!anyPlayerCanPlay(hands, session, rules)) {
-      await finishWhotByLowestHand(supabase, gameId, session, hands, playerNames, 'Nobody can play —')
+    // Deck is exhausted for real — either both piles are empty, or the discard
+    // still holds cards but we've already used our reshuffle. Rather than let
+    // players spin passing turns forever, end the game and rank remaining
+    // players by lowest total card value (whotPlacementOrder → handSum).
+    const deckExhausted = drawPile.length === 0 && (!canReshuffle || discardPile.length === 0)
+    if (deckExhausted || !anyPlayerCanPlay(hands, session, rules)) {
+      const reason = deckExhausted ? 'Deck ran out —' : 'Nobody can play —'
+      await finishWhotByLowestHand(supabase, gameId, session, hands, playerNames, reason)
       return {}
     }
 
@@ -1220,6 +1283,7 @@ export async function processWhotDraw(
       pick_five_stack: 0,
       current_turn_index: nextIndexAfterDraw,
       status_message: `${playerName(playerNames, nextPlayerIdAfterDraw)}'s turn — ${penaltyMsg}${reshuffled ? ' · deck reshuffled' : ''}`,
+      ...(reshuffled ? { reshuffle_count: (session.reshuffle_count ?? 0) + 1 } : {}),
     },
     timerSeconds,
     session.updated_at
@@ -1560,10 +1624,12 @@ export async function admitWhotPlayer(
     }
 
     const need = dealCount(turnOrder.length + 1)
+    const canReshuffle = (session.reshuffle_count ?? 0) < WHOT_RESHUFFLE_LIMIT
     const { drawn, drawPile, discardPile, reshuffled } = drawCardsWithRefill(
       (session.draw_pile as WhotCard[]) ?? [],
       (session.discard_pile as WhotCard[]) ?? [],
-      need
+      need,
+      canReshuffle
     )
     if (drawn.length < need) {
       return { error: 'Not enough cards left in the deck to deal a new hand right now.', status: 409 }
@@ -1581,6 +1647,7 @@ export async function admitWhotPlayer(
         draw_pile: drawPile,
         discard_pile: discardPile,
         status_message: `${admittedName} was dealt in${reshuffled ? ' · deck reshuffled' : ''}`,
+        ...(reshuffled ? { reshuffle_count: (session.reshuffle_count ?? 0) + 1 } : {}),
         updated_at: claimedAt,
       })
       .eq('game_id', gameId)
