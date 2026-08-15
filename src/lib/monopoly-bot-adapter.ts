@@ -50,6 +50,14 @@ export interface MonopolyBotColorSetProgress {
   iOwnAll: boolean
   /** True iff bot owns the whole group AND none of them are mortgaged. */
   iOwnAllUnmortgaged: boolean
+  /**
+   * Rough monetary value of holding a full monopoly in this group — approximated
+   * as the sum of hotel rents across every property in the group. Used by the
+   * trade heuristic to price break-monopoly / complete-set / extend-set
+   * decisions in real rent terms rather than face-price multiples. Special-cased
+   * for stations (4× station rent) and utilities (2× ×10-dice avg).
+   */
+  hotelRentSum: number
 }
 
 export interface MonopolyBotBuyContext {
@@ -73,10 +81,40 @@ export interface MonopolyBotDebtContext {
 
 export interface MonopolyBotAuctionContext {
   spaceIndex: number
+  /** Full space metadata — lets the heuristic reason about color group without a board lookup. */
+  space: MonopolySpace
   faceValue: number
   highBid: number
   iAmHighBidder: boolean
   isMyBidTurn: boolean
+  /**
+   * True when I own no properties in this space's color group yet — winning
+   * this would START a set for me. For stations/utilities: true iff I own
+   * none in that group.
+   */
+  startsSet: boolean
+  /**
+   * True when winning this would COMPLETE my monopoly — I already own every
+   * other property in the group. Includes stations (all-4 = 200% rent) and
+   * utilities (both = 10× dice).
+   */
+  completesSet: boolean
+  /**
+   * True when I own some in this group but not almost-all — winning here
+   * makes progress but doesn't yet monopolize.
+   */
+  extendsSet: boolean
+}
+
+/**
+ * One property on either side of a trade. Space definition + live state
+ * (mortgaged). Building state deliberately excluded — the engine rejects
+ * any trade whose group has buildings on it, so bots never see a decision
+ * involving a built-up property (see monopoly.ts:validateTradeAssets).
+ */
+export interface MonopolyBotTradeProperty {
+  space: MonopolySpace
+  mortgaged: boolean
 }
 
 /**
@@ -84,23 +122,31 @@ export interface MonopolyBotAuctionContext {
  * initiate trades — they only respond — so this is only set when
  * pending_trade.to_player_id === botPlayerId.
  *
- * Property spaces are resolved to MonopolySpace so the heuristic can read
- * price + color without a second board lookup.
+ * Properties carry both the space def and mortgage state so the heuristic
+ * can discount mortgaged cards on either side without a second board lookup.
  */
 export interface MonopolyBotTradeContext {
   fromPlayerId: string
   /** Cash the human is offering me. */
   offerCash: number
-  /** Properties (with full space metadata) the human is offering me. */
-  offerProperties: MonopolySpace[]
+  /** Properties (with mortgage state) the human is offering me. */
+  offerProperties: MonopolyBotTradeProperty[]
   /** Get-out-of-jail-free cards the human is offering me. */
   offerGetOutCards: number
   /** Cash the human is asking me to hand over. */
   requestCash: number
-  /** Properties (with full space metadata) the human is asking me to hand over. */
-  requestProperties: MonopolySpace[]
+  /** Properties (with mortgage state) the human is asking me to hand over. */
+  requestProperties: MonopolyBotTradeProperty[]
   /** Get-out-of-jail-free cards the human is asking me to hand over. */
   requestGetOutCards: number
+  /**
+   * True iff accepting this trade would complete a monopoly for the human
+   * proposer. Precomputed here (adapter knows the full board state) so the
+   * bot can outright reject without walking property ownership itself.
+   * This is the "opponent-aware" gate — never hand a monopoly to a live
+   * opponent regardless of what they offer.
+   */
+  wouldGiveOpponentMonopoly: boolean
 }
 
 export interface MonopolyBotView {
@@ -161,6 +207,25 @@ const ALL_COLOR_GROUPS: MonopolyColorGroup[] = Array.from(
 )
 
 /**
+ * Estimated rent value of holding a full monopoly in a group. For property
+ * colours this is the sum of hotel rents (rentTable[5]) across every space
+ * in the group. Stations and utilities have no rentTable in the board module
+ * — their monopoly rent scales differently and is special-cased here.
+ */
+function hotelRentSumForGroup(group: MonopolyColorGroup, groupSpaces: MonopolySpace[]): number {
+  if (group === 'station') {
+    // All 4 stations owned → £200 rent per station. Total per full-set hit ≈ 800.
+    return 800
+  }
+  if (group === 'utility') {
+    // Both utilities → rent = 10 × dice; average dice roll ≈ 7 → ≈ 70 per hit.
+    // Two hits per opponent lap ≈ 140.
+    return 140
+  }
+  return groupSpaces.reduce((acc, s) => acc + (s.rentTable?.[5] ?? 0), 0)
+}
+
+/**
  * Build a MonopolyBotView from a live DB snapshot.
  *
  * Returns `null` when the bot isn't in this game or the game is finished —
@@ -210,7 +275,9 @@ export function adaptMonopolyForBot(
   // Two flavours of "I own the group" are exposed: raw (eligible to build in
   // principle) and unmortgaged (actually buildable-now). The build heuristic
   // needs the second; the buy heuristic ("would this complete my set?") uses
-  // the first.
+  // the first. `hotelRentSum` is the rent this monopoly would generate at max
+  // build-out, used by the trade heuristic to price break/complete/extend
+  // decisions in rent terms rather than face-price multiples.
   const colorSetProgress: MonopolyBotColorSetProgress[] = []
   for (const group of ALL_COLOR_GROUPS) {
     const ownedByMe = countOwnedInGroup(owners, botPlayerId, group)
@@ -219,7 +286,14 @@ export function adaptMonopolyForBot(
     const totalInGroup = groupSpaces.length
     const iOwnAll = ownedByMe === totalInGroup
     const iOwnAllUnmortgaged = iOwnAll && groupSpaces.every((s) => !mortgaged[String(s.index)])
-    colorSetProgress.push({ group, ownedByMe, totalInGroup, iOwnAll, iOwnAllUnmortgaged })
+    colorSetProgress.push({
+      group,
+      ownedByMe,
+      totalInGroup,
+      iOwnAll,
+      iOwnAllUnmortgaged,
+      hotelRentSum: hotelRentSumForGroup(group, groupSpaces),
+    })
   }
 
   // pendingBuy — only when the phase is 'buy' AND the pending property is
@@ -283,14 +357,34 @@ export function adaptMonopolyForBot(
   if (board.auction_state) {
     const a = board.auction_state
     const space = MONOPOLY_BOARD[a.space_index]
-    const faceValue = space?.price ?? 0
-    const eligibleAndNotPassed = (a.eligible ?? []).includes(botPlayerId) && !(a.passed ?? []).includes(botPlayerId)
-    auction = {
-      spaceIndex: a.space_index,
-      faceValue,
-      highBid: a.high_bid,
-      iAmHighBidder: a.high_bidder_id === botPlayerId,
-      isMyBidTurn: eligibleAndNotPassed && a.current_bidder_id === botPlayerId,
+    if (space) {
+      const faceValue = space.price ?? 0
+      const eligibleAndNotPassed = (a.eligible ?? []).includes(botPlayerId) && !(a.passed ?? []).includes(botPlayerId)
+      // Set-relevance drives the auction ceiling on the bot side. Uses the
+      // same startsSet/completesSet mechanic pendingBuy has so bidding on a
+      // set-completer scales up, while a random orphan tile stays at the
+      // conservative default cap.
+      let startsSet = false
+      let completesSet = false
+      let extendsSet = false
+      if (space.color) {
+        const ownedNow = countOwnedInGroup(owners, botPlayerId, space.color)
+        const totalInGroupCount = spacesInGroup(space.color).length
+        startsSet = ownedNow === 0
+        completesSet = totalInGroupCount > 0 && ownedNow === totalInGroupCount - 1
+        extendsSet = !startsSet && !completesSet
+      }
+      auction = {
+        spaceIndex: a.space_index,
+        space,
+        faceValue,
+        highBid: a.high_bid,
+        iAmHighBidder: a.high_bidder_id === botPlayerId,
+        isMyBidTurn: eligibleAndNotPassed && a.current_bidder_id === botPlayerId,
+        startsSet,
+        completesSet,
+        extendsSet,
+      }
     }
   }
 
@@ -301,16 +395,44 @@ export function adaptMonopolyForBot(
   let pendingTradeToMe: MonopolyBotTradeContext | undefined
   if (board.pending_trade && board.pending_trade.to_player_id === botPlayerId) {
     const t = board.pending_trade
-    const resolveSpaces = (indices: number[] | null | undefined): MonopolySpace[] =>
-      (indices ?? []).map((i) => MONOPOLY_BOARD[i]).filter((s): s is MonopolySpace => Boolean(s))
+    // Include per-property mortgage state so the heuristic can discount a
+    // mortgaged card on either side. Building state is intentionally absent —
+    // the engine rejects any trade whose group has buildings on it.
+    const resolveProperties = (indices: number[] | null | undefined): MonopolyBotTradeProperty[] =>
+      (indices ?? [])
+        .map((i) => MONOPOLY_BOARD[i])
+        .filter((s): s is MonopolySpace => Boolean(s))
+        .map((space) => ({ space, mortgaged: Boolean(mortgaged[String(space.index)]) }))
+    const requestProps = resolveProperties(t.request_properties as number[] | null | undefined)
+    // Opponent-aware check: if handing over ANY of my request_properties would
+    // put the recipient at total_in_group for that group, they complete a
+    // monopoly. Bot outright rejects such trades — no cash offer can compensate
+    // for the strategic loss of an active human suddenly having a rent engine.
+    // Handles multi-card-in-same-group trades correctly (counts increment).
+    const cardsBotWouldSendPerGroup = new Map<MonopolyColorGroup, number>()
+    for (const { space } of requestProps) {
+      if (space.color) {
+        cardsBotWouldSendPerGroup.set(space.color, (cardsBotWouldSendPerGroup.get(space.color) ?? 0) + 1)
+      }
+    }
+    let wouldGiveOpponentMonopoly = false
+    for (const [group, sendingCount] of cardsBotWouldSendPerGroup) {
+      const recipientOwnedBefore = countOwnedInGroup(owners, t.from_player_id, group)
+      const totalInGroupCount = spacesInGroup(group).length
+      if (recipientOwnedBefore + sendingCount >= totalInGroupCount && recipientOwnedBefore < totalInGroupCount) {
+        wouldGiveOpponentMonopoly = true
+        break
+      }
+    }
     pendingTradeToMe = {
       fromPlayerId: t.from_player_id,
       offerCash: Number(t.offer_cash ?? 0),
-      offerProperties: resolveSpaces(t.offer_properties as number[] | null | undefined),
+      offerProperties: resolveProperties(t.offer_properties as number[] | null | undefined),
       offerGetOutCards: Number(t.offer_get_out_cards ?? 0),
       requestCash: Number(t.request_cash ?? 0),
-      requestProperties: resolveSpaces(t.request_properties as number[] | null | undefined),
+      requestProperties: requestProps,
       requestGetOutCards: Number(t.request_get_out_cards ?? 0),
+      wouldGiveOpponentMonopoly,
     }
   }
 

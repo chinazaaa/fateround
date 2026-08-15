@@ -270,6 +270,25 @@ describe('adaptMonopolyForBot — auction', () => {
     expect(v.auction!.highBid).toBe(20)
     expect(v.auction!.iAmHighBidder).toBe(false)
     expect(v.auction!.isMyBidTurn).toBe(true)
+    // Bot owns nothing in brown → startsSet=true, not extends, not completes.
+    expect(v.auction!.startsSet).toBe(true)
+    expect(v.auction!.extendsSet).toBe(false)
+    expect(v.auction!.completesSet).toBe(false)
+  })
+
+  it('surfaces completesSet when winning the auction would monopolize the group', () => {
+    // Brown group is 1 + 3; auction is for index 1 and bot already owns 3.
+    const v = adaptMonopolyForBot(
+      board({
+        phase: 'auction',
+        auction_state: baseAuction,
+        property_owners: { '3': BOT },
+      }),
+      [pState(HUMAN), pState(BOT)],
+      BOT
+    )!
+    expect(v.auction!.completesSet).toBe(true)
+    expect(v.auction!.startsSet).toBe(false)
   })
 
   it('surfaces the auction but isMyBidTurn=false when someone else is bidding', () => {
@@ -300,7 +319,66 @@ describe('adaptMonopolyForBot — auction', () => {
 // ── pendingTradeToMe ────────────────────────────────────────────────────────
 
 describe('adaptMonopolyForBot — pendingTradeToMe', () => {
-  it('surfaces a trade with resolved property spaces when it is addressed to the bot', () => {
+  it('flags wouldGiveOpponentMonopoly when handing over a card would complete the human’s set', () => {
+    // Brown group is index 1 + 3. Human already owns index 3. Trade asks bot
+    // to hand over index 1 → recipient becomes the sole brown owner → monopoly.
+    const v = adaptMonopolyForBot(
+      board({
+        property_owners: { '1': BOT, '3': HUMAN },
+        pending_trade: {
+          from_player_id: HUMAN,
+          to_player_id: BOT,
+          offer_cash: 500,
+          offer_properties: [],
+          offer_get_out_cards: 0,
+          request_cash: 0,
+          request_properties: [1],
+          request_get_out_cards: 0,
+        },
+      }),
+      [pState(HUMAN), pState(BOT)],
+      BOT
+    )!
+    expect(v.pendingTradeToMe).toBeDefined()
+    expect(v.pendingTradeToMe!.wouldGiveOpponentMonopoly).toBe(true)
+  })
+
+  it('does NOT flag wouldGiveOpponentMonopoly when the recipient still needs more cards', () => {
+    // Light blue group is 3 cards; recipient owns 0. Handing over one → still 1/3.
+    const v = adaptMonopolyForBot(
+      board({
+        property_owners: { '6': BOT },
+        pending_trade: {
+          from_player_id: HUMAN,
+          to_player_id: BOT,
+          offer_cash: 100,
+          offer_properties: [],
+          offer_get_out_cards: 0,
+          request_cash: 0,
+          request_properties: [6],
+          request_get_out_cards: 0,
+        },
+      }),
+      [pState(HUMAN), pState(BOT)],
+      BOT
+    )!
+    expect(v.pendingTradeToMe!.wouldGiveOpponentMonopoly).toBe(false)
+  })
+
+  it('surfaces hotelRentSum on colorSetProgress — 700 for brown', () => {
+    const v = adaptMonopolyForBot(board({ property_owners: { '1': BOT } }), [pState(HUMAN), pState(BOT)], BOT)!
+    const brown = v.colorSetProgress.find((c) => c.group === 'brown')!
+    // Brown hotel rents: 250 (Barking) + 450 (Dagenham) = 700.
+    expect(brown.hotelRentSum).toBe(700)
+  })
+
+  it('surfaces the station special-case for hotelRentSum (800 for the 4-station "monopoly")', () => {
+    const v = adaptMonopolyForBot(board({ property_owners: { '5': BOT } }), [pState(HUMAN), pState(BOT)], BOT)!
+    const station = v.colorSetProgress.find((c) => c.group === 'station')!
+    expect(station.hotelRentSum).toBe(800)
+  })
+
+  it('surfaces a trade with resolved property spaces + mortgage state when it is addressed to the bot', () => {
     const v = adaptMonopolyForBot(
       board({
         pending_trade: {
@@ -313,6 +391,7 @@ describe('adaptMonopolyForBot — pendingTradeToMe', () => {
           request_properties: [1],
           request_get_out_cards: 0,
         },
+        mortgaged_properties: { '3': true },
       }),
       [pState(HUMAN), pState(BOT)],
       BOT
@@ -320,8 +399,10 @@ describe('adaptMonopolyForBot — pendingTradeToMe', () => {
     expect(v.pendingTradeToMe).toBeDefined()
     expect(v.pendingTradeToMe!.offerCash).toBe(200)
     expect(v.pendingTradeToMe!.offerGetOutCards).toBe(1)
-    expect(v.pendingTradeToMe!.offerProperties.map((s) => s.index)).toEqual([3])
-    expect(v.pendingTradeToMe!.requestProperties.map((s) => s.index)).toEqual([1])
+    expect(v.pendingTradeToMe!.offerProperties.map((p) => p.space.index)).toEqual([3])
+    expect(v.pendingTradeToMe!.offerProperties.map((p) => p.mortgaged)).toEqual([true])
+    expect(v.pendingTradeToMe!.requestProperties.map((p) => p.space.index)).toEqual([1])
+    expect(v.pendingTradeToMe!.requestProperties.map((p) => p.mortgaged)).toEqual([false])
   })
 
   it('is undefined when the trade is addressed to another player', () => {
