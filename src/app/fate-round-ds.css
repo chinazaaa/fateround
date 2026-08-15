@@ -1024,13 +1024,35 @@
   font-size: var(--text-2xs);
   color: var(--text-faint);
 }
+/* Stretched-link pattern for game cards that carry a "vs Bot" chip.
+   The card itself is a <div>; a stretched invisible <Link> is the primary
+   click target for the whole card, and the chip is a real <Link> above it
+   (z-index) so it captures its own clicks without nesting anchors — which
+   is invalid HTML. See src/components/HomePage.tsx for the DOM. */
+.fr-gamecard--stretched {
+  position: relative;
+}
+.fr-gamecard__stretched {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+  /* Transparent — its purpose is to catch clicks; the card visuals are behind. */
+}
+.fr-gamecard__stretched:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
 /* Bot-practice chip — appears only on cards whose game has a /play-solo/<slug>
    page (see src/lib/solo-play.ts). Deliberately visually similar to the
    __players chip but with a warmer tint so it reads as a distinct affordance
    rather than a second meta fact — the "practice" pitch, not another stat.
-   Not a link itself: the whole card links to the game landing, which already
-   carries the "Practice against the bot →" CTA. */
+   Renders ABOVE the stretched card link so tapping "vs Bot" goes straight to
+   solo mode; tapping anywhere else on the card follows the landing link. */
 .fr-gamecard__solo {
+  position: relative;
+  z-index: 2;
   flex-shrink: 0;
   white-space: nowrap;
   line-height: 1.4;
@@ -1040,6 +1062,15 @@
   padding: 0.1875rem 0.5rem;
   background: color-mix(in srgb, var(--accent) 22%, transparent);
   color: color-mix(in srgb, var(--accent) 85%, var(--text));
+  text-decoration: none;
+  transition: background var(--dur-fast) var(--ease-out);
+}
+.fr-gamecard__solo:hover {
+  background: color-mix(in srgb, var(--accent) 32%, transparent);
+}
+.fr-gamecard__solo:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 /* ════════════════════════════════════════════════════════════════════

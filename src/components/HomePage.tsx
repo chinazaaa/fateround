@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { GAME_TYPE_OPTIONS, HOMEPAGE_FEATURED_GAMES, gameTypeConfig } from '@/lib/game-types'
 import { gameLandingSlug } from '@/lib/game-landing'
 import { gameIcon } from '@/lib/game-glyphs'
-import { hasSoloPlay } from '@/lib/solo-play'
+import { soloPlaySlug } from '@/lib/solo-play'
 import { Glyph } from '@/components/icons/Glyph'
 import { HomePageJoinPanel } from '@/components/HomePageJoinPanel'
 import { SectionHeading } from '@/components/SectionHeading'
@@ -52,13 +52,25 @@ export function HomePage() {
             {HOMEPAGE_FEATURED_GAMES.map((type) => {
               const config = gameTypeConfig(type)
               const slug = gameLandingSlug(type)
+              const solo = soloPlaySlug(type)
+              // Stretched-link pattern: the outer container isn't a link.
+              // The card link is an INVISIBLE overlay stretched across the whole
+              // card (`.fr-gamecard__stretched`); the "vs Bot" chip is a real
+              // link sitting above it (z-index) so tapping the chip goes to
+              // /play-solo/<slug> directly, while tapping anywhere else on the
+              // card follows the landing link. Avoids the nested-<a> invalidity
+              // of putting a Link inside a Link and needs no JavaScript.
               return (
-                <Link
+                <div
                   key={type}
-                  href={`/games/${slug}`}
-                  className="fr-gamecard"
+                  className="fr-gamecard fr-gamecard--stretched"
                   style={{ '--accent': config.card.accent } as React.CSSProperties}
                 >
+                  <Link
+                    href={`/games/${slug}`}
+                    className="fr-gamecard__stretched"
+                    aria-label={`Learn about ${config.label}`}
+                  />
                   <span className="fr-glyph">
                     <Glyph icon={gameIcon(type)} size={28} />
                   </span>
@@ -66,20 +78,21 @@ export function HomePage() {
                   <p className="fr-gamecard__tagline line-clamp-2">{config.tagline}</p>
                   <div className="fr-gamecard__meta">
                     <span className="fr-gamecard__players">{config.card.players}</span>
-                    {hasSoloPlay(type) ? (
-                      // "vs Bot" affordance — only rendered where a solo mode
-                      // actually exists (registry: src/lib/solo-play.ts). Follows
-                      // the card link to /games/<slug>, which already carries the
-                      // "Practice against the bot →" CTA, so this card stays a
-                      // single tap target and the landing page still sells the
-                      // multiplayer version too.
-                      <span className="fr-gamecard__solo" aria-label="Practice against a bot available">
+                    {solo ? (
+                      // Direct entry to the practice mode — a real link sitting
+                      // above the stretched card link. Registry:
+                      // src/lib/solo-play.ts.
+                      <Link
+                        href={`/play-solo/${solo}`}
+                        className="fr-gamecard__solo"
+                        aria-label={`Practice ${config.label} against a bot`}
+                      >
                         vs Bot
-                      </span>
+                      </Link>
                     ) : null}
                     <span className="fr-gamecard__vibe">{config.card.vibe}</span>
                   </div>
-                </Link>
+                </div>
               )
             })}
           </div>
