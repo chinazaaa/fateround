@@ -43,6 +43,9 @@ export const CROSSWORD_SUBMISSION_SELECT =
 export const WORD_SEARCH_FOUND_SELECT =
   'id,game_id,round_id,player_id,word,start_row,start_col,end_row,end_col,via_hint,found_at'
 
+export const WORD_GROUPING_SUBMISSION_SELECT =
+  'id,game_id,round_id,player_id,group_index,difficulty,guess_words,is_correct,mistakes_at_time,submitted_at'
+
 export const WORD_SCRAMBLE_SOLVE_SELECT = 'id,game_id,round_id,player_id,scramble_index,word,via_hint,solved_at'
 export const WORD_SCRAMBLE_HINT_SELECT = 'player_id,scramble_index,letters'
 
