@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState, type CSSProperties } from 'react'
+import { useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import { PageShell, Field, Toggle, PrimaryBtn } from '@/components/ui/PageShell'
 import {
@@ -48,6 +48,143 @@ function ordinal(n: number) {
   return n === 1 ? '1st' : n === 2 ? '2nd' : n === 3 ? '3rd' : `${n}th`
 }
 
+// Emoji per tournament-eligible game — used in the playlist to give each row
+// a visual anchor beyond the label text. Falls back to a generic pip so an
+// unknown type still renders something instead of a blank slot.
+const GAME_EMOJI: Record<string, string> = {
+  trivia: '🧠',
+  i_call_on: '🎯',
+  two_truths: '🎭',
+  who_said_this: '💬',
+  chess: '♟',
+  scrabble: '📝',
+  whot: '🃏',
+}
+
+function gameEmoji(type: string): string {
+  return GAME_EMOJI[type] ?? '🎮'
+}
+
+/**
+ * Numbered "chapter" card used to break the create page into an obvious
+ * sequence — hosts see the shape of the form (When & Look → Basics → Games →
+ * Advanced) instead of scanning one long undifferentiated card. The number
+ * chip on the left visually anchors the section header and stops it from
+ * being read as "just another label".
+ */
+function ChapterCard({
+  step,
+  title,
+  hint,
+  children,
+}: {
+  step: number | string
+  title: string
+  hint?: string
+  children: ReactNode
+}) {
+  return (
+    <section className="glass-card-strong p-5 sm:p-6 space-y-5">
+      <header className="flex items-start gap-3">
+        <span
+          aria-hidden
+          className="shrink-0 h-8 w-8 rounded-full flex items-center justify-center text-sm font-black tabular-nums"
+          style={{ background: 'var(--primary)', color: 'var(--primary-contrast, #fff)' }}
+        >
+          {step}
+        </span>
+        <div className="flex-1 min-w-0">
+          <h2 className="text-lg font-black leading-tight">{title}</h2>
+          {hint && <p className="text-faint text-xs mt-0.5">{hint}</p>}
+        </div>
+      </header>
+      <div className="space-y-5">{children}</div>
+    </section>
+  )
+}
+
+/**
+ * Compact live-preview card at the top of the create page. Shows the event
+ * as it's shaping up — brand colour, logo, title, schedule, game count and
+ * total ETA — so hosts feel the result forming instead of filling fields
+ * blind. Only renders when there's something meaningful to preview; a fresh
+ * blank form doesn't get a hollow placeholder.
+ */
+function LiveEventPreview({
+  title,
+  scheduledLocal,
+  brandPrimary,
+  brandLogoPreview,
+  queueSummary,
+}: {
+  title: string
+  scheduledLocal: string
+  brandPrimary: string
+  brandLogoPreview: string | null
+  queueSummary: string | null
+}) {
+  const hasAnything = title.trim().length > 0 || scheduledLocal || brandPrimary || brandLogoPreview || queueSummary
+  if (!hasAnything) return null
+  const scheduledLabel = scheduledLocal ? formatScheduleShort(scheduledLocal) : 'Starts when you press Create'
+  return (
+    <div
+      className="rounded-2xl border p-4 flex items-center gap-4"
+      style={{
+        background: 'var(--surface-inset-bg)',
+        borderColor: brandPrimary || 'var(--border)',
+        boxShadow: brandPrimary ? `0 0 32px ${brandPrimary}22` : undefined,
+        ...(brandPrimary ? ({ '--primary': brandPrimary } as CSSProperties) : {}),
+      }}
+    >
+      {brandLogoPreview ? (
+        <img
+          src={brandLogoPreview}
+          alt=""
+          className="h-12 w-12 rounded-lg object-contain shrink-0"
+          style={{ background: 'rgba(255,255,255,0.06)' }}
+        />
+      ) : (
+        <div
+          aria-hidden
+          className="h-12 w-12 rounded-lg flex items-center justify-center text-2xl shrink-0"
+          style={{ background: 'var(--primary)', color: 'var(--primary-contrast, #fff)' }}
+        >
+          🏆
+        </div>
+      )}
+      <div className="flex-1 min-w-0">
+        <p className="text-faint text-[0.6875rem] uppercase tracking-widest">Live preview</p>
+        <p className="text-body text-base font-black truncate" style={{ color: brandPrimary || undefined }}>
+          {title.trim() || 'Untitled tournament'}
+        </p>
+        <p className="text-faint text-xs truncate">
+          {scheduledLabel}
+          {queueSummary && (
+            <>
+              <span className="mx-1.5">·</span>
+              {queueSummary}
+            </>
+          )}
+        </p>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Format a datetime-local input value ("YYYY-MM-DDTHH:mm") into a short
+ * human-friendly label for the preview card. Timezone-agnostic — the string
+ * is already in the host's timezone from the input.
+ */
+function formatScheduleShort(raw: string): string {
+  const d = new Date(raw)
+  if (Number.isNaN(d.getTime())) return raw
+  const dayName = d.toLocaleDateString(undefined, { weekday: 'short' })
+  const dayNum = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+  const time = d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+  return `${dayName} ${dayNum} · ${time}`
+}
+
 export default function TournamentCreatePage() {
   const router = useRouter()
   const [title, setTitle] = useState('')
@@ -73,6 +210,10 @@ export default function TournamentCreatePage() {
   // screen mode is a deliberate host choice per game, so hosts who never
   // set up a projector aren't accidentally opted in.
   const [draftBigScreenMode, setDraftBigScreenMode] = useState<'phone_only' | 'projector'>('phone_only')
+  // When editing an existing playlist entry we hold its index here; the draft
+  // row's Add button becomes Save changes and a Cancel button appears. Null
+  // in normal add mode.
+  const [editingIndex, setEditingIndex] = useState<number | null>(null)
   // Optional shared trivia pack for every planned Trivia round in this
   // tournament. Only surfaced when the playlist actually contains a Trivia
   // entry. Empty = platform bank (today's default).
@@ -139,7 +280,15 @@ export default function TournamentCreatePage() {
     }
   }
 
-  function addQueueEntry() {
+  function resetDraftRow() {
+    setEditingIndex(null)
+    setDraftGameType(TOURNAMENT_ELIGIBLE_TYPES[0])
+    setDraftRounds('10')
+    setDraftTimer('30')
+    setDraftBigScreenMode('phone_only')
+  }
+
+  function saveQueueEntry() {
     const entry: TournamentQueueEntry = {
       gameType: draftGameType,
       timerSeconds: Math.max(1, parseInt(draftTimer, 10) || 30),
@@ -150,7 +299,32 @@ export default function TournamentCreatePage() {
     if (draftGameType !== 'two_truths' && draftGameType !== 'who_said_this') {
       entry.roundsCount = Math.max(1, parseInt(draftRounds, 10) || 10)
     }
-    setQueue((prev) => [...prev, entry])
+    setQueue((prev) => {
+      if (editingIndex != null && editingIndex >= 0 && editingIndex < prev.length) {
+        const next = prev.slice()
+        next[editingIndex] = entry
+        return next
+      }
+      return [...prev, entry]
+    })
+    resetDraftRow()
+  }
+
+  function beginEditQueueEntry(index: number) {
+    const entry = queue[index]
+    if (!entry) return
+    setEditingIndex(index)
+    setDraftGameType(entry.gameType)
+    setDraftRounds(String(entry.roundsCount ?? 10))
+    setDraftTimer(String(entry.timerSeconds ?? 30))
+    setDraftBigScreenMode(entry.bigScreenMode === 'projector' ? 'projector' : 'phone_only')
+    // Scroll the draft row into view — on mobile the playlist can push it off
+    // screen. Deferred to next tick so the editingIndex render has landed.
+    if (typeof window !== 'undefined') {
+      setTimeout(() => {
+        document.getElementById('queue-draft-type')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }, 50)
+    }
   }
 
   function moveQueueEntry(index: number, dir: -1 | 1) {
@@ -161,10 +335,31 @@ export default function TournamentCreatePage() {
       ;[next[index], next[target]] = [next[target], next[index]]
       return next
     })
+    // If the moved row was the one being edited, keep the pointer on it.
+    setEditingIndex((prev) => {
+      if (prev == null) return prev
+      if (prev === index) return index + dir
+      if (prev === index + dir) return index
+      return prev
+    })
   }
 
   function removeQueueEntry(index: number) {
+    const isRemovingEditedEntry = editingIndex === index
     setQueue((prev) => prev.filter((_, i) => i !== index))
+    if (isRemovingEditedEntry) {
+      // The deleted row was the one being edited — clear the draft form too,
+      // otherwise it holds the removed entry's values and a follow-up "+ Add"
+      // silently re-creates the config the host just deleted.
+      resetDraftRow()
+      return
+    }
+    // Otherwise just shift the editing pointer if it sat above the removed row.
+    setEditingIndex((prev) => {
+      if (prev == null) return prev
+      if (prev > index) return prev - 1
+      return prev
+    })
   }
 
   function handleBrandLogoFile(file: File) {
@@ -384,7 +579,157 @@ export default function TournamentCreatePage() {
         </p>
       </div>
 
-      <div className="glass-card-strong p-5 sm:p-6 space-y-5">
+      {/* Live preview strip — reflects what the invite/lobby will look like
+          as fields fill in, so hosts feel the result forming rather than
+          guessing. Renders empty when nothing has been entered yet. */}
+      <LiveEventPreview
+        title={title}
+        scheduledLocal={scheduledLocal}
+        brandPrimary={brandPrimary}
+        brandLogoPreview={brandLogoPreview}
+        queueSummary={
+          isRoundRobin && planned && queue.length > 0
+            ? `${queue.length} game${queue.length === 1 ? '' : 's'} · ≈ ${formatEstimatedDuration(estimatePlaylistSeconds(queue, TIMING_PLAYER_FALLBACK))}`
+            : null
+        }
+      />
+
+      {/* Chapter 1 — WHEN & LOOK. Schedule + branding merged into one card
+          because they answer the same underlying question ("what does this
+          event feel like before players even join?"). Both fields are
+          optional; a quick lobby-now game skips this whole chapter. */}
+      <ChapterCard
+        step={1}
+        title="When &amp; Look"
+        hint="Optional — skip both for a right-now game with default colours"
+      >
+        <Field label="Start date & time" htmlFor="tournament-scheduled-at">
+          <input
+            id="tournament-scheduled-at"
+            type="datetime-local"
+            value={scheduledLocal}
+            onChange={(e) => setScheduledLocal(e.target.value)}
+            className="input-field"
+          />
+          <p className="text-faint text-xs mt-1.5">
+            Leave empty for right now. Sets a countdown on the invite link so pre-registered players know when to show
+            up.
+          </p>
+        </Field>
+
+        <div className="divider-soft" />
+
+        <div className="space-y-4">
+          <p className="label-caps">Event branding</p>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Primary colour" htmlFor="brand-primary">
+              <div className="flex items-center gap-2">
+                <input
+                  id="brand-primary"
+                  type="color"
+                  value={brandPrimary || '#7c3aed'}
+                  onChange={(e) => setBrandPrimary(e.target.value)}
+                  aria-label="Primary brand colour"
+                  className="h-10 w-14 rounded-lg border border-theme cursor-pointer"
+                />
+                <input
+                  type="text"
+                  value={brandPrimary}
+                  onChange={(e) => setBrandPrimary(e.target.value)}
+                  placeholder="#7c3aed"
+                  maxLength={7}
+                  className="input-field flex-1 font-mono text-sm"
+                />
+                {brandPrimary && (
+                  <button
+                    type="button"
+                    onClick={() => setBrandPrimary('')}
+                    className="btn-ghost text-xs"
+                    aria-label="Clear primary colour"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+            </Field>
+            <Field label="Accent colour" htmlFor="brand-accent">
+              <div className="flex items-center gap-2">
+                <input
+                  id="brand-accent"
+                  type="color"
+                  value={brandAccent || '#f59e0b'}
+                  onChange={(e) => setBrandAccent(e.target.value)}
+                  aria-label="Accent brand colour"
+                  className="h-10 w-14 rounded-lg border border-theme cursor-pointer"
+                />
+                <input
+                  type="text"
+                  value={brandAccent}
+                  onChange={(e) => setBrandAccent(e.target.value)}
+                  placeholder="#f59e0b"
+                  maxLength={7}
+                  className="input-field flex-1 font-mono text-sm"
+                />
+                {brandAccent && (
+                  <button
+                    type="button"
+                    onClick={() => setBrandAccent('')}
+                    className="btn-ghost text-xs"
+                    aria-label="Clear accent colour"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+            </Field>
+          </div>
+
+          <Field label="Logo (optional)" htmlFor="brand-logo">
+            <input
+              ref={brandLogoRef}
+              id="brand-logo"
+              type="file"
+              accept="image/png,image/jpeg,image/webp,image/gif"
+              onChange={(e) => {
+                const f = e.target.files?.[0]
+                if (f) handleBrandLogoFile(f)
+              }}
+              className="hidden"
+            />
+            {brandLogoPreview ? (
+              <div className="surface-inset p-4 flex items-center gap-4">
+                {}
+                <img
+                  src={brandLogoPreview}
+                  alt="Logo preview"
+                  className="h-16 w-16 object-contain rounded-lg"
+                  style={{ background: 'var(--surface-inset-bg)' }}
+                />
+                <div className="flex-1 min-w-0">
+                  <p className="text-body text-sm font-medium truncate">{brandLogoFile?.name}</p>
+                  <p className="text-faint text-xs">
+                    {brandLogoFile ? `${Math.round(brandLogoFile.size / 1024)} KB` : ''} · uploaded when you create
+                  </p>
+                </div>
+                <button type="button" onClick={clearBrandLogo} className="btn-ghost text-xs">
+                  Remove
+                </button>
+              </div>
+            ) : (
+              <button type="button" onClick={() => brandLogoRef.current?.click()} className="btn-secondary w-full">
+                Choose logo file
+              </button>
+            )}
+            {brandLogoMsg && <p className="text-red-400 text-xs mt-2">{brandLogoMsg}</p>}
+            <p className="text-faint text-xs mt-2">PNG / JPG / WEBP / GIF — 1 MB max. A square logo works best.</p>
+          </Field>
+        </div>
+      </ChapterCard>
+
+      {/* Chapter 2 — EVENT BASICS. Title + format + per-format game
+          selector + per-game config. Everything a host has to answer once
+          they've decided when + how the event should feel. */}
+      <ChapterCard step={2} title="Event basics">
         <Field label="Tournament Title" htmlFor="tournament-title">
           <input
             id="tournament-title"
@@ -473,8 +818,22 @@ export default function TournamentCreatePage() {
         )}
 
         <TournamentGameConfigFields format={format} gameType={gameType} value={gameConfig} onChange={setGameConfig} />
+      </ChapterCard>
 
-        {isRoundRobin && (
+      {/* Chapter 3 — GAMES. Only shown in round-robin, since H2H / Knockout /
+          School are single-game formats and everything they need lives in the
+          "Event basics" card. Contains the playlist editor, WST/TTL info,
+          trivia pack, and the freestyle "target games" cap. */}
+      {isRoundRobin && (
+        <ChapterCard
+          step={3}
+          title="Games"
+          hint={
+            planned
+              ? 'Set the order now — you can still edit mid-tournament from the tournament page.'
+              : 'Pick each game live from the tournament page — read the room and switch it up.'
+          }
+        >
           <div>
             <p className="label-caps mb-2.5">How will games be picked?</p>
             <div className="grid grid-cols-2 gap-2">
@@ -495,570 +854,534 @@ export default function TournamentCreatePage() {
                 Decide as you go
               </button>
             </div>
-            <p className="text-faint text-xs mt-2">
-              {planned
-                ? 'Set the order now — one tap starts each round on the night. You can still edit the list mid-tournament.'
-                : 'Pick each game live from the tournament page — read the room and switch it up.'}
-            </p>
           </div>
-        )}
 
-        {isRoundRobin && planned && (
-          <div className="surface-inset p-4 space-y-3">
-            <div className="flex items-baseline justify-between gap-2 flex-wrap">
-              <p className="label-caps">Games in this tournament</p>
-              {queue.length > 0 && (
-                <p className="text-faint text-xs">
-                  ≈ {formatEstimatedDuration(estimatePlaylistSeconds(queue, TIMING_PLAYER_FALLBACK))} for{' '}
-                  {TIMING_PLAYER_FALLBACK} players
-                </p>
-              )}
-            </div>
+          {isRoundRobin && planned && (
+            <div className="surface-inset p-4 space-y-3">
+              <div className="flex items-baseline justify-between gap-2 flex-wrap">
+                <p className="label-caps">Games in this tournament</p>
+                {queue.length > 0 && (
+                  <p className="text-faint text-xs">
+                    ≈ {formatEstimatedDuration(estimatePlaylistSeconds(queue, TIMING_PLAYER_FALLBACK))} for{' '}
+                    {TIMING_PLAYER_FALLBACK} players
+                  </p>
+                )}
+              </div>
 
-            {queue.length === 0 ? (
-              <p className="text-faint text-xs">No games yet — add your first below.</p>
-            ) : (
-              <ol className="space-y-2">
-                {queue.map((entry, index) => (
-                  <li
-                    key={`${entry.gameType}-${index}`}
-                    className="flex items-center gap-2 rounded-lg border border-theme px-3 py-2"
-                    style={{ background: 'var(--surface-inset-bg)' }}
+              {queue.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-theme p-4 text-center space-y-2">
+                  <p className="text-body text-sm font-medium">Your playlist is empty</p>
+                  <p className="text-faint text-xs">
+                    Pick a game below, tweak the timer, then hit + Add. Not sure where to start?
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setQueue([
+                        { gameType: 'i_call_on', roundsCount: 3, timerSeconds: 60, bigScreenMode: 'phone_only' },
+                        { gameType: 'trivia', roundsCount: 10, timerSeconds: 30, bigScreenMode: 'phone_only' },
+                        { gameType: 'who_said_this', timerSeconds: 30, bigScreenMode: 'phone_only' },
+                      ])
+                    }}
+                    className="btn-ghost text-xs"
                   >
-                    <span
-                      className="tabular-nums text-xs font-semibold"
-                      style={{ color: 'var(--muted)', minWidth: '1.5rem' }}
-                    >
-                      {index + 1}.
-                    </span>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-body text-sm font-medium truncate">
-                        {gameTypeLabel(entry.gameType) ?? entry.gameType}
-                        <span className="text-faint text-xs font-normal ml-2">
-                          {entry.bigScreenMode === 'projector' ? '🖥' : '📱'}
+                    ✨ Use a starter mix (I Call On · Trivia · Who Said This)
+                  </button>
+                </div>
+              ) : (
+                <ol className="space-y-2">
+                  {queue.map((entry, index) => {
+                    const isEditing = editingIndex === index
+                    return (
+                      <li
+                        key={`${entry.gameType}-${index}`}
+                        className="flex items-center gap-2 rounded-lg border px-3 py-2.5 transition-colors"
+                        style={{
+                          background: isEditing ? 'rgba(124, 58, 237, 0.10)' : 'var(--surface-inset-bg)',
+                          borderColor: isEditing ? 'var(--primary)' : 'var(--border)',
+                        }}
+                      >
+                        <span
+                          className="tabular-nums text-xs font-semibold shrink-0"
+                          style={{ color: 'var(--muted)', minWidth: '1.25rem' }}
+                        >
+                          {index + 1}
                         </span>
-                      </p>
-                      <p className="text-faint text-xs">
-                        {entry.gameType === 'trivia'
-                          ? `${entry.roundsCount ?? 10} questions · ${entry.timerSeconds ?? 30}s each`
-                          : entry.gameType === 'two_truths' || entry.gameType === 'who_said_this'
-                            ? `${entry.timerSeconds ?? (entry.gameType === 'two_truths' ? 45 : 30)}s per guess`
-                            : `${entry.roundsCount ?? 10} rounds · ${entry.timerSeconds ?? 30}s`}
-                        {' · ≈ '}
-                        {formatEstimatedDuration(estimateGameSeconds(entry, TIMING_PLAYER_FALLBACK))}
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => moveQueueEntry(index, -1)}
-                      disabled={index === 0}
-                      aria-label={`Move ${gameTypeLabel(entry.gameType) ?? entry.gameType} up`}
-                      className="chip"
-                      style={{ opacity: index === 0 ? 0.4 : 1 }}
-                    >
-                      ↑
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => moveQueueEntry(index, 1)}
-                      disabled={index === queue.length - 1}
-                      aria-label={`Move ${gameTypeLabel(entry.gameType) ?? entry.gameType} down`}
-                      className="chip"
-                      style={{ opacity: index === queue.length - 1 ? 0.4 : 1 }}
-                    >
-                      ↓
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => removeQueueEntry(index)}
-                      aria-label={`Remove ${gameTypeLabel(entry.gameType) ?? entry.gameType}`}
-                      className="chip"
-                    >
-                      ✕
-                    </button>
-                  </li>
-                ))}
-              </ol>
-            )}
+                        <span
+                          aria-hidden
+                          className="shrink-0 h-9 w-9 rounded-lg flex items-center justify-center text-lg"
+                          style={{ background: 'rgba(124, 58, 237, 0.10)' }}
+                        >
+                          {gameEmoji(entry.gameType)}
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-body text-sm font-semibold truncate">
+                            {gameTypeLabel(entry.gameType) ?? entry.gameType}
+                            <span
+                              className="text-faint text-xs font-normal ml-2"
+                              title={entry.bigScreenMode === 'projector' ? 'Shown on the projector' : 'Phone only'}
+                            >
+                              {entry.bigScreenMode === 'projector' ? '🖥' : '📱'}
+                            </span>
+                            {isEditing && (
+                              <span className="text-xs font-semibold ml-2" style={{ color: 'var(--primary)' }}>
+                                editing…
+                              </span>
+                            )}
+                          </p>
+                          <p className="text-faint text-xs">
+                            {entry.gameType === 'trivia'
+                              ? `${entry.roundsCount ?? 10} questions · ${entry.timerSeconds ?? 30}s each`
+                              : entry.gameType === 'two_truths' || entry.gameType === 'who_said_this'
+                                ? `${entry.timerSeconds ?? (entry.gameType === 'two_truths' ? 45 : 30)}s per guess`
+                                : `${entry.roundsCount ?? 10} rounds · ${entry.timerSeconds ?? 30}s`}
+                            {' · ≈ '}
+                            {formatEstimatedDuration(estimateGameSeconds(entry, TIMING_PLAYER_FALLBACK))}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => beginEditQueueEntry(index)}
+                          aria-label={`Edit ${gameTypeLabel(entry.gameType) ?? entry.gameType}`}
+                          title="Edit this game"
+                          className="chip"
+                        >
+                          ✎
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => moveQueueEntry(index, -1)}
+                          disabled={index === 0}
+                          aria-label={`Move ${gameTypeLabel(entry.gameType) ?? entry.gameType} up`}
+                          className="chip"
+                          style={{ opacity: index === 0 ? 0.4 : 1 }}
+                        >
+                          ↑
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => moveQueueEntry(index, 1)}
+                          disabled={index === queue.length - 1}
+                          aria-label={`Move ${gameTypeLabel(entry.gameType) ?? entry.gameType} down`}
+                          className="chip"
+                          style={{ opacity: index === queue.length - 1 ? 0.4 : 1 }}
+                        >
+                          ↓
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => removeQueueEntry(index)}
+                          aria-label={`Remove ${gameTypeLabel(entry.gameType) ?? entry.gameType}`}
+                          className="chip"
+                        >
+                          ✕
+                        </button>
+                      </li>
+                    )
+                  })}
+                </ol>
+              )}
 
-            <div className="divider-soft" />
+              <div className="divider-soft" />
 
-            <div className="space-y-2">
-              <p className="text-body text-sm font-medium">Add a game</p>
-              <Field label="Game" htmlFor="queue-draft-type">
-                <select
-                  id="queue-draft-type"
-                  value={draftGameType}
-                  onChange={(e) => pickDraftGameType(e.target.value)}
-                  className="input-field"
+              <div className="space-y-2">
+                <p className="text-body text-sm font-medium">
+                  {editingIndex != null ? `Edit game #${editingIndex + 1}` : 'Add a game'}
+                </p>
+                <Field label="Game" htmlFor="queue-draft-type">
+                  <select
+                    id="queue-draft-type"
+                    value={draftGameType}
+                    onChange={(e) => pickDraftGameType(e.target.value)}
+                    className="input-field"
+                  >
+                    {TOURNAMENT_ELIGIBLE_TYPES.map((t) => (
+                      <option key={t} value={t}>
+                        {gameEmoji(t)} {gameTypeLabel(t) ?? t}
+                      </option>
+                    ))}
+                  </select>
+                  {(draftGameType === 'two_truths' || draftGameType === 'who_said_this') && (
+                    <p className="text-faint text-xs mt-1.5">
+                      {draftGameType === 'two_truths'
+                        ? 'Players type their two truths + a lie when they join the lobby — no upload needed. One round per player who submits.'
+                        : 'Players type one quote from a favourite character when they join the lobby — no upload needed. One round per submitted quote.'}
+                    </p>
+                  )}
+                </Field>
+                <div
+                  className={
+                    draftGameType === 'two_truths' || draftGameType === 'who_said_this' ? '' : 'grid grid-cols-2 gap-3'
+                  }
                 >
-                  {TOURNAMENT_ELIGIBLE_TYPES.map((t) => (
-                    <option key={t} value={t}>
-                      {gameTypeLabel(t) ?? t}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <div
-                className={
-                  draftGameType === 'two_truths' || draftGameType === 'who_said_this' ? '' : 'grid grid-cols-2 gap-3'
-                }
-              >
-                {draftGameType !== 'two_truths' && draftGameType !== 'who_said_this' && (
-                  <Field label={draftGameType === 'trivia' ? 'Questions' : 'Rounds'} htmlFor="queue-draft-rounds">
+                  {draftGameType !== 'two_truths' && draftGameType !== 'who_said_this' && (
+                    <Field label={draftGameType === 'trivia' ? 'Questions' : 'Rounds'} htmlFor="queue-draft-rounds">
+                      <input
+                        id="queue-draft-rounds"
+                        type="number"
+                        value={draftRounds}
+                        onChange={(e) => setDraftRounds(e.target.value)}
+                        min={1}
+                        max={100}
+                        className="input-field"
+                      />
+                    </Field>
+                  )}
+                  <Field label="Timer (s)" htmlFor="queue-draft-timer">
                     <input
-                      id="queue-draft-rounds"
+                      id="queue-draft-timer"
                       type="number"
-                      value={draftRounds}
-                      onChange={(e) => setDraftRounds(e.target.value)}
-                      min={1}
-                      max={100}
+                      value={draftTimer}
+                      onChange={(e) => setDraftTimer(e.target.value)}
+                      min={5}
+                      max={300}
                       className="input-field"
                     />
                   </Field>
-                )}
-                <Field label="Timer (s)" htmlFor="queue-draft-timer">
-                  <input
-                    id="queue-draft-timer"
-                    type="number"
-                    value={draftTimer}
-                    onChange={(e) => setDraftTimer(e.target.value)}
-                    min={5}
-                    max={300}
-                    className="input-field"
-                  />
-                </Field>
-              </div>
-              <Field label="Big screen">
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    aria-pressed={draftBigScreenMode === 'phone_only'}
-                    onClick={() => setDraftBigScreenMode('phone_only')}
-                    className={`chip flex-1 ${draftBigScreenMode === 'phone_only' ? 'chip-active' : ''}`}
-                    title="Big screen shows leaderboard only; players read from their phones"
-                  >
-                    📱 Phone only
-                  </button>
-                  <button
-                    type="button"
-                    aria-pressed={draftBigScreenMode === 'projector'}
-                    onClick={() => setDraftBigScreenMode('projector')}
-                    className={`chip flex-1 ${draftBigScreenMode === 'projector' ? 'chip-active' : ''}`}
-                    title="Big screen shows the current question/letter/etc. — Kahoot style"
-                  >
-                    🖥 On the projector
-                  </button>
                 </div>
-                <p className="text-faint text-xs mt-1.5">
-                  {draftBigScreenMode === 'projector'
-                    ? 'Big screen shows the current question or letter; phones become the answer buttons. Best when you have a TV/projector in the room.'
-                    : 'Everyone reads on their phone; big screen shows the leaderboard only. Pick this if there’s no screen in the room.'}
-                </p>
-              </Field>
-              <button
-                type="button"
-                onClick={addQueueEntry}
-                disabled={queue.length >= 20}
-                className="btn-secondary w-full"
-              >
-                + Add to playlist
-              </button>
-              {queue.length >= 20 && (
-                <p className="text-faint text-xs text-center">Playlist limit reached (20 games).</p>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Shared trivia pack — only shown when the playlist actually contains
-            a Trivia entry, otherwise there's nothing for it to be used with. */}
-        {isRoundRobin && planned && queue.some((e) => e.gameType === 'trivia') && (
-          <div className="surface-inset p-4 space-y-3">
-            <p className="label-caps">Trivia questions</p>
-            <p className="text-faint text-xs">
-              Every Trivia round in your playlist shares this pack. Questions don&apos;t repeat between rounds — so a
-              pack of 30 works for one 30-question round or three 10-question rounds, not both.
-            </p>
-
-            <div className="flex gap-2">
-              <button
-                type="button"
-                aria-pressed={triviaSource === 'platform'}
-                onClick={() => setTriviaSource('platform')}
-                className={`chip flex-1 ${triviaSource === 'platform' ? 'chip-active' : ''}`}
-              >
-                Platform pack
-              </button>
-              <button
-                type="button"
-                aria-pressed={triviaSource === 'custom'}
-                onClick={() => setTriviaSource('custom')}
-                className={`chip flex-1 ${triviaSource === 'custom' ? 'chip-active' : ''}`}
-              >
-                Upload CSV
-              </button>
-              <button
-                type="button"
-                aria-pressed={triviaSource === 'ai'}
-                onClick={() => setTriviaSource('ai')}
-                className={`chip flex-1 ${triviaSource === 'ai' ? 'chip-active' : ''}`}
-              >
-                Generate with AI
-              </button>
-            </div>
-
-            {triviaSource === 'custom' && (
-              <div className="space-y-3">
-                <input
-                  ref={triviaFileRef}
-                  type="file"
-                  accept=".csv,.xlsx,.xls"
-                  onChange={(e) => {
-                    const f = e.target.files?.[0]
-                    if (f) handleTriviaFile(f)
-                  }}
-                  className="hidden"
-                />
-                {customTriviaPack.length === 0 ? (
-                  <div className="space-y-2">
+                <Field label="Big screen">
+                  <div className="flex gap-2">
                     <button
                       type="button"
-                      onClick={() => triviaFileRef.current?.click()}
-                      className="btn-secondary w-full"
+                      aria-pressed={draftBigScreenMode === 'phone_only'}
+                      onClick={() => setDraftBigScreenMode('phone_only')}
+                      className={`chip flex-1 ${draftBigScreenMode === 'phone_only' ? 'chip-active' : ''}`}
+                      title="Big screen shows leaderboard only; players read from their phones"
                     >
-                      Choose CSV or Excel file
+                      📱 Phone only
                     </button>
-                    <p className="text-faint text-xs">
-                      Columns: question, option_a–option_d, correct (A–D).{' '}
-                      <a
-                        href={questionSampleFile('trivia').href}
-                        download={questionSampleFile('trivia').download}
-                        className="underline hover:text-body"
-                        style={{ color: 'var(--primary)' }}
-                      >
-                        Download sample
-                      </a>
-                    </p>
+                    <button
+                      type="button"
+                      aria-pressed={draftBigScreenMode === 'projector'}
+                      onClick={() => setDraftBigScreenMode('projector')}
+                      className={`chip flex-1 ${draftBigScreenMode === 'projector' ? 'chip-active' : ''}`}
+                      title="Big screen shows the current question/letter/etc. — Kahoot style"
+                    >
+                      🖥 On the projector
+                    </button>
+                  </div>
+                  <p className="text-faint text-xs mt-1.5">
+                    {draftBigScreenMode === 'projector'
+                      ? 'Big screen shows the current question or letter; phones become the answer buttons. Best when you have a TV/projector in the room.'
+                      : 'Everyone reads on their phone; big screen shows the leaderboard only. Pick this if there’s no screen in the room.'}
+                  </p>
+                </Field>
+                {editingIndex != null ? (
+                  <div className="grid grid-cols-2 gap-2">
+                    <button type="button" onClick={resetDraftRow} className="btn-ghost w-full">
+                      Cancel
+                    </button>
+                    <button type="button" onClick={saveQueueEntry} className="btn-secondary w-full">
+                      Save changes
+                    </button>
                   </div>
                 ) : (
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-sm text-body font-medium">
-                      ✓ {customTriviaPack.length} question{customTriviaPack.length === 1 ? '' : 's'} loaded
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setCustomTriviaPack([])
-                        setTriviaUploadMsg(null)
-                        if (triviaFileRef.current) triviaFileRef.current.value = ''
-                      }}
-                      className="btn-ghost text-xs"
-                    >
-                      Clear
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={saveQueueEntry}
+                    disabled={queue.length >= 20}
+                    className="btn-secondary w-full"
+                  >
+                    + Add to playlist
+                  </button>
                 )}
-                {triviaUploadMsg && <p className="text-faint text-xs">{triviaUploadMsg}</p>}
+                {editingIndex == null && queue.length >= 20 && (
+                  <p className="text-faint text-xs text-center">Playlist limit reached (20 games).</p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Info card when a player-submit game type sits in the planned playlist —
+            hosts hunt for a "questions upload" affordance and get confused when
+            it's not there, because these two shapes source their content from
+            the players themselves in the lobby. */}
+          {isRoundRobin &&
+            planned &&
+            queue.some((e) => e.gameType === 'who_said_this' || e.gameType === 'two_truths') && (
+              <div
+                className="rounded-xl border border-theme px-4 py-3 text-sm text-body"
+                style={{ background: 'var(--surface-inset-bg)', borderLeft: '3px solid var(--primary)' }}
+              >
+                <p className="font-semibold mb-1">Player-submitted games in your playlist</p>
+                <ul className="text-faint text-xs space-y-1">
+                  {queue.some((e) => e.gameType === 'who_said_this') && (
+                    <li>
+                      <span className="text-body">Who Said This:</span> players type one quote from a favourite
+                      character when they join the lobby. Everyone else guesses who said it. Nothing for you to upload.
+                    </li>
+                  )}
+                  {queue.some((e) => e.gameType === 'two_truths') && (
+                    <li>
+                      <span className="text-body">Two Truths &amp; a Lie:</span> players type two truths and a lie about
+                      themselves in the lobby. Nothing for you to upload.
+                    </li>
+                  )}
+                </ul>
               </div>
             )}
 
-            {triviaSource === 'ai' && (
-              <AiQuestionsGenerator
-                gameType="trivia"
-                triviaCategory="general"
-                defaultCount={20}
-                maxCount={50}
-                onGenerated={(questions) => setCustomTriviaPack(questions as TriviaQuestion[])}
+          {/* Shared trivia pack — only shown when the playlist actually contains
+            a Trivia entry, otherwise there's nothing for it to be used with. */}
+          {isRoundRobin && planned && queue.some((e) => e.gameType === 'trivia') && (
+            <div className="surface-inset p-4 space-y-3">
+              <p className="label-caps">Trivia questions</p>
+              <p className="text-faint text-xs">
+                Every Trivia round in your playlist shares this pack. Questions don&apos;t repeat between rounds — so a
+                pack of 30 works for one 30-question round or three 10-question rounds, not both.
+              </p>
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  aria-pressed={triviaSource === 'platform'}
+                  onClick={() => setTriviaSource('platform')}
+                  className={`chip flex-1 ${triviaSource === 'platform' ? 'chip-active' : ''}`}
+                >
+                  Platform pack
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={triviaSource === 'custom'}
+                  onClick={() => setTriviaSource('custom')}
+                  className={`chip flex-1 ${triviaSource === 'custom' ? 'chip-active' : ''}`}
+                >
+                  Upload CSV
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={triviaSource === 'ai'}
+                  onClick={() => setTriviaSource('ai')}
+                  className={`chip flex-1 ${triviaSource === 'ai' ? 'chip-active' : ''}`}
+                >
+                  Generate with AI
+                </button>
+              </div>
+
+              {triviaSource === 'custom' && (
+                <div className="space-y-3">
+                  <input
+                    ref={triviaFileRef}
+                    type="file"
+                    accept=".csv,.xlsx,.xls"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0]
+                      if (f) handleTriviaFile(f)
+                    }}
+                    className="hidden"
+                  />
+                  {customTriviaPack.length === 0 ? (
+                    <div className="space-y-2">
+                      <button
+                        type="button"
+                        onClick={() => triviaFileRef.current?.click()}
+                        className="btn-secondary w-full"
+                      >
+                        Choose CSV or Excel file
+                      </button>
+                      <p className="text-faint text-xs">
+                        Columns: question, option_a–option_d, correct (A–D).{' '}
+                        <a
+                          href={questionSampleFile('trivia').href}
+                          download={questionSampleFile('trivia').download}
+                          className="underline hover:text-body"
+                          style={{ color: 'var(--primary)' }}
+                        >
+                          Download sample
+                        </a>
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm text-body font-medium">
+                        ✓ {customTriviaPack.length} question{customTriviaPack.length === 1 ? '' : 's'} loaded
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCustomTriviaPack([])
+                          setTriviaUploadMsg(null)
+                          if (triviaFileRef.current) triviaFileRef.current.value = ''
+                        }}
+                        className="btn-ghost text-xs"
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  )}
+                  {triviaUploadMsg && <p className="text-faint text-xs">{triviaUploadMsg}</p>}
+                </div>
+              )}
+
+              {triviaSource === 'ai' && (
+                <AiQuestionsGenerator
+                  gameType="trivia"
+                  triviaCategory="general"
+                  defaultCount={20}
+                  maxCount={50}
+                  onGenerated={(questions) => setCustomTriviaPack(questions as TriviaQuestion[])}
+                />
+              )}
+
+              {triviaSource !== 'platform' &&
+                customTriviaPack.length > 0 &&
+                (() => {
+                  const totalTriviaQuestions = queue
+                    .filter((e) => e.gameType === 'trivia')
+                    .reduce((sum, e) => sum + (e.roundsCount ?? 10), 0)
+                  const short = customTriviaPack.length < totalTriviaQuestions
+                  return (
+                    <p className={`text-xs ${short ? 'text-amber-400' : 'text-faint'}`}>
+                      Pack has {customTriviaPack.length} question{customTriviaPack.length === 1 ? '' : 's'}. Your Trivia
+                      rounds ask for {totalTriviaQuestions} across the playlist
+                      {short ? ' — add more questions or lower a round count, or a later round won’t start.' : '.'}
+                    </p>
+                  )
+                })()}
+            </div>
+          )}
+
+          {isRoundRobin && !planned && (
+            <Field label="How many games to play (optional)" htmlFor="tournament-target-games">
+              <input
+                id="tournament-target-games"
+                type="number"
+                value={targetGameCount}
+                onChange={(e) => setTargetGameCount(e.target.value)}
+                placeholder="Leave empty — end whenever you want"
+                min={1}
+                max={100}
+                step={1}
+                className="input-field"
               />
-            )}
+              <p className="text-faint text-xs mt-1.5">
+                A soft cap — the tournament auto-ends once you&apos;ve played this many. You still pick the game each
+                round from the tournament page, and the same game can be picked as many times as you like (three rounds
+                of Trivia in a row is fine). Leave empty and end it manually whenever the room&apos;s had enough.
+              </p>
+            </Field>
+          )}
+        </ChapterCard>
+      )}
 
-            {triviaSource !== 'platform' &&
-              customTriviaPack.length > 0 &&
-              (() => {
-                const totalTriviaQuestions = queue
-                  .filter((e) => e.gameType === 'trivia')
-                  .reduce((sum, e) => sum + (e.roundsCount ?? 10), 0)
-                const short = customTriviaPack.length < totalTriviaQuestions
-                return (
-                  <p className={`text-xs ${short ? 'text-amber-400' : 'text-faint'}`}>
-                    Pack has {customTriviaPack.length} question{customTriviaPack.length === 1 ? '' : 's'}. Your Trivia
-                    rounds ask for {totalTriviaQuestions} across the playlist
-                    {short ? ' — add more questions or lower a round count, or a later round won’t start.' : '.'}
-                  </p>
-                )
-              })()}
+      {/* Advanced settings — collapsed by default so the main flow feels
+          short. Contains fields most hosts never need to touch: player cap,
+          lives mode, placement points. Uses a native <details> for zero
+          JS state and keyboard-accessible open/close. */}
+      <details className="glass-card-strong p-5 sm:p-6 group">
+        <summary className="flex items-center gap-3 cursor-pointer list-none select-none" style={{ marginBottom: 0 }}>
+          <span
+            aria-hidden
+            className="shrink-0 h-8 w-8 rounded-full flex items-center justify-center text-xs font-black"
+            style={{ background: 'var(--surface-inset-bg)', color: 'var(--muted)' }}
+          >
+            ⚙
+          </span>
+          <div className="flex-1 min-w-0">
+            <h2 className="text-lg font-black leading-tight">Advanced settings</h2>
+            <p className="text-faint text-xs mt-0.5">
+              Player cap{isRoundRobin ? ', lives mode, placement points' : ''} — most hosts skip these
+            </p>
           </div>
-        )}
+          <span
+            aria-hidden
+            className="text-faint text-xs transition-transform group-open:rotate-180"
+            style={{ display: 'inline-block' }}
+          >
+            ▼
+          </span>
+        </summary>
 
-        {isRoundRobin && !planned && (
-          <Field label="Target Games (optional)" htmlFor="tournament-target-games">
+        <div className="mt-5 space-y-5">
+          <Field label="Max Players (optional)" htmlFor="tournament-max-players">
             <input
-              id="tournament-target-games"
+              id="tournament-max-players"
               type="number"
-              value={targetGameCount}
-              onChange={(e) => setTargetGameCount(e.target.value)}
+              value={maxPlayers}
+              onChange={(e) => setMaxPlayers(e.target.value)}
               placeholder="Leave empty for unlimited"
-              min={1}
+              min={2}
               max={100}
               step={1}
               className="input-field"
             />
-            <p className="text-faint text-xs mt-1.5">
-              Tournament ends after this many games, or you can end it manually
-            </p>
+            <p className="text-faint text-xs mt-1.5">Once full, new players can&apos;t join</p>
           </Field>
-        )}
 
-        <Field label="Max Players (optional)" htmlFor="tournament-max-players">
-          <input
-            id="tournament-max-players"
-            type="number"
-            value={maxPlayers}
-            onChange={(e) => setMaxPlayers(e.target.value)}
-            placeholder="Leave empty for unlimited"
-            min={2}
-            max={100}
-            step={1}
-            className="input-field"
-          />
-          <p className="text-faint text-xs mt-1.5">Once full, new players can&apos;t join</p>
-        </Field>
-
-        {isRoundRobin && (
-          <div className="space-y-3">
-            <Toggle
-              label="Lives mode"
-              description="Bottom finishers lose a life each game — last player standing wins"
-              value={livesEnabled}
-              onChange={setLivesEnabled}
-            />
-
-            {livesEnabled && (
-              <div className="surface-inset p-4 space-y-3 animate-stagger">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-body text-sm font-medium">Starting lives</p>
-                    <p className="text-faint text-xs mt-0.5">How many each player begins with</p>
-                  </div>
-                  <Stepper value={startingLives} min={1} max={10} onChange={setStartingLives} />
-                </div>
-                <div className="divider-soft" />
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-body text-sm font-medium">Players who lose a life each game</p>
-                    <p className="text-faint text-xs mt-0.5">
-                      {eliminateCount === 1
-                        ? 'The bottom finisher loses 1 life'
-                        : `The bottom ${eliminateCount} finishers each lose 1 life`}
-                    </p>
-                  </div>
-                  <Stepper value={eliminateCount} min={1} max={10} onChange={setEliminateCount} />
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {isRoundRobin && (
-          <div>
-            <p className="label-caps mb-2.5">Placement Points</p>
-            <div className="grid grid-cols-3 gap-2">
-              {DEFAULT_POINTS.map((pts, i) => {
-                const medal = PLACEMENT_STYLES[i]
-                return (
-                  <div
-                    key={i}
-                    className="rounded-xl border border-theme px-3 py-2.5 text-center"
-                    style={
-                      medal
-                        ? { background: medal.bg, boxShadow: `inset 0 0 0 1px ${medal.ring}` }
-                        : { background: 'var(--surface-inset-bg)' }
-                    }
-                  >
-                    <p
-                      className="text-[0.6875rem] font-semibold"
-                      style={{ color: medal ? medal.text : 'var(--muted)' }}
-                    >
-                      {medal ? `${medal.medal} ` : ''}
-                      {ordinal(i + 1)}
-                    </p>
-                    <p
-                      className="text-lg font-black tabular-nums leading-tight"
-                      style={{ color: medal ? medal.text : 'var(--foreground)' }}
-                    >
-                      {pts}
-                      <span className="text-[0.625rem] font-semibold align-top ml-0.5">pt</span>
-                    </p>
-                  </div>
-                )
-              })}
-            </div>
-            <p className="text-faint text-xs mt-2 text-center">7th place and below earn 1pt each</p>
-          </div>
-        )}
-      </div>
-
-      {/* Schedule the event for later — optional. Shows a countdown + "Add to
-          calendar" (.ics) download to everyone on the invite link, so players
-          can pre-register days ahead and get pinged by their own calendar
-          when it's time. Host still starts the event manually on the day. */}
-      <div className="glass-card-strong p-5 sm:p-6 space-y-3">
-        <div className="flex items-baseline justify-between gap-2 flex-wrap">
-          <p className="label-caps">Schedule (optional)</p>
-          <span className="text-faint text-xs">Pre-register players days ahead</span>
-        </div>
-        <Field label="Start date & time" htmlFor="tournament-scheduled-at">
-          <input
-            id="tournament-scheduled-at"
-            type="datetime-local"
-            value={scheduledLocal}
-            onChange={(e) => setScheduledLocal(e.target.value)}
-            className="input-field"
-          />
-          <p className="text-faint text-xs mt-1.5">
-            Leave empty for right now. Sets a countdown on the invite link so pre-registered players know when to show
-            up.
-          </p>
-        </Field>
-      </div>
-
-      {/* Event branding — optional. Two brand colours + a logo, applied to the
-          lobby, in-game header, and results card. Skipping any field leaves the
-          default palette in place. */}
-      <div className="glass-card-strong p-5 sm:p-6 space-y-4">
-        <div className="flex items-baseline justify-between gap-2 flex-wrap">
-          <p className="label-caps">Event branding (optional)</p>
-          <span className="text-faint text-xs">Shown to players in the lobby &amp; game</span>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Primary colour" htmlFor="brand-primary">
-            <div className="flex items-center gap-2">
-              <input
-                id="brand-primary"
-                type="color"
-                value={brandPrimary || '#7c3aed'}
-                onChange={(e) => setBrandPrimary(e.target.value)}
-                aria-label="Primary brand colour"
-                className="h-10 w-14 rounded-lg border border-theme cursor-pointer"
+          {isRoundRobin && (
+            <div className="space-y-3">
+              <Toggle
+                label="Lives mode"
+                description="Bottom finishers lose a life each game — last player standing wins"
+                value={livesEnabled}
+                onChange={setLivesEnabled}
               />
-              <input
-                type="text"
-                value={brandPrimary}
-                onChange={(e) => setBrandPrimary(e.target.value)}
-                placeholder="#7c3aed"
-                maxLength={7}
-                className="input-field flex-1 font-mono text-sm"
-              />
-              {brandPrimary && (
-                <button
-                  type="button"
-                  onClick={() => setBrandPrimary('')}
-                  className="btn-ghost text-xs"
-                  aria-label="Clear primary colour"
-                >
-                  Clear
-                </button>
+
+              {livesEnabled && (
+                <div className="surface-inset p-4 space-y-3 animate-stagger">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-body text-sm font-medium">Starting lives</p>
+                      <p className="text-faint text-xs mt-0.5">How many each player begins with</p>
+                    </div>
+                    <Stepper value={startingLives} min={1} max={10} onChange={setStartingLives} />
+                  </div>
+                  <div className="divider-soft" />
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-body text-sm font-medium">Players who lose a life each game</p>
+                      <p className="text-faint text-xs mt-0.5">
+                        {eliminateCount === 1
+                          ? 'The bottom finisher loses 1 life'
+                          : `The bottom ${eliminateCount} finishers each lose 1 life`}
+                      </p>
+                    </div>
+                    <Stepper value={eliminateCount} min={1} max={10} onChange={setEliminateCount} />
+                  </div>
+                </div>
               )}
             </div>
-          </Field>
-          <Field label="Accent colour" htmlFor="brand-accent">
-            <div className="flex items-center gap-2">
-              <input
-                id="brand-accent"
-                type="color"
-                value={brandAccent || '#f59e0b'}
-                onChange={(e) => setBrandAccent(e.target.value)}
-                aria-label="Accent brand colour"
-                className="h-10 w-14 rounded-lg border border-theme cursor-pointer"
-              />
-              <input
-                type="text"
-                value={brandAccent}
-                onChange={(e) => setBrandAccent(e.target.value)}
-                placeholder="#f59e0b"
-                maxLength={7}
-                className="input-field flex-1 font-mono text-sm"
-              />
-              {brandAccent && (
-                <button
-                  type="button"
-                  onClick={() => setBrandAccent('')}
-                  className="btn-ghost text-xs"
-                  aria-label="Clear accent colour"
-                >
-                  Clear
-                </button>
-              )}
-            </div>
-          </Field>
-        </div>
-
-        <Field label="Logo (optional)" htmlFor="brand-logo">
-          <input
-            ref={brandLogoRef}
-            id="brand-logo"
-            type="file"
-            accept="image/png,image/jpeg,image/webp,image/gif"
-            onChange={(e) => {
-              const f = e.target.files?.[0]
-              if (f) handleBrandLogoFile(f)
-            }}
-            className="hidden"
-          />
-          {brandLogoPreview ? (
-            <div className="surface-inset p-4 flex items-center gap-4">
-              {}
-              <img
-                src={brandLogoPreview}
-                alt="Logo preview"
-                className="h-16 w-16 object-contain rounded-lg"
-                style={{ background: 'var(--surface-inset-bg)' }}
-              />
-              <div className="flex-1 min-w-0">
-                <p className="text-body text-sm font-medium truncate">{brandLogoFile?.name}</p>
-                <p className="text-faint text-xs">
-                  {brandLogoFile ? `${Math.round(brandLogoFile.size / 1024)} KB` : ''} · uploaded when you create
-                </p>
-              </div>
-              <button type="button" onClick={clearBrandLogo} className="btn-ghost text-xs">
-                Remove
-              </button>
-            </div>
-          ) : (
-            <button type="button" onClick={() => brandLogoRef.current?.click()} className="btn-secondary w-full">
-              Choose logo file
-            </button>
           )}
-          {brandLogoMsg && <p className="text-red-400 text-xs mt-2">{brandLogoMsg}</p>}
-          <p className="text-faint text-xs mt-2">PNG / JPG / WEBP / GIF — 1 MB max. A square logo works best.</p>
-        </Field>
 
-        {(brandPrimary || brandAccent || brandLogoPreview) && (
-          <div
-            className="surface-inset p-4 space-y-2 flex items-center gap-3"
-            style={{
-              ...(brandPrimary ? ({ '--primary': brandPrimary } as CSSProperties) : {}),
-            }}
-          >
-            {brandLogoPreview && <img src={brandLogoPreview} alt="" className="h-10 w-10 object-contain" />}
-            <div className="flex-1">
-              <p className="text-body text-sm font-medium">Preview</p>
-              <p className="text-faint text-xs">
-                Your event will look <span style={{ color: 'var(--primary)', fontWeight: 700 }}>like this</span>
-                {brandAccent && (
-                  <>
-                    {' '}
-                    with <span style={{ color: brandAccent, fontWeight: 700 }}>accent bits</span>
-                  </>
-                )}
-                .
-              </p>
+          {isRoundRobin && (
+            <div>
+              <p className="label-caps mb-2.5">Placement Points</p>
+              <div className="grid grid-cols-3 gap-2">
+                {DEFAULT_POINTS.map((pts, i) => {
+                  const medal = PLACEMENT_STYLES[i]
+                  return (
+                    <div
+                      key={i}
+                      className="rounded-xl border border-theme px-3 py-2.5 text-center"
+                      style={
+                        medal
+                          ? { background: medal.bg, boxShadow: `inset 0 0 0 1px ${medal.ring}` }
+                          : { background: 'var(--surface-inset-bg)' }
+                      }
+                    >
+                      <p
+                        className="text-[0.6875rem] font-semibold"
+                        style={{ color: medal ? medal.text : 'var(--muted)' }}
+                      >
+                        {medal ? `${medal.medal} ` : ''}
+                        {ordinal(i + 1)}
+                      </p>
+                      <p
+                        className="text-lg font-black tabular-nums leading-tight"
+                        style={{ color: medal ? medal.text : 'var(--foreground)' }}
+                      >
+                        {pts}
+                        <span className="text-[0.625rem] font-semibold align-top ml-0.5">pt</span>
+                      </p>
+                    </div>
+                  )
+                })}
+              </div>
+              <p className="text-faint text-xs mt-2 text-center">7th place and below earn 1pt each</p>
             </div>
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      </details>
 
       {error && <p className="text-red-400 text-sm text-center">{error}</p>}
 
