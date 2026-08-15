@@ -11,6 +11,8 @@ import {
   processMonopolyForfeit,
   processMonopolyAuction,
   processMonopolyTradeRespond,
+  advanceMonopolyTurnPastBankrupt,
+  isTurnHolderBankrupt,
 } from '@/lib/monopoly'
 import { scheduleTurnNotification } from '@/lib/push'
 import { pickBotAction, type MonopolyBotAction } from '@/lib/monopoly-bot'
@@ -76,6 +78,15 @@ export async function driveMonopolyBotsOnce(gameCode: string): Promise<DriveResu
   const board = boardRes.data as MonopolyBoard | null
   const states = (statesRes.data ?? []) as MonopolyPlayerState[]
   if (!board || board.phase === 'finished') return { kind: 'idle' }
+
+  // If the turn is parked on a bankrupt player (whose bot adapter would return
+  // null and whose human UI is disabled), the game stalls forever. Advance the
+  // turn off them so the next tick sees a live holder. This is defensive —
+  // normal engine paths route through nextTurnIndex which skips bankrupts.
+  if (isTurnHolderBankrupt(board, states)) {
+    const { advanced } = await advanceMonopolyTurnPastBankrupt(admin, code)
+    return advanced ? { kind: 'skipped', reason: 'advanced past bankrupt turn holder' } : { kind: 'idle' }
+  }
 
   // Pick the actionable slot. Priority: pending trade addressed at a bot >
   // auction current-bidder > turn holder. Trades and auctions run outside the
