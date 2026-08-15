@@ -123,6 +123,10 @@ export default function TournamentLobbyPage() {
   // creation; the round route prefers that). No UI — hence no setter.
   const [h2hTimer] = useState('600')
   const [actionLoading, setActionLoading] = useState(false)
+  // Two-click "start early" confirmation for scheduled events. First Start
+  // attempt gets a 409 from the server; we flip this so the button re-renders
+  // as "Start early anyway" and a second click passes startEarly=true.
+  const [promptStartEarly, setPromptStartEarly] = useState(false)
 
   const [questionSource, setQuestionSource] = useState<'platform' | 'custom' | 'ai' | 'library'>('platform')
   const [customTrivia, setCustomTrivia] = useState<TriviaQuestion[]>([])
@@ -665,7 +669,7 @@ export default function TournamentLobbyPage() {
     return null
   }
 
-  async function handleStartGame() {
+  async function handleStartGame(startEarly = false) {
     if (!hostToken) return
     setActionLoading(true)
     setError('')
@@ -719,13 +723,24 @@ export default function TournamentLobbyPage() {
           // Freestyle mode picks its own big-screen mode; planned mode
           // reads it off the queue entry (server ignores what we send).
           bigScreenMode: useQueue ? undefined : selectedBigScreenMode,
+          // Explicit opt-in to spawn before scheduled_at. Server otherwise
+          // 409s on the first game so a mis-click can't yank people in early.
+          ...(startEarly ? { startEarly: true } : {}),
         }),
       })
       const data = await res.json()
       if (!res.ok) {
+        // Scheduled-not-yet-reached: surface a two-click "Start early anyway"
+        // path rather than dead-ending the host on a plain error string.
+        if (res.status === 409 && data?.reason === 'not_yet_scheduled') {
+          setError('This tournament is scheduled for later — pre-registered players might not be here yet.')
+          setPromptStartEarly(true)
+          return
+        }
         setError(data.error ?? 'Failed to start game')
         return
       }
+      setPromptStartEarly(false)
       localStorage.setItem(`host_token_${data.gameCode}`, data.gameHostToken)
       // Stay on the lobby — players auto-join the spawned game, then the host taps
       // "Start Game" here to begin it (no host dashboard needed).
@@ -2630,17 +2645,24 @@ export default function TournamentLobbyPage() {
           the trigger for the next game. */}
         {isHost && !isFinished && !activeGame && roundRobin && plannedNext && (
           <div className="glass-card-strong p-5 space-y-2">
-            <PrimaryBtn onClick={handleStartGame} disabled={actionLoading || players.length === 0}>
+            <PrimaryBtn
+              onClick={() => handleStartGame(promptStartEarly)}
+              disabled={actionLoading || players.length === 0}
+            >
               {actionLoading
                 ? 'Starting…'
-                : isFirstGame
-                  ? `Start Tournament — ${gameTypeLabel(plannedNext.gameType) ?? plannedNext.gameType}`
-                  : `Start Next Game — ${gameTypeLabel(plannedNext.gameType) ?? plannedNext.gameType}`}
+                : promptStartEarly
+                  ? 'Start early anyway'
+                  : isFirstGame
+                    ? `Start Tournament — ${gameTypeLabel(plannedNext.gameType) ?? plannedNext.gameType}`
+                    : `Start Next Game — ${gameTypeLabel(plannedNext.gameType) ?? plannedNext.gameType}`}
             </PrimaryBtn>
             <p className="text-faint text-xs text-center">
               {players.length === 0
                 ? 'Waiting for players to join before you can start.'
-                : `Game ${queueIndex + 1} of ${queueEntries!.length}. Players see it appear when you tap Start.`}
+                : promptStartEarly
+                  ? 'Pre-registered players might not be here yet — tap again to override.'
+                  : `Game ${queueIndex + 1} of ${queueEntries!.length}. Players see it appear when you tap Start.`}
             </p>
           </div>
         )}
@@ -3006,13 +3028,24 @@ export default function TournamentLobbyPage() {
             )}
 
             <div className="space-y-1.5">
-              <PrimaryBtn onClick={handleStartGame} disabled={actionLoading || !canStartCustom || players.length === 0}>
-                {actionLoading ? 'Starting…' : isFirstGame ? 'Start Tournament' : 'Start Next Game'}
+              <PrimaryBtn
+                onClick={() => handleStartGame(promptStartEarly)}
+                disabled={actionLoading || !canStartCustom || players.length === 0}
+              >
+                {actionLoading
+                  ? 'Starting…'
+                  : promptStartEarly
+                    ? 'Start early anyway'
+                    : isFirstGame
+                      ? 'Start Tournament'
+                      : 'Start Next Game'}
               </PrimaryBtn>
               <p className="text-faint text-xs text-center">
                 {players.length === 0
                   ? 'Waiting for players to join before you can start.'
-                  : 'Creates the game room. Open the host dashboard (new tab) to start it once players have joined.'}
+                  : promptStartEarly
+                    ? 'Pre-registered players might not be here yet — tap again to override.'
+                    : 'Creates the game room. Open the host dashboard (new tab) to start it once players have joined.'}
               </p>
             </div>
 

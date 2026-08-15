@@ -34,6 +34,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     questionSource,
     customQuestions,
     bigScreenMode: clientBigScreenMode,
+    startEarly,
   } = body
 
   const admin = getSupabaseAdmin()
@@ -48,6 +49,34 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   }
   if (tournament.status === 'finished') {
     return NextResponse.json({ error: 'Tournament has ended' }, { status: 400 })
+  }
+
+  // Scheduled-event gate: block spawning the first game until the scheduled
+  // start time is reached (or the host explicitly opts in with startEarly).
+  // Prevents "I set it for 8pm, my finger slipped this afternoon and now
+  // everyone's phone tries to pull them into a live game" scenarios; the
+  // pre-registered players expected 8pm and would be caught off guard.
+  // Only gates the FIRST game — once a game has already been spawned, the
+  // tournament is clearly live and further games shouldn't be re-gated.
+  if (tournament.scheduled_at && !startEarly) {
+    const scheduledMs = Date.parse(tournament.scheduled_at)
+    if (!Number.isNaN(scheduledMs) && Date.now() < scheduledMs) {
+      const { count: priorCount } = await admin
+        .from('tournament_games')
+        .select('id', { count: 'exact', head: true })
+        .eq('tournament_id', tournamentId)
+      if ((priorCount ?? 0) === 0) {
+        return NextResponse.json(
+          {
+            error: 'Scheduled for later',
+            reason: 'not_yet_scheduled',
+            scheduledAt: tournament.scheduled_at,
+            hint: 'Tap "Start early" to override — pre-registered players might not be here yet.',
+          },
+          { status: 409 }
+        )
+      }
+    }
   }
 
   const { data: activeGame } = await admin
