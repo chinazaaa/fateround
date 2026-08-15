@@ -154,6 +154,7 @@ export function initSoloWhot(opts: SoloWhotInitOptions = {}): SoloWhotState {
     status_message: null,
     winner_player_id: null,
     finish_order: [],
+    reshuffle_count: 0,
     turn_deadline_at: null,
     created_at: new Date(0).toISOString(),
     updated_at: new Date(0).toISOString(),
