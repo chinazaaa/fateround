@@ -25,14 +25,9 @@ export function ThemeToggle({ variant = 'fixed', className = '' }: ThemeTogglePr
   // In-game (host + player) light/dark lives in the chrome's ⚙ settings sheet
   // (and the lobby's), so suppress the floating fixed toggle there — it would
   // otherwise overlap the chrome's top-right actions. Rooms carry their own.
-  // The tournament projector view (`/tournament/<code>/screen`) is a
-  // deliberately-dark full-viewport display; toggling the site theme has no
-  // visible effect there (the page hardcodes bg-black text-white) so the
-  // control reads as broken to the host. Hide it on that route too.
   const onGamePage = /^\/(game|host)\/[^/]+/.test(pathname ?? '')
   const onRoomPage = isRoomLobbyPath(pathname)
-  const onProjectorScreen = /^\/tournament\/[^/]+\/screen\/?$/.test(pathname ?? '')
-  if (variant === 'fixed' && (onGamePage || onRoomPage || onProjectorScreen)) return null
+  if (variant === 'fixed' && (onGamePage || onRoomPage)) return null
 
   // The fixed toggle is hidden on public/marketing pages (which carry their own
   // design-system toggle in the header) via a `:has(.fr-site)` rule in globals.css.
