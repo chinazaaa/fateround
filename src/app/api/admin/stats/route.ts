@@ -54,7 +54,7 @@ export async function GET(req: NextRequest) {
 
   // Paginated fetches — bypass Supabase's max_rows cap (default 1000)
   type GameRow = { id: string; game_type: string; status: string; created_at: string; sessions_played: number }
-  type PlayerGameRow = { game_id: string; country: string | null }
+  type PlayerGameRow = { game_id: string; country: string | null; is_bot?: boolean | null }
   type ProfileRow = {
     id: string
     created_at: string
@@ -85,9 +85,44 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // players: try the full select (country + is_bot), then peel off is_bot on
+  // older schemas that predate 20260925120000_players_is_bot, then peel off
+  // country on the even older schemas fetchAllSafe already handled. Also
+  // reports which columns actually made it into the select so bot stats can
+  // distinguish "no bot rooms" (supported, count 0) from "not tracked yet"
+  // (column missing, hint the admin to run the migration).
+  async function fetchPlayers(): Promise<{
+    data: PlayerGameRow[]
+    count: number
+    hasBotColumn: boolean
+  }> {
+    const attempts: { select: string; hasBotColumn: boolean }[] = [
+      { select: 'game_id, country, is_bot', hasBotColumn: true },
+      { select: 'game_id, country', hasBotColumn: false },
+      { select: 'game_id', hasBotColumn: false },
+    ]
+    let lastErr: unknown = null
+    for (const { select, hasBotColumn } of attempts) {
+      try {
+        const res = await fetchAll<PlayerGameRow>(supabase, 'players', select)
+        return { ...res, hasBotColumn }
+      } catch (e: unknown) {
+        lastErr = e
+        const msg =
+          e instanceof Error
+            ? e.message
+            : typeof e === 'object' && e !== null && 'message' in e
+              ? String((e as { message: unknown }).message)
+              : ''
+        if (!msg.includes('is_bot') && !msg.includes('country')) throw e
+      }
+    }
+    throw lastErr
+  }
+
   const [gamesAll, playersAll, profilesAll] = await Promise.all([
     fetchAll<GameRow>(supabase, 'games', 'id, game_type, status, created_at, sessions_played'),
-    fetchAllSafe<PlayerGameRow>('players', 'game_id, country', 'game_id'),
+    fetchPlayers(),
     fetchAllSafe<ProfileRow>(
       'profiles',
       'id, created_at, current_streak, trophy_points, last_active_date, country',
@@ -273,6 +308,47 @@ export async function GET(req: NextRequest) {
       playersByCountry[row.country] = (playersByCountry[row.country] ?? 0) + 1
     }
   }
+
+  // Rooms-with-bots stats — a real game room that had at least one bot seat.
+  // `is_bot` was added in 20260925120000_players_is_bot; if the field isn't
+  // present on the fetched rows (older schema), hasBotColumn stays false and
+  // we surface null so the admin card renders a "not tracked yet" hint rather
+  // than a misleading zero.
+  const hasBotColumn = playersAll.hasBotColumn
+  const gamesWithBots = new Set<string>()
+  let totalBotSeats = 0
+  if (hasBotColumn) {
+    for (const row of playerRows) {
+      if (row.is_bot) {
+        gamesWithBots.add(row.game_id)
+        totalBotSeats++
+      }
+    }
+  }
+  const roomsWithBotsByType: Record<string, number> = {}
+  const roomsWithBotsByType7d: Record<string, number> = {}
+  let roomsWithBotsLast7d = 0
+  let roomsWithBotsLast30d = 0
+  for (const game of games) {
+    if (!gamesWithBots.has(game.id)) continue
+    roomsWithBotsByType[game.game_type] = (roomsWithBotsByType[game.game_type] ?? 0) + 1
+    if (game.created_at >= cutoff7d) {
+      roomsWithBotsLast7d++
+      roomsWithBotsByType7d[game.game_type] = (roomsWithBotsByType7d[game.game_type] ?? 0) + 1
+    }
+    if (game.created_at >= cutoff30d) roomsWithBotsLast30d++
+  }
+  const roomsWithBotsStats = hasBotColumn
+    ? {
+        supported: true as const,
+        total: gamesWithBots.size,
+        last7Days: roomsWithBotsLast7d,
+        last30Days: roomsWithBotsLast30d,
+        totalBotSeats,
+        byGameType: roomsWithBotsByType,
+        byGameType7d: roomsWithBotsByType7d,
+      }
+    : { supported: false as const }
 
   // Growth rates
   const gamesLast7 = gamesLast7DaysRes.count ?? 0
@@ -532,5 +608,6 @@ export async function GET(req: NextRequest) {
     uniqueCountries,
     dailyChallengeStats,
     soloPlayStats,
+    roomsWithBotsStats,
   })
 }
