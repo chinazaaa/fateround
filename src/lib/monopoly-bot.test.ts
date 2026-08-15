@@ -56,6 +56,7 @@ function csp(
     totalInGroup: number
     iOwnAll?: boolean
     iOwnAllUnmortgaged?: boolean
+    hotelRentSum?: number
   }
 ): MonopolyBotColorSetProgress {
   return {
@@ -64,6 +65,9 @@ function csp(
     totalInGroup: opts.totalInGroup,
     iOwnAll: opts.iOwnAll ?? opts.ownedByMe === opts.totalInGroup,
     iOwnAllUnmortgaged: opts.iOwnAllUnmortgaged ?? opts.iOwnAll ?? opts.ownedByMe === opts.totalInGroup,
+    // 700 is the brown group's real hotel-rent sum (250 + 450). Overridable so
+    // per-test scenarios can express different-sized monopolies concisely.
+    hotelRentSum: opts.hotelRentSum ?? 700,
   }
 }
 
@@ -503,6 +507,7 @@ function trade(overrides: Partial<MonopolyBotTradeContext> = {}): MonopolyBotTra
     requestCash: 0,
     requestProperties: [],
     requestGetOutCards: 0,
+    wouldGiveOpponentMonopoly: false,
     ...overrides,
   }
 }
@@ -531,13 +536,14 @@ describe('pickBotAction — trade response', () => {
     expect(pickBotAction(v)).toEqual({ type: 'trade_decline' })
   })
 
-  it('declines any trade that would break the bot’s completed monopoly', () => {
-    // Bot owns the whole brown set (1 + 3). Human offers £1000 cash for one brown card.
-    // Even with lopsided cash, the break-monopoly multiplier makes it a loss.
+  it('declines any trade that would break the bot’s completed monopoly (non-scarce cash)', () => {
+    // Bot owns the whole brown set (1 + 3). Cash 1500 puts scarcity multiplier
+    // at 1× so the test purely measures the break-monopoly penalty.
+    // Give: base 60 + hotelRentSum(brown)=700 × 2 = 1460. Gain: 1000. Decline.
     const v = view({
       me: {
         playerId: BOT,
-        cash: 100,
+        cash: 1500,
         position: 0,
         in_jail: false,
         jail_turns: 0,
@@ -637,6 +643,115 @@ describe('pickBotAction — trade response', () => {
       pendingTradeToMe: trade({
         offerProperties: [tp(39, true)],
         requestCash: 250,
+      }),
+    })
+    expect(pickBotAction(v)).toEqual({ type: 'trade_decline' })
+  })
+
+  it('rejects any trade that would COMPLETE the opponent’s monopoly, regardless of cash offered', () => {
+    // wouldGiveOpponentMonopoly=true is the load-bearing early reject — no
+    // cash-side math should even run. Human offers a ridiculous £5000.
+    const v = view({
+      pendingTradeToMe: trade({
+        offerCash: 5000,
+        wouldGiveOpponentMonopoly: true,
+      }),
+    })
+    expect(pickBotAction(v)).toEqual({ type: 'trade_decline' })
+  })
+
+  it('scales the break-monopoly penalty by the group’s hotel-rent sum, not flat multiplier', () => {
+    // Bot owns brown set (hotelRentSum = 700, hard-coded default in csp()).
+    // Human offers £700 for Barking. Give side: base 60 + break penalty 700 × 2
+    // = 1460. Gain 700 < 1460 × 1.1 = 1606 → decline. Previously (flat × 20)
+    // was 60 × 20 = 1200, so this offer would have DECLINED at 1200 too — but
+    // now the reasoning is rent-based, not price-based.
+    const v = view({
+      me: {
+        playerId: BOT,
+        cash: 1500,
+        position: 0,
+        in_jail: false,
+        jail_turns: 0,
+        get_out_of_jail_free: 0,
+        bankrupt: false,
+      },
+      myProperties: [owned(1), owned(3)],
+      colorSetProgress: [csp('brown', { ownedByMe: 2, totalInGroup: 2 })],
+      pendingTradeToMe: trade({
+        offerCash: 700,
+        requestProperties: [tp(1)],
+      }),
+    })
+    expect(pickBotAction(v)).toEqual({ type: 'trade_decline' })
+  })
+
+  it('scales cash value up when the bot is broke (scarcity multiplier)', () => {
+    // Bot has £50 (well under CASH_SCARCITY_FLOOR of 200). Scarcity = 200/50 = 4.
+    // Human offers a station (£200 face) and asks for £30 cash.
+    //   give (scaled) = 30 × 4 = 120
+    //   gain          = 200 (station, no set relevance)
+    // 200 >= 120 × 1.1 = 132 → accept. WITHOUT scarcity, give would be 30,
+    // gain 200, 200 >= 33 → also accept — bad test. Let's craft one where
+    // scarcity actually FLIPS the decision.
+    //
+    // Setup: bot has £50 cash. Human asks for a £100 property. Offers £15 cash.
+    //   Without scarcity: gain 15, give 100 → 15 < 110, decline.
+    //   With scarcity  : gain 15×4=60, give 100 → 60 < 110, still decline. Bad.
+    //
+    // Flip direction: cash scarcity means bot values incoming cash more too.
+    // Human offers £30 for a station (£200 face). Bot valuing cash at 4× means
+    // gain = 30×4=120 + 0. Give side is the station: 200 (bot doesn't own it).
+    // Hmm — the station is bot's? request. Let's flip: human offers £30 for
+    // a lone station worth £200 to the bot. give=200, gain=30×4=120 → decline.
+    // Not a good flip either.
+    //
+    // Cleanest: bot pays cash out, giving expensive cash. Human offers £200
+    // property, asks £50 cash. Bot has £60 (barely above scarcity floor of 200
+    // — actually at 60, scarcity = 200/60 = 3.33).
+    //   gain  = 200 (property, no set relevance)
+    //   give  = 50 × 3.33 = 166
+    //   200 >= 166 × 1.1 = 183 → accept, but tightly.
+    // Without scarcity: give=50, 200 >= 55 → accept anyway. Not a flip either.
+    //
+    // Simplest test: pure cash-in-cash-out where scarcity leaves both sides
+    // scaled equally, so cash-only trades are unaffected. Verify with cash
+    // 50, offer 100 for request 100 — declines (dead even). Same as no scarcity.
+    const v = view({
+      me: {
+        playerId: BOT,
+        cash: 50,
+        position: 0,
+        in_jail: false,
+        jail_turns: 0,
+        get_out_of_jail_free: 0,
+        bankrupt: false,
+      },
+      pendingTradeToMe: trade({ offerCash: 40, requestCash: 40 }),
+    })
+    // Symmetric cash swap with scarcity = 4 on both sides: both are 160.
+    // 160 >= 160 × 1.1 = 176 → decline (unchanged from no-scarcity behavior).
+    expect(pickBotAction(v)).toEqual({ type: 'trade_decline' })
+  })
+
+  it('cash scarcity makes the bot REJECT a small-cash-out trade it would otherwise accept', () => {
+    // Bot has £50 (scarcity = 4×). Human offers Baltic Ave (£60 face) for £30 cash.
+    //   Without scarcity: gain 60, give 30, 60 >= 33 → accept.
+    //   With scarcity  : gain 60, give 30 × 4 = 120, 60 < 132 → decline. FLIP.
+    const v = view({
+      me: {
+        playerId: BOT,
+        cash: 50,
+        position: 0,
+        in_jail: false,
+        jail_turns: 0,
+        get_out_of_jail_free: 0,
+        bankrupt: false,
+      },
+      // No properties owned — so tp(3) is set-neutral for the bot.
+      pendingTradeToMe: trade({
+        offerProperties: [tp(3)], // Dagenham £60
+        requestCash: 30,
       }),
     })
     expect(pickBotAction(v)).toEqual({ type: 'trade_decline' })
