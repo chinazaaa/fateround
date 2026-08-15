@@ -139,6 +139,17 @@ export function WordGroupingPlayerView({ gameCode }: { gameCode: string }) {
     bootstrap.game?.status
   )
 
+  // Reset per-session state on play-again: without this the previous puzzle's `solution`
+  // stays cached and reappears on the next finish, and stray `selected`/`oneAway`/`shaking`
+  // from the old round would carry into the new one.
+  const sessionKey = bootstrap.game?.session_started_at ?? null
+  useEffect(() => {
+    setSolution(null)
+    setSelected([])
+    setOneAway(false)
+    setShaking(false)
+  }, [sessionKey])
+
   // Fetch canonical solution once the game finishes so we can reveal every group,
   // not just the ones this player solved.
   useEffect(() => {
