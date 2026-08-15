@@ -3317,7 +3317,7 @@ function CreateGameInner() {
                         {
                           value: 'ai',
                           label: 'Generate with AI',
-                          hint: 'Generate words with your own Claude API key.',
+                          hint: 'Give a theme, get a ready-made set in seconds.',
                         },
                       ]}
                     />
@@ -4550,7 +4550,7 @@ function CreateGameInner() {
                         {
                           value: 'ai',
                           label: 'Generate with AI',
-                          hint: 'Generate words with your own Claude API key.',
+                          hint: 'Give a theme, get a ready-made set in seconds.',
                         },
                       ]}
                     />
@@ -4924,7 +4924,7 @@ function CreateGameInner() {
                         {
                           value: 'ai',
                           label: 'Generate with AI',
-                          hint: 'Generate words with your own Claude API key.',
+                          hint: 'Give a theme, get a ready-made set in seconds.',
                         },
                       ]}
                     />
@@ -6226,7 +6226,7 @@ function CreateGameInner() {
                             {
                               value: 'ai',
                               label: 'Generate with AI',
-                              hint: 'Generate questions with your own Claude API key.',
+                              hint: 'Give a theme, get a ready-made set in seconds.',
                             },
                           ]}
                         />
