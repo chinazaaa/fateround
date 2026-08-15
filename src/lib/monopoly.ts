@@ -223,6 +223,69 @@ export function nextTurnIndex(board: MonopolyBoard, states: MonopolyPlayerState[
   return board.current_turn_index
 }
 
+/**
+ * True when `board.current_turn_index` points at a bankrupt player (or an
+ * unknown slot). Bankrupt players are still stored in `turn_order` — the engine
+ * advances past them, but every path that WRITES the turn index goes through
+ * `nextTurnIndex`, so a stale/mis-written index is the only way this becomes
+ * true. Callers use this as a "should I auto-advance before dispatching?"
+ * guard so a game can't stall on a bankrupt turn holder (whose UI is disabled
+ * and whose bot driver returns null).
+ */
+export function isTurnHolderBankrupt(board: MonopolyBoard, states: MonopolyPlayerState[]): boolean {
+  const order = board.turn_order ?? []
+  if (order.length === 0) return false
+  const playerId = order[board.current_turn_index % order.length]
+  if (!playerId) return true
+  const state = states.find((s) => s.player_id === playerId)
+  return !state || state.bankrupt === true
+}
+
+/**
+ * If `current_turn_index` is parked on a bankrupt player, advance it to the
+ * next non-bankrupt player and write the new phase/index to the board. Safe
+ * no-op when the current holder is alive or the game is finished. Returns
+ * `advanced: true` only when a write actually landed.
+ *
+ * Called from the bot tick and the turn-timer expiry so a game can never stall
+ * because current_turn_index somehow slipped onto a bankrupt slot.
+ */
+export async function advanceMonopolyTurnPastBankrupt(
+  supabase: SupabaseClient,
+  gameId: string
+): Promise<{ advanced: boolean }> {
+  const { data: boardRaw } = await supabase.from('monopoly_boards').select('*').eq('game_id', gameId).maybeSingle()
+  if (!boardRaw) return { advanced: false }
+  const board = boardRaw as MonopolyBoard
+  if (board.phase === 'finished') return { advanced: false }
+
+  const { data: statesRaw } = await supabase.from('monopoly_player_state').select('*').eq('game_id', gameId)
+  const states = (statesRaw ?? []) as MonopolyPlayerState[]
+  if (!isTurnHolderBankrupt(board, states)) return { advanced: false }
+
+  const winner = checkWinner(states)
+  if (winner) return { advanced: false }
+
+  const turnIndex = nextTurnIndex(board, states)
+  const nextPhase = phaseForTurn(board, states, turnIndex)
+  const settings = await getMonopolyGameSettings(supabase, gameId)
+
+  const wrote = await persistBoard(
+    supabase,
+    gameId,
+    {
+      current_turn_index: turnIndex,
+      phase: nextPhase,
+      consecutive_doubles: 0,
+      pending_debt: null,
+      pending_space: null,
+      turn_deadline_at: monopolyDeadlineForPhase(settings, nextPhase),
+    },
+    board.updated_at
+  )
+  return { advanced: wrote }
+}
+
 export function phaseForTurn(
   board: MonopolyBoard,
   states: MonopolyPlayerState[],
@@ -3082,6 +3145,17 @@ export async function processMonopolyExpireTurn(
 
   if (board.phase === 'finished') return { skipped: true }
   if (!board.turn_deadline_at || new Date(board.turn_deadline_at) > new Date()) {
+    return { skipped: true }
+  }
+
+  // Belt-and-braces: if current_turn_index somehow points at a bankrupt player
+  // (their UI is disabled and their bot driver returns null, so the game would
+  // stall here), advance the turn past them before dispatching. Normal engine
+  // paths write the turn index via nextTurnIndex which skips bankrupt players.
+  const { data: statesRaw } = await supabase.from('monopoly_player_state').select('*').eq('game_id', gameId)
+  const states = (statesRaw ?? []) as MonopolyPlayerState[]
+  if (isTurnHolderBankrupt(board, states)) {
+    await advanceMonopolyTurnPastBankrupt(supabase, gameId)
     return { skipped: true }
   }
 
