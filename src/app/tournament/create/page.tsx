@@ -1032,7 +1032,7 @@ export default function TournamentCreatePage() {
                     <p className="text-faint text-xs mt-1.5">
                       {draftGameType === 'two_truths'
                         ? 'Players type their two truths + a lie when they join the lobby — no upload needed. One round per player who submits.'
-                        : 'Players type one quote from a favourite character when they join the lobby — no upload needed. One round per submitted quote.'}
+                        : "Default is player-submit: each joiner writes a quote + four options (A–D) and marks the correct one. If you'd rather run a preset pack (platform or CSV), configure that below."}
                     </p>
                   )}
                 </Field>
@@ -1130,12 +1130,13 @@ export default function TournamentCreatePage() {
                 className="rounded-xl border border-theme px-4 py-3 text-sm text-body"
                 style={{ background: 'var(--surface-inset-bg)', borderLeft: '3px solid var(--primary)' }}
               >
-                <p className="font-semibold mb-1">Player-submitted games in your playlist</p>
+                <p className="font-semibold mb-1">Player-submitted content in your playlist</p>
                 <ul className="text-faint text-xs space-y-1">
                   {queue.some((e) => e.gameType === 'who_said_this') && (
                     <li>
-                      <span className="text-body">Who Said This:</span> players type one quote from a favourite
-                      character when they join the lobby. Everyone else guesses who said it. Nothing for you to upload.
+                      <span className="text-body">Who Said This:</span> default is player-submit — each joiner writes a
+                      quote + four options (A–D) and marks the correct answer. Everyone else guesses. If you&apos;d
+                      rather run a preset pack, use the Who Said This questions section below.
                     </li>
                   )}
                   {queue.some((e) => e.gameType === 'two_truths') && (
@@ -1154,8 +1155,9 @@ export default function TournamentCreatePage() {
             <div className="surface-inset p-4 space-y-3">
               <p className="label-caps">Trivia questions</p>
               <p className="text-faint text-xs">
-                Every Trivia round in your playlist shares this pack. Questions don&apos;t repeat between rounds — so a
-                pack of 30 works for one 30-question round or three 10-question rounds, not both.
+                Every Trivia game in your playlist draws from this pack, and questions don&apos;t repeat between games.
+                The <span className="text-body">Questions</span> field on each Trivia entry above decides how many are
+                pulled per game — so two Trivia games at 10 questions each need at least 20 in the pack.
               </p>
 
               <div className="flex gap-2">
@@ -1260,8 +1262,8 @@ export default function TournamentCreatePage() {
                   return (
                     <p className={`text-xs ${short ? 'text-amber-400' : 'text-faint'}`}>
                       Pack has {customTriviaPack.length} question{customTriviaPack.length === 1 ? '' : 's'}. Your Trivia
-                      rounds ask for {totalTriviaQuestions} across the playlist
-                      {short ? ' — add more questions or lower a round count, or a later round won’t start.' : '.'}
+                      games ask for {totalTriviaQuestions} across the playlist
+                      {short ? ' — add more questions or lower a Questions field, or a later game won’t start.' : '.'}
                     </p>
                   )
                 })()}
