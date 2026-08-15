@@ -60,6 +60,8 @@ export type CrazyEightsPlaySurfaceProps = {
   isMyTurn: boolean
   /** read-only spectator / out-of-cards viewer */
   watching?: boolean
+  /** hide the hand section entirely (e.g. game finished in solo practice) */
+  hideHand?: boolean
   acting: boolean
   drawCount: number
   drawDepleted: boolean
@@ -85,6 +87,7 @@ export function CrazyEightsPlaySurface({
   turnPlayerId,
   isMyTurn,
   watching,
+  hideHand,
   acting,
   drawCount,
   drawDepleted,
@@ -194,7 +197,7 @@ export function CrazyEightsPlaySurface({
       {/* Spectators see who's playing (names + card counts + whose turn) on the
           turn rail above the piles, so no separate standings list here. Who's-here
           + remove lives in the roster side-drawer (header people button). */}
-      {watching ? null : (
+      {watching || hideHand ? null : (
         <Hand
           count={myHand.length}
           many={many}

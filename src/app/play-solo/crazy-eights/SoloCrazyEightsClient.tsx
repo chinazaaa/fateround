@@ -230,6 +230,7 @@ export function SoloCrazyEightsClient() {
         onPlay={humanPlay}
         onDraw={humanDraw}
         onChooseSuit={humanChooseSuit}
+        hideHand={finished}
       />
 
       {finished && (

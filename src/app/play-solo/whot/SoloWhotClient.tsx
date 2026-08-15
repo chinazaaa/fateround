@@ -256,6 +256,7 @@ export function SoloWhotClient() {
         onDraw={humanDraw}
         onChooseShape={humanChooseShape}
         onChooseNumber={humanChooseNumber}
+        hideHand={finished}
       />
 
       {finished && (

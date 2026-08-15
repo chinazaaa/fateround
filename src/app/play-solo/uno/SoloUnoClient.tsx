@@ -235,6 +235,7 @@ export function SoloUnoClient() {
         multiPlayMode="off"
         onPlayMulti={NOOP}
         jumpInEnabled={false}
+        hideHand={finished}
       />
 
       {finished && (
