@@ -25,6 +25,8 @@ import {
 import { WST_DECK_MIN_ENTRIES, type WstDeckEntry } from '@/lib/who-said-this'
 import { WST_PLATFORM_DECK } from '@/lib/who-said-this-questions'
 import { AiQuestionsGenerator } from '@/components/ui/AiQuestionsGenerator'
+import { LibraryPackPicker } from '@/components/LibraryPackPicker'
+import { useLibraryPacks } from '@/hooks/useLibraryPacks'
 import {
   estimateGameSeconds,
   estimatePlaylistSeconds,
@@ -222,7 +224,7 @@ export default function TournamentCreatePage() {
   // Optional shared trivia pack for every planned Trivia round in this
   // tournament. Only surfaced when the playlist actually contains a Trivia
   // entry. Empty = platform bank (today's default).
-  const [triviaSource, setTriviaSource] = useState<'platform' | 'custom' | 'ai'>('platform')
+  const [triviaSource, setTriviaSource] = useState<'platform' | 'library' | 'custom' | 'ai'>('platform')
   const [customTriviaPack, setCustomTriviaPack] = useState<TriviaQuestion[]>([])
   const [triviaUploadMsg, setTriviaUploadMsg] = useState<string | null>(null)
   const triviaFileRef = useRef<HTMLInputElement>(null)
@@ -230,10 +232,16 @@ export default function TournamentCreatePage() {
   // the normal-game picker (Players submit / Platform / Your own). 'player'
   // stores nothing and each WST game runs in lobby-submit mode; 'platform'
   // sends the built-in famous-quotes deck; 'custom' sends the host's CSV.
-  const [wstSource, setWstSource] = useState<'player' | 'platform' | 'custom'>('player')
+  const [wstSource, setWstSource] = useState<'player' | 'platform' | 'library' | 'custom'>('player')
   const [customWstPack, setCustomWstPack] = useState<WstDeckEntry[]>([])
   const [wstUploadMsg, setWstUploadMsg] = useState<string | null>(null)
   const wstFileRef = useRef<HTMLInputElement>(null)
+  // Community library packs for Trivia + WST. Each hook only fetches while
+  // its source chip is active + the playlist actually contains an entry of
+  // that game type, so scrolling past the playlist without touching Library
+  // doesn't fire any network calls.
+  const triviaLibrary = useLibraryPacks('trivia', triviaSource === 'library')
+  const wstLibraryPacks = useLibraryPacks('who_said_this', wstSource === 'library')
   // Event branding — two colours + a logo file the host optionally attaches.
   // Logo is uploaded to storage AFTER the tournament row is created (needs an
   // id + host token to auth the upload), so we hold the picked File in memory
@@ -497,32 +505,44 @@ export default function TournamentCreatePage() {
       setError('Add at least one game to your playlist, or switch to “Decide as you go”')
       return
     }
+    // Trivia deck required for any non-platform source. Library mode
+    // additionally needs the host to have actually picked a pack (not just
+    // switched to the tab), which we detect by checking the resolved pack
+    // count.
+    const triviaLibraryPickedCount = triviaLibrary.questions.length
+    const triviaPackSize = triviaSource === 'library' ? triviaLibraryPickedCount : customTriviaPack.length
     if (
       isRoundRobin &&
       planned &&
       triviaSource !== 'platform' &&
       queue.some((e) => e.gameType === 'trivia') &&
-      customTriviaPack.length === 0
+      triviaPackSize === 0
     ) {
       setError(
         triviaSource === 'custom'
           ? 'Upload a trivia CSV or switch back to the platform pack'
-          : 'Generate some trivia questions or switch back to the platform pack'
+          : triviaSource === 'library'
+            ? 'Pick a library pack or switch back to the platform pack'
+            : 'Generate some trivia questions or switch back to the platform pack'
       )
       return
     }
-    // WST deck mode ('custom') needs at least the two-entry minimum the
-    // engine enforces; player-submit + platform paths ship their content
+    // WST deck mode needs at least the two-entry minimum the engine enforces
+    // (custom + library both). Player-submit + platform ship their content
     // implicitly (empty pack or the built-in deck), no guard needed.
+    const wstLibraryPickedCount = wstLibraryPacks.questions.length
+    const wstPackSize = wstSource === 'library' ? wstLibraryPickedCount : customWstPack.length
     if (
       isRoundRobin &&
       planned &&
-      wstSource === 'custom' &&
+      (wstSource === 'custom' || wstSource === 'library') &&
       queue.some((e) => e.gameType === 'who_said_this') &&
-      customWstPack.length < WST_DECK_MIN_ENTRIES
+      wstPackSize < WST_DECK_MIN_ENTRIES
     ) {
       setError(
-        `Upload at least ${WST_DECK_MIN_ENTRIES} Who Said This quotes, or switch back to Players submit / Platform`
+        wstSource === 'custom'
+          ? `Upload at least ${WST_DECK_MIN_ENTRIES} Who Said This quotes, or switch back to Players submit / Platform`
+          : `Pick a library pack with at least ${WST_DECK_MIN_ENTRIES} quotes, or switch back to Players submit / Platform`
       )
       return
     }
@@ -597,23 +617,22 @@ export default function TournamentCreatePage() {
         if (planned && queue.length > 0) {
           body.gameQueue = queue
         }
-        // Shared trivia pack (CSV or AI): attach it only if the host picked a
-        // non-platform source AND the playlist actually contains any trivia.
-        if (
-          planned &&
-          triviaSource !== 'platform' &&
-          queue.some((e) => e.gameType === 'trivia') &&
-          customTriviaPack.length > 0
-        ) {
-          body.customTriviaPack = customTriviaPack
+        // Shared trivia pack: attached when any non-platform source is picked
+        // AND the playlist actually contains a Trivia entry. Library source
+        // uses the selected pack's fetched questions; the other two use the
+        // shared customTriviaPack (upload / AI both write into it).
+        if (planned && triviaSource !== 'platform' && queue.some((e) => e.gameType === 'trivia')) {
+          const pack = triviaSource === 'library' ? (triviaLibrary.questions as TriviaQuestion[]) : customTriviaPack
+          if (pack.length > 0) body.customTriviaPack = pack
         }
-        // Shared WST deck: attach the built-in famous-quotes deck when the
-        // host picked "Platform", or their uploaded pack when they picked
-        // "Your own". Sending nothing keeps every WST game in player-submit
-        // mode (the server default).
+        // Shared WST deck: same shape. Platform → built-in famous-quotes,
+        // Library → selected library pack's fetched questions, Your own →
+        // uploaded CSV. Player-submit sends nothing (server default).
         if (planned && queue.some((e) => e.gameType === 'who_said_this')) {
           if (wstSource === 'platform') {
             body.customWstPack = WST_PLATFORM_DECK
+          } else if (wstSource === 'library' && wstLibraryPacks.questions.length > 0) {
+            body.customWstPack = wstLibraryPacks.questions
           } else if (wstSource === 'custom' && customWstPack.length > 0) {
             body.customWstPack = customWstPack
           }
@@ -1250,7 +1269,7 @@ export default function TournamentCreatePage() {
                 pulled per game — so two Trivia games at 10 questions each need at least 20 in the pack.
               </p>
 
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap">
                 <button
                   type="button"
                   aria-pressed={triviaSource === 'platform'}
@@ -1258,6 +1277,14 @@ export default function TournamentCreatePage() {
                   className={`chip flex-1 ${triviaSource === 'platform' ? 'chip-active' : ''}`}
                 >
                   Platform pack
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={triviaSource === 'library'}
+                  onClick={() => setTriviaSource('library')}
+                  className={`chip flex-1 ${triviaSource === 'library' ? 'chip-active' : ''}`}
+                >
+                  Library
                 </button>
                 <button
                   type="button"
@@ -1276,6 +1303,17 @@ export default function TournamentCreatePage() {
                   Generate with AI
                 </button>
               </div>
+
+              {triviaSource === 'library' && (
+                <LibraryPackPicker
+                  loading={triviaLibrary.loading}
+                  packs={triviaLibrary.packs}
+                  search={triviaLibrary.search}
+                  onSearchChange={triviaLibrary.setSearch}
+                  selectedPackId={triviaLibrary.selectedPackId}
+                  onSelect={triviaLibrary.selectPack}
+                />
+              )}
 
               {triviaSource === 'custom' && (
                 <div className="space-y-3">
@@ -1343,16 +1381,17 @@ export default function TournamentCreatePage() {
               )}
 
               {triviaSource !== 'platform' &&
-                customTriviaPack.length > 0 &&
                 (() => {
+                  const packSize = triviaSource === 'library' ? triviaLibrary.questions.length : customTriviaPack.length
+                  if (packSize === 0) return null
                   const totalTriviaQuestions = queue
                     .filter((e) => e.gameType === 'trivia')
                     .reduce((sum, e) => sum + (e.roundsCount ?? 10), 0)
-                  const short = customTriviaPack.length < totalTriviaQuestions
+                  const short = packSize < totalTriviaQuestions
                   return (
                     <p className={`text-xs ${short ? 'text-amber-400' : 'text-faint'}`}>
-                      Pack has {customTriviaPack.length} question{customTriviaPack.length === 1 ? '' : 's'}. Your Trivia
-                      games ask for {totalTriviaQuestions} across the playlist
+                      Pack has {packSize} question{packSize === 1 ? '' : 's'}. Your Trivia games ask for{' '}
+                      {totalTriviaQuestions} across the playlist
                       {short ? ' — add more questions or lower a Questions field, or a later game won’t start.' : '.'}
                     </p>
                   )
@@ -1394,6 +1433,15 @@ export default function TournamentCreatePage() {
                 </button>
                 <button
                   type="button"
+                  aria-pressed={wstSource === 'library'}
+                  onClick={() => setWstSource('library')}
+                  className={`chip flex-1 ${wstSource === 'library' ? 'chip-active' : ''}`}
+                  title="Pick a community quote pack"
+                >
+                  Library
+                </button>
+                <button
+                  type="button"
                   aria-pressed={wstSource === 'custom'}
                   onClick={() => setWstSource('custom')}
                   className={`chip flex-1 ${wstSource === 'custom' ? 'chip-active' : ''}`}
@@ -1402,6 +1450,18 @@ export default function TournamentCreatePage() {
                   Your own (CSV)
                 </button>
               </div>
+
+              {wstSource === 'library' && (
+                <LibraryPackPicker
+                  loading={wstLibraryPacks.loading}
+                  packs={wstLibraryPacks.packs}
+                  search={wstLibraryPacks.search}
+                  onSearchChange={wstLibraryPacks.setSearch}
+                  selectedPackId={wstLibraryPacks.selectedPackId}
+                  onSelect={wstLibraryPacks.selectPack}
+                  noun="quotes"
+                />
+              )}
 
               {wstSource === 'player' && (
                 <p className="text-faint text-xs">

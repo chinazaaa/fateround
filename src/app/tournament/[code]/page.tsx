@@ -13,9 +13,17 @@ import { gameTypeLabel } from '@/lib/game-types'
 import {
   parseTriviaQuestionImport,
   parseExcelTriviaQuestionImport,
+  parseWstDeckImport,
+  parseExcelWstDeckImport,
+  formatEntryImportSummary,
   formatTriviaImportSummary,
   questionSampleFile,
 } from '@/lib/custom-questions'
+import { WST_DECK_MIN_ENTRIES, type WstDeckEntry } from '@/lib/who-said-this'
+import { WST_PLATFORM_DECK } from '@/lib/who-said-this-questions'
+import { AiQuestionsGenerator } from '@/components/ui/AiQuestionsGenerator'
+import { LibraryPackPicker } from '@/components/LibraryPackPicker'
+import { useLibraryPacks } from '@/hooks/useLibraryPacks'
 import { PageShell, Field, PrimaryBtn } from '@/components/ui/PageShell'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { useToast } from '@/components/ui/Toast'
@@ -116,7 +124,7 @@ export default function TournamentLobbyPage() {
   const [h2hTimer] = useState('600')
   const [actionLoading, setActionLoading] = useState(false)
 
-  const [questionSource, setQuestionSource] = useState<'platform' | 'custom'>('platform')
+  const [questionSource, setQuestionSource] = useState<'platform' | 'custom' | 'ai' | 'library'>('platform')
   const [customTrivia, setCustomTrivia] = useState<TriviaQuestion[]>([])
   // Size of the custom pack carried over from an earlier game (null if none). Lets the
   // lobby show the pack is still loaded after a reload/new tab, where local upload state
@@ -126,6 +134,22 @@ export default function TournamentLobbyPage() {
   const [copied, setCopied] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const forwardedGameRef = useRef<string | null>(null)
+
+  // Freestyle Who Said This source picker. Mirrors the normal-game WST create
+  // flow: 'player' → each joiner writes a quote in the lobby, 'platform' →
+  // ship the built-in famous-quotes deck, 'custom' → CSV the host uploads on
+  // this Start, 'library' → a community pack picked from the library. No
+  // 'ai' option — the AI backend doesn't support WST yet.
+  const [wstSource, setWstSource] = useState<'player' | 'platform' | 'custom' | 'library'>('player')
+  const [customWst, setCustomWst] = useState<WstDeckEntry[]>([])
+  const [wstUploadMsg, setWstUploadMsg] = useState<string | null>(null)
+  const wstFileRef = useRef<HTMLInputElement>(null)
+
+  // Library packs for freestyle Trivia + WST. Each hook only fetches while
+  // the matching source chip is active, so switching to "Library" is what
+  // triggers the initial list load.
+  const triviaLibrary = useLibraryPacks('trivia', selectedGameType === 'trivia' && questionSource === 'library')
+  const wstLibrary = useLibraryPacks('who_said_this', selectedGameType === 'who_said_this' && wstSource === 'library')
 
   // Host edit-settings panel
   const [showEdit, setShowEdit] = useState(false)
@@ -589,6 +613,58 @@ export default function TournamentLobbyPage() {
     if (fileRef.current) fileRef.current.value = ''
   }
 
+  // Mirrors handleFile for the WST deck upload. Same parser family; same
+  // shape of "clear-first-then-parse" so a failed replacement can't leave a
+  // stale pack that gets sent on Start.
+  async function handleWstFile(file: File) {
+    setWstUploadMsg(null)
+    setCustomWst([])
+    const ext = file.name.split('.').pop()?.toLowerCase()
+    try {
+      if (ext === 'csv' || ext === 'txt') {
+        const text = await file.text()
+        const result = parseWstDeckImport(text)
+        if (result.questions.length === 0) {
+          setWstUploadMsg('No valid rows. Use quote, option_a–option_d, and correct (A–D) columns.')
+          return
+        }
+        setCustomWst(result.questions)
+        setWstUploadMsg(formatEntryImportSummary(result) ?? `${result.questions.length} quotes ready`)
+      } else if (ext === 'xlsx' || ext === 'xls') {
+        const buffer = await file.arrayBuffer()
+        const result = await parseExcelWstDeckImport(buffer)
+        if (result.questions.length === 0) {
+          setWstUploadMsg('No valid rows. Use quote, option_a–option_d, and correct (A–D) columns.')
+          return
+        }
+        setCustomWst(result.questions)
+        setWstUploadMsg(formatEntryImportSummary(result) ?? `${result.questions.length} quotes ready`)
+      } else {
+        setWstUploadMsg('Please upload a .csv or .xlsx file')
+      }
+    } catch {
+      setWstUploadMsg('Could not read that file. Try the sample CSV.')
+    }
+  }
+
+  function clearCustomWst() {
+    setCustomWst([])
+    setWstUploadMsg(null)
+    if (wstFileRef.current) wstFileRef.current.value = ''
+  }
+
+  // Resolve the effective WST deck to ship on Start based on the picked
+  // source. `player` sends nothing (server spawns lobby-collect mode);
+  // `platform` ships the built-in famous-quotes pack; `custom` ships the
+  // uploaded CSV; `library` ships the currently-selected library pack's
+  // questions. Empty arrays fall through to player-submit server-side.
+  function resolveWstDeckToSend(): unknown[] | null {
+    if (wstSource === 'platform') return WST_PLATFORM_DECK
+    if (wstSource === 'custom') return customWst.length > 0 ? customWst : null
+    if (wstSource === 'library') return wstLibrary.questions.length > 0 ? wstLibrary.questions : null
+    return null
+  }
+
   async function handleStartGame() {
     if (!hostToken) return
     setActionLoading(true)
@@ -599,7 +675,25 @@ export default function TournamentLobbyPage() {
     // stale state can't accidentally override anything.
     const useQueue = Boolean(plannedNext)
     const effectiveGameType = useQueue ? plannedNext!.gameType : selectedGameType
-    const useCustom = !useQueue && selectedGameType === 'trivia' && questionSource === 'custom'
+
+    // Trivia: anything that isn't 'platform' ships as custom_questions —
+    // upload / AI / library all end up in the same customQuestions payload
+    // the server treats as "custom" question source.
+    const triviaFreestylePack: unknown[] | null =
+      !useQueue && selectedGameType === 'trivia' && questionSource !== 'platform'
+        ? questionSource === 'custom'
+          ? customTrivia.length > 0
+            ? customTrivia
+            : null
+          : questionSource === 'library'
+            ? triviaLibrary.questions.length > 0
+              ? triviaLibrary.questions
+              : null
+            : /* ai */ customTrivia.length > 0
+              ? customTrivia
+              : null
+        : null
+    const wstFreestylePack = !useQueue && selectedGameType === 'who_said_this' ? resolveWstDeckToSend() : null
 
     try {
       const res = await fetch(`/api/tournaments/${tournamentId}/games`, {
@@ -617,8 +711,11 @@ export default function TournamentLobbyPage() {
                 rounds_count: parseInt(roundsCount, 10) || 10,
                 timer_seconds: parseInt(timerSeconds, 10) || 30,
               },
-          questionSource: useCustom ? 'custom' : 'platform',
-          customQuestions: useCustom ? customTrivia : null,
+          questionSource: triviaFreestylePack ? 'custom' : 'platform',
+          // Either the trivia pack OR the WST deck rides the shared
+          // `customQuestions` slot — the server routes it by gameType
+          // (trivia → question_source='custom', WST → wst_quote_source='deck').
+          customQuestions: triviaFreestylePack ?? wstFreestylePack ?? null,
           // Freestyle mode picks its own big-screen mode; planned mode
           // reads it off the queue entry (server ignores what we send).
           bigScreenMode: useQueue ? undefined : selectedBigScreenMode,
@@ -2657,10 +2754,14 @@ export default function TournamentLobbyPage() {
               </p>
             </Field>
 
-            {/* Trivia question source */}
+            {/* Trivia question source — matches the normal-game create page's
+                four modes (Platform / Library / Your own / AI). Any non-platform
+                pick funnels into `customTrivia` (or `triviaLibrary.questions`
+                for the library case) and rides the shared customQuestions slot
+                on Start. */}
             {selectedGameType === 'trivia' && (
               <Field label="Questions">
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap">
                   <button
                     type="button"
                     aria-pressed={questionSource === 'platform'}
@@ -2671,11 +2772,27 @@ export default function TournamentLobbyPage() {
                   </button>
                   <button
                     type="button"
+                    aria-pressed={questionSource === 'library'}
+                    onClick={() => setQuestionSource('library')}
+                    className={`chip flex-1 ${questionSource === 'library' ? 'chip-active' : ''}`}
+                  >
+                    Library
+                  </button>
+                  <button
+                    type="button"
                     aria-pressed={questionSource === 'custom'}
                     onClick={() => setQuestionSource('custom')}
                     className={`chip flex-1 ${questionSource === 'custom' ? 'chip-active' : ''}`}
                   >
                     Upload CSV
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={questionSource === 'ai'}
+                    onClick={() => setQuestionSource('ai')}
+                    className={`chip flex-1 ${questionSource === 'ai' ? 'chip-active' : ''}`}
+                  >
+                    Generate with AI
                   </button>
                 </div>
 
@@ -2735,6 +2852,154 @@ export default function TournamentLobbyPage() {
                       </div>
                     )}
                     {uploadMsg && <p className="text-faint text-xs">{uploadMsg}</p>}
+                  </div>
+                )}
+
+                {questionSource === 'ai' && (
+                  <div className="mt-3">
+                    <AiQuestionsGenerator
+                      gameType="trivia"
+                      triviaCategory="general"
+                      defaultCount={20}
+                      maxCount={50}
+                      onGenerated={(questions) => setCustomTrivia(questions as TriviaQuestion[])}
+                    />
+                    {customTrivia.length > 0 && (
+                      <p className="text-faint text-xs mt-2">
+                        ✓ {customTrivia.length} question{customTrivia.length === 1 ? '' : 's'} generated and ready.
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {questionSource === 'library' && (
+                  <div className="mt-3">
+                    <LibraryPackPicker
+                      loading={triviaLibrary.loading}
+                      packs={triviaLibrary.packs}
+                      search={triviaLibrary.search}
+                      onSearchChange={triviaLibrary.setSearch}
+                      selectedPackId={triviaLibrary.selectedPackId}
+                      onSelect={triviaLibrary.selectPack}
+                    />
+                  </div>
+                )}
+              </Field>
+            )}
+
+            {/* Who Said This source picker — mirrors the normal-game shape:
+                Players submit (lobby-collect), Platform (built-in famous
+                quotes), Library (community pack), Your own (CSV upload).
+                AI generation isn't available for WST yet (the AI backend
+                doesn't support the deck shape), so no AI chip here. */}
+            {selectedGameType === 'who_said_this' && (
+              <Field label="Quotes">
+                <div className="flex gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    aria-pressed={wstSource === 'player'}
+                    onClick={() => setWstSource('player')}
+                    className={`chip flex-1 ${wstSource === 'player' ? 'chip-active' : ''}`}
+                    title="Each joiner writes a quote + four options in the lobby"
+                  >
+                    Players submit
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={wstSource === 'platform'}
+                    onClick={() => setWstSource('platform')}
+                    className={`chip flex-1 ${wstSource === 'platform' ? 'chip-active' : ''}`}
+                    title="Our built-in pack of famous quotes"
+                  >
+                    Platform pack
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={wstSource === 'library'}
+                    onClick={() => setWstSource('library')}
+                    className={`chip flex-1 ${wstSource === 'library' ? 'chip-active' : ''}`}
+                    title="Pick a community quote pack"
+                  >
+                    Library
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={wstSource === 'custom'}
+                    onClick={() => setWstSource('custom')}
+                    className={`chip flex-1 ${wstSource === 'custom' ? 'chip-active' : ''}`}
+                    title="Upload a CSV of quotes, options, and answers"
+                  >
+                    Your own (CSV)
+                  </button>
+                </div>
+
+                {wstSource === 'player' && (
+                  <p className="text-faint text-xs mt-2">
+                    Each joiner writes one quote + four options (A–D) and marks the correct answer when they land in the
+                    lobby.
+                  </p>
+                )}
+
+                {wstSource === 'platform' && (
+                  <p className="text-faint text-xs mt-2">
+                    Uses our built-in pack of {WST_PLATFORM_DECK.length} famous quotes — players just join and answer,
+                    fastest correct wins.
+                  </p>
+                )}
+
+                {wstSource === 'custom' && (
+                  <div className="surface-inset p-4 mt-3 space-y-3">
+                    <input
+                      ref={wstFileRef}
+                      type="file"
+                      accept=".csv,.xlsx,.xls"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0]
+                        if (f) handleWstFile(f)
+                      }}
+                      className="hidden"
+                    />
+                    {customWst.length === 0 ? (
+                      <div className="space-y-2">
+                        <button
+                          type="button"
+                          onClick={() => wstFileRef.current?.click()}
+                          className="btn-secondary w-full"
+                        >
+                          Choose CSV or Excel file
+                        </button>
+                        <p className="text-faint text-xs">
+                          Columns:{' '}
+                          <span className="font-mono">quote, option_a, option_b, option_c, option_d, correct</span>. The{' '}
+                          <span className="font-mono">correct</span> column is the answer letter (A–D). At least{' '}
+                          {WST_DECK_MIN_ENTRIES} quotes required.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-sm text-body font-medium">
+                          ✓ {customWst.length} quote{customWst.length === 1 ? '' : 's'} loaded
+                        </p>
+                        <button type="button" onClick={clearCustomWst} className="btn-ghost text-xs">
+                          Clear
+                        </button>
+                      </div>
+                    )}
+                    {wstUploadMsg && <p className="text-faint text-xs">{wstUploadMsg}</p>}
+                  </div>
+                )}
+
+                {wstSource === 'library' && (
+                  <div className="mt-3">
+                    <LibraryPackPicker
+                      loading={wstLibrary.loading}
+                      packs={wstLibrary.packs}
+                      search={wstLibrary.search}
+                      onSearchChange={wstLibrary.setSearch}
+                      selectedPackId={wstLibrary.selectedPackId}
+                      onSelect={wstLibrary.selectPack}
+                      noun="quotes"
+                    />
                   </div>
                 )}
               </Field>
