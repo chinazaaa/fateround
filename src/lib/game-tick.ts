@@ -34,6 +34,15 @@ const ROUND_ADVANCE_SLUG: Record<string, string> = {
   landmine: 'landmine',
 }
 
+/**
+ * game_type → URL slug for the `/api/<slug>/bot-tick` endpoints. Present only
+ * for games where a bot-in-room driver has been shipped. Bots-in-room Phase 1
+ * covered Whot only; add entries here as other games' drivers land.
+ */
+const BOT_TICK_SLUG: Record<string, string> = {
+  whot: 'whot',
+}
+
 /** game_type → URL slug for the turn-based `/api/<slug>/expire-turn` endpoints. */
 const TURN_EXPIRE_SLUG: Record<string, string> = {
   whot: 'whot',
@@ -108,19 +117,43 @@ export async function tickActiveGames(): Promise<void> {
 
     const base = selfBaseUrl()
     await Promise.all(
-      games.map(async (g) => {
+      games.flatMap((g) => {
         const target = pokeTargetFor(g.game_type, g.id)
-        if (!target) return
-        try {
-          await fetch(base + target.path, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(target.body),
-          })
-        } catch {
-          // Swallow — fire-and-forget. A network blip / non-2xx (e.g. "not due yet")
-          // is expected and self-heals on the next tick.
+        // For each active game we may run TWO fire-and-forget pokes: the
+        // regular timer poke (advance/expire-turn), and — for game types
+        // that support bots-in-room — the bot driver poke. Both are
+        // idempotent + self-gating on the receiving side, so a bot-free
+        // Whot game just no-ops the second poke.
+        const pokes: Promise<unknown>[] = []
+        if (target) {
+          pokes.push(
+            fetch(base + target.path, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(target.body),
+            }).catch(() => {
+              // Swallow — a network blip / non-2xx (e.g. "not due yet") is
+              // expected and self-heals on the next tick.
+            })
+          )
         }
+        // Bot driver — only games with an implemented driver route. Kept as a
+        // separate route (not imported directly here) so game-tick stays free
+        // of web-push and other Node-only deps that would break the edge
+        // compile of src/instrumentation.ts. See PR #878 post-mortem.
+        if (BOT_TICK_SLUG[g.game_type]) {
+          pokes.push(
+            fetch(`${base}/api/${BOT_TICK_SLUG[g.game_type]}/bot-tick`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ gameId: g.id }),
+            }).catch(() => {
+              // Same as above — the route is idempotent and self-gates on
+              // "does this game have any bots + is it the bot's turn".
+            })
+          )
+        }
+        return pokes
       })
     )
   } catch {
