@@ -276,6 +276,14 @@ function WaitingRoom({
                   · {presentPlayerCount} here now
                 </span>
               )}
+              {/* Ready count — scheduled events only. Same reasoning as the
+                  host lobby: right-now tournaments don't have the pre-
+                  registered-vs-here gap to close. */}
+              {tournament.scheduled_at && (
+                <span className="ml-3" style={{ color: 'var(--primary)', fontWeight: 700 }}>
+                  · {players.filter((p) => p.is_ready).length}/{players.length} ready
+                </span>
+              )}
             </p>
           </div>
           {players.length === 0 ? (
@@ -310,7 +318,20 @@ function WaitingRoom({
                         boxShadow: isHere ? '0 0 8px var(--primary)' : undefined,
                       }}
                     />
-                    <span className="truncate">{p.player_name}</span>
+                    <span className="truncate flex-1">{p.player_name}</span>
+                    {/* Ready pill — scheduled events only. Renders "✓" for
+                        confirmed-present, nothing when it doesn't apply.
+                        Kept compact so long names still fit next to it. */}
+                    {tournament.scheduled_at && p.is_ready && (
+                      <span
+                        aria-label="Marked ready"
+                        title="This player tapped I'm ready"
+                        className="text-lg font-black shrink-0"
+                        style={{ color: 'var(--primary)' }}
+                      >
+                        ✓
+                      </span>
+                    )}
                   </div>
                 )
               })}

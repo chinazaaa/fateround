@@ -106,6 +106,10 @@ export interface TournamentPlayer {
   // School format: 0-based index of the class this player is currently in
   // (0 = the lowest class). Reaching the tournament's schoolClassCount = graduated.
   school_level?: number
+  // Scheduled-event Ready flag — sticky per player, opt-in via the player's
+  // "I'm ready" button. Defaults false. Only meaningful when the tournament
+  // has a scheduled_at; a right-now tournament shouldn't gate on it.
+  is_ready?: boolean
 }
 
 export interface TournamentGame {
