@@ -162,6 +162,8 @@ import { PuzzleUpload } from '@/components/create/PuzzleUpload'
 import { PageShell, BackBtn, Field, Chip, Toggle, PrimaryBtn, CustomSelect } from '@/components/ui/PageShell'
 import { StepIndicator, SettingsGroup, StickyActionBar, SegmentedControl, ChipGrid } from '@/components/ui/CreateWizard'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
+import Link from 'next/link'
+import { soloPlaySlug } from '@/lib/solo-play'
 import { LateJoinPolicyToggle, LateJoinField } from '@/components/AllowViewersToggle'
 import {
   gameSupportsViewerSetting,
@@ -333,6 +335,19 @@ import { TRIVIA_QUESTION_COUNT } from '@/lib/trivia-questions'
 import { useToast } from '@/components/ui/Toast'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { ELIMINATION_COMPATIBLE_TYPES } from '@/types/elimination'
+
+function SoloPracticeCta({ gameType }: { gameType: GameType }) {
+  const slug = soloPlaySlug(gameType)
+  if (!slug) return null
+  return (
+    <p className="text-sm">
+      Want to play solo?{' '}
+      <Link href={`/play-solo/${slug}`} className="font-semibold no-underline" style={{ color: 'var(--accent)' }}>
+        Practice against the bot →
+      </Link>
+    </p>
+  )
+}
 
 function CreateGameInner() {
   const router = useRouter()
@@ -3512,6 +3527,7 @@ function CreateGameInner() {
               </SettingsGroup>
             ) : isWhot ? (
               <SettingsGroup title="Whot room">
+                <SoloPracticeCta gameType="whot" />
                 <Field label={`Max players (${effectiveLimits.whot.min}–${effectiveLimits.whot.max})`}>
                   <CustomSelect
                     value={whotMaxPlayers}
@@ -3583,6 +3599,7 @@ function CreateGameInner() {
               </SettingsGroup>
             ) : isCrazy8 ? (
               <SettingsGroup title="Crazy Eights room">
+                <SoloPracticeCta gameType="crazy_eights" />
                 <Field label={`Max players (${effectiveLimits.crazy_eights.min}–${effectiveLimits.crazy_eights.max})`}>
                   <CustomSelect
                     value={crazy8MaxPlayers}
@@ -3649,6 +3666,7 @@ function CreateGameInner() {
               </SettingsGroup>
             ) : isUno ? (
               <SettingsGroup title="UNO room">
+                <SoloPracticeCta gameType="uno" />
                 <Field label="Mode">
                   <CustomSelect
                     value={unoMode}
@@ -4133,6 +4151,7 @@ function CreateGameInner() {
               </SettingsGroup>
             ) : isAyo ? (
               <SettingsGroup title="Ayo room">
+                <SoloPracticeCta gameType="ayo" />
                 <p className="text-faint text-sm">Exactly 2 players — the host can join as one of them.</p>
                 <Field label="Time per player">
                   <CustomSelect

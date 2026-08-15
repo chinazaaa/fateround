@@ -18,6 +18,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AyoGamePanel } from '@/components/ayo/AyoBoard'
 import { AYO_SOLO_BOT_ID, AYO_SOLO_HUMAN_ID, initAyoSolo, ayoSoloMove, type AyoSoloState } from '@/lib/ayo-solo'
 import { pickAyoBotMove, type AyoBotDifficulty } from '@/lib/ayo-bot'
+import { logSoloPlayStarted } from '@/lib/solo-play'
+import { readSoloScoreboard, recordSoloOutcome, resetSoloScoreboard, type SoloScoreboard } from '@/lib/solo-scoreboard'
+import { SoloScoreboardRow } from '@/components/solo/SoloScoreboardRow'
 import type { Player } from '@/types'
 
 const STORAGE_KEY = 'solo-ayo-state-v1'
@@ -67,14 +70,29 @@ export function SoloAyoClient() {
   // real deck is dealt in useEffect after mount.
   const [state, setState] = useState<AyoSoloState | null>(null)
   const [difficulty, setDifficulty] = useState<AyoBotDifficulty>('normal')
+  const [scoreboard, setScoreboard] = useState<SoloScoreboard>({ human: 0, bot: 0, draws: 0 })
   const stateRef = useRef<AyoSoloState | null>(null)
   stateRef.current = state
+  const scoredRef = useRef(false)
 
   useEffect(() => {
     const persisted = loadPersistedState()
-    setDifficulty(loadDifficulty())
+    const d = loadDifficulty()
+    setDifficulty(d)
     setState(persisted ?? initAyoSolo())
+    setScoreboard(readSoloScoreboard('ayo'))
+    if (persisted && persisted.outcome != null) scoredRef.current = true
+    // Only log on fresh init (not mid-game reloads) so counts aren't inflated.
+    if (!persisted) logSoloPlayStarted('ayo', d)
   }, [])
+
+  useEffect(() => {
+    if (!state || state.outcome == null || scoredRef.current) return
+    const outcome: 'human' | 'bot' | 'draw' =
+      state.outcome === 'a' ? 'human' : state.outcome === 'draw' ? 'draw' : 'bot'
+    setScoreboard(recordSoloOutcome('ayo', outcome))
+    scoredRef.current = true
+  }, [state])
 
   useEffect(() => {
     if (state) persistState(state)
@@ -116,6 +134,12 @@ export function SoloAyoClient() {
   const restart = useCallback(() => {
     clearPersistedState()
     setState(initAyoSolo())
+    scoredRef.current = false
+    logSoloPlayStarted('ayo', difficulty)
+  }, [difficulty])
+
+  const resetScore = useCallback(() => {
+    setScoreboard(resetSoloScoreboard('ayo'))
   }, [])
 
   // Player objects shaped for AyoGamePanel.
@@ -185,6 +209,7 @@ export function SoloAyoClient() {
             {humanWon && <span aria-hidden> 🎉</span>}
           </p>
           <p className="text-muted mt-1 text-sm">Practice mode — no ranking, just for fun.</p>
+          <SoloScoreboardRow scoreboard={scoreboard} onReset={resetScore} />
           <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-center">
             <button type="button" onClick={restart} className="btn-primary">
               Play again

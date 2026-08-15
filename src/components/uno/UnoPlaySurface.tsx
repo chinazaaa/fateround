@@ -94,6 +94,8 @@ export type UnoPlaySurfaceProps = {
   isMyTurn: boolean
   /** read-only spectator / out-of-cards viewer */
   watching?: boolean
+  /** hide the hand section entirely (e.g. game finished in solo practice) */
+  hideHand?: boolean
   acting: boolean
   drawCount: number
   drawDepleted: boolean
@@ -154,6 +156,7 @@ export function UnoPlaySurface({
   turnPlayerId,
   isMyTurn,
   watching,
+  hideHand,
   acting,
   drawCount,
   drawDepleted,
@@ -595,7 +598,7 @@ export function UnoPlaySurface({
           )
         })()}
 
-      {watching ? null : (
+      {watching || hideHand ? null : (
         <Hand
           count={myHand.length}
           many={many}

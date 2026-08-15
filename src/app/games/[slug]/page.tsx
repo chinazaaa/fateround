@@ -198,29 +198,28 @@ export default async function GameLandingRoute({ params }: Props) {
                   </Link>
                 </div>
 
-                <p className="text-[12.5px]">
-                  {/* Solo practice CTA. Sits inline with "Read game rules" as a
-                      quiet third option — the primary funnel is still "Play
-                      free" (host a real room) and "Join with code". Rendered
-                      only for games registered in solo-play.ts. */}
+                {/* Solo practice + game rules — quieter third/fourth CTAs below
+                    the primary "Play free" / "Join with code" pair. Underlined
+                    and each on its own line so it's obvious they're two
+                    separate links, not one run-on button. */}
+                <div className="flex flex-col items-center gap-1.5 text-[13px]">
                   {soloPlaySlug(content.gameType) ? (
-                    <>
-                      <Link
-                        href={`/play-solo/${soloPlaySlug(content.gameType)}`}
-                        className="font-semibold no-underline"
-                        style={{ color: 'var(--accent)' }}
-                      >
-                        Practice against the bot →
-                      </Link>
-                      <span aria-hidden style={{ color: 'var(--text-faint)' }}>
-                        {' · '}
-                      </span>
-                    </>
+                    <Link
+                      href={`/play-solo/${soloPlaySlug(content.gameType)}`}
+                      className="font-semibold underline underline-offset-4"
+                      style={{ color: 'var(--accent)' }}
+                    >
+                      Practice against the bot →
+                    </Link>
                   ) : null}
-                  <a href="#rules" className="font-semibold no-underline" style={{ color: 'var(--accent)' }}>
+                  <a
+                    href="#rules"
+                    className="font-semibold underline underline-offset-4"
+                    style={{ color: 'var(--accent)' }}
+                  >
                     Read game rules ↓
                   </a>
-                </p>
+                </div>
               </div>
 
               {dailyLinks && dailyLinks.length > 0 && (
