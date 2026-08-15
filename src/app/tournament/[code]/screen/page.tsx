@@ -235,9 +235,10 @@ function WaitingRoom({
           <div className="rounded-3xl bg-white p-8 shadow-2xl">
             <GameLinkQrCode url={inviteUrl} size={420} />
           </div>
-          <p className="text-2xl text-white/60">
-            Or open <span className="text-white font-semibold">fateround.com</span> and enter code{' '}
-            <span className="text-white font-mono font-bold">{tournament.id}</span>
+          <p className="text-xl text-white/60 text-center leading-relaxed break-all">
+            Or type this link in a browser:
+            <br />
+            <span className="text-white font-mono font-semibold text-2xl">{inviteUrl.replace(/^https?:\/\//, '')}</span>
           </p>
         </div>
 
