@@ -153,19 +153,41 @@ function starterSpecials(rules: WhotRules): Set<number> {
   return specials
 }
 
-export function buildWhotDeck(rules: WhotRules = parseWhotRules(null)): WhotCard[] {
+/** Player-count threshold at which we deal from two combined Nigerian Whot
+ *  decks (~108 cards) instead of one (~54). Below this we use the standard
+ *  single deck; at or above it we double up so bigger rooms don't run through
+ *  the draw pile in a couple of turns. */
+export const WHOT_DOUBLE_DECK_MIN_PLAYERS = 4
+
+/** How many combined Whot decks to shuffle together for a room of this size. */
+export function whotDeckCount(playerCount: number): number {
+  return playerCount >= WHOT_DOUBLE_DECK_MIN_PLAYERS ? 2 : 1
+}
+
+/** Build one layer of a Whot deck. The empty `suffix` preserves the historical
+ *  `${shape}-${number}` card ids so in-flight games and existing fixtures stay
+ *  valid; a second layer passes e.g. `-d1` for uniqueness. */
+function buildWhotDeckLayer(rules: WhotRules, suffix: string): WhotCard[] {
   const deck: WhotCard[] = []
   for (const [shape, numbers] of Object.entries(DECK_COMPOSITION) as [Exclude<WhotShape, 'whot'>, number[]][]) {
     for (const number of numbers) {
       // 5 cards always stay in the deck; disabling Pick 3 only turns off the
       // draw-penalty action (handled in canPlayCard/applyPickStacksAfterPlay).
-      deck.push({ id: `${shape}-${number}`, shape, number })
+      deck.push({ id: `${shape}-${number}${suffix}`, shape, number })
     }
   }
   if (rules.whotCardsEnabled) {
     for (let i = 0; i < WHOT_COUNT; i += 1) {
-      deck.push({ id: `whot-20-${i}`, shape: 'whot', number: 20 })
+      deck.push({ id: `whot-20-${i}${suffix}`, shape: 'whot', number: 20 })
     }
+  }
+  return deck
+}
+
+export function buildWhotDeck(rules: WhotRules = parseWhotRules(null), deckCount = 1): WhotCard[] {
+  const deck: WhotCard[] = []
+  for (let d = 0; d < Math.max(1, deckCount); d += 1) {
+    deck.push(...buildWhotDeckLayer(rules, d === 0 ? '' : `-d${d}`))
   }
   return deck
 }
@@ -432,7 +454,12 @@ export async function initializeWhotGame(
   const timerSeconds = gameRow?.timer_seconds ?? 0
 
   const turnOrder = shuffle(playerIds)
-  const deck = shuffle(buildWhotDeck(rules))
+  // Deal hands + the starter from ONE full deck first — a player's opening hand
+  // never contains duplicate cards. In bigger rooms, the second deck is then
+  // shuffled into whatever's left of the first, so the extra cards bulk up the
+  // draw pile for later rather than showing up mid-deal.
+  const deckCount = whotDeckCount(turnOrder.length)
+  const deck = shuffle(buildWhotDeck(rules, 1))
   const cardsEach = dealCount(turnOrder.length)
 
   const hands: WhotCard[][] = turnOrder.map(() => [])
@@ -447,6 +474,16 @@ export async function initializeWhotGame(
 
   const { top, rest } = drawStarter(drawPile, rules)
   drawPile = rest
+
+  if (deckCount > 1) {
+    // Build the extra deck(s) with `-d<n>` suffixes so ids stay unique, then
+    // shuffle them in alongside whatever's left of the first deck.
+    const extras: WhotCard[] = []
+    for (let d = 1; d < deckCount; d += 1) {
+      extras.push(...buildWhotDeckLayer(rules, `-d${d}`))
+    }
+    drawPile = shuffle([...drawPile, ...extras])
+  }
 
   const { data: playerRows } = await supabase.from('players').select('id, name').eq('game_id', gameId)
   const initNames = new Map<string, string>()
@@ -555,10 +592,10 @@ function discardPlayedTop(session: WhotSession): WhotCard[] {
 /** How many times the discard is allowed to be shuffled back into the draw
  *  pile within a single Whot session. Nigerian Whot with a small deck can hit
  *  a state where nobody can match the top card and the draw pile keeps being
- *  refilled from the discard forever. We let one reshuffle happen — that
- *  usually unsticks things — and if the deck depletes a second time the game
- *  ends by lowest hand total instead of spinning. */
-export const WHOT_RESHUFFLE_LIMIT = 1
+ *  refilled from the discard forever. We let a couple of reshuffles happen —
+ *  which usually unsticks things — and if the deck depletes a further time
+ *  the game ends by lowest hand total instead of spinning. */
+export const WHOT_RESHUFFLE_LIMIT = 2
 
 function refillDrawPile(
   drawPile: WhotCard[],
