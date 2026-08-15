@@ -7,6 +7,7 @@ import type {
   MonopolyBotDebtContext,
   MonopolyBotOwnedProperty,
   MonopolyBotTradeContext,
+  MonopolyBotTradeProperty,
   MonopolyBotView,
 } from '@/lib/monopoly-bot-adapter'
 import type { MonopolyPhase } from '@/types'
@@ -488,6 +489,11 @@ describe('pickBotAction — auction', () => {
 
 // ── Trade responses ─────────────────────────────────────────────────────────
 
+/** Shorthand: build a MonopolyBotTradeProperty by space index, optionally mortgaged. */
+function tp(index: number, mortgaged = false): MonopolyBotTradeProperty {
+  return { space: spaceAt(index), mortgaged }
+}
+
 function trade(overrides: Partial<MonopolyBotTradeContext> = {}): MonopolyBotTradeContext {
   return {
     fromPlayerId: 'human-1',
@@ -542,7 +548,7 @@ describe('pickBotAction — trade response', () => {
       colorSetProgress: [csp('brown', { ownedByMe: 2, totalInGroup: 2 })],
       pendingTradeToMe: trade({
         offerCash: 1000,
-        requestProperties: [spaceAt(1)], // Barking Road (brown, £60)
+        requestProperties: [tp(1)], // Barking Road (brown, £60)
       }),
     })
     expect(pickBotAction(v)).toEqual({ type: 'trade_decline' })
@@ -565,7 +571,7 @@ describe('pickBotAction — trade response', () => {
       myProperties: [owned(1)],
       colorSetProgress: [csp('brown', { ownedByMe: 1, totalInGroup: 2, iOwnAll: false })],
       pendingTradeToMe: trade({
-        offerProperties: [spaceAt(3)],
+        offerProperties: [tp(3)],
         requestCash: 50,
       }),
     })
@@ -593,10 +599,71 @@ describe('pickBotAction — trade response', () => {
       myProperties: [owned(1)],
       pendingTradeToMe: trade({
         offerCash: 500,
-        requestProperties: [spaceAt(3)], // bot doesn't own Dagenham
+        requestProperties: [tp(3)], // bot doesn't own Dagenham
       }),
     })
     expect(pickBotAction(v)).toEqual({ type: 'trade_decline' })
+  })
+
+  it('accepts a trade that EXTENDS a set even without completing it (1.5× bonus)', () => {
+    // Bot owns Kings Cross (station #5). Human offers Marylebone (#15, also station,
+    // £200) for £150 cash. Bot has 1/4 in the station "group"; receiving another
+    // extends → 1.5× bonus → 200 * 1.5 = 300 > 150 * 1.1 = 165 → accept.
+    const v = view({
+      me: {
+        playerId: BOT,
+        cash: 500,
+        position: 0,
+        in_jail: false,
+        jail_turns: 0,
+        get_out_of_jail_free: 0,
+        bankrupt: false,
+      },
+      myProperties: [owned(5)],
+      colorSetProgress: [csp('station', { ownedByMe: 1, totalInGroup: 4, iOwnAll: false })],
+      pendingTradeToMe: trade({
+        offerProperties: [tp(15)],
+        requestCash: 150,
+      }),
+    })
+    expect(pickBotAction(v)).toEqual({ type: 'trade_accept' })
+  })
+
+  it('discounts a MORTGAGED incoming property — a purely-mortgaged property is not full value', () => {
+    // Human offers a mortgaged £400 property (Mayfair, index 39) for £250 cash.
+    // Unmortgaged, £400 gain vs £250 give would accept (400 ≥ 275). Mortgaged
+    // scales incoming to 40% (£160), which is under 250 * 1.1 = 275 → decline.
+    const v = view({
+      pendingTradeToMe: trade({
+        offerProperties: [tp(39, true)],
+        requestCash: 250,
+      }),
+    })
+    expect(pickBotAction(v)).toEqual({ type: 'trade_decline' })
+  })
+
+  it('discounts a MORTGAGED outgoing property — asymmetric with unmortgaged giveaways', () => {
+    // Bot owns mortgaged Barking (£60). Human offers £40 cash for it.
+    // Unmortgaged: give = 60, need offer ≥ 66 → decline at 40. Mortgaged: give
+    // scales to 50% of face = 30, so £40 offer clears 30 * 1.1 = 33 → accept.
+    const v = view({
+      me: {
+        playerId: BOT,
+        cash: 500,
+        position: 0,
+        in_jail: false,
+        jail_turns: 0,
+        get_out_of_jail_free: 0,
+        bankrupt: false,
+      },
+      myProperties: [owned(1, 0, true)], // Barking Road, mortgaged
+      colorSetProgress: [csp('brown', { ownedByMe: 1, totalInGroup: 2, iOwnAll: false })],
+      pendingTradeToMe: trade({
+        offerCash: 40,
+        requestProperties: [tp(1, true)],
+      }),
+    })
+    expect(pickBotAction(v)).toEqual({ type: 'trade_accept' })
   })
 })
 

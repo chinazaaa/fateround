@@ -27,8 +27,8 @@
  *   its own monopolies).
  */
 
-import type { MonopolyBotView, MonopolyBotTradeContext } from '@/lib/monopoly-bot-adapter'
-import { MONOPOLY_JAIL_FINE, spacesInGroup, type MonopolySpace } from '@/lib/monopoly-board'
+import type { MonopolyBotView, MonopolyBotTradeContext, MonopolyBotTradeProperty } from '@/lib/monopoly-bot-adapter'
+import { MONOPOLY_JAIL_FINE, spacesInGroup } from '@/lib/monopoly-board'
 
 export type MonopolyBotAction =
   | { type: 'roll' }
@@ -109,6 +109,27 @@ const TRADE_BREAK_MONOPOLY_MULTIPLIER = 20
 
 /** Multiplier on a property's price when RECEIVING it would complete a set. */
 const TRADE_COMPLETE_SET_MULTIPLIER = 2
+
+/**
+ * Multiplier on a property's price when RECEIVING it would EXTEND a set the
+ * bot already has a foothold in (owns some, not almost-all). Not as strong
+ * as completing (which unlocks building rent) but a real step toward it.
+ */
+const TRADE_EXTEND_SET_MULTIPLIER = 1.5
+
+/**
+ * Mortgaged property valuation on the GIVE side: what I lose by handing it
+ * away is the mortgage value (half the price) — that's what I could reclaim
+ * from the bank by unmortgaging + selling. Face price would over-value it.
+ */
+const TRADE_GIVE_MORTGAGED_FRACTION = 0.5
+
+/**
+ * Mortgaged property valuation on the RECEIVE side: I gain the option to
+ * unmortgage it, but that costs 55% of face — so net-usable value is close
+ * to break-even. Round down modestly for the friction of paying to activate.
+ */
+const TRADE_RECEIVE_MORTGAGED_FRACTION = 0.4
 
 /**
  * Pick the bot's next move. Returns null when the bot has nothing to do — the
@@ -276,15 +297,15 @@ function pickBuildAction(view: MonopolyBotView): MonopolyBotAction | null {
 
 /**
  * Value the bot places on one side of a trade. Cash is face-value, properties
- * are their printed price × set-relevance multiplier, get-out cards are
- * priced at the jail fine (that's what they save you).
+ * are priced by set-relevance × mortgage state, get-out cards are priced at
+ * the jail fine (that's what they save you).
  *
  * `iOwnGroup(color)` tells us for a given color whether the bot ALREADY owns
  * the whole group — used to penalize giving away a monopoly card, or bonus
  * to accepting a card that would COMPLETE a set for me.
  */
 function tradeValue(
-  properties: MonopolySpace[],
+  properties: MonopolyBotTradeProperty[],
   cash: number,
   jailCards: number,
   ctx: {
@@ -295,17 +316,26 @@ function tradeValue(
   }
 ): number {
   let total = cash + jailCards * MONOPOLY_JAIL_FINE
-  for (const space of properties) {
-    const base = space.price ?? 0
+  for (const { space, mortgaged } of properties) {
+    const price = space.price ?? 0
+    // Mortgage discount applies FIRST — a mortgaged property is worth less
+    // on either side than its face price implies, before we layer set-relevance
+    // multipliers on top.
+    const base = mortgaged
+      ? price * (ctx.isReceiving ? TRADE_RECEIVE_MORTGAGED_FRACTION : TRADE_GIVE_MORTGAGED_FRACTION)
+      : price
     const color = space.color
     if (ctx.isReceiving) {
-      // Receiving a property that would complete a set I already almost own?
-      // Note "almost own" = ownedByMeInGroup === totalInGroup - 1; the incoming
-      // card is the missing one. Big multiplier.
+      // Receiving a property in a group I already have a foothold in?
+      //  - completes (own totalInGroup - 1): big multiplier — unlocks rent
+      //  - extends  (own some, not almost-all): smaller multiplier — progress
+      //  - starts   (own 0): base only
       const owned = ctx.ownedByMeInGroup(color)
-      const total_ = ctx.totalInGroup(color)
-      const completes = total_ > 0 && owned === total_ - 1
-      total += completes ? base * TRADE_COMPLETE_SET_MULTIPLIER : base
+      const totalC = ctx.totalInGroup(color)
+      const completes = totalC > 0 && owned === totalC - 1
+      const extends_ = owned > 0 && !completes
+      const multiplier = completes ? TRADE_COMPLETE_SET_MULTIPLIER : extends_ ? TRADE_EXTEND_SET_MULTIPLIER : 1
+      total += base * multiplier
     } else {
       // Giving up a property I own in a completed monopoly is close to fatal
       // for my rent engine — huge penalty so no realistic trade compensates.
@@ -326,7 +356,7 @@ function pickTradeResponse(view: MonopolyBotView): MonopolyBotAction {
   if (trade.requestGetOutCards > view.me.get_out_of_jail_free) return { type: 'trade_decline' }
   const myPropertyIndexes = new Set(view.myProperties.map((p) => p.spaceIndex))
   for (const p of trade.requestProperties) {
-    if (!myPropertyIndexes.has(p.index)) return { type: 'trade_decline' }
+    if (!myPropertyIndexes.has(p.space.index)) return { type: 'trade_decline' }
   }
 
   // Look up color-set state for the multiplier ctx.

@@ -319,7 +319,7 @@ describe('adaptMonopolyForBot — auction', () => {
 // ── pendingTradeToMe ────────────────────────────────────────────────────────
 
 describe('adaptMonopolyForBot — pendingTradeToMe', () => {
-  it('surfaces a trade with resolved property spaces when it is addressed to the bot', () => {
+  it('surfaces a trade with resolved property spaces + mortgage state when it is addressed to the bot', () => {
     const v = adaptMonopolyForBot(
       board({
         pending_trade: {
@@ -332,6 +332,7 @@ describe('adaptMonopolyForBot — pendingTradeToMe', () => {
           request_properties: [1],
           request_get_out_cards: 0,
         },
+        mortgaged_properties: { '3': true },
       }),
       [pState(HUMAN), pState(BOT)],
       BOT
@@ -339,8 +340,10 @@ describe('adaptMonopolyForBot — pendingTradeToMe', () => {
     expect(v.pendingTradeToMe).toBeDefined()
     expect(v.pendingTradeToMe!.offerCash).toBe(200)
     expect(v.pendingTradeToMe!.offerGetOutCards).toBe(1)
-    expect(v.pendingTradeToMe!.offerProperties.map((s) => s.index)).toEqual([3])
-    expect(v.pendingTradeToMe!.requestProperties.map((s) => s.index)).toEqual([1])
+    expect(v.pendingTradeToMe!.offerProperties.map((p) => p.space.index)).toEqual([3])
+    expect(v.pendingTradeToMe!.offerProperties.map((p) => p.mortgaged)).toEqual([true])
+    expect(v.pendingTradeToMe!.requestProperties.map((p) => p.space.index)).toEqual([1])
+    expect(v.pendingTradeToMe!.requestProperties.map((p) => p.mortgaged)).toEqual([false])
   })
 
   it('is undefined when the trade is addressed to another player', () => {

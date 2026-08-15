@@ -99,25 +99,36 @@ export interface MonopolyBotAuctionContext {
 }
 
 /**
+ * One property on either side of a trade. Space definition + live state
+ * (mortgaged). Building state deliberately excluded — the engine rejects
+ * any trade whose group has buildings on it, so bots never see a decision
+ * involving a built-up property (see monopoly.ts:validateTradeAssets).
+ */
+export interface MonopolyBotTradeProperty {
+  space: MonopolySpace
+  mortgaged: boolean
+}
+
+/**
  * A trade proposal directed at the bot from a human player. Bots never
  * initiate trades — they only respond — so this is only set when
  * pending_trade.to_player_id === botPlayerId.
  *
- * Property spaces are resolved to MonopolySpace so the heuristic can read
- * price + color without a second board lookup.
+ * Properties carry both the space def and mortgage state so the heuristic
+ * can discount mortgaged cards on either side without a second board lookup.
  */
 export interface MonopolyBotTradeContext {
   fromPlayerId: string
   /** Cash the human is offering me. */
   offerCash: number
-  /** Properties (with full space metadata) the human is offering me. */
-  offerProperties: MonopolySpace[]
+  /** Properties (with mortgage state) the human is offering me. */
+  offerProperties: MonopolyBotTradeProperty[]
   /** Get-out-of-jail-free cards the human is offering me. */
   offerGetOutCards: number
   /** Cash the human is asking me to hand over. */
   requestCash: number
-  /** Properties (with full space metadata) the human is asking me to hand over. */
-  requestProperties: MonopolySpace[]
+  /** Properties (with mortgage state) the human is asking me to hand over. */
+  requestProperties: MonopolyBotTradeProperty[]
   /** Get-out-of-jail-free cards the human is asking me to hand over. */
   requestGetOutCards: number
 }
@@ -340,15 +351,21 @@ export function adaptMonopolyForBot(
   let pendingTradeToMe: MonopolyBotTradeContext | undefined
   if (board.pending_trade && board.pending_trade.to_player_id === botPlayerId) {
     const t = board.pending_trade
-    const resolveSpaces = (indices: number[] | null | undefined): MonopolySpace[] =>
-      (indices ?? []).map((i) => MONOPOLY_BOARD[i]).filter((s): s is MonopolySpace => Boolean(s))
+    // Include per-property mortgage state so the heuristic can discount a
+    // mortgaged card on either side. Building state is intentionally absent —
+    // the engine rejects any trade whose group has buildings on it.
+    const resolveProperties = (indices: number[] | null | undefined): MonopolyBotTradeProperty[] =>
+      (indices ?? [])
+        .map((i) => MONOPOLY_BOARD[i])
+        .filter((s): s is MonopolySpace => Boolean(s))
+        .map((space) => ({ space, mortgaged: Boolean(mortgaged[String(space.index)]) }))
     pendingTradeToMe = {
       fromPlayerId: t.from_player_id,
       offerCash: Number(t.offer_cash ?? 0),
-      offerProperties: resolveSpaces(t.offer_properties as number[] | null | undefined),
+      offerProperties: resolveProperties(t.offer_properties as number[] | null | undefined),
       offerGetOutCards: Number(t.offer_get_out_cards ?? 0),
       requestCash: Number(t.request_cash ?? 0),
-      requestProperties: resolveSpaces(t.request_properties as number[] | null | undefined),
+      requestProperties: resolveProperties(t.request_properties as number[] | null | undefined),
       requestGetOutCards: Number(t.request_get_out_cards ?? 0),
     }
   }
