@@ -345,11 +345,18 @@ export default function TournamentCreatePage() {
   }
 
   function removeQueueEntry(index: number) {
+    const isRemovingEditedEntry = editingIndex === index
     setQueue((prev) => prev.filter((_, i) => i !== index))
-    // Cancel or shift the editing pointer if it referenced the removed row.
+    if (isRemovingEditedEntry) {
+      // The deleted row was the one being edited — clear the draft form too,
+      // otherwise it holds the removed entry's values and a follow-up "+ Add"
+      // silently re-creates the config the host just deleted.
+      resetDraftRow()
+      return
+    }
+    // Otherwise just shift the editing pointer if it sat above the removed row.
     setEditingIndex((prev) => {
       if (prev == null) return prev
-      if (prev === index) return null
       if (prev > index) return prev - 1
       return prev
     })
