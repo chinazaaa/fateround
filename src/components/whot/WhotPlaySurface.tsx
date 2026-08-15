@@ -105,10 +105,19 @@ export function WhotPlaySurface({
   const turnTimeLabel =
     turnTimer?.hasTimer && turnTimer.secondsLeft > 0 ? formatCountdown(turnTimer.secondsLeft) : undefined
 
-  // Turn rail: order players by turn_order so seats read left→right in play order.
+  // Turn rail: cluster players who've already finished (winner first, then
+  // runner-ups in finishing order) at the front of the rail, followed by the
+  // players still playing in turn order. This keeps the "podium" together
+  // instead of leaving finished players stranded in their original seat.
   const byId = new Map(players.map((p) => [p.id, p]))
-  const winnerId = (session.finish_order ?? [])[0]
-  const seats: TurnSeat[] = session.turn_order
+  const finishOrder = session.finish_order ?? []
+  const winnerId = finishOrder[0]
+  const finishedIds = new Set(finishOrder)
+  const orderedIds = [
+    ...finishOrder.filter((id) => byId.has(id)),
+    ...session.turn_order.filter((id) => !finishedIds.has(id)),
+  ]
+  const seats: TurnSeat[] = orderedIds
     .map((id) => byId.get(id))
     .filter((p): p is Player => !!p)
     .map((p) => {
