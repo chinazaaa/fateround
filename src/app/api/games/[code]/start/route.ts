@@ -97,7 +97,7 @@ import {
   CODEWORDS_MIN_CUSTOM_POOL,
 } from '@/lib/codewords'
 import { buildTtlRoundRows, lobbyReadyForTwoTruths, shufflePlayerOrder, TTL_MIN_PLAYERS } from '@/lib/two-truths'
-import { GAME_START_SPECS, startCountError } from '@/lib/game-start'
+import { GAME_START_SPECS, startCountError, startHumanSeatError } from '@/lib/game-start'
 import {
   initializeDescribeItGame,
   DESCRIBE_IT_MIN_PLAYERS,
@@ -338,7 +338,7 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
 
   const { data: playersData } = await supabase
     .from('players')
-    .select('id, gender, identity_gender, participant_id, name, spectator, profile_id')
+    .select('id, gender, identity_gender, participant_id, name, spectator, profile_id, is_bot')
     .eq('game_id', code.toUpperCase())
 
   if (!playersData?.length) {
@@ -484,6 +484,8 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
     const playingPlayers = playersData.filter((p) => p.spectator !== true)
     const countError = startCountError(playingPlayers.length, startSpec)
     if (countError) return NextResponse.json({ error: countError }, { status: 400 })
+    const humanError = startHumanSeatError(playingPlayers)
+    if (humanError) return NextResponse.json({ error: humanError }, { status: 400 })
 
     // Board games seed their tables via the service role (RLS-locked to anon writes);
     // host authority is already enforced above for this route.

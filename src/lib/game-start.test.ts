@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { GAME_START_SPECS, startCountError, type StartSpec } from '@/lib/game-start'
+import { GAME_START_SPECS, startCountError, startHumanSeatError, type StartSpec } from '@/lib/game-start'
 
 const atLeast: StartSpec = { minPlayers: 2, initialize: async () => ({ error: null }) }
 const exact: StartSpec = { minPlayers: 2, exact: true, initialize: async () => ({ error: null }) }
@@ -23,6 +23,22 @@ describe('startCountError', () => {
     expect(startCountError(4, range)).toBeNull()
     expect(startCountError(1, range)).toBe('Need 2–4 players to start')
     expect(startCountError(5, range)).toBe('Need 2–4 players to start')
+  })
+})
+
+describe('startHumanSeatError', () => {
+  it('passes rooms with zero bots (bot-free is always fine)', () => {
+    expect(startHumanSeatError([{ is_bot: false }, { is_bot: false }])).toBeNull()
+    expect(startHumanSeatError([{}, {}])).toBeNull()
+  })
+
+  it('passes rooms mixing at least one human with bots', () => {
+    expect(startHumanSeatError([{ is_bot: false }, { is_bot: true }])).toBeNull()
+    expect(startHumanSeatError([{ is_bot: true }, { is_bot: true }, { is_bot: false }])).toBeNull()
+  })
+
+  it('rejects rooms with only bots seated (the load-bearing invariant)', () => {
+    expect(startHumanSeatError([{ is_bot: true }, { is_bot: true }])).toMatch(/human/i)
   })
 })
 

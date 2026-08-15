@@ -513,7 +513,31 @@ export async function POST(req: NextRequest) {
       .eq('game_id', gameId)
       .eq('spectator', false)
 
-    const seatsFull = gameRow.status === 'waiting' && (playerCount ?? 0) >= maxPlayers
+    let seatsFull = gameRow.status === 'waiting' && (playerCount ?? 0) >= maxPlayers
+
+    // ── Bots-in-room: humans never lose a seat to a bot (Monopoly branch) ──
+    // Mirrors the Whot eviction below. Lobby only — a Monopoly seat mid-game
+    // carries cash + properties + position that we can't safely transfer to a
+    // joining human, so mid-game arrivals fall through to spectator seating
+    // and can take a real seat at the next replay.
+    if (seatsFull && rawJoinAsViewer !== true) {
+      const { data: newestBot } = await supabase
+        .from('players')
+        .select('id')
+        .eq('game_id', gameId)
+        .eq('is_bot', true)
+        .eq('spectator', false)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (newestBot) {
+        // LIFO eviction — same behaviour Whot ships. The delete cascades the
+        // bot's monopoly_token so the joining human can claim it.
+        await getSupabaseAdmin().from('players').delete().eq('id', newestBot.id).eq('game_id', gameId)
+        seatsFull = false
+      }
+    }
+
     const seatFullResp = seatFullGate(gameRow as Game, seatsFull, rawJoinAsViewer, 'This game is full')
     if (seatFullResp) return seatFullResp
 

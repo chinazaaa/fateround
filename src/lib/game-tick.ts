@@ -37,10 +37,12 @@ const ROUND_ADVANCE_SLUG: Record<string, string> = {
 /**
  * game_type → URL slug for the `/api/<slug>/bot-tick` endpoints. Present only
  * for games where a bot-in-room driver has been shipped. Bots-in-room Phase 1
- * covered Whot only; add entries here as other games' drivers land.
+ * covered Whot; Phase 2 added Monopoly. Add entries here as other games'
+ * drivers land.
  */
 const BOT_TICK_SLUG: Record<string, string> = {
   whot: 'whot',
+  monopoly: 'monopoly',
 }
 
 /** game_type → URL slug for the turn-based `/api/<slug>/expire-turn` endpoints. */
