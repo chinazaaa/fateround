@@ -393,6 +393,32 @@ export async function GET(req: NextRequest) {
 
   const typicalPlayTime = computeTypicalPlayTime(playSessions, latestRoundEndedAtByGame)
 
+  // Solo (vs bot) practice stats — one row per game STARTED in solo_plays.
+  // Client-side games have no games/players row, so this is the only signal
+  // of solo adoption. See migration 20260927120000_solo_plays.sql.
+  const soloPlayStats = {
+    total: 0,
+    last7Days: 0,
+    last30Days: 0,
+    byGameType: {} as Record<string, number>,
+    byGameType7d: {} as Record<string, number>,
+  }
+  try {
+    type SoloPlayRow = { game_type: string; created_at: string }
+    const soloAll = await fetchAll<SoloPlayRow>(supabase, 'solo_plays', 'game_type, created_at')
+    soloPlayStats.total = soloAll.count
+    for (const row of soloAll.data) {
+      soloPlayStats.byGameType[row.game_type] = (soloPlayStats.byGameType[row.game_type] ?? 0) + 1
+      if (row.created_at >= cutoff7d) {
+        soloPlayStats.last7Days++
+        soloPlayStats.byGameType7d[row.game_type] = (soloPlayStats.byGameType7d[row.game_type] ?? 0) + 1
+      }
+      if (row.created_at >= cutoff30d) soloPlayStats.last30Days++
+    }
+  } catch {
+    // solo_plays table might not exist yet (pre-migration) — silently skip
+  }
+
   // Daily challenge stats (service-role tables — safe here)
   const dailyChallengeStats = {
     challenges: 0,
@@ -505,5 +531,6 @@ export async function GET(req: NextRequest) {
     usersByCountry,
     uniqueCountries,
     dailyChallengeStats,
+    soloPlayStats,
   })
 }

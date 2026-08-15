@@ -26,6 +26,7 @@ import {
 } from '@/lib/crazy-eights-solo'
 import { pickBotAction, type Crazy8BotDifficulty } from '@/lib/crazy-eights-bot'
 import { getNormalizedPenalties, hasPlayableCard, isDrawPileDepleted, parseCrazyEightsRules } from '@/lib/crazy-eights'
+import { logSoloPlayStarted } from '@/lib/solo-play'
 
 const STORAGE_KEY = 'solo-crazy8-state-v1'
 const DIFFICULTY_KEY = 'solo-crazy8-difficulty-v1'
@@ -89,6 +90,8 @@ export function SoloCrazyEightsClient() {
     const d = loadDifficulty()
     setDifficulty(d)
     setState(persisted ?? initCrazy8Solo({ rules: SOLO_RULES }))
+    // Only log on fresh init (not mid-game reloads) so counts aren't inflated.
+    if (!persisted) logSoloPlayStarted('crazy_eights', d)
   }, [])
 
   useEffect(() => {
@@ -149,7 +152,8 @@ export function SoloCrazyEightsClient() {
   const restart = useCallback(() => {
     clearPersistedState()
     setState(initCrazy8Solo({ rules: SOLO_RULES }))
-  }, [])
+    logSoloPlayStarted('crazy_eights', difficulty)
+  }, [difficulty])
 
   const players = useMemo(
     () => [

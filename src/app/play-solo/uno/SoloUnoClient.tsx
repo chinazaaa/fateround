@@ -31,6 +31,7 @@ import {
 } from '@/lib/uno-solo'
 import { pickBotAction, type UnoBotDifficulty } from '@/lib/uno-bot'
 import { isDrawPileDepleted } from '@/lib/uno'
+import { logSoloPlayStarted } from '@/lib/solo-play'
 
 const STORAGE_KEY = 'solo-uno-state-v1'
 const DIFFICULTY_KEY = 'solo-uno-difficulty-v1'
@@ -86,6 +87,8 @@ export function SoloUnoClient() {
     const d = loadDifficulty()
     setDifficulty(d)
     setState(persisted ?? initUnoSolo())
+    // Only log on fresh init (not mid-game reloads) so counts aren't inflated.
+    if (!persisted) logSoloPlayStarted('uno', d)
   }, [])
 
   useEffect(() => {
@@ -146,7 +149,8 @@ export function SoloUnoClient() {
   const restart = useCallback(() => {
     clearPersistedState()
     setState(initUnoSolo())
-  }, [])
+    logSoloPlayStarted('uno', difficulty)
+  }, [difficulty])
 
   const players = useMemo(
     () => [

@@ -24,3 +24,27 @@ export function soloPlaySlug(gameType: GameType): string | null {
 export function hasSoloPlay(gameType: GameType): boolean {
   return soloPlaySlug(gameType) != null
 }
+
+/**
+ * Fire-and-forget log of a solo game start, for admin adoption stats.
+ *
+ * Solo games are entirely client-side (no games row), so this POST is the only
+ * signal we get. Called once per fresh init / restart from each solo client —
+ * not on rehydrate, so a mid-game reload doesn't double-count. Errors are
+ * swallowed: a missing analytics row must never break the practice mode.
+ */
+export function logSoloPlayStarted(gameType: GameType, difficulty?: string | null): void {
+  if (typeof window === 'undefined') return
+  try {
+    void fetch('/api/solo-plays', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ gameType, difficulty: difficulty ?? null }),
+      keepalive: true,
+    }).catch(() => {
+      /* noop */
+    })
+  } catch {
+    /* noop */
+  }
+}

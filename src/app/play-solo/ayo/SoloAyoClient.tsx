@@ -18,6 +18,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AyoGamePanel } from '@/components/ayo/AyoBoard'
 import { AYO_SOLO_BOT_ID, AYO_SOLO_HUMAN_ID, initAyoSolo, ayoSoloMove, type AyoSoloState } from '@/lib/ayo-solo'
 import { pickAyoBotMove, type AyoBotDifficulty } from '@/lib/ayo-bot'
+import { logSoloPlayStarted } from '@/lib/solo-play'
 import type { Player } from '@/types'
 
 const STORAGE_KEY = 'solo-ayo-state-v1'
@@ -72,8 +73,11 @@ export function SoloAyoClient() {
 
   useEffect(() => {
     const persisted = loadPersistedState()
-    setDifficulty(loadDifficulty())
+    const d = loadDifficulty()
+    setDifficulty(d)
     setState(persisted ?? initAyoSolo())
+    // Only log on fresh init (not mid-game reloads) so counts aren't inflated.
+    if (!persisted) logSoloPlayStarted('ayo', d)
   }, [])
 
   useEffect(() => {
@@ -116,7 +120,8 @@ export function SoloAyoClient() {
   const restart = useCallback(() => {
     clearPersistedState()
     setState(initAyoSolo())
-  }, [])
+    logSoloPlayStarted('ayo', difficulty)
+  }, [difficulty])
 
   // Player objects shaped for AyoGamePanel.
   const players = useMemo<Player[]>(

@@ -62,6 +62,13 @@ type StatsResponse = {
     avgScore: number
     byGameType: Record<string, { challenges: number; submissions: number }>
   }
+  soloPlayStats?: {
+    total: number
+    last7Days: number
+    last30Days: number
+    byGameType: Record<string, number>
+    byGameType7d: Record<string, number>
+  }
 }
 
 type GamesByDate = {
@@ -119,6 +126,14 @@ export default function AdminDashboardPage() {
     submissionsToday: 0,
     avgScore: 0,
     byGameType: {},
+  }
+
+  const solo = stats.soloPlayStats ?? {
+    total: 0,
+    last7Days: 0,
+    last30Days: 0,
+    byGameType: {},
+    byGameType7d: {},
   }
 
   const typicalPlayTimeLabel =
@@ -339,6 +354,52 @@ export default function AdminDashboardPage() {
                 ))}
             </div>
           </div>
+        )}
+      </div>
+
+      {/* ── Solo (vs bot) practice ────────────────────────────────── */}
+      {/* Solo games run entirely client-side (no games/players row), so these
+          counts come from the dedicated solo_plays log table — one row per
+          game started. See migration 20260927120000_solo_plays.sql. */}
+      <div className="glass-card-strong p-5 space-y-4">
+        <div>
+          <h2 className="font-bold">Solo (vs bot) practice</h2>
+          <p className="text-muted text-xs mt-1">
+            Games started from /play-solo. No room, no account — logged only for adoption tracking.
+          </p>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <div>
+            <p className="text-2xl font-black">{solo.total.toLocaleString()}</p>
+            <p className="text-xs uppercase tracking-wide text-muted">All-time plays</p>
+          </div>
+          <div>
+            <p className="text-2xl font-black">{solo.last7Days.toLocaleString()}</p>
+            <p className="text-xs uppercase tracking-wide text-muted">Last 7 days</p>
+          </div>
+          <div>
+            <p className="text-2xl font-black">{solo.last30Days.toLocaleString()}</p>
+            <p className="text-xs uppercase tracking-wide text-muted">Last 30 days</p>
+          </div>
+        </div>
+        {Object.keys(solo.byGameType).length > 0 ? (
+          <div className="mt-4">
+            <h3 className="text-sm font-semibold text-muted mb-2">By game type</h3>
+            <div className="space-y-1.5 text-sm">
+              {Object.entries(solo.byGameType)
+                .sort((a, b) => b[1] - a[1])
+                .map(([gt, count]) => (
+                  <div key={gt} className="flex items-center justify-between gap-3">
+                    <span>{formatGameType(gt)}</span>
+                    <span className="text-muted">
+                      {count.toLocaleString()} all-time · {(solo.byGameType7d[gt] ?? 0).toLocaleString()} last 7d
+                    </span>
+                  </div>
+                ))}
+            </div>
+          </div>
+        ) : (
+          <p className="text-muted text-sm">No solo plays recorded yet.</p>
         )}
       </div>
 

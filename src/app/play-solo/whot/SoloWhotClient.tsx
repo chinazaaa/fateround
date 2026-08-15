@@ -31,6 +31,7 @@ import {
 } from '@/lib/whot-solo'
 import { pickBotAction, type WhotBotDifficulty } from '@/lib/whot-bot'
 import { getActivePickPenalty, hasPlayableCard, isDrawPileDepleted, parseWhotRules } from '@/lib/whot'
+import { logSoloPlayStarted } from '@/lib/solo-play'
 
 const STORAGE_KEY = 'solo-whot-state-v1'
 const DIFFICULTY_KEY = 'solo-whot-difficulty-v1'
@@ -100,6 +101,9 @@ export function SoloWhotClient() {
     const d = loadDifficulty()
     setDifficulty(d)
     setState(persisted ?? initSoloWhot({ rules: SOLO_RULES }))
+    // Only log when we're starting a fresh game (not on a mid-game reload) so
+    // adoption counts aren't inflated by rehydrates.
+    if (!persisted) logSoloPlayStarted('whot', d)
   }, [])
 
   useEffect(() => {
@@ -170,7 +174,8 @@ export function SoloWhotClient() {
   const restart = useCallback(() => {
     clearPersistedState()
     setState(initSoloWhot({ rules: SOLO_RULES }))
-  }, [])
+    logSoloPlayStarted('whot', difficulty)
+  }, [difficulty])
 
   // ── Adapters into WhotPlaySurface's expected shape ─────────────────────────
   const players = useMemo(
