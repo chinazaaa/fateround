@@ -36,6 +36,7 @@ const BATCH_3_VIEWS = {
   crossword: lazyView(() => import('@/components/games/CrosswordPlayerView'), 'CrosswordPlayerView'),
   word_search: lazyView(() => import('@/components/games/WordSearchPlayerView'), 'WordSearchPlayerView'),
   word_scramble: lazyView(() => import('@/components/games/WordScramblePlayerView'), 'WordScramblePlayerView'),
+  word_grouping: lazyView(() => import('@/components/games/WordGroupingPlayerView'), 'WordGroupingPlayerView'),
 } as const satisfies Partial<Record<GameType, PlayerView>>
 
 const BATCH_4_VIEWS = {

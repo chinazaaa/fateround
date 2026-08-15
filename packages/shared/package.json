@@ -18,6 +18,7 @@
     "./crossword": "./src/crossword.ts",
     "./word-search": "./src/word-search.ts",
     "./word-scramble": "./src/word-scramble.ts",
+    "./word-grouping": "./src/word-grouping.ts",
     "./yahtzee": "./src/yahtzee.ts",
     "./snake-and-ladder": "./src/snake-and-ladder.ts",
     "./ludo": "./src/ludo.ts",

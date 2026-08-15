@@ -321,6 +321,41 @@ export async function fetchWordScrambleSolution(gameId: string): Promise<string[
   }
 }
 
+export function postWordGroupingSubmit(gameId: string, resumeToken: string, words: string[]) {
+  return postJson<{
+    success: boolean
+    isCorrect: boolean
+    oneAway?: boolean
+    alreadySolved?: boolean
+    group?: { category: string; words: string[]; difficulty: 1 | 2 | 3 | 4 }
+  }>('/api/word-grouping/submit', { gameId, resumeToken, words })
+}
+
+export async function fetchWordGroupingSolution(
+  gameId: string
+): Promise<{ category: string; words: string[]; difficulty: 1 | 2 | 3 | 4 }[] | null> {
+  try {
+    const res = await fetch(apiUrl(`/api/word-grouping/solution?gameId=${encodeURIComponent(gameId)}`), {
+      cache: 'no-store',
+    })
+    if (!res.ok) return null
+    const data = (await res.json()) as {
+      solution?: { groups?: { category: string; words: string[]; difficulty: 1 | 2 | 3 | 4 }[] } | null
+    }
+    return Array.isArray(data.solution?.groups) ? data.solution!.groups! : null
+  } catch {
+    return null
+  }
+}
+
+/** Finishes a Word Grouping game whose timer has run out. Server re-verifies the deadline. */
+export function postExpireWordGrouping(gameCode: string) {
+  return postJson<{ expired?: boolean; finished?: boolean }>(
+    `/api/games/${gameCode.toUpperCase()}/expire-word-grouping`,
+    {}
+  )
+}
+
 export function postYahtzeeRoll(gameId: string, resumeToken: string) {
   return postJson<{ success: boolean }>('/api/yahtzee/roll', { gameId, resumeToken })
 }

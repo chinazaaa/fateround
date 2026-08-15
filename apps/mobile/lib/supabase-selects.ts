@@ -43,6 +43,9 @@ export const CROSSWORD_SUBMISSION_SELECT =
 export const WORD_SEARCH_FOUND_SELECT =
   'id,game_id,round_id,player_id,word,start_row,start_col,end_row,end_col,via_hint,found_at'
 
+export const WORD_GROUPING_SUBMISSION_SELECT =
+  'id,game_id,round_id,player_id,group_index,difficulty,guess_words,is_correct,mistakes_at_time,submitted_at'
+
 export const WORD_SCRAMBLE_SOLVE_SELECT = 'id,game_id,round_id,player_id,scramble_index,word,via_hint,solved_at'
 export const WORD_SCRAMBLE_HINT_SELECT = 'player_id,scramble_index,letters'
 
@@ -81,7 +84,7 @@ export const CRAZY8_SESSION_SELECT =
 export const CRAZY8_PLAYER_HANDS_SELECT = 'id,game_id,player_id,cards,player_order'
 
 export const WHOT_SESSION_SELECT =
-  'id,game_id,turn_order,current_turn_index,phase,draw_pile,discard_pile,top_card,required_shape,required_number,pick_two_stack,pick_five_stack,status_message,winner_player_id,finish_order,turn_deadline_at'
+  'id,game_id,turn_order,current_turn_index,phase,draw_pile,discard_pile,top_card,required_shape,required_number,pick_two_stack,pick_five_stack,status_message,winner_player_id,finish_order,reshuffle_count,turn_deadline_at'
 
 export const WHOT_PLAYER_HANDS_SELECT = 'id,game_id,player_id,cards,player_order'
 
