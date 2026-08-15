@@ -43,7 +43,10 @@ const BOT_THINK_MS = 900
 const SOLO_RULES = parseWhotRules({
   whot_pick3_enabled: true,
   whot_cards_enabled: true,
-  whot_number_calls_enabled: false,
+  // Real rooms default this on (parseWhotRules treats missing as true). Solo
+  // was forcing it false, so playing a 20 only ever offered the shape picker
+  // — never the number picker.
+  whot_number_calls_enabled: true,
   whot_pick2_stacking: true,
 })
 
