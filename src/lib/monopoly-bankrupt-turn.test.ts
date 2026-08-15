@@ -183,12 +183,7 @@ describe('advanceMonopolyTurnPastBankrupt', () => {
     // Four players: a (current, bankrupt), b (bankrupt), c (alive), d (alive).
     // Two survivors so checkWinner does NOT short-circuit the advance.
     const b = board({ current_turn_index: 0, turn_order: ['a', 'b', 'c', 'd'] })
-    const states = [
-      pState('a', { bankrupt: true }),
-      pState('b', { bankrupt: true }),
-      pState('c'),
-      pState('d'),
-    ]
+    const states = [pState('a', { bankrupt: true }), pState('b', { bankrupt: true }), pState('c'), pState('d')]
     const m = makeSupabase({ board: b, states })
     const result = await advanceMonopolyTurnPastBankrupt(m.supabase, 'G1')
 
