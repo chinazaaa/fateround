@@ -571,6 +571,22 @@ function resolveSpaceLanding(
   let pendingDebt: MonopolyPendingDebt | undefined
 
   if (landed.type === 'go_to_jail') {
+    // First-lap training wheels: same rule as "can't buy before passing PAYDAY"
+    // and "no tax on the first lap". A player who hasn't crossed PAYDAY yet
+    // lands on the jail square as "just visiting" instead of being incarcerated.
+    if (!ctx.passedGoOnce) {
+      return {
+        cash,
+        position: MONOPOLY_JAIL_POSITION,
+        inJail: false,
+        jailTurns,
+        getOutCards,
+        phase: 'roll',
+        pendingSpace: null,
+        extraTurn: false,
+        statusSuffix: ' Just visiting NICKED — pass PAYDAY once before you can be locked up.',
+      }
+    }
     return {
       cash,
       position: MONOPOLY_JAIL_POSITION,
@@ -1269,17 +1285,28 @@ export async function processMonopolyRoll(
     if (dice.doubles) {
       consecutiveDoubles += 1
       if (consecutiveDoubles >= 3) {
+        // First-lap training wheels: three-doubles jails only if the player has
+        // passed PAYDAY. Otherwise they land on the jail square as "just
+        // visiting" — same rule that already gates buy/tax/go-to-jail-square.
+        const jailedByDoubles = passedGoOnce
         await updatePlayerAndBoard(
           supabase,
           gameId,
           playerId,
-          { cash, position: MONOPOLY_JAIL_POSITION, in_jail: true, jail_turns: 0 },
+          {
+            cash,
+            position: MONOPOLY_JAIL_POSITION,
+            in_jail: jailedByDoubles,
+            jail_turns: jailedByDoubles ? 0 : jailTurns,
+          },
           {
             last_dice: dice,
             consecutive_doubles: 0,
             phase: 'roll',
             current_turn_index: nextTurnIndex(board, states),
-            status_message: 'Three doubles in a row — Off to NICKED!',
+            status_message: jailedByDoubles
+              ? 'Three doubles in a row — Off to NICKED!'
+              : 'Three doubles in a row — just visiting NICKED (pass PAYDAY once before you can be locked up).',
             pending_space: null,
             auction_state: null,
           },
