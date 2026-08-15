@@ -62,6 +62,24 @@ type StatsResponse = {
     avgScore: number
     byGameType: Record<string, { challenges: number; submissions: number }>
   }
+  soloPlayStats?: {
+    total: number
+    last7Days: number
+    last30Days: number
+    byGameType: Record<string, number>
+    byGameType7d: Record<string, number>
+  }
+  roomsWithBotsStats?:
+    | {
+        supported: true
+        total: number
+        last7Days: number
+        last30Days: number
+        totalBotSeats: number
+        byGameType: Record<string, number>
+        byGameType7d: Record<string, number>
+      }
+    | { supported: false }
 }
 
 type GamesByDate = {
@@ -120,6 +138,16 @@ export default function AdminDashboardPage() {
     avgScore: 0,
     byGameType: {},
   }
+
+  const solo = stats.soloPlayStats ?? {
+    total: 0,
+    last7Days: 0,
+    last30Days: 0,
+    byGameType: {},
+    byGameType7d: {},
+  }
+
+  const bots = stats.roomsWithBotsStats ?? { supported: false as const }
 
   const typicalPlayTimeLabel =
     stats.totals.typicalPlayTimeSeconds != null ? formatPlayDuration(stats.totals.typicalPlayTimeSeconds) : '—'
@@ -339,6 +367,110 @@ export default function AdminDashboardPage() {
                 ))}
             </div>
           </div>
+        )}
+      </div>
+
+      {/* ── Solo (vs bot) practice ────────────────────────────────── */}
+      {/* Solo games run entirely client-side (no games/players row), so these
+          counts come from the dedicated solo_plays log table — one row per
+          game started. See migration 20260927120000_solo_plays.sql. */}
+      <div className="glass-card-strong p-5 space-y-4">
+        <div>
+          <h2 className="font-bold">Solo (vs bot) practice</h2>
+          <p className="text-muted text-xs mt-1">
+            Games started from /play-solo. No room, no account — logged only for adoption tracking.
+          </p>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <div>
+            <p className="text-2xl font-black">{solo.total.toLocaleString()}</p>
+            <p className="text-xs uppercase tracking-wide text-muted">All-time plays</p>
+          </div>
+          <div>
+            <p className="text-2xl font-black">{solo.last7Days.toLocaleString()}</p>
+            <p className="text-xs uppercase tracking-wide text-muted">Last 7 days</p>
+          </div>
+          <div>
+            <p className="text-2xl font-black">{solo.last30Days.toLocaleString()}</p>
+            <p className="text-xs uppercase tracking-wide text-muted">Last 30 days</p>
+          </div>
+        </div>
+        {Object.keys(solo.byGameType).length > 0 ? (
+          <div className="mt-4">
+            <h3 className="text-sm font-semibold text-muted mb-2">By game type</h3>
+            <div className="space-y-1.5 text-sm">
+              {Object.entries(solo.byGameType)
+                .sort((a, b) => b[1] - a[1])
+                .map(([gt, count]) => (
+                  <div key={gt} className="flex items-center justify-between gap-3">
+                    <span>{formatGameType(gt)}</span>
+                    <span className="text-muted">
+                      {count.toLocaleString()} all-time · {(solo.byGameType7d[gt] ?? 0).toLocaleString()} last 7d
+                    </span>
+                  </div>
+                ))}
+            </div>
+          </div>
+        ) : (
+          <p className="text-muted text-sm">No solo plays recorded yet.</p>
+        )}
+      </div>
+
+      {/* ── Rooms that had bots seated ────────────────────────────── */}
+      {/* Distinct from Solo (vs bot) practice above: this counts REAL multi-
+          player game rooms where the host added at least one bot seat via
+          the players.is_bot column (see 20260925120000_players_is_bot.sql). */}
+      <div className="glass-card-strong p-5 space-y-4">
+        <div>
+          <h2 className="font-bold">Rooms with bots</h2>
+          <p className="text-muted text-xs mt-1">
+            Real game rooms where the host added at least one bot seat. Different from the solo practice mode above.
+          </p>
+        </div>
+        {bots.supported ? (
+          <>
+            <div className="grid gap-3 sm:grid-cols-4">
+              <div>
+                <p className="text-2xl font-black">{bots.total.toLocaleString()}</p>
+                <p className="text-xs uppercase tracking-wide text-muted">All-time rooms with bots</p>
+              </div>
+              <div>
+                <p className="text-2xl font-black">{bots.last7Days.toLocaleString()}</p>
+                <p className="text-xs uppercase tracking-wide text-muted">Last 7 days</p>
+              </div>
+              <div>
+                <p className="text-2xl font-black">{bots.last30Days.toLocaleString()}</p>
+                <p className="text-xs uppercase tracking-wide text-muted">Last 30 days</p>
+              </div>
+              <div>
+                <p className="text-2xl font-black">{bots.totalBotSeats.toLocaleString()}</p>
+                <p className="text-xs uppercase tracking-wide text-muted">Total bot seats</p>
+              </div>
+            </div>
+            {Object.keys(bots.byGameType).length > 0 ? (
+              <div className="mt-4">
+                <h3 className="text-sm font-semibold text-muted mb-2">By game type</h3>
+                <div className="space-y-1.5 text-sm">
+                  {Object.entries(bots.byGameType)
+                    .sort((a, b) => b[1] - a[1])
+                    .map(([gt, count]) => (
+                      <div key={gt} className="flex items-center justify-between gap-3">
+                        <span>{formatGameType(gt)}</span>
+                        <span className="text-muted">
+                          {count.toLocaleString()} all-time · {(bots.byGameType7d[gt] ?? 0).toLocaleString()} last 7d
+                        </span>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            ) : (
+              <p className="text-muted text-sm">No rooms with bots recorded yet.</p>
+            )}
+          </>
+        ) : (
+          <p className="text-muted text-sm">
+            Bot tracking not available — the players.is_bot column is missing on this environment.
+          </p>
         )}
       </div>
 
