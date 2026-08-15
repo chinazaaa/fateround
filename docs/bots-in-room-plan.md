@@ -162,6 +162,38 @@ Solo mode itself stays. Bots-in-room is additive: some people will still
 want to practice alone against a bot at 2am; some people will want their
 Tuesday crew of 2 to play 4-handed Monopoly. Different problems.
 
+## Seat model: bots never keep a human out
+
+Load-bearing rule: **a human can always join a room if the seat cap allows
+it, even if that means displacing a bot.** Bots are second-class seat
+holders — they fill the room *when* it isn't full, and they cede seats to
+humans on arrival.
+
+Concretely:
+
+- **Add-bot only when there's an empty seat.** The "+ Add bot" chip is
+  visible only when `humans + bots < max_players`. Once full, the chip
+  disappears.
+- **Humans always join if `max_players` allows.** A room with 2 humans
+  + 2 bots (cap 6) accepts a 3rd human normally into an empty seat. A
+  room with 2 humans + 4 bots (cap 6) accepts a 3rd human by
+  displacing the newest bot — that human never sees a "room full" error.
+- **Bots never displace humans.** Only humans can displace bots. This
+  is the invariant everything else falls out of.
+- **Displacement order** — newest bot first (LIFO). Prevents "the bot
+  I added specifically" from being replaced before "the bot that just
+  auto-filled during Start".
+- **In-lobby vs mid-game.** In the lobby, bump is clean — the seat just
+  changes owner. Mid-game the bot's hand becomes the joining human's
+  hand (Whot allows late-join so this works). If a game engine cannot
+  support hand transfer, mid-game join bumps a bot but seats the human
+  as a spectator until the next round.
+
+**Why this matters:** the alternative — bots that hold seats even against
+humans wanting to join — turns the feature into a bug. The whole point
+of bots-in-room is to salvage a session that would otherwise not happen;
+locking out an extra friend who shows up late would defeat that goal.
+
 ## Explicit non-goals
 
 - **No trading, ever.** Not "trading v2" — genuinely never. Marked in
