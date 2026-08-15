@@ -59,7 +59,6 @@ function baseInputs(sessionStartedAt: string, durationSeconds: number) {
       turn_order: ['A', 'B'],
       current_turn_index: 0,
       finish_order: [],
-      reshuffle_count: 0,
       top_card: { id: 'circle-3', shape: 'circle', number: 3 },
       turn_deadline_at: FUTURE, // turn clock NOT due — only the game clock decides here
       updated_at: '2026-01-01T00:00:00.000Z',

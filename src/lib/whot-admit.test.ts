@@ -86,7 +86,6 @@ function baseSession(over: Record<string, unknown> = {}) {
     turn_order: ['A', 'B', 'C'],
     current_turn_index: 1,
     finish_order: [],
-    reshuffle_count: 0,
     draw_pile: cards(10, 'draw'),
     discard_pile: [],
     top_card: { id: 'circle-3', shape: 'circle', number: 3 },

@@ -794,7 +794,6 @@ export interface WhotSession {
   status_message: string | null
   winner_player_id: string | null
   finish_order: string[]
-  reshuffle_count: number
   turn_deadline_at: string | null
 }
 

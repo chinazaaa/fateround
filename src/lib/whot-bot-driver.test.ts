@@ -108,7 +108,6 @@ const sessionRow = (overrides: Record<string, unknown> = {}) => ({
   status_message: null,
   winner_player_id: null,
   finish_order: [],
-  reshuffle_count: 0,
   turn_deadline_at: null,
   created_at: '',
   updated_at: '',
