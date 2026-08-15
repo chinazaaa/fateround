@@ -120,7 +120,6 @@ describe('pickBotAction — roll phase', () => {
   it('builds before rolling when I hold an unmortgaged monopoly and cash headroom', () => {
     // Own the brown set (indices 1, 3). Bot has plenty of cash.
     const v = view({
-      cash: 2000 as unknown as never, // placeholder — overridden via me below
       myProperties: [owned(1), owned(3)],
       colorSetProgress: [csp('brown', { ownedByMe: 2, totalInGroup: 2 })],
       me: {
