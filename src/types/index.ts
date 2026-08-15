@@ -710,6 +710,10 @@ export interface WhotSession {
   winner_player_id: string | null
   /** Player ids in the order they emptied their hands. Drives final placement. */
   finish_order: string[]
+  /** How many times the draw pile has been rebuilt from the discard. Capped
+   *  at WHOT_RESHUFFLE_LIMIT — beyond that the game ends by lowest hand
+   *  total instead of the deck spinning forever. */
+  reshuffle_count: number
   turn_deadline_at: string | null
   created_at: string
   updated_at: string
