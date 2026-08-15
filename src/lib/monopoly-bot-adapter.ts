@@ -73,10 +73,29 @@ export interface MonopolyBotDebtContext {
 
 export interface MonopolyBotAuctionContext {
   spaceIndex: number
+  /** Full space metadata — lets the heuristic reason about color group without a board lookup. */
+  space: MonopolySpace
   faceValue: number
   highBid: number
   iAmHighBidder: boolean
   isMyBidTurn: boolean
+  /**
+   * True when I own no properties in this space's color group yet — winning
+   * this would START a set for me. For stations/utilities: true iff I own
+   * none in that group.
+   */
+  startsSet: boolean
+  /**
+   * True when winning this would COMPLETE my monopoly — I already own every
+   * other property in the group. Includes stations (all-4 = 200% rent) and
+   * utilities (both = 10× dice).
+   */
+  completesSet: boolean
+  /**
+   * True when I own some in this group but not almost-all — winning here
+   * makes progress but doesn't yet monopolize.
+   */
+  extendsSet: boolean
 }
 
 /**
@@ -283,14 +302,34 @@ export function adaptMonopolyForBot(
   if (board.auction_state) {
     const a = board.auction_state
     const space = MONOPOLY_BOARD[a.space_index]
-    const faceValue = space?.price ?? 0
-    const eligibleAndNotPassed = (a.eligible ?? []).includes(botPlayerId) && !(a.passed ?? []).includes(botPlayerId)
-    auction = {
-      spaceIndex: a.space_index,
-      faceValue,
-      highBid: a.high_bid,
-      iAmHighBidder: a.high_bidder_id === botPlayerId,
-      isMyBidTurn: eligibleAndNotPassed && a.current_bidder_id === botPlayerId,
+    if (space) {
+      const faceValue = space.price ?? 0
+      const eligibleAndNotPassed = (a.eligible ?? []).includes(botPlayerId) && !(a.passed ?? []).includes(botPlayerId)
+      // Set-relevance drives the auction ceiling on the bot side. Uses the
+      // same startsSet/completesSet mechanic pendingBuy has so bidding on a
+      // set-completer scales up, while a random orphan tile stays at the
+      // conservative default cap.
+      let startsSet = false
+      let completesSet = false
+      let extendsSet = false
+      if (space.color) {
+        const ownedNow = countOwnedInGroup(owners, botPlayerId, space.color)
+        const totalInGroupCount = spacesInGroup(space.color).length
+        startsSet = ownedNow === 0
+        completesSet = totalInGroupCount > 0 && ownedNow === totalInGroupCount - 1
+        extendsSet = !startsSet && !completesSet
+      }
+      auction = {
+        spaceIndex: a.space_index,
+        space,
+        faceValue,
+        highBid: a.high_bid,
+        iAmHighBidder: a.high_bidder_id === botPlayerId,
+        isMyBidTurn: eligibleAndNotPassed && a.current_bidder_id === botPlayerId,
+        startsSet,
+        completesSet,
+        extendsSet,
+      }
     }
   }
 

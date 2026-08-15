@@ -64,8 +64,26 @@ const BUILD_RESERVE_RATIO = 0.5
 /** Late-game threshold: once this fraction of properties are owned, pay to leave jail. */
 const LATE_GAME_FRACTION = 0.5
 
-/** Auctions: never bid above faceValue × this. */
-const AUCTION_MAX_FACE_FRACTION = 0.6
+/**
+ * Auctions: the DEFAULT ceiling — never pay above 60% of face for a random
+ * orphan tile. Applied when the auctioned property is set-neutral (won't
+ * start / extend / complete anything for the bot).
+ */
+const AUCTION_MAX_FACE_FRACTION_DEFAULT = 0.6
+
+/**
+ * Auctions: ceiling when winning would EXTEND a set the bot already has a
+ * foothold in (owns some, not almost-all). Willing to reach further than
+ * the default but not into premium territory.
+ */
+const AUCTION_MAX_FACE_FRACTION_EXTENDS = 0.9
+
+/**
+ * Auctions: ceiling when winning would COMPLETE a monopoly for the bot.
+ * Above face because a completed set is where rent revenue lives; a small
+ * premium against face is well spent. Never higher than what solvency allows.
+ */
+const AUCTION_MAX_FACE_FRACTION_COMPLETES = 1.2
 
 /** Auctions: raise the current high bid by this fraction of face value per bid. */
 const AUCTION_BID_STEP_FACE_FRACTION = 0.1
@@ -340,7 +358,15 @@ function pickTradeResponse(view: MonopolyBotView): MonopolyBotAction {
 
 function pickAuctionAction(view: MonopolyBotView): MonopolyBotAction {
   const auction = view.auction!
-  const ceiling = Math.floor(auction.faceValue * AUCTION_MAX_FACE_FRACTION)
+  // Ceiling scales with set-relevance. Complete > extend > default (starts /
+  // set-neutral). A property that completes a monopoly is worth paying a
+  // premium against face; a random orphan tile is capped hard.
+  const ceilingFraction = auction.completesSet
+    ? AUCTION_MAX_FACE_FRACTION_COMPLETES
+    : auction.extendsSet
+      ? AUCTION_MAX_FACE_FRACTION_EXTENDS
+      : AUCTION_MAX_FACE_FRACTION_DEFAULT
+  const ceiling = Math.floor(auction.faceValue * ceilingFraction)
   const step = Math.max(1, Math.floor(auction.faceValue * AUCTION_BID_STEP_FACE_FRACTION))
   const nextBid = auction.highBid + step
 

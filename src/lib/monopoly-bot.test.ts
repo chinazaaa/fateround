@@ -85,12 +85,17 @@ function debt(amount: number, extra: Partial<MonopolyBotDebtContext> = {}): Mono
 }
 
 function auction(opts: Partial<MonopolyBotAuctionContext> & { faceValue: number }): MonopolyBotAuctionContext {
+  const spaceIndex = opts.spaceIndex ?? 1
   return {
-    spaceIndex: 1,
+    spaceIndex,
+    space: spaceAt(spaceIndex),
     faceValue: opts.faceValue,
     highBid: opts.highBid ?? 0,
     iAmHighBidder: opts.iAmHighBidder ?? false,
     isMyBidTurn: opts.isMyBidTurn ?? true,
+    startsSet: opts.startsSet ?? false,
+    completesSet: opts.completesSet ?? false,
+    extendsSet: opts.extendsSet ?? false,
   }
 }
 
@@ -418,14 +423,44 @@ describe('pickBotAction — build ordering', () => {
 // ── auction ─────────────────────────────────────────────────────────────────
 
 describe('pickBotAction — auction', () => {
-  it('bids when the next step is still within the 60%-of-face ceiling', () => {
-    // Face 100 → ceiling 60, step 10. Current high 0 → bid 10.
+  it('bids when the next step is still within the default 60%-of-face ceiling', () => {
+    // Face 100 → ceiling 60, step 10. Current high 0 → bid 10. Set-neutral.
     const v = view({ auction: auction({ faceValue: 100, highBid: 0 }) })
     expect(pickBotAction(v)).toEqual({ type: 'auction_bid', amount: 10 })
   })
 
-  it('passes when the next bid would exceed the 60%-of-face ceiling', () => {
+  it('passes when the next bid would exceed the 60%-of-face default ceiling', () => {
     const v = view({ auction: auction({ faceValue: 100, highBid: 60 }) })
+    expect(pickBotAction(v)).toEqual({ type: 'auction_pass' })
+  })
+
+  it('scales the ceiling to 90% of face when the property EXTENDS a set the bot has', () => {
+    // Extends: bot owns some in the group, not almost-all. Ceiling 90 not 60,
+    // so bid at highBid=70 goes through (step +10 → 80 ≤ 90).
+    const v = view({ auction: auction({ faceValue: 100, highBid: 70, extendsSet: true }) })
+    expect(pickBotAction(v)).toEqual({ type: 'auction_bid', amount: 80 })
+  })
+
+  it('scales the ceiling to 120% of face when the property COMPLETES a monopoly', () => {
+    // Completes: bot owns totalInGroup-1. Ceiling 120, so bid at highBid=100 goes through.
+    const v = view({ auction: auction({ faceValue: 100, highBid: 100, completesSet: true }) })
+    expect(pickBotAction(v)).toEqual({ type: 'auction_bid', amount: 110 })
+  })
+
+  it('still passes on a set-completing bid the bot cannot afford', () => {
+    // Cash 50; next bid would be 110. Even though 110 ≤ 120% ceiling, no cash.
+    const v = view({
+      me: {
+        playerId: BOT,
+        cash: 50,
+        position: 0,
+        in_jail: false,
+        jail_turns: 0,
+        get_out_of_jail_free: 0,
+        bankrupt: false,
+      },
+      auction: auction({ faceValue: 100, highBid: 100, completesSet: true }),
+    })
     expect(pickBotAction(v)).toEqual({ type: 'auction_pass' })
   })
 

@@ -270,6 +270,25 @@ describe('adaptMonopolyForBot — auction', () => {
     expect(v.auction!.highBid).toBe(20)
     expect(v.auction!.iAmHighBidder).toBe(false)
     expect(v.auction!.isMyBidTurn).toBe(true)
+    // Bot owns nothing in brown → startsSet=true, not extends, not completes.
+    expect(v.auction!.startsSet).toBe(true)
+    expect(v.auction!.extendsSet).toBe(false)
+    expect(v.auction!.completesSet).toBe(false)
+  })
+
+  it('surfaces completesSet when winning the auction would monopolize the group', () => {
+    // Brown group is 1 + 3; auction is for index 1 and bot already owns 3.
+    const v = adaptMonopolyForBot(
+      board({
+        phase: 'auction',
+        auction_state: baseAuction,
+        property_owners: { '3': BOT },
+      }),
+      [pState(HUMAN), pState(BOT)],
+      BOT
+    )!
+    expect(v.auction!.completesSet).toBe(true)
+    expect(v.auction!.startsSet).toBe(false)
   })
 
   it('surfaces the auction but isMyBidTurn=false when someone else is bidding', () => {
