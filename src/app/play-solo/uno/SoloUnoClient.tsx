@@ -32,6 +32,13 @@ import {
 import { pickBotAction, type UnoBotDifficulty } from '@/lib/uno-bot'
 import { isDrawPileDepleted } from '@/lib/uno'
 import { logSoloPlayStarted } from '@/lib/solo-play'
+import {
+  readSoloScoreboard,
+  recordSoloOutcome,
+  resetSoloScoreboard,
+  type SoloScoreboard,
+} from '@/lib/solo-scoreboard'
+import { SoloScoreboardRow } from '@/components/solo/SoloScoreboardRow'
 
 const STORAGE_KEY = 'solo-uno-state-v1'
 const DIFFICULTY_KEY = 'solo-uno-difficulty-v1'
@@ -79,17 +86,31 @@ const NOOP = () => {}
 export function SoloUnoClient() {
   const [state, setState] = useState<UnoSoloState | null>(null)
   const [difficulty, setDifficulty] = useState<UnoBotDifficulty>('normal')
+  const [scoreboard, setScoreboard] = useState<SoloScoreboard>({ human: 0, bot: 0, draws: 0 })
   const stateRef = useRef<UnoSoloState | null>(null)
   stateRef.current = state
+  // Dedupe scoring: only bump the tally once per game. On rehydrate of an
+  // already-finished game we assume it was scored last time.
+  const scoredRef = useRef(false)
 
   useEffect(() => {
     const persisted = loadPersistedState()
     const d = loadDifficulty()
     setDifficulty(d)
     setState(persisted ?? initUnoSolo())
+    setScoreboard(readSoloScoreboard('uno'))
+    if (persisted && persisted.outcome != null) scoredRef.current = true
     // Only log on fresh init (not mid-game reloads) so counts aren't inflated.
     if (!persisted) logSoloPlayStarted('uno', d)
   }, [])
+
+  useEffect(() => {
+    if (!state || state.outcome == null || scoredRef.current) return
+    const outcome: 'human' | 'bot' | 'draw' =
+      state.outcome === 0 ? 'human' : state.outcome === 'draw' ? 'draw' : 'bot'
+    setScoreboard(recordSoloOutcome('uno', outcome))
+    scoredRef.current = true
+  }, [state])
 
   useEffect(() => {
     if (state) persistState(state)
@@ -149,8 +170,13 @@ export function SoloUnoClient() {
   const restart = useCallback(() => {
     clearPersistedState()
     setState(initUnoSolo())
+    scoredRef.current = false
     logSoloPlayStarted('uno', difficulty)
   }, [difficulty])
+
+  const resetScore = useCallback(() => {
+    setScoreboard(resetSoloScoreboard('uno'))
+  }, [])
 
   const players = useMemo(
     () => [
@@ -249,6 +275,7 @@ export function SoloUnoClient() {
             {humanWon && <span aria-hidden> 🎉</span>}
           </p>
           <p className="text-muted mt-1 text-sm">Practice mode — no ranking, just for fun.</p>
+          <SoloScoreboardRow scoreboard={scoreboard} onReset={resetScore} />
           <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-center">
             <button type="button" onClick={restart} className="btn-primary">
               Play again

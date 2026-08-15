@@ -19,6 +19,7 @@
 import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { WhotPlaySurface } from '@/components/whot/WhotPlaySurface'
+import { SoloScoreboardRow } from '@/components/solo/SoloScoreboardRow'
 import {
   SOLO_BOT_ID,
   SOLO_HUMAN_ID,
@@ -32,6 +33,12 @@ import {
 import { pickBotAction, type WhotBotDifficulty } from '@/lib/whot-bot'
 import { getActivePickPenalty, hasPlayableCard, isDrawPileDepleted, parseWhotRules } from '@/lib/whot'
 import { logSoloPlayStarted } from '@/lib/solo-play'
+import {
+  readSoloScoreboard,
+  recordSoloOutcome,
+  resetSoloScoreboard,
+  type SoloScoreboard,
+} from '@/lib/solo-scoreboard'
 
 const STORAGE_KEY = 'solo-whot-state-v1'
 const DIFFICULTY_KEY = 'solo-whot-difficulty-v1'
@@ -96,18 +103,36 @@ export function SoloWhotClient() {
   // hydration for client-only state.
   const [state, setState] = useState<SoloWhotState | null>(null)
   const [difficulty, setDifficulty] = useState<WhotBotDifficulty>('normal')
+  const [scoreboard, setScoreboard] = useState<SoloScoreboard>({ human: 0, bot: 0, draws: 0 })
   const stateRef = useRef<SoloWhotState | null>(null)
   stateRef.current = state
+  // True once this game's outcome has been counted toward the scoreboard.
+  // Reset to false on restart. On rehydrate of an already-finished game we
+  // assume it was scored last time (better to miss one edge-case count than
+  // double-count on every reload of a finished game).
+  const scoredRef = useRef(false)
 
   useEffect(() => {
     const persisted = loadPersistedState()
     const d = loadDifficulty()
     setDifficulty(d)
     setState(persisted ?? initSoloWhot({ rules: SOLO_RULES }))
+    setScoreboard(readSoloScoreboard('whot'))
+    if (persisted && persisted.outcome != null) scoredRef.current = true
     // Only log when we're starting a fresh game (not on a mid-game reload) so
     // adoption counts aren't inflated by rehydrates.
     if (!persisted) logSoloPlayStarted('whot', d)
   }, [])
+
+  // Score the game when it transitions to finished. scoredRef dedupes so a
+  // re-render or a bot follow-up move can't double-count the same outcome.
+  useEffect(() => {
+    if (!state || state.outcome == null || scoredRef.current) return
+    const outcome: 'human' | 'bot' | 'draw' =
+      state.outcome === 0 ? 'human' : state.outcome === 'draw' ? 'draw' : 'bot'
+    setScoreboard(recordSoloOutcome('whot', outcome))
+    scoredRef.current = true
+  }, [state])
 
   useEffect(() => {
     if (state) persistState(state)
@@ -177,8 +202,13 @@ export function SoloWhotClient() {
   const restart = useCallback(() => {
     clearPersistedState()
     setState(initSoloWhot({ rules: SOLO_RULES }))
+    scoredRef.current = false
     logSoloPlayStarted('whot', difficulty)
   }, [difficulty])
+
+  const resetScore = useCallback(() => {
+    setScoreboard(resetSoloScoreboard('whot'))
+  }, [])
 
   // ── Adapters into WhotPlaySurface's expected shape ─────────────────────────
   const players = useMemo(
@@ -274,6 +304,7 @@ export function SoloWhotClient() {
             {humanWon && <span aria-hidden> 🎉</span>}
           </p>
           <p className="text-muted mt-1 text-sm">Practice mode — no ranking, just for fun.</p>
+          <SoloScoreboardRow scoreboard={scoreboard} onReset={resetScore} />
           <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-center">
             <button type="button" onClick={restart} className="btn-primary">
               Play again
