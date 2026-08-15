@@ -16,9 +16,14 @@ import type { TriviaQuestion } from '@/types'
 import {
   parseTriviaQuestionImport,
   parseExcelTriviaQuestionImport,
+  parseWstDeckImport,
+  parseExcelWstDeckImport,
+  formatEntryImportSummary,
   formatTriviaImportSummary,
   questionSampleFile,
 } from '@/lib/custom-questions'
+import { WST_DECK_MIN_ENTRIES, type WstDeckEntry } from '@/lib/who-said-this'
+import { WST_PLATFORM_DECK } from '@/lib/who-said-this-questions'
 import { AiQuestionsGenerator } from '@/components/ui/AiQuestionsGenerator'
 import {
   estimateGameSeconds,
@@ -221,6 +226,14 @@ export default function TournamentCreatePage() {
   const [customTriviaPack, setCustomTriviaPack] = useState<TriviaQuestion[]>([])
   const [triviaUploadMsg, setTriviaUploadMsg] = useState<string | null>(null)
   const triviaFileRef = useRef<HTMLInputElement>(null)
+  // Optional shared Who Said This deck for every planned WST game — mirrors
+  // the normal-game picker (Players submit / Platform / Your own). 'player'
+  // stores nothing and each WST game runs in lobby-submit mode; 'platform'
+  // sends the built-in famous-quotes deck; 'custom' sends the host's CSV.
+  const [wstSource, setWstSource] = useState<'player' | 'platform' | 'custom'>('player')
+  const [customWstPack, setCustomWstPack] = useState<WstDeckEntry[]>([])
+  const [wstUploadMsg, setWstUploadMsg] = useState<string | null>(null)
+  const wstFileRef = useRef<HTMLInputElement>(null)
   // Event branding — two colours + a logo file the host optionally attaches.
   // Logo is uploaded to storage AFTER the tournament row is created (needs an
   // id + host token to auth the upload), so we hold the picked File in memory
@@ -237,6 +250,16 @@ export default function TournamentCreatePage() {
   const [scheduledLocal, setScheduledLocal] = useState<string>('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+
+  // "Now" in the host's local timezone, formatted as the datetime-local input
+  // wants ("YYYY-MM-DDTHH:mm"). Used as the picker's `min` so hosts can't
+  // scroll to yesterday. Recomputed each render — cheap; the input floor
+  // sliding by a minute between renders is intended.
+  const scheduledMinLocal = (() => {
+    const d = new Date()
+    const pad = (n: number) => String(n).padStart(2, '0')
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+  })()
 
   const isH2H = format === 'head-to-head'
   const isKnockout = format === 'knockout'
@@ -420,6 +443,40 @@ export default function TournamentCreatePage() {
     }
   }
 
+  // Mirrors handleTriviaFile — takes a CSV/XLSX file, parses to a WstDeckEntry
+  // list, and surfaces a one-line status. Same failure modes; same message
+  // shape. The WST importers live alongside the trivia ones in custom-questions.
+  async function handleWstFile(file: File) {
+    setWstUploadMsg(null)
+    setCustomWstPack([])
+    const ext = file.name.split('.').pop()?.toLowerCase()
+    try {
+      if (ext === 'csv' || ext === 'txt') {
+        const text = await file.text()
+        const result = parseWstDeckImport(text)
+        if (result.questions.length === 0) {
+          setWstUploadMsg('No valid rows. Use quote, option_a–option_d, and correct (A–D) columns.')
+          return
+        }
+        setCustomWstPack(result.questions)
+        setWstUploadMsg(formatEntryImportSummary(result) ?? `${result.questions.length} quotes ready`)
+      } else if (ext === 'xlsx' || ext === 'xls') {
+        const buffer = await file.arrayBuffer()
+        const result = await parseExcelWstDeckImport(buffer)
+        if (result.questions.length === 0) {
+          setWstUploadMsg('No valid rows. Use quote, option_a–option_d, and correct (A–D) columns.')
+          return
+        }
+        setCustomWstPack(result.questions)
+        setWstUploadMsg(formatEntryImportSummary(result) ?? `${result.questions.length} quotes ready`)
+      } else {
+        setWstUploadMsg('Please upload a .csv or .xlsx file')
+      }
+    } catch {
+      setWstUploadMsg('Could not read that file. Try the sample CSV.')
+    }
+  }
+
   async function handleCreate() {
     if (!title.trim()) {
       setError('Enter a tournament title')
@@ -442,6 +499,34 @@ export default function TournamentCreatePage() {
           : 'Generate some trivia questions or switch back to the platform pack'
       )
       return
+    }
+    // WST deck mode ('custom') needs at least the two-entry minimum the
+    // engine enforces; player-submit + platform paths ship their content
+    // implicitly (empty pack or the built-in deck), no guard needed.
+    if (
+      isRoundRobin &&
+      planned &&
+      wstSource === 'custom' &&
+      queue.some((e) => e.gameType === 'who_said_this') &&
+      customWstPack.length < WST_DECK_MIN_ENTRIES
+    ) {
+      setError(
+        `Upload at least ${WST_DECK_MIN_ENTRIES} Who Said This quotes, or switch back to Players submit / Platform`
+      )
+      return
+    }
+    if (scheduledLocal) {
+      const scheduledMs = new Date(scheduledLocal).getTime()
+      if (Number.isNaN(scheduledMs)) {
+        setError('That scheduled start time looks off — please pick a valid date and time.')
+        return
+      }
+      // Same 60s grace as the server refine — a submission that took a few
+      // seconds after the picker committed shouldn't false-positive as past.
+      if (scheduledMs < Date.now() - 60_000) {
+        setError('Scheduled start must be in the future. Pick a later time or clear the schedule for a right-now game.')
+        return
+      }
     }
 
     setSubmitting(true)
@@ -510,6 +595,17 @@ export default function TournamentCreatePage() {
           customTriviaPack.length > 0
         ) {
           body.customTriviaPack = customTriviaPack
+        }
+        // Shared WST deck: attach the built-in famous-quotes deck when the
+        // host picked "Platform", or their uploaded pack when they picked
+        // "Your own". Sending nothing keeps every WST game in player-submit
+        // mode (the server default).
+        if (planned && queue.some((e) => e.gameType === 'who_said_this')) {
+          if (wstSource === 'platform') {
+            body.customWstPack = WST_PLATFORM_DECK
+          } else if (wstSource === 'custom' && customWstPack.length > 0) {
+            body.customWstPack = customWstPack
+          }
         }
       }
 
@@ -608,6 +704,10 @@ export default function TournamentCreatePage() {
             id="tournament-scheduled-at"
             type="datetime-local"
             value={scheduledLocal}
+            // Native picker floor — most browsers dim past dates in the drop-
+            // down when min is set. Server-side validation is the real fence
+            // because min can be bypassed, but this stops the honest mistake.
+            min={scheduledMinLocal}
             onChange={(e) => setScheduledLocal(e.target.value)}
             className="input-field"
           />
@@ -1005,7 +1105,7 @@ export default function TournamentCreatePage() {
                     <p className="text-faint text-xs mt-1.5">
                       {draftGameType === 'two_truths'
                         ? 'Players type their two truths + a lie when they join the lobby — no upload needed. One round per player who submits.'
-                        : 'Players type one quote from a favourite character when they join the lobby — no upload needed. One round per submitted quote.'}
+                        : "Default is player-submit: each joiner writes a quote + four options (A–D) and marks the correct one. If you'd rather run a preset pack (platform or CSV), configure that below."}
                     </p>
                   )}
                 </Field>
@@ -1092,34 +1192,23 @@ export default function TournamentCreatePage() {
             </div>
           )}
 
-          {/* Info card when a player-submit game type sits in the planned playlist —
-            hosts hunt for a "questions upload" affordance and get confused when
-            it's not there, because these two shapes source their content from
-            the players themselves in the lobby. */}
-          {isRoundRobin &&
-            planned &&
-            queue.some((e) => e.gameType === 'who_said_this' || e.gameType === 'two_truths') && (
-              <div
-                className="rounded-xl border border-theme px-4 py-3 text-sm text-body"
-                style={{ background: 'var(--surface-inset-bg)', borderLeft: '3px solid var(--primary)' }}
-              >
-                <p className="font-semibold mb-1">Player-submitted games in your playlist</p>
-                <ul className="text-faint text-xs space-y-1">
-                  {queue.some((e) => e.gameType === 'who_said_this') && (
-                    <li>
-                      <span className="text-body">Who Said This:</span> players type one quote from a favourite
-                      character when they join the lobby. Everyone else guesses who said it. Nothing for you to upload.
-                    </li>
-                  )}
-                  {queue.some((e) => e.gameType === 'two_truths') && (
-                    <li>
-                      <span className="text-body">Two Truths &amp; a Lie:</span> players type two truths and a lie about
-                      themselves in the lobby. Nothing for you to upload.
-                    </li>
-                  )}
-                </ul>
-              </div>
-            )}
+          {/* Reminder card for Two Truths — WST has its own section below with
+              a proper picker, so it doesn't need a line here. TTL is
+              always player-submit (statements come from each player in the
+              lobby), and hosts otherwise hunt for a "questions upload" that
+              doesn't exist. */}
+          {isRoundRobin && planned && queue.some((e) => e.gameType === 'two_truths') && (
+            <div
+              className="rounded-xl border border-theme px-4 py-3 text-sm text-body"
+              style={{ background: 'var(--surface-inset-bg)', borderLeft: '3px solid var(--primary)' }}
+            >
+              <p className="font-semibold mb-1">Two Truths &amp; a Lie is player-submitted</p>
+              <p className="text-faint text-xs">
+                Each player types two truths and a lie about themselves in the lobby, then everyone else guesses which
+                one is the lie. Nothing for you to upload.
+              </p>
+            </div>
+          )}
 
           {/* Shared trivia pack — only shown when the playlist actually contains
             a Trivia entry, otherwise there's nothing for it to be used with. */}
@@ -1127,8 +1216,9 @@ export default function TournamentCreatePage() {
             <div className="surface-inset p-4 space-y-3">
               <p className="label-caps">Trivia questions</p>
               <p className="text-faint text-xs">
-                Every Trivia round in your playlist shares this pack. Questions don&apos;t repeat between rounds — so a
-                pack of 30 works for one 30-question round or three 10-question rounds, not both.
+                Every Trivia game in your playlist draws from this pack, and questions don&apos;t repeat between games.
+                The <span className="text-body">Questions</span> field on each Trivia entry above decides how many are
+                pulled per game — so two Trivia games at 10 questions each need at least 20 in the pack.
               </p>
 
               <div className="flex gap-2">
@@ -1233,11 +1323,120 @@ export default function TournamentCreatePage() {
                   return (
                     <p className={`text-xs ${short ? 'text-amber-400' : 'text-faint'}`}>
                       Pack has {customTriviaPack.length} question{customTriviaPack.length === 1 ? '' : 's'}. Your Trivia
-                      rounds ask for {totalTriviaQuestions} across the playlist
-                      {short ? ' — add more questions or lower a round count, or a later round won’t start.' : '.'}
+                      games ask for {totalTriviaQuestions} across the playlist
+                      {short ? ' — add more questions or lower a Questions field, or a later game won’t start.' : '.'}
                     </p>
                   )
                 })()}
+            </div>
+          )}
+
+          {/* Shared Who Said This deck — same shape as the trivia pack:
+              picker with Players submit / Platform / Your own. Player-submit
+              keeps the lobby-collect flow; Platform sends the built-in famous
+              quotes deck; Your own uploads a CSV. Only shown when the
+              playlist actually contains a WST entry. */}
+          {isRoundRobin && planned && queue.some((e) => e.gameType === 'who_said_this') && (
+            <div className="surface-inset p-4 space-y-3">
+              <p className="label-caps">Who Said This questions</p>
+              <p className="text-faint text-xs">
+                Choose where the quotes come from — pick one for every Who Said This game in your playlist. The default
+                (Players submit) has each joiner write a quote in the lobby, so you don&apos;t need to prepare anything.
+              </p>
+
+              <div className="flex gap-2 flex-wrap">
+                <button
+                  type="button"
+                  aria-pressed={wstSource === 'player'}
+                  onClick={() => setWstSource('player')}
+                  className={`chip flex-1 ${wstSource === 'player' ? 'chip-active' : ''}`}
+                  title="Each joiner writes a quote + four options in the lobby"
+                >
+                  Players submit
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={wstSource === 'platform'}
+                  onClick={() => setWstSource('platform')}
+                  className={`chip flex-1 ${wstSource === 'platform' ? 'chip-active' : ''}`}
+                  title="Our built-in pack of famous quotes"
+                >
+                  Platform pack
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={wstSource === 'custom'}
+                  onClick={() => setWstSource('custom')}
+                  className={`chip flex-1 ${wstSource === 'custom' ? 'chip-active' : ''}`}
+                  title="Upload a CSV of quotes, options, and answers"
+                >
+                  Your own (CSV)
+                </button>
+              </div>
+
+              {wstSource === 'player' && (
+                <p className="text-faint text-xs">
+                  Nothing else to configure — each joiner writes one quote + four options (A–D) and marks the correct
+                  answer when they land in the lobby. The game starts once you tap Start.
+                </p>
+              )}
+
+              {wstSource === 'platform' && (
+                <p className="text-faint text-xs">
+                  Uses our built-in pack of {WST_PLATFORM_DECK.length} famous quotes. Players just join and answer —
+                  fastest correct wins. Nothing to upload.
+                </p>
+              )}
+
+              {wstSource === 'custom' && (
+                <div className="space-y-3">
+                  <input
+                    ref={wstFileRef}
+                    type="file"
+                    accept=".csv,.xlsx,.xls"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0]
+                      if (f) handleWstFile(f)
+                    }}
+                    className="hidden"
+                  />
+                  {customWstPack.length === 0 ? (
+                    <div className="space-y-2">
+                      <button
+                        type="button"
+                        onClick={() => wstFileRef.current?.click()}
+                        className="btn-secondary w-full"
+                      >
+                        Choose CSV or Excel file
+                      </button>
+                      <p className="text-faint text-xs">
+                        Columns:{' '}
+                        <span className="font-mono">quote, option_a, option_b, option_c, option_d, correct</span>. The{' '}
+                        <span className="font-mono">correct</span> column is the answer letter (A–D). At least{' '}
+                        {WST_DECK_MIN_ENTRIES} quotes required.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm text-body font-medium">
+                        ✓ {customWstPack.length} quote{customWstPack.length === 1 ? '' : 's'} loaded
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCustomWstPack([])
+                          setWstUploadMsg(null)
+                          if (wstFileRef.current) wstFileRef.current.value = ''
+                        }}
+                        className="btn-ghost text-xs"
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  )}
+                  {wstUploadMsg && <p className="text-faint text-xs">{wstUploadMsg}</p>}
+                </div>
+              )}
             </div>
           )}
 

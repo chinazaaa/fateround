@@ -76,6 +76,10 @@ export interface Tournament {
   // shared trivia pack contains answers. The public GET returns the count
   // separately (as `customTriviaPackCount`) instead of the raw questions.
   custom_trivia_pack?: unknown[] | null
+  // Same rule as custom_trivia_pack — a preset Who Said This deck the host
+  // attached at creation, used by every planned WST game in this tournament
+  // instead of running player-submit mode. Never returned by the public GET.
+  custom_wst_pack?: unknown[] | null
   // Event branding — two colours + logo. Public info: safe to ship to any
   // caller with the tournament code (that's the whole point).
   branding: TournamentBranding | null

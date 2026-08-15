@@ -11,7 +11,7 @@ import {
   TOURNAMENT_ELIGIBLE_TYPES,
 } from '@/lib/tournament-validation'
 import { buildTournamentGameConfig } from '@/lib/tournament-game-config'
-import { parseStoredTriviaQuestions } from '@/lib/custom-questions'
+import { parseStoredTriviaQuestions, parseStoredWstDeck } from '@/lib/custom-questions'
 
 export async function POST(req: NextRequest) {
   // Service role: `tournaments` is INSERT-locked for anon since 20260803120000, and the row
@@ -33,6 +33,7 @@ export async function POST(req: NextRequest) {
     eliminationConfig,
     gameQueue,
     customTriviaPack,
+    customWstPack,
     branding,
     scheduledAt,
   } = body
@@ -72,6 +73,23 @@ export async function POST(req: NextRequest) {
     )
   }
   const resolvedCustomTriviaPack = parsedCustomTriviaPack.length > 0 ? parsedCustomTriviaPack : null
+
+  // Optional shared Who Said This deck — same shape as the trivia pack: a CSV
+  // upload or the built-in platform pack the host attached at creation. When
+  // set, every planned WST game in this tournament runs in deck mode with
+  // this content; when null the games fall back to player-submit. Only for
+  // round-robin — other formats don't spawn WST.
+  const parsedCustomWstPack =
+    Array.isArray(customWstPack) && customWstPack.length > 0 && (format ?? 'round-robin') === 'round-robin'
+      ? parseStoredWstDeck(customWstPack)
+      : []
+  if (Array.isArray(customWstPack) && customWstPack.length > 0 && parsedCustomWstPack.length === 0) {
+    return NextResponse.json(
+      { error: 'Who Said This deck had no valid entries — check the CSV format and try again' },
+      { status: 400 }
+    )
+  }
+  const resolvedCustomWstPack = parsedCustomWstPack.length > 0 ? parsedCustomWstPack : null
 
   // Event branding: drop any all-null branding blob so a "cleared" form
   // doesn't cost a jsonb row for no reason. Otherwise store as-is (schema
@@ -131,6 +149,7 @@ export async function POST(req: NextRequest) {
     elimination_config: eliminationConfig ?? null,
     game_queue: resolvedGameQueue,
     custom_trivia_pack: resolvedCustomTriviaPack,
+    custom_wst_pack: resolvedCustomWstPack,
     branding: resolvedBranding,
     scheduled_at: scheduledAt ?? null,
   })

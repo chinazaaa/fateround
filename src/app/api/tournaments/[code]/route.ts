@@ -60,15 +60,19 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ cod
   // upload). Only the SIZE is returned — the raw pack itself never ships to the
   // client, since anyone with the tournament code could then read the answers.
   let customTriviaPackCount: number | null = null
+  let customWstPackCount: number | null = null
   const gameIds = games.map((g) => g.game_id).filter((id): id is string => Boolean(id))
   const admin = getSupabaseAdmin()
   const { data: packRow } = await admin
     .from('tournaments')
-    .select('custom_trivia_pack')
+    .select('custom_trivia_pack, custom_wst_pack')
     .eq('id', tournamentId)
     .maybeSingle()
   if (Array.isArray(packRow?.custom_trivia_pack)) {
     customTriviaPackCount = packRow!.custom_trivia_pack.length
+  }
+  if (Array.isArray(packRow?.custom_wst_pack)) {
+    customWstPackCount = packRow!.custom_wst_pack.length
   }
   if (gameIds.length > 0) {
     const [{ data: priorGames }, { data: roomPlayers }] = await Promise.all([
@@ -133,6 +137,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ cod
     games: gamesOut,
     carriedCustomCount,
     customTriviaPackCount,
+    customWstPackCount,
   })
 }
 
