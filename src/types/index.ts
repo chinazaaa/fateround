@@ -1815,6 +1815,13 @@ export interface Player {
   eliminated_at?: string | null
   /** Remaining lives (lives mode only, null otherwise). */
   lives_remaining?: number | null
+  /**
+   * True when this player row is a bot (bots-in-room, Phase 1). The client uses
+   * it to render the 🤖 chip in the roster and gate the "Add bot" affordance;
+   * the server uses it to drive the bot's turns via game-tick. Defaults false
+   * for every existing row (see migration 20260924120000_players_is_bot.sql).
+   */
+  is_bot?: boolean
 }
 
 export interface Round {
