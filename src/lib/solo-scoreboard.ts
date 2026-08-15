@@ -24,17 +24,27 @@ function storageKey(key: SoloScoreboardKey): string {
   return `solo-${key}-scoreboard-v1`
 }
 
+/** Only non-negative safe integers are valid game counts. Everything else
+ *  (a tampered localStorage entry, a caller passing NaN / floats / negatives)
+ *  gets clamped to zero rather than persisting a nonsensical tally. */
+function normalizeCount(value: unknown): number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : 0
+}
+
+function normalizeScoreboard(input: Partial<SoloScoreboard> | null | undefined): SoloScoreboard {
+  return {
+    human: normalizeCount(input?.human),
+    bot: normalizeCount(input?.bot),
+    draws: normalizeCount(input?.draws),
+  }
+}
+
 export function readSoloScoreboard(key: SoloScoreboardKey): SoloScoreboard {
   if (typeof window === 'undefined') return { ...EMPTY }
   try {
     const raw = window.localStorage.getItem(storageKey(key))
     if (!raw) return { ...EMPTY }
-    const parsed = JSON.parse(raw) as Partial<SoloScoreboard>
-    return {
-      human: Number.isFinite(parsed.human) ? Number(parsed.human) : 0,
-      bot: Number.isFinite(parsed.bot) ? Number(parsed.bot) : 0,
-      draws: Number.isFinite(parsed.draws) ? Number(parsed.draws) : 0,
-    }
+    return normalizeScoreboard(JSON.parse(raw) as Partial<SoloScoreboard>)
   } catch {
     return { ...EMPTY }
   }
@@ -43,7 +53,7 @@ export function readSoloScoreboard(key: SoloScoreboardKey): SoloScoreboard {
 export function writeSoloScoreboard(key: SoloScoreboardKey, next: SoloScoreboard): void {
   if (typeof window === 'undefined') return
   try {
-    window.localStorage.setItem(storageKey(key), JSON.stringify(next))
+    window.localStorage.setItem(storageKey(key), JSON.stringify(normalizeScoreboard(next)))
   } catch {
     /* noop — storage full / disabled is fine, score just doesn't persist */
   }

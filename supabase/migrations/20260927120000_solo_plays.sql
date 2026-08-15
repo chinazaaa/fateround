@@ -21,6 +21,9 @@ alter table public.solo_plays enable row level security;
 -- Public insert-only: the solo clients POST from the browser via the anon key.
 -- No SELECT policy — admin reads go through the service-role key which bypasses
 -- RLS. Keeping reads off anon prevents scraping raw event streams.
+-- NOTE: this anon INSERT policy is REVOKED in 20260928120000_solo_plays_lockdown.sql
+-- because the /api/solo-plays route already uses the service-role key. Kept in
+-- this migration verbatim so applied-migration history stays consistent.
 drop policy if exists "anon insert solo_plays" on public.solo_plays;
 create policy "anon insert solo_plays"
   on public.solo_plays for insert

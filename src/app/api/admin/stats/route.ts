@@ -491,8 +491,16 @@ export async function GET(req: NextRequest) {
       }
       if (row.created_at >= cutoff30d) soloPlayStats.last30Days++
     }
-  } catch {
-    // solo_plays table might not exist yet (pre-migration) — silently skip
+  } catch (e: unknown) {
+    // Only swallow the "table doesn't exist yet" case (pre-migration) — every
+    // other error (permissions, connectivity, etc.) must propagate so we don't
+    // silently return misleading zeros. PostgREST returns PGRST205 when the
+    // relation is missing from its schema cache; the underlying Postgres code
+    // is 42P01.
+    const code =
+      typeof e === 'object' && e !== null && 'code' in e ? String((e as { code: unknown }).code) : ''
+    const missingRelation = code === 'PGRST205' || code === '42P01'
+    if (!missingRelation) throw e
   }
 
   // Daily challenge stats (service-role tables — safe here)
