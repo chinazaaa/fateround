@@ -180,13 +180,30 @@ describe('advanceMonopolyTurnPastBankrupt', () => {
   })
 
   it('skips multiple consecutive bankrupt players', async () => {
-    const b = board({ current_turn_index: 0, turn_order: ['a', 'b', 'c'] })
-    const states = [pState('a', { bankrupt: true }), pState('b', { bankrupt: true }), pState('c')]
+    // Four players: a (current, bankrupt), b (bankrupt), c (alive), d (alive).
+    // Two survivors so checkWinner does NOT short-circuit the advance.
+    const b = board({ current_turn_index: 0, turn_order: ['a', 'b', 'c', 'd'] })
+    const states = [
+      pState('a', { bankrupt: true }),
+      pState('b', { bankrupt: true }),
+      pState('c'),
+      pState('d'),
+    ]
     const m = makeSupabase({ board: b, states })
     const result = await advanceMonopolyTurnPastBankrupt(m.supabase, 'G1')
 
     expect(result.advanced).toBe(true)
     const boardUpdate = m.updates.find((u) => u.table === 'monopoly_boards')!
     expect(boardUpdate.vals.current_turn_index).toBe(2)
+  })
+
+  it('is a no-op when only one player remains alive (winner short-circuit)', async () => {
+    const b = board({ current_turn_index: 0 })
+    const states = [pState('a', { bankrupt: true }), pState('b', { bankrupt: true }), pState('c')]
+    const m = makeSupabase({ board: b, states })
+    const result = await advanceMonopolyTurnPastBankrupt(m.supabase, 'G1')
+
+    expect(result.advanced).toBe(false)
+    expect(m.updates.filter((u) => u.table === 'monopoly_boards')).toHaveLength(0)
   })
 })
