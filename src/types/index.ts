@@ -1819,7 +1819,7 @@ export interface Player {
    * True when this player row is a bot (bots-in-room, Phase 1). The client uses
    * it to render the 🤖 chip in the roster and gate the "Add bot" affordance;
    * the server uses it to drive the bot's turns via game-tick. Defaults false
-   * for every existing row (see migration 20260924120000_players_is_bot.sql).
+   * for every existing row (see migration 20260925120000_players_is_bot.sql).
    */
   is_bot?: boolean
 }

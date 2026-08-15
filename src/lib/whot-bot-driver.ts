@@ -51,7 +51,7 @@ export async function driveWhotBotsOnce(gameCode: string): Promise<DriveResult> 
   const code = gameCode.toUpperCase()
 
   // Fast path: does this game have ANY bots? Uses the partial index added in
-  // 20260924120000_players_is_bot.sql, so a bot-free game does one indexed
+  // 20260925120000_players_is_bot.sql, so a bot-free game does one indexed
   // lookup returning zero and bails immediately.
   const { count: botCount } = await admin
     .from('players')
