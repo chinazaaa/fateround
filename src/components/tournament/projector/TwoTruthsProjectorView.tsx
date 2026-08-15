@@ -89,10 +89,12 @@ export function TwoTruthsProjectorView({ gameCode }: { gameCode: string }) {
   if (!round) {
     return (
       <div className="flex flex-col items-center justify-center gap-6 h-full">
-        <p className="text-white/60 text-lg uppercase tracking-widest">
+        <p className="text-lg uppercase tracking-widest" style={{ color: 'var(--muted)' }}>
           {game?.status === 'waiting' ? 'Waiting for host to start…' : 'Loading…'}
         </p>
-        <p className="text-4xl text-white/60">Two Truths &amp; a Lie</p>
+        <p className="text-4xl" style={{ color: 'var(--muted)' }}>
+          Two Truths &amp; a Lie
+        </p>
       </div>
     )
   }
@@ -118,27 +120,39 @@ export function TwoTruthsProjectorView({ gameCode }: { gameCode: string }) {
   return (
     <div className="flex flex-col items-center justify-center gap-8 h-full">
       <div className="text-center space-y-1">
-        <p className="text-white/60 text-lg uppercase tracking-widest">
+        <p className="text-lg uppercase tracking-widest" style={{ color: 'var(--muted)' }}>
           Round {round.round_number}
           {totalRounds ? ` of ${totalRounds}` : null}
-          <span className="mx-3 text-white/30">·</span>
+          <span className="mx-3" style={{ color: 'var(--faint)' }}>
+            ·
+          </span>
           <span>
             {guessed}/{guesserPool.length || '—'} guessed
           </span>
           {!revealing && (
             <>
-              <span className="mx-3 text-white/30">·</span>
-              <span style={{ color: secondsLeft <= 3 ? '#fca5a5' : 'inherit' }}>{secondsLeft}s left</span>
+              <span className="mx-3" style={{ color: 'var(--faint)' }}>
+                ·
+              </span>
+              <span style={{ color: secondsLeft <= 3 ? '#ef4444' : 'inherit' }}>{secondsLeft}s left</span>
             </>
           )}
-          {revealing && <span className="mx-3 text-white/30">·</span>}
-          {revealing && <span style={{ color: '#fca5a5' }}>The lie is revealed</span>}
+          {revealing && (
+            <span className="mx-3" style={{ color: 'var(--faint)' }}>
+              ·
+            </span>
+          )}
+          {revealing && <span style={{ color: '#ef4444' }}>The lie is revealed</span>}
         </p>
         <p className="text-5xl lg:text-6xl font-black leading-tight">
-          <span className="text-white/60 text-2xl font-normal align-middle">Now guessing about</span>{' '}
-          <span style={{ color: 'var(--primary, #fff)' }}>{targetName}</span>
+          <span className="text-2xl font-normal align-middle" style={{ color: 'var(--muted)' }}>
+            Now guessing about
+          </span>{' '}
+          <span style={{ color: 'var(--primary)' }}>{targetName}</span>
         </p>
-        <p className="text-white/60 text-lg">Which one is the lie?</p>
+        <p className="text-lg" style={{ color: 'var(--muted)' }}>
+          Which one is the lie?
+        </p>
       </div>
 
       {metadata ? (
@@ -150,29 +164,31 @@ export function TwoTruthsProjectorView({ gameCode }: { gameCode: string }) {
                 key={i}
                 className="rounded-2xl border-2 px-6 py-8 text-2xl leading-tight flex flex-col gap-4 min-h-56"
                 style={{
-                  borderColor: isLie ? '#ef4444' : 'rgba(255,255,255,0.2)',
-                  background: isLie ? 'rgba(239, 68, 68, 0.15)' : 'rgba(255,255,255,0.06)',
+                  borderColor: isLie ? '#ef4444' : 'var(--border)',
+                  background: isLie ? 'rgba(239, 68, 68, 0.15)' : 'var(--surface-inset-bg)',
                   boxShadow: isLie ? '0 0 40px rgba(239, 68, 68, 0.4)' : undefined,
                 }}
               >
                 <span
                   className="shrink-0 h-12 w-12 rounded-full flex items-center justify-center text-2xl font-black self-start"
                   style={{
-                    background: isLie ? '#ef4444' : 'rgba(255,255,255,0.15)',
-                    color: isLie ? '#450a0a' : 'inherit',
+                    background: isLie ? '#ef4444' : 'var(--primary)',
+                    color: isLie ? '#450a0a' : 'var(--primary-contrast, #fff)',
                   }}
                   aria-hidden
                 >
                   {i + 1}
                 </span>
                 <p className="font-semibold">{statement}</p>
-                {isLie && <p className="text-red-200 text-sm uppercase tracking-widest font-bold mt-auto">← the lie</p>}
+                {isLie && <p className="text-red-500 text-sm uppercase tracking-widest font-bold mt-auto">← the lie</p>}
               </div>
             )
           })}
         </div>
       ) : (
-        <p className="text-3xl text-white/60">Loading statements…</p>
+        <p className="text-3xl" style={{ color: 'var(--muted)' }}>
+          Loading statements…
+        </p>
       )}
     </div>
   )

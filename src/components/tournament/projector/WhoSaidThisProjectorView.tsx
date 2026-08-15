@@ -101,10 +101,12 @@ export function WhoSaidThisProjectorView({ gameCode }: { gameCode: string }) {
   if (!round) {
     return (
       <div className="flex flex-col items-center justify-center gap-6 h-full">
-        <p className="text-white/60 text-lg uppercase tracking-widest">
+        <p className="text-lg uppercase tracking-widest" style={{ color: 'var(--muted)' }}>
           {game?.status === 'waiting' ? 'Waiting for host to start…' : 'Loading…'}
         </p>
-        <p className="text-4xl text-white/60">Who Said This</p>
+        <p className="text-4xl" style={{ color: 'var(--muted)' }}>
+          Who Said This
+        </p>
       </div>
     )
   }
@@ -121,35 +123,45 @@ export function WhoSaidThisProjectorView({ gameCode }: { gameCode: string }) {
 
   return (
     <div className="flex flex-col items-center justify-center gap-8 h-full">
-      <p className="text-white/60 text-lg uppercase tracking-widest text-center">
+      <p className="text-lg uppercase tracking-widest text-center" style={{ color: 'var(--muted)' }}>
         Round {round.round_number}
         {totalRounds ? ` of ${totalRounds}` : null}
-        <span className="mx-3 text-white/30">·</span>
+        <span className="mx-3" style={{ color: 'var(--faint)' }}>
+          ·
+        </span>
         <span>
           {voted}/{playerCount || '—'} guessed
         </span>
         {!revealing && (
           <>
-            <span className="mx-3 text-white/30">·</span>
-            <span style={{ color: secondsLeft <= 3 ? '#fca5a5' : 'inherit' }}>{secondsLeft}s left</span>
+            <span className="mx-3" style={{ color: 'var(--faint)' }}>
+              ·
+            </span>
+            <span style={{ color: secondsLeft <= 3 ? '#ef4444' : 'inherit' }}>{secondsLeft}s left</span>
           </>
         )}
-        {revealing && <span className="mx-3 text-white/30">·</span>}
-        {revealing && <span style={{ color: 'var(--primary, #fff)' }}>Answer revealed</span>}
+        {revealing && (
+          <span className="mx-3" style={{ color: 'var(--faint)' }}>
+            ·
+          </span>
+        )}
+        {revealing && <span style={{ color: 'var(--primary)' }}>Answer revealed</span>}
       </p>
 
       {/* Quote card — the shared read moment for the room. */}
       <div
         className="w-full max-w-4xl px-8 py-10 rounded-3xl text-center"
-        style={{ background: 'rgba(255,255,255,0.06)' }}
+        style={{ background: 'var(--surface-inset-bg)' }}
       >
         <p
           className="text-4xl lg:text-5xl leading-snug italic"
-          style={{ color: 'var(--primary, #fff)', fontFamily: 'Georgia, serif' }}
+          style={{ color: 'var(--primary)', fontFamily: 'Georgia, serif' }}
         >
           &ldquo;{round.quote_text ?? ''}&rdquo;
         </p>
-        <p className="text-white/60 text-xl mt-6">Who said it?</p>
+        <p className="text-xl mt-6" style={{ color: 'var(--muted)' }}>
+          Who said it?
+        </p>
       </div>
 
       {metadata ? (
@@ -163,17 +175,17 @@ export function WhoSaidThisProjectorView({ gameCode }: { gameCode: string }) {
                 key={i}
                 className="rounded-2xl border-2 px-6 py-5 text-2xl font-semibold flex items-center gap-3 min-h-20"
                 style={{
-                  borderColor: isCorrect ? '#22c55e' : 'rgba(255,255,255,0.2)',
-                  background: isCorrect ? 'rgba(34, 197, 94, 0.15)' : 'rgba(255,255,255,0.06)',
-                  color: isCorrect ? '#f0fdf4' : 'inherit',
+                  borderColor: isCorrect ? '#22c55e' : 'var(--border)',
+                  background: isCorrect ? 'rgba(34, 197, 94, 0.15)' : 'var(--surface-inset-bg)',
+                  color: isCorrect ? '#052e16' : 'inherit',
                   boxShadow: isCorrect ? '0 0 40px rgba(34, 197, 94, 0.4)' : undefined,
                 }}
               >
                 <span
                   className="shrink-0 h-10 w-10 rounded-full flex items-center justify-center text-lg font-black"
                   style={{
-                    background: isCorrect ? '#22c55e' : 'rgba(255,255,255,0.15)',
-                    color: isCorrect ? '#052e16' : 'inherit',
+                    background: isCorrect ? '#22c55e' : 'var(--primary)',
+                    color: isCorrect ? '#052e16' : 'var(--primary-contrast, #fff)',
                   }}
                 >
                   {String.fromCharCode(65 + i)}
@@ -184,7 +196,9 @@ export function WhoSaidThisProjectorView({ gameCode }: { gameCode: string }) {
           })}
         </div>
       ) : (
-        <p className="text-3xl text-white/60">Loading options…</p>
+        <p className="text-3xl" style={{ color: 'var(--muted)' }}>
+          Loading options…
+        </p>
       )}
     </div>
   )

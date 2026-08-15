@@ -114,7 +114,9 @@ export function NpatProjectorView({ gameCode }: { gameCode: string }) {
   if (!round) {
     return (
       <PanelChrome subtitle={game?.status === 'waiting' ? 'Waiting for host to start…' : 'Loading…'}>
-        <p className="text-4xl text-white/60">I Call On</p>
+        <p className="text-4xl" style={{ color: 'var(--muted)' }}>
+          I Call On
+        </p>
       </PanelChrome>
     )
   }
@@ -147,35 +149,45 @@ export function NpatProjectorView({ gameCode }: { gameCode: string }) {
       {/* Top strip: letter + phase + countdown */}
       <div
         className="rounded-2xl px-6 py-4 flex items-center gap-6"
-        style={{ background: 'rgba(255,255,255,0.08)', borderLeft: '6px solid var(--primary, #fff)' }}
+        style={{ background: 'var(--surface-inset-bg)', borderLeft: '6px solid var(--primary)' }}
       >
         <div>
-          <p className="text-sm uppercase tracking-widest text-white/60">Letter</p>
-          <p className="text-7xl font-black leading-none" style={{ color: 'var(--primary, #fff)' }}>
+          <p className="text-sm uppercase tracking-widest" style={{ color: 'var(--muted)' }}>
+            Letter
+          </p>
+          <p className="text-7xl font-black leading-none" style={{ color: 'var(--primary)' }}>
             {letter ?? '—'}
           </p>
         </div>
         <div className="flex-1">
-          <p className="text-sm uppercase tracking-widest text-white/60">Phase</p>
+          <p className="text-sm uppercase tracking-widest" style={{ color: 'var(--muted)' }}>
+            Phase
+          </p>
           <p className="text-3xl font-bold">{PHASE_LABEL[phase] ?? phase}</p>
           {callerName && phase === 'letter_pick' && (
-            <p className="text-white/70 text-sm mt-1">{callerName} is picking</p>
+            <p className="text-sm mt-1" style={{ color: 'var(--muted)' }}>
+              {callerName} is picking
+            </p>
           )}
         </div>
         <div className="text-right shrink-0">
-          <p className="text-sm uppercase tracking-widest text-white/60">Countdown</p>
+          <p className="text-sm uppercase tracking-widest" style={{ color: 'var(--muted)' }}>
+            Countdown
+          </p>
           <p
             className="text-5xl font-black tabular-nums"
-            style={{ color: secondsLeft != null && secondsLeft <= 5 ? '#fca5a5' : 'var(--primary, #fff)' }}
+            style={{ color: secondsLeft != null && secondsLeft <= 5 ? '#ef4444' : 'var(--primary)' }}
           >
             {secondsLeft != null ? `${secondsLeft}s` : '—'}
           </p>
         </div>
         <div className="text-right shrink-0">
-          <p className="text-sm uppercase tracking-widest text-white/60">Submitted</p>
+          <p className="text-sm uppercase tracking-widest" style={{ color: 'var(--muted)' }}>
+            Submitted
+          </p>
           <p className="text-5xl font-black tabular-nums">
             {submittedIds.size}
-            <span className="text-white/50">/</span>
+            <span style={{ color: 'var(--faint)' }}>/</span>
             {active.length || '—'}
           </p>
         </div>
@@ -186,10 +198,10 @@ export function NpatProjectorView({ gameCode }: { gameCode: string }) {
         {NPAT_CATEGORIES.map((cat) => (
           <div
             key={cat}
-            className="rounded-2xl border border-white/15 p-4 flex flex-col gap-2 min-h-0"
-            style={{ background: 'rgba(255,255,255,0.04)' }}
+            className="rounded-2xl border p-4 flex flex-col gap-2 min-h-0"
+            style={{ background: 'var(--surface-inset-bg)', borderColor: 'var(--border)' }}
           >
-            <p className="text-white/70 text-lg font-bold uppercase tracking-widest text-center">
+            <p className="text-lg font-bold uppercase tracking-widest text-center" style={{ color: 'var(--muted)' }}>
               {NPAT_CATEGORY_LABELS[cat as NpatCategory] ?? cat}
             </p>
             <ol className="flex-1 space-y-1.5 overflow-y-auto pr-1">
@@ -201,14 +213,22 @@ export function NpatProjectorView({ gameCode }: { gameCode: string }) {
                     <span
                       className="inline-block h-2.5 w-2.5 rounded-full shrink-0"
                       style={{
-                        background: submitted ? 'var(--primary, #fff)' : 'transparent',
-                        border: submitted ? undefined : '1px solid rgba(255,255,255,0.4)',
+                        background: submitted ? 'var(--primary)' : 'transparent',
+                        border: submitted ? undefined : '1px solid var(--faint)',
                       }}
                       aria-hidden
                     />
-                    <span className="text-white/60 text-sm truncate w-24">{p.name}</span>
+                    <span className="text-sm truncate w-24" style={{ color: 'var(--muted)' }}>
+                      {p.name}
+                    </span>
                     <span className="flex-1 truncate font-semibold">
-                      {reveal ? answer || <span className="text-white/40 italic">—</span> : ''}
+                      {reveal
+                        ? answer || (
+                            <span className="italic" style={{ color: 'var(--faint)' }}>
+                              —
+                            </span>
+                          )
+                        : ''}
                     </span>
                   </li>
                 )
@@ -224,7 +244,9 @@ export function NpatProjectorView({ gameCode }: { gameCode: string }) {
 function PanelChrome({ subtitle, children }: { subtitle: React.ReactNode; children: React.ReactNode }) {
   return (
     <div className="flex flex-col items-center justify-center gap-6 h-full">
-      <p className="text-white/60 text-lg uppercase tracking-widest">{subtitle}</p>
+      <p className="text-lg uppercase tracking-widest" style={{ color: 'var(--muted)' }}>
+        {subtitle}
+      </p>
       {children}
     </div>
   )
