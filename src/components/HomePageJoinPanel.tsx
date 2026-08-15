@@ -77,12 +77,36 @@ export function HomePageJoinPanel() {
   const router = useRouter()
   const [code, setCode] = useState('')
   const [showGameTypes, setShowGameTypes] = useState(false)
+  const [joining, setJoining] = useState(false)
 
   const normalizedCode = code.trim().toUpperCase()
   const canJoin = normalizedCode.length >= MIN_CODE_LENGTH
 
-  const join = () => {
-    if (canJoin) router.push(`/game/${normalizedCode}`)
+  // Tournament codes and game codes share the same 6-char shape (see
+  // generateGameCode) — a plain "route to /game/CODE" here silently 404s
+  // whenever a host has handed out a tournament code. Do a cheap lookup
+  // first so the entry works for both without asking the player to pick a
+  // path they can't tell apart. Falls through to /game/CODE on any error,
+  // which is the historical behaviour + still surfaces its own not-found.
+  const join = async () => {
+    if (!canJoin || joining) return
+    setJoining(true)
+    try {
+      const res = await fetch(`/api/tournaments/${normalizedCode}`, {
+        method: 'GET',
+        headers: { accept: 'application/json' },
+      })
+      if (res.ok) {
+        router.push(`/tournament/${normalizedCode}`)
+        return
+      }
+    } catch {
+      // Network hiccup — fall through to the game path; the game page
+      // itself surfaces "not found" if the code isn't a valid game either.
+    } finally {
+      setJoining(false)
+    }
+    router.push(`/game/${normalizedCode}`)
   }
 
   return (
@@ -117,7 +141,13 @@ export function HomePageJoinPanel() {
             onChange={(event) => setCode(event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
             onKeyDown={(event) => event.key === 'Enter' && join()}
           />
-          <button type="button" className="fr-code-go" disabled={!canJoin} onClick={join} aria-label="Join game">
+          <button
+            type="button"
+            className="fr-code-go"
+            disabled={!canJoin || joining}
+            onClick={join}
+            aria-label="Join game"
+          >
             <svg
               width="20"
               height="20"
