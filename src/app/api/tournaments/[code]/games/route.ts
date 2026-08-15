@@ -7,6 +7,7 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { parseJsonBody } from '@/lib/parse-body'
 import { clampTriviaTimer, TRIVIA_DEFAULT_ROUNDS } from '@/lib/trivia'
 import { clampTtlTimer, TTL_DEFAULT_TIMER } from '@/lib/two-truths'
+import { WST_DECK_MIN_ENTRIES } from '@/lib/who-said-this'
 import {
   clampNpatTimer,
   clampNpatMarkingTimer,
@@ -178,6 +179,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     : null
   const hasCustom = useCustomQuestions && Array.isArray(effectiveCustom) && effectiveCustom.length > 0
 
+  // WST deck resolution: planned mode uses the tournament-wide pack the host
+  // attached at creation (custom_wst_pack); freestyle mode takes a per-game
+  // `customQuestions` payload on the POST body (same shape trivia uses).
+  // Hoisted above the guards so we can reject a too-small freestyle deck
+  // before spawning the game row.
+  const tournamentWstPack =
+    gameType === 'who_said_this' && Array.isArray(tournament.custom_wst_pack) && tournament.custom_wst_pack.length > 0
+      ? (tournament.custom_wst_pack as unknown[])
+      : null
+  const freestyleWstPack =
+    gameType === 'who_said_this' && !queueEntry && Array.isArray(customQuestions) && customQuestions.length > 0
+      ? (customQuestions as unknown[])
+      : null
+  const effectiveWstPack = tournamentWstPack ?? freestyleWstPack
+
   if (useCustomQuestions && (!Array.isArray(effectiveCustom) || effectiveCustom.length < roundsCount)) {
     return NextResponse.json(
       {
@@ -185,6 +201,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
           Array.isArray(effectiveCustom) && effectiveCustom.length > 0
             ? `Need at least ${roundsCount} custom questions for ${roundsCount} rounds — upload more or lower the round count`
             : 'No previous questions to reuse — upload a CSV for this game',
+      },
+      { status: 400 }
+    )
+  }
+
+  // Same guard for freestyle WST deck mode: the game engine needs at least
+  // WST_DECK_MIN_ENTRIES (2) quotes to build a round. Rejecting early with a
+  // clear error beats spawning a game the engine will refuse to start.
+  if (freestyleWstPack && freestyleWstPack.length < WST_DECK_MIN_ENTRIES) {
+    return NextResponse.json(
+      {
+        error: `Who Said This deck needs at least ${WST_DECK_MIN_ENTRIES} quotes — upload more or switch back to Players submit`,
       },
       { status: 400 }
     )
@@ -206,19 +234,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   const gameHostToken = generateToken()
 
-  // Who Said This: if the tournament has a shared WST deck attached (CSV or
-  // platform pack picked at creation), spawn the game in deck mode with that
-  // content — same shape the /api/games "Your own" flow uses. Otherwise fall
-  // back to player-submit (each joiner writes a quote in the lobby).
-  const tournamentWstPack =
-    gameType === 'who_said_this' && Array.isArray(tournament.custom_wst_pack) && tournament.custom_wst_pack.length > 0
-      ? (tournament.custom_wst_pack as unknown[])
-      : null
-
   // Per-game extras: trivia carries its question source + prior pool usage;
   // i_call_on needs its marking timer + whole-game timer; two_truths needs
   // neither. Who Said This runs player-submit by default; deck mode kicks in
-  // when the tournament has a WST pack attached.
+  // when either the tournament's shared pack or a freestyle per-game pack is
+  // present.
   const perGameExtras: Record<string, unknown> =
     gameType === 'trivia'
       ? {
@@ -232,10 +252,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
             game_duration_seconds: clampNpatGameDuration(NPAT_DEFAULT_GAME_DURATION),
           }
         : gameType === 'who_said_this'
-          ? tournamentWstPack
+          ? effectiveWstPack
             ? {
                 wst_quote_source: 'deck',
-                custom_questions: tournamentWstPack,
+                custom_questions: effectiveWstPack,
               }
             : { wst_quote_source: 'player' }
           : {}
