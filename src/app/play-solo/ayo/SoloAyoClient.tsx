@@ -228,6 +228,9 @@ export function SoloAyoClient() {
             <Link href="/create?type=ayo" className="btn-secondary text-center">
               Start a real room
             </Link>
+            <Link href="/play-solo" className="btn-secondary text-center">
+              Play other solo games
+            </Link>
           </div>
         </div>
       )}

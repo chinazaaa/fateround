@@ -289,6 +289,9 @@ export function SoloUnoClient() {
             <Link href="/create?type=uno" className="btn-secondary text-center">
               Start a real room
             </Link>
+            <Link href="/play-solo" className="btn-secondary text-center">
+              Play other solo games
+            </Link>
           </div>
         </div>
       )}

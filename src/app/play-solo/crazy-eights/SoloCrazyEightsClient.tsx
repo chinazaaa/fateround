@@ -282,6 +282,9 @@ export function SoloCrazyEightsClient() {
             <Link href="/create?type=crazy_eights" className="btn-secondary text-center">
               Start a real room
             </Link>
+            <Link href="/play-solo" className="btn-secondary text-center">
+              Play other solo games
+            </Link>
           </div>
         </div>
       )}
