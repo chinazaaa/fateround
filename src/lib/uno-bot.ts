@@ -20,10 +20,18 @@
  */
 
 import type { UnoCard, UnoColor } from '@/types'
-import { cardPoints, isWildCard } from '@/lib/uno'
-import { UNO_SOLO_BOT_ID, isPlayable, type UnoSoloAction, type UnoSoloState } from '@/lib/uno-solo'
+import { cardPoints, isWildCard, multiSetGroupingOk, validateMultiSet } from '@/lib/uno'
+import {
+  UNO_SOLO_BOT_ID,
+  UNO_SOLO_MULTI_PLAY_MODE,
+  isPlayable,
+  type UnoSoloAction,
+  type UnoSoloState,
+} from '@/lib/uno-solo'
 
 export type UnoBotDifficulty = 'easy' | 'normal' | 'hard'
+
+export type UnoSoloBotAction = UnoSoloAction | { type: 'play_multi'; cardIds: string[] }
 
 const COLORS: UnoColor[] = ['red', 'yellow', 'green', 'blue']
 
@@ -112,7 +120,7 @@ function bestColorCall(hand: UnoCard[], hard: boolean = false, discard: readonly
  * Pick the bot's next action. Returns null when the engine isn't waiting on
  * the bot.
  */
-export function pickBotAction(state: UnoSoloState, difficulty: UnoBotDifficulty = 'normal'): UnoSoloAction | null {
+export function pickBotAction(state: UnoSoloState, difficulty: UnoBotDifficulty = 'normal'): UnoSoloBotAction | null {
   if (state.outcome != null) return null
   const rawBotIdx = state.session.turn_order.indexOf(UNO_SOLO_BOT_ID)
   if (rawBotIdx < 0) return null
@@ -139,6 +147,15 @@ export function pickBotAction(state: UnoSoloState, difficulty: UnoBotDifficulty 
   const opponentSize = state.hands[opponentIdx]!.length
   const pending = state.session.draw_penalty ?? 0
 
+  // Multi-Play consideration — only when no penalty is pending (validateMultiSet
+  // rejects a set on a live penalty). Prefer the best set the bot can build off
+  // each playable starter card; fall back to a single-card play if no set beats
+  // the single card's score.
+  if (pending === 0) {
+    const bestMulti = pickBestMulti(state, hand, playable, opponentSize, hard)
+    if (bestMulti) return { type: 'play_multi', cardIds: bestMulti.cardIds }
+  }
+
   const scored = playable
     .map((card) => ({
       card,
@@ -147,4 +164,55 @@ export function pickBotAction(state: UnoSoloState, difficulty: UnoBotDifficulty 
     .sort((a, b) => b.score - a.score)
 
   return { type: 'play', cardId: scored[0]!.card.id }
+}
+
+/**
+ * Greedy Multi-Play search. For each playable non-wild starter card, extend
+ * the set with any hand cards that keep the group legal under
+ * `same_color_or_number`. Score = shed-value (points off the hand) + a small
+ * "many-at-once" bonus so bigger sets edge out single-card plays. A set is
+ * only returned when its score beats every single-card play the bot could
+ * make — otherwise the single-card path wins and this returns null.
+ */
+function pickBestMulti(
+  state: UnoSoloState,
+  hand: UnoCard[],
+  playable: UnoCard[],
+  opponentSize: number,
+  hard: boolean
+): { cardIds: string[]; score: number } | null {
+  const singleBest = Math.max(...playable.map((c) => normalPlayScore(c, hand, opponentSize, hard)))
+  let best: { cardIds: string[]; score: number } | null = null
+
+  for (const starter of playable) {
+    if (isWildCard(starter)) continue
+    const set: UnoCard[] = [starter]
+    // Greedily add the highest-point card that keeps the grouping legal.
+    // (Order matters for effect resolution but not for grouping validity.)
+    const rest = hand.filter((c) => c.id !== starter.id && !isWildCard(c))
+    rest.sort((a, b) => cardPoints(b) - cardPoints(a))
+    for (const cand of rest) {
+      if (multiSetGroupingOk([...set, cand], UNO_SOLO_MULTI_PLAY_MODE)) set.push(cand)
+    }
+    if (set.length < 2) continue
+    // Reorder so a Draw 2 lands last when the set contains one — the trailing
+    // penalty is stronger on the opponent than a covered Draw 2.
+    const draw2s = set.filter((c) => c.kind === 'draw2')
+    if (draw2s.length > 0 && set[set.length - 1]!.kind !== 'draw2') {
+      const others = set.filter((c) => c.kind !== 'draw2')
+      set.length = 0
+      set.push(...others, ...draw2s)
+    }
+    // Validate against the actual session (top-card legality of the starter).
+    if (validateMultiSet(set, state.session, UNO_SOLO_MULTI_PLAY_MODE) !== null) continue
+
+    const shedPoints = set.reduce((s, c) => s + cardPoints(c), 0)
+    const closingBonus = opponentSize <= 3 ? set.length * (hard ? 8 : 5) : set.length * 2
+    const score = shedPoints + closingBonus
+
+    if (!best || score > best.score) best = { cardIds: set.map((c) => c.id), score }
+  }
+
+  if (!best) return null
+  return best.score > singleBest ? best : null
 }

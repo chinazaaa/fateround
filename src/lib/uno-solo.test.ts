@@ -7,6 +7,7 @@ import {
   unoSoloChooseColor,
   unoSoloDraw,
   unoSoloPlay,
+  unoSoloPlayMulti,
   type UnoSoloState,
 } from '@/lib/uno-solo'
 import type { UnoCard, UnoCardColor, UnoCardKind } from '@/types'
@@ -307,5 +308,123 @@ describe('game-end wiring', () => {
     const r = unoSoloPlay(s, 1, 'b1', seeded(1))
     expect(r.state.outcome).toBe(1)
     expect(r.state.session.winner_player_id).toBe(UNO_SOLO_BOT_ID)
+  })
+})
+
+describe('unoSoloPlayMulti', () => {
+  it('lays a same-colour number set and passes turn to opponent', () => {
+    const s = stateWithHands({
+      humanHand: [c('h1', 'red', 'number', 5), c('h2', 'red', 'number', 8), c('h3', 'blue', 'number', 2)],
+      botHand: [c('b1', 'blue', 'number', 3)],
+      top: c('top', 'red', 'number', 5),
+    })
+    const r = unoSoloPlayMulti(s, 0, ['h1', 'h2'], seeded(1))
+    expect(r.error).toBeUndefined()
+    expect(r.state.hands[0]).toHaveLength(1)
+    expect(r.state.session.top_card).toEqual(expect.objectContaining({ id: 'h2' }))
+    expect(r.state.session.current_turn_index).toBe(1)
+  })
+
+  it('lays a same-number set across colours', () => {
+    const s = stateWithHands({
+      humanHand: [c('h1', 'red', 'number', 5), c('h2', 'blue', 'number', 5), c('h3', 'green', 'number', 9)],
+      botHand: [c('b1', 'blue', 'number', 3)],
+      top: c('top', 'red', 'number', 5),
+    })
+    const r = unoSoloPlayMulti(s, 0, ['h1', 'h2'], seeded(1))
+    expect(r.error).toBeUndefined()
+    expect(r.state.session.top_card).toEqual(expect.objectContaining({ id: 'h2' }))
+  })
+
+  it('rejects a set that does not share colour or number', () => {
+    const s = stateWithHands({
+      humanHand: [c('h1', 'red', 'number', 5), c('h2', 'blue', 'number', 8)],
+      botHand: [c('b1', 'blue', 'number', 3)],
+      top: c('top', 'red', 'number', 5),
+    })
+    expect(unoSoloPlayMulti(s, 0, ['h1', 'h2'], seeded(1)).error).toBeTruthy()
+  })
+
+  it('rejects a wild inside a set — wilds must be played alone', () => {
+    const s = stateWithHands({
+      humanHand: [c('h1', 'red', 'number', 5), c('w', 'wild', 'wild')],
+      botHand: [c('b1', 'blue', 'number', 3)],
+      top: c('top', 'red', 'number', 5),
+    })
+    expect(unoSoloPlayMulti(s, 0, ['h1', 'w'], seeded(1)).error).toBeTruthy()
+  })
+
+  it('rejects when the first card does not match the top card', () => {
+    const s = stateWithHands({
+      humanHand: [c('h1', 'blue', 'number', 8), c('h2', 'blue', 'number', 3)],
+      botHand: [c('b1', 'blue', 'number', 3)],
+      top: c('top', 'red', 'number', 5),
+    })
+    expect(unoSoloPlayMulti(s, 0, ['h1', 'h2'], seeded(1)).error).toBeTruthy()
+  })
+
+  it('stacks two Draw 2s as a pending 4 for the opponent', () => {
+    const s = stateWithHands({
+      humanHand: [c('h1', 'red', 'draw2'), c('h2', 'red', 'draw2'), c('h3', 'red', 'number', 0)],
+      botHand: [c('b1', 'green', 'number', 3)],
+      top: c('top', 'red', 'number', 5),
+    })
+    const r = unoSoloPlayMulti(s, 0, ['h1', 'h2'], seeded(1))
+    expect(r.error).toBeUndefined()
+    expect(r.state.session.draw_penalty).toBe(4)
+    expect(r.state.session.draw_penalty_kind).toBe('draw2')
+    expect(r.state.session.current_turn_index).toBe(1)
+  })
+
+  it('an odd skip count in 2p keeps the turn with the player', () => {
+    const s = stateWithHands({
+      humanHand: [c('h1', 'red', 'skip'), c('h2', 'red', 'number', 5), c('h3', 'green', 'number', 9)],
+      botHand: [c('b1', 'green', 'number', 3)],
+      top: c('top', 'red', 'number', 5),
+    })
+    // number covers the skip's turn-flow effect (per resolveMultiPlayAdvance), so this is just
+    // a plain play → passes to opponent.
+    const r1 = unoSoloPlayMulti(s, 0, ['h1', 'h2'], seeded(1))
+    expect(r1.error).toBeUndefined()
+    expect(r1.state.session.current_turn_index).toBe(1)
+
+    // Two skips (both after any number effect) → even skips → opponent's turn.
+    const s2 = stateWithHands({
+      humanHand: [c('h1', 'red', 'skip'), c('h2', 'red', 'skip'), c('h3', 'green', 'number', 9)],
+      botHand: [c('b1', 'green', 'number', 3)],
+      top: c('top', 'red', 'skip'),
+    })
+    const r2 = unoSoloPlayMulti(s2, 0, ['h1', 'h2'], seeded(1))
+    expect(r2.error).toBeUndefined()
+    expect(r2.state.session.current_turn_index).toBe(1)
+  })
+
+  it('a Draw 2 followed by a Skip auto-resolves the draw and returns the turn', () => {
+    const s = stateWithHands({
+      humanHand: [c('h1', 'red', 'draw2'), c('h2', 'red', 'skip'), c('h3', 'red', 'number', 0)],
+      botHand: [c('b1', 'green', 'number', 3)],
+      top: c('top', 'red', 'number', 5),
+      drawPile: [c('d1', 'blue', 'number', 1), c('d2', 'blue', 'number', 2), c('d3', 'blue', 'number', 3)],
+    })
+    const r = unoSoloPlayMulti(s, 0, ['h1', 'h2'], seeded(1))
+    expect(r.error).toBeUndefined()
+    // No pending penalty — opponent already drew.
+    expect(r.state.session.draw_penalty ?? 0).toBe(0)
+    // Opponent picked up two cards.
+    expect(r.state.hands[1]).toHaveLength(3)
+    // Turn returns to the player after the trailing skip.
+    expect(r.state.session.current_turn_index).toBe(0)
+  })
+
+  it('going out on the last card of the set wins the game', () => {
+    const s = stateWithHands({
+      humanHand: [c('h1', 'red', 'number', 1), c('h2', 'red', 'number', 9)],
+      botHand: [c('b1', 'green', 'number', 3)],
+      top: c('top', 'red', 'number', 5),
+    })
+    const r = unoSoloPlayMulti(s, 0, ['h1', 'h2'], seeded(1))
+    expect(r.error).toBeUndefined()
+    expect(r.state.outcome).toBe(0)
+    expect(r.state.session.winner_player_id).toBe(UNO_SOLO_HUMAN_ID)
   })
 })
