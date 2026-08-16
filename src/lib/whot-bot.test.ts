@@ -178,6 +178,54 @@ describe('easy vs normal difficulty', () => {
   })
 })
 
+describe('hard difficulty', () => {
+  it('hoards WHOT harder than normal — same tie-breaks but a bigger penalty on wilds', () => {
+    // Normal already picks the non-wild here; hard's extra penalty just widens the gap.
+    // Sanity: hard still refuses to burn a wild when a real card is legal.
+    const s = stateWithHands({
+      humanHand: [c('h1', 'circle', 3)],
+      botHand: [c('b1', 'whot', 20), c('b2', 'circle', 4)],
+      top: c('top', 'circle', 5),
+    })
+    expect(pickBotAction(s, 'hard')).toEqual({ type: 'play', cardId: 'b2' })
+  })
+
+  it('strikes a 2-card opponent harder — plays Pick 2 over a plain shed', () => {
+    // Opponent has 2 cards. Normal already favors the Pick 2 here, but hard's
+    // very-close bonus keeps that preference decisive even against a big shed.
+    const s = stateWithHands({
+      humanHand: [c('h1', 'circle', 3), c('h2', 'star', 4)],
+      botHand: [c('b1', 'circle', 2), c('b2', 'circle', 13)],
+      top: c('top', 'circle', 5),
+    })
+    expect(pickBotAction(s, 'hard')).toEqual({ type: 'play', cardId: 'b1' })
+  })
+
+  it('bot self-play with hard terminates', () => {
+    // Fast smoke: hard doesn't loop.
+    for (let seed = 1; seed <= 5; seed += 1) {
+      const rng = seeded(seed * 11)
+      let state = initSoloWhot({ rng })
+      let moves = 0
+      while (state.outcome == null && moves < 400) {
+        const idx = state.session.current_turn_index as 0 | 1
+        // Rewrite turn_order so whichever side is up looks like the bot seat.
+        const flipped = [...state.session.turn_order]
+        flipped[idx] = SOLO_BOT_ID
+        flipped[idx === 0 ? 1 : 0] = 'other'
+        const action = pickBotAction({ ...state, session: { ...state.session, turn_order: flipped } }, 'hard')
+        if (!action) break
+        moves += 1
+        if (action.type === 'play') state = soloPlay(state, idx, action.cardId, rng).state
+        else if (action.type === 'draw') state = soloDraw(state, idx, rng).state
+        else if (action.type === 'choose_shape') state = soloChooseShape(state, idx, action.shape).state
+        else if (action.type === 'choose_number') state = soloChooseNumber(state, idx, action.n).state
+      }
+      expect(state.outcome).not.toBeNull()
+    }
+  })
+})
+
 // End-to-end smoke: with a solid RNG the bot playing BOTH sides should always
 // terminate. This catches loops, never-passes-turn regressions and off-by-one
 // seat bugs far earlier than a UI ever would.
