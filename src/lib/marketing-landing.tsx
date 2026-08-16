@@ -2127,6 +2127,706 @@ const SCHOOL: MarketingPageContent = {
   accent: '#15803d',
 }
 
+const SOLO_WHOT_BOT: MarketingPageContent = {
+  slug: 'play-whot-vs-bot',
+  breadcrumbName: 'Whot vs bot',
+  seoTitle: 'Play Whot vs Bot — Free, No Sign-Up, Offline-Friendly',
+  seoDescription:
+    'Practice Whot against a computer opponent — full Nigerian rules (Pick 2, Pick 3, Hold On, WHOT wilds). Free, no sign-up, works on any phone. Play solo now.',
+  keywords: [
+    'play whot vs bot',
+    'whot vs computer',
+    'play whot offline',
+    'nigerian whot online',
+    'whot single player',
+    'whot game against computer',
+    'play whot alone',
+    'free whot bot',
+    'whot practice game',
+  ],
+  heroTitle: 'Play Whot vs bot — practice the Nigerian classic anytime',
+  heroSubtitle:
+    "No friends online, no room needed. Play Whot solo against a computer opponent that knows Pick 2, Pick 3, Hold On, General Market, and the WHOT wild. Free, in the browser, works even when it's just you.",
+  highlights: [
+    'Full Nigerian Whot rules',
+    'Plays offline in your browser',
+    'No sign-up, no download',
+    'Great for practice before a real room',
+  ],
+  featureCards: [
+    {
+      emoji: '🤖',
+      title: 'A bot that plays properly',
+      description:
+        'The Whot bot uses real rules — Pick 2 stacks, Hold On skips, General Market punishes everyone, and WHOT calls the next shape.',
+    },
+    {
+      emoji: '⚡',
+      title: 'Instant, no room to fill',
+      description: "Skip the wait for other players. Tap play and you're dealing the next card.",
+    },
+    {
+      emoji: '📚',
+      title: 'Learn or brush up',
+      description:
+        'New to Whot? The solo bot is the fastest way to learn the shapes, the specials, and when to save a WHOT for the win.',
+    },
+    {
+      emoji: '📶',
+      title: 'Works on any connection',
+      description:
+        'A card game shouldn’t need five bars. Solo Whot runs in the browser and keeps going even when the room is quiet.',
+    },
+  ],
+  stepsHeading: 'How to play Whot vs bot',
+  steps: [
+    { title: 'Open the game', description: 'Jump straight into a solo Whot table — no room code, no sign-up.' },
+    {
+      title: 'Play your shape or number',
+      description: 'Match by shape or number. Circles, Triangles, Crosses, Squares, Stars — and the WHOT wild.',
+    },
+    {
+      title: 'Beat the bot to an empty hand',
+      description: 'Stack Pick 2s, dodge Pick 3s, and time your WHOT calls to be the first to zero cards.',
+    },
+  ],
+  body: (
+    <>
+      <p>
+        Nigerian Whot is best in a room full of trash-talking friends — but you don’t always have a room ready.{' '}
+        <GameLink type="whot">Solo Whot vs bot</GameLink> gives you the same shapes, the same specials, and the same
+        satisfying last-card win, on your own time. It’s the fastest way to sharpen your play before your next real-room
+        match.
+      </p>
+      <p>
+        Under the hood it’s the same Whot engine that runs multiplayer rooms on FateRound — Pick 2 and Pick 3 stacking,
+        Hold On, Suspension, General Market, and the WHOT wild that lets you call the next shape. When you’re ready for
+        friends, jump into a <HubLink href="/create">multiplayer room</HubLink> — the rules are the same, the trash talk
+        is on you.
+      </p>
+    </>
+  ),
+  gameList: {
+    heading: 'Also playable solo vs bot on FateRound',
+    items: [
+      {
+        game: <GameLink type="uno" />,
+        description: 'match colour or number — the classic party card game, solo edition.',
+      },
+      {
+        game: <GameLink type="crazy_eights" />,
+        description: 'the simple stacking card game that’s perfect for a quick round.',
+      },
+      { game: <GameLink type="ayo" />, description: 'the ancient Yoruba mancala — sow the seeds, capture the row.' },
+    ],
+  },
+  faqs: [
+    {
+      question: 'Can I play Whot against the computer for free?',
+      answer:
+        'Yes. FateRound’s solo Whot vs bot is free forever — no sign-up, no download, no premium tier. Open the page and you’re playing.',
+    },
+    {
+      question: 'Does the Whot bot use Nigerian rules?',
+      answer:
+        'Yes. The bot plays full Nigerian Whot — Pick 2, Pick 3, Hold On, Suspension, General Market, and the WHOT wild that lets you call the next shape.',
+    },
+    {
+      question: 'Can I play Whot offline?',
+      answer:
+        'Solo Whot runs in your browser — once the page has loaded, a shaky connection won’t drop your game. It’s the closest thing to Whot offline you’ll get without an app.',
+    },
+    {
+      question: 'How hard is the Whot bot?',
+      answer:
+        'The bot plays a solid mid-level game — it stacks Pick 2s, holds specials for the right moment, and calls shapes it can follow up on. Beatable, but you’ll have to play well.',
+    },
+    {
+      question: 'Can I play Whot with friends after?',
+      answer: 'Yes — create a multiplayer Whot room and share the code. Same rules, same shapes, real opponents.',
+    },
+  ],
+  ctaHeading: 'Play a solo Whot round now',
+  ctaSubtext: 'Free forever. No sign-up, no download — just you and the bot.',
+  primaryCta: { href: '/play-solo/whot', label: 'Play Whot vs bot' },
+  accent: '#dc2626',
+}
+
+const SOLO_MATCH_UP_BOT: MarketingPageContent = {
+  slug: 'play-match-up-vs-bot',
+  breadcrumbName: 'Match Up vs bot',
+  seoTitle: 'Play Match Up vs Bot — Free Uno-Style Card Game Online',
+  seoDescription:
+    'Play Match Up (a free Uno-style matching card game) against a computer opponent — colour and number matching, wild cards, +4 draws, stacking. No sign-up, no download.',
+  keywords: [
+    'play uno vs computer',
+    'uno vs bot',
+    'play uno alone',
+    'free uno alternative',
+    'matching card game vs computer',
+    'colour number card game online',
+    'uno single player free',
+    'play card game against bot',
+    'match up card game',
+  ],
+  heroTitle: 'Play Match Up vs bot — the colour-and-number card game, solo',
+  heroSubtitle:
+    'Match Up is FateRound’s take on the classic matching card game (think Uno). Play solo against a computer opponent — colour matches, number matches, wild cards, +2 stacks, +4 penalties, and the last-card win. Free, no sign-up.',
+  highlights: [
+    'Colour + number matching',
+    'Wilds, +2, +4 and stacking rules',
+    'Plays instantly, no room to fill',
+    'Free, no sign-up, no download',
+  ],
+  featureCards: [
+    {
+      emoji: '🎴',
+      title: 'The rules you already know',
+      description:
+        'If you’ve played Uno, you already know Match Up — colour or number to play, wilds to change the colour, +2 and +4 to punish the next player.',
+    },
+    {
+      emoji: '🤖',
+      title: 'A bot that plays a real hand',
+      description:
+        'The bot stacks draws when it can, saves wilds for tight spots, and blocks you when you’re one card away.',
+    },
+    {
+      emoji: '⚡',
+      title: 'No lobby, no wait',
+      description: 'No room to fill, no player to wait on. Open the page and deal.',
+    },
+    {
+      emoji: '🎉',
+      title: 'Team-Up, Stacking, 0-7',
+      description: 'House rules from the multiplayer room carry over — practice the variants you’ll see with friends.',
+    },
+  ],
+  stepsHeading: 'How to play Match Up vs bot',
+  steps: [
+    { title: 'Open the game', description: 'Straight into a solo Match Up table — no code, no sign-up.' },
+    {
+      title: 'Match the colour or the number',
+      description:
+        'Play any card that matches the top card’s colour or number. Out of matches? Draw one and try again.',
+    },
+    {
+      title: 'Be first to zero cards',
+      description: 'Wilds change the colour. +2 and +4 punish the next player. Last card played wins the round.',
+    },
+  ],
+  body: (
+    <>
+      <p>
+        Match Up is a free matching card game in the family of classic colour-and-number card games like Uno. Solo mode
+        lets you play against a computer opponent whenever you like — no room, no wait, no other players needed. Same
+        cards, same specials, same tension when you’re one card away and the bot slaps down a +4.
+      </p>
+      <p>
+        When you’re ready for friends, the same rules run in{' '}
+        <HubLink href="/create">multiplayer Match Up rooms</HubLink> — with optional house rules like Stacking, Team-Up,
+        Jump-In, and 0-7. Practice solo, then take it to the group.
+      </p>
+    </>
+  ),
+  gameList: {
+    heading: 'Also playable solo vs bot on FateRound',
+    items: [
+      { game: <GameLink type="whot" />, description: 'Nigerian Whot solo — shapes, specials, and the WHOT wild.' },
+      {
+        game: <GameLink type="crazy_eights" />,
+        description: 'the classic 8s-wild card game, head-to-head with a bot.',
+      },
+      { game: <GameLink type="ayo" />, description: 'ancient Yoruba mancala — sow, capture, win the row.' },
+    ],
+  },
+  faqs: [
+    {
+      question: 'Is Match Up the same as Uno?',
+      answer:
+        'Match Up is inspired by classic colour-and-number matching card games like Uno — same core rules (match colour or number, wilds, +2, +4, last card wins) with FateRound’s own cards and house-rule options. It’s our own game, not the trademarked one.',
+    },
+    {
+      question: 'Can I play a Uno-style card game against the computer for free?',
+      answer:
+        'Yes. Match Up solo mode is free forever — no sign-up, no download, no premium tier. Play as many rounds as you like.',
+    },
+    {
+      question: 'What card game rules does the bot support?',
+      answer:
+        'Colour and number matching, wild colour-change cards, +2 draws, +4 penalties, and last-card wins. Multiplayer rooms add optional variants like Stacking, Team-Up, Jump-In, and the 0-7 hand-swap.',
+    },
+    {
+      question: 'How hard is the Match Up bot?',
+      answer:
+        'The bot plays smart — it holds wilds for the right colour, stacks +2s when it can, and blocks your last card. Winnable, but not automatic.',
+    },
+    {
+      question: 'Can I play Match Up with friends?',
+      answer:
+        'Yes — create a multiplayer Match Up room and share the code. Same rules as solo, plus optional Stacking, Team-Up, and 0-7 house rules.',
+    },
+  ],
+  ctaHeading: 'Play a solo round of Match Up',
+  ctaSubtext: 'Free forever. No sign-up, no download — you vs the bot.',
+  primaryCta: { href: '/play-solo/uno', label: 'Play Match Up vs bot' },
+  accent: '#ef4444',
+}
+
+const SOLO_AYO_BOT: MarketingPageContent = {
+  slug: 'play-ayo-vs-bot',
+  breadcrumbName: 'Ayo vs bot',
+  seoTitle: 'Play Ayo Ayo vs Bot — Free Yoruba Mancala Online',
+  seoDescription:
+    'Play Ayo (Ayo Olopon), the ancient Yoruba mancala, solo against a computer opponent. Free, no sign-up, no download — sow the seeds, capture the row, in your browser.',
+  keywords: [
+    'play ayo online',
+    'ayo ayo game',
+    'ayo olopon online',
+    'yoruba mancala online',
+    'play ayo vs computer',
+    'ayo vs bot',
+    'african mancala game',
+    'awale online',
+    'nigerian board game online',
+  ],
+  heroTitle: 'Play Ayo vs bot — the ancient Yoruba board game, solo',
+  heroSubtitle:
+    'Ayo (Ayo Olopon) is one of the oldest board games in the world — a Yoruba mancala of sowing and capture. Play solo against a computer opponent, learn the pattern, and win the row. Free, in the browser.',
+  highlights: [
+    'Real Yoruba mancala rules',
+    'Play at your own pace',
+    'No sign-up, no download',
+    'Great way to learn the game',
+  ],
+  featureCards: [
+    {
+      emoji: '🌱',
+      title: 'Sow, then capture',
+      description:
+        'Pick up all the seeds in a house, sow one into each cup around the board, and capture rows of two or three on the opponent’s side.',
+    },
+    {
+      emoji: '🤖',
+      title: 'A bot to learn against',
+      description:
+        'The bot plays a steady mancala game — forcing captures, blocking yours, and pressuring the last houses.',
+    },
+    {
+      emoji: '🕰️',
+      title: 'Play at your own pace',
+      description:
+        'No clock, no room to fill. Take your time to count the seeds and see the capture before you commit.',
+    },
+    {
+      emoji: '📚',
+      title: 'Learn the classic',
+      description: 'New to Ayo? Solo mode is the calm, patient way to learn how sowing and captures actually work.',
+    },
+  ],
+  stepsHeading: 'How to play Ayo vs bot',
+  steps: [
+    {
+      title: 'Open the board',
+      description: 'Two rows of six houses, four seeds each — no sign-up, straight to the board.',
+    },
+    {
+      title: 'Sow the seeds',
+      description:
+        'Pick up all seeds in one of your houses and drop one into each cup counter-clockwise around the board.',
+    },
+    {
+      title: 'Capture and win the row',
+      description:
+        'If your last seed lands on the opponent’s side and makes 2 or 3, you capture. Most seeds when the row empties wins.',
+    },
+  ],
+  body: (
+    <>
+      <p>
+        Ayo — also called Ayo Olopon in Nigeria and Awale across West Africa — is a two-player mancala with centuries of
+        history. FateRound’s solo Ayo lets you play the game against a computer opponent, at your own pace, without
+        waiting for another player. Learn the sowing pattern, spot the captures, and enjoy one of the oldest games in
+        the world in your browser.
+      </p>
+      <p>
+        The rules are simple to learn, hard to master: pick up all seeds from one of your houses, sow one into each cup
+        counter-clockwise, and capture on the opponent’s side when your last seed makes a 2 or a 3. Ready for a real
+        opponent? Take it to a <HubLink href="/create">multiplayer room</HubLink> when you’ve got the pattern down.
+      </p>
+    </>
+  ),
+  gameList: {
+    heading: 'Other classic games playable solo vs bot',
+    items: [
+      { game: <GameLink type="whot" />, description: 'Nigerian Whot — shapes, specials, and the WHOT wild.' },
+      { game: <GameLink type="uno" />, description: 'Match Up — the colour-and-number card game, solo mode.' },
+      { game: <GameLink type="crazy_eights" />, description: 'Crazy Eights — the classic 8s-wild card game.' },
+    ],
+  },
+  faqs: [
+    {
+      question: 'What is Ayo (Ayo Olopon)?',
+      answer:
+        'Ayo, also known as Ayo Olopon or Awale in other parts of West Africa, is a two-player mancala board game. Players sow seeds around a board of houses and capture on the opponent’s side when the last seed makes a group of 2 or 3.',
+    },
+    {
+      question: 'Can I play Ayo Ayo online for free?',
+      answer:
+        'Yes. FateRound’s solo Ayo vs bot is free forever — no sign-up, no download. Open the page and start sowing.',
+    },
+    {
+      question: 'How does the Ayo bot play?',
+      answer:
+        'The bot plays a steady mancala — setting up captures, blocking yours, and pressuring the empty houses so you have to fill them.',
+    },
+    {
+      question: 'Is Ayo hard to learn?',
+      answer:
+        'The rules are quick to pick up. Solo mode against the bot is the calm way to learn: no clock, no pressure, just you counting seeds until captures start clicking.',
+    },
+    {
+      question: 'Can I play Ayo with a friend after?',
+      answer: 'Yes — create a multiplayer Ayo room and share the code. Same rules, real opponent, same board.',
+    },
+  ],
+  ctaHeading: 'Sow the first seed',
+  ctaSubtext: 'Free forever. No sign-up, no download — you vs the bot.',
+  primaryCta: { href: '/play-solo/ayo', label: 'Play Ayo vs bot' },
+  accent: '#a16207',
+}
+
+const SOLO_CRAZY_8_BOT: MarketingPageContent = {
+  slug: 'play-crazy-8-vs-bot',
+  breadcrumbName: 'Crazy 8 vs bot',
+  seoTitle: 'Play Crazy 8s vs Bot — Free Crazy Eights Online',
+  seoDescription:
+    'Play Crazy Eights (Crazy 8s) solo against a computer opponent — 8s are wild, match suit or rank, first to zero cards wins. Free, no sign-up, in your browser.',
+  keywords: [
+    'play crazy eights vs computer',
+    'crazy 8s online',
+    'crazy eights bot',
+    'play crazy 8 alone',
+    'crazy eights single player',
+    'free crazy 8s game',
+    'card game against computer',
+    'play crazy eights offline',
+    'wild card game online',
+  ],
+  heroTitle: 'Play Crazy 8s vs bot — the classic wild-card game, solo',
+  heroSubtitle:
+    'Crazy Eights is the card game everyone learns first — match suit or rank, and 8s are wild. Play solo against a computer opponent whenever you want a quick round. Free, no sign-up, in your browser.',
+  highlights: [
+    '8s wild, match suit or rank',
+    'Fast solo rounds',
+    'No sign-up, no download',
+    'Great warm-up for a real game',
+  ],
+  featureCards: [
+    {
+      emoji: '🎴',
+      title: 'The classic you know',
+      description:
+        'Play a card that matches the top card’s suit or rank. Or play an 8 to change the suit — 8s are always wild.',
+    },
+    {
+      emoji: '🤖',
+      title: 'A bot that plays smart',
+      description: 'The bot saves 8s for tight spots and blocks your last card. You’ll have to earn the win.',
+    },
+    {
+      emoji: '⚡',
+      title: 'Rounds in minutes',
+      description: 'A full round of Crazy Eights takes a few minutes. Perfect between meetings or before bed.',
+    },
+    {
+      emoji: '📶',
+      title: 'Runs in the browser',
+      description: 'No app to install, no update to wait for — open the page, deal the hand.',
+    },
+  ],
+  stepsHeading: 'How to play Crazy 8s vs bot',
+  steps: [
+    { title: 'Open the game', description: 'Straight into a solo Crazy Eights table — no code, no sign-up.' },
+    {
+      title: 'Match suit or rank',
+      description: 'Play a card matching the top card’s suit or rank. Out of matches? Draw until you find one.',
+    },
+    {
+      title: 'Play an 8 to change the suit',
+      description: '8s are wild — play one and call the next suit. First to zero cards wins the round.',
+    },
+  ],
+  body: (
+    <>
+      <p>
+        Crazy Eights (or Crazy 8s) is the gateway card game — easy rules, quick rounds, satisfying wins. Solo Crazy
+        Eights lets you play a round against a computer opponent any time, no room to fill or friend to wait on. Great
+        as a quick warm-up before you jump into a multiplayer table.
+      </p>
+      <p>
+        The rules haven’t changed since kitchen tables everywhere: match suit or rank, 8s are wild, and the first player
+        to empty their hand wins. When you’re ready for opponents, spin up a{' '}
+        <HubLink href="/create">multiplayer Crazy Eights room</HubLink> and share the code.
+      </p>
+    </>
+  ),
+  gameList: {
+    heading: 'Also playable solo vs bot',
+    items: [
+      { game: <GameLink type="whot" />, description: 'Nigerian Whot — shapes, specials, and the WHOT wild.' },
+      { game: <GameLink type="uno" />, description: 'Match Up — the colour-and-number card game, solo mode.' },
+      { game: <GameLink type="ayo" />, description: 'Ayo — the Yoruba mancala, solo against the bot.' },
+    ],
+  },
+  faqs: [
+    {
+      question: 'Can I play Crazy Eights against the computer for free?',
+      answer: 'Yes. FateRound’s solo Crazy 8s vs bot is free forever — no sign-up, no download, no premium tier.',
+    },
+    {
+      question: 'What are the rules of Crazy 8s?',
+      answer:
+        'Match the top card’s suit or rank. 8s are wild — play one to change the suit. If you can’t play, draw. First to zero cards wins the round.',
+    },
+    {
+      question: 'How hard is the Crazy Eights bot?',
+      answer:
+        'The bot plays a solid game — it saves 8s for the right moment and blocks your last card. Beatable, but you’ll have to plan.',
+    },
+    {
+      question: 'Can I play Crazy 8s offline?',
+      answer: 'Solo Crazy 8s runs in your browser — once the page has loaded, a shaky connection won’t drop your game.',
+    },
+    {
+      question: 'Can I play Crazy 8s with friends after?',
+      answer: 'Yes — create a multiplayer Crazy 8s room and share the code. Same rules, real opponents.',
+    },
+  ],
+  ctaHeading: 'Deal a round of Crazy 8s',
+  ctaSubtext: 'Free forever. No sign-up, no download — you vs the bot.',
+  primaryCta: { href: '/play-solo/crazy-eights', label: 'Play Crazy 8s vs bot' },
+  accent: '#0891b2',
+}
+
+const WHOT_ROOM_BOTS: MarketingPageContent = {
+  slug: 'whot-with-bots-online',
+  breadcrumbName: 'Whot rooms with bots',
+  seoTitle: 'Play Whot Online with Bots — Fill Empty Seats, Never Wait',
+  seoDescription:
+    'Play Whot online with friends and bots in the same room. Fill empty seats with a Whot bot so nobody waits — real Nigerian rules, free, no sign-up. Add bots to any Whot room.',
+  keywords: [
+    'play whot online with bots',
+    'whot room with computer players',
+    'whot online with friends and bots',
+    'whot bot in multiplayer',
+    'nigerian whot with bots',
+    'fill whot room with bots',
+    'whot online free',
+    'add bots to whot game',
+  ],
+  heroTitle: 'Play Whot online — with friends, or friends plus bots',
+  heroSubtitle:
+    'Not enough players? Fill the empty seats with Whot bots. Same room, same rules, same trash talk — without anyone waiting for the last seat. Free, no sign-up, real Nigerian Whot.',
+  highlights: [
+    'Add bots to any Whot room',
+    'Full Nigerian Whot rules',
+    'Play from 2 to a full table',
+    'Free, no sign-up',
+  ],
+  featureCards: [
+    {
+      emoji: '🪑',
+      title: 'Never wait for the last seat',
+      description:
+        'Two friends and want a four-player table? Drop in two bots — no more sitting on a half-empty lobby.',
+    },
+    {
+      emoji: '🤖',
+      title: 'Bots that play real Whot',
+      description:
+        'Bots know Pick 2, Pick 3, Hold On, Suspension, General Market, and the WHOT wild — they play the game, not just fill a chair.',
+    },
+    {
+      emoji: '👥',
+      title: 'Mix humans and bots',
+      description:
+        'Start the room with real friends and top it up with bots. Kick a bot when a friend joins — seamless.',
+    },
+    {
+      emoji: '⚡',
+      title: 'Rooms start in seconds',
+      description:
+        'Create the room, share the code, add bots — the game deals as soon as everyone (human or bot) is seated.',
+    },
+  ],
+  stepsHeading: 'How to play Whot with bots online',
+  steps: [
+    {
+      title: 'Create a Whot room',
+      description: 'Pick Whot, set the house rules, and share the room code with friends.',
+    },
+    {
+      title: 'Add bots to the empty seats',
+      description: 'Any seat that’s empty when you’re ready? Fill it with a bot in one tap.',
+    },
+    {
+      title: 'Deal and play',
+      description: 'Real Nigerian rules — stack Pick 2s, dodge Pick 3s, race to the empty hand.',
+    },
+  ],
+  body: (
+    <>
+      <p>
+        A Whot night shouldn’t die because one friend flaked. FateRound lets you fill any empty seat in a{' '}
+        <GameLink type="whot">Whot room</GameLink> with a bot — so two friends can play a four-player table, or a
+        birthday group can start the deal even if the last person is running late. Same room, same rules, no waiting.
+      </p>
+      <p>
+        Bots play real Nigerian Whot — Pick 2 stacks, Hold On skips, Suspension, General Market, and the WHOT wild.
+        They’re not perfect, and they’re not filler: they play the shapes the way the game is meant to be played. Prefer
+        to warm up solo first? Try <HubLink href="/play-solo/whot">Whot vs bot</HubLink> before you open a room.
+      </p>
+    </>
+  ),
+  faqs: [
+    {
+      question: 'Can I add bots to a multiplayer Whot room?',
+      answer:
+        'Yes. When you create a Whot room, any empty seat can be filled with a bot in one tap. Kick the bot the moment a real player joins.',
+    },
+    {
+      question: 'How do the Whot bots play?',
+      answer:
+        'They play full Nigerian Whot — Pick 2, Pick 3, Hold On, Suspension, General Market, and calling shapes with the WHOT wild. Not perfect players, but proper ones.',
+    },
+    {
+      question: 'Can I play Whot online with just one friend?',
+      answer: 'Yes — two humans plus one or two bots gives you a full table without waiting for anyone else.',
+    },
+    {
+      question: 'Is playing Whot with bots free?',
+      answer: 'Yes, free forever — no sign-up, no download, no premium tier for bots.',
+    },
+    {
+      question: 'Can I play Whot solo without a room?',
+      answer: 'Yes — solo Whot vs bot skips the room entirely. Just you and the computer opponent, in the browser.',
+    },
+  ],
+  ctaHeading: 'Start a Whot room — with or without bots',
+  ctaSubtext: 'Free forever. Fill empty seats with bots so nobody waits.',
+  primaryCta: { href: '/create', label: 'Create a Whot room' },
+  accent: '#b91c1c',
+}
+
+const ESTATE_KINGS_ROOM_BOTS: MarketingPageContent = {
+  slug: 'estate-kings-with-bots-online',
+  breadcrumbName: 'Estate Kings with bots',
+  seoTitle: 'Play Estate Kings Online with Bots — Property Board Game, No Wait',
+  seoDescription:
+    'Play Estate Kings, a free online property-trading board game, with friends and bots. Fill empty seats with a bot so nobody waits. Buy, trade, and build — free, no sign-up.',
+  keywords: [
+    'play property board game with bots',
+    'online monopoly alternative with bots',
+    'estate kings online',
+    'property trading board game online',
+    'buy houses board game with friends',
+    'online board game with computer players',
+    'multiplayer property game with bots',
+    'free monopoly alternative online',
+  ],
+  heroTitle: 'Play Estate Kings online — friends, bots, or both',
+  heroSubtitle:
+    'Estate Kings is FateRound’s free online property-trading board game — buy properties, build, trade, bankrupt. Fill empty seats with a bot so a two-player night becomes a proper four-player game.',
+  highlights: [
+    'Add bots to any room',
+    'Full property-trading board game',
+    '2 to 6 players (humans + bots)',
+    'Free, no sign-up',
+  ],
+  featureCards: [
+    {
+      emoji: '🏠',
+      title: 'The property board game, online',
+      description:
+        'Buy properties, collect rent, trade with rivals, build up your streets — the whole classic loop, in the browser.',
+    },
+    {
+      emoji: '🤖',
+      title: 'Bots that make deals',
+      description:
+        'Bots buy properties, negotiate trades, and drop hotels on you when you land on the wrong street. They’re real opponents, not filler.',
+    },
+    {
+      emoji: '🪑',
+      title: 'Never wait for a full table',
+      description: 'Two friends but want a four-player game? Add two bots. Kick a bot the moment a real player joins.',
+    },
+    {
+      emoji: '⏱️',
+      title: 'Games that actually finish',
+      description:
+        'Time extensions, turn timers, and bots that don’t stall — board games that end at a reasonable hour.',
+    },
+  ],
+  stepsHeading: 'How to play Estate Kings with bots',
+  steps: [
+    {
+      title: 'Create an Estate Kings room',
+      description: 'Set the starting cash, timer, and house rules. Share the room code.',
+    },
+    {
+      title: 'Fill empty seats with bots',
+      description: 'Any empty seat becomes a bot in one tap — no waiting for the last person.',
+    },
+    { title: 'Buy, build, trade, win', description: 'Bankrupt every opponent, human or bot, to take the game.' },
+  ],
+  body: (
+    <>
+      <p>
+        Estate Kings is FateRound’s free online property-trading board game — our own take on the classic buy-
+        houses-and-bankrupt-your-friends genre made famous by games like Monopoly. Add bots to any{' '}
+        <GameLink type="monopoly">Estate Kings room</GameLink> and stop waiting for a full table: two friends plus two
+        bots is a real four-player game, not a compromise.
+      </p>
+      <p>
+        The bots make trades, buy properties, and drop hotels where they hurt. They’re opponents, not chair-fillers.
+        Perfect for a two-friend night that wants a fuller table, or a birthday group where one person is running late.
+        Same rules, same board, no waiting.
+      </p>
+    </>
+  ),
+  faqs: [
+    {
+      question: 'Is Estate Kings the same as Monopoly?',
+      answer:
+        'Estate Kings is FateRound’s own property-trading board game, inspired by the classic buy-houses-and-bankrupt-your-friends genre popularised by games like Monopoly. Same familiar loop, our own board and rules.',
+    },
+    {
+      question: 'Can I add bots to a multiplayer property board game room?',
+      answer:
+        'Yes. Any empty seat in an Estate Kings room can be filled with a bot in one tap. Kick the bot the moment a real player joins.',
+    },
+    {
+      question: 'How do the bots play?',
+      answer:
+        'The bots buy properties, negotiate trades, and build houses and hotels. They play a real game — you can lose to them.',
+    },
+    {
+      question: 'How many players can play Estate Kings?',
+      answer: '2 to 6 players in total — any mix of humans and bots.',
+    },
+    {
+      question: 'Is it free?',
+      answer: 'Yes, free forever — no sign-up, no download, no premium tier for bots.',
+    },
+  ],
+  ctaHeading: 'Start an Estate Kings room — fill the table',
+  ctaSubtext: 'Free forever. Add bots so a two-friend night becomes a real board-game night.',
+  primaryCta: { href: '/create', label: 'Create an Estate Kings room' },
+  accent: '#166534',
+}
+
 export const MARKETING_PAGES: Record<string, MarketingPageContent> = {
   [JACKBOX.slug]: JACKBOX,
   [NAIJA.slug]: NAIJA,
@@ -2144,6 +2844,12 @@ export const MARKETING_PAGES: Record<string, MarketingPageContent> = {
   [GAME_NIGHT.slug]: GAME_NIGHT,
   [BORED.slug]: BORED,
   [HOUSEPARTY.slug]: HOUSEPARTY,
+  [SOLO_WHOT_BOT.slug]: SOLO_WHOT_BOT,
+  [SOLO_MATCH_UP_BOT.slug]: SOLO_MATCH_UP_BOT,
+  [SOLO_AYO_BOT.slug]: SOLO_AYO_BOT,
+  [SOLO_CRAZY_8_BOT.slug]: SOLO_CRAZY_8_BOT,
+  [WHOT_ROOM_BOTS.slug]: WHOT_ROOM_BOTS,
+  [ESTATE_KINGS_ROOM_BOTS.slug]: ESTATE_KINGS_ROOM_BOTS,
 }
 
 export const ALL_MARKETING_SLUGS = Object.keys(MARKETING_PAGES)
