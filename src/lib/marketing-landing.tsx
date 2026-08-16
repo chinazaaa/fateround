@@ -1694,7 +1694,7 @@ const WHOT_UNO: MarketingPageContent = {
       emoji: '🎮',
       title: 'Play both here',
       description:
-        'FateRound has real Whot and real Uno — plus Crazy Eights, the classic where 8s are wild — free, in the browser.',
+        'FateRound has real Whot and Match Up (our Uno-style card game) — plus Crazy Eights, the classic where 8s are wild — free, in the browser.',
     },
   ],
   stepsHeading: 'How they compare',
@@ -1706,7 +1706,7 @@ const WHOT_UNO: MarketingPageContent = {
     },
     {
       title: 'Try each free',
-      description: 'Play Whot or Uno on FateRound — share a link and your crew joins.',
+      description: 'Play Whot or Match Up (our Uno-style card game) on FateRound — share a link and your crew joins.',
     },
   ],
   body: (
@@ -1719,10 +1719,10 @@ const WHOT_UNO: MarketingPageContent = {
         General Market for extra chaos.
       </p>
       <p>
-        The best part: you don’t have to choose. FateRound has proper Naija <GameLink type="whot" /> and real{' '}
-        <GameLink type="uno">Uno</GameLink> — plus <GameLink type="crazy_eights">Crazy Eights</GameLink>, the classic
-        where 8s are wild — all free, all in the browser, no app to download. Share a link and your crew joins from any
-        phone. Part of the <HubLink>Naija game night</HubLink> lineup.
+        The best part: you don’t have to choose. FateRound has proper Naija <GameLink type="whot" /> and{' '}
+        <GameLink type="uno" /> (our Uno-style card game) — plus <GameLink type="crazy_eights">Crazy Eights</GameLink>,
+        the classic where 8s are wild — all free, all in the browser, no app to download. Share a link and your crew
+        joins from any phone. Part of the <HubLink>Naija game night</HubLink> lineup.
       </p>
     </>
   ),
@@ -1735,7 +1735,11 @@ const WHOT_UNO: MarketingPageContent = {
       { label: 'Wild card', a: 'WHOT (20) — call the next shape', b: 'Wild — call the next colour' },
       { label: 'Draw cards', a: 'Pick 2, Pick 3', b: 'Draw 2, Draw 4' },
       { label: 'Extra cards', a: 'Hold On, Suspension, General Market', b: 'Skip, Reverse' },
-      { label: 'Play free online', a: 'Yes — on FateRound', b: 'Yes — on FateRound (plus Crazy Eights)' },
+      {
+        label: 'Play free online',
+        a: 'Yes — on FateRound',
+        b: 'Match Up (Uno-style) on FateRound, plus Crazy Eights',
+      },
     ],
   },
   faqs: [
@@ -1750,17 +1754,17 @@ const WHOT_UNO: MarketingPageContent = {
         'Whot uses five shapes and the WHOT wild card; Uno uses four colours and Wild cards. Whot also has Hold On (extra turn) and General Market (everyone draws), which Uno doesn’t. Otherwise the goal and flow are very similar.',
     },
     {
-      question: 'Can I play Whot and Uno online free?',
+      question: 'Can I play Whot and a Uno-style card game online free?',
       answer:
-        'Yes — both Whot and Uno are free on FateRound, plus Crazy Eights (the classic where 8s are wild). They all run in the browser with no app and no sign-up.',
+        'Yes — Whot is free on FateRound, and so is Match Up, our Uno-style colour-and-number card game, plus Crazy Eights (the classic where 8s are wild). They all run in the browser with no app and no sign-up.',
     },
     {
       question: 'Which should I play?',
       answer:
-        'If you want the Naija classic with shapes and General Market, play Whot. If you want the colour-matching game, play Uno (or Crazy Eights, the 8s-are-wild variant). On FateRound you can jump between all three in the same session.',
+        'If you want the Naija classic with shapes and General Market, play Whot. If you want a colour-matching card game, play Match Up (our Uno-style card game) or Crazy Eights (the 8s-are-wild variant). On FateRound you can jump between all three in the same session.',
     },
   ],
-  ctaHeading: 'Play Whot or Uno',
+  ctaHeading: 'Play Whot or Match Up',
   ctaSubtext: 'Free forever. Share one link — your crew is in.',
   accent: '#15803d',
 }
