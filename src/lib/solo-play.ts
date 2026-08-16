@@ -16,6 +16,7 @@ const SOLO_PLAY_SLUGS: Partial<Record<GameType, string>> = {
   crazy_eights: 'crazy-eights',
   uno: 'uno',
   ludo: 'ludo',
+  yahtzee: 'yahtzee',
 }
 
 export function soloPlaySlug(gameType: GameType): string | null {
