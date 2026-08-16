@@ -6,15 +6,17 @@
  * Multi-Play, WD4 challenge, UNO-call penalty, No Mercy — and layers atomic CAS
  * + trophy stats + realtime broadcasts on every path.
  *
- * Solo strips it to CLASSIC UNO ONLY:
+ * Solo strips it to CLASSIC UNO ONLY, plus Multi-Play:
  *   - Number cards 0-9 match by colour or value
  *   - Skip / Reverse / Draw 2 as action cards
  *   - Wild and Wild Draw 4 (auto-accept, no challenge — challenges are a social
  *     rule that doesn't translate to a bot opponent well)
  *   - Drawing 1 card always passes the turn (real UNO gives you the option to
  *     play the drawn card; solo skips this to keep the state machine tight)
- *   - No Multi-Play, no Zero-Seven swap, no Jump-In, no Team-Up, no UNO-call
- *     penalty, no No Mercy
+ *   - Multi-Play in `same_color_or_number` mode via `unoSoloPlayMulti` — so a
+ *     player can lay a run of same-colour or same-number cards together
+ *   - No Zero-Seven swap, no Jump-In, no Team-Up, no UNO-call penalty,
+ *     no No Mercy
  *
  * That's plenty for a "practice a game vs a bot" mode. The DB engine remains
  * the full-fat implementation for multiplayer rooms.
@@ -30,7 +32,10 @@ import {
   cardPoints,
   hasPlayableCard,
   isWildCard,
+  resolveMultiPlayAdvance,
   unoHandSum,
+  validateMultiSet,
+  type UnoMultiPlayMode,
 } from '@/lib/uno'
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -446,6 +451,128 @@ export function unoSoloChooseColor(state: UnoSoloState, playerIdx: 0 | 1, color:
   return {
     state: log({ ...state, session: nextSession }, `${NAMES[TURN_ORDER[playerIdx]!]} called ${color}`),
   }
+}
+
+/**
+ * Multi-Play mode used by solo. `same_color_or_number` is the most permissive
+ * (and most-fun) grouping — a set laid together must all share a colour, or
+ * all share a number.
+ */
+export const UNO_SOLO_MULTI_PLAY_MODE: UnoMultiPlayMode = 'same_color_or_number'
+
+/**
+ * Play a Multi-Play set from `playerIdx`'s hand. `cardIds` is IN PLAY ORDER —
+ * the first must be legal on the top card, and the last card lands face-up on
+ * the pile. Wilds must be played alone, so this rejects any wild in the set.
+ *
+ * 2-player turn resolution:
+ *   Reverse acts as Skip (same as single-card play). Each Skip in the set
+ *   keeps the turn on the same seat, so an odd number of skips lands back on
+ *   the player; an even number passes to the opponent. A trailing Skip after
+ *   a Draw 2 auto-resolves the opponent's draw and returns the turn to the
+ *   player. A pure Draw 2 chain (no trailing skip) leaves a pending penalty
+ *   for the opponent, who can stack a Draw 2 or draw.
+ */
+export function unoSoloPlayMulti(
+  state: UnoSoloState,
+  playerIdx: 0 | 1,
+  cardIds: string[],
+  rng: () => number
+): UnoSoloStepResult {
+  const gate = requirePlayingPhase(state, playerIdx)
+  if (gate) return { state, error: gate }
+
+  const hand = state.hands[playerIdx]
+  // Resolve requested cards IN ORDER; reject duplicates or unknown ids.
+  const remaining = [...hand]
+  const cards: UnoCard[] = []
+  for (const id of cardIds) {
+    const idx = remaining.findIndex((c) => c.id === id)
+    if (idx < 0) return { state, error: 'Card not in hand' }
+    cards.push(remaining.splice(idx, 1)[0]!)
+  }
+
+  const setError = validateMultiSet(cards, state.session, UNO_SOLO_MULTI_PLAY_MODE)
+  if (setError) return { state, error: setError }
+
+  const playedIds = new Set(cards.map((c) => c.id))
+  const newHand = hand.filter((c) => !playedIds.has(c.id))
+  const wentOut = newHand.length === 0
+  const lastCard = cards[cards.length - 1]!
+
+  const { penalty, skipsBefore, skipsAfter } = resolveMultiPlayAdvance(cards, state.session, 2)
+  const priorPenalty = state.session.draw_penalty ?? 0
+  // validateMultiSet already rejects when priorPenalty > 0, but guard the
+  // arithmetic anyway so the branch reads clearly.
+  const totalDraw2Penalty = (priorPenalty > 0 ? priorPenalty : 0) + penalty
+
+  // A Draw 2 followed by a Skip can't sit as a pending penalty — the trailing
+  // skip must fire only after the opponent draws. So we auto-resolve the draw
+  // here, then land on whichever seat the skips point at.
+  const autoResolve = penalty > 0 && skipsAfter > 0 && !wentOut
+  const pendingPenalty = penalty > 0 && !autoResolve && !wentOut
+
+  const nextHands: [UnoCard[], UnoCard[]] = [...state.hands] as [UnoCard[], UnoCard[]]
+  nextHands[playerIdx] = newHand
+
+  // Bare pile after covering the previous top with the earlier cards in the set.
+  let drawPile = [...state.session.draw_pile] as UnoCard[]
+  let discardPile: UnoCard[] = [
+    ...state.session.discard_pile,
+    ...(state.session.top_card ? [state.session.top_card] : []),
+    ...cards.slice(0, -1),
+  ]
+
+  const opponentIdx: 0 | 1 = otherIdx(playerIdx)
+
+  if (autoResolve) {
+    const drawRes = drawWithRefill(drawPile, discardPile, totalDraw2Penalty, rng)
+    drawPile = drawRes.pile
+    discardPile = drawRes.discard
+    nextHands[opponentIdx] = [...nextHands[opponentIdx]!, ...drawRes.drawn]
+  }
+
+  let nextIndex: 0 | 1
+  if (wentOut) {
+    nextIndex = playerIdx
+  } else if (pendingPenalty) {
+    // Opponent must stack a Draw 2 or draw the pile.
+    nextIndex = opponentIdx
+  } else if (autoResolve) {
+    // After the auto-draw, `skipsAfter` skips fire from the player's seat. In
+    // 2p every skip stays on the same seat, so the turn returns to the player.
+    nextIndex = playerIdx
+  } else {
+    // Pure numbers / skips / reverses. In 2p, N skips + a normal advance:
+    // even skips → opponent, odd skips → player.
+    const totalSkips = skipsBefore + skipsAfter
+    nextIndex = totalSkips % 2 === 0 ? opponentIdx : playerIdx
+  }
+
+  const nextSession: UnoSession = {
+    ...state.session,
+    top_card: lastCard,
+    required_color: null,
+    draw_penalty: pendingPenalty ? totalDraw2Penalty : 0,
+    draw_penalty_kind: pendingPenalty ? 'draw2' : null,
+    draw_pile: drawPile,
+    discard_pile: discardPile,
+    current_turn_index: nextIndex,
+    phase: wentOut ? 'finished' : 'playing',
+    winner_player_id: wentOut ? TURN_ORDER[playerIdx] : null,
+    finish_order: wentOut ? [TURN_ORDER[playerIdx]!] : state.session.finish_order,
+    last_play_cards: cards,
+    last_play_player_id: TURN_ORDER[playerIdx],
+  }
+
+  const parts: string[] = [`${NAMES[TURN_ORDER[playerIdx]!]} played ${cards.length} cards`]
+  if (penalty > 0) parts.push(`Draw ${penalty}`)
+  const skipTotal = skipsBefore + skipsAfter
+  if (skipTotal > 0) parts.push(skipTotal === 1 ? 'Skip' : `${skipTotal}× Skip`)
+
+  let next: UnoSoloState = log({ ...state, session: nextSession, hands: nextHands }, parts.join(' · '))
+  next = checkWin(next)
+  return { state: next }
 }
 
 /** Card point tally — exposed for tests. */

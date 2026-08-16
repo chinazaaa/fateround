@@ -9,11 +9,12 @@
  *  - bot fires from an effect after ~900ms so plays feel deliberate
  *  - sessionStorage keeps the game across a page reload
  *
- * The UnoPlaySurface component takes many callbacks (Jump-In, Multi-Play, WD4
- * challenge, UNO-call, Swap) that solo does not implement. Those props are
- * wired to no-op stubs so the presentational component stays untouched — the
- * corresponding UI affordances never render in solo because the flags that
- * gate them (`multiPlayMode='off'`, `jumpInEnabled=false`) suppress them.
+ * The UnoPlaySurface component takes many callbacks (Jump-In, WD4 challenge,
+ * UNO-call, Swap) that solo does not implement. Those props are wired to
+ * no-op stubs so the presentational component stays untouched — the
+ * corresponding UI affordances never render in solo (jumpInEnabled=false, and
+ * the phase never enters challenge/swap). Multi-Play IS supported: solo runs
+ * `same_color_or_number` mode via `unoSoloPlayMulti`.
  */
 
 import Link from 'next/link'
@@ -22,11 +23,13 @@ import { UnoPlaySurface } from '@/components/uno/UnoPlaySurface'
 import {
   UNO_SOLO_BOT_ID,
   UNO_SOLO_HUMAN_ID,
+  UNO_SOLO_MULTI_PLAY_MODE,
   initUnoSolo,
   isPlayable,
   unoSoloChooseColor,
   unoSoloDraw,
   unoSoloPlay,
+  unoSoloPlayMulti,
   type UnoSoloState,
 } from '@/lib/uno-solo'
 import { pickBotAction, type UnoBotDifficulty } from '@/lib/uno-bot'
@@ -169,6 +172,13 @@ export function SoloUnoClient() {
     if (!r.error) setState(r.state)
   }, [])
 
+  const humanPlayMulti = useCallback((cardIds: string[]) => {
+    const now = stateRef.current
+    if (!now) return
+    const r = unoSoloPlayMulti(now, 0, cardIds, Math.random)
+    if (!r.error) setState(r.state)
+  }, [])
+
   const restart = useCallback(() => {
     clearPersistedState()
     setState(initUnoSolo())
@@ -257,16 +267,18 @@ export function SoloUnoClient() {
         onPlay={humanPlay}
         onDraw={humanDraw}
         onChooseColor={humanChooseColor}
-        // The below callbacks + flags belong to rules solo does not implement.
+        // The remaining callbacks + flags belong to rules solo does not
+        // implement (WD4 challenge, UNO-call penalty, 0-7 swap, Jump-In).
         // They stay wired as no-ops so the presentational component's prop
         // contract is satisfied; the corresponding UI never renders because
-        // multiPlayMode='off' + jumpInEnabled=false suppress the affordances.
+        // the phase never enters those branches and jumpInEnabled=false
+        // suppresses the affordances.
         onChallenge={NOOP}
         onCallUno={NOOP}
         onSwap={NOOP}
         onPass={NOOP}
-        multiPlayMode="off"
-        onPlayMulti={NOOP}
+        multiPlayMode={UNO_SOLO_MULTI_PLAY_MODE}
+        onPlayMulti={humanPlayMulti}
         jumpInEnabled={false}
         hideHand={finished}
       />
