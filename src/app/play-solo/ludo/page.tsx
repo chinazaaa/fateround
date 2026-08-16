@@ -36,7 +36,9 @@ export default function PlaySoloLudoPage() {
       <SoloSeoFooter
         heading="Learn more about Ludo"
         links={[
+          { href: '/play-ludo-vs-bot', label: 'About Ludo vs bot' },
           { href: '/games/ludo', label: 'Ludo game page' },
+          { href: '/free-ludo-king-alternative', label: 'Free Ludo King alternative' },
           { href: '/create?type=ludo', label: 'Start a real Ludo room' },
         ]}
       />
