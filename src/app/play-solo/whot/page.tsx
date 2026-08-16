@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { SoloWhotClient } from './SoloWhotClient'
+import { SoloSeoFooter } from '../SoloSeoFooter'
 
 /**
  * Solo Whot — practice vs a bot, no room, no realtime.
@@ -17,5 +18,19 @@ export const metadata: Metadata = {
 }
 
 export default function PlaySoloWhotPage() {
-  return <SoloWhotClient />
+  return (
+    <>
+      <SoloWhotClient />
+      <SoloSeoFooter
+        heading="Learn more about Whot"
+        links={[
+          { href: '/play-whot-vs-bot', label: 'About Whot vs bot' },
+          { href: '/blog/how-to-play-whot-vs-computer', label: 'How to play Whot vs the computer' },
+          { href: '/blog/whot-rules-explained', label: 'Whot rules explained' },
+          { href: '/whot-with-bots-online', label: 'Play Whot online with bots' },
+          { href: '/games/whot', label: 'Whot game page' },
+        ]}
+      />
+    </>
+  )
 }

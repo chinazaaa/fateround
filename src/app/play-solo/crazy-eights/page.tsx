@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { SoloCrazyEightsClient } from './SoloCrazyEightsClient'
+import { SoloSeoFooter } from '../SoloSeoFooter'
 
 /**
  * Solo Crazy Eights — practice vs a bot. Same shape as /play-solo/whot: no
@@ -14,5 +15,16 @@ export const metadata: Metadata = {
 }
 
 export default function PlaySoloCrazyEightsPage() {
-  return <SoloCrazyEightsClient />
+  return (
+    <>
+      <SoloCrazyEightsClient />
+      <SoloSeoFooter
+        heading="Learn more about Crazy Eights"
+        links={[
+          { href: '/play-crazy-8-vs-bot', label: 'About Crazy 8s vs bot' },
+          { href: '/games/crazy-eights', label: 'Crazy Eights game page' },
+        ]}
+      />
+    </>
+  )
 }

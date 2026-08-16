@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { SoloUnoClient } from './SoloUnoClient'
+import { SoloSeoFooter } from '../SoloSeoFooter'
 
 /**
  * Solo UNO — practice vs a bot. Classic rules only (see uno-solo.ts): no
@@ -16,5 +17,17 @@ export const metadata: Metadata = {
 }
 
 export default function PlaySoloUnoPage() {
-  return <SoloUnoClient />
+  return (
+    <>
+      <SoloUnoClient />
+      <SoloSeoFooter
+        heading="Learn more about Match Up"
+        links={[
+          { href: '/play-match-up-vs-bot', label: 'About Match Up vs bot' },
+          { href: '/games/uno', label: 'Match Up game page' },
+          { href: '/whot-vs-uno', label: 'Whot vs UNO comparison' },
+        ]}
+      />
+    </>
+  )
 }
