@@ -15,8 +15,9 @@
  * sides symmetrically. Solo runs 2 players, human=red, bot=blue.
  */
 
-import type { LudoDiceRoll, LudoPlayerState, LudoSession, LudoVariant } from '@/types'
+import type { LudoColor, LudoDiceRoll, LudoPlayerState, LudoSession, LudoVariant } from '@/types'
 import {
+  LUDO_COLORS,
   LUDO_DEFAULT_VARIANT,
   allPiecesFinished,
   applyMoveLocally,
@@ -52,22 +53,44 @@ const NAMES: Record<string, string> = { [LUDO_SOLO_HUMAN_ID]: 'You', [LUDO_SOLO_
 // ── Init ─────────────────────────────────────────────────────────────────────
 
 /**
- * Fresh 2-player solo session: human (red) vs bot (blue). Human always goes
- * first — a coin-flip would surprise more than it delights in a practice mode.
+ * Fresh 2-player solo session. Colour assignment and turn order are
+ * randomised on every new game so the human isn't always the same colour
+ * or always going first — matches real-Ludo variety.
+ *
+ * `opts.humanColor` / `opts.humanGoesFirst` are test-only pins that override
+ * the RNG so the state machine's transitions can be exercised deterministically.
  */
-export function initLudoSolo(variant: LudoVariant = LUDO_DEFAULT_VARIANT): LudoSoloState {
+export function initLudoSolo(
+  variant: LudoVariant = LUDO_DEFAULT_VARIANT,
+  opts: { humanColor?: LudoColor; humanGoesFirst?: boolean } = {}
+): LudoSoloState {
   const now = new Date(0).toISOString() // deterministic; sessionStorage-safe
+
+  // Human picks one of all four colours randomly (red / green / yellow / blue),
+  // bot gets a different random one. That's 12 possible (human, bot) pairs —
+  // enough variety that no two consecutive New-Game clicks feel the same.
+  // Note we intentionally do NOT restrict to the engine's fixed 2-player pair
+  // (`colorsForPlayerCount(2)` = red+yellow) — that trapped every game into
+  // red-vs-yellow. Real-Ludo's opposite-corners convention only matters when
+  // the board can accommodate 4 seated players anyway.
+  const humanColor: LudoColor = opts.humanColor ?? LUDO_COLORS[Math.floor(Math.random() * LUDO_COLORS.length)]!
+  const botCandidates = LUDO_COLORS.filter((c) => c !== humanColor)
+  const botColor: LudoColor = botCandidates[Math.floor(Math.random() * botCandidates.length)]!
+
+  const humanGoesFirst = opts.humanGoesFirst ?? Math.random() < 0.5
+  const turnOrder = humanGoesFirst ? [LUDO_SOLO_HUMAN_ID, LUDO_SOLO_BOT_ID] : [LUDO_SOLO_BOT_ID, LUDO_SOLO_HUMAN_ID]
+
   const session: LudoSession = {
     id: 'solo',
     game_id: 'solo',
-    turn_order: [LUDO_SOLO_HUMAN_ID, LUDO_SOLO_BOT_ID],
+    turn_order: turnOrder,
     current_turn_index: 0,
     phase: 'roll',
     last_dice: null,
     remaining_dice: null,
     consecutive_sixes: 0,
     extra_turn: false,
-    status_message: 'Your turn — roll the dice',
+    status_message: humanGoesFirst ? 'Your turn — roll the dice' : "Bot's turn — rolling…",
     winner_player_id: null,
     turn_deadline_at: null,
     created_at: now,
@@ -78,18 +101,18 @@ export function initLudoSolo(variant: LudoVariant = LUDO_DEFAULT_VARIANT): LudoS
       id: 'state-human',
       game_id: 'solo',
       player_id: LUDO_SOLO_HUMAN_ID,
-      color: 'red',
+      color: humanColor,
       pieces: createInitialPieces(),
-      player_order: 0,
+      player_order: humanGoesFirst ? 0 : 1,
       created_at: now,
     },
     {
       id: 'state-bot',
       game_id: 'solo',
       player_id: LUDO_SOLO_BOT_ID,
-      color: 'blue',
+      color: botColor,
       pieces: createInitialPieces(),
-      player_order: 1,
+      player_order: humanGoesFirst ? 1 : 0,
       created_at: now,
     },
   ]

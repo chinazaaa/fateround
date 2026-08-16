@@ -3496,6 +3496,7 @@ function CreateGameInner() {
               </SettingsGroup>
             ) : isYahtzee ? (
               <SettingsGroup title="Five Dice room">
+                <SoloPracticeCta gameType="yahtzee" />
                 <Field label={`Max players (${effectiveLimits.yahtzee.min}–${effectiveLimits.yahtzee.max})`}>
                   <CustomSelect
                     value={yahtzeeMaxPlayers}
@@ -3847,6 +3848,7 @@ function CreateGameInner() {
               </SettingsGroup>
             ) : isLudo ? (
               <SettingsGroup title="Ludo room">
+                <SoloPracticeCta gameType="ludo" />
                 <Field label={`Max players (${effectiveLimits.ludo.min}–${effectiveLimits.ludo.max})`}>
                   <CustomSelect
                     value={ludoMaxPlayers}

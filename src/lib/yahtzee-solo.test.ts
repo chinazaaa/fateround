@@ -12,7 +12,7 @@ import { YAHTZEE_ALL_CATEGORIES } from '@/lib/yahtzee'
 
 describe('initYahtzeeSolo', () => {
   it('creates a 2-player session with human first and empty score cards', () => {
-    const s = initYahtzeeSolo()
+    const s = initYahtzeeSolo({ humanGoesFirst: true })
     expect(s.session.turn_order).toEqual([YAHTZEE_SOLO_HUMAN_ID, YAHTZEE_SOLO_BOT_ID])
     expect(s.session.current_turn_index).toBe(0)
     expect(s.session.phase).toBe('rolling')
@@ -28,13 +28,13 @@ describe('initYahtzeeSolo', () => {
 
 describe('rollYahtzeeSolo — turn gating', () => {
   it('rejects a roll from the wrong actor', () => {
-    const s = initYahtzeeSolo()
+    const s = initYahtzeeSolo({ humanGoesFirst: true })
     const r = rollYahtzeeSolo(s, YAHTZEE_SOLO_BOT_ID)
     expect(r.error).toMatch(/not your turn/i)
   })
 
   it('rejects a roll after 3 rolls this turn (rolls_remaining=0)', () => {
-    let s = initYahtzeeSolo()
+    let s = initYahtzeeSolo({ humanGoesFirst: true })
     s = rollYahtzeeSolo(s, YAHTZEE_SOLO_HUMAN_ID, [1, 2, 3, 4, 5]).state
     s = rollYahtzeeSolo(s, YAHTZEE_SOLO_HUMAN_ID, [1, 2, 3, 4, 5]).state
     s = rollYahtzeeSolo(s, YAHTZEE_SOLO_HUMAN_ID, [1, 2, 3, 4, 5]).state
@@ -45,7 +45,7 @@ describe('rollYahtzeeSolo — turn gating', () => {
 
 describe('rollYahtzeeSolo — held bits behavior', () => {
   it('first roll ignores held (fresh turn — resets held to all-false)', () => {
-    const s = initYahtzeeSolo()
+    const s = initYahtzeeSolo({ humanGoesFirst: true })
     const rolled = rollYahtzeeSolo(s, YAHTZEE_SOLO_HUMAN_ID, [3, 3, 3, 4, 5]).state
     expect(rolled.session.dice).toEqual([3, 3, 3, 4, 5])
     expect(rolled.session.held).toEqual([false, false, false, false, false])
@@ -54,7 +54,7 @@ describe('rollYahtzeeSolo — held bits behavior', () => {
   })
 
   it('subsequent rolls only re-roll unheld dice', () => {
-    let s = initYahtzeeSolo()
+    let s = initYahtzeeSolo({ humanGoesFirst: true })
     s = rollYahtzeeSolo(s, YAHTZEE_SOLO_HUMAN_ID, [3, 3, 3, 4, 5]).state
     s = setYahtzeeSoloHold(s, YAHTZEE_SOLO_HUMAN_ID, [true, true, true, false, false]).state
     s = rollYahtzeeSolo(s, YAHTZEE_SOLO_HUMAN_ID, [3, 3, 3, 6, 6]).state
@@ -65,7 +65,7 @@ describe('rollYahtzeeSolo — held bits behavior', () => {
 
 describe('setYahtzeeSoloHold — gating', () => {
   it('rejects a hold before the first roll', () => {
-    const s = initYahtzeeSolo()
+    const s = initYahtzeeSolo({ humanGoesFirst: true })
     const r = setYahtzeeSoloHold(s, YAHTZEE_SOLO_HUMAN_ID, [true, true, true, false, false])
     expect(r.error).toMatch(/roll at least once/i)
   })
@@ -73,7 +73,7 @@ describe('setYahtzeeSoloHold — gating', () => {
 
 describe('scoreYahtzeeSolo — turn advance + score', () => {
   it('scores the picked category and advances to the next player', () => {
-    let s = initYahtzeeSolo()
+    let s = initYahtzeeSolo({ humanGoesFirst: true })
     s = rollYahtzeeSolo(s, YAHTZEE_SOLO_HUMAN_ID, [3, 3, 3, 6, 6]).state
     s = scoreYahtzeeSolo(s, YAHTZEE_SOLO_HUMAN_ID, 'full_house').state
     expect(s.scores[YAHTZEE_SOLO_HUMAN_ID]!.categories.full_house).toBe(25)
@@ -83,7 +83,7 @@ describe('scoreYahtzeeSolo — turn advance + score', () => {
   })
 
   it('rejects scoring a category that is already used', () => {
-    let s = initYahtzeeSolo()
+    let s = initYahtzeeSolo({ humanGoesFirst: true })
     s = rollYahtzeeSolo(s, YAHTZEE_SOLO_HUMAN_ID, [3, 3, 3, 6, 6]).state
     s = scoreYahtzeeSolo(s, YAHTZEE_SOLO_HUMAN_ID, 'full_house').state
     // Now bot rolls + scores; then human rolls again and tries full_house.
@@ -95,7 +95,7 @@ describe('scoreYahtzeeSolo — turn advance + score', () => {
   })
 
   it('detects a Yahtzee bonus (+100) on a subsequent Yahtzee after the Yahtzee box is already scored', () => {
-    let s = initYahtzeeSolo()
+    let s = initYahtzeeSolo({ humanGoesFirst: true })
     // First Yahtzee → score into the yahtzee box (50 points).
     s = rollYahtzeeSolo(s, YAHTZEE_SOLO_HUMAN_ID, [5, 5, 5, 5, 5]).state
     s = scoreYahtzeeSolo(s, YAHTZEE_SOLO_HUMAN_ID, 'yahtzee').state
@@ -116,7 +116,7 @@ describe('scoreYahtzeeSolo — turn advance + score', () => {
 describe('scoreYahtzeeSolo — game end', () => {
   it('flips outcome to human when human total > bot total on final category', () => {
     // Fast-fill everything by injecting scores category-by-category.
-    let s = initYahtzeeSolo()
+    let s = initYahtzeeSolo({ humanGoesFirst: true })
     for (const c of YAHTZEE_ALL_CATEGORIES) {
       // Give the human a Yahtzee-favouring roll (50 or category-specific max).
       const humanDice = c === 'yahtzee' ? [6, 6, 6, 6, 6] : [6, 6, 6, 6, 6]

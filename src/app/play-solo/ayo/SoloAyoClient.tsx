@@ -74,6 +74,7 @@ export function SoloAyoClient() {
   const stateRef = useRef<AyoSoloState | null>(null)
   stateRef.current = state
   const scoredRef = useRef(false)
+  const finishRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     const persisted = loadPersistedState()
@@ -97,6 +98,13 @@ export function SoloAyoClient() {
   useEffect(() => {
     if (state) persistState(state)
   }, [state])
+
+  // Scroll the finish panel into view on game end so "You won 🎉" isn't
+  // stranded below the fold and the game doesn't read as frozen.
+  useEffect(() => {
+    if (!state || state.outcome == null) return
+    finishRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }, [state?.outcome])
 
   const setDifficultyStored = useCallback((d: AyoBotDifficulty) => {
     setDifficulty(d)
@@ -203,7 +211,10 @@ export function SoloAyoClient() {
       </div>
 
       {finished && (
-        <div className="mx-3 my-4 rounded-2xl border border-[var(--border)] bg-[var(--surface-inset-bg)] p-5 text-center">
+        <div
+          ref={finishRef}
+          className="mx-3 my-4 rounded-2xl border border-[var(--border)] bg-[var(--surface-inset-bg)] p-5 text-center"
+        >
           <p className="text-lg font-black text-body">
             {humanWon ? 'You won ' : draw ? "It's a draw" : 'Bot wins'}
             {humanWon && <span aria-hidden> 🎉</span>}
