@@ -72,6 +72,7 @@ export function SoloLudoClient() {
   const stateRef = useRef<LudoSoloState | null>(null)
   stateRef.current = state
   const scoredRef = useRef(false)
+  const finishRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     const persisted = loadPersistedState()
@@ -90,6 +91,15 @@ export function SoloLudoClient() {
   useEffect(() => {
     if (state) persistState(state)
   }, [state])
+
+  // Scroll the finish panel into view on game end — on desktop especially,
+  // the board is tall enough that "You won 🎉" lands below the fold and the
+  // game reads as frozen until the user scrolls. Fires on the outcome
+  // transition (once, per game).
+  useEffect(() => {
+    if (!state || state.outcome == null) return
+    finishRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }, [state?.outcome])
 
   // Bot loop: whenever the turn is the bot's, either roll (if in roll phase)
   // or move (if in move phase). Small delay per action so the animation is
@@ -211,7 +221,10 @@ export function SoloLudoClient() {
       </div>
 
       {finished && (
-        <div className="mx-auto my-4 w-full max-w-[30rem] rounded-2xl border border-[var(--border)] bg-[var(--surface-inset-bg)] p-5 text-center">
+        <div
+          ref={finishRef}
+          className="mx-auto my-4 w-full max-w-[30rem] rounded-2xl border border-[var(--border)] bg-[var(--surface-inset-bg)] p-5 text-center"
+        >
           <p className="text-lg font-black text-body">
             {humanWon ? 'You won ' : 'Bot wins'}
             {humanWon && <span aria-hidden> 🎉</span>}

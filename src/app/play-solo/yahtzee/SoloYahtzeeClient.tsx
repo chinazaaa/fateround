@@ -95,6 +95,7 @@ export function SoloYahtzeeClient() {
   const stateRef = useRef<YahtzeeSoloState | null>(null)
   stateRef.current = state
   const scoredRef = useRef(false)
+  const finishRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     const persisted = loadPersistedState()
@@ -113,6 +114,14 @@ export function SoloYahtzeeClient() {
   useEffect(() => {
     if (state) persistState(state)
   }, [state])
+
+  // Scroll the finish panel into view when the game ends — the scorecard is
+  // tall enough that "You won 🎉" lands below the fold on both mobile and
+  // desktop, and the game reads as frozen until the user scrolls.
+  useEffect(() => {
+    if (!state || state.outcome == null) return
+    finishRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }, [state?.outcome])
 
   // Bot loop — walk through roll/hold/score one step at a time so each
   // decision is visible. Only runs when the bot holds the turn.
@@ -283,7 +292,10 @@ export function SoloYahtzeeClient() {
       </div>
 
       {finished && (
-        <div className="mx-3 my-4 rounded-2xl border border-[var(--border)] bg-[var(--surface-inset-bg)] p-5 text-center">
+        <div
+          ref={finishRef}
+          className="mx-3 my-4 rounded-2xl border border-[var(--border)] bg-[var(--surface-inset-bg)] p-5 text-center"
+        >
           <p className="text-lg font-black text-body">
             {humanWon ? 'You won ' : draw ? "It's a draw" : 'Bot wins'}
             {humanWon && <span aria-hidden> 🎉</span>}

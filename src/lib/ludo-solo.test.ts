@@ -17,15 +17,15 @@ const MIXED_ROLL: LudoDiceRoll = { d1: 3, d2: 4, total: 7, doubles: false }
 const DUD_ROLL: LudoDiceRoll = { d1: 3, d2: 4, total: 7, doubles: false }
 
 describe('initLudoSolo', () => {
-  it('creates a 2-player session with all pieces in base, using the pinned opts', () => {
+  it('creates a 2-player session with all pieces in base', () => {
     const s = initLudoSolo(undefined, { humanColor: 'red', humanGoesFirst: true })
     expect(s.session.turn_order).toEqual([LUDO_SOLO_HUMAN_ID, LUDO_SOLO_BOT_ID])
     expect(s.session.current_turn_index).toBe(0)
     expect(s.session.phase).toBe('roll')
     expect(s.states).toHaveLength(2)
     expect(s.states.find((x) => x.player_id === LUDO_SOLO_HUMAN_ID)!.color).toBe('red')
-    // Bot gets the OTHER 2-player colour (yellow, opposite corner of red).
-    expect(s.states.find((x) => x.player_id === LUDO_SOLO_BOT_ID)!.color).toBe('yellow')
+    // Bot's colour is randomised from the remaining three when only humanColor is pinned.
+    expect(s.states.find((x) => x.player_id === LUDO_SOLO_BOT_ID)!.color).not.toBe('red')
     for (const st of s.states) {
       for (const p of st.pieces) expect(p.zone).toBe('base')
     }
@@ -38,10 +38,14 @@ describe('initLudoSolo', () => {
     expect(s.session.status_message).toMatch(/bot/i)
   })
 
-  it('honours the humanColor pin — human gets yellow, bot gets red', () => {
-    const s = initLudoSolo(undefined, { humanColor: 'yellow', humanGoesFirst: true })
-    expect(s.states.find((x) => x.player_id === LUDO_SOLO_HUMAN_ID)!.color).toBe('yellow')
-    expect(s.states.find((x) => x.player_id === LUDO_SOLO_BOT_ID)!.color).toBe('red')
+  it('never gives the bot the same colour as the human', () => {
+    // 20 samples of the fully-random path — bot must always be different.
+    for (let i = 0; i < 20; i += 1) {
+      const s = initLudoSolo()
+      const human = s.states.find((x) => x.player_id === LUDO_SOLO_HUMAN_ID)!
+      const bot = s.states.find((x) => x.player_id === LUDO_SOLO_BOT_ID)!
+      expect(bot.color).not.toBe(human.color)
+    }
   })
 })
 

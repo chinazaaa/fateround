@@ -17,10 +17,10 @@
 
 import type { LudoColor, LudoDiceRoll, LudoPlayerState, LudoSession, LudoVariant } from '@/types'
 import {
+  LUDO_COLORS,
   LUDO_DEFAULT_VARIANT,
   allPiecesFinished,
   applyMoveLocally,
-  colorsForPlayerCount,
   createInitialPieces,
   getLegalMovesFromRemaining,
   ludoGrantsExtraRoll,
@@ -66,10 +66,16 @@ export function initLudoSolo(
 ): LudoSoloState {
   const now = new Date(0).toISOString() // deterministic; sessionStorage-safe
 
-  // 2-player Ludo uses opposite corners (red vs yellow) per real-game convention.
-  const twoPlayerColors = colorsForPlayerCount(2)
-  const humanColor: LudoColor = opts.humanColor ?? (Math.random() < 0.5 ? twoPlayerColors[0]! : twoPlayerColors[1]!)
-  const botColor: LudoColor = twoPlayerColors.find((c) => c !== humanColor)! ?? twoPlayerColors[0]!
+  // Human picks one of all four colours randomly (red / green / yellow / blue),
+  // bot gets a different random one. That's 12 possible (human, bot) pairs —
+  // enough variety that no two consecutive New-Game clicks feel the same.
+  // Note we intentionally do NOT restrict to the engine's fixed 2-player pair
+  // (`colorsForPlayerCount(2)` = red+yellow) — that trapped every game into
+  // red-vs-yellow. Real-Ludo's opposite-corners convention only matters when
+  // the board can accommodate 4 seated players anyway.
+  const humanColor: LudoColor = opts.humanColor ?? LUDO_COLORS[Math.floor(Math.random() * LUDO_COLORS.length)]!
+  const botCandidates = LUDO_COLORS.filter((c) => c !== humanColor)
+  const botColor: LudoColor = botCandidates[Math.floor(Math.random() * botCandidates.length)]!
 
   const humanGoesFirst = opts.humanGoesFirst ?? Math.random() < 0.5
   const turnOrder = humanGoesFirst ? [LUDO_SOLO_HUMAN_ID, LUDO_SOLO_BOT_ID] : [LUDO_SOLO_BOT_ID, LUDO_SOLO_HUMAN_ID]
