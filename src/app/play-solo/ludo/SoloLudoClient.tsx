@@ -161,7 +161,7 @@ export function SoloLudoClient() {
 
   if (!state) {
     return (
-      <div className="fr-room fr-room-phone">
+      <div className="fr-room">
         <div className="p-6 text-center text-muted text-sm">Setting up the board…</div>
       </div>
     )
@@ -173,8 +173,19 @@ export function SoloLudoClient() {
   const humanWon = state.outcome === 'human'
 
   return (
-    <div className="fr-room fr-room-phone">
-      <div className="flex items-center justify-between gap-3 border-b border-[var(--border)] px-4 py-3">
+    <div className="fr-room">
+      {/*
+        We deliberately drop `.fr-room-phone` here — LudoGamePanel is designed
+        with an `lg:flex-row` layout that puts the dice/controls rail beside
+        the board on desktop, and expects a wider container. The 440px phone
+        lock made the right rail overflow on desktop viewports. `.fr-room`
+        alone gives the panel room to breathe; its own `max-w-[52rem] mx-auto`
+        keeps it visually centered on very wide screens.
+
+        The chrome around it (header + finish panel) gets its own max-width
+        wrapper so nothing sprawls edge-to-edge on desktop.
+      */}
+      <div className="mx-auto w-full max-w-[52rem] flex items-center justify-between gap-3 border-b border-[var(--border)] px-4 py-3">
         <div className="min-w-0">
           <h1 className="text-sm font-bold text-body">Ludo — solo vs bot</h1>
           <p className="text-faint text-xs">Practice mode · no room, no account</p>
@@ -201,7 +212,7 @@ export function SoloLudoClient() {
       </div>
 
       {finished && (
-        <div className="mx-3 my-4 rounded-2xl border border-[var(--border)] bg-[var(--surface-inset-bg)] p-5 text-center">
+        <div className="mx-auto my-4 w-full max-w-[30rem] rounded-2xl border border-[var(--border)] bg-[var(--surface-inset-bg)] p-5 text-center">
           <p className="text-lg font-black text-body">
             {humanWon ? 'You won ' : 'Bot wins'}
             {humanWon && <span aria-hidden> 🎉</span>}
