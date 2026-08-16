@@ -15,6 +15,18 @@ export const metadata: Metadata = {
   description:
     'Practice Ayo against a computer opponent. Traditional Nigerian rules — relay sowing, four-seed capture, eight-seed endgame. Free, no sign-up, works on any device.',
   robots: { index: true, follow: true },
+  openGraph: {
+    title: 'Play Ayo vs Bot — Practice Ayo on FateRound',
+    description: 'Practice Ayo (Ayo Olopon), the Yoruba mancala, against a computer opponent. Free, no sign-up.',
+    url: '/play-solo/ayo',
+    images: [{ url: '/og/ayo.png', width: 1200, height: 630, alt: 'Play Ayo vs bot on FateRound' }],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Play Ayo vs Bot — Practice Ayo on FateRound',
+    description: 'The Yoruba mancala, vs the computer. Free, no sign-up.',
+    images: ['/og/ayo.png'],
+  },
 }
 
 export default function PlaySoloAyoPage() {
