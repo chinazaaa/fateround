@@ -24,8 +24,9 @@ describe('initLudoSolo', () => {
     expect(s.session.phase).toBe('roll')
     expect(s.states).toHaveLength(2)
     expect(s.states.find((x) => x.player_id === LUDO_SOLO_HUMAN_ID)!.color).toBe('red')
-    // Bot's colour is randomised from the remaining three when only humanColor is pinned.
-    expect(s.states.find((x) => x.player_id === LUDO_SOLO_BOT_ID)!.color).not.toBe('red')
+    // Bot always sits at the diagonally-opposite corner (real-Ludo 2-player
+    // convention). Red's opposite is yellow.
+    expect(s.states.find((x) => x.player_id === LUDO_SOLO_BOT_ID)!.color).toBe('yellow')
     for (const st of s.states) {
       for (const p of st.pieces) expect(p.zone).toBe('base')
     }
@@ -45,6 +46,19 @@ describe('initLudoSolo', () => {
       const human = s.states.find((x) => x.player_id === LUDO_SOLO_HUMAN_ID)!
       const bot = s.states.find((x) => x.player_id === LUDO_SOLO_BOT_ID)!
       expect(bot.color).not.toBe(human.color)
+    }
+  })
+
+  it('always seats human and bot at diagonally-opposite corners', () => {
+    // Only (red, yellow) or (green, blue) are the diagonal pairs on the board.
+    // Adjacent-on-edge pairs like (red, green) or (blue, yellow) would seat
+    // the two players side by side and give one an unfair race to the finish.
+    const OPPOSITE = new Set(['red|yellow', 'yellow|red', 'green|blue', 'blue|green'])
+    for (let i = 0; i < 40; i += 1) {
+      const s = initLudoSolo()
+      const human = s.states.find((x) => x.player_id === LUDO_SOLO_HUMAN_ID)!
+      const bot = s.states.find((x) => x.player_id === LUDO_SOLO_BOT_ID)!
+      expect(OPPOSITE.has(`${human.color}|${bot.color}`)).toBe(true)
     }
   })
 })

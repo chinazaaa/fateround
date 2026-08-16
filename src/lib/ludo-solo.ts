@@ -66,16 +66,29 @@ export function initLudoSolo(
 ): LudoSoloState {
   const now = new Date(0).toISOString() // deterministic; sessionStorage-safe
 
-  // Human picks one of all four colours randomly (red / green / yellow / blue),
-  // bot gets a different random one. That's 12 possible (human, bot) pairs —
-  // enough variety that no two consecutive New-Game clicks feel the same.
-  // Note we intentionally do NOT restrict to the engine's fixed 2-player pair
-  // (`colorsForPlayerCount(2)` = red+yellow) — that trapped every game into
-  // red-vs-yellow. Real-Ludo's opposite-corners convention only matters when
-  // the board can accommodate 4 seated players anyway.
-  const humanColor: LudoColor = opts.humanColor ?? LUDO_COLORS[Math.floor(Math.random() * LUDO_COLORS.length)]!
-  const botCandidates = LUDO_COLORS.filter((c) => c !== humanColor)
-  const botColor: LudoColor = botCandidates[Math.floor(Math.random() * botCandidates.length)]!
+  // Seat the two players at opposite corners of the board — real-Ludo's
+  // 2-player convention. Board corners are green (TL), red (TR), blue (BR),
+  // yellow (BL), so the two diagonal pairs are (red, yellow) and (green, blue).
+  // Picking randomly across both pairs and randomising which side gets which
+  // colour keeps variety (four distinct human/bot assignments) without ever
+  // putting the two players on the same board edge, which reads as "side by
+  // side" and gives one side an unfair race along the shared track.
+  const OPPOSITE_PAIRS: ReadonlyArray<readonly [LudoColor, LudoColor]> = [
+    ['red', 'yellow'],
+    ['green', 'blue'],
+  ]
+  let humanColor: LudoColor
+  let botColor: LudoColor
+  if (opts.humanColor) {
+    humanColor = opts.humanColor
+    const pair = OPPOSITE_PAIRS.find((p) => p[0] === humanColor || p[1] === humanColor)!
+    botColor = pair[0] === humanColor ? pair[1] : pair[0]
+  } else {
+    const pair = OPPOSITE_PAIRS[Math.floor(Math.random() * OPPOSITE_PAIRS.length)]!
+    const humanFirst = Math.random() < 0.5
+    humanColor = humanFirst ? pair[0] : pair[1]
+    botColor = humanFirst ? pair[1] : pair[0]
+  }
 
   const humanGoesFirst = opts.humanGoesFirst ?? Math.random() < 0.5
   const turnOrder = humanGoesFirst ? [LUDO_SOLO_HUMAN_ID, LUDO_SOLO_BOT_ID] : [LUDO_SOLO_BOT_ID, LUDO_SOLO_HUMAN_ID]

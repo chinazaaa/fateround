@@ -309,6 +309,9 @@ export function SoloYahtzeeClient() {
             <Link href="/create?type=yahtzee" className="btn-secondary text-center">
               Start a real room
             </Link>
+            <Link href="/play-solo" className="btn-secondary text-center">
+              Play other solo games
+            </Link>
           </div>
         </div>
       )}

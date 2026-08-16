@@ -185,6 +185,28 @@ describe('easy vs normal', () => {
     // Normal prefers the Queen (higher score than the 4 — cardPoints 10 +
     // Reverse bonus, vs cardPoints 4 for the spades 4).
     expect(pickBotAction(s, 'normal')).toEqual({ type: 'play', cardId: 'b2' })
+    // Hard also prefers the Queen (a stronger action card).
+    expect(pickBotAction(s, 'hard')).toEqual({ type: 'play', cardId: 'b2' })
+  })
+})
+
+describe('hard difficulty', () => {
+  it('strikes a 2-card opponent with Pick 2 over a plain shed', () => {
+    const s = stateWithHands({
+      humanHand: [c('h1', 'spades', 3), c('h2', 'hearts', 4)],
+      botHand: [c('b1', 'spades', 2), c('b2', 'spades', 13)],
+      top: c('top', 'spades', 5),
+    })
+    expect(pickBotAction(s, 'hard')).toEqual({ type: 'play', cardId: 'b1' })
+  })
+
+  it('hoards an 8 when a real card is legal', () => {
+    const s = stateWithHands({
+      humanHand: [c('h1', 'spades', 3)],
+      botHand: [c('b1', 'spades', 8), c('b2', 'spades', 4)],
+      top: c('top', 'spades', 5),
+    })
+    expect(pickBotAction(s, 'hard')).toEqual({ type: 'play', cardId: 'b2' })
   })
 })
 

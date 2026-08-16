@@ -153,6 +153,95 @@ describe('pickLudoBotMove — tiebreaks', () => {
   })
 })
 
+// ── Setup capture (2-die lookahead) ────────────────────────────────────────
+
+describe('pickLudoBotMove — setup capture lookahead', () => {
+  it('prefers a non-capturing move that sets up a capture with the remaining die', () => {
+    // Bot rolls 4+3. Bot piece B0 sits 7 squares behind an opponent piece at
+    // position 33 (not a safe-star square) — capturing needs BOTH dice on B0
+    // (4 then 3). A different bot piece B1 could just race forward with the
+    // die 4 for cheap progress. Without the lookahead the bot would prefer
+    // B1's advance (higher progress) and eat the capture opportunity.
+    const bot: LudoPlayerState = {
+      id: 'state-bot',
+      game_id: 'solo',
+      player_id: BOT,
+      color: 'blue',
+      pieces: [
+        { id: 0, zone: 'track', pos: 26 }, // blue start = 26
+        { id: 1, zone: 'track', pos: 40 },
+      ],
+      player_order: 1,
+      created_at: '',
+    }
+    const opp: LudoPlayerState = {
+      id: 'state-opp',
+      game_id: 'solo',
+      player_id: 'opp',
+      color: 'red',
+      pieces: [
+        { id: 0, zone: 'track', pos: 33 }, // 26 + 7 = 33 → capture spot after 4+3
+        { id: 1, zone: 'base', pos: 0 },
+        { id: 2, zone: 'base', pos: 0 },
+        { id: 3, zone: 'base', pos: 0 },
+      ],
+      player_order: 0,
+      created_at: '',
+    }
+    const b0Advance4: LudoMoveOption = {
+      pieceId: 0,
+      from: bot.pieces[0]!,
+      to: { id: 0, zone: 'track', pos: 30 },
+      captures: false,
+      diceIndex: 0,
+      diceValue: 4,
+    }
+    const b1Advance4: LudoMoveOption = {
+      pieceId: 1,
+      from: bot.pieces[1]!,
+      to: { id: 1, zone: 'track', pos: 44 },
+      captures: false,
+      diceIndex: 0,
+      diceValue: 4,
+    }
+    // Provide only the "die 4" candidates — the bot picks one move per call,
+    // mirroring the effect-loop's per-call decision. With ctx, B0's move
+    // scores as a setup capture; without ctx, B1 wins on raw progress.
+    const withCtx = pickLudoBotMove([b1Advance4, b0Advance4], bot, {
+      allStates: [bot, opp],
+      playerId: BOT,
+      remainingDice: [4, 3],
+    })
+    expect(withCtx?.pieceId).toBe(0)
+
+    const noCtx = pickLudoBotMove([b1Advance4, b0Advance4], bot)
+    expect(noCtx?.pieceId).toBe(1)
+  })
+
+  it('still prefers a direct capture over a setup capture', () => {
+    // If one die captures directly, no need to burn the setup detour.
+    const direct: LudoMoveOption = {
+      pieceId: 0,
+      from: track(0, 30),
+      to: track(0, 33),
+      captures: true,
+      diceIndex: 1,
+      diceValue: 3,
+    }
+    const setup: LudoMoveOption = {
+      pieceId: 1,
+      from: track(1, 20),
+      to: track(1, 25),
+      captures: false,
+      diceIndex: 0,
+      diceValue: 5,
+    }
+    // ctx doesn't matter here — direct capture wins purely on score.
+    const picked = pickLudoBotMove([setup, direct], botState('blue'))
+    expect(picked?.captures).toBe(true)
+  })
+})
+
 // ── Empty legal-moves list ─────────────────────────────────────────────────
 
 describe('pickLudoBotMove — no moves', () => {

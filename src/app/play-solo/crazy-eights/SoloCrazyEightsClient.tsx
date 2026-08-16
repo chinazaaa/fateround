@@ -78,7 +78,7 @@ function clearPersistedState(): void {
 function loadDifficulty(): Crazy8BotDifficulty {
   if (typeof window === 'undefined') return 'normal'
   const raw = window.localStorage.getItem(DIFFICULTY_KEY)
-  return raw === 'easy' ? 'easy' : 'normal'
+  return raw === 'easy' || raw === 'hard' ? raw : 'normal'
 }
 
 export function SoloCrazyEightsClient() {
@@ -234,6 +234,7 @@ export function SoloCrazyEightsClient() {
             >
               <option value="easy">Easy</option>
               <option value="normal">Normal</option>
+              <option value="hard">Hard</option>
             </select>
           </label>
           <button type="button" onClick={restart} className="btn-secondary text-xs">
@@ -280,6 +281,9 @@ export function SoloCrazyEightsClient() {
             </button>
             <Link href="/create?type=crazy_eights" className="btn-secondary text-center">
               Start a real room
+            </Link>
+            <Link href="/play-solo" className="btn-secondary text-center">
+              Play other solo games
             </Link>
           </div>
         </div>
