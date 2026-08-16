@@ -65,19 +65,28 @@ const NAMES: Record<string, string> = {
 
 // ── Init ─────────────────────────────────────────────────────────────────────
 
-export function initYahtzeeSolo(): YahtzeeSoloState {
+/**
+ * Fresh 2-player solo session. Who plays first is coin-flipped so the
+ * human isn't always up first. `opts.humanGoesFirst` is a test-only pin
+ * that overrides the RNG for deterministic state transitions.
+ */
+export function initYahtzeeSolo(opts: { humanGoesFirst?: boolean } = {}): YahtzeeSoloState {
   const now = new Date(0).toISOString()
+  const humanGoesFirst = opts.humanGoesFirst ?? Math.random() < 0.5
+  const turnOrder = humanGoesFirst
+    ? [YAHTZEE_SOLO_HUMAN_ID, YAHTZEE_SOLO_BOT_ID]
+    : [YAHTZEE_SOLO_BOT_ID, YAHTZEE_SOLO_HUMAN_ID]
   const session: YahtzeeSession = {
     id: 'solo',
     game_id: 'solo',
-    turn_order: [YAHTZEE_SOLO_HUMAN_ID, YAHTZEE_SOLO_BOT_ID],
+    turn_order: turnOrder,
     current_turn_index: 0,
     phase: 'rolling',
     dice: [1, 1, 1, 1, 1],
     held: [false, false, false, false, false],
     rolls_remaining: YAHTZEE_ROLLS_PER_TURN,
     rolls_this_turn: 0,
-    status_message: 'Your turn — roll the dice',
+    status_message: humanGoesFirst ? 'Your turn — roll the dice' : "Bot's turn — rolling…",
     winner_player_id: null,
     turn_deadline_at: null,
     created_at: now,

@@ -72,6 +72,7 @@ export function SoloLudoClient() {
   const stateRef = useRef<LudoSoloState | null>(null)
   stateRef.current = state
   const scoredRef = useRef(false)
+  const finishRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     const persisted = loadPersistedState()
@@ -90,6 +91,15 @@ export function SoloLudoClient() {
   useEffect(() => {
     if (state) persistState(state)
   }, [state])
+
+  // Scroll the finish panel into view on game end — on desktop especially,
+  // the board is tall enough that "You won 🎉" lands below the fold and the
+  // game reads as frozen until the user scrolls. Fires on the outcome
+  // transition (once, per game).
+  useEffect(() => {
+    if (!state || state.outcome == null) return
+    finishRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }, [state?.outcome])
 
   // Bot loop: whenever the turn is the bot's, either roll (if in roll phase)
   // or move (if in move phase). Small delay per action so the animation is
@@ -161,7 +171,7 @@ export function SoloLudoClient() {
 
   if (!state) {
     return (
-      <div className="fr-room fr-room-phone">
+      <div className="fr-room">
         <div className="p-6 text-center text-muted text-sm">Setting up the board…</div>
       </div>
     )
@@ -173,8 +183,18 @@ export function SoloLudoClient() {
   const humanWon = state.outcome === 'human'
 
   return (
-    <div className="fr-room fr-room-phone">
-      <div className="flex items-center justify-between gap-3 border-b border-[var(--border)] px-4 py-3">
+    <div className="fr-room">
+      {/*
+        We deliberately drop `.fr-room-phone` here — LudoGamePanel has an
+        `lg:flex-row` layout that puts the dice/controls rail beside the
+        board on desktop, expecting a container wider than the 440px phone
+        lock. In the locked box the right rail overflowed and the status
+        text wrapped one word per line. `.fr-room` alone gives the panel
+        room to breathe; its own `max-w-[52rem] mx-auto` keeps it centered
+        on wide screens. The header + finish panel get their own max-width
+        wrappers so nothing sprawls edge-to-edge on desktop.
+      */}
+      <div className="mx-auto flex w-full max-w-[52rem] items-center justify-between gap-3 border-b border-[var(--border)] px-4 py-3">
         <div className="min-w-0">
           <h1 className="text-sm font-bold text-body">Ludo — solo vs bot</h1>
           <p className="text-faint text-xs">Practice mode · no room, no account</p>
@@ -201,7 +221,10 @@ export function SoloLudoClient() {
       </div>
 
       {finished && (
-        <div className="mx-3 my-4 rounded-2xl border border-[var(--border)] bg-[var(--surface-inset-bg)] p-5 text-center">
+        <div
+          ref={finishRef}
+          className="mx-auto my-4 w-full max-w-[30rem] rounded-2xl border border-[var(--border)] bg-[var(--surface-inset-bg)] p-5 text-center"
+        >
           <p className="text-lg font-black text-body">
             {humanWon ? 'You won ' : 'Bot wins'}
             {humanWon && <span aria-hidden> 🎉</span>}

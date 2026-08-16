@@ -17,30 +17,47 @@ const MIXED_ROLL: LudoDiceRoll = { d1: 3, d2: 4, total: 7, doubles: false }
 const DUD_ROLL: LudoDiceRoll = { d1: 3, d2: 4, total: 7, doubles: false }
 
 describe('initLudoSolo', () => {
-  it('creates a 2-player session with human going first, all pieces in base', () => {
-    const s = initLudoSolo()
+  it('creates a 2-player session with all pieces in base', () => {
+    const s = initLudoSolo(undefined, { humanColor: 'red', humanGoesFirst: true })
     expect(s.session.turn_order).toEqual([LUDO_SOLO_HUMAN_ID, LUDO_SOLO_BOT_ID])
     expect(s.session.current_turn_index).toBe(0)
     expect(s.session.phase).toBe('roll')
     expect(s.states).toHaveLength(2)
-    expect(s.states[0]!.color).toBe('red')
-    expect(s.states[1]!.color).toBe('blue')
+    expect(s.states.find((x) => x.player_id === LUDO_SOLO_HUMAN_ID)!.color).toBe('red')
+    // Bot's colour is randomised from the remaining three when only humanColor is pinned.
+    expect(s.states.find((x) => x.player_id === LUDO_SOLO_BOT_ID)!.color).not.toBe('red')
     for (const st of s.states) {
       for (const p of st.pieces) expect(p.zone).toBe('base')
     }
     expect(s.outcome).toBeNull()
   })
+
+  it('honours the humanGoesFirst pin — turn order flipped', () => {
+    const s = initLudoSolo(undefined, { humanColor: 'red', humanGoesFirst: false })
+    expect(s.session.turn_order).toEqual([LUDO_SOLO_BOT_ID, LUDO_SOLO_HUMAN_ID])
+    expect(s.session.status_message).toMatch(/bot/i)
+  })
+
+  it('never gives the bot the same colour as the human', () => {
+    // 20 samples of the fully-random path — bot must always be different.
+    for (let i = 0; i < 20; i += 1) {
+      const s = initLudoSolo()
+      const human = s.states.find((x) => x.player_id === LUDO_SOLO_HUMAN_ID)!
+      const bot = s.states.find((x) => x.player_id === LUDO_SOLO_BOT_ID)!
+      expect(bot.color).not.toBe(human.color)
+    }
+  })
 })
 
 describe('rollLudoSolo — turn gating', () => {
   it('rejects a roll when it is not the actor’s turn', () => {
-    const s = initLudoSolo()
+    const s = initLudoSolo(undefined, { humanGoesFirst: true })
     const r = rollLudoSolo(s, LUDO_SOLO_BOT_ID)
     expect(r.error).toMatch(/not your turn/i)
   })
 
   it('rejects a roll when the phase is move (dice already spent)', () => {
-    const s = initLudoSolo()
+    const s = initLudoSolo(undefined, { humanGoesFirst: true })
     const rolled = rollLudoSolo(s, LUDO_SOLO_HUMAN_ID, SIX_ROLL).state
     expect(rolled.session.phase).toBe('move')
     const r = rollLudoSolo(rolled, LUDO_SOLO_HUMAN_ID, SIX_ROLL)
@@ -51,7 +68,7 @@ describe('rollLudoSolo — turn gating', () => {
 describe('rollLudoSolo — legal-move handling', () => {
   it('enters move phase when the roll produces at least one legal move', () => {
     // All pieces in base; a 6 lets one out.
-    const s = rollLudoSolo(initLudoSolo(), LUDO_SOLO_HUMAN_ID, SIX_ROLL).state
+    const s = rollLudoSolo(initLudoSolo(undefined, { humanGoesFirst: true }), LUDO_SOLO_HUMAN_ID, SIX_ROLL).state
     expect(s.session.phase).toBe('move')
     expect(s.session.remaining_dice).toEqual([6, 6])
     const moves = legalMovesForCurrentPlayer(s)
@@ -60,7 +77,7 @@ describe('rollLudoSolo — legal-move handling', () => {
 
   it('auto-advances the turn when the roll produces NO legal move', () => {
     // All in base + no 6 → nothing to do; turn passes.
-    const s = rollLudoSolo(initLudoSolo(), LUDO_SOLO_HUMAN_ID, DUD_ROLL).state
+    const s = rollLudoSolo(initLudoSolo(undefined, { humanGoesFirst: true }), LUDO_SOLO_HUMAN_ID, DUD_ROLL).state
     expect(s.session.phase).toBe('roll')
     expect(s.session.current_turn_index).toBe(1) // now bot's turn
     expect(s.session.remaining_dice).toBeNull()
@@ -72,7 +89,7 @@ describe('applyLudoSoloMove — turn advancement', () => {
   it('after a non-6 roll and a full move, passes the turn to the opponent', () => {
     // Bring one out with 6+6, spend one 6 to leave base (still in move phase
     // with the other 6). Instead: use MIXED_ROLL after seeding a piece.
-    let s = initLudoSolo()
+    let s = initLudoSolo(undefined, { humanGoesFirst: true })
     // First: give the human a 6+6, use both dice to bring out and move.
     s = rollLudoSolo(s, LUDO_SOLO_HUMAN_ID, SIX_ROLL).state
     let moves = legalMovesForCurrentPlayer(s)
@@ -94,7 +111,7 @@ describe('applyLudoSoloMove — turn advancement', () => {
 
   it('passes the turn after a non-six roll is fully spent', () => {
     // Seed a piece on the track first (via a 6+6), then roll 3+4 and spend both.
-    let s = initLudoSolo()
+    let s = initLudoSolo(undefined, { humanGoesFirst: true })
     s = rollLudoSolo(s, LUDO_SOLO_HUMAN_ID, SIX_ROLL).state
     const bringOut = legalMovesForCurrentPlayer(s).find((m) => m.from.zone === 'base')!
     s = applyLudoSoloMove(s, LUDO_SOLO_HUMAN_ID, bringOut).state
@@ -117,7 +134,7 @@ describe('applyLudoSoloMove — turn advancement', () => {
 
 describe('applyLudoSoloMove — turn gating', () => {
   it('rejects a move from the wrong actor', () => {
-    let s = initLudoSolo()
+    let s = initLudoSolo(undefined, { humanGoesFirst: true })
     s = rollLudoSolo(s, LUDO_SOLO_HUMAN_ID, SIX_ROLL).state
     const moves = legalMovesForCurrentPlayer(s)
     const r = applyLudoSoloMove(s, LUDO_SOLO_BOT_ID, moves[0]!)
@@ -125,7 +142,7 @@ describe('applyLudoSoloMove — turn gating', () => {
   })
 
   it('rejects a move when phase is roll (nothing rolled yet)', () => {
-    const s = initLudoSolo()
+    const s = initLudoSolo(undefined, { humanGoesFirst: true })
     const r = applyLudoSoloMove(s, LUDO_SOLO_HUMAN_ID, {
       pieceId: 0,
       from: { id: 0, zone: 'base', pos: 0 },
