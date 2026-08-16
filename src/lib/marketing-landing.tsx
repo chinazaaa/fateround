@@ -45,6 +45,10 @@ export type MarketingPageContent = {
   /** Optional override for the primary CTA button (defaults to "Create a free room" → /create).
    *  Used e.g. by the tournaments page to funnel to /tournament/create. */
   primaryCta?: { href: string; label: string }
+  /** Optional per-lander OG image path (defaults to the site-wide OG_IMAGE).
+   *  Point at an existing 1200×630 asset in /public — e.g. '/og/whot.png' — so
+   *  social shares embed the right game art instead of the generic FateRound card. */
+  ogImage?: string
   /** Accent hex used for the hero glow and CTA gradient. */
   accent: string
 }
@@ -2253,6 +2257,7 @@ const SOLO_WHOT_BOT: MarketingPageContent = {
   ctaHeading: 'Play a solo Whot round now',
   ctaSubtext: 'Free forever. No sign-up, no download — just you and the bot.',
   primaryCta: { href: '/play-solo/whot', label: 'Play Whot vs bot' },
+  ogImage: '/og/whot.png',
   accent: '#dc2626',
 }
 
@@ -2374,6 +2379,7 @@ const SOLO_MATCH_UP_BOT: MarketingPageContent = {
   ctaHeading: 'Play a solo round of Match Up',
   ctaSubtext: 'Free forever. No sign-up, no download — you vs the bot.',
   primaryCta: { href: '/play-solo/uno', label: 'Play Match Up vs bot' },
+  ogImage: '/og/uno.png',
   accent: '#ef4444',
 }
 
@@ -2497,6 +2503,7 @@ const SOLO_AYO_BOT: MarketingPageContent = {
   ctaHeading: 'Sow the first seed',
   ctaSubtext: 'Free forever. No sign-up, no download — you vs the bot.',
   primaryCta: { href: '/play-solo/ayo', label: 'Play Ayo vs bot' },
+  ogImage: '/og/ayo.png',
   accent: '#a16207',
 }
 
@@ -2610,6 +2617,7 @@ const SOLO_CRAZY_8_BOT: MarketingPageContent = {
   ctaHeading: 'Deal a round of Crazy 8s',
   ctaSubtext: 'Free forever. No sign-up, no download — you vs the bot.',
   primaryCta: { href: '/play-solo/crazy-eights', label: 'Play Crazy 8s vs bot' },
+  ogImage: '/og/crazy-eights.png',
   accent: '#0891b2',
 }
 
@@ -2720,6 +2728,7 @@ const WHOT_ROOM_BOTS: MarketingPageContent = {
   ctaHeading: 'Start a Whot room — with or without bots',
   ctaSubtext: 'Free forever. Fill empty seats with bots so nobody waits.',
   primaryCta: { href: '/create', label: 'Create a Whot room' },
+  ogImage: '/og/whot.png',
   accent: '#b91c1c',
 }
 
@@ -2828,6 +2837,7 @@ const ESTATE_KINGS_ROOM_BOTS: MarketingPageContent = {
   ctaHeading: 'Start an Estate Kings room — fill the table',
   ctaSubtext: 'Free forever. Add bots so a two-friend night becomes a real board-game night.',
   primaryCta: { href: '/create', label: 'Create an Estate Kings room' },
+  ogImage: '/og/monopoly.png',
   accent: '#166534',
 }
 
@@ -2866,6 +2876,7 @@ export function getMarketingPage(slug: string): MarketingPageContent | null {
 export function marketingMetadata(slug: string): Metadata {
   const content = getMarketingPage(slug)
   if (!content) return {}
+  const ogImage = content.ogImage ? { url: content.ogImage, width: 1200, height: 630, alt: content.seoTitle } : OG_IMAGE
   return {
     title: content.seoTitle,
     description: content.seoDescription,
@@ -2875,13 +2886,13 @@ export function marketingMetadata(slug: string): Metadata {
       title: `${content.seoTitle} | ${SITE_NAME}`,
       description: content.seoDescription,
       url: `/${content.slug}`,
-      images: [OG_IMAGE],
+      images: [ogImage],
     },
     twitter: {
       card: 'summary_large_image',
       title: `${content.seoTitle} | ${SITE_NAME}`,
       description: content.seoDescription,
-      images: [OG_IMAGE.url],
+      images: [ogImage.url],
     },
   }
 }
