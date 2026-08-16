@@ -1278,29 +1278,29 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     perfectFor: ['Game nights', 'Family gatherings', 'Friend groups', 'Remote hangouts'],
     extraFaqs: [
       {
-        question: 'How do you win at Monopoly?',
+        question: 'How do you win at a Monopoly-style board game?',
         answer:
-          'Buy properties, charge rent, and manage your cash until every opponent goes bankrupt. The last solvent player left in the game wins — there’s no points total, just survival.',
+          'In Estate Kings — like in Monopoly-style property games generally — you buy properties, charge rent, and manage your cash until every opponent goes bankrupt. The last solvent player left in the game wins; there’s no points total, just survival.',
       },
       {
-        question: 'How much money do you start with in Monopoly?',
+        question: 'How much money do you start with in a Monopoly-style game?',
         answer:
-          'Every player starts on PAYDAY with 1,500 starting cash in your selected edition’s currency (e.g., £1,500 or ₦1.5m), and collects 200 each time they pass PAYDAY (after their first lap around the board).',
+          'In Estate Kings every player starts on PAYDAY with 1,500 starting cash in your selected edition’s currency (e.g., £1,500 or ₦1.5m), and collects 200 each time they pass PAYDAY (after their first lap around the board). Traditional Monopoly-style rules use similar starting cash and per-lap rewards.',
       },
       {
         question: 'What happens when you land on an unowned property?',
         answer:
-          'You can buy it from the Bank at its listed price. If you decline, it goes to auction and any player — including you — can bid. Note you can’t buy, pay tax, or draw cards until you’ve passed PAYDAY once on your first lap.',
+          'In Estate Kings you can buy it from the Bank at its listed price. If you decline, it goes to auction and any player — including you — can bid. You can’t buy, pay tax, or draw cards until you’ve passed PAYDAY once on your first lap.',
       },
       {
-        question: 'How do you get out of Jail in Monopoly?',
+        question: 'How do you get out of Jail in a Monopoly-style game?',
         answer:
-          'On Estate Kings the Jail space is called NICKED. Pay the 50 fine before your next roll, use a skip-the-queue card, or roll doubles on any of your next three turns. After three turns without doubles, you pay 50 and move by your roll.',
+          'On Estate Kings the Jail space is called NICKED. Pay the 50 fine before your next roll, use a skip-the-queue card, or roll doubles on any of your next three turns. After three turns without doubles, you pay 50 and move by your roll — similar to how Jail resolves in Monopoly-style property games.',
       },
       {
-        question: 'Can I set how long a Monopoly game lasts?',
+        question: 'Can I set how long a Monopoly-style game lasts?',
         answer:
-          'Yes. The host can set an optional game duration so a session doesn’t run forever — when time’s up, the richest player (cash plus property) wins. Leave it off for a classic last-player-standing game.',
+          'Yes. In Estate Kings the host can set an optional game duration so a session doesn’t run forever — when time’s up, the richest player (cash plus property) wins. Leave it off for a classic last-player-standing game.',
       },
     ],
   }),
@@ -1364,67 +1364,67 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       {
         question: 'How many dice do you play Yahtzee with?',
         answer:
-          'Yahtzee is played with five dice. On FateRound you roll all five on screen — no physical dice or cup needed — and hold the ones you want between rolls.',
+          'Yahtzee-style dice games are played with five dice. On FateRound you roll all five on screen in Five Dice — no physical dice or cup needed — and hold the ones you want between rolls.',
       },
       {
         question: 'How many rolls do you get per turn in Yahtzee?',
         answer:
-          'Up to three rolls per turn. After the first roll you can hold any dice you like and re-roll the rest, then do the same again. After your third roll (or sooner) you must score one unused category.',
+          'In Yahtzee-style games (including Five Dice on FateRound) you get up to three rolls per turn. After the first roll you can hold any dice you like and re-roll the rest, then do the same again. After your third roll (or sooner) you must score one unused category.',
       },
       {
         question: 'What is a full house in Yahtzee?',
         answer:
-          'A full house is three dice showing one number plus two dice showing another — for example three 5s and two 2s. It scores a flat 25 points in the Full House category, no matter which numbers make it up.',
+          'A full house is three dice showing one number plus two dice showing another — for example three 5s and two 2s. In Yahtzee-style games it scores a flat 25 points in the Full House category, no matter which numbers make it up. Same in Five Dice on FateRound.',
       },
       {
         question: 'How does scoring work in online Yahtzee?',
         answer:
-          'Each turn you roll up to three times, holding dice between rolls, then fill one unused category. The upper section (Ones–Sixes) scores the total of those dice — reach 63+ there for a 35-point bonus. Lower-section combos pay fixed amounts: Full House 25, Small Straight 30, Large Straight 40, Five of a Kind 50, with Three/Four of a Kind and Chance scoring the sum of all five dice. Highest total when every category is filled wins.',
+          'In Five Dice (and any Yahtzee-style scoring game) each turn you roll up to three times, holding dice between rolls, then fill one unused category. The upper section (Ones–Sixes) scores the total of those dice — reach 63+ there for a 35-point bonus. Lower-section combos pay fixed amounts: Full House 25, Small Straight 30, Large Straight 40, Five of a Kind 50, with Three/Four of a Kind and Chance scoring the sum of all five dice. Highest total when every category is filled wins.',
       },
       {
         question: 'What are the odds of rolling a Yahtzee?',
         answer:
-          'Getting five of a kind on a single roll of five dice is about 1 in 1,296 (roughly 0.08%). Across all three rolls in a turn, playing optimally to chase it, your odds rise to about 4.6%.',
+          'Getting five of a kind on a single roll of five dice is about 1 in 1,296 (roughly 0.08%). Across all three rolls in a turn, playing optimally to chase it, your odds rise to about 4.6%. Same maths in Five Dice on FateRound.',
       },
       {
         question: 'Is it spelled Yahtzee or Yatzee?',
         answer:
-          'The correct spelling is Yahtzee, but it’s commonly mistyped as Yatzee, Yahtzy, Yatzy, Yachtzee, Yathzee, or Tahtzee. However you spell it, it’s the same five-dice scoring game — and you can play it free on FateRound.',
+          'The correct spelling is Yahtzee, but it’s commonly mistyped as Yatzee, Yahtzy, Yatzy, Yachtzee, Yathzee, or Tahtzee. However you spell it, it’s the same five-dice scoring game — and Five Dice, our Yahtzee-style version, is free on FateRound.',
       },
       {
         question: 'What are all the categories on a Yahtzee scorecard?',
         answer:
-          'A Yahtzee-style scorecard has 13 categories in two sections. The upper section is Ones, Twos, Threes, Fours, Fives, and Sixes — each scores the sum of dice showing that number. The lower section is Three of a Kind, Four of a Kind, Full House (25), Small Straight (30), Large Straight (40), Five of a Kind (50), and Chance. You fill exactly one category per turn, and FateRound tracks the whole card for every player automatically.',
+          'A Yahtzee-style scorecard has 13 categories in two sections. The upper section is Ones, Twos, Threes, Fours, Fives, and Sixes — each scores the sum of dice showing that number. The lower section is Three of a Kind, Four of a Kind, Full House (25), Small Straight (30), Large Straight (40), Five of a Kind (50), and Chance. You fill exactly one category per turn, and FateRound’s Five Dice tracks the whole card for every player automatically.',
       },
       {
         question: 'What is the difference between a small straight and a large straight in Yahtzee?',
         answer:
-          'A small straight is four dice in a run (like 3-4-5-6) and scores 30 points. A large straight is all five dice in a run (like 2-3-4-5-6) and scores 40 points. The large straight is harder to roll, which is why it pays more.',
+          'A small straight is four dice in a run (like 3-4-5-6) and scores 30 points. A large straight is all five dice in a run (like 2-3-4-5-6) and scores 40 points. The large straight is harder to roll, which is why it pays more. Same in Five Dice on FateRound.',
       },
       {
         question: 'What is the Yahtzee bonus?',
         answer:
-          'There are two bonuses. The upper-section bonus adds 35 points if your Ones-through-Sixes total reaches 63 or more. The Five Dice bonus rewards extra five-of-a-kinds: once you have already scored 50 in the Five of a Kind box, every additional five-of-a-kind you roll is worth a 100-point bonus. FateRound applies both automatically.',
+          'In Yahtzee-style scoring there are two bonuses. The upper-section bonus adds 35 points if your Ones-through-Sixes total reaches 63 or more. The Five Dice bonus rewards extra five-of-a-kinds: once you have already scored 50 in the Five of a Kind box, every additional five-of-a-kind you roll is worth a 100-point bonus. FateRound applies both automatically.',
       },
       {
         question: 'Is there any strategy to Yahtzee?',
         answer:
-          'Yes. Prioritize the upper section early to chase the 63-point threshold for the 35-point bonus, keep Chance as a flexible fallback for a bad roll, and only zero out a category (like Five of a Kind) when you have no better option. Deciding which dice to hold between rolls is where most of the skill lives.',
+          'Yes. In any Yahtzee-style game, prioritize the upper section early to chase the 63-point threshold for the 35-point bonus, keep Chance as a flexible fallback for a bad roll, and only zero out a category (like Five of a Kind) when you have no better option. Deciding which dice to hold between rolls is where most of the skill lives.',
       },
       {
         question: 'Can you play Yahtzee solo?',
         answer:
-          'Yes. FateRound lets you start a Five Dice room on your own and play through the full scorecard to chase a high score — no other players required. Add friends any time by sharing the room code.',
+          'Yes. FateRound lets you start a Five Dice (our Yahtzee-style game) room on your own and play through the full scorecard to chase a high score — no other players required. Add friends any time by sharing the room code.',
       },
       {
         question: 'Where can I find a Yahtzee scorecard?',
         answer:
-          'You don’t need one — FateRound keeps a full digital scorecard for every player automatically, tracking all 13 categories, both bonuses, and the running total. No printing, no maths, no smudged pencil columns.',
+          'You don’t need one — Five Dice on FateRound keeps a full digital Yahtzee-style scorecard for every player automatically, tracking all 13 categories, both bonuses, and the running total. No printing, no maths, no smudged pencil columns.',
       },
       {
         question: 'Is Yahtzee luck or skill?',
         answer:
-          'Both. The dice are luck, but which dice you hold, which category you fill, and when you chase the upper-section bonus are all skill — which is why a good player beats a lucky one over a full card. FateRound handles the scoring so you can focus on the decisions.',
+          'Both. The dice are luck, but which dice you hold, which category you fill, and when you chase the upper-section bonus are all skill — which is why a good player beats a lucky one over a full card. Five Dice handles the scoring so you can focus on the decisions.',
       },
     ],
     relatedBlogPosts: [

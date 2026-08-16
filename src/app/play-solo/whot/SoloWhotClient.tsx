@@ -106,6 +106,7 @@ export function SoloWhotClient() {
   // assume it was scored last time (better to miss one edge-case count than
   // double-count on every reload of a finished game).
   const scoredRef = useRef(false)
+  const finishRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     const persisted = loadPersistedState()
@@ -131,6 +132,13 @@ export function SoloWhotClient() {
   useEffect(() => {
     if (state) persistState(state)
   }, [state])
+
+  // Scroll the finish panel into view on game end so "You won 🎉" isn't
+  // stranded below the fold and the game doesn't read as frozen.
+  useEffect(() => {
+    if (!state || state.outcome == null) return
+    finishRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }, [state?.outcome])
 
   const setDifficultyStored = useCallback((d: WhotBotDifficulty) => {
     setDifficulty(d)
@@ -292,7 +300,10 @@ export function SoloWhotClient() {
       />
 
       {finished && (
-        <div className="mx-3 my-4 rounded-2xl border border-[var(--border)] bg-[var(--surface-inset-bg)] p-5 text-center">
+        <div
+          ref={finishRef}
+          className="mx-3 my-4 rounded-2xl border border-[var(--border)] bg-[var(--surface-inset-bg)] p-5 text-center"
+        >
           <p className="text-lg font-black text-body">
             {humanWon ? 'You won ' : draw ? "It's a draw" : 'Bot wins'}
             {humanWon && <span aria-hidden> 🎉</span>}
