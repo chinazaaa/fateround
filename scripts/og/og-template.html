@@ -77,9 +77,9 @@ function dcRow(emoji,name,sub,state){
 
 const GAMES = {
 'uno': {
-  accent:'#ef4444', soft:'rgba(239,68,68,.14)', eyebrow:'Party Card Classic',
-  title:'UNO', titleSize:130,
-  desc:'Match colour or number, drop a Wild, and empty your hand first — call UNO to win.',
+  accent:'#ef4444', soft:'rgba(239,68,68,.14)', eyebrow:'Colour · Number · Match',
+  title:'Match Up', titleSize:104,
+  desc:'Match colour or number, drop a Wild, and empty your hand first — shout Match Up to win.',
   pills:['2–10 players','Wild + Draw Four','No sign-up'],
   panel:`
     <div class="rhead">
@@ -97,7 +97,7 @@ const GAMES = {
       </div>
       <div style="margin-top:26px;display:flex;gap:10px">
         ${mjBtn('DRAW')}
-        <div style="flex:1.4;background:linear-gradient(180deg,#ef4444,#b91c1c);color:#2b0505;font-weight:800;border-radius:12px;padding:13px 0;text-align:center;font-size:16px;box-shadow:0 6px 16px rgba(239,68,68,.4)">CALL UNO!</div>
+        <div style="flex:1.4;background:linear-gradient(180deg,#ef4444,#b91c1c);color:#2b0505;font-weight:800;border-radius:12px;padding:13px 0;text-align:center;font-size:16px;box-shadow:0 6px 16px rgba(239,68,68,.4)">MATCH UP!</div>
       </div>
     </div>`
 },
@@ -230,7 +230,7 @@ const GAMES = {
 },
 'quiplash': {
   accent:'#ec4899', soft:'rgba(236,72,153,.14)', eyebrow:'Wit Battle',
-  title:'Quiplash', titleSize:96,
+  title:'Punchline', titleSize:96,
   desc:'Everyone gets the same prompt — write the funniest answer. Answers battle head-to-head, the group votes.',
   pills:['3–6 players','Head-to-head','No sign-up'],
   panel:`
@@ -684,8 +684,154 @@ const GAMES = {
         </div>
       </div>
     </div>`
+},
+'monopoly': {
+  accent:'#22c55e', soft:'rgba(34,197,94,.14)', eyebrow:'Board Game Night',
+  title:'Estate Kings', titleSize:90,
+  desc:'A Monopoly-style board on your phones. Buy properties, collect rent, and bankrupt your rivals.',
+  pills:['2–6 players','Themed editions','No sign-up'],
+  panel:`
+    <div class="rhead" style="background:rgba(34,197,94,.10)">
+      <span class="tag" style="background:rgba(34,197,94,.18);color:#86efac">Naza's turn</span>
+      <span class="mid">£2,140 cash</span>
+      <span class="tag" style="background:rgba(34,197,94,.18);color:#86efac">🎲 8</span>
+    </div>
+    <div class="rbody">
+      <div style="background:linear-gradient(180deg,#0d1a12,#0a1410);border:1px solid rgba(34,197,94,.35);border-radius:14px;overflow:hidden">
+        <div style="height:60px;background:linear-gradient(180deg,#16a34a,#15803d);display:flex;align-items:center;justify-content:center;position:relative">
+          <span style="color:#ecfdf5;font-weight:800;font-size:15px;letter-spacing:2px">TITLE DEED</span>
+          <span style="position:absolute;right:14px;top:14px;display:flex;gap:5px">
+            <span style="width:14px;height:14px;background:#dc2626;border-radius:3px"></span>
+            <span style="width:14px;height:14px;background:#dc2626;border-radius:3px"></span>
+            <span style="width:14px;height:14px;background:#dc2626;border-radius:3px"></span>
+          </span>
+        </div>
+        <div style="padding:20px 22px">
+          <div style="font-size:30px;font-weight:800;color:#fff;text-align:center;letter-spacing:-.5px">Mayfair</div>
+          <div style="text-align:center;color:#86efac;font-size:15px;margin-top:4px">Price · £400</div>
+          <div style="margin-top:18px;display:flex;flex-direction:column;gap:8px">
+            <div style="display:flex;justify-content:space-between;font-size:16px"><span style="color:#cbd5e1">Rent</span><span style="color:#86efac;font-weight:700">£50</span></div>
+            <div style="display:flex;justify-content:space-between;font-size:16px"><span style="color:#cbd5e1">With hotel</span><span style="color:#86efac;font-weight:700">£2,000</span></div>
+            <div style="display:flex;justify-content:space-between;font-size:16px"><span style="color:#cbd5e1">Mortgage</span><span style="color:#86efac;font-weight:700">£200</span></div>
+          </div>
+        </div>
+      </div>
+      <div style="margin-top:14px;display:flex;gap:10px">
+        <div style="flex:1;background:linear-gradient(180deg,#22c55e,#15803d);color:#052e1a;font-weight:800;border-radius:12px;padding:13px 0;text-align:center;font-size:16px;box-shadow:0 6px 16px rgba(34,197,94,.4)">BUY £400</div>
+        ${mjBtn('AUCTION')}
+      </div>
+    </div>`
+},
+'yahtzee': {
+  accent:'#f59e0b', soft:'rgba(245,158,11,.14)', eyebrow:'Dice Strategy',
+  title:'Five Dice', titleSize:110,
+  desc:'Roll, hold, and score. Straights, full houses, and the coveted five-of-a-kind.',
+  pills:['2–8 players','5 dice','No sign-up'],
+  panel:`
+    <div class="rhead" style="background:linear-gradient(180deg,#b45309,#78350f)">
+      <span class="tag" style="background:rgba(0,0,0,.28);color:#fde68a">Naza's Turn</span>
+      <span class="mid" style="color:#fde68a">Roll 2 of 3</span>
+    </div>
+    <div class="rbody">
+      <div style="display:flex;gap:12px;justify-content:center">
+        ${dieFace(5,true)}${dieFace(5,true)}${dieFace(5,true)}${dieFace(2,false)}${dieFace(3,false)}
+      </div>
+      <div style="margin-top:14px;background:rgba(245,158,11,.10);border:1px solid rgba(245,158,11,.35);border-radius:12px;padding:12px 16px;text-align:center;color:#fde68a;font-weight:700;font-size:15px">
+        Three 5s — one more for Five Dice!
+      </div>
+      <div style="margin-top:14px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:12px 16px">
+        <div class="muted" style="font-size:12px;letter-spacing:1.5px;font-weight:600;margin-bottom:8px">SCORECARD</div>
+        <div style="display:flex;flex-direction:column;gap:6px;font-size:15px">
+          <div style="display:flex;justify-content:space-between"><span>Full House</span><span style="color:#fde68a;font-weight:700">25</span></div>
+          <div style="display:flex;justify-content:space-between"><span style="color:#fde68a;font-weight:800">FIVE DICE</span><span style="color:#fde68a;font-weight:800;background:rgba(245,158,11,.18);border:1px solid rgba(245,158,11,.5);border-radius:8px;padding:1px 10px">50</span></div>
+          <div style="display:flex;justify-content:space-between"><span>Chance</span><span style="color:#fde68a;font-weight:700">18</span></div>
+          <div style="display:flex;justify-content:space-between;border-top:1px solid rgba(255,255,255,.08);padding-top:6px;margin-top:2px"><span style="color:#9aa1ad;font-size:13px;letter-spacing:1px">TOTAL</span><span style="color:#fbbf24;font-weight:800">187 pts</span></div>
+        </div>
+      </div>
+    </div>`
+},
+'scrabble': {
+  accent:'#f59e0b', soft:'rgba(245,158,11,.14)', eyebrow:'Word Duel',
+  title:'Word Tiles', titleSize:96,
+  desc:'15×15 board. Premium squares. Full dictionary check. Blank tiles. Bingo bonus for using all 7.',
+  pills:['2–4 players','Real dictionary','No sign-up'],
+  panel:`
+    <div class="rhead" style="background:linear-gradient(180deg,#b45309,#78350f)">
+      <span class="tag" style="background:rgba(0,0,0,.28);color:#fde68a">Naza · 247</span>
+      <span class="mid" style="color:#fde68a">Naza's turn · 68 tiles left</span>
+      <span class="tag" style="background:rgba(0,0,0,.28);color:#fde68a">Tommy · 198</span>
+    </div>
+    <div class="rbody" style="padding:14px 14px">
+      ${scrabbleBoard()}
+      <div style="margin-top:10px;text-align:center;color:#fde68a;font-size:14px;font-weight:600">QUARTZ played — 84 pts (TL on Z!)</div>
+      <div style="margin-top:10px;display:flex;gap:6px;justify-content:center">
+        ${wtTile('F',4)}${wtTile('I',1)}${wtTile('X',8)}${wtTile('E',1)}${wtTile('D',2)}${wtTile('L',1)}${wtTile('',0,true)}
+      </div>
+    </div>`
 }
 };
+
+function dieFace(n,held){
+  const dots={
+    1:[[50,50]],
+    2:[[28,28],[72,72]],
+    3:[[28,28],[50,50],[72,72]],
+    4:[[28,28],[72,28],[28,72],[72,72]],
+    5:[[28,28],[72,28],[50,50],[28,72],[72,72]],
+    6:[[28,28],[72,28],[28,50],[72,50],[28,72],[72,72]],
+  }[n]||[];
+  const bg = held ? 'rgba(245,158,11,.15)' : 'linear-gradient(180deg,#fdf6d8,#e8d69a)';
+  const border = held ? '2px solid #f59e0b' : '2px solid #c9a24e';
+  const dotColor = held ? '#fbbf24' : '#78350f';
+  const svgDots = dots.map(([x,y])=>`<circle cx="${x}" cy="${y}" r="8" fill="${dotColor}"/>`).join('');
+  return `<div style="width:74px;text-align:center">
+    <div style="width:74px;height:74px;background:${bg};border:${border};border-radius:14px;box-shadow:0 4px 10px rgba(0,0,0,.3)">
+      <svg viewBox="0 0 100 100" width="74" height="74">${svgDots}</svg>
+    </div>
+    ${held?'<div style="color:#fbbf24;font-size:11px;font-weight:800;letter-spacing:1px;margin-top:3px">HELD</div>':''}
+  </div>`;
+}
+
+function scrabbleBoard(){
+  const cell=32;
+  const g=[
+    ['TW','','','DL','','','','TW'],
+    ['','DW','','','','DL','','' ],
+    ['','','','','','','','' ],
+    ['DL','','','Q','U','A','R','TZ'],
+    ['','','J','A','B','','','O' ],
+    ['','TL','','','','','','N' ],
+    ['','','','','','','','E' ],
+    ['TW','','','','','','','TW'],
+  ];
+  const words={'3,3':'Q','3,4':'U','3,5':'A','3,6':'R','3,7':'Z','4,2':'J','4,3':'A','4,4':'B','4,7':'O','5,7':'N','6,7':'E'};
+  let cells='';
+  for(let r=0;r<8;r++)for(let c=0;c<8;c++){
+    const v=g[r][c];
+    const letter=words[r+','+c];
+    if(letter){
+      cells+=`<div style="width:${cell}px;height:${cell}px;background:linear-gradient(180deg,#fdf6d8,#e8d69a);border:1px solid #b8863e;border-radius:4px;display:flex;align-items:center;justify-content:center;font-weight:800;color:#3f2606;font-size:16px;box-shadow:0 1px 2px rgba(0,0,0,.3)">${letter}</div>`;
+    } else if(v==='TW'){
+      cells+=`<div style="width:${cell}px;height:${cell}px;background:#dc2626;display:flex;align-items:center;justify-content:center;font-weight:800;color:#fef2f2;font-size:10px">TW</div>`;
+    } else if(v==='DW'){
+      cells+=`<div style="width:${cell}px;height:${cell}px;background:#f472b6;display:flex;align-items:center;justify-content:center;font-weight:800;color:#500724;font-size:10px">DW</div>`;
+    } else if(v==='DL'){
+      cells+=`<div style="width:${cell}px;height:${cell}px;background:#93c5fd;display:flex;align-items:center;justify-content:center;font-weight:800;color:#082f49;font-size:10px">DL</div>`;
+    } else if(v==='TL'){
+      cells+=`<div style="width:${cell}px;height:${cell}px;background:#60a5fa;display:flex;align-items:center;justify-content:center;font-weight:800;color:#082f49;font-size:10px">TL</div>`;
+    } else {
+      cells+=`<div style="width:${cell}px;height:${cell}px;background:#e6c894;border:1px solid rgba(184,134,62,.4)"></div>`;
+    }
+  }
+  return `<div style="display:grid;grid-template-columns:repeat(8,${cell}px);gap:2px;background:#8a5a2b;padding:6px;border-radius:8px;justify-content:center;margin:0 auto;width:fit-content;box-shadow:0 12px 30px rgba(0,0,0,.4)">${cells}</div>`;
+}
+
+function wtTile(l,v,blank){
+  return `<div style="width:36px;height:42px;background:linear-gradient(180deg,#fdf6d8,#e8d69a);border:1px solid #b8863e;border-radius:5px;display:flex;flex-direction:column;align-items:center;justify-content:center;color:${blank?'#94a3b8':'#3f2606'};font-weight:800;position:relative;box-shadow:0 3px 6px rgba(0,0,0,.35)">
+    <span style="font-size:${blank?'10px':'20px'};line-height:1">${blank?'BLANK':l}</span>
+    <span style="position:absolute;bottom:2px;right:4px;font-size:9px;font-weight:700">${blank?'0':v}</span>
+  </div>`;
+}
 
 function ludoBoard(){
   const size = 7;
