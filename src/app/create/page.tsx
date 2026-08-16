@@ -490,7 +490,7 @@ function CreateGameInner() {
   const [unoJumpIn, setUnoJumpIn] = useState(false)
   const [unoMultiPlayMode, setUnoMultiPlayMode] = useState<
     'off' | 'same_color' | 'same_number' | 'same_color_or_number'
-  >('off')
+  >('same_color_or_number')
   const [unoTeamMode, setUnoTeamMode] = useState(false)
   const [unoMode, setUnoMode] = useState<'classic' | 'no_mercy'>('classic')
   const [unoNoMercyWin, setUnoNoMercyWin] = useState<'first_out' | 'last_standing'>('first_out')
