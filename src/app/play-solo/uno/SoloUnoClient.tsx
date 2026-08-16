@@ -144,6 +144,7 @@ export function SoloUnoClient() {
       const idx = now.session.current_turn_index as 0 | 1
       let next: { state: UnoSoloState; error?: string }
       if (action.type === 'play') next = unoSoloPlay(now, idx, action.cardId, Math.random)
+      else if (action.type === 'play_multi') next = unoSoloPlayMulti(now, idx, action.cardIds, Math.random)
       else if (action.type === 'draw') next = unoSoloDraw(now, idx, Math.random)
       else next = unoSoloChooseColor(now, idx, action.color)
       if (!next.error) setState(next.state)
