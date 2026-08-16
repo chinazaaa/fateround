@@ -119,7 +119,12 @@ export function SoloLudoClient() {
         const botState = now.states.find((s) => s.player_id === LUDO_SOLO_BOT_ID)
         if (!botState) return
         const moves = legalMovesForCurrentPlayer(now)
-        const chosen = pickLudoBotMove(moves, botState)
+        const chosen = pickLudoBotMove(moves, botState, {
+          allStates: now.states,
+          playerId: LUDO_SOLO_BOT_ID,
+          remainingDice: now.session.remaining_dice ?? [],
+          variant: now.variant,
+        })
         if (chosen) {
           const played = applyLudoSoloMove(now, LUDO_SOLO_BOT_ID, chosen)
           if (!played.error) setState(played.state)
