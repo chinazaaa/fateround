@@ -1496,6 +1496,36 @@ export interface TtlMetadata {
   lie_index: number | null
 }
 
+/**
+ * One player's result for a round, as folded into `rounds.ttl_metadata.guesses` when the
+ * server marks the round finished.
+ *
+ * `ttl_guesses.guessed_index / is_correct / points` are revoked from the anon role — reading
+ * that table mid-round handed the lie to everyone who had not guessed yet. Post-reveal
+ * results therefore travel in the round metadata instead of on the guess rows.
+ */
+export interface TtlGuessResult {
+  id: string
+  player_id: string
+  guessed_index: number
+  is_correct: boolean
+  points: number
+}
+
+/**
+ * The anon-readable slice of `ttl_guesses`: WHO has guessed, never WHAT they guessed.
+ *
+ * This is the live progress state the lock-in UI and realtime subscriptions run on. It is
+ * deliberately NOT a `TtlGuess` — nothing here can be scored or revealed.
+ */
+export interface TtlGuessProgress {
+  id: string
+  game_id: string
+  round_id: string
+  player_id: string
+  guessed_at?: string
+}
+
 export interface TtlStatement {
   id: string
   game_id: string
@@ -1521,7 +1551,8 @@ export interface TtlGuess {
   guessed_index: number
   is_correct: boolean
   points: number
-  guessed_at: string
+  /** Absent on rows reconstructed from `ttl_metadata.guesses` (only the progress row has it). */
+  guessed_at?: string
 }
 
 export interface QuiplashMetadata {

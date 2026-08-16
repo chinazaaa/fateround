@@ -4,7 +4,7 @@ import { isTwoTruthsGame, parseGameType } from '@/lib/game-types'
 import { applyEliminationRule } from './elimination'
 import type { EliminationConfig } from '@/types/elimination'
 import { TTL_DEFAULT_TIMER, TTL_REVEAL_SECONDS } from '@/lib/two-truths'
-import type { Game, Round } from '@/types'
+import type { Game, Round, TtlGuessResult } from '@/types'
 
 export type TtlAdvanceCode =
   | 'round_active'
@@ -72,36 +72,84 @@ async function shouldEndActiveRound(
 }
 
 /**
- * Build the round's REVEALED metadata: its statements plus the lie, read from the
- * service-role-only `ttl_round_lies` table.
+ * Every guess made on a round, shaped for `ttl_metadata.guesses`.
  *
- * While a round is unrevealed its `ttl_metadata` deliberately has no `lie_index` — the
- * metadata is anon-readable (it's in ROUND_SELECT), so anything stored there is public from
- * the moment the round row exists. Returns null if there is nothing to fold in, in which case
- * the caller leaves the metadata untouched.
+ * `ttl_guesses.guessed_index / is_correct / points` are revoked from the anon role: a round
+ * only ends once every guesser has answered, so those columns let players 2..n read the lie
+ * off player 1's row before choosing. Clients therefore get the results from the round
+ * metadata, written at the reveal moment — never from the guess rows.
+ */
+async function roundGuessResults(supabase: SupabaseClient, roundId: string): Promise<TtlGuessResult[]> {
+  const { data } = await supabase
+    .from('ttl_guesses')
+    .select('id, player_id, guessed_index, is_correct, points')
+    .eq('round_id', roundId)
+    .order('guessed_at')
+  return (data ?? []).map((g) => ({
+    id: g.id as string,
+    player_id: g.player_id as string,
+    guessed_index: g.guessed_index as number,
+    is_correct: g.is_correct as boolean,
+    points: g.points as number,
+  }))
+}
+
+/**
+ * Build the round's REVEALED metadata: its statements, plus the lie (from the service-role-only
+ * `ttl_round_lies` table) and everyone's guesses (from `ttl_guesses`).
+ *
+ * While a round is unrevealed its `ttl_metadata` deliberately carries neither — the metadata is
+ * anon-readable (it's in ROUND_SELECT), so anything stored there is public from the moment the
+ * round row exists. Returns null only when the round has no usable metadata object at all, in
+ * which case the caller leaves it untouched.
  */
 async function revealedTtlMetadata(supabase: SupabaseClient, roundId: string): Promise<Record<string, unknown> | null> {
+  const { data: round } = await supabase.from('rounds').select('ttl_metadata').eq('id', roundId).maybeSingle()
+  const metadata = round?.ttl_metadata
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return null
+  const revealed = { ...(metadata as Record<string, unknown>) }
+
   const { data: lieRow } = await supabase
     .from('ttl_round_lies')
     .select('lie_index')
     .eq('round_id', roundId)
     .maybeSingle()
-  if (!lieRow || typeof lieRow.lie_index !== 'number') return null
+  if (lieRow && typeof lieRow.lie_index === 'number') revealed.lie_index = lieRow.lie_index
 
-  const { data: round } = await supabase.from('rounds').select('ttl_metadata').eq('id', roundId).maybeSingle()
-  const metadata = round?.ttl_metadata
-  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return null
-  return { ...(metadata as Record<string, unknown>), lie_index: lieRow.lie_index }
+  revealed.guesses = await roundGuessResults(supabase, roundId)
+  return revealed
 }
 
 /**
- * Fold the lie into every finished round of a game that is still missing it.
+ * Re-fold the guesses after the round has actually been closed.
+ *
+ * `endActiveRound` reads the guesses just BEFORE it flips the status, so a guess that lands in
+ * that window would be scored by the server but missing from the published results. Once the
+ * round is 'finished' the guess route refuses new rows, so a second read here is final. No-op
+ * unless the count actually changed, to avoid a pointless realtime broadcast per round.
+ */
+async function reconcileRevealedGuesses(supabase: SupabaseClient, roundId: string): Promise<void> {
+  const { data: round } = await supabase.from('rounds').select('ttl_metadata').eq('id', roundId).maybeSingle()
+  const metadata = round?.ttl_metadata
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return
+  const published = (metadata as Record<string, unknown>).guesses
+  const results = await roundGuessResults(supabase, roundId)
+  if (Array.isArray(published) && published.length === results.length) return
+  await supabase
+    .from('rounds')
+    .update({ ttl_metadata: { ...(metadata as Record<string, unknown>), guesses: results } })
+    .eq('id', roundId)
+}
+
+/**
+ * Fold the lie AND the guesses into every finished round of a game that is still missing them.
  *
  * The normal reveal happens inside `endActiveRound`, atomically with the status flip. This is
  * for paths that finish rounds generically without going through it — today that is the admin
  * kill-switch for stale games (`adminEndGame`), which bulk-updates active rounds to finished.
- * Without this, the last round of an admin-ended game would render with no lie highlighted,
- * because the answer now lives in `ttl_round_lies` rather than in the anon-readable metadata.
+ * Without this, the last round of an admin-ended game would render with no lie highlighted and
+ * no results, because both now live outside the anon-readable metadata (`ttl_round_lies` and
+ * the redacted `ttl_guesses` columns).
  */
 export async function revealFinishedTtlRounds(supabase: SupabaseClient, gameId: string): Promise<void> {
   const { data: rounds } = await supabase
@@ -111,10 +159,12 @@ export async function revealFinishedTtlRounds(supabase: SupabaseClient, gameId: 
     .eq('status', 'finished')
 
   for (const round of rounds ?? []) {
-    const metadata = round.ttl_metadata
-    // Already revealed (or not a TTL round) — nothing to fold in.
+    const metadata = round.ttl_metadata as Record<string, unknown> | null
+    // Not a TTL round — nothing to fold in.
     if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) continue
-    if (typeof (metadata as Record<string, unknown>).lie_index === 'number') continue
+    if (!Array.isArray(metadata.statements)) continue
+    // Already fully revealed.
+    if (typeof metadata.lie_index === 'number' && Array.isArray(metadata.guesses)) continue
 
     const revealed = await revealedTtlMetadata(supabase, round.id)
     if (revealed) await supabase.from('rounds').update({ ttl_metadata: revealed }).eq('id', round.id)
@@ -122,13 +172,14 @@ export async function revealFinishedTtlRounds(supabase: SupabaseClient, gameId: 
 }
 
 /**
- * End the active round — which is also the REVEAL moment (the client shows the lie once the
- * round's screen is 'revealed'/'finished').
+ * End the active round — which is also the REVEAL moment (the client shows the lie and
+ * everyone's results once the round's screen is 'revealed'/'finished').
  *
- * The lie is folded into `ttl_metadata` in the SAME update that flips the status, so there is
- * never a window where the answer is readable before the round ends, nor one where the round
- * reads as revealed but has no answer to show. The `.eq('status', 'active')` guard keeps the
- * whole thing a single atomic, idempotent transition.
+ * The lie AND the guesses are folded into `ttl_metadata` in the SAME update that flips the
+ * status, so there is never a window where either is readable before the round ends, nor one
+ * where the round reads as revealed but has nothing to show. The `.eq('status', 'active')`
+ * guard keeps that a single atomic, idempotent transition; the reconcile afterwards picks up
+ * any guess that landed while the transition was in flight.
  */
 async function endActiveRound(supabase: SupabaseClient, roundId: string): Promise<boolean> {
   const now = new Date().toISOString()
@@ -143,7 +194,10 @@ async function endActiveRound(supabase: SupabaseClient, roundId: string): Promis
     .eq('status', 'active')
     .select('id')
     .maybeSingle()
-  return !error && !!data
+  if (error || !data) return false
+
+  if (revealed) await reconcileRevealedGuesses(supabase, roundId)
+  return true
 }
 
 async function syncGamePointer(supabase: SupabaseClient, gameId: string, roundNumber: number): Promise<boolean> {

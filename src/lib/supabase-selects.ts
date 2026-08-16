@@ -172,7 +172,12 @@ export const TRIVIA_ANSWER_SELECT =
 // the caller's own row, with its lie, comes from POST /api/two-truths/my-statement.
 export const TTL_STATEMENT_SELECT = 'id,game_id,player_id,statement_a,statement_b,statement_c,created_at,updated_at'
 
-export const TTL_GUESS_SELECT = 'id,game_id,round_id,player_id,guessed_index,is_correct,points,guessed_at'
+// PROGRESS ONLY — `guessed_index`, `is_correct` and `points` are deliberately absent: they are
+// revoked from the anon role, because a round only ends once everyone has guessed, so those
+// columns handed the lie to every player who had not answered yet. What survives is who has
+// guessed (the lock-in UI + realtime). Post-reveal results come from `ttl_metadata.guesses`;
+// the caller's own in-flight guess comes from POST /api/two-truths/my-guesses.
+export const TTL_GUESS_PROGRESS_SELECT = 'id,game_id,round_id,player_id,guessed_at'
 
 export const QUIPLASH_SESSION_SELECT =
   'id,game_id,phase,battle_index,active_battle_id,turn_deadline_at,created_at,updated_at'

@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { clearSessionTables } from './session-clear'
-import type { Player, Round, TtlGuess, TtlMetadata, TtlStatement } from '@/types'
+import type { Player, Round, TtlGuess, TtlGuessResult, TtlMetadata, TtlStatement } from '@/types'
 
 export type TtlHostMode = 'spectator' | 'player'
 
@@ -68,6 +68,73 @@ export function parseTtlMetadata(raw: unknown): TtlMetadata | null {
     lie_index = m.lie_index
   }
   return { statements: statements as [string, string, string], lie_index }
+}
+
+/**
+ * Parse the results the server folded into a round's metadata when it revealed the round.
+ *
+ * Mid-round this key is ABSENT — `ttl_guesses.guessed_index / is_correct / points` are revoked
+ * from the anon role precisely so nobody can read the lie off another player's guess before
+ * answering. Returns [] for a revealed round nobody guessed on, and null when the round has no
+ * results at all (unrevealed, or not a Two Truths round); those are different states and
+ * callers must not conflate them.
+ */
+export function parseTtlGuessResults(raw: unknown): TtlGuessResult[] | null {
+  if (!raw || typeof raw !== 'object') return null
+  const list = (raw as Record<string, unknown>).guesses
+  if (!Array.isArray(list)) return null
+  const results: TtlGuessResult[] = []
+  for (const item of list) {
+    if (!item || typeof item !== 'object') continue
+    const g = item as Record<string, unknown>
+    if (typeof g.id !== 'string' || typeof g.player_id !== 'string') continue
+    if (typeof g.guessed_index !== 'number' || typeof g.is_correct !== 'boolean') continue
+    if (typeof g.points !== 'number') continue
+    results.push({
+      id: g.id,
+      player_id: g.player_id,
+      guessed_index: g.guessed_index,
+      is_correct: g.is_correct,
+      points: g.points,
+    })
+  }
+  return results
+}
+
+/** Every guess from rounds the server has already revealed, rebuilt as full guess rows. */
+export function revealedTtlGuesses(rounds: Round[]): TtlGuess[] {
+  const guesses: TtlGuess[] = []
+  for (const round of rounds) {
+    const results = parseTtlGuessResults(round.ttl_metadata)
+    if (!results) continue
+    for (const r of results) {
+      guesses.push({
+        id: r.id,
+        game_id: round.game_id,
+        round_id: round.id,
+        player_id: r.player_id,
+        guessed_index: r.guessed_index,
+        is_correct: r.is_correct,
+        points: r.points,
+      })
+    }
+  }
+  return guesses
+}
+
+/**
+ * Every guess this client is ALLOWED to see: the revealed rounds' folded results, plus the
+ * caller's own rows (served by POST /api/two-truths/my-guesses).
+ *
+ * This is what feeds scoring and the reveal UI. Other players' in-flight guesses are absent by
+ * construction — they are the leak this path exists to close. Never substitute the anon
+ * `ttl_guesses` progress rows here: they carry no points and would tally as NaN.
+ */
+export function visibleTtlGuesses(rounds: Round[], ownGuesses: TtlGuess[]): TtlGuess[] {
+  const byId = new Map<string, TtlGuess>()
+  for (const g of revealedTtlGuesses(rounds)) byId.set(g.id, g)
+  for (const g of ownGuesses) if (!byId.has(g.id)) byId.set(g.id, g)
+  return [...byId.values()]
 }
 
 /**
