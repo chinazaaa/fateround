@@ -134,6 +134,7 @@ const DAILY_ICON_FALLBACK: Partial<Record<DailyChallengeGameType, GameType>> = {
   codenames_codeword: 'codewords',
   mini_crossword: 'crossword',
   ludo_puzzle: 'ludo',
+  wordle: 'scrabble',
 }
 
 export function dailyChallengeIcon(gameType: DailyChallengeGameType): IconSvgElement {
