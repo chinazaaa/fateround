@@ -11,7 +11,12 @@ import Link from 'next/link'
 
 export type SoloSeoLink = { href: string; label: string }
 
+// Every solo footer ends with a link back to the /play-solo hub. Kept here
+// (not in each page.tsx) so a new solo game inherits it automatically.
+const HUB_LINK: SoloSeoLink = { href: '/play-solo', label: 'More solo games vs bot' }
+
 export function SoloSeoFooter({ heading, links }: { heading: string; links: SoloSeoLink[] }) {
+  const allLinks = links.some((l) => l.href === HUB_LINK.href) ? links : [...links, HUB_LINK]
   return (
     <footer
       className="mx-auto max-w-2xl px-4 py-10 text-sm"
@@ -22,7 +27,7 @@ export function SoloSeoFooter({ heading, links }: { heading: string; links: Solo
         {heading}
       </h2>
       <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-2">
-        {links.map((link) => (
+        {allLinks.map((link) => (
           <li key={link.href}>
             <Link
               href={link.href}

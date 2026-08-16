@@ -71,8 +71,28 @@ const SOLO_GAMES: SoloGame[] = [
 ]
 
 export default function PlaySoloHubPage() {
+  // ItemList JSON-LD so search engines see this as a curated list of solo
+  // game pages (not just a random landing page with six links). Each entry
+  // points at its own /play-solo/<game> URL and inherits that page's metadata
+  // for the rich card. `position` is 1-indexed per schema.org.
+  const itemListLd = {
+    '@context': 'https://schema.org',
+    '@type': 'ItemList',
+    name: 'Solo games vs bot on FateRound',
+    itemListOrder: 'https://schema.org/ItemListOrderAscending',
+    numberOfItems: SOLO_GAMES.length,
+    itemListElement: SOLO_GAMES.map((g, i) => ({
+      '@type': 'ListItem',
+      position: i + 1,
+      url: g.href,
+      name: g.title,
+      description: g.blurb,
+    })),
+  }
+
   return (
     <main className="mx-auto max-w-3xl px-4 py-10">
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(itemListLd) }} />
       <header className="mb-8">
         <h1 className="text-2xl font-black" style={{ color: 'var(--text)' }}>
           Play solo vs bot
