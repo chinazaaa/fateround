@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { SoloAyoClient } from './SoloAyoClient'
+import { SoloSeoFooter } from '../SoloSeoFooter'
 
 /**
  * Solo Ayo — practice vs a bot, no room, no realtime.
@@ -17,5 +18,18 @@ export const metadata: Metadata = {
 }
 
 export default function PlaySoloAyoPage() {
-  return <SoloAyoClient />
+  return (
+    <>
+      <SoloAyoClient />
+      <SoloSeoFooter
+        heading="Learn more about Ayo"
+        links={[
+          { href: '/play-ayo-vs-bot', label: 'About Ayo vs bot' },
+          { href: '/blog/ayo-ayo-rules-and-how-to-play-solo', label: 'Ayo rules and how to play solo' },
+          { href: '/games/ayo', label: 'Ayo game page' },
+          { href: '/nigerian-games', label: 'More Nigerian games' },
+        ]}
+      />
+    </>
+  )
 }
