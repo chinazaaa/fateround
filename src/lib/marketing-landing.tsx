@@ -2841,6 +2841,251 @@ const ESTATE_KINGS_ROOM_BOTS: MarketingPageContent = {
   accent: '#166534',
 }
 
+const SOLO_LUDO_BOT: MarketingPageContent = {
+  slug: 'play-ludo-vs-bot',
+  breadcrumbName: 'Ludo vs bot',
+  seoTitle: 'Play Ludo vs Bot — Free Ludo Online, Solo',
+  seoDescription:
+    'Play Ludo against a computer opponent — roll a 6 to bring pieces out, chase captures, race to home. Free, no sign-up, no download. Practice solo or take it to a real Ludo room after.',
+  keywords: [
+    'play ludo vs bot',
+    'ludo vs computer',
+    'play ludo offline',
+    'ludo single player',
+    'ludo game against computer',
+    'play ludo alone',
+    'free ludo bot',
+    'ludo practice game',
+    'online ludo solo',
+    'ludo king alternative solo',
+  ],
+  heroTitle: 'Play Ludo vs bot — the board game classic, solo',
+  heroSubtitle:
+    "Nobody around for a Ludo game? Play solo against a computer opponent — roll a 6 to bring pieces out, chase captures, and race all four home. Free, in the browser, works even when it's just you.",
+  highlights: [
+    'Full modern Ludo rules',
+    'Plays instantly, no room to fill',
+    'No sign-up, no download',
+    'Great warm-up before a real room',
+  ],
+  featureCards: [
+    {
+      emoji: '🎲',
+      title: 'Real Ludo rules',
+      description:
+        'Roll a 6 to bring a piece out, capture opponents by landing on them, safe squares protect you — the game as you know it.',
+    },
+    {
+      emoji: '🤖',
+      title: 'A bot that plays properly',
+      description:
+        "The Ludo bot chases captures, guards its own pieces, and races the last piece home. It's a real opponent, not a placeholder.",
+    },
+    {
+      emoji: '⚡',
+      title: 'No lobby, no wait',
+      description: "Skip the wait for other players. Tap play and you're rolling.",
+    },
+    {
+      emoji: '📶',
+      title: 'Works on any connection',
+      description:
+        "A board game shouldn't need five bars. Solo Ludo runs in the browser and keeps going even when the room is quiet.",
+    },
+  ],
+  stepsHeading: 'How to play Ludo vs bot',
+  steps: [
+    { title: 'Open the board', description: 'Jump straight into a solo Ludo table — no room code, no sign-up.' },
+    {
+      title: 'Roll a 6 to start',
+      description: 'A 6 brings a piece out of your yard and onto the track. Other rolls move the pieces already out.',
+    },
+    {
+      title: 'Race all four home',
+      description: 'Land on an opponent to send them back to their yard. First to get all four pieces home wins.',
+    },
+  ],
+  body: (
+    <>
+      <p>
+        Ludo is best at a real table with real trash talk — but you don\'t always have friends around.{' '}
+        <GameLink type="ludo">Solo Ludo vs bot</GameLink> gives you the same board, the same 6-to-start rule, the same
+        captures, on your own time. It\'s the calmest way to sharpen your play before your next real match.
+      </p>
+      <p>
+        The bot plays a proper game — it hunts your pieces, guards its own, and knows when to race for home. Ready for
+        real opponents when you\'re done? Jump into a <HubLink href="/create">multiplayer Ludo room</HubLink> and share
+        the code. Same rules, four seats, live opponents.
+      </p>
+    </>
+  ),
+  gameList: {
+    heading: 'Also playable solo vs bot on FateRound',
+    items: [
+      { game: <GameLink type="yahtzee" />, description: 'Five Dice — our Yahtzee-style dice game, solo edition.' },
+      { game: <GameLink type="whot" />, description: 'Nigerian Whot — shapes, specials, and the WHOT wild.' },
+      { game: <GameLink type="ayo" />, description: 'Ayo — the Yoruba mancala, sow and capture.' },
+      { game: <GameLink type="uno" />, description: 'Match Up — our Uno-style card game, solo mode.' },
+    ],
+  },
+  faqs: [
+    {
+      question: 'Can I play Ludo against the computer for free?',
+      answer:
+        "Yes. FateRound's solo Ludo vs bot is free forever — no sign-up, no download, no premium tier. Open the page and you're playing.",
+    },
+    {
+      question: 'What are the Ludo rules the bot uses?',
+      answer:
+        'Modern Ludo — roll a 6 to bring a piece out, move by the die roll, land on an opponent to send them back to their yard, safe squares protect pieces, first player to get all four pieces home wins.',
+    },
+    {
+      question: 'How hard is the Ludo bot?',
+      answer:
+        "The bot plays a solid game — it captures when it can, guards vulnerable pieces, and races the last piece home. Winnable, but you'll have to play well.",
+    },
+    {
+      question: 'Can I play Ludo offline?',
+      answer:
+        "Solo Ludo runs in your browser — once the page has loaded, a shaky connection won't drop your game. It's the closest thing to Ludo offline you'll get without an app.",
+    },
+    {
+      question: 'Is this a Ludo King alternative?',
+      answer:
+        "Yes. FateRound's Ludo is a free browser-based alternative to Ludo King — no app to install, no ads, no account. See our full [Ludo King alternative](/free-ludo-king-alternative) page for the comparison.",
+    },
+    {
+      question: 'Can I play Ludo with friends after?',
+      answer: 'Yes — create a multiplayer Ludo room and share the code. Same rules, four seats, real opponents.',
+    },
+  ],
+  ctaHeading: 'Play a solo Ludo round now',
+  ctaSubtext: 'Free forever. No sign-up, no download — just you and the bot.',
+  primaryCta: { href: '/play-solo/ludo', label: 'Play Ludo vs bot' },
+  ogImage: '/og/ludo.png',
+  accent: '#0284c7',
+}
+
+const SOLO_FIVE_DICE_BOT: MarketingPageContent = {
+  slug: 'play-five-dice-vs-bot',
+  breadcrumbName: 'Five Dice vs bot',
+  seoTitle: 'Play Five Dice vs Bot — Free Yahtzee-Style Dice Game Online',
+  seoDescription:
+    'Play Five Dice (a free Yahtzee-style dice game) solo against a computer opponent — three rolls per turn, thirteen categories, Yahtzee-style bonus and Joker rule. Free, no sign-up, no download.',
+  keywords: [
+    'play yahtzee vs computer',
+    'yahtzee vs bot',
+    'play yahtzee alone',
+    'free yahtzee alternative',
+    'yahtzee single player free',
+    'yahtzee against computer',
+    'five dice game online',
+    'yahtzee style dice game',
+    'roll and hold dice game',
+    'yahtzee bot online',
+  ],
+  heroTitle: 'Play Five Dice vs bot — the Yahtzee-style dice classic, solo',
+  heroSubtitle:
+    "Five Dice is FateRound's take on the classic five-dice scoring game (think Yahtzee). Play solo against a computer opponent — three rolls per turn, thirteen categories, the 63-point upper bonus, and 50-point five-of-a-kind. Free, no sign-up.",
+  highlights: [
+    'Five dice, three rolls per turn',
+    'All 13 Yahtzee-style categories',
+    '63-point upper bonus + Joker rule',
+    'Free, no sign-up, no download',
+  ],
+  featureCards: [
+    {
+      emoji: '🎲',
+      title: 'The rules you already know',
+      description:
+        "If you've played Yahtzee, you already know Five Dice — roll five dice up to three times, hold what you want, fill the scorecard category by category.",
+    },
+    {
+      emoji: '🤖',
+      title: 'A bot that plays the score',
+      description:
+        "The bot chases the 63-point upper bonus, plays Chance as a safety net, and won't waste a Yahtzee on a bad category. It plays to score, not to fill.",
+    },
+    {
+      emoji: '📝',
+      title: 'Scorecard tracked for you',
+      description: 'Every category, both bonuses, running total — no pencil, no maths, no smudged scorecards.',
+    },
+    {
+      emoji: '⚡',
+      title: 'No lobby, no wait',
+      description: 'No room to fill, no friend to nudge. Open the page and roll.',
+    },
+  ],
+  stepsHeading: 'How to play Five Dice vs bot',
+  steps: [
+    { title: 'Open the game', description: 'Straight into a solo Five Dice table — no code, no sign-up.' },
+    {
+      title: 'Roll, hold, roll again',
+      description: 'Roll all five dice, hold the ones you want, re-roll the rest. Up to three rolls per turn.',
+    },
+    {
+      title: 'Score a category',
+      description: 'Fill one of the 13 categories. Beat the bot on total score after all 13 turns each.',
+    },
+  ],
+  body: (
+    <>
+      <p>
+        Five Dice is a free five-dice scoring game in the family of classic Yahtzee-style dice games. Solo mode lets you
+        play against a computer opponent whenever you like — no room, no wait, no other players needed. Same dice, same
+        categories, same tension when you\'re one bonus point away and the bot lands a Yahtzee.
+      </p>
+      <p>
+        When you\'re ready for friends, the same rules run in{' '}
+        <HubLink href="/create">multiplayer Five Dice rooms</HubLink>. Practice solo, then take the scorecard to the
+        group.
+      </p>
+    </>
+  ),
+  gameList: {
+    heading: 'Also playable solo vs bot on FateRound',
+    items: [
+      { game: <GameLink type="ludo" />, description: 'Ludo — roll a 6, chase captures, race all four home.' },
+      { game: <GameLink type="whot" />, description: 'Nigerian Whot — shapes, specials, and the WHOT wild.' },
+      { game: <GameLink type="uno" />, description: 'Match Up — our Uno-style card game.' },
+      { game: <GameLink type="ayo" />, description: 'Ayo — the Yoruba mancala, sow and capture.' },
+    ],
+  },
+  faqs: [
+    {
+      question: 'Is Five Dice the same as Yahtzee?',
+      answer:
+        'Five Dice is inspired by classic five-dice scoring games like Yahtzee — same 5 dice, same 3 rolls per turn, same 13 categories (Ones through Sixes, plus Three of a Kind, Four of a Kind, Full House 25, Small Straight 30, Large Straight 40, Yahtzee 50, and Chance), same 63-point upper bonus, same Joker rule for extra fives-of-a-kind. It’s our own game, not the trademarked one.',
+    },
+    {
+      question: 'Can I play a Yahtzee-style dice game against the computer for free?',
+      answer:
+        'Yes. Five Dice solo mode is free forever — no sign-up, no download, no premium tier. Play as many rounds as you like.',
+    },
+    {
+      question: 'What are the categories on the scorecard?',
+      answer:
+        'Upper section: Ones, Twos, Threes, Fours, Fives, Sixes (sum of matching dice, +35 bonus if the upper total hits 63). Lower section: Three of a Kind (sum of all dice), Four of a Kind (sum of all dice), Full House (25), Small Straight (30), Large Straight (40), Yahtzee/five-of-a-kind (50), and Chance (sum of all dice).',
+    },
+    {
+      question: 'How hard is the Five Dice bot?',
+      answer:
+        "The bot plays a real scoring game — it chases the upper bonus, holds fives when a Yahtzee is on, and won't waste a good roll on a bad category. Winnable, but the maths matters.",
+    },
+    {
+      question: 'Can I play Five Dice with friends?',
+      answer:
+        'Yes — create a multiplayer Five Dice room and share the code. Same rules, real opponents, scorecard tracked for everyone.',
+    },
+  ],
+  ctaHeading: 'Roll a solo Five Dice round',
+  ctaSubtext: 'Free forever. No sign-up, no download — you vs the bot.',
+  primaryCta: { href: '/play-solo/yahtzee', label: 'Play Five Dice vs bot' },
+  ogImage: '/og/yahtzee.png',
+  accent: '#7c3aed',
+}
+
 export const MARKETING_PAGES: Record<string, MarketingPageContent> = {
   [JACKBOX.slug]: JACKBOX,
   [NAIJA.slug]: NAIJA,
@@ -2864,6 +3109,8 @@ export const MARKETING_PAGES: Record<string, MarketingPageContent> = {
   [SOLO_CRAZY_8_BOT.slug]: SOLO_CRAZY_8_BOT,
   [WHOT_ROOM_BOTS.slug]: WHOT_ROOM_BOTS,
   [ESTATE_KINGS_ROOM_BOTS.slug]: ESTATE_KINGS_ROOM_BOTS,
+  [SOLO_LUDO_BOT.slug]: SOLO_LUDO_BOT,
+  [SOLO_FIVE_DICE_BOT.slug]: SOLO_FIVE_DICE_BOT,
 }
 
 export const ALL_MARKETING_SLUGS = Object.keys(MARKETING_PAGES)
