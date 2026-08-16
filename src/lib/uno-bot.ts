@@ -12,14 +12,18 @@
  *                              lowest-hand-sum end policy)
  *
  * `easy` plays the first legal card and always calls red; `normal` runs the
- * scoring below.
+ * scoring below with baseline weights; `hard` runs the same scoring shape
+ * with sharper weights (hoards wilds harder, hits short hands harder with
+ * Draw 2 / Skip / WD4, weighs cluster chains more) and — after playing a
+ * wild — prefers the colour the opponent is least likely to hold, inferred
+ * from cards seen so far (own hand + discard pile).
  */
 
 import type { UnoCard, UnoColor } from '@/types'
 import { cardPoints, isWildCard } from '@/lib/uno'
 import { UNO_SOLO_BOT_ID, isPlayable, type UnoSoloAction, type UnoSoloState } from '@/lib/uno-solo'
 
-export type UnoBotDifficulty = 'easy' | 'normal'
+export type UnoBotDifficulty = 'easy' | 'normal' | 'hard'
 
 const COLORS: UnoColor[] = ['red', 'yellow', 'green', 'blue']
 
@@ -30,25 +34,29 @@ const COLORS: UnoColor[] = ['red', 'yellow', 'green', 'blue']
  * cardPoints puts them at 50, and any "-30" adjustment would leave them more
  * attractive than any number card the bot could play instead.
  */
-function normalPlayScore(card: UnoCard, botHand: UnoCard[], opponentHandSize: number): number {
+function normalPlayScore(card: UnoCard, botHand: UnoCard[], opponentHandSize: number, hard: boolean = false): number {
+  const closing = opponentHandSize <= 3
+  const veryClose = opponentHandSize <= 2
   let score: number
   if (card.kind === 'wild_draw4') {
     // Strong: opponent draws 4 + we pick the colour. Worth using when we
     // want to close a game; otherwise still valuable but not as much.
-    score = opponentHandSize <= 3 ? 65 : 20
+    score = hard ? (veryClose ? 85 : closing ? 70 : 15) : closing ? 65 : 20
   } else if (card.kind === 'wild') {
-    score = -20 // hoard plain wilds — only spend when nothing else is legal
+    score = hard ? -35 : -20 // hoard plain wilds harder on hard
   } else {
     score = cardPoints(card) // shed high-value cards first
 
-    if (card.kind === 'draw2') score += opponentHandSize <= 3 ? 40 : 22
-    else if (card.kind === 'skip' || card.kind === 'reverse') score += opponentHandSize <= 3 ? 25 : 12
+    if (card.kind === 'draw2') score += hard ? (veryClose ? 55 : closing ? 42 : 24) : closing ? 40 : 22
+    else if (card.kind === 'skip' || card.kind === 'reverse')
+      score += hard ? (veryClose ? 35 : closing ? 27 : 14) : closing ? 25 : 12
   }
 
   // Cluster bonus — cards sharing a colour with the rest of the hand set up
-  // chains. Small (+1 per sibling, cap +3).
+  // chains. Hard weights chains more (cap +5) since they matter more once
+  // it starts hoarding wilds and specials.
   const siblings = botHand.filter((c) => c.id !== card.id && c.color === card.color && c.color !== 'wild').length
-  score += Math.min(3, siblings)
+  score += Math.min(hard ? 5 : 3, siblings)
 
   return score
 }
@@ -69,18 +77,30 @@ function penaltyPlayScore(card: UnoCard, pending: number): number {
  * Call the colour the bot holds the most of, so the bot's next card is most
  * likely to remain legal after the opponent's response.
  */
-function bestColorCall(hand: UnoCard[]): UnoColor {
+function bestColorCall(hand: UnoCard[], hard: boolean = false, discard: readonly UnoCard[] = []): UnoColor {
   const counts: Record<UnoColor, number> = { red: 0, yellow: 0, green: 0, blue: 0 }
   for (const c of hand) {
     if (c.color === 'wild') continue
     counts[c.color as UnoColor] += 1
   }
+  // Seen counts (own hand + discard) — a higher seen means fewer copies of
+  // that colour are unaccounted for, so opponent less likely to hold it.
+  const seen: Record<UnoColor, number> = { red: 0, yellow: 0, green: 0, blue: 0 }
+  if (hard) {
+    for (const c of hand) if (c.color !== 'wild') seen[c.color as UnoColor] += 1
+    for (const c of discard) if (c.color !== 'wild') seen[c.color as UnoColor] += 1
+  }
   let best: UnoColor = 'red'
   let bestN = -1
+  let bestSeen = -1
   for (const col of COLORS) {
-    if (counts[col] > bestN) {
-      bestN = counts[col]
+    const n = counts[col]
+    const s = seen[col]
+    const takes = n > bestN || (hard && n === bestN && s > bestSeen)
+    if (takes) {
+      bestN = n
       best = col
+      bestSeen = s
     }
   }
   return best
@@ -100,10 +120,12 @@ export function pickBotAction(state: UnoSoloState, difficulty: UnoBotDifficulty 
   if (state.session.current_turn_index !== botIdx) return null
 
   const hand = state.hands[botIdx]!
+  const hard = difficulty === 'hard'
+  const discard = (state.session.discard_pile ?? []) as UnoCard[]
 
   // Colour choice after the bot's own wild.
   if (state.session.phase === 'choose_color') {
-    return { type: 'choose_color', color: bestColorCall(hand) }
+    return { type: 'choose_color', color: bestColorCall(hand, hard, discard) }
   }
 
   const playable = hand.filter((c) => isPlayable(state, c))
@@ -120,7 +142,7 @@ export function pickBotAction(state: UnoSoloState, difficulty: UnoBotDifficulty 
   const scored = playable
     .map((card) => ({
       card,
-      score: pending > 0 ? penaltyPlayScore(card, pending) : normalPlayScore(card, hand, opponentSize),
+      score: pending > 0 ? penaltyPlayScore(card, pending) : normalPlayScore(card, hand, opponentSize, hard),
     }))
     .sort((a, b) => b.score - a.score)
 

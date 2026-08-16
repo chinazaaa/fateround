@@ -18,7 +18,12 @@
  *
  * ── Difficulty ───────────────────────────────────────────────────────────
  *   easy    plays the FIRST legal card, always calls a spade
- *   normal  runs the full heuristic below
+ *   normal  runs the full heuristic below with baseline weights
+ *   hard    same heuristic shape, sharper weights (hoards 8s harder, hits
+ *           short hands harder with Pick 2 / Skip / Reverse, weighs cluster
+ *           chains more) and — after playing a wild — prefers the suit the
+ *           opponent is least likely to hold, inferred from cards seen so
+ *           far (own hand + discard pile).
  *
  * ── Priorities (higher = better) ─────────────────────────────────────────
  *   +50  Joker           — usually a game-ending strike
@@ -36,7 +41,7 @@ import type { CrazyEightsCalledSuit, CrazyEightsCard } from '@/types'
 import { canPlayCard, cardPoints, isJoker, isWildCard, type CrazyEightsRules } from '@/lib/crazy-eights'
 import { CRAZY8_SOLO_BOT_ID, type Crazy8SoloAction, type Crazy8SoloState } from '@/lib/crazy-eights-solo'
 
-export type Crazy8BotDifficulty = 'easy' | 'normal'
+export type Crazy8BotDifficulty = 'easy' | 'normal' | 'hard'
 
 const REAL_SUITS: CrazyEightsCalledSuit[] = ['spades', 'clubs', 'hearts', 'diamonds']
 
@@ -46,9 +51,12 @@ function normalPlayScore(
   card: CrazyEightsCard,
   botHand: CrazyEightsCard[],
   opponentHandSize: number,
-  rules: CrazyEightsRules
+  rules: CrazyEightsRules,
+  hard: boolean = false
 ): number {
   const rank = card.rank
+  const closing = opponentHandSize <= 3
+  const veryClose = opponentHandSize <= 2
 
   // Wilds are scored on a separate scale from real cards, not added to
   // cardPoints — because cardPoints(8) is 50 in the shipping engine, an
@@ -56,23 +64,24 @@ function normalPlayScore(
   // real card. Assign the score outright so a non-wild always wins.
   let score: number
   if (isJoker(card)) {
-    score = 60 // dominant strike — opponent draws 5, we pick the suit
+    score = hard ? (veryClose ? 90 : closing ? 75 : 55) : 60 // dominant strike — opp draws 5, we pick suit
   } else if (rank === 8) {
-    score = -20 // hoard 8s; only spend when nothing else is playable
+    score = hard ? -35 : -20 // hoard 8s harder on hard
   } else {
     score = cardPoints(card) // shed high points first as the baseline
   }
 
   if (rules.actionCards && !isWildCard(card)) {
-    if (rank === 2) score += opponentHandSize <= 3 ? 45 : 25
-    else if (rank === 1 || rank === 11) score += opponentHandSize <= 3 ? 30 : 15
-    else if (rank === 12) score += opponentHandSize <= 3 ? 30 : 15
+    if (rank === 2) score += hard ? (veryClose ? 65 : closing ? 50 : 28) : closing ? 45 : 25
+    else if (rank === 1 || rank === 11) score += hard ? (veryClose ? 45 : closing ? 33 : 17) : closing ? 30 : 15
+    else if (rank === 12) score += hard ? (veryClose ? 45 : closing ? 33 : 17) : closing ? 30 : 15
   }
 
   // Cluster bonus — cards sharing a suit with the rest of the hand set up
-  // chains. Small (+1 per sibling, capped at 3), tie-breaker only.
+  // chains. Hard weighs them more heavily since chained-shed matters more
+  // once wilds are being hoarded.
   const siblings = botHand.filter((c) => c.id !== card.id && c.suit === card.suit).length
-  score += Math.min(3, siblings)
+  score += Math.min(hard ? 5 : 3, siblings)
 
   return score
 }
@@ -85,17 +94,33 @@ function penaltyPlayScore(card: CrazyEightsCard): number {
 
 /** Call the suit the bot holds the most of. Broad-match strategy: keeps our
  * own next card most likely to remain legal. */
-function bestSuitCall(hand: CrazyEightsCard[]): CrazyEightsCalledSuit {
+function bestSuitCall(
+  hand: CrazyEightsCard[],
+  hard: boolean = false,
+  discard: readonly CrazyEightsCard[] = []
+): CrazyEightsCalledSuit {
   const counts: Record<CrazyEightsCalledSuit, number> = { spades: 0, clubs: 0, hearts: 0, diamonds: 0 }
   for (const c of hand) {
     if (c.suit !== 'joker') counts[c.suit] += 1
   }
+  // Seen counts (own hand + discard) — a higher seen means fewer copies of
+  // that suit are unaccounted for, so opponent less likely to hold it.
+  const seen: Record<CrazyEightsCalledSuit, number> = { spades: 0, clubs: 0, hearts: 0, diamonds: 0 }
+  if (hard) {
+    for (const c of hand) if (c.suit !== 'joker') seen[c.suit] += 1
+    for (const c of discard) if (c.suit !== 'joker') seen[c.suit] += 1
+  }
   let best: CrazyEightsCalledSuit = 'spades'
   let bestN = -1
+  let bestSeen = -1
   for (const s of REAL_SUITS) {
-    if (counts[s] > bestN) {
-      bestN = counts[s]
+    const n = counts[s]
+    const sv = seen[s]
+    const takes = n > bestN || (hard && n === bestN && sv > bestSeen)
+    if (takes) {
+      bestN = n
       best = s
+      bestSeen = sv
     }
   }
   return best
@@ -118,10 +143,12 @@ export function pickBotAction(
   if (state.session.current_turn_index !== botIdx) return null
 
   const hand = state.hands[botIdx]!
+  const hard = difficulty === 'hard'
+  const discard = (state.session.discard_pile ?? []) as CrazyEightsCard[]
 
   // Suit choice after the bot's own wild.
   if (state.session.phase === 'choose_suit') {
-    return { type: 'choose_suit', suit: bestSuitCall(hand) }
+    return { type: 'choose_suit', suit: bestSuitCall(hand, hard, discard) }
   }
 
   const playable = hand.filter((c) => canPlayCard(c, state.session, state.rules))
@@ -138,7 +165,7 @@ export function pickBotAction(
   const scored = playable
     .map((card) => ({
       card,
-      score: inPenalty ? penaltyPlayScore(card) : normalPlayScore(card, hand, opponentSize, state.rules),
+      score: inPenalty ? penaltyPlayScore(card) : normalPlayScore(card, hand, opponentSize, state.rules, hard),
     }))
     .sort((a, b) => b.score - a.score)
 

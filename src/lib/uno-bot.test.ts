@@ -167,6 +167,30 @@ describe('easy vs normal', () => {
     expect(pickBotAction(s, 'easy')).toEqual({ type: 'play', cardId: 'b1' })
     // Normal prefers the 9 (higher cardPoints → shed high points first).
     expect(pickBotAction(s, 'normal')).toEqual({ type: 'play', cardId: 'b2' })
+    // Hard also prefers the higher shed.
+    expect(pickBotAction(s, 'hard')).toEqual({ type: 'play', cardId: 'b2' })
+  })
+})
+
+describe('hard difficulty', () => {
+  it('under a 2-card opponent, prefers Draw 2 over a large plain shed', () => {
+    // Human at 2 cards: hard's very-close bonus keeps Draw 2 decisively above
+    // the raw shed-value competition.
+    const s = stateWithHands({
+      humanHand: [c('h1', 'red', 'number', 3), c('h2', 'red', 'number', 4)],
+      botHand: [c('b1', 'red', 'draw2'), c('b2', 'red', 'number', 9)],
+      top: c('top', 'red', 'number', 5),
+    })
+    expect(pickBotAction(s, 'hard')).toEqual({ type: 'play', cardId: 'b1' })
+  })
+
+  it('hoards a plain wild when a real card is legal', () => {
+    const s = stateWithHands({
+      humanHand: [c('h1', 'red', 'number', 3)],
+      botHand: [c('b1', 'wild', 'wild'), c('b2', 'red', 'number', 4)],
+      top: c('top', 'red', 'number', 5),
+    })
+    expect(pickBotAction(s, 'hard')).toEqual({ type: 'play', cardId: 'b2' })
   })
 })
 
