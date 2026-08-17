@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
@@ -16,8 +16,10 @@ import { TransferHostSheet } from '@/components/host/TransferHostSheet'
 import { CodewordsHostLobby } from '@/components/host/lobby/CodewordsHostLobby'
 import { TeamRosterHostLobby } from '@/components/host/lobby/TeamRosterHostLobby'
 import { WordPoolLobbyEditor, supportsLobbyWordPool } from '@/components/host/lobby/WordPoolLobbyEditor'
-import { clearPlayerSession, getPlayerSession, type PlayerSession } from '@/lib/secure-session'
+import { clearPlayerSession, getPlayerSession, setPlayerSession, type PlayerSession } from '@/lib/secure-session'
 import { subscribePlayerSession } from '@/lib/session-events'
+import { joinGame } from '@/lib/api'
+import { clearSoloAutoStart, hasSoloAutoStart, setSoloAutoStart } from '@/lib/solo-auto-start'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import { useHostPlayerReconciliation } from '@/hooks/useHostPlayerReconciliation'
 import { useGamePlayerLimits } from '@/hooks/useGamePlayerLimits'
@@ -200,15 +202,82 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
   const onPlayAgain = useCallback(async () => {
     setReplaying(true)
     setError(null)
+    // Solo replay: a 1-seat game reopened with the same settings should skip the
+    // lobby just like the initial create — arm the auto-start flag before the
+    // reset lands (the effect below consumes it once the game re-enters
+    // 'waiting'). Clear it on failure so a later manual retry doesn't
+    // unexpectedly auto-start from a stale flag.
+    const soloReplay = game?.max_players === 1
     try {
+      if (soloReplay) await setSoloAutoStart(gameCode)
       await postPlayAgain(gameCode, hostToken, true, hostPlayerId)
       await load()
     } catch (e) {
+      if (soloReplay) await clearSoloAutoStart(gameCode)
       setError(e instanceof Error ? e.message : 'Could not set up play again')
     } finally {
       setReplaying(false)
     }
-  }, [gameCode, hostToken, load, hostPlayerId])
+  }, [gameCode, hostToken, load, hostPlayerId, game?.max_players])
+
+  // Solo auto-start: honor the "Play solo" flag set on create (or a solo replay)
+  // by first auto-seating the host as a player (a 1-seat game has no other
+  // players) and then POSTing /start, so the host lands in gameplay without
+  // touching the lobby. The ref resets whenever the game leaves 'waiting' so
+  // the next lobby cycle (play-again) can fire again; the localStorage flag is
+  // cleared on fire so a Return-to-lobby (which doesn't re-arm) never triggers
+  // an unwanted start.
+  const soloStartFiredRef = useRef(false)
+  useEffect(() => {
+    if (loading || !game) return
+    if (game.status !== 'waiting') {
+      soloStartFiredRef.current = false
+      return
+    }
+    if (soloStartFiredRef.current) return
+    if (game.max_players !== 1) return
+    let cancelled = false
+    void (async () => {
+      const armed = await hasSoloAutoStart(gameCode)
+      if (cancelled || !armed) return
+      // Guard the effect's one-shot BEFORE the async gap widens — otherwise a
+      // fast re-render (e.g. from the realtime subscribe below) could enter
+      // this branch again while the seat/start requests are still in flight.
+      soloStartFiredRef.current = true
+      await clearSoloAutoStart(gameCode)
+      try {
+        // Seat first if we don't already have a session. The 1-seat cap is
+        // the only reason auto-picking a name is safe — no one else can join.
+        if (!hostPlayerId) {
+          const data = await joinGame({ gameCode, playerName: 'You' })
+          if (cancelled) return
+          await setPlayerSession(
+            gameCode,
+            data.playerId,
+            data.playerName,
+            data.playerGender ?? 'both',
+            data.resumeToken ?? null
+          )
+          setHostSession({
+            playerId: data.playerId,
+            playerName: data.playerName,
+            playerGender: data.playerGender ?? 'both',
+            resumeToken: data.resumeToken ?? null,
+          })
+        }
+        await startGame(gameCode, hostToken)
+        if (cancelled) return
+        await load()
+      } catch (e) {
+        // Un-arm so the host can retry manually from the lobby.
+        soloStartFiredRef.current = false
+        setError(e instanceof Error ? e.message : 'Could not start solo game')
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [gameCode, hostToken, loading, game, hostPlayerId, load])
 
   if (loading) {
     return (

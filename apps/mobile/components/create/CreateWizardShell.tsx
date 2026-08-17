@@ -32,6 +32,7 @@ import {
   buildCreatePayload,
   createInitialState,
   needsParticipantStep,
+  supportsSoloMode,
   templatableGame,
   validateCreateState,
   validateSetupStep,
@@ -40,6 +41,7 @@ import {
   type CreateWizardStep,
 } from '@/lib/create-settings'
 import { createGame } from '@/lib/game-api'
+import { setSoloAutoStart } from '@/lib/solo-auto-start'
 import { WEB_BASE_URL } from '@/lib/config'
 import { getTemplates, saveTemplate, deleteTemplate, type GameTemplate, type TemplateSlots } from '@/lib/game-templates'
 import { NATIVE_CREATABLE_GAMES } from '@/lib/native-create'
@@ -189,6 +191,11 @@ export function CreateWizardShell() {
       const payload = buildCreatePayload(state, limits)
       const { gameCode, hostToken } = await createGame(payload)
       await setHostToken(gameCode, hostToken)
+      if (state.soloMode && supportsSoloMode(state.gameType, limits)) {
+        // One-shot flag consumed by the host lobby: it auto-seats the host and
+        // POSTs /start so gameplay opens immediately, skipping the lobby wait.
+        await setSoloAutoStart(gameCode)
+      }
       router.replace(`/host/${gameCode}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not create game')
@@ -288,6 +295,28 @@ export function CreateWizardShell() {
                 onChange={onGameTypeChange}
               />
             </View>
+
+            {supportsSoloMode(state.gameType, limits) ? (
+              <SurfaceCard>
+                <Pressable
+                  style={styles.soloRow}
+                  onPress={() => patchState({ soloMode: !state.soloMode })}
+                  accessibilityRole="switch"
+                  accessibilityState={{ checked: state.soloMode }}
+                >
+                  <View style={[styles.soloCheckbox, state.soloMode && styles.soloCheckboxOn]}>
+                    {state.soloMode ? <Text style={styles.soloCheckmark}>✓</Text> : null}
+                  </View>
+                  <View style={styles.soloBody}>
+                    <Text style={styles.soloTitle}>Playing solo</Text>
+                    <Text style={styles.soloHint}>
+                      Skip the lobby — start playing right away. Sets the game to 1 player; you can still choose the
+                      timer, content, and other settings.
+                    </Text>
+                  </View>
+                </Pressable>
+              </SurfaceCard>
+            ) : null}
 
             {templatableGame(state.gameType) && templateSlots ? (
               <TemplateQuickStart
@@ -466,6 +495,22 @@ const makeStyles = (theme: Theme) =>
       fontSize: 18,
       fontWeight: '800',
     },
+    soloRow: { flexDirection: 'row', alignItems: 'flex-start', gap: theme.space.sm },
+    soloCheckbox: {
+      width: 22,
+      height: 22,
+      borderRadius: theme.radius.sm,
+      borderWidth: 1.5,
+      borderColor: theme.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginTop: 2,
+    },
+    soloCheckboxOn: { backgroundColor: theme.primary, borderColor: theme.primary },
+    soloCheckmark: { color: '#fff', fontSize: 14, fontWeight: '800' },
+    soloBody: { flex: 1, gap: 4 },
+    soloTitle: { color: theme.text, fontSize: 15, fontWeight: '800' },
+    soloHint: { color: theme.textMuted, fontSize: 13, lineHeight: 18 },
     footer: {
       paddingHorizontal: theme.space.lg,
       paddingTop: theme.space.sm,
