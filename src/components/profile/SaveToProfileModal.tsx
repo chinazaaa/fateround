@@ -180,12 +180,12 @@ export function SaveToProfileModal({ open, onClose, profile, onChanged }: Props)
             {message ? <p className="text-red-400 text-sm">{message}</p> : null}
           </div>
 
-          <div className="space-y-3 border-t border-[var(--border)] pt-4">
+          <div className="border-t border-[var(--border)] pt-4 flex flex-col gap-3">
             <p className="text-body text-sm">Your streak and trophies follow this account onto any device.</p>
-            <Link href="/profile" className="btn-secondary block text-center" onClick={onClose}>
+            <Link href="/profile" className="btn-secondary w-full text-center" onClick={onClose}>
               Your profile
             </Link>
-            <Link href="/notifications" className="btn-secondary block text-center" onClick={onClose}>
+            <Link href="/notifications" className="btn-secondary w-full text-center" onClick={onClose}>
               🔔 Notification preferences
             </Link>
             <button type="button" className="btn-ghost" onClick={() => void switchUser()}>
@@ -265,7 +265,7 @@ export function SaveToProfileModal({ open, onClose, profile, onChanged }: Props)
         {/* Guest-branch entry point to /notifications so users who dismissed
             the home banner still have a way back without signing in. */}
         <div className="pt-3 border-t border-[var(--border)]">
-          <Link href="/notifications" className="btn-secondary block text-center" onClick={onClose}>
+          <Link href="/notifications" className="btn-secondary w-full text-center" onClick={onClose}>
             🔔 Notification preferences
           </Link>
         </div>
