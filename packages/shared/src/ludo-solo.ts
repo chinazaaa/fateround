@@ -64,8 +64,6 @@ export function initLudoSolo(
   variant: LudoVariant = LUDO_DEFAULT_VARIANT,
   opts: { humanColor?: LudoColor; humanGoesFirst?: boolean } = {}
 ): LudoSoloState {
-  const now = new Date(0).toISOString() // deterministic; sessionStorage-safe
-
   // Seat the two players at opposite corners of the board — real-Ludo's
   // 2-player convention. Board corners are green (TL), red (TR), blue (BR),
   // yellow (BL), so the two diagonal pairs are (red, yellow) and (green, blue).
@@ -106,8 +104,6 @@ export function initLudoSolo(
     status_message: humanGoesFirst ? 'Your turn — roll the dice' : "Bot's turn — rolling…",
     winner_player_id: null,
     turn_deadline_at: null,
-    created_at: now,
-    updated_at: now,
   }
   const states: LudoPlayerState[] = [
     {
@@ -117,7 +113,6 @@ export function initLudoSolo(
       color: humanColor,
       pieces: createInitialPieces(),
       player_order: humanGoesFirst ? 0 : 1,
-      created_at: now,
     },
     {
       id: 'state-bot',
@@ -126,7 +121,6 @@ export function initLudoSolo(
       color: botColor,
       pieces: createInitialPieces(),
       player_order: humanGoesFirst ? 1 : 0,
-      created_at: now,
     },
   ]
   return { session, states, variant, outcome: null, log: [] }
