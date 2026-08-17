@@ -28,6 +28,22 @@ export function hasSoloPlay(gameType: GameType): boolean {
 }
 
 /**
+ * Display-ordered index of every /play-solo/<slug> surface, for site-wide
+ * crosslinks that don't need the hub page's richer per-game blurb (e.g. the
+ * footer). Ordered by expected engagement — matches the hub page's list order.
+ * Add a new solo game here when its /play-solo/<slug> route lands, so the
+ * footer picks it up in the same place as the hub.
+ */
+export const SOLO_PLAY_INDEX: readonly { slug: string; label: string }[] = [
+  { slug: 'whot', label: 'Whot' },
+  { slug: 'uno', label: 'Match Up (UNO)' },
+  { slug: 'crazy-eights', label: 'Crazy Eights' },
+  { slug: 'ludo', label: 'Ludo' },
+  { slug: 'ayo', label: 'Ayo (Mancala)' },
+  { slug: 'yahtzee', label: 'Five Dice (Yahtzee)' },
+] as const
+
+/**
  * Fire-and-forget log of a solo game start, for admin adoption stats.
  *
  * Solo games are entirely client-side (no games row), so this POST is the only

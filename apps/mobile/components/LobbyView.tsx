@@ -155,7 +155,7 @@ const makeStyles = (theme: Theme) =>
     },
     hero: {
       backgroundColor: theme.primarySoft,
-      borderRadius: 14,
+      borderRadius: theme.radius.md,
       borderWidth: 1,
       borderColor: theme.borderAccent,
       padding: 16,
@@ -177,20 +177,20 @@ const makeStyles = (theme: Theme) =>
     },
     description: {
       color: theme.textSecondary,
-      fontSize: 14,
+      fontSize: theme.type.label.size,
       lineHeight: 20,
       textAlign: 'center',
     },
     gameType: {
       color: theme.text,
-      fontSize: 14,
+      fontSize: theme.type.label.size,
       fontWeight: '700',
       marginTop: 4,
     },
     getReadyBtn: {
       marginTop: 12,
       backgroundColor: theme.primary,
-      borderRadius: 12,
+      borderRadius: theme.radius.md,
       paddingVertical: 12,
       paddingHorizontal: 20,
       alignSelf: 'stretch',
@@ -198,7 +198,7 @@ const makeStyles = (theme: Theme) =>
     },
     getReadyBtnDisabled: { opacity: 0.7 },
     // White on the solid rose button — correct in both schemes.
-    getReadyText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+    getReadyText: { color: '#fff', fontSize: theme.type.section.size, fontWeight: '700' },
     watchNote: {
       marginTop: 8,
       color: theme.textMuted,
@@ -207,14 +207,14 @@ const makeStyles = (theme: Theme) =>
     },
     section: {
       color: theme.text,
-      fontSize: 16,
+      fontSize: theme.type.section.size,
       fontWeight: '700',
       marginTop: 4,
     },
     list: { gap: 8 },
     row: {
       backgroundColor: theme.surface,
-      borderRadius: 10,
+      borderRadius: theme.radius.sm,
       paddingHorizontal: 14,
       paddingVertical: 12,
       flexDirection: 'row',
@@ -222,11 +222,11 @@ const makeStyles = (theme: Theme) =>
       alignItems: 'center',
     },
     rowMe: { borderWidth: 1, borderColor: theme.borderAccent },
-    name: { color: theme.text, fontSize: 16 },
-    badge: { color: theme.textMuted, fontSize: 12, textTransform: 'uppercase' },
+    name: { color: theme.text, fontSize: theme.type.section.size },
+    badge: { color: theme.textMuted, fontSize: theme.type.caption.size, textTransform: 'uppercase' },
     waiting: {
       color: theme.textMuted,
-      fontSize: 15,
+      fontSize: theme.type.body.size,
       textAlign: 'center',
       marginTop: 8,
     },

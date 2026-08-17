@@ -16,6 +16,7 @@ import { WordGroupingLobbySettings } from './WordGroupingLobbySettings'
 import { TransferHostControl } from '@/components/TransferHostControl'
 import { GameInfoChips } from '@/components/game-lobby/GameInfoChips'
 import { useHostSeat } from '@/hooks/useHostSeat'
+import { clearSoloAutoStart, setSoloAutoStart } from '@/lib/solo-auto-start'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import { useGameRosterPoll } from '@/hooks/useGameRosterPoll'
@@ -343,18 +344,30 @@ export function WordGroupingHostView({ gameCode, hostToken }: { gameCode: string
     if (playingAgain) return
     setPlayingAgain(true)
     try {
+      // Solo replay: a 1-seat game reopened with the same settings should skip
+      // the lobby just like the initial create — arm the auto-start flag before
+      // the reset lands (useHostSeat consumes it once the host is re-seated in
+      // 'waiting'). Return-to-lobby (sameSettings=false) never arms it.
+      if (sameSettings && game?.max_players === 1) setSoloAutoStart(gameCode)
       const res = await fetch(`/api/games/${gameCode}/play-again`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ hostToken, hostPlayerId: hostPlayerId ?? undefined, same_settings: sameSettings }),
       })
       if (!res.ok) {
+        // Don't leave a solo-replay flag armed for a reset that never landed —
+        // otherwise a later Return-to-lobby would find it and unexpectedly start.
+        clearSoloAutoStart(gameCode)
         const d = await res.json().catch(() => ({}))
         toastError(d.error || 'Failed to reset')
         return
       }
       if (!sameSettings) setHostJoinName('')
       await load()
+    } catch (err) {
+      // See the !res.ok branch above — same rationale for clearing the flag.
+      clearSoloAutoStart(gameCode)
+      toastError(err instanceof Error ? err.message : 'Failed to reset')
     } finally {
       setPlayingAgain(false)
     }
