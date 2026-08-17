@@ -186,20 +186,41 @@ export function DailyWordlePlay({ challengeId, puzzle, timer: maxSeconds, onSubm
     onSubmit({ timeSeconds: elapsed, submission: { guesses } })
   }, [guesses, elapsed, onSubmit])
 
-  // Win/loss reveal delay, then auto-submit. The server re-grades `submission.guesses`, so a player
-  // who closes the tab mid-reveal and reloads is handled too (gameOver restores from saved progress).
+  // Reveal delay before starting the "going to scoreboard" countdown — long enough for the flip
+  // animation on the last row (5 tiles × 0.35s stagger + flip) to finish before the countdown
+  // starts ticking.
+  const REVEAL_DELAY_MS = won ? 1400 : 2400
+  const SCOREBOARD_COUNTDOWN_S = 5
+  const [countdown, setCountdown] = useState<number | null>(null)
+
+  // After the win/loss reveal, show a visible "Going to scoreboard in Ns" countdown, then submit.
+  // The server re-grades `submission.guesses`, so a player who closes the tab mid-reveal and reloads
+  // is handled too (gameOver restores from saved progress).
   useEffect(() => {
     if (!gameOver || submitted || submitRef.current) return
-    const delay = won ? 1400 : 2400
-    const t = setTimeout(handleSubmit, delay)
+    const start = setTimeout(() => setCountdown(SCOREBOARD_COUNTDOWN_S), REVEAL_DELAY_MS)
+    return () => clearTimeout(start)
+  }, [gameOver, submitted, REVEAL_DELAY_MS])
+
+  useEffect(() => {
+    if (countdown == null) return
+    if (countdown <= 0) {
+      handleSubmit()
+      return
+    }
+    const t = setTimeout(() => setCountdown((c) => (c == null ? null : c - 1)), 1000)
     return () => clearTimeout(t)
-  }, [gameOver, won, submitted, handleSubmit])
+  }, [countdown, handleSubmit])
 
   useEffect(() => {
     if (isTimeUp && !submitted && !submitRef.current) handleSubmit()
   }, [isTimeUp, submitted, handleSubmit])
 
-  const gameOverMessage = gameOver ? (won ? 'Correct!' : 'Out of attempts') : null
+  const gameOverBase = gameOver ? (won ? 'Correct!' : 'Out of attempts') : null
+  const gameOverMessage =
+    gameOverBase && countdown != null && countdown > 0
+      ? `${gameOverBase} Going to scoreboard in ${countdown}s`
+      : gameOverBase
   const gameOverAnnouncement = gameOver
     ? won
       ? `Correct! Solved in ${guesses.length} of ${maxAttempts} guesses.`
