@@ -71,7 +71,6 @@ const NAMES: Record<string, string> = {
  * that overrides the RNG for deterministic state transitions.
  */
 export function initYahtzeeSolo(opts: { humanGoesFirst?: boolean } = {}): YahtzeeSoloState {
-  const now = new Date(0).toISOString()
   const humanGoesFirst = opts.humanGoesFirst ?? Math.random() < 0.5
   const turnOrder = humanGoesFirst
     ? [YAHTZEE_SOLO_HUMAN_ID, YAHTZEE_SOLO_BOT_ID]
@@ -89,8 +88,6 @@ export function initYahtzeeSolo(opts: { humanGoesFirst?: boolean } = {}): Yahtze
     status_message: humanGoesFirst ? 'Your turn — roll the dice' : "Bot's turn — rolling…",
     winner_player_id: null,
     turn_deadline_at: null,
-    created_at: now,
-    updated_at: now,
   }
   return {
     session,
