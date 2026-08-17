@@ -203,9 +203,10 @@ export function buildCreatePayload(state: CreateWizardState, limits: GamePlayerL
     game_type: gameType,
     theme: state.theme,
     isPublic: state.isPublic,
-    // Only send scheduled_at when the game is Public — the server rejects the
-    // pair otherwise; sending null keeps the "open immediately" path.
-    ...(state.isPublic && state.scheduledAt ? { scheduled_at: state.scheduledAt } : {}),
+    // Discovery Phase C + private-schedule follow-up: send scheduled_at any
+    // time the host set it, regardless of visibility. Server accepts the pair
+    // for private games too (invite-by-link RSVP flow).
+    ...(state.scheduledAt ? { scheduled_at: state.scheduledAt } : {}),
     ...customContentPayload(gameType, state.custom),
     ...peoplePayload(gameType, state.people, state.party.anonymous, isPollPartyGame(gameType)),
     ...gameRoomSettingsPayload(gameType, state.room),

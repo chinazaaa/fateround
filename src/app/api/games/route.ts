@@ -944,13 +944,14 @@ export async function POST(req: NextRequest) {
   const contentLabel =
     typeof rawContentLabel === 'string' && rawContentLabel.trim() ? rawContentLabel.trim().slice(0, 40) : null
 
-  // Discovery Phase C — scheduled_at must be in the future AND paired with
-  // isPublic=true. A private scheduled game has no RSVP audience, and a past
-  // scheduled_at would auto-open on the next cron tick (weird UX for the host).
+  // Discovery Phase C — scheduled_at must be in the future. Originally
+  // Public-only per the plan's discovery lens; relaxed so a host can also
+  // schedule a private game (invite-by-link) and let their friends RSVP.
+  // Private scheduled games skip the Browse Upcoming tab (still Public-only)
+  // AND skip the game-type subscriber fan-out (nobody is subscribed to
+  // "any private Monopoly") — the T-15 / T-0 pushes to RSVPers still fire
+  // because those key off game_rsvps, not is_public.
   if (parsed.data.scheduled_at) {
-    if (parsed.data.isPublic !== true) {
-      return NextResponse.json({ error: 'Only Public games can be scheduled.' }, { status: 400 })
-    }
     if (new Date(parsed.data.scheduled_at).getTime() <= Date.now()) {
       return NextResponse.json({ error: 'Pick a scheduled time in the future.' }, { status: 400 })
     }
@@ -1166,9 +1167,9 @@ export async function POST(req: NextRequest) {
     // isPublic=true (a private schedule has no RSVP audience) and a future
     // scheduled_at; the guard just above already validated isPublic + max
     // capacity, and we validate the timestamp separately here.
-    status: isSecret ? 'active' : parsed.data.scheduled_at && parsed.data.isPublic === true ? 'scheduled' : 'waiting',
+    status: isSecret ? 'active' : parsed.data.scheduled_at ? 'scheduled' : 'waiting',
     is_public: parsed.data.isPublic ?? false,
-    ...(parsed.data.scheduled_at && parsed.data.isPublic === true ? { scheduled_at: parsed.data.scheduled_at } : {}),
+    ...(parsed.data.scheduled_at ? { scheduled_at: parsed.data.scheduled_at } : {}),
     current_round_number: 0,
     ...(isSecret ? { session_started_at: new Date().toISOString() } : {}),
     wst_quote_source: parsed.data.wst_quote_source ?? 'player',

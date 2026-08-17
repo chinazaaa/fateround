@@ -84,20 +84,51 @@ const PAYLOADS: Record<TournamentPushEvent, { title: string; body: string }> = {
  * tournament. `titleOverride` / `bodyOverride` let a caller customise the
  * text (e.g. include the tournament title). Prunes 404/410 subscriptions
  * (the browser has revoked/expired them) so the table stays clean.
+ *
+ * `filter` targets a subset of the subscriptions by tournament_player_id
+ * (parsed from role_key, which the subscribe route stores as `player:<id>`
+ * or `host:<token>`). Two exclusive options:
+ *   - `onlyPlayerIds` — deliver only to subscribers whose role_key names one
+ *     of these player IDs. Host-only subscriptions are excluded.
+ *   - `excludePlayerIds` — deliver to everyone EXCEPT these player IDs.
+ *     Host-only subscriptions still receive the push.
+ * Used by the scheduled-tournament transfer flow so the "you're now hosting"
+ * copy reaches the recipient only and the informational "handed off" copy
+ * reaches everyone else.
  */
 export async function notifyTournamentEvent(
   tournamentId: string,
   event: TournamentPushEvent,
-  overrides?: { title?: string; body?: string }
+  overrides?: { title?: string; body?: string },
+  filter?: { onlyPlayerIds?: string[]; excludePlayerIds?: string[] }
 ): Promise<void> {
   if (!configureWebPush()) return
   const admin = getSupabaseAdmin()
 
   const { data: subs } = await admin
     .from('tournament_push_subscriptions')
-    .select('id, endpoint, p256dh, auth')
+    .select('id, endpoint, p256dh, auth, role_key')
     .eq('tournament_id', tournamentId)
   if (!subs || subs.length === 0) return
+
+  // Apply the optional per-player filter. role_key is `player:<id>` for
+  // subscriptions made with a player resume token and `host:<token>` for
+  // host subscriptions.
+  const filtered =
+    filter?.onlyPlayerIds || filter?.excludePlayerIds
+      ? subs.filter((s) => {
+          const raw = String(s.role_key ?? '')
+          const playerId = raw.startsWith('player:') ? raw.slice('player:'.length) : null
+          if (filter.onlyPlayerIds) {
+            return playerId != null && filter.onlyPlayerIds.includes(playerId)
+          }
+          if (filter.excludePlayerIds) {
+            return playerId == null || !filter.excludePlayerIds.includes(playerId)
+          }
+          return true
+        })
+      : subs
+  if (filtered.length === 0) return
 
   const base = PAYLOADS[event]
   const payload: Payload = {
@@ -111,7 +142,7 @@ export async function notifyTournamentEvent(
   const stale: string[] = []
 
   await Promise.all(
-    subs.map(async (s) => {
+    filtered.map(async (s) => {
       try {
         await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, body)
       } catch (err) {
