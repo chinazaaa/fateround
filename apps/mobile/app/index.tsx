@@ -4,6 +4,9 @@ import { useFocusEffect, useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { normalizeGameCode } from '@fateround/shared'
 import { FateRoundLogo } from '@/components/FateRoundLogo'
+import { BrowseGamesList } from '@/components/browse/BrowseGamesList'
+import { SubscribeHomeBanner } from '@/components/notifications/SubscribeHomeBanner'
+import { YourUpcomingGamesStrip } from '@/components/notifications/YourUpcomingGamesStrip'
 import { AmbientBackground } from '@/components/ui/AmbientBackground'
 import { AppButton } from '@/components/ui/AppButton'
 import { KeyboardFormScreen } from '@/components/ui/KeyboardFormScreen'
@@ -124,6 +127,29 @@ export default function HomeScreen() {
             onPress={() => router.push('/community' as never)}
           />
         </View>
+
+        <SubscribeHomeBanner />
+
+        <YourUpcomingGamesStrip />
+
+        <BrowseGamesList previewLimit={5} onSeeAll={() => router.push('/browse' as never)} />
+
+        {recent.length === 0 ? (
+          <View style={styles.recentBlock}>
+            <Text style={styles.sectionTitle}>Recent</Text>
+            {/*
+              Empty-state hint for a fresh device / first-time user. Once the
+              user joins or creates a single game, the recent list replaces
+              this and the hint never renders again.
+            */}
+            <SurfaceCard>
+              <Text style={styles.emptyRecentTitle}>Nothing here yet</Text>
+              <Text style={styles.emptyRecentBody}>
+                Games you join or create show up here so you can jump back in with one tap.
+              </Text>
+            </SurfaceCard>
+          </View>
+        ) : null}
 
         {recent.length > 0 ? (
           <View style={styles.recentBlock}>
@@ -249,5 +275,7 @@ const makeStyles = (theme: Theme) =>
       letterSpacing: 2,
     },
     recentChevron: { color: theme.textFaint, fontSize: 24, fontWeight: '300' },
+    emptyRecentTitle: { color: theme.text, fontSize: theme.type.section.size, fontWeight: '700' },
+    emptyRecentBody: { color: theme.textMuted, fontSize: theme.type.body.size, lineHeight: 21 },
     topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   })

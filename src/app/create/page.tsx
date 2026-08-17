@@ -99,6 +99,8 @@ import { BOARD_THEMES, PIECE_SETS, useChessAppearance } from '@/lib/chess-appear
 import { ChessPieceGlyph } from '@/components/chess/ChessPieceDetailed'
 import { Glyph } from '@/components/icons/Glyph'
 import { GlobeIcon, LockIcon, TableTennisBatIcon } from '@hugeicons/core-free-icons'
+import { showsMaxOnePublicHint, showsPartyPublicHint } from '@/lib/public-hints'
+import { ScheduleForLaterField } from '@/components/create/ScheduleForLaterField'
 import { WYR_QUESTION_COUNT } from '@/lib/would-you-rather-questions'
 import { THIS_OR_THAT_QUESTION_COUNT } from '@/lib/this-or-that-questions'
 import type { WyrQuestion } from '@/lib/would-you-rather-questions'
@@ -374,6 +376,9 @@ function CreateGameInner() {
     participant_filter: 'all' as 'all' | 'joined',
     gender_based: true,
     isPublic: false,
+    // Discovery Phase C — optional "Schedule for later" ISO timestamp. Only
+    // sent to the server when isPublic is true; the API rejects the pair.
+    scheduled_at: null as string | null,
     describe_it_num_teams: 2,
     describe_it_mode: 'team',
     quick_draw_variant: 'guess',
@@ -2505,6 +2510,12 @@ function CreateGameInner() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...settings,
+          // Discovery Phase C — only forward scheduled_at when the toggle set
+          // it AND the game is Public. A private scheduled game has no RSVP
+          // audience; a null value would fail Zod's datetime validator.
+          ...(settings.isPublic && settings.scheduled_at
+            ? { scheduled_at: settings.scheduled_at }
+            : { scheduled_at: undefined }),
           ...(isWordHunt ? { timer_seconds: wordHuntTimer } : {}),
           rounds_count: isWst
             ? isWstDeck
@@ -2931,6 +2942,19 @@ function CreateGameInner() {
                   ? 'Anyone can find and join this game from Browse.'
                   : 'Only people with the code can join.'}
               </p>
+              {!settings.isPublic && showsPartyPublicHint(settings.game_type, settings.max_players ?? null) ? (
+                <p className="mt-1 text-xs" style={{ color: 'var(--primary)' }}>
+                  Party game? Turn this on so others can find and join.
+                </p>
+              ) : null}
+              {settings.isPublic && showsMaxOnePublicHint(settings.max_players ?? null) ? (
+                <p className="mt-1 text-xs text-muted italic">Bump the max players above 1 so other people can join.</p>
+              ) : null}
+              <ScheduleForLaterField
+                isPublic={settings.isPublic}
+                scheduledAt={settings.scheduled_at ?? null}
+                onChange={(next) => setSettings((s) => ({ ...s, scheduled_at: next }))}
+              />
             </Field>
           </div>
 
@@ -5898,6 +5922,21 @@ function CreateGameInner() {
                   <p className="text-faint text-xs mt-2">
                     List in Browse so anyone can find and join. Off keeps it invite-only via the share link.
                   </p>
+                  {!settings.isPublic && showsPartyPublicHint(settings.game_type, settings.max_players ?? null) ? (
+                    <p className="mt-1 text-xs" style={{ color: 'var(--primary)' }}>
+                      Party game? Turn this on so others can find and join.
+                    </p>
+                  ) : null}
+                  {settings.isPublic && showsMaxOnePublicHint(settings.max_players ?? null) ? (
+                    <p className="mt-1 text-xs text-muted italic">
+                      Bump the max players above 1 so other people can join.
+                    </p>
+                  ) : null}
+                  <ScheduleForLaterField
+                    isPublic={settings.isPublic}
+                    scheduledAt={settings.scheduled_at ?? null}
+                    onChange={(next) => setSettings((s) => ({ ...s, scheduled_at: next }))}
+                  />
                 </Field>
                 <p className="text-faint text-sm leading-relaxed">
                   Flip cards and find matching pairs. Race to complete the grid with the most matches. Streaks earn

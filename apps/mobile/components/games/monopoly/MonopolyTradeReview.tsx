@@ -1,4 +1,5 @@
 import { StyleSheet, Text, View } from 'react-native'
+import { MONOPOLY_BOARD_SIZE, type MonopolyBoardSize } from '@fateround/shared/monopoly-board'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
 import { formatThemedMoney, themedSpaceName } from './monopoly-theme'
@@ -9,14 +10,16 @@ function TradeSideItems({
   propertyIndexes,
   jailCards,
   themeId,
+  boardSize,
 }: {
   cash: number
   propertyIndexes: unknown
   jailCards: number
   themeId?: string | null
+  boardSize: MonopolyBoardSize
 }) {
   const styles = useThemedStyles(makeStyles)
-  const items = buildTradeSideItems(cash, propertyIndexes, jailCards)
+  const items = buildTradeSideItems(cash, propertyIndexes, jailCards, boardSize)
   if (items.length === 0) return <Text style={styles.nothing}>Nothing</Text>
   return (
     <View style={styles.itemList}>
@@ -32,7 +35,7 @@ function TradeSideItems({
         if (item.kind === 'property') {
           return (
             <Text key={`prop-${item.index}`} style={styles.item}>
-              {themedSpaceName(item.name, item.index, themeId)}
+              {themedSpaceName(item.name, item.index, themeId, boardSize)}
             </Text>
           )
         }
@@ -56,6 +59,7 @@ export function MonopolyTradeReview({
   giveJailCards = 0,
   getJailCards = 0,
   themeId,
+  boardSize = MONOPOLY_BOARD_SIZE,
 }: {
   giveLabel: string
   getLabel: string
@@ -66,14 +70,17 @@ export function MonopolyTradeReview({
   giveJailCards?: number
   getJailCards?: number
   themeId?: string | null
+  boardSize?: MonopolyBoardSize
 }) {
   const styles = useThemedStyles(makeStyles)
   const oneSidedGift =
-    tradeSideHasValue(giveCash, giveProps, giveJailCards) && !tradeSideHasValue(getCash, getProps, getJailCards)
+    tradeSideHasValue(giveCash, giveProps, giveJailCards, boardSize) &&
+    !tradeSideHasValue(getCash, getProps, getJailCards, boardSize)
   const oneSidedReceive =
-    tradeSideHasValue(getCash, getProps, getJailCards) && !tradeSideHasValue(giveCash, giveProps, giveJailCards)
-  const giveCountLabel = tradeSideCountLabel(giveCash, giveProps, giveJailCards)
-  const getCountLabel = tradeSideCountLabel(getCash, getProps, getJailCards)
+    tradeSideHasValue(getCash, getProps, getJailCards, boardSize) &&
+    !tradeSideHasValue(giveCash, giveProps, giveJailCards, boardSize)
+  const giveCountLabel = tradeSideCountLabel(giveCash, giveProps, giveJailCards, boardSize)
+  const getCountLabel = tradeSideCountLabel(getCash, getProps, getJailCards, boardSize)
 
   return (
     <View style={styles.wrap}>
@@ -83,14 +90,26 @@ export function MonopolyTradeReview({
             <Text style={[styles.sideLabel, styles.giveLabel]}>{giveLabel}</Text>
             {giveCountLabel ? <Text style={[styles.countLabel, styles.giveLabel]}>{giveCountLabel}</Text> : null}
           </View>
-          <TradeSideItems cash={giveCash} propertyIndexes={giveProps} jailCards={giveJailCards} themeId={themeId} />
+          <TradeSideItems
+            cash={giveCash}
+            propertyIndexes={giveProps}
+            jailCards={giveJailCards}
+            themeId={themeId}
+            boardSize={boardSize}
+          />
         </View>
         <View style={[styles.side, styles.getSide]}>
           <View style={styles.sideHeader}>
             <Text style={[styles.sideLabel, styles.getLabel]}>{getLabel}</Text>
             {getCountLabel ? <Text style={[styles.countLabel, styles.getLabel]}>{getCountLabel}</Text> : null}
           </View>
-          <TradeSideItems cash={getCash} propertyIndexes={getProps} jailCards={getJailCards} themeId={themeId} />
+          <TradeSideItems
+            cash={getCash}
+            propertyIndexes={getProps}
+            jailCards={getJailCards}
+            themeId={themeId}
+            boardSize={boardSize}
+          />
         </View>
       </View>
       {oneSidedGift ? (

@@ -18,6 +18,7 @@ import { removeChessPlayer } from '@/lib/chess'
 import { removeCheckersPlayer } from '@/lib/checkers'
 import { removeDraughts10Player } from '@/lib/draughts10'
 import { removeAyoPlayer } from '@/lib/ayo'
+import { maybeNotifyHostPlayerJoined } from '@/lib/push'
 import { removeTicTacToePlayer } from '@/lib/tic-tac-toe'
 import { removePingPongPlayer } from '@/lib/ping-pong'
 import { isMonopolyTokenId } from '@/lib/monopoly-tokens'
@@ -165,6 +166,17 @@ async function jsonPlayerJoin(
   extra: Record<string, unknown> = {}
 ) {
   await linkPlayerToRoomMember(supabase, player.id, roomMemberId)
+  // Discovery Phase A: fire a directed push to the host so they know somebody
+  // arrived. The helper self-gates (waiting + is_public + non-host + 60s dedup);
+  // wrap in a best-effort to keep the join response fast — a failed push must
+  // never turn a successful join into a 500.
+  void maybeNotifyHostPlayerJoined(
+    String((game as { id?: string }).id ?? (player as { game_id?: string }).game_id ?? '').toUpperCase(),
+    String(player.name ?? ''),
+    String((player as { id?: string }).id ?? '')
+  ).catch(() => {
+    // Best-effort — never block a join on a push failure.
+  })
   return NextResponse.json(playerJoinResponse(player, game, extra))
 }
 

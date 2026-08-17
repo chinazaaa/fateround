@@ -85,6 +85,10 @@ export const createGameSchema = z.object({
   participant_filter: participantFilterEnum.optional(),
   gender_based: z.boolean().optional(),
   isPublic: z.boolean().optional(),
+  // Discovery Phase C — "Schedule for later". ISO timestamp; must be in the
+  // future. Only accepted when isPublic=true (a private scheduled game has no
+  // RSVP audience — it'd be a dead row). The route rejects invalid pairs.
+  scheduled_at: z.string().datetime().optional(),
   max_players: z.coerce.number().int().min(1).max(100).optional(),
   monopoly_board_size: z.coerce
     .number()
@@ -276,6 +280,12 @@ export const updateGameSchema = z.object({
     .int()
     .refine((val: number) => (PING_PONG_POINTS_OPTIONS as readonly number[]).includes(val))
     .optional(),
+  // Discovery Phase A — "Keep open" button on the host T-13min banner. Bumps
+  // last_activity_at + stamps host_idle_warning_sent_at so the pg_cron close
+  // job holds off and the banner never re-fires for this game. The plan
+  // constrains this to one bite per game (a Keep-open that eventually reaches
+  // T-13min again does not re-warn).
+  keep_lobby_alive: z.boolean().optional(),
 })
 
 export type UpdateGameInput = z.infer<typeof updateGameSchema>

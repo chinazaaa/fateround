@@ -10,6 +10,8 @@ import { GameInfoChips } from '@/components/GameInfoChips'
 import { VoiceRail } from '@/components/voice/VoiceRail'
 import { ShareGameSheet } from '@/components/session/ShareGameSheet'
 import { HostLobbyPlayCard } from '@/components/host/HostLobbyPlayCard'
+import { MissingPlayersPrompt } from '@/components/host/MissingPlayersPrompt'
+import { IdleWarningBanner } from '@/components/host/IdleWarningBanner'
 import { ReplayReadyRing } from '@/components/lifecycle/ReplayReadyRing'
 import { HostLobbySettingsSheet } from '@/components/host/HostLobbySettingsSheet'
 import { TransferHostSheet } from '@/components/host/TransferHostSheet'
@@ -399,6 +401,21 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
               </View>
             ) : null}
           </View>
+        ) : null}
+
+        {game && !finished && !replayLobby ? (
+          <IdleWarningBanner game={game} gameCode={gameCode} hostToken={hostToken} onSaved={() => void load()} />
+        ) : null}
+
+        {game && !finished && !replayLobby ? (
+          <MissingPlayersPrompt
+            game={game}
+            gameCode={gameCode}
+            hostToken={hostToken}
+            activePlayers={activePlayers.length}
+            maxPlayers={maxPlayers}
+            onSaved={() => void load()}
+          />
         ) : null}
 
         {/* The ring already lists players (with Remove) during the replay lobby. */}
