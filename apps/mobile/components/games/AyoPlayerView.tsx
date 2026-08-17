@@ -29,7 +29,14 @@ import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
 
 type Screen =
-  'loading' | 'join' | 'game_started_waiting' | 'game_ended' | 'waiting' | 'active' | 'finished' | 'not_found'
+  | 'loading'
+  | 'join'
+  | 'game_started_waiting'
+  | 'game_ended'
+  | 'waiting'
+  | 'active'
+  | 'finished'
+  | 'not_found'
 
 export function AyoPlayerView({ gameCode }: { gameCode: string }) {
   const styles = useThemedStyles(makeStyles)
@@ -219,7 +226,11 @@ export function AyoPlayerView({ gameCode }: { gameCode: string }) {
 
   const legal =
     mySide && isMyTurn && !animation.animating
-      ? legalMovesForSide(activeSession.pits, mySide, activeSession.a_row_size, activeSession.b_row_size)
+      ? legalMovesForSide(activeSession.pits, mySide, {
+          variant: parseAyoVariant(bootstrap.game?.ayo_variant),
+          aRowSize: activeSession.a_row_size,
+          bRowSize: activeSession.b_row_size,
+        })
       : []
   const turnPlayer = bootstrap.players.find((p) => p.id === turnPlayerId)
   const nameOf = (pid: string) => bootstrap.players.find((p) => p.id === pid)?.name ?? 'Player'

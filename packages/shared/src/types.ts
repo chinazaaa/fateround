@@ -317,6 +317,7 @@ export interface ChessSession {
 }
 
 export type AyoSide = 'a' | 'b'
+export type AyoVariant = 'traditional' | 'oware'
 
 export interface AyoSession {
   id: string
