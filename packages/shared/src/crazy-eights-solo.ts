@@ -142,8 +142,6 @@ export function initCrazy8Solo(opts: Crazy8SoloInitOptions = {}): Crazy8SoloStat
     winner_player_id: null,
     finish_order: [],
     turn_deadline_at: null,
-    created_at: new Date(0).toISOString(),
-    updated_at: new Date(0).toISOString(),
   }
 
   return {
