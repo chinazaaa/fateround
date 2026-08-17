@@ -37,6 +37,14 @@ import { YahtzeeScorecardGrid } from '@/components/games/YahtzeeScorecardGrid'
 import { useThemedStyles } from '@/constants/theme-context'
 import type { Theme } from '@/constants/theme'
 import { readSoloScoreboard, recordSoloOutcome, resetSoloScoreboard, type SoloScoreboard } from '@/lib/solo-scoreboard'
+import {
+  clearSoloState,
+  loadSoloState,
+  markSoloStateScored,
+  saveSoloState,
+  wasSoloStateScored,
+} from '@/lib/solo-state-store'
+import { logSoloPlayStarted } from '@/lib/solo-play'
 
 const BOT_STEP_MS = 700
 const ROLL_ANIM_MS = 500
@@ -72,16 +80,37 @@ export default function SoloYahtzeeScreen() {
   const scoredRef = useRef(false)
 
   useEffect(() => {
-    setState(initYahtzeeSolo())
+    void loadSoloState<YahtzeeSoloState>('solo-yahtzee-state-v1', (raw): raw is YahtzeeSoloState => {
+      const r = raw as Partial<YahtzeeSoloState> | null
+      return !!r?.session?.turn_order && !!r.scores
+    }).then(async (persisted) => {
+      if (persisted) {
+        setState(persisted)
+        // See whot.tsx for the marker-vs-outcome gate rationale.
+        if (persisted.outcome != null && (await wasSoloStateScored('solo-yahtzee-state-v1'))) {
+          scoredRef.current = true
+        }
+      } else {
+        setState(initYahtzeeSolo())
+        logSoloPlayStarted('yahtzee')
+      }
+    })
     void readSoloScoreboard('yahtzee').then(setScoreboard)
   }, [])
+
+  useEffect(() => {
+    if (state) void saveSoloState('solo-yahtzee-state-v1', state)
+  }, [state])
 
   // Score once per game.
   useEffect(() => {
     if (!state || state.outcome == null || scoredRef.current) return
     const outcome: 'human' | 'bot' | 'draw' = state.outcome
     scoredRef.current = true
-    void recordSoloOutcome('yahtzee', outcome).then(setScoreboard)
+    void recordSoloOutcome('yahtzee', outcome).then((next) => {
+      setScoreboard(next)
+      void markSoloStateScored('solo-yahtzee-state-v1')
+    })
   }, [state])
 
   // Bot loop — walk roll/hold/score one step per timeout.
@@ -174,7 +203,9 @@ export default function SoloYahtzeeScreen() {
   const restart = useCallback(() => {
     scoredRef.current = false
     setRolling(false)
+    void clearSoloState('solo-yahtzee-state-v1')
     setState(initYahtzeeSolo())
+    logSoloPlayStarted('yahtzee')
   }, [])
 
   const resetScore = useCallback(() => {

@@ -38,6 +38,14 @@ import { useAyoSowAnimation } from '@/hooks/useAyoSowAnimation'
 import { useThemedStyles } from '@/constants/theme-context'
 import type { Theme } from '@/constants/theme'
 import { readSoloScoreboard, recordSoloOutcome, resetSoloScoreboard, type SoloScoreboard } from '@/lib/solo-scoreboard'
+import {
+  clearSoloState,
+  loadSoloState,
+  markSoloStateScored,
+  saveSoloState,
+  wasSoloStateScored,
+} from '@/lib/solo-state-store'
+import { logSoloPlayStarted } from '@/lib/solo-play'
 
 const BOT_THINK_MS = 700
 const HUMAN_SIDE: AyoSide = 'a'
@@ -61,9 +69,28 @@ export default function SoloAyoScreen() {
   const { animation, playSowAnimation, clearAnimation } = useAyoSowAnimation()
 
   useEffect(() => {
-    setState(initAyoSolo())
+    void loadSoloState<AyoSoloState>('solo-ayo-state-v1', (raw): raw is AyoSoloState => {
+      const r = raw as Partial<AyoSoloState> | null
+      return !!r?.session?.pits && Array.isArray(r.session.pits)
+    }).then(async (persisted) => {
+      if (persisted) {
+        setState(persisted)
+        // See whot.tsx for the marker-vs-outcome gate rationale.
+        if (persisted.outcome != null && (await wasSoloStateScored('solo-ayo-state-v1'))) {
+          scoredRef.current = true
+        }
+      } else {
+        setState(initAyoSolo())
+        logSoloPlayStarted('ayo', difficulty)
+      }
+    })
     void readSoloScoreboard('ayo').then(setScoreboard)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  useEffect(() => {
+    if (state) void saveSoloState('solo-ayo-state-v1', state)
+  }, [state])
 
   // Score once per game.
   useEffect(() => {
@@ -71,7 +98,10 @@ export default function SoloAyoScreen() {
     const outcome: 'human' | 'bot' | 'draw' =
       state.outcome === 'a' ? 'human' : state.outcome === 'draw' ? 'draw' : 'bot'
     scoredRef.current = true
-    void recordSoloOutcome('ayo', outcome).then(setScoreboard)
+    void recordSoloOutcome('ayo', outcome).then((next) => {
+      setScoreboard(next)
+      void markSoloStateScored('solo-ayo-state-v1')
+    })
   }, [state])
 
   // Bot turn — fire after a short delay so the play is visible.
@@ -108,8 +138,10 @@ export default function SoloAyoScreen() {
   const restart = useCallback(() => {
     scoredRef.current = false
     clearAnimation()
+    void clearSoloState('solo-ayo-state-v1')
     setState(initAyoSolo())
-  }, [clearAnimation])
+    logSoloPlayStarted('ayo', difficulty)
+  }, [clearAnimation, difficulty])
 
   const resetScore = useCallback(() => {
     void resetSoloScoreboard('ayo').then(setScoreboard)

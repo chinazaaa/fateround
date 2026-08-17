@@ -48,6 +48,14 @@ import { UnoCardFace } from '@/components/games/cards/UnoCardFace'
 import { useThemedStyles } from '@/constants/theme-context'
 import type { Theme } from '@/constants/theme'
 import { readSoloScoreboard, recordSoloOutcome, resetSoloScoreboard, type SoloScoreboard } from '@/lib/solo-scoreboard'
+import {
+  clearSoloState,
+  loadSoloState,
+  markSoloStateScored,
+  saveSoloState,
+  wasSoloStateScored,
+} from '@/lib/solo-state-store'
+import { logSoloPlayStarted } from '@/lib/solo-play'
 
 const BOT_THINK_MS = 900
 
@@ -70,15 +78,37 @@ export default function SoloUnoScreen() {
   const scoredRef = useRef(false)
 
   useEffect(() => {
-    setState(initUnoSolo())
+    void loadSoloState<UnoSoloState>('solo-uno-state-v1', (raw): raw is UnoSoloState => {
+      const r = raw as Partial<UnoSoloState> | null
+      return !!r?.session?.turn_order && Array.isArray(r.hands)
+    }).then(async (persisted) => {
+      if (persisted) {
+        setState(persisted)
+        // See whot.tsx for the marker-vs-outcome gate rationale.
+        if (persisted.outcome != null && (await wasSoloStateScored('solo-uno-state-v1'))) {
+          scoredRef.current = true
+        }
+      } else {
+        setState(initUnoSolo())
+        logSoloPlayStarted('uno', difficulty)
+      }
+    })
     void readSoloScoreboard('uno').then(setScoreboard)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  useEffect(() => {
+    if (state) void saveSoloState('solo-uno-state-v1', state)
+  }, [state])
 
   useEffect(() => {
     if (!state || state.outcome == null || scoredRef.current) return
     const outcome: 'human' | 'bot' | 'draw' = state.outcome === 0 ? 'human' : state.outcome === 'draw' ? 'draw' : 'bot'
     scoredRef.current = true
-    void recordSoloOutcome('uno', outcome).then(setScoreboard)
+    void recordSoloOutcome('uno', outcome).then((next) => {
+      setScoreboard(next)
+      void markSoloStateScored('solo-uno-state-v1')
+    })
   }, [state])
 
   // Reset the multi-play selection when the turn or hand size changes — a stale
@@ -147,8 +177,10 @@ export default function SoloUnoScreen() {
     scoredRef.current = false
     setMultiMode(false)
     setSelectedIds([])
+    void clearSoloState('solo-uno-state-v1')
     setState(initUnoSolo())
-  }, [])
+    logSoloPlayStarted('uno', difficulty)
+  }, [difficulty])
 
   const resetScore = useCallback(() => {
     void resetSoloScoreboard('uno').then(setScoreboard)

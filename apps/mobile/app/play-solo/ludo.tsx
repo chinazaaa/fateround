@@ -47,6 +47,14 @@ import { LudoMoveList } from '@/components/games/ludo/LudoMoveList'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
 import type { Theme } from '@/constants/theme'
 import { readSoloScoreboard, recordSoloOutcome, resetSoloScoreboard, type SoloScoreboard } from '@/lib/solo-scoreboard'
+import {
+  clearSoloState,
+  loadSoloState,
+  markSoloStateScored,
+  saveSoloState,
+  wasSoloStateScored,
+} from '@/lib/solo-state-store'
+import { logSoloPlayStarted } from '@/lib/solo-play'
 
 const BOT_THINK_MS = 700
 const ROLL_ANIM_MS = 500
@@ -66,9 +74,27 @@ export default function SoloLudoScreen() {
   const scoredRef = useRef(false)
 
   useEffect(() => {
-    setState(initLudoSolo())
+    void loadSoloState<LudoSoloState>('solo-ludo-state-v1', (raw): raw is LudoSoloState => {
+      const r = raw as Partial<LudoSoloState> | null
+      return !!r?.session?.turn_order && Array.isArray(r.session.turn_order) && Array.isArray(r.states)
+    }).then(async (persisted) => {
+      if (persisted) {
+        setState(persisted)
+        // See whot.tsx for the marker-vs-outcome gate rationale.
+        if (persisted.outcome != null && (await wasSoloStateScored('solo-ludo-state-v1'))) {
+          scoredRef.current = true
+        }
+      } else {
+        setState(initLudoSolo())
+        logSoloPlayStarted('ludo')
+      }
+    })
     void readSoloScoreboard('ludo').then(setScoreboard)
   }, [])
+
+  useEffect(() => {
+    if (state) void saveSoloState('solo-ludo-state-v1', state)
+  }, [state])
 
   // Sync displayDice with the freshly-rolled pair whenever the session's
   // last_dice changes (either from human roll or bot roll).
@@ -82,7 +108,10 @@ export default function SoloLudoScreen() {
     if (!state || state.outcome == null || scoredRef.current) return
     const outcome: 'human' | 'bot' = state.outcome === 'human' ? 'human' : 'bot'
     scoredRef.current = true
-    void recordSoloOutcome('ludo', outcome).then(setScoreboard)
+    void recordSoloOutcome('ludo', outcome).then((next) => {
+      setScoreboard(next)
+      void markSoloStateScored('solo-ludo-state-v1')
+    })
   }, [state])
 
   // Bot loop: roll (roll phase) or pick + play a move (move phase). One step
@@ -151,7 +180,9 @@ export default function SoloLudoScreen() {
     scoredRef.current = false
     setDisplayDice(null)
     setRolling(false)
+    void clearSoloState('solo-ludo-state-v1')
     setState(initLudoSolo())
+    logSoloPlayStarted('ludo')
   }, [])
 
   const resetScore = useCallback(() => {
