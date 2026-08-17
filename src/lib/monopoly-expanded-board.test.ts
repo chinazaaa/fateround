@@ -9,7 +9,13 @@ import {
   spaceAt,
   spacesInGroup,
 } from '@/lib/monopoly-board'
-import { movePosition, computeMonopolyNetWorth, resolveMonopolyWinnerId, buildMonopolyStandings } from '@/lib/monopoly'
+import {
+  movePosition,
+  computeMonopolyNetWorth,
+  resolveMonopolyWinnerId,
+  buildMonopolyStandings,
+  resolveSpaceLanding,
+} from '@/lib/monopoly'
 import { boardGridCell } from '@/components/monopoly/monopoly-ui'
 import { themedSpaceName } from '@/components/monopoly/monopoly-themes'
 import { buildColorGroupStatuses } from '@/lib/monopoly-color-portfolio'
@@ -170,5 +176,47 @@ describe('Estate Kings expanded board', () => {
     expect(standings[0].playerId).toBe('p2')
     expect(standings[0].rank).toBe(1)
     expect(standings[0].netWorth).toBe(910)
+  })
+
+  it('sends player to correct jail index (12 on 48-space, 10 on 40-space) when landing on go_to_jail', () => {
+    // 48-space board: index 36 is OFF TO NICKED (go_to_jail) -> sends to index 12 (NICKED)
+    const res48 = resolveSpaceLanding(spaceAt(36, 48), {
+      cash: 1500,
+      position: 36,
+      inJail: false,
+      jailTurns: 0,
+      getOutCards: 0,
+      playerId: 'p1',
+      owners: {},
+      buildings: {},
+      mortgaged: {},
+      states: [],
+      diceTotal: 4,
+      extraTurn: false,
+      passedGoOnce: true,
+      boardSize: 48,
+    })
+    expect(res48.position).toBe(12)
+    expect(res48.inJail).toBe(true)
+
+    // 40-space board: index 30 is OFF TO JAIL (go_to_jail) -> sends to index 10 (JAIL)
+    const res40 = resolveSpaceLanding(spaceAt(30, 40), {
+      cash: 1500,
+      position: 30,
+      inJail: false,
+      jailTurns: 0,
+      getOutCards: 0,
+      playerId: 'p1',
+      owners: {},
+      buildings: {},
+      mortgaged: {},
+      states: [],
+      diceTotal: 4,
+      extraTurn: false,
+      passedGoOnce: true,
+      boardSize: 40,
+    })
+    expect(res40.position).toBe(10)
+    expect(res40.inJail).toBe(true)
   })
 })
