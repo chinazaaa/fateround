@@ -26,6 +26,8 @@ import {
   MONOPOLY_JAIL_POSITION,
   MONOPOLY_STARTING_CASH,
   formatMonopolyMoney,
+  housesInBankForSize,
+  hotelsInBankForSize,
   jailPositionForSize,
   mortgageValue,
   monopolyBoardForSize,
@@ -574,12 +576,12 @@ function parseDeck(raw: unknown): number[] {
   return raw as number[]
 }
 
-function defaultBoardFields(): Partial<MonopolyBoard> {
+function defaultBoardFields(boardSize: MonopolyBoardSize = 40): Partial<MonopolyBoard> {
   return {
     property_buildings: {},
     mortgaged_properties: {},
-    houses_in_bank: MONOPOLY_HOUSES_IN_BANK,
-    hotels_in_bank: MONOPOLY_HOTELS_IN_BANK,
+    houses_in_bank: housesInBankForSize(boardSize),
+    hotels_in_bank: hotelsInBankForSize(boardSize),
     chance_deck: createShuffledDeck('chance'),
     community_deck: createShuffledDeck('community'),
     chance_discard: [],
@@ -1167,6 +1169,7 @@ export async function initializeMonopolyGame(
   const { error: stateError } = await supabase.from('monopoly_player_state').insert(stateRows)
   if (stateError) return { error: internalErrorMessage('monopoly', stateError) }
 
+  const { boardSize } = await getMonopolyGameSettings(supabase, gameId)
   const { error: boardError } = await supabase.from('monopoly_boards').insert({
     game_id: gameId,
     turn_order: turnOrder,
@@ -1175,8 +1178,8 @@ export async function initializeMonopolyGame(
     property_owners: {},
     status_message: 'Game started — pass PAYDAY once before you can buy property.',
     turn_deadline_at: monopolyTurnDeadline(timerSeconds),
-    ...defaultBoardFields(),
-    board_size: (await getMonopolyGameSettings(supabase, gameId)).boardSize,
+    ...defaultBoardFields(boardSize),
+    board_size: boardSize,
   })
   if (boardError) return { error: internalErrorMessage('monopoly', boardError) }
 
@@ -1263,8 +1266,8 @@ export async function processMonopolyRoll(
   let owners = parsePropertyOwners(board.property_owners)
   let buildings = parseBuildings(board.property_buildings)
   let mortgaged = parseMortgaged(board.mortgaged_properties)
-  let housesInBank = board.houses_in_bank ?? MONOPOLY_HOUSES_IN_BANK
-  let hotelsInBank = board.hotels_in_bank ?? MONOPOLY_HOTELS_IN_BANK
+  let housesInBank = board.houses_in_bank ?? housesInBankForSize(board.board_size ?? 40)
+  let hotelsInBank = board.hotels_in_bank ?? hotelsInBankForSize(board.board_size ?? 40)
 
   const repaired = repairStaleBankruptOwnership(states, owners, buildings, mortgaged, housesInBank, hotelsInBank)
   if (repaired.repaired) {
@@ -2144,8 +2147,8 @@ export async function processMonopolyBuild(
     .maybeSingle()
   if (!state) return { error: 'Player not found' }
 
-  let housesInBank = board.houses_in_bank ?? MONOPOLY_HOUSES_IN_BANK
-  let hotelsInBank = board.hotels_in_bank ?? MONOPOLY_HOTELS_IN_BANK
+  let housesInBank = board.houses_in_bank ?? housesInBankForSize(board.board_size ?? 40)
+  let hotelsInBank = board.hotels_in_bank ?? hotelsInBankForSize(board.board_size ?? 40)
   let cash = state.cash
   const houseCost = space.houseCost ?? 0
 
@@ -2721,8 +2724,8 @@ async function attemptRemoveMonopolyPlayer(
     property_owners: owners,
     property_buildings: buildings,
     mortgaged_properties: mortgaged,
-    houses_in_bank: (board.houses_in_bank ?? MONOPOLY_HOUSES_IN_BANK) + returned.housesReturned,
-    hotels_in_bank: (board.hotels_in_bank ?? MONOPOLY_HOTELS_IN_BANK) + returned.hotelsReturned,
+    houses_in_bank: (board.houses_in_bank ?? housesInBankForSize(board.board_size ?? 40)) + returned.housesReturned,
+    hotels_in_bank: (board.hotels_in_bank ?? hotelsInBankForSize(board.board_size ?? 40)) + returned.hotelsReturned,
     pending_trade: pendingTrade,
     auction_state: auctionState,
     pending_debt: pendingDebt,
@@ -3199,8 +3202,8 @@ async function bankruptPlayer(
       property_owners: returned.owners,
       property_buildings: returned.buildings,
       mortgaged_properties: returned.mortgaged,
-      houses_in_bank: (board.houses_in_bank ?? MONOPOLY_HOUSES_IN_BANK) + returned.housesReturned,
-      hotels_in_bank: (board.hotels_in_bank ?? MONOPOLY_HOTELS_IN_BANK) + returned.hotelsReturned,
+      houses_in_bank: (board.houses_in_bank ?? housesInBankForSize(board.board_size ?? 40)) + returned.housesReturned,
+      hotels_in_bank: (board.hotels_in_bank ?? hotelsInBankForSize(board.board_size ?? 40)) + returned.hotelsReturned,
       phase: nextPhase,
       current_turn_index: upcomingTurnIndex,
       winner_player_id: winner,
