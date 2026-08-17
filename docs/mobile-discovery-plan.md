@@ -186,10 +186,41 @@ pings when they're not in the app.
   to every matching subscriber. Rate limit: at most 1 push per
   subscriber per game type per 30 minutes (avoid spam from a host
   spamming create).
-- One-time in-app nudge: after the user's first successful game
-  JOIN (not on cold open), a small SurfaceCard on home says "Want a
-  ping when new Monopoly games open? Subscribe →". Dismissible;
-  never fires again.
+- **Discoverability of the subscribe feature itself.** Two nudges,
+  not one — the plan's biggest risk is that people never realise
+  Subscribe exists. Both dismissible, both persist their dismissal
+  in AsyncStorage / localStorage so they never come back for that
+  user:
+    - **Home banner** (primary — reaches everyone who opens the app,
+      not just people who join a game). A small ListRow-styled
+      card at the top of the home screen: "🔔 Get pinged when your
+      favourite games open — Subscribe →" plus an X to dismiss. Sits
+      above the "Live games" section so it reads as a "here's how
+      to make the feed keep working for you when you close the app"
+      story. Appears from the user's second app open onward (so a
+      first-open user isn't hit with a banner before they've even
+      seen the feed) until they either tap through or dismiss.
+    - **Post-join nudge** (secondary — catches people who dismissed
+      the banner without acting). After the user's first successful
+      game JOIN, a SurfaceCard on the finish screen says "Want a
+      ping when new Monopoly games open? Subscribe →". Fires once
+      per app install regardless of banner state.
+
+  Both nudges deep-link straight into `/notifications` with the
+  game-type from the finished game preselected (or all types if
+  coming from the home banner), so the user lands on the exact
+  toggle they'd want and doesn't have to hunt.
+
+  **Web coverage.** The home banner ships on `apps/web` too, on the
+  same `/` landing that the mobile home mirrors. On iOS Safari (not
+  yet installed), the banner text swaps: "🔔 Get pinged when your
+  favourite games open — Add to Home Screen, then Subscribe →" so
+  the PWA install prerequisite is stated up front rather than
+  discovered on the Subscribe page. On installed PWA / Android /
+  desktop, it reads the same as mobile app copy. Detection is the
+  same `display-mode: standalone` media query the tip on
+  `/notifications` uses (Phase B already builds that predicate;
+  the banner reuses it).
 - **Quiet / available hours.** A single per-user time window at the
   top of the Notifications screen, plus a mode segmented control:
     - **Quiet hours** — "Don't ping me between 9:00 AM – 5:00 PM."
