@@ -1926,7 +1926,8 @@ function CreateGameInner() {
     isWordScramble ||
     isWordGrouping ||
     isWordHunt ||
-    isMatchingPairs
+    isMatchingPairs ||
+    isWordleRoom
   const isTriviaQuickCreate = isTrivia
   const needsParticipantStep =
     !isQuickLobby && !isTriviaQuickCreate && !isBinaryLobby && !(isMlt && isJoinersMode) && !isJoinersMode
@@ -5781,7 +5782,7 @@ function CreateGameInner() {
                 </p>
               </SettingsGroup>
             ) : isWordleRoom ? (
-              <SettingsGroup title="Wordle Room">
+              <SettingsGroup title="Wordle">
                 <Field label={`Max players (${effectiveLimits.wordle_room.min}–${effectiveLimits.wordle_room.max})`}>
                   <CustomSelect
                     value={wordleRoomMaxPlayers}

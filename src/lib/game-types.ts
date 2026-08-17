@@ -1454,7 +1454,7 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
   },
   wordle_room: {
     id: 'wordle_room',
-    label: 'Wordle Room',
+    label: 'Wordle',
     tagline: 'Race to solve the same words — most solved, fewest guesses wins',
     headerEmoji: '🟩🟨',
     card: {
