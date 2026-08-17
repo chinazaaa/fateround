@@ -210,6 +210,7 @@ import {
 } from '@/lib/word-rush'
 import { gameSupportsViewerSetting, lateJoinPolicyToFields, type LateJoinPolicy } from '@/lib/viewers'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { scheduleNewPublicGameFanout } from '@/lib/notification-subscriptions'
 import { z } from 'zod/v4'
 import { ELIMINATION_COMPATIBLE_TYPES } from '@/types/elimination'
 
@@ -1309,6 +1310,13 @@ export async function POST(req: NextRequest) {
       await admin.from('games').delete().eq('id', gameCode)
       return NextResponse.json({ error: internalErrorMessage('games', partError) }, { status: 500 })
     }
+  }
+
+  // Discovery Phase B — fan out to per-game-type subscribers when the host
+  // opens a Public game. Runs via `after()` so the create response returns
+  // immediately; self-gates on rate-limit + quiet hours per subscriber.
+  if (parsed.data.isPublic === true) {
+    scheduleNewPublicGameFanout(gameCode, game_type, title)
   }
 
   return NextResponse.json({ gameCode, hostToken })
