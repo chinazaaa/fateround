@@ -71,7 +71,7 @@ const makeStyles = (theme: Theme) =>
       width: '100%',
       maxWidth: 420,
       backgroundColor: theme.surface,
-      borderRadius: 16,
+      borderRadius: theme.radius.lg,
       padding: 24,
       gap: 10,
       alignItems: 'center',
@@ -100,7 +100,7 @@ const makeStyles = (theme: Theme) =>
     },
     body: {
       color: theme.textMuted,
-      fontSize: 15,
+      fontSize: theme.type.body.size,
       lineHeight: 22,
       textAlign: 'center',
     },
@@ -118,11 +118,11 @@ const makeStyles = (theme: Theme) =>
     },
     pulseText: {
       color: theme.textFaint,
-      fontSize: 14,
+      fontSize: theme.type.label.size,
     },
     codeLabel: {
       color: theme.textFaint,
-      fontSize: 12,
+      fontSize: theme.type.caption.size,
       textTransform: 'uppercase',
       letterSpacing: 1,
       marginTop: 12,
