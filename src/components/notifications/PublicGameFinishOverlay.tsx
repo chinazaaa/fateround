@@ -25,6 +25,7 @@ export function PublicGameFinishOverlay({ gameCode }: { gameCode: string }) {
   const [finished, setFinished] = useState(false)
   const [gameType, setGameType] = useState<string | null>(null)
   const [hidden, setHidden] = useState<boolean | null>(null)
+  const [alreadySubscribed, setAlreadySubscribed] = useState(false)
 
   useEffect(() => {
     try {
@@ -55,6 +56,42 @@ export function PublicGameFinishOverlay({ gameCode }: { gameCode: string }) {
     }
   }, [gameCode, hidden])
 
+  // Once we know the finished game's type, probe /api/notifications with the
+  // current PushSubscription endpoint to see if this browser is already
+  // subscribed. If so we swap the copy to "You're subscribed — see all →"
+  // instead of asking users to subscribe to something they already have.
+  useEffect(() => {
+    if (!gameType || hidden !== false) return
+    let cancelled = false
+    void (async () => {
+      try {
+        if (
+          typeof window === 'undefined' ||
+          !('serviceWorker' in navigator) ||
+          !('PushManager' in window) ||
+          Notification.permission !== 'granted'
+        ) {
+          return
+        }
+        const registration = await navigator.serviceWorker.getRegistration()
+        const sub = registration ? await registration.pushManager.getSubscription() : null
+        if (!sub) return
+        const res = await fetch(`/api/notifications?tokenKey=${encodeURIComponent(sub.endpoint)}`, {
+          cache: 'no-store',
+        })
+        if (!res.ok) return
+        const data = await res.json()
+        const types = (data.subscribedGameTypes ?? []) as string[]
+        if (!cancelled) setAlreadySubscribed(types.includes(gameType))
+      } catch {
+        // Ignore — default subscribe copy is fine.
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [gameType, hidden])
+
   if (hidden !== false || !finished || !gameType) return null
 
   const cfg = gameTypeConfig(parseGameType(gameType))
@@ -79,15 +116,29 @@ export function PublicGameFinishOverlay({ gameCode }: { gameCode: string }) {
           {cfg.card.emoji}
         </span>
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-bold text-body">Want a ping when new {label} games open?</p>
+          <p className="text-sm font-bold text-body">
+            {alreadySubscribed ? `You’re subscribed to ${label} pings ✓` : `Want a ping when new ${label} games open?`}
+          </p>
           <Link
-            href={`/notifications?type=${encodeURIComponent(gameType)}`}
+            href={alreadySubscribed ? '/notifications' : `/notifications?type=${encodeURIComponent(gameType)}`}
             onClick={markFired}
             className="mt-0.5 inline-block text-xs font-semibold"
             style={{ color: 'var(--primary)' }}
           >
-            Subscribe →
+            {alreadySubscribed ? 'See all notification preferences →' : 'Subscribe →'}
           </Link>
+          {/* Secondary "see all" link for the not-yet-subscribed case, so
+              users can jump to the full list without going through the
+              type-specific deep link first. */}
+          {!alreadySubscribed ? (
+            <Link
+              href="/notifications"
+              onClick={markFired}
+              className="mt-1 block text-xs font-semibold text-muted hover:text-body"
+            >
+              See all notifications →
+            </Link>
+          ) : null}
         </div>
         <button type="button" onClick={markFired} aria-label="Dismiss" className="text-xl text-muted hover:text-body">
           ×
