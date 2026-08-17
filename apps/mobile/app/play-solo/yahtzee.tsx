@@ -206,13 +206,13 @@ export default function SoloYahtzeeScreen() {
 
   return (
     <View style={styles.root}>
-      <Stack.Screen options={{ headerShown: true, title: 'Yahtzee — solo' }} />
+      <Stack.Screen options={{ headerShown: true, title: 'Five Dice — solo' }} />
 
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         <SurfaceCard>
           <View style={styles.headerRow}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.headerTitle}>Yahtzee — solo vs bot</Text>
+              <Text style={styles.headerTitle}>Five Dice — solo vs bot</Text>
               <Text style={styles.headerSub}>Practice mode · no room, no account</Text>
             </View>
             <AppButton label="New game" tone="secondary" size="sm" onPress={restart} />
