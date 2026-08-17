@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { GAME_TYPE_CONFIG, GAME_TYPE_OPTIONS, gameTypeConfig, parseGameType } from './game-types'
-import { GAME_TYPE_TO_SLUG, GAME_LANDING_CONTENT } from './game-landing'
+import { GAME_TYPE_TO_SLUG, GAME_LANDING_CONTENT, gameTypeFromSlug, getGameLandingContent } from './game-landing'
 import { GAME_LANDING_RULES } from './game-landing-rules'
 import { createGameSchema } from './validation'
 import type { GameType } from '@/types'
@@ -39,6 +39,13 @@ describe('game-type coverage (fail-fast guard for a half-wired game)', () => {
       expect(GAME_LANDING_CONTENT[g], `content ${g}`).toBeTruthy()
       expect(GAME_LANDING_RULES[g]?.length, `rules ${g}`).toBeGreaterThan(0)
     }
+  })
+
+  it('uses Estate Kings as the canonical property-game slug while preserving the old alias', () => {
+    expect(GAME_TYPE_TO_SLUG.monopoly).toBe('estate-kings')
+    expect(gameTypeFromSlug('estate-kings')).toBe('monopoly')
+    expect(gameTypeFromSlug('monopoly')).toBe('monopoly')
+    expect(getGameLandingContent('monopoly')?.slug).toBe('estate-kings')
   })
 
   it('createGameSchema (validation gameTypeEnum) accepts every game type', () => {

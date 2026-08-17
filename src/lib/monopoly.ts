@@ -16,8 +16,6 @@ import type {
   Game,
 } from '@/types'
 import {
-  MONOPOLY_BOARD,
-  MONOPOLY_BOARD_SIZE,
   MONOPOLY_GO_SALARY,
   MONOPOLY_HOUSES_IN_BANK,
   MONOPOLY_HOUSES_UNDER_HOTEL,
@@ -29,8 +27,10 @@ import {
   MONOPOLY_STARTING_CASH,
   formatMonopolyMoney,
   mortgageValue,
+  monopolyBoardForSize,
   spaceAt,
   unmortgageCost,
+  type MonopolyBoardSize,
   type MonopolyColorGroup,
   type MonopolySpace,
 } from '@/lib/monopoly-board'
@@ -47,7 +47,7 @@ export type { MonopolyColorGroup, MonopolySpace, MonopolySpaceType, BuildingLeve
 export { computeRent } from '@/lib/monopoly-rent'
 
 export const MONOPOLY_MIN_PLAYERS = 2
-export const MONOPOLY_MAX_PLAYERS = 6
+export const MONOPOLY_MAX_PLAYERS = 8
 export const MONOPOLY_DEFAULT_MAX_PLAYERS = 6
 
 /** Per-turn timer options (seconds). 0 = off. */
@@ -97,11 +97,12 @@ export async function getMonopolyGameSettings(
   forcedAuctions: boolean
   noRentInJail: boolean
   estateDividend: boolean
+  boardSize: 40 | 48
 }> {
   const { data } = await supabase
     .from('games')
     .select(
-      'timer_seconds, monopoly_auction_timer_seconds, monopoly_double_go_salary, monopoly_forced_auctions, monopoly_no_rent_in_jail, monopoly_estate_dividend'
+      'timer_seconds, monopoly_auction_timer_seconds, monopoly_double_go_salary, monopoly_forced_auctions, monopoly_no_rent_in_jail, monopoly_estate_dividend, monopoly_board_size'
     )
     .eq('id', gameId)
     .maybeSingle()
@@ -112,6 +113,7 @@ export async function getMonopolyGameSettings(
     forcedAuctions: data?.monopoly_forced_auctions === true,
     noRentInJail: data?.monopoly_no_rent_in_jail === true,
     estateDividend: data?.monopoly_estate_dividend === true,
+    boardSize: data?.monopoly_board_size === 48 ? 48 : 40,
   }
 }
 
@@ -179,12 +181,12 @@ export function playerCanBuyProperty(state: Pick<MonopolyPlayerState, 'passed_go
   return state.passed_go_once === true
 }
 
-export function movePosition(from: number, steps: number): { to: number; passedGo: boolean } {
+export function movePosition(from: number, steps: number, boardSize: 40 | 48 = 40): { to: number; passedGo: boolean } {
   const start = Number(from)
   const delta = Number(steps)
   const total = start + delta
-  const to = ((total % MONOPOLY_BOARD_SIZE) + MONOPOLY_BOARD_SIZE) % MONOPOLY_BOARD_SIZE
-  const passedGo = total >= MONOPOLY_BOARD_SIZE
+  const to = ((total % boardSize) + boardSize) % boardSize
+  const passedGo = total >= boardSize
   return { to, passedGo }
 }
 
@@ -358,14 +360,15 @@ export function computeMonopolyNetWorth(
   state: MonopolyPlayerState,
   owners: Record<string, string>,
   buildings: Record<string, number>,
-  mortgaged: Record<string, boolean>
+  mortgaged: Record<string, boolean>,
+  boardSize: MonopolyBoardSize = 40
 ): number {
   if (state.bankrupt) return 0
   let total = state.cash
   for (const [idx, ownerId] of Object.entries(owners)) {
     if (ownerId !== state.player_id) continue
     const spaceIndex = Number(idx)
-    const space = spaceAt(spaceIndex)
+    const space = spaceAt(spaceIndex, boardSize)
     if (space.type !== 'property' && space.type !== 'station' && space.type !== 'utility') continue
     if (mortgaged[idx]) {
       total += mortgageValue(space)
@@ -381,12 +384,13 @@ export function rankMonopolyPlayers(
   states: MonopolyPlayerState[],
   owners: Record<string, string>,
   buildings: Record<string, number>,
-  mortgaged: Record<string, boolean>
+  mortgaged: Record<string, boolean>,
+  boardSize: MonopolyBoardSize = 40
 ): { playerId: string; netWorth: number }[] {
   return activePlayers(states)
     .map((state) => ({
       playerId: state.player_id,
-      netWorth: computeMonopolyNetWorth(state, owners, buildings, mortgaged),
+      netWorth: computeMonopolyNetWorth(state, owners, buildings, mortgaged, boardSize),
     }))
     .sort((a, b) => b.netWorth - a.netWorth)
 }
@@ -405,13 +409,14 @@ export function buildMonopolyStandings(
   players: { id: string; name: string }[],
   propertyOwners: unknown,
   propertyBuildings: unknown,
-  mortgagedProperties: unknown
+  mortgagedProperties: unknown,
+  boardSize: MonopolyBoardSize = 40
 ): MonopolyStanding[] {
   const owners = parsePropertyOwners(propertyOwners)
   const buildings = parseBuildings(propertyBuildings)
   const mortgaged = parseMortgaged(mortgagedProperties)
 
-  return rankMonopolyPlayers(states, owners, buildings, mortgaged).map((row, index) => {
+  return rankMonopolyPlayers(states, owners, buildings, mortgaged, boardSize).map((row, index) => {
     const state = states.find((s) => s.player_id === row.playerId)
     return {
       playerId: row.playerId,
@@ -419,7 +424,7 @@ export function buildMonopolyStandings(
       rank: index + 1,
       netWorth: row.netWorth,
       cash: state?.cash ?? 0,
-      propertyCount: playerProperties(owners, row.playerId).length,
+      propertyCount: playerProperties(owners, row.playerId, boardSize).length,
     }
   })
 }
@@ -429,12 +434,13 @@ export function resolveMonopolyWinnerId(
   owners: Record<string, string>,
   buildings: Record<string, number>,
   mortgaged: Record<string, boolean>,
-  existingWinnerId?: string | null
+  existingWinnerId?: string | null,
+  boardSize: MonopolyBoardSize = 40
 ): string | null {
   const byElimination = checkWinner(states)
   if (byElimination) return byElimination
   if (existingWinnerId) return existingWinnerId
-  return rankMonopolyPlayers(states, owners, buildings, mortgaged)[0]?.playerId ?? null
+  return rankMonopolyPlayers(states, owners, buildings, mortgaged, boardSize)[0]?.playerId ?? null
 }
 
 export async function finishMonopolyGameEarly(
@@ -456,11 +462,24 @@ export async function finishMonopolyGameEarly(
   const buildings = parseBuildings(board.property_buildings)
   const mortgaged = parseMortgaged(board.mortgaged_properties)
 
-  const winnerId = resolveMonopolyWinnerId(states, owners, buildings, mortgaged, board.winner_player_id)
+  const winnerId = resolveMonopolyWinnerId(
+    states,
+    owners,
+    buildings,
+    mortgaged,
+    board.winner_player_id,
+    board.board_size ?? 40
+  )
   const winnerName = winnerId ? players.find((p) => p.id === winnerId)?.name : null
   const winnerNetWorth =
     winnerId != null
-      ? computeMonopolyNetWorth(states.find((s) => s.player_id === winnerId)!, owners, buildings, mortgaged)
+      ? computeMonopolyNetWorth(
+          states.find((s) => s.player_id === winnerId)!,
+          owners,
+          buildings,
+          mortgaged,
+          board.board_size ?? 40
+        )
       : null
 
   const statusMessage = winnerName
@@ -663,6 +682,7 @@ function resolveSpaceLanding(
     diceTotal: number
     extraTurn: boolean
     passedGoOnce: boolean
+    boardSize: 40 | 48
   }
 ): LandingResolution {
   const { position, inJail, jailTurns, getOutCards, extraTurn } = ctx
@@ -778,7 +798,15 @@ function resolveSpaceLanding(
       if (ctx.mortgaged[String(landed.index)]) {
         statusSuffix = ' Property is mortgaged — no rent due.'
       } else {
-        const rent = computeRent(landed, ctx.owners, ownerId, ctx.diceTotal, ctx.buildings, ctx.mortgaged)
+        const rent = computeRent(
+          landed,
+          ctx.owners,
+          ownerId,
+          ctx.diceTotal,
+          ctx.buildings,
+          ctx.mortgaged,
+          ctx.boardSize
+        )
         if (rent > 0 && cash < rent) {
           return {
             cash,
@@ -993,7 +1021,7 @@ async function finalizeAuction(
   expectedUpdatedAt: string
 ): Promise<{ error?: string }> {
   const spaceIndex = Number(auction.space_index)
-  const space = spaceAt(spaceIndex)
+  const space = spaceAt(spaceIndex, board.board_size ?? 40)
   const spaceKey = String(spaceIndex)
   const turnFinish = finishTurnAfterSpaceAction(board, states, turnPlayerId)
   const settings = await getMonopolyGameSettings(supabase, gameId)
@@ -1146,6 +1174,7 @@ export async function initializeMonopolyGame(
     status_message: 'Game started — pass PAYDAY once before you can buy property.',
     turn_deadline_at: monopolyTurnDeadline(timerSeconds),
     ...defaultBoardFields(),
+    board_size: (await getMonopolyGameSettings(supabase, gameId)).boardSize,
   })
   if (boardError) return { error: internalErrorMessage('monopoly', boardError) }
 
@@ -1297,7 +1326,7 @@ export async function processMonopolyRoll(
       inJail = false
       jailTurns = 0
       statusMessage = `Rolled doubles (${dice.d1}+${dice.d2}) — out of jail!`
-      const move = movePosition(position, dice.total)
+      const move = movePosition(position, dice.total, board.board_size ?? 40)
       position = move.to
       if (move.passedGo) {
         const exactGo = move.to === 0
@@ -1316,7 +1345,7 @@ export async function processMonopolyRoll(
           amount: MONOPOLY_JAIL_FINE,
           reason: `Need ${formatMonopolyMoney(MONOPOLY_JAIL_FINE)} to leave NICKED`,
           debt_type: 'jail',
-          space_index: MONOPOLY_JAIL_POSITION,
+          space_index: board.board_size ? board.board_size / 4 : MONOPOLY_JAIL_POSITION,
         }
         const won = await updatePlayerAndBoard(
           supabase,
@@ -1355,7 +1384,7 @@ export async function processMonopolyRoll(
       inJail = false
       jailTurns = 0
       statusMessage = `Paid ${formatMonopolyMoney(MONOPOLY_JAIL_FINE)} to leave NICKED. Rolled ${dice.d1}+${dice.d2}.`
-      const move = movePosition(position, dice.total)
+      const move = movePosition(position, dice.total, board.board_size ?? 40)
       position = move.to
       if (move.passedGo) {
         const exactGo = move.to === 0
@@ -1398,7 +1427,7 @@ export async function processMonopolyRoll(
           playerId,
           {
             cash,
-            position: MONOPOLY_JAIL_POSITION,
+            position: board.board_size ? board.board_size / 4 : MONOPOLY_JAIL_POSITION,
             in_jail: jailedByDoubles,
             jail_turns: jailedByDoubles ? 0 : jailTurns,
           },
@@ -1422,7 +1451,7 @@ export async function processMonopolyRoll(
       consecutiveDoubles = 0
     }
 
-    const move = movePosition(position, dice.total)
+    const move = movePosition(position, dice.total, board.board_size ?? 40)
     position = move.to
     if (move.passedGo) {
       const exactGo = move.to === 0
@@ -1433,7 +1462,7 @@ export async function processMonopolyRoll(
     }
   }
 
-  const landed = spaceAt(position)
+  const landed = spaceAt(position, board.board_size ?? 40)
   statusMessage += `Landed on ${landed.name}.`
 
   const landingCtx = {
@@ -1450,6 +1479,7 @@ export async function processMonopolyRoll(
     diceTotal: dice.total,
     extraTurn,
     passedGoOnce,
+    boardSize: board.board_size ?? 40,
   }
 
   if (landed.type === 'chance' || landed.type === 'community') {
@@ -1491,10 +1521,11 @@ export async function processMonopolyRoll(
         activePlayerIds: activePlayers(states).map((s) => s.player_id),
         buildings,
         owners,
+        boardSize: board.board_size ?? 40,
       })
 
       if (effect.goToJail) {
-        position = MONOPOLY_JAIL_POSITION
+        position = board.board_size ? board.board_size / 4 : MONOPOLY_JAIL_POSITION
         inJail = true
         jailTurns = 0
         consecutiveDoubles = 0
@@ -1562,8 +1593,8 @@ export async function processMonopolyRoll(
             cash += salary
             statusMessage += ` Collected ${formatMonopolyMoney(salary)}.`
           }
-          statusMessage += ` Now on ${spaceAt(position).name}.`
-          const afterCard = resolveSpaceLanding(spaceAt(position), {
+          statusMessage += ` Now on ${spaceAt(position, board.board_size ?? 40).name}.`
+          const afterCard = resolveSpaceLanding(spaceAt(position, board.board_size ?? 40), {
             ...landingCtx,
             cash,
             position,
@@ -1715,7 +1746,7 @@ export async function processMonopolyBuy(
   const spaceIndex = board.pending_space
   if (spaceIndex == null) return { error: 'No property pending' }
 
-  const space = spaceAt(spaceIndex)
+  const space = spaceAt(spaceIndex, board.board_size ?? 40)
   const { data: state } = await supabase
     .from('monopoly_player_state')
     .select('*')
@@ -1842,7 +1873,7 @@ export async function processMonopolyAuction(
     return finalizeAuction(supabase, gameId, board, states, nextAuction, currentPlayerId(board)!, board.updated_at)
   }
 
-  const space = spaceAt(nextAuction.space_index)
+  const space = spaceAt(nextAuction.space_index, board.board_size ?? 40)
   const settings = await getMonopolyGameSettings(supabase, gameId)
   const { data: updatedBoard, error: updateError } = await supabase
     .from('monopoly_boards')
@@ -1887,7 +1918,7 @@ export async function processMonopolyPayRent(
   const spaceIndex = fromRaiseFunds ? (board.pending_debt?.space_index ?? board.pending_space) : board.pending_space
   if (spaceIndex == null) return { error: 'No property pending' }
 
-  const space = spaceAt(spaceIndex)
+  const space = spaceAt(spaceIndex, board.board_size ?? 40)
   const owners = parsePropertyOwners(board.property_owners)
   const buildings = parseBuildings(board.property_buildings)
   const mortgaged = parseMortgaged(board.mortgaged_properties)
@@ -1922,7 +1953,7 @@ export async function processMonopolyPayRent(
   const rent =
     board.pending_debt?.debt_type === 'rent' && board.pending_debt?.amount != null
       ? board.pending_debt.amount
-      : computeRent(space, owners, ownerId, board.last_dice?.total ?? 2, buildings, mortgaged)
+      : computeRent(space, owners, ownerId, board.last_dice?.total ?? 2, buildings, mortgaged, board.board_size ?? 40)
 
   const { data: state } = await supabase
     .from('monopoly_player_state')
@@ -2078,6 +2109,7 @@ export async function processMonopolyBuild(
   const { data: boardRaw } = await supabase.from('monopoly_boards').select('*').eq('game_id', gameId).maybeSingle()
   if (!boardRaw) return { error: 'Board not found' }
   const board = boardRaw as MonopolyBoard
+  if (spaceIndex >= (board.board_size ?? 40)) return { error: 'Space is not on this board' }
 
   const isBuying = action === 'buy_house' || action === 'buy_hotel'
   const isPayer =
@@ -2095,7 +2127,7 @@ export async function processMonopolyBuild(
     return { error: 'Cannot modify buildings on this property while its rent is pending collection' }
   }
 
-  const space = spaceAt(spaceIndex)
+  const space = spaceAt(spaceIndex, board.board_size ?? 40)
   const owners = parsePropertyOwners(board.property_owners)
   const buildings = parseBuildings(board.property_buildings)
   const mortgaged = parseMortgaged(board.mortgaged_properties)
@@ -2116,7 +2148,7 @@ export async function processMonopolyBuild(
   const houseCost = space.houseCost ?? 0
 
   if (action === 'buy_house') {
-    if (!canAddHouse(spaceIndex, playerId, owners, buildings, mortgaged, housesInBank)) {
+    if (!canAddHouse(spaceIndex, playerId, owners, buildings, mortgaged, housesInBank, board.board_size ?? 40)) {
       return { error: 'Cannot build a house here' }
     }
     if (cash < houseCost) return { error: 'Not enough cash' }
@@ -2124,7 +2156,7 @@ export async function processMonopolyBuild(
     cash -= houseCost
     housesInBank -= 1
   } else if (action === 'buy_hotel') {
-    if (!canAddHotel(spaceIndex, playerId, owners, buildings, mortgaged, hotelsInBank)) {
+    if (!canAddHotel(spaceIndex, playerId, owners, buildings, mortgaged, hotelsInBank, board.board_size ?? 40)) {
       return { error: 'Cannot build a hotel here' }
     }
     if (cash < houseCost) return { error: 'Not enough cash' }
@@ -2134,7 +2166,8 @@ export async function processMonopolyBuild(
     hotelsInBank -= 1
     housesInBank += housesOnSite
   } else if (action === 'sell_house') {
-    if (!canRemoveHouse(spaceIndex, playerId, owners, buildings)) return { error: 'Cannot sell a house here' }
+    if (!canRemoveHouse(spaceIndex, playerId, owners, buildings, board.board_size ?? 40))
+      return { error: 'Cannot sell a house here' }
     buildings[String(spaceIndex)] = buildingLevel(buildings, spaceIndex) - 1
     cash += Math.floor(houseCost / 2)
     housesInBank += 1
@@ -2181,8 +2214,9 @@ export async function processMonopolyMortgage(
   const { data: boardRaw } = await supabase.from('monopoly_boards').select('*').eq('game_id', gameId).maybeSingle()
   if (!boardRaw) return { error: 'Board not found' }
   const board = boardRaw as MonopolyBoard
+  if (spaceIndex >= (board.board_size ?? 40)) return { error: 'Space is not on this board' }
 
-  const space = spaceAt(spaceIndex)
+  const space = spaceAt(spaceIndex, board.board_size ?? 40)
   if (space.type !== 'property' && space.type !== 'station' && space.type !== 'utility') {
     return { error: 'Not a mortgageable property' }
   }
@@ -2204,7 +2238,7 @@ export async function processMonopolyMortgage(
   if (action === 'mortgage') {
     if (mortgaged[String(spaceIndex)]) return { error: 'Already mortgaged' }
     if (buildingLevel(buildings, spaceIndex) > 0) return { error: 'Sell all buildings first' }
-    if (space.color && groupHasBuildings(space.color, playerId, owners, buildings)) {
+    if (space.color && groupHasBuildings(space.color, playerId, owners, buildings, board.board_size ?? 40)) {
       return { error: 'Sell all buildings in this colour group first' }
     }
     mortgaged[String(spaceIndex)] = true
@@ -2250,15 +2284,17 @@ function validateTradeAssets(
   owners: Record<string, string>,
   buildings: Record<string, number>,
   stateCash: number,
-  stateCards: number
+  stateCards: number,
+  boardSize: 40 | 48 = 40
 ): string | null {
   if (cash < 0 || cash > stateCash) return 'Invalid cash offer'
   if (getOutCards < 0 || getOutCards > stateCards) return 'Invalid card offer'
   for (const idx of properties) {
+    if (idx >= boardSize) return 'Property is not on this board'
     if (owners[String(idx)] !== playerId) return 'You do not own a listed property'
     if (buildingLevel(buildings, idx) > 0) return 'Sell all buildings before trading property'
-    const space = spaceAt(idx)
-    if (space.color && groupHasBuildings(space.color, playerId, owners, buildings)) {
+    const space = spaceAt(idx, boardSize)
+    if (space.color && groupHasBuildings(space.color, playerId, owners, buildings, boardSize)) {
       return 'Sell all buildings in colour group before trading'
     }
   }
@@ -2295,8 +2331,8 @@ export async function processMonopolyTradePropose(
     .maybeSingle()
   if (!fromState || !toState || fromState.bankrupt || toState.bankrupt) return { error: 'Invalid players' }
 
-  const offerProperties = normalizeTradePropertyList(offer.properties)
-  const requestProperties = normalizeTradePropertyList(request.properties)
+  const offerProperties = normalizeTradePropertyList(offer.properties, board.board_size ?? 40)
+  const requestProperties = normalizeTradePropertyList(request.properties, board.board_size ?? 40)
 
   const fromErr = validateTradeAssets(
     fromPlayerId,
@@ -2306,7 +2342,8 @@ export async function processMonopolyTradePropose(
     owners,
     buildings,
     fromState.cash,
-    fromState.get_out_of_jail_free
+    fromState.get_out_of_jail_free,
+    board.board_size ?? 40
   )
   if (fromErr) return { error: fromErr }
 
@@ -2318,7 +2355,8 @@ export async function processMonopolyTradePropose(
     owners,
     buildings,
     toState.cash,
-    toState.get_out_of_jail_free
+    toState.get_out_of_jail_free,
+    board.board_size ?? 40
   )
   if (toErr) return { error: `Counterparty: ${toErr}` }
 
@@ -2416,7 +2454,8 @@ export async function processMonopolyTradeRespond(
     owners,
     buildings,
     fromState.cash,
-    fromState.get_out_of_jail_free
+    fromState.get_out_of_jail_free,
+    board.board_size ?? 40
   )
   if (fromErr) return { error: fromErr }
 
@@ -2428,7 +2467,8 @@ export async function processMonopolyTradeRespond(
     owners,
     buildings,
     toState.cash,
-    toState.get_out_of_jail_free
+    toState.get_out_of_jail_free,
+    board.board_size ?? 40
   )
   if (toErr) return { error: toErr }
 
@@ -2809,7 +2849,8 @@ function computePlayerEstateValue(
   state: MonopolyPlayerState,
   rawOwners: unknown,
   rawBuildings: unknown,
-  rawMortgaged?: unknown
+  rawMortgaged?: unknown,
+  boardSize: MonopolyBoardSize = 40
 ): number {
   const owners = parsePropertyOwners(rawOwners)
   const buildings = parseBuildings(rawBuildings)
@@ -2818,7 +2859,7 @@ function computePlayerEstateValue(
 
   for (const [idx, owner] of Object.entries(owners)) {
     if (owner !== playerId) continue
-    const space = spaceAt(Number(idx))
+    const space = spaceAt(Number(idx), boardSize)
     if (!space || space.price == null) continue
     // Mortgaged properties valued at half price; unmortgaged at full face value
     value += mortgaged[idx] ? mortgageValue(space) : space.price
@@ -2913,13 +2954,21 @@ async function enterRaiseFundsPhase(
 
 function resolveDebtAmount(board: MonopolyBoard, debt: MonopolyPendingDebt): number {
   if (debt.debt_type === 'rent' && debt.space_index != null) {
-    const space = spaceAt(debt.space_index)
+    const space = spaceAt(debt.space_index, board.board_size ?? 40)
     const owners = parsePropertyOwners(board.property_owners)
     const buildings = parseBuildings(board.property_buildings)
     const mortgaged = parseMortgaged(board.mortgaged_properties)
     const ownerId = owners[String(debt.space_index)]
     if (ownerId) {
-      return computeRent(space, owners, ownerId, board.last_dice?.total ?? 2, buildings, mortgaged)
+      return computeRent(
+        space,
+        owners,
+        ownerId,
+        board.last_dice?.total ?? 2,
+        buildings,
+        mortgaged,
+        board.board_size ?? 40
+      )
     }
   }
   return debt.amount
@@ -3222,8 +3271,12 @@ export async function processMonopolyExpireTurn(
   }
 }
 
-export function playerProperties(owners: Record<string, string>, playerId: string): MonopolySpace[] {
-  return MONOPOLY_BOARD.filter((s) => owners[String(s.index)] === playerId)
+export function playerProperties(
+  owners: Record<string, string>,
+  playerId: string,
+  boardSize: MonopolyBoardSize = 40
+): MonopolySpace[] {
+  return monopolyBoardForSize(boardSize).filter((space) => owners[String(space.index)] === playerId)
 }
 
 export function formatDice(dice: { d1: number; d2: number } | null | undefined): string {
@@ -3253,13 +3306,23 @@ export type MonopolyActionResult = {
   winnerPlayerId?: string | null
 }
 
-export function railroadRent(owners: Record<string, string>, ownerId: string, baseRent: number): number {
+export function railroadRent(
+  owners: Record<string, string>,
+  ownerId: string,
+  baseRent: number,
+  boardSize: MonopolyBoardSize = 40
+): number {
   const count = Object.entries(owners).filter(
-    ([idx, id]) => id === ownerId && spaceAt(Number(idx)).type === 'station'
+    ([idx, id]) => id === ownerId && spaceAt(Number(idx), boardSize).type === 'station'
   ).length
   return baseRent * 2 ** Math.max(0, count - 1)
 }
 
-export function countOwnedInGroup(owners: Record<string, string>, ownerId: string, group: MonopolyColorGroup): number {
-  return MONOPOLY_BOARD.filter((s) => s.color === group && owners[String(s.index)] === ownerId).length
+export function countOwnedInGroup(
+  owners: Record<string, string>,
+  ownerId: string,
+  group: MonopolyColorGroup,
+  boardSize: MonopolyBoardSize = 40
+): number {
+  return monopolyBoardForSize(boardSize).filter((s) => s.color === group && owners[String(s.index)] === ownerId).length
 }

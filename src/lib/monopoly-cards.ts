@@ -1,7 +1,5 @@
 import {
-  MONOPOLY_BOARD_SIZE,
   MONOPOLY_GO_SALARY,
-  MONOPOLY_JAIL_POSITION,
   MONOPOLY_HOTEL_LEVEL,
   MONOPOLY_MAX_HOUSES_PER_PROPERTY,
   nearestSpaceFrom,
@@ -335,27 +333,30 @@ export type CardResolution = {
 
 export function resolveCardMovement(
   card: MonopolyCardDef,
-  position: number
+  position: number,
+  boardSize: 40 | 48 = 40
 ): { moveTo?: number; moveBy?: number; passedGo: boolean } {
   if (card.effect === 'advance_go') {
     return { moveTo: 0, passedGo: true }
   }
   if (card.effect === 'advance_to' && card.moveTo !== undefined) {
-    const passedGo = card.moveTo < position && card.moveTo !== MONOPOLY_JAIL_POSITION
-    return { moveTo: card.moveTo, passedGo }
+    const moveTo = boardSize === 48 ? card.moveTo + Math.floor(card.moveTo / 10) * 2 : card.moveTo
+    const jailPosition = boardSize / 4
+    const passedGo = moveTo < position && moveTo !== jailPosition
+    return { moveTo, passedGo }
   }
   if (card.effect === 'advance_nearest_station') {
-    const moveTo = nearestSpaceFrom(position, 'station')
+    const moveTo = nearestSpaceFrom(position, 'station', true, boardSize)
     const passedGo = moveTo < position
     return { moveTo, passedGo }
   }
   if (card.effect === 'advance_nearest_utility') {
-    const moveTo = nearestSpaceFrom(position, 'utility')
+    const moveTo = nearestSpaceFrom(position, 'utility', true, boardSize)
     const passedGo = moveTo < position
     return { moveTo, passedGo }
   }
   if (card.effect === 'move_back' && card.moveBy !== undefined) {
-    const next = (((position + card.moveBy) % MONOPOLY_BOARD_SIZE) + MONOPOLY_BOARD_SIZE) % MONOPOLY_BOARD_SIZE
+    const next = (((position + card.moveBy) % boardSize) + boardSize) % boardSize
     return { moveBy: card.moveBy, moveTo: next, passedGo: false }
   }
   return { passedGo: false }
@@ -387,6 +388,7 @@ export function applyCardEffect(
     activePlayerIds: string[]
     buildings: Record<string, number>
     owners: Record<string, string>
+    boardSize?: 40 | 48
   }
 ): CardResolution {
   const playerCashDeltas: Record<string, number> = {}
@@ -416,7 +418,7 @@ export function applyCardEffect(
     return { message: card.message, cashDelta: 0, playerCashDeltas, getOutOfJail: true }
   }
 
-  const movement = resolveCardMovement(card, ctx.position)
+  const movement = resolveCardMovement(card, ctx.position, ctx.boardSize ?? 40)
   return {
     message: card.message,
     cashDelta,

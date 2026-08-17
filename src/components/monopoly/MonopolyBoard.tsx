@@ -60,12 +60,14 @@ function TitleDeedSection({
   owners,
   buildings,
   ownerId,
+  boardSize = 40,
 }: {
   space: MonopolySpace
   themeId?: string | null
   owners: Record<string, string>
   buildings: Record<string, number>
   ownerId?: string
+  boardSize?: 40 | 48
 }) {
   const fmt = (amount: number) => formatThemedMoney(amount, themeId)
   const rows: TitleDeedRow[] = []
@@ -91,7 +93,7 @@ function TitleDeedSection({
     rows.push({ label: 'House cost', value: fmt(space.houseCost) })
     rows.push({ label: 'Hotel cost', value: fmt(space.houseCost) })
   } else if (space.type === 'station') {
-    const ownedCount = ownerId ? countOwnedInGroup(owners, ownerId, 'station') : 0
+    const ownedCount = ownerId ? countOwnedInGroup(owners, ownerId, 'station', boardSize) : 0
     const baseRent = space.rent ?? 25
 
     rows.push({ label: 'Price', value: fmt(space.price!), section: true })
@@ -105,7 +107,7 @@ function TitleDeedSection({
     }
     rows.push({ label: 'Mortgage value', value: fmt(mortgageValue(space)), section: true })
   } else if (space.type === 'utility') {
-    const ownedCount = ownerId ? countOwnedInGroup(owners, ownerId, 'utility') : 0
+    const ownedCount = ownerId ? countOwnedInGroup(owners, ownerId, 'utility', boardSize) : 0
 
     rows.push({ label: 'Price', value: fmt(space.price!), section: true })
     rows.push({
@@ -224,12 +226,14 @@ function BoardBuildingBadge({
   spaceIndex,
   buildings,
   edge,
+  boardSize = 40,
 }: {
   spaceIndex: number
   buildings: Record<string, number>
   edge: ReturnType<typeof boardEdgeForSpace>
+  boardSize?: 40 | 48
 }) {
-  const space = spaceAt(spaceIndex)
+  const space = spaceAt(spaceIndex, boardSize)
   if (space.type !== 'property') return null
   const level = buildingLevel(buildings, spaceIndex)
   if (level <= 0) return null
@@ -332,21 +336,22 @@ export function MonopolyDiceRoll({
   )
 }
 
-function boardTileRentLabel(
+export function boardTileRentLabel(
   space: MonopolySpace,
   ownerId: string | undefined,
   owners: Record<string, string>,
   buildings: Record<string, number>,
   mortgaged: Record<string, boolean>,
   diceTotal: number,
-  themeId?: string | null
+  themeId?: string | null,
+  boardSize: 40 | 48 = 40
 ): string | null {
   if (space.type !== 'property' && space.type !== 'station' && space.type !== 'utility') {
     return null
   }
   if (ownerId) {
     if (mortgaged[String(space.index)]) return 'Mortgaged'
-    return formatThemedMoney(computeRent(space, owners, ownerId, diceTotal, buildings, mortgaged), themeId)
+    return formatThemedMoney(computeRent(space, owners, ownerId, diceTotal, buildings, mortgaged, boardSize), themeId)
   }
   if (space.type === 'utility') return '4×/10×'
   if (space.type === 'station') return formatThemedMoney(space.rent ?? 25, themeId)
@@ -366,6 +371,7 @@ function BoardSpaceCell({
   edge,
   myPlayerId,
   themeId,
+  boardSize = 40,
   onClick,
 }: {
   spaceIndex: number
@@ -379,9 +385,10 @@ function BoardSpaceCell({
   edge: ReturnType<typeof boardEdgeForSpace>
   myPlayerId?: string | null
   themeId?: string | null
+  boardSize?: 40 | 48
   onClick?: () => void
 }) {
-  const space = spaceAt(spaceIndex)
+  const space = spaceAt(spaceIndex, boardSize)
   const ownerId = owners[String(spaceIndex)]
   const ownerLabel = ownerId ? playerName(players, ownerId) : null
   const orderMap = playerOrderMap(states)
@@ -389,9 +396,9 @@ function BoardSpaceCell({
   const highlighted = highlightIndex === spaceIndex
   const isCorner = edge === 'corner'
   const icon = spaceIcon(space.type, themeId)
-  const lines = boardSpaceLines(space.name, space.type, spaceIndex, themeId)
-  const mobileLines = mobileBoardSpaceLines(space.name, space.type, spaceIndex, themeId)
-  const rentLabel = boardTileRentLabel(space, ownerId, owners, buildings, mortgaged, diceTotal, themeId)
+  const lines = boardSpaceLines(space.name, space.type, spaceIndex, themeId, boardSize)
+  const mobileLines = mobileBoardSpaceLines(space.name, space.type, spaceIndex, themeId, boardSize)
+  const rentLabel = boardTileRentLabel(space, ownerId, owners, buildings, mortgaged, diceTotal, themeId, boardSize)
   const palette = getBoardPalette(themeId)
   const lineClass = [
     `font-extrabold ${palette.tileText} ${palette.tileFont ?? ''} leading-[1.05]`,
@@ -403,7 +410,7 @@ function BoardSpaceCell({
       onClick={onClick}
       role={onClick ? 'button' : undefined}
       tabIndex={onClick ? 0 : undefined}
-      aria-label={themedSpaceName(space.name, spaceIndex, themeId)}
+      aria-label={themedSpaceName(space.name, spaceIndex, themeId, boardSize)}
       onKeyDown={
         onClick
           ? (e) => {
@@ -414,7 +421,7 @@ function BoardSpaceCell({
             }
           : undefined
       }
-      title={themedSpaceName(space.name, spaceIndex, themeId)}
+      title={themedSpaceName(space.name, spaceIndex, themeId, boardSize)}
       className={[
         `relative flex overflow-hidden rounded-[2px] sm:rounded-[3px] border ${palette.tileBg} text-neutral-900 shadow-sm`,
         'transition-all duration-200 h-full w-full',
@@ -508,7 +515,7 @@ function BoardSpaceCell({
         </div>
       )}
 
-      <BoardBuildingBadge spaceIndex={spaceIndex} buildings={buildings} edge={edge} />
+      <BoardBuildingBadge spaceIndex={spaceIndex} buildings={buildings} edge={edge} boardSize={boardSize} />
 
       {tokens.length > 0 && (
         <div
@@ -559,6 +566,7 @@ function BoardCellWrapper({
   highlightIndex,
   myPlayerId,
   themeId,
+  boardSize = 40,
   onClick,
 }: {
   spaceIndex: number
@@ -571,6 +579,7 @@ function BoardCellWrapper({
   highlightIndex?: number | null
   myPlayerId?: string | null
   themeId?: string | null
+  boardSize?: 40 | 48
   onClick?: () => void
 }) {
   return (
@@ -586,12 +595,11 @@ function BoardCellWrapper({
       highlightIndex={highlightIndex}
       myPlayerId={myPlayerId}
       themeId={themeId}
-      edge={boardEdgeForSpace(spaceIndex)}
+      boardSize={boardSize}
+      edge={boardEdgeForSpace(spaceIndex, boardSize)}
     />
   )
 }
-
-const BOARD_SPACE_INDICES = Array.from({ length: 40 }, (_, index) => index)
 
 export function MonopolyClassicBoard({
   states,
@@ -605,6 +613,7 @@ export function MonopolyClassicBoard({
   center,
   mobileCenter,
   themeId,
+  boardSize = 40,
 }: {
   states: MonopolyPlayerState[]
   players: Player[]
@@ -617,6 +626,7 @@ export function MonopolyClassicBoard({
   center?: React.ReactNode
   mobileCenter?: React.ReactNode
   themeId?: string | null
+  boardSize?: 40 | 48
 }) {
   const [selectedSpace, setSelectedSpace] = useState<number | null>(null)
   const owners = effectivePropertyOwners(parsePropertyOwners(propertyOwners), states)
@@ -632,7 +642,11 @@ export function MonopolyClassicBoard({
     highlightIndex,
     myPlayerId,
     themeId,
+    boardSize,
   }
+  const boardSpaceIndices = Array.from({ length: boardSize }, (_, index) => index)
+  const gridSize = boardSize / 4 + 1
+  const innerTrackCount = gridSize - 2
 
   const edition = getMonopolyEdition(themeId)
   const { boardPalette: p } = edition
@@ -672,6 +686,7 @@ export function MonopolyClassicBoard({
               mortgagedProperties={mortgaged}
               lastDiceTotal={lastDiceTotal}
               themeId={themeId}
+              boardSize={boardSize}
             />
           </div>
         )}
@@ -842,13 +857,13 @@ export function MonopolyClassicBoard({
 
         <style>{`
           .monopoly-grid-tracks {
-            grid-template-columns: minmax(0, 1.85fr) repeat(9, minmax(0, 1fr)) minmax(0, 1.85fr);
-            grid-template-rows: minmax(0, 1.85fr) repeat(9, minmax(0, 1.25fr)) minmax(0, 1.85fr);
+            grid-template-columns: minmax(0, 1.85fr) repeat(${innerTrackCount}, minmax(0, 1fr)) minmax(0, 1.85fr);
+            grid-template-rows: minmax(0, 1.85fr) repeat(${innerTrackCount}, minmax(0, 1.25fr)) minmax(0, 1.85fr);
           }
           @media (min-width: 640px) {
             .monopoly-grid-tracks {
-              grid-template-columns: minmax(0, 1.55fr) repeat(9, minmax(0, 1fr)) minmax(0, 1.55fr);
-              grid-template-rows: minmax(0, 1.55fr) repeat(9, minmax(0, 1fr)) minmax(0, 1.55fr);
+              grid-template-columns: minmax(0, 1.55fr) repeat(${innerTrackCount}, minmax(0, 1fr)) minmax(0, 1.55fr);
+              grid-template-rows: minmax(0, 1.55fr) repeat(${innerTrackCount}, minmax(0, 1fr)) minmax(0, 1.55fr);
             }
           }
         `}</style>
@@ -859,7 +874,7 @@ export function MonopolyClassicBoard({
               p.centerBg,
               `border ${p.centerBorder} shadow-inner p-1 sm:p-4 text-center`,
             ].join(' ')}
-            style={{ gridColumn: '2 / 11', gridRow: '2 / 11' }}
+            style={{ gridColumn: `2 / ${gridSize}`, gridRow: `2 / ${gridSize}` }}
           >
             {p.customDecoration === 'pirate' && (
               <div className="absolute inset-0 pointer-events-none flex items-center justify-center overflow-hidden z-0">
@@ -1055,8 +1070,8 @@ export function MonopolyClassicBoard({
             </div>
           </div>
 
-          {BOARD_SPACE_INDICES.map((spaceIndex) => {
-            const { col, row } = boardGridCell(spaceIndex)
+          {boardSpaceIndices.map((spaceIndex) => {
+            const { col, row } = boardGridCell(spaceIndex, boardSize)
             return (
               <div
                 key={spaceIndex}
@@ -1083,6 +1098,7 @@ export function MonopolyCurrentSpace({
   compact = false,
   themeId,
   title,
+  boardSize = 40,
 }: {
   index: number
   ownerName?: string | null
@@ -1093,14 +1109,15 @@ export function MonopolyCurrentSpace({
   compact?: boolean
   themeId?: string | null
   title?: string
+  boardSize?: 40 | 48
 }) {
-  const space = spaceAt(index)
+  const space = spaceAt(index, boardSize)
   const icon = spaceIcon(space.type, themeId)
   const owners = parsePropertyOwners(propertyOwners)
   const buildings = parseBuildings(propertyBuildings)
   const mortgaged = parseMortgaged(mortgagedProperties)
   const ownerId = owners[String(index)]
-  const rentLabel = boardTileRentLabel(space, ownerId, owners, buildings, mortgaged, lastDiceTotal, themeId)
+  const rentLabel = boardTileRentLabel(space, ownerId, owners, buildings, mortgaged, lastDiceTotal, themeId, boardSize)
 
   const detailLine = (() => {
     if (space.price != null) {
@@ -1143,8 +1160,8 @@ export function MonopolyCurrentSpace({
             <p
               className={`text-sm font-black text-[var(--foreground)] truncate leading-tight mt-0.5 ${getBoardPalette(themeId).tileFont ?? ''}`}
             >
-              <span className="hidden sm:inline">{themedSpaceName(space.name, index, themeId)}</span>
-              <span className="sm:hidden">{shortSpaceName(space.name, 16, index, themeId)}</span>
+              <span className="hidden sm:inline">{themedSpaceName(space.name, index, themeId, boardSize)}</span>
+              <span className="sm:hidden">{shortSpaceName(space.name, 16, index, themeId, boardSize)}</span>
             </p>
             {fullDetailLine && <p className="text-[11px] text-muted truncate leading-snug mt-0.5">{fullDetailLine}</p>}
           </div>
@@ -1172,8 +1189,8 @@ export function MonopolyCurrentSpace({
             <p
               className={`mt-0.5 text-xl sm:text-2xl font-black text-[var(--foreground)] leading-tight ${getBoardPalette(themeId).tileFont ?? ''}`}
             >
-              <span className="hidden sm:inline">{themedSpaceName(space.name, index, themeId)}</span>
-              <span className="sm:hidden">{shortSpaceName(space.name, 18, index, themeId)}</span>
+              <span className="hidden sm:inline">{themedSpaceName(space.name, index, themeId, boardSize)}</span>
+              <span className="sm:hidden">{shortSpaceName(space.name, 18, index, themeId, boardSize)}</span>
             </p>
             {space.price != null && (
               <p className="mt-2 text-sm text-muted">
@@ -1245,7 +1262,14 @@ export function MonopolyCurrentSpace({
             )}
           </div>
         </div>
-        <TitleDeedSection space={space} themeId={themeId} owners={owners} buildings={buildings} ownerId={ownerId} />
+        <TitleDeedSection
+          space={space}
+          themeId={themeId}
+          owners={owners}
+          buildings={buildings}
+          ownerId={ownerId}
+          boardSize={boardSize}
+        />
       </div>
     </div>
   )
@@ -1256,14 +1280,16 @@ export function MonopolyMyProperties({
   propertyOwners,
   players: _players,
   themeId,
+  boardSize = 40,
 }: {
   playerId: string
   propertyOwners: Record<string, string> | unknown
   players: Player[]
   themeId?: string | null
+  boardSize?: 40 | 48
 }) {
   const owners = parsePropertyOwners(propertyOwners)
-  const props = playerProperties(owners, playerId)
+  const props = playerProperties(owners, playerId, boardSize)
 
   return (
     <div className="rounded-2xl border border-[var(--border-strong)] bg-[var(--card-strong)] p-4">
@@ -1284,8 +1310,10 @@ export function MonopolyMyProperties({
                 <p
                   className={`text-sm font-bold text-[var(--foreground)] truncate ${getBoardPalette(themeId).tileFont ?? ''}`}
                 >
-                  <span className="hidden sm:inline">{themedSpaceName(space.name, space.index, themeId)}</span>
-                  <span className="sm:hidden">{shortSpaceName(space.name, 14, space.index, themeId)}</span>
+                  <span className="hidden sm:inline">
+                    {themedSpaceName(space.name, space.index, themeId, boardSize)}
+                  </span>
+                  <span className="sm:hidden">{shortSpaceName(space.name, 14, space.index, themeId, boardSize)}</span>
                 </p>
                 <p className="text-[10px] text-faint">
                   {formatThemedMoney(space.price!, themeId)}
@@ -1307,6 +1335,7 @@ export function MonopolyPlayerList({
   propertyOwners,
   myPlayerId,
   themeId,
+  boardSize = 40,
 }: {
   states: MonopolyPlayerState[]
   players: Player[]
@@ -1314,6 +1343,7 @@ export function MonopolyPlayerList({
   propertyOwners: Record<string, string> | unknown
   myPlayerId?: string | null
   themeId?: string | null
+  boardSize?: 40 | 48
 }) {
   const owners = parsePropertyOwners(propertyOwners)
 
@@ -1325,7 +1355,7 @@ export function MonopolyPlayerList({
         .map((state) => {
           const player = players.find((p) => p.id === state.player_id)
           const name = player?.name ?? 'Player'
-          const props = playerProperties(owners, state.player_id)
+          const props = playerProperties(owners, state.player_id, boardSize)
           const isTurn = state.player_id === currentPlayerId
           const isMe = state.player_id === myPlayerId
           const token = tokenColorForOrder(state.player_order)

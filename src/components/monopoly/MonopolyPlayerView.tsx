@@ -530,7 +530,8 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
             players,
             board.property_owners,
             board.property_buildings,
-            board.mortgaged_properties
+            board.mortgaged_properties,
+            board.board_size ?? 40
           )[0]?.name
         : null)
 
