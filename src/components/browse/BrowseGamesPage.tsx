@@ -19,6 +19,10 @@ export function BrowseGamesPage() {
   const [hasMore, setHasMore] = useState(false)
   const [cursor, setCursor] = useState<string | null>(null)
   const [tab, setTab] = useState<Tab>('live')
+  // gameCode → true when the caller's push endpoint has an RSVP on that game.
+  // Only populated on the Upcoming tab; keeps the "RSVP" CTA from telling a
+  // user who's already RSVP'd to RSVP again.
+  const [rsvpedSet, setRsvpedSet] = useState<Set<string>>(() => new Set())
 
   const loadGames = useCallback(
     async (nextCursor?: string | null, silent = false) => {
@@ -58,6 +62,53 @@ export function BrowseGamesPage() {
   useEffect(() => {
     void loadGames()
   }, [loadGames])
+
+  // Best-effort per-card RSVP lookup for the Upcoming tab. Reads the browser's
+  // existing push endpoint (no permission prompt) and asks the RSVP GET for
+  // each scheduled game whether this device is on the list. Absent endpoint
+  // → nothing to mark; that's fine, the CTA just stays "RSVP".
+  useEffect(() => {
+    if (tab !== 'upcoming') {
+      setRsvpedSet(new Set())
+      return
+    }
+    let cancelled = false
+    const check = async () => {
+      let endpoint: string | null = null
+      try {
+        if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return
+        if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return
+        const registration = await navigator.serviceWorker.getRegistration()
+        const sub = registration ? await registration.pushManager.getSubscription() : null
+        endpoint = sub?.endpoint ?? null
+      } catch {
+        return
+      }
+      if (!endpoint || cancelled) return
+      const scheduled = games.filter((g) => g.status === 'scheduled')
+      if (scheduled.length === 0) return
+      const results = await Promise.all(
+        scheduled.map(async (g) => {
+          try {
+            const res = await fetch(`/api/games/${g.id.toUpperCase()}/rsvp?tokenKey=${encodeURIComponent(endpoint!)}`, {
+              cache: 'no-store',
+            })
+            if (!res.ok) return null
+            const data = (await res.json()) as { rsvped?: boolean }
+            return data.rsvped ? g.id : null
+          } catch {
+            return null
+          }
+        })
+      )
+      if (cancelled) return
+      setRsvpedSet(new Set(results.filter((x): x is string => x != null)))
+    }
+    void check()
+    return () => {
+      cancelled = true
+    }
+  }, [tab, games])
 
   // Freshness: Realtime is primary; visibility + slow poll are fallbacks. Any change to a
   // game (new public game, status flip, finish) reloads the first page — cheap and simple.
@@ -192,14 +243,33 @@ export function BrowseGamesPage() {
                       )}
                     </span>
 
-                    <Link
-                      href={`/game/${game.id}`}
-                      className={`${isScheduled || isLobby ? 'btn-primary' : 'btn-secondary'} mt-auto w-full text-sm py-2`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      {isScheduled ? 'RSVP' : isLobby ? 'Join game' : 'Watch'}
-                    </Link>
+                    {(() => {
+                      const alreadyRsvped = isScheduled && rsvpedSet.has(game.id)
+                      return (
+                        <Link
+                          href={`/game/${game.id}`}
+                          className={`${
+                            isScheduled
+                              ? alreadyRsvped
+                                ? 'btn-secondary'
+                                : 'btn-primary'
+                              : isLobby
+                                ? 'btn-primary'
+                                : 'btn-secondary'
+                          } mt-auto w-full text-sm py-2`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          {isScheduled
+                            ? alreadyRsvped
+                              ? 'RSVP’d · View details'
+                              : 'RSVP'
+                            : isLobby
+                              ? 'Join game'
+                              : 'Watch'}
+                        </Link>
+                      )
+                    })()}
                   </div>
                 )
               })}
