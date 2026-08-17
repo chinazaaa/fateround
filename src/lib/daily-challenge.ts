@@ -19,6 +19,7 @@ export const DAILY_CHALLENGE_GAME_TYPES = [
   'chess_mate',
   'codenames_codeword',
   'ludo_puzzle',
+  'wordle',
 ] as const
 
 export type DailyChallengeGameType = (typeof DAILY_CHALLENGE_GAME_TYPES)[number]
@@ -40,6 +41,7 @@ export const DAILY_GAME_SLUG_TO_TYPE: Record<string, DailyChallengeGameType> = {
   'chess-mate': 'chess_mate',
   'codenames-codeword': 'codenames_codeword',
   'ludo-puzzle': 'ludo_puzzle',
+  wordle: 'wordle',
 }
 
 export const DAILY_GAME_TYPE_TO_SLUG: Record<DailyChallengeGameType, string> = {
@@ -55,6 +57,7 @@ export const DAILY_GAME_TYPE_TO_SLUG: Record<DailyChallengeGameType, string> = {
   chess_mate: 'chess-mate',
   codenames_codeword: 'codenames-codeword',
   ludo_puzzle: 'ludo-puzzle',
+  wordle: 'wordle',
 }
 
 export const DAILY_GAME_LABELS: Record<DailyChallengeGameType, string> = {
@@ -70,6 +73,7 @@ export const DAILY_GAME_LABELS: Record<DailyChallengeGameType, string> = {
   chess_mate: 'Chess Mate',
   codenames_codeword: 'Codeword',
   ludo_puzzle: 'Ludo Puzzle',
+  wordle: 'Wordle',
 }
 
 export const DAILY_GAME_EMOJIS: Record<DailyChallengeGameType, string> = {
@@ -85,6 +89,7 @@ export const DAILY_GAME_EMOJIS: Record<DailyChallengeGameType, string> = {
   chess_mate: '♟️',
   codenames_codeword: '🕵️',
   ludo_puzzle: '🎲',
+  wordle: '🔠',
 }
 
 // Default timer per game (seconds). Time-first games get a countdown;
@@ -102,6 +107,7 @@ export const DAILY_GAME_TIMER: Record<DailyChallengeGameType, number> = {
   chess_mate: 180,
   codenames_codeword: 180,
   ludo_puzzle: 300,
+  wordle: 900,
 }
 
 // Whether the primary metric is time (lower is better) or score (higher is better).
@@ -118,6 +124,7 @@ export const DAILY_GAME_PRIMARY_METRIC: Record<DailyChallengeGameType, 'time' | 
   chess_mate: 'time',
   codenames_codeword: 'score',
   ludo_puzzle: 'score',
+  wordle: 'score',
 }
 
 // ---------------------------------------------------------------------------
@@ -244,6 +251,14 @@ export function stripSolution(
 
   if (gameType === 'ludo_puzzle') {
     delete safe.solution
+  }
+
+  if (gameType === 'wordle') {
+    // Deliberate exception to the "never ship the answer" rule: Wordle's client must grade each
+    // guess letter-by-letter for instant feedback, which requires the word. Score integrity is
+    // preserved because the submit route RE-GRADES every submitted guess server-side against
+    // puzzle_data.word and derives score/rank from its own grading (see verifyWordle). The word
+    // is also shown on a loss anyway.
   }
 
   return safe
