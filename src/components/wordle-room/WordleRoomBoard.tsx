@@ -179,6 +179,12 @@ export function WordleRoomBoard({
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (disabled || gameOver) return
+      // Never hijack typing in an editable element (input/textarea/contenteditable) —
+      // the board's controls only react to keys pressed elsewhere on the page.
+      const target = e.target as HTMLElement | null
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+        return
+      }
       if (e.metaKey || e.ctrlKey || e.altKey) return
       if (e.key === 'Enter') {
         e.preventDefault()

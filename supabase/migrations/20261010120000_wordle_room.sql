@@ -111,8 +111,8 @@ do $$ begin alter publication supabase_realtime add table wordle_room_progress; 
 
 -- ── Extend game-type CHECK constraints ─────────────────────────────────────────
 -- Each constraint is recreated with NOT VALID (new writes stay enforced while the
--- existing rows are validated separately below), so adding a new game type to a
--- large table doesn't block on a full-table scan during the migration.
+-- existing rows are validated in a follow-up migration), so adding a new game type
+-- to a large table doesn't block on a full-table scan during the migration.
 ALTER TABLE games DROP CONSTRAINT IF EXISTS games_game_type_check;
 ALTER TABLE games ADD CONSTRAINT games_game_type_check CHECK (game_type IN (
   'smash_marry_kill', 'red_flag_green_flag', 'smash_or_pass', 'parent_approval',
@@ -147,11 +147,6 @@ ALTER TABLE game_player_limits ADD CONSTRAINT game_player_limits_game_type_check
   'word_grouping', 'wordle_room')
 ) NOT VALID;
 
--- Validate the pre-existing rows for each recreated constraint separately.
-ALTER TABLE games VALIDATE CONSTRAINT games_game_type_check;
-ALTER TABLE app_feedback VALIDATE CONSTRAINT app_feedback_game_type_check;
-ALTER TABLE game_player_limits VALIDATE CONSTRAINT game_player_limits_game_type_check;
-
 -- ── Seed player limits + community leaderboard ─────────────────────────────────
 INSERT INTO game_player_limits (game_type, max_players)
 VALUES ('wordle_room', 20)
@@ -183,6 +178,7 @@ CREATE OR REPLACE FUNCTION wordle_room_record_guess(
   p_is_correct boolean,
   p_points_awarded integer,
   p_next_word_index integer,
+  p_expected_word_guesses integer,
   p_current_word_guesses integer,
   p_words_solved_delta integer,
   p_total_guesses_delta integer,
@@ -208,12 +204,18 @@ BEGIN
 
   IF v_progress.round_id IS NOT NULL THEN
     IF v_progress.finished THEN
-      RAISE EXCEPTION 'ALREADY_FINISHED';
+      RAISE EXCEPTION 'ALREADY_FINISHED' USING ERRCODE = 'WR001';
     END IF;
     -- Stale request: the player has already advanced past the word this guess was
     -- graded against (e.g. a double-submit racing the previous guess's commit).
     IF v_progress.word_index <> p_word_index THEN
-      RAISE EXCEPTION 'STALE_GUESS';
+      RAISE EXCEPTION 'STALE_GUESS' USING ERRCODE = 'WR002';
+    END IF;
+    -- Optimistic concurrency guard: the guess was graded against the caller's snapshot
+    -- of the current word's guess count. If the row has moved (a concurrent guess on the
+    -- same word committed first), the graded result no longer applies.
+    IF v_progress.current_word_guesses <> p_expected_word_guesses THEN
+      RAISE EXCEPTION 'STALE_GUESS' USING ERRCODE = 'WR002';
     END IF;
   END IF;
 
@@ -257,10 +259,13 @@ BEGIN
        WHERE round_id = p_round_id AND player_id = p_player_id
        FOR UPDATE;
       IF v_progress.finished THEN
-        RAISE EXCEPTION 'ALREADY_FINISHED';
+        RAISE EXCEPTION 'ALREADY_FINISHED' USING ERRCODE = 'WR001';
       END IF;
       IF v_progress.word_index <> p_word_index THEN
-        RAISE EXCEPTION 'STALE_GUESS';
+        RAISE EXCEPTION 'STALE_GUESS' USING ERRCODE = 'WR002';
+      END IF;
+      IF v_progress.current_word_guesses <> p_expected_word_guesses THEN
+        RAISE EXCEPTION 'STALE_GUESS' USING ERRCODE = 'WR002';
       END IF;
       UPDATE wordle_room_progress SET
         word_index = p_next_word_index,
@@ -275,22 +280,31 @@ BEGIN
     END;
   END IF;
 
-  RETURN jsonb_build_object('guess_id', v_guess_id);
+  RETURN jsonb_build_object(
+    'guess_id', v_guess_id,
+    -- Authoritative post-write counters: the response must reflect the committed row,
+    -- not the caller's pre-lock snapshot.
+    'word_index', p_next_word_index,
+    'current_word_guesses', p_current_word_guesses,
+    'words_solved', COALESCE(v_progress.words_solved, 0) + p_words_solved_delta,
+    'total_guesses', COALESCE(v_progress.total_guesses, 0) + p_total_guesses_delta,
+    'finished', p_finished
+  );
 END;
 $$;
 
 -- Only the service-role guess route calls this; never expose it to anon/authenticated.
 REVOKE ALL ON FUNCTION public.wordle_room_record_guess(
   text, uuid, uuid, integer, text, jsonb, boolean, integer, integer, integer,
-  integer, integer, bigint, boolean, timestamptz, timestamptz
+  integer, integer, integer, bigint, boolean, timestamptz, timestamptz
 ) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.wordle_room_record_guess(
   text, uuid, uuid, integer, text, jsonb, boolean, integer, integer, integer,
-  integer, integer, bigint, boolean, timestamptz, timestamptz
+  integer, integer, integer, bigint, boolean, timestamptz, timestamptz
 ) FROM anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.wordle_room_record_guess(
   text, uuid, uuid, integer, text, jsonb, boolean, integer, integer, integer,
-  integer, integer, bigint, boolean, timestamptz, timestamptz
+  integer, integer, integer, bigint, boolean, timestamptz, timestamptz
 ) TO service_role;
 
 NOTIFY pgrst, 'reload config';

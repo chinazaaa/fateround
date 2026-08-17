@@ -147,6 +147,7 @@ export async function POST(req: NextRequest) {
     p_is_correct: result.solved,
     p_points_awarded: result.pointsAwarded,
     p_next_word_index: result.nextWordIndex,
+    p_expected_word_guesses: currentGuesses,
     p_current_word_guesses: result.nextWordIndex === wordIndex ? result.guessesUsed : 0,
     p_words_solved_delta: result.wordsSolvedDelta,
     p_total_guesses_delta: result.solved ? result.guessesUsed : 0,
@@ -157,18 +158,24 @@ export async function POST(req: NextRequest) {
   })
 
   if (recordError) {
-    if (recordError.message?.includes('ALREADY_FINISHED')) {
+    // Match the RPC's custom SQLSTATE codes instead of parsing the message so the
+    // rejection stays stable even if PostgREST re-wraps the message text.
+    if (recordError.code === 'WR001') {
       return NextResponse.json({ error: 'You have already finished this room' }, { status: 400 })
     }
-    if (recordError.message?.includes('STALE_GUESS')) {
+    if (recordError.code === 'WR002') {
       return NextResponse.json({ error: 'Your guess no longer applies' }, { status: 400 })
     }
     return NextResponse.json({ error: internalErrorMessage('wordle-room/guess', recordError) }, { status: 500 })
   }
 
+  const recordedResult = recorded as { guess_id?: string; words_solved?: number } | null
+
   // `total_guesses` only counts guesses across SOLVED words (a lost word's attempts are
   // excluded from the standings comparator), and per-word guess count resets on advance.
-  const wordsSolved = (existingProgress?.words_solved ?? 0) + result.wordsSolvedDelta
+  // Use the counters the RPC committed under lock rather than the pre-lock snapshot, so
+  // the response never reflects a guess that a concurrent write superseded.
+  const wordsSolved = recordedResult?.words_solved ?? (existingProgress?.words_solved ?? 0) + result.wordsSolvedDelta
 
   // Untimed rooms run until every seated player has finished the sequence. A player who
   // has a progress row but is mid-sequence keeps the race open — and a late-joined player
@@ -200,6 +207,6 @@ export async function POST(req: NextRequest) {
     wordsSolved,
     finished: result.finished,
     nextWord: result.finished ? null : (words[result.nextWordIndex] ?? null),
-    guessId: (recorded as { guess_id?: string } | null)?.guess_id ?? null,
+    guessId: recordedResult?.guess_id ?? null,
   })
 }
