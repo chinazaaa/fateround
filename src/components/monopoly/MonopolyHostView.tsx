@@ -451,6 +451,7 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
             mortgagedProperties={board.mortgaged_properties}
             lastDiceTotal={board.last_dice?.total ?? 2}
             themeId={game?.theme}
+            boardSize={board.board_size ?? 40}
             center={
               <div className="flex flex-col items-center justify-center h-full gap-1">
                 <MonopolyDiceRoll dice={board.last_dice} />
@@ -466,6 +467,7 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
         currentPlayerId={turnPlayerId}
         propertyOwners={board.property_owners}
         themeId={game?.theme}
+        boardSize={board.board_size ?? 40}
       />
     </div>
   ) : (

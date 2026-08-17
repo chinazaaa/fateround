@@ -385,6 +385,7 @@ export interface Game {
   monopoly_auction_timer_seconds?: number | null
   monopoly_no_rent_in_jail?: boolean
   monopoly_estate_dividend?: boolean
+  monopoly_board_size?: 40 | 48
   anonymous: boolean
   auto_reveal: boolean
   auto_submit_behavior: AutoSubmitBehavior
@@ -603,6 +604,7 @@ export interface MonopolyLastTradeEvent {
 export interface MonopolyBoard {
   id: string
   game_id: string
+  board_size?: 40 | 48
   turn_order: string[]
   current_turn_index: number
   phase: MonopolyPhase

@@ -52,6 +52,10 @@ const PROPERTY_GROUPS: MonopolyColorGroup[] = [
   'yellow',
   'green',
   'dark_blue',
+  'teal',
+  'violet',
+  'indigo',
+  'coral',
 ]
 
 /**

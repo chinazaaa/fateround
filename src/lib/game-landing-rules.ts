@@ -509,7 +509,7 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
         'You cannot buy from the Bank, pay TAX OFFICE or SURCHARGE, or draw Fate / Kitty cards until you have passed PAYDAY at least once on your first lap.',
         'Landing on an unowned Property, Station, or Utility after that lets you buy it at the listed price.',
         'If you decline to buy, the property is auctioned to the highest bidder — including you.',
-        'Own all Sites in a colour-group (a monopoly) to charge double rent on unimproved properties in that group.',
+        'Own every Site in a colour group (an estate) to charge double rent on unimproved properties in that group.',
       ],
     },
     {

@@ -86,6 +86,11 @@ export const createGameSchema = z.object({
   gender_based: z.boolean().optional(),
   isPublic: z.boolean().optional(),
   max_players: z.coerce.number().int().min(1).max(100).optional(),
+  monopoly_board_size: z.coerce
+    .number()
+    .int()
+    .refine((value) => value === 40 || value === 48)
+    .optional(),
   codewords_player_picks: z.boolean().optional(),
   codewords_late_join: z.boolean().optional(),
   describe_it_num_teams: z.coerce.number().int().min(2).max(4).optional(),
@@ -354,6 +359,11 @@ export const boardGameLobbySettingsSchema = z.object({
   monopoly_auction_timer_seconds: z.number().int().min(5).max(60).nullable().optional(),
   monopoly_no_rent_in_jail: z.boolean().optional(),
   monopoly_estate_dividend: z.boolean().optional(),
+  monopoly_board_size: z.coerce
+    .number()
+    .int()
+    .refine((value) => value === 40 || value === 48)
+    .optional(),
   whot_pick3_enabled: z.boolean().optional(),
   whot_cards_enabled: z.boolean().optional(),
   whot_number_calls_enabled: z.boolean().optional(),

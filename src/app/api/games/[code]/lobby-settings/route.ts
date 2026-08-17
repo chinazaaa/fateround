@@ -135,6 +135,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     monopoly_auction_timer_seconds,
     monopoly_no_rent_in_jail,
     monopoly_estate_dividend,
+    monopoly_board_size,
     whot_pick3_enabled,
     whot_cards_enabled,
     whot_number_calls_enabled,
@@ -214,6 +215,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     monopoly_auction_timer_seconds === undefined &&
     monopoly_no_rent_in_jail === undefined &&
     monopoly_estate_dividend === undefined &&
+    monopoly_board_size === undefined &&
     whot_pick3_enabled === undefined &&
     whot_cards_enabled === undefined &&
     whot_number_calls_enabled === undefined &&
@@ -354,6 +356,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       )
     }
     gameUpdate.max_players = nextMax
+    if (boardLobbyType === 'monopoly' && nextMax < 6) gameUpdate.monopoly_board_size = 40
   }
 
   if (timer_seconds !== undefined) {
@@ -559,12 +562,24 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       gameUpdate.monopoly_auction_timer_seconds = monopoly_auction_timer_seconds
     if (monopoly_no_rent_in_jail !== undefined) gameUpdate.monopoly_no_rent_in_jail = monopoly_no_rent_in_jail
     if (monopoly_estate_dividend !== undefined) gameUpdate.monopoly_estate_dividend = monopoly_estate_dividend
+    if (monopoly_board_size !== undefined) {
+      const requestedBoardSize = monopoly_board_size === 48 ? 48 : 40
+      const configuredMaxPlayers = Number(max_players ?? game.max_players ?? 6)
+      if (requestedBoardSize === 48 && configuredMaxPlayers < 6) {
+        return NextResponse.json(
+          { error: 'The 48-space board requires a room cap of at least 6 players' },
+          { status: 400 }
+        )
+      }
+      gameUpdate.monopoly_board_size = requestedBoardSize
+    }
   } else if (
     monopoly_double_go_salary !== undefined ||
     monopoly_forced_auctions !== undefined ||
     monopoly_auction_timer_seconds !== undefined ||
     monopoly_no_rent_in_jail !== undefined ||
-    monopoly_estate_dividend !== undefined
+    monopoly_estate_dividend !== undefined ||
+    monopoly_board_size !== undefined
   ) {
     return NextResponse.json({ error: 'These rules only apply to Estate Kings games' }, { status: 400 })
   }

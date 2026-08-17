@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import type { Metadata } from 'next'
-import { notFound } from 'next/navigation'
+import { notFound, permanentRedirect } from 'next/navigation'
 import { MarketingHeader } from '@/components/MarketingHeader'
 import { gameTypeConfig, gameTypeCreateParam, GAME_TYPE_DISPLAY_ORDER } from '@/lib/game-types'
 import { soloPlaySlug } from '@/lib/solo-play'
@@ -96,6 +96,7 @@ export default async function GameLandingRoute({ params }: Props) {
   const { slug } = await params
   const content = getGameLandingContent(slug)
   if (!content) notFound()
+  if (slug !== content.slug) permanentRedirect(`/games/${content.slug}`)
 
   const cfg = gameTypeConfig(content.gameType)
   const otherGames = GAME_TYPE_DISPLAY_ORDER.filter((t) => t !== content.gameType && t in GAME_LANDING_CONTENT)

@@ -180,7 +180,7 @@ const JACKBOX: MarketingPageContent = {
     {
       question: 'What games are like Jackbox but free?',
       answer:
-        'FateRound gives you 20+ party games for free — including Punchline (a Quiplash-style game), trivia, voting games like Would You Rather and Most Likely To, plus board and card classics like Estate Kings (a Monopoly-style game) and Whot.',
+        'FateRound gives you 20+ party games for free — including Punchline, trivia, voting games like Would You Rather and Most Likely To, plus board and card games like Estate Kings and Whot.',
     },
     {
       question: 'Can I play Jackbox-style games on my phone without buying packs?',
@@ -1512,7 +1512,7 @@ const NAIJA: MarketingPageContent = {
     {
       question: 'What Nigerian games can I play online?',
       answer:
-        'FateRound has Whot (with real Naija house rules), Ludo, Draughts (Checkers), Snakes & Ladders, and Stop / Name-Place-Animal-Thing, plus Estate Kings (a Monopoly-style game). All free, all in the browser — no app to download.',
+        'FateRound has Whot (with real Naija house rules), Ludo, Draughts (Checkers), Snakes & Ladders, and Stop / Name-Place-Animal-Thing, plus the property-trading game Estate Kings. All free, all in the browser — no app to download.',
     },
     {
       question: 'Can I play Whot online with friends and family abroad?',
@@ -2741,11 +2741,13 @@ const ESTATE_KINGS_ROOM_BOTS: MarketingPageContent = {
   keywords: [
     'play property board game with bots',
     'online monopoly alternative with bots',
+    'estate kings online with bots',
     'estate kings online',
     'property trading board game online',
     'buy houses board game with friends',
     'online board game with computer players',
     'multiplayer property game with bots',
+    'free property trading game online',
     'free monopoly alternative online',
   ],
   heroTitle: 'Play Estate Kings online — friends, bots, or both',
@@ -2798,7 +2800,7 @@ const ESTATE_KINGS_ROOM_BOTS: MarketingPageContent = {
     <>
       <p>
         Estate Kings is FateRound’s free online property-trading board game — our own take on the classic buy-
-        houses-and-bankrupt-your-friends genre made famous by games like Monopoly. Add bots to any{' '}
+        houses-and-bankrupt-your-friends property-trading genre. Add bots to any{' '}
         <GameLink type="monopoly">Estate Kings room</GameLink> and stop waiting for a full table: two friends plus two
         bots is a real four-player game, not a compromise.
       </p>
@@ -2811,7 +2813,7 @@ const ESTATE_KINGS_ROOM_BOTS: MarketingPageContent = {
   ),
   faqs: [
     {
-      question: 'Is Estate Kings the same as Monopoly?',
+      question: 'What kind of game is Estate Kings?',
       answer:
         'Estate Kings is FateRound’s own property-trading board game, inspired by the classic buy-houses-and-bankrupt-your-friends genre popularised by games like Monopoly. Same familiar loop, our own board and rules.',
     },

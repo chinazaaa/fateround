@@ -422,6 +422,7 @@ export async function POST(req: NextRequest) {
     player_questions_enabled: rawPlayerQuestionsEnabled,
     player_questions_order: rawPlayerQuestionsOrder,
     max_players: rawMaxPlayers,
+    monopoly_board_size: rawMonopolyBoardSize,
     codewords_player_picks: rawCodewordsPlayerPicks,
     codewords_late_join: rawCodewordsLateJoin,
     codewords_randomize_teams: rawCodewordsRandomizeTeams,
@@ -1154,6 +1155,9 @@ export async function POST(req: NextRequest) {
           ? parsePlayerQuestionsOrder(rawPlayerQuestionsOrder)
           : 'players_first',
     ...(maxPlayers != null ? { max_players: maxPlayers } : {}),
+    ...(isMonopolyGame(game_type)
+      ? { monopoly_board_size: (maxPlayers ?? 6) >= 6 && rawMonopolyBoardSize === 48 ? 48 : 40 }
+      : {}),
     ...(isBingoGame(game_type)
       ? {
           bingo_call_mode: parseBingoCallMode(rawBingoCallMode),

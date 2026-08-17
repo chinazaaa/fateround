@@ -458,6 +458,7 @@ function CreateGameInner() {
   const [quickDrawVoteTimer, setQuickDrawVoteTimer] = useState(QUICK_DRAW_DEFAULT_VOTE_TIMER)
   const [ttlMaxPlayers, setTtlMaxPlayers] = useState(TTL_DEFAULT_MAX_PLAYERS)
   const [monopolyMaxPlayers, setMonopolyMaxPlayers] = useState(MONOPOLY_DEFAULT_MAX_PLAYERS)
+  const [monopolyBoardSize, setMonopolyBoardSize] = useState<40 | 48>(40)
   const [monopolyGameDuration, setMonopolyGameDuration] = useState(0)
   const [scrabbleGameDuration, setScrabbleGameDuration] = useState(0)
   const [scrabbleDictionary, setScrabbleDictionary] = useState<ScrabbleDictionaryId>(SCRABBLE_DEFAULT_DICTIONARY)
@@ -1528,6 +1529,11 @@ function CreateGameInner() {
     monopoly_game_duration: {
       get: () => monopolyGameDuration,
       set: (v) => setMonopolyGameDuration(v as number),
+      appliesTo: isMonopolyGame,
+    },
+    monopoly_board_size: {
+      get: () => monopolyBoardSize,
+      set: (value) => setMonopolyBoardSize(value === 48 ? 48 : 40),
       appliesTo: isMonopolyGame,
     },
     // Whot
@@ -2657,6 +2663,7 @@ function CreateGameInner() {
                                                         : isMatchingPairs
                                                           ? (settings.max_players ?? effectiveLimits.matching_pairs.max)
                                                           : undefined,
+          monopoly_board_size: isMonopoly ? monopolyBoardSize : undefined,
           operative_timer_seconds: isCodewords
             ? codewordsOperativeTimer
             : isNpat
@@ -3461,6 +3468,16 @@ function CreateGameInner() {
                         label: `${n} players`,
                       })
                     )}
+                  />
+                </Field>
+                <Field label="Board size">
+                  <CustomSelect
+                    value={monopolyBoardSize}
+                    onChange={(value) => setMonopolyBoardSize(value === 48 ? 48 : 40)}
+                    options={[
+                      { value: 40, label: '40 spaces' },
+                      ...(monopolyMaxPlayers >= 6 ? [{ value: 48, label: '48 spaces' }] : []),
+                    ]}
                   />
                 </Field>
                 <Field label="Turn timer">

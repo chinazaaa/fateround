@@ -150,6 +150,7 @@ export interface Game {
   monopoly_auction_timer_seconds?: number | null
   monopoly_no_rent_in_jail?: boolean | null
   monopoly_estate_dividend?: boolean | null
+  monopoly_board_size?: 40 | 48 | null
   quick_draw_variant?: QuickDrawVariant | null
   quick_draw_play_mode?: QuickDrawPlayMode | null
   quick_draw_num_teams?: number | null
@@ -1470,6 +1471,7 @@ export interface MonopolyLastCardEvent {
 export interface MonopolyBoard {
   id: string
   game_id: string
+  board_size?: 40 | 48
   turn_order: string[]
   current_turn_index: number
   phase: MonopolyPhase
