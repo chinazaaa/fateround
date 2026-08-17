@@ -77,6 +77,7 @@ import { buildMonopolyStandings } from '@/lib/monopoly-standings'
 import { useGameScores, useGameStats } from '@/components/session/RosterDrawerContext'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
+import { motion } from '@/constants/motion'
 
 type Screen =
   | 'loading'
@@ -379,7 +380,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
   useEffect(() => {
     if (showAnyNudge) {
       nudgeAnim.setValue(0)
-      Animated.timing(nudgeAnim, { toValue: 1, duration: 260, useNativeDriver: true }).start()
+      Animated.timing(nudgeAnim, { toValue: 1, duration: motion.duration.medium, useNativeDriver: true }).start()
     }
     // Re-run when the set of visible nudges changes so each new nudge fades in.
   }, [showAnyNudge, showBuildNudge, showRaiseCashNudge, nudgeAnim])
