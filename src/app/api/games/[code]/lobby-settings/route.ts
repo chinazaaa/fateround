@@ -337,6 +337,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     gameUpdate.is_public = is_public
   }
 
+  // Single source of truth for capacity rules (board-size gate + reset).
+  const effectiveMaxPlayers =
+    max_players !== undefined ? clampLobbyMaxPlayers(limitKey, max_players, lobbyLimits) : Number(game.max_players ?? 6)
+
   // Content label — trimmed + capped; empty string clears it.
   if (content_label !== undefined) {
     const trimmed = content_label.trim()
@@ -344,7 +348,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   }
 
   if (max_players !== undefined) {
-    const nextMax = clampLobbyMaxPlayers(limitKey, max_players, lobbyLimits)
+    const nextMax = effectiveMaxPlayers
     const { count: playerCount } = await supabase
       .from('players')
       .select('id', { count: 'exact', head: true })
@@ -564,8 +568,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     if (monopoly_estate_dividend !== undefined) gameUpdate.monopoly_estate_dividend = monopoly_estate_dividend
     if (monopoly_board_size !== undefined) {
       const requestedBoardSize = monopoly_board_size === 48 ? 48 : 40
-      const configuredMaxPlayers = Number(max_players ?? game.max_players ?? 6)
-      if (requestedBoardSize === 48 && configuredMaxPlayers < 6) {
+      if (requestedBoardSize === 48 && effectiveMaxPlayers < 6) {
         return NextResponse.json(
           { error: 'The 48-space board requires a room cap of at least 6 players' },
           { status: 400 }

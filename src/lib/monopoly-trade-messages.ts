@@ -63,8 +63,13 @@ export function buildTradeSideItems(
   return items
 }
 
-export function tradeSideHasValue(cash: number, propertyIndexes: unknown, jailCards = 0): boolean {
-  return cash > 0 || normalizeTradePropertyList(propertyIndexes).length > 0 || jailCards > 0
+export function tradeSideHasValue(
+  cash: number,
+  propertyIndexes: unknown,
+  jailCards = 0,
+  boardSize: MonopolyBoardSize = 40
+): boolean {
+  return cash > 0 || normalizeTradePropertyList(propertyIndexes, boardSize).length > 0 || jailCards > 0
 }
 
 /** Human-readable trade side — omits £0 when there is no cash. */
@@ -72,9 +77,10 @@ export function formatTradeSideText(
   cash: number,
   propertyIndexes: unknown,
   jailCards = 0,
-  themeId?: string | null
+  themeId?: string | null,
+  boardSize: MonopolyBoardSize = 40
 ): string {
-  const items = buildTradeSideItems(cash, propertyIndexes, jailCards)
+  const items = buildTradeSideItems(cash, propertyIndexes, jailCards, boardSize)
   if (items.length === 0) return 'Nothing'
 
   const raw = items
@@ -87,28 +93,41 @@ export function formatTradeSideText(
   return formatThemedText(raw, themeId)
 }
 
-function sideItemCount(cash: number, propertyIndexes: unknown, jailCards = 0): number {
-  return buildTradeSideItems(cash, propertyIndexes, jailCards).length
+function sideItemCount(
+  cash: number,
+  propertyIndexes: unknown,
+  jailCards = 0,
+  boardSize: MonopolyBoardSize = 40
+): number {
+  return buildTradeSideItems(cash, propertyIndexes, jailCards, boardSize).length
 }
 
 export function formatIncomingTradeAlert(
   trade: MonopolyPendingTrade,
   fromName: string,
-  themeId?: string | null
+  themeId?: string | null,
+  boardSize: MonopolyBoardSize = 40
 ): string {
   const normalized = normalizePendingTrade(trade)
-  const receiveCount = sideItemCount(normalized.offer_cash, normalized.offer_properties, normalized.offer_get_out_cards)
+  const receiveCount = sideItemCount(
+    normalized.offer_cash,
+    normalized.offer_properties,
+    normalized.offer_get_out_cards,
+    boardSize
+  )
   const payCount = sideItemCount(
     normalized.request_cash,
     normalized.request_properties,
-    normalized.request_get_out_cards
+    normalized.request_get_out_cards,
+    boardSize
   )
 
   const receiveSummary = formatTradeSideText(
     normalized.offer_cash,
     normalized.offer_properties,
     normalized.offer_get_out_cards,
-    themeId
+    themeId,
+    boardSize
   )
   const paySummary =
     payCount > 0
@@ -116,7 +135,8 @@ export function formatIncomingTradeAlert(
           normalized.request_cash,
           normalized.request_properties,
           normalized.request_get_out_cards,
-          themeId
+          themeId,
+          boardSize
         )
       : null
 

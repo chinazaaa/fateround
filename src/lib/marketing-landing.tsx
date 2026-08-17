@@ -2829,7 +2829,7 @@ const ESTATE_KINGS_ROOM_BOTS: MarketingPageContent = {
     },
     {
       question: 'How many players can play Estate Kings?',
-      answer: '2 to 6 players in total — any mix of humans and bots.',
+      answer: '2 to 8 players in total (up to 8 on the expanded 48-space board) — any mix of humans and bots.',
     },
     {
       question: 'Is it free?',

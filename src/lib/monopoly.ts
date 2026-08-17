@@ -16,7 +16,6 @@ import type {
   Game,
 } from '@/types'
 import {
-  MONOPOLY_BOARD,
   MONOPOLY_GO_SALARY,
   MONOPOLY_HOUSES_IN_BANK,
   MONOPOLY_HOUSES_UNDER_HOTEL,
@@ -463,11 +462,24 @@ export async function finishMonopolyGameEarly(
   const buildings = parseBuildings(board.property_buildings)
   const mortgaged = parseMortgaged(board.mortgaged_properties)
 
-  const winnerId = resolveMonopolyWinnerId(states, owners, buildings, mortgaged, board.winner_player_id)
+  const winnerId = resolveMonopolyWinnerId(
+    states,
+    owners,
+    buildings,
+    mortgaged,
+    board.winner_player_id,
+    board.board_size ?? 40
+  )
   const winnerName = winnerId ? players.find((p) => p.id === winnerId)?.name : null
   const winnerNetWorth =
     winnerId != null
-      ? computeMonopolyNetWorth(states.find((s) => s.player_id === winnerId)!, owners, buildings, mortgaged)
+      ? computeMonopolyNetWorth(
+          states.find((s) => s.player_id === winnerId)!,
+          owners,
+          buildings,
+          mortgaged,
+          board.board_size ?? 40
+        )
       : null
 
   const statusMessage = winnerName
@@ -2226,7 +2238,7 @@ export async function processMonopolyMortgage(
   if (action === 'mortgage') {
     if (mortgaged[String(spaceIndex)]) return { error: 'Already mortgaged' }
     if (buildingLevel(buildings, spaceIndex) > 0) return { error: 'Sell all buildings first' }
-    if (space.color && groupHasBuildings(space.color, playerId, owners, buildings)) {
+    if (space.color && groupHasBuildings(space.color, playerId, owners, buildings, board.board_size ?? 40)) {
       return { error: 'Sell all buildings in this colour group first' }
     }
     mortgaged[String(spaceIndex)] = true
@@ -2319,8 +2331,8 @@ export async function processMonopolyTradePropose(
     .maybeSingle()
   if (!fromState || !toState || fromState.bankrupt || toState.bankrupt) return { error: 'Invalid players' }
 
-  const offerProperties = normalizeTradePropertyList(offer.properties)
-  const requestProperties = normalizeTradePropertyList(request.properties)
+  const offerProperties = normalizeTradePropertyList(offer.properties, board.board_size ?? 40)
+  const requestProperties = normalizeTradePropertyList(request.properties, board.board_size ?? 40)
 
   const fromErr = validateTradeAssets(
     fromPlayerId,
@@ -2442,7 +2454,8 @@ export async function processMonopolyTradeRespond(
     owners,
     buildings,
     fromState.cash,
-    fromState.get_out_of_jail_free
+    fromState.get_out_of_jail_free,
+    board.board_size ?? 40
   )
   if (fromErr) return { error: fromErr }
 
@@ -2454,7 +2467,8 @@ export async function processMonopolyTradeRespond(
     owners,
     buildings,
     toState.cash,
-    toState.get_out_of_jail_free
+    toState.get_out_of_jail_free,
+    board.board_size ?? 40
   )
   if (toErr) return { error: toErr }
 

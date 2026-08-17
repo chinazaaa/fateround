@@ -9,9 +9,11 @@ import {
   spaceAt,
   spacesInGroup,
 } from '@/lib/monopoly-board'
-import { movePosition } from '@/lib/monopoly'
+import { movePosition, computeMonopolyNetWorth, resolveMonopolyWinnerId, buildMonopolyStandings } from '@/lib/monopoly'
 import { boardGridCell } from '@/components/monopoly/monopoly-ui'
 import { themedSpaceName } from '@/components/monopoly/monopoly-themes'
+import { buildColorGroupStatuses } from '@/lib/monopoly-color-portfolio'
+import { formatTradeSideText, tradeSideHasValue } from '@/lib/monopoly-trade-messages'
 
 describe('Estate Kings expanded board', () => {
   it('supports eight players while preserving the classic board', () => {
@@ -86,5 +88,84 @@ describe('Estate Kings expanded board', () => {
         expect(themedSpaceName(space.name, space.index, themeId, 48).length).toBeLessThanOrEqual(16)
       }
     }
+  })
+
+  it('filters empty color groups on 40-space board and includes all 12 on 48-space board', () => {
+    const playerNames = new Map([['p1', 'Alice']])
+    const status40 = buildColorGroupStatuses({}, 'p1', playerNames, 40)
+    expect(status40).toHaveLength(10) // 8 classic estate color groups + station + utility
+    expect(status40.every((g) => g.total > 0)).toBe(true)
+
+    const status48 = buildColorGroupStatuses({}, 'p1', playerNames, 48)
+    expect(status48).toHaveLength(14) // 12 expanded estate color groups + station + utility
+    expect(status48.every((g) => g.total > 0)).toBe(true)
+  })
+
+  it('formats trade side text with properties above index 40 on 48-space board', () => {
+    expect(tradeSideHasValue(0, [46, 47], 0, 48)).toBe(true)
+    expect(tradeSideHasValue(0, [46, 47], 0, 40)).toBe(false)
+
+    const text48 = formatTradeSideText(100, [46, 47], 1, 'classic', 48)
+    expect(text48).toContain('Regent Street')
+    expect(text48).toContain('Mayfair Mews')
+    expect(text48).toContain('1 jail card')
+  })
+
+  it('computes net worth and standings accurately for expanded board early finish', () => {
+    const p1State = {
+      id: 's1',
+      game_id: 'g1',
+      player_id: 'p1',
+      cash: 500,
+      in_jail: false,
+      jail_turns: 0,
+      get_out_of_jail_free: 0,
+      bankrupt: false,
+      position: 0,
+      passed_go_once: true,
+      player_order: 0,
+      created_at: new Date().toISOString(),
+    }
+    const p2State = {
+      id: 's2',
+      game_id: 'g1',
+      player_id: 'p2',
+      cash: 100,
+      in_jail: false,
+      jail_turns: 0,
+      get_out_of_jail_free: 0,
+      bankrupt: false,
+      position: 0,
+      passed_go_once: true,
+      player_order: 1,
+      created_at: new Date().toISOString(),
+    }
+    // p2 owns index 46 (Regent Street: £400) and index 47 (Mayfair Mews: £410) on 48-space board
+    const owners = { '46': 'p2', '47': 'p2' }
+    const buildings = {}
+    const mortgaged = {}
+
+    const netWorthP1 = computeMonopolyNetWorth(p1State, owners, buildings, mortgaged, 48)
+    const netWorthP2 = computeMonopolyNetWorth(p2State, owners, buildings, mortgaged, 48)
+    expect(netWorthP1).toBe(500)
+    expect(netWorthP2).toBe(100 + 400 + 410) // 910
+
+    const winner = resolveMonopolyWinnerId([p1State, p2State], owners, buildings, mortgaged, null, 48)
+    expect(winner).toBe('p2')
+
+    const standings = buildMonopolyStandings(
+      [p1State, p2State],
+      [
+        { id: 'p1', name: 'Alice' },
+        { id: 'p2', name: 'Bob' },
+      ],
+      owners,
+      buildings,
+      mortgaged,
+      48
+    )
+    expect(standings[0].playerId).toBe('p2')
+    expect(standings[0].rank).toBe(1)
+    expect(standings[0].netWorth).toBe(910)
   })
 })

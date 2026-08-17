@@ -62,30 +62,33 @@ export function buildColorGroupStatuses(
   playerNames: Map<string, string>,
   boardSize: MonopolyBoardSize = 40
 ): ColorGroupStatus[] {
-  return COLOR_SET_ORDER.map((group) => {
+  const statuses: ColorGroupStatus[] = []
+  for (const group of COLOR_SET_ORDER) {
     const spaces = spacesInGroup(group, boardSize)
+    if (spaces.length === 0) continue
     const owned = countOwnedInGroup(owners, playerId, group, boardSize)
-    const missing = spaces
+    const missing: ColorGroupMissing[] = spaces
       .filter((s) => owners[String(s.index)] !== playerId)
       .map((s) => {
         const ownerId = owners[String(s.index)]
         return {
           name: s.name,
           index: s.index,
-          heldBy: ownerId ? ('other' as const) : ('bank' as const),
+          heldBy: ownerId ? 'other' : 'bank',
           ownerName: ownerId ? playerNames.get(ownerId) : undefined,
         }
       })
 
-    return {
+    statuses.push({
       group,
       label: COLOR_GROUP_LABELS[group],
       owned,
       total: spaces.length,
       complete: owned > 0 && ownsColorMonopoly(owners, playerId, group, boardSize),
       missing,
-    }
-  })
+    })
+  }
+  return statuses
 }
 
 /** Property groups the player has a stake in, in board order. */

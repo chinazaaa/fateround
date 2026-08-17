@@ -309,7 +309,8 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
           players,
           board.property_owners,
           board.property_buildings,
-          board.mortgaged_properties
+          board.mortgaged_properties,
+          board.board_size ?? 40
         )[0]?.name
       : null)
   const hostPlays = hostMode === 'player' && !!hostPlayerId

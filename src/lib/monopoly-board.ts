@@ -52,8 +52,6 @@ export const MONOPOLY_HOUSES_UNDER_HOTEL = 4
 
 export interface MonopolySpace {
   index: number
-  /** Matching 40-space index for themed labels; absent on expanded-only Sites. */
-  classicIndex?: number
   name: string
   type: MonopolySpaceType
   price?: number

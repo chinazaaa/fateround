@@ -1,11 +1,12 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import {
   MONOPOLY_BOARD,
-  MONOPOLY_BOARD_SIZE,
+  MONOPOLY_EXPANDED_BOARD,
   MONOPOLY_MAX_HOUSES_PER_PROPERTY,
   countOwnedInGroup,
   ownsColorMonopoly,
   type MonopolyColorGroup,
+  type MonopolyBoardSize,
 } from '@/lib/monopoly-board'
 import type { FactsContext } from './index'
 
@@ -60,18 +61,25 @@ const PROPERTY_GROUPS: MonopolyColorGroup[] = [
 
 /**
  * The four board sides, as the set of ownable space indices between the corners (GO / Jail /
- * Free Parking / Go-To-Jail sit at 0, 10, 20, 30 and own nothing). Precomputed once from the board.
+ * Free Parking / Go-To-Jail sit at 0, 1/4, 2/4, 3/4 and own nothing). Computed dynamically per board size.
  */
-const SIDE_OWNABLE_INDICES: number[][] = [
-  [1, 9],
-  [11, 19],
-  [21, 29],
-  [31, MONOPOLY_BOARD_SIZE - 1],
-].map(([lo, hi]) =>
-  MONOPOLY_BOARD.filter(
-    (s) => s.index >= lo! && s.index <= hi! && (s.type === 'property' || s.type === 'station' || s.type === 'utility')
-  ).map((s) => s.index)
-)
+function getSideOwnableIndices(boardSize: MonopolyBoardSize): number[][] {
+  const board = boardSize === 48 ? MONOPOLY_EXPANDED_BOARD : MONOPOLY_BOARD
+  const sideLength = boardSize / 4
+  const sides: number[][] = []
+  for (let s = 0; s < 4; s++) {
+    const lo = s * sideLength + 1
+    const hi = (s + 1) * sideLength - 1
+    const sideIndices = board
+      .filter(
+        (sp) =>
+          sp.index >= lo && sp.index <= hi && (sp.type === 'property' || sp.type === 'station' || sp.type === 'utility')
+      )
+      .map((sp) => sp.index)
+    sides.push(sideIndices)
+  }
+  return sides
+}
 
 /** Theme values that ARE an edition: London is the classic 'default' board, Naija its counterpart. */
 const THEME_LONDON = 'default'
@@ -81,6 +89,7 @@ type BoardRow = {
   property_owners: Record<string, string> | null
   property_buildings: Record<string, number> | null
   turn_order: string[] | null
+  board_size: number | null
 }
 
 type PlayerStateRow = {
@@ -99,7 +108,7 @@ export async function monopolyFacts(
   const [{ data: boardData }, { data: stateData }] = await Promise.all([
     supabase
       .from('monopoly_boards')
-      .select('property_owners, property_buildings, turn_order')
+      .select('property_owners, property_buildings, turn_order, board_size')
       .eq('game_id', gameId)
       .maybeSingle(),
     supabase.from('monopoly_player_state').select('player_id, passed_go_once, bankrupt').eq('game_id', gameId),
@@ -109,6 +118,7 @@ export async function monopolyFacts(
   const states = (stateData ?? []) as PlayerStateRow[]
   if (!board || !states.length) return out
 
+  const boardSize: MonopolyBoardSize = board.board_size === 48 ? 48 : 40
   const owners = board.property_owners ?? {}
   const buildings = board.property_buildings ?? {}
   // The room the game was actually played at, unaffected by mid-game removals.
@@ -137,21 +147,27 @@ export async function monopolyFacts(
       if (ownedCount >= 3) facts.monopoly_three_properties = 1
       if (ownedCount >= 10) facts.monopoly_ten_properties = 1
 
-      if (PROPERTY_GROUPS.some((g) => ownsColorMonopoly(owners, playerId, g))) facts.monopoly_full_color_set = 1
+      if (PROPERTY_GROUPS.some((g) => ownsColorMonopoly(owners, playerId, g, boardSize))) {
+        facts.monopoly_full_color_set = 1
+      }
 
-      if (ownsColorMonopoly(owners, playerId, 'utility')) facts.monopoly_both_utilities = 1
+      if (ownsColorMonopoly(owners, playerId, 'utility', boardSize)) facts.monopoly_both_utilities = 1
 
-      const stations = countOwnedInGroup(owners, playerId, 'station')
+      const stations = countOwnedInGroup(owners, playerId, 'station', boardSize)
       if (stations >= 2) facts.monopoly_two_stations = 1
       if (stations >= 4) facts.monopoly_all_stations = 1
 
       // Blue Chip: the two most expensive monopolies at once.
-      if (ownsColorMonopoly(owners, playerId, 'dark_blue') && ownsColorMonopoly(owners, playerId, 'green')) {
+      if (
+        ownsColorMonopoly(owners, playerId, 'dark_blue', boardSize) &&
+        ownsColorMonopoly(owners, playerId, 'green', boardSize)
+      ) {
         facts.monopoly_blue_chip = 1
       }
 
       // Every ownable space on any one side of the board.
-      if (SIDE_OWNABLE_INDICES.some((side) => side.every((i) => owners[String(i)] === playerId))) {
+      const sideOwnable = getSideOwnableIndices(boardSize)
+      if (sideOwnable.some((side) => side.length > 0 && side.every((i) => owners[String(i)] === playerId))) {
         facts.monopoly_one_side = 1
       }
 

@@ -137,7 +137,7 @@ export function useMonopolyNotifications({
 
     if (tradeKey && tradeKey !== prevTradeKeyRef.current && incomingTrade) {
       const fromName = players.find((p) => p.id === incomingTrade.from_player_id)?.name ?? 'A player'
-      info(formatIncomingTradeAlert(incomingTrade, fromName, themeId))
+      info(formatIncomingTradeAlert(incomingTrade, fromName, themeId, board?.board_size ?? 40))
       playMonopolyActionSound('buy', themeId)
     }
 
