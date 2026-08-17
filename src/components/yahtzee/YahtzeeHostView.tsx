@@ -30,6 +30,7 @@ import {
 import { appOrigin } from '@/lib/site'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import { useHostSeat } from '@/hooks/useHostSeat'
+import { setSoloAutoStart } from '@/lib/solo-auto-start'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
 import { useGameScores, useGameStats } from '@/components/roster/RosterDrawerContext'
 import type { Game, Player, YahtzeeCategory, YahtzeePlayerScore, YahtzeeSession } from '@/types'
@@ -262,6 +263,11 @@ export function YahtzeeHostView({ gameCode, hostToken }: { gameCode: string; hos
   const resetGame = async (sameSettings: boolean) => {
     setPlayingAgain(true)
     try {
+      // Solo replay: a 1-seat game reopened with the same settings should skip
+      // the lobby just like the initial create — arm the auto-start flag before
+      // the reset lands (useHostSeat consumes it once the host is re-seated in
+      // 'waiting'). Return-to-lobby (sameSettings=false) never arms it.
+      if (sameSettings && game?.max_players === 1) setSoloAutoStart(gameCode)
       const res = await fetch(`/api/games/${gameCode}/play-again`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

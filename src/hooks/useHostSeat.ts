@@ -503,15 +503,20 @@ export function useHostSeat(options: UseHostSeatOptions): UseHostSeatResult {
     applyMode(rowMode)
   }, [players, hostPlayerId, gameCode, gameStatus, applyMode])
 
-  // Solo auto-start: honor the create-screen "Play solo" flag by POSTing /start
-  // as soon as the host is seated in a still-waiting game, so a solo host skips
-  // the lobby entirely. One-shot per game (the flag is cleared on fire, and a
-  // ref backstop guards against a double-fire before the reload lands).
+  // Solo auto-start: honor the "Play solo" flag by POSTing /start as soon as the
+  // host is seated in a still-waiting game, so a solo host skips the lobby wait
+  // entirely — both on create AND after "Play again" re-arms the flag. The ref
+  // resets whenever the game leaves 'waiting' so the next lobby cycle can fire
+  // again; the localStorage flag is cleared on fire so a Return-to-lobby (which
+  // doesn't re-arm it) never triggers an unwanted start.
   const soloStartFiredRef = useRef(false)
   useEffect(() => {
+    if (gameStatus !== 'waiting') {
+      soloStartFiredRef.current = false
+      return
+    }
     if (soloStartFiredRef.current) return
     if (!hostToken || !hostPlayerId) return
-    if (gameStatus !== 'waiting') return
     if (!hasSoloAutoStart(gameCode)) return
     soloStartFiredRef.current = true
     clearSoloAutoStart(gameCode)

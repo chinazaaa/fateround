@@ -49,6 +49,7 @@ import { useGameRosterPoll } from '@/hooks/useGameRosterPoll'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
 import { useHostSeat } from '@/hooks/useHostSeat'
+import { setSoloAutoStart } from '@/lib/solo-auto-start'
 import { useTurnNotifications } from '@/hooks/useTurnNotifications'
 import { useToast } from '@/components/ui/Toast'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
@@ -309,6 +310,11 @@ export function CrosswordHostView({ gameCode, hostToken }: { gameCode: string; h
     if (playingAgain) return
     setPlayingAgain(true)
     try {
+      // Solo replay: a 1-seat game reopened with the same settings should skip
+      // the lobby just like the initial create — arm the auto-start flag before
+      // the reset lands (useHostSeat consumes it once the host is re-seated in
+      // 'waiting'). Return-to-lobby (sameSettings=false) never arms it.
+      if (sameSettings && game?.max_players === 1) setSoloAutoStart(gameCode)
       const res = await fetch(`/api/games/${gameCode}/play-again`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
