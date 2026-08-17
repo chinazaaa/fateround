@@ -10,14 +10,14 @@
 **Scope: solve the cold-start problem for multi-player games.** A user
 wants to play Monopoly. Monopoly is fun with 6 people. They don't
 have 6 friends online right now — today the only fallback is a bot
-game. This plan gives that user a way to *find* games other people
-just created (the ones they'd currently open at
-`fateround.com/create?type=monopoly` or the mobile Create screen),
-and (opt-in) get pinged when a game they'd want opens.
+game. This plan makes it easy for that user to *find* games other
+people just created (the ones a host opens via `/create?type=…` on
+web or the mobile Create screen), and (opt-in) get pinged when a
+game they'd want opens.
 
 Not in scope:
 - A friends graph (the plan explicitly ships without one — anyone
-  with the app can see any discoverable game).
+  with the app can see any public game).
 - Matchmaking / skill-based sorting. Games are a bare list; the
   player picks.
 - Any change to the invite-by-code flow. Private games still work
@@ -28,17 +28,22 @@ Not in scope:
 
 Throughout: **game** = one instance of a match a host created via
 `/create` (a row in the `games` table, identified by a `game_code`
-like `ABCD12`). Not "room." Whatever a Monopoly game with 6 seats
-is, it's a game.
+like `ABCD12`). Not "room."
+
+The public/private flag on a game is called **`is_public`** in the
+DB (and `isPublic` on API request bodies + client state), and
+**Public** in user-facing UI copy. The plan uses "Public" in copy
+and `is_public` when referring to the column.
 
 ## Load-bearing invariants (do not relax)
 
 - **Private by default.** A newly-created game is invitation-only
-  unless the host explicitly flips **Discoverable** during create.
-  This is the whole reason we can ship "anyone with the app can
-  browse games" without users getting angry that strangers joined
-  their party night. The default protects the current behaviour;
-  the opt-in enables the new one.
+  unless the host explicitly flips the **Public** toggle during
+  create. This is the whole reason we can ship "anyone with the app
+  can browse games" without users getting angry that strangers
+  joined their party night. Today's default already matches this
+  (`isPublic: false` in both web `/create` state and mobile
+  `create-settings.ts`); the plan preserves it.
 - **No permission asks on cold start.** The plan already forbids
   login-first (see revamp plan); we extend it to "no notification
   permission on first launch." Push is asked for only after the
@@ -54,168 +59,130 @@ is, it's a game.
   The subscribe page tells iOS users this inline. Non-iOS web works
   without the install step.
 
-## Why this is a plan, not a single PR
-
-Three feature-sized surfaces that stack on each other:
-
-1. **Live games feed** — a public "who's playing right now" list.
-   No push, no PWA, no new permissions. Just discovery.
-2. **Push subscriptions** — per-game-type notifications when a
-   Discoverable game opens. Reuses the existing Expo push infra on
-   mobile; needs VAPID + a service worker on web.
-3. **Scheduled games** — a host schedules "Monopoly at 8pm", people
-   RSVP, and everyone (subscribers + RSVPers) gets a ping ~15 min
-   before it starts.
-
-Doing them in one PR means one landing that can regress any of three
-things. Sequencing lets each phase produce standalone value AND
-prove demand before spending on the next one.
-
 ## What already exists (baseline)
 
-- **Game create + join.** Every game type already has a create
-  screen (`/create?type=<game>` on web, `apps/mobile/app/create.tsx`
-  on mobile) and a join-by-code flow.
-- **Expo push registration.** `apps/mobile/lib/push-notifications.ts`
-  already handles the mobile permission prompt, token registration,
-  and per-game mute. Adds one new subscription category on top of
-  what's there today (turn alerts + community pings).
-- **A community leaderboard.** Web + mobile can see who won what
-  yesterday. Adjacent surface; discovery lives next to it in the app.
-- **Game-type metadata.** `lib/game-type-meta.ts` and the shared
-  `batch-N-games` files already hold the display name, emoji, and
-  category for every game type — enough to render a subscribe page
-  and a live-game card without any new metadata.
+Way more than the first draft of this plan assumed. The core
+public-games plumbing is done on web; discovery on mobile is where
+almost all the new work lives.
+
+**Web (done):**
+- `games.is_public: boolean` column, default false.
+- `POST /api/games` accepts `isPublic` on create.
+- **Create screen** (`/create?type=…`, `src/app/create/page.tsx`)
+  already has a "Public game" segmented control (Private / Public)
+  in the room-settings panel.
+- **`GET /api/games`** — cursor-paginated public games feed, backed
+  by a supabase-realtime subscription so it self-refreshes.
+- **`/browse`** — full public games list at
+  `src/app/browse/page.tsx`, backed by
+  `src/components/browse/BrowseGamesPage.tsx`. Realtime + poll
+  fallback + pagination + status labels.
+
+**Mobile (done):**
+- Universal lobby fields render the same **Public** segmented
+  control (`components/create/UniversalLobbyFields.tsx`) so the
+  toggle is already in the mobile create wizard.
+- Host lobby settings sheet + host controls sheet expose the toggle
+  post-create (`HostLobbySettingsSheet.tsx`, `HostControlsSheet.tsx`).
+- Expo push registration + per-game mute
+  (`apps/mobile/lib/push-notifications.ts`).
+
+**Cross-platform (done):**
+- Game-type metadata (`lib/game-type-meta.ts`, `batch-N-games.ts`) —
+  enough to render a subscribe page and a game card without new data.
+- Community leaderboard on both platforms — adjacent surface for
+  discovery cross-links.
 
 ## What's missing (the gap this plan closes)
 
-1. **A "Discoverable" toggle** on the create screen, off by default.
-2. **A public feed endpoint** — `GET /api/games/live` — returns
-   currently-open Discoverable games with game code, game type,
-   host display name, and current/max player count. Public read;
-   no auth.
-3. **A live-games feed surface** on the mobile home screen (and web
-   home / community page), showing 0–N games with a Join button.
+1. **A mobile `/browse` screen.** Zero discovery on mobile today —
+   users can't see any public game from the phone even though the
+   feed endpoint is live.
+2. **A home preview section on both platforms.** Discovery is one
+   URL away today; a preview strip on `/` puts it in front of every
+   user without a click.
+3. **Host nudges toward Public** at create time and in the lobby —
+   the toggle exists but is easy to miss.
 4. **A subscribe screen** — one row per game type, toggle on/off.
    Persists to `notification_subscriptions` (new table).
-5. **A server webhook** fired on game create + first Discoverable
-   opt-in — enqueues a push job per subscriber whose subscription
-   matches the game type. Deduped and rate-limited per subscriber.
+5. **A server webhook** fired when a game flips to `is_public =
+   true` (whether at create or later in the settings sheet) —
+   enqueues a push job per subscriber whose subscription matches
+   the game type. Deduped, rate-limited, and gated on quiet hours.
 6. **iOS PWA push plumbing** — VAPID keys, service worker, and the
    Add-to-Home-Screen tip on the subscribe page for iOS Safari.
-7. **Scheduled game support** — a new `scheduled_at` column on
-   `games`, an RSVP table, and a T-15min reminder push.
+7. **Scheduled game support** — `games.scheduled_at`, an RSVP
+   table, and a T-15min reminder push.
 
 ## The load-bearing decision: feed-first or push-first?
 
-Push-first assumes people know they want to be pinged. They don't;
-they've never seen the feature. Feed-first shows them "there IS a
-Monopoly game open right now" as a real, tappable thing on the home
-screen. Once they've joined one that way, offering a "want a ping
-next time?" nudge is a much easier sell.
+Web has the feed backend already; a mobile browse screen ships in
+days, not weeks. Push is a bigger build (per-type subscription
+table + web VAPID + service worker + rate limiting + quiet hours).
+Feed-first lets us prove discovery drives real joins before
+building the notification stack.
 
-Also: feed-only has zero permission asks and zero server-push
-infrastructure. It ships in 1–2 weeks; push adds another 2–3.
-
-**Recommendation: feed first.** Push follows once the feed proves
-people want the discovery.
+**Recommendation: mobile browse + home preview first.** Push
+follows once we see the feed getting used.
 
 ## Phased plan
 
 Each phase ships as its own PR chain (or single PR when small), and
 delivers standalone value.
 
-### Phase A — Live games feed (1–2 weeks)
+### Phase A — Discovery UI (1–2 weeks)
 
-The lowest-risk half. Read-only on the server; a small home-screen
-surface on the client. No new permissions.
+Almost entirely mobile work + the shared nudges on both platforms.
+Backend is untouched; this reuses `GET /api/games`.
 
-- Add `discoverable: boolean` column to `games`. Default false.
-- Create wizard (both web `/create` and mobile): **Discoverable**
-  toggle in the game settings panel, strong copy for party games
-  (Monopoly, Whot, Ludo) that need >2 players ("More people can
-  find and join your game"). Toggle DISABLED for solo mode. Toggle
-  is a no-op for 1v1 games where matchmaking makes less sense
-  (chess, checkers, tic-tac-toe).
-- **Two host nudges toward Discoverable — contextual, not
-  generic.** Two moments a host might forget the toggle exists;
-  cover both:
-    - **Create-screen hint.** For party / board game types with
-      `max_players >= 3` (Monopoly, Whot, Ludo, Trivia — the ones
-      that need >2 humans to feel alive), if the host has NOT
-      toggled Discoverable on, a one-line hint sits directly
-      beneath the toggle: "Party game? Turn this on so others can
-      find and join." Copy is per-game-type-agnostic; the fact
-      that it appears at all is what nudges. Never renders for
-      1v1 games (chess, checkers, tic-tac-toe) or solo mode.
-      Dismisses when the toggle flips on.
-    - **Lobby "missing players" prompt.** In the host lobby
-      (`HostLobbyScreen` on mobile, host lobby on web), when the
-      game has been waiting > 30 seconds AND
-      `current_players < max_players - 1` (i.e. at least 2 seats
-      still empty) AND `discoverable = false`, a dismissible
-      SurfaceCard appears above the roster: "Missing players?
-      Make this game public — [Make public] button." Tapping the
-      button flips the toggle server-side (existing settings-sheet
-      endpoint) and the card fades out. Dismissed per game
-      (SecureStore, keyed by `game_code`) so a host who wants a
-      private night doesn't get re-prompted every 30s. Never fires
-      for solo mode or 1v1 game types.
+- **Mobile `/browse` screen.** Mirror of the web page:
+  `apps/mobile/app/browse.tsx`, backed by
+  `apps/mobile/components/browse/BrowseGamesList.tsx`. Full
+  scrollable list, cursor pagination via the same
+  `GET /api/games?cursor=…` endpoint, pull-to-refresh, realtime via
+  the same Supabase subscription the web uses. Game-type chip strip
+  along the top (same pattern as the community leaderboard filter)
+  so users can narrow to "just Monopoly" or "any board game."
+- **Home preview section (mobile + web).** A "Live games" strip at
+  the top of the home screen — 5 cards max, "See all →" link into
+  `/browse`. Auto-hides when zero games are live so a fresh install
+  doesn't show an empty box. Web already has `/browse`; the home
+  section is new on both platforms.
+- **Create-screen hint.** For party / board game types with
+  `max_players >= 3` (Monopoly, Whot, Ludo, Trivia — the ones
+  that need >2 humans to feel alive), if the host has NOT flipped
+  Public on, a one-line hint sits directly beneath the toggle:
+  "Party game? Turn this on so others can find and join." Never
+  renders for 1v1 games (chess, checkers, tic-tac-toe) or solo mode.
+  Dismisses when the toggle flips on.
+- **Lobby "missing players" prompt.** In the host lobby
+  (`HostLobbyScreen` on mobile, host lobby on web), when the game
+  has been waiting > 30 seconds AND `current_players < max_players
+  - 1` (at least 2 seats still empty) AND `is_public = false`, a
+  dismissible SurfaceCard appears above the roster: "Missing
+  players? Make this game public — [Make public] button." Tap
+  flips the flag server-side via the existing settings-sheet patch
+  endpoint. Dismissed per game (SecureStore, keyed by `game_code`)
+  so a private-night host isn't re-prompted every 30s. Never fires
+  for solo or 1v1 types.
+- **Max-players guard.** A Public game with `max_players = 1` is a
+  contradiction — the host has no seat to fill. Two layers:
+    - Client: when the max-players picker is 1, the Public toggle
+      renders an inline hint immediately below it — "Bump the max
+      players above 1 so other people can join." Toggling on with
+      max 1 is a no-op with a brief toast pointing at the picker.
+    - Server: `POST /api/games` and the settings-sheet patch
+      reject `is_public = true` when `max_players < 2` (max is
+      editable later, so client-side gating alone isn't enough).
+    - Feed: extend `GET /api/games`'s filter to also require
+      `max_players >= 2`, so a game that drops to 1 mid-lobby falls
+      off the feed on the next poll.
 
-  The two-nudge design intentionally covers the two failure modes:
-  "host didn't know the toggle existed at create time" (create-
-  screen hint) and "host meant to leave it private, then realised
-  nobody's showing up" (lobby prompt). Neither is a modal — both
-  are quiet, dismissible in-place, and never repeat.
-
-- **Max-players guard.** A Discoverable game with `max_players = 1`
-  is a contradiction — the host has no seat to fill. Handled at
-  two layers:
-    - Client: when the max-players picker is 1, the Discoverable
-      toggle stays interactive but renders an inline hint
-      immediately below it — "Bump the max players above 1 so
-      other people can join." Toggling it on with max 1 is a
-      no-op with a shake / brief toast pointing at the picker.
-    - Server: `POST /api/games` rejects `discoverable=true` when
-      `max_players < 2`, returning a 400 that the client already
-      handles by falling back to private. Server enforces because
-      max-players can be changed later in the host lobby settings
-      sheet, and we don't want a stale toggle to publish a game
-      that then dropped to 1 seat.
-  Similarly, if a Discoverable game already listed on the feed
-  drops back to 1 max seat mid-lobby, the feed endpoint filters
-  it out on the next poll (it already filters by
-  `current_players < max_players`; extending to
-  `max_players >= 2` for the Discoverable predicate).
-- New endpoint `GET /api/games/live?game_type=&limit=`. Returns
-  active games where `discoverable = true` AND `status = 'waiting'`
-  AND `current_players < max_players`. Ordered by newest.
-- **Two surfaces per platform: a preview section AND a dedicated
-  browse page.** The section keeps discovery visible without a
-  click; the browse page is the "show me everything" destination
-  when the section runs out of room.
-    - **Home preview section.** Between Create and Recent, at most
-      5 cards (game emoji + label, host name, N/max, Join). A
-      "See all live games →" link at the foot of the section jumps
-      to the browse page. Section hides itself entirely when zero
-      games are live (avoids an "empty box" feel on the home page).
-    - **Dedicated browse page.** `/live` route on both mobile
-      (`apps/mobile/app/live.tsx`) and web (`src/app/live/page.tsx`).
-      Full scrollable list with a game-type chip strip along the
-      top (same chip pattern as the community leaderboard) so a
-      user can filter to "just Monopoly" or "any board game." When
-      the filter yields zero, the empty state links to Subscribe:
-      "No Monopoly games open right now. Get pinged when one
-      opens →". Refreshes on focus + pull-to-refresh (same
-      `apiUrl('/api/games/live')` endpoint the section reads, plus
-      the `game_type` query param).
-    - Same route + surfaces on web home + `/leaderboard/community`
-      page: same section behaviour, same `/live` browse page.
-      Existing web surfaces already assume public games — this
-      is additive.
-
-**Success:** a user with the app can see, without any setup, that
-someone just opened a Monopoly game and tap in.
+**Success:** a user opens the mobile app, sees "Live games — 3
+Monopoly, 1 Whot" without any setup, and taps into one. A host
+creating a party game gets a one-liner nudge to flip Public; if
+they don't, and nobody joins after 30s, a lobby prompt gives them
+a one-tap way to open it up.
 
 ### Phase B — Push subscriptions (2–3 weeks)
 
@@ -229,46 +196,37 @@ pings when they're not in the app.
   24h. Toggling ON asks for permission the FIRST time only.
 - iOS Safari on the web `/notifications` page: renders an inline
   "Add to Home Screen for pings" tip when detected as
-  non-standalone iOS. Toggle stays visible but greyed until installed.
-- Server: on game create where `discoverable = true`, enqueue push
-  to every matching subscriber. Rate limit: at most 1 push per
-  subscriber per game type per 30 minutes (avoid spam from a host
-  spamming create).
-- **Discoverability of the subscribe feature itself.** Two nudges,
-  not one — the plan's biggest risk is that people never realise
-  Subscribe exists. Both dismissible, both persist their dismissal
-  in AsyncStorage / localStorage so they never come back for that
-  user:
-    - **Home banner** (primary — reaches everyone who opens the app,
-      not just people who join a game). A small ListRow-styled
-      card at the top of the home screen: "🔔 Get pinged when your
-      favourite games open — Subscribe →" plus an X to dismiss. Sits
-      above the "Live games" section so it reads as a "here's how
-      to make the feed keep working for you when you close the app"
-      story. Appears from the user's second app open onward (so a
-      first-open user isn't hit with a banner before they've even
-      seen the feed) until they either tap through or dismiss.
-    - **Post-join nudge** (secondary — catches people who dismissed
-      the banner without acting). After the user's first successful
-      game JOIN, a SurfaceCard on the finish screen says "Want a
-      ping when new Monopoly games open? Subscribe →". Fires once
-      per app install regardless of banner state.
+  non-standalone iOS (`display-mode: standalone` media query).
+  Toggle stays visible but greyed until installed.
+- Server: on `games` row create where `is_public = true` OR the
+  `is_public` flag flipping from false → true, enqueue push to
+  every matching subscriber. Rate limit: at most 1 push per
+  subscriber per game type per 30 minutes (avoids spam from a host
+  toggling create + settings back and forth).
+- **Discoverability of the Subscribe feature itself.** Two nudges,
+  not one — biggest risk is that people never realise Subscribe
+  exists. Both dismissible, both persist their dismissal so they
+  never come back for that user:
+    - **Home banner** (primary). A small ListRow-styled card at
+      the top of the home screen: "🔔 Get pinged when your
+      favourite games open — Subscribe →" plus an X to dismiss.
+      Sits above the "Live games" section from Phase A so it reads
+      as "here's how to make the feed keep working for you when
+      you close the app." Appears from the user's second app open
+      onward. Ships on both mobile home AND web `/` landing.
+      **iOS Safari copy swap**: on iOS not-yet-installed the copy
+      becomes "🔔 Get pinged when your favourite games open — Add
+      to Home Screen, then Subscribe →" so the PWA install
+      prerequisite is stated up front.
+    - **Post-join nudge** (secondary). After the user's first
+      successful game JOIN, a SurfaceCard on the finish screen
+      says "Want a ping when new Monopoly games open?
+      Subscribe →". Fires once per app install regardless of
+      banner state.
 
   Both nudges deep-link straight into `/notifications` with the
   game-type from the finished game preselected (or all types if
-  coming from the home banner), so the user lands on the exact
-  toggle they'd want and doesn't have to hunt.
-
-  **Web coverage.** The home banner ships on `apps/web` too, on the
-  same `/` landing that the mobile home mirrors. On iOS Safari (not
-  yet installed), the banner text swaps: "🔔 Get pinged when your
-  favourite games open — Add to Home Screen, then Subscribe →" so
-  the PWA install prerequisite is stated up front rather than
-  discovered on the Subscribe page. On installed PWA / Android /
-  desktop, it reads the same as mobile app copy. Detection is the
-  same `display-mode: standalone` media query the tip on
-  `/notifications` uses (Phase B already builds that predicate;
-  the banner reuses it).
+  coming from the home banner).
 - **Quiet / available hours.** A single per-user time window at the
   top of the Notifications screen, plus a mode segmented control:
     - **Quiet hours** — "Don't ping me between 9:00 AM – 5:00 PM."
@@ -276,23 +234,17 @@ pings when they're not in the app.
     - **Available hours** — "Only ping me between 6:00 PM – 11:00 PM."
       (Natural for someone with an irregular schedule who wants to
       opt IN to specific windows.)
-  Same two fields, same storage, just an interpretation flip driven by
-  the mode. Users pick whichever framing matches how they think about
-  their schedule.
-
-  Pushes falling outside the allowed window are DROPPED, not queued
-  — a Monopoly game happening at 2pm is already over by 6pm;
-  delivering a stale ping is worse than nothing. Times are stored in
-  the user's local timezone (captured on toggle) so a device that
-  changes timezone doesn't silently shift the window. Defaults off
-  (all pings delivered) until the user picks a mode.
+  Same two fields, same storage, just an interpretation flip driven
+  by the mode. Pushes outside the allowed window are DROPPED, not
+  queued — a Monopoly game happening at 2pm is already over by 6pm;
+  delivering a stale ping is worse than nothing. Times stored in
+  the user's local timezone. Defaults off (all pings delivered).
 - Web: VAPID keys generated once, service worker registered on the
-  `/notifications` page, service-worker file already partially
-  exists per `apps/mobile` context (verify + extend).
+  `/notifications` page.
 
 **Success:** a user subscribes to Monopoly, closes the app, and
-receives one push (not five) the next time a Discoverable Monopoly
-game opens.
+receives one push (not five) the next time a Public Monopoly game
+opens — assuming it's outside their quiet hours.
 
 ### Phase C — Scheduled games (2–3 weeks, do only after A+B ship)
 
@@ -304,13 +256,13 @@ A+B prove the demand.
   but is not yet joinable-to-play; it's join-to-RSVP.
 - New table `game_rsvps (game_id, user_id, rsvped_at)`.
 - Create screen: **Schedule for later** section — date+time picker,
-  timezone display. Only for Discoverable games.
-- Live games feed: two tabs at the top — **Live now** (Phase A) and
+  timezone display. Only for Public games.
+- Browse page: two tabs at the top — **Live now** (Phase A) and
   **Upcoming** (Phase C). Upcoming shows scheduled games with the
   RSVP button and a countdown.
 - Server: T-15min reminder push to every RSVP + every subscriber
-  whose game-type filter matches. T-0 auto-transitions the game
-  from `scheduled` → `waiting`.
+  whose game-type filter matches (respecting quiet hours from B).
+  T-0 auto-transitions the game from `scheduled` → `waiting`.
 - Host cancellation: cancelling a scheduled game fires a "cancelled"
   push to RSVPers (single fan-out, not throttled — this one they
   need to know about).
@@ -323,7 +275,7 @@ the game opens and the RSVPers show up.
 
 | Phase | Estimate | Confidence |
 |---|---|---|
-| A — Live games feed | 1–2 weeks | High |
+| A — Discovery UI (mobile /browse + home preview + nudges) | 1–2 weeks | High (backend already exists) |
 | B — Push subscriptions | 2–3 weeks | Medium (web PWA infra new) |
 | C — Scheduled games | 2–3 weeks | Medium (RSVP + reminder scheduling new) |
 | **Total** | **5–8 weeks** | **Medium** |
@@ -335,46 +287,42 @@ users don't use.
 ## Explicit non-goals
 
 - **No friends system.** Deliberately shipping public-anonymous.
-  Adding friends is a separate arc that would rewrite this feature.
-- **No matchmaking.** No skill sorting, no auto-join. The user
-  picks a game from a list.
-- **No chat.** Games don't get pre-start chat here. That's separate.
-- **No location filter.** Games are global; nobody is filtering
-  Monopoly by continent.
+- **No matchmaking.** No skill sorting, no auto-join.
+- **No chat.** Games don't get pre-start chat here.
+- **No location filter.** Games are global.
 - **No changes to the invite-by-code flow.** Private games stay
   private and work exactly as they do today.
 
 ## Risks + how we mitigate
 
-1. **Discoverable-by-default confusion.** We're private-by-default
-   for exactly this reason. If a party-game host wants strangers,
-   they flip one toggle; if they don't, nothing changes.
+1. **Public-by-default confusion.** Already private-by-default in
+   both create screens; the plan preserves that.
 2. **Notification fatigue kills reach.** Per-game-type subscription
    + 30-minute per-type rate limit + never asking for permission on
-   cold open. If reach drops <50% after Phase B, revisit rate limit
-   before adding more channels.
+   cold open + quiet hours. If reach drops <50% after Phase B,
+   revisit rate limit before adding channels.
 3. **iOS web push is a partial audience.** Only PWA-installed
-   iOS Safari users receive web push. Plan surfaces this inline
-   rather than pretending it's transparent. Mobile app users get
-   the full experience regardless.
-4. **Server push volume.** A viral moment (100 subscribers, host
-   creates 5 games in a minute) could send 500 pushes. Rate limit
-   is per-subscriber-per-type-per-30-min, so worst case per
-   subscriber is 1 push. Server-side per-host quota (max 5 pushes
-   sent by one host's games per hour) is an additional guard rail
+   iOS Safari users receive web push. Plan surfaces this inline on
+   the subscribe page AND on the iOS-Safari home banner. Mobile app
+   users get the full experience regardless.
+4. **Server push volume.** Per-subscriber-per-type-per-30-min rate
+   limit is the primary guard. Server-side per-host quota (max 5
+   pushes sent by one host's games per hour) is an additional guard
    worth adding in Phase B.
 5. **Feature discoverability.** People won't know Subscribe exists.
-   Handled by the one-time post-first-join nudge, not a cold-open
-   prompt.
+   Handled by the home banner (primary) + post-first-join nudge
+   (secondary), never a cold-open prompt.
+6. **The Public toggle is easy to miss at create.** Handled by the
+   contextual hint at create + the lobby "missing players" prompt.
 
 ## What I'll deliver at the end of each phase
 
-- **Phase A:** working live-games feed on mobile + web home,
-  Discoverable toggle on create, at least three real games opened
-  by us in a day to prove the flow feels alive rather than empty.
-- **Phase B:** a working notifications screen, per-game-type
-  subscription, one push received end-to-end on mobile AND on web
-  (PWA-installed iOS + Android + desktop).
+- **Phase A:** mobile `/browse`, home preview section on both
+  platforms, create-screen hint + lobby prompt live, at least three
+  real games opened by us to prove the flow feels alive.
+- **Phase B:** working `/notifications` screen, per-game-type
+  subscription, quiet/available hours, one push received end-to-end
+  on mobile AND on web (PWA-installed iOS + Android + desktop).
 - **Phase C:** end-to-end scheduled game — I open one, three of us
   RSVP, everyone gets the 15-minute reminder, the game opens.
 
