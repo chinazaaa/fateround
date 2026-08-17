@@ -166,7 +166,7 @@ const makeStyles = (theme: Theme) =>
     },
     subtitle: {
       color: theme.textMuted,
-      fontSize: 14,
+      fontSize: theme.type.label.size,
       lineHeight: 20,
       textAlign: 'center',
       maxWidth: 320,
@@ -174,7 +174,7 @@ const makeStyles = (theme: Theme) =>
     ring: {
       width: 132,
       height: 132,
-      borderRadius: 66,
+      borderRadius: theme.radius.pill,
       borderWidth: 10,
       borderColor: theme.primary,
       alignItems: 'center',
@@ -184,7 +184,7 @@ const makeStyles = (theme: Theme) =>
     },
     ringCount: {
       color: theme.text,
-      fontSize: 32,
+      fontSize: theme.type.display.size,
       fontWeight: '800',
     },
     ringLabel: {
@@ -203,7 +203,7 @@ const makeStyles = (theme: Theme) =>
       alignItems: 'center',
       gap: 10,
       backgroundColor: theme.surface,
-      borderRadius: 12,
+      borderRadius: theme.radius.md,
       borderWidth: 1,
       borderColor: theme.border,
       padding: 12,
@@ -217,7 +217,7 @@ const makeStyles = (theme: Theme) =>
     avatar: {
       width: 32,
       height: 32,
-      borderRadius: 16,
+      borderRadius: theme.radius.pill,
       backgroundColor: theme.bg,
       alignItems: 'center',
       justifyContent: 'center',
@@ -229,12 +229,12 @@ const makeStyles = (theme: Theme) =>
     name: {
       flex: 1,
       color: theme.text,
-      fontSize: 15,
+      fontSize: theme.type.body.size,
       fontWeight: '600',
     },
     status: {
       color: theme.textFaint,
-      fontSize: 12,
+      fontSize: theme.type.caption.size,
       fontWeight: '600',
     },
     statusReady: {
@@ -247,7 +247,7 @@ const makeStyles = (theme: Theme) =>
     },
     primaryButton: {
       backgroundColor: theme.primary,
-      borderRadius: 12,
+      borderRadius: theme.radius.md,
       paddingVertical: 14,
       paddingHorizontal: 20,
       width: '100%',
@@ -256,12 +256,12 @@ const makeStyles = (theme: Theme) =>
     primaryButtonText: {
       // white on the solid rose button — intentional
       color: '#fff',
-      fontSize: 16,
+      fontSize: theme.type.section.size,
       fontWeight: '700',
     },
     secondaryButton: {
       backgroundColor: theme.border,
-      borderRadius: 12,
+      borderRadius: theme.radius.md,
       paddingVertical: 14,
       paddingHorizontal: 20,
       width: '100%',
@@ -269,7 +269,7 @@ const makeStyles = (theme: Theme) =>
     },
     secondaryButtonText: {
       color: theme.text,
-      fontSize: 16,
+      fontSize: theme.type.section.size,
       fontWeight: '700',
     },
     buttonDisabled: {
@@ -280,7 +280,7 @@ const makeStyles = (theme: Theme) =>
       backgroundColor: theme.surface,
       borderColor: theme.border,
       borderWidth: 1,
-      borderRadius: 12,
+      borderRadius: theme.radius.md,
       paddingVertical: 14,
       paddingHorizontal: 16,
       alignItems: 'center',
@@ -288,7 +288,7 @@ const makeStyles = (theme: Theme) =>
     },
     watchTitle: {
       color: theme.text,
-      fontSize: 15,
+      fontSize: theme.type.body.size,
       fontWeight: '700',
       textAlign: 'center',
     },
@@ -299,7 +299,7 @@ const makeStyles = (theme: Theme) =>
     },
     hint: {
       color: theme.textFaint,
-      fontSize: 12,
+      fontSize: theme.type.caption.size,
       textAlign: 'center',
     },
     error: {

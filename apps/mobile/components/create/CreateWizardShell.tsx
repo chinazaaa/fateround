@@ -486,7 +486,7 @@ const makeStyles = (theme: Theme) =>
       gap: theme.space.lg,
     },
     back: { alignSelf: 'flex-start', marginTop: theme.space.xs },
-    backText: { color: theme.primaryMuted, fontSize: 16, fontWeight: '700' },
+    backText: { color: theme.primaryMuted, fontSize: theme.type.section.size, fontWeight: '700' },
     hero: {
       gap: theme.space.xs,
       paddingBottom: theme.space.xs,
@@ -500,20 +500,20 @@ const makeStyles = (theme: Theme) =>
     },
     heading: {
       color: theme.text,
-      fontSize: 32,
+      fontSize: theme.type.display.size,
       fontWeight: '800',
       letterSpacing: -0.3,
     },
     subtitle: {
       color: theme.textMuted,
-      fontSize: 16,
+      fontSize: theme.type.section.size,
       lineHeight: 24,
       maxWidth: 340,
     },
     typeSection: { gap: theme.space.sm },
     typeHeading: {
       color: theme.text,
-      fontSize: 18,
+      fontSize: theme.type.section.size,
       fontWeight: '800',
     },
     soloRow: { flexDirection: 'row', alignItems: 'flex-start', gap: theme.space.sm },
@@ -528,9 +528,9 @@ const makeStyles = (theme: Theme) =>
       marginTop: 2,
     },
     soloCheckboxOn: { backgroundColor: theme.primary, borderColor: theme.primary },
-    soloCheckmark: { color: '#fff', fontSize: 14, fontWeight: '800' },
+    soloCheckmark: { color: '#fff', fontSize: theme.type.label.size, fontWeight: '800' },
     soloBody: { flex: 1, gap: 4 },
-    soloTitle: { color: theme.text, fontSize: 15, fontWeight: '800' },
+    soloTitle: { color: theme.text, fontSize: theme.type.body.size, fontWeight: '800' },
     soloHint: { color: theme.textMuted, fontSize: 13, lineHeight: 18 },
     soloChevron: { color: theme.primary, fontSize: 28, fontWeight: '800', alignSelf: 'center', paddingHorizontal: 4 },
     footer: {
@@ -544,7 +544,7 @@ const makeStyles = (theme: Theme) =>
     },
     error: {
       color: theme.error,
-      fontSize: 14,
+      fontSize: theme.type.label.size,
       textAlign: 'center',
     },
     webLink: {
@@ -559,7 +559,7 @@ const makeStyles = (theme: Theme) =>
     },
     webLinkAction: {
       color: theme.primaryMuted,
-      fontSize: 14,
+      fontSize: theme.type.label.size,
       fontWeight: '700',
     },
   })
