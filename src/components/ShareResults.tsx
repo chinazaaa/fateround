@@ -264,7 +264,7 @@ function buildShareText({
     const sorted = [...yahtzeeScores]
       .map((row) => ({
         name: players.find((p) => p.id === row.player_id)?.name ?? 'Player',
-        score: totalScore(row.scores.categories),
+        score: totalScore(row.scores.categories, row.scores.bonusYahtzees),
       }))
       .sort((a, b) => b.score - a.score)
 

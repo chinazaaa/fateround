@@ -210,6 +210,22 @@ jobs:
             echo "Add them so the RLS boundary check can run. Refusing to pass without checking."
             exit 1
           fi
+
+          # Guard against the two DB jobs pointing at DIFFERENT projects. `DB Migrate` PINS the ref
+          # (--project-ref below), but this job FOLLOWS the environment's NEXT_PUBLIC_SUPABASE_URL.
+          # If they diverge — e.g. a Production env whose URL/keys were left pointing at Preview —
+          # migrate migrates one project while this tests another, and the test reports the opaque
+          # "expected 0 to be greater than 50". Assert the URL names the same project migrate targets.
+          # Keep these two refs in sync with the `case` in the DB Migrate job above.
+          case "${GITHUB_REF_NAME}" in
+            main) expected_ref="skhvbzitwvnbhqxfitgh" ;;  # production
+            dev)  expected_ref="xzvsrzbbgxbaagqwtpts" ;;  # preview
+            *)    expected_ref="" ;;
+          esac
+          if [ -n "$expected_ref" ] && ! printf '%s' "${NEXT_PUBLIC_SUPABASE_URL}" | grep -q "$expected_ref"; then
+            echo "::error::NEXT_PUBLIC_SUPABASE_URL on the ${{ github.ref_name == 'main' && 'Production' || 'Preview' }} environment does not name the project DB Migrate targets ($expected_ref). The two jobs would act on different projects — fix this environment's NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY / NEXT_PUBLIC_SUPABASE_ANON_KEY so all point at $expected_ref."
+            exit 1
+          fi
       - run: pnpm vitest run src/lib/rls-boundaries.integration.test.ts
 
   security:

@@ -274,10 +274,6 @@ export function AyoGamePanel({
         </p>
       ) : null}
 
-      {variant === 'traditional' && session.status === 'active' && (
-        <p className="text-center text-faint text-xs -mt-2">Round {session.match_round}</p>
-      )}
-
       {finished && (
         <AyoCard className="p-4 text-center space-y-1">
           <p className="text-2xl">{session.is_draw ? '🤝' : '🏆'}</p>
