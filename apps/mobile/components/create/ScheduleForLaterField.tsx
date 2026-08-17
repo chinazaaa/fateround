@@ -1,11 +1,11 @@
 /**
  * ScheduleForLaterField — mobile "Schedule for later" toggle + inputs.
  *
- * Renders under the Public toggle on the create wizard when isPublic=true
- * (a private scheduled game has no RSVP audience — the server rejects that
- * pair anyway). Uses plain date + time text inputs — a full native picker
- * was scope creep for one datetime pair, and the server does the final
- * "must be in the future" check.
+ * Renders under the Visibility toggle on the create wizard. Works for both
+ * Public and Private games — the server accepts either (Private = invite by
+ * link). Uses plain date + time text inputs — a full native picker was scope
+ * creep for one datetime pair. The client rejects past instants; the server
+ * does a final "must be in the future" check.
  */
 
 import { useCallback, useMemo } from 'react'
@@ -44,8 +44,9 @@ function combineIso(date: string, time: string): string | null {
 export function ScheduleForLaterField({ isPublic, scheduledAt, onChange }: Props) {
   const theme = useTheme()
   const styles = useThemedStyles(makeStyles)
-  const enabled = isPublic && scheduledAt != null
+  const enabled = scheduledAt != null
   const { date, time } = useMemo(() => splitIso(scheduledAt), [scheduledAt])
+  const inFuture = (iso: string): boolean => new Date(iso).getTime() > Date.now()
   const tz = useMemo(() => {
     try {
       return Intl.DateTimeFormat().resolvedOptions().timeZone
@@ -57,14 +58,14 @@ export function ScheduleForLaterField({ isPublic, scheduledAt, onChange }: Props
   const setDate = useCallback(
     (value: string) => {
       const next = combineIso(value, time || '20:00')
-      if (next) onChange(next)
+      if (next && inFuture(next)) onChange(next)
     },
     [time, onChange]
   )
   const setTime = useCallback(
     (value: string) => {
       const next = combineIso(date || todayIso(), value)
-      if (next) onChange(next)
+      if (next && inFuture(next)) onChange(next)
     },
     [date, onChange]
   )

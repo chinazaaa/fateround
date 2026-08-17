@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod/v4'
 import { internalErrorMessage } from '@/lib/api-errors'
-import { assertHostGameSettings } from '@/lib/game-admin'
+import { assertHostScheduledGame } from '@/lib/game-admin'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { fireHostRescheduledPush } from '@/lib/scheduled-games'
 
@@ -30,7 +30,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
   }
 
   const admin = getSupabaseAdmin()
-  const auth = await assertHostGameSettings(admin, gameCode, parsed.data.hostToken)
+  const auth = await assertHostScheduledGame(admin, gameCode, parsed.data.hostToken)
   if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
   const game = auth.game!
   if (game.status !== 'scheduled') {
