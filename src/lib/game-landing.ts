@@ -54,7 +54,7 @@ export const GAME_TYPE_TO_SLUG: Record<GameType, string> = {
   codewords: 'codewords',
   trivia: 'trivia',
   two_truths: 'two-truths-and-a-lie',
-  monopoly: 'monopoly',
+  monopoly: 'estate-kings',
   yahtzee: 'yahtzee',
   whot: 'whot',
   crazy_eights: 'crazy-eights',
@@ -89,6 +89,8 @@ export const GAME_TYPE_TO_SLUG: Record<GameType, string> = {
 const SLUG_TO_GAME_TYPE = Object.fromEntries(
   Object.entries(GAME_TYPE_TO_SLUG).map(([type, slug]) => [slug, type])
 ) as Record<string, GameType>
+
+SLUG_TO_GAME_TYPE.monopoly = 'monopoly'
 
 export function gameTypeFromSlug(slug: string): GameType | null {
   return SLUG_TO_GAME_TYPE[slug] ?? null
@@ -1228,6 +1230,8 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       'Play Estate Kings, a Monopoly-style property game, online with friends. Roll dice, buy properties, pay rent, and bankrupt your opponents — all on your phones.',
     keywords: [
       'online monopoly game',
+      'free monopoly alternative online',
+      'online monopoly alternative with bots',
       'monopoly rules',
       'how to play monopoly',
       'free monopoly multiplayer',
@@ -1243,8 +1247,8 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     heroSubtitle:
       'A classic Monopoly-style property game on your phones. Join a room, roll the dice, buy properties, and be the last player standing.',
     bodyParagraph:
-      'Estate Kings on FateRound is a Monopoly-style property trading game with customizable themed editions — including classic London streets and Naija Edition — with full Fate and Kitty card decks, property auctions, houses, hotels, mortgages, and player trading. Join 2–6 players and play turn-by-turn in real time.',
-    highlights: ['Full 40-space board', '2–6 players', 'Real-time turns'],
+      'Estate Kings on FateRound is a Monopoly-style property trading game with customizable themed editions — including classic London streets and Naija Edition — with full Fate and Kitty card decks, property auctions, houses, hotels, mortgages, and player trading. Join 2–8 players and play turn-by-turn in real time.',
+    highlights: ['40 or 48-space board', '2–8 players', 'Real-time turns'],
     features: [
       {
         title: 'Classic board',

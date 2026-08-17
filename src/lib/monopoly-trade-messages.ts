@@ -1,4 +1,4 @@
-import { formatMonopolyMoney, spaceAt } from '@/lib/monopoly-board'
+import { formatMonopolyMoney, spaceAt, type MonopolyBoardSize } from '@/lib/monopoly-board'
 import { formatThemedText } from '@/components/monopoly/monopoly-themes'
 import type { MonopolyLastTradeEvent, MonopolyPendingTrade } from '@/types'
 
@@ -8,7 +8,7 @@ export type TradeSideItem =
   | { kind: 'jail_cards'; count: number }
 
 /** Coerce JSONB / client payloads into a deduped list of board indexes. */
-export function normalizeTradePropertyList(raw: unknown): number[] {
+export function normalizeTradePropertyList(raw: unknown, maxIndex = 48): number[] {
   const values: unknown[] = []
 
   if (raw == null) {
@@ -30,7 +30,7 @@ export function normalizeTradePropertyList(raw: unknown): number[] {
 
   for (const value of values) {
     const index = Number(value)
-    if (!Number.isInteger(index) || index < 0 || index > 39 || seen.has(index)) continue
+    if (!Number.isInteger(index) || index < 0 || index >= maxIndex || seen.has(index)) continue
     seen.add(index)
     normalized.push(index)
   }
@@ -38,28 +38,38 @@ export function normalizeTradePropertyList(raw: unknown): number[] {
   return normalized
 }
 
-export function normalizePendingTrade(trade: MonopolyPendingTrade): MonopolyPendingTrade {
+export function normalizePendingTrade(trade: MonopolyPendingTrade, maxIndex = 48): MonopolyPendingTrade {
   return {
     ...trade,
-    offer_properties: normalizeTradePropertyList(trade.offer_properties),
-    request_properties: normalizeTradePropertyList(trade.request_properties),
+    offer_properties: normalizeTradePropertyList(trade.offer_properties, maxIndex),
+    request_properties: normalizeTradePropertyList(trade.request_properties, maxIndex),
     offer_get_out_cards: trade.offer_get_out_cards ?? 0,
     request_get_out_cards: trade.request_get_out_cards ?? 0,
   }
 }
 
-export function buildTradeSideItems(cash: number, propertyIndexes: unknown, jailCards = 0): TradeSideItem[] {
+export function buildTradeSideItems(
+  cash: number,
+  propertyIndexes: unknown,
+  jailCards = 0,
+  boardSize: MonopolyBoardSize = 40
+): TradeSideItem[] {
   const items: TradeSideItem[] = []
   if (cash > 0) items.push({ kind: 'cash', amount: cash })
-  for (const index of normalizeTradePropertyList(propertyIndexes)) {
-    items.push({ kind: 'property', name: spaceAt(index).name, index })
+  for (const index of normalizeTradePropertyList(propertyIndexes, boardSize)) {
+    items.push({ kind: 'property', name: spaceAt(index, boardSize).name, index })
   }
   if (jailCards > 0) items.push({ kind: 'jail_cards', count: jailCards })
   return items
 }
 
-export function tradeSideHasValue(cash: number, propertyIndexes: unknown, jailCards = 0): boolean {
-  return cash > 0 || normalizeTradePropertyList(propertyIndexes).length > 0 || jailCards > 0
+export function tradeSideHasValue(
+  cash: number,
+  propertyIndexes: unknown,
+  jailCards = 0,
+  boardSize: MonopolyBoardSize = 40
+): boolean {
+  return cash > 0 || normalizeTradePropertyList(propertyIndexes, boardSize).length > 0 || jailCards > 0
 }
 
 /** Human-readable trade side — omits £0 when there is no cash. */
@@ -67,9 +77,10 @@ export function formatTradeSideText(
   cash: number,
   propertyIndexes: unknown,
   jailCards = 0,
-  themeId?: string | null
+  themeId?: string | null,
+  boardSize: MonopolyBoardSize = 40
 ): string {
-  const items = buildTradeSideItems(cash, propertyIndexes, jailCards)
+  const items = buildTradeSideItems(cash, propertyIndexes, jailCards, boardSize)
   if (items.length === 0) return 'Nothing'
 
   const raw = items
@@ -82,28 +93,41 @@ export function formatTradeSideText(
   return formatThemedText(raw, themeId)
 }
 
-function sideItemCount(cash: number, propertyIndexes: unknown, jailCards = 0): number {
-  return buildTradeSideItems(cash, propertyIndexes, jailCards).length
+function sideItemCount(
+  cash: number,
+  propertyIndexes: unknown,
+  jailCards = 0,
+  boardSize: MonopolyBoardSize = 40
+): number {
+  return buildTradeSideItems(cash, propertyIndexes, jailCards, boardSize).length
 }
 
 export function formatIncomingTradeAlert(
   trade: MonopolyPendingTrade,
   fromName: string,
-  themeId?: string | null
+  themeId?: string | null,
+  boardSize: MonopolyBoardSize = 40
 ): string {
   const normalized = normalizePendingTrade(trade)
-  const receiveCount = sideItemCount(normalized.offer_cash, normalized.offer_properties, normalized.offer_get_out_cards)
+  const receiveCount = sideItemCount(
+    normalized.offer_cash,
+    normalized.offer_properties,
+    normalized.offer_get_out_cards,
+    boardSize
+  )
   const payCount = sideItemCount(
     normalized.request_cash,
     normalized.request_properties,
-    normalized.request_get_out_cards
+    normalized.request_get_out_cards,
+    boardSize
   )
 
   const receiveSummary = formatTradeSideText(
     normalized.offer_cash,
     normalized.offer_properties,
     normalized.offer_get_out_cards,
-    themeId
+    themeId,
+    boardSize
   )
   const paySummary =
     payCount > 0
@@ -111,7 +135,8 @@ export function formatIncomingTradeAlert(
           normalized.request_cash,
           normalized.request_properties,
           normalized.request_get_out_cards,
-          themeId
+          themeId,
+          boardSize
         )
       : null
 

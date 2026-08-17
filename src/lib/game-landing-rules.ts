@@ -484,14 +484,14 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
     {
       title: 'Setup',
       points: [
-        '2–6 players join a room and pick a board token (car, hat, dog, etc.). Each player starts on PAYDAY with £1,500.',
+        '2–8 players join a room and pick a board token (car, hat, dog, etc.). Each player starts on PAYDAY with £1,500.',
         'The Bank holds all Title Deeds until purchased. The host starts when everyone is ready; turn order is set at game start.',
       ],
     },
     {
       title: 'Moving & PAYDAY',
       points: [
-        'On your turn, roll two dice and move clockwise around the 40-space board.',
+        'On your turn, roll two dice and move clockwise around the 40- or 48-space board.',
         'Collect £200 from the Bank every time you land on or pass PAYDAY while moving forward — but not on your first lap around the board.',
         'Two or more tokens may occupy the same space.',
       ],
@@ -509,7 +509,7 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
         'You cannot buy from the Bank, pay TAX OFFICE or SURCHARGE, or draw Fate / Kitty cards until you have passed PAYDAY at least once on your first lap.',
         'Landing on an unowned Property, Station, or Utility after that lets you buy it at the listed price.',
         'If you decline to buy, the property is auctioned to the highest bidder — including you.',
-        'Own all Sites in a colour-group (a monopoly) to charge double rent on unimproved properties in that group.',
+        'Own every Site in a colour group (an estate) to charge double rent on unimproved properties in that group.',
       ],
     },
     {
