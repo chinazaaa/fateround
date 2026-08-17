@@ -159,12 +159,29 @@ surface on the client. No new permissions.
 - New endpoint `GET /api/games/live?game_type=&limit=`. Returns
   active games where `discoverable = true` AND `status = 'waiting'`
   AND `current_players < max_players`. Ordered by newest.
-- Mobile home: "Live games" section between Create and Recent,
-  scrollable card per game (game emoji + label, host name, N/max
-  players, Join button). Refreshes on focus + pull-to-refresh.
-- Web home + `/leaderboard/community` page: same section, shared
-  API. Existing web surfaces already assume public games — this
-  is additive.
+- **Two surfaces per platform: a preview section AND a dedicated
+  browse page.** The section keeps discovery visible without a
+  click; the browse page is the "show me everything" destination
+  when the section runs out of room.
+    - **Home preview section.** Between Create and Recent, at most
+      5 cards (game emoji + label, host name, N/max, Join). A
+      "See all live games →" link at the foot of the section jumps
+      to the browse page. Section hides itself entirely when zero
+      games are live (avoids an "empty box" feel on the home page).
+    - **Dedicated browse page.** `/live` route on both mobile
+      (`apps/mobile/app/live.tsx`) and web (`src/app/live/page.tsx`).
+      Full scrollable list with a game-type chip strip along the
+      top (same chip pattern as the community leaderboard) so a
+      user can filter to "just Monopoly" or "any board game." When
+      the filter yields zero, the empty state links to Subscribe:
+      "No Monopoly games open right now. Get pinged when one
+      opens →". Refreshes on focus + pull-to-refresh (same
+      `apiUrl('/api/games/live')` endpoint the section reads, plus
+      the `game_type` query param).
+    - Same route + surfaces on web home + `/leaderboard/community`
+      page: same section behaviour, same `/live` browse page.
+      Existing web surfaces already assume public games — this
+      is additive.
 
 **Success:** a user with the app can see, without any setup, that
 someone just opened a Monopoly game and tap in.
