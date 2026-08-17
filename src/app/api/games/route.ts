@@ -586,7 +586,8 @@ export async function POST(req: NextRequest) {
     isWordSearchGame(game_type) ||
     isWordScrambleGame(game_type) ||
     isWordGroupingGame(game_type) ||
-    isLandmineGame(game_type)
+    isLandmineGame(game_type) ||
+    isWordleRoomGame(game_type)
       ? 'joiners'
       : isWhoSaidThis(game_type)
         ? 'joiners'
@@ -650,6 +651,7 @@ export async function POST(req: NextRequest) {
     isAyoGame(game_type) ||
     isMafiaGame(game_type) ||
     isScrabbleGame(game_type) ||
+    isWordleRoomGame(game_type) ||
     isPuzzlePool
       ? 1
       : isDescribeItGame(game_type)

@@ -12,7 +12,9 @@ export function useWordleRoomGameTimer(
   onExpired?: () => void | Promise<void>
 ) {
   const duration = wordleRoomTimerSeconds(game?.timer_seconds)
-  const active = game?.status === 'active' && !!game.session_started_at
+  // Untimed rooms (duration 0) run until every seated player finishes — no countdown
+  // and no expiry, so keep them "inactive" for the timer.
+  const active = game?.status === 'active' && !!game.session_started_at && duration > 0
   const secondsLeft = useDeadlineCountdown(game?.session_started_at, duration, active)
   const expireInFlightRef = useRef(false)
   const onExpiredRef = useRef(onExpired)
@@ -62,17 +64,6 @@ export function useWordleRoomGameTimer(
       if (retryTimer) clearTimeout(retryTimer)
     }
   }, [active, secondsLeft, gameCode, game?.status, requestExpire])
-
-  useEffect(() => {
-    if (!active || secondsLeft > 0 || game?.status === 'finished') return
-
-    void refreshAfterExpire()
-    const pollId = window.setInterval(() => {
-      void refreshAfterExpire()
-    }, 2000)
-
-    return () => window.clearInterval(pollId)
-  }, [active, secondsLeft, game?.status, refreshAfterExpire])
 
   return {
     active,

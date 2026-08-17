@@ -1,20 +1,28 @@
 'use client'
 
-import { useCallback, useEffect, useRef, type CSSProperties } from 'react'
+import { useEffect, useEffectEvent, type CSSProperties } from 'react'
 import { wordleKeyBestStates, type WordleLetterState } from '@/lib/daily-wordle'
 
 // Shared wordle tile/keyboard styling — mirrors the Daily Challenge board's CSS so
-// Wordle Room plays and looks identical.
+// Wordle Room plays and looks identical. The color variables are defined at :root so
+// the category badge (rendered outside .wordle-scope) can use them too.
 const WORDLE_CSS = `
-.wordle-scope {
+:root {
   --wl-correct: #6aaa64;
   --wl-present: #c9b458;
   --wl-absent: #787c7e;
 }
-[data-theme='dark'] .wordle-scope {
+[data-theme='dark'] {
   --wl-correct: #538d4e;
   --wl-present: #b59f3b;
   --wl-absent: #3a3a3c;
+}
+.wl-cat-badge {
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: var(--text-xs, 0.72rem);
+  font-weight: 700;
+  letter-spacing: 0.02em;
 }
 .wl-board { display: flex; flex-direction: column; gap: 5px; }
 .wl-row { display: grid; gap: 5px; perspective: 600px; }
@@ -162,21 +170,24 @@ export function WordleRoomBoard({
     word
   )
 
-  // Physical keyboard support.
-  const handlersRef = useRef({ onAddLetter, onBackspace, onSubmit })
-  handlersRef.current = { onAddLetter, onBackspace, onSubmit }
+  // Physical keyboard support. Effect Events give the keydown listener a stable
+  // reference to the latest callbacks without re-subscribing on every render (or
+  // writing to a ref during render).
+  const onAddLetterEvent = useEffectEvent(onAddLetter)
+  const onBackspaceEvent = useEffectEvent(onBackspace)
+  const onSubmitEvent = useEffectEvent(onSubmit)
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (disabled || gameOver) return
       if (e.metaKey || e.ctrlKey || e.altKey) return
       if (e.key === 'Enter') {
         e.preventDefault()
-        handlersRef.current.onSubmit()
+        onSubmitEvent()
       } else if (e.key === 'Backspace') {
         e.preventDefault()
-        handlersRef.current.onBackspace()
+        onBackspaceEvent()
       } else if (/^[a-zA-Z]$/.test(e.key)) {
-        handlersRef.current.onAddLetter(e.key)
+        onAddLetterEvent(e.key)
       }
     }
     window.addEventListener('keydown', onKeyDown)

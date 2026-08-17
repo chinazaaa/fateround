@@ -49,8 +49,8 @@ interface WordleRoomStatus {
   currentWord?: string
   wordLength?: number
   maxAttempts?: number
-  wordIndex?: number
-  wordCount?: number
+  word_index?: number
+  word_count?: number
   categoryLabel?: string
   timeRemainingMs?: number | null
 }
@@ -145,15 +145,20 @@ export function WordleRoomHostView({ gameCode, hostToken }: { gameCode: string; 
     }
     let cancelled = false
     const run = async () => {
-      const res = await fetch('/api/wordle-room/status', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameId: gameCode, resumeToken: hostResumeToken }),
-      })
-      if (cancelled || !res.ok) return
-      const data = (await res.json()) as WordleRoomStatus
-      if (cancelled) return
-      setHostWord(data)
+      try {
+        const res = await fetch('/api/wordle-room/status', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ gameId: gameCode, resumeToken: hostResumeToken }),
+        })
+        if (cancelled || !res.ok) return
+        const data = (await res.json()) as WordleRoomStatus
+        if (cancelled) return
+        setHostWord(data)
+      } catch {
+        // Transient fetch/parse failures must not surface as unhandled rejections
+        // from the interval — the next poll retries.
+      }
     }
     void run()
     const poll = window.setInterval(run, 4000)
@@ -389,7 +394,7 @@ export function WordleRoomHostView({ gameCode, hostToken }: { gameCode: string; 
       {hostWord?.currentWord && (
         <div className="glass-card p-3 space-y-2">
           <p className="label-caps text-xs">
-            Current word · {hostWord.wordIndex != null ? hostWord.wordIndex + 1 : '?'}/{hostWord.wordCount ?? 5} ·{' '}
+            Current word · {hostWord.word_index != null ? hostWord.word_index + 1 : '?'}/{hostWord.word_count ?? 5} ·{' '}
             {hostWord.categoryLabel}
           </p>
           <div

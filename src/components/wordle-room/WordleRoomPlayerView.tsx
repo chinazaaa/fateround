@@ -47,8 +47,8 @@ interface WordleRoomStatus {
   currentWord?: string
   wordLength?: number
   maxAttempts?: number
-  wordIndex?: number
-  wordCount?: number
+  word_index?: number
+  word_count?: number
   words_solved?: number
   total_guesses?: number
   categoryLabel?: string
@@ -155,8 +155,8 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
       setCurrentWord(data.currentWord)
       setWordLength(data.wordLength ?? data.currentWord.length)
       setMaxAttempts(data.maxAttempts ?? data.currentWord.length + 1)
-      setWordIndex(data.wordIndex ?? 0)
-      setWordCount(data.wordCount ?? 5)
+      setWordIndex(data.word_index ?? 0)
+      setWordCount(data.word_count ?? 5)
       setWordsSolved(data.words_solved ?? 0)
       setTotalGuesses(data.total_guesses ?? 0)
       setCategoryLabel(data.categoryLabel ?? 'General English')

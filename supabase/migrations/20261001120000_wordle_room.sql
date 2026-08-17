@@ -97,6 +97,11 @@ CREATE INDEX IF NOT EXISTS idx_wordle_room_progress_game_id ON wordle_room_progr
 CREATE INDEX IF NOT EXISTS idx_wordle_room_progress_round_id ON wordle_room_progress(round_id);
 CREATE INDEX IF NOT EXISTS idx_wordle_room_progress_player_id ON wordle_room_progress(player_id);
 
+-- One progress row per seated player per round — concurrent first guesses from a
+-- late-joining player must never create duplicate rows (the guess route relies on
+-- this to reject the losing request atomically).
+ALTER TABLE wordle_room_progress ADD CONSTRAINT wordle_room_progress_round_player_key UNIQUE (round_id, player_id);
+
 ALTER TABLE wordle_room_progress ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "wordle_room_progress_read" ON wordle_room_progress;
 CREATE POLICY "wordle_room_progress_read" ON wordle_room_progress FOR SELECT USING (true);
@@ -105,6 +110,9 @@ GRANT SELECT ON public.wordle_room_progress TO anon, authenticated;
 do $$ begin alter publication supabase_realtime add table wordle_room_progress; exception when duplicate_object then null; end $$;
 
 -- ── Extend game-type CHECK constraints ─────────────────────────────────────────
+-- Each constraint is recreated with NOT VALID (new writes stay enforced while the
+-- existing rows are validated separately below), so adding a new game type to a
+-- large table doesn't block on a full-table scan during the migration.
 ALTER TABLE games DROP CONSTRAINT IF EXISTS games_game_type_check;
 ALTER TABLE games ADD CONSTRAINT games_game_type_check CHECK (game_type IN (
   'smash_marry_kill', 'red_flag_green_flag', 'smash_or_pass', 'parent_approval',
@@ -115,7 +123,7 @@ ALTER TABLE games ADD CONSTRAINT games_game_type_check CHECK (game_type IN (
   'snake_and_ladder', 'checkers', 'mahjong', 'mafia', 'matching_pairs', 'quiplash', 'word_rush',
   'quick_draw', 'ayo', 'crossword', 'word_search', 'word_scramble', 'landmine', 'ping_pong', 'uno',
   'checkers_international', 'checkers_nigeria', 'word_grouping', 'wordle_room'
-));
+)) NOT VALID;
 
 ALTER TABLE app_feedback DROP CONSTRAINT IF EXISTS app_feedback_game_type_check;
 ALTER TABLE app_feedback ADD CONSTRAINT app_feedback_game_type_check CHECK (game_type IN (
@@ -127,7 +135,7 @@ ALTER TABLE app_feedback ADD CONSTRAINT app_feedback_game_type_check CHECK (game
   'snake_and_ladder', 'checkers', 'mahjong', 'mafia', 'matching_pairs', 'quiplash', 'word_rush',
   'quick_draw', 'ayo', 'crossword', 'word_search', 'word_scramble', 'landmine', 'ping_pong', 'uno',
   'checkers_international', 'checkers_nigeria', 'word_grouping', 'wordle_room'
-));
+)) NOT VALID;
 
 ALTER TABLE game_player_limits DROP CONSTRAINT IF EXISTS game_player_limits_game_type_check;
 ALTER TABLE game_player_limits ADD CONSTRAINT game_player_limits_game_type_check CHECK (
@@ -137,7 +145,12 @@ ALTER TABLE game_player_limits ADD CONSTRAINT game_player_limits_game_type_check
   'quiplash', 'word_rush', 'checkers', 'mahjong', 'quick_draw', 'ayo', 'crossword', 'word_search',
   'word_scramble', 'landmine', 'ping_pong', 'uno', 'checkers_international', 'checkers_nigeria',
   'word_grouping', 'wordle_room')
-);
+) NOT VALID;
+
+-- Validate the pre-existing rows for each recreated constraint separately.
+ALTER TABLE games VALIDATE CONSTRAINT games_game_type_check;
+ALTER TABLE app_feedback VALIDATE CONSTRAINT app_feedback_game_type_check;
+ALTER TABLE game_player_limits VALIDATE CONSTRAINT game_player_limits_game_type_check;
 
 -- ── Seed player limits + community leaderboard ─────────────────────────────────
 INSERT INTO game_player_limits (game_type, max_players)
@@ -151,6 +164,134 @@ SET
   game_type = EXCLUDED.game_type,
   accent = EXCLUDED.accent,
   is_active = EXCLUDED.is_active;
+
+-- ── Atomic guess recording ─────────────────────────────────────────────────────
+-- The guess route used to insert the graded guess and update the progress row as two
+-- separate calls, which two concurrent submissions from the same player could race:
+-- both would commit a guess against the same word state and a late-joining player's
+-- first two guesses could create duplicate progress rows. This function does the
+-- insert + progress upsert in ONE transaction: it locks the player's progress row,
+-- rejects already-finished / stale-word requests BEFORE the guess is written, and the
+-- unique (round_id, player_id) key makes the losing concurrent first-guess roll back.
+CREATE OR REPLACE FUNCTION wordle_room_record_guess(
+  p_game_id text,
+  p_round_id uuid,
+  p_player_id uuid,
+  p_word_index integer,
+  p_guess text,
+  p_state jsonb,
+  p_is_correct boolean,
+  p_points_awarded integer,
+  p_next_word_index integer,
+  p_current_word_guesses integer,
+  p_words_solved_delta integer,
+  p_total_guesses_delta integer,
+  p_total_time_ms bigint,
+  p_finished boolean,
+  p_finished_at timestamptz,
+  p_now timestamptz
+) RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_progress wordle_room_progress%rowtype;
+  v_guess_id uuid;
+BEGIN
+  -- Lock the player's progress row so concurrent guesses from the same player
+  -- serialize here instead of both committing against the same word state.
+  SELECT * INTO v_progress
+    FROM wordle_room_progress
+   WHERE round_id = p_round_id AND player_id = p_player_id
+   FOR UPDATE;
+
+  IF v_progress.round_id IS NOT NULL THEN
+    IF v_progress.finished THEN
+      RAISE EXCEPTION 'ALREADY_FINISHED';
+    END IF;
+    -- Stale request: the player has already advanced past the word this guess was
+    -- graded against (e.g. a double-submit racing the previous guess's commit).
+    IF v_progress.word_index <> p_word_index THEN
+      RAISE EXCEPTION 'STALE_GUESS';
+    END IF;
+  END IF;
+
+  INSERT INTO wordle_room_guesses (
+    game_id, round_id, player_id, word_index, guess, state, is_correct,
+    points_awarded, submitted_at
+  ) VALUES (
+    p_game_id, p_round_id, p_player_id, p_word_index, p_guess, p_state,
+    p_is_correct, p_points_awarded, p_now
+  )
+  RETURNING id INTO v_guess_id;
+
+  IF v_progress.round_id IS NOT NULL THEN
+    UPDATE wordle_room_progress SET
+      word_index = p_next_word_index,
+      current_word_guesses = p_current_word_guesses,
+      words_solved = v_progress.words_solved + p_words_solved_delta,
+      total_guesses = v_progress.total_guesses + p_total_guesses_delta,
+      total_time_ms = p_total_time_ms,
+      finished = p_finished,
+      finished_at = p_finished_at,
+      updated_at = p_now
+    WHERE id = v_progress.id;
+  ELSE
+    BEGIN
+      INSERT INTO wordle_room_progress (
+        game_id, round_id, player_id, word_index, current_word_guesses,
+        words_solved, total_guesses, total_time_ms, finished, finished_at,
+        created_at, updated_at
+      ) VALUES (
+        p_game_id, p_round_id, p_player_id, p_next_word_index, p_current_word_guesses,
+        p_words_solved_delta, p_total_guesses_delta, p_total_time_ms, p_finished,
+        p_finished_at, p_now, p_now
+      );
+    EXCEPTION WHEN unique_violation THEN
+      -- A concurrent request created the progress row first. Re-read it and fold
+      -- this guess in — or reject as stale / already finished, which raises and
+      -- rolls the guess insert above back with it.
+      SELECT * INTO v_progress
+        FROM wordle_room_progress
+       WHERE round_id = p_round_id AND player_id = p_player_id
+       FOR UPDATE;
+      IF v_progress.finished THEN
+        RAISE EXCEPTION 'ALREADY_FINISHED';
+      END IF;
+      IF v_progress.word_index <> p_word_index THEN
+        RAISE EXCEPTION 'STALE_GUESS';
+      END IF;
+      UPDATE wordle_room_progress SET
+        word_index = p_next_word_index,
+        current_word_guesses = p_current_word_guesses,
+        words_solved = v_progress.words_solved + p_words_solved_delta,
+        total_guesses = v_progress.total_guesses + p_total_guesses_delta,
+        total_time_ms = p_total_time_ms,
+        finished = p_finished,
+        finished_at = p_finished_at,
+        updated_at = p_now
+      WHERE id = v_progress.id;
+    END;
+  END IF;
+
+  RETURN jsonb_build_object('guess_id', v_guess_id);
+END;
+$$;
+
+-- Only the service-role guess route calls this; never expose it to anon/authenticated.
+REVOKE ALL ON FUNCTION public.wordle_room_record_guess(
+  text, uuid, uuid, integer, text, jsonb, boolean, integer, integer, integer,
+  integer, integer, bigint, boolean, timestamptz, timestamptz
+) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.wordle_room_record_guess(
+  text, uuid, uuid, integer, text, jsonb, boolean, integer, integer, integer,
+  integer, integer, bigint, boolean, timestamptz, timestamptz
+) FROM anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.wordle_room_record_guess(
+  text, uuid, uuid, integer, text, jsonb, boolean, integer, integer, integer,
+  integer, integer, bigint, boolean, timestamptz, timestamptz
+) TO service_role;
 
 NOTIFY pgrst, 'reload config';
 NOTIFY pgrst, 'reload schema';

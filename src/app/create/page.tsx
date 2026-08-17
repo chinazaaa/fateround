@@ -1952,6 +1952,13 @@ function CreateGameInner() {
       setLandmineCategoryTimer(LANDMINE_DEFAULT_CATEGORY_TIMER)
       setLandmineMarkingTimer(LANDMINE_DEFAULT_MARKING_TIMER)
     }
+    if (isWordleRoomGame(type)) {
+      // Wordle Room's category/word-count/timer live in standalone state (submitted at
+      // create time), so reset them here rather than pushing them into the settings object.
+      setWordleRoomCategory('general_english')
+      setWordleRoomWordCount(WORDLE_ROOM_DEFAULT_WORD_COUNT)
+      setWordleRoomTimer(WORDLE_ROOM_DEFAULT_TIMER)
+    }
     setSettings({
       ...settings,
       game_type: type,
@@ -2141,9 +2148,6 @@ function CreateGameInner() {
             participant_mode: 'joiners' as const,
             anonymous: true,
             rounds_count: 1,
-            wordle_room_category: 'general_english' as const,
-            wordle_room_word_count: WORDLE_ROOM_DEFAULT_WORD_COUNT,
-            timer_seconds: WORDLE_ROOM_DEFAULT_TIMER,
           }
         : {}),
       ...(isMahjongGame(type)

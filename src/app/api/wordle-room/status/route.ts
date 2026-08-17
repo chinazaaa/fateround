@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { parseWordleRoomMetadata, wordleRoomMaxAttemptsForWord, wordleRoomTimeRemainingMs } from '@/lib/wordle-room'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { assertPlayer } from '@/lib/game-admin'
+import { playerIsViewer } from '@/lib/viewers'
 import { parseJsonBody } from '@/lib/parse-body'
 
 const statusSchema = z.object({
@@ -30,8 +31,28 @@ export async function POST(req: NextRequest) {
 
   if (!game) return NextResponse.json({ error: 'Game not found' }, { status: 404 })
 
+  // Never reveal the current word (or touch the solutions table) before the room is live.
+  // Return the same pre-active response the late-join/no-word path uses.
+  if (game.status !== 'active') {
+    const preMetadata = parseWordleRoomMetadata(round?.wordle_room_metadata)
+    return NextResponse.json({
+      success: true,
+      gameId,
+      status: game.status,
+      finished: true,
+      word_count: preMetadata?.word_count,
+      category: preMetadata?.category,
+      categoryLabel: preMetadata?.categoryLabel,
+    })
+  }
+
   const auth = await assertPlayer(supabase, gameId, resumeToken)
   if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
+
+  // Viewers never see the current word — the word is the whole game in a Wordle race.
+  if (playerIsViewer(auth.player, game)) {
+    return NextResponse.json({ error: 'Viewers cannot see the current word' }, { status: 403 })
+  }
 
   if (!round) return NextResponse.json({ error: 'Round not found' }, { status: 404 })
 

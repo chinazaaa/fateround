@@ -133,70 +133,58 @@ export async function POST(req: NextRequest) {
       ? Math.max(0, Date.now() - new Date(game.session_started_at).getTime())
       : (existingProgress?.total_time_ms ?? null)
 
-  const { data: inserted, error: insertError } = await supabase
-    .from('wordle_room_guesses')
-    .insert({
-      game_id: gameId,
-      round_id: round.id,
-      player_id: player.id,
-      word_index: wordIndex,
-      guess: validation.normalized,
-      state: validation.states,
-      is_correct: result.solved,
-      points_awarded: result.pointsAwarded,
-    })
-    .select('id')
-    .single()
+  // Record the graded guess AND advance the player's progress in ONE transaction so
+  // concurrent or stale submissions are rejected before a guess row is ever written.
+  // The RPC locks the progress row and re-checks "already finished" / stale-word
+  // atomically; the (round_id, player_id) unique key kills duplicate progress rows.
+  const { data: recorded, error: recordError } = await supabase.rpc('wordle_room_record_guess', {
+    p_game_id: gameId,
+    p_round_id: round.id,
+    p_player_id: player.id,
+    p_word_index: wordIndex,
+    p_guess: validation.normalized,
+    p_state: validation.states,
+    p_is_correct: result.solved,
+    p_points_awarded: result.pointsAwarded,
+    p_next_word_index: result.nextWordIndex,
+    p_current_word_guesses: result.nextWordIndex === wordIndex ? result.guessesUsed : 0,
+    p_words_solved_delta: result.wordsSolvedDelta,
+    p_total_guesses_delta: result.solved ? result.guessesUsed : 0,
+    p_total_time_ms: totalTimeMs,
+    p_finished: result.finished,
+    p_finished_at: finishedAt,
+    p_now: now,
+  })
 
-  if (insertError) {
-    return NextResponse.json({ error: internalErrorMessage('wordle-room/guess', insertError) }, { status: 500 })
-  }
-
-  // Advance progress. `total_guesses` only counts guesses across SOLVED words (a lost word's
-  // attempts are excluded from the standings comparator), and per-word guess count resets on
-  // advance. The first progress row for a late-joined player is created here.
-  const nextProgress = {
-    game_id: gameId,
-    round_id: round.id,
-    player_id: player.id,
-    word_index: result.nextWordIndex,
-    current_word_guesses: result.nextWordIndex === wordIndex ? result.guessesUsed : 0,
-    words_solved: (existingProgress?.words_solved ?? 0) + result.wordsSolvedDelta,
-    total_guesses: (existingProgress?.total_guesses ?? 0) + (result.solved ? result.guessesUsed : 0),
-    total_time_ms: totalTimeMs,
-    finished: result.finished,
-    finished_at: finishedAt,
-    updated_at: now,
-  }
-
-  if (existingProgress) {
-    const { error: updateError } = await supabase
-      .from('wordle_room_progress')
-      .update(nextProgress)
-      .eq('id', existingProgress.id)
-    if (updateError) {
-      return NextResponse.json({ error: internalErrorMessage('wordle-room/guess', updateError) }, { status: 500 })
+  if (recordError) {
+    if (recordError.message?.includes('ALREADY_FINISHED')) {
+      return NextResponse.json({ error: 'You have already finished this room' }, { status: 400 })
     }
-  } else {
-    const { error: createError } = await supabase.from('wordle_room_progress').insert({
-      ...nextProgress,
-      created_at: now,
-    })
-    if (createError) {
-      return NextResponse.json({ error: internalErrorMessage('wordle-room/guess', createError) }, { status: 500 })
+    if (recordError.message?.includes('STALE_GUESS')) {
+      return NextResponse.json({ error: 'Your guess no longer applies' }, { status: 400 })
     }
+    return NextResponse.json({ error: internalErrorMessage('wordle-room/guess', recordError) }, { status: 500 })
   }
+
+  // `total_guesses` only counts guesses across SOLVED words (a lost word's attempts are
+  // excluded from the standings comparator), and per-word guess count resets on advance.
+  const wordsSolved = (existingProgress?.words_solved ?? 0) + result.wordsSolvedDelta
 
   // Untimed rooms run until every seated player has finished the sequence. A player who
-  // has a progress row but is mid-sequence keeps the race open; the onlyIfActive CAS makes
-  // the finishing request the single winner of the status transition + award pass.
+  // has a progress row but is mid-sequence keeps the race open — and a late-joined player
+  // with NO progress row yet also keeps it open, so the game never finishes while someone
+  // is still racing. The onlyIfActive CAS makes the finishing request the single winner
+  // of the status transition + award pass.
   if (result.finished) {
-    const { data: seatedProgress } = await supabase
-      .from('wordle_room_progress')
-      .select('player_id,finished')
-      .eq('game_id', gameId)
-      .eq('round_id', round.id)
-    const everyoneDone = (seatedProgress?.length ?? 0) > 0 && (seatedProgress ?? []).every((p) => p.finished === true)
+    const [{ data: seatedProgress }, { data: seatedPlayers }] = await Promise.all([
+      supabase.from('wordle_room_progress').select('player_id,finished').eq('game_id', gameId).eq('round_id', round.id),
+      supabase.from('players').select('id,spectator,is_eliminated').eq('game_id', gameId),
+    ])
+    const activeSeats = (seatedPlayers ?? [])
+      .filter((p) => p.spectator !== true && p.is_eliminated !== true)
+      .map((p) => p.id)
+    const finishedById = new Map((seatedProgress ?? []).map((p) => [p.player_id, p.finished === true]))
+    const everyoneDone = activeSeats.length > 0 && activeSeats.every((pid) => finishedById.get(pid) === true)
     if (everyoneDone) {
       await markGameFinished(supabase, gameId, now, { onlyIfActive: true })
     }
@@ -209,9 +197,9 @@ export async function POST(req: NextRequest) {
     guessesUsed: result.guessesUsed,
     maxAttempts,
     wordIndex: result.nextWordIndex,
-    wordsSolved: nextProgress.words_solved,
+    wordsSolved,
     finished: result.finished,
     nextWord: result.finished ? null : (words[result.nextWordIndex] ?? null),
-    guessId: inserted.id,
+    guessId: (recorded as { guess_id?: string } | null)?.guess_id ?? null,
   })
 }

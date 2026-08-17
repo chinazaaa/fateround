@@ -29,7 +29,9 @@ export function WordleRoomResults({
   showCreateNewGame?: boolean
 }) {
   const captureRef = useRef<HTMLDivElement>(null)
-  const winner = standings[0]
+  // A player only "wins" when they actually solved at least one word — a room where
+  // nobody solved anything is a "Race over!" draw (matches WordleRoomPlayerView).
+  const winner = standings.find((row) => row.words_solved > 0) ?? null
 
   return (
     <div className="space-y-4">
