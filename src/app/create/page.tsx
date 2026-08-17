@@ -99,6 +99,7 @@ import { BOARD_THEMES, PIECE_SETS, useChessAppearance } from '@/lib/chess-appear
 import { ChessPieceGlyph } from '@/components/chess/ChessPieceDetailed'
 import { Glyph } from '@/components/icons/Glyph'
 import { GlobeIcon, LockIcon, TableTennisBatIcon } from '@hugeicons/core-free-icons'
+import { showsMaxOnePublicHint, showsPartyPublicHint } from '@/lib/public-hints'
 import { WYR_QUESTION_COUNT } from '@/lib/would-you-rather-questions'
 import { THIS_OR_THAT_QUESTION_COUNT } from '@/lib/this-or-that-questions'
 import type { WyrQuestion } from '@/lib/would-you-rather-questions'
@@ -2931,6 +2932,14 @@ function CreateGameInner() {
                   ? 'Anyone can find and join this game from Browse.'
                   : 'Only people with the code can join.'}
               </p>
+              {!settings.isPublic && showsPartyPublicHint(settings.game_type, settings.max_players ?? null) ? (
+                <p className="mt-1 text-xs" style={{ color: 'var(--primary)' }}>
+                  Party game? Turn this on so others can find and join.
+                </p>
+              ) : null}
+              {settings.isPublic && showsMaxOnePublicHint(settings.max_players ?? null) ? (
+                <p className="mt-1 text-xs text-muted italic">Bump the max players above 1 so other people can join.</p>
+              ) : null}
             </Field>
           </div>
 
@@ -5898,6 +5907,16 @@ function CreateGameInner() {
                   <p className="text-faint text-xs mt-2">
                     List in Browse so anyone can find and join. Off keeps it invite-only via the share link.
                   </p>
+                  {!settings.isPublic && showsPartyPublicHint(settings.game_type, settings.max_players ?? null) ? (
+                    <p className="mt-1 text-xs" style={{ color: 'var(--primary)' }}>
+                      Party game? Turn this on so others can find and join.
+                    </p>
+                  ) : null}
+                  {settings.isPublic && showsMaxOnePublicHint(settings.max_players ?? null) ? (
+                    <p className="mt-1 text-xs text-muted italic">
+                      Bump the max players above 1 so other people can join.
+                    </p>
+                  ) : null}
                 </Field>
                 <p className="text-faint text-sm leading-relaxed">
                   Flip cards and find matching pairs. Race to complete the grid with the most matches. Streaks earn

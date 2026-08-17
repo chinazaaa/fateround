@@ -77,6 +77,7 @@
     "./create-themes": "./src/create-themes.ts",
     "./viewers": "./src/viewers.ts",
     "./game-type-checks": "./src/game-type-checks.ts",
+    "./public-hints": "./src/public-hints.ts",
     "./game-limits-lite": "./src/game-limits-lite.ts",
     "./participant-mode": "./src/participant-mode.ts",
     "./round-timing": "./src/round-timing.ts",

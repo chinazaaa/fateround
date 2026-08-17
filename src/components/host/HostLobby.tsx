@@ -14,6 +14,8 @@ import { RotatePlayerCodeButton } from '@/components/ui/RotatePlayerCodeButton'
 import { HostLateJoinSettingsCard } from '@/components/HostLateJoinSettingsCard'
 import { HostLobbySettingsSheet } from '@/components/host/HostLobbySettingsSheet'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
+import { MissingPlayersPrompt } from '@/components/host/MissingPlayersPrompt'
+import { IdleWarningBanner } from '@/components/host/IdleWarningBanner'
 import { SlidersIcon } from '@/components/host/host-icons'
 import { FreshnessWarningModal, type FreshnessResult } from '@/components/host-lobby/FreshnessWarningModal'
 import type { Game, Player } from '@/types'
@@ -220,6 +222,16 @@ export function HostLobby({
             <p className="text-xs font-semibold text-muted">Game code — tap to share (QR &amp; links)</p>
             <p className="mt-0.5 text-3xl font-black tracking-[0.3em] text-body">{gameCode}</p>
           </button>
+
+          <IdleWarningBanner game={game} gameCode={gameCode} hostToken={hostToken} />
+
+          <MissingPlayersPrompt
+            game={game}
+            gameCode={gameCode}
+            hostToken={hostToken}
+            activePlayers={players.filter((p) => !p.spectator).length}
+            maxPlayers={maxPlayers ?? null}
+          />
 
           {playCard}
           {children}

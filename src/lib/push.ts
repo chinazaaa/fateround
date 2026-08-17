@@ -33,7 +33,14 @@ import { currentPlayerId as crazyEightsCurrentPlayerId } from '@/lib/crazy-eight
 import { currentPlayerId as snakeLadderCurrentPlayerId } from '@/lib/snake-and-ladder'
 import { currentPlayerId as yahtzeeCurrentPlayerId } from '@/lib/yahtzee'
 
-export type PushEvent = 'game_started' | 'lobby_reopened' | 'game_ended' | 'your_turn' | 'round_started'
+export type PushEvent =
+  | 'game_started'
+  | 'lobby_reopened'
+  | 'game_ended'
+  | 'your_turn'
+  | 'round_started'
+  | 'host_player_joined'
+  | 'host_idle_warning'
 
 let configured: boolean | null = null
 
@@ -57,6 +64,17 @@ const PAYLOADS: Record<PushEvent, { title: string; body: string }> = {
   game_ended: { title: 'Game over 🏁', body: 'The game just ended — see how it played out.' },
   your_turn: { title: 'Your turn!', body: 'Jump back in and make your move.' },
   round_started: { title: 'New round 🔔', body: 'A new round just started — get back in!' },
+  // Discovery Phase A: host-targeted pings. Copy for these is passed in as a
+  // bodyOverride (name + game + count vary per push) — the fallback strings
+  // here only fire if the caller forgets an override.
+  host_player_joined: {
+    title: '🎲 New player joined your game',
+    body: 'Someone just joined your lobby — tap to open.',
+  },
+  host_idle_warning: {
+    title: '⏳ Your lobby closes in 2 min',
+    body: 'Nobody joined and no one started the game — tap to keep it open.',
+  },
 }
 
 type PushPayload = {
@@ -162,6 +180,69 @@ export async function notifyPlayerEvent(
   ])
 
   await Promise.all([sendWebPush(webSubs ?? [], payload), sendExpoPush(expoTokens ?? [], payload)])
+}
+
+/**
+ * Discovery Phase A — send a directed "someone joined your Public game" push
+ * to the host. Called from the players-insert path after a successful join.
+ *
+ * Fires only when: the joiner isn't the host, the game is still `waiting`, and
+ * `is_public = true`. Deduped in-DB via `last_host_join_push_at` — at most one
+ * push per 60 seconds per game so a party of four joining at once produces one
+ * ping, not four.
+ *
+ * Reuses the existing per-player Expo/web push tokens — no new subscription
+ * infra. The host's tokens live in `mobile_push_tokens` / `push_subscriptions`
+ * keyed by (game_id, player_id) — same channel turn-alerts flow through.
+ */
+export async function maybeNotifyHostPlayerJoined(
+  gameCode: string,
+  joinedPlayerName: string,
+  joinedPlayerId?: string | null
+): Promise<void> {
+  const admin = getSupabaseAdmin()
+  const code = gameCode.toUpperCase()
+
+  const { data: game } = await admin
+    .from('games')
+    .select('id, status, is_public, host_player_id, game_type, max_players, last_host_join_push_at')
+    .eq('id', code)
+    .maybeSingle()
+  if (!game || game.status !== 'waiting' || game.is_public !== true || !game.host_player_id) return
+  // Skip self-joins: the host taking their own seat is not a ping-worthy event.
+  if (joinedPlayerId && joinedPlayerId === game.host_player_id) return
+
+  // Rate limit: 60s per game. Read-then-CAS-write so a burst of concurrent
+  // joins can only fire once — the losers see the freshly-stamped timestamp
+  // and skip.
+  const now = Date.now()
+  const last = game.last_host_join_push_at ? new Date(game.last_host_join_push_at).getTime() : 0
+  if (now - last < 60_000) return
+
+  const nowIso = new Date(now).toISOString()
+  const priorIso = game.last_host_join_push_at
+  // Guard the update on the same last-push value we read — if another request
+  // already advanced it, drop this push.
+  const stampQuery = admin.from('games').update({ last_host_join_push_at: nowIso }).eq('id', code)
+  const { data: stamped, error: stampError } = await (
+    priorIso == null ? stampQuery.is('last_host_join_push_at', null) : stampQuery.eq('last_host_join_push_at', priorIso)
+  ).select('id')
+  if (stampError || !stamped || stamped.length === 0) return
+
+  const [{ count }, { data: playerRows }] = await Promise.all([
+    admin.from('players').select('id', { count: 'exact', head: true }).eq('game_id', code).eq('spectator', false),
+    admin.from('players').select('id, name').eq('game_id', code).eq('spectator', false),
+  ])
+  const seated = count ?? playerRows?.length ?? 0
+  const capacity = game.max_players ? `${seated}/${game.max_players}` : `${seated}`
+  // Import lazily — game-type-checks is fine to reach from server code without
+  // dragging the whole registry.
+  const { parseGameType: parse } = await import('@/lib/game-types')
+  const gameType = parse(game.game_type)
+  const label = gameType.replace(/_/g, ' ')
+  const body = `🎲 ${joinedPlayerName} joined your ${label} game — ${capacity} player${seated === 1 ? '' : 's'}, tap to open.`
+
+  await notifyPlayerEvent(code, game.host_player_id, 'host_player_joined', body)
 }
 
 /** Resolve the player whose turn it is now for supported turn-based games. */

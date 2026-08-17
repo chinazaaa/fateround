@@ -403,6 +403,12 @@ export interface Game {
   status: GameStatus
   /** When true, the game is listed in /browse (discoverable). Default false = code-only. */
   is_public?: boolean
+  /** Discovery Phase A — bumped on lobby activity; drives the stale-lobby close cron. */
+  last_activity_at?: string | null
+  /** Discovery Phase A — stamped once when the host got the T-13min warning (one bite per game). */
+  host_idle_warning_sent_at?: string | null
+  /** Discovery Phase A — how the lobby ended ("idle_timeout", null, …). */
+  result_reason?: string | null
   /** When true, the host has enabled in-game Spotify music for this room (default off). */
   music_enabled?: boolean
   /** Play Again · same settings — true while the post-game ready-up ring is armed (Whot). */

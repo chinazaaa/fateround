@@ -1202,6 +1202,8 @@ export type LobbySettingsPatch = {
     theme?: string
     customPrompt?: string
   } | null
+  /** Discovery Phase A — "Keep open" on the host T-13min banner. */
+  keep_lobby_alive?: boolean
 }
 
 /** Update editable lobby settings while waiting. Server clamps/validates per game. */

@@ -7,6 +7,7 @@ import { Glyph } from '@/components/icons/Glyph'
 import { HomePageJoinPanel } from '@/components/HomePageJoinPanel'
 import { SectionHeading } from '@/components/SectionHeading'
 import { DailyChallengeSection } from '@/components/daily/DailyChallengeSection'
+import { LiveGamesStrip } from '@/components/LiveGamesStrip'
 
 export function HomePage() {
   const gameModeCount = GAME_TYPE_OPTIONS.length
@@ -41,6 +42,8 @@ export function HomePage() {
           <HomePageJoinPanel />
         </div>
       </section>
+
+      <LiveGamesStrip />
 
       <DailyChallengeSection />
 
