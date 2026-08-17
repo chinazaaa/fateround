@@ -575,3 +575,67 @@ export function unoColorHex(color: UnoCardColor | null | undefined): string {
   if (!color || color === 'wild') return '#334155'
   return UNO_COLOR_HEX[color]
 }
+
+// ── Pure helpers needed by shared uno-solo (mirrors src/lib/uno.ts) ─────────────
+
+/** Build the standard 108-card UNO deck. Pure — mirrors the web helper. */
+export function buildUnoDeck(): UnoCard[] {
+  const deck: UnoCard[] = []
+  for (const color of UNO_COLORS) {
+    deck.push({ id: `${color}-0`, color, kind: 'number', value: 0 })
+    for (let value = 1; value <= 9; value += 1) {
+      deck.push({ id: `${color}-${value}-a`, color, kind: 'number', value })
+      deck.push({ id: `${color}-${value}-b`, color, kind: 'number', value })
+    }
+    for (const kind of ['skip', 'reverse', 'draw2'] as const) {
+      deck.push({ id: `${color}-${kind}-a`, color, kind })
+      deck.push({ id: `${color}-${kind}-b`, color, kind })
+    }
+  }
+  for (let i = 0; i < 4; i += 1) {
+    deck.push({ id: `wild-${i}`, color: 'wild', kind: 'wild' })
+    deck.push({ id: `wild4-${i}`, color: 'wild', kind: 'wild_draw4' })
+  }
+  return deck
+}
+
+/**
+ * Walk a Multi-Play set into the resulting turn-advance directives (direction,
+ * accumulated Draw Two penalty, skips before/after the Draw Two target). Pure —
+ * mirrors the web helper. See src/lib/uno.ts for the full semantic notes.
+ */
+export function resolveMultiPlayAdvance(
+  cards: UnoCard[],
+  session: Pick<UnoSession, 'direction'>,
+  activeCount: number
+): { direction: number; penalty: number; skipsBefore: number; skipsAfter: number } {
+  const baseDirection = session.direction < 0 ? -1 : 1
+  let direction = baseDirection
+  let skipsBefore = 0
+  let skipsAfter = 0
+  let penalty = 0
+  let seenDraw2 = false
+  for (const c of cards) {
+    if (c.kind === 'reverse') {
+      if (activeCount <= 2) {
+        if (seenDraw2) skipsAfter += 1
+        else skipsBefore += 1
+      } else {
+        direction = -direction
+      }
+    } else if (c.kind === 'skip') {
+      if (seenDraw2) skipsAfter += 1
+      else skipsBefore += 1
+    } else if (c.kind === 'draw2') {
+      seenDraw2 = true
+      penalty += 2
+    } else {
+      direction = baseDirection
+      skipsBefore = 0
+      skipsAfter = 0
+      penalty = 0
+      seenDraw2 = false
+    }
+  }
+  return { direction, penalty, skipsBefore, skipsAfter }
+}

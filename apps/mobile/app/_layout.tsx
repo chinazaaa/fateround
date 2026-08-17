@@ -41,6 +41,7 @@ function ThemedStack() {
         <Stack.Screen name="play-solo/ayo" options={{ title: 'Ayo — solo' }} />
         <Stack.Screen name="play-solo/ludo" options={{ title: 'Ludo — solo' }} />
         <Stack.Screen name="play-solo/yahtzee" options={{ title: 'Yahtzee — solo' }} />
+        <Stack.Screen name="play-solo/uno" options={{ title: 'Match Up — solo' }} />
       </Stack>
     </>
   )
