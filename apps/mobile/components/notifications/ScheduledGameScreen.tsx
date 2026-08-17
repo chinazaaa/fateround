@@ -9,7 +9,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native'
+import { ActivityIndicator, Pressable, Share, StyleSheet, Text, TextInput, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import type { Game, GameType } from '@fateround/shared'
 import { AppButton } from '@/components/ui/AppButton'
@@ -21,6 +21,8 @@ import { gameLabel } from '@/lib/mobile-registry'
 import { gameTypeMeta } from '@/lib/game-type-meta'
 import { getHostToken } from '@/lib/secure-session'
 import { ScheduledHostActionsSheet } from '@/components/host/ScheduledHostActionsSheet'
+import { WEB_BASE_URL } from '@/lib/config'
+import { getRememberedName, rememberName } from '@/lib/identity-local'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles, useTheme } from '@/constants/theme-context'
 
@@ -70,9 +72,13 @@ export function ScheduledGameScreen({ gameCode, game }: { gameCode: string; game
   const [error, setError] = useState<string | null>(null)
   const [hostToken, setHostToken] = useState<string | null>(null)
   const [hostSheetOpen, setHostSheetOpen] = useState(false)
+  const [displayName, setDisplayName] = useState('')
 
   useEffect(() => {
     void getHostToken(gameCode).then(setHostToken)
+    void getRememberedName().then((n) => {
+      if (n) setDisplayName(n)
+    })
   }, [gameCode])
   const meta = gameTypeMeta(game.game_type as GameType)
   const label = gameLabel(game.game_type as GameType) || game.title || 'Game'
@@ -98,6 +104,10 @@ export function ScheduledGameScreen({ gameCode, game }: { gameCode: string; game
         setRsvped(false)
         setRsvpCount((n) => Math.max(0, n - 1))
       } else {
+        // Persist the name typed here so the RSVP payload picks it up via
+        // getRememberedName() inside rsvp() — same field the transfer picker reads.
+        const trimmed = displayName.trim()
+        if (trimmed) await rememberName(trimmed).catch(() => undefined)
         await apiRsvp(gameCode)
         setRsvped(true)
         setRsvpCount((n) => n + 1)
@@ -107,7 +117,19 @@ export function ScheduledGameScreen({ gameCode, game }: { gameCode: string; game
     } finally {
       setBusy(false)
     }
-  }, [gameCode, rsvped])
+  }, [gameCode, rsvped, displayName])
+
+  const shareUrl = `${WEB_BASE_URL}/game/${gameCode.toUpperCase()}`
+  const onShare = useCallback(async () => {
+    try {
+      await Share.share({
+        message: `Come play ${label} with me on FateRound — RSVP: ${shareUrl}`,
+        url: shareUrl,
+      })
+    } catch {
+      // Dismissed.
+    }
+  }, [label, shareUrl])
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -132,6 +154,20 @@ export function ScheduledGameScreen({ gameCode, game }: { gameCode: string; game
           <Text style={styles.rowLabel}>
             {rsvpCount === 0 ? 'Be the first to RSVP' : `${rsvpCount} ${rsvpCount === 1 ? 'person' : 'people'} RSVP’d`}
           </Text>
+          {!rsvped ? (
+            <View style={styles.nameField}>
+              <Text style={styles.subLabel}>Your name (so the host knows it’s you)</Text>
+              <TextInput
+                value={displayName}
+                onChangeText={(t) => setDisplayName(t.slice(0, 60))}
+                placeholder="e.g. Ada"
+                placeholderTextColor={theme.textFaint}
+                style={styles.input}
+                maxLength={60}
+                autoCorrect={false}
+              />
+            </View>
+          ) : null}
           {loading ? (
             <ActivityIndicator color={theme.primary} />
           ) : busy ? (
@@ -142,8 +178,22 @@ export function ScheduledGameScreen({ gameCode, game }: { gameCode: string; game
             <AppButton label="RSVP" onPress={onToggle} fullWidth size="lg" />
           )}
           {error ? <Text style={styles.error}>{error}</Text> : null}
-          <Text style={styles.hint}>We’ll ping you 15 minutes before it opens (needs notifications).</Text>
+          <Text style={styles.hint}>
+            We’ll push you a link 15 minutes before it opens — tap it to drop into the lobby as{' '}
+            {displayName.trim() || 'Anon'}.
+          </Text>
         </SurfaceCard>
+
+        {rsvped ? (
+          <SurfaceCard>
+            <Text style={styles.rowLabel}>Invite a friend along</Text>
+            <View style={styles.codeBox}>
+              <Text style={styles.subLabel}>Game code</Text>
+              <Text style={styles.codeValue}>{gameCode.toUpperCase()}</Text>
+            </View>
+            <AppButton label="Share invite" tone="secondary" onPress={onShare} fullWidth size="md" />
+          </SurfaceCard>
+        ) : null}
 
         {hostToken ? (
           <SurfaceCard>
@@ -196,4 +246,38 @@ const makeStyles = (theme: Theme) =>
     rowLabel: { color: theme.text, fontSize: theme.type.section.size, fontWeight: '800' },
     error: { color: theme.error, fontSize: theme.type.label.size },
     hint: { color: theme.textMuted, fontSize: 13 },
+    nameField: { gap: 4 },
+    subLabel: {
+      color: theme.textMuted,
+      fontSize: 11,
+      fontWeight: '700',
+      textTransform: 'uppercase',
+      letterSpacing: 1,
+    },
+    input: {
+      backgroundColor: theme.bg,
+      borderColor: theme.border,
+      borderWidth: 1,
+      borderRadius: theme.radius.md,
+      color: theme.text,
+      fontSize: 16,
+      fontWeight: '600',
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+    },
+    codeBox: {
+      backgroundColor: theme.bg,
+      borderColor: theme.border,
+      borderWidth: 1,
+      borderRadius: theme.radius.md,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+    },
+    codeValue: {
+      color: theme.text,
+      fontSize: 20,
+      fontWeight: '900',
+      letterSpacing: 3,
+      marginTop: 2,
+    },
   })

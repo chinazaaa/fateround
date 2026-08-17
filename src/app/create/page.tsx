@@ -6753,15 +6753,33 @@ function CreateGameInner() {
                     customCodewordsWords.length < CODEWORDS_MIN_CUSTOM_POOL)
                 }
               >
-                {loading ? 'Creating...' : 'Create Game'}
+                {loading
+                  ? settings.scheduled_at
+                    ? 'Scheduling...'
+                    : 'Creating...'
+                  : settings.scheduled_at
+                    ? 'Schedule Game'
+                    : 'Create Game'}
               </PrimaryBtn>
             ) : isBinaryLobby || isTriviaQuickCreate || (isMlt && isJoinersMode) ? (
               <PrimaryBtn onClick={createGame} disabled={!canCreateQuickLobby || loading || !customSlotsValid}>
-                {loading ? 'Creating...' : 'Create Game'}
+                {loading
+                  ? settings.scheduled_at
+                    ? 'Scheduling...'
+                    : 'Creating...'
+                  : settings.scheduled_at
+                    ? 'Schedule Game'
+                    : 'Create Game'}
               </PrimaryBtn>
             ) : isJoinersMode ? (
               <PrimaryBtn onClick={createGame} disabled={!canCreateJoiners || loading || !customSlotsValid}>
-                {loading ? 'Creating...' : 'Create Game'}
+                {loading
+                  ? settings.scheduled_at
+                    ? 'Scheduling...'
+                    : 'Creating...'
+                  : settings.scheduled_at
+                    ? 'Schedule Game'
+                    : 'Create Game'}
               </PrimaryBtn>
             ) : (
               <PrimaryBtn
@@ -6966,7 +6984,11 @@ function CreateGameInner() {
 
         <StickyActionBar>
           <PrimaryBtn onClick={createGame} disabled={!canCreateImport || loading}>
-            {loading ? 'Creating...' : `Create Game · ${participants.length} people`}
+            {loading
+              ? settings.scheduled_at
+                ? 'Scheduling...'
+                : 'Creating...'
+              : `${settings.scheduled_at ? 'Schedule' : 'Create'} Game · ${participants.length} people`}
           </PrimaryBtn>
         </StickyActionBar>
       </PageShell>

@@ -15,6 +15,7 @@ import { supabase } from '@/lib/supabase'
 import { gameTypeConfig, parseGameType } from '@/lib/game-types'
 import { pushSupported } from '@/lib/push-client'
 import { ScheduledHostActionsPanel } from '@/components/notifications/ScheduledHostActionsPanel'
+import { ShareInviteButton } from '@/components/ShareInviteButton'
 
 type ScheduledGame = {
   id: string
@@ -80,6 +81,31 @@ async function ensureSubscription(): Promise<{ endpoint: string; keys: { p256dh:
   return { endpoint: sub.endpoint, keys: { p256dh: json.keys.p256dh, auth: json.keys.auth } }
 }
 
+/**
+ * A short hint on how to actually enable push in each browser/OS. Runs after
+ * requestPermission() returned 'denied' or 'default' — cheap best-effort UA
+ * sniff, since there is no cross-browser "open notification settings" API.
+ */
+function browserPermissionHint(): string {
+  if (typeof navigator === 'undefined') return 'Enable notifications in this browser to RSVP.'
+  const ua = navigator.userAgent
+  const isIOS = /iPhone|iPad|iPod/.test(ua)
+  const isAndroid = /Android/.test(ua)
+  const isStandalone =
+    typeof window !== 'undefined' &&
+    ((window.matchMedia?.('(display-mode: standalone)').matches ?? false) ||
+      (window.navigator as unknown as { standalone?: boolean }).standalone === true)
+  if (isIOS) {
+    return isStandalone
+      ? 'Open Settings → Notifications → FateRound and turn Allow Notifications on, then try again.'
+      : 'On iOS push only works once FateRound is added to the Home Screen. Tap Share → Add to Home Screen, open it from there, then RSVP.'
+  }
+  if (isAndroid) {
+    return 'Tap the lock icon in the address bar → Site settings → Notifications → Allow, then try again. (Chrome / Edge / Samsung Internet all work.)'
+  }
+  return 'Click the lock icon left of the address bar → Notifications → Allow, then try again.'
+}
+
 async function readEndpoint(): Promise<string | null> {
   if (!pushSupported() || Notification.permission !== 'granted') return null
   try {
@@ -99,6 +125,8 @@ export function ScheduledGameOverlay({ gameCode }: { gameCode: string }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [now, setNow] = useState(() => Date.now())
+  const [displayName, setDisplayName] = useState('')
+  const [permissionHint, setPermissionHint] = useState<string | null>(null)
 
   // Poll game state (status + scheduled_at) every 5s so the takeover unmounts
   // as soon as the T-0 tick flips status→waiting.
@@ -158,7 +186,8 @@ export function ScheduledGameOverlay({ gameCode }: { gameCode: string }) {
       } else {
         const authed = await ensureSubscription()
         if (!authed) {
-          throw new Error('Enable browser notifications to RSVP — we need a way to remind you.')
+          setPermissionHint(browserPermissionHint())
+          throw new Error('Enable browser notifications so we can remind you when the lobby opens.')
         }
         const res = await fetch(`/api/games/${gameCode.toUpperCase()}/rsvp`, {
           method: 'POST',
@@ -167,6 +196,7 @@ export function ScheduledGameOverlay({ gameCode }: { gameCode: string }) {
             channel: 'web',
             tokenKey: authed.endpoint,
             webKeys: authed.keys,
+            displayName: displayName.trim() || undefined,
             timezone: (() => {
               try {
                 return Intl.DateTimeFormat().resolvedOptions().timeZone
@@ -185,7 +215,7 @@ export function ScheduledGameOverlay({ gameCode }: { gameCode: string }) {
     } finally {
       setBusy(false)
     }
-  }, [gameCode, rsvped])
+  }, [gameCode, rsvped, displayName])
 
   const onConfirmReady = useCallback(async () => {
     const endpoint = await readEndpoint()
@@ -253,7 +283,21 @@ export function ScheduledGameOverlay({ gameCode }: { gameCode: string }) {
           <p className="text-sm font-bold text-body">
             {rsvpCount === 0 ? 'Be the first to RSVP' : `${rsvpCount} ${rsvpCount === 1 ? 'person' : 'people'} RSVP’d`}
           </p>
+          {!rsvped ? (
+            <label className="block space-y-1">
+              <span className="text-xs uppercase tracking-wide text-muted">Your name (so the host knows it’s you)</span>
+              <input
+                type="text"
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value.slice(0, 60))}
+                placeholder="e.g. Ada"
+                className="input-field w-full text-sm"
+                maxLength={60}
+              />
+            </label>
+          ) : null}
           {error ? <p className="text-xs text-red-500">{error}</p> : null}
+          {permissionHint ? <p className="text-xs text-amber-500">{permissionHint}</p> : null}
           <button
             type="button"
             onClick={() => void onRsvpToggle()}
@@ -262,8 +306,29 @@ export function ScheduledGameOverlay({ gameCode }: { gameCode: string }) {
           >
             {busy ? 'Working…' : rsvped ? 'RSVP’d — tap to cancel' : 'RSVP'}
           </button>
-          <p className="text-xs text-faint">We’ll ping you 15 minutes before it opens (needs browser notifications).</p>
+          <p className="text-xs text-faint">
+            We’ll push you a link 15 minutes before it opens — tap it to join the lobby with the name above.
+          </p>
         </div>
+
+        {rsvped ? (
+          <div className="glass-card !p-4 space-y-3 text-left">
+            <p className="text-sm font-bold text-body">Invite a friend along</p>
+            <div className="rounded-lg border border-[var(--border)] bg-[var(--surface-inset-bg)] px-3 py-2">
+              <p className="text-xs uppercase tracking-wide text-muted">Game code</p>
+              <p className="text-lg font-black tracking-[3px]" style={{ color: 'var(--text)' }}>
+                {gameCode.toUpperCase()}
+              </p>
+            </div>
+            <ShareInviteButton
+              url={typeof window !== 'undefined' ? `${window.location.origin}/game/${gameCode.toUpperCase()}` : ''}
+              text={`Come play ${cfg.label} with me on FateRound — RSVP here:`}
+              label="Share invite"
+              copyLabel="Copy invite link"
+              className="w-full text-sm py-2"
+            />
+          </div>
+        ) : null}
 
         {/* Host controls — only render when the caller has a host token stored
             for this game code (i.e. they created it on this browser). */}

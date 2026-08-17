@@ -228,7 +228,16 @@ export function CreateWizardShell() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingAutoCreate])
 
-  const primaryLabel = step === 'setup' && showPeopleStep ? 'Next: People' : creating ? 'Creating…' : 'Create & host'
+  const primaryLabel =
+    step === 'setup' && showPeopleStep
+      ? 'Next: People'
+      : creating
+        ? state.scheduledAt
+          ? 'Scheduling…'
+          : 'Creating…'
+        : state.scheduledAt
+          ? 'Schedule game'
+          : 'Create & host'
 
   const primaryDisabled = creating || (step === 'setup' && !state.title.trim())
 
