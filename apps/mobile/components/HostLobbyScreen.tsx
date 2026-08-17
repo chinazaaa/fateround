@@ -13,6 +13,7 @@ import { HostLobbyPlayCard } from '@/components/host/HostLobbyPlayCard'
 import { ReplayReadyRing } from '@/components/lifecycle/ReplayReadyRing'
 import { HostLobbySettingsSheet } from '@/components/host/HostLobbySettingsSheet'
 import { TransferHostSheet } from '@/components/host/TransferHostSheet'
+import { AddBotButton } from '@/components/host/AddBotButton'
 import { CodewordsHostLobby } from '@/components/host/lobby/CodewordsHostLobby'
 import { TeamRosterHostLobby } from '@/components/host/lobby/TeamRosterHostLobby'
 import { WordPoolLobbyEditor, supportsLobbyWordPool } from '@/components/host/lobby/WordPoolLobbyEditor'
@@ -419,14 +420,17 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
               players.map((p) => {
                 const isHost = p.id === hostPlayerId
                 const notReady = p.spectator === true
+                const isBot = p.is_bot === true
                 return (
                   <View key={p.id} style={styles.playerRow}>
                     <View style={styles.playerNameRow}>
                       <View style={[styles.readyDot, notReady && styles.readyDotOff]} />
                       <Text style={[styles.playerName, notReady && styles.playerNameDim]} numberOfLines={1}>
+                        {isBot ? '🤖 ' : ''}
                         {p.name}
                         {isHost ? <Text style={styles.youTag}> · you</Text> : null}
-                        {notReady ? (
+                        {isBot ? <Text style={styles.notReadyTag}> · bot</Text> : null}
+                        {notReady && !isBot ? (
                           <Text style={styles.notReadyTag}> · {seatsFull ? 'watching' : 'not ready'}</Text>
                         ) : null}
                       </Text>
@@ -444,6 +448,23 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
                 )
               })
             )}
+
+            {/*
+              Bots-in-room "+ Add bot" — mobile parity with the web
+              AddBotButton. Only Whot + Monopoly admit bots today, and only
+              during the fresh (waiting, non-replay) lobby. The button hides
+              itself when seats are full or the (max-1) bot cap is hit.
+            */}
+            {(gameType === 'whot' || gameType === 'monopoly') && game?.status === 'waiting' && maxPlayers != null ? (
+              <AddBotButton
+                gameCode={gameCode}
+                hostToken={hostToken}
+                seatedCount={activePlayers.length}
+                botCount={activePlayers.filter((p) => p.is_bot === true).length}
+                maxPlayers={maxPlayers}
+                onAdded={() => void load()}
+              />
+            ) : null}
           </>
         ) : null}
 
