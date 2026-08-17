@@ -179,11 +179,21 @@ export function QuickDrawGuessHostView({ gameCode, hostToken }: { gameCode: stri
 
   const { secondsLeft, breakLeft, urgent } = useQuickDrawGuessTimer(gameCode, session, game?.status === 'active')
 
+  // Computed here rather than after the `!game` early return because the word fetch below is
+  // gated on it. Same expression as the props further down, which is the point.
+  const hostPlayer = hostPlayerId ? (players.find((p) => p.id === hostPlayerId) ?? null) : null
+  const hostReadOnly = hostPlayer && game ? playerIsViewer(hostPlayer, game) : true
+  const hostPlays = hostMode === 'player' && !!hostPlayerId && !hostReadOnly
+
   // The secret prompt is no longer in the session read. A host-player pulls it through the route;
   // the host token is sent alongside the seat's resume token so the route can still resolve the
-  // seat (games.host_player_id) if the resume token hasn't loaded yet. A watch-only host is never
-  // the drawer, so this stays null for them.
-  const myWord = useQuickDrawWord(gameCode, session, hostPlayerId, {
+  // seat (games.host_player_id) if the resume token hasn't loaded yet.
+  //
+  // Gated on `hostPlays`, not just on holding a seat: a watch-only host (spectator mode, eliminated
+  // or late-joined seat) never draws, and the host console is often the projected/shared screen —
+  // it must not pull the drawer's prompt into a browser the whole room can see, even though it
+  // would never render it.
+  const myWord = useQuickDrawWord(gameCode, session, hostPlays ? hostPlayerId : null, {
     resumeToken: hostResumeToken,
     hostToken,
   })
@@ -292,9 +302,6 @@ export function QuickDrawGuessHostView({ gameCode, hostToken }: { gameCode: stri
 
   const cfg = gameTypeConfig('quick_draw')
 
-  const hostPlayer = hostPlayerId ? (players.find((p) => p.id === hostPlayerId) ?? null) : null
-  const hostReadOnly = hostPlayer ? playerIsViewer(hostPlayer, game) : true
-  const hostPlays = hostMode === 'player' && !!hostPlayerId && !hostReadOnly
   const showTabs = game.status !== 'finished'
   const gameStarted = game.status === 'active'
   const primaryKind: 'play' | 'watch' = hostPlays ? 'play' : 'watch'

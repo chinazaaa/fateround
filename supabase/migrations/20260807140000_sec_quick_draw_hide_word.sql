@@ -52,6 +52,15 @@
 -- ⚠️ FUTURE SCHEMA CHANGES: anon/authenticated now hold COLUMN-level (not table-level) SELECT on
 -- `quick_draw_guess_sessions`. A NEW column must also be granted (re-running the do-block below
 -- does that), or client reads of it will error. Fails closed — a read error, never a word leak.
+--
+-- DUPLICATION (deliberate): this do-block is the fourth copy of the revoke-then-regrant-columns
+-- shape (0122, 20260803170000, 20260807130000, here). Factoring it into a resident
+-- `public.<helper>(table, secret_cols[])` would mean a permanently installed function that runs
+-- GRANT/REVOKE through dynamic SQL, defaulting to EXECUTE for PUBLIC — a widened executable
+-- surface, added by a migration whose entire purpose is narrowing surface, for zero benefit to
+-- already-shipped migrations. Copying 30 lines of inert DDL is the cheaper risk. If a fifth
+-- appears, the helper belongs in a standalone migration that also revokes EXECUTE from
+-- public/anon/authenticated, reviewed on its own terms — not smuggled in with a redaction.
 
 do $$
 declare

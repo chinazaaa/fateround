@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { fetchQuickDrawWord } from '@/lib/quick-draw-client'
+import { fetchQuickDrawWord, QUICK_DRAW_WORD_RETRY_DELAYS_MS } from '@/lib/quick-draw-client'
 import type { QuickDrawGuessSession } from '@/types'
 
 /**
@@ -18,8 +18,14 @@ import type { QuickDrawGuessSession } from '@/types'
  * word. Combined with the session id, drawer and turn index, that covers guess, skip, turn change
  * and drawer change.
  *
- * Returns null while loading, when the caller is not the drawer, or on failure — the canvas shows
- * a neutral placeholder rather than an empty prompt.
+ * RETRY: the refetch key only moves when the *word* moves, so a single failed read would otherwise
+ * strand the drawer on the placeholder for the whole word while the timer runs — one 429 from the
+ * shared handsFetch bucket, one cold-start 500 or one dropped request. Transport failures are
+ * therefore retried with backoff for as long as the turn lasts, and are never stored as
+ * `{ word: null }`: a failed read must not be mistaken for "you are not the drawer".
+ *
+ * Returns null while loading or when the caller is not the drawer — the canvas shows a neutral
+ * placeholder rather than an empty prompt.
  */
 export function useQuickDrawWord(
   gameCode: string,
@@ -33,9 +39,13 @@ export function useQuickDrawWord(
   const [fetched, setFetched] = useState<{ key: string; word: string | null } | null>(null)
 
   const isDrawer = !!myPlayerId && session?.drawer_player_id === myPlayerId
-  const active = isDrawer && session?.phase === 'turn' && session?.status !== 'finished'
   const resumeToken = auth.resumeToken ?? null
   const hostToken = auth.hostToken ?? null
+  // Without a secret the route can only ever answer `{ word: null }`, so firing it before the
+  // token loads just burns a rate-limit token. The `resumeToken`/`hostToken` deps re-run the
+  // effect the moment one arrives. (Mirrors the mobile hook, which has resume tokens only.)
+  const active =
+    isDrawer && session?.phase === 'turn' && session?.status !== 'finished' && (!!resumeToken || !!hostToken)
   // Changes exactly when the word could have changed (see REFETCH KEY above).
   const wordKey = active
     ? [session?.id, session?.turn_index, session?.drawer_player_id, session?.word_seq ?? 0].join(':')
@@ -44,11 +54,28 @@ export function useQuickDrawWord(
   useEffect(() => {
     if (!active) return
     let cancelled = false
-    void fetchQuickDrawWord(gameCode, { resumeToken, hostToken }).then((next) => {
-      if (!cancelled) setFetched({ key: wordKey, word: next })
-    })
+    let timer: ReturnType<typeof setTimeout> | null = null
+
+    const attempt = async (n: number) => {
+      const res = await fetchQuickDrawWord(gameCode, { resumeToken, hostToken })
+      if (cancelled) return
+      if (res.ok) {
+        setFetched({ key: wordKey, word: res.word })
+        return
+      }
+      // A settled 4xx (unknown code, wrong game type) will answer the same way forever.
+      if (!res.retryable) {
+        setFetched({ key: wordKey, word: null })
+        return
+      }
+      const delay = QUICK_DRAW_WORD_RETRY_DELAYS_MS[Math.min(n, QUICK_DRAW_WORD_RETRY_DELAYS_MS.length - 1)]
+      timer = setTimeout(() => void attempt(n + 1), delay)
+    }
+    void attempt(0)
+
     return () => {
       cancelled = true
+      if (timer) clearTimeout(timer)
     }
   }, [active, gameCode, resumeToken, hostToken, wordKey])
 

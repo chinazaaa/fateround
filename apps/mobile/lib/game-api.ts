@@ -995,18 +995,47 @@ export function postQuickDrawGuessTeam(gameId: string, resumeToken: string, team
 }
 
 /**
+ * A word read that succeeded (`word: null` means "not yours to see", a real answer) kept distinct
+ * from one that never got an answer at all. Mirrors QuickDrawWordResult in src/lib/quick-draw-client.ts.
+ */
+export type QuickDrawWordResult =
+  | { ok: true; word: string | null }
+  /** `retryable` false = a settled 4xx (bad code, wrong game type); retrying cannot change it. */
+  | { ok: false; retryable: boolean }
+
+/**
  * The Quick Draw (guess mode) secret prompt via the server route.
  *
  * `quick_draw_guess_sessions.current_word` is not anon-selectable since 20260807140000 — it used
  * to ship to every guesser's device and was merely hidden in the UI. The route returns the word
  * only when the caller's resume token resolves to the current drawer; everyone else gets `null`,
  * which is a normal (non-error) answer.
+ *
+ * Not `postJson`: that collapses every failure into a bare Error with no status, so a transient
+ * 429/5xx could not be told from a settled 400 — and the caller must retry the first without
+ * spinning forever on the second. A failed read is also never reported as `word: null`, which is
+ * real game state ("you are not the drawer").
  */
-export function postQuickDrawWord(gameCode: string, auth: { resumeToken?: string | null }) {
-  return postJson<{ word: string | null }>('/api/quick-draw/my-word', {
-    gameCode: gameCode.toUpperCase(),
-    resumeToken: auth.resumeToken ?? undefined,
-  })
+export async function postQuickDrawWord(
+  gameCode: string,
+  auth: { resumeToken?: string | null }
+): Promise<QuickDrawWordResult> {
+  try {
+    const res = await fetch(apiUrl('/api/quick-draw/my-word'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        gameCode: gameCode.toUpperCase(),
+        resumeToken: auth.resumeToken ?? undefined,
+      }),
+    })
+    // 429 (shared handsFetch bucket), 408 and 5xx (cold start, deploy, blip) clear on their own.
+    if (!res.ok) return { ok: false, retryable: res.status === 408 || res.status === 429 || res.status >= 500 }
+    const data = (await res.json()) as { word?: string | null }
+    return { ok: true, word: data.word ?? null }
+  } catch {
+    return { ok: false, retryable: true }
+  }
 }
 
 /**
