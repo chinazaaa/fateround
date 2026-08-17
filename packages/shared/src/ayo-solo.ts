@@ -86,8 +86,6 @@ export function initAyoSolo(opts: AyoSoloInitOptions = {}): AyoSoloState {
     is_draw: false,
     status_message: null,
     turn_deadline_at: null,
-    created_at: new Date(0).toISOString(),
-    updated_at: new Date(0).toISOString(),
   }
 
   return {
