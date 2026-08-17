@@ -79,7 +79,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     .maybeSingle()
   if (!game) return NextResponse.json({ error: 'Game not found' }, { status: 404 })
   if (game.status !== 'scheduled') return NextResponse.json({ error: 'This game is not scheduled' }, { status: 400 })
-  if (game.is_public !== true) return NextResponse.json({ error: 'Only Public games accept RSVPs' }, { status: 400 })
+  // Private scheduled games accept RSVPs from anyone who knows the code (the
+  // invite-by-link flow — same as private live games). Only the Browse
+  // "Upcoming" tab stays Public-only.
 
   const deviceId = await ensureDeviceId(admin, parsed.data)
   const rawName = (parsed.data.displayName ?? '').trim().slice(0, 60)

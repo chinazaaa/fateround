@@ -2510,12 +2510,11 @@ function CreateGameInner() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...settings,
-          // Discovery Phase C — only forward scheduled_at when the toggle set
-          // it AND the game is Public. A private scheduled game has no RSVP
-          // audience; a null value would fail Zod's datetime validator.
-          ...(settings.isPublic && settings.scheduled_at
-            ? { scheduled_at: settings.scheduled_at }
-            : { scheduled_at: undefined }),
+          // Discovery Phase C + private-schedule follow-up: forward
+          // scheduled_at whenever the toggle set it, regardless of visibility.
+          // Server accepts private+scheduled (invite-by-link RSVP flow). A
+          // null value would fail Zod's datetime validator, so omit instead.
+          ...(settings.scheduled_at ? { scheduled_at: settings.scheduled_at } : { scheduled_at: undefined }),
           ...(isWordHunt ? { timer_seconds: wordHuntTimer } : {}),
           rounds_count: isWst
             ? isWstDeck

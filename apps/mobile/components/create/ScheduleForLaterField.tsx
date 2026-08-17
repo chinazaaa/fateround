@@ -79,8 +79,6 @@ export function ScheduleForLaterField({ isPublic, scheduledAt, onChange }: Props
     [onChange]
   )
 
-  if (!isPublic) return null
-
   return (
     <View style={styles.wrap}>
       <View style={styles.headerRow}>
@@ -117,6 +115,11 @@ export function ScheduleForLaterField({ isPublic, scheduledAt, onChange }: Props
           </View>
           <Text style={styles.hint}>
             {tz ? `Times are in your local zone (${tz}).` : 'Times use this device’s local zone.'}
+          </Text>
+          <Text style={styles.hint}>
+            {isPublic
+              ? 'Anyone browsing can RSVP. We’ll ping RSVPers 15 min before it opens.'
+              : 'Only people you share the link with can RSVP. We’ll ping them 15 min before it opens.'}
           </Text>
         </>
       ) : (

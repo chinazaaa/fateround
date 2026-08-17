@@ -12,6 +12,8 @@
 import { useCallback, useMemo } from 'react'
 
 type Props = {
+  /** Kept for callers that still pass it — no longer gates rendering. Used only
+   *  to swap the sub-copy under the toggle. */
   isPublic: boolean
   scheduledAt: string | null
   onChange: (nextIso: string | null) => void
@@ -77,8 +79,6 @@ export function ScheduleForLaterField({ isPublic, scheduledAt, onChange }: Props
     [date, onChange]
   )
 
-  if (!isPublic) return null
-
   return (
     <div className="mt-3 space-y-2">
       <label className="flex items-center justify-between gap-2">
@@ -109,6 +109,11 @@ export function ScheduleForLaterField({ isPublic, scheduledAt, onChange }: Props
           </div>
           <p className="text-xs text-faint">
             {tz ? `Times are in your local zone (${tz}).` : 'Times use this browser’s local zone.'}
+          </p>
+          <p className="text-xs text-faint">
+            {isPublic
+              ? 'Anyone browsing can RSVP. We’ll ping RSVPers 15 min before it opens.'
+              : 'Only people you share the link with can RSVP. We’ll ping them 15 min before it opens.'}
           </p>
         </>
       ) : (
