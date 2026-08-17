@@ -2,7 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, Animated, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { type MonopolyBoard, type MonopolyPlayerState, type Player, normalizeGameCode } from '@fateround/shared'
 import { batch8GameLabel } from '@fateround/shared/batch-8-games'
-import { MONOPOLY_JAIL_FINE, spaceAt } from '@fateround/shared/monopoly-board'
+import {
+  MONOPOLY_BOARD_SIZE,
+  MONOPOLY_JAIL_FINE,
+  spaceAt,
+  type MonopolyBoardSize,
+} from '@fateround/shared/monopoly-board'
 import {
   monopolyEventBanner,
   monopolyEventSeqs,
@@ -304,6 +309,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
   }
 
   const turnPlayerId = board ? currentPlayerId(board) : null
+  const boardSize: MonopolyBoardSize = board?.board_size === 48 ? 48 : MONOPOLY_BOARD_SIZE
   const myState = states.find((s) => s.player_id === bootstrap.myPlayerId)
   const me = bootstrap.myPlayerId ? bootstrap.players.find((p) => p.id === bootstrap.myPlayerId) : undefined
   const isViewer = !!(me && bootstrap.game && playerIsViewer(me, bootstrap.game))
@@ -319,10 +325,11 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
             bootstrap.players,
             board.property_owners,
             board.property_buildings,
-            board.mortgaged_properties
+            board.mortgaged_properties,
+            boardSize
           )
         : [],
-    [board, states, bootstrap.players]
+    [board, states, bootstrap.players, boardSize]
   )
   const rosterScores = useMemo(
     () => Object.fromEntries(rosterStandings.map((s) => [s.playerId, s.cash])),
@@ -350,9 +357,9 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
     enabled: bootstrap.screen === 'playing',
   })
 
-  const pendingSpace = board?.pending_space != null ? spaceAt(board.pending_space) : null
+  const pendingSpace = board?.pending_space != null ? spaceAt(board.pending_space, boardSize) : null
   const auction = board?.auction_state
-  const auctionSpace = auction ? spaceAt(auction.space_index) : null
+  const auctionSpace = auction ? spaceAt(auction.space_index, boardSize) : null
   const debt = board?.pending_debt
   const isMyDebt = debt?.player_id === bootstrap.myPlayerId
   const isMyAuctionTurn = auction?.current_bidder_id === bootstrap.myPlayerId
@@ -610,7 +617,8 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
       bootstrap.players,
       board?.property_owners,
       board?.property_buildings,
-      board?.mortgaged_properties
+      board?.mortgaged_properties,
+      boardSize
     )
     return (
       <GameFinishPanel
@@ -638,7 +646,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
 
   const turnName = bootstrap.players.find((p) => p.id === turnPlayerId)?.name ?? 'Player'
 
-  const pendingTrade = board.pending_trade ? normalizePendingTrade(board.pending_trade) : null
+  const pendingTrade = board.pending_trade ? normalizePendingTrade(board.pending_trade, boardSize) : null
   const incomingTrade =
     pendingTrade &&
     pendingTrade.to_player_id === bootstrap.myPlayerId &&
@@ -661,17 +669,18 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
           myPlayerId: bootstrap.myPlayerId,
           players: bootstrap.players,
           themeId,
+          boardSize,
         })
       : null
   const statusBanner =
     !activeEventKind && board.status_message && !bannerPhaseOwnsMessaging && !board.last_card_event
-      ? { message: formatThemedText(board.status_message, themeId), personal: false }
+      ? { message: formatThemedText(board.status_message, themeId, boardSize), personal: false }
       : null
   const visibleBanner = eventBanner ?? statusBanner
 
   // Current-space / cash chrome (mirrors web MonopolyCurrentSpace + MonopolyCashBadge).
   const mySpaceOwnerId = myState ? board.property_owners?.[String(myState.position)] : undefined
-  const mySpace = myState ? spaceAt(myState.position) : null
+  const mySpace = myState ? spaceAt(myState.position, boardSize) : null
   const ownable = !!(
     mySpace &&
     (mySpace.type === 'property' || mySpace.type === 'station' || mySpace.type === 'utility')
@@ -701,7 +710,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
         <>
           {mySpace ? (
             <Text style={styles.centerOn} numberOfLines={1}>
-              On {themedSpaceName(mySpace.name, myState.position, themeId)}
+              On {themedSpaceName(mySpace.name, myState.position, themeId, boardSize)}
             </Text>
           ) : null}
           <Text style={styles.centerCashLabel}>{myState.bankrupt ? 'BANKRUPT' : 'YOUR CASH'}</Text>
@@ -745,7 +754,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
       {showBuy && pendingSpace ? (
         <View style={styles.centerPanel}>
           <Text style={styles.centerTitle} numberOfLines={1}>
-            {themedSpaceName(pendingSpace.name, pendingSpace.index, themeId)}
+            {themedSpaceName(pendingSpace.name, pendingSpace.index, themeId, boardSize)}
           </Text>
           <Text style={styles.centerSub}>{formatThemedMoney(pendingSpace.price ?? 0, themeId)}</Text>
           <View style={styles.centerRow}>
@@ -785,7 +794,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
       {showRent && pendingSpace ? (
         <View style={styles.centerPanel}>
           <Text style={styles.centerTitle} numberOfLines={1}>
-            Rent · {themedSpaceName(pendingSpace.name, pendingSpace.index, themeId)}
+            Rent · {themedSpaceName(pendingSpace.name, pendingSpace.index, themeId, boardSize)}
           </Text>
           <Pressable
             style={[styles.centerPrimary, acting && styles.btnDisabled]}
@@ -834,7 +843,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
       {showAuction && auction && auctionSpace ? (
         <View style={styles.centerPanel}>
           <Text style={styles.centerTitle} numberOfLines={1}>
-            Auction · {themedSpaceName(auctionSpace.name, auction.space_index, themeId)}
+            Auction · {themedSpaceName(auctionSpace.name, auction.space_index, themeId, boardSize)}
           </Text>
           <Text style={styles.centerSub}>
             High: {auction.high_bid > 0 ? formatThemedMoney(auction.high_bid, themeId) : 'None'}
@@ -893,7 +902,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
       {board.phase === 'auction' && auction && auctionSpace && !showAuction ? (
         <View style={styles.centerPanel}>
           <Text style={styles.centerTitle} numberOfLines={1}>
-            Auction · {themedSpaceName(auctionSpace.name, auction.space_index, themeId)}
+            Auction · {themedSpaceName(auctionSpace.name, auction.space_index, themeId, boardSize)}
           </Text>
           <Text style={styles.centerSub}>
             High: {auction.high_bid > 0 ? formatThemedMoney(auction.high_bid, themeId) : 'None'}
@@ -938,7 +947,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
       <Text style={styles.centerWatchLabel}>WATCHING LIVE</Text>
       {board.status_message ? (
         <Text style={styles.centerWatchMsg} numberOfLines={4}>
-          {formatThemedText(board.status_message, themeId)}
+          {formatThemedText(board.status_message, themeId, boardSize)}
         </Text>
       ) : null}
     </View>
@@ -954,7 +963,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
           turnName={turnName}
           secondsLeft={secondsLeft}
           phaseLabel={monopolyPhaseLabel(board.phase)}
-          spaceName={mySpace ? themedSpaceName(mySpace.name, myState!.position, themeId) : null}
+          spaceName={mySpace ? themedSpaceName(mySpace.name, myState!.position, themeId, boardSize) : null}
           spaceOwnerLabel={spaceOwnerLabel}
           banner={visibleBanner}
         />
@@ -986,6 +995,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
           pendingSpace={board.pending_space}
           myPlayerId={bootstrap.myPlayerId}
           themeId={themeId}
+          boardSize={boardSize}
           center={isViewer ? spectatorCenter : boardCenter}
           onSpacePress={setInspectedSpace}
         />
@@ -1009,17 +1019,20 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
               : null
           }
           themeId={themeId}
+          boardSize={boardSize}
         />
 
         {board.last_card_event && activeEventKind === 'card' ? (
           <View style={styles.cardEvent}>
             <Text style={styles.cardKind}>{board.last_card_event.kind === 'chance' ? 'Fate' : 'Kitty'}</Text>
-            <Text style={styles.cardText}>{formatThemedText(board.last_card_event.card_message, themeId)}</Text>
+            <Text style={styles.cardText}>
+              {formatThemedText(board.last_card_event.card_message, themeId, boardSize)}
+            </Text>
           </View>
         ) : null}
 
         {showRaiseFunds && debt ? (
-          <Text style={styles.raiseReason}>{formatThemedText(debt.reason, themeId)}</Text>
+          <Text style={styles.raiseReason}>{formatThemedText(debt.reason, themeId, boardSize)}</Text>
         ) : null}
 
         {manageError ? <Text style={styles.errorText}>{manageError}</Text> : null}
@@ -1081,6 +1094,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
           players={bootstrap.players}
           acting={acting}
           themeId={themeId}
+          boardSize={boardSize}
           onRespond={onRespondTrade}
         />
       ) : null}
