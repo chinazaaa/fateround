@@ -440,9 +440,11 @@ export default function GameHistoryPage() {
       }
 
       if (isUnoGame(gameType)) {
-        // Hands via /api/uno/hands: `cards` is no longer read directly by the browser. This
-        // page only renders finished games, and the route reveals full hands once a game is
-        // finished, so the post-game summary is unchanged.
+        // Hands via /api/uno/hands: `cards` is no longer read directly by the browser. The route
+        // reveals full hands only once the game is FINISHED, so the post-game summary is
+        // unchanged. This page also renders unfinished games (see the "Open game" link above),
+        // and for those every hand comes back redacted — UnoSessionSummary therefore refuses to
+        // render standings unless the game is finished, rather than showing everyone at 0 cards.
         const [{ data: plrs }, { data: sessionData }, handRows] = await Promise.all([
           supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at'),
           supabase.from('uno_sessions').select(UNO_SESSION_SELECT).eq('game_id', gameCode).maybeSingle(),

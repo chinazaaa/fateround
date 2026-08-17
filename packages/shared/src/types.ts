@@ -824,8 +824,18 @@ export interface UnoSession {
   /** 1 = forward through turn_order, -1 = reversed (Reverse flips it). */
   direction: number
   phase: UnoPhase
-  draw_pile: UnoCard[]
-  discard_pile: UnoCard[]
+  /**
+   * REDACTED from clients: anon/authenticated hold no SELECT on this column, because the ordered
+   * deck plus your own hand reveals every opponent's hand (2 players) or every future draw (N).
+   * Only service-role reads (src/lib/uno.ts) see it — hence optional. Clients use `draw_count`.
+   */
+  draw_pile?: UnoCard[]
+  /** REDACTED from clients alongside `draw_pile` — see above. Clients use `discard_count`. */
+  discard_pile?: UnoCard[]
+  /** Public size of `draw_pile`. Generated stored column; counts leak no order or identity. */
+  draw_count?: number
+  /** Public size of `discard_pile`. Generated stored column. */
+  discard_count?: number
   top_card: UnoCard | null
   /** Colour demanded by a played Wild / Wild Draw Four. */
   required_color: UnoColor | null

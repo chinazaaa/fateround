@@ -85,8 +85,11 @@ export const WHOT_SESSION_SELECT =
 
 export const WHOT_PLAYER_HANDS_SELECT = 'id,game_id,player_id,cards,player_order'
 
+// `draw_pile`/`discard_pile` are deliberately absent: anon/authenticated hold no SELECT on them
+// (20260816120000), since the ordered deck deanonymizes every other hand. The generated
+// `draw_count`/`discard_count` cover the only thing clients ever used them for — the size.
 export const UNO_SESSION_SELECT =
-  'id,game_id,turn_order,current_turn_index,direction,phase,draw_pile,discard_pile,top_card,required_color,draw_penalty,draw_penalty_kind,drawn_card_id,last_play_cards,pending_wild,challenge_prev_color,wd4_player_id,uno_pending_player,uno_called,status_message,winner_player_id,finish_order,left_player_ids,team_decider_id,turn_deadline_at,created_at,updated_at'
+  'id,game_id,turn_order,current_turn_index,direction,phase,draw_count,discard_count,top_card,required_color,draw_penalty,draw_penalty_kind,drawn_card_id,last_play_cards,pending_wild,challenge_prev_color,wd4_player_id,uno_pending_player,uno_called,status_message,winner_player_id,finish_order,left_player_ids,team_decider_id,turn_deadline_at,created_at,updated_at'
 
 export const UNO_PLAYER_HANDS_SELECT = 'id,game_id,player_id,cards,player_order,created_at'
 

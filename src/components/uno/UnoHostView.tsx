@@ -25,6 +25,7 @@ import {
 } from '@/lib/uno'
 import { supabase } from '@/lib/supabase'
 import { fetchUnoHands } from '@/lib/hands-client'
+import { mergeHandRow, pushedCardCount } from '@/lib/hand-rows'
 import { GAME_SELECT, PLAYER_SELECT, UNO_SESSION_SELECT } from '@/lib/supabase-selects'
 import { appOrigin } from '@/lib/site'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
@@ -76,6 +77,12 @@ export function UnoHostView({ gameCode, hostToken }: { gameCode: string; hostTok
   const [playingAgain, setPlayingAgain] = useState(false)
   const [hostActing, setHostActing] = useState(false)
   const [tab, setTab] = useState<HostTab>('manage')
+  // The host's own SEAT token (they're a player too in "Host + play", the default since
+  // 50109a2a). `hostToken` proves they run the board; only a resume token proves which seat is
+  // theirs — `resolveHandViewer` deliberately returns null for a host token, so without this the
+  // redaction route hands a playing host zero cards. Mirrored to a ref because `load` is defined
+  // before `useHostSeat` resolves it; the effect below re-fetches once it lands.
+  const hostResumeTokenRef = useRef<string | null>(null)
 
   useApplyGameTheme(game?.theme)
   useScrollHostViewToTop({ gameStatus: game?.status, tab })
@@ -85,9 +92,10 @@ export function UnoHostView({ gameCode, hostToken }: { gameCode: string; hostTok
       supabase.from('games').select(GAME_SELECT).eq('id', gameCode).maybeSingle(),
       supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at'),
       supabase.from('uno_sessions').select(UNO_SESSION_SELECT).eq('game_id', gameCode).maybeSingle(),
-      // Via /api/uno/hands — the host runs the board and never needs to see anyone's cards,
-      // so every hand comes back as a count (see lib/hand-redaction.ts).
-      fetchUnoHands(gameCode, { hostToken }),
+      // Via /api/uno/hands — opponents' hands come back as counts only (see lib/hand-redaction.ts).
+      // The host's own seat is the exception: in "Host + play" they hold cards and must see them,
+      // which needs their PLAYER resume token — a host token resolves no seat by design.
+      fetchUnoHands(gameCode, { hostToken, resumeToken: hostResumeTokenRef.current }),
     ])
     if (!supabasePollOk(gameRes, plrsRes, sessionRes) || handsRes === null) return false
     setGame(gameRes.data)
@@ -116,21 +124,13 @@ export function UnoHostView({ gameCode, hostToken }: { gameCode: string; hostTok
   }, [])
   const applyHandRow = useCallback((row: Record<string, unknown>): boolean => {
     const next = row as unknown as UnoPlayerHand
-    setHands((prev) => {
-      const i = prev.findIndex((h) => h.id === next.id)
-      // The host only ever needs counts, but once `cards` is revoked from anon the realtime
-      // payload carries neither cards nor card_count — so carry the known count forward rather
-      // than letting an opponent flicker to zero (which reads as "out").
-      const merged: UnoPlayerHand = {
-        ...next,
-        card_count: next.card_count ?? (Array.isArray(next.cards) ? next.cards.length : prev[i]?.card_count),
-      }
-      if (i === -1) return [...prev, merged].sort((a, b) => a.player_order - b.player_order)
-      const copy = [...prev]
-      copy[i] = merged
-      return copy
-    })
-    return true
+    // Once `cards` is revoked from anon the realtime payload carries neither cards nor a count,
+    // so mergeHandRow can only carry the STALE count forward (never letting a hand flicker to
+    // zero, which reads as "out"). Returning false then lets useGameTableSync run its debounced
+    // reconciling reload, which is the only path that can learn the new count — without it every
+    // roster count on the host board freezes for the rest of the game.
+    setHands((prev) => mergeHandRow(prev, next))
+    return pushedCardCount(next) !== null
   }, [])
 
   const connected = useGameTableSync(
@@ -176,6 +176,21 @@ export function UnoHostView({ gameCode, hostToken }: { gameCode: string; hostTok
     onReload: load,
     toast: { success, error: toastError },
   })
+  hostResumeTokenRef.current = hostResumeToken ?? null
+
+  // `load` runs before useHostSeat has resolved the host's seat, so the first hands fetch of a
+  // "Host + play" game carries no resume token and the route redacts the host's OWN hand. Re-fetch
+  // the moment the token lands, or the default host flow sits at zero cards and can never play.
+  useEffect(() => {
+    if (!hostResumeToken || game?.status !== 'active') return
+    let cancelled = false
+    void fetchUnoHands(gameCode, { hostToken, resumeToken: hostResumeToken }).then((h) => {
+      if (!cancelled && h) setHands(h)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [hostResumeToken, hostToken, game?.status, gameCode])
 
   const handlePlayerRemoved = useCallback(
     (playerId: string) => {
@@ -498,7 +513,7 @@ export function UnoHostView({ gameCode, hostToken }: { gameCode: string; hostTok
             isMyTurn={hostPlays && isHostTurn}
             watching={!hostPlays}
             acting={hostActing}
-            drawCount={session.draw_pile?.length ?? 0}
+            drawCount={session.draw_count ?? 0}
             drawDepleted={drawDepleted}
             myCanPlay={hostCanPlay}
             drawPenalty={drawPenalty}

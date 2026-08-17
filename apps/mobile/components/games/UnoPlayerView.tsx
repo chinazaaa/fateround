@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import {
   type Game,
@@ -95,6 +95,9 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
   const [session, setSession] = useState<UnoSession | null>(null)
   const [hands, setHands] = useState<UnoPlayerHand[]>([])
   const [acting, setActing] = useState(false)
+  // Authoritative resume token, mirrored to a ref so the hand fetch (defined before the bootstrap
+  // resolves the token) can fall back to it. See the fetch + effect below.
+  const myResumeTokenRef = useRef<string | null>(null)
 
   const loadGameState = useCallback(
     async (_game: Game, _players: Player[]): Promise<{ state: UnoSession | null; ok: boolean }> => {
@@ -105,7 +108,13 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
       const session = await getPlayerSession(code)
       const [sessionRes, handsRes] = await Promise.all([
         getSupabase().from('uno_sessions').select(UNO_SESSION_SELECT).eq('game_id', code).maybeSingle(),
-        postUnoHands(code, { resumeToken: session?.resumeToken }).catch(() => null),
+        // Fall back to the bootstrap-resolved token: this runs BEFORE the player is resolved on
+        // the first load, so for a share-link player the stored session isn't written yet, and a
+        // tokenless request makes the redaction route blank our OWN hand — which reads as "you
+        // are out". The effect below re-fetches once the token lands.
+        postUnoHands(code, { resumeToken: session?.resumeToken ?? myResumeTokenRef.current ?? undefined }).catch(
+          () => null
+        ),
       ])
       if (sessionRes.error || !handsRes) return { state: null, ok: false }
       const sessionData = sessionRes.data as UnoSession | null
@@ -140,6 +149,23 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
     computeScreen,
   })
   const { onLeft, lobbyProps } = usePlayerSessionActions(bootstrap)
+  myResumeTokenRef.current = bootstrap.myResumeToken
+
+  // The first hand fetch can run before the resume token is resolved, which the redaction route
+  // answers with our own hand blanked. Re-fetch with the authoritative token once it lands.
+  useEffect(() => {
+    const token = bootstrap.myResumeToken
+    if (!token || bootstrap.game?.status !== 'active') return
+    let cancelled = false
+    void postUnoHands(gameCode.toUpperCase(), { resumeToken: token })
+      .then((res) => {
+        if (!cancelled && res) setHands(res.hands ?? [])
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [bootstrap.myResumeToken, bootstrap.game?.status, gameCode])
 
   useGameTableSync(
     gameCode,
@@ -156,7 +182,11 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
 
   const me = bootstrap.myPlayerId ? (bootstrap.players.find((p) => p.id === bootstrap.myPlayerId) ?? null) : null
   const isViewer = !!(me && bootstrap.game && playerIsViewer(me, bootstrap.game))
-  const isOut = !!myHand && (myHand.cards?.length ?? 0) === 0 && bootstrap.game?.status === 'active'
+  // `cards: null` means REDACTED (the route couldn't resolve us), NOT "no cards left" — only an
+  // actual empty array means the player is out. Without the Array.isArray check a token race
+  // silently flips a still-playing player into watching mode for the rest of the game.
+  const isOut =
+    !!myHand && Array.isArray(myHand.cards) && myHand.cards.length === 0 && bootstrap.game?.status === 'active'
   const isWatching = isViewer || isOut
 
   // Desync guard (mirrors Whot/Crazy Eights — see docs memory "card-hand-desync"): the
@@ -453,7 +483,7 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
     return [...seated, ...rest]
   })()
 
-  const drawReshuffles = drawDepleted && session.discard_pile.length > 0
+  const drawReshuffles = drawDepleted && (session.discard_count ?? 0) > 0
 
   const swapTargets = orderedPlayers.filter(
     (p) => p.id !== bootstrap.myPlayerId && (handCounts[p.id] ?? 0) > 0 && (session.turn_order ?? []).includes(p.id)
@@ -485,7 +515,7 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
         />
 
         <CardTableArea
-          pileCount={session.draw_pile.length}
+          pileCount={session.draw_count ?? 0}
           hint={tableHint || null}
           drawAccent={demandColor ? UNO_COLOR_HEX[demandColor] : '#334155'}
           topCard={

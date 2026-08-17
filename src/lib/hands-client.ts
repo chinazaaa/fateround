@@ -1,5 +1,8 @@
 import type { UnoPlayerHand, WhotPlayerHand } from '@/types'
 
+/** Games whose per-player hand table is read through a redaction route (`/api/<game>/hands`). */
+export type HandsGame = 'whot' | 'uno'
+
 /**
  * Fetch hands through the server route instead of reading the table.
  *
@@ -9,13 +12,17 @@ import type { UnoPlayerHand, WhotPlayerHand } from '@/types'
  *
  * Returns null on any failure, which callers treat as "poll didn't succeed" and retry, rather
  * than as "the hands are empty" — an empty hand is meaningful state in these games.
+ *
+ * One function for every game (rather than a copy per game) so the failure semantics above, and
+ * fixes to them, can only ever exist once — Crazy Eights and Bingo join by passing their name.
  */
-export async function fetchWhotHands(
+export async function fetchHands<T>(
+  game: HandsGame,
   gameCode: string,
   auth: { resumeToken?: string | null; hostToken?: string | null }
-): Promise<WhotPlayerHand[] | null> {
+): Promise<T[] | null> {
   try {
-    const res = await fetch('/api/whot/hands', {
+    const res = await fetch(`/api/${game}/hands`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -25,42 +32,31 @@ export async function fetchWhotHands(
       }),
     })
     if (!res.ok) return null
-    const data = (await res.json()) as { hands?: WhotPlayerHand[] }
+    const data = (await res.json()) as { hands?: T[] }
     return data.hands ?? []
   } catch {
     return null
   }
 }
 
+/** Whot hands — see {@link fetchHands}. */
+export function fetchWhotHands(
+  gameCode: string,
+  auth: { resumeToken?: string | null; hostToken?: string | null }
+): Promise<WhotPlayerHand[] | null> {
+  return fetchHands<WhotPlayerHand>('whot', gameCode, auth)
+}
+
 /**
- * Fetch UNO hands through the server route instead of reading the table.
+ * UNO hands — see {@link fetchHands}.
  *
- * Mirrors fetchWhotHands: the caller's own hand comes back in full, every other hand as
- * `card_count` only. UNO's one difference is Team-Up mode — when it's on, the route also returns
- * the caller's teammate's hand in full (resolved server-side from the resume token), so no extra
- * client argument is needed here.
- *
- * Returns null on any failure, which callers treat as "poll didn't succeed" and retry, rather
- * than as "the hands are empty" — an empty hand is meaningful state in these games.
+ * UNO's one difference is Team-Up mode: when it's on, the route also returns the caller's
+ * teammate's hand in full (resolved server-side from the resume token), so no extra client
+ * argument is needed here.
  */
-export async function fetchUnoHands(
+export function fetchUnoHands(
   gameCode: string,
   auth: { resumeToken?: string | null; hostToken?: string | null }
 ): Promise<UnoPlayerHand[] | null> {
-  try {
-    const res = await fetch('/api/uno/hands', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        gameCode: gameCode.toUpperCase(),
-        resumeToken: auth.resumeToken ?? undefined,
-        hostToken: auth.hostToken ?? undefined,
-      }),
-    })
-    if (!res.ok) return null
-    const data = (await res.json()) as { hands?: UnoPlayerHand[] }
-    return data.hands ?? []
-  } catch {
-    return null
-  }
+  return fetchHands<UnoPlayerHand>('uno', gameCode, auth)
 }

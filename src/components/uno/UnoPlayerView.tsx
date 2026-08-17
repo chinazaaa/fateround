@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { UnoCard, UnoLoadingScreen, UnoSecondaryButton, UnoShell } from '@/components/uno/UnoChrome'
 import { UnoPlaySurface } from '@/components/uno/UnoPlaySurface'
@@ -24,6 +24,7 @@ import { UNO_SESSION_SELECT } from '@/lib/supabase-selects'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { supabase } from '@/lib/supabase'
 import { fetchUnoHands } from '@/lib/hands-client'
+import { mergeHandRow, pushedCardCount } from '@/lib/hand-rows'
 import { clearPlayerSession, getPlayerSession } from '@/lib/utils'
 import type { Game, UnoPlayerHand, UnoSession } from '@/types'
 import { useToast } from '@/components/ui/Toast'
@@ -67,6 +68,10 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
   const sessionRef = useRef<UnoSession | null>(null)
   sessionRef.current = session
   const [hands, setHands] = useState<UnoPlayerHand[]>([])
+  // The authoritative resume token, mirrored to a ref so the hand fetch can use it without a
+  // dependency cycle (loadGameState is defined before useGameViewBootstrap resolves the token).
+  // It's the fallback when the localStorage session isn't populated yet — see the fetch below.
+  const myResumeTokenRef = useRef<string | null>(null)
   const { displayName: roomDisplayName, joinExtras, resolving: resolvingRoomMember } = useRoomMemberJoin(gameCode)
   const [acting, setActing] = useState(false)
 
@@ -76,10 +81,15 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
     // `card_count` — and in Team-Up mode the caller's teammate's hand also comes back in full.
     const [sessionRes, handsData] = await Promise.all([
       supabase.from('uno_sessions').select(UNO_SESSION_SELECT).eq('game_id', gameCode).maybeSingle(),
-      // Read the token from the session store rather than the hook value: this callback is
-      // defined before useGameViewBootstrap (which itself takes `load`), so closing over
-      // myResumeToken here would be a cycle.
-      fetchUnoHands(gameCode, { resumeToken: getPlayerSession(gameCode)?.resumeToken }),
+      // Prefer the localStorage session token, falling back to the bootstrap-resolved token via a
+      // ref. This callback runs BEFORE the player is resolved on the first load (see
+      // useGameViewBootstrap: loadGameState is called before resolvePlayerSession), so for a
+      // player who arrived via a share link the localStorage session isn't written yet — without
+      // a token the route redacts our OWN hand to null, which reads as "you are out". The ref
+      // covers subsequent loads; the effect below re-fetches the moment the token resolves.
+      fetchUnoHands(gameCode, {
+        resumeToken: getPlayerSession(gameCode)?.resumeToken ?? myResumeTokenRef.current ?? undefined,
+      }),
     ])
     const sessionData = supabasePollOk(sessionRes) ? (sessionRes.data as UnoSession | null) : null
     if (sessionData) setSession(sessionData)
@@ -124,6 +134,21 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
     joinExtras,
     onJoinError: toastError,
   })
+  myResumeTokenRef.current = myResumeToken
+
+  // The first hand fetch (in loadGameState) can run before the player — and thus the resume
+  // token — is resolved, which the redaction route answers with our own hand blanked. Re-fetch
+  // with the authoritative token the moment it lands, so a share-link player sees their cards.
+  useEffect(() => {
+    if (!myResumeToken || game?.status !== 'active') return
+    let cancelled = false
+    void fetchUnoHands(gameCode, { resumeToken: myResumeToken }).then((h) => {
+      if (!cancelled && h) setHands(h)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [myResumeToken, game?.status, gameCode])
 
   useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
   useApplyGameTheme(screen === 'game_ended' ? 'default' : game?.theme)
@@ -152,25 +177,20 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
           : null
       const isSelfOrTeammate = next.player_id === myPlayerId || next.player_id === teammateId
       if (isSelfOrTeammate && myPlayerId && !Array.isArray(next.cards)) {
-        void fetchUnoHands(gameCode, { resumeToken: getPlayerSession(gameCode)?.resumeToken }).then((hands) => {
+        void fetchUnoHands(gameCode, {
+          resumeToken: getPlayerSession(gameCode)?.resumeToken ?? myResumeTokenRef.current ?? undefined,
+        }).then((hands) => {
           if (hands) setHands(hands)
         })
         return true
       }
-      setHands((prev) => {
-        const i = prev.findIndex((h) => h.id === next.id)
-        // Carry a known count forward when the payload omits it, so an opponent never
-        // momentarily renders as holding zero cards.
-        const merged: UnoPlayerHand = {
-          ...next,
-          card_count: next.card_count ?? (Array.isArray(next.cards) ? next.cards.length : prev[i]?.card_count),
-        }
-        if (i === -1) return [...prev, merged].sort((a, b) => a.player_order - b.player_order)
-        const copy = [...prev]
-        copy[i] = merged
-        return copy
-      })
-      return true
+      setHands((prev) => mergeHandRow(prev, next))
+      // A redacted opponent row carries no count, and mergeHandRow only carried the STALE one
+      // forward to avoid a flicker to zero. Return false so useGameTableSync runs its debounced
+      // reconciling reload — the only path that can learn the new count. Absorbing the row here
+      // would freeze every opponent's card count for the rest of the game (the safety-net poll
+      // is disabled while realtime is connected), so "UNO!" would never show.
+      return pushedCardCount(next) !== null
     },
     [gameCode, myPlayerId, game?.uno_team_mode]
   )
@@ -303,7 +323,11 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
   const isMyTurn = myPlayerId != null && turnPlayerId === myPlayerId
   const activePlayer = myPlayerId ? players.find((p) => p.id === myPlayerId) : undefined
   const isViewer = !!(game && activePlayer && playerIsViewer(activePlayer, game))
-  const isOut = !!myHandRow && myHand.length === 0 && game?.status === 'active'
+  // `cards: null` means REDACTED (the route couldn't resolve us), NOT "no cards left" — only an
+  // actual empty array means the player is out. Without the Array.isArray check a token race
+  // silently flips a still-playing player into watching mode for the rest of the game.
+  const isOut =
+    !!myHandRow && Array.isArray(myHandRow.cards) && myHandRow.cards.length === 0 && game?.status === 'active'
   const isWatching = isViewer || isOut
 
   // Team-Up: your teammate's hand is visible to you (read-only), never to opponents.
@@ -544,7 +568,7 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
       isMyTurn={isMyTurn && !isWatching}
       watching={isWatching}
       acting={acting}
-      drawCount={session.draw_pile?.length ?? 0}
+      drawCount={session.draw_count ?? 0}
       drawDepleted={drawDepleted}
       myCanPlay={myCanPlay}
       drawPenalty={drawPenalty}
