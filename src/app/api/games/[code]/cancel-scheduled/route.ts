@@ -33,11 +33,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     return NextResponse.json({ error: 'Only scheduled games can be cancelled from this endpoint.' }, { status: 400 })
   }
 
-  const { error } = await admin
+  // Atomic guard: constrain the update on the same predicates we authorised
+  // on (status='scheduled', host_token matches). A concurrent transfer or a
+  // late-firing T-0 cron between the auth read and this write flips one of
+  // them, and the update should then affect zero rows — surface that as a
+  // 409 instead of silently succeeding.
+  const { data: updated, error } = await admin
     .from('games')
     .update({ status: 'finished', finished_at: new Date().toISOString(), result_reason: 'host_cancelled' })
     .eq('id', gameCode)
+    .eq('status', 'scheduled')
+    .eq('host_token', parsed.data.hostToken)
+    .select('id')
   if (error) return NextResponse.json({ error: internalErrorMessage('cancel-scheduled', error) }, { status: 500 })
+  if (!updated || updated.length === 0) {
+    return NextResponse.json({ error: 'This scheduled game just changed — refresh and try again.' }, { status: 409 })
+  }
 
   void fireHostCancelledPush(gameCode, String(game.game_type)).catch(() => {})
   return NextResponse.json({ ok: true })
