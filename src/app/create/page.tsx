@@ -145,6 +145,7 @@ import { WST_DECK_MIN_ENTRIES, type WstDeckEntry } from '@/lib/who-said-this'
 import { WST_PLATFORM_DECK } from '@/lib/who-said-this-questions'
 import { playerQuestionsOrderOptions, parsePlayerQuestionsOrder } from '@/lib/player-question-pool'
 import { isPeoplePollGame, playerNameSubmissionHint } from '@/lib/player-participant-pool'
+import { getRememberedName, subscribeLocalIdentity } from '@/lib/identity-local'
 import { setHostPlayIntent } from '@/lib/host-play-intent'
 import { CustomSlotBuilder } from '@/components/CustomSlotBuilder'
 import { GenderRoundModeControl } from '@/components/GenderRoundModeControl'
@@ -1721,6 +1722,23 @@ function CreateGameInner() {
   const isSecretMessage = isSecretMessageGame(settings.game_type)
   // Host's create-screen seat choice, carried into the lobby via host-play intent.
   const [hostName, setHostName] = useState('')
+
+  // Prefill the host's own name from the device record (the same one the join screen uses).
+  // Seeded in an effect, not a useState initializer, because localStorage does not exist
+  // during SSR and reading it there is a hydration mismatch. Subscribed because a signed-in
+  // player's name is written by `useProfile` after its fetch resolves, which is later than
+  // this component's first render. Only ever fills an EMPTY field — once the host types
+  // something it is theirs, and a late-arriving profile must not overwrite it.
+  const hostNameTouchedRef = useRef(false)
+  useEffect(() => {
+    const seed = () => {
+      if (hostNameTouchedRef.current) return
+      const remembered = getRememberedName()
+      if (remembered) setHostName((current) => (current.trim() ? current : remembered))
+    }
+    seed()
+    return subscribeLocalIdentity(seed)
+  }, [])
   const [hostWillPlay, setHostWillPlay] = useState(true)
   // Games whose host panel supports the "Host only / Host + play" seat toggle.
   // Excludes the poll family (routed through PollHostView, own join flow) and the
@@ -2873,7 +2891,10 @@ function CreateGameInner() {
                   <input
                     type="text"
                     value={hostName}
-                    onChange={(e) => setHostName(e.target.value)}
+                    onChange={(e) => {
+                      hostNameTouchedRef.current = true
+                      setHostName(e.target.value)
+                    }}
                     placeholder="Your name (optional)"
                     maxLength={24}
                     className="input-field w-full"
@@ -4068,16 +4089,6 @@ function CreateGameInner() {
             ) : isAyo ? (
               <SettingsGroup title="Ayo room">
                 <p className="text-faint text-sm">Exactly 2 players — the host can join as one of them.</p>
-                <Field label="Rules">
-                  <select
-                    value={ayoVariant}
-                    onChange={(e) => setAyoVariant(e.target.value as AyoVariant)}
-                    className="input-field w-full"
-                  >
-                    <option value="traditional">Traditional — complete fours to win houses, multi-round match</option>
-                    <option value="oware">Oware — capture 2s and 3s with linkage, seed scoring</option>
-                  </select>
-                </Field>
                 <Field label="Time per player">
                   <select
                     value={settings.timer_seconds}
@@ -4093,9 +4104,11 @@ function CreateGameInner() {
                 </Field>
                 <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="ayo" />
                 <p className="text-faint text-sm leading-relaxed">
-                  {ayoVariant === 'traditional'
-                    ? 'Traditional Ayo Olopon — sow anti-clockwise and complete fours on your own houses to win them. If you complete a four on your opponent’s house with your last seed, you win it; if you still have seeds left to sow, they win it instead. Most houses wins the round; each round win takes one of their houses. Play until all opponent houses are gone. Winner is Ọta; three straight round wins makes an Ọta champion.'
-                    : 'Oware rules — sow anti-clockwise (skip the house you picked up), capture 2s and 3s with linkage, and feed your opponent when their row is empty. Most captured seeds wins the deal; the winner is Ọta.'}
+                  Traditional Ayo Olopon — sow anti-clockwise, relaying whenever your last seed lands in a non-empty
+                  house. When your last seed completes exactly four in any house — yours or your opponent’s — you win
+                  it. Once only eight seeds remain, the player who captures the first four takes the last four and the
+                  game ends. Most houses wins — if houses are equal, the most seeds captured breaks the tie. The winner
+                  is Ọta.
                 </p>
               </SettingsGroup>
             ) : isScrabble ? (

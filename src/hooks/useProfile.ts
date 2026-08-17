@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { authHeaders } from '@/lib/identity'
+import { rememberName } from '@/lib/identity-local'
 
 export type Profile = {
   id: string
@@ -47,7 +48,16 @@ async function fetchProfileShared(): Promise<FetchResult> {
         return { ok: false }
       }
       const data = await res.json()
-      return { ok: true, profile: (data.profile ?? null) as Profile | null }
+      const profile = (data.profile ?? null) as Profile | null
+
+      // Mirror the handle into the local identity record. That record is what every name
+      // prefill already reads — join, create, the lobby, and mobile — so setting a profile name
+      // propagates everywhere without any of those surfaces learning about profiles. It also
+      // means a signed-in player on a NEW device gets their name back on first load, which the
+      // purely-local record could never do.
+      if (profile?.handle) rememberName(profile.handle)
+
+      return { ok: true, profile }
     } catch {
       return { ok: false }
     } finally {

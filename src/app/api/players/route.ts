@@ -518,7 +518,15 @@ export async function POST(req: NextRequest) {
     }
 
     const isSpectator =
-      seatsFull || (gameRow.status === 'active' ? spectatorForActiveJoin(gameRow as Game, true) : false)
+      seatsFull ||
+      // An EXPLICIT "watch only" join is a spectator even in a waiting lobby. Without this the
+      // seat-based games ignored `joinAsViewer` until the game was active, so a deliberate
+      // viewer — most visibly the host who chose "Host only" — was treated as a real player
+      // and made to satisfy the player-join rules (Monopoly demanded a board token). This is
+      // the same clause `spectatorOnJoin` carries; the active-game branch below keeps its
+      // hardcoded `true` because these games never admit a mid-game player.
+      rawJoinAsViewer === true ||
+      (gameRow.status === 'active' ? spectatorForActiveJoin(gameRow as Game, true) : false)
 
     if (!isSpectator) {
       if (!rawMonopolyToken || !isMonopolyTokenId(rawMonopolyToken)) {
@@ -585,7 +593,15 @@ export async function POST(req: NextRequest) {
     }
 
     const isSpectator =
-      seatsFull || (gameRow.status === 'active' ? spectatorForActiveJoin(gameRow as Game, true) : false)
+      seatsFull ||
+      // An EXPLICIT "watch only" join is a spectator even in a waiting lobby. Without this the
+      // seat-based games ignored `joinAsViewer` until the game was active, so a deliberate
+      // viewer — most visibly the host who chose "Host only" — was treated as a real player
+      // and made to satisfy the player-join rules (Monopoly demanded a board token). This is
+      // the same clause `spectatorOnJoin` carries; the active-game branch below keeps its
+      // hardcoded `true` because these games never admit a mid-game player.
+      rawJoinAsViewer === true ||
+      (gameRow.status === 'active' ? spectatorForActiveJoin(gameRow as Game, true) : false)
 
     const { data: player, error } = await getSupabaseAdmin()
       .from('players')
@@ -632,7 +648,15 @@ export async function POST(req: NextRequest) {
     }
 
     const isSpectator =
-      seatsFull || (gameRow.status === 'active' ? spectatorForActiveJoin(gameRow as Game, true) : false)
+      seatsFull ||
+      // An EXPLICIT "watch only" join is a spectator even in a waiting lobby. Without this the
+      // seat-based games ignored `joinAsViewer` until the game was active, so a deliberate
+      // viewer — most visibly the host who chose "Host only" — was treated as a real player
+      // and made to satisfy the player-join rules (Monopoly demanded a board token). This is
+      // the same clause `spectatorOnJoin` carries; the active-game branch below keeps its
+      // hardcoded `true` because these games never admit a mid-game player.
+      rawJoinAsViewer === true ||
+      (gameRow.status === 'active' ? spectatorForActiveJoin(gameRow as Game, true) : false)
 
     const { data: player, error } = await getSupabaseAdmin()
       .from('players')
@@ -683,7 +707,15 @@ export async function POST(req: NextRequest) {
     }
 
     const isSpectator =
-      seatsFull || (gameRow.status === 'active' ? spectatorForActiveJoin(gameRow as Game, true) : false)
+      seatsFull ||
+      // An EXPLICIT "watch only" join is a spectator even in a waiting lobby. Without this the
+      // seat-based games ignored `joinAsViewer` until the game was active, so a deliberate
+      // viewer — most visibly the host who chose "Host only" — was treated as a real player
+      // and made to satisfy the player-join rules (Monopoly demanded a board token). This is
+      // the same clause `spectatorOnJoin` carries; the active-game branch below keeps its
+      // hardcoded `true` because these games never admit a mid-game player.
+      rawJoinAsViewer === true ||
+      (gameRow.status === 'active' ? spectatorForActiveJoin(gameRow as Game, true) : false)
 
     const { data: player, error } = await getSupabaseAdmin()
       .from('players')
@@ -747,7 +779,15 @@ export async function POST(req: NextRequest) {
     }
 
     const isSpectator =
-      seatsFull || (gameRow.status === 'active' ? spectatorForActiveJoin(gameRow as Game, true) : false)
+      seatsFull ||
+      // An EXPLICIT "watch only" join is a spectator even in a waiting lobby. Without this the
+      // seat-based games ignored `joinAsViewer` until the game was active, so a deliberate
+      // viewer — most visibly the host who chose "Host only" — was treated as a real player
+      // and made to satisfy the player-join rules (Monopoly demanded a board token). This is
+      // the same clause `spectatorOnJoin` carries; the active-game branch below keeps its
+      // hardcoded `true` because these games never admit a mid-game player.
+      rawJoinAsViewer === true ||
+      (gameRow.status === 'active' ? spectatorForActiveJoin(gameRow as Game, true) : false)
 
     const { data: player, error } = await getSupabaseAdmin()
       .from('players')

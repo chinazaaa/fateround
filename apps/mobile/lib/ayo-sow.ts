@@ -18,8 +18,10 @@ export type AyoBoardConfig = {
   bRowSize: number
 }
 
-export function parseAyoVariant(raw: unknown): AyoVariant {
-  return raw === 'oware' ? 'oware' : 'traditional'
+export function parseAyoVariant(_raw: unknown): AyoVariant {
+  // Oware is temporarily disabled — every Ayo game is Traditional.
+  // To restore Oware: return raw === 'oware' ? 'oware' : 'traditional'.
+  return 'traditional'
 }
 
 /** Human-readable reason a game ended, e.g. "by resignation". Ported from web. */
@@ -103,17 +105,6 @@ function captureOwareFromLanding(
   return { pits: next, capture }
 }
 
-function resolveTraditionalHouseWin(
-  landingPit: number,
-  moverSide: AyoSide,
-  seedsRemaining: number
-): { winnerSide: AyoSide; turnEnds: boolean } {
-  const landingSide = sideOfPit(landingPit)
-  if (landingSide === moverSide) return { winnerSide: moverSide, turnEnds: true }
-  if (seedsRemaining > 0) return { winnerSide: landingSide, turnEnds: false }
-  return { winnerSide: moverSide, turnEnds: true }
-}
-
 export type AyoSowStep =
   | { type: 'pickup'; pitIndex: number; seedsTaken: number; pitsAfter: number[] }
   | {
@@ -151,6 +142,9 @@ function traceTraditionalSow(pits: number[], pitIndex: number, config: AyoBoardC
   let housesB = 0
   let landingPit = pitIndex
 
+  let guard = 0
+  const guardMax = 48 * AYO_PIT_COUNT * 4
+
   while (seeds > 0) {
     current = nextActivePit(current, config)
     const before = next[current]!
@@ -168,24 +162,31 @@ function traceTraditionalSow(pits: number[], pitIndex: number, config: AyoBoardC
       pitsAfter: [...next],
     })
 
-    if (after === 4 && before === 3) {
-      const { winnerSide, turnEnds } = resolveTraditionalHouseWin(current, moverSide, seeds)
-      next[current] = 0
-      capture += 4
-      if (winnerSide === 'a') housesA += 1
-      else housesB += 1
-      steps.push({ type: 'house_win', pitIndex: current, winnerSide, turnEnds, pitsAfter: [...next] })
-      if (turnEnds) break
-      continue
-    }
-
     if (seeds === 0) {
+      // Only the last seed of a lap can capture (exactly four → mover) or end the turn.
+      if (after === 4) {
+        next[current] = 0
+        capture += 4
+        if (moverSide === 'a') housesA += 1
+        else housesB += 1
+        steps.push({
+          type: 'house_win',
+          pitIndex: current,
+          winnerSide: moverSide,
+          turnEnds: true,
+          pitsAfter: [...next],
+        })
+        break
+      }
       if (before === 0) break
       const pickedUp = next[current]!
       next[current] = 0
       seeds = pickedUp
       steps.push({ type: 'relay', pitIndex: current, seedsPickedUp: pickedUp, pitsAfter: [...next] })
     }
+
+    guard += 1
+    if (guard > guardMax) break
   }
 
   steps.push({ type: 'end', pitIndex: landingPit, pitsAfter: [...next] })
@@ -220,7 +221,13 @@ function traceOwareSow(pits: number[], pitIndex: number, config: AyoBoardConfig)
 
   const { pits: afterCapture, capture } = captureOwareFromLanding(next, current, moverSide, config)
   if (capture > 0) {
-    steps.push({ type: 'house_win', pitIndex: current, winnerSide: moverSide, turnEnds: true, pitsAfter: [...afterCapture] })
+    steps.push({
+      type: 'house_win',
+      pitIndex: current,
+      winnerSide: moverSide,
+      turnEnds: true,
+      pitsAfter: [...afterCapture],
+    })
   }
   steps.push({ type: 'end', pitIndex: current, pitsAfter: [...afterCapture] })
 

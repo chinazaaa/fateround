@@ -475,7 +475,7 @@ export interface YahtzeePlayerScore {
   id: string
   game_id: string
   player_id: string
-  scores: { categories: YahtzeeCategoryPoints }
+  scores: { categories: YahtzeeCategoryPoints; bonusYahtzees?: number; jokerUsed?: boolean }
   player_order: number
 }
 
@@ -819,12 +819,7 @@ export type UnoCardKind = 'number' | 'skip' | 'reverse' | 'draw2' | 'wild' | 'wi
  * type for parity with web's session shape but are not driven by any mobile UI yet.
  */
 export type UnoPhase =
-  | 'playing'
-  | 'choose_color'
-  | 'challenge_window'
-  | 'swap_target'
-  | 'team_leave_decision'
-  | 'finished'
+  'playing' | 'choose_color' | 'challenge_window' | 'swap_target' | 'team_leave_decision' | 'finished'
 
 export interface UnoCard {
   id: string

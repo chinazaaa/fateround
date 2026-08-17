@@ -17,6 +17,12 @@ vi.mock('@/lib/tournament-school', () => ({ resolveSchoolMatch: resolveSchool })
 const resolveKnockout = vi.hoisted(() => vi.fn())
 vi.mock('@/lib/tournament-scoring', () => ({ resolveKnockoutGroupRoom: resolveKnockout }))
 
+// The trophy snapshot reads several tables of its own. Stubbed for the same reason as the
+// resolvers above: these tests are about the finish TRANSITION, and its reads would otherwise
+// show up in this file's shared call recorder as if the transition had made them.
+const recordFacts = vi.hoisted(() => vi.fn())
+vi.mock('@/lib/trophies/round-facts', () => ({ recordRoundFacts: recordFacts }))
+
 import { markGameFinished } from './game-finish'
 
 // Minimal Supabase stand-in: the games update builder is chainable and awaitable,
