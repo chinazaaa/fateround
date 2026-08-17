@@ -178,11 +178,54 @@ Backend is untouched; this reuses `GET /api/games`.
       `max_players >= 2`, so a game that drops to 1 mid-lobby falls
       off the feed on the next poll.
 
+- **Stale-lobby auto-close.** The whole feed is worthless if half
+  the games listed are ghost lobbies hosts created and forgot
+  about. Today an admin manually runs a 48-hour cleanup; that's
+  too generous and too manual for a feed users are meant to trust.
+    - **Rule:** a game with `status = 'waiting'` and no state
+      change (`updated_at` untouched by join/leave/settings edit)
+      for **15 minutes** transitions to `status = 'finished'` with
+      a new `result_reason = 'idle_timeout'`. Same rule applies to
+      the post-game "Play Again" lobby (also `status = 'waiting'`
+      once the host requests replay), so an abandoned rematch also
+      closes.
+    - **Implementation:** server-side cron (Supabase edge function
+      or a scheduled Next route hit by a cron trigger — pick
+      whichever matches the existing admin-cron pattern) that runs
+      every 2–3 minutes, selects `waiting` games older than the
+      threshold, updates them. Cheap query, small write volume.
+    - **UX safety net:** the feed's existing filter
+      (`status = 'waiting' AND current_players < max_players`)
+      already hides finished games automatically, so a stale
+      lobby vanishes from `/browse` the moment the cron runs.
+    - **Host-side warning:** at T-13min (2 min before close), a
+      lobby banner: "This lobby will close in 2 minutes if nobody
+      joins or you start the game." A single tap on "Keep open"
+      bumps `updated_at` and resets the timer once. Prevents a
+      host who's actively watching from getting rugged.
+- **"Player joined your game" push to the host.** Encourages the
+  host to come back to the lobby and start when the game fills up.
+  Reuses the existing Expo push token per player (the same channel
+  turn-alerts flow through) — no new subscription infra needed
+  here; it's a directed-to-host push, not the game-type broadcast
+  from Phase B. Fires only when:
+    - the joining player is not the host, AND
+    - `status = 'waiting'`, AND
+    - the game is `is_public = true` (private-game joins come from
+      an invite the host already sent — the host expects them).
+  Deduped: at most one "someone joined" push per 60 seconds per
+  game to avoid a party of 4 joining at once producing 4 pings.
+  Copy: "🎲 [Name] joined your Monopoly game — 3/6 players, tap
+  to open."
+
 **Success:** a user opens the mobile app, sees "Live games — 3
-Monopoly, 1 Whot" without any setup, and taps into one. A host
-creating a party game gets a one-liner nudge to flip Public; if
-they don't, and nobody joins after 30s, a lobby prompt gives them
-a one-tap way to open it up.
+Monopoly, 1 Whot" (and every one of those 3 Monopoly games is a
+real, active lobby — no ghosts). A host creating a party game gets
+a one-liner nudge to flip Public; if they don't and nobody joins
+after 30s, a lobby prompt gives them a one-tap way to open it up.
+If they wander off, they get a "player joined" ping when someone
+arrives and a "2 minutes to close" warning if nobody does. Games
+left cold auto-close after 15 minutes so `/browse` stays honest.
 
 ### Phase B — Push subscriptions (2–3 weeks)
 
