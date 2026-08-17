@@ -71,6 +71,7 @@ import {
 } from '@/lib/game-limits'
 import { clampPingPongPoints } from '@/lib/ping-pong'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { scheduleNewPublicGameFanout } from '@/lib/notification-subscriptions'
 
 const supabase = getSupabaseAnon()
 
@@ -138,6 +139,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     monopoly_auction_timer_seconds,
     monopoly_no_rent_in_jail,
     monopoly_estate_dividend,
+    monopoly_board_size,
     whot_pick3_enabled,
     whot_cards_enabled,
     whot_number_calls_enabled,
@@ -219,6 +221,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     monopoly_auction_timer_seconds === undefined &&
     monopoly_no_rent_in_jail === undefined &&
     monopoly_estate_dividend === undefined &&
+    monopoly_board_size === undefined &&
     whot_pick3_enabled === undefined &&
     whot_cards_enabled === undefined &&
     whot_number_calls_enabled === undefined &&
@@ -342,6 +345,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     gameUpdate.is_public = is_public
   }
 
+  // Single source of truth for capacity rules (board-size gate + reset).
+  const effectiveMaxPlayers =
+    max_players !== undefined ? clampLobbyMaxPlayers(limitKey, max_players, lobbyLimits) : Number(game.max_players ?? 6)
+
+  // Public + max_players < 2 is a contradiction (nobody to fill the seat) — the
+  // /browse feed excludes those rows, so silently accepting the flag would
+  // strand the host with an "on" toggle that never lists. Reject at the write.
+  const nextIsPublic = is_public === undefined ? game.is_public === true : is_public === true
+  if (nextIsPublic && effectiveMaxPlayers < 2) {
+    return NextResponse.json({ error: 'Bump the max players above 1 to make this game Public.' }, { status: 400 })
+  }
+
   // Content label — trimmed + capped; empty string clears it.
   if (content_label !== undefined) {
     const trimmed = content_label.trim()
@@ -349,7 +364,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   }
 
   if (max_players !== undefined) {
-    const nextMax = clampLobbyMaxPlayers(limitKey, max_players, lobbyLimits)
+    const nextMax = effectiveMaxPlayers
     const { count: playerCount } = await supabase
       .from('players')
       .select('id', { count: 'exact', head: true })
@@ -361,6 +376,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       )
     }
     gameUpdate.max_players = nextMax
+    if (boardLobbyType === 'monopoly' && nextMax < 6) gameUpdate.monopoly_board_size = 40
   }
 
   if (timer_seconds !== undefined) {
@@ -582,12 +598,23 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       gameUpdate.monopoly_auction_timer_seconds = monopoly_auction_timer_seconds
     if (monopoly_no_rent_in_jail !== undefined) gameUpdate.monopoly_no_rent_in_jail = monopoly_no_rent_in_jail
     if (monopoly_estate_dividend !== undefined) gameUpdate.monopoly_estate_dividend = monopoly_estate_dividend
+    if (monopoly_board_size !== undefined) {
+      const requestedBoardSize = monopoly_board_size === 48 ? 48 : 40
+      if (requestedBoardSize === 48 && effectiveMaxPlayers < 6) {
+        return NextResponse.json(
+          { error: 'The 48-space board requires a room cap of at least 6 players' },
+          { status: 400 }
+        )
+      }
+      gameUpdate.monopoly_board_size = requestedBoardSize
+    }
   } else if (
     monopoly_double_go_salary !== undefined ||
     monopoly_forced_auctions !== undefined ||
     monopoly_auction_timer_seconds !== undefined ||
     monopoly_no_rent_in_jail !== undefined ||
-    monopoly_estate_dividend !== undefined
+    monopoly_estate_dividend !== undefined ||
+    monopoly_board_size !== undefined
   ) {
     return NextResponse.json({ error: 'These rules only apply to Estate Kings games' }, { status: 400 })
   }
@@ -780,6 +807,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   if (error)
     return NextResponse.json({ error: internalErrorMessage('games/code/lobby-settings', error) }, { status: 500 })
+
+  // Discovery Phase B — fan out to per-game-type subscribers on the false→true
+  // transition (same rule as PATCH /api/games/[code]; the two paths flip the
+  // same flag so both need to fire). Rate limit + quiet hours per subscriber.
+  if (is_public === true && game.is_public !== true) {
+    scheduleNewPublicGameFanout(gameCode, String(game.game_type ?? ''), String(game.title ?? ''))
+  }
 
   if (quickDrawLobby && quick_draw_num_teams !== undefined) {
     const { error: cleanupError } = await getSupabaseAdmin()

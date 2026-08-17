@@ -5,7 +5,7 @@ export const BATCH_6_GAMES: GameType[] = ['chess', 'scrabble']
 export function batch6GameLabel(gameType: GameType | string): string {
   const labels: Partial<Record<GameType, string>> = {
     chess: 'Chess',
-    scrabble: 'Scrabble',
+    scrabble: 'Word Tiles',
   }
   return labels[gameType as GameType] ?? String(gameType).replace(/_/g, ' ')
 }

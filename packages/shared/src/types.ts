@@ -1,4 +1,4 @@
-export type GameStatus = 'waiting' | 'active' | 'finished'
+export type GameStatus = 'scheduled' | 'waiting' | 'active' | 'finished'
 export type RoundStatus = 'pending' | 'active' | 'finished'
 export type PlayerGender = 'male' | 'female' | 'both'
 export type ParticipantGender = 'male' | 'female'
@@ -73,6 +73,16 @@ export interface Game {
   allow_viewers?: boolean | null
   allow_late_players?: boolean | null
   is_public?: boolean | null
+  /** Discovery Phase A — bumped on lobby activity; drives the stale-lobby close cron. */
+  last_activity_at?: string | null
+  /** Discovery Phase C — when a scheduled game is set to open. Null for immediate games. */
+  scheduled_at?: string | null
+  /** Discovery Phase C — stamped when scheduled → waiting; drives the 10-min unconfirmed-drop cron. */
+  opened_at?: string | null
+  /** Discovery Phase A — stamped once when the host got the T-13min warning (one bite per game). */
+  host_idle_warning_sent_at?: string | null
+  /** Discovery Phase A — how the lobby ended ("idle_timeout", null, …). */
+  result_reason?: string | null
   /** Whether responses are shown without attribution (poll-family games only). */
   anonymous?: boolean | null
   theme?: string | null
@@ -150,6 +160,7 @@ export interface Game {
   monopoly_auction_timer_seconds?: number | null
   monopoly_no_rent_in_jail?: boolean | null
   monopoly_estate_dividend?: boolean | null
+  monopoly_board_size?: 40 | 48 | null
   quick_draw_variant?: QuickDrawVariant | null
   quick_draw_play_mode?: QuickDrawPlayMode | null
   quick_draw_num_teams?: number | null
@@ -192,6 +203,13 @@ export interface Player {
   eliminated_at?: string | null
   monopoly_token?: string | null
   participant_id?: string | null
+  /**
+   * Bots-in-room marker (Monopoly + Whot today). See
+   * docs/bots-in-room-plan.md — bots are real players rows so every route
+   * that touches players works on them without special-casing; this flag
+   * only drives UI (🤖 badge, add-bot button visibility, leaderboard gate).
+   */
+  is_bot?: boolean
 }
 
 export type TicTacToeMark = 'X' | 'O'
@@ -310,6 +328,7 @@ export interface ChessSession {
 }
 
 export type AyoSide = 'a' | 'b'
+export type AyoVariant = 'traditional' | 'oware'
 
 export interface AyoSession {
   id: string
@@ -1470,6 +1489,7 @@ export interface MonopolyLastCardEvent {
 export interface MonopolyBoard {
   id: string
   game_id: string
+  board_size?: 40 | 48
   turn_order: string[]
   current_turn_index: number
   phase: MonopolyPhase

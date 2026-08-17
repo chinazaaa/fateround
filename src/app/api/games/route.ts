@@ -212,6 +212,7 @@ import {
 } from '@/lib/word-rush'
 import { gameSupportsViewerSetting, lateJoinPolicyToFields, type LateJoinPolicy } from '@/lib/viewers'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { scheduleNewPublicGameFanout } from '@/lib/notification-subscriptions'
 import { z } from 'zod/v4'
 import { ELIMINATION_COMPATIBLE_TYPES } from '@/types/elimination'
 
@@ -354,14 +355,27 @@ export async function GET(req: NextRequest) {
     50
   )
   const cursor = searchParams.get('cursor')
+  // Discovery Phase C — the Upcoming tab passes ?status=scheduled to fetch
+  // future-anchored games; anything else keeps the Live-now default that
+  // Phase A shipped (waiting + active). This is additive — old callers see
+  // no behaviour change.
+  const statusFilter = searchParams.get('status')
 
+  // Feed hides solo/1v1-with-1-seat games. A Public game with max_players < 2 is a
+  // contradiction (nobody to fill the seats) — mirrored by the POST + settings PATCH
+  // rejections below so client-side and server-side agree on what a listable game is.
   let query = supabase
     .from('games')
     .select(GAME_BROWSE_FIELDS)
     .eq('is_public', true)
-    .neq('status', 'finished')
-    .order('created_at', { ascending: false })
+    .gte('max_players', 2)
     .limit(limit + 1)
+
+  if (statusFilter === 'scheduled') {
+    query = query.eq('status', 'scheduled').order('scheduled_at', { ascending: true })
+  } else {
+    query = query.neq('status', 'finished').neq('status', 'scheduled').order('created_at', { ascending: false })
+  }
 
   if (cursor) {
     query = query.lt('created_at', cursor)
@@ -424,6 +438,7 @@ export async function POST(req: NextRequest) {
     player_questions_enabled: rawPlayerQuestionsEnabled,
     player_questions_order: rawPlayerQuestionsOrder,
     max_players: rawMaxPlayers,
+    monopoly_board_size: rawMonopolyBoardSize,
     codewords_player_picks: rawCodewordsPlayerPicks,
     codewords_late_join: rawCodewordsLateJoin,
     codewords_randomize_teams: rawCodewordsRandomizeTeams,
@@ -944,6 +959,26 @@ export async function POST(req: NextRequest) {
   const contentLabel =
     typeof rawContentLabel === 'string' && rawContentLabel.trim() ? rawContentLabel.trim().slice(0, 40) : null
 
+  // Discovery Phase C — scheduled_at must be in the future. Originally
+  // Public-only per the plan's discovery lens; relaxed so a host can also
+  // schedule a private game (invite-by-link) and let their friends RSVP.
+  // Private scheduled games skip the Browse Upcoming tab (still Public-only)
+  // AND skip the game-type subscriber fan-out (nobody is subscribed to
+  // "any private Monopoly") — the T-15 / T-0 pushes to RSVPers still fire
+  // because those key off game_rsvps, not is_public.
+  if (parsed.data.scheduled_at) {
+    if (new Date(parsed.data.scheduled_at).getTime() <= Date.now()) {
+      return NextResponse.json({ error: 'Pick a scheduled time in the future.' }, { status: 400 })
+    }
+  }
+
+  // Max-players guard: a Public game with max_players < 2 has no seat for a
+  // stranger to fill, and the /browse feed excludes those rows anyway. Reject
+  // at create so the host doesn't silently ship a game that never surfaces.
+  if (parsed.data.isPublic === true && maxPlayers != null && maxPlayers < 2) {
+    return NextResponse.json({ error: 'Bump the max players above 1 to make this game Public.' }, { status: 400 })
+  }
+
   const { error: gameError } = await admin.from('games').insert({
     id: gameCode,
     title,
@@ -1150,8 +1185,14 @@ export async function POST(req: NextRequest) {
     trivia_category: isTriviaGame(game_type) ? triviaCategoryEnum.catch('general').parse(rawTriviaCategory) : null,
     game_type,
     theme,
-    status: isSecret ? 'active' : 'waiting',
+    // Discovery Phase C — a scheduled game starts in 'scheduled' state and
+    // flips to 'waiting' at T-0 via open_scheduled_games_due(). Requires
+    // isPublic=true (a private schedule has no RSVP audience) and a future
+    // scheduled_at; the guard just above already validated isPublic + max
+    // capacity, and we validate the timestamp separately here.
+    status: isSecret ? 'active' : parsed.data.scheduled_at ? 'scheduled' : 'waiting',
     is_public: parsed.data.isPublic ?? false,
+    ...(parsed.data.scheduled_at ? { scheduled_at: parsed.data.scheduled_at } : {}),
     current_round_number: 0,
     ...(isSecret ? { session_started_at: new Date().toISOString() } : {}),
     wst_quote_source: parsed.data.wst_quote_source ?? 'player',
@@ -1177,6 +1218,9 @@ export async function POST(req: NextRequest) {
           ? parsePlayerQuestionsOrder(rawPlayerQuestionsOrder)
           : 'players_first',
     ...(maxPlayers != null ? { max_players: maxPlayers } : {}),
+    ...(isMonopolyGame(game_type)
+      ? { monopoly_board_size: (maxPlayers ?? 6) >= 6 && rawMonopolyBoardSize === 48 ? 48 : 40 }
+      : {}),
     ...(isBingoGame(game_type)
       ? {
           bingo_call_mode: parseBingoCallMode(rawBingoCallMode),
@@ -1317,6 +1361,16 @@ export async function POST(req: NextRequest) {
       await admin.from('games').delete().eq('id', gameCode)
       return NextResponse.json({ error: internalErrorMessage('games', partError) }, { status: 500 })
     }
+  }
+
+  // Discovery Phase B — fan out to per-game-type subscribers when the host
+  // opens a Public game. Runs via `after()` so the create response returns
+  // immediately; self-gates on rate-limit + quiet hours per subscriber.
+  // NB (Phase C): a scheduled game does NOT fan out at create time —
+  // subscribers get the T-15 heads-up push instead. Firing here would
+  // announce "a Monopoly game just opened" hours before it actually opens.
+  if (parsed.data.isPublic === true && !parsed.data.scheduled_at) {
+    scheduleNewPublicGameFanout(gameCode, game_type, title)
   }
 
   return NextResponse.json({ gameCode, hostToken })

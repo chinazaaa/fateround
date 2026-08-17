@@ -71,6 +71,10 @@ export type CreateWizardState = {
   gameType: GameType
   theme: ThemeId
   isPublic: boolean
+  /** Discovery Phase C — "Schedule for later". ISO timestamp for when the
+   *  game should open; null means "start immediately" (Phase A default).
+   *  Only sent to the server when isPublic=true. */
+  scheduledAt: string | null
   maxPlayers: number | null
   lateJoinPolicy: LateJoinPolicy
   room: GameRoomSettings
@@ -79,6 +83,17 @@ export type CreateWizardState = {
   people: PeopleSettings
   wst: WstCreateState
   landmine: LandmineCreateState
+  /** "Play solo" — only offered when the current game type's lobby min is 1
+   *  (yahtzee, crossword, word_search, word_scramble, word_grouping). When on,
+   *  the payload forces max_players=1 and the host lobby auto-seats + auto-starts
+   *  so the host skips the lobby wait entirely. */
+  soloMode: boolean
+}
+
+/** True when the current game type's lobby min is 1 — the games where "Play solo"
+ *  can be offered. Sourced from the same limits map the max-players picker uses. */
+export function supportsSoloMode(gameType: GameType, limits: GamePlayerLimitsMap): boolean {
+  return isLobbyLimitGameType(gameType) && limits[gameType].min === 1
 }
 
 export type CreateSettingsRegistryEntry = {
@@ -107,6 +122,7 @@ export function createInitialState(gameType: GameType, limits: GamePlayerLimitsM
     gameType,
     theme: themeForGameType(gameType, 'default'),
     isPublic: false,
+    scheduledAt: null,
     maxPlayers: isLobbyLimitGameType(gameType) ? lobbyDefaultMaxPlayers(gameType, limits) : null,
     lateJoinPolicy: defaultLateJoinPolicyForGameType(gameType),
     room: defaultGameRoomSettings(gameType),
@@ -115,6 +131,7 @@ export function createInitialState(gameType: GameType, limits: GamePlayerLimitsM
     people: defaultPeopleSettings(gameType),
     wst: defaultWstCreateState(),
     landmine: defaultLandmineCreateState(),
+    soloMode: false,
   }
 }
 
@@ -135,6 +152,8 @@ export function applyGameTypeChange(
     people: defaultPeopleSettings(gameType),
     wst: defaultWstCreateState(),
     landmine: defaultLandmineCreateState(),
+    // A game type change may make solo unavailable — never carry a stale flag.
+    soloMode: supportsSoloMode(gameType, limits) ? prev.soloMode : false,
   }
 }
 
@@ -175,12 +194,19 @@ export function buildCreatePayload(state: CreateWizardState, limits: GamePlayerL
   // UNO Team-Up is fixed at 4 players (2 teams of 2) — overrides whatever max-players the host
   // picked before turning Team-Up on.
   if (gameType === 'uno' && state.room.unoTeamMode) maxPlayers = 4
+  // Solo mode forces a 1-seat lobby. Placed after every other max_players branch so nothing
+  // can override it back up. Only honored for games whose lobby min is 1.
+  if (state.soloMode && supportsSoloMode(gameType, limits)) maxPlayers = 1
 
   const payload: Record<string, unknown> = {
     title: state.title.trim(),
     game_type: gameType,
     theme: state.theme,
     isPublic: state.isPublic,
+    // Discovery Phase C + private-schedule follow-up: send scheduled_at any
+    // time the host set it, regardless of visibility. Server accepts the pair
+    // for private games too (invite-by-link RSVP flow).
+    ...(state.scheduledAt ? { scheduled_at: state.scheduledAt } : {}),
     ...customContentPayload(gameType, state.custom),
     ...peoplePayload(gameType, state.people, state.party.anonymous, isPollPartyGame(gameType)),
     ...gameRoomSettingsPayload(gameType, state.room),

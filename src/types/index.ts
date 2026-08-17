@@ -1,4 +1,4 @@
-export type GameStatus = 'waiting' | 'active' | 'finished'
+export type GameStatus = 'scheduled' | 'waiting' | 'active' | 'finished'
 export type RoundStatus = 'pending' | 'active' | 'finished'
 export type AutoSubmitBehavior = 'random' | 'no_answer'
 export type ParticipantMode = 'import' | 'joiners' | 'voters'
@@ -386,6 +386,7 @@ export interface Game {
   monopoly_auction_timer_seconds?: number | null
   monopoly_no_rent_in_jail?: boolean
   monopoly_estate_dividend?: boolean
+  monopoly_board_size?: 40 | 48
   anonymous: boolean
   auto_reveal: boolean
   auto_submit_behavior: AutoSubmitBehavior
@@ -403,6 +404,16 @@ export interface Game {
   status: GameStatus
   /** When true, the game is listed in /browse (discoverable). Default false = code-only. */
   is_public?: boolean
+  /** Discovery Phase A — bumped on lobby activity; drives the stale-lobby close cron. */
+  last_activity_at?: string | null
+  /** Discovery Phase C — when a scheduled game is set to open. Null for immediate games. */
+  scheduled_at?: string | null
+  /** Discovery Phase C — stamped when scheduled → waiting. */
+  opened_at?: string | null
+  /** Discovery Phase A — stamped once when the host got the T-13min warning (one bite per game). */
+  host_idle_warning_sent_at?: string | null
+  /** Discovery Phase A — how the lobby ended ("idle_timeout", null, …). */
+  result_reason?: string | null
   /** When true, the host has enabled in-game Spotify music for this room (default off). */
   music_enabled?: boolean
   /** Play Again · same settings — true while the post-game ready-up ring is armed (Whot). */
@@ -608,6 +619,7 @@ export interface MonopolyLastTradeEvent {
 export interface MonopolyBoard {
   id: string
   game_id: string
+  board_size?: 40 | 48
   turn_order: string[]
   current_turn_index: number
   phase: MonopolyPhase

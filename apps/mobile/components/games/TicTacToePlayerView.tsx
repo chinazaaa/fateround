@@ -185,7 +185,7 @@ export function TicTacToePlayerView({ gameCode }: { gameCode: string }) {
     const winner = bootstrap.players.find((p) => p.id === activeSession.winner_player_id)
     const title = activeSession.is_draw ? 'Draw!' : winner ? `${winner.name} wins!` : 'Game over'
     return (
-      <GameShell bootstrap={bootstrap} title="Tic Tac Toe" subtitle={bootstrap.code}>
+      <GameShell bootstrap={bootstrap} title="Tic-Tac-Toe" subtitle={bootstrap.code}>
         <GameFinishPanel
           bootstrap={bootstrap}
           title={title}
@@ -218,7 +218,7 @@ export function TicTacToePlayerView({ gameCode }: { gameCode: string }) {
   const winLine = new Set(overallWin?.line ?? [])
 
   return (
-    <GameShell bootstrap={bootstrap} title="Tic Tac Toe" subtitle={`Code ${bootstrap.code}`}>
+    <GameShell bootstrap={bootstrap} title="Tic-Tac-Toe" subtitle={`Code ${bootstrap.code}`}>
       <ScrollView contentContainerStyle={styles.content}>
         <TicTacToeTurnBar
           text={isMyTurn ? 'Your turn' : `${turnPlayer?.name ?? 'Opponent'}'s turn`}

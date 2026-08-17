@@ -11,7 +11,7 @@ const SEARCH_ALIASES: Partial<Record<GameType, string[]>> = {
   checkers_nigeria: ['nigerian draughts', 'naija checkers', 'draughts nigeria', 'seed draughts'],
   // Product labels moved off the trademarks; keep the trademark searchable so returning
   // players still land on the renamed tile.
-  monopoly: ['monopoly'],
+  monopoly: ['estate kings', 'property trading', 'property game'],
   scrabble: ['scrabble'],
   yahtzee: ['yahtzee'],
   uno: ['uno', 'no mercy', "show 'em no mercy", 'show em no mercy', 'match up', 'high stakes uno'],

@@ -63,6 +63,7 @@ export function HostBoardGameLobbyPanel({
   const [monopolyAuctionTimerSeconds, setMonopolyAuctionTimerSeconds] = useState(10)
   const [monopolyNoRentInJail, setMonopolyNoRentInJail] = useState(false)
   const [monopolyEstateDividend, setMonopolyEstateDividend] = useState(false)
+  const [monopolyBoardSize, setMonopolyBoardSize] = useState<40 | 48>(40)
   const [whotPick3Enabled, setWhotPick3Enabled] = useState(true)
   const [whotPick2Stacking, setWhotPick2Stacking] = useState(true)
   const [whotCardsEnabled, setWhotCardsEnabled] = useState(true)
@@ -111,6 +112,7 @@ export function HostBoardGameLobbyPanel({
       setMonopolyAuctionTimerSeconds(game.monopoly_auction_timer_seconds ?? 10)
       setMonopolyNoRentInJail(game.monopoly_no_rent_in_jail === true)
       setMonopolyEstateDividend(game.monopoly_estate_dividend === true)
+      setMonopolyBoardSize(game.monopoly_board_size === 48 ? 48 : 40)
     }
     if (boardGameType === 'whot') {
       setWhotPick3Enabled(game.whot_pick3_enabled !== false)
@@ -336,6 +338,21 @@ export function HostBoardGameLobbyPanel({
         {boardGameType === 'monopoly' && (
           <HostLobbySettingBlock title="House rules" className="sm:col-span-2">
             <div className="space-y-4">
+              <div>
+                <div className="mb-2 text-sm font-medium text-default">Board size</div>
+                <HostLobbyOptionChips
+                  value={monopolyBoardSize}
+                  options={[
+                    { value: 40, label: '40 spaces' },
+                    ...(maxPlayers >= 6 ? [{ value: 48, label: '48 spaces' }] : []),
+                  ]}
+                  onChange={(value) => {
+                    const nextSize = value === 48 ? 48 : 40
+                    setMonopolyBoardSize(nextSize)
+                    void patchSettings({ monopoly_board_size: nextSize })
+                  }}
+                />
+              </div>
               <Toggle
                 label="Double GO Salary"
                 description="Collect $400 (instead of $200) when landing exactly on GO."

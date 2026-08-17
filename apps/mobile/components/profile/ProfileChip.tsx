@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { ActivityIndicator, Alert, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
+import { useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
@@ -125,6 +126,7 @@ function SaveToProfileSheet({
   theme: Theme
 }) {
   const styles = useThemedStyles(makeStyles)
+  const router = useRouter()
   const [email, setEmail] = useState('')
   const [code, setCode] = useState('')
   const [flow, setFlow] = useState<EmailCodeFlow>('signin')
@@ -294,6 +296,36 @@ function SaveToProfileSheet({
                   </Pressable>
                 </>
               )}
+
+              {/* Always-available link into the dedicated /profile screen — the
+                  trophy grid + per-game stats live there. Closing the sheet
+                  before push so the route stack stays clean. */}
+              <Pressable
+                onPress={() => {
+                  onClose()
+                  // Expo Router's typed-routes registry regenerates on the
+                  // next build; the cast is a one-turn measure until then.
+                  router.push('/profile' as never)
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="See trophies and stats"
+              >
+                <Text style={styles.link}>See trophies & stats →</Text>
+              </Pressable>
+
+              {/* Persistent entry point to /notifications for anyone who
+                  dismissed the home banner. Lives in the profile sheet so it
+                  doesn't crowd the home actions. */}
+              <Pressable
+                onPress={() => {
+                  onClose()
+                  router.push('/notifications' as never)
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="Notification preferences"
+              >
+                <Text style={styles.link}>🔔 Notification preferences →</Text>
+              </Pressable>
             </View>
           </SafeAreaView>
         </Pressable>

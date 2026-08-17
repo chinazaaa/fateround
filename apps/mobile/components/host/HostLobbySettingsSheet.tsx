@@ -379,6 +379,7 @@ export function HostLobbySettingsSheet({
     forcedAuctions: game.monopoly_forced_auctions === true,
     auctionTimerSeconds: game.monopoly_auction_timer_seconds ?? 10,
     noRentInJail: game.monopoly_no_rent_in_jail === true,
+    boardSize: game.monopoly_board_size === 48 ? 48 : 40,
   }))
   const [icallon, setIcallon] = useState<ICallOnLobbyState>(() => ({
     gameDurationSeconds: game.game_duration_seconds ?? 0,
@@ -618,6 +619,8 @@ export function HostLobbySettingsSheet({
         board.monopoly_auction_timer_seconds = monopoly.auctionTimerSeconds
       if (monopoly.noRentInJail !== (game.monopoly_no_rent_in_jail === true))
         board.monopoly_no_rent_in_jail = monopoly.noRentInJail
+      const currentBoardSize = game.monopoly_board_size === 48 ? 48 : 40
+      if (monopoly.boardSize !== currentBoardSize) board.monopoly_board_size = monopoly.boardSize
     }
     if (isDuration) {
       if (
@@ -890,7 +893,20 @@ export function HostLobbySettingsSheet({
             ) : null}
 
             {isMonopoly ? (
-              <MonopolyLobbySection value={monopoly} onChange={(p) => setMonopoly((prev) => ({ ...prev, ...p }))} />
+              <MonopolyLobbySection
+                value={monopoly}
+                maxPlayers={maxPlayers}
+                onChange={(p) => {
+                  setMonopoly((prev) => {
+                    const next = { ...prev, ...p }
+                    // The 48-space board requires a room cap of at least 6 players.
+                    // If the host lowers the cap below 6 we automatically fall back
+                    // to the 40-space board (mirrors the web API's server-side clamp).
+                    if ((maxPlayers ?? 0) < 6 && next.boardSize === 48) next.boardSize = 40
+                    return next
+                  })
+                }}
+              />
             ) : null}
 
             {isDuration ? (
@@ -1021,10 +1037,10 @@ const makeStyles = (theme: Theme) =>
       maxHeight: '85%',
     },
     handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: theme.border, alignSelf: 'center' },
-    title: { color: theme.text, fontSize: 20, fontWeight: '800' },
+    title: { color: theme.text, fontSize: theme.type.title.size, fontWeight: '800' },
     body: { gap: theme.space.lg, paddingBottom: theme.space.md },
     field: { gap: theme.space.sm },
-    label: { color: theme.text, fontSize: 16, fontWeight: '800' },
+    label: { color: theme.text, fontSize: theme.type.section.size, fontWeight: '800' },
     error: { color: theme.error, fontSize: 13 },
     actions: { flexDirection: 'row', gap: theme.space.sm },
     flex: { flex: 1 },
@@ -1034,7 +1050,7 @@ const makeStyles = (theme: Theme) =>
       paddingVertical: 14,
       alignItems: 'center',
     },
-    primaryText: { color: '#fff', fontWeight: '800', fontSize: 16 },
+    primaryText: { color: '#fff', fontWeight: '800', fontSize: theme.type.section.size },
     secondary: {
       backgroundColor: theme.surface,
       borderWidth: 1,
@@ -1043,7 +1059,7 @@ const makeStyles = (theme: Theme) =>
       paddingVertical: 14,
       alignItems: 'center',
     },
-    secondaryText: { color: theme.textSecondary, fontWeight: '700', fontSize: 16 },
+    secondaryText: { color: theme.textSecondary, fontWeight: '700', fontSize: theme.type.section.size },
     disabled: { opacity: 0.5 },
     transferBtn: {
       marginTop: theme.space.sm,
@@ -1053,5 +1069,5 @@ const makeStyles = (theme: Theme) =>
       paddingVertical: 14,
       alignItems: 'center',
     },
-    transferText: { color: theme.textSecondary, fontWeight: '700', fontSize: 15 },
+    transferText: { color: theme.textSecondary, fontWeight: '700', fontSize: theme.type.body.size },
   })

@@ -7,6 +7,8 @@ import { PollGamePlayerExperience } from '@/components/poll-game/PollGamePlayerE
 // import { NowPlayingBar } from '@/components/music/NowPlayingBar'
 import { AudioChat } from '@/components/AudioChat'
 import { IosInstallPushNudge } from '@/components/IosInstallPushNudge'
+import { PublicGameFinishOverlay } from '@/components/notifications/PublicGameFinishOverlay'
+import { ScheduledGameOverlay } from '@/components/notifications/ScheduledGameOverlay'
 import { MatureGameGate } from '@/components/MatureGameGate'
 import { getPlayerSession } from '@/lib/utils'
 import { gameHasHeaderVoice } from '@/lib/game-types'
@@ -219,6 +221,15 @@ export default function GamePage() {
         />
       )}
       <TournamentBanner gameCode={gameCode} tournamentId={tournamentId} branding={tournamentBranding} />
+      {/* Web parity for the mobile PostJoinSubscribeNudge: one floating card
+          when the game finishes, one shot per browser install. Non-tournament
+          games only — tournament players already get the "back to hub" banner
+          in that same corner. */}
+      {!tournamentId && <PublicGameFinishOverlay gameCode={gameCode} />}
+      {/* Discovery Phase C — hides itself for immediate games; renders the
+          full-screen RSVP takeover for scheduled ones and the "I'm ready"
+          floating prompt for RSVPers in the post-open lobby. */}
+      <ScheduledGameOverlay gameCode={gameCode} />
       {/* {resumeToken && <NowPlayingBar gameCode={gameCode} resumeToken={resumeToken} />} */}
       {playerId && <IosInstallPushNudge gameCode={gameCode} />}
     </TournamentBrandingWrapper>

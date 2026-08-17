@@ -20,7 +20,12 @@ import { Glyph } from '@/components/icons/Glyph'
 import { MonopolyFinalResultsShareBlock } from '@/components/monopoly/MonopolyFinalResultsShareBlock'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
-import { buildMonopolyStandings, MONOPOLY_MIN_PLAYERS, MONOPOLY_STARTING_CASH } from '@/lib/monopoly'
+import {
+  buildMonopolyStandings,
+  MONOPOLY_MIN_PLAYERS,
+  MONOPOLY_STARTING_CASH,
+  startingCashForSize,
+} from '@/lib/monopoly'
 import { formatThemedMoney } from '@/components/monopoly/monopoly-themes'
 import { supabase } from '@/lib/supabase'
 import { MONOPOLY_BOARD_SELECT, MONOPOLY_PLAYER_STATE_SELECT, isCompleteMonopolyBoardRow } from '@/lib/supabase-selects'
@@ -409,7 +414,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
         <p className="text-faint text-xs leading-relaxed text-center">
           {joiningAsViewer
             ? 'This game is in progress — you will join as a viewer and watch live (read-only).'
-            : `${MONOPOLY_MIN_PLAYERS}–6 players · ${formatThemedMoney(MONOPOLY_STARTING_CASH, game?.theme)} starting cash.`}
+            : `${MONOPOLY_MIN_PLAYERS}–6 players · ${formatThemedMoney(startingCashForSize(game?.monopoly_board_size ?? 40), game?.theme)} starting cash.`}
         </p>
       </GameJoinLobbyShell>
     )
@@ -468,7 +473,8 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
                 <h2 className="text-xl sm:text-2xl font-black">You&apos;re in, {displayName}!</h2>
                 <p className="text-muted text-sm leading-relaxed">
                   Waiting for the host to start. You&apos;ll begin with{' '}
-                  {formatThemedMoney(MONOPOLY_STARTING_CASH, game?.theme)} when the game begins.
+                  {formatThemedMoney(startingCashForSize(game?.monopoly_board_size ?? 40), game?.theme)} when the game
+                  begins.
                 </p>
               </>
             )}
@@ -530,7 +536,8 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
             players,
             board.property_owners,
             board.property_buildings,
-            board.mortgaged_properties
+            board.mortgaged_properties,
+            board.board_size ?? 40
           )[0]?.name
         : null)
 

@@ -24,8 +24,8 @@
  */
 
 import {
-  MONOPOLY_BOARD,
   countOwnedInGroup,
+  monopolyBoardForSize,
   spacesInGroup,
   type MonopolyColorGroup,
   type MonopolySpace,
@@ -194,19 +194,6 @@ export interface MonopolyBotView {
 }
 
 /**
- * Every buyable space on the board (property, station, utility). Cached at
- * module load — the board is a constant.
- */
-const ALL_BUYABLE_SPACES: MonopolySpace[] = MONOPOLY_BOARD.filter(
-  (s) => s.type === 'property' || s.type === 'station' || s.type === 'utility'
-)
-
-/** All distinct color groups appearing on buyable spaces. */
-const ALL_COLOR_GROUPS: MonopolyColorGroup[] = Array.from(
-  new Set(ALL_BUYABLE_SPACES.map((s) => s.color).filter((c): c is MonopolyColorGroup => Boolean(c)))
-)
-
-/**
  * Estimated rent value of holding a full monopoly in a group. For property
  * colours this is the sum of hotel rents (rentTable[5]) across every space
  * in the group. Stations and utilities have no rentTable in the board module
@@ -256,11 +243,19 @@ export function adaptMonopolyForBot(
   const owners = board.property_owners ?? {}
   const buildings = board.property_buildings ?? {}
   const mortgaged = board.mortgaged_properties ?? {}
+  const boardSize = board.board_size ?? 40
+  const boardSpaces = monopolyBoardForSize(boardSize)
+  const buyableSpaces = boardSpaces.filter(
+    (space) => space.type === 'property' || space.type === 'station' || space.type === 'utility'
+  )
+  const colorGroups = Array.from(
+    new Set(buyableSpaces.map((space) => space.color).filter((color): color is MonopolyColorGroup => Boolean(color)))
+  )
 
   // My properties: walk owner map, join to space defs. Building level 0
   // (site only) is still recorded — it's the default for a bare property.
   const myProperties: MonopolyBotOwnedProperty[] = []
-  for (const space of ALL_BUYABLE_SPACES) {
+  for (const space of buyableSpaces) {
     if (owners[String(space.index)] === botPlayerId) {
       myProperties.push({
         spaceIndex: space.index,
@@ -279,10 +274,10 @@ export function adaptMonopolyForBot(
   // build-out, used by the trade heuristic to price break/complete/extend
   // decisions in rent terms rather than face-price multiples.
   const colorSetProgress: MonopolyBotColorSetProgress[] = []
-  for (const group of ALL_COLOR_GROUPS) {
-    const ownedByMe = countOwnedInGroup(owners, botPlayerId, group)
+  for (const group of colorGroups) {
+    const ownedByMe = countOwnedInGroup(owners, botPlayerId, group, boardSize)
     if (ownedByMe === 0) continue
-    const groupSpaces = spacesInGroup(group)
+    const groupSpaces = spacesInGroup(group, boardSize)
     const totalInGroup = groupSpaces.length
     const iOwnAll = ownedByMe === totalInGroup
     const iOwnAllUnmortgaged = iOwnAll && groupSpaces.every((s) => !mortgaged[String(s.index)])
@@ -301,10 +296,10 @@ export function adaptMonopolyForBot(
   // current-turn player, but we re-check as belt-and-braces.
   let pendingBuy: MonopolyBotBuyContext | undefined
   if (board.phase === 'buy' && isMyTurn && board.pending_space != null) {
-    const space = MONOPOLY_BOARD[board.pending_space]
+    const space = boardSpaces[board.pending_space]
     if (space && space.price != null && space.color) {
-      const ownedNow = countOwnedInGroup(owners, botPlayerId, space.color)
-      const totalInGroup = spacesInGroup(space.color).length
+      const ownedNow = countOwnedInGroup(owners, botPlayerId, space.color, boardSize)
+      const totalInGroup = spacesInGroup(space.color, boardSize).length
       pendingBuy = {
         spaceIndex: space.index,
         space,
@@ -356,7 +351,7 @@ export function adaptMonopolyForBot(
   let auction: MonopolyBotAuctionContext | undefined
   if (board.auction_state) {
     const a = board.auction_state
-    const space = MONOPOLY_BOARD[a.space_index]
+    const space = boardSpaces[a.space_index]
     if (space) {
       const faceValue = space.price ?? 0
       const eligibleAndNotPassed = (a.eligible ?? []).includes(botPlayerId) && !(a.passed ?? []).includes(botPlayerId)
@@ -368,8 +363,8 @@ export function adaptMonopolyForBot(
       let completesSet = false
       let extendsSet = false
       if (space.color) {
-        const ownedNow = countOwnedInGroup(owners, botPlayerId, space.color)
-        const totalInGroupCount = spacesInGroup(space.color).length
+        const ownedNow = countOwnedInGroup(owners, botPlayerId, space.color, boardSize)
+        const totalInGroupCount = spacesInGroup(space.color, boardSize).length
         startsSet = ownedNow === 0
         completesSet = totalInGroupCount > 0 && ownedNow === totalInGroupCount - 1
         extendsSet = !startsSet && !completesSet
@@ -400,8 +395,8 @@ export function adaptMonopolyForBot(
     // the engine rejects any trade whose group has buildings on it.
     const resolveProperties = (indices: number[] | null | undefined): MonopolyBotTradeProperty[] =>
       (indices ?? [])
-        .map((i) => MONOPOLY_BOARD[i])
-        .filter((s): s is MonopolySpace => Boolean(s))
+        .map((spaceIndex) => boardSpaces[spaceIndex])
+        .filter((space): space is MonopolySpace => Boolean(space))
         .map((space) => ({ space, mortgaged: Boolean(mortgaged[String(space.index)]) }))
     const requestProps = resolveProperties(t.request_properties as number[] | null | undefined)
     // Opponent-aware check: if handing over ANY of my request_properties would
@@ -417,8 +412,8 @@ export function adaptMonopolyForBot(
     }
     let wouldGiveOpponentMonopoly = false
     for (const [group, sendingCount] of cardsBotWouldSendPerGroup) {
-      const recipientOwnedBefore = countOwnedInGroup(owners, t.from_player_id, group)
-      const totalInGroupCount = spacesInGroup(group).length
+      const recipientOwnedBefore = countOwnedInGroup(owners, t.from_player_id, group, boardSize)
+      const totalInGroupCount = spacesInGroup(group, boardSize).length
       if (recipientOwnedBefore + sendingCount >= totalInGroupCount && recipientOwnedBefore < totalInGroupCount) {
         wouldGiveOpponentMonopoly = true
         break
@@ -436,8 +431,11 @@ export function adaptMonopolyForBot(
     }
   }
 
-  const ownedCount = ALL_BUYABLE_SPACES.reduce((acc, s) => (owners[String(s.index)] ? acc + 1 : acc), 0)
-  const ownedPropertyFraction = ownedCount / ALL_BUYABLE_SPACES.length
+  const ownedCount = buyableSpaces.reduce(
+    (ownedSpaceCount, space) => (owners[String(space.index)] ? ownedSpaceCount + 1 : ownedSpaceCount),
+    0
+  )
+  const ownedPropertyFraction = ownedCount / buyableSpaces.length
 
   return {
     botPlayerId,

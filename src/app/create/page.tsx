@@ -100,6 +100,8 @@ import { BOARD_THEMES, PIECE_SETS, useChessAppearance } from '@/lib/chess-appear
 import { ChessPieceGlyph } from '@/components/chess/ChessPieceDetailed'
 import { Glyph } from '@/components/icons/Glyph'
 import { GlobeIcon, LockIcon, TableTennisBatIcon } from '@hugeicons/core-free-icons'
+import { showsMaxOnePublicHint, showsPartyPublicHint } from '@/lib/public-hints'
+import { ScheduleForLaterField } from '@/components/create/ScheduleForLaterField'
 import { WYR_QUESTION_COUNT } from '@/lib/would-you-rather-questions'
 import { THIS_OR_THAT_QUESTION_COUNT } from '@/lib/this-or-that-questions'
 import type { WyrQuestion } from '@/lib/would-you-rather-questions'
@@ -151,6 +153,7 @@ import { playerQuestionsOrderOptions, parsePlayerQuestionsOrder } from '@/lib/pl
 import { isPeoplePollGame, playerNameSubmissionHint } from '@/lib/player-participant-pool'
 import { getRememberedName, subscribeLocalIdentity } from '@/lib/identity-local'
 import { setHostPlayIntent } from '@/lib/host-play-intent'
+import { setSoloAutoStart } from '@/lib/solo-auto-start'
 import { CustomSlotBuilder } from '@/components/CustomSlotBuilder'
 import { GenderRoundModeControl } from '@/components/GenderRoundModeControl'
 import { customPairVoteModeOptions } from '@/lib/custom-game'
@@ -384,6 +387,9 @@ function CreateGameInner() {
     participant_filter: 'all' as 'all' | 'joined',
     gender_based: true,
     isPublic: false,
+    // Discovery Phase C — optional "Schedule for later" ISO timestamp. Only
+    // sent to the server when isPublic is true; the API rejects the pair.
+    scheduled_at: null as string | null,
     describe_it_num_teams: 2,
     describe_it_mode: 'team',
     quick_draw_variant: 'guess',
@@ -469,6 +475,7 @@ function CreateGameInner() {
   const [quickDrawVoteTimer, setQuickDrawVoteTimer] = useState(QUICK_DRAW_DEFAULT_VOTE_TIMER)
   const [ttlMaxPlayers, setTtlMaxPlayers] = useState(TTL_DEFAULT_MAX_PLAYERS)
   const [monopolyMaxPlayers, setMonopolyMaxPlayers] = useState(MONOPOLY_DEFAULT_MAX_PLAYERS)
+  const [monopolyBoardSize, setMonopolyBoardSize] = useState<40 | 48>(40)
   const [monopolyGameDuration, setMonopolyGameDuration] = useState(0)
   const [scrabbleGameDuration, setScrabbleGameDuration] = useState(0)
   const [scrabbleDictionary, setScrabbleDictionary] = useState<ScrabbleDictionaryId>(SCRABBLE_DEFAULT_DICTIONARY)
@@ -1567,6 +1574,11 @@ function CreateGameInner() {
       set: (v) => setMonopolyGameDuration(v as number),
       appliesTo: isMonopolyGame,
     },
+    monopoly_board_size: {
+      get: () => monopolyBoardSize,
+      set: (value) => setMonopolyBoardSize(value === 48 ? 48 : 40),
+      appliesTo: isMonopolyGame,
+    },
     // Whot
     whot_max_players: { get: () => whotMaxPlayers, set: (v) => setWhotMaxPlayers(v as number), appliesTo: isWhotGame },
     whot_game_duration: {
@@ -1833,6 +1845,16 @@ function CreateGameInner() {
     return subscribeLocalIdentity(seed)
   }, [])
   const [hostWillPlay, setHostWillPlay] = useState(true)
+  // "Play solo" opt-in — for games whose lobby min is 1 (yahtzee, crossword,
+  // word_search, word_scramble, word_grouping). When on, the create flow forces
+  // max_players=1, seats the host as the sole player, and auto-starts the game
+  // right after create so a solo host bypasses the lobby wait entirely.
+  const isSoloEligible = isYahtzee || isCrossword || isWordSearch || isWordScramble || isWordGrouping
+  const [soloMode, setSoloMode] = useState(false)
+  useEffect(() => {
+    // A game type change may make solo unavailable — never carry a stale flag.
+    if (!isSoloEligible && soloMode) setSoloMode(false)
+  }, [isSoloEligible, soloMode])
   // Games whose host panel supports the "Host only / Host + play" seat toggle.
   // Excludes the poll family (routed through PollHostView, own join flow) and the
   // host-only message-board games. For these, the host's create-screen name + role are
@@ -2539,6 +2561,11 @@ function CreateGameInner() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...settings,
+          // Discovery Phase C + private-schedule follow-up: forward
+          // scheduled_at whenever the toggle set it, regardless of visibility.
+          // Server accepts private+scheduled (invite-by-link RSVP flow). A
+          // null value would fail Zod's datetime validator, so omit instead.
+          ...(settings.scheduled_at ? { scheduled_at: settings.scheduled_at } : { scheduled_at: undefined }),
           ...(isWordHunt ? { timer_seconds: wordHuntTimer } : {}),
           ...(isWordleRoom
             ? {
@@ -2719,6 +2746,7 @@ function CreateGameInner() {
                                                             ? (settings.max_players ??
                                                               effectiveLimits.matching_pairs.max)
                                                             : undefined,
+          monopoly_board_size: isMonopoly ? monopolyBoardSize : undefined,
           operative_timer_seconds: isCodewords
             ? codewordsOperativeTimer
             : isNpat
@@ -2789,6 +2817,9 @@ function CreateGameInner() {
           uno_series_target: isUno && unoSeriesScoring ? unoSeriesTarget : undefined,
           // Team-Up is strictly 2v2.
           ...(isUno && unoTeamMode ? { max_players: 4 } : {}),
+          // Solo mode forces a 1-seat lobby. Placed after every other max_players
+          // branch (including Uno team-mode) so nothing can override it back up.
+          ...(soloMode && isSoloEligible ? { max_players: 1 } : {}),
           ludo_variant: isLudo ? ludoVariant : undefined,
           ayo_variant: isAyo ? ayoVariant : undefined,
           mahjong_ruleset: isMahjong ? mahjongRuleset : undefined,
@@ -2872,10 +2903,19 @@ function CreateGameInner() {
         // an empty name still lands in play mode but waits for a manual Join, and
         // "Host only" makes the host a spectator. Consumed once on the host panel.
         if (hostPlaySupported) {
+          // Solo mode: force "play" role and fall back to "You" so useHostSeat
+          // auto-joins without a manual name entry — the lobby is about to be
+          // skipped by the solo auto-start hook.
+          const soloActive = soloMode && isSoloEligible
           setHostPlayIntent(data.gameCode, {
-            name: hostName.trim(),
-            role: hostWillPlay ? 'play' : 'host',
+            name: soloActive ? hostName.trim() || 'You' : hostName.trim(),
+            role: soloActive ? 'play' : hostWillPlay ? 'play' : 'host',
           })
+        }
+        if (soloMode && isSoloEligible) {
+          // One-shot flag consumed by useHostSeat: once the host is seated, it
+          // POSTs /start automatically so gameplay opens immediately.
+          setSoloAutoStart(data.gameCode)
         }
         const roomParam = searchParams.get('room')
         const memberParam = searchParams.get('member')
@@ -2963,6 +3003,19 @@ function CreateGameInner() {
                   ? 'Anyone can find and join this game from Browse.'
                   : 'Only people with the code can join.'}
               </p>
+              {!settings.isPublic && showsPartyPublicHint(settings.game_type, settings.max_players ?? null) ? (
+                <p className="mt-1 text-xs" style={{ color: 'var(--primary)' }}>
+                  Party game? Turn this on so others can find and join.
+                </p>
+              ) : null}
+              {settings.isPublic && showsMaxOnePublicHint(settings.max_players ?? null) ? (
+                <p className="mt-1 text-xs text-muted italic">Bump the max players above 1 so other people can join.</p>
+              ) : null}
+              <ScheduleForLaterField
+                isPublic={settings.isPublic}
+                scheduledAt={settings.scheduled_at ?? null}
+                onChange={(next) => setSettings((s) => ({ ...s, scheduled_at: next }))}
+              />
             </Field>
           </div>
 
@@ -3029,15 +3082,34 @@ function CreateGameInner() {
           {hostPlaySupported && (
             <div className="glass-card p-5 space-y-3">
               <p className="label-caps">You</p>
-              <SegmentedControl
-                value={hostWillPlay ? 'play' : 'host'}
-                onChange={(v) => setHostWillPlay(v === 'play')}
-                options={[
-                  { label: 'Host + play', value: 'play' },
-                  { label: 'Host only', value: 'host' },
-                ]}
-              />
-              {hostWillPlay && (
+              {isSoloEligible && (
+                <label className="flex items-start gap-3 rounded-xl border border-[var(--border)] p-3">
+                  <input
+                    type="checkbox"
+                    checked={soloMode}
+                    onChange={(e) => setSoloMode(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 accent-[var(--primary)]"
+                  />
+                  <div className="flex-1">
+                    <div className="text-sm font-semibold">Playing solo</div>
+                    <p className="text-faint text-xs mt-0.5 leading-relaxed">
+                      Skip the lobby — start playing right away. Sets the game to 1 player; you can still choose the
+                      timer, content, and other settings.
+                    </p>
+                  </div>
+                </label>
+              )}
+              {!soloMode && (
+                <SegmentedControl
+                  value={hostWillPlay ? 'play' : 'host'}
+                  onChange={(v) => setHostWillPlay(v === 'play')}
+                  options={[
+                    { label: 'Host + play', value: 'play' },
+                    { label: 'Host only', value: 'host' },
+                  ]}
+                />
+              )}
+              {(hostWillPlay || soloMode) && (
                 <div className="pt-1">
                   <input
                     type="text"
@@ -3046,12 +3118,14 @@ function CreateGameInner() {
                       hostNameTouchedRef.current = true
                       setHostName(e.target.value)
                     }}
-                    placeholder="Your name (optional)"
+                    placeholder={soloMode ? 'Your name' : 'Your name (optional)'}
                     maxLength={24}
                     className="input-field w-full"
                   />
                   <p className="text-faint text-xs mt-1.5 leading-relaxed">
-                    Enter your name to be seated automatically. Leave it blank to add yourself from the lobby.
+                    {soloMode
+                      ? 'Shown on your solo run. Defaults to "You" if left blank.'
+                      : 'Enter your name to be seated automatically. Leave it blank to add yourself from the lobby.'}
                   </p>
                 </div>
               )}
@@ -3523,6 +3597,16 @@ function CreateGameInner() {
                         label: `${n} players`,
                       })
                     )}
+                  />
+                </Field>
+                <Field label="Board size">
+                  <CustomSelect
+                    value={monopolyBoardSize}
+                    onChange={(value) => setMonopolyBoardSize(value === 48 ? 48 : 40)}
+                    options={[
+                      { value: 40, label: '40 spaces' },
+                      ...(monopolyMaxPlayers >= 6 ? [{ value: 48, label: '48 spaces' }] : []),
+                    ]}
                   />
                 </Field>
                 <Field label="Turn timer">
@@ -5948,6 +6032,21 @@ function CreateGameInner() {
                   <p className="text-faint text-xs mt-2">
                     List in Browse so anyone can find and join. Off keeps it invite-only via the share link.
                   </p>
+                  {!settings.isPublic && showsPartyPublicHint(settings.game_type, settings.max_players ?? null) ? (
+                    <p className="mt-1 text-xs" style={{ color: 'var(--primary)' }}>
+                      Party game? Turn this on so others can find and join.
+                    </p>
+                  ) : null}
+                  {settings.isPublic && showsMaxOnePublicHint(settings.max_players ?? null) ? (
+                    <p className="mt-1 text-xs text-muted italic">
+                      Bump the max players above 1 so other people can join.
+                    </p>
+                  ) : null}
+                  <ScheduleForLaterField
+                    isPublic={settings.isPublic}
+                    scheduledAt={settings.scheduled_at ?? null}
+                    onChange={(next) => setSettings((s) => ({ ...s, scheduled_at: next }))}
+                  />
                 </Field>
                 <p className="text-faint text-sm leading-relaxed">
                   Flip cards and find matching pairs. Race to complete the grid with the most matches. Streaks earn
@@ -6765,15 +6864,33 @@ function CreateGameInner() {
                     customCodewordsWords.length < CODEWORDS_MIN_CUSTOM_POOL)
                 }
               >
-                {loading ? 'Creating...' : 'Create Game'}
+                {loading
+                  ? settings.scheduled_at
+                    ? 'Scheduling...'
+                    : 'Creating...'
+                  : settings.scheduled_at
+                    ? 'Schedule Game'
+                    : 'Create Game'}
               </PrimaryBtn>
             ) : isBinaryLobby || isTriviaQuickCreate || (isMlt && isJoinersMode) ? (
               <PrimaryBtn onClick={createGame} disabled={!canCreateQuickLobby || loading || !customSlotsValid}>
-                {loading ? 'Creating...' : 'Create Game'}
+                {loading
+                  ? settings.scheduled_at
+                    ? 'Scheduling...'
+                    : 'Creating...'
+                  : settings.scheduled_at
+                    ? 'Schedule Game'
+                    : 'Create Game'}
               </PrimaryBtn>
             ) : isJoinersMode ? (
               <PrimaryBtn onClick={createGame} disabled={!canCreateJoiners || loading || !customSlotsValid}>
-                {loading ? 'Creating...' : 'Create Game'}
+                {loading
+                  ? settings.scheduled_at
+                    ? 'Scheduling...'
+                    : 'Creating...'
+                  : settings.scheduled_at
+                    ? 'Schedule Game'
+                    : 'Create Game'}
               </PrimaryBtn>
             ) : (
               <PrimaryBtn
@@ -6978,7 +7095,11 @@ function CreateGameInner() {
 
         <StickyActionBar>
           <PrimaryBtn onClick={createGame} disabled={!canCreateImport || loading}>
-            {loading ? 'Creating...' : `Create Game · ${participants.length} people`}
+            {loading
+              ? settings.scheduled_at
+                ? 'Scheduling...'
+                : 'Creating...'
+              : `${settings.scheduled_at ? 'Schedule' : 'Create'} Game · ${participants.length} people`}
           </PrimaryBtn>
         </StickyActionBar>
       </PageShell>
