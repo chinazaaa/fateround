@@ -2,6 +2,7 @@ import { ReactNode, useRef } from 'react'
 import { Animated, Pressable, StyleSheet, View, ViewStyle } from 'react-native'
 import type { ElevationLevel, Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
+import { motion } from '@/constants/motion'
 import { useHaptic, type HapticIntensity } from '@/hooks/useHaptic'
 
 /**
@@ -68,11 +69,11 @@ export function SurfaceCard({
 
   const resolvedHaptic: HapticIntensity | 'none' = haptic ?? 'selection'
   const onPressIn = () => {
-    Animated.spring(scale, { toValue: 0.985, useNativeDriver: true, speed: 40, bounciness: 0 }).start()
+    Animated.spring(scale, { toValue: 0.985, useNativeDriver: true, ...motion.spring.press }).start()
     if (resolvedHaptic !== 'none') trigger(resolvedHaptic)
   }
   const onPressOut = () => {
-    Animated.spring(scale, { toValue: 1, useNativeDriver: true, speed: 40, bounciness: 6 }).start()
+    Animated.spring(scale, { toValue: 1, useNativeDriver: true, ...motion.spring.release }).start()
   }
   return (
     <Animated.View style={{ transform: [{ scale }] }}>

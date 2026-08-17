@@ -412,7 +412,7 @@ const makeStyles = (theme: Theme) =>
       justifyContent: 'center',
     },
     navBtnDisabled: { opacity: 0.35 },
-    navBtnText: { color: theme.text, fontSize: 22, fontWeight: '800', lineHeight: 24 },
+    navBtnText: { color: theme.text, fontSize: theme.type.title.size, fontWeight: '800', lineHeight: 24 },
     navLabel: { flex: 1, alignItems: 'center' },
     navKicker: {
       color: theme.textFaint ?? theme.textMuted,
@@ -440,8 +440,8 @@ const makeStyles = (theme: Theme) =>
       marginTop: 6,
     },
     winnersRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 4 },
-    winnerName: { color: theme.text, fontSize: 17, fontWeight: '800' },
-    winnerMult: { fontSize: 12, fontWeight: '800' },
+    winnerName: { color: theme.text, fontSize: theme.type.section.size, fontWeight: '800' },
+    winnerMult: { fontSize: theme.type.caption.size, fontWeight: '800' },
     winnerSep: { color: theme.textMuted, fontWeight: '400' },
 
     standings: { gap: theme.space.md },
@@ -472,6 +472,6 @@ const makeStyles = (theme: Theme) =>
       alignItems: 'center',
       justifyContent: 'center',
     },
-    rankBadgeText: { color: theme.textMuted, fontSize: 14, fontWeight: '800' },
+    rankBadgeText: { color: theme.textMuted, fontSize: theme.type.label.size, fontWeight: '800' },
     winsText: { color: theme.textMuted, fontSize: theme.type.label.size, fontWeight: '700' },
   })

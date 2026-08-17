@@ -2,6 +2,7 @@ import { ReactNode, useRef } from 'react'
 import { Animated, Pressable, StyleSheet, Text, View, ViewStyle } from 'react-native'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
+import { motion } from '@/constants/motion'
 import { useHaptic, type HapticIntensity } from '@/hooks/useHaptic'
 
 /**
@@ -44,12 +45,12 @@ export function ListRow({ title, subtitle, left, right, onPress, disabled, divid
 
   const onPressIn = () => {
     if (!interactive) return
-    Animated.spring(scale, { toValue: 0.99, useNativeDriver: true, speed: 40, bounciness: 0 }).start()
+    Animated.spring(scale, { toValue: 0.99, useNativeDriver: true, ...motion.spring.press }).start()
     if (resolvedHaptic !== 'none') trigger(resolvedHaptic)
   }
   const onPressOut = () => {
     if (!interactive) return
-    Animated.spring(scale, { toValue: 1, useNativeDriver: true, speed: 40, bounciness: 6 }).start()
+    Animated.spring(scale, { toValue: 1, useNativeDriver: true, ...motion.spring.release }).start()
   }
 
   const content = (

@@ -193,7 +193,7 @@ const makeStyles = (theme: Theme) =>
     },
     cardLabel: {
       color: theme.primaryMuted,
-      fontSize: 12,
+      fontSize: theme.type.caption.size,
       fontWeight: '800',
       letterSpacing: 1.2,
       textTransform: 'uppercase',
@@ -230,7 +230,7 @@ const makeStyles = (theme: Theme) =>
     recentBadge: {
       width: 44,
       height: 44,
-      borderRadius: 12,
+      borderRadius: theme.radius.md,
       backgroundColor: theme.primarySoft,
       borderWidth: 1,
       borderColor: theme.borderAccent,
@@ -239,7 +239,7 @@ const makeStyles = (theme: Theme) =>
     },
     recentBadgeText: {
       color: theme.primaryMuted,
-      fontSize: 14,
+      fontSize: theme.type.label.size,
       fontWeight: '800',
     },
     recentCode: {
