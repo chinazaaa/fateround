@@ -198,11 +198,32 @@ Backend is untouched; this reuses `GET /api/games`.
       (`status = 'waiting' AND current_players < max_players`)
       already hides finished games automatically, so a stale
       lobby vanishes from `/browse` the moment the cron runs.
-    - **Host-side warning:** at T-13min (2 min before close), a
-      lobby banner: "This lobby will close in 2 minutes if nobody
+    - **Host-side warning — banner AND push.** At T-13min (2 min
+      before close), an in-lobby banner appears for hosts watching
+      the screen: "This lobby will close in 2 minutes if nobody
       joins or you start the game." A single tap on "Keep open"
-      bumps `updated_at` and resets the timer once. Prevents a
-      host who's actively watching from getting rugged.
+      bumps `updated_at` and resets the timer once.
+
+      In parallel, a **directed push fires to the host's device**
+      (mobile Expo push OR web PWA push if the user has installed
+      the PWA and granted permission on web) so an inattentive
+      host who left the tab or backgrounded the app still hears
+      about it. Copy: "⏳ Your Monopoly lobby closes in 2 min —
+      tap to keep it open." Reuses the same per-player push token
+      the "player joined" ping and turn-alerts use; no new
+      subscription infra. Dedup: one warning push per game (a
+      "Keep open" tap that resets the timer and eventually hits
+      the T-13min mark again does NOT re-warn — one bite at the
+      apple per game).
+
+      **Quiet-hours interaction (Phase B).** Both the "player
+      joined" host push and the T-13min warning respect the same
+      quiet-hours window Phase B introduces. Consistent with
+      Phase B's "drop, don't queue" rule: if the host is in quiet
+      hours, no push fires and the game just closes silently at
+      T-15min. A host who explicitly asked not to be pinged during
+      work hours accepted that trade-off when they created a game
+      during those hours.
 - **"Player joined your game" push to the host.** Encourages the
   host to come back to the lobby and start when the game fills up.
   Reuses the existing Expo push token per player (the same channel
