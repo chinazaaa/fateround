@@ -109,7 +109,7 @@ export function DescribeItShareCard(props: Props) {
       <View style={styles.offscreen} pointerEvents="none">
         <View ref={captureCardRef} collapsable={false} style={styles.captureCard}>
           <Text style={styles.captureEmoji}>💬</Text>
-          <Text style={styles.captureGame}>Describe It</Text>
+          <Text style={styles.captureGame}>Text Charades</Text>
           <View style={styles.captureDivider} />
           <Text style={styles.captureHero}>{model.emoji}</Text>
           <Text style={styles.captureTitle}>{model.headline}</Text>
