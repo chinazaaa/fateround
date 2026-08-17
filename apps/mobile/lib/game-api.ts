@@ -1012,11 +1012,34 @@ export function postWhotHands(gameCode: string, auth: { resumeToken?: string | n
  * OWN card, resolved from the secret resume token; there is no redaction and no card_count.
  * See src/app/api/bingo/card/route.ts.
  */
-export function postBingoCard(gameCode: string, auth: { resumeToken?: string | null }) {
-  return postJson<{ card: BingoCard | null }>('/api/bingo/card', {
-    gameCode: gameCode.toUpperCase(),
-    resumeToken: auth.resumeToken ?? undefined,
-  })
+/**
+ * Outcome of a Bingo card fetch — mirrors `BingoCardResult` in the web app's lib/hands-client.ts.
+ *
+ *   - `{ ok: true, card }`                 the server answered; `card: null` means "not dealt yet",
+ *                                          which is real game state, not a failure.
+ *   - `{ ok: false, unauthorized: true }`  this device may not read a card (missing/rejected
+ *                                          resume token). Retrying cannot help; surface it.
+ *   - `{ ok: false, unauthorized: false }` transport/server blip; keep the card and retry.
+ *
+ * Deliberately NOT `postJson`: collapsing every failure into a thrown error made a permanent 401
+ * indistinguishable from "no card yet", leaving an empty grid and no explanation.
+ */
+export type BingoCardResult = { ok: true; card: BingoCard | null } | { ok: false; unauthorized: boolean }
+
+export async function postBingoCard(gameCode: string, auth: { resumeToken?: string | null }): Promise<BingoCardResult> {
+  if (!auth.resumeToken) return { ok: false, unauthorized: true }
+  try {
+    const res = await fetch(apiUrl('/api/bingo/card'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ gameCode: gameCode.toUpperCase(), resumeToken: auth.resumeToken }),
+    })
+    if (!res.ok) return { ok: false, unauthorized: res.status === 401 || res.status === 403 }
+    const data = (await res.json()) as { card?: BingoCard | null }
+    return { ok: true, card: data.card ?? null }
+  } catch {
+    return { ok: false, unauthorized: false }
+  }
 }
 
 export function postAnonymousMessage(gameId: string, resumeToken: string, text: string, replyToId?: string | null) {

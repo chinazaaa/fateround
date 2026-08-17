@@ -49,23 +49,29 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
   const [marking, setMarking] = useState(false)
   const [claiming, setClaiming] = useState(false)
   const [claimError, setClaimError] = useState<string | null>(null)
+  // "The server refused to give this device a card" — never conflated with "not dealt yet".
+  const [cardBlocked, setCardBlocked] = useState(false)
 
   // The card comes through /api/bingo/card so `cells`/`marked_indices` never reach this device
   // via the anon key — the route resolves this player from their secret resume token and returns
   // only their own card. `playerId` is unused now (the token identifies the caller); it stays in
-  // the signature to match afterResolve's callsite. A null result (fetch failed OR no card dealt
-  // yet) leaves the previous card in place; the realtime sync reloads and recovers it.
+  // the signature to match afterResolve's callsite.
+  //
+  // The boolean means "the fetch worked", NOT "there is a card": "no card dealt yet" is the
+  // normal state while the host is starting, and reporting it as failure makes callers back off.
+  // A refused read is kept apart from an undealt card so the empty state can say which it is.
   const loadCard = useCallback(
     async (_playerId: string): Promise<boolean> => {
       const code = gameCode.toUpperCase()
       const session = await getPlayerSession(code)
-      try {
-        const { card } = await postBingoCard(code, { resumeToken: session?.resumeToken })
-        if (card) setCard(card)
-        return card != null
-      } catch {
-        return false
+      const result = await postBingoCard(code, { resumeToken: session?.resumeToken })
+      if (result.ok) {
+        setCardBlocked(false)
+        if (result.card) setCard(result.card)
+        return true
       }
+      if (result.unauthorized) setCardBlocked(true)
+      return false
     },
     [gameCode]
   )
@@ -339,6 +345,8 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
             <Text style={styles.viewerHint}>You&apos;re watching — no card is dealt to spectators.</Text>
             <CalledNumbersBoard calledNumbers={calledSet} lastCalled={lastCalled?.number ?? null} />
           </View>
+        ) : cardBlocked ? (
+          <Text style={styles.error}>Your player session expired — rejoin with your player code to see your card.</Text>
         ) : (
           <Text style={styles.waitingCard}>Waiting for your bingo card…</Text>
         )}

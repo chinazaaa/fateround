@@ -33,36 +33,45 @@ export async function fetchWhotHands(
 }
 
 /**
- * Fetch a single Bingo card through the server route instead of reading `bingo_cards`.
+ * Outcome of a Bingo card fetch. Three states the callers MUST keep apart:
  *
- * Bingo is not a hand game — each caller reads exactly ONE card, so there is no redaction: the
- * route returns the caller's OWN card in full (via `resumeToken`) or, for the host, one named
- * player's card (`hostToken` + `playerId`). `cells`/`marked_indices` are the secret the anon key
- * must not reach; see src/app/api/bingo/card/route.ts.
+ *   - `{ ok: true, card }`      — the server answered. `card: null` means "no card dealt yet",
+ *                                 which is real game state, not a failure.
+ *   - `{ ok: false, unauthorized: true }`  — this caller may not read a card here (missing or
+ *                                 rejected resume token). Retrying cannot help; say so.
+ *   - `{ ok: false, unauthorized: false }` — transport/server blip. Keep the previous card, retry.
+ */
+export type BingoCardResult = { ok: true; card: BingoCard | null } | { ok: false; unauthorized: boolean }
+
+/**
+ * Fetch the caller's OWN Bingo card through the server route instead of reading `bingo_cards`.
  *
- * Returns null on any failure so callers can leave the previous card in place and retry, rather
- * than clearing it — a transport blip must not read as "no card yet". A legitimately absent card
- * (not dealt) also comes back as null, which is the same "leave it and poll" behaviour.
+ * Bingo is not a hand game — each caller reads exactly ONE card, their own, so there is no
+ * redaction: the route resolves the player from the SECRET `resumeToken` and returns that
+ * player's card. There is no host/`playerId` variant; see src/app/api/bingo/card/route.ts for
+ * why. `cells`/`marked_indices` are the secret the anon key must not reach.
+ *
+ * A missing token is reported as `unauthorized` WITHOUT a request, so the caller surfaces the
+ * same "session expired" message `markCell` does rather than rendering an empty grid forever.
  */
 export async function fetchBingoCard(
   gameCode: string,
-  auth: { resumeToken?: string | null; hostToken?: string | null; playerId?: string | null }
-): Promise<BingoCard | null> {
+  auth: { resumeToken?: string | null }
+): Promise<BingoCardResult> {
+  if (!auth.resumeToken) return { ok: false, unauthorized: true }
   try {
     const res = await fetch('/api/bingo/card', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         gameCode: gameCode.toUpperCase(),
-        resumeToken: auth.resumeToken ?? undefined,
-        hostToken: auth.hostToken ?? undefined,
-        playerId: auth.playerId ?? undefined,
+        resumeToken: auth.resumeToken,
       }),
     })
-    if (!res.ok) return null
+    if (!res.ok) return { ok: false, unauthorized: res.status === 401 || res.status === 403 }
     const data = (await res.json()) as { card?: BingoCard | null }
-    return data.card ?? null
+    return { ok: true, card: data.card ?? null }
   } catch {
-    return null
+    return { ok: false, unauthorized: false }
   }
 }

@@ -2,10 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { enforceRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
-import { secretMatches } from '@/lib/secret-compare'
 import { isBingoGame } from '@/lib/game-types'
 import { BINGO_CARD_SELECT } from '@/lib/supabase-selects'
-import { normalizeResumeToken } from '@/lib/utils'
+import { resolveHandViewer } from '@/lib/hand-redaction'
 
 /**
  * A single Bingo card, fetched through the server route instead of read from the table.
@@ -16,12 +15,19 @@ import { normalizeResumeToken } from '@/lib/utils'
  * them (the final batched migration in docs/rls-hardening.md § "Phase 7"), only the service role
  * can read a card, so this route is the only reader.
  *
- * Two authorized shapes, both proving the caller may see the ONE card they ask for:
- *   - `hostToken` matching `games.host_token` → the requested `playerId`'s card (host verifying a
- *     claim / showing a player's card). No `playerId` → null card.
- *   - `resumeToken` → the caller's OWN card, resolved from the SECRET token exactly like
- *     resolveHandViewer/assertPlayer. A client-supplied `playerId` is ignored on this path —
- *     it is public and forgeable.
+ * EXACTLY ONE authorized shape: a `resumeToken` returns the card of the player that token
+ * resolves to — the caller's OWN card, and nothing else. Resolution goes through the shared
+ * `resolveHandViewer` so this route cannot drift from /api/whot/hands and friends.
+ *
+ * There is deliberately NO host path. A host token proves "I am running this board", which
+ * never requires seeing a card: claim verification is done server-side in /api/bingo/claim
+ * (it reads the card with the service role after `assertPlayer`), and the host view only ever
+ * loads the host's OWN seat — which it can do with that seat's resume token like any player.
+ * The removed `hostToken` + `playerId` branch let anyone holding the shared /host/CODE link
+ * read every player's `cells`/`marked_indices` mid-game. Same reasoning as `resolveHandViewer`
+ * returning null for a host.
+ *
+ * A client-supplied `playerId` is never trusted anywhere here: it is public and forgeable.
  *
  * POST, not GET: the resume token is a secret and must stay out of query strings (access logs,
  * CDN logs, browser history) — same reasoning as /api/whot/hands.
@@ -31,8 +37,6 @@ export async function POST(req: NextRequest) {
     const body = (await req.json().catch(() => ({}))) as {
       gameCode?: string
       resumeToken?: string
-      hostToken?: string
-      playerId?: string
     }
     const gameId = body.gameCode?.toUpperCase()
     if (!gameId) return NextResponse.json({ error: 'gameCode is required' }, { status: 400 })
@@ -42,35 +46,17 @@ export async function POST(req: NextRequest) {
 
     const supabase = getSupabaseAdmin()
 
-    const { data: game } = await supabase.from('games').select('host_token, game_type').eq('id', gameId).maybeSingle()
+    const { data: game } = await supabase.from('games').select('game_type').eq('id', gameId).maybeSingle()
     if (!game) return NextResponse.json({ error: 'Game not found' }, { status: 404 })
     if (!isBingoGame(game.game_type)) {
       return NextResponse.json({ error: 'Not a bingo game' }, { status: 400 })
     }
 
-    // Which player's card to return — resolved from whichever secret the caller holds, never
-    // from a client-supplied playerId (except on the host path, where the host is trusted to
-    // name the player whose card they are inspecting).
-    let targetPlayerId: string | null
-    if (body.hostToken != null && (await secretMatches(body.hostToken, game.host_token))) {
-      targetPlayerId = body.playerId ?? null
-    } else if (body.resumeToken) {
-      const token = normalizeResumeToken(String(body.resumeToken))
-      if (token.length < 4) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-      const { data: player } = await supabase
-        .from('players')
-        .select('id')
-        .eq('game_id', gameId)
-        .eq('resume_token', token)
-        .maybeSingle()
-      if (!player) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-      targetPlayerId = player.id
-    } else {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    // Host asked for "a card" without naming a player — nothing to show, not an error.
-    if (!targetPlayerId) return NextResponse.json({ card: null })
+    // Whose card to return — resolved from the SECRET resume token, never from a
+    // client-supplied playerId. null means "this caller is nobody in this game": a 401, not an
+    // empty card, so the client can tell "not allowed" from "not dealt yet".
+    const targetPlayerId = await resolveHandViewer(supabase, gameId, { resumeToken: body.resumeToken })
+    if (!targetPlayerId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const { data: card, error } = await supabase
       .from('bingo_cards')

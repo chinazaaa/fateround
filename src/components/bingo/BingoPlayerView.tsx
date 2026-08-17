@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { EditNameInline } from '@/components/ui/EditNameInline'
 import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
@@ -58,21 +58,40 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
   const [winner, setWinner] = useState<BingoClaim | null>(null)
   const [claiming, setClaiming] = useState(false)
   const [marking, setMarking] = useState(false)
+  // "The server refused to give me a card" — kept apart from "no card dealt yet" so the empty
+  // state never lies about game state. One toast per mount; the poll would otherwise repeat it.
+  const [cardBlocked, setCardBlocked] = useState(false)
+  const sessionWarnedRef = useRef(false)
 
   // The card comes through /api/bingo/card so `cells`/`marked_indices` never reach this device
   // via the anon key — the route resolves this player from their secret resume token and returns
   // only their own card. `playerId` is unused now (the token identifies the caller); it stays in
   // the signature to match the bootstrap's afterResolve/poll callsites. Read the token from the
   // session store, not the bootstrap value, since loadCard is defined before useGameViewBootstrap.
-  // A null result (fetch failed OR no card dealt yet) leaves the previous card in place; the
-  // `!card` poll and realtime fallback recover it.
+  //
+  // The boolean is the POLL health signal (usePolling backs off exponentially on false), so it
+  // must mean "the fetch worked", NOT "there is a card". "No card dealt yet" is the normal state
+  // this poll exists to wait out — reporting it as failure pushed the retry to 16s→32s→60s and
+  // stranded late joiners on "Dealing your card…". Only a transport/server failure backs off.
+  // An expired/absent session can never succeed, so it stops the poll and says so once.
   const loadCard = useCallback(
     async (_playerId: string): Promise<boolean> => {
-      const fetched = await fetchBingoCard(gameCode, { resumeToken: getPlayerSession(gameCode)?.resumeToken })
-      if (fetched) setCard(fetched)
-      return fetched != null
+      const result = await fetchBingoCard(gameCode, { resumeToken: getPlayerSession(gameCode)?.resumeToken })
+      if (result.ok) {
+        setCardBlocked(false)
+        if (result.card) setCard(result.card)
+        return true
+      }
+      if (result.unauthorized) {
+        setCardBlocked(true)
+        if (!sessionWarnedRef.current) {
+          sessionWarnedRef.current = true
+          toastError('Your player session expired — rejoin to continue')
+        }
+      }
+      return false
     },
-    [gameCode]
+    [gameCode, toastError]
   )
 
   // Game-specific load: fetch this game's called numbers + the approved winning claim
@@ -628,6 +647,13 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
         ) : isViewer ? (
           <div className="glass-card p-4">
             <CalledNumbersBoard calledNumbers={called} />
+          </div>
+        ) : cardBlocked ? (
+          // NOT "no card yet" — the server would not hand this device a card. Say that, so an
+          // expired session doesn't read as "the host hasn't dealt".
+          <div className="glass-card p-6 text-center space-y-2">
+            <p className="text-muted text-sm">Your player session expired</p>
+            <p className="text-faint text-xs">Rejoin with your player code to see your card again.</p>
           </div>
         ) : (
           <div className="glass-card p-6 text-center space-y-2">
