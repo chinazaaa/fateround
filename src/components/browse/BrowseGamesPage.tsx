@@ -6,6 +6,7 @@ import { FateRoundLogo } from '@/components/FateRoundLogo'
 import { supabase } from '@/lib/supabase'
 import { gameTypeConfig, parseGameType } from '@/lib/game-types'
 import { roomGameStatusLabel } from '@/components/rooms/room-game-display'
+import { readHostToken } from '@/lib/host-session'
 import type { PublicGame } from '@/lib/game-browse'
 
 const POLL_FALLBACK_MS = 15_000
@@ -23,6 +24,10 @@ export function BrowseGamesPage() {
   // Only populated on the Upcoming tab; keeps the "RSVP" CTA from telling a
   // user who's already RSVP'd to RSVP again.
   const [rsvpedSet, setRsvpedSet] = useState<Set<string>>(() => new Set())
+  // gameCode → true when this browser holds the host token for the game. Same
+  // idea as `rsvpedSet` but for the "I created this" case — the host sees
+  // "Open host panel" instead of "RSVP" on their own scheduled game.
+  const [hostedSet, setHostedSet] = useState<Set<string>>(() => new Set())
 
   const loadGames = useCallback(
     async (nextCursor?: string | null, silent = false) => {
@@ -67,6 +72,17 @@ export function BrowseGamesPage() {
   // existing push endpoint (no permission prompt) and asks the RSVP GET for
   // each scheduled game whether this device is on the list. Absent endpoint
   // → nothing to mark; that's fine, the CTA just stays "RSVP".
+  // Host-token lookup runs synchronously (localStorage) any time the visible
+  // scheduled list changes. Cheap enough to redo without special-casing.
+  useEffect(() => {
+    if (tab !== 'upcoming') {
+      setHostedSet(new Set())
+      return
+    }
+    const owned = games.filter((g) => g.status === 'scheduled').filter((g) => !!readHostToken(g.id))
+    setHostedSet(new Set(owned.map((g) => g.id)))
+  }, [tab, games])
+
   useEffect(() => {
     if (tab !== 'upcoming') {
       setRsvpedSet(new Set())
@@ -244,29 +260,35 @@ export function BrowseGamesPage() {
                     </span>
 
                     {(() => {
+                      const iAmHost = isScheduled && hostedSet.has(game.id)
                       const alreadyRsvped = isScheduled && rsvpedSet.has(game.id)
+                      const href = iAmHost ? `/host/${game.id}` : `/game/${game.id}`
+                      const label = iAmHost
+                        ? 'You’re hosting · Open panel'
+                        : isScheduled
+                          ? alreadyRsvped
+                            ? 'RSVP’d · View details'
+                            : 'RSVP'
+                          : isLobby
+                            ? 'Join game'
+                            : 'Watch'
+                      const styleClass = iAmHost
+                        ? 'btn-primary'
+                        : isScheduled
+                          ? alreadyRsvped
+                            ? 'btn-secondary'
+                            : 'btn-primary'
+                          : isLobby
+                            ? 'btn-primary'
+                            : 'btn-secondary'
                       return (
                         <Link
-                          href={`/game/${game.id}`}
-                          className={`${
-                            isScheduled
-                              ? alreadyRsvped
-                                ? 'btn-secondary'
-                                : 'btn-primary'
-                              : isLobby
-                                ? 'btn-primary'
-                                : 'btn-secondary'
-                          } mt-auto w-full text-sm py-2`}
+                          href={href}
+                          className={`${styleClass} mt-auto w-full text-sm py-2`}
                           target="_blank"
                           rel="noopener noreferrer"
                         >
-                          {isScheduled
-                            ? alreadyRsvped
-                              ? 'RSVP’d · View details'
-                              : 'RSVP'
-                            : isLobby
-                              ? 'Join game'
-                              : 'Watch'}
+                          {label}
                         </Link>
                       )
                     })()}

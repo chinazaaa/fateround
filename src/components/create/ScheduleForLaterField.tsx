@@ -3,10 +3,11 @@
 /**
  * ScheduleForLaterField — web "Schedule for later" toggle + inputs.
  *
- * Renders under the Public toggle on the create page when isPublic=true (a
- * private scheduled game has no RSVP audience — the server rejects that pair).
- * Uses `<input type="date">` + `<input type="time">` so the browser's native
- * picker handles the actual selection.
+ * Renders under the Visibility toggle on the create page. Works for both
+ * Public (Browse Upcoming discovery) and Private (invite-by-link) games —
+ * server accepts either. Uses `<input type="date">` + `<input type="time">`
+ * so the browser's native picker handles the actual selection, with a
+ * `min` on both to block picking a past instant.
  */
 
 import { useCallback, useMemo } from 'react'
@@ -42,7 +43,7 @@ function combineIso(date: string, time: string): string | null {
 }
 
 export function ScheduleForLaterField({ isPublic, scheduledAt, onChange }: Props) {
-  const enabled = isPublic && scheduledAt != null
+  const enabled = scheduledAt != null
   const { date, time } = useMemo(() => splitIso(scheduledAt), [scheduledAt])
   const tz = useMemo(() => {
     try {
@@ -51,6 +52,19 @@ export function ScheduleForLaterField({ isPublic, scheduledAt, onChange }: Props
       return ''
     }
   }, [])
+
+  // Min bounds for the date + time pickers. Date input can go as early as
+  // today (any time later today is still valid); the time input's own min
+  // only applies when the picked date IS today — pick tomorrow and any time
+  // is fine.
+  const todayStr = useMemo(() => todayIso(), [])
+  const nowTimeStr = useMemo(() => {
+    const d = new Date()
+    return `${pad(d.getHours())}:${pad(d.getMinutes())}`
+  }, [])
+  const isToday = date === todayStr
+
+  const inFuture = (iso: string): boolean => new Date(iso).getTime() > Date.now()
 
   const toggle = useCallback(
     (next: boolean) => {
@@ -65,18 +79,32 @@ export function ScheduleForLaterField({ isPublic, scheduledAt, onChange }: Props
 
   const setDate = useCallback(
     (value: string) => {
-      const next = combineIso(value, time || '20:00')
-      if (next) onChange(next)
+      // If the user picks today with a time that's already past, bump the
+      // time to "5 minutes from now" so we never store a past ISO.
+      let nextTime = time || '20:00'
+      if (value === todayStr) {
+        const combined = combineIso(value, nextTime)
+        if (!combined || !inFuture(combined)) {
+          const bump = new Date(Date.now() + 5 * 60 * 1000)
+          nextTime = `${pad(bump.getHours())}:${pad(bump.getMinutes())}`
+        }
+      }
+      const next = combineIso(value, nextTime)
+      if (next && inFuture(next)) onChange(next)
     },
-    [time, onChange]
+    [time, onChange, todayStr]
   )
 
   const setTime = useCallback(
     (value: string) => {
-      const next = combineIso(date || todayIso(), value)
-      if (next) onChange(next)
+      const useDate = date || todayStr
+      const next = combineIso(useDate, value)
+      // Reject a time that would put the ISO in the past (today + <now>);
+      // the input's `min` attribute already blocks it in modern browsers,
+      // but a keyboard-typed value can still slip through.
+      if (next && inFuture(next)) onChange(next)
     },
-    [date, onChange]
+    [date, onChange, todayStr]
   )
 
   return (
@@ -93,6 +121,7 @@ export function ScheduleForLaterField({ isPublic, scheduledAt, onChange }: Props
               <input
                 type="date"
                 value={date}
+                min={todayStr}
                 onChange={(e) => setDate(e.target.value)}
                 className="input-field w-full"
               />
@@ -102,6 +131,7 @@ export function ScheduleForLaterField({ isPublic, scheduledAt, onChange }: Props
               <input
                 type="time"
                 value={time}
+                min={isToday ? nowTimeStr : undefined}
                 onChange={(e) => setTime(e.target.value)}
                 className="input-field w-full"
               />
