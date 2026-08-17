@@ -138,7 +138,7 @@ export function MonopolyBoardView({
   const boardW = Math.min(availW || winW - 64, 440)
   // The perimeter has `sideLength` tiles per side, with corners at both ends.
   // Classic 40 = 10/side (9 edge tiles between corners), expanded 48 = 12/side
-  // (11 edge tiles between corners). Corners are ~1.85× an edge tile's short
+  // (11 edge tiles between corners). Corners are ~1.25× an edge tile's short
   // side so the visual weight matches the web fractional grid.
   const sideLength = boardSize / 4
   const edgeCount = sideLength - 1

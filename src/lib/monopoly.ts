@@ -102,13 +102,16 @@ export async function getMonopolyGameSettings(
   estateDividend: boolean
   boardSize: 40 | 48
 }> {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('games')
     .select(
       'timer_seconds, monopoly_auction_timer_seconds, monopoly_double_go_salary, monopoly_forced_auctions, monopoly_no_rent_in_jail, monopoly_estate_dividend, monopoly_board_size'
     )
     .eq('id', gameId)
     .maybeSingle()
+  if (error) {
+    console.error(`[getMonopolyGameSettings] Error reading settings for game ${gameId}:`, error)
+  }
   return {
     timerSeconds: (data?.timer_seconds ?? 0) as number,
     auctionTimerSeconds: (data?.monopoly_auction_timer_seconds ?? MONOPOLY_AUCTION_TIMER_SECONDS) as number,
@@ -1157,6 +1160,18 @@ export async function initializeMonopolyGame(
   playerIds: string[],
   timerSeconds = 0
 ): Promise<{ error: string | null }> {
+  const { data: gameRow, error: gameError } = await supabase
+    .from('games')
+    .select(
+      'timer_seconds, monopoly_auction_timer_seconds, monopoly_double_go_salary, monopoly_forced_auctions, monopoly_no_rent_in_jail, monopoly_estate_dividend, monopoly_board_size'
+    )
+    .eq('id', gameId)
+    .maybeSingle()
+  if (gameError) return { error: internalErrorMessage('monopoly', gameError) }
+  if (!gameRow) return { error: 'Game settings not found' }
+
+  const boardSize: 40 | 48 = gameRow.monopoly_board_size === 48 ? 48 : 40
+
   const turnOrder = shuffle(playerIds)
   const stateRows = turnOrder.map((playerId, index) => ({
     game_id: gameId,
@@ -1169,7 +1184,6 @@ export async function initializeMonopolyGame(
   const { error: stateError } = await supabase.from('monopoly_player_state').insert(stateRows)
   if (stateError) return { error: internalErrorMessage('monopoly', stateError) }
 
-  const { boardSize } = await getMonopolyGameSettings(supabase, gameId)
   const { error: boardError } = await supabase.from('monopoly_boards').insert({
     game_id: gameId,
     turn_order: turnOrder,
