@@ -142,7 +142,7 @@ export function MonopolyBoardView({
   // side so the visual weight matches the web fractional grid.
   const sideLength = boardSize / 4
   const edgeCount = sideLength - 1
-  const cornerRatio = 1.85
+  const cornerRatio = 1.25
   const cornerSize = Math.round((boardW * cornerRatio) / (edgeCount + 2 * cornerRatio))
   const centerSize = boardW - cornerSize * 2
   const edgeMain = centerSize / edgeCount
