@@ -50,11 +50,42 @@ export async function saveSoloState<T>(key: SoloStateKey, state: T): Promise<voi
   }
 }
 
-// Clear the persisted state; called from restart().
+// Clear the persisted state; called from restart(). Also clears the "was this
+// game's outcome recorded to the scoreboard?" marker so a fresh game starts
+// clean.
 export async function clearSoloState(key: SoloStateKey): Promise<void> {
   try {
-    await AsyncStorage.removeItem(key)
+    await AsyncStorage.multiRemove([key, scoredMarkerKey(key)])
   } catch {
     /* noop */
+  }
+}
+
+// Per-persisted-game marker: "the current persisted game's finished outcome has
+// been counted toward the scoreboard tally." Solves the race where the state
+// (with outcome) is saved to AsyncStorage but the app is killed before the
+// scoreboard write completes — without this marker, the next launch would see
+// `persisted.outcome != null` and skip the record, silently losing the score.
+//
+// Set once inside the `.then()` of recordSoloOutcome(); read on rehydrate;
+// cleared by clearSoloState on restart. There is exactly one persisted game
+// per game type at any moment, so the marker doesn't need a session id.
+function scoredMarkerKey(key: SoloStateKey): string {
+  return `${key}--scored`
+}
+
+export async function markSoloStateScored(key: SoloStateKey): Promise<void> {
+  try {
+    await AsyncStorage.setItem(scoredMarkerKey(key), '1')
+  } catch {
+    /* noop */
+  }
+}
+
+export async function wasSoloStateScored(key: SoloStateKey): Promise<boolean> {
+  try {
+    return (await AsyncStorage.getItem(scoredMarkerKey(key))) === '1'
+  } catch {
+    return false
   }
 }

@@ -49,7 +49,13 @@ import { SegmentedControl } from '@/components/create/SegmentedControl'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
 import type { Theme } from '@/constants/theme'
 import { readSoloScoreboard, recordSoloOutcome, resetSoloScoreboard, type SoloScoreboard } from '@/lib/solo-scoreboard'
-import { clearSoloState, loadSoloState, saveSoloState } from '@/lib/solo-state-store'
+import {
+  clearSoloState,
+  loadSoloState,
+  markSoloStateScored,
+  saveSoloState,
+  wasSoloStateScored,
+} from '@/lib/solo-state-store'
 import { logSoloPlayStarted } from '@/lib/solo-play'
 
 const BOT_THINK_MS = 900
@@ -87,10 +93,18 @@ export default function SoloWhotScreen() {
     void loadSoloState<SoloWhotState>('solo-whot-state-v1', (raw): raw is SoloWhotState => {
       const r = raw as Partial<SoloWhotState> | null
       return !!r?.session?.turn_order && Array.isArray(r.hands)
-    }).then((persisted) => {
+    }).then(async (persisted) => {
       if (persisted) {
         setState({ ...persisted, rules: SOLO_RULES })
-        if (persisted.outcome != null) scoredRef.current = true
+        // Only skip the score effect when we KNOW the scoreboard write already
+        // completed for this persisted game. Reading the marker (not just
+        // `outcome != null`) prevents the race where the state-with-outcome is
+        // saved but the app dies before recordSoloOutcome finishes; on the
+        // next launch the score effect fires and records what would otherwise
+        // be silently lost. See lib/solo-state-store.ts for the guarantee.
+        if (persisted.outcome != null && (await wasSoloStateScored('solo-whot-state-v1'))) {
+          scoredRef.current = true
+        }
       } else {
         setState(initSoloWhot({ rules: SOLO_RULES }))
         logSoloPlayStarted('whot', difficulty)
@@ -109,12 +123,17 @@ export default function SoloWhotScreen() {
     if (state) void saveSoloState('solo-whot-state-v1', state)
   }, [state])
 
-  // Score once per game.
+  // Score once per game. `scoredRef` gates re-firing within THIS mount; the
+  // AsyncStorage marker (set below inside .then) gates re-firing across app
+  // restarts. Both are needed — the ref alone doesn't survive a cold start.
   useEffect(() => {
     if (!state || state.outcome == null || scoredRef.current) return
     const outcome: 'human' | 'bot' | 'draw' = state.outcome === 0 ? 'human' : state.outcome === 'draw' ? 'draw' : 'bot'
     scoredRef.current = true
-    void recordSoloOutcome('whot', outcome).then(setScoreboard)
+    void recordSoloOutcome('whot', outcome).then((next) => {
+      setScoreboard(next)
+      void markSoloStateScored('solo-whot-state-v1')
+    })
   }, [state])
 
   // Bot turn: fire on delay so the human sees the move unfold, not jump-cut.

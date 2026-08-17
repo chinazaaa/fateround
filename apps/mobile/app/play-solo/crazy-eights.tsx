@@ -48,7 +48,13 @@ import { PlayingCardFace } from '@/components/games/cards/PlayingCardFace'
 import { useThemedStyles } from '@/constants/theme-context'
 import type { Theme } from '@/constants/theme'
 import { readSoloScoreboard, recordSoloOutcome, resetSoloScoreboard, type SoloScoreboard } from '@/lib/solo-scoreboard'
-import { clearSoloState, loadSoloState, saveSoloState } from '@/lib/solo-state-store'
+import {
+  clearSoloState,
+  loadSoloState,
+  markSoloStateScored,
+  saveSoloState,
+  wasSoloStateScored,
+} from '@/lib/solo-state-store'
 import { logSoloPlayStarted } from '@/lib/solo-play'
 
 const BOT_THINK_MS = 900
@@ -82,11 +88,14 @@ export default function SoloCrazyEightsScreen() {
     void loadSoloState<Crazy8SoloState>('solo-crazy8-state-v1', (raw): raw is Crazy8SoloState => {
       const r = raw as Partial<Crazy8SoloState> | null
       return !!r?.session?.turn_order && Array.isArray(r.hands)
-    }).then((persisted) => {
+    }).then(async (persisted) => {
       if (persisted) {
         // Re-attach rules so a future rule-shape edit doesn't crash a rehydrate.
         setState({ ...persisted, rules: SOLO_RULES })
-        if (persisted.outcome != null) scoredRef.current = true
+        // See whot.tsx for the marker-vs-outcome gate rationale.
+        if (persisted.outcome != null && (await wasSoloStateScored('solo-crazy8-state-v1'))) {
+          scoredRef.current = true
+        }
       } else {
         setState(initCrazy8Solo({ rules: SOLO_RULES }))
         logSoloPlayStarted('crazy_eights', difficulty)
@@ -104,7 +113,10 @@ export default function SoloCrazyEightsScreen() {
     if (!state || state.outcome == null || scoredRef.current) return
     const outcome: 'human' | 'bot' | 'draw' = state.outcome === 0 ? 'human' : state.outcome === 'draw' ? 'draw' : 'bot'
     scoredRef.current = true
-    void recordSoloOutcome('crazy_eights', outcome).then(setScoreboard)
+    void recordSoloOutcome('crazy_eights', outcome).then((next) => {
+      setScoreboard(next)
+      void markSoloStateScored('solo-crazy8-state-v1')
+    })
   }, [state])
 
   // Bot loop.

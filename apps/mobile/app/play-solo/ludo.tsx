@@ -47,7 +47,13 @@ import { LudoMoveList } from '@/components/games/ludo/LudoMoveList'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
 import type { Theme } from '@/constants/theme'
 import { readSoloScoreboard, recordSoloOutcome, resetSoloScoreboard, type SoloScoreboard } from '@/lib/solo-scoreboard'
-import { clearSoloState, loadSoloState, saveSoloState } from '@/lib/solo-state-store'
+import {
+  clearSoloState,
+  loadSoloState,
+  markSoloStateScored,
+  saveSoloState,
+  wasSoloStateScored,
+} from '@/lib/solo-state-store'
 import { logSoloPlayStarted } from '@/lib/solo-play'
 
 const BOT_THINK_MS = 700
@@ -71,10 +77,13 @@ export default function SoloLudoScreen() {
     void loadSoloState<LudoSoloState>('solo-ludo-state-v1', (raw): raw is LudoSoloState => {
       const r = raw as Partial<LudoSoloState> | null
       return !!r?.session?.turn_order && Array.isArray(r.session.turn_order) && Array.isArray(r.states)
-    }).then((persisted) => {
+    }).then(async (persisted) => {
       if (persisted) {
         setState(persisted)
-        if (persisted.outcome != null) scoredRef.current = true
+        // See whot.tsx for the marker-vs-outcome gate rationale.
+        if (persisted.outcome != null && (await wasSoloStateScored('solo-ludo-state-v1'))) {
+          scoredRef.current = true
+        }
       } else {
         setState(initLudoSolo())
         logSoloPlayStarted('ludo')
@@ -99,7 +108,10 @@ export default function SoloLudoScreen() {
     if (!state || state.outcome == null || scoredRef.current) return
     const outcome: 'human' | 'bot' = state.outcome === 'human' ? 'human' : 'bot'
     scoredRef.current = true
-    void recordSoloOutcome('ludo', outcome).then(setScoreboard)
+    void recordSoloOutcome('ludo', outcome).then((next) => {
+      setScoreboard(next)
+      void markSoloStateScored('solo-ludo-state-v1')
+    })
   }, [state])
 
   // Bot loop: roll (roll phase) or pick + play a move (move phase). One step
