@@ -358,6 +358,10 @@ export function DailyWordlePlay({ challengeId, puzzle, timer: maxSeconds, onSubm
   return (
     <div className="fr-card fr-card--xl wordle-scope">
       <div className="space-y-3" style={{ maxWidth: 460, margin: '0 auto' }}>
+        <p className="text-center" style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>
+          Guess the {wordLength}-letter word in {maxAttempts} tries. Green = right letter and spot, yellow = right letter
+          wrong spot, grey = not in the word.
+        </p>
         <div className="flex items-center justify-between gap-3">
           <span className="wl-cat-badge" style={{ background: 'var(--wl-correct)', color: '#fff' }}>
             {categoryLabel}
