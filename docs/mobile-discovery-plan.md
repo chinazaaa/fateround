@@ -375,6 +375,23 @@ ghost players. The tournament pattern (RSVP → open → confirm-ready
   page or from the "Your upcoming games" home strip. Un-RSVPing
   after T-15min doesn't cancel the reminder push they already got
   (fine — they can just ignore it).
+- **Host early-start confirm.** A host tapping Start BEFORE
+  `scheduled_at` gets a confirmation dialog: "This game is
+  scheduled for Friday, 8:00 PM. Start it now? RSVPers were
+  expecting Friday — pings will go out immediately to let them
+  know it's opening early."
+    - Actions: **Cancel** (default focus) / **Start now**.
+    - Choosing "Start now" fires the same T-0 lobby-open push
+      to RSVPers ("🎲 Monopoly is opening early — tap to join if
+      you're free") plus the T-15min heads-up push if it hasn't
+      fired yet (so subscribers still get their heads-up, just
+      compressed). Both respect quiet hours as usual.
+    - After `scheduled_at`, Start acts normally with no confirm —
+      the game is already in its expected window.
+    - Purpose: prevent a distracted host from rugging a Friday
+      RSVP crowd on Monday by mis-tapping. This is the same shape
+      as the "are you sure?" dialog tournament tools use when a
+      bracket is started before its published start time.
 
 **Success:** a host schedules Monopoly for 8pm Friday, 4 people
 RSVP over the week (and see it on their home screen every time
