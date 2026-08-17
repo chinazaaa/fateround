@@ -354,6 +354,7 @@ export function CreateWizardShell() {
             <GameRoomSettingsPanel
               gameType={state.gameType}
               room={state.room}
+              maxPlayers={state.maxPlayers ?? null}
               onChange={(roomPatch) => patchState({ room: { ...state.room, ...roomPatch } })}
             />
 

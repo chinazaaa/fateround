@@ -1260,6 +1260,9 @@ export type BoardLobbyPatch = {
   monopoly_forced_auctions?: boolean
   monopoly_auction_timer_seconds?: number
   monopoly_no_rent_in_jail?: boolean
+  monopoly_estate_dividend?: boolean
+  /** 40 (classic) or 48 (expanded). 48 requires max_players >= 6 (server enforces). */
+  monopoly_board_size?: 40 | 48
   operative_timer_seconds?: number
   quick_draw_variant?: 'lie' | 'guess'
   quick_draw_play_mode?: 'team' | 'individual'
