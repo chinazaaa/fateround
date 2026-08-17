@@ -107,8 +107,8 @@ export function WhotTable({
   urgent?: boolean
 }) {
   const top = session.top_card
-  const drawCount = (session.draw_pile as unknown[])?.length ?? 0
-  const discardCount = (session.discard_pile as unknown[])?.length ?? 0
+  const drawCount = session.draw_count ?? session.draw_pile?.length ?? 0
+  const discardCount = session.discard_count ?? session.discard_pile?.length ?? 0
   const pickPenalty = getActivePickPenalty(session)
 
   return (

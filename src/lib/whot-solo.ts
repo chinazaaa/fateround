@@ -224,9 +224,12 @@ function drawWithRefill(
  * `discardPlayedTop` in whot.ts.
  */
 function discardTop(session: WhotSession): WhotCard[] {
+  // `discard_pile` is optional on WhotSession only because anon/authenticated cannot SELECT it
+  // (20260930120000). Solo builds its own session locally, so it is always present here.
+  const discard = session.discard_pile ?? []
   const prev = session.top_card
-  if (!prev) return session.discard_pile
-  return [...session.discard_pile, prev]
+  if (!prev) return discard
+  return [...discard, prev]
 }
 
 // ── Terminal check ──────────────────────────────────────────────────────────
@@ -331,7 +334,7 @@ export function soloPlay(
   }
 
   // General Market (14): every other player draws one. Two-seat game → just the opponent.
-  let drawPile = state.session.draw_pile
+  let drawPile = state.session.draw_pile ?? []
   let discardPile = discardTop(state.session)
   let marketNote: string | null = null
   if (card.number === 14) {
@@ -412,7 +415,7 @@ export function soloDraw(state: SoloWhotState, playerIdx: 0 | 1, rng: () => numb
   const penalty = pickTwo > 0 ? pickTwo : pickFive > 0 ? pickFive : 0
   const count = penalty > 0 ? penalty : 1
 
-  const drawRes = drawWithRefill(state.session.draw_pile, state.session.discard_pile, count, rng)
+  const drawRes = drawWithRefill(state.session.draw_pile ?? [], state.session.discard_pile ?? [], count, rng)
   const hand = playerHand(state, playerIdx)
 
   // Both piles empty:

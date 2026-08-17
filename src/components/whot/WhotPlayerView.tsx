@@ -552,7 +552,7 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
         isMyTurn={false}
         watching
         acting={acting}
-        drawCount={session.draw_pile?.length ?? 0}
+        drawCount={session.draw_count ?? 0}
         drawDepleted={drawDepleted}
         myCanPlay={myCanPlay}
         whotCallActive={whotCallActive}
@@ -578,7 +578,7 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
       turnPlayerId={turnPlayerId}
       isMyTurn={isMyTurn}
       acting={acting}
-      drawCount={session.draw_pile?.length ?? 0}
+      drawCount={session.draw_count ?? 0}
       drawDepleted={drawDepleted}
       myCanPlay={myCanPlay}
       whotCallActive={whotCallActive}

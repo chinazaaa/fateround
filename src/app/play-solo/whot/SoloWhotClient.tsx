@@ -245,7 +245,9 @@ export function SoloWhotClient() {
   const myCanPlay = hasPlayableCard(myHand, state.session, state.rules)
   const whotCallActive = state.session.required_shape != null || state.session.required_number != null
   const pickPenalty = getActivePickPenalty(state.session)
-  const drawCount = (state.session.draw_pile as unknown[]).length
+  // Solo runs entirely in the browser off a locally-built session, so the pile itself is present
+  // here (nothing is redacted); the count is preferred only to match the multiplayer readers.
+  const drawCount = state.session.draw_count ?? state.session.draw_pile?.length ?? 0
   const drawDepleted = isDrawPileDepleted(state.session)
 
   const finished = state.outcome != null

@@ -595,7 +595,7 @@ export function WhotHostView({ gameCode, hostToken }: { gameCode: string; hostTo
             isMyTurn={hostPlays && isHostTurn}
             watching={!hostPlays}
             acting={hostActing}
-            drawCount={session.draw_pile?.length ?? 0}
+            drawCount={session.draw_count ?? 0}
             drawDepleted={drawDepleted}
             myCanPlay={hostCanPlay}
             whotCallActive={hasActiveWhotCall(session)}

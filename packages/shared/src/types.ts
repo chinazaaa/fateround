@@ -784,8 +784,19 @@ export interface WhotSession {
   turn_order: string[]
   current_turn_index: number
   phase: WhotPhase
-  draw_pile: WhotCard[]
-  discard_pile: WhotCard[]
+  /**
+   * REDACTED from clients: anon/authenticated hold no SELECT on this column, because the ordered
+   * deck plus your own hand reveals every opponent's hand (2 players) or every future draw (N).
+   * Only service-role reads (src/lib/whot.ts) and the local solo engine (src/lib/whot-solo.ts)
+   * see it — hence optional. Clients use `draw_count`.
+   */
+  draw_pile?: WhotCard[]
+  /** REDACTED from clients alongside `draw_pile` — see above. Clients use `discard_count`. */
+  discard_pile?: WhotCard[]
+  /** Public size of `draw_pile`. Generated stored column; counts leak no order or identity. */
+  draw_count?: number
+  /** Public size of `discard_pile`. Generated stored column. */
+  discard_count?: number
   top_card: WhotCard | null
   required_shape: WhotShape | null
   required_number: number | null

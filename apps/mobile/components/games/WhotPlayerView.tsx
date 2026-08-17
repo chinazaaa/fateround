@@ -415,7 +415,7 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
 
   // When the draw pile is empty it reshuffles from the played (discard) cards — surface
   // that so an empty pile doesn't read as "no cards left to draw".
-  const drawReshuffles = drawDepleted && session.discard_pile.length > 0
+  const drawReshuffles = drawDepleted && (session.discard_count ?? 0) > 0
 
   return (
     <GameShell bootstrap={bootstrap} title={batch4GameLabel('whot')} subtitle={bootstrap.code}>
@@ -447,7 +447,7 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
         />
 
         <CardTableArea
-          pileCount={session.draw_pile.length}
+          pileCount={session.draw_count ?? 0}
           hint={tableHint || null}
           drawAccent="#059669"
           topCard={
