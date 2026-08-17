@@ -8,12 +8,14 @@ export const metadata: Metadata = {
   description: 'Get a ping when a new Public game of your favourite type opens.',
 }
 
-export default function Page({ searchParams }: { searchParams: { type?: string } }) {
+// Next.js 16 requires `searchParams` to be awaited (App Router async params).
+export default async function Page({ searchParams }: { searchParams: Promise<{ type?: string }> }) {
+  const { type } = await searchParams
   return (
     <div className="fr-site flex min-h-dvh flex-col">
       <MarketingHeader />
       <main className="flex-1">
-        <NotificationsPage preselectGameType={searchParams?.type} />
+        <NotificationsPage preselectGameType={type} />
       </main>
       <SiteFooter />
     </div>

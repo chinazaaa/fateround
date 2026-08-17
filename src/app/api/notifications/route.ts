@@ -58,11 +58,15 @@ const quietHoursSchema = z.object({
   timezone: z.string().min(1).max(64).optional(),
 })
 
-const admin = getSupabaseAdmin()
+// Do NOT call getSupabaseAdmin() at module scope: `next build` executes the
+// route module during page-data collection to detect config, and the admin
+// factory throws when SUPABASE_SERVICE_ROLE_KEY is unset (the CI build only
+// has the anon placeholders). Instantiate lazily per-request instead.
 
 export async function GET(req: NextRequest) {
   const tokenKey = req.nextUrl.searchParams.get('tokenKey')
   if (!tokenKey) return NextResponse.json({ error: 'tokenKey required' }, { status: 400 })
+  const admin = getSupabaseAdmin()
 
   const { device, subscribedGameTypes } = await getSubscriptionsForToken(admin, tokenKey)
 
@@ -110,6 +114,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'web channel requires webKeys' }, { status: 400 })
   }
 
+  const admin = getSupabaseAdmin()
   const now = new Date().toISOString()
   const { data: device, error: deviceError } = await admin
     .from('notification_subscriber_devices')
@@ -147,6 +152,7 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
   }
   const { tokenKey, gameType } = parsed.data
+  const admin = getSupabaseAdmin()
 
   const { data: device } = await admin
     .from('notification_subscriber_devices')
@@ -184,6 +190,7 @@ export async function PATCH(req: NextRequest) {
   if (startMinutes !== undefined) update.quiet_start_minutes = startMinutes
   if (endMinutes !== undefined) update.quiet_end_minutes = endMinutes
   if (timezone !== undefined) update.timezone = timezone
+  const admin = getSupabaseAdmin()
   const { error } = await admin.from('notification_subscriber_devices').update(update).eq('token_key', tokenKey)
   if (error) return NextResponse.json({ error: internalErrorMessage('notifications', error) }, { status: 500 })
   return NextResponse.json({ ok: true })
