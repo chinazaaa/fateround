@@ -25,6 +25,7 @@ import {
   MONOPOLY_JAIL_FINE,
   MONOPOLY_JAIL_POSITION,
   MONOPOLY_STARTING_CASH,
+  MONOPOLY_EXPANDED_STARTING_CASH,
   formatMonopolyMoney,
   housesInBankForSize,
   hotelsInBankForSize,
@@ -32,6 +33,7 @@ import {
   mortgageValue,
   monopolyBoardForSize,
   spaceAt,
+  startingCashForSize,
   unmortgageCost,
   type MonopolyBoardSize,
   type MonopolyColorGroup,
@@ -1177,7 +1179,7 @@ export async function initializeMonopolyGame(
     game_id: gameId,
     player_id: playerId,
     position: 0,
-    cash: MONOPOLY_STARTING_CASH,
+    cash: startingCashForSize(boardSize),
     player_order: index,
   }))
 
@@ -1223,7 +1225,7 @@ export async function addMonopolyLateJoinPlayer(
     game_id: gameId,
     player_id: playerId,
     position: 0,
-    cash: MONOPOLY_STARTING_CASH,
+    cash: startingCashForSize(board.board_size ?? 40),
     player_order: playerOrder,
   })
   if (stateError) return { error: internalErrorMessage('monopoly', stateError) }

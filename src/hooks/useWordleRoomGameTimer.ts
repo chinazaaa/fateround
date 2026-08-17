@@ -1,0 +1,75 @@
+'use client'
+
+import { useCallback, useLayoutEffect, useEffect, useRef } from 'react'
+import { useDeadlineCountdown } from '@/hooks/useDeadlineCountdown'
+import { wordleRoomTimerSeconds } from '@/lib/wordle-room'
+import type { Game } from '@/types'
+import { formatMinutesSeconds } from '@/lib/timer-format'
+
+export function useWordleRoomGameTimer(
+  gameCode: string,
+  game: Pick<Game, 'status' | 'session_started_at' | 'timer_seconds'> | null,
+  onExpired?: () => void | Promise<void>
+) {
+  const duration = wordleRoomTimerSeconds(game?.timer_seconds)
+  // Untimed rooms (duration 0) run until every seated player finishes — no countdown
+  // and no expiry, so keep them "inactive" for the timer.
+  const active = game?.status === 'active' && !!game.session_started_at && duration > 0
+  const secondsLeft = useDeadlineCountdown(game?.session_started_at, duration, active)
+  const expireInFlightRef = useRef(false)
+  const onExpiredRef = useRef(onExpired)
+  useLayoutEffect(() => {
+    onExpiredRef.current = onExpired
+  }, [onExpired])
+
+  const refreshAfterExpire = useCallback(async () => {
+    await onExpiredRef.current?.()
+  }, [])
+
+  const requestExpire = useCallback(async () => {
+    if (expireInFlightRef.current) return false
+    expireInFlightRef.current = true
+    try {
+      const res = await fetch(`/api/games/${gameCode}/expire-wordle-room`, { method: 'POST' })
+      const data = (await res.json().catch(() => ({}))) as { finished?: boolean; expired?: boolean }
+      if (data.finished || data.expired) {
+        await refreshAfterExpire()
+        return true
+      }
+      return false
+    } catch {
+      return false
+    } finally {
+      expireInFlightRef.current = false
+    }
+  }, [gameCode, refreshAfterExpire])
+
+  useEffect(() => {
+    if (!active || secondsLeft > 0) return
+
+    let cancelled = false
+    let retryTimer: ReturnType<typeof setTimeout> | null = null
+
+    const run = async () => {
+      if (cancelled) return
+      const finished = await requestExpire()
+      if (cancelled || finished || game?.status === 'finished') return
+      retryTimer = setTimeout(() => void run(), 2000)
+    }
+
+    void run()
+
+    return () => {
+      cancelled = true
+      if (retryTimer) clearTimeout(retryTimer)
+    }
+  }, [active, secondsLeft, gameCode, game?.status, requestExpire])
+
+  return {
+    active,
+    secondsLeft,
+    durationSeconds: duration,
+    timeUp: active && secondsLeft <= 0,
+    label: formatMinutesSeconds(secondsLeft),
+  }
+}

@@ -136,6 +136,21 @@ export async function generateDailyPuzzle(gameType: DailyChallengeGameType, seed
       const result = generateLudoPuzzle(seed, DAILY_GAME_TIMER.ludo_puzzle)
       return { puzzleData: result.puzzleData as unknown as Record<string, unknown>, config: result.config }
     }
+
+    case 'wordle': {
+      const { buildWordlePuzzle } = await import('@/lib/daily-wordle')
+      const puzzle = buildWordlePuzzle(seed)
+      return {
+        puzzleData: puzzle as unknown as Record<string, unknown>,
+        config: {
+          timer: DAILY_GAME_TIMER.wordle,
+          category: puzzle.category,
+          categoryLabel: puzzle.categoryLabel,
+          length: puzzle.length,
+          maxAttempts: puzzle.maxAttempts,
+        },
+      }
+    }
   }
 }
 

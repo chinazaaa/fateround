@@ -25,6 +25,8 @@ export interface DailyChallengeResult {
   totalPlayers: number
   personalBest: { bestScore: number; bestTime: number; totalPlays: number } | null
   isNewBest: boolean
+  /** Spoiler-free emoji share grid (Wordle). */
+  grid?: string
 }
 
 interface UseDailyChallengeSessionReturn {

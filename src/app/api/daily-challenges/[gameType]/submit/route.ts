@@ -13,6 +13,7 @@ import {
 import { advanceStreak, type StreakState } from '@/lib/trophies/streak'
 import { syncEligibleTrophies } from '@/lib/trophies/award'
 import { computeDailyRank } from '@/lib/daily-rank'
+import { wordleFinalScore, wordleEmojiGrid } from '@/lib/daily-wordle'
 
 export const dynamic = 'force-dynamic'
 
@@ -25,6 +26,8 @@ interface VerifiedMetrics {
   itemsSolved: number
   itemsTotal: number
   hintsUsed: number
+  /** Share string for games with a spoiler-free result grid (Wordle only today). */
+  grid?: string
 }
 
 function verifySudoku(
@@ -409,6 +412,41 @@ function verifyLudoPuzzle(
   }
 }
 
+function verifyWordle(
+  puzzleData: Record<string, unknown>,
+  submission: Record<string, unknown>
+): VerifiedMetrics | { error: string } {
+  const target = typeof puzzleData.word === 'string' ? puzzleData.word.toLowerCase() : ''
+  const maxAttempts = Number(puzzleData.maxAttempts) || 0
+  if (!target || maxAttempts < 2) return { error: 'Invalid puzzle data' }
+
+  const rawGuesses = submission.guesses
+  if (!Array.isArray(rawGuesses)) return { error: 'Missing guesses array' }
+
+  const length = target.length
+  const guesses = rawGuesses.map((g) => (typeof g === 'string' ? g.trim().toLowerCase() : ''))
+  if (guesses.length < 1 || guesses.length > maxAttempts) return { error: 'Invalid guess count' }
+  // Length is the only submission gate (spec §2.4) — no dictionary check, but every guess must
+  // actually be a full-length word.
+  if (guesses.some((g) => g.length !== length || !/^[a-z]+$/.test(g))) return { error: 'Invalid guess' }
+
+  // A win only counts if the target is the LAST guess — the game locks on a win, so anything after
+  // it is fabricated. Re-grading here (not trusting the client) is what keeps scores honest.
+  const winIndex = guesses.indexOf(target)
+  if (winIndex >= 0 && winIndex !== guesses.length - 1) return { error: 'Invalid submission' }
+  const won = winIndex >= 0
+  const guessesUsed = guesses.length
+  const rawPoints = wordleFinalScore(guessesUsed, maxAttempts, won)
+
+  return {
+    rawPoints,
+    itemsSolved: guessesUsed,
+    itemsTotal: maxAttempts,
+    hintsUsed: 0,
+    grid: wordleEmojiGrid(guesses, target),
+  }
+}
+
 function verifySubmission(
   gameType: DailyChallengeGameType,
   puzzleData: Record<string, unknown>,
@@ -439,6 +477,8 @@ function verifySubmission(
       return verifyCodenamesCodeword(puzzleData, submission)
     case 'ludo_puzzle':
       return verifyLudoPuzzle(puzzleData, submission)
+    case 'wordle':
+      return verifyWordle(puzzleData, submission)
   }
 }
 
@@ -526,6 +566,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ gam
     maxHints: gameType === 'word_scramble' ? 0 : Math.max(metrics.itemsTotal, 1),
   }
   let normalizedScore = computeNormalizedScore(scoreInput)
+  if (gameType === 'wordle') {
+    // Wordle's score is guess-count-based, not completion+speed. Keep the stored 0–1000
+    // normalized_score in sync with the leaderboard's raw_points (a guess-1 win + perfect bonus
+    // hits 1200 raw, capped to 1000 here for the column check).
+    normalizedScore = Math.min(1000, metrics.rawPoints)
+  }
   if (killSpeed) {
     normalizedScore = Math.max(0, normalizedScore - metrics.hintsUsed * 80)
   }
@@ -690,6 +736,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ gam
     itemsTotal: metrics.itemsTotal,
     timeSeconds: Math.min(timeSeconds, maxTime),
     hintsUsed: metrics.hintsUsed,
+    grid: metrics.grid,
     rank,
     totalPlayers: totalPlayers ?? 1,
     personalBest: personalBest

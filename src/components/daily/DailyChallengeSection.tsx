@@ -38,6 +38,7 @@ const DAILY_GAME_ACCENTS: Record<DailyChallengeGameType, string> = {
   chess_mate: '#6366f1',
   codenames_codeword: '#84cc16',
   ludo_puzzle: '#22c55e',
+  wordle: '#16a34a',
 }
 
 export function DailyChallengeSection() {
