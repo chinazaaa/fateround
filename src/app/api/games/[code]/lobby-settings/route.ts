@@ -341,6 +341,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const effectiveMaxPlayers =
     max_players !== undefined ? clampLobbyMaxPlayers(limitKey, max_players, lobbyLimits) : Number(game.max_players ?? 6)
 
+  // Public + max_players < 2 is a contradiction (nobody to fill the seat) — the
+  // /browse feed excludes those rows, so silently accepting the flag would
+  // strand the host with an "on" toggle that never lists. Reject at the write.
+  const nextIsPublic = is_public === undefined ? game.is_public === true : is_public === true
+  if (nextIsPublic && effectiveMaxPlayers < 2) {
+    return NextResponse.json({ error: 'Bump the max players above 1 to make this game Public.' }, { status: 400 })
+  }
+
   // Content label — trimmed + capped; empty string clears it.
   if (content_label !== undefined) {
     const trimmed = content_label.trim()

@@ -353,11 +353,15 @@ export async function GET(req: NextRequest) {
   )
   const cursor = searchParams.get('cursor')
 
+  // Feed hides solo/1v1-with-1-seat games. A Public game with max_players < 2 is a
+  // contradiction (nobody to fill the seats) — mirrored by the POST + settings PATCH
+  // rejections below so client-side and server-side agree on what a listable game is.
   let query = supabase
     .from('games')
     .select(GAME_BROWSE_FIELDS)
     .eq('is_public', true)
     .neq('status', 'finished')
+    .gte('max_players', 2)
     .order('created_at', { ascending: false })
     .limit(limit + 1)
 
@@ -929,6 +933,13 @@ export async function POST(req: NextRequest) {
   // Player-facing content label ("Maths", "Bible trivia") — free text, trimmed + capped, null if blank.
   const contentLabel =
     typeof rawContentLabel === 'string' && rawContentLabel.trim() ? rawContentLabel.trim().slice(0, 40) : null
+
+  // Max-players guard: a Public game with max_players < 2 has no seat for a
+  // stranger to fill, and the /browse feed excludes those rows anyway. Reject
+  // at create so the host doesn't silently ship a game that never surfaces.
+  if (parsed.data.isPublic === true && maxPlayers != null && maxPlayers < 2) {
+    return NextResponse.json({ error: 'Bump the max players above 1 to make this game Public.' }, { status: 400 })
+  }
 
   const { error: gameError } = await admin.from('games').insert({
     id: gameCode,
