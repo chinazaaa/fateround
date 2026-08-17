@@ -541,16 +541,39 @@ users don't use.
 ## Related work — tournaments (out of scope, worth carrying)
 
 Tournaments (`src/app/tournament/…`, `tournaments` table) already
-carry a `scheduled_at` column and have the SAME early-start
-problem this plan just solved for games: a host who registered
-Friday 8pm players could accidentally start the bracket on
-Monday. The Phase C fix (block Start on scheduled → force
-Reschedule with Now / +5min / +15min presets, single
-"rescheduled" push, quiet-hours bypass) applies verbatim to the
-tournament host flow. Not in scope for this plan (this doc is
-scoped to discovery + scheduled *games*, not brackets), but worth
-a separate small PR under the tournaments feature once these
-patterns ship on games.
+carry a `scheduled_at` column and have the SAME set of pre-start
+host-control problems this plan solves for scheduled games. Not
+in scope for this plan (this doc is scoped to discovery +
+scheduled *games*, not brackets), but the patterns below apply
+verbatim and are worth a separate small PR under the tournaments
+feature once they ship on games:
+
+- **Block Start on scheduled → force Reschedule.** Same fix as
+  Phase C: disable the tournament Start button while `status =
+  'scheduled'`; hosts move it earlier via Reschedule with the
+  Now / +5min / +15min presets. Fires a single "rescheduled"
+  push to every registered player (bypass quiet hours). Kills
+  the "started Friday's bracket on Monday" mistap.
+- **Host cancel (before start).** Same shape as the game-cancel
+  action: destructive-styled button in the tournament settings,
+  confirm dialog first ("Cancel this tournament? N registered
+  player(s) will be notified."), sets tournament status to
+  cancelled, fires a "cancelled" push to every registered player
+  — single fan-out, **NOT throttled and NOT quiet-hours gated**
+  (missing this ping would strand the player). Removes the
+  tournament from every player's home "Your upcoming"
+  strip on next focus.
+- **Host transfer (before start).** Reassign the tournament to
+  another registered player. Two pushes: to the new host (bypass
+  quiet hours — now their responsibility) and to other registered
+  players (respects quiet hours — informational). Only available
+  while `status = 'scheduled'`; the existing in-tournament host
+  flow takes over after start.
+
+All three follow the same "notify people affected, bypass quiet
+hours for the important ones (cancel + reschedule + you're-now-
+host), respect quiet hours for informational" rule the game
+version establishes.
 
 ## When to re-scope
 
