@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { Linking, Pressable, StyleSheet, Text } from 'react-native'
+import { Pressable, StyleSheet, Text } from 'react-native'
+import { useRouter } from 'expo-router'
 import { SurfaceCard } from '@/components/ui/SurfaceCard'
-import { apiUrl, WEB_BASE_URL } from '@/lib/config'
+import { apiUrl } from '@/lib/config'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
 
@@ -26,6 +27,7 @@ const posted = new Set<string>()
  */
 export function PostWinToCommunity({ gameType, gameCode, winnerName, roundKey }: Props) {
   const styles = useThemedStyles(makeStyles)
+  const router = useRouter()
   const [status, setStatus] = useState<'idle' | 'posted' | 'error' | 'untracked'>('idle')
   const [retry, setRetry] = useState(0)
   const key = `${gameCode}_${roundKey ?? 'default'}`
@@ -88,8 +90,8 @@ export function PostWinToCommunity({ gameType, gameCode, winnerName, roundKey }:
     return (
       <SurfaceCard style={styles.card}>
         <Text style={styles.added}>✓ Added to the community leaderboard 🏆</Text>
-        <Pressable onPress={() => void Linking.openURL(`${WEB_BASE_URL}/leaderboard`)}>
-          <Text style={styles.link}>See where you rank ↗</Text>
+        <Pressable onPress={() => router.push('/community' as never)}>
+          <Text style={styles.link}>See where you rank →</Text>
         </Pressable>
       </SurfaceCard>
     )
@@ -104,8 +106,8 @@ export function PostWinToCommunity({ gameType, gameCode, winnerName, roundKey }:
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-  card: { alignItems: 'center', gap: 8 },
-  added: { color: theme.success, fontSize: 14, fontWeight: '800', textAlign: 'center' },
-  muted: { color: theme.textMuted, fontSize: 14, textAlign: 'center' },
-  link: { color: theme.primaryMuted, fontSize: 14, fontWeight: '700', textAlign: 'center' },
-})
+    card: { alignItems: 'center', gap: 8 },
+    added: { color: theme.success, fontSize: 14, fontWeight: '800', textAlign: 'center' },
+    muted: { color: theme.textMuted, fontSize: 14, textAlign: 'center' },
+    link: { color: theme.primaryMuted, fontSize: 14, fontWeight: '700', textAlign: 'center' },
+  })

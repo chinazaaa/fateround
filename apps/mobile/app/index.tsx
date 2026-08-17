@@ -116,6 +116,13 @@ export default function HomeScreen() {
             tone="ghost"
             onPress={() => void Linking.openURL(`${WEB_BASE_URL}/create`)}
           />
+          <AppButton
+            label="🏆 Community leaderboard"
+            tone="ghost"
+            // Cast: expo-router's typed href doesn't know about the /community
+            // route registered in _layout.tsx.
+            onPress={() => router.push('/community' as never)}
+          />
         </View>
 
         {recent.length > 0 ? (
