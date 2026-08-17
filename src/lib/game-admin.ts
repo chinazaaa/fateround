@@ -74,6 +74,16 @@ export async function assertHostGameSettings(supabase: SupabaseClient, gameCode:
   })
 }
 
+/** Host may act on a game that hasn't opened yet — reschedule / cancel / transfer
+ *  a scheduled game. Distinct from lobby-settings so those don't accidentally
+ *  let a host mutate lobby knobs before opening. */
+export async function assertHostScheduledGame(supabase: SupabaseClient, gameCode: string, hostToken: string) {
+  return assertHost(supabase, gameCode, hostToken, {
+    allowedStatuses: ['scheduled'],
+    statusError: 'This is only available on scheduled games.',
+  })
+}
+
 /** Host may change who can join after start — including while a game is live. */
 export async function assertHostLateJoinSettings(supabase: SupabaseClient, gameCode: string, hostToken: string) {
   return assertHost(supabase, gameCode, hostToken, {

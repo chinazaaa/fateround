@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod/v4'
 import { internalErrorMessage } from '@/lib/api-errors'
-import { assertHostGameSettings } from '@/lib/game-admin'
+import { assertHostScheduledGame } from '@/lib/game-admin'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { fireHostTransferPushes } from '@/lib/scheduled-games'
 
@@ -45,7 +45,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   }
 
   const admin = getSupabaseAdmin()
-  const auth = await assertHostGameSettings(admin, gameCode, parsed.data.hostToken)
+  const auth = await assertHostScheduledGame(admin, gameCode, parsed.data.hostToken)
   if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
   const game = auth.game!
   if (game.status !== 'scheduled') {
@@ -64,12 +64,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   }
 
   const newHostToken = generateHostToken()
-  const { error } = await admin
+  // Atomic guard: two racing transfers would both pass the auth read; the
+  // predicate on the current host_token means only one row is updated, and
+  // the loser sees a 409 instead of a silent stomp on the winner's token.
+  const { data: updated, error } = await admin
     .from('games')
     .update({ host_token: newHostToken, host_player_id: null, last_activity_at: new Date().toISOString() })
     .eq('id', gameCode)
+    .eq('status', 'scheduled')
+    .eq('host_token', parsed.data.hostToken)
+    .select('id')
   if (error)
     return NextResponse.json({ error: internalErrorMessage('transfer-scheduled-host', error) }, { status: 500 })
+  if (!updated || updated.length === 0) {
+    return NextResponse.json({ error: 'This scheduled game just changed — refresh and try again.' }, { status: 409 })
+  }
 
   void fireHostTransferPushes(
     gameCode,
