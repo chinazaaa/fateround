@@ -14,6 +14,7 @@ import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { gameTypeConfig, parseGameType } from '@/lib/game-types'
 import { pushSupported } from '@/lib/push-client'
+import { ScheduledHostActionsPanel } from '@/components/notifications/ScheduledHostActionsPanel'
 
 type ScheduledGame = {
   id: string
@@ -263,6 +264,10 @@ export function ScheduledGameOverlay({ gameCode }: { gameCode: string }) {
           </button>
           <p className="text-xs text-faint">We’ll ping you 15 minutes before it opens (needs browser notifications).</p>
         </div>
+
+        {/* Host controls — only render when the caller has a host token stored
+            for this game code (i.e. they created it on this browser). */}
+        <ScheduledHostActionsPanel gameCode={gameCode} currentScheduledAt={game.scheduled_at} />
       </div>
     </div>
   )

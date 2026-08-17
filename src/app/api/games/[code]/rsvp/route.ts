@@ -21,6 +21,9 @@ const rsvpSchema = z.object({
   webKeys: z.object({ p256dh: z.string().min(1).max(500), auth: z.string().min(1).max(500) }).optional(),
   platform: z.enum(['ios', 'android', 'unknown']).optional(),
   timezone: z.string().min(1).max(64).optional(),
+  // Optional display name so the host's Transfer picker has something
+  // readable to show. Trimmed + capped server-side; empty means anonymous.
+  displayName: z.string().max(60).optional(),
 })
 
 const unrsvpSchema = z.object({
@@ -79,9 +82,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   if (game.is_public !== true) return NextResponse.json({ error: 'Only Public games accept RSVPs' }, { status: 400 })
 
   const deviceId = await ensureDeviceId(admin, parsed.data)
+  const rawName = (parsed.data.displayName ?? '').trim().slice(0, 60)
+  const displayName = rawName.length > 0 ? rawName : null
   const { error } = await admin
     .from('game_rsvps')
-    .upsert({ game_id: gameCode, device_id: deviceId }, { onConflict: 'game_id,device_id' })
+    .upsert({ game_id: gameCode, device_id: deviceId, display_name: displayName }, { onConflict: 'game_id,device_id' })
   if (error) return NextResponse.json({ error: internalErrorMessage('rsvp', error) }, { status: 500 })
   return NextResponse.json({ ok: true })
 }
