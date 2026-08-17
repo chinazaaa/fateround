@@ -25,7 +25,18 @@ function configureWebPush(): boolean {
   return true
 }
 
-export type TournamentPushEvent = 'starts_in_15' | 'starts_now' | 'host_started'
+export type TournamentPushEvent =
+  | 'starts_in_15'
+  | 'starts_now'
+  | 'host_started'
+  // Discovery follow-up: scheduled-tournament host actions. All three fan out
+  // once, bypass any (future) quiet-hours gate — missing them would strand
+  // the registered player. Copy is supplied via `overrides` per call so the
+  // tournament title + host names show through.
+  | 'cancelled'
+  | 'rescheduled'
+  | 'transfer_new_host'
+  | 'transfer_notice'
 
 type Payload = {
   title: string
@@ -49,6 +60,22 @@ const PAYLOADS: Record<TournamentPushEvent, { title: string; body: string }> = {
   host_started: {
     title: 'The host just started ▶',
     body: 'A game just kicked off — tap to jump in.',
+  },
+  cancelled: {
+    title: '❌ Tournament cancelled',
+    body: 'The host cancelled the scheduled tournament.',
+  },
+  rescheduled: {
+    title: '📆 Tournament rescheduled',
+    body: 'The tournament moved to a new time — tap to see it.',
+  },
+  transfer_new_host: {
+    title: '🏆 You’re now hosting',
+    body: 'You inherited a scheduled tournament — tap to open it.',
+  },
+  transfer_notice: {
+    title: '📆 Tournament has a new host',
+    body: 'Same time, different host — tap to see who.',
   },
 }
 
