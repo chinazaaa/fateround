@@ -34,6 +34,7 @@ import {
   isWordScrambleGame,
   isWordGroupingGame,
   isLandmineGame,
+  isWordleRoomGame,
 } from '@/lib/game-types'
 import { isGameGenderBased } from '@/lib/gender-based'
 import { getCustomSlotCount } from '@/lib/custom-game'
@@ -169,6 +170,16 @@ import {
   type WordGroupingPuzzleResult,
 } from '@/lib/daily-word-grouping'
 import { buildWordHuntRoundRow, WORD_HUNT_MIN_PLAYERS } from '@/lib/word-hunt'
+import {
+  buildWordleRoomRoundRow,
+  buildWordleRoomProgressRows,
+  buildWordleRoomSequence,
+  clampWordleRoomCategory,
+  clampWordleRoomWordCount,
+  wordleRoomCategoryLabel,
+  WORDLE_ROOM_MIN_PLAYERS,
+  type WordleRoomMetadata,
+} from '@/lib/wordle-room'
 import { buildWordHuntMetadata } from '@/lib/word-hunt-dictionary'
 import {
   buildMatchingPairsRoundMetadata,
@@ -1281,6 +1292,68 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
     const { error: roundError } = await getSupabaseAdmin().from('rounds').insert(roundRow)
     if (roundError)
       return NextResponse.json({ error: internalErrorMessage('games/code/start', roundError) }, { status: 500 })
+
+    const { error: gameError } = await getSupabaseAdmin()
+      .from('games')
+      .update({
+        status: 'active',
+        session_started_at: sessionStartedAt,
+        current_round_number: 1,
+        rounds_count: 1,
+      })
+      .eq('id', code.toUpperCase())
+
+    if (gameError)
+      return NextResponse.json({ error: internalErrorMessage('games/code/start', gameError) }, { status: 500 })
+    return NextResponse.json({ success: true })
+  }
+
+  if (isWordleRoomGame(gameType)) {
+    const playingPlayers = playersData.filter((p) => p.spectator !== true)
+    if (playingPlayers.length < WORDLE_ROOM_MIN_PLAYERS) {
+      return NextResponse.json({ error: `Need at least ${WORDLE_ROOM_MIN_PLAYERS} players to start` }, { status: 400 })
+    }
+
+    const seed = Date.now() ^ Math.floor(Math.random() * 0xffffffff)
+    const category = clampWordleRoomCategory(game.wordle_room_category)
+    const wordCount = clampWordleRoomWordCount(game.wordle_room_word_count)
+    const metadata: WordleRoomMetadata = {
+      category,
+      categoryLabel: wordleRoomCategoryLabel(category),
+      word_count: wordCount,
+      seed,
+    }
+
+    // Build the fixed word sequence ONCE per room. Only the seed travels in the anon-readable
+    // round metadata — the words themselves live in the RLS-locked solutions table, so nobody
+    // can read ahead in a competitive race.
+    const words = buildWordleRoomSequence(seed, category, wordCount)
+
+    const roundRow = buildWordleRoomRoundRow(code.toUpperCase(), metadata)
+    const { data: insertedRound, error: roundError } = await getSupabaseAdmin()
+      .from('rounds')
+      .insert(roundRow)
+      .select('id')
+      .single()
+    if (roundError || !insertedRound) {
+      return NextResponse.json({ error: roundError?.message ?? 'Failed to create round' }, { status: 500 })
+    }
+
+    const { error: solutionError } = await getSupabaseAdmin()
+      .from('wordle_room_solutions')
+      .insert({ round_id: insertedRound.id, words })
+    if (solutionError)
+      return NextResponse.json({ error: internalErrorMessage('games/code/start', solutionError) }, { status: 500 })
+
+    // Seed a progress row per seated player so the live standings track from the first guess.
+    const progressRows = buildWordleRoomProgressRows(
+      code.toUpperCase(),
+      insertedRound.id,
+      playingPlayers.map((p) => p.id)
+    )
+    const { error: progressError } = await getSupabaseAdmin().from('wordle_room_progress').insert(progressRows)
+    if (progressError)
+      return NextResponse.json({ error: internalErrorMessage('games/code/start', progressError) }, { status: 500 })
 
     const { error: gameError } = await getSupabaseAdmin()
       .from('games')

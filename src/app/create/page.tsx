@@ -86,6 +86,7 @@ import {
   isWordScrambleGame,
   isWordGroupingGame,
   isWordHuntGame,
+  isWordleRoomGame,
   isMafiaGame,
   isMatchingPairsGame,
   isMahjongGame,
@@ -270,6 +271,16 @@ import {
   LANDMINE_DEFAULT_CATEGORY_TIMER,
 } from '@/lib/landmine'
 import { WORD_HUNT_DEFAULT_MAX_PLAYERS, WORD_HUNT_DEFAULT_TIMER, WORD_HUNT_TIMER_OPTIONS } from '@/lib/word-hunt'
+import {
+  WORDLE_ROOM_DEFAULT_MAX_PLAYERS,
+  WORDLE_ROOM_DEFAULT_TIMER,
+  WORDLE_ROOM_TIMER_OPTIONS,
+  WORDLE_ROOM_DEFAULT_WORD_COUNT,
+  WORDLE_ROOM_WORD_COUNT_OPTIONS,
+  formatWordleRoomTimer,
+} from '@/lib/wordle-room'
+import type { WordleCategoryId } from '@/lib/daily-wordle'
+import type { WordleRoomWordCount } from '@/lib/wordle-room'
 import { formatSudokuGameDuration, SUDOKU_GAME_DURATION_OPTIONS } from '@/lib/sudoku'
 import {
   formatCrosswordGameDuration,
@@ -532,6 +543,10 @@ function CreateGameInner() {
   const [wordRushMaxPlayers, setWordRushMaxPlayers] = useState(WORD_RUSH_DEFAULT_MAX_PLAYERS)
   const [describeItMaxPlayers, setDescribeItMaxPlayers] = useState(DESCRIBE_IT_DEFAULT_MAX_PLAYERS)
   const [wordHuntTimer, setWordHuntTimer] = useState(WORD_HUNT_DEFAULT_TIMER)
+  const [wordleRoomMaxPlayers, setWordleRoomMaxPlayers] = useState(WORDLE_ROOM_DEFAULT_MAX_PLAYERS)
+  const [wordleRoomCategory, setWordleRoomCategory] = useState<WordleCategoryId>('general_english')
+  const [wordleRoomWordCount, setWordleRoomWordCount] = useState<WordleRoomWordCount>(WORDLE_ROOM_DEFAULT_WORD_COUNT)
+  const [wordleRoomTimer, setWordleRoomTimer] = useState(WORDLE_ROOM_DEFAULT_TIMER)
   const [npatGameDuration, setNpatGameDuration] = useState(NPAT_DEFAULT_GAME_DURATION)
   const [npatMarkingTimer, setNpatMarkingTimer] = useState(NPAT_DEFAULT_MARKING_TIMER)
   const [landmineMode, setLandmineMode] = useState<'zero_points' | 'elimination'>('zero_points')
@@ -987,6 +1002,7 @@ function CreateGameInner() {
   const wordSearchDiffLock = questionSource === 'platform' ? lockedPuzzleDifficulty(wordSearchTheme) : null
   const wordScrambleDiffLock = questionSource === 'platform' ? lockedPuzzleDifficulty(wordScrambleTheme) : null
   const isWordHunt = isWordHuntGame(settings.game_type)
+  const isWordleRoom = isWordleRoomGame(settings.game_type)
   const isMatchingPairs = isMatchingPairsGame(settings.game_type)
   const isMahjong = isMahjongGame(settings.game_type)
   const showViewerToggle = gameSupportsViewerSetting(settings.game_type)
@@ -1293,6 +1309,27 @@ function CreateGameInner() {
       get: () => wordHuntTimer,
       set: (v) => setWordHuntTimer(v as number),
       appliesTo: isWordHuntGame,
+    },
+    // Wordle Room
+    wordle_room_max_players: {
+      get: () => wordleRoomMaxPlayers,
+      set: (v) => setWordleRoomMaxPlayers(v as number),
+      appliesTo: isWordleRoomGame,
+    },
+    wordle_room_category: {
+      get: () => wordleRoomCategory,
+      set: (v) => setWordleRoomCategory(v as WordleCategoryId),
+      appliesTo: isWordleRoomGame,
+    },
+    wordle_room_word_count: {
+      get: () => wordleRoomWordCount,
+      set: (v) => setWordleRoomWordCount(v as WordleRoomWordCount),
+      appliesTo: isWordleRoomGame,
+    },
+    wordle_room_timer: {
+      get: () => wordleRoomTimer,
+      set: (v) => setWordleRoomTimer(v as number),
+      appliesTo: isWordleRoomGame,
     },
     // Mafia / Werewolf
     mafia_max_players: {
@@ -2099,6 +2136,16 @@ function CreateGameInner() {
             timer_seconds: WORD_HUNT_DEFAULT_TIMER,
           }
         : {}),
+      ...(isWordleRoomGame(type)
+        ? {
+            participant_mode: 'joiners' as const,
+            anonymous: true,
+            rounds_count: 1,
+            wordle_room_category: 'general_english' as const,
+            wordle_room_word_count: WORDLE_ROOM_DEFAULT_WORD_COUNT,
+            timer_seconds: WORDLE_ROOM_DEFAULT_TIMER,
+          }
+        : {}),
       ...(isMahjongGame(type)
         ? {
             participant_mode: 'joiners' as const,
@@ -2489,6 +2536,14 @@ function CreateGameInner() {
         body: JSON.stringify({
           ...settings,
           ...(isWordHunt ? { timer_seconds: wordHuntTimer } : {}),
+          ...(isWordleRoom
+            ? {
+                max_players: wordleRoomMaxPlayers,
+                wordle_room_category: wordleRoomCategory,
+                wordle_room_word_count: wordleRoomWordCount,
+                timer_seconds: wordleRoomTimer,
+              }
+            : {}),
           rounds_count: isWst
             ? isWstDeck
               ? Math.max(wstDeckContent.length, 2)
@@ -2650,13 +2705,16 @@ function CreateGameInner() {
                                                   ? wordGroupingMaxPlayers
                                                   : isWordHunt
                                                     ? wordHuntMaxPlayers
-                                                    : isWordRush
-                                                      ? wordRushMaxPlayers
-                                                      : isDescribeIt
-                                                        ? describeItMaxPlayers
-                                                        : isMatchingPairs
-                                                          ? (settings.max_players ?? effectiveLimits.matching_pairs.max)
-                                                          : undefined,
+                                                    : isWordleRoom
+                                                      ? wordleRoomMaxPlayers
+                                                      : isWordRush
+                                                        ? wordRushMaxPlayers
+                                                        : isDescribeIt
+                                                          ? describeItMaxPlayers
+                                                          : isMatchingPairs
+                                                            ? (settings.max_players ??
+                                                              effectiveLimits.matching_pairs.max)
+                                                            : undefined,
           operative_timer_seconds: isCodewords
             ? codewordsOperativeTimer
             : isNpat
@@ -5632,6 +5690,55 @@ function CreateGameInner() {
                 <p className="text-faint text-sm leading-relaxed">
                   Everyone races on the same 4×4 letter grid. Connect adjacent letters to spell valid words — 3 letters
                   = 100 pts, 4 = 400, 5 = 800, and longer words score even more.
+                </p>
+              </SettingsGroup>
+            ) : isWordleRoom ? (
+              <SettingsGroup title="Wordle Room">
+                <Field label={`Max players (${effectiveLimits.wordle_room.min}–${effectiveLimits.wordle_room.max})`}>
+                  <CustomSelect
+                    value={wordleRoomMaxPlayers}
+                    onChange={setWordleRoomMaxPlayers}
+                    options={playerCountOptions(effectiveLimits.wordle_room.min, effectiveLimits.wordle_room.max).map(
+                      (n) => ({
+                        value: n,
+                        label: `${n} players`,
+                      })
+                    )}
+                  />
+                </Field>
+                <Field label="Category">
+                  <CustomSelect
+                    value={wordleRoomCategory}
+                    onChange={setWordleRoomCategory}
+                    options={[
+                      { value: 'general_english', label: 'General English' },
+                      { value: 'naija_slang', label: 'Naija Slang' },
+                    ]}
+                  />
+                </Field>
+                <Field label="Words in the race">
+                  <CustomSelect
+                    value={wordleRoomWordCount}
+                    onChange={setWordleRoomWordCount}
+                    options={WORDLE_ROOM_WORD_COUNT_OPTIONS.map((n) => ({ value: n, label: `${n} words` }))}
+                  />
+                </Field>
+                <Field label="Whole-game timer">
+                  <CustomSelect
+                    value={wordleRoomTimer}
+                    onChange={setWordleRoomTimer}
+                    options={WORDLE_ROOM_TIMER_OPTIONS.map((seconds) => ({
+                      value: seconds,
+                      label: seconds === 0 ? 'Untimed' : formatWordleRoomTimer(seconds),
+                    }))}
+                  />
+                </Field>
+                {showViewerToggle && (
+                  <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="wordle_room" />
+                )}
+                <p className="text-faint text-sm leading-relaxed">
+                  Race through a fixed sequence of Wordle puzzles. Everyone solves the same word — most words solved
+                  wins, with fewer guesses and faster time as tiebreakers.
                 </p>
               </SettingsGroup>
             ) : isMafia ? (

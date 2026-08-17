@@ -26,6 +26,7 @@ import {
   isCheckersGame,
   isDraughts10Game,
   isCheckersNigeriaGame,
+  isWordleRoomGame,
   parseGameType,
 } from '@/lib/game-types'
 import { clampAyoTimer, parseAyoVariant } from '@/lib/ayo'
@@ -37,6 +38,7 @@ import { clampWhotGameDuration } from '@/lib/whot'
 import { clampCrazyEightsGameDuration } from '@/lib/crazy-eights'
 import { clampUnoGameDuration, parseMultiPlayMode, UNO_TEAM_PLAYERS } from '@/lib/uno'
 import { clampWordHuntTimer } from '@/lib/word-hunt'
+import { clampWordleRoomCategory, clampWordleRoomTimer, clampWordleRoomWordCount } from '@/lib/wordle-room'
 import { parseMahjongRuleOptions, parseMahjongRuleset } from '@/lib/mahjong-rulesets'
 import { clampSudokuGameDuration } from '@/lib/sudoku'
 import { clampCrosswordGameDuration, parseCrosswordDifficulty } from '@/lib/crossword'
@@ -88,6 +90,7 @@ function boardGameLobbyType(gameType: string): BoardGameLobbyType | null {
 function timedLobbyLimitType(gameType: string): LobbyLimitGameType | null {
   const parsed = parseGameType(gameType)
   if (isWordHuntGame(parsed)) return 'word_hunt'
+  if (isWordleRoomGame(parsed)) return 'wordle_room'
   if (isMafiaGame(parsed)) return 'mafia'
   return null
 }
@@ -199,6 +202,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     puzzle_custom_questions,
     ping_pong_points_to_win,
     content_label,
+    wordle_room_category,
+    wordle_room_word_count,
   } = parsed.data
   const gameCode = parsed.data.gameId.toUpperCase()
 
@@ -276,7 +281,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     word_scramble_difficulty === undefined &&
     puzzle_theme_id === undefined &&
     puzzle_custom_questions === undefined &&
-    ping_pong_points_to_win === undefined
+    ping_pong_points_to_win === undefined &&
+    wordle_room_category === undefined &&
+    wordle_room_word_count === undefined
   ) {
     return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
   }
@@ -363,6 +370,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       gameUpdate.timer_seconds = clampQuickDrawDrawTimer(timer_seconds)
     } else if (timedLobbyType === 'word_hunt') {
       gameUpdate.timer_seconds = clampWordHuntTimer(timer_seconds)
+    } else if (timedLobbyType === 'wordle_room') {
+      gameUpdate.timer_seconds = clampWordleRoomTimer(timer_seconds)
     } else if (timedLobbyType === 'mafia') {
       gameUpdate.timer_seconds = [30, 45, 60, 90, 120, 180].includes(timer_seconds) ? timer_seconds : 60
     } else if (boardLobbyType) {
@@ -382,6 +391,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       // fall through silently and hit the DB with an empty patch.
       return NextResponse.json({ error: 'This game type does not support timer settings' }, { status: 400 })
     }
+  }
+
+  if (wordle_room_category !== undefined) {
+    if (timedLobbyType !== 'wordle_room') {
+      return NextResponse.json({ error: 'Wordle Room category only applies to Wordle Room games' }, { status: 400 })
+    }
+    gameUpdate.wordle_room_category = clampWordleRoomCategory(wordle_room_category)
+  }
+
+  if (wordle_room_word_count !== undefined) {
+    if (timedLobbyType !== 'wordle_room') {
+      return NextResponse.json({ error: 'Wordle Room word count only applies to Wordle Room games' }, { status: 400 })
+    }
+    gameUpdate.wordle_room_word_count = clampWordleRoomWordCount(wordle_room_word_count)
   }
 
   if (limitOnlyType === 'matching_pairs') {

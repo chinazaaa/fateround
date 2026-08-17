@@ -61,6 +61,7 @@ import {
   isWordScrambleGame,
   isWordGroupingGame,
   isLandmineGame,
+  isWordleRoomGame,
 } from '@/lib/game-types'
 import { wstAutoRoundCount } from '@/lib/who-said-this'
 import { parseLudoVariant } from '@/lib/ludo'
@@ -167,6 +168,7 @@ import { clampCrazyEightsGameDuration } from '@/lib/crazy-eights'
 import { clampUnoGameDuration, parseMultiPlayMode } from '@/lib/uno'
 import { clampBoardGameTurnTimer } from '@/lib/board-game-lobby-settings'
 import { clampWordHuntTimer } from '@/lib/word-hunt'
+import { clampWordleRoomCategory, clampWordleRoomWordCount, clampWordleRoomTimer } from '@/lib/wordle-room'
 import { clampSudokuGameDuration } from '@/lib/sudoku'
 import { parseCrosswordDifficulty, clampCrosswordGameDuration, CROSSWORD_DEFAULT_DURATION } from '@/lib/crossword'
 import { findCrosswordTheme } from '@/lib/crossword-puzzles'
@@ -442,6 +444,8 @@ export async function POST(req: NextRequest) {
     landmine_review: rawLandmineReview,
     landmine_review_seconds: rawLandmineReviewSeconds,
     checkers_nigeria_street_rules: rawCheckersNigeriaStreetRules,
+    wordle_room_category: rawWordleRoomCategory,
+    wordle_room_word_count: rawWordleRoomWordCount,
     allow_viewers: rawAllowViewers,
     allow_late_players: rawAllowLatePlayers,
     late_join_policy: rawLateJoinPolicy,
@@ -880,7 +884,16 @@ export async function POST(req: NextRequest) {
                                                                         lobbyLimits
                                                                       )
                                                                     )
-                                                                  : null
+                                                                  : isWordleRoomGame(game_type)
+                                                                    ? resolveMaxPlayers(
+                                                                        'wordle_room',
+                                                                        rawMaxPlayers,
+                                                                        lobbyDefaultMaxPlayers(
+                                                                          'wordle_room',
+                                                                          lobbyLimits
+                                                                        )
+                                                                      )
+                                                                    : null
   const isSecret = isSecretMessageGame(game_type)
   const lateJoinFields = gameSupportsViewerSetting(game_type)
     ? rawLateJoinPolicy
@@ -953,37 +966,39 @@ export async function POST(req: NextRequest) {
                     ? clampMonopolyTurnTimer(timer_seconds)
                     : isWordHuntGame(game_type)
                       ? clampWordHuntTimer(timer_seconds)
-                      : isChessGame(game_type)
-                        ? clampChessTimer(timer_seconds)
-                        : isCheckersGame(game_type)
-                          ? clampCheckersTimer(timer_seconds)
-                          : isDraughts10Game(game_type)
-                            ? clampDraughts10Timer(timer_seconds)
-                            : isAyoGame(game_type)
-                              ? clampAyoTimer(timer_seconds)
-                              : isMafiaGame(game_type)
-                                ? Number(timer_seconds) > 0
-                                  ? Number(timer_seconds)
-                                  : 60
-                                : isScrabbleGame(game_type)
-                                  ? clampScrabbleTimer(timer_seconds)
-                                  : isDescribeItGame(game_type)
-                                    ? clampDescribeItTurnSeconds(timer_seconds)
-                                    : isWordRushGame(game_type)
-                                      ? clampWordRushTurnSeconds(timer_seconds)
-                                      : isWhotGame(game_type)
-                                        ? clampBoardGameTurnTimer(timer_seconds, 'whot')
-                                        : isCrazyEightsGame(game_type)
-                                          ? clampBoardGameTurnTimer(timer_seconds, 'crazy_eights')
-                                          : isUnoGame(game_type)
-                                            ? clampBoardGameTurnTimer(timer_seconds, 'uno')
-                                            : isMahjongGame(game_type)
-                                              ? clampBoardGameTurnTimer(timer_seconds, 'mahjong')
-                                              : isMatchingPairsGame(game_type)
-                                                ? Math.max(0, Math.min(600, Math.round(Number(timer_seconds) || 0)))
-                                                : [15, 30, 60].includes(Number(timer_seconds))
-                                                  ? Number(timer_seconds)
-                                                  : 30,
+                      : isWordleRoomGame(game_type)
+                        ? clampWordleRoomTimer(timer_seconds)
+                        : isChessGame(game_type)
+                          ? clampChessTimer(timer_seconds)
+                          : isCheckersGame(game_type)
+                            ? clampCheckersTimer(timer_seconds)
+                            : isDraughts10Game(game_type)
+                              ? clampDraughts10Timer(timer_seconds)
+                              : isAyoGame(game_type)
+                                ? clampAyoTimer(timer_seconds)
+                                : isMafiaGame(game_type)
+                                  ? Number(timer_seconds) > 0
+                                    ? Number(timer_seconds)
+                                    : 60
+                                  : isScrabbleGame(game_type)
+                                    ? clampScrabbleTimer(timer_seconds)
+                                    : isDescribeItGame(game_type)
+                                      ? clampDescribeItTurnSeconds(timer_seconds)
+                                      : isWordRushGame(game_type)
+                                        ? clampWordRushTurnSeconds(timer_seconds)
+                                        : isWhotGame(game_type)
+                                          ? clampBoardGameTurnTimer(timer_seconds, 'whot')
+                                          : isCrazyEightsGame(game_type)
+                                            ? clampBoardGameTurnTimer(timer_seconds, 'crazy_eights')
+                                            : isUnoGame(game_type)
+                                              ? clampBoardGameTurnTimer(timer_seconds, 'uno')
+                                              : isMahjongGame(game_type)
+                                                ? clampBoardGameTurnTimer(timer_seconds, 'mahjong')
+                                                : isMatchingPairsGame(game_type)
+                                                  ? Math.max(0, Math.min(600, Math.round(Number(timer_seconds) || 0)))
+                                                  : [15, 30, 60].includes(Number(timer_seconds))
+                                                    ? Number(timer_seconds)
+                                                    : 30,
     ...(isCodewordsGame(game_type)
       ? {
           operative_timer_seconds: clampCodewordsTimer(
@@ -1051,6 +1066,12 @@ export async function POST(req: NextRequest) {
     ...(isCheckersNigeriaGame(game_type)
       ? {
           checkers_nigeria_street_rules: rawCheckersNigeriaStreetRules === true,
+        }
+      : {}),
+    ...(isWordleRoomGame(game_type)
+      ? {
+          wordle_room_category: clampWordleRoomCategory(rawWordleRoomCategory),
+          wordle_room_word_count: clampWordleRoomWordCount(rawWordleRoomWordCount),
         }
       : {}),
     ...(isQuickDrawGame(game_type)

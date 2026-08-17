@@ -191,6 +191,12 @@ export const createGameSchema = z.object({
     .int()
     .refine((val: number) => (PING_PONG_POINTS_OPTIONS as readonly number[]).includes(val))
     .optional(),
+  wordle_room_category: z.enum(['general_english', 'naija_slang']).optional(),
+  wordle_room_word_count: z.coerce
+    .number()
+    .int()
+    .refine((val: number) => [5, 10, 15, 20].includes(val))
+    .optional(),
   custom_slots: z
     .object({
       slots: z
@@ -429,6 +435,12 @@ export const boardGameLobbySettingsSchema = z.object({
     .number()
     .int()
     .refine((val: number) => (PING_PONG_POINTS_OPTIONS as readonly number[]).includes(val))
+    .optional(),
+  wordle_room_category: z.enum(['general_english', 'naija_slang']).optional(),
+  wordle_room_word_count: z.coerce
+    .number()
+    .int()
+    .refine((val: number) => [5, 10, 15, 20].includes(val))
     .optional(),
 })
 

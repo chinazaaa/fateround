@@ -1529,6 +1529,48 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
     },
   ],
 
+  wordle_room: [
+    {
+      title: 'Objective',
+      points: [
+        'Everyone races through the same fixed set of 5–20 words — all solved Wordle-style.',
+        'The player who solves the most words (fewest guesses, fastest time) wins.',
+      ],
+    },
+    {
+      title: 'Setup',
+      points: [
+        'The host picks a word category (General English or Naija Slang) and how many words the race covers (5, 10, 15 or 20).',
+        'The host can set a whole-game timer (2, 5, 10 or 15 minutes) or leave it untimed so the race runs until everyone finishes.',
+        'Everyone gets the exact same word sequence, in the same order.',
+      ],
+    },
+    {
+      title: 'How it works',
+      points: [
+        'Each word is solved like Wordle — type a guess and get colour feedback on every letter.',
+        'Solve a word to move on to the next one. Run out of guesses and the word counts as a miss and you advance anyway — nobody gets stuck.',
+        'You only see the word you are currently solving; nobody can read ahead in the sequence.',
+      ],
+    },
+    {
+      title: 'Scoring',
+      points: [
+        'Every solved word scores base points — fewer guesses means more points.',
+        'Solving a word on your first guess earns a +200 perfect bonus.',
+        'Unsolvable words score 0. There are no streaks — each word scores independently.',
+      ],
+    },
+    {
+      title: 'Game end',
+      points: [
+        'Untimed races end when every seated player finishes the sequence.',
+        'Timed races auto-submit when the clock hits zero: solved words keep their points, your current word is lost, and unreached words score nothing.',
+        'Standings rank by most words solved, then fewer total guesses, then faster total time.',
+      ],
+    },
+  ],
+
   snake_and_ladder: [
     {
       title: 'Objective',

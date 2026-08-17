@@ -22,6 +22,7 @@ import {
   GlobeIcon,
   Grid2X2XIcon,
   Grid3X3Icon,
+  GridViewIcon,
   HashIcon,
   HatIcon,
   HeartHandshakeIcon,
@@ -120,6 +121,7 @@ const GAME_ICONS: Record<GameType, IconSvgElement> = {
   landmine: BombIcon,
   ping_pong: TableTennisBatIcon,
   uno: CardExchange01Icon,
+  wordle_room: GridViewIcon,
 }
 
 export function gameIcon(type: GameType): IconSvgElement {
