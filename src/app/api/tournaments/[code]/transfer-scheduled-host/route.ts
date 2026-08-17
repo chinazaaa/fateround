@@ -9,18 +9,13 @@ import { notifyTournamentEvent } from '@/lib/tournament-push'
  *
  * Unlike the post-start transfer-host route (which nominates and waits for
  * the target to claim), this endpoint mints a fresh host_token immediately
- * and returns it. Only usable before the tournament starts. The plan calls
- * for TWO pushes:
- *   1. "You're now hosting" → the new host  (bypass quiet hours)
- *   2. "[old] handed the …" → other players (respects quiet hours;
- *      informational)
+ * and returns it. Only usable before the tournament starts. Fires TWO
+ * targeted pushes (see notifyTournamentEvent's per-player filter):
+ *   1. transfer_new_host → the new host only  ("You're now hosting")
+ *   2. transfer_notice   → everyone else      ("[old] handed the game")
  *
- * The tournament push table is per-tournament (not per-player), so we can't
- * cheaply target the new host vs the rest with different messages via that
- * table alone. Practical MVP: send ONE fan-out with the transfer_notice
- * copy naming both hosts. The new host recognises themselves in the copy.
- * (A follow-up can add per-player targeting once tournament pushes carry
- * a player_id column like game push does.)
+ * Targeting reads role_key on tournament_push_subscriptions (populated as
+ * `player:<id>` when a player subscribes with their resume token).
  */
 
 const schema = z.object({
@@ -88,10 +83,27 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const oldName = parsed.data.oldHostName ?? 'The host'
   const newName = parsed.data.newHostName ?? String(player.name ?? 'the new host')
   const title = tournament.title ? String(tournament.title) : 'your tournament'
-  void notifyTournamentEvent(tournamentId, 'transfer_notice', {
-    title: '📆 Tournament has a new host',
-    body: `${oldName} handed ${title} to ${newName}.`,
-  }).catch(() => {})
+  // Two targeted fan-outs. The new host gets the "you're now hosting" copy
+  // only; everyone else gets the informational "handed off" copy. Filtered
+  // via role_key on tournament_push_subscriptions.
+  void notifyTournamentEvent(
+    tournamentId,
+    'transfer_new_host',
+    {
+      title: '🏆 You’re now hosting',
+      body: `You inherited ${title}. Tap to open it.`,
+    },
+    { onlyPlayerIds: [parsed.data.newHostPlayerId] }
+  ).catch(() => {})
+  void notifyTournamentEvent(
+    tournamentId,
+    'transfer_notice',
+    {
+      title: '📆 Tournament has a new host',
+      body: `${oldName} handed ${title} to ${newName}.`,
+    },
+    { excludePlayerIds: [parsed.data.newHostPlayerId] }
+  ).catch(() => {})
 
   return NextResponse.json({ ok: true, hostToken: newHostToken })
 }

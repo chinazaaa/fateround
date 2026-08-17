@@ -26,6 +26,7 @@ import {
   MONOPOLY_JAIL_POSITION,
   MONOPOLY_STARTING_CASH,
   formatMonopolyMoney,
+  jailPositionForSize,
   mortgageValue,
   monopolyBoardForSize,
   spaceAt,
@@ -666,7 +667,7 @@ type LandingResolution = {
   pendingDebt?: MonopolyPendingDebt
 }
 
-function resolveSpaceLanding(
+export function resolveSpaceLanding(
   landed: MonopolySpace,
   ctx: {
     playerId: string
@@ -694,13 +695,14 @@ function resolveSpaceLanding(
   let pendingDebt: MonopolyPendingDebt | undefined
 
   if (landed.type === 'go_to_jail') {
+    const jailPos = jailPositionForSize(ctx.boardSize)
     // First-lap training wheels: same rule as "can't buy before passing PAYDAY"
     // and "no tax on the first lap". A player who hasn't crossed PAYDAY yet
     // lands on the jail square as "just visiting" instead of being incarcerated.
     if (!ctx.passedGoOnce) {
       return {
         cash,
-        position: MONOPOLY_JAIL_POSITION,
+        position: jailPos,
         inJail: false,
         jailTurns,
         getOutCards,
@@ -712,7 +714,7 @@ function resolveSpaceLanding(
     }
     return {
       cash,
-      position: MONOPOLY_JAIL_POSITION,
+      position: jailPos,
       inJail: true,
       jailTurns: 0,
       getOutCards,

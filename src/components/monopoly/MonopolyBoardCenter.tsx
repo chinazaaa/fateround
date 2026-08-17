@@ -241,7 +241,12 @@ export function MonopolyBoardCenter({
           <p className={`hidden sm:block text-[10px] ${palette.centerSubtleText} leading-snug`}>
             Currently on{' '}
             <span className={`font-bold ${palette.centerText}`}>
-              {themedSpaceName(spaceAt(Number(myState.position), boardSize).name, Number(myState.position), themeId)}
+              {themedSpaceName(
+                spaceAt(Number(myState.position), boardSize).name,
+                Number(myState.position),
+                themeId,
+                boardSize
+              )}
             </span>
           </p>
         </div>
