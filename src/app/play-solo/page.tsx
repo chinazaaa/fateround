@@ -1,5 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
+import { MarketingHeader } from '@/components/MarketingHeader'
+import { SiteFooter } from '@/components/SiteFooter'
 
 /**
  * Solo-play hub — a single index over every /play-solo/<game> surface.
@@ -91,37 +93,44 @@ export default function PlaySoloHubPage() {
   }
 
   return (
-    <main className="mx-auto max-w-3xl px-4 py-10">
+    <div className="fr-site flex min-h-dvh flex-col">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(itemListLd) }} />
-      <header className="mb-8">
-        <h1 className="text-2xl font-black" style={{ color: 'var(--text)' }}>
-          Play solo vs bot
-        </h1>
-        <p className="mt-2 text-sm" style={{ color: 'var(--text-muted)' }}>
-          Pick any game and practice against the computer. No room, no sign-up — your progress is saved on this device.
-        </p>
-      </header>
+      <MarketingHeader />
 
-      <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        {SOLO_GAMES.map((g) => (
-          <li key={g.href}>
-            <Link
-              href={g.href}
-              className="block rounded-2xl border p-4 transition hover:opacity-90"
-              style={{
-                borderColor: 'var(--border)',
-                backgroundColor: 'var(--surface-inset-bg)',
-                color: 'var(--text)',
-              }}
-            >
-              <h2 className="text-base font-bold">{g.title}</h2>
-              <p className="mt-1 text-xs" style={{ color: 'var(--text-muted)' }}>
-                {g.blurb}
-              </p>
-            </Link>
-          </li>
-        ))}
-      </ul>
-    </main>
+      <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-10">
+        <header className="mb-8">
+          <h1 className="text-2xl font-black" style={{ color: 'var(--text)' }}>
+            Play solo vs bot
+          </h1>
+          <p className="mt-2 text-sm" style={{ color: 'var(--text-muted)' }}>
+            Pick any game and practice against the computer. No room, no sign-up — your progress is saved on this
+            device.
+          </p>
+        </header>
+
+        <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {SOLO_GAMES.map((g) => (
+            <li key={g.href}>
+              <Link
+                href={g.href}
+                className="block rounded-2xl border p-4 transition hover:opacity-90"
+                style={{
+                  borderColor: 'var(--border)',
+                  backgroundColor: 'var(--surface-inset-bg)',
+                  color: 'var(--text)',
+                }}
+              >
+                <h2 className="text-base font-bold">{g.title}</h2>
+                <p className="mt-1 text-xs" style={{ color: 'var(--text-muted)' }}>
+                  {g.blurb}
+                </p>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </main>
+
+      <SiteFooter />
+    </div>
   )
 }

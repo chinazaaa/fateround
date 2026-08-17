@@ -2,6 +2,7 @@ import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { SITE_NAME } from '@/lib/seo'
 import { getMarketingPage } from '@/lib/marketing-landing'
+import { SOLO_PLAY_INDEX } from '@/lib/solo-play'
 
 type FooterLink = { href: string; label: string }
 
@@ -65,6 +66,13 @@ const ALTERNATIVE_SLUGS = [
   'whot-vs-uno',
 ]
 
+// Fed from SOLO_PLAY_INDEX so a new /play-solo/<slug> route automatically shows
+// up here, and always in the same order as the hub page.
+const SOLO_PLAY_LINKS: FooterLink[] = [
+  { href: '/play-solo', label: 'Solo hub' },
+  ...SOLO_PLAY_INDEX.map((g) => ({ href: `/play-solo/${g.slug}`, label: g.label })),
+]
+
 function marketingLinks(slugs: string[]): FooterLink[] {
   return slugs.flatMap((slug) => {
     const page = getMarketingPage(slug)
@@ -117,6 +125,7 @@ export function SiteFooter() {
             </div>
           </div>
           <FooterColumn title="FateRound" links={PRIMARY_LINKS} />
+          <FooterColumn title="Play solo vs bot" links={SOLO_PLAY_LINKS} />
           <FooterColumn title="Ways to play" links={marketingLinks(WAYS_TO_PLAY_SLUGS)} />
           <FooterColumn title="Free alternatives" links={marketingLinks(ALTERNATIVE_SLUGS)} />
         </div>

@@ -18,6 +18,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AyoGamePanel } from '@/components/ayo/AyoBoard'
 import { AYO_SOLO_BOT_ID, AYO_SOLO_HUMAN_ID, initAyoSolo, ayoSoloMove, type AyoSoloState } from '@/lib/ayo-solo'
 import { pickAyoBotMove, type AyoBotDifficulty } from '@/lib/ayo-bot'
+import { useAyoSowAnimation } from '@/hooks/useAyoSowAnimation'
+import { boardConfigFromSession } from '@/lib/ayo'
 import { logSoloPlayStarted } from '@/lib/solo-play'
 import { readSoloScoreboard, recordSoloOutcome, resetSoloScoreboard, type SoloScoreboard } from '@/lib/solo-scoreboard'
 import { SoloScoreboardRow } from '@/components/solo/SoloScoreboardRow'
@@ -75,6 +77,9 @@ export function SoloAyoClient() {
   stateRef.current = state
   const scoredRef = useRef(false)
   const finishRef = useRef<HTMLDivElement | null>(null)
+  // Sow animation — same hook the multiplayer view uses so the seed-by-seed
+  // count reads identically across surfaces.
+  const { animation: sowAnimation, playSowAnimation, clearAnimation } = useAyoSowAnimation()
 
   useEffect(() => {
     const persisted = loadPersistedState()
@@ -116,7 +121,9 @@ export function SoloAyoClient() {
   }, [])
 
   // Bot loop: whenever it's the bot's turn, pick and apply a move after a
-  // short delay so the play unfolds visibly instead of instantly.
+  // short delay so the play unfolds visibly instead of instantly. The sow
+  // animation fires in parallel with the state update — AyoGamePanel shows the
+  // animated pits during animating=true and lands on session.pits after.
   useEffect(() => {
     if (!state || state.outcome != null) return
     if (state.session.current_turn !== 'b') return
@@ -126,25 +133,33 @@ export function SoloAyoClient() {
       if (!now) return
       const pit = pickAyoBotMove(now, difficulty)
       if (pit == null) return
+      const config = boardConfigFromSession(now.session, now.variant)
+      void playSowAnimation(now.session.pits, pit, config)
       const next = ayoSoloMove(now, 'b', pit)
       if (!next.error) setState(next.state)
     }, BOT_THINK_MS)
     return () => clearTimeout(t)
-  }, [state, difficulty])
+  }, [state, difficulty, playSowAnimation])
 
-  const humanMove = useCallback((pit: number) => {
-    const now = stateRef.current
-    if (!now) return
-    const r = ayoSoloMove(now, 'a', pit)
-    if (!r.error) setState(r.state)
-  }, [])
+  const humanMove = useCallback(
+    (pit: number) => {
+      const now = stateRef.current
+      if (!now) return
+      const config = boardConfigFromSession(now.session, now.variant)
+      void playSowAnimation(now.session.pits, pit, config)
+      const r = ayoSoloMove(now, 'a', pit)
+      if (!r.error) setState(r.state)
+    },
+    [playSowAnimation]
+  )
 
   const restart = useCallback(() => {
     clearPersistedState()
+    clearAnimation()
     setState(initAyoSolo())
     scoredRef.current = false
     logSoloPlayStarted('ayo', difficulty)
-  }, [difficulty])
+  }, [difficulty, clearAnimation])
 
   const resetScore = useCallback(() => {
     setScoreboard(resetSoloScoreboard('ayo'))
@@ -207,6 +222,7 @@ export function SoloAyoClient() {
           isMyTurn={isMyTurn}
           variant={state.variant}
           onMove={isMyTurn ? humanMove : undefined}
+          sowAnimation={sowAnimation.animating ? sowAnimation : null}
         />
       </div>
 

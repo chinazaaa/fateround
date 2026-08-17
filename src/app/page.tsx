@@ -15,15 +15,15 @@ function HomeSeoContent() {
           <h2>What is FateRound?</h2>
           <p>
             FateRound is a web platform with 47+ free games for your squad. You can host quick party votes, play classic
-            board games like Monopoly and Whot, or tackle daily word puzzles together in your browser.
+            board games like Estate Kings and Whot, or tackle daily word puzzles together in your browser.
           </p>
         </div>
 
         <div className="blk">
           <h2>Who is it for?</h2>
           <p>
-            It is built for friend groups, Discord servers, game nights, and group chats. Whether you are playing
-            Monopoly with friends across the world or running a fast Smash Marry Kill round over a call, everyone joins
+            It is built for friend groups, Discord servers, game nights, and group chats. Whether you are playing Estate
+            Kings with friends across the world or running a fast Smash Marry Kill round over a call, everyone joins
             from their phone or laptop.
           </p>
         </div>

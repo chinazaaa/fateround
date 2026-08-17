@@ -1,5 +1,5 @@
 import type { ThemeId } from '@/types'
-import { MONOPOLY_BOARD, type MonopolySpaceType } from '@/lib/monopoly-board'
+import { MONOPOLY_BOARD, type MonopolySpaceType, type MonopolyBoardSize } from '@/lib/monopoly-board'
 
 // ---------------------------------------------------------------------------
 // Edition interface
@@ -16,12 +16,16 @@ export interface MonopolyThemeEdition {
   currencySymbol: string
   /** Currency word used in prose (e.g. 'pounds', 'doubloons'). */
   currencyWord: string
-  /** Themed display names keyed by space index (0–39). Missing = use canonical. */
+  /** Themed display names keyed by space index (0–39) for 40-space board. Missing = use canonical. */
   spaceNames: Partial<Record<number, string>>
+  /** Edition-specific names for all spaces on the 48-space board (0–47). */
+  expandedSpaceNames: Partial<Record<number, string>>
   /** Themed icons keyed by space *type*. Missing = use default icon. */
   typeIcons: Partial<Record<MonopolySpaceType, string>>
-  /** Themed two-line labels for the board grid, keyed by space index. */
+  /** Themed two-line labels for 40-space board grid, keyed by space index (0–39). */
   spaceLines: Partial<Record<number, string[]>>
+  /** Themed two-line labels for 48-space board grid, keyed by space index (0–47). */
+  expandedSpaceLines?: Partial<Record<number, string[]>>
   /** Edition subtitle shown in the board center (e.g. "London Edition", "Pirate Edition"). */
   editionSubtitle: string
   /** Short board title shown in the center (e.g. "MONOPOLY"). */
@@ -91,10 +95,6 @@ export interface MonopolyBoardPalette {
 // Board palettes
 // ---------------------------------------------------------------------------
 
-// FateRound-branded Classic (London Edition) palette: slate/neutral board with
-// rose accents and violet price highlights. Distinct from the well-known emerald
-// + gold-band commercial look; the property colour groups themselves stay standard
-// (functional).
 const CLASSIC_PALETTE: MonopolyBoardPalette = {
   boardBg: 'bg-gradient-to-br from-slate-800 via-slate-900 to-neutral-950',
   boardBorder: 'border-rose-500/70',
@@ -161,8 +161,108 @@ const CLASSIC_EDITION: MonopolyThemeEdition = {
   currencySymbol: '£',
   currencyWord: 'pounds',
   spaceNames: {}, // use canonical names
+  expandedSpaceNames: {
+    0: 'PAYDAY',
+    1: 'Thamesmead Walk',
+    2: 'Fate',
+    3: 'Croydon High',
+    4: 'Erith Road',
+    5: 'Barking Road',
+    6: 'Paddington',
+    7: 'Dagenham Ave',
+    8: 'Canary Wharf',
+    9: 'Esusu Fund',
+    10: 'Bermondsey',
+    11: 'Limehouse',
+    12: 'NICKED',
+    13: 'Walthamstow',
+    14: 'Market Shock',
+    15: 'Peckham Rye',
+    16: 'Deptford Way',
+    17: 'Hampstead',
+    18: 'Waterloo',
+    19: 'Islington',
+    20: 'Ilford Lane',
+    21: 'Water Board',
+    22: 'Romford Road',
+    23: 'Enfield Town',
+    24: 'LAY-BY',
+    25: 'Stratford Cross',
+    26: 'Community Grant',
+    27: 'Hackney Wick',
+    28: 'Brixton Hill',
+    29: 'Shoreditch',
+    30: 'Victoria',
+    31: 'Kings Cross',
+    32: 'Clapham Common',
+    33: 'Power Company',
+    34: 'Fulham Broadway',
+    35: 'Battersea Rise',
+    36: 'OFF TO NICKED',
+    37: 'Marylebone Lane',
+    38: 'Kitty',
+    39: 'Notting Hill',
+    40: 'South Kensington',
+    41: 'Chester Square',
+    42: 'London Bridge',
+    43: 'Winnington Road',
+    44: 'Kensington Mews',
+    45: 'Luxury Tax',
+    46: 'Regent Street',
+    47: 'Mayfair Mews',
+  },
   typeIcons: {}, // use default icons
   spaceLines: {}, // use default lines
+  expandedSpaceLines: {
+    0: ['PAYDAY', '→'],
+    1: ['Thamesmead', 'Walk'],
+    2: ['Fate', '?'],
+    3: ['Croydon', 'High'],
+    4: ['Erith', 'Road'],
+    5: ['Barking', 'Road'],
+    6: ['Paddington', 'Station'],
+    7: ['Dagenham', 'Ave'],
+    8: ['Canary', 'Wharf'],
+    9: ['Esusu', 'Fund'],
+    10: ['Bermondsey'],
+    11: ['Limehouse'],
+    12: ['NICKED', '🔒'],
+    13: ['Walthamstow'],
+    14: ['Market', 'Shock'],
+    15: ['Peckham', 'Rye'],
+    16: ['Deptford', 'Way'],
+    17: ['Hampstead'],
+    18: ['Waterloo', 'Station'],
+    19: ['Islington'],
+    20: ['Ilford', 'Lane'],
+    21: ['Water', 'Board'],
+    22: ['Romford', 'Road'],
+    23: ['Enfield', 'Town'],
+    24: ['LAY-BY', '🅿️'],
+    25: ['Stratford', 'Cross'],
+    26: ['Community', 'Grant'],
+    27: ['Hackney', 'Wick'],
+    28: ['Brixton', 'Hill'],
+    29: ['Shoreditch'],
+    30: ['Victoria', 'Station'],
+    31: ['Kings', 'Cross'],
+    32: ['Clapham', 'Common'],
+    33: ['Power', 'Company'],
+    34: ['Fulham', 'Broadway'],
+    35: ['Battersea', 'Rise'],
+    36: ['OFF TO', 'NICKED'],
+    37: ['Marylebone', 'Lane'],
+    38: ['Kitty'],
+    39: ['Notting', 'Hill'],
+    40: ['South', 'Kensington'],
+    41: ['Chester', 'Square'],
+    42: ['London', 'Bridge'],
+    43: ['Winnington', 'Road'],
+    44: ['Kensington', 'Mews'],
+    45: ['Luxury', 'Tax'],
+    46: ['Regent', 'Street'],
+    47: ['Mayfair', 'Mews'],
+  },
   editionSubtitle: 'London Edition',
   boardTitle: 'ESTATE KINGS',
   boardPalette: CLASSIC_PALETTE,
@@ -233,6 +333,56 @@ const PIRATE_EDITION: MonopolyThemeEdition = {
     38: 'Plunder Tax',
     39: 'Nassau',
   },
+  expandedSpaceNames: {
+    0: 'Port Royale',
+    1: 'Santo Domingo',
+    2: "Ship's Log",
+    3: 'San Juan',
+    4: 'Cartagena',
+    5: 'Tortuga',
+    6: "Q.A.'s Revenge",
+    7: 'Sainte-Marie',
+    8: 'Corsair Port',
+    9: "Crew's Bounty",
+    10: 'Skull Island',
+    11: 'Cutlass Cove',
+    12: "Hangman's Dock",
+    13: 'Havana',
+    14: 'Trade Winds',
+    15: 'Aruba',
+    16: 'Veracruz',
+    17: 'Emerald Shoal',
+    18: 'Whydah Galley',
+    19: 'Kraken Reef',
+    20: 'St. Lucia',
+    21: 'Spyglass Watch',
+    22: 'St. Kitts',
+    23: 'Kingston',
+    24: 'Safe Anchor',
+    25: 'Portobelo',
+    26: 'Fleet Bounty',
+    27: 'Tobago',
+    28: 'Ocracoke Inlet',
+    29: 'Black Gull',
+    30: 'Royal Fortune',
+    31: 'Dead Man Bay',
+    32: 'Grand Bahama',
+    33: "Ship's Compass",
+    34: 'Bermuda',
+    35: 'Barbados',
+    36: 'Marooned',
+    37: 'Cape Fear',
+    38: "Captain's Log",
+    39: 'Cayman Islands',
+    40: 'Grenada',
+    41: 'Grand Cayman',
+    42: 'Adventure Galley',
+    43: 'Nassau',
+    44: 'Buccaneer Bay',
+    45: 'Plunder Tax',
+    46: 'Royal Strait',
+    47: 'Golden Cove',
+  },
   spaceLines: {
     0: ['Port', 'Royale'],
     1: ['Tortuga'],
@@ -275,12 +425,58 @@ const PIRATE_EDITION: MonopolyThemeEdition = {
     38: ['Plunder', 'Tax'],
     39: ['Nassau'],
   },
+  expandedSpaceLines: {
+    0: ['Port', 'Royale'],
+    1: ['Santo', 'Domingo'],
+    2: ["Ship's", 'Log'],
+    3: ['San', 'Juan'],
+    4: ['Cartagena'],
+    5: ['Tortuga'],
+    6: ["Q.A.'s", 'Revenge'],
+    7: ['Sainte', 'Marie'],
+    8: ['Corsair', 'Port'],
+    9: ["Crew's", 'Bounty'],
+    10: ['Skull', 'Island'],
+    11: ['Cutlass', 'Cove'],
+    12: ["Hangman's", 'Dock'],
+    13: ['Havana'],
+    14: ['Trade', 'Winds'],
+    15: ['Aruba'],
+    16: ['Veracruz'],
+    17: ['Emerald', 'Shoal'],
+    18: ['Whydah', 'Galley'],
+    19: ['Kraken', 'Reef'],
+    20: ['St.', 'Lucia'],
+    21: ['Spyglass', 'Watch'],
+    22: ['St.', 'Kitts'],
+    23: ['Kingston'],
+    24: ['Safe', 'Anchor'],
+    25: ['Portobelo'],
+    26: ['Fleet', 'Bounty'],
+    27: ['Tobago'],
+    28: ['Ocracoke', 'Inlet'],
+    29: ['Black', 'Gull'],
+    30: ['Royal', 'Fortune'],
+    31: ['Dead Man', 'Bay'],
+    32: ['Grand', 'Bahama'],
+    33: ["Ship's", 'Compass'],
+    34: ['Bermuda'],
+    35: ['Barbados'],
+    36: ['Marooned'],
+    37: ['Cape', 'Fear'],
+    38: ["Captain's", 'Log'],
+    39: ['Cayman', 'Islands'],
+    40: ['Grenada'],
+    41: ['Grand', 'Cayman'],
+    42: ['Adventure', 'Galley'],
+    43: ['Nassau'],
+    44: ['Buccaneer', 'Bay'],
+    45: ['Plunder', 'Tax'],
+    46: ['Royal', 'Strait'],
+    47: ['Golden', 'Cove'],
+  },
   boardPalette: PIRATE_PALETTE,
 }
-
-// ---------------------------------------------------------------------------
-// Registry & lookup
-// ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
 // Arctic edition
@@ -337,58 +533,96 @@ const ARCTIC_EDITION: MonopolyThemeEdition = {
     utility: '⚡',
   },
   spaceNames: {
-    // Brown: Real Winter Trails & Passes
     1: 'Klondike Trail',
     3: 'Donner Pass',
-    // Light Blue: Real Northern Arctic Regions
     6: 'Svalbard',
     8: 'Lapland',
     9: 'Glacier Bay',
-    // Pink: Real Glaciers & Frozen Lakes
     11: 'Lake Louise',
     13: 'Columbia Icefield',
     14: 'Hubbard Glacier',
-    // Orange: Real World-Famous Ski Peaks
     16: 'Chamonix',
     18: 'Aspen',
     19: 'Whistler',
-    // Red: Real Arctic Routes & Mountains
     21: 'Yukon Trail',
     23: 'Alaska Highway',
     24: 'Denali',
-    // Yellow: Real Iconic Alpine Peaks
     26: 'Matterhorn',
     27: 'Mont Blanc',
     29: 'Everest Base',
-    // Green: Real Polar Giants
     31: 'Ross Ice Shelf',
     32: 'K2 Mountain',
     34: 'Mount Everest',
-    // Dark Blue: The Real Poles
     37: 'South Pole',
     39: 'North Pole',
-    // Real Polar & Alpine Stations
     5: 'McMurdo Station',
     15: 'Zermatt Station',
     25: 'Summit Station',
     35: 'Vostok Station',
-    // Utilities
     12: 'Northern Lights',
     28: 'Hot Springs',
-    // Community Chest & Chance
     2: 'Supply Cache',
     17: 'Supply Cache',
     33: 'Supply Cache',
     7: 'Polar Compass',
     22: 'Polar Compass',
     36: 'Polar Compass',
-    // Corners & Specials
     0: 'Base Camp',
     4: 'Ice Toll',
     10: 'Shelter Camp',
     20: 'Winter Feast',
     30: 'Snow Storm',
     38: 'Khumbu Icefall',
+  },
+  expandedSpaceNames: {
+    0: 'Base Camp',
+    1: 'Svalbard',
+    2: 'Polar Compass',
+    3: 'Lapland',
+    4: 'Glacier Bay',
+    5: 'Klondike Trail',
+    6: 'McMurdo Station',
+    7: 'Donner Pass',
+    8: 'Frost Harbour',
+    9: 'Supply Cache',
+    10: 'Frost Valley',
+    11: 'Arctic Circle',
+    12: 'Shelter Camp',
+    13: 'Chamonix',
+    14: 'Whiteout',
+    15: 'Aspen',
+    16: 'Whistler',
+    17: 'Icefall Pass',
+    18: 'Zermatt Station',
+    19: 'Polar Plateau',
+    20: 'Lake Louise',
+    21: 'Hot Springs',
+    22: 'Columbia Icefield',
+    23: 'Hubbard Glacier',
+    24: 'Winter Feast',
+    25: 'Yukon Trail',
+    26: 'Relief Cache',
+    27: 'Alaska Highway',
+    28: 'Denali',
+    29: 'Aurora Point',
+    30: 'Summit Station',
+    31: 'Glacier Peak',
+    32: 'Matterhorn',
+    33: 'Northern Lights',
+    34: 'Mont Blanc',
+    35: 'Everest Base',
+    36: 'Snow Storm',
+    37: 'Ross Ice Shelf',
+    38: 'Supply Cache',
+    39: 'K2 Mountain',
+    40: 'Mount Everest',
+    41: 'South Pole',
+    42: 'Vostok Station',
+    43: 'North Pole',
+    44: 'Nunavut Ridge',
+    45: 'Khumbu Icefall',
+    46: 'Greenland Shelf',
+    47: 'Arctic Coast',
   },
   spaceLines: {
     0: ['BASE', 'CAMP'],
@@ -431,6 +665,56 @@ const ARCTIC_EDITION: MonopolyThemeEdition = {
     37: ['SOUTH', 'POLE'],
     38: ['KHUMBU', 'ICEFALL'],
     39: ['NORTH', 'POLE'],
+  },
+  expandedSpaceLines: {
+    0: ['BASE', 'CAMP'],
+    1: ['SVALBARD'],
+    2: ['POLAR', 'COMPASS'],
+    3: ['LAPLAND'],
+    4: ['GLACIER', 'BAY'],
+    5: ['KLONDIKE', 'TRAIL'],
+    6: ['MCMURDO', 'STATION'],
+    7: ['DONNER', 'PASS'],
+    8: ['FROST', 'HARBOUR'],
+    9: ['SUPPLY', 'CACHE'],
+    10: ['FROST', 'VALLEY'],
+    11: ['ARCTIC', 'CIRCLE'],
+    12: ['SHELTER', 'CAMP'],
+    13: ['CHAMONIX'],
+    14: ['WHITEOUT'],
+    15: ['ASPEN'],
+    16: ['WHISTLER'],
+    17: ['ICEFALL', 'PASS'],
+    18: ['ZERMATT', 'STATION'],
+    19: ['POLAR', 'PLATEAU'],
+    20: ['LAKE', 'LOUISE'],
+    21: ['HOT', 'SPRINGS'],
+    22: ['COLUMBIA', 'ICEFIELD'],
+    23: ['HUBBARD', 'GLACIER'],
+    24: ['WINTER', 'FEAST'],
+    25: ['YUKON', 'TRAIL'],
+    26: ['RELIEF', 'CACHE'],
+    27: ['ALASKA', 'HIGHWAY'],
+    28: ['DENALI'],
+    29: ['AURORA', 'POINT'],
+    30: ['SUMMIT', 'STATION'],
+    31: ['GLACIER', 'PEAK'],
+    32: ['MATTERHORN'],
+    33: ['NORTHERN', 'LIGHTS'],
+    34: ['MONT', 'BLANC'],
+    35: ['EVEREST', 'BASE'],
+    36: ['SNOW', 'STORM'],
+    37: ['ROSS ICE', 'SHELF'],
+    38: ['SUPPLY', 'CACHE'],
+    39: ['K2', 'MOUNTAIN'],
+    40: ['MOUNT', 'EVEREST'],
+    41: ['SOUTH', 'POLE'],
+    42: ['VOSTOK', 'STATION'],
+    43: ['NORTH', 'POLE'],
+    44: ['NUNAVUT', 'RIDGE'],
+    45: ['KHUMBU', 'ICEFALL'],
+    46: ['GREENLAND', 'SHELF'],
+    47: ['ARCTIC', 'COAST'],
   },
   boardPalette: ARCTIC_PALETTE,
 }
@@ -491,7 +775,7 @@ const NAIJA_EDITION: MonopolyThemeEdition = {
     2: 'Esusu Fund',
     3: 'Sabon Gari',
     4: 'LGA Market Levy',
-    5: 'Iddo Railway Terminal',
+    5: 'Iddo Terminal',
     6: 'Ariaria Market',
     7: 'Trade Venture',
     8: 'Niger Bridge',
@@ -501,7 +785,7 @@ const NAIJA_EDITION: MonopolyThemeEdition = {
     12: 'NEPA / PHCN',
     13: 'Ogbete Market',
     14: 'Kurmi Market',
-    15: 'Abuja Metro Station',
+    15: 'Abuja Metro',
     16: 'Mile 12 Market',
     17: 'Market Guild',
     18: 'Millennium Park',
@@ -511,7 +795,7 @@ const NAIJA_EDITION: MonopolyThemeEdition = {
     22: 'Trade Venture',
     23: 'Omu Resort',
     24: 'Osogbo Grove',
-    25: 'Port Harcourt Terminus',
+    25: 'PH Terminus',
     26: 'Cocoa House',
     27: 'Aba Mills',
     28: 'Water Board',
@@ -521,11 +805,61 @@ const NAIJA_EDITION: MonopolyThemeEdition = {
     32: 'Ikogosi Resort',
     33: 'Esusu Fund',
     34: 'Ahmadu Bello Way',
-    35: 'Aba Bus Terminal',
+    35: 'Aba Terminal',
     36: 'Trade Venture',
     37: 'Wuse II',
     38: 'FIRS Luxury Tax',
     39: 'Eko Hotels',
+  },
+  expandedSpaceNames: {
+    0: 'Oshodi Bus Terminal',
+    1: 'Ariaria Market',
+    2: 'Trade Venture',
+    3: 'Niger Bridge',
+    4: 'Ogbunike Caves',
+    5: 'Oshodi Market',
+    6: 'Iddo Terminal',
+    7: 'Sabon Gari',
+    8: 'Apapa Wharf',
+    9: 'Esusu Fund',
+    10: 'Wuse Market',
+    11: 'Akowonjo',
+    12: 'Kirikiri',
+    13: 'Mile 12 Market',
+    14: 'Trade Venture',
+    15: 'Millennium Park',
+    16: 'Trans Ekulu',
+    17: 'Freedom Park',
+    18: 'Abuja Metro',
+    19: 'Jabi Lake',
+    20: 'Yankari Reserve',
+    21: 'Water Board',
+    22: 'Ogbete Market',
+    23: 'Kurmi Market',
+    24: 'Obalende Park',
+    25: 'Bodija Market',
+    26: 'Esusu Fund',
+    27: 'Omu Resort',
+    28: 'Osogbo Grove',
+    29: 'Marina Road',
+    30: 'PH Terminus',
+    31: 'Ikeja GRA',
+    32: 'Cocoa House',
+    33: 'NEPA / PHCN',
+    34: 'Aba Mills',
+    35: 'Tin Can Island',
+    36: 'Taskforce Arrest',
+    37: 'Allen Avenue',
+    38: 'Esusu Fund',
+    39: 'Ikogosi Resort',
+    40: 'Ahmadu Bello Way',
+    41: 'Wuse II',
+    42: 'Aba Terminal',
+    43: 'Eko Hotels',
+    44: 'Maitama',
+    45: 'FIRS Luxury Tax',
+    46: 'Victoria Island',
+    47: 'Banana Island',
   },
   spaceLines: {
     0: ['OSHODI BUS', 'TERMINAL'],
@@ -538,7 +872,7 @@ const NAIJA_EDITION: MonopolyThemeEdition = {
     7: ['TRADE', 'VENTURE'],
     8: ['NIGER', 'BRIDGE'],
     9: ['OGBUNIKE', 'CAVES'],
-    10: ['KIRIKIRI', 'PRISON'],
+    10: ['KIRIKIRI', '🔒'],
     11: ['YANKARI', 'RESERVE'],
     12: ['NEPA /', 'PHCN'],
     13: ['OGBETE', 'MARKET'],
@@ -565,14 +899,67 @@ const NAIJA_EDITION: MonopolyThemeEdition = {
     34: ['AHMADU', 'BELLO WAY'],
     35: ['ABA BUS', 'TERMINAL'],
     36: ['TRADE', 'VENTURE'],
-    37: ['WUSE', 'II'],
-    38: ['LUXURY', 'TAX'],
+    37: ['WUSE II'],
+    38: ['FIRS LUXURY', 'TAX'],
     39: ['EKO', 'HOTELS'],
+  },
+  expandedSpaceLines: {
+    0: ['OSHODI BUS', 'TERMINAL'],
+    1: ['ARIARIA', 'MARKET'],
+    2: ['TRADE', 'VENTURE'],
+    3: ['NIGER', 'BRIDGE'],
+    4: ['OGBUNIKE', 'CAVES'],
+    5: ['OSHODI', 'MARKET'],
+    6: ['IDDO', 'TERMINAL'],
+    7: ['SABON', 'GARI'],
+    8: ['APAPA', 'WHARF'],
+    9: ['ESUSU', 'FUND'],
+    10: ['WUSE', 'MARKET'],
+    11: ['AKOWONJO'],
+    12: ['KIRIKIRI', '🔒'],
+    13: ['MILE 12', 'MARKET'],
+    14: ['TRADE', 'VENTURE'],
+    15: ['MILLENNIUM', 'PARK'],
+    16: ['TRANS', 'EKULU'],
+    17: ['FREEDOM', 'PARK'],
+    18: ['ABUJA', 'METRO'],
+    19: ['JABI', 'LAKE'],
+    20: ['YANKARI', 'RESERVE'],
+    21: ['WATER', 'BOARD'],
+    22: ['OGBETE', 'MARKET'],
+    23: ['KURMI', 'MARKET'],
+    24: ['OBALENDE', 'PARK'],
+    25: ['BODIJA', 'MARKET'],
+    26: ['ESUSU', 'FUND'],
+    27: ['OMU', 'RESORT'],
+    28: ['OSOGBO', 'GROVE'],
+    29: ['MARINA', 'ROAD'],
+    30: ['PH', 'TERMINUS'],
+    31: ['IKEJA', 'GRA'],
+    32: ['COCOA', 'HOUSE'],
+    33: ['NEPA /', 'PHCN'],
+    34: ['ABA', 'MILLS'],
+    35: ['TIN CAN', 'ISLAND'],
+    36: ['TASKFORCE', 'ARREST'],
+    37: ['ALLEN', 'AVENUE'],
+    38: ['ESUSU', 'FUND'],
+    39: ['IKOGOSI', 'RESORT'],
+    40: ['AHMADU', 'BELLO WAY'],
+    41: ['WUSE II'],
+    42: ['ABA BUS', 'TERMINAL'],
+    43: ['EKO', 'HOTELS'],
+    44: ['MAITAMA'],
+    45: ['FIRS LUXURY', 'TAX'],
+    46: ['VICTORIA', 'ISLAND'],
+    47: ['BANANA', 'ISLAND'],
   },
   boardPalette: NAIJA_PALETTE,
 }
 
-/** All Monopoly theme editions, in picker display order. */
+// ---------------------------------------------------------------------------
+// Editions collection
+// ---------------------------------------------------------------------------
+
 export const MONOPOLY_EDITIONS: MonopolyThemeEdition[] = [
   CLASSIC_EDITION,
   PIRATE_EDITION,
@@ -595,8 +982,18 @@ export function getMonopolyEdition(themeId?: string | null): MonopolyThemeEditio
 // ---------------------------------------------------------------------------
 
 /** Get the themed display name for a space, falling back to canonical name. */
-export function themedSpaceName(canonicalName: string, spaceIndex: number, themeId?: string | null): string {
+export function themedSpaceName(
+  canonicalName: string,
+  spaceIndex: number,
+  themeId?: string | null,
+  boardSize: MonopolyBoardSize = 40
+): string {
   const edition = getMonopolyEdition(themeId)
+  if (boardSize === 48 || spaceIndex >= 40) {
+    return edition.expandedSpaceNames[spaceIndex] ?? canonicalName
+  }
+  const classicSpace = MONOPOLY_BOARD.find((space) => space.name === canonicalName)
+  if (classicSpace) return edition.spaceNames[classicSpace.index] ?? canonicalName
   return edition.spaceNames[spaceIndex] ?? canonicalName
 }
 
@@ -605,10 +1002,40 @@ export function themedSpaceLines(
   canonicalName: string,
   spaceType: MonopolySpaceType,
   spaceIndex: number,
-  themeId?: string | null
+  themeId?: string | null,
+  boardSize: MonopolyBoardSize = 40
 ): string[] | null {
   const edition = getMonopolyEdition(themeId)
-  return edition.spaceLines[spaceIndex] ?? null // null means "use default boardSpaceLines logic"
+  if (edition.themeId === 'default') {
+    if (boardSize === 48 && edition.expandedSpaceLines?.[spaceIndex]) {
+      return edition.expandedSpaceLines[spaceIndex]!
+    }
+    return null
+  }
+
+  if (boardSize === 48 || spaceIndex >= 40) {
+    if (edition.expandedSpaceLines?.[spaceIndex]) {
+      return edition.expandedSpaceLines[spaceIndex]!
+    }
+    const themedName = edition.expandedSpaceNames[spaceIndex] ?? canonicalName
+    const parts = themedName.split(' ')
+    if (parts.length <= 1) return [themedName.toUpperCase()]
+    if (parts.length === 2) return [parts[0]!.toUpperCase(), parts[1]!.toUpperCase()]
+    const mid = Math.ceil(parts.length / 2)
+    return [parts.slice(0, mid).join(' ').toUpperCase(), parts.slice(mid).join(' ').toUpperCase()]
+  }
+
+  const classicSpace = MONOPOLY_BOARD.find((space) => space.name === canonicalName)
+  const themedIndex = classicSpace?.index ?? spaceIndex
+  if (edition.spaceLines[themedIndex]) {
+    return edition.spaceLines[themedIndex]!
+  }
+  const themedName = edition.spaceNames[themedIndex] ?? canonicalName
+  const parts = themedName.split(' ')
+  if (parts.length <= 1) return [themedName.toUpperCase()]
+  if (parts.length === 2) return [parts[0]!.toUpperCase(), parts[1]!.toUpperCase()]
+  const mid = Math.ceil(parts.length / 2)
+  return [parts.slice(0, mid).join(' ').toUpperCase(), parts.slice(mid).join(' ').toUpperCase()]
 }
 
 /** Get the themed icon for a space type. */

@@ -150,6 +150,7 @@ export interface Game {
   monopoly_auction_timer_seconds?: number | null
   monopoly_no_rent_in_jail?: boolean | null
   monopoly_estate_dividend?: boolean | null
+  monopoly_board_size?: 40 | 48 | null
   quick_draw_variant?: QuickDrawVariant | null
   quick_draw_play_mode?: QuickDrawPlayMode | null
   quick_draw_num_teams?: number | null
@@ -192,6 +193,13 @@ export interface Player {
   eliminated_at?: string | null
   monopoly_token?: string | null
   participant_id?: string | null
+  /**
+   * Bots-in-room marker (Monopoly + Whot today). See
+   * docs/bots-in-room-plan.md — bots are real players rows so every route
+   * that touches players works on them without special-casing; this flag
+   * only drives UI (🤖 badge, add-bot button visibility, leaderboard gate).
+   */
+  is_bot?: boolean
 }
 
 export type TicTacToeMark = 'X' | 'O'
@@ -310,6 +318,7 @@ export interface ChessSession {
 }
 
 export type AyoSide = 'a' | 'b'
+export type AyoVariant = 'traditional' | 'oware'
 
 export interface AyoSession {
   id: string
@@ -1470,6 +1479,7 @@ export interface MonopolyLastCardEvent {
 export interface MonopolyBoard {
   id: string
   game_id: string
+  board_size?: 40 | 48
   turn_order: string[]
   current_turn_index: number
   phase: MonopolyPhase
