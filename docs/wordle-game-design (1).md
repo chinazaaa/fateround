@@ -78,7 +78,7 @@ No shared formula — each category has its own rule:
 
 **Naija Slang** — length 3–7 letters, attempts scale with length:
 
-```
+```text
 attempts = word_length + 1
 ```
 
@@ -105,8 +105,9 @@ still giving longer words extra headroom to compensate for being harder.
 - **Multiplayer Room** — the host picks the category when creating the room.
 
 **General English**
-- Fixed 5 letters (see §4), filtered from the existing server-side dictionary
-  (`word-rush-dictionary.ts`).
+- Fixed 5 letters (see §4), sourced from the curated static
+  `WORDLE_GENERAL_ENGLISH` bank (`data/daily-banks/wordle-general-english.ts`),
+  not a runtime filter of the Scrabble dictionary.
 - No hint text needed — word itself is the whole puzzle.
 
 **Naija Slang**
@@ -115,6 +116,7 @@ still giving longer words extra headroom to compensate for being harder.
   one language — pulling from a spread of published slang glossaries
   (Zikoko, Awajis/Slangloom, British Council's Pidgin guide, MonoEd) rather
   than one list, so no single language dominates the bank. Example spread:
+
   | Word | Length | Origin | Meaning |
   |---|---|---|---|
   | OMO | 3 | Yoruba/Pidgin | Wow / expression of surprise |
@@ -128,6 +130,7 @@ still giving longer words extra headroom to compensate for being harder.
   | WAHALA | 6 | Pidgin | Trouble, problem |
   | KOROPE | 6 | Yoruba | (slang, street usage) |
   | ODOGWU | 6 | Igbo | A big man, a legend |
+
   - Each entry needs a **hint field** shown after a loss, since slang
     familiarity varies by player. Content shape: `{ word, hint }`, matching
     the existing `themed-words.ts` bank shape.
@@ -148,7 +151,7 @@ still giving longer words extra headroom to compensate for being harder.
 
 **Base points** (scales with attempts used relative to that category's max):
 
-```
+```text
 base_points = round(1000 - (guesses_used - 1) * (600 / (max_attempts - 1)))
 ```
 

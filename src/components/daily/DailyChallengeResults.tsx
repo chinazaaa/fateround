@@ -237,7 +237,7 @@ export function DailyChallengeResults({
           )}
           {gameType === 'wordle' && (
             <p className="mt-1" style={{ fontSize: 'var(--text-2xs)', color: 'var(--text-faint)' }}>
-              Guess-1 win pays 1200, last-guess pays 400
+              Guess-1 win pays 1200 raw points, last-guess pays 400 raw points
             </p>
           )}
 

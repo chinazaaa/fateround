@@ -325,13 +325,14 @@ export function DailyWordlePlay({ challengeId, puzzle, timer: maxSeconds, onSubm
   for (let r = 0; r < maxAttempts; r++) {
     if (r < graded.length) {
       rows.push(renderGradedRow(r))
-    } else if (r === graded.length && gameOver && !won) {
-      rows.push(renderRevealRow())
     } else if (r === graded.length && !gameOver) {
       rows.push(renderCurrentRow())
     } else {
       rows.push(renderEmptyRow(r))
     }
+  }
+  if (gameOver && !won) {
+    rows.push(renderRevealRow())
   }
 
   return (

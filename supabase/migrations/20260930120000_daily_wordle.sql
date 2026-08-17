@@ -14,7 +14,7 @@ alter table daily_challenges
       'whot_puzzle', 'word_grouping', 'chess_mate', 'codenames_codeword',
       'ludo_puzzle', 'wordle'
     )
-  );
+  ) not valid;
 
 alter table personal_bests
   drop constraint personal_bests_valid_game_type,
@@ -25,4 +25,10 @@ alter table personal_bests
       'whot_puzzle', 'word_grouping', 'chess_mate', 'codenames_codeword',
       'ludo_puzzle', 'wordle'
     )
-  );
+  ) not valid;
+
+-- Validate the existing rows now that the new constraints exist. NOT VALID on the ADD keeps the
+-- migration from scanning/locking the tables while they're still being altered; VALIDATE CONSTRAINT
+-- then checks existing rows explicitly.
+alter table daily_challenges validate constraint daily_challenges_valid_game_type;
+alter table personal_bests validate constraint personal_bests_valid_game_type;
