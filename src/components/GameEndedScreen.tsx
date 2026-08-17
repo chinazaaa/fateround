@@ -9,13 +9,42 @@ import { Glyph } from '@/components/icons/Glyph'
 import type { Game, GameType } from '@/types'
 
 type Props = {
-  game: Pick<Game, 'title' | 'game_type'> | null
+  game: Pick<Game, 'title' | 'game_type' | 'result_reason'> | null
+}
+
+/**
+ * Copy is switched on `result_reason` so a lobby the idle-cron closed doesn't
+ * read like a game that finished normally — the user should know WHY the link
+ * is dead so they don't blame the app.
+ */
+function endedCopy(reason: string | null | undefined): { headline: string; body: string; icon: string } {
+  switch (reason) {
+    case 'idle_timeout':
+      return {
+        icon: '⌛',
+        headline: 'Lobby closed — nobody joined',
+        body: 'This lobby was open for 15 minutes with no activity, so we closed it. Start a new one when everyone’s ready.',
+      }
+    case 'host_cancelled':
+      return {
+        icon: '❌',
+        headline: 'The host cancelled this game',
+        body: 'The host called it off before the lobby opened. Start a new game to play again.',
+      }
+    default:
+      return {
+        icon: '🎬',
+        headline: 'This game has ended',
+        body: 'This link is no longer active. Start a new game to play again with friends.',
+      }
+  }
 }
 
 export function GameEndedScreen({ game }: Props) {
   useApplyGameTheme('default')
 
   const gameType = parseGameType(game?.game_type ?? 'smash_marry_kill')
+  const copy = endedCopy(game?.result_reason ?? null)
 
   return (
     <div className="page-wrap flex items-center justify-center px-4">
@@ -30,10 +59,9 @@ export function GameEndedScreen({ game }: Props) {
           <GameTypeBadge gameType={gameType as GameType} />
         </div>
         <div className="space-y-2">
-          <p className="text-lg font-bold text-body">This game has ended</p>
-          <p className="text-muted text-sm leading-relaxed">
-            This link is no longer active. Start a new game to play again with friends.
-          </p>
+          <p className="text-4xl">{copy.icon}</p>
+          <p className="text-lg font-bold text-body">{copy.headline}</p>
+          <p className="text-muted text-sm leading-relaxed">{copy.body}</p>
         </div>
         <CreateNewGameButton />
       </div>
