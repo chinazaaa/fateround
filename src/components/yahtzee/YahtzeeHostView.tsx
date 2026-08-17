@@ -30,7 +30,7 @@ import {
 import { appOrigin } from '@/lib/site'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import { useHostSeat } from '@/hooks/useHostSeat'
-import { setSoloAutoStart } from '@/lib/solo-auto-start'
+import { clearSoloAutoStart, setSoloAutoStart } from '@/lib/solo-auto-start'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
 import { useGameScores, useGameStats } from '@/components/roster/RosterDrawerContext'
 import type { Game, Player, YahtzeeCategory, YahtzeePlayerScore, YahtzeeSession } from '@/types'
@@ -278,6 +278,9 @@ export function YahtzeeHostView({ gameCode, hostToken }: { gameCode: string; hos
       success(sameSettings ? 'Ready up for the next game!' : 'Back to the lobby')
       await load()
     } catch (err) {
+      // Don't leave a solo-replay flag armed for a reset that never landed —
+      // otherwise a later Return-to-lobby would find it and unexpectedly start.
+      clearSoloAutoStart(gameCode)
       toastError(err instanceof Error ? err.message : 'Failed to reset')
     } finally {
       setPlayingAgain(false)

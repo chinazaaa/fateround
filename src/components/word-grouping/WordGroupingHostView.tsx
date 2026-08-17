@@ -16,7 +16,7 @@ import { WordGroupingLobbySettings } from './WordGroupingLobbySettings'
 import { TransferHostControl } from '@/components/TransferHostControl'
 import { GameInfoChips } from '@/components/game-lobby/GameInfoChips'
 import { useHostSeat } from '@/hooks/useHostSeat'
-import { setSoloAutoStart } from '@/lib/solo-auto-start'
+import { clearSoloAutoStart, setSoloAutoStart } from '@/lib/solo-auto-start'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import { useGameRosterPoll } from '@/hooks/useGameRosterPoll'
@@ -355,12 +355,19 @@ export function WordGroupingHostView({ gameCode, hostToken }: { gameCode: string
         body: JSON.stringify({ hostToken, hostPlayerId: hostPlayerId ?? undefined, same_settings: sameSettings }),
       })
       if (!res.ok) {
+        // Don't leave a solo-replay flag armed for a reset that never landed —
+        // otherwise a later Return-to-lobby would find it and unexpectedly start.
+        clearSoloAutoStart(gameCode)
         const d = await res.json().catch(() => ({}))
         toastError(d.error || 'Failed to reset')
         return
       }
       if (!sameSettings) setHostJoinName('')
       await load()
+    } catch (err) {
+      // See the !res.ok branch above — same rationale for clearing the flag.
+      clearSoloAutoStart(gameCode)
+      toastError(err instanceof Error ? err.message : 'Failed to reset')
     } finally {
       setPlayingAgain(false)
     }
