@@ -74,6 +74,7 @@ export default function NotificationsScreen() {
   const [snapshot, setSnapshot] = useState<NotificationsSnapshot | null>(null)
   const [loading, setLoading] = useState(true)
   const [pendingType, setPendingType] = useState<string | null>(null)
+  const [search, setSearch] = useState('')
 
   const load = useCallback(async (token: string | null) => {
     if (!token) {
@@ -253,39 +254,84 @@ export default function NotificationsScreen() {
           </Text>
         </SurfaceCard>
 
-        <SurfaceCard padding={0} gap={0}>
-          {GAME_TYPES.map((gameType, i) => {
-            const meta = gameTypeMeta(gameType as GameType)
-            const isOn = subscribed.has(gameType)
-            const count = counts[gameType] ?? 0
-            return (
-              <ListRow
-                key={gameType}
-                divider={i < GAME_TYPES.length - 1}
-                left={
-                  <View style={styles.emojiBadge}>
-                    <Text style={styles.emojiText}>{meta.emoji}</Text>
-                  </View>
-                }
-                title={gameLabel(gameType as GameType)}
-                subtitle={count > 0 ? `${count} game${count === 1 ? '' : 's'} today` : 'No games today'}
-                right={
-                  pendingType === gameType ? (
-                    <ActivityIndicator color={theme.primary} />
-                  ) : (
-                    <Switch
-                      value={isOn}
-                      onValueChange={(next) => void onToggleGame(gameType, next)}
-                      trackColor={{ false: theme.border, true: theme.primary }}
-                    />
-                  )
-                }
-              />
-            )
-          })}
-        </SurfaceCard>
+        <TextInput
+          style={styles.searchInput}
+          value={search}
+          onChangeText={setSearch}
+          placeholder="Search games…"
+          placeholderTextColor={theme.textFaint}
+          autoCorrect={false}
+          returnKeyType="search"
+        />
+
+        <FilteredGameList
+          search={search}
+          subscribed={subscribed}
+          counts={counts}
+          pendingType={pendingType}
+          onToggleGame={onToggleGame}
+        />
       </KeyboardFormScreen>
     </SafeAreaView>
+  )
+}
+
+function FilteredGameList({
+  search,
+  subscribed,
+  counts,
+  pendingType,
+  onToggleGame,
+}: {
+  search: string
+  subscribed: Set<string>
+  counts: Record<string, number>
+  pendingType: string | null
+  onToggleGame: (gameType: string, next: boolean) => void
+}) {
+  const theme = useTheme()
+  const styles = useThemedStyles(makeStyles)
+  const q = search.trim().toLowerCase()
+  const filtered = q ? GAME_TYPES.filter((gt) => gameLabel(gt).toLowerCase().includes(q)) : GAME_TYPES
+  if (filtered.length === 0) {
+    return (
+      <SurfaceCard>
+        <Text style={styles.hint}>No games match “{search}”.</Text>
+      </SurfaceCard>
+    )
+  }
+  return (
+    <SurfaceCard padding={0} gap={0}>
+      {filtered.map((gameType, i) => {
+        const meta = gameTypeMeta(gameType as GameType)
+        const isOn = subscribed.has(gameType)
+        const count = counts[gameType] ?? 0
+        return (
+          <ListRow
+            key={gameType}
+            divider={i < filtered.length - 1}
+            left={
+              <View style={styles.emojiBadge}>
+                <Text style={styles.emojiText}>{meta.emoji}</Text>
+              </View>
+            }
+            title={gameLabel(gameType as GameType)}
+            subtitle={count > 0 ? `${count} game${count === 1 ? '' : 's'} today` : 'No games today'}
+            right={
+              pendingType === gameType ? (
+                <ActivityIndicator color={theme.primary} />
+              ) : (
+                <Switch
+                  value={isOn}
+                  onValueChange={(next) => void onToggleGame(gameType, next)}
+                  trackColor={{ false: theme.border, true: theme.primary }}
+                />
+              )
+            }
+          />
+        )
+      })}
+    </SurfaceCard>
   )
 }
 
@@ -334,6 +380,17 @@ const makeStyles = (theme: Theme) =>
       textAlign: 'center',
       paddingVertical: 10,
     },
+    searchInput: {
+      backgroundColor: theme.surface,
+      borderColor: theme.border,
+      borderWidth: 1,
+      borderRadius: theme.radius.md,
+      color: theme.text,
+      fontSize: 16,
+      paddingVertical: 10,
+      paddingHorizontal: 14,
+    },
+    emptySearch: { color: theme.textMuted, fontSize: theme.type.body.size, padding: theme.space.md },
     emojiBadge: {
       width: 40,
       height: 40,

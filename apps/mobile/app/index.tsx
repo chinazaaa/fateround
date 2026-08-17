@@ -6,6 +6,7 @@ import { normalizeGameCode } from '@fateround/shared'
 import { FateRoundLogo } from '@/components/FateRoundLogo'
 import { BrowseGamesList } from '@/components/browse/BrowseGamesList'
 import { SubscribeHomeBanner } from '@/components/notifications/SubscribeHomeBanner'
+import { YourUpcomingGamesStrip } from '@/components/notifications/YourUpcomingGamesStrip'
 import { AmbientBackground } from '@/components/ui/AmbientBackground'
 import { AppButton } from '@/components/ui/AppButton'
 import { KeyboardFormScreen } from '@/components/ui/KeyboardFormScreen'
@@ -128,6 +129,8 @@ export default function HomeScreen() {
         </View>
 
         <SubscribeHomeBanner />
+
+        <YourUpcomingGamesStrip />
 
         <BrowseGamesList previewLimit={5} onSeeAll={() => router.push('/browse' as never)} />
 

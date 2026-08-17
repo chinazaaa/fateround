@@ -4,6 +4,7 @@ import type { GamePlayerLimitsMap } from '@fateround/shared/lobby-limits'
 import type { CreateWizardState } from '@/lib/create-settings'
 import { supportsMaxPlayersSetting } from '@/lib/create-settings'
 import { LateJoinPolicyPicker } from '@/components/create/LateJoinPolicyPicker'
+import { ScheduleForLaterField } from '@/components/create/ScheduleForLaterField'
 import { MaxPlayersPicker } from '@/components/create/MaxPlayersPicker'
 import { SegmentedControl } from '@/components/create/SegmentedControl'
 import { ThemePicker } from '@/components/create/ThemePicker'
@@ -46,6 +47,11 @@ export function UniversalLobbyFields({ state, limits, onChange }: Props) {
           {showMaxOneHint ? (
             <Text style={styles.hintWarn}>Bump the max players above 1 so other people can join.</Text>
           ) : null}
+          <ScheduleForLaterField
+            isPublic={state.isPublic}
+            scheduledAt={state.scheduledAt}
+            onChange={(scheduledAt) => onChange({ scheduledAt })}
+          />
         </View>
       </SurfaceCard>
 

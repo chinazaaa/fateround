@@ -85,6 +85,10 @@ export const createGameSchema = z.object({
   participant_filter: participantFilterEnum.optional(),
   gender_based: z.boolean().optional(),
   isPublic: z.boolean().optional(),
+  // Discovery Phase C — "Schedule for later". ISO timestamp; must be in the
+  // future. Only accepted when isPublic=true (a private scheduled game has no
+  // RSVP audience — it'd be a dead row). The route rejects invalid pairs.
+  scheduled_at: z.string().datetime().optional(),
   max_players: z.coerce.number().int().min(1).max(100).optional(),
   monopoly_board_size: z.coerce
     .number()
