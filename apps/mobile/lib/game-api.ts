@@ -868,28 +868,34 @@ export function postCodewordsExpireTurn(gameId: string) {
  * hands the real key only to the host, a spymaster, or anyone once the game has finished, and
  * masks it for everyone else. POST so the token travels in the body, not the URL.
  *
- * Returns null when there is no board yet or on any transport failure — callers treat that the
- * same way they treated a missing row before. Mirrors web's `fetchCodewordsBoard`.
+ * A missing board and a FAILED fetch are different answers and must never collapse into one
+ * (review on PR #787): `{ ok: true, board: null }` means the server says there is no board row
+ * yet, while `{ ok: false }` means we could not find out (429, 5xx, offline). A caller that
+ * treats the second as "no board" blanks a live grid on one dropped packet — the recurring
+ * "failed read rendered as game state" bug. Callers must keep the board they already hold on
+ * `ok: false` and retry.
+ *
+ * No `hostToken`: mobile has no Codewords host board view (the host plays through this same
+ * player view and is entitled to the key only via their own spymaster resume token, exactly as
+ * on web's player view). Add the parameter back with the call site that needs it.
  */
-export async function postCodewordsBoard(
-  gameCode: string,
-  auth?: { resumeToken?: string | null; hostToken?: string | null }
-): Promise<CodewordsBoard | null> {
+export type CodewordsBoardFetch = { ok: true; board: CodewordsBoard | null } | { ok: false; board: null }
+
+export async function postCodewordsBoard(gameCode: string, resumeToken?: string | null): Promise<CodewordsBoardFetch> {
   try {
     const res = await fetch(apiUrl('/api/codewords/board'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         gameCode: gameCode.toUpperCase(),
-        hostToken: auth?.hostToken ?? undefined,
-        resumeToken: auth?.resumeToken ?? undefined,
+        resumeToken: resumeToken ?? undefined,
       }),
     })
-    if (!res.ok) return null
+    if (!res.ok) return { ok: false, board: null }
     const data = (await res.json()) as { board?: CodewordsBoard | null }
-    return data.board ?? null
+    return { ok: true, board: data.board ?? null }
   } catch {
-    return null
+    return { ok: false, board: null }
   }
 }
 

@@ -50,12 +50,77 @@ export function codewordsRandomizeTeams(game: Pick<Game, 'codewords_randomize_te
   return game.codewords_randomize_teams === true
 }
 
-export function countTeamCells(key: CodewordsCellType[], team: CodewordsTeam): number {
+/**
+ * How many cells a team owns.
+ *
+ * Only meaningful on an UNMASKED key. An operative's key is masked (null at every unrevealed
+ * index), so counting it returns "cells this team has already revealed" — which, paired with
+ * {@link countRevealedTeamCells}, renders as "both teams have found all their words". Use
+ * `board.key_totals?.[team] ?? countTeamCells(board.key, team)` — see teamCellTotal below.
+ */
+export function countTeamCells(key: (CodewordsCellType | null)[], team: CodewordsTeam): number {
   return key.filter((cell) => cell === team).length
 }
 
-export function countRevealedTeamCells(key: CodewordsCellType[], revealed: number[], team: CodewordsTeam): number {
+export function countRevealedTeamCells(
+  key: (CodewordsCellType | null)[],
+  revealed: number[],
+  team: CodewordsTeam
+): number {
   return revealed.filter((index) => key[index] === team).length
+}
+
+/**
+ * A team's total cell count that is correct for masked and unmasked keys alike: prefer the
+ * server-sent `key_totals` (see the type doc) and only fall back to counting when it is absent
+ * (a board that came from somewhere other than /api/codewords/board).
+ */
+export function teamCellTotal(
+  board: { key: (CodewordsCellType | null)[]; key_totals?: Partial<Record<CodewordsCellType, number>> },
+  team: CodewordsTeam
+): number {
+  return board.key_totals?.[team] ?? countTeamCells(board.key, team)
+}
+
+/**
+ * True when this board's key is redacted — i.e. some unrevealed cell has no colour, which is
+ * what /api/codewords/board returns to anyone not entitled to the key.
+ *
+ * A spymaster holding a masked board means the fetch that produced it did not carry their
+ * resume token (they loaded before their session reconciled, or they were just promoted); the
+ * caller should re-fetch rather than show them an operative's grid.
+ */
+export function codewordsKeyIsMasked(board: {
+  key: (CodewordsCellType | null)[]
+  revealed_indices: number[]
+}): boolean {
+  const revealed = new Set(board.revealed_indices ?? [])
+  return board.key.some((cell, index) => cell == null && !revealed.has(index))
+}
+
+/**
+ * Fold a realtime `codewords_boards` payload into the board we already hold.
+ *
+ * Anon realtime payloads exclude the `key` column since migration 20260803170000 (the role
+ * can't select it), so applying the payload verbatim would wipe the key a spymaster fetched
+ * through /api/codewords/board and blank their grid mid-game. The key never changes for a given
+ * board row, so carrying the known one forward is correct — and when the board row itself is
+ * replaced (a new round), the id differs and the caller re-fetches instead.
+ *
+ * Mirrors web's `mergeCodewordsBoardUpdate` in src/lib/codewords.ts.
+ */
+export function mergeCodewordsBoardUpdate(
+  prev: CodewordsBoard | null,
+  incoming: CodewordsBoard | null
+): CodewordsBoard | null {
+  if (!incoming) return null
+  if (!prev || prev.id !== incoming.id) return incoming
+  const hasKey = Array.isArray(incoming.key) && incoming.key.some((cell) => cell != null)
+  return {
+    ...incoming,
+    key: hasKey ? incoming.key : prev.key,
+    key_totals: incoming.key_totals ?? prev.key_totals,
+  }
 }
 
 export function guessAttributionMap(
@@ -100,8 +165,11 @@ export function mergeCodewordsGuesses(
   return Array.from(byId.values()).sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
 }
 
-export function cellBackground(type: CodewordsCellType, revealed: boolean, showKey: boolean): string {
+export function cellBackground(type: CodewordsCellType | null, revealed: boolean, showKey: boolean): string {
   if (!revealed && !showKey) return '#c9b896'
+  // Masked cell (operative's key, or a spymaster board fetched before their token resolved):
+  // we don't know the colour, so render it as unrevealed rather than guessing one.
+  if (type == null) return '#c9b896'
   switch (type) {
     case 'red':
       return revealed ? '#fca5a5' : '#fecaca'
@@ -120,7 +188,7 @@ export function cellBackground(type: CodewordsCellType, revealed: boolean, showK
  * exposed assassin, whose background is dark grey, so its label needs light text
  * to stay legible (otherwise the bomb word is black-on-black on the reveal).
  */
-export function cellTextColor(type: CodewordsCellType, revealed: boolean, showKey: boolean): string {
+export function cellTextColor(type: CodewordsCellType | null, revealed: boolean, showKey: boolean): string {
   if ((revealed || showKey) && type === 'assassin') return '#f4f4f5'
   return '#171717'
 }
