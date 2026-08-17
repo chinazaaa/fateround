@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
 import { useDailyChallengeTimer } from '@/hooks/useDailyChallengeTimer'
-import { getOrCreateStartedAt, loadDailyAnswers, saveDailyAnswers, clearDailyProgress } from '@/lib/daily-progress'
+import { getOrCreateStartedAt, loadDailyAnswers, saveDailyAnswers } from '@/lib/daily-progress'
 import { gradeWordleGuess, wordleKeyBestStates, type WordleLetterState } from '@/lib/daily-wordle'
 
 interface DailyWordlePlayProps {
@@ -183,9 +183,8 @@ export function DailyWordlePlay({ challengeId, puzzle, timer: maxSeconds, onSubm
     if (submitRef.current) return
     submitRef.current = true
     setSubmitted(true)
-    clearDailyProgress(challengeId)
     onSubmit({ timeSeconds: elapsed, submission: { guesses } })
-  }, [guesses, elapsed, onSubmit, challengeId])
+  }, [guesses, elapsed, onSubmit])
 
   // Win/loss reveal delay, then auto-submit. The server re-grades `submission.guesses`, so a player
   // who closes the tab mid-reveal and reloads is handled too (gameOver restores from saved progress).
