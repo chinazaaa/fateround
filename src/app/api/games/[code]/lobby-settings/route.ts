@@ -69,6 +69,7 @@ import {
 } from '@/lib/game-limits'
 import { clampPingPongPoints } from '@/lib/ping-pong'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { scheduleNewPublicGameFanout } from '@/lib/notification-subscriptions'
 
 const supabase = getSupabaseAnon()
 
@@ -783,6 +784,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   if (error)
     return NextResponse.json({ error: internalErrorMessage('games/code/lobby-settings', error) }, { status: 500 })
+
+  // Discovery Phase B — fan out to per-game-type subscribers on the false→true
+  // transition (same rule as PATCH /api/games/[code]; the two paths flip the
+  // same flag so both need to fire). Rate limit + quiet hours per subscriber.
+  if (is_public === true && game.is_public !== true) {
+    scheduleNewPublicGameFanout(gameCode, String(game.game_type ?? ''), String(game.title ?? ''))
+  }
 
   if (quickDrawLobby && quick_draw_num_teams !== undefined) {
     const { error: cleanupError } = await getSupabaseAdmin()

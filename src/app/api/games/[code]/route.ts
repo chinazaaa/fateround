@@ -58,6 +58,7 @@ import { gameSupportsViewerSetting, lateJoinPolicyToFields, gameAllowsLatePlayer
 import { clampPanRounds } from '@/lib/pick-a-number'
 import { clampPingPongPoints } from '@/lib/ping-pong'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { scheduleNewPublicGameFanout } from '@/lib/notification-subscriptions'
 
 const supabase = getSupabaseAnon()
 
@@ -131,6 +132,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
       }
     }
     updatePayload.is_public = rawIsPublic
+    // Discovery Phase B — false → true transition fans out to per-game-type
+    // subscribers. Fire only on the transition (not on redundant true→true
+    // writes) so a host toggling settings back and forth doesn't rate-limit
+    // the whole fleet. Rate limit is a secondary guard.
+    if (rawIsPublic === true && auth.game?.is_public !== true) {
+      scheduleNewPublicGameFanout(auth.id!, String(auth.game?.game_type ?? ''), String(auth.game?.title ?? ''))
+    }
   }
 
   // T-13min "Keep open" tap — bump activity + stamp the warning column so the

@@ -45,6 +45,7 @@ function ThemedStack() {
         <Stack.Screen name="play-solo/crazy-eights" options={{ title: 'Crazy Eights — solo' }} />
         <Stack.Screen name="community" options={{ title: 'Community' }} />
         <Stack.Screen name="browse" options={{ title: 'Browse' }} />
+        <Stack.Screen name="notifications" options={{ title: 'Notifications' }} />
       </Stack>
     </>
   )
