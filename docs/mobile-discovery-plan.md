@@ -404,6 +404,48 @@ ghost players. The tournament pattern (RSVP → open → confirm-ready
       `waiting` (i.e. past `scheduled_at`); at that point the
       host is running an active lobby and reschedule stops making
       sense.
+- **Host cancel (before start time).** From the same host lobby
+  settings sheet, a **Cancel game** action (styled destructive)
+  ends the scheduled game before it opens.
+    - Sets `status = 'finished'`, `result_reason =
+      'host_cancelled'`.
+    - Fires a "cancelled" push to every RSVPer: single fan-out,
+      **NOT throttled and NOT quiet-hours gated** — this is one
+      of the few pings important enough to bypass quiet hours
+      (same rule as reschedule). Copy: "❌ Your Monopoly game
+      was cancelled by the host."
+    - Removes the game from every RSVPer's home "Your upcoming
+      games" strip on their next focus refresh.
+    - Confirm dialog first: "Cancel this scheduled game? N
+      RSVPer(s) will be notified." Default focus on Cancel; the
+      Cancel action itself requires an explicit tap.
+    - Available at any time BEFORE `scheduled_at`. Once the game
+      transitions to `waiting`, the existing per-game "End game"
+      flow takes over (this cancel is a scheduled-game-only path).
+- **Host transfer (before start time).** From the same settings
+  sheet, a **Transfer host** action reassigns the game to another
+  RSVPer so the original host can bow out without cancelling.
+    - Available only while `status = 'scheduled'`. Once the game
+      is `waiting`, the existing in-lobby host-transfer flow
+      takes over (this scheduled-game transfer is separate but
+      writes to the same `games.host_token` / `games.host_id`
+      columns that flow uses).
+    - Picker lists every current RSVPer by display name; original
+      host taps one and confirms.
+    - Fires TWO pushes:
+        1. To the NEW host: "🎲 You're now hosting the Monopoly
+           game scheduled for Friday, 8:00 PM." Bypass quiet
+           hours (this is now their responsibility; missing it
+           strands the game).
+        2. To all OTHER RSVPers: "📆 [Old host] handed the
+           Monopoly game to [New host]." Standard rules, respect
+           quiet hours (informational only).
+    - Original host's RSVP row remains (they're still an
+      RSVPer; they've just handed off the host role). They can
+      un-RSVP separately if they want out entirely.
+    - Note: the new host inherits everything Public / Scheduled
+      hosts can do — Reschedule, Cancel, further Transfer,
+      Start once the game opens.
 - **No early Start on scheduled games — Reschedule instead.**
   A host who wants to open a Friday game on Monday goes through
   Reschedule, not Start. The Start button on a `scheduled` game
@@ -495,6 +537,20 @@ users don't use.
   on mobile AND on web (PWA-installed iOS + Android + desktop).
 - **Phase C:** end-to-end scheduled game — I open one, three of us
   RSVP, everyone gets the 15-minute reminder, the game opens.
+
+## Related work — tournaments (out of scope, worth carrying)
+
+Tournaments (`src/app/tournament/…`, `tournaments` table) already
+carry a `scheduled_at` column and have the SAME early-start
+problem this plan just solved for games: a host who registered
+Friday 8pm players could accidentally start the bracket on
+Monday. The Phase C fix (block Start on scheduled → force
+Reschedule with Now / +5min / +15min presets, single
+"rescheduled" push, quiet-hours bypass) applies verbatim to the
+tournament host flow. Not in scope for this plan (this doc is
+scoped to discovery + scheduled *games*, not brackets), but worth
+a separate small PR under the tournaments feature once these
+patterns ship on games.
 
 ## When to re-scope
 
