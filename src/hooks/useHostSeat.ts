@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { consumeHostPlayIntent } from '@/lib/host-play-intent'
 import { getRememberedName } from '@/lib/identity-local'
+import { clearSoloAutoStart, hasSoloAutoStart } from '@/lib/solo-auto-start'
 import { clearPlayerSession, getPlayerSession, setPlayerSession } from '@/lib/utils'
 import { useHostPlayerReconciliation } from '@/hooks/useHostPlayerReconciliation'
 
@@ -501,6 +502,37 @@ export function useHostSeat(options: UseHostSeatOptions): UseHostSeatResult {
     lastSyncedModeRef.current = rowMode
     applyMode(rowMode)
   }, [players, hostPlayerId, gameCode, gameStatus, applyMode])
+
+  // Solo auto-start: honor the create-screen "Play solo" flag by POSTing /start
+  // as soon as the host is seated in a still-waiting game, so a solo host skips
+  // the lobby entirely. One-shot per game (the flag is cleared on fire, and a
+  // ref backstop guards against a double-fire before the reload lands).
+  const soloStartFiredRef = useRef(false)
+  useEffect(() => {
+    if (soloStartFiredRef.current) return
+    if (!hostToken || !hostPlayerId) return
+    if (gameStatus !== 'waiting') return
+    if (!hasSoloAutoStart(gameCode)) return
+    soloStartFiredRef.current = true
+    clearSoloAutoStart(gameCode)
+    void (async () => {
+      try {
+        const res = await fetch(`/api/games/${gameCode}/start`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ hostToken }),
+        })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) {
+          toastRef.current.error(data?.error ?? 'Could not start solo game')
+          return
+        }
+        await onReloadRef.current?.()
+      } catch {
+        toastRef.current.error('Could not start solo game')
+      }
+    })()
+  }, [gameCode, gameStatus, hostPlayerId, hostToken])
 
   // Clear stale host-as-player state if the host's own row is removed elsewhere.
   useHostPlayerReconciliation(players, hostPlayerId, () => handlePlayerRemoved(hostPlayerId!))
