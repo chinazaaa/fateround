@@ -68,11 +68,11 @@ export function AppButton({
     haptic ?? (resolvedTone === 'ghost' ? 'none' : resolvedTone === 'danger' ? 'medium' : 'light')
 
   const onPressIn = () => {
-    Animated.spring(scale, { toValue: 0.97, useNativeDriver: true, speed: 40, bounciness: 0 }).start()
+    Animated.spring(scale, { toValue: 0.97, useNativeDriver: true, ...motion.spring.press }).start()
     if (resolvedHaptic !== 'none') trigger(resolvedHaptic)
   }
   const onPressOut = () => {
-    Animated.spring(scale, { toValue: 1, useNativeDriver: true, speed: 40, bounciness: 6 }).start()
+    Animated.spring(scale, { toValue: 1, useNativeDriver: true, ...motion.spring.release }).start()
   }
 
   const sized = styles[`size_${size}`]
@@ -111,11 +111,6 @@ export function AppButton({
     </Animated.View>
   )
 }
-
-// Keep the intent-token reference documented — `motion.duration.press` is
-// re-consumed the moment we swap to Reanimated. Left as an unused import
-// would trip the linter; declared here to keep the token surface visible.
-void motion
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({

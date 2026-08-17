@@ -198,7 +198,7 @@ const makeStyles = (theme: Theme) =>
     avatar: {
       width: 56,
       height: 56,
-      borderRadius: 28,
+      borderRadius: theme.radius.pill,
       backgroundColor: theme.primary,
       alignItems: 'center',
       justifyContent: 'center',
@@ -238,7 +238,7 @@ const makeStyles = (theme: Theme) =>
     gameEmoji: {
       width: 40,
       height: 40,
-      borderRadius: 12,
+      borderRadius: theme.radius.md,
       backgroundColor: theme.primarySoft,
       alignItems: 'center',
       justifyContent: 'center',

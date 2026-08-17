@@ -39,7 +39,22 @@ export const easing = {
   emphasize: 'ease-in-out' as const,
 } as const
 
+/**
+ * Spring presets fed to React Native's `Animated.spring`. Named by intent
+ * (which motion, not which stiffness/damping numbers) so the same intents
+ * re-target Reanimated's `withSpring` unchanged when the Premium arc lands.
+ *
+ * `press` is the "tap-scale-then-settle" the pressable primitives use
+ * (AppButton / SurfaceCard / ListRow); `release` is the return-to-1 half.
+ * Split so a caller can tune the settle without touching the press-down.
+ */
+export const spring = {
+  press: { speed: 40, bounciness: 0 } as const,
+  release: { speed: 40, bounciness: 6 } as const,
+} as const
+
 export type MotionDuration = keyof typeof duration
 export type MotionEasing = keyof typeof easing
+export type MotionSpring = keyof typeof spring
 
-export const motion = { duration, easing } as const
+export const motion = { duration, easing, spring } as const
