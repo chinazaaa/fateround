@@ -71,6 +71,10 @@ export type CreateWizardState = {
   gameType: GameType
   theme: ThemeId
   isPublic: boolean
+  /** Discovery Phase C — "Schedule for later". ISO timestamp for when the
+   *  game should open; null means "start immediately" (Phase A default).
+   *  Only sent to the server when isPublic=true. */
+  scheduledAt: string | null
   maxPlayers: number | null
   lateJoinPolicy: LateJoinPolicy
   room: GameRoomSettings
@@ -118,6 +122,7 @@ export function createInitialState(gameType: GameType, limits: GamePlayerLimitsM
     gameType,
     theme: themeForGameType(gameType, 'default'),
     isPublic: false,
+    scheduledAt: null,
     maxPlayers: isLobbyLimitGameType(gameType) ? lobbyDefaultMaxPlayers(gameType, limits) : null,
     lateJoinPolicy: defaultLateJoinPolicyForGameType(gameType),
     room: defaultGameRoomSettings(gameType),
@@ -198,6 +203,10 @@ export function buildCreatePayload(state: CreateWizardState, limits: GamePlayerL
     game_type: gameType,
     theme: state.theme,
     isPublic: state.isPublic,
+    // Discovery Phase C + private-schedule follow-up: send scheduled_at any
+    // time the host set it, regardless of visibility. Server accepts the pair
+    // for private games too (invite-by-link RSVP flow).
+    ...(state.scheduledAt ? { scheduled_at: state.scheduledAt } : {}),
     ...customContentPayload(gameType, state.custom),
     ...peoplePayload(gameType, state.people, state.party.anonymous, isPollPartyGame(gameType)),
     ...gameRoomSettingsPayload(gameType, state.room),

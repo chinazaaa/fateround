@@ -1,5 +1,10 @@
 import type { ThemeId } from '@/types'
-import { MONOPOLY_BOARD, type MonopolySpaceType, type MonopolyBoardSize } from '@/lib/monopoly-board'
+import {
+  MONOPOLY_BOARD,
+  MONOPOLY_EXPANDED_BOARD,
+  type MonopolySpaceType,
+  type MonopolyBoardSize,
+} from '@/lib/monopoly-board'
 
 // ---------------------------------------------------------------------------
 // Edition interface
@@ -163,13 +168,13 @@ const CLASSIC_EDITION: MonopolyThemeEdition = {
   spaceNames: {}, // use canonical names
   expandedSpaceNames: {
     0: 'PAYDAY',
-    1: 'Thamesmead Walk',
+    1: 'Barking Road',
     2: 'Fate',
-    3: 'Croydon High',
-    4: 'Erith Road',
-    5: 'Barking Road',
+    3: 'Dagenham Ave',
+    4: 'Thamesmead Walk',
+    5: 'Croydon High',
     6: 'Paddington',
-    7: 'Dagenham Ave',
+    7: 'Erith Road',
     8: 'Canary Wharf',
     9: 'Esusu Fund',
     10: 'Bermondsey',
@@ -215,13 +220,13 @@ const CLASSIC_EDITION: MonopolyThemeEdition = {
   spaceLines: {}, // use default lines
   expandedSpaceLines: {
     0: ['PAYDAY', '→'],
-    1: ['Thamesmead', 'Walk'],
+    1: ['Barking', 'Road'],
     2: ['Fate', '?'],
-    3: ['Croydon', 'High'],
-    4: ['Erith', 'Road'],
-    5: ['Barking', 'Road'],
+    3: ['Dagenham', 'Ave'],
+    4: ['Thamesmead', 'Walk'],
+    5: ['Croydon', 'High'],
     6: ['Paddington', 'Station'],
-    7: ['Dagenham', 'Ave'],
+    7: ['Erith', 'Road'],
     8: ['Canary', 'Wharf'],
     9: ['Esusu', 'Fund'],
     10: ['Bermondsey'],
@@ -335,13 +340,13 @@ const PIRATE_EDITION: MonopolyThemeEdition = {
   },
   expandedSpaceNames: {
     0: 'Port Royale',
-    1: 'Santo Domingo',
+    1: 'Tortuga',
     2: "Ship's Log",
-    3: 'San Juan',
-    4: 'Cartagena',
-    5: 'Tortuga',
+    3: 'Sainte-Marie',
+    4: 'Santo Domingo',
+    5: 'San Juan',
     6: "Q.A.'s Revenge",
-    7: 'Sainte-Marie',
+    7: 'Cartagena',
     8: 'Corsair Port',
     9: "Crew's Bounty",
     10: 'Skull Island',
@@ -427,13 +432,13 @@ const PIRATE_EDITION: MonopolyThemeEdition = {
   },
   expandedSpaceLines: {
     0: ['Port', 'Royale'],
-    1: ['Santo', 'Domingo'],
+    1: ['Tortuga'],
     2: ["Ship's", 'Log'],
-    3: ['San', 'Juan'],
-    4: ['Cartagena'],
-    5: ['Tortuga'],
+    3: ['Sainte', 'Marie'],
+    4: ['Santo', 'Domingo'],
+    5: ['San', 'Juan'],
     6: ["Q.A.'s", 'Revenge'],
-    7: ['Sainte', 'Marie'],
+    7: ['Cartagena'],
     8: ['Corsair', 'Port'],
     9: ["Crew's", 'Bounty'],
     10: ['Skull', 'Island'],
@@ -576,13 +581,13 @@ const ARCTIC_EDITION: MonopolyThemeEdition = {
   },
   expandedSpaceNames: {
     0: 'Base Camp',
-    1: 'Svalbard',
+    1: 'Klondike Trail',
     2: 'Polar Compass',
-    3: 'Lapland',
-    4: 'Glacier Bay',
-    5: 'Klondike Trail',
+    3: 'Donner Pass',
+    4: 'Svalbard',
+    5: 'Lapland',
     6: 'McMurdo Station',
-    7: 'Donner Pass',
+    7: 'Glacier Bay',
     8: 'Frost Harbour',
     9: 'Supply Cache',
     10: 'Frost Valley',
@@ -668,13 +673,13 @@ const ARCTIC_EDITION: MonopolyThemeEdition = {
   },
   expandedSpaceLines: {
     0: ['BASE', 'CAMP'],
-    1: ['SVALBARD'],
+    1: ['KLONDIKE', 'TRAIL'],
     2: ['POLAR', 'COMPASS'],
-    3: ['LAPLAND'],
-    4: ['GLACIER', 'BAY'],
-    5: ['KLONDIKE', 'TRAIL'],
+    3: ['DONNER', 'PASS'],
+    4: ['SVALBARD'],
+    5: ['LAPLAND'],
     6: ['MCMURDO', 'STATION'],
-    7: ['DONNER', 'PASS'],
+    7: ['GLACIER', 'BAY'],
     8: ['FROST', 'HARBOUR'],
     9: ['SUPPLY', 'CACHE'],
     10: ['FROST', 'VALLEY'],
@@ -813,13 +818,13 @@ const NAIJA_EDITION: MonopolyThemeEdition = {
   },
   expandedSpaceNames: {
     0: 'Oshodi Bus Terminal',
-    1: 'Ariaria Market',
+    1: 'Oshodi Market',
     2: 'Trade Venture',
-    3: 'Niger Bridge',
-    4: 'Ogbunike Caves',
-    5: 'Oshodi Market',
+    3: 'Sabon Gari',
+    4: 'Ariaria Market',
+    5: 'Niger Bridge',
     6: 'Iddo Terminal',
-    7: 'Sabon Gari',
+    7: 'Ogbunike Caves',
     8: 'Apapa Wharf',
     9: 'Esusu Fund',
     10: 'Wuse Market',
@@ -905,13 +910,13 @@ const NAIJA_EDITION: MonopolyThemeEdition = {
   },
   expandedSpaceLines: {
     0: ['OSHODI BUS', 'TERMINAL'],
-    1: ['ARIARIA', 'MARKET'],
+    1: ['OSHODI', 'MARKET'],
     2: ['TRADE', 'VENTURE'],
-    3: ['NIGER', 'BRIDGE'],
-    4: ['OGBUNIKE', 'CAVES'],
-    5: ['OSHODI', 'MARKET'],
+    3: ['SABON', 'GARI'],
+    4: ['ARIARIA', 'MARKET'],
+    5: ['NIGER', 'BRIDGE'],
     6: ['IDDO', 'TERMINAL'],
-    7: ['SABON', 'GARI'],
+    7: ['OGBUNIKE', 'CAVES'],
     8: ['APAPA', 'WHARF'],
     9: ['ESUSU', 'FUND'],
     10: ['WUSE', 'MARKET'],
@@ -1077,15 +1082,21 @@ function escapeRegExp(str: string): string {
 }
 
 /** Translate canonical London space names and £ currency in any text string to the active theme. */
-export function formatThemedText(text: string | null | undefined, themeId?: string | null): string {
+export function formatThemedText(
+  text: string | null | undefined,
+  themeId?: string | null,
+  boardSize: MonopolyBoardSize = 40
+): string {
   if (!text) return ''
   const edition = getMonopolyEdition(themeId)
   if (edition.themeId === 'default') return text
 
   let formatted = text
-  const spacesSorted = [...MONOPOLY_BOARD].sort((a, b) => b.name.length - a.name.length)
+  const board = boardSize === 48 ? MONOPOLY_EXPANDED_BOARD : MONOPOLY_BOARD
+  const spaceNamesMap = boardSize === 48 ? edition.expandedSpaceNames : edition.spaceNames
+  const spacesSorted = [...board].sort((a, b) => b.name.length - a.name.length)
   for (const space of spacesSorted) {
-    const themed = edition.spaceNames[space.index]
+    const themed = spaceNamesMap[space.index]
     if (themed && themed !== space.name) {
       const pattern = new RegExp(`\\b${escapeRegExp(space.name)}\\b`, 'g')
       formatted = formatted.replace(pattern, themed)

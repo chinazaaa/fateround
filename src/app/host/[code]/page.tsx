@@ -16,6 +16,7 @@ import { useHostToken } from '@/hooks/useHostToken'
 import { useHostIdentity, useHostDisplayName } from '@/hooks/useHostVoiceIdentity'
 import { MatureGameGate } from '@/components/MatureGameGate'
 import { useProfile } from '@/hooks/useProfile'
+import { ScheduledHostWaitingScreen } from '@/components/notifications/ScheduledHostWaitingScreen'
 import type { Game } from '@/types'
 
 /**
@@ -226,6 +227,26 @@ export default function HostPage() {
   }
 
   if (game) {
+    // Scheduled games haven't opened yet — the per-game host views only know
+    // how to render a "waiting for round to begin" one-liner, so intercept and
+    // show the premium countdown + share + host-controls screen instead. It
+    // polls status and reloads once the T-0 cron flips us to 'waiting'.
+    if (game.status === 'scheduled') {
+      return (
+        <ScheduledHostWaitingScreen
+          gameCode={gameCode}
+          hostToken={hostToken}
+          initialGame={{
+            id: gameCode,
+            title: game.title ?? null,
+            game_type: game.game_type,
+            status: game.status,
+            scheduled_at: game.scheduled_at ?? null,
+            is_public: !!game.is_public,
+          }}
+        />
+      )
+    }
     const DedicatedHostView = HOST_VIEW_REGISTRY[parseGameType(game.game_type)]
     return (
       <>

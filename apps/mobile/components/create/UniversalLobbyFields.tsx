@@ -4,6 +4,7 @@ import type { GamePlayerLimitsMap } from '@fateround/shared/lobby-limits'
 import type { CreateWizardState } from '@/lib/create-settings'
 import { supportsMaxPlayersSetting } from '@/lib/create-settings'
 import { LateJoinPolicyPicker } from '@/components/create/LateJoinPolicyPicker'
+import { ScheduleForLaterField } from '@/components/create/ScheduleForLaterField'
 import { MaxPlayersPicker } from '@/components/create/MaxPlayersPicker'
 import { SegmentedControl } from '@/components/create/SegmentedControl'
 import { ThemePicker } from '@/components/create/ThemePicker'
@@ -11,6 +12,7 @@ import { SurfaceCard } from '@/components/ui/SurfaceCard'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
 import { gameAllowsLatePlayerJoin, gameSupportsViewerSetting } from '@fateround/shared/viewers'
+import { showsMaxOnePublicHint, showsPartyPublicHint } from '@fateround/shared/public-hints'
 
 type Props = {
   state: CreateWizardState
@@ -20,6 +22,12 @@ type Props = {
 
 export function UniversalLobbyFields({ state, limits, onChange }: Props) {
   const styles = useThemedStyles(makeStyles)
+  // Two mutually-exclusive nudges live directly beneath the Public toggle:
+  //   - max_players = 1 → "bump above 1" (a Public solo game has no seat to fill)
+  //   - party/board with max_players >= 3 → soft "turn Public on so others can find and join"
+  // Never shown for 1v1 game types (chess/checkers/…) — see @fateround/shared/public-hints.
+  const showMaxOneHint = showsMaxOnePublicHint(state.maxPlayers) && state.isPublic
+  const showPartyHint = !state.isPublic && showsPartyPublicHint(state.gameType, state.maxPlayers)
   return (
     <View style={styles.stack}>
       <SurfaceCard>
@@ -32,6 +40,17 @@ export function UniversalLobbyFields({ state, limits, onChange }: Props) {
               { value: 'public', label: '🌐 Public', hint: 'Anyone can find this game in Browse.' },
             ]}
             onChange={(next) => onChange({ isPublic: next === 'public' })}
+          />
+          {showPartyHint ? (
+            <Text style={styles.hintNudge}>Party game? Turn this on so others can find and join.</Text>
+          ) : null}
+          {showMaxOneHint ? (
+            <Text style={styles.hintWarn}>Bump the max players above 1 so other people can join.</Text>
+          ) : null}
+          <ScheduleForLaterField
+            isPublic={state.isPublic}
+            scheduledAt={state.scheduledAt}
+            onChange={(scheduledAt) => onChange({ scheduledAt })}
           />
         </View>
       </SurfaceCard>
@@ -95,5 +114,15 @@ const makeStyles = (theme: Theme) =>
     hint: {
       color: theme.textMuted,
       fontSize: 13,
+    },
+    hintNudge: {
+      color: theme.primaryMuted,
+      fontSize: 13,
+      fontWeight: '600',
+    },
+    hintWarn: {
+      color: theme.textMuted,
+      fontSize: 13,
+      fontStyle: 'italic',
     },
   })

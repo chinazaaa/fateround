@@ -1,4 +1,4 @@
-export type GameStatus = 'waiting' | 'active' | 'finished'
+export type GameStatus = 'scheduled' | 'waiting' | 'active' | 'finished'
 export type RoundStatus = 'pending' | 'active' | 'finished'
 export type PlayerGender = 'male' | 'female' | 'both'
 export type ParticipantGender = 'male' | 'female'
@@ -73,6 +73,16 @@ export interface Game {
   allow_viewers?: boolean | null
   allow_late_players?: boolean | null
   is_public?: boolean | null
+  /** Discovery Phase A — bumped on lobby activity; drives the stale-lobby close cron. */
+  last_activity_at?: string | null
+  /** Discovery Phase C — when a scheduled game is set to open. Null for immediate games. */
+  scheduled_at?: string | null
+  /** Discovery Phase C — stamped when scheduled → waiting; drives the 10-min unconfirmed-drop cron. */
+  opened_at?: string | null
+  /** Discovery Phase A — stamped once when the host got the T-13min warning (one bite per game). */
+  host_idle_warning_sent_at?: string | null
+  /** Discovery Phase A — how the lobby ended ("idle_timeout", null, …). */
+  result_reason?: string | null
   /** Whether responses are shown without attribution (poll-family games only). */
   anonymous?: boolean | null
   theme?: string | null

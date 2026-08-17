@@ -69,6 +69,7 @@ import {
 } from '@/lib/game-limits'
 import { clampPingPongPoints } from '@/lib/ping-pong'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { scheduleNewPublicGameFanout } from '@/lib/notification-subscriptions'
 
 const supabase = getSupabaseAnon()
 
@@ -340,6 +341,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   // Single source of truth for capacity rules (board-size gate + reset).
   const effectiveMaxPlayers =
     max_players !== undefined ? clampLobbyMaxPlayers(limitKey, max_players, lobbyLimits) : Number(game.max_players ?? 6)
+
+  // Public + max_players < 2 is a contradiction (nobody to fill the seat) — the
+  // /browse feed excludes those rows, so silently accepting the flag would
+  // strand the host with an "on" toggle that never lists. Reject at the write.
+  const nextIsPublic = is_public === undefined ? game.is_public === true : is_public === true
+  if (nextIsPublic && effectiveMaxPlayers < 2) {
+    return NextResponse.json({ error: 'Bump the max players above 1 to make this game Public.' }, { status: 400 })
+  }
 
   // Content label — trimmed + capped; empty string clears it.
   if (content_label !== undefined) {
@@ -775,6 +784,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   if (error)
     return NextResponse.json({ error: internalErrorMessage('games/code/lobby-settings', error) }, { status: 500 })
+
+  // Discovery Phase B — fan out to per-game-type subscribers on the false→true
+  // transition (same rule as PATCH /api/games/[code]; the two paths flip the
+  // same flag so both need to fire). Rate limit + quiet hours per subscriber.
+  if (is_public === true && game.is_public !== true) {
+    scheduleNewPublicGameFanout(gameCode, String(game.game_type ?? ''), String(game.title ?? ''))
+  }
 
   if (quickDrawLobby && quick_draw_num_teams !== undefined) {
     const { error: cleanupError } = await getSupabaseAdmin()
