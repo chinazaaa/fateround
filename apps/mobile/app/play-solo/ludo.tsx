@@ -47,6 +47,8 @@ import { LudoMoveList } from '@/components/games/ludo/LudoMoveList'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
 import type { Theme } from '@/constants/theme'
 import { readSoloScoreboard, recordSoloOutcome, resetSoloScoreboard, type SoloScoreboard } from '@/lib/solo-scoreboard'
+import { clearSoloState, loadSoloState, saveSoloState } from '@/lib/solo-state-store'
+import { logSoloPlayStarted } from '@/lib/solo-play'
 
 const BOT_THINK_MS = 700
 const ROLL_ANIM_MS = 500
@@ -66,9 +68,24 @@ export default function SoloLudoScreen() {
   const scoredRef = useRef(false)
 
   useEffect(() => {
-    setState(initLudoSolo())
+    void loadSoloState<LudoSoloState>('solo-ludo-state-v1', (raw): raw is LudoSoloState => {
+      const r = raw as Partial<LudoSoloState> | null
+      return !!r?.session?.turn_order && Array.isArray(r.session.turn_order) && Array.isArray(r.states)
+    }).then((persisted) => {
+      if (persisted) {
+        setState(persisted)
+        if (persisted.outcome != null) scoredRef.current = true
+      } else {
+        setState(initLudoSolo())
+        logSoloPlayStarted('ludo')
+      }
+    })
     void readSoloScoreboard('ludo').then(setScoreboard)
   }, [])
+
+  useEffect(() => {
+    if (state) void saveSoloState('solo-ludo-state-v1', state)
+  }, [state])
 
   // Sync displayDice with the freshly-rolled pair whenever the session's
   // last_dice changes (either from human roll or bot roll).
@@ -151,7 +168,9 @@ export default function SoloLudoScreen() {
     scoredRef.current = false
     setDisplayDice(null)
     setRolling(false)
+    void clearSoloState('solo-ludo-state-v1')
     setState(initLudoSolo())
+    logSoloPlayStarted('ludo')
   }, [])
 
   const resetScore = useCallback(() => {

@@ -20,6 +20,7 @@ import { WhoSaidThisCreatePanel } from '@/components/create/WhoSaidThisCreatePan
 import { TemplateQuickStart, SaveTemplateButton } from '@/components/create/TemplatesSection'
 import { AmbientBackground } from '@/components/ui/AmbientBackground'
 import { AppButton } from '@/components/ui/AppButton'
+import { soloPlaySlug } from '@/lib/solo-play'
 import { FormField } from '@/components/ui/FormField'
 import { KeyboardFormScreen } from '@/components/ui/KeyboardFormScreen'
 import { SurfaceCard } from '@/components/ui/SurfaceCard'
@@ -296,6 +297,26 @@ export function CreateWizardShell() {
               />
             </View>
 
+            {soloPlaySlug(state.gameType) ? (
+              <SurfaceCard>
+                <Pressable
+                  style={styles.soloRow}
+                  // Cast: expo-router's typed href doesn't know about the
+                  // per-game static routes registered in _layout.tsx.
+                  onPress={() => router.push(`/play-solo/${soloPlaySlug(state.gameType)}` as never)}
+                  accessibilityRole="link"
+                >
+                  <View style={styles.soloBody}>
+                    <Text style={styles.soloTitle}>Want to play solo?</Text>
+                    <Text style={styles.soloHint}>
+                      Practice against the bot → no room, no account. Score persists per game.
+                    </Text>
+                  </View>
+                  <Text style={styles.soloChevron}>›</Text>
+                </Pressable>
+              </SurfaceCard>
+            ) : null}
+
             {supportsSoloMode(state.gameType, limits) ? (
               <SurfaceCard>
                 <Pressable
@@ -511,6 +532,7 @@ const makeStyles = (theme: Theme) =>
     soloBody: { flex: 1, gap: 4 },
     soloTitle: { color: theme.text, fontSize: 15, fontWeight: '800' },
     soloHint: { color: theme.textMuted, fontSize: 13, lineHeight: 18 },
+    soloChevron: { color: theme.primary, fontSize: 28, fontWeight: '800', alignSelf: 'center', paddingHorizontal: 4 },
     footer: {
       paddingHorizontal: theme.space.lg,
       paddingTop: theme.space.sm,

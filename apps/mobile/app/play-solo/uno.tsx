@@ -48,6 +48,8 @@ import { UnoCardFace } from '@/components/games/cards/UnoCardFace'
 import { useThemedStyles } from '@/constants/theme-context'
 import type { Theme } from '@/constants/theme'
 import { readSoloScoreboard, recordSoloOutcome, resetSoloScoreboard, type SoloScoreboard } from '@/lib/solo-scoreboard'
+import { clearSoloState, loadSoloState, saveSoloState } from '@/lib/solo-state-store'
+import { logSoloPlayStarted } from '@/lib/solo-play'
 
 const BOT_THINK_MS = 900
 
@@ -70,9 +72,25 @@ export default function SoloUnoScreen() {
   const scoredRef = useRef(false)
 
   useEffect(() => {
-    setState(initUnoSolo())
+    void loadSoloState<UnoSoloState>('solo-uno-state-v1', (raw): raw is UnoSoloState => {
+      const r = raw as Partial<UnoSoloState> | null
+      return !!r?.session?.turn_order && Array.isArray(r.hands)
+    }).then((persisted) => {
+      if (persisted) {
+        setState(persisted)
+        if (persisted.outcome != null) scoredRef.current = true
+      } else {
+        setState(initUnoSolo())
+        logSoloPlayStarted('uno', difficulty)
+      }
+    })
     void readSoloScoreboard('uno').then(setScoreboard)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  useEffect(() => {
+    if (state) void saveSoloState('solo-uno-state-v1', state)
+  }, [state])
 
   useEffect(() => {
     if (!state || state.outcome == null || scoredRef.current) return
@@ -147,8 +165,10 @@ export default function SoloUnoScreen() {
     scoredRef.current = false
     setMultiMode(false)
     setSelectedIds([])
+    void clearSoloState('solo-uno-state-v1')
     setState(initUnoSolo())
-  }, [])
+    logSoloPlayStarted('uno', difficulty)
+  }, [difficulty])
 
   const resetScore = useCallback(() => {
     void resetSoloScoreboard('uno').then(setScoreboard)

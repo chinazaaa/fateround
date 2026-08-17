@@ -49,6 +49,8 @@ import { SegmentedControl } from '@/components/create/SegmentedControl'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
 import type { Theme } from '@/constants/theme'
 import { readSoloScoreboard, recordSoloOutcome, resetSoloScoreboard, type SoloScoreboard } from '@/lib/solo-scoreboard'
+import { clearSoloState, loadSoloState, saveSoloState } from '@/lib/solo-state-store'
+import { logSoloPlayStarted } from '@/lib/solo-play'
 
 const BOT_THINK_MS = 900
 const WHOT_CALL_SHAPES: WhotShape[] = ['circle', 'triangle', 'cross', 'square', 'star']
@@ -80,9 +82,32 @@ export default function SoloWhotScreen() {
   const scoredRef = useRef(false)
 
   useEffect(() => {
-    setState(initSoloWhot({ rules: SOLO_RULES }))
+    // Rehydrate an in-progress game if one is stored, else deal a fresh one.
+    // Rules are re-attached from SOLO_RULES to survive future rule-shape edits.
+    void loadSoloState<SoloWhotState>('solo-whot-state-v1', (raw): raw is SoloWhotState => {
+      const r = raw as Partial<SoloWhotState> | null
+      return !!r?.session?.turn_order && Array.isArray(r.hands)
+    }).then((persisted) => {
+      if (persisted) {
+        setState({ ...persisted, rules: SOLO_RULES })
+        if (persisted.outcome != null) scoredRef.current = true
+      } else {
+        setState(initSoloWhot({ rules: SOLO_RULES }))
+        logSoloPlayStarted('whot', difficulty)
+      }
+    })
     void readSoloScoreboard('whot').then(setScoreboard)
+    // Difficulty is captured for the analytics call only; the fresh init still
+    // reads the initial 'normal' before the setter runs — that's fine as an
+    // opening event.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Persist every state change so an OS-level app kill mid-hand doesn't lose
+  // the game. Fire-and-forget; errors are swallowed inside saveSoloState.
+  useEffect(() => {
+    if (state) void saveSoloState('solo-whot-state-v1', state)
+  }, [state])
 
   // Score once per game.
   useEffect(() => {
@@ -145,8 +170,10 @@ export default function SoloWhotScreen() {
 
   const restart = useCallback(() => {
     scoredRef.current = false
+    void clearSoloState('solo-whot-state-v1')
     setState(initSoloWhot({ rules: SOLO_RULES }))
-  }, [])
+    logSoloPlayStarted('whot', difficulty)
+  }, [difficulty])
 
   const resetScore = useCallback(() => {
     void resetSoloScoreboard('whot').then(setScoreboard)

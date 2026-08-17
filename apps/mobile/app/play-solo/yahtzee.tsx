@@ -37,6 +37,8 @@ import { YahtzeeScorecardGrid } from '@/components/games/YahtzeeScorecardGrid'
 import { useThemedStyles } from '@/constants/theme-context'
 import type { Theme } from '@/constants/theme'
 import { readSoloScoreboard, recordSoloOutcome, resetSoloScoreboard, type SoloScoreboard } from '@/lib/solo-scoreboard'
+import { clearSoloState, loadSoloState, saveSoloState } from '@/lib/solo-state-store'
+import { logSoloPlayStarted } from '@/lib/solo-play'
 
 const BOT_STEP_MS = 700
 const ROLL_ANIM_MS = 500
@@ -72,9 +74,24 @@ export default function SoloYahtzeeScreen() {
   const scoredRef = useRef(false)
 
   useEffect(() => {
-    setState(initYahtzeeSolo())
+    void loadSoloState<YahtzeeSoloState>('solo-yahtzee-state-v1', (raw): raw is YahtzeeSoloState => {
+      const r = raw as Partial<YahtzeeSoloState> | null
+      return !!r?.session?.turn_order && !!r.scores
+    }).then((persisted) => {
+      if (persisted) {
+        setState(persisted)
+        if (persisted.outcome != null) scoredRef.current = true
+      } else {
+        setState(initYahtzeeSolo())
+        logSoloPlayStarted('yahtzee')
+      }
+    })
     void readSoloScoreboard('yahtzee').then(setScoreboard)
   }, [])
+
+  useEffect(() => {
+    if (state) void saveSoloState('solo-yahtzee-state-v1', state)
+  }, [state])
 
   // Score once per game.
   useEffect(() => {
@@ -174,7 +191,9 @@ export default function SoloYahtzeeScreen() {
   const restart = useCallback(() => {
     scoredRef.current = false
     setRolling(false)
+    void clearSoloState('solo-yahtzee-state-v1')
     setState(initYahtzeeSolo())
+    logSoloPlayStarted('yahtzee')
   }, [])
 
   const resetScore = useCallback(() => {
