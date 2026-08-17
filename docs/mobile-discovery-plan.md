@@ -404,23 +404,35 @@ ghost players. The tournament pattern (RSVP → open → confirm-ready
       `waiting` (i.e. past `scheduled_at`); at that point the
       host is running an active lobby and reschedule stops making
       sense.
-- **Host early-start confirm.** A host tapping Start BEFORE
-  `scheduled_at` gets a confirmation dialog: "This game is
-  scheduled for Friday, 8:00 PM. Start it now? RSVPers were
-  expecting Friday — pings will go out immediately to let them
-  know it's opening early."
-    - Actions: **Cancel** (default focus) / **Start now**.
-    - Choosing "Start now" fires the same T-0 lobby-open push
-      to RSVPers ("🎲 Monopoly is opening early — tap to join if
-      you're free") plus the T-15min heads-up push if it hasn't
-      fired yet (so subscribers still get their heads-up, just
-      compressed). Both respect quiet hours as usual.
-    - After `scheduled_at`, Start acts normally with no confirm —
-      the game is already in its expected window.
-    - Purpose: prevent a distracted host from rugging a Friday
-      RSVP crowd on Monday by mis-tapping. This is the same shape
-      as the "are you sure?" dialog tournament tools use when a
-      bracket is started before its published start time.
+- **No early Start on scheduled games — Reschedule instead.**
+  A host who wants to open a Friday game on Monday goes through
+  Reschedule, not Start. The Start button on a `scheduled` game
+  is DISABLED with a helper below it: "Scheduled for Friday, 8:00
+  PM — tap the schedule to move it earlier." Tapping the schedule
+  chip opens the Reschedule dialog with an added preset row:
+    - **Now** (opens the lobby immediately)
+    - **In 5 minutes** / **In 15 minutes** (quick-jump presets)
+    - **Custom** (full date+time picker)
+  Choosing **Now** sets `scheduled_at` to the current instant,
+  which fires the standard reschedule push to RSVPers (single
+  fan-out, NOT throttled, NOT quiet-hours gated) and then the
+  scheduler transitions the game to `waiting` on its normal T-0
+  path (or inline in the same request, no need to wait for the
+  next cron tick). RSVPers get a single "📆 Your Monopoly game
+  is starting now — tap to join." push; the T-15min heads-up is
+  skipped when reschedule-to-now compresses the window past it.
+
+  **Why this instead of a Start-now-confirm dialog:** one mental
+  model — scheduled games open when the schedule says so; the
+  only way to change when they run is Reschedule; the only way
+  RSVPers hear about a time change is the reschedule push. A
+  Start-now-confirm path would give hosts two ways to change the
+  effective start time and RSVPers two different pushes to
+  interpret. Blocking the mistap by design is stronger than
+  catching it with a confirm.
+
+  After `scheduled_at`, Start acts normally (the game has moved
+  to `waiting` and Reschedule is no longer available anyway).
 
 **Success:** a host schedules Monopoly for 8pm Friday, 4 people
 RSVP over the week (and see it on their home screen every time
