@@ -5,6 +5,42 @@
 > mobile-side surface area that has fallen behind since accounts, trophies,
 > the community leaderboard and the solo pages shipped on web.
 
+## What this plan is (and isn't)
+
+**Scope: parity, not premium — yet.** This plan closes the feature gap
+between mobile and web so a user on either platform has the same
+capabilities. After Phase 4 the app is cohesive, functional, dark-mode
+sound, and reads as "a proper app." It does not yet read as "premium."
+
+A **premium pass** (motion design with Reanimated 3, custom illustration,
+haptics, sound cues, distinctive typography, micro-details like skeleton
+loaders and pull-to-refresh) is a separate arc of 3–6 months, best done
+after this parity work ships. Two reasons for the sequencing:
+
+1. **Premium needs a real product to elevate.** Polishing screens that
+   are still being invented is wasted motion — you polish twice.
+2. **Usage tells you where premium effort pays.** Once parity ships,
+   analytics show which games get the most solo play, which trophies
+   users chase, which screens they linger on. Premium investment goes
+   there first, not spread thin.
+
+A `docs/mobile-premium-plan.md` will follow at the end of Phase 4.
+
+## Load-bearing invariants (do not relax)
+
+Carried across every phase, and forward into the premium arc:
+
+- **Login is not first.** The anon-first flow stays. A user can create
+  a room, add bots, play solo, and win a game without an account. Sign-in
+  only prompts when the user reaches for something that needs it
+  (persist across devices, appear on leaderboard, follow a friend).
+  Enshrined in `bots-in-room-plan.md` too; repeated here so no phase
+  quietly walks it back.
+- **No feature regressions from the visual work.** Phase 0 and 4 must
+  leave every existing screen at least as usable as it was.
+- **No native modules without a clear win.** Each new dependency has to
+  justify a dev-client rebuild.
+
 ## Why this is a plan, not a series of PRs
 
 Track 1 (bots-in-room on mobile, PR #919) proved the pattern for "port one
