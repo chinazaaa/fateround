@@ -137,6 +137,37 @@ surface on the client. No new permissions.
   find and join your game"). Toggle DISABLED for solo mode. Toggle
   is a no-op for 1v1 games where matchmaking makes less sense
   (chess, checkers, tic-tac-toe).
+- **Two host nudges toward Discoverable — contextual, not
+  generic.** Two moments a host might forget the toggle exists;
+  cover both:
+    - **Create-screen hint.** For party / board game types with
+      `max_players >= 3` (Monopoly, Whot, Ludo, Trivia — the ones
+      that need >2 humans to feel alive), if the host has NOT
+      toggled Discoverable on, a one-line hint sits directly
+      beneath the toggle: "Party game? Turn this on so others can
+      find and join." Copy is per-game-type-agnostic; the fact
+      that it appears at all is what nudges. Never renders for
+      1v1 games (chess, checkers, tic-tac-toe) or solo mode.
+      Dismisses when the toggle flips on.
+    - **Lobby "missing players" prompt.** In the host lobby
+      (`HostLobbyScreen` on mobile, host lobby on web), when the
+      game has been waiting > 30 seconds AND
+      `current_players < max_players - 1` (i.e. at least 2 seats
+      still empty) AND `discoverable = false`, a dismissible
+      SurfaceCard appears above the roster: "Missing players?
+      Make this game public — [Make public] button." Tapping the
+      button flips the toggle server-side (existing settings-sheet
+      endpoint) and the card fades out. Dismissed per game
+      (SecureStore, keyed by `game_code`) so a host who wants a
+      private night doesn't get re-prompted every 30s. Never fires
+      for solo mode or 1v1 game types.
+
+  The two-nudge design intentionally covers the two failure modes:
+  "host didn't know the toggle existed at create time" (create-
+  screen hint) and "host meant to leave it private, then realised
+  nobody's showing up" (lobby prompt). Neither is a modal — both
+  are quiet, dismissible in-place, and never repeat.
+
 - **Max-players guard.** A Discoverable game with `max_players = 1`
   is a contradiction — the host has no seat to fill. Handled at
   two layers:
