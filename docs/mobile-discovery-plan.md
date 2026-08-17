@@ -315,25 +315,73 @@ opens — assuming it's outside their quiet hours.
 Turns discovery from real-time into planned. Only worth doing after
 A+B prove the demand.
 
-- `games.scheduled_at TIMESTAMP` (nullable) + `games.status`
-  extended with `scheduled`. A scheduled game shows the code + host
-  but is not yet joinable-to-play; it's join-to-RSVP.
-- New table `game_rsvps (game_id, user_id, rsvped_at)`.
-- Create screen: **Schedule for later** section — date+time picker,
-  timezone display. Only for Public games.
-- Browse page: two tabs at the top — **Live now** (Phase A) and
-  **Upcoming** (Phase C). Upcoming shows scheduled games with the
-  RSVP button and a countdown.
-- Server: T-15min reminder push to every RSVP + every subscriber
-  whose game-type filter matches (respecting quiet hours from B).
-  T-0 auto-transitions the game from `scheduled` → `waiting`.
-- Host cancellation: cancelling a scheduled game fires a "cancelled"
-  push to RSVPers (single fan-out, not throttled — this one they
-  need to know about).
+**Core model.** RSVP is intent — "I plan to be there" — not an
+auto-join. Someone who RSVPs on Monday for a Friday 8pm game may
+have forgotten by Friday; auto-seating them at 8:00pm creates
+ghost players. The tournament pattern (RSVP → open → confirm-ready
+→ start) is the right shape:
 
-**Success:** a host schedules Monopoly for 8pm, 4 people RSVP by
-6pm, at 7:45pm everyone gets a "Monopoly in 15 min" push, at 8pm
-the game opens and the RSVPers show up.
+1. **Monday.** Host schedules Monopoly for Friday 8pm. Users see
+   it in the /browse "Upcoming" tab and tap **RSVP** (which stores
+   `game_rsvps (game_id, user_id)`; no seat allocated yet).
+2. **Friday 7:45pm.** T-15min reminder push to every RSVPer +
+   every game-type subscriber (respecting quiet hours from B).
+   Copy: "🎲 Your Monopoly game opens in 15 min."
+3. **Friday 8:00pm.** Server auto-transitions the game from
+   `scheduled` → `waiting`, then fires a second push to every
+   RSVPer: "🎲 Monopoly is open — tap to join." Tapping the push
+   deep-links into the lobby.
+4. **Lobby.** RSVPers appear in a "You RSVP'd" section of the
+   lobby but show as **not ready**. They tap **I'm ready** to
+   confirm and take a real seat. RSVPs that never confirm within
+   a 10-minute window from lobby-open auto-drop off — the host
+   can start without them or wait for other joiners.
+5. **Start.** Host taps Start when enough people are ready. Game
+   plays normally.
+
+- **`games.scheduled_at TIMESTAMP` (nullable)** + `games.status`
+  extended with `scheduled`. A `scheduled` game shows in
+  Upcoming; a `waiting` game with a non-null `scheduled_at` in the
+  past is a game the RSVPers are now confirming into.
+- **New table `game_rsvps (game_id, user_id, rsvped_at,
+  confirmed_at NULL)`**. `confirmed_at` flips when the user taps
+  "I'm ready" in the lobby. Server auto-clears an unconfirmed row
+  after 10 min post-open.
+- **Create screen: Schedule for later section.** Date+time picker,
+  timezone display. Only for Public games.
+- **Browse page: two tabs.** Live now (Phase A) and **Upcoming**
+  (Phase C). Upcoming shows scheduled games with the RSVP button
+  and a countdown; RSVP'd games get a checkmark badge.
+- **Home screen: "Your upcoming games" section (both platforms).**
+  A ListRow strip above (or replacing when empty) the Recent
+  section on both mobile home and web `/`, listing games the user
+  has RSVP'd to that haven't started yet. Each row: game emoji +
+  label, host name, "Friday 8:00 PM" (formatted in user's local
+  timezone), tap → deep-links to the scheduled-game lobby page
+  where they can un-RSVP or see who else RSVP'd. Prevents the
+  "I forgot I RSVP'd" case the plan is trying to avoid — the
+  strip is a visual reminder every time they open the app.
+- **Push rules.**
+  - T-15min reminder: RSVPers + game-type subscribers, respects
+    quiet hours (Phase B).
+  - T-0 lobby-open push: RSVPers ONLY (subscribers already got
+    the T-15min heads-up; two pushes for the same event feels
+    spammy). Respects quiet hours.
+  - Host cancellation: fires a "cancelled" push to RSVPers. Single
+    fan-out, **NOT throttled and NOT gated by quiet hours** —
+    this one is important enough that a missed ping would strand
+    the user; quiet-hours users receive it anyway.
+- **Un-RSVP.** Any RSVPer can un-RSVP from the scheduled-game
+  page or from the "Your upcoming games" home strip. Un-RSVPing
+  after T-15min doesn't cancel the reminder push they already got
+  (fine — they can just ignore it).
+
+**Success:** a host schedules Monopoly for 8pm Friday, 4 people
+RSVP over the week (and see it on their home screen every time
+they open the app), at 7:45pm everyone gets a heads-up push, at
+8:00pm the lobby opens and everyone gets a "tap to join" push, 3
+of the 4 tap through and confirm ready, the host waits 90 seconds
+for the last one, then hits Start.
 
 ## Total estimate
 
