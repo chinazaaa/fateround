@@ -21,6 +21,16 @@ export function goToJailPositionForSize(boardSize: MonopolyBoardSize = 40): numb
 }
 export const MONOPOLY_HOUSES_IN_BANK = 32
 export const MONOPOLY_HOTELS_IN_BANK = 12
+export const MONOPOLY_EXPANDED_HOUSES_IN_BANK = 48
+export const MONOPOLY_EXPANDED_HOTELS_IN_BANK = 18
+
+export function housesInBankForSize(boardSize: MonopolyBoardSize = 40): number {
+  return boardSize === 48 ? MONOPOLY_EXPANDED_HOUSES_IN_BANK : MONOPOLY_HOUSES_IN_BANK
+}
+
+export function hotelsInBankForSize(boardSize: MonopolyBoardSize = 40): number {
+  return boardSize === 48 ? MONOPOLY_EXPANDED_HOTELS_IN_BANK : MONOPOLY_HOTELS_IN_BANK
+}
 export const MONOPOLY_MORTGAGE_INTEREST_RATE = 0.1
 
 export type MonopolySpaceType =

@@ -831,6 +831,7 @@ export function MonopolyManagePanel({
                 getProps={requestProps}
                 getJailCards={requestJailCards}
                 themeId={themeId}
+                boardSize={boardSize}
               />
 
               {(isOneWayGift || isOneWayReceive) && (
@@ -875,6 +876,7 @@ export function MonopolyManagePanel({
                     getProps={requestProps}
                     getJailCards={requestJailCards}
                     themeId={themeId}
+                    boardSize={boardSize}
                   />
                   <div className="grid grid-cols-2 gap-2">
                     <button
