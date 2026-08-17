@@ -86,6 +86,7 @@ export function NotificationsPage({ preselectGameType }: { preselectGameType?: s
   const [pendingType, setPendingType] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [needsIosInstall, setNeedsIosInstall] = useState(false)
+  const [search, setSearch] = useState('')
 
   // Read the existing push subscription on mount without prompting. If the
   // browser already has one, prime tokenKey + webKeys so toggle-on/off works
@@ -211,16 +212,29 @@ export function NotificationsPage({ preselectGameType }: { preselectGameType?: s
 
   const onQuietChange = useCallback(
     async (patch: Partial<QuietHours>) => {
-      if (!tokenKey) return
+      // Persist locally right away so the UI feels responsive even before we
+      // have a device row on the server. If no token yet, prompt for one — a
+      // quiet-hours setting only makes sense once a device is subscribed.
       const next = { ...quiet, ...patch }
       setSnapshot((s) => (s ? { ...s, quietHours: next } : s))
+      let effectiveToken = tokenKey
+      if (!effectiveToken) {
+        const authed = await ensureToken()
+        if (!authed) {
+          // The user declined notification permission; keep the local UI
+          // state but flag it — the server won't have a row to persist to.
+          setError('Turn on browser notifications to save quiet hours across devices.')
+          return
+        }
+        effectiveToken = authed.endpoint
+      }
       await fetch('/api/notifications', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tokenKey, ...patch, timezone: deviceTimezone() }),
+        body: JSON.stringify({ tokenKey: effectiveToken, ...patch, timezone: deviceTimezone() }),
       }).catch(() => {})
     },
-    [quiet, tokenKey]
+    [quiet, tokenKey, ensureToken]
   )
 
   return (
@@ -237,10 +251,11 @@ export function NotificationsPage({ preselectGameType }: { preselectGameType?: s
 
       {needsIosInstall ? (
         <div className="glass-card !p-4 text-sm">
-          <p className="font-semibold text-body">Install FateRound first</p>
+          <p className="font-semibold text-body">Install FateRound first (iOS Safari)</p>
           <p className="text-muted mt-1">
-            iOS Safari only delivers web push to home-screen apps. Tap the Share icon, then <b>Add to Home Screen</b>,
-            then reopen this page from the app icon to subscribe.
+            iOS delivers web push only to home-screen apps. Tap the Share icon, then <b>Add to Home Screen</b>, then
+            reopen this page from the app icon to subscribe. On Android, iOS Chrome, or desktop Chrome/Firefox/Edge this
+            isn’t needed — just toggle a game on.
           </p>
         </div>
       ) : null}
@@ -300,49 +315,69 @@ export function NotificationsPage({ preselectGameType }: { preselectGameType?: s
 
       {error ? <p className="text-sm text-red-500 text-center">{error}</p> : null}
 
+      <div>
+        <input
+          type="search"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search games…"
+          className="input-field w-full"
+          aria-label="Filter games"
+        />
+      </div>
+
       <section className="glass-card !p-0 overflow-hidden">
         {loading ? (
           <p className="p-6 text-center text-sm text-muted">Loading…</p>
         ) : (
-          GAME_TYPES.map((gameType, i) => {
-            const cfg = gameTypeConfig(gameType)
-            const isOn = subscribed.has(gameType)
-            const count = counts[gameType] ?? 0
-            return (
-              <div
-                key={gameType}
-                className={`flex items-center gap-3 p-4 ${i < GAME_TYPES.length - 1 ? 'border-b border-[var(--border)]/50' : ''}`}
-              >
-                <span
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] text-xl"
-                  style={{ background: `color-mix(in srgb, ${cfg.card.accent} 16%, transparent)` }}
-                >
-                  {cfg.card.emoji}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate font-bold text-body">{cfg.label}</p>
-                  <p className="text-xs text-muted">
-                    {count > 0 ? `${count} game${count === 1 ? '' : 's'} today` : 'No games today'}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => void onToggle(gameType, !isOn)}
-                  disabled={pendingType === gameType}
-                  aria-pressed={isOn}
-                  className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
-                    isOn ? 'bg-[var(--primary)]' : 'bg-[var(--border-strong)]'
-                  }`}
+          (() => {
+            const q = search.trim().toLowerCase()
+            const filtered = q
+              ? GAME_TYPES.filter((gt) => gameTypeConfig(gt).label.toLowerCase().includes(q))
+              : GAME_TYPES
+            if (filtered.length === 0) {
+              return <p className="p-6 text-center text-sm text-muted">No games match “{search}”.</p>
+            }
+            return filtered.map((gameType, i) => {
+              const cfg = gameTypeConfig(gameType)
+              const isOn = subscribed.has(gameType)
+              const count = counts[gameType] ?? 0
+              return (
+                <div
+                  key={gameType}
+                  className={`flex items-center gap-3 p-4 ${i < filtered.length - 1 ? 'border-b border-[var(--border)]/50' : ''}`}
                 >
                   <span
-                    className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all ${
-                      isOn ? 'left-5' : 'left-0.5'
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] text-xl"
+                    style={{ background: `color-mix(in srgb, ${cfg.card.accent} 16%, transparent)` }}
+                  >
+                    {cfg.card.emoji}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-bold text-body">{cfg.label}</p>
+                    <p className="text-xs text-muted">
+                      {count > 0 ? `${count} game${count === 1 ? '' : 's'} today` : 'No games today'}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void onToggle(gameType, !isOn)}
+                    disabled={pendingType === gameType}
+                    aria-pressed={isOn}
+                    className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+                      isOn ? 'bg-[var(--primary)]' : 'bg-[var(--border-strong)]'
                     }`}
-                  />
-                </button>
-              </div>
-            )
-          })
+                  >
+                    <span
+                      className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all ${
+                        isOn ? 'left-5' : 'left-0.5'
+                      }`}
+                    />
+                  </button>
+                </div>
+              )
+            })
+          })()
         )}
       </section>
 

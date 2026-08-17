@@ -312,6 +312,20 @@ function SaveToProfileSheet({
               >
                 <Text style={styles.link}>See trophies & stats →</Text>
               </Pressable>
+
+              {/* Persistent entry point to /notifications for anyone who
+                  dismissed the home banner. Lives in the profile sheet so it
+                  doesn't crowd the home actions. */}
+              <Pressable
+                onPress={() => {
+                  onClose()
+                  router.push('/notifications' as never)
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="Notification preferences"
+              >
+                <Text style={styles.link}>🔔 Notification preferences →</Text>
+              </Pressable>
             </View>
           </SafeAreaView>
         </Pressable>

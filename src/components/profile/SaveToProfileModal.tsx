@@ -185,6 +185,9 @@ export function SaveToProfileModal({ open, onClose, profile, onChanged }: Props)
             <Link href="/profile" className="btn-secondary block text-center" onClick={onClose}>
               Your profile
             </Link>
+            <Link href="/notifications" className="btn-secondary block text-center" onClick={onClose}>
+              🔔 Notification preferences
+            </Link>
             <button type="button" className="btn-ghost" onClick={() => void switchUser()}>
               Not you? Switch
             </button>
@@ -259,6 +262,13 @@ export function SaveToProfileModal({ open, onClose, profile, onChanged }: Props)
             </button>
           </>
         )}
+        {/* Guest-branch entry point to /notifications so users who dismissed
+            the home banner still have a way back without signing in. */}
+        <div className="pt-3 border-t border-[var(--border)]">
+          <Link href="/notifications" className="btn-secondary block text-center" onClick={onClose}>
+            🔔 Notification preferences
+          </Link>
+        </div>
       </div>
     </Modal>
   )

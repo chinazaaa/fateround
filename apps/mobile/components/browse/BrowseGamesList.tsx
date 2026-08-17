@@ -25,10 +25,12 @@ type PublicGame = {
   id: string
   title: string | null
   game_type: string
-  status: 'waiting' | 'active' | 'finished'
+  status: 'scheduled' | 'waiting' | 'active' | 'finished'
   max_players: number | null
   allow_late_players: boolean | null
   created_at: string
+  /** Discovery Phase C — only set on scheduled games. */
+  scheduled_at?: string | null
   playerCount: number
 }
 
@@ -37,25 +39,35 @@ const PAGE_LIMIT = 20
 
 const ALL = ''
 
-async function fetchGamesPage(cursor?: string | null): Promise<{
+async function fetchGamesPage(
+  cursor?: string | null,
+  statusFilter?: 'scheduled'
+): Promise<{
   games: PublicGame[]
   hasMore: boolean
   nextCursor: string | null
 }> {
   const params = new URLSearchParams({ limit: String(PAGE_LIMIT) })
   if (cursor) params.set('cursor', cursor)
+  if (statusFilter) params.set('status', statusFilter)
   const res = await fetch(apiUrl(`/api/games?${params.toString()}`), { cache: 'no-store' })
   if (!res.ok) throw new Error('Failed to load games')
   return res.json()
 }
 
+type Tab = 'live' | 'upcoming'
+
 type Props = {
   /** Optional cap for embedded previews ("Live games" strip). Full list omits. */
   previewLimit?: number
   onSeeAll?: () => void
+  /** Discovery Phase C — when 'upcoming', the list fetches scheduled games via
+   *  ?status=scheduled and shows the countdown + RSVP button. When 'live' (or
+   *  omitted), Phase A behaviour is unchanged. */
+  tab?: Tab
 }
 
-export function BrowseGamesList({ previewLimit, onSeeAll }: Props) {
+export function BrowseGamesList({ previewLimit, onSeeAll, tab = 'live' }: Props) {
   const router = useRouter()
   const theme = useTheme()
   const styles = useThemedStyles(makeStyles)
@@ -68,26 +80,29 @@ export function BrowseGamesList({ previewLimit, onSeeAll }: Props) {
   const [filter, setFilter] = useState<string>(ALL)
   const inFlight = useRef(false)
 
-  const load = useCallback(async (nextCursor?: string | null, silent = false) => {
-    const paged = !!nextCursor
-    if (paged) setLoadingMore(true)
-    else if (!silent) setLoading(true)
-    try {
-      const data = await fetchGamesPage(nextCursor)
-      setGames((prev) => (paged ? [...prev, ...data.games] : data.games))
-      setHasMore(data.hasMore)
-      setCursor(data.nextCursor)
-    } catch {
-      if (!paged && !silent) {
-        setGames([])
-        setHasMore(false)
-        setCursor(null)
+  const load = useCallback(
+    async (nextCursor?: string | null, silent = false) => {
+      const paged = !!nextCursor
+      if (paged) setLoadingMore(true)
+      else if (!silent) setLoading(true)
+      try {
+        const data = await fetchGamesPage(nextCursor, tab === 'upcoming' ? 'scheduled' : undefined)
+        setGames((prev) => (paged ? [...prev, ...data.games] : data.games))
+        setHasMore(data.hasMore)
+        setCursor(data.nextCursor)
+      } catch {
+        if (!paged && !silent) {
+          setGames([])
+          setHasMore(false)
+          setCursor(null)
+        }
+      } finally {
+        if (paged) setLoadingMore(false)
+        else if (!silent) setLoading(false)
       }
-    } finally {
-      if (paged) setLoadingMore(false)
-      else if (!silent) setLoading(false)
-    }
-  }, [])
+    },
+    [tab]
+  )
 
   useEffect(() => {
     void load()
@@ -250,13 +265,33 @@ function Chip({
   )
 }
 
+function formatScheduled(iso: string | null | undefined): string {
+  if (!iso) return ''
+  try {
+    return new Date(iso).toLocaleString(undefined, {
+      weekday: 'short',
+      hour: 'numeric',
+      minute: '2-digit',
+    })
+  } catch {
+    return ''
+  }
+}
+
 function GameCard({ game, onJoin }: { game: PublicGame; onJoin: () => void }) {
   const styles = useThemedStyles(makeStyles)
   const meta = gameTypeMeta(game.game_type as GameType)
   const label = gameLabel(game.game_type as GameType) || game.title || 'Game'
+  const isScheduled = game.status === 'scheduled'
   const isLobby = game.status === 'waiting'
   const count = game.max_players != null ? `${game.playerCount}/${game.max_players}` : `${game.playerCount}`
-  const statusLine = isLobby ? 'Waiting for players' : game.status === 'active' ? 'In progress' : 'Finished'
+  const statusLine = isScheduled
+    ? `Scheduled · ${formatScheduled(game.scheduled_at)}`
+    : isLobby
+      ? `Waiting for players · ${count} player${game.playerCount === 1 ? '' : 's'}`
+      : game.status === 'active'
+        ? `In progress · ${count} player${game.playerCount === 1 ? '' : 's'}`
+        : 'Finished'
 
   return (
     <SurfaceCard>
@@ -269,14 +304,14 @@ function GameCard({ game, onJoin }: { game: PublicGame; onJoin: () => void }) {
             {label}
           </Text>
           <Text style={styles.cardSub} numberOfLines={1}>
-            {statusLine} · {count} player{game.playerCount === 1 ? '' : 's'}
+            {statusLine}
           </Text>
         </View>
         <AppButton
-          label={isLobby ? 'Join' : 'Watch'}
+          label={isScheduled ? 'RSVP' : isLobby ? 'Join' : 'Watch'}
           onPress={onJoin}
           size="sm"
-          tone={isLobby ? 'primary' : 'secondary'}
+          tone={isScheduled || isLobby ? 'primary' : 'secondary'}
         />
       </View>
     </SurfaceCard>
