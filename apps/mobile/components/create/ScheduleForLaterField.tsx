@@ -1,0 +1,160 @@
+/**
+ * ScheduleForLaterField — mobile "Schedule for later" toggle + inputs.
+ *
+ * Renders under the Public toggle on the create wizard when isPublic=true
+ * (a private scheduled game has no RSVP audience — the server rejects that
+ * pair anyway). Uses plain date + time text inputs — a full native picker
+ * was scope creep for one datetime pair, and the server does the final
+ * "must be in the future" check.
+ */
+
+import { useCallback, useMemo } from 'react'
+import { StyleSheet, Switch, Text, TextInput, View } from 'react-native'
+import type { Theme } from '@/constants/theme'
+import { useTheme, useThemedStyles } from '@/constants/theme-context'
+
+type Props = {
+  isPublic: boolean
+  scheduledAt: string | null
+  onChange: (nextIso: string | null) => void
+}
+
+function pad(n: number): string {
+  return String(n).padStart(2, '0')
+}
+
+function splitIso(iso: string | null): { date: string; time: string } {
+  if (!iso) return { date: '', time: '' }
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return { date: '', time: '' }
+  const date = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+  const time = `${pad(d.getHours())}:${pad(d.getMinutes())}`
+  return { date, time }
+}
+
+function combineIso(date: string, time: string): string | null {
+  const dm = date.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  const tm = time.match(/^(\d{1,2}):(\d{2})$/)
+  if (!dm || !tm) return null
+  const local = new Date(Number(dm[1]), Number(dm[2]) - 1, Number(dm[3]), Number(tm[1]), Number(tm[2]), 0, 0)
+  if (Number.isNaN(local.getTime())) return null
+  return local.toISOString()
+}
+
+export function ScheduleForLaterField({ isPublic, scheduledAt, onChange }: Props) {
+  const theme = useTheme()
+  const styles = useThemedStyles(makeStyles)
+  const enabled = isPublic && scheduledAt != null
+  const { date, time } = useMemo(() => splitIso(scheduledAt), [scheduledAt])
+  const tz = useMemo(() => {
+    try {
+      return Intl.DateTimeFormat().resolvedOptions().timeZone
+    } catch {
+      return ''
+    }
+  }, [])
+
+  const setDate = useCallback(
+    (value: string) => {
+      const next = combineIso(value, time || '20:00')
+      if (next) onChange(next)
+    },
+    [time, onChange]
+  )
+  const setTime = useCallback(
+    (value: string) => {
+      const next = combineIso(date || todayIso(), value)
+      if (next) onChange(next)
+    },
+    [date, onChange]
+  )
+  const setEnabled = useCallback(
+    (next: boolean) => {
+      if (!next) return onChange(null)
+      const t = new Date()
+      t.setHours(20, 0, 0, 0)
+      t.setDate(t.getDate() + 1)
+      onChange(t.toISOString())
+    },
+    [onChange]
+  )
+
+  if (!isPublic) return null
+
+  return (
+    <View style={styles.wrap}>
+      <View style={styles.headerRow}>
+        <Text style={styles.label}>Schedule for later</Text>
+        <Switch value={enabled} onValueChange={setEnabled} trackColor={{ false: theme.border, true: theme.primary }} />
+      </View>
+      {enabled ? (
+        <>
+          <View style={styles.row}>
+            <View style={styles.col}>
+              <Text style={styles.subLabel}>Date (YYYY-MM-DD)</Text>
+              <TextInput
+                style={styles.input}
+                value={date}
+                onChangeText={setDate}
+                placeholder="2026-08-22"
+                placeholderTextColor={theme.textFaint}
+                maxLength={10}
+                autoCorrect={false}
+              />
+            </View>
+            <View style={styles.col}>
+              <Text style={styles.subLabel}>Time (24h)</Text>
+              <TextInput
+                style={styles.input}
+                value={time}
+                onChangeText={setTime}
+                placeholder="20:00"
+                placeholderTextColor={theme.textFaint}
+                maxLength={5}
+                autoCorrect={false}
+              />
+            </View>
+          </View>
+          <Text style={styles.hint}>
+            {tz ? `Times are in your local zone (${tz}).` : 'Times use this device’s local zone.'}
+          </Text>
+        </>
+      ) : (
+        <Text style={styles.hint}>Off — the game opens right after you tap Create.</Text>
+      )}
+    </View>
+  )
+}
+
+function todayIso(): string {
+  const d = new Date()
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+}
+
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
+    wrap: { gap: theme.space.sm },
+    headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    label: { color: theme.text, fontSize: 16, fontWeight: '800' },
+    subLabel: {
+      color: theme.textMuted,
+      fontSize: 11,
+      fontWeight: '700',
+      textTransform: 'uppercase',
+      letterSpacing: 1,
+    },
+    row: { flexDirection: 'row', gap: theme.space.md },
+    col: { flex: 1, gap: 4 },
+    input: {
+      backgroundColor: theme.bg,
+      borderColor: theme.border,
+      borderWidth: 1,
+      borderRadius: theme.radius.md,
+      color: theme.text,
+      fontSize: 18,
+      fontWeight: '700',
+      textAlign: 'center',
+      paddingVertical: 10,
+    },
+    hint: { color: theme.textMuted, fontSize: 13 },
+  })

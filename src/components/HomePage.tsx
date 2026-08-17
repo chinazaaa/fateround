@@ -9,6 +9,7 @@ import { SectionHeading } from '@/components/SectionHeading'
 import { DailyChallengeSection } from '@/components/daily/DailyChallengeSection'
 import { LiveGamesStrip } from '@/components/LiveGamesStrip'
 import { SubscribeHomeBanner } from '@/components/notifications/SubscribeHomeBanner'
+import { YourUpcomingGamesStrip } from '@/components/notifications/YourUpcomingGamesStrip'
 
 export function HomePage() {
   const gameModeCount = GAME_TYPE_OPTIONS.length
@@ -45,6 +46,8 @@ export function HomePage() {
       </section>
 
       <SubscribeHomeBanner />
+
+      <YourUpcomingGamesStrip />
 
       <LiveGamesStrip />
 
