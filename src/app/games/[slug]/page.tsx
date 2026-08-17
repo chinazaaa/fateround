@@ -24,6 +24,13 @@ import {
 } from '@/lib/game-maturity'
 import { FaqList } from '@/components/marketing/FaqList'
 import { MafiaRolesLanding } from '@/components/mafia/MafiaRolesLanding'
+import { GameLandingTrophies } from '@/components/marketing/GameLandingTrophies'
+
+// ISR: the page is statically generated (generateStaticParams below), but it now renders the
+// trophy catalog, which admins edit at runtime. Without a revalidate window an admin's change —
+// a new trophy, a retirement — wouldn't show until the next deploy. An hour keeps the page fast
+// while letting catalog edits surface on their own.
+export const revalidate = 3600
 
 type Props = { params: Promise<{ slug: string }> }
 
@@ -272,6 +279,8 @@ export default async function GameLandingRoute({ params }: Props) {
                 </div>
               ))}
             </section>
+
+            <GameLandingTrophies gameType={content.gameType} />
 
             {content.relatedBlogPosts && content.relatedBlogPosts.length > 0 && (
               <section>

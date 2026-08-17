@@ -1,11 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
 import type { MonopolyBoard, MonopolyPlayerState, Player } from '@fateround/shared'
-import {
-  mortgageValue,
-  unmortgageCost,
-  type MonopolyColorGroup,
-} from '@fateround/shared/monopoly-board'
+import { mortgageValue, unmortgageCost, type MonopolyColorGroup } from '@fateround/shared/monopoly-board'
 import { MONOPOLY_COLOR_HEX } from '@fateround/shared/monopoly-board-layout'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
@@ -113,9 +109,7 @@ export function MonopolyManagePanel({
   const mine = playerProperties(owners, myPlayerId)
   const theirs = tradeTarget ? playerProperties(owners, tradeTarget) : []
   const myJailCards = myState.get_out_of_jail_free ?? 0
-  const targetJailCards = tradeTarget
-    ? states.find((s) => s.player_id === tradeTarget)?.get_out_of_jail_free ?? 0
-    : 0
+  const targetJailCards = tradeTarget ? (states.find((s) => s.player_id === tradeTarget)?.get_out_of_jail_free ?? 0) : 0
   const housesInBank = board.houses_in_bank ?? 32
   const hotelsInBank = board.hotels_in_bank ?? 12
 
@@ -135,7 +129,7 @@ export function MonopolyManagePanel({
     setConfirmOneWayGift(false)
   }
 
-  const targetName = tradeTarget ? players.find((p) => p.id === tradeTarget)?.name ?? 'player' : ''
+  const targetName = tradeTarget ? (players.find((p) => p.id === tradeTarget)?.name ?? 'player') : ''
   const parsedOfferCash = Math.max(0, Math.floor(Number(offerCash) || 0))
   const parsedRequestCash = Math.max(0, Math.floor(Number(requestCash) || 0))
   const givingSomething = tradeSideHasValue(parsedOfferCash, offerProps, offerJailCards)
@@ -194,10 +188,7 @@ export function MonopolyManagePanel({
     return (
       <View
         key={status.group}
-        style={[
-          styles.setCard,
-          inactive ? styles.setCardInactive : status.complete ? styles.setCardComplete : null,
-        ]}
+        style={[styles.setCard, inactive ? styles.setCardInactive : status.complete ? styles.setCardComplete : null]}
       >
         <View style={[styles.setCardBar, { backgroundColor: MONOPOLY_COLOR_HEX[status.group] }]} />
         <View style={styles.setCardBody}>
@@ -285,7 +276,7 @@ export function MonopolyManagePanel({
                 <Text style={styles.chipSecondaryText}>Sell house</Text>
               </Pressable>
             ) : null}
-            {canRemoveHotel(space.index, myPlayerId, owners, buildings) ? (
+            {canRemoveHotel(space.index, myPlayerId, owners, buildings, housesInBank) ? (
               <Pressable
                 disabled={acting}
                 onPress={() => onBuild(space.index, 'sell_hotel')}
@@ -300,7 +291,9 @@ export function MonopolyManagePanel({
                 onPress={() => onMortgage(space.index, 'mortgage')}
                 style={[styles.chip, styles.chipSecondary, acting && styles.disabled]}
               >
-                <Text style={styles.chipSecondaryText}>Mortgage {formatThemedMoney(mortgageValue(space), themeId)}</Text>
+                <Text style={styles.chipSecondaryText}>
+                  Mortgage {formatThemedMoney(mortgageValue(space), themeId)}
+                </Text>
               </Pressable>
             ) : null}
             {isMortgaged ? (
@@ -318,11 +311,7 @@ export function MonopolyManagePanel({
     )
   }
 
-  const renderCheckRow = (
-    space: { index: number; name: string },
-    list: number[],
-    setList: (v: number[]) => void
-  ) => {
+  const renderCheckRow = (space: { index: number; name: string }, list: number[], setList: (v: number[]) => void) => {
     const checked = list.includes(space.index)
     return (
       <Pressable key={space.index} style={styles.checkRow} onPress={() => toggleProp(list, setList, space.index)}>
@@ -463,8 +452,7 @@ export function MonopolyManagePanel({
 
         {pendingTradeBlocksOthers && activePendingTrade ? (
           <Text style={styles.infoBox}>
-            A trade between{' '}
-            {players.find((p) => p.id === activePendingTrade.from_player_id)?.name ?? 'player'} and{' '}
+            A trade between {players.find((p) => p.id === activePendingTrade.from_player_id)?.name ?? 'player'} and{' '}
             {players.find((p) => p.id === activePendingTrade.to_player_id)?.name ?? 'player'} is in progress — new
             offers are paused until it finishes.
           </Text>
@@ -657,7 +645,13 @@ const makeStyles = (theme: Theme) =>
     card: { backgroundColor: theme.surface, borderRadius: 14, padding: 14, gap: 14 },
     section: { gap: 8 },
     divider: { borderTopWidth: 1, borderTopColor: theme.border, paddingTop: 12 },
-    labelCaps: { color: theme.textMuted, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
+    labelCaps: {
+      color: theme.textMuted,
+      fontSize: 11,
+      fontWeight: '700',
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+    },
     muted: { color: theme.textMuted, fontSize: 13, lineHeight: 18 },
     mutedCenter: { color: theme.textMuted, fontSize: 14, textAlign: 'center' },
     strong: { color: theme.text, fontWeight: '700' },
@@ -702,7 +696,13 @@ const makeStyles = (theme: Theme) =>
     groupCheck: { color: theme.primary },
     groupCount: { color: theme.textMuted, fontSize: 12, fontWeight: '600' },
 
-    propCard: { borderRadius: 12, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.bg, overflow: 'hidden' },
+    propCard: {
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: theme.border,
+      backgroundColor: theme.bg,
+      overflow: 'hidden',
+    },
     propColorBar: { height: 6, width: '100%' },
     propBody: { padding: 10, gap: 6 },
     propHeader: { flexDirection: 'row', justifyContent: 'space-between', gap: 8 },
@@ -732,7 +732,13 @@ const makeStyles = (theme: Theme) =>
     miniLabel: { color: theme.textFaint, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', marginTop: 2 },
 
     targetRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-    targetChip: { borderRadius: 20, borderWidth: 1, borderColor: theme.border, paddingHorizontal: 12, paddingVertical: 6 },
+    targetChip: {
+      borderRadius: 20,
+      borderWidth: 1,
+      borderColor: theme.border,
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+    },
     targetChipOn: { borderColor: theme.primary, backgroundColor: theme.primarySoft },
     targetChipText: { color: theme.text, fontSize: 13, fontWeight: '600' },
     targetChipTextOn: { color: theme.primaryMuted },

@@ -350,6 +350,126 @@ function capturablePieceSquares(board: string, color: CheckersColor): string[] {
 export const capturablePieceSquaresForTest = capturablePieceSquares
 
 // ---------------------------------------------------------------------------
+// Per-game trophy accumulator (red_stats / black_stats on the session row).
+//
+// International/Nigerian draughts keeps a POSITION, not a record: a crowning, a
+// majority-rule capture chain, a flying-king sweep across the board all vanish
+// once `board` is rewritten. These paired blobs are the trace the finish-time
+// facts builder folds into lifetime trophy counters
+// (src/lib/trophies/game-facts/checkers.ts, shared with the 8x8 engine).
+// Everything here is additive: it reads the move the engine already decided.
+// ---------------------------------------------------------------------------
+
+/** One seat's per-GAME scratch tallies. All optional; absent == 0. Shared shape with 8x8. */
+export type Draughts10Stats = {
+  captures?: number
+  kings_made?: number
+  enemy_kings_captured?: number
+  best_chain?: number
+  chain_cur?: number
+  peak_kings?: number
+  max_deficit?: number
+  turns?: number
+  back_streak?: number
+  back_streak_max?: number
+  made_capture_last_turn?: number
+  trades?: number
+  reached_endgame?: number
+  /** Longest single flying-king hop (rows travelled). Only kings fly, so 0 for man moves. */
+  flying_king_max?: number
+}
+
+/** A position with this many total pieces or fewer counts as an endgame (start is 40). */
+const DRAUGHTS10_ENDGAME_PIECES = 8
+
+function pieceCount(board: string, color: CheckersColor): number {
+  let n = 0
+  for (const ch of board) if (colorOfPiece(ch) === color) n += 1
+  return n
+}
+
+function kingCount(board: string, color: CheckersColor): number {
+  const king = color === 'r' ? 'R' : 'B'
+  let n = 0
+  for (const ch of board) if (ch === king) n += 1
+  return n
+}
+
+/** True when `color` still has a piece on its own home back rank (Red row 9, Black row 0). */
+function holdsBackRank(board: string, color: CheckersColor): boolean {
+  const row = color === 'r' ? BOARD_SIZE - 1 : 0
+  for (let c = 0; c < BOARD_SIZE; c += 1) if (colorOfPiece(board[idx(row, c)]) === color) return true
+  return false
+}
+
+/**
+ * Fold one accepted hop (or a huff) into the paired seat blobs, from the engine's own
+ * decisions so it can never disagree with what was played. `!continues` marks the end of
+ * the mover's whole turn, where turn-spanning tallies (chain length, trades, back-rank
+ * hold) and the symmetric board-derived ones (peak kings, deficit, endgame) are settled.
+ *
+ * A huff (Street Rules) calls in with captured=true, continues=false and kingHopDistance=0:
+ * it removes an opponent piece, so it counts toward captures/Seed Master exactly like a jump.
+ */
+export function bumpDraughts10Stats(
+  prevRed: Draughts10Stats,
+  prevBlack: Draughts10Stats,
+  args: {
+    color: CheckersColor
+    captured: boolean
+    crowned: boolean
+    continues: boolean
+    capturedWasKing: boolean
+    kingHopDistance: number
+    nextBoard: string
+  }
+): { red_stats: Draughts10Stats; black_stats: Draughts10Stats } {
+  const { color, captured, crowned, continues, capturedWasKing, kingHopDistance, nextBoard } = args
+  const red: Draughts10Stats = { ...prevRed }
+  const black: Draughts10Stats = { ...prevBlack }
+  const mine = color === 'r' ? red : black
+  const theirs = color === 'r' ? black : red
+
+  if (captured) {
+    mine.captures = (mine.captures ?? 0) + 1
+    mine.chain_cur = (mine.chain_cur ?? 0) + 1
+  }
+  if (crowned) mine.kings_made = (mine.kings_made ?? 0) + 1
+  if (capturedWasKing) mine.enemy_kings_captured = (mine.enemy_kings_captured ?? 0) + 1
+  if (kingHopDistance > (mine.flying_king_max ?? 0)) mine.flying_king_max = kingHopDistance
+
+  if (!continues) {
+    const chain = mine.chain_cur ?? 0
+    if (chain > (mine.best_chain ?? 0)) mine.best_chain = chain
+    mine.chain_cur = 0
+    mine.turns = (mine.turns ?? 0) + 1
+
+    if (captured && (theirs.made_capture_last_turn ?? 0) === 1) mine.trades = (mine.trades ?? 0) + 1
+    mine.made_capture_last_turn = captured ? 1 : 0
+
+    if (holdsBackRank(nextBoard, color)) {
+      mine.back_streak = (mine.back_streak ?? 0) + 1
+      if (mine.back_streak > (mine.back_streak_max ?? 0)) mine.back_streak_max = mine.back_streak
+    } else {
+      mine.back_streak = 0
+    }
+
+    const redCount = pieceCount(nextBoard, 'r')
+    const blackCount = pieceCount(nextBoard, 'b')
+    red.peak_kings = Math.max(red.peak_kings ?? 0, kingCount(nextBoard, 'r'))
+    black.peak_kings = Math.max(black.peak_kings ?? 0, kingCount(nextBoard, 'b'))
+    red.max_deficit = Math.max(red.max_deficit ?? 0, blackCount - redCount)
+    black.max_deficit = Math.max(black.max_deficit ?? 0, redCount - blackCount)
+    if (redCount + blackCount <= DRAUGHTS10_ENDGAME_PIECES) {
+      red.reached_endgame = 1
+      black.reached_endgame = 1
+    }
+  }
+
+  return { red_stats: red, black_stats: black }
+}
+
+// ---------------------------------------------------------------------------
 // Session helpers (DB-backed) — mirrors src/lib/checkers.ts.
 // ---------------------------------------------------------------------------
 
@@ -528,7 +648,7 @@ async function loadSession(
 async function persistSession(
   supabase: SupabaseClient,
   gameId: string,
-  patch: Partial<Draughts10Session>,
+  patch: Partial<Draughts10Session> & { red_stats?: Draughts10Stats; black_stats?: Draughts10Stats },
   expectedUpdatedAt: string
 ): Promise<boolean> {
   const { data } = await supabase
@@ -590,6 +710,18 @@ export async function processDraughts10Move(
   const eligibleForCrown = !isKing(mover) && reachesFarRank(color, toRow) && !continues
   const { board: nextBoard } = applyStep(session.board, step, eligibleForCrown)
   const crowned = eligibleForCrown
+
+  // Per-game trophy accumulator (additive; never affects the move above). Distance is
+  // read only for a flying king — a man always steps one square. The captured square
+  // still holds the victim in `session.board`, so its rank is read before the hop lands.
+  const [fromRow] = parseSquare(step.from)
+  const kingHopDistance = isKing(mover) ? Math.abs(toRow - fromRow) : 0
+  const capturedWasKing = captured && isKing(pieceAt(session.board, step.captured!))
+  const { red_stats: redStats, black_stats: blackStats } = bumpDraughts10Stats(
+    (session as unknown as { red_stats?: Draughts10Stats }).red_stats ?? {},
+    (session as unknown as { black_stats?: Draughts10Stats }).black_stats ?? {},
+    { color, captured, crowned, continues, capturedWasKing, kingHopDistance, nextBoard }
+  )
 
   const nextTurn: CheckersColor = continues ? color : color === 'r' ? 'b' : 'r'
 
@@ -698,6 +830,8 @@ export async function processDraughts10Move(
       is_draw: draw,
       status_message: statusMessage,
       turn_deadline_at: nextDeadline,
+      red_stats: redStats,
+      black_stats: blackStats,
     },
     session.updated_at
   )
@@ -739,10 +873,27 @@ export async function processDraughts10Huff(
   }
 
   const [r, c] = parseSquare(square)
+  const huffedWasKing = isKing(pieceAt(session.board, square))
   const arr = session.board.split('')
   arr[idx(r, c)] = '.'
   const nextBoard = arr.join('')
   const nextTurn = opponent
+
+  // Per-game trophy accumulator. A huff eliminates an opponent piece, so it counts as a
+  // capture for the tallies (captures / Seed Master) even though it isn't a jump.
+  const { red_stats: redStats, black_stats: blackStats } = bumpDraughts10Stats(
+    (session as unknown as { red_stats?: Draughts10Stats }).red_stats ?? {},
+    (session as unknown as { black_stats?: Draughts10Stats }).black_stats ?? {},
+    {
+      color,
+      captured: true,
+      crowned: false,
+      continues: false,
+      capturedWasKing: huffedWasKing,
+      kingHopDistance: 0,
+      nextBoard,
+    }
+  )
 
   let finished = false
   let reason: string | null = null
@@ -815,6 +966,8 @@ export async function processDraughts10Huff(
       is_draw: false,
       status_message: statusMessage,
       turn_deadline_at: nextDeadline,
+      red_stats: redStats,
+      black_stats: blackStats,
     },
     session.updated_at
   )
