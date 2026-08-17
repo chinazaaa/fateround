@@ -3,11 +3,14 @@ import {
   MONOPOLY_BOARD,
   MONOPOLY_EXPANDED_BOARD,
   MONOPOLY_MAX_PLAYERS,
+  housesInBankForSize,
+  hotelsInBankForSize,
   monopolyGoToJailPosition,
   monopolyJailPosition,
   ownsColorMonopoly,
   spaceAt,
   spacesInGroup,
+  startingCashForSize,
 } from '@/lib/monopoly-board'
 import {
   movePosition,
@@ -218,5 +221,18 @@ describe('Estate Kings expanded board', () => {
     })
     expect(res40.position).toBe(10)
     expect(res40.inJail).toBe(true)
+  })
+
+  it('scales bank houses and hotels proportionally for 48-space board', () => {
+    expect(housesInBankForSize(40)).toBe(32)
+    expect(hotelsInBankForSize(40)).toBe(12)
+
+    expect(housesInBankForSize(48)).toBe(48)
+    expect(hotelsInBankForSize(48)).toBe(18)
+  })
+
+  it('quadruples starting capital per player for 48-space board (6000 vs 1500)', () => {
+    expect(startingCashForSize(40)).toBe(1500)
+    expect(startingCashForSize(48)).toBe(6000)
   })
 })

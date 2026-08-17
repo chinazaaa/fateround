@@ -4,6 +4,11 @@ export const MONOPOLY_MIN_PLAYERS = 2
 export const MONOPOLY_MAX_PLAYERS = 8
 export const MONOPOLY_DEFAULT_MAX_PLAYERS = 6
 export const MONOPOLY_STARTING_CASH = 1500
+export const MONOPOLY_EXPANDED_STARTING_CASH = 6000
+
+export function startingCashForSize(boardSize: MonopolyBoardSize = 40): number {
+  return boardSize === 48 ? MONOPOLY_EXPANDED_STARTING_CASH : MONOPOLY_STARTING_CASH
+}
 export const MONOPOLY_GO_SALARY = 200
 export const MONOPOLY_JAIL_FINE = 50
 export const MONOPOLY_JAIL_POSITION = 10
@@ -21,6 +26,16 @@ export function goToJailPositionForSize(boardSize: MonopolyBoardSize = 40): numb
 }
 export const MONOPOLY_HOUSES_IN_BANK = 32
 export const MONOPOLY_HOTELS_IN_BANK = 12
+export const MONOPOLY_EXPANDED_HOUSES_IN_BANK = 48
+export const MONOPOLY_EXPANDED_HOTELS_IN_BANK = 18
+
+export function housesInBankForSize(boardSize: MonopolyBoardSize = 40): number {
+  return boardSize === 48 ? MONOPOLY_EXPANDED_HOUSES_IN_BANK : MONOPOLY_HOUSES_IN_BANK
+}
+
+export function hotelsInBankForSize(boardSize: MonopolyBoardSize = 40): number {
+  return boardSize === 48 ? MONOPOLY_EXPANDED_HOTELS_IN_BANK : MONOPOLY_HOTELS_IN_BANK
+}
 export const MONOPOLY_MORTGAGE_INTEREST_RATE = 0.1
 
 export type MonopolySpaceType =
