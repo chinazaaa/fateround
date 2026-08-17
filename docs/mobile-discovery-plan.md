@@ -371,10 +371,39 @@ ghost players. The tournament pattern (RSVP → open → confirm-ready
     fan-out, **NOT throttled and NOT gated by quiet hours** —
     this one is important enough that a missed ping would strand
     the user; quiet-hours users receive it anyway.
-- **Un-RSVP.** Any RSVPer can un-RSVP from the scheduled-game
-  page or from the "Your upcoming games" home strip. Un-RSVPing
-  after T-15min doesn't cancel the reminder push they already got
-  (fine — they can just ignore it).
+- **Un-RSVP.** Any RSVPer can un-RSVP at any time from the
+  scheduled-game page (`/game/[code]` shows a big **RSVP'd — tap
+  to cancel** button when the game is `scheduled` and you have a
+  row) OR from the swipe-left action on the "Your upcoming games"
+  home strip. Un-RSVPing:
+    - deletes the `game_rsvps` row immediately;
+    - removes the game from the user's home strip;
+    - does NOT fire any push (silent cancel);
+    - after T-15min doesn't cancel the reminder push they
+      already got (fine — they can just ignore it).
+- **Host reschedule.** Hosts can move a scheduled game to a new
+  date/time from the same host lobby settings sheet that exposes
+  the Public toggle today. Rules:
+    - New `scheduled_at` must be in the future.
+    - **All RSVPers get a "rescheduled" push**, single fan-out,
+      **NOT throttled and NOT quiet-hours gated** — same rules
+      as host-cancellation. Missing a reschedule ping would
+      strand the user; important enough to bypass quiet hours.
+      Copy: "📆 Your Monopoly game moved to Saturday, 8:00 PM."
+    - The T-15min reminder job is re-anchored to the new
+      `scheduled_at`; the old scheduled push is cancelled so a
+      Monday-scheduled-then-moved-to-Tuesday game doesn't fire
+      the Monday reminder anyway.
+    - RSVPers keep their `game_rsvps` row (their commitment
+      travels with the game). Anyone who no longer wants the new
+      time can un-RSVP from the ping's deep-link or the home
+      strip.
+    - Home "Your upcoming games" strip picks up the new time on
+      the next focus refresh — same query, updated column.
+    - Reschedule is disabled once the game has transitioned to
+      `waiting` (i.e. past `scheduled_at`); at that point the
+      host is running an active lobby and reschedule stops making
+      sense.
 - **Host early-start confirm.** A host tapping Start BEFORE
   `scheduled_at` gets a confirmation dialog: "This game is
   scheduled for Friday, 8:00 PM. Start it now? RSVPers were
