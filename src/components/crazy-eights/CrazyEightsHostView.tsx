@@ -77,6 +77,12 @@ export function CrazyEightsHostView({ gameCode, hostToken }: { gameCode: string;
   const sessionRef = useRef<CrazyEightsSession | null>(null)
   sessionRef.current = session
   const [hands, setHands] = useState<CrazyEightsPlayerHand[]>([])
+  // The host's own player resume token WHEN they're seated and playing. Mirrored to a ref so the
+  // hand fetch (defined before useHostSeat resolves it) can send it — a hostToken alone can't
+  // unredact the host's own hand, so a playing host would otherwise see "0 cards". See load().
+  const hostResumeTokenRef = useRef<string | null>(null)
+  // The host's seated player id, likewise mirrored: applyHandRow is defined before useHostSeat.
+  const hostPlayerIdRef = useRef<string | null>(null)
   const [starting, setStarting] = useState(false)
   const [playingAgain, setPlayingAgain] = useState(false)
   const [hostActing, setHostActing] = useState(false)
@@ -90,9 +96,13 @@ export function CrazyEightsHostView({ gameCode, hostToken }: { gameCode: string;
       supabase.from('games').select(GAME_SELECT).eq('id', gameCode).maybeSingle(),
       supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at'),
       supabase.from('crazy_eights_sessions').select(CRAZY8_SESSION_SELECT).eq('game_id', gameCode).maybeSingle(),
-      // Via /api/crazy-eights/hands — the host runs the board and never needs to see anyone's
-      // cards, so every hand comes back as a count (see lib/hand-redaction.ts).
-      fetchCrazyEightsHands(gameCode, { hostToken }),
+      // Via /api/crazy-eights/hands. A watching host only gets counts — but a host who is SEATED
+      // AND PLAYING needs their own cards, and the redaction route can only unredact via a resume
+      // token (a hostToken resolves no viewer). So send the host's player resume token too when we
+      // have one; without it a playing host sees "0 cards", which also reads as "out". The effect
+      // below re-fetches once the token resolves (useHostSeat resolves it after this callback is
+      // defined).
+      fetchCrazyEightsHands(gameCode, { hostToken, resumeToken: hostResumeTokenRef.current ?? undefined }),
     ])
     if (!supabasePollOk(gameRes, plrsRes, sessionRes) || handsRes === null) return false
     setGame(gameRes.data)
@@ -124,24 +134,44 @@ export function CrazyEightsHostView({ gameCode, hostToken }: { gameCode: string;
     sessionRef.current = next
     return prev != null
   }, [])
-  const applyHandRow = useCallback((row: Record<string, unknown>): boolean => {
-    const next = row as unknown as CrazyEightsPlayerHand
-    setHands((prev) => {
-      const i = prev.findIndex((h) => h.id === next.id)
-      // The host only ever needs counts, but once `cards` is revoked from anon the realtime
-      // payload carries neither cards nor card_count — so carry the known count forward rather
-      // than letting an opponent flicker to zero (which reads as "out").
-      const merged: CrazyEightsPlayerHand = {
-        ...next,
-        card_count: next.card_count ?? (Array.isArray(next.cards) ? next.cards.length : prev[i]?.card_count),
+  const applyHandRow = useCallback(
+    (row: Record<string, unknown>): boolean => {
+      const next = row as unknown as CrazyEightsPlayerHand
+      // A payload for the SEATED host's own row that carries no cards is a redacted view of our own
+      // hand, not an empty hand — applying it would blank the cards the host is holding. Re-fetch
+      // through the authorized route instead (same rule as the player view).
+      if (hostPlayerIdRef.current && next.player_id === hostPlayerIdRef.current && !Array.isArray(next.cards)) {
+        void fetchCrazyEightsHands(gameCode, { hostToken, resumeToken: hostResumeTokenRef.current ?? undefined }).then(
+          (h) => {
+            if (h) setHands(h)
+          }
+        )
+        return true
       }
-      if (i === -1) return [...prev, merged].sort((a, b) => a.player_order - b.player_order)
-      const copy = [...prev]
-      copy[i] = merged
-      return copy
-    })
-    return true
-  }, [])
+      // Can the new count be derived from this payload? Once `cards` is revoked from anon it
+      // carries neither `cards` nor `card_count` (the count is computed by the redaction route,
+      // not stored as a column) — and then this row must NOT be reported as absorbed: returning
+      // true would skip the reconciliation reload (useGameTableSync) while polling is off, so the
+      // host board would show stale counts for the rest of the game.
+      const countable = Array.isArray(next.cards) || typeof next.card_count === 'number'
+      setHands((prev) => {
+        const i = prev.findIndex((h) => h.id === next.id)
+        // The host only ever needs counts, but once `cards` is revoked from anon the realtime
+        // payload carries neither cards nor card_count — so carry the known count forward rather
+        // than letting an opponent flicker to zero (which reads as "out").
+        const merged: CrazyEightsPlayerHand = {
+          ...next,
+          card_count: next.card_count ?? (Array.isArray(next.cards) ? next.cards.length : prev[i]?.card_count),
+        }
+        if (i === -1) return [...prev, merged].sort((a, b) => a.player_order - b.player_order)
+        const copy = [...prev]
+        copy[i] = merged
+        return copy
+      })
+      return countable
+    },
+    [gameCode, hostToken]
+  )
 
   const connected = useGameTableSync(
     gameCode,
@@ -181,6 +211,21 @@ export function CrazyEightsHostView({ gameCode, hostToken }: { gameCode: string;
     onReload: load,
     toast: { success, error: toastError },
   })
+  hostResumeTokenRef.current = hostResumeToken
+  hostPlayerIdRef.current = hostPlayerId
+
+  // The first hand fetch runs before useHostSeat resolves the host's player token, so a playing
+  // host's own hand comes back redacted ("0 cards"). Re-fetch with the token the moment it lands.
+  useEffect(() => {
+    if (!hostResumeToken || game?.status !== 'active') return
+    let cancelled = false
+    void fetchCrazyEightsHands(gameCode, { hostToken, resumeToken: hostResumeToken }).then((h) => {
+      if (!cancelled && h) setHands(h)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [hostResumeToken, game?.status, gameCode, hostToken])
 
   const handlePlayerRemoved = useCallback(
     (playerId: string) => {

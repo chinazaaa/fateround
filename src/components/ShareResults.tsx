@@ -44,6 +44,18 @@ import { ShareActionButtons } from '@/components/ShareActionButtons'
 import type { MonopolyStanding } from '@/lib/monopoly'
 import { formatMonopolyMoney } from '@/lib/monopoly'
 import type { WhotStanding } from '@/lib/whot'
+
+/**
+ * Standings for the card games (Whot / Crazy Eights / UNO).
+ *
+ * `cardCount` / `handSum` are nullable: a hand can be redacted from the client that is rendering
+ * the standings (see lib/hand-redaction.ts), and "hidden" must not be printed as 0 — that reads
+ * as "out of cards", i.e. a player who won.
+ */
+type CardGameStanding = Omit<WhotStanding, 'cardCount' | 'handSum'> & {
+  cardCount: number | null
+  handSum: number | null
+}
 import type { LudoStanding } from '@/lib/ludo'
 import type { SnakeLadderStanding } from '@/lib/snake-and-ladder'
 
@@ -92,7 +104,7 @@ function buildShareText({
   yahtzeeWinnerName?: string
   monopolyStandings?: MonopolyStanding[]
   monopolyWinnerName?: string
-  whotStandings?: WhotStanding[]
+  whotStandings?: CardGameStanding[]
   whotWinnerName?: string
   ludoStandings?: LudoStanding[]
   ludoWinnerName?: string
@@ -208,7 +220,9 @@ function buildShareText({
       '',
       'Final standings:',
       ...whotStandings.slice(0, 8).map((row) => {
+        if (row.cardCount === null) return `  ${row.rank}. ${row.name} — hand hidden`
         if (row.cardCount === 0) return `  ${row.rank}. ${row.name} — out of cards`
+        if (row.handSum === null) return `  ${row.rank}. ${row.name} — ${row.cardCount} cards`
         return `  ${row.rank}. ${row.name} — ${row.cardCount} cards (${row.handSum} pts)`
       }),
       '',
@@ -441,7 +455,7 @@ export function ShareResults({
   yahtzeeWinnerName?: string
   monopolyStandings?: MonopolyStanding[]
   monopolyWinnerName?: string
-  whotStandings?: WhotStanding[]
+  whotStandings?: CardGameStanding[]
   whotWinnerName?: string
   ludoStandings?: LudoStanding[]
   ludoWinnerName?: string

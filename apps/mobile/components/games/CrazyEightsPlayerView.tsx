@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import {
   type CrazyEightsCalledSuit,
@@ -60,7 +60,7 @@ import {
 import { getPlayerSession } from '@/lib/secure-session'
 import { playSound } from '@/lib/sounds'
 import { getSupabase } from '@/lib/supabase'
-import { CRAZY8_PLAYER_HANDS_SELECT, CRAZY8_SESSION_SELECT } from '@/lib/supabase-selects'
+import { CRAZY8_SESSION_SELECT } from '@/lib/supabase-selects'
 import { usePlayerSessionActions } from '@/lib/player-session'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
@@ -82,6 +82,9 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
   const [session, setSession] = useState<CrazyEightsSession | null>(null)
   const [hands, setHands] = useState<CrazyEightsPlayerHand[]>([])
   const [acting, setActing] = useState(false)
+  // Authoritative resume token, mirrored to a ref so the hand fetch (defined before the bootstrap
+  // resolves the token) can fall back to it. See the fetch + effect below.
+  const myResumeTokenRef = useRef<string | null>(null)
 
   const loadGameState = useCallback(
     async (_game: Game, _players: Player[]): Promise<{ state: CrazyEightsSession | null; ok: boolean }> => {
@@ -91,7 +94,13 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
       const session = await getPlayerSession(code)
       const [sessionRes, handsRes] = await Promise.all([
         getSupabase().from('crazy_eights_sessions').select(CRAZY8_SESSION_SELECT).eq('game_id', code).maybeSingle(),
-        postCrazyEightsHands(code, { resumeToken: session?.resumeToken }).catch(() => null),
+        // Fall back to the bootstrap-resolved token: this runs BEFORE the player is resolved on
+        // the first load, so for a share-link player the stored session isn't written yet, and a
+        // tokenless request makes the redaction route blank our OWN hand — which `isOut` reads as
+        // "you are out". The effect below re-fetches once the token lands.
+        postCrazyEightsHands(code, {
+          resumeToken: session?.resumeToken ?? myResumeTokenRef.current ?? undefined,
+        }).catch(() => null),
       ])
       if (sessionRes.error || !handsRes) return { state: null, ok: false }
       const sessionData = sessionRes.data as CrazyEightsSession | null
@@ -124,6 +133,23 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
     computeScreen,
   })
   const { onLeft, lobbyProps } = usePlayerSessionActions(bootstrap)
+  myResumeTokenRef.current = bootstrap.myResumeToken
+
+  // The first hand fetch can run before the resume token is resolved, which the redaction route
+  // answers with our own hand blanked. Re-fetch with the authoritative token once it lands.
+  useEffect(() => {
+    const token = bootstrap.myResumeToken
+    if (!token || bootstrap.game?.status !== 'active') return
+    let cancelled = false
+    void postCrazyEightsHands(gameCode.toUpperCase(), { resumeToken: token })
+      .then((res) => {
+        if (!cancelled && res) setHands(res.hands ?? [])
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [bootstrap.myResumeToken, bootstrap.game?.status, gameCode])
 
   useGameTableSync(
     gameCode,
@@ -155,7 +181,10 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
   //    briefly treated as empty and flip a still-playing player into the watch-only UI.
   const me = bootstrap.myPlayerId ? (bootstrap.players.find((p) => p.id === bootstrap.myPlayerId) ?? null) : null
   const isViewer = !!(me && bootstrap.game && playerIsViewer(me, bootstrap.game))
-  const isOut = !!myHand && (myHand.cards?.length ?? 0) === 0 && bootstrap.game?.status === 'active'
+  // `cards: null` means REDACTED, not empty (src/lib/hand-redaction.ts). Fall back to the count
+  // that survives redaction so an unreadable hand is never rendered as "you are out".
+  const myCardCount = myHand ? (Array.isArray(myHand.cards) ? myHand.cards.length : (myHand.card_count ?? null)) : null
+  const isOut = myCardCount === 0 && bootstrap.game?.status === 'active'
   const isWatching = isViewer || isOut
 
   // Desync guard: the hands table loaded (others' rows present) but none is ours,
@@ -325,11 +354,19 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
     const winnerEmptyHand = standings.find((s) => s.playerId === session.winner_player_id)?.cardCount === 0
     const leaderboard: FinishedLeaderboardRow[] = standings.map((s, index) => {
       const isWinner = s.playerId === session.winner_player_id
+      // null = the hand is still hidden from us (redaction; see src/lib/hand-redaction.ts).
+      // Render it as unknown — printing 0 / "Out of cards" would claim a player had won.
+      const scored = s.handSum !== null && s.cardCount !== 0
       return {
         name: s.name,
-        score: isWinner ? 'Winner' : s.cardCount === 0 ? '—' : s.handSum,
-        scoreSuffix: isWinner || s.cardCount === 0 ? undefined : 'pts',
-        detail: s.cardCount === 0 ? 'Out of cards' : `${s.cardCount} card${s.cardCount === 1 ? '' : 's'} left`,
+        score: isWinner ? 'Winner' : s.handSum === null || s.cardCount === 0 ? '—' : s.handSum,
+        scoreSuffix: isWinner || !scored ? undefined : 'pts',
+        detail:
+          s.cardCount === null
+            ? 'Hand hidden until the game ends'
+            : s.cardCount === 0
+              ? 'Out of cards'
+              : `${s.cardCount} card${s.cardCount === 1 ? '' : 's'} left`,
         you: !!bootstrap.myPlayerId && s.playerId === bootstrap.myPlayerId,
         highlight: index === 0,
       }

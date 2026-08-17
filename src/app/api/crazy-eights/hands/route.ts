@@ -13,6 +13,12 @@ import { enforceRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
  *
  * POST, not GET: the caller's resume token is a secret and must not land in a query string
  * (access logs, CDN logs, browser history) — same reasoning as /api/codewords/board.
+ *
+ * Deliberately UNAUTHENTICATED, like /api/whot/hands: a tokenless caller who knows the game code
+ * gets card counts only (public information at the table — spectators and the host board need
+ * them), plus full hands once the game is finished, which /history/[code] already shows everyone.
+ * The resume token is the only thing that unredacts a live hand, and the rate limiter bounds
+ * abuse. Rationale recorded in docs/rls-hardening.md § "Phase 7 — hand redaction".
  */
 export async function POST(req: NextRequest) {
   try {

@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   CrazyEightsCard,
@@ -70,6 +70,10 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
   const sessionRef = useRef<CrazyEightsSession | null>(null)
   sessionRef.current = session
   const [hands, setHands] = useState<CrazyEightsPlayerHand[]>([])
+  // The authoritative resume token, mirrored to a ref so the hand fetch can use it without a
+  // dependency cycle (loadGameState is defined before useGameViewBootstrap resolves the token).
+  // It's the fallback when the localStorage session isn't populated yet — see the fetch below.
+  const myResumeTokenRef = useRef<string | null>(null)
   const { displayName: roomDisplayName, joinExtras, resolving: resolvingRoomMember } = useRoomMemberJoin(gameCode)
   const [acting, setActing] = useState(false)
 
@@ -81,10 +85,16 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
     // else's arrive as `card_count`.
     const [sessionRes, handsData] = await Promise.all([
       supabase.from('crazy_eights_sessions').select(CRAZY8_SESSION_SELECT).eq('game_id', gameCode).maybeSingle(),
-      // Read the token from the session store rather than the hook value: this callback is
-      // defined before useGameViewBootstrap (which itself takes `load`), so closing over
-      // myResumeToken here would be a cycle.
-      fetchCrazyEightsHands(gameCode, { resumeToken: getPlayerSession(gameCode)?.resumeToken }),
+      // Prefer the localStorage session token, falling back to the bootstrap-resolved token via a
+      // ref. This callback runs BEFORE the player is resolved on the first load (see
+      // useGameViewBootstrap: loadGameState is called before resolvePlayerSession), so for a
+      // player who arrived via a share link the localStorage session isn't written yet — without
+      // a token the route redacts our OWN hand to empty, which `isOut` would read as "you are
+      // out". The ref covers subsequent loads; the effect below re-fetches the moment the token
+      // resolves.
+      fetchCrazyEightsHands(gameCode, {
+        resumeToken: getPlayerSession(gameCode)?.resumeToken ?? myResumeTokenRef.current ?? undefined,
+      }),
     ])
     const sessionData = supabasePollOk(sessionRes) ? (sessionRes.data as CrazyEightsSession | null) : null
     if (sessionData) setSession(sessionData)
@@ -129,6 +139,21 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
     joinExtras,
     onJoinError: toastError,
   })
+  myResumeTokenRef.current = myResumeToken
+
+  // The first hand fetch (in loadGameState) can run before the player — and thus the resume
+  // token — is resolved, which the redaction route answers with our own hand blanked. Re-fetch
+  // with the authoritative token the moment it lands, so a share-link player sees their cards.
+  useEffect(() => {
+    if (!myResumeToken || game?.status !== 'active') return
+    let cancelled = false
+    void fetchCrazyEightsHands(gameCode, { resumeToken: myResumeToken }).then((h) => {
+      if (!cancelled && h) setHands(h)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [myResumeToken, game?.status, gameCode])
 
   useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
   useApplyGameTheme(screen === 'game_ended' ? 'default' : game?.theme)
@@ -153,15 +178,23 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
       // an empty hand, it would read as "you are out" mid-game. So: never let a payload shrink
       // our own hand; re-fetch through the authorized route instead.
       if (myPlayerId && next.player_id === myPlayerId && !Array.isArray(next.cards)) {
-        void fetchCrazyEightsHands(gameCode, { resumeToken: getPlayerSession(gameCode)?.resumeToken }).then((hands) => {
+        void fetchCrazyEightsHands(gameCode, {
+          resumeToken: getPlayerSession(gameCode)?.resumeToken ?? myResumeTokenRef.current ?? undefined,
+        }).then((hands) => {
           if (hands) setHands(hands)
         })
         return true
       }
+      // Can we derive the new count from this payload? Once `cards` is revoked from anon the
+      // payload carries neither `cards` nor `card_count` (card_count is computed by the
+      // redaction route, not a column), so the answer is no — and then the row must NOT be
+      // absorbed: returning true here would skip the reconciliation reload (useGameTableSync)
+      // while polling is off, freezing every opponent's count at its last known value.
+      const countable = Array.isArray(next.cards) || typeof next.card_count === 'number'
       setHands((prev) => {
         const i = prev.findIndex((h) => h.id === next.id)
         // Carry a known count forward when the payload omits it, so an opponent never
-        // momentarily renders as holding zero cards.
+        // momentarily renders as holding zero cards while the reload is in flight.
         const merged: CrazyEightsPlayerHand = {
           ...next,
           card_count: next.card_count ?? (Array.isArray(next.cards) ? next.cards.length : prev[i]?.card_count),
@@ -171,7 +204,7 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
         copy[i] = merged
         return copy
       })
-      return true
+      return countable
     },
     [gameCode, myPlayerId]
   )
@@ -308,7 +341,15 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
   // card and went out). Require the hand row to actually be loaded — after a network drop
   // `hands` can be briefly empty/unfetched, and treating a not-yet-loaded hand as empty would
   // flip a still-playing player into the watch-only UI until the next refetch.
-  const isOut = !!myHandRow && myHand.length === 0 && game?.status === 'active'
+  // `cards: null` means REDACTED, not empty (lib/hand-redaction.ts): if our own row came back
+  // hidden (no resume token yet, or a realtime payload we haven't re-fetched), fall back to the
+  // count that survives redaction and never let "I can't see it" render as "I'm out".
+  const myCardCount = myHandRow
+    ? Array.isArray(myHandRow.cards)
+      ? myHandRow.cards.length
+      : (myHandRow.card_count ?? null)
+    : null
+  const isOut = myCardCount === 0 && game?.status === 'active'
   const isWatching = isViewer || isOut
 
   // Turn timer (per-player countdown) + game timer (overall duration). Both hooks

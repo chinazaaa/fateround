@@ -104,18 +104,36 @@ export function crazyEightsHandSum(cards: CrazyEightsCard[]): number {
 export type CrazyEightsStanding = {
   playerId: string
   name: string
-  cardCount: number
-  handSum: number
+  /** null = the hand is hidden from this viewer and no count came back. NEVER 0 for a hidden hand. */
+  cardCount: number | null
+  /** null = the hand is hidden from this viewer, so its points are unknowable. NEVER 0. */
+  handSum: number | null
   rank: number
 }
 
 /** Minimal hand shape `crazyEightsPlacementOrder` needs — works for both
  *  `CrazyEightsPlayerHand` rows and the trimmed `{ player_id, cards }` rows the
  *  room-points query selects. */
-// `cards` is nullable on the client-facing CrazyEightsPlayerHand (null == redacted, see
-// types/index.ts), but ranking only ever runs server-side where the real array is in hand.
-// Accept the nullable shape and treat a missing array as empty so callers don't have to pre-map.
-type CrazyEightsRankableHand = { player_id: string; cards: CrazyEightsCard[] | null }
+// `cards` is null on any row the hand-redaction route hid from the caller (lib/hand-redaction.ts);
+// `card_count` is the one fact that survives redaction. Server-side callers pass full rows.
+type CrazyEightsRankableHand = { player_id: string; cards: CrazyEightsCard[] | null; card_count?: number | null }
+
+/**
+ * What we actually KNOW about a hand.
+ *
+ * A redacted row (`cards: null`) is not an empty hand. Coercing it to `[]` — which this used to
+ * do — scores every hidden player at 0 cards / 0 points, i.e. exactly the "out of cards, ranked
+ * first" reading that the redaction is supposed to prevent. Only a visible array is real state;
+ * a `card_count` of 0 is real too (an empty hand has nothing to hide, so its sum is 0). Anything
+ * else is unknown, and unknown is reported as null all the way to the UI.
+ */
+function crazyEightsHandFacts(hand: CrazyEightsRankableHand): { cardCount: number | null; handSum: number | null } {
+  if (Array.isArray(hand.cards)) {
+    return { cardCount: hand.cards.length, handSum: crazyEightsHandSum(hand.cards) }
+  }
+  const count = hand.card_count ?? null
+  return { cardCount: count, handSum: count === 0 ? 0 : null }
+}
 
 /**
  * Final placement order (1st → last), the single source of truth for who placed where.
@@ -125,6 +143,9 @@ type CrazyEightsRankableHand = { player_id: string; cards: CrazyEightsCard[] | n
  * by when they went out. Everyone still holding cards follows, ordered by lowest hand
  * total then fewest cards. Without this, all finished players tie at 0 cards / hand-sum 0
  * and the sort ordered them arbitrarily.
+ *
+ * Hands we cannot see (redacted, sum unknown) cannot be scored against the ones we can, so they
+ * trail every scored player instead of tying at zero and taking the podium.
  */
 export function crazyEightsPlacementOrder(
   hands: CrazyEightsRankableHand[],
@@ -134,12 +155,11 @@ export function crazyEightsPlacementOrder(
   const activeIds = new Set(turnOrder ?? [])
   const finished = (finishOrder ?? []).filter((id) => activeIds.has(id))
   const finishedSet = new Set(finished)
-  const remaining = hands
+  const rows = hands
     .filter((h) => activeIds.has(h.player_id) && !finishedSet.has(h.player_id))
-    .map((h) => {
-      const cards = (h.cards as CrazyEightsCard[]) ?? []
-      return { playerId: h.player_id, handSum: crazyEightsHandSum(cards), cardCount: cards.length }
-    })
+    .map((h) => ({ playerId: h.player_id, ...crazyEightsHandFacts(h) }))
+  const scored = rows
+    .filter((r): r is { playerId: string; cardCount: number; handSum: number } => r.handSum !== null)
     .sort((a, b) => {
       if (a.handSum !== b.handSum) return a.handSum - b.handSum
       if (a.cardCount !== b.cardCount) return a.cardCount - b.cardCount
@@ -147,8 +167,15 @@ export function crazyEightsPlacementOrder(
       // sites — which read hands from separate queries — always agree on tied boards.
       return a.playerId.localeCompare(b.playerId)
     })
-    .map((r) => r.playerId)
-  return [...finished, ...remaining]
+  const hidden = rows
+    .filter((r) => r.handSum === null)
+    .sort((a, b) => {
+      const ac = a.cardCount ?? Number.MAX_SAFE_INTEGER
+      const bc = b.cardCount ?? Number.MAX_SAFE_INTEGER
+      if (ac !== bc) return ac - bc
+      return a.playerId.localeCompare(b.playerId)
+    })
+  return [...finished, ...scored.map((r) => r.playerId), ...hidden.map((r) => r.playerId)]
 }
 
 export function buildCrazyEightsStandings(
@@ -159,13 +186,21 @@ export function buildCrazyEightsStandings(
 ): CrazyEightsStanding[] {
   const activeIds = new Set(turnOrder ?? [])
   const byId = new Map(hands.filter((h) => activeIds.has(h.player_id)).map((h) => [h.player_id, h]))
+  // `finish_order` is public session state: being on it means the player emptied their hand, so
+  // 0 cards / 0 points is a fact here even when the row itself is redacted.
+  const finishedSet = new Set((finishOrder ?? []).filter((id) => activeIds.has(id)))
   return crazyEightsPlacementOrder(hands, turnOrder, finishOrder).map((playerId, index) => {
-    const cards = (byId.get(playerId)?.cards as CrazyEightsCard[]) ?? []
+    const row = byId.get(playerId)
+    const facts = finishedSet.has(playerId)
+      ? { cardCount: 0, handSum: 0 }
+      : row
+        ? crazyEightsHandFacts(row)
+        : { cardCount: null, handSum: null }
     return {
       playerId,
       name: players.find((p) => p.id === playerId)?.name ?? 'Player',
-      cardCount: cards.length,
-      handSum: crazyEightsHandSum(cards),
+      cardCount: facts.cardCount,
+      handSum: facts.handSum,
       rank: index + 1,
     }
   })
@@ -345,8 +380,16 @@ export function isDrawPileDepleted(session: CrazyEightsSession): boolean {
   return drawLen === 0 && discardLen === 0
 }
 
+/**
+ * How many cards a player holds. Server callers pass full rows; the `card_count` fallback keeps
+ * a redacted row (`cards: null`, see lib/hand-redaction.ts) from reading as an empty hand — which
+ * every caller here treats as "this player is out".
+ */
 export function crazyEightsHandCount(hands: CrazyEightsPlayerHand[], playerId: string): number {
-  return ((hands.find((h) => h.player_id === playerId)?.cards as CrazyEightsCard[]) ?? []).length
+  const row = hands.find((h) => h.player_id === playerId)
+  if (!row) return 0
+  if (Array.isArray(row.cards)) return (row.cards as CrazyEightsCard[]).length
+  return row.card_count ?? 0
 }
 
 /** True when the player has no cards left and is watching the rest of the game. */
