@@ -231,8 +231,8 @@ describe('Estate Kings expanded board', () => {
     expect(hotelsInBankForSize(48)).toBe(18)
   })
 
-  it('triples starting capital per player for 48-space board (4500 vs 1500)', () => {
+  it('quadruples starting capital per player for 48-space board (6000 vs 1500)', () => {
     expect(startingCashForSize(40)).toBe(1500)
-    expect(startingCashForSize(48)).toBe(4500)
+    expect(startingCashForSize(48)).toBe(6000)
   })
 })
