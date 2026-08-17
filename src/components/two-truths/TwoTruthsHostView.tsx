@@ -22,7 +22,7 @@ import { EditNameInline } from '@/components/ui/EditNameInline'
 import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
 import { gameTypeConfig } from '@/lib/game-types'
 import { useTwoTruthsAdvance } from '@/hooks/useTwoTruthsAdvance'
-import { lobbyReadyForTwoTruths, TTL_TIMER_OPTIONS, visibleTtlGuesses } from '@/lib/two-truths'
+import { lobbyReadyForTwoTruths, ownTtlStatementIsFresh, TTL_TIMER_OPTIONS, visibleTtlGuesses } from '@/lib/two-truths'
 import { fetchMyTtlGuesses, fetchMyTtlStatement } from '@/lib/two-truths-client'
 import { supabase } from '@/lib/supabase'
 import {
@@ -229,8 +229,10 @@ export function TwoTruthsHostView({ gameCode, hostToken }: { gameCode: string; h
       cancelled = true
     }
   }, [gameCode, hostResumeToken, rosterStatementId, rosterStatementStamp])
-  // Ignore a stale own-row (different player, or a lobby reset that cleared the submission).
-  const myStatement = (ownStatement?.id === rosterStatementId ? ownStatement : null) ?? rosterStatement
+  // Ignore a stale own-row: a different player, a lobby reset that cleared the submission, or
+  // a re-submit (which UPSERTs the SAME row id and only bumps updated_at) whose refetch has
+  // not landed yet. See ownTtlStatementIsFresh.
+  const myStatement = (ownTtlStatementIsFresh(ownStatement, rosterStatement) ? ownStatement : null) ?? rosterStatement
   const existingStatements = myStatement
     ? ([myStatement.statement_a, myStatement.statement_b, myStatement.statement_c] as [string, string, string])
     : null

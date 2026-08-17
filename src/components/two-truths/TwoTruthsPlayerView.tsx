@@ -12,7 +12,7 @@ import { TwoTruthsLobbySubmit } from '@/components/two-truths/TwoTruthsLobbySubm
 import { gameTypeConfig } from '@/lib/game-types'
 import { supabase } from '@/lib/supabase'
 import { ROUND_SELECT, TTL_GUESS_PROGRESS_SELECT, TTL_STATEMENT_SELECT } from '@/lib/supabase-selects'
-import { visibleTtlGuesses } from '@/lib/two-truths'
+import { ownTtlStatementIsFresh, visibleTtlGuesses } from '@/lib/two-truths'
 import { fetchMyTtlGuesses, fetchMyTtlStatement } from '@/lib/two-truths-client'
 import { clearPlayerSession } from '@/lib/utils'
 import type { Game, Round, TtlGuess, TtlGuessProgress, TtlStatement } from '@/types'
@@ -177,8 +177,10 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
       cancelled = true
     }
   }, [gameCode, myResumeToken, rosterStatementId, rosterStatementStamp])
-  // Ignore a stale own-row (different player, or a lobby reset that cleared the submission).
-  const myStatement = (ownStatement?.id === rosterStatementId ? ownStatement : null) ?? rosterStatement
+  // Ignore a stale own-row: a different player, a lobby reset that cleared the submission, or
+  // a re-submit (which UPSERTs the SAME row id and only bumps updated_at) whose refetch has
+  // not landed yet. See ownTtlStatementIsFresh.
+  const myStatement = (ownTtlStatementIsFresh(ownStatement, rosterStatement) ? ownStatement : null) ?? rosterStatement
   const existingStatements = myStatement
     ? ([myStatement.statement_a, myStatement.statement_b, myStatement.statement_c] as [string, string, string])
     : null

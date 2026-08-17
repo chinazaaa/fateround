@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildTtlMetadata, buildTtlRoundRows, parseTtlMetadata } from './two-truths'
+import { buildTtlMetadata, buildTtlRoundRows, ownTtlStatementIsFresh, parseTtlMetadata } from './two-truths'
 import type { TtlStatement } from '@/types'
 
 function statement(playerId: string, lieIndex: number): TtlStatement {
@@ -106,5 +106,33 @@ describe('parseTtlMetadata', () => {
     expect(parseTtlMetadata(null)).toBeNull()
     expect(parseTtlMetadata({ lie_index: 1 })).toBeNull()
     expect(parseTtlMetadata({ statements: ['a', 'b'] })).toBeNull()
+  })
+})
+
+describe('ownTtlStatementIsFresh', () => {
+  const roster = { id: 'stmt-1', updated_at: '2026-08-16T10:00:00.000Z' }
+
+  it('keeps the token-gated own row when it matches the roster row', () => {
+    expect(ownTtlStatementIsFresh({ id: 'stmt-1', updated_at: roster.updated_at }, roster)).toBe(true)
+  })
+
+  it('drops a row from a different submission entirely', () => {
+    expect(ownTtlStatementIsFresh({ id: 'stmt-2', updated_at: roster.updated_at }, roster)).toBe(false)
+    expect(ownTtlStatementIsFresh(null, roster)).toBe(false)
+    expect(ownTtlStatementIsFresh({ id: 'stmt-1', updated_at: roster.updated_at }, null)).toBe(false)
+  })
+
+  it('drops a re-edited row that kept its id but is older than the roster row', () => {
+    // The re-submit UPSERTs the SAME id and only bumps updated_at; matching on id alone would
+    // keep serving the PREVIOUS lie to the edit form.
+    expect(ownTtlStatementIsFresh({ id: 'stmt-1', updated_at: '2026-08-16T09:59:00.000Z' }, roster)).toBe(false)
+  })
+
+  it('keeps an own row that is newer than the roster row (own refetch won the race)', () => {
+    expect(ownTtlStatementIsFresh({ id: 'stmt-1', updated_at: '2026-08-16T10:00:01.000Z' }, roster)).toBe(true)
+  })
+
+  it('falls back to the id match when a timestamp is unparseable', () => {
+    expect(ownTtlStatementIsFresh({ id: 'stmt-1', updated_at: 'not-a-date' }, roster)).toBe(true)
   })
 })

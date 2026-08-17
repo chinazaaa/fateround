@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { assertPlayer } from '@/lib/game-admin'
+import { isTwoTruthsGame, parseGameType } from '@/lib/game-types'
 import { enforceRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
 
 /**
@@ -28,6 +29,15 @@ export async function POST(req: NextRequest) {
     if (limited) return limited
 
     const supabase = getSupabaseAdmin()
+
+    // Match every sibling TTL route: the game must exist and actually be Two Truths, so a
+    // wrong/expired code fails as 404 rather than as an empty (indistinguishable from
+    // "not submitted") statement.
+    const { data: game } = await supabase.from('games').select('game_type').eq('id', gameId).maybeSingle()
+    if (!game) return NextResponse.json({ error: 'Game not found' }, { status: 404 })
+    if (!isTwoTruthsGame(parseGameType(game.game_type))) {
+      return NextResponse.json({ error: 'Not a two truths game' }, { status: 400 })
+    }
 
     // Authorize by the secret resume_token; the resolved player.id is authoritative. A
     // client-supplied playerId is public and forgeable, and would hand over another
