@@ -96,12 +96,28 @@ export const TTL_STATEMENT_SELECT =
 export const TTL_GUESS_SELECT = 'id,game_id,round_id,player_id,guessed_index,is_correct,points,guessed_at'
 
 /**
- * NOTE: no `current_word`. The secret word is revoked from anon/authenticated by migration
- * 20260807130000 — it used to ship to every guesser's client and was merely hidden in the UI.
- * The describer fetches it from POST /api/describe-it/my-word instead.
+ * NOTE: no `current_word` and no `used_words`. Both are revoked from anon/authenticated by
+ * migration 20260807130000 — the word used to ship to every guesser's device and was merely
+ * hidden in the UI, and `used_words[last]` IS that word. The describer fetches it from POST
+ * /api/describe-it/my-word instead.
+ *
+ * Every column here except `word_seq` predates the migrations on this branch, so this list is
+ * the part that is safe against ANY database version. That matters far more on mobile than on
+ * web: a shipped binary cannot be rolled forward with the deploy (see
+ * apps/mobile/lib/describe-it-session-read.ts).
  */
-export const DESCRIBE_IT_SESSION_SELECT =
-  'id,game_id,mode,num_teams,total_rounds,turn_seconds,phase,turn_index,current_round,active_team,describer_player_id,roster,current_clue,current_clues,word_seq,turn_deadline_at,break_deadline_at,status,status_message'
+export const DESCRIBE_IT_SESSION_SELECT_NO_WORD_SEQ =
+  'id,game_id,mode,num_teams,total_rounds,turn_seconds,phase,turn_index,current_round,active_team,describer_player_id,roster,current_clue,current_clues,turn_deadline_at,break_deadline_at,status,status_message'
+
+/**
+ * `word_seq` (added by migration 20260807120000) is the public per-word counter that replaced
+ * the clients' only legitimate use of the revoked `used_words` array — its length.
+ *
+ * DEPLOY SKEW: naming a column that does not exist yet makes PostgREST fail the WHOLE select
+ * with 42703. Read the session through `readDescribeItSession()`, which falls back to
+ * DESCRIBE_IT_SESSION_SELECT_NO_WORD_SEQ on 42703.
+ */
+export const DESCRIBE_IT_SESSION_SELECT = `${DESCRIBE_IT_SESSION_SELECT_NO_WORD_SEQ},word_seq`
 
 export const DESCRIBE_IT_PLAYER_SELECT = 'id,game_id,player_id,team,score,created_at'
 

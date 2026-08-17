@@ -22,11 +22,11 @@ import { supabase } from '@/lib/supabase'
 import {
   GAME_SELECT,
   PLAYER_SELECT,
-  DESCRIBE_IT_SESSION_SELECT,
   DESCRIBE_IT_PLAYER_SELECT,
   DESCRIBE_IT_WORD_SELECT,
   DESCRIBE_IT_GUESS_SELECT,
 } from '@/lib/supabase-selects'
+import { readDescribeItSession } from '@/lib/describe-it-session-read'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
 import { useHostSeat } from '@/hooks/useHostSeat'
 import type { DescribeItGuess, DescribeItPlayer, DescribeItSession, DescribeItWord, Game, Player } from '@/types'
@@ -115,7 +115,7 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
     setLoading(false)
 
     const [sessionRes, teamRes, wordRes, guessRes] = await Promise.all([
-      supabase.from('describe_it_sessions').select(DESCRIBE_IT_SESSION_SELECT).eq('game_id', gameCode).maybeSingle(),
+      readDescribeItSession(gameCode),
       supabase
         .from('describe_it_players')
         .select(DESCRIBE_IT_PLAYER_SELECT)

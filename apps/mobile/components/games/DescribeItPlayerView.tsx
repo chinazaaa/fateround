@@ -55,12 +55,8 @@ import {
 } from '@/lib/game-api'
 import { useTurnExpiryTimer } from '@/hooks/useTurnExpiryTimer'
 import { getSupabase } from '@/lib/supabase'
-import {
-  DESCRIBE_IT_GUESS_SELECT,
-  DESCRIBE_IT_PLAYER_SELECT,
-  DESCRIBE_IT_SESSION_SELECT,
-  DESCRIBE_IT_WORD_SELECT,
-} from '@/lib/supabase-selects'
+import { DESCRIBE_IT_GUESS_SELECT, DESCRIBE_IT_PLAYER_SELECT, DESCRIBE_IT_WORD_SELECT } from '@/lib/supabase-selects'
+import { readDescribeItSession } from '@/lib/describe-it-session-read'
 import { usePlayerSessionActions } from '@/lib/player-session'
 import { scoreListLeaderboard, toLeaderboardRows } from '@/lib/finish-leaderboards'
 import type { Theme } from '@/constants/theme'
@@ -103,7 +99,7 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
     async (_game: Game, _players: Player[]): Promise<{ state: DescribeItSession | null; ok: boolean }> => {
       const code = gameCode.toUpperCase()
       const [sessionRes, teamRes, wordRes, guessRes] = await Promise.all([
-        getSupabase().from('describe_it_sessions').select(DESCRIBE_IT_SESSION_SELECT).eq('game_id', code).maybeSingle(),
+        readDescribeItSession(code),
         getSupabase()
           .from('describe_it_players')
           .select(DESCRIBE_IT_PLAYER_SELECT)

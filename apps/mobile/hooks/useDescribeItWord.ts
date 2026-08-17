@@ -2,6 +2,15 @@ import { useEffect, useState } from 'react'
 import type { DescribeItSession } from '@fateround/shared'
 import { postDescribeItWord } from '@/lib/game-api'
 
+/** Steady-state re-check while describing. Only ONE client per game runs this (the describer,
+ *  during `phase === 'turn'`), so at ~12 calls/min it is a rounding error against
+ *  RATE_LIMITS.handsFetch (1200 / 5 min). */
+const POLL_MS = 5_000
+
+/** Backoff after a failed fetch: recover fast, then stop hammering. Capped, and retried for as
+ *  long as the caller is describing — a turn is bounded, so this cannot run away. */
+const RETRY_BACKOFF_MS = [500, 1_000, 2_000, 4_000] as const
+
 /**
  * The secret word for the local player, but only while they are the describer.
  *
@@ -15,8 +24,19 @@ import { postDescribeItWord } from '@/lib/game-api'
  * appends to `used_words` — which is itself revoked as a shadow copy of the word — so the
  * public generated column `word_seq` (its cardinality) is the per-word counter.
  *
- * Returns null while loading, when the caller is not the describer, or on failure — the panel
- * shows a neutral placeholder rather than an empty word box.
+ * FAILURE IS NOT AN ANSWER: a fetch that fails is never stored. `null` from the route is real
+ * state ("you are not the describer"); a 429, a 500 or a dropped mobile connection is not.
+ * Recording a failure under the current key used to satisfy the key check and pin the panel to
+ * `…` for the rest of the turn, with no skip available in individual mode to recover
+ * (review on PR #866). Now only successes are stored, and the effect retries with backoff —
+ * which also matters more here than on web, since a phone loses signal routinely.
+ *
+ * The poll also means `word_seq` is an optimisation rather than a correctness requirement: if
+ * the migration adding it has not been applied yet, `readDescribeItSession` drops it from the
+ * select and the key stops ticking — the word then lands on the next poll instead of instantly.
+ *
+ * Returns null while loading, while a fetch is being retried, and when the caller is not the
+ * describer — the panel shows a neutral placeholder rather than an empty word box.
  */
 export function useDescribeItWord(
   gameCode: string,
@@ -38,15 +58,34 @@ export function useDescribeItWord(
   useEffect(() => {
     if (!active) return
     let cancelled = false
-    postDescribeItWord(gameCode, { resumeToken })
-      .then((res) => {
-        if (!cancelled) setFetched({ key: wordKey, word: res.word ?? null })
-      })
-      .catch(() => {
-        if (!cancelled) setFetched({ key: wordKey, word: null })
-      })
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let failures = 0
+
+    const run = async () => {
+      let word: string | null = null
+      let ok = false
+      try {
+        word = (await postDescribeItWord(gameCode, { resumeToken })).word ?? null
+        ok = true
+      } catch {
+        ok = false
+      }
+      if (cancelled) return
+      if (ok) {
+        failures = 0
+        setFetched({ key: wordKey, word })
+      } else {
+        // Deliberately no setFetched: a failed read must never be mistaken for game state.
+        failures += 1
+      }
+      const delay = ok ? POLL_MS : RETRY_BACKOFF_MS[Math.min(failures - 1, RETRY_BACKOFF_MS.length - 1)]
+      timer = setTimeout(() => void run(), delay)
+    }
+    void run()
+
     return () => {
       cancelled = true
+      if (timer) clearTimeout(timer)
     }
   }, [active, gameCode, resumeToken, wordKey])
 

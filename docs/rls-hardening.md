@@ -194,12 +194,57 @@ missing the column cannot corrupt anything.
 | Game | Column | Route | Web readers | Mobile reader | Playtested | Migration |
 |---|---|---|---|---|---|---|
 | Codewords | `codewords_boards.key` | ✅ `/api/codewords/board` | ✅ | ✅ | ✅ | ✅ 20260803170000 |
-| Describe It | `describe_it_sessions.current_word` + `used_words` | ✅ `/api/describe-it/my-word` | ✅ player, host | ✅ | ✅ | ✅ 20260807130000 |
+| Describe It | `describe_it_sessions.current_word` + `used_words` | ✅ `/api/describe-it/my-word` | ✅ player, host | ✅ | ✅ | ✅ 20260807110000 + 20260807120000 + 20260807130000 |
 | Quick Draw | `quick_draw_guess_sessions.current_word` | ❌ | ❌ | ❌ | ❌ | ❌ **open leak** |
 
 **Quick Draw is the same leak, still open**: `current_word` is in `QUICK_DRAW_GUESS_SESSION_SELECT`
 on web and mobile, and `QuickDrawGuessPlay.tsx` / `QuickDrawPlayerView.tsx` only *render* it for
-the drawer. Copy the Describe It slice verbatim to close it.
+the drawer. Copy the Describe It slice — but copy the *three-file* shape below, not one file, and
+call `sec_regrant_except()` rather than pasting a fourth `do $$` block.
+
+### Split the migration: additive first, revoke last
+
+A redaction slice changes the schema in two ways that pull in opposite directions, and putting
+both in one migration leaves no safe deploy order — the file simultaneously **creates** the
+public counter new clients select and **removes** the columns old clients select, so whichever
+of database/code you move first, the other breaks. Describe It is therefore three files:
+
+| File | Effect | Safe against |
+|---|---|---|
+| `20260807110000_sec_regrant_except.sql` | defines the shared regrant helper | every client version |
+| `20260807120000_describe_it_word_seq.sql` | **adds** `word_seq` + grants it | every client version |
+| `20260807130000_sec_describe_it_hide_word.sql` | **revokes** the two secret columns | only clients that stopped selecting them |
+
+Apply 1+2 → deploy web and ship mobile → drain old installs → apply 3. Only the third file can
+break a live client.
+
+**The two skew directions are not symmetric.**
+
+*Code ahead of the database* (42703, undefined column) is handled in code and needs no
+discipline: `readDescribeItSession()` (`src/lib/describe-it-session-read.ts`, mirrored in
+`apps/mobile/lib/`) retries once without `word_seq`, so a deploy that lands before the migration
+degrades to a slightly slower word refresh instead of taking out all session state. It self-heals
+when the migration runs — no redeploy. Verified locally: primary select → 400/42703, fallback →
+200, and 200 again after re-applying the migration.
+
+*Database ahead of code* (42501, revoked column) has **no** client-side rescue, deliberately — a
+revoked column must keep failing loudly rather than be retried into success. It is handled only by
+the ordering above, and it is mobile that forces the wait: a web deploy reverts in a minute, an
+installed binary does not. Note that `expo-updates` is already a dependency and `eas.json` defines
+per-profile channels, but OTA is **not** wired — `app.json` has no `updates` block or
+`runtimeVersion` and nothing runs `eas update`. Running `eas update:configure` once would turn
+step 3 from "wait for store adoption" into "push an OTA update"; it is the highest-value thing to
+do before the Quick Draw copy.
+
+### A failed read is not game state
+
+Both `useDescribeItWord` hooks store a fetch result **only on success**. `null` from
+`/api/describe-it/my-word` is real state ("you are not the describer"); a 429, a 500 or an offline
+blip is not, and recording one under the current refetch key used to satisfy the key check and pin
+the describer's panel to `…` for the whole turn — unrecoverable, since individual mode has no
+skip. Failures now retry with backoff (500ms → 4s) and successes re-poll every 5s, which also
+makes `word_seq` an optimisation rather than a correctness requirement. Only the describer polls,
+so the cost is ~12 calls/min per game against `RATE_LIMITS.handsFetch` (1200 / 5 min).
 
 **Check for shadow copies of the secret.** `used_words` is revoked alongside `current_word`, not
 left readable: every write that sets `current_word` also appends it, so `used_words[last]` **is**

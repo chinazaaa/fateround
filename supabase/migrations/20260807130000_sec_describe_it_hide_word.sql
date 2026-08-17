@@ -10,10 +10,8 @@
 -- sets `current_word` also appends that word to `used_words` (buildTurn, plus the guess and
 -- skip paths in src/lib/describe-it.ts), so `used_words[last]` IS the current word. Revoking
 -- only `current_word` would have moved the leak, not closed it — a guesser would just read the
--- last element instead. The clients' one legitimate use of the array was its LENGTH, as a
--- per-word counter: the word rotates on a correct guess and on a skip *without* `turn_index`
--- changing, so the describer needs a public value that ticks once per word to know when to
--- refetch. `word_seq` below is exactly that counter, and a count reveals nothing.
+-- last element instead. The clients' one legitimate use of the array was its LENGTH, which
+-- 20260807120000 replaced with the public `word_seq` counter.
 --
 -- Not affected, deliberately:
 --   * `describe_it_words` is a post-hoc LOG — rows are inserted only AFTER a word is guessed
@@ -25,10 +23,11 @@
 --     to the answer and must be revoked alongside the two columns below.
 --
 -- Same shape as `games.host_token` (0122) and `codewords_boards.key` (20260803170000), so the
--- same fix: revoke the public roles' table-wide SELECT and re-grant every column except the
--- secret ones. The data stays exactly where it is — the service role bypasses column grants,
--- so src/lib/describe-it.ts (clue validation, guess matching, word rotation, turn summaries) and
--- every describe-it write route keep working unchanged. No data movement, no server rewrite.
+-- same fix, now via the shared `sec_regrant_except` helper (20260807110000): revoke the public
+-- roles' table-wide SELECT and re-grant every column except the secret ones. The data stays
+-- exactly where it is — the service role bypasses column grants, so src/lib/describe-it.ts
+-- (clue validation, guess matching, word rotation, turn summaries) and every describe-it write
+-- route keep working unchanged. No data movement, no server rewrite.
 --
 -- The describer gets their word back through POST /api/describe-it/my-word, which resolves the
 -- caller from their secret resume token (or the host token, for a host who is seated as a
@@ -40,45 +39,45 @@
 -- the describer refetches the word through the route on every session change.
 --
 -- ⚠️ FUTURE SCHEMA CHANGES: anon/authenticated now hold COLUMN-level (not table-level) SELECT
--- on `describe_it_sessions`. A NEW column must also be granted (re-running this block does
+-- on `describe_it_sessions`. A NEW column must also be granted (re-running the call below does
 -- that), or client reads of it will error. Fails closed — a read error, never a word leak.
+--
+-- ============================================================================
+-- ⚠️ ROLLOUT ORDER — THIS FILE IS THE ONE THAT CAN BREAK LIVE CLIENTS
+-- ============================================================================
+-- This is the only step here that TAKES A PRIVILEGE AWAY. Any client still naming
+-- `current_word` or `used_words` gets 42501 on the whole session select the moment it lands,
+-- which stops host and players receiving ALL session state mid-game (review on PR #866, and the
+-- same shape as the known TTL #838 incident). Apply strictly in this order:
+--
+--   1. 20260807110000 + 20260807120000 (helper + `word_seq`). Additive, safe at any time,
+--      compatible with every client version.
+--   2. Deploy web, and SHIP the mobile build that stops selecting the secret columns.
+--   3. Wait until installed mobile builds predating that release are drained, THEN apply this
+--      file.
+--
+-- Step 3 is a real wait, not a formality, and it is the mobile side that forces it: a web
+-- deploy is atomic and reversible in a minute, but an installed app binary is not. NOTE for
+-- whoever schedules this: `expo-updates` IS already a dependency (apps/mobile/package.json) and
+-- eas.json defines per-profile channels, but OTA is NOT wired up — app.json has no `updates`
+-- block or `runtimeVersion`, and nothing runs `eas update`. So today the only way to roll a
+-- shipped build forward is a store release. Running `eas update:configure` once would collapse
+-- step 3 from "wait for store adoption" to "push an OTA update", and is the single highest-value
+-- thing to do before the Quick Draw copy of this migration.
+--
+-- The OTHER skew direction (code ahead of the database) is already handled in code and needs no
+-- ordering discipline: `readDescribeItSession()` retries without `word_seq` on 42703, so a web
+-- deploy that lands before step 1 degrades to a slightly slower word refresh instead of an
+-- outage. There is no equivalent client-side rescue for 42501, which is why step 3 exists —
+-- a revoked column must keep failing loudly rather than being retried into success.
+-- ============================================================================
 
-do $$
-declare
-  session_cols text;
-  role_name text;
-begin
-  -- Skip rather than abort where the table hasn't been created yet (a fresh environment
-  -- applying migrations out of order), matching 20260803170000's guard.
-  if not exists (
-    select 1 from information_schema.tables
-     where table_schema = 'public' and table_name = 'describe_it_sessions'
-  ) then
-    raise notice 'describe_it_sessions not present — skipping';
-    return;
-  end if;
-
-  -- Public per-word counter that replaces the clients' only legitimate use of `used_words`.
-  execute 'alter table public.describe_it_sessions
-             add column if not exists word_seq integer
-             generated always as (cardinality(used_words)) stored';
-
-  select string_agg(quote_ident(column_name), ', ')
-    into session_cols
-    from information_schema.columns
-   where table_schema = 'public'
-     and table_name = 'describe_it_sessions'
-     and column_name not in ('current_word', 'used_words');
-
-  foreach role_name in array array['anon', 'authenticated'] loop
-    execute format('revoke select on public.describe_it_sessions from %I', role_name);
-    execute format('grant select (%s) on public.describe_it_sessions to %I', session_cols, role_name);
-  end loop;
-end $$;
+select public.sec_regrant_except('describe_it_sessions', array['current_word', 'used_words']);
 
 -- ----------------------------------------------------------------------------
 -- ROLLBACK (drafted). Apply as a NEW forward migration; do NOT edit this file
--- after it has shipped.
+-- after it has shipped. This RE-OPENS the leak — only for an emergency where
+-- step 3 above turned out to be premature.
 --
 --   grant select on public.describe_it_sessions to anon, authenticated;
 -- ----------------------------------------------------------------------------

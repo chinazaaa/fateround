@@ -23,12 +23,8 @@ import { useGameScores, useGameStats, useRosterBase } from '@/components/roster/
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { DescribeItAchievementPosts } from '@/components/describe-it/DescribeItAchievementPosts'
 import { supabase } from '@/lib/supabase'
-import {
-  DESCRIBE_IT_SESSION_SELECT,
-  DESCRIBE_IT_PLAYER_SELECT,
-  DESCRIBE_IT_WORD_SELECT,
-  DESCRIBE_IT_GUESS_SELECT,
-} from '@/lib/supabase-selects'
+import { DESCRIBE_IT_PLAYER_SELECT, DESCRIBE_IT_WORD_SELECT, DESCRIBE_IT_GUESS_SELECT } from '@/lib/supabase-selects'
+import { readDescribeItSession } from '@/lib/describe-it-session-read'
 import { clearPlayerSession } from '@/lib/utils'
 import type { DescribeItGuess, DescribeItPlayer, DescribeItSession, DescribeItWord, Game } from '@/types'
 import { useToast } from '@/components/ui/Toast'
@@ -83,7 +79,7 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
   // game/players fetch + session resolution lives in useGameViewBootstrap).
   const loadGameState = useCallback(async (): Promise<{ state: DescribeItSession | null; ok: boolean }> => {
     const [sessionRes, teamRes, wordRes, guessRes] = await Promise.all([
-      supabase.from('describe_it_sessions').select(DESCRIBE_IT_SESSION_SELECT).eq('game_id', gameCode).maybeSingle(),
+      readDescribeItSession(gameCode),
       supabase
         .from('describe_it_players')
         .select(DESCRIBE_IT_PLAYER_SELECT)
