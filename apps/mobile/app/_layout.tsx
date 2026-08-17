@@ -37,6 +37,7 @@ function ThemedStack() {
         <Stack.Screen name="create" options={{ title: 'Create game' }} />
         <Stack.Screen name="game/[code]" options={{ title: 'Game' }} />
         <Stack.Screen name="host/[code]" options={{ title: 'Host' }} />
+        <Stack.Screen name="play-solo/whot" options={{ title: 'Whot — solo' }} />
       </Stack>
     </>
   )
