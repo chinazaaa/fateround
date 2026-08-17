@@ -48,6 +48,14 @@ import { PlayingCardFace } from '@/components/games/cards/PlayingCardFace'
 import { useThemedStyles } from '@/constants/theme-context'
 import type { Theme } from '@/constants/theme'
 import { readSoloScoreboard, recordSoloOutcome, resetSoloScoreboard, type SoloScoreboard } from '@/lib/solo-scoreboard'
+import {
+  clearSoloState,
+  loadSoloState,
+  markSoloStateScored,
+  saveSoloState,
+  wasSoloStateScored,
+} from '@/lib/solo-state-store'
+import { logSoloPlayStarted } from '@/lib/solo-play'
 
 const BOT_THINK_MS = 900
 
@@ -77,15 +85,38 @@ export default function SoloCrazyEightsScreen() {
   const scoredRef = useRef(false)
 
   useEffect(() => {
-    setState(initCrazy8Solo({ rules: SOLO_RULES }))
+    void loadSoloState<Crazy8SoloState>('solo-crazy8-state-v1', (raw): raw is Crazy8SoloState => {
+      const r = raw as Partial<Crazy8SoloState> | null
+      return !!r?.session?.turn_order && Array.isArray(r.hands)
+    }).then(async (persisted) => {
+      if (persisted) {
+        // Re-attach rules so a future rule-shape edit doesn't crash a rehydrate.
+        setState({ ...persisted, rules: SOLO_RULES })
+        // See whot.tsx for the marker-vs-outcome gate rationale.
+        if (persisted.outcome != null && (await wasSoloStateScored('solo-crazy8-state-v1'))) {
+          scoredRef.current = true
+        }
+      } else {
+        setState(initCrazy8Solo({ rules: SOLO_RULES }))
+        logSoloPlayStarted('crazy_eights', difficulty)
+      }
+    })
     void readSoloScoreboard('crazy_eights').then(setScoreboard)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  useEffect(() => {
+    if (state) void saveSoloState('solo-crazy8-state-v1', state)
+  }, [state])
 
   useEffect(() => {
     if (!state || state.outcome == null || scoredRef.current) return
     const outcome: 'human' | 'bot' | 'draw' = state.outcome === 0 ? 'human' : state.outcome === 'draw' ? 'draw' : 'bot'
     scoredRef.current = true
-    void recordSoloOutcome('crazy_eights', outcome).then(setScoreboard)
+    void recordSoloOutcome('crazy_eights', outcome).then((next) => {
+      setScoreboard(next)
+      void markSoloStateScored('solo-crazy8-state-v1')
+    })
   }, [state])
 
   // Bot loop.
@@ -133,8 +164,10 @@ export default function SoloCrazyEightsScreen() {
 
   const restart = useCallback(() => {
     scoredRef.current = false
+    void clearSoloState('solo-crazy8-state-v1')
     setState(initCrazy8Solo({ rules: SOLO_RULES }))
-  }, [])
+    logSoloPlayStarted('crazy_eights', difficulty)
+  }, [difficulty])
 
   const resetScore = useCallback(() => {
     void resetSoloScoreboard('crazy_eights').then(setScoreboard)
