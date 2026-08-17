@@ -1,5 +1,6 @@
 import { apiUrl } from '@/lib/config'
 import { getExpoPushToken, requestPushPermission, pushPlatform } from '@/lib/push-notifications'
+import { getRememberedName } from '@/lib/identity-local'
 
 /**
  * Discovery Phase C — mobile RSVP client.
@@ -28,6 +29,9 @@ async function tokenOrPrompt(): Promise<string | null> {
 export async function rsvp(gameCode: string): Promise<void> {
   const tokenKey = await tokenOrPrompt()
   if (!tokenKey) throw new Error('Turn notifications on to RSVP — we need a way to remind you.')
+  // Attach the remembered display name so the host's Transfer-host picker
+  // has a readable label instead of "Anon". Best-effort — falls back gracefully.
+  const displayName = (await getRememberedName().catch(() => null)) ?? undefined
   const res = await fetch(apiUrl(`/api/games/${gameCode.toUpperCase()}/rsvp`), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -35,6 +39,7 @@ export async function rsvp(gameCode: string): Promise<void> {
       channel: 'mobile',
       tokenKey,
       platform: pushPlatform(),
+      displayName,
       timezone: (() => {
         try {
           return Intl.DateTimeFormat().resolvedOptions().timeZone

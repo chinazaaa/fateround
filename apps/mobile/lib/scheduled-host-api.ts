@@ -54,3 +54,12 @@ export async function transferScheduledHost(
   }
   return res.json()
 }
+
+export type Rsvper = { deviceId: string; name: string; confirmed: boolean }
+
+export async function fetchRsvpers(gameCode: string): Promise<Rsvper[]> {
+  const res = await fetch(apiUrl(`/api/games/${gameCode.toUpperCase()}/rsvpers`), { cache: 'no-store' })
+  if (!res.ok) return []
+  const data = (await res.json()) as { rsvpers: Rsvper[] }
+  return data.rsvpers ?? []
+}
