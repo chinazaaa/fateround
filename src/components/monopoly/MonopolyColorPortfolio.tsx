@@ -10,7 +10,15 @@ function colorBarClass(color: MonopolyColorGroup): string {
   return MONOPOLY_COLOR_CLASSES[color] ?? 'bg-neutral-500'
 }
 
-function ColorSetRow({ status, themeId }: { status: ColorGroupStatus; themeId?: string | null }) {
+function ColorSetRow({
+  status,
+  themeId,
+  boardSize = 40,
+}: {
+  status: ColorGroupStatus
+  themeId?: string | null
+  boardSize?: MonopolyBoardSize
+}) {
   const { group, label, owned, total, complete, missing } = status
   const inactive = owned === 0
 
@@ -44,7 +52,7 @@ function ColorSetRow({ status, themeId }: { status: ColorGroupStatus; themeId?: 
             {missing.map((m, i) => (
               <span key={m.name}>
                 {i > 0 ? ', ' : ''}
-                <span className="text-body">{themedSpaceName(m.name, m.index, themeId)}</span>
+                <span className="text-body">{themedSpaceName(m.name, m.index, themeId, boardSize)}</span>
                 {m.heldBy === 'other' && m.ownerName ? (
                   <span className="text-faint"> ({m.ownerName})</span>
                 ) : (
@@ -91,12 +99,12 @@ export function MonopolyColorPortfolio({
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
         {streetSets.map((status) => (
-          <ColorSetRow key={status.group} status={status} themeId={themeId} />
+          <ColorSetRow key={status.group} status={status} themeId={themeId} boardSize={boardSize} />
         ))}
       </div>
       <div className="grid grid-cols-2 gap-2 pt-1">
         {specialSets.map((status) => (
-          <ColorSetRow key={status.group} status={status} themeId={themeId} />
+          <ColorSetRow key={status.group} status={status} themeId={themeId} boardSize={boardSize} />
         ))}
       </div>
     </div>

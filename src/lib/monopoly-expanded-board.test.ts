@@ -105,10 +105,13 @@ describe('Estate Kings expanded board', () => {
     expect(tradeSideHasValue(0, [46, 47], 0, 48)).toBe(true)
     expect(tradeSideHasValue(0, [46, 47], 0, 40)).toBe(false)
 
-    const text48 = formatTradeSideText(100, [46, 47], 1, 'classic', 48)
+    const text48 = formatTradeSideText(100, [46, 47], 1, 'default', 48)
     expect(text48).toContain('Regent Street')
     expect(text48).toContain('Mayfair Mews')
-    expect(text48).toContain('1 jail card')
+    expect(text48).toContain('1 skip-the-queue card')
+
+    const text48Naija = formatTradeSideText(0, [1, 47], 0, 'naija', 48)
+    expect(text48Naija).toBe('Oshodi Market · Banana Island')
   })
 
   it('computes net worth and standings accurately for expanded board early finish', () => {

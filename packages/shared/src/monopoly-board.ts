@@ -326,13 +326,13 @@ function expandedSite(
 
 export const MONOPOLY_EXPANDED_BOARD: MonopolySpace[] = [
   { index: 0, name: 'PAYDAY', type: 'go' },
-  expandedSite(1, 'Thamesmead Walk', 'light_blue', 100, 6, 50),
+  expandedSite(1, 'Barking Road', 'brown', 60, 2, 50),
   { index: 2, name: 'Fate', type: 'chance' },
-  expandedSite(3, 'Croydon High', 'light_blue', 110, 7, 50),
-  expandedSite(4, 'Erith Road', 'light_blue', 120, 8, 50),
-  expandedSite(5, 'Barking Road', 'brown', 60, 2, 50),
+  expandedSite(3, 'Dagenham Ave', 'brown', 60, 4, 50),
+  expandedSite(4, 'Thamesmead Walk', 'light_blue', 100, 6, 50),
+  expandedSite(5, 'Croydon High', 'light_blue', 110, 7, 50),
   { index: 6, name: 'Paddington', type: 'station', price: 200, rent: 25, color: 'station' },
-  expandedSite(7, 'Dagenham Ave', 'brown', 60, 4, 50),
+  expandedSite(7, 'Erith Road', 'light_blue', 120, 8, 50),
   expandedSite(8, 'Canary Wharf', 'indigo', 140, 10, 100),
   { index: 9, name: 'Esusu Fund', type: 'community' },
   expandedSite(10, 'Bermondsey', 'indigo', 150, 11, 100),

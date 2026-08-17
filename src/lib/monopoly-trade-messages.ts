@@ -1,5 +1,5 @@
 import { formatMonopolyMoney, spaceAt, type MonopolyBoardSize } from '@/lib/monopoly-board'
-import { formatThemedText } from '@/components/monopoly/monopoly-themes'
+import { formatThemedMoney, formatThemedText, themedSpaceName } from '@/components/monopoly/monopoly-themes'
 import type { MonopolyLastTradeEvent, MonopolyPendingTrade } from '@/types'
 
 export type TradeSideItem =
@@ -83,14 +83,14 @@ export function formatTradeSideText(
   const items = buildTradeSideItems(cash, propertyIndexes, jailCards, boardSize)
   if (items.length === 0) return 'Nothing'
 
-  const raw = items
+  const formatted = items
     .map((item) => {
-      if (item.kind === 'cash') return formatMonopolyMoney(item.amount)
-      if (item.kind === 'property') return item.name
-      return `${item.count} jail card${item.count === 1 ? '' : 's'}`
+      if (item.kind === 'cash') return formatThemedMoney(item.amount, themeId)
+      if (item.kind === 'property') return themedSpaceName(item.name, item.index, themeId, boardSize)
+      return `${item.count} skip-the-queue card${item.count === 1 ? '' : 's'}`
     })
     .join(' · ')
-  return formatThemedText(raw, themeId)
+  return formatted
 }
 
 function sideItemCount(
@@ -149,7 +149,7 @@ export function formatIncomingTradeAlert(
       payCount > 0 ? `, ${payCount} requested from you` : ''
     })`
   }
-  return formatThemedText(message, themeId)
+  return formatThemedText(message, themeId, boardSize)
 }
 
 export function formatTradeMessageForPlayer(

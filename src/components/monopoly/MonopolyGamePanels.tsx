@@ -226,11 +226,13 @@ export function MonopolyTurnModals({
   const tradeFrom = trade ? players.find((p) => p.id === trade.from_player_id) : null
   const tradeTo = trade ? players.find((p) => p.id === trade.to_player_id) : null
   const showTradeModal = !!(trade && trade.to_player_id === myPlayerId && tradeFrom && tradeTo)
+  const boardSize = board?.board_size ?? 40
   const receiveCount = trade
-    ? buildTradeSideItems(trade.offer_cash, trade.offer_properties, trade.offer_get_out_cards).length
+    ? buildTradeSideItems(trade.offer_cash, trade.offer_properties, trade.offer_get_out_cards, boardSize).length
     : 0
   const payCount = trade
-    ? buildTradeSideItems(trade.request_cash, trade.request_properties, trade.request_get_out_cards ?? 0).length
+    ? buildTradeSideItems(trade.request_cash, trade.request_properties, trade.request_get_out_cards ?? 0, boardSize)
+        .length
     : 0
 
   const tradeSig = trade ? JSON.stringify(trade) : null
@@ -322,6 +324,7 @@ export function MonopolyTurnModals({
                 getProps={trade.offer_properties}
                 getJailCards={trade.offer_get_out_cards}
                 themeId={themeId}
+                boardSize={boardSize}
               />
             </div>
             <div className="grid grid-cols-2 gap-2 pt-3">
@@ -639,6 +642,7 @@ export function MonopolyManagePanel({
             getProps={activePendingTrade.request_properties}
             getJailCards={activePendingTrade.request_get_out_cards ?? 0}
             themeId={themeId}
+            boardSize={boardSize}
           />
           <MonopolySecondaryButton
             onClick={() => postAction('/api/monopoly/trade', { cancel: true })}
@@ -669,6 +673,7 @@ export function MonopolyManagePanel({
             getProps={activePendingTrade.offer_properties}
             getJailCards={activePendingTrade.offer_get_out_cards}
             themeId={themeId}
+            boardSize={boardSize}
           />
         </div>
       )}
@@ -742,7 +747,7 @@ export function MonopolyManagePanel({
                             checked={offerProps.includes(s.index)}
                             onChange={() => toggleProp(offerProps, setOfferProps, s.index)}
                           />
-                          {themedSpaceName(s.name, s.index, themeId)}
+                          {themedSpaceName(s.name, s.index, themeId, boardSize)}
                         </label>
                       ))}
                     </div>
@@ -791,7 +796,7 @@ export function MonopolyManagePanel({
                             checked={requestProps.includes(s.index)}
                             onChange={() => toggleProp(requestProps, setRequestProps, s.index)}
                           />
-                          {themedSpaceName(s.name, s.index, themeId)}
+                          {themedSpaceName(s.name, s.index, themeId, boardSize)}
                         </label>
                       ))}
                     </div>
@@ -923,7 +928,7 @@ export function MonopolyManagePanel({
         <div className="p-3 space-y-2">
           <div className="flex justify-between gap-2">
             <span className="font-semibold text-sm text-[var(--foreground)]">
-              {themedSpaceName(space.name, space.index, themeId)}
+              {themedSpaceName(space.name, space.index, themeId, boardSize)}
             </span>
             <span className="text-xs text-muted shrink-0">{isMortgaged ? 'Mortgaged' : levelLabel}</span>
           </div>
