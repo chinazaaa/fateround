@@ -137,6 +137,25 @@ surface on the client. No new permissions.
   find and join your game"). Toggle DISABLED for solo mode. Toggle
   is a no-op for 1v1 games where matchmaking makes less sense
   (chess, checkers, tic-tac-toe).
+- **Max-players guard.** A Discoverable game with `max_players = 1`
+  is a contradiction — the host has no seat to fill. Handled at
+  two layers:
+    - Client: when the max-players picker is 1, the Discoverable
+      toggle stays interactive but renders an inline hint
+      immediately below it — "Bump the max players above 1 so
+      other people can join." Toggling it on with max 1 is a
+      no-op with a shake / brief toast pointing at the picker.
+    - Server: `POST /api/games` rejects `discoverable=true` when
+      `max_players < 2`, returning a 400 that the client already
+      handles by falling back to private. Server enforces because
+      max-players can be changed later in the host lobby settings
+      sheet, and we don't want a stale toggle to publish a game
+      that then dropped to 1 seat.
+  Similarly, if a Discoverable game already listed on the feed
+  drops back to 1 max seat mid-lobby, the feed endpoint filters
+  it out on the next poll (it already filters by
+  `current_players < max_players`; extending to
+  `max_players >= 2` for the Discoverable predicate).
 - New endpoint `GET /api/games/live?game_type=&limit=`. Returns
   active games where `discoverable = true` AND `status = 'waiting'`
   AND `current_players < max_players`. Ordered by newest.
