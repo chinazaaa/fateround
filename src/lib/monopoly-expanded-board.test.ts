@@ -3,6 +3,8 @@ import {
   MONOPOLY_BOARD,
   MONOPOLY_EXPANDED_BOARD,
   MONOPOLY_MAX_PLAYERS,
+  housesInBankForSize,
+  hotelsInBankForSize,
   monopolyGoToJailPosition,
   monopolyJailPosition,
   ownsColorMonopoly,
@@ -218,5 +220,13 @@ describe('Estate Kings expanded board', () => {
     })
     expect(res40.position).toBe(10)
     expect(res40.inJail).toBe(true)
+  })
+
+  it('scales bank houses and hotels proportionally for 48-space board', () => {
+    expect(housesInBankForSize(40)).toBe(32)
+    expect(hotelsInBankForSize(40)).toBe(12)
+
+    expect(housesInBankForSize(48)).toBe(48)
+    expect(hotelsInBankForSize(48)).toBe(18)
   })
 })
