@@ -483,7 +483,24 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
             ))}
           </View>
         )}
-        {myFinished && <Text style={styles.finishedNote}>You finished — waiting on others!</Text>}
+        {myFinished && (
+          <View style={styles.finishedCard}>
+            <Text style={styles.finishedNote}>You finished — waiting on others!</Text>
+            <Text style={styles.finishedStats}>
+              {(() => {
+                const rank = standings.findIndex((s) => s.player_id === bootstrap.myPlayerId) + 1
+                const suffix = rank === 1 ? 'st' : rank === 2 ? 'nd' : rank === 3 ? 'rd' : 'th'
+                const ms = myStanding?.total_time_ms ?? null
+                const timeText =
+                  ms != null
+                    ? `${Math.floor(ms / 60000)}:${String(Math.floor((ms % 60000) / 1000)).padStart(2, '0')}`
+                    : '—'
+                const rankText = rank > 0 ? `${rank}${suffix} so far · ` : ''
+                return `${rankText}${myStanding?.total_points ?? 0} pts · time ${timeText}`
+              })()}
+            </Text>
+          </View>
+        )}
         <View style={styles.standingsBox}>
           <Text style={styles.standingsTitle}>Race standings</Text>
           {standings.length === 0 ? (
@@ -600,6 +617,14 @@ const makeStyles = (theme: Theme) =>
     keyText: { color: theme.text, fontSize: 15, fontWeight: '700', textTransform: 'uppercase' },
     keyTextWide: { fontSize: 12 },
     finishedNote: { color: theme.primary, fontWeight: '700', textAlign: 'center' },
+    finishedCard: {
+      alignSelf: 'stretch',
+      backgroundColor: theme.surface,
+      borderRadius: 10,
+      padding: 10,
+      gap: 4,
+    },
+    finishedStats: { color: theme.textMuted, fontSize: 12, textAlign: 'center' },
     standingsBox: {
       width: '100%',
       maxWidth: 420,

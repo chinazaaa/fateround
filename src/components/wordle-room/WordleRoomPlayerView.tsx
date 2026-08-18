@@ -869,8 +869,39 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
             Solved: <strong className="text-body">{wordsSolved}</strong>/{wordCount} · Guesses:{' '}
             <strong className="text-body">{totalGuesses}</strong>
           </span>
-          {myFinished && <span className="font-semibold text-[var(--primary)]">You finished — waiting on others!</span>}
         </div>
+
+        {myFinished && (
+          <div className="glass-card p-3 text-center space-y-1">
+            <p className="font-semibold text-[var(--primary)]">You finished — waiting on others!</p>
+            <p className="text-xs text-muted">
+              {(() => {
+                const rank = standings.findIndex((s) => s.player_id === myPlayerId) + 1
+                const suffix = rank === 1 ? 'st' : rank === 2 ? 'nd' : rank === 3 ? 'rd' : 'th'
+                const ms = myStanding?.total_time_ms ?? null
+                const timeText =
+                  ms != null
+                    ? `${Math.floor(ms / 60000)}:${String(Math.floor((ms % 60000) / 1000)).padStart(2, '0')}`
+                    : '—'
+                return (
+                  <>
+                    {rank > 0 ? (
+                      <>
+                        <strong className="text-body">
+                          {rank}
+                          {suffix}
+                        </strong>{' '}
+                        so far ·{' '}
+                      </>
+                    ) : null}
+                    <strong className="text-body">{myStanding?.total_points ?? 0}</strong> pts · time{' '}
+                    <strong className="text-body">{timeText}</strong>
+                  </>
+                )
+              })()}
+            </p>
+          </div>
+        )}
       </main>
     </div>
   )
