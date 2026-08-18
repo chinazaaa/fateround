@@ -36,6 +36,7 @@ import { CrosswordPlayerView } from '@/components/crossword/CrosswordPlayerView'
 import { WordSearchPlayerView } from '@/components/word-search/WordSearchPlayerView'
 import { WordScramblePlayerView } from '@/components/word-scramble/WordScramblePlayerView'
 import { WordGroupingPlayerView } from '@/components/word-grouping/WordGroupingPlayerView'
+import { WordleRoomPlayerView } from '@/components/wordle-room/WordleRoomPlayerView'
 
 export type GamePlayerView = ComponentType<{ gameCode: string }>
 
@@ -83,4 +84,5 @@ export const PLAYER_VIEW_REGISTRY: Partial<Record<GameType, GamePlayerView>> = {
   word_search: WordSearchPlayerView,
   word_scramble: WordScramblePlayerView,
   word_grouping: WordGroupingPlayerView,
+  wordle_room: WordleRoomPlayerView,
 }

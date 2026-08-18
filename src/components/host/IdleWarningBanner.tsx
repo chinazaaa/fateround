@@ -34,6 +34,22 @@ export function IdleWarningBanner({ game, gameCode, hostToken, onSaved }: Props)
     return () => clearInterval(t)
   }, [game.status])
 
+  // Client-side fallback for the T-13 push. Fires once the banner reaches
+  // its trigger threshold on the host's device so the push still goes out
+  // when the operator hasn't configured the pg_cron job yet. The endpoint's
+  // atomic stamp makes this a no-op if the cron beat us to it.
+  useEffect(() => {
+    if (game.status !== 'waiting') return
+    if (game.host_idle_warning_sent_at) return
+    const lastMs = game.last_activity_at ? new Date(game.last_activity_at).getTime() : 0
+    if (!lastMs || now - lastMs < WARN_AT_MS) return
+    void fetch(`/api/games/${gameCode.toUpperCase()}/warn-idle-now`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ hostToken }),
+    }).catch(() => undefined)
+  }, [game.status, game.host_idle_warning_sent_at, game.last_activity_at, now, gameCode, hostToken])
+
   const onKeepOpen = useCallback(async () => {
     setBusy(true)
     setError(null)

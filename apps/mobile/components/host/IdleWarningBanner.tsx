@@ -16,6 +16,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native'
 import type { Game } from '@fateround/shared'
 import { patchGameSettings } from '@/lib/game-api'
+import { apiUrl } from '@/lib/config'
 import { AppButton } from '@/components/ui/AppButton'
 import { SurfaceCard } from '@/components/ui/SurfaceCard'
 import type { Theme } from '@/constants/theme'
@@ -45,6 +46,22 @@ export function IdleWarningBanner({ game, gameCode, hostToken, onSaved }: Props)
     const t = setInterval(() => setNow(Date.now()), RECHECK_INTERVAL_MS)
     return () => clearInterval(t)
   }, [game.status])
+
+  // Client-side fallback for the T-13 push. Fires from the host's device
+  // once the banner reaches its trigger threshold, so the push still lands
+  // when the pg_cron job isn't set up. Endpoint's atomic stamp de-dupes
+  // against the cron path.
+  useEffect(() => {
+    if (game.status !== 'waiting') return
+    if (game.host_idle_warning_sent_at) return
+    const lastMs = game.last_activity_at ? new Date(game.last_activity_at).getTime() : 0
+    if (!lastMs || now - lastMs < WARN_AT_MS) return
+    void fetch(apiUrl(`/api/games/${gameCode.toUpperCase()}/warn-idle-now`), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ hostToken }),
+    }).catch(() => undefined)
+  }, [game.status, game.host_idle_warning_sent_at, game.last_activity_at, now, gameCode, hostToken])
 
   const onKeepOpen = useCallback(async () => {
     setBusy(true)

@@ -18,6 +18,7 @@ const VALID_GAME_TYPES = [
   'chess_mate',
   'codenames_codeword',
   'ludo_puzzle',
+  'wordle',
 ] as const
 
 const generateSchema = z.object({

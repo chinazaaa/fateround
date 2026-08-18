@@ -21,6 +21,7 @@ import {
   isWordSearchGame,
   isWordScrambleGame,
   isWordGroupingGame,
+  isWordleRoomGame,
   isWhoSaidThis,
   parseGameType,
 } from '@/lib/game-types'
@@ -1019,6 +1020,13 @@ export function questionSourceOptions(gameType: GameType | string): {
     return [
       { value: 'platform', label: 'Platform', hint: 'Use our built-in puzzle bank.' },
       { value: 'library', label: 'Library', hint: 'Pick a community puzzle pack.' },
+    ]
+  }
+  if (isWordleRoomGame(gameType)) {
+    return [
+      { value: 'platform', label: 'Platform', hint: 'Use a built-in category (General English or Naija Slang).' },
+      { value: 'library', label: 'Library', hint: 'Pick a themed Wordle pack.' },
+      { value: 'custom', label: 'Your own', hint: 'Paste or upload your own list of 3–8 letter words (word,hint).' },
     ]
   }
   const platformCount = isTriviaGame(gameType)

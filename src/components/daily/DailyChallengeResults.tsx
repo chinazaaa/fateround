@@ -82,6 +82,7 @@ export function DailyChallengeResults({
   const itemsTotal = result?.itemsTotal ?? (previousScore?.items_total as number | undefined) ?? 0
   const isNewBest = result?.isNewBest ?? false
   const personalBest = result?.personalBest
+  const grid = result?.grid ?? (previousScore?.grid as string | undefined) ?? ''
 
   const handleShare = useCallback(async () => {
     if (sharing) return
@@ -101,6 +102,7 @@ export function DailyChallengeResults({
       const shareText = [
         `FateRound Daily ${DAILY_GAME_LABELS[gameType]} #${challengeNumber}`,
         `Score: ${score}${isPointsGame ? ' pts' : '/1000'} | Time: ${formatTime(timeSeconds)}`,
+        grid || null,
         rank && totalPlayers ? `Rank: #${rank} of ${totalPlayers}` : null,
         `fateround.com/daily-challenges/${slug}`,
       ]
@@ -118,7 +120,20 @@ export function DailyChallengeResults({
     } finally {
       setSharing(false)
     }
-  }, [sharing, slug, challengeNumber, gameType, score, timeSeconds, rank, totalPlayers, success, toastError])
+  }, [
+    sharing,
+    slug,
+    challengeNumber,
+    gameType,
+    score,
+    isPointsGame,
+    timeSeconds,
+    grid,
+    rank,
+    totalPlayers,
+    success,
+    toastError,
+  ])
 
   if (submitting) {
     return (
@@ -210,6 +225,11 @@ export function DailyChallengeResults({
               250 per token home + 50 per capture
             </p>
           )}
+          {gameType === 'wordle' && (
+            <p className="mt-1" style={{ fontSize: 'var(--text-2xs)', color: 'var(--text-faint)' }}>
+              Guess-1 win pays 1200 raw points, last-guess pays 400 raw points
+            </p>
+          )}
 
           {/* New personal best */}
           {isNewBest && score > 0 && (
@@ -245,7 +265,7 @@ export function DailyChallengeResults({
                 className="font-semibold uppercase tracking-wider mt-1"
                 style={{ fontSize: '10px', color: 'var(--text-faint)' }}
               >
-                {gameType === 'trivia' ? 'Correct' : 'Solved'}
+                {gameType === 'trivia' ? 'Correct' : gameType === 'wordle' ? 'Guesses' : 'Solved'}
               </div>
             </div>
             {rank && score > 0 && (
@@ -293,6 +313,8 @@ export function DailyChallengeResults({
             <button className="fr-btn fr-btn--secondary fr-btn--block" onClick={handleShare} disabled={sharing}>
               {sharing ? 'Generating...' : 'Share Result'}
             </button>
+            {/* "Copy Grid" removed — Share Result already embeds the emoji grid image, so an
+                extra CTA just duplicated the same content in text form. */}
             <Link href="/daily-challenges" className="fr-btn fr-btn--ghost fr-btn--sm mx-auto">
               Back to Daily Challenges
             </Link>
@@ -398,7 +420,7 @@ export function DailyChallengeResults({
                   marginTop: 4,
                 }}
               >
-                {gameType === 'trivia' ? 'Correct' : 'Solved'}
+                {gameType === 'trivia' ? 'Correct' : gameType === 'wordle' ? 'Guesses' : 'Solved'}
               </div>
             </div>
             {rank && (
