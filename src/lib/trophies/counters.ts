@@ -3482,6 +3482,64 @@ export const COUNTERS: readonly CounterDef[] = [
     phrase: 'played with 6+ players at least {n} time{s}',
   },
 
+  // ── Wordle Room ─────────────────────────────────────────────────────────
+  {
+    key: 'wordle_room_words_solved_total',
+    label: 'Wordle — words solved',
+    description: 'Total Wordle words solved across all games.',
+    scope: 'per-game',
+    availability: 'partial',
+    phrase: 'solved at least {n} Wordle word{s}',
+  },
+  {
+    key: 'wordle_room_first_guess_solves',
+    label: 'Wordle — first-guess solves',
+    description: 'Words solved on the very first guess.',
+    scope: 'per-game',
+    availability: 'partial',
+    phrase: 'solved at least {n} Wordle word{s} on the first guess',
+  },
+  {
+    key: 'wordle_room_finished_games',
+    label: 'Wordle — races finished',
+    description: 'Wordle races finished (whole sequence completed).',
+    scope: 'per-game',
+    availability: 'partial',
+    phrase: 'finished at least {n} Wordle race{s}',
+  },
+  {
+    key: 'wordle_room_no_hint_finished_games',
+    label: 'Wordle — hint-free races',
+    description: 'Wordle races finished without using any hints.',
+    scope: 'per-game',
+    availability: 'partial',
+    phrase: 'finished at least {n} Wordle race{s} without hints',
+  },
+  {
+    key: 'wordle_room_big_room_wins',
+    label: 'Wordle — big-room finishes',
+    description: 'Wordle races finished in a room of 10+ players.',
+    scope: 'per-game',
+    availability: 'partial',
+    phrase: 'finished at least {n} big Wordle race{s} (10+ players)',
+  },
+  {
+    key: 'wordle_room_naija_games',
+    label: 'Wordle — Naija Slang',
+    description: 'Wordle games played on the Naija Slang category.',
+    scope: 'per-game',
+    availability: 'partial',
+    phrase: 'played the Naija Slang category at least {n} time{s}',
+  },
+  {
+    key: 'wordle_room_marathon_wins',
+    label: 'Wordle — marathon finishes',
+    description: 'Full 20-word Wordle races finished without any hints.',
+    scope: 'per-game',
+    availability: 'partial',
+    phrase: 'finished at least {n} 20-word race{s} without hints',
+  },
+
   // ── Sudoku ─────────────────────────────────────────────────────────────
   {
     key: 'sudoku_correct_cells',
