@@ -6,6 +6,7 @@ import {
   WORDLE_ROOM_WORD_COUNT_OPTIONS,
   WORDLE_ROOM_DEFAULT_TIMER,
   WORDLE_ROOM_DEFAULT_WORD_COUNT,
+  WORDLE_ROOM_SAMPLE_CSV,
   clampWordleRoomCategory,
 } from '@/lib/wordle-room'
 import type { WordleCategoryId } from '@/lib/daily-wordle'
@@ -315,6 +316,13 @@ export function HostWordleRoomLobbyPanel({ gameCode, hostToken, game, playerCoun
       {source === 'custom' && (
         <HostLobbySettingBlock title="Upload word list">
           <div className="space-y-2">
+            <a
+              href={`data:text/csv;charset=utf-8,${encodeURIComponent(WORDLE_ROOM_SAMPLE_CSV)}`}
+              download="wordle-sample.csv"
+              className="inline-block text-sm text-[var(--primary)] underline"
+            >
+              Download sample CSV
+            </a>
             <input
               type="file"
               accept=".csv,text/csv"

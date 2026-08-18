@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
+import { ActivityIndicator, Pressable, Share, StyleSheet, Text, TextInput, View } from 'react-native'
 import type { GameType } from '@fateround/shared'
 import {
   WORDLE_ROOM_TIMER_OPTIONS,
   WORDLE_ROOM_WORD_COUNT_OPTIONS,
   WORDLE_ROOM_CATEGORY_LABELS,
+  WORDLE_ROOM_SAMPLE_CSV,
   type WordleCategoryId,
   type WordleRoomWordCount,
 } from '@fateround/shared/wordle-room'
@@ -217,6 +218,14 @@ export function WordleRoomLobbySection({ value, onChange }: Props) {
       {value.source === 'custom' ? (
         <View style={styles.field}>
           <Text style={styles.label}>Upload word list</Text>
+          <Pressable onPress={() => void Share.share({ message: WORDLE_ROOM_SAMPLE_CSV, title: 'wordle-sample.csv' })}>
+            <Text style={styles.sampleLink}>View / share sample CSV</Text>
+          </Pressable>
+          <View style={styles.sampleBox}>
+            <Text style={styles.sampleText} numberOfLines={4}>
+              {WORDLE_ROOM_SAMPLE_CSV.split('\n').slice(0, 4).join('\n')}
+            </Text>
+          </View>
           <Pressable style={styles.uploadBtn} onPress={() => void onUploadCsv()} disabled={uploading}>
             <Text style={styles.uploadText}>{uploading ? 'Reading…' : 'Pick CSV file'}</Text>
           </Pressable>
@@ -306,6 +315,15 @@ const makeStyles = (theme: Theme) =>
       alignItems: 'center',
     },
     uploadText: { color: theme.text, fontWeight: '700', fontSize: 14 },
+    sampleLink: { color: theme.primary, fontSize: 13, textDecorationLine: 'underline', fontWeight: '600' },
+    sampleBox: {
+      backgroundColor: theme.surface,
+      borderWidth: 1,
+      borderColor: theme.border,
+      borderRadius: theme.radius.sm,
+      padding: theme.space.sm,
+    },
+    sampleText: { color: theme.textMuted, fontSize: 11, fontFamily: 'monospace' },
     input: {
       backgroundColor: theme.surface,
       borderWidth: 1,
