@@ -1849,7 +1849,7 @@ function CreateGameInner() {
   // word_search, word_scramble, word_grouping). When on, the create flow forces
   // max_players=1, seats the host as the sole player, and auto-starts the game
   // right after create so a solo host bypasses the lobby wait entirely.
-  const isSoloEligible = isYahtzee || isCrossword || isWordSearch || isWordScramble || isWordGrouping
+  const isSoloEligible = isYahtzee || isCrossword || isWordSearch || isWordScramble || isWordGrouping || isWordleRoom
   const [soloMode, setSoloMode] = useState(false)
   useEffect(() => {
     // A game type change may make solo unavailable — never carry a stale flag.

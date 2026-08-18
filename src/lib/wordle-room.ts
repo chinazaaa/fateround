@@ -24,7 +24,7 @@ import { normalizeWordleWord, wordleBasePoints, wordleMaxAttempts, gradeWordleGu
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-export const WORDLE_ROOM_MIN_PLAYERS = 2
+export const WORDLE_ROOM_MIN_PLAYERS = 1
 export const WORDLE_ROOM_MAX_PLAYERS = 20
 export const WORDLE_ROOM_DEFAULT_MAX_PLAYERS = 20
 
