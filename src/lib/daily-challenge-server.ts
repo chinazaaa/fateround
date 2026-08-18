@@ -353,6 +353,22 @@ export async function generateDailyPuzzleFromContent(
       return { puzzleData: result.puzzleData as unknown as Record<string, unknown>, config: result.config }
     }
 
+    case 'wordle': {
+      const { buildWordlePuzzleFromContent } = await import('@/lib/daily-wordle')
+      const puzzle = buildWordlePuzzleFromContent(seed, adminContent)
+      if (!puzzle) return null
+      return {
+        puzzleData: puzzle as unknown as Record<string, unknown>,
+        config: {
+          timer: DAILY_GAME_TIMER.wordle,
+          category: puzzle.category,
+          categoryLabel: puzzle.categoryLabel,
+          length: puzzle.length,
+          maxAttempts: puzzle.maxAttempts,
+        },
+      }
+    }
+
     default:
       return null
   }

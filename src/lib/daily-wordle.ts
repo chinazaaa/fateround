@@ -83,6 +83,39 @@ export function buildWordlePuzzle(seed: number): WordlePuzzleData {
   }
 }
 
+/**
+ * Build the day's puzzle from admin-curated content. Returns null when the content can't produce
+ * a valid puzzle so the caller falls back to the algorithmic path (built-in bank). Category is
+ * reported as "custom"; label defaults to "Daily" and can be overridden per-entry.
+ */
+export function buildWordlePuzzleFromContent(seed: number, adminContent: unknown): WordlePuzzleData | null {
+  if (!Array.isArray(adminContent) || adminContent.length === 0) return null
+  const entries: WordleBankEntry[] = []
+  for (const raw of adminContent) {
+    if (raw == null || typeof raw !== 'object') continue
+    const rec = raw as { word?: unknown; hint?: unknown; categoryLabel?: unknown }
+    const word = normalizeWordleWord(typeof rec.word === 'string' ? rec.word : '')
+    if (word.length < 3 || word.length > 8) continue
+    const hint = typeof rec.hint === 'string' ? rec.hint : ''
+    entries.push({ word, hint })
+  }
+  if (entries.length === 0) return null
+
+  const idx = ((seed % entries.length) + entries.length) % entries.length
+  const entry = entries[idx]!
+  const first = adminContent[0] as { categoryLabel?: unknown } | undefined
+  const categoryLabel = typeof first?.categoryLabel === 'string' && first.categoryLabel.trim() ? first.categoryLabel : 'Daily'
+
+  return {
+    category: 'general_english',
+    categoryLabel,
+    word: entry.word,
+    hint: entry.hint,
+    length: entry.word.length,
+    maxAttempts: wordleMaxAttempts(entry.word.length),
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Normalization + attempts
 // ---------------------------------------------------------------------------

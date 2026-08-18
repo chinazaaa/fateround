@@ -18,6 +18,7 @@ type GameTypeId =
   | 'chess_mate'
   | 'codenames_codeword'
   | 'ludo_puzzle'
+  | 'wordle'
 
 const GAME_TYPES: { id: GameTypeId; label: string; hint: string }[] = [
   { id: 'crossword', label: 'Crossword', hint: 'ANSWER,clue — one per line. Min 4 entries, max 13 letters per word.' },
@@ -52,6 +53,11 @@ const GAME_TYPES: { id: GameTypeId; label: string; hint: string }[] = [
     id: 'ludo_puzzle',
     label: 'Ludo Puzzle',
     hint: 'JSON. Required: startingPieces (4 tokens with id/zone/pos), diceSequence (1-6[]), optimalRolls. Optional: obstacles [{trackPos}].',
+  },
+  {
+    id: 'wordle',
+    label: 'Wordle',
+    hint: 'WORD,hint (optional) — one per line. Min 1 entry. 3–8 letters, alpha only. One picked per day by seed.',
   },
 ]
 
@@ -117,6 +123,11 @@ function contentToText(gameType: GameTypeId, content: unknown): string {
       .map((e) => `${e.question} | ${e.choices.join(' | ')} | ${e.correct_index}`)
       .join('\n')
   }
+  if (gameType === 'wordle') {
+    return (content as { word?: string; hint?: string }[])
+      .map((e) => (e.hint ? `${(e.word ?? '').toUpperCase()},${e.hint}` : (e.word ?? '').toUpperCase()))
+      .join('\n')
+  }
   return (content as { answer?: string; word?: string; clue?: string }[])
     .map((e) => {
       const w = e.answer ?? e.word ?? ''
@@ -164,6 +175,16 @@ function textToContent(gameType: GameTypeId, text: string): unknown {
         return { answer, clue }
       })
       .filter((e) => e.answer.length >= 3)
+  }
+  if (gameType === 'wordle') {
+    return lines
+      .map((l) => {
+        const idx = l.indexOf(',')
+        const word = (idx >= 0 ? l.slice(0, idx) : l).toLowerCase().replace(/[^a-z]/g, '')
+        const hint = idx >= 0 ? l.slice(idx + 1).trim() : ''
+        return { word, hint }
+      })
+      .filter((e) => e.word.length >= 3 && e.word.length <= 8)
   }
   return lines
     .map((l) => {
@@ -219,6 +240,17 @@ function validateContent(gameType: GameTypeId, content: unknown): string | null 
     case 'word_scramble': {
       if (!Array.isArray(content)) return 'Expected a list of entries'
       if (content.length < 3) return `Need at least 3 entries (got ${content.length})`
+      return null
+    }
+    case 'wordle': {
+      if (!Array.isArray(content)) return 'Expected a list of entries'
+      if (content.length < 1) return 'Add at least one word'
+      for (let i = 0; i < content.length; i++) {
+        const e = content[i] as { word?: string }
+        const w = (e.word ?? '').toLowerCase()
+        if (!/^[a-z]+$/.test(w)) return `Entry ${i + 1}: word must be letters only`
+        if (w.length < 3 || w.length > 8) return `Entry ${i + 1} ("${w}"): 3–8 letters`
+      }
       return null
     }
     case 'trivia': {
@@ -575,7 +607,9 @@ export default function AdminDailyPage() {
         body: JSON.stringify({
           from: batchRange.from,
           to: batchRange.to,
-          game_types: ALL_GAME_IDS,
+          // Wordle isn't in the batch generator's bank yet (no auto-content source);
+          // admins add wordle days manually via the Manual tab.
+          game_types: ALL_GAME_IDS.filter((g) => g !== 'wordle'),
         }),
       })
       const json = await res.json()
