@@ -20,7 +20,12 @@ const finishSchema = z.object({
   outcome: z.enum(['human', 'bot', 'draw']),
   sessionId: z.string().min(4).max(80),
   difficulty: z.string().max(32).nullish(),
-  durationMs: z.number().int().nonnegative().max(24 * 60 * 60 * 1000).nullish(),
+  durationMs: z
+    .number()
+    .int()
+    .nonnegative()
+    .max(24 * 60 * 60 * 1000)
+    .nullish(),
 })
 
 export async function POST(req: NextRequest) {
