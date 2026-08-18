@@ -85,6 +85,18 @@ function CrownIcon({ color, size = 12 }: { color: string; size?: number }) {
   )
 }
 
+// Four-way move arrows — signals free 2D drag (not just left/right).
+function MoveIcon({ color, size = 10 }: { color: string; size?: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M12 2 L15 5 H13 V10 H18 V8 L21 11 L18 14 V12 H13 V17 H15 L12 20 L9 17 H11 V12 H6 V14 L3 11 L6 8 V10 H11 V5 H9 Z"
+        fill={color}
+      />
+    </Svg>
+  )
+}
+
 function mapParticipants(participants: ReturnType<typeof useParticipants>): VoiceParticipant[] {
   return participants.map((p) => ({
     id: p.identity,
@@ -230,6 +242,10 @@ function DraggableFloat({ bottomOffset, children }: { bottomOffset: number; chil
   const pan = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current
   const sizeRef = useRef({ w: 0, h: 0 })
   const posRef = useRef({ x: 0, y: 0 })
+  // Small "MOVE" affordance chip attached to the pill so players know it's
+  // draggable. Auto-hides once they actually drag it — the hint has done its
+  // job, no need to keep it on screen.
+  const [showHint, setShowHint] = useState(true)
 
   useEffect(() => {
     const id = pan.addListener((v) => {
@@ -247,6 +263,7 @@ function DraggableFloat({ bottomOffset, children }: { bottomOffset: number; chil
       onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 6 || Math.abs(g.dy) > 6,
       onPanResponderGrant: () => {
         pan.extractOffset()
+        setShowHint(false)
       },
       onPanResponderMove: Animated.event([null, { dx: pan.x, dy: pan.y }], { useNativeDriver: false }),
       onPanResponderRelease: () => {
@@ -275,6 +292,12 @@ function DraggableFloat({ bottomOffset, children }: { bottomOffset: number; chil
       }}
       {...responder.panHandlers}
     >
+      {showHint ? (
+        <View style={styles.moveHint} pointerEvents="none">
+          <MoveIcon color={styles.moveHintText.color as string} size={10} />
+          <Text style={styles.moveHintText}>MOVE</Text>
+        </View>
+      ) : null}
       {children}
     </Animated.View>
   )
@@ -431,6 +454,35 @@ const makeStyles = (theme: Theme) =>
     },
     iconWrap: { alignItems: 'center', justifyContent: 'center' },
     iconRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    // Attached hint chip anchored to the pill's top-left corner. Position is
+    // negative so it overhangs the pill's own edge, matching the screenshot's
+    // "attached badge" look.
+    moveHint: {
+      position: 'absolute',
+      top: -10,
+      left: -12,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      paddingHorizontal: 6,
+      paddingVertical: 3,
+      borderRadius: 999,
+      backgroundColor: theme.bgElevated,
+      borderWidth: 1,
+      borderColor: theme.border,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.15,
+      shadowRadius: 3,
+      elevation: 3,
+      zIndex: 1,
+    },
+    moveHintText: {
+      color: theme.textMuted,
+      fontSize: 9,
+      fontWeight: '800',
+      letterSpacing: 0.6,
+    },
     secondaryBtn: {
       borderRadius: 999,
       borderWidth: 1,

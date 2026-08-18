@@ -446,6 +446,9 @@ function ConnectedBar(props: {
 function DraggablePill({ children }: { children: React.ReactNode }) {
   const ref = useRef<HTMLDivElement | null>(null)
   const [pos, setPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
+  // Small "MOVE" affordance chip so players discover the drag. Auto-hides once
+  // they actually drag it — the hint has done its job.
+  const [showHint, setShowHint] = useState(true)
   const drag = useRef<{
     startX: number
     startY: number
@@ -494,6 +497,7 @@ function DraggablePill({ children }: { children: React.ReactNode }) {
     if (!d.active) {
       if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return
       d.active = true
+      setShowHint(false)
       ;(e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId)
     }
     setPos(clamp(d.baseX + dx, d.baseY + dy))
@@ -527,9 +531,41 @@ function DraggablePill({ children }: { children: React.ReactNode }) {
       onPointerUp={endDrag}
       onPointerCancel={endDrag}
     >
+      {showHint ? (
+        <span aria-hidden style={moveHintStyle}>
+          <svg width={10} height={10} viewBox="0 0 24 24" style={{ display: 'block' }} aria-hidden>
+            <path
+              d="M12 2 L15 5 H13 V10 H18 V8 L21 11 L18 14 V12 H13 V17 H15 L12 20 L9 17 H11 V12 H6 V14 L3 11 L6 8 V10 H11 V5 H9 Z"
+              fill="currentColor"
+            />
+          </svg>
+          MOVE
+        </span>
+      ) : null}
       {children}
     </div>
   )
+}
+
+const moveHintStyle: React.CSSProperties = {
+  position: 'absolute',
+  top: -10,
+  left: -12,
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 4,
+  padding: '3px 6px',
+  borderRadius: 999,
+  background: 'var(--surface)',
+  border: '1px solid var(--border)',
+  boxShadow: 'var(--shadow-sm, 0 1px 3px rgba(0,0,0,.15))',
+  color: 'var(--text-muted)',
+  fontSize: 9,
+  fontWeight: 800,
+  letterSpacing: 0.6,
+  lineHeight: 1,
+  pointerEvents: 'none',
+  zIndex: 1,
 }
 
 const railWrap: React.CSSProperties = {
