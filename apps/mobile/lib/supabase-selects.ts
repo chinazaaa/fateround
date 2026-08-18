@@ -93,6 +93,22 @@ export const UNO_SESSION_SELECT =
 
 export const UNO_PLAYER_HANDS_SELECT = 'id,game_id,player_id,cards,player_order,created_at'
 
+// Realtime UPDATE payloads omit unchanged TOAST-ed columns — once the draw/discard piles
+// grow, an update that touches only e.g. current_turn_index delivers those piles as null.
+// Applying that would wipe the board and every card would look unplayable. Callers check
+// isCompleteUnoSessionRow before merging; a false result falls back to the reload path.
+export const UNO_SESSION_NOT_NULL_KEYS = [
+  'turn_order',
+  'draw_pile',
+  'discard_pile',
+  'left_player_ids',
+  'eliminated_player_ids',
+] as const
+
+export function isCompleteUnoSessionRow(row: Record<string, unknown>): boolean {
+  return UNO_SESSION_NOT_NULL_KEYS.every((key) => row[key] != null)
+}
+
 export const TTL_STATEMENT_SELECT =
   'id,game_id,player_id,statement_a,statement_b,statement_c,lie_index,created_at,updated_at'
 

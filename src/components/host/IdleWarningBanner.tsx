@@ -80,7 +80,9 @@ export function IdleWarningBanner({ game, gameCode, hostToken, onSaved }: Props)
   return (
     <div className="glass-card flex flex-col gap-2 !p-4">
       <p className="text-sm font-bold text-body">⏳ This lobby closes in 2 minutes</p>
-      <p className="text-xs text-muted">Nothing’s happened here for 13 minutes and the game hasn’t started. Tap to keep it open.</p>
+      <p className="text-xs text-muted">
+        Nothing’s happened here for 13 minutes and the game hasn’t started. Tap to keep it open.
+      </p>
       {error ? <p className="text-xs text-red-500">{error}</p> : null}
       <button
         type="button"

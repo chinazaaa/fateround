@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import {
   type Game,
@@ -65,7 +65,7 @@ import {
 } from '@/lib/game-api'
 import { playSound } from '@/lib/sounds'
 import { getSupabase } from '@/lib/supabase'
-import { UNO_PLAYER_HANDS_SELECT, UNO_SESSION_SELECT } from '@/lib/supabase-selects'
+import { UNO_PLAYER_HANDS_SELECT, UNO_SESSION_SELECT, isCompleteUnoSessionRow } from '@/lib/supabase-selects'
 import { usePlayerSessionActions } from '@/lib/player-session'
 import { cardHandLeaderboard } from '@/lib/finish-leaderboards'
 import { useUnoQuickChat } from '@/hooks/useUnoQuickChat'
@@ -94,6 +94,10 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
   const [session, setSession] = useState<UnoSession | null>(null)
   const [hands, setHands] = useState<UnoPlayerHand[]>([])
   const [acting, setActing] = useState(false)
+  // Live mirror for the realtime apply fast-path — a subscription callback
+  // can't read `session` directly (stale closure).
+  const sessionRef = useRef<UnoSession | null>(null)
+  sessionRef.current = session
 
   const loadGameState = useCallback(
     async (_game: Game, _players: Player[]): Promise<{ state: UnoSession | null; ok: boolean }> => {
@@ -140,9 +144,40 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
   })
   const { onLeft, lobbyProps } = usePlayerSessionActions(bootstrap)
 
+  // Delta fast-path — mirrors web UnoPlayerView. Session + hand row changes
+  // patch local state without a full reload; games row changes still reload so
+  // the active→finished screen swap flows through the bootstrap.
+  const applySessionRow = useCallback((row: Record<string, unknown>): boolean => {
+    const next = row as unknown as UnoSession
+    const prev = sessionRef.current
+    if (prev && next.updated_at && prev.updated_at && next.updated_at < prev.updated_at) return true
+    // TOAST-column trap: a partial realtime update carrying null for the piles /
+    // turn order would blank the board — fall back to reload for those.
+    if (!isCompleteUnoSessionRow(row)) return false
+    const merged = prev ? { ...prev, ...next } : next
+    setSession(merged)
+    sessionRef.current = merged
+    return prev != null
+  }, [])
+  const applyHandRow = useCallback((row: Record<string, unknown>): boolean => {
+    const next = row as unknown as UnoPlayerHand
+    setHands((prev) => {
+      const i = prev.findIndex((h) => h.id === next.id)
+      if (i === -1) return [...prev, next].sort((a, b) => a.player_order - b.player_order)
+      const copy = [...prev]
+      copy[i] = next
+      return copy
+    })
+    return true
+  }, [])
+
   useGameTableSync(
     gameCode,
-    [{ table: 'games', column: 'id' }, 'uno_sessions', 'uno_player_hands'],
+    [
+      { table: 'games', column: 'id' },
+      { table: 'uno_sessions', apply: applySessionRow },
+      { table: 'uno_player_hands', apply: applyHandRow },
+    ],
     () => bootstrap.load(),
     !!bootstrap.game,
     bootstrap.game?.status
@@ -284,8 +319,9 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
     try {
       await fn()
     } finally {
+      // Realtime fast-path (applySessionRow / applyHandRow above) merges the
+      // server write into local state — no need to burn a full re-fetch here.
       setActing(false)
-      void bootstrap.load()
     }
   }
 
