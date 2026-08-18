@@ -47,23 +47,30 @@ const PENDING_PREFIX = 'pending-' // a tile already placed (pending) on the boar
 /** A tile placed this turn, remembering which rack slot it came from. */
 type PendingTile = ScrabblePlacedTile & { rackIndex: number }
 
-/** Background + label for a premium square. */
+/**
+ * Background + label for a premium square. Colour palette is FateRound-branded
+ * (rose + violet) rather than the well-known commercial red/pink/blue scheme —
+ * word bonuses are violet (deepening for TW), letter bonuses are rose.
+ */
 function premiumStyle(prem: ScrabblePremium): { bg: string; label: string } {
   switch (prem) {
     case 'TW':
-      return { bg: 'bg-rose-600', label: 'TW' }
+      return { bg: 'bg-violet-700', label: 'TW' }
     case 'DW':
-      return { bg: 'bg-pink-500', label: 'DW' }
+      return { bg: 'bg-violet-400', label: 'DW' }
     case 'TL':
-      return { bg: 'bg-blue-600', label: 'TL' }
+      return { bg: 'bg-rose-600', label: 'TL' }
     case 'DL':
-      return { bg: 'bg-sky-500', label: 'DL' }
+      return { bg: 'bg-rose-300', label: 'DL' }
     default:
       return { bg: 'bg-[var(--surface-inset-bg)]', label: '' }
   }
 }
 
-/** A rendered letter tile (wooden style). */
+/**
+ * A rendered letter tile — polished-stone / off-white look, distinct from the
+ * commercial wooden-cream+amber-numeral Scrabble tile aesthetic.
+ */
 function LetterTile({
   letter,
   isBlank,
@@ -81,14 +88,14 @@ function LetterTile({
   return (
     <span
       className={[
-        // Raised "wooden" tile: light-to-dark gradient + inset top highlight + thicker
-        // bottom edge + drop shadow give a 3D bevel.
-        'relative flex items-center justify-center font-black leading-none w-full h-full text-amber-950',
-        'border border-amber-500/60 border-b-[3px] border-b-amber-600/70',
-        'shadow-[inset_0_1px_0_rgba(255,255,255,0.75),0_1px_2px_rgba(0,0,0,0.35)]',
+        // Raised polished-stone tile: neutral off-white gradient + inset top
+        // highlight + thicker bottom edge + drop shadow give the 3D bevel.
+        'relative flex items-center justify-center font-black leading-none w-full h-full text-neutral-900',
+        'border border-neutral-300/80 border-b-[3px] border-b-neutral-400/70',
+        'shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_1px_2px_rgba(0,0,0,0.35)]',
         pending
-          ? 'bg-gradient-to-b from-amber-200 to-amber-400 ring-2 ring-inset ring-emerald-600'
-          : 'bg-gradient-to-b from-amber-100 to-amber-300',
+          ? 'bg-gradient-to-b from-white to-neutral-200 ring-2 ring-inset ring-rose-500'
+          : 'bg-gradient-to-b from-neutral-50 to-neutral-200',
         size === 'rack' ? 'text-xl sm:text-2xl rounded-md shadow-md' : 'text-[2.4vw] sm:text-base rounded-[3px]',
       ].join(' ')}
     >
@@ -96,7 +103,7 @@ function LetterTile({
       {!isBlank && (
         <span
           className={[
-            'absolute font-bold text-amber-700/90',
+            'absolute font-bold text-neutral-500',
             size === 'rack' ? 'bottom-0.5 right-1 text-[0.6rem]' : 'bottom-0 right-0.5 text-[1.1vw] sm:text-[0.5rem]',
           ].join(' ')}
         >
@@ -181,7 +188,7 @@ function BoardCell({
           size="board"
         />
       ) : isCenter ? (
-        <span className="text-[2.4vw] sm:text-sm leading-none text-amber-50/90">★</span>
+        <span className="text-[2.4vw] sm:text-sm leading-none text-rose-400">★</span>
       ) : label ? (
         <span className="text-[1.3vw] sm:text-[0.55rem] font-black leading-none text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.4)]">
           {label}

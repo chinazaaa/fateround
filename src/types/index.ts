@@ -1,4 +1,4 @@
-export type GameStatus = 'waiting' | 'active' | 'finished'
+export type GameStatus = 'scheduled' | 'waiting' | 'active' | 'finished'
 export type RoundStatus = 'pending' | 'active' | 'finished'
 export type AutoSubmitBehavior = 'random' | 'no_answer'
 export type ParticipantMode = 'import' | 'joiners' | 'voters'
@@ -56,6 +56,8 @@ export type GameType =
   | 'landmine'
   | 'ping_pong'
   | 'uno'
+  | 'word_grouping'
+  | 'wordle_room'
 
 export type NpatPhase = 'letter_pick' | 'writing' | 'marking' | 'host_review' | 'reveal'
 export type NpatCategory = 'name' | 'animal' | 'place' | 'thing' | 'food'
@@ -181,7 +183,24 @@ export type YahtzeeCategory =
   | 'large_straight'
   | 'yahtzee'
   | 'chance'
-export type TriviaCategory = 'tech' | 'general'
+export type TriviaCategory =
+  | 'tech'
+  | 'general'
+  | 'art'
+  | 'food'
+  | 'geography'
+  | 'history'
+  | 'language'
+  | 'literature'
+  | 'math'
+  | 'movies'
+  | 'music'
+  | 'nature'
+  | 'pop_culture'
+  | 'science'
+  | 'sports'
+  | 'technology'
+  | 'world_culture'
 export type BingoCallMode = 'manual' | 'auto'
 export type CodewordsCellType = 'red' | 'blue' | 'neutral' | 'assassin'
 export type CodewordsTeam = 'red' | 'blue'
@@ -367,6 +386,7 @@ export interface Game {
   monopoly_auction_timer_seconds?: number | null
   monopoly_no_rent_in_jail?: boolean
   monopoly_estate_dividend?: boolean
+  monopoly_board_size?: 40 | 48
   anonymous: boolean
   auto_reveal: boolean
   auto_submit_behavior: AutoSubmitBehavior
@@ -384,6 +404,16 @@ export interface Game {
   status: GameStatus
   /** When true, the game is listed in /browse (discoverable). Default false = code-only. */
   is_public?: boolean
+  /** Discovery Phase A — bumped on lobby activity; drives the stale-lobby close cron. */
+  last_activity_at?: string | null
+  /** Discovery Phase C — when a scheduled game is set to open. Null for immediate games. */
+  scheduled_at?: string | null
+  /** Discovery Phase C — stamped when scheduled → waiting. */
+  opened_at?: string | null
+  /** Discovery Phase A — stamped once when the host got the T-13min warning (one bite per game). */
+  host_idle_warning_sent_at?: string | null
+  /** Discovery Phase A — how the lobby ended ("idle_timeout", null, …). */
+  result_reason?: string | null
   /** When true, the host has enabled in-game Spotify music for this room (default off). */
   music_enabled?: boolean
   /** Play Again · same settings — true while the post-game ready-up ring is armed (Whot). */
@@ -475,6 +505,18 @@ export interface Game {
   uno_team_mode?: boolean
   /** UNO — Jump-In: play an exact-match card out of turn (deferred toggle). */
   uno_jump_in?: boolean
+  /** UNO — top-level mode: 'classic' (default; uno_team_mode toggles Team-Up) or 'no_mercy'. */
+  uno_mode?: 'classic' | 'no_mercy'
+  /** UNO — No Mercy win condition: first player out or last player standing after Mercy knockouts. */
+  uno_no_mercy_win?: 'first_out' | 'last_standing'
+  /** UNO — optional series scoring (award points at hand end; first to target wins the series). */
+  uno_series_scoring?: boolean
+  /** UNO — points needed to win the series when scoring is on (default 1000). */
+  uno_series_target?: number
+  /** UNO — running per-player series totals (map playerId → int). */
+  uno_series_scores?: Record<string, number> | null
+  /** UNO — series winner id (set when someone first crosses uno_series_target). */
+  uno_series_winner_id?: string | null
   /** Ludo — 'modern' (start + mid-arm safe stars) or 'traditional' (no track safe squares). */
   ludo_variant?: LudoVariant
   /** Ayo — 'traditional' (capture on 4, houses, match rounds) or 'oware' (2/3 seeds). */
@@ -501,6 +543,22 @@ export interface Game {
   checkers_nigeria_street_rules?: boolean | null
   /** Ping Pong — points required to win the match (3, 5, 7, 11, 15, or 21). */
   ping_pong_points_to_win?: number | null
+  /** Wordle Room — which built-in word bank the race draws from. */
+  wordle_room_category?:
+    | 'general_english'
+    | 'naija_slang'
+    | 'sports'
+    | 'food'
+    | 'animals'
+    | 'technology'
+    | 'nature'
+    | 'music'
+    | 'science'
+    | 'clothing'
+    | 'travel'
+    | null
+  /** Wordle Room — how many words make up the race (5 / 10 / 15 / 20). */
+  wordle_room_word_count?: number | null
 }
 
 export type MonopolyPhase = 'roll' | 'buy' | 'jail' | 'pay_rent' | 'auction' | 'raise_funds' | 'finished'
@@ -573,6 +631,7 @@ export interface MonopolyLastTradeEvent {
 export interface MonopolyBoard {
   id: string
   game_id: string
+  board_size?: 40 | 48
   turn_order: string[]
   current_turn_index: number
   phase: MonopolyPhase
@@ -644,6 +703,10 @@ export interface YahtzeePlayerScore {
   player_id: string
   scores: {
     categories: YahtzeeCategoryPoints
+    /** Count of Yahtzee Bonuses earned (each a flat +100). Absent on cards from before the rule. */
+    bonusYahtzees?: number
+    /** Whether a Joker-rule Yahtzee was scored this game. Not derivable from the final card. */
+    jokerUsed?: boolean
   }
   player_order: number
   created_at: string
@@ -676,6 +739,10 @@ export interface WhotSession {
   winner_player_id: string | null
   /** Player ids in the order they emptied their hands. Drives final placement. */
   finish_order: string[]
+  /** How many times the draw pile has been rebuilt from the discard. Capped
+   *  at WHOT_RESHUFFLE_LIMIT — beyond that the game ends by lowest hand
+   *  total instead of the deck spinning forever. */
+  reshuffle_count: number
   turn_deadline_at: string | null
   created_at: string
   updated_at: string
@@ -752,8 +819,21 @@ export type UnoCardColor = 'red' | 'yellow' | 'green' | 'blue' | 'wild'
 /** A demandable colour — what a Wild / Wild Draw Four names for the next player. */
 export type UnoColor = 'red' | 'yellow' | 'green' | 'blue'
 
-/** What a card does. Number cards carry `value` 0–9; everything else is an action. */
-export type UnoCardKind = 'number' | 'skip' | 'reverse' | 'draw2' | 'wild' | 'wild_draw4'
+/** What a card does. Number cards carry `value` 0–9; everything else is an action.
+ *  The last six kinds are No-Mercy-only cards; they never appear in a Classic deck. */
+export type UnoCardKind =
+  | 'number'
+  | 'skip'
+  | 'reverse'
+  | 'draw2'
+  | 'wild'
+  | 'wild_draw4'
+  | 'discard_all'
+  | 'skip_everyone'
+  | 'draw6'
+  | 'draw10'
+  | 'wild_reverse_draw4'
+  | 'wild_color_roulette'
 
 export type UnoPhase =
   | 'playing'
@@ -761,6 +841,7 @@ export type UnoPhase =
   | 'challenge_window'
   | 'swap_target'
   | 'team_leave_decision'
+  | 'color_roulette'
   | 'finished'
 
 export interface UnoCard {
@@ -786,8 +867,21 @@ export interface UnoSession {
   required_color: UnoColor | null
   /** Pending forced draw the current player must take (Draw Two / Draw Four target). */
   draw_penalty: number
-  /** Which card can stack onto the pending penalty ('draw2' | 'wild_draw4'); null = must draw it. */
-  draw_penalty_kind: 'draw2' | 'wild_draw4' | null
+  /** Which card can stack onto the pending penalty; null = must draw it. In No Mercy any
+   *  Draw card (Draw2/4/6/10 or Wild Reverse Draw 4) of equal-or-higher value can stack. */
+  draw_penalty_kind: 'draw2' | 'wild_draw4' | 'draw6' | 'draw10' | 'wild_reverse_draw4' | null
+  /** No Mercy: players knocked out by the 25-card Mercy rule this round. */
+  eliminated_player_ids?: string[]
+  /** No Mercy: who chose the colour for a Wild Color Roulette (they draw until match). */
+  color_roulette_player_id?: string | null
+  /** No Mercy: reveals so far in the current Colour Roulette event (NULL when none in
+   *  progress). Trophies for Roulette Master (>=5) / Executioner (>=8) key off this
+   *  exact per-event count. */
+  color_roulette_reveals?: number | null
+  /** Id of the player who played the current top card — for High Stakes knockout attribution. */
+  last_play_player_id?: string | null
+  /** Draw-card stack chain depth so far — resets when the penalty resolves or a non-Draw plays. */
+  draw_stack_chain?: number
   /** Set to the card the current player just drew while they may still play it or keep it (pass). */
   drawn_card_id: string | null
   /**
@@ -798,7 +892,7 @@ export interface UnoSession {
    */
   last_play_cards?: UnoCard[] | null
   /** During `choose_color`, which wild is being coloured. */
-  pending_wild: 'wild' | 'wild_draw4' | null
+  pending_wild: 'wild' | 'wild_draw4' | 'draw6' | 'draw10' | 'wild_reverse_draw4' | 'wild_color_roulette' | null
   /** Colour in effect immediately before a Wild Draw Four (for challenge reveal). */
   challenge_prev_color: UnoColor | null
   /** Who played the Wild Draw Four currently in `challenge_window`. */
@@ -1256,8 +1350,30 @@ export interface AyoSession {
   is_draw: boolean
   status_message: string | null
   turn_deadline_at: string | null
+  /** Per-game trophy accumulators (migration 20260812040000). See src/lib/trophies/game-facts/ayo.ts. */
+  a_stats?: AyoStats
+  b_stats?: AyoStats
   created_at: string
   updated_at: string
+}
+
+/**
+ * One seat's per-game trophy accumulator, kept on the `ayo_sessions` row. All keys optional,
+ * absent == 0. Reset each game by `initializeAyoGame`. See migration 20260812040000.
+ */
+export interface AyoStats {
+  /** This seat's completed moves this game. */
+  moves?: number
+  /** Of those, how many captured a house (completed exactly four). */
+  capturing_moves?: number
+  /** 0/1 — did this seat's MOST RECENT move capture (for the final-move win trophy). */
+  last_capture?: number
+  /** Bitmask of local houses (0–5) this seat has sowed from; 63 == all six. */
+  sown_mask?: number
+  /** Most seeds moved in a single move, relay laps included (a full lap == 12). */
+  max_sown?: number
+  /** Largest (opponent captured − this seat captured) seen after any move. */
+  worst_deficit?: number
 }
 
 export type DescribeItPhase = 'turn' | 'break' | 'finished'
@@ -1747,6 +1863,13 @@ export interface Player {
   eliminated_at?: string | null
   /** Remaining lives (lives mode only, null otherwise). */
   lives_remaining?: number | null
+  /**
+   * True when this player row is a bot (bots-in-room, Phase 1). The client uses
+   * it to render the 🤖 chip in the roster and gate the "Add bot" affordance;
+   * the server uses it to drive the bot's turns via game-tick. Defaults false
+   * for every existing row (see migration 20260925120000_players_is_bot.sql).
+   */
+  is_bot?: boolean
 }
 
 export interface Round {

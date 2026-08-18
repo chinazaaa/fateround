@@ -17,7 +17,14 @@ import { YahtzeeFinalResultsShareBlock } from '@/components/yahtzee/YahtzeeFinal
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { gameTypeConfig } from '@/lib/game-types'
-import { currentPlayerId, totalScore, YAHTZEE_MIN_PLAYERS } from '@/lib/yahtzee'
+import {
+  currentPlayerId,
+  jokerApplies,
+  matchingUpperCategory,
+  totalScore,
+  YAHTZEE_CATEGORY_LABELS,
+  YAHTZEE_MIN_PLAYERS,
+} from '@/lib/yahtzee'
 import { supabase } from '@/lib/supabase'
 import { YAHTZEE_PLAYER_SCORES_SELECT, YAHTZEE_SESSION_SELECT } from '@/lib/supabase-selects'
 import { clearPlayerSession } from '@/lib/utils'
@@ -161,7 +168,7 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
   // the header drawer + its live score/categories scoreboard.
   useRosterBase(game?.status === 'active' || game?.status === 'finished' ? players : undefined, game, myPlayerId)
   const rosterScores = useMemo(
-    () => Object.fromEntries(scores.map((s) => [s.player_id, totalScore(s.scores.categories)])),
+    () => Object.fromEntries(scores.map((s) => [s.player_id, totalScore(s.scores.categories, s.scores.bonusYahtzees)])),
     [scores]
   )
   useGameScores(rosterScores, { suffix: ' pts' })
@@ -329,6 +336,17 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
   const winner = players.find((p) => p.id === session?.winner_player_id)
   const canScore = isMyTurn && (session?.rolls_this_turn ?? 0) > 0
 
+  // Joker rule guide. When it's your turn and a Yahtzee is on the table with your Yahtzee box
+  // already filled, the roll is forced into its matching upper box until that box is taken.
+  // Naming it here means the player is told before they click, rather than by a rejected score.
+  const jokerForcedBox = (() => {
+    if (!canScore || !session?.dice) return null
+    const myCats = scores.find((s) => s.player_id === myPlayerId)?.scores.categories
+    if (!myCats || !jokerApplies(session.dice, myCats)) return null
+    const forced = matchingUpperCategory(session.dice)
+    return forced && myCats[forced] == null ? YAHTZEE_CATEGORY_LABELS[forced] : null
+  })()
+
   // Audio notifications
   useYahtzeeNotifications({ game, session, myPlayerId, enabled: screen === 'active' })
 
@@ -481,12 +499,12 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
     // game has no one to beat, so there's no real win). Matches the other
     // score-based games.
     const myScoreRow = scores.find((s) => s.player_id === myPlayerId)
-    const myTotal = myScoreRow ? totalScore(myScoreRow.scores.categories) : 0
+    const myTotal = myScoreRow ? totalScore(myScoreRow.scores.categories, myScoreRow.scores.bonusYahtzees) : 0
     const iWon = myPlayerId != null && session?.winner_player_id === myPlayerId && myTotal > 0 && scores.length > 1
     const shareWinnerName = iWon ? myName : winner?.name
 
     return (
-      <YahtzeeShell title="Game over!" subtitle={winner ? `${winner.name} wins` : undefined}>
+      <YahtzeeShell>
         {game && scores.length > 0 ? (
           <YahtzeeFinalResultsShareBlock
             game={game}
@@ -551,6 +569,12 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
   return (
     <YahtzeeShell title={game?.title} wide compact>
       <div className="space-y-2">
+        {jokerForcedBox && (
+          <div className="glass-card border border-[var(--primary)]/40 px-3 py-2 text-center text-sm">
+            🃏 <span className="font-semibold">Joker rule.</span> Score this Yahtzee in your{' '}
+            <span className="font-semibold">{jokerForcedBox}</span> box first.
+          </div>
+        )}
         <YahtzeeScorecard
           players={players}
           scores={scores}

@@ -1,6 +1,12 @@
 'use client'
 
+import { useEffect, useRef } from 'react'
+
 import { LeaderboardJoinNote } from '@/components/game-lobby/LeaderboardJoinNote'
+import { getRememberedName, subscribeLocalIdentity } from '@/lib/identity-local'
+
+/** Matches the input's `maxLength` — the remembered name may be longer than a player name. */
+const NAME_MAX = 10
 
 type Props = {
   value: string
@@ -23,6 +29,15 @@ type Props = {
   lobbyFull?: boolean
   onJoinAsViewer?: () => void
   watchLabel?: string
+  /**
+   * Prefill the name this device used last time. On by default — this form is the join
+   * screen for every game outside the poll family, and retyping the same name into every
+   * one of them is the exact thing the local identity record exists to stop.
+   *
+   * Turn it off for a form where an empty field is meaningful (renaming, or claiming a
+   * specific pre-imported participant).
+   */
+  prefillRememberedName?: boolean
 }
 
 export function NameJoinForm({
@@ -41,7 +56,42 @@ export function NameJoinForm({
   lobbyFull = false,
   onJoinAsViewer,
   watchLabel = 'Watch instead',
+  prefillRememberedName = true,
 }: Props) {
+  // Refs, not deps: the subscription must not re-bind on every keystroke.
+  const valueRef = useRef(value)
+  valueRef.current = value
+  const onChangeRef = useRef(onChange)
+  onChangeRef.current = onChange
+  // Once per mount, and never after the player touches the field — otherwise clearing the
+  // box to type a different name would immediately refill it with the old one.
+  const prefilledRef = useRef(false)
+  const touchedRef = useRef(false)
+
+  useEffect(() => {
+    if (!prefillRememberedName) return
+    const fill = () => {
+      if (prefilledRef.current || touchedRef.current) return
+      // Weakest source by design: only ever fills an EMPTY field, so a room link,
+      // tournament name or resumed session always wins.
+      if (valueRef.current.trim()) return
+      const remembered = getRememberedName()
+      if (!remembered) return
+      prefilledRef.current = true
+      onChangeRef.current(remembered.slice(0, NAME_MAX))
+    }
+    fill()
+    // A signed-in player's name is written by `useProfile` after its fetch resolves, which
+    // is later than this effect's first run — without the subscription the field would stay
+    // empty for the whole visit even though the name is known.
+    return subscribeLocalIdentity(fill)
+  }, [prefillRememberedName])
+
+  const handleChange = (next: string) => {
+    touchedRef.current = true
+    onChange(next)
+  }
+
   return (
     <div className="space-y-4">
       <div>
@@ -49,11 +99,11 @@ export function NameJoinForm({
         <input
           type="text"
           value={value}
-          onChange={(e) => onChange(e.target.value)}
+          onChange={(e) => handleChange(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && !disabled && !joining && value.trim() && onSubmit()}
           placeholder={placeholder}
           className="input-field w-full"
-          maxLength={10}
+          maxLength={NAME_MAX}
           autoComplete="name"
         />
       </div>

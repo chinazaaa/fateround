@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import Link from 'next/link'
 import { FateRoundLogo } from '@/components/FateRoundLogo'
@@ -14,7 +14,10 @@ import { RotatePlayerCodeButton } from '@/components/ui/RotatePlayerCodeButton'
 import { HostLateJoinSettingsCard } from '@/components/HostLateJoinSettingsCard'
 import { HostLobbySettingsSheet } from '@/components/host/HostLobbySettingsSheet'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
+import { MissingPlayersPrompt } from '@/components/host/MissingPlayersPrompt'
+import { IdleWarningBanner } from '@/components/host/IdleWarningBanner'
 import { SlidersIcon } from '@/components/host/host-icons'
+import { FreshnessWarningModal, type FreshnessResult } from '@/components/host-lobby/FreshnessWarningModal'
 import type { Game, Player } from '@/types'
 
 /**
@@ -55,6 +58,9 @@ export function HostLobby({
   highlightPlayerId,
   hidePlayersSection = false,
   onEnded,
+  questionSource,
+  onSwitchToUpload,
+  onSwitchToLibrary,
 }: {
   gameCode: string
   hostToken: string
@@ -91,9 +97,43 @@ export function HostLobby({
   hidePlayersSection?: boolean
   /** Called after the host ends the lobby (finish-game). */
   onEnded?: () => void | Promise<unknown>
+  /** When set to 'platform', the freshness check runs before starting. */
+  questionSource?: string | null
+  /** Navigate the host to the CSV upload UI. */
+  onSwitchToUpload?: () => void
+  /** Navigate the host to the Library picker UI. */
+  onSwitchToLibrary?: () => void
 }) {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [shareOpen, setShareOpen] = useState(false)
+  const [freshnessResult, setFreshnessResult] = useState<FreshnessResult | null>(null)
+  const [freshnessChecking, setFreshnessChecking] = useState(false)
+
+  const handleStartClick = useCallback(async () => {
+    if (questionSource !== 'platform') {
+      onStart()
+      return
+    }
+    setFreshnessChecking(true)
+    try {
+      const res = await fetch(`/api/games/${gameCode.toUpperCase()}/freshness-check`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hostToken }),
+      })
+      const data: FreshnessResult = await res.json()
+      if (data.fresh) {
+        onStart()
+      } else {
+        setFreshnessResult(data)
+      }
+    } catch {
+      onStart()
+    } finally {
+      setFreshnessChecking(false)
+    }
+  }, [questionSource, gameCode, hostToken, onStart])
+
   // Portals need document.body, which doesn't exist during SSR — render nothing until
   // mounted on the client (same guard as ui/Modal). Also gates the footer-measuring effect
   // so it runs only after the footer is actually in the DOM.
@@ -126,7 +166,8 @@ export function HostLobby({
     }
   }, [mounted])
 
-  const showStartHint = startDisabled && !starting && startDisabledHint
+  const isStarting = starting || freshnessChecking
+  const showStartHint = startDisabled && !isStarting && startDisabledHint
 
   if (!mounted) return null
 
@@ -135,16 +176,16 @@ export function HostLobby({
       {/* Pinned top bar: home logo (far left) + Host settings (right). Stays put while the
           lobby body scrolls. The right side keeps clear of the app's global fixed theme
           toggle (top-right, z-50) — the lobby's single light/dark control. */}
-      <header className="shrink-0 flex items-center justify-between gap-3 bg-[var(--background)] px-4 py-3 sm:px-6">
+      <header className="shrink-0 flex items-center justify-between gap-3 bg-[var(--background)] px-4 py-3 sm:px-6 border-b border-[var(--border)]/50">
         <Link href="/" aria-label="FateRound home" className="min-w-0 shrink">
           <FateRoundLogo className="h-8 w-auto max-w-[7.5rem] sm:max-w-[9rem]" />
         </Link>
         <button
           type="button"
           onClick={() => setSettingsOpen(true)}
-          className="mr-14 flex shrink-0 sm:hidden items-center gap-2 rounded-full border border-[var(--border-strong)] bg-[var(--card-strong)] px-3.5 py-2 text-sm font-semibold text-muted transition-colors hover:text-[var(--foreground)]"
+          className="btn-secondary btn-fit mr-14 shrink-0 !py-2 !px-3.5 !text-sm"
         >
-          <SlidersIcon size={16} />
+          <SlidersIcon size={14} />
           Host settings
         </button>
       </header>
@@ -161,24 +202,14 @@ export function HostLobby({
 
           <div className="flex flex-wrap items-end justify-between gap-x-3 gap-y-2 mt-1">
             <h1 className="text-2xl sm:text-3xl font-black text-body">{game.title || 'Game'}</h1>
-            <div className="flex flex-col items-end gap-2.5">
-              <button
-                type="button"
-                onClick={() => setSettingsOpen(true)}
-                className="hidden sm:flex shrink-0 items-center gap-2 rounded-full border border-[var(--border-strong)] bg-[var(--card-strong)] px-3 py-1.5 text-xs font-semibold text-muted transition-colors hover:text-[var(--foreground)]"
-              >
-                <SlidersIcon size={14} />
-                Host settings
-              </button>
-              <Link
-                href={gameRulesHref(parseGameType(game.game_type))}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="shrink-0 text-sm font-semibold text-[var(--primary)] transition-opacity hover:opacity-80"
-              >
-                How to play →
-              </Link>
-            </div>
+            <Link
+              href={gameRulesHref(parseGameType(game.game_type))}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="shrink-0 text-sm font-semibold text-[var(--primary)] transition-opacity hover:opacity-80"
+            >
+              How to play
+            </Link>
           </div>
 
           {/* Room-code / share card — the hero of the lobby (this is what gets people in).
@@ -191,6 +222,16 @@ export function HostLobby({
             <p className="text-xs font-semibold text-muted">Game code — tap to share (QR &amp; links)</p>
             <p className="mt-0.5 text-3xl font-black tracking-[0.3em] text-body">{gameCode}</p>
           </button>
+
+          <IdleWarningBanner game={game} gameCode={gameCode} hostToken={hostToken} />
+
+          <MissingPlayersPrompt
+            game={game}
+            gameCode={gameCode}
+            hostToken={hostToken}
+            activePlayers={players.filter((p) => !p.spectator).length}
+            maxPlayers={maxPlayers ?? null}
+          />
 
           {playCard}
           {children}
@@ -214,11 +255,11 @@ export function HostLobby({
           {showStartHint ? <p className="text-faint text-xs text-center leading-relaxed">{startDisabledHint}</p> : null}
           <button
             type="button"
-            onClick={onStart}
-            disabled={startDisabled || starting}
+            onClick={handleStartClick}
+            disabled={startDisabled || isStarting}
             className="btn-primary w-full disabled:opacity-45 disabled:saturate-50 disabled:cursor-not-allowed disabled:shadow-none"
           >
-            {starting ? 'Starting…' : startLabel}
+            {isStarting ? (freshnessChecking ? 'Checking…' : 'Starting…') : startLabel}
           </button>
           <HostEndGameButton
             gameCode={gameCode}
@@ -251,7 +292,7 @@ export function HostLobby({
         {resumeToken ? (
           <RotatePlayerCodeButton
             gameCode={gameCode}
-            className="flex w-full items-center justify-start gap-2.5 rounded-xl border border-[var(--border)] bg-[var(--surface-inset-bg)] px-3.5 py-3 text-sm font-semibold text-body transition-colors hover:text-[var(--foreground)]"
+            className="flex w-full items-center justify-center gap-2.5 rounded-xl border border-[var(--border)] bg-[var(--surface-inset-bg)] px-3.5 py-3 text-sm font-semibold text-body transition-colors hover:text-[var(--foreground)]"
           />
         ) : null}
       </HostLobbySettingsSheet>
@@ -262,6 +303,23 @@ export function HostLobby({
         gameCode={gameCode}
         hostToken={hostToken}
         resumeToken={resumeToken}
+      />
+      <FreshnessWarningModal
+        open={freshnessResult != null}
+        onClose={() => setFreshnessResult(null)}
+        result={
+          freshnessResult ?? {
+            fresh: true,
+            totalPool: 0,
+            seenByMost: 0,
+            seenPercent: 0,
+            authenticatedPlayers: 0,
+            totalPlayers: 0,
+          }
+        }
+        onStartAnyway={onStart}
+        onUploadCsv={onSwitchToUpload}
+        onBrowseLibrary={onSwitchToLibrary}
       />
     </div>,
     document.body

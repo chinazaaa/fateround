@@ -34,63 +34,63 @@ export function GameEndedScreen({ game }: Props) {
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: theme.bg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24,
-  },
-  card: {
-    width: '100%',
-    maxWidth: 420,
-    backgroundColor: theme.surface,
-    borderRadius: 16,
-    padding: 24,
-    gap: 10,
-    alignItems: 'center',
-  },
-  emoji: {
-    fontSize: 40,
-  },
-  title: {
-    color: theme.text,
-    fontSize: 24,
-    fontWeight: '800',
-    textAlign: 'center',
-  },
-  badge: {
-    color: theme.primaryMuted,
-    fontSize: 13,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-  },
-  heading: {
-    color: theme.text,
-    fontSize: 18,
-    fontWeight: '700',
-    marginTop: 4,
-  },
-  body: {
-    color: theme.textMuted,
-    fontSize: 15,
-    lineHeight: 22,
-    textAlign: 'center',
-  },
-  button: {
-    backgroundColor: theme.primary,
-    borderRadius: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 24,
-    marginTop: 12,
-    width: '100%',
-    alignItems: 'center',
-  },
-  buttonText: {
-    // white on the solid rose button — intentional
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-})
+    container: {
+      flex: 1,
+      backgroundColor: theme.bg,
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: 24,
+    },
+    card: {
+      width: '100%',
+      maxWidth: 420,
+      backgroundColor: theme.surface,
+      borderRadius: theme.radius.lg,
+      padding: 24,
+      gap: 10,
+      alignItems: 'center',
+    },
+    emoji: {
+      fontSize: 40,
+    },
+    title: {
+      color: theme.text,
+      fontSize: 24,
+      fontWeight: '800',
+      textAlign: 'center',
+    },
+    badge: {
+      color: theme.primaryMuted,
+      fontSize: 13,
+      fontWeight: '600',
+      textTransform: 'uppercase',
+      letterSpacing: 0.8,
+    },
+    heading: {
+      color: theme.text,
+      fontSize: 18,
+      fontWeight: '700',
+      marginTop: 4,
+    },
+    body: {
+      color: theme.textMuted,
+      fontSize: theme.type.body.size,
+      lineHeight: 22,
+      textAlign: 'center',
+    },
+    button: {
+      backgroundColor: theme.primary,
+      borderRadius: theme.radius.md,
+      paddingVertical: 14,
+      paddingHorizontal: 24,
+      marginTop: 12,
+      width: '100%',
+      alignItems: 'center',
+    },
+    buttonText: {
+      // white on the solid rose button — intentional
+      color: '#fff',
+      fontSize: theme.type.section.size,
+      fontWeight: '600',
+    },
+  })

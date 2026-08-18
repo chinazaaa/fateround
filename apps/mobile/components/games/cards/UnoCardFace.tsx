@@ -3,6 +3,45 @@ import type { UnoCard } from '@fateround/shared'
 import { UNO_COLOR_HEX, cardShortLabel } from '@fateround/shared/uno'
 
 const WILD_BG = '#111827'
+// No Mercy wild variants — deep, saturated backdrops so they read distinctly from a classic
+// black wild + from one another. Coloured No Mercy cards (Discard All, Skip Everyone) keep
+// the colour of card.color; only the glyph changes.
+const WILD_REV4_BG = '#4c1d95' // deep violet — "reverse" energy
+const DRAW6_BG = '#7f1d1d' // deep crimson — "hurt more"
+const DRAW10_BG = '#450a0a' // near-black crimson — "hurt most"
+const ROULETTE_BG = '#0f766e' // teal — "spin"
+
+function backgroundFor(card: UnoCard): string {
+  if (card.kind === 'wild_reverse_draw4') return WILD_REV4_BG
+  if (card.kind === 'draw6') return DRAW6_BG
+  if (card.kind === 'draw10') return DRAW10_BG
+  if (card.kind === 'wild_color_roulette') return ROULETTE_BG
+  if (card.color === 'wild') return WILD_BG
+  return UNO_COLOR_HEX[card.color as keyof typeof UNO_COLOR_HEX]
+}
+
+function centreGlyphFor(card: UnoCard): string {
+  switch (card.kind) {
+    case 'wild':
+      return '🌈'
+    case 'wild_draw4':
+      return '+4'
+    case 'wild_reverse_draw4':
+      return '↺+4'
+    case 'draw6':
+      return '+6'
+    case 'draw10':
+      return '+10'
+    case 'wild_color_roulette':
+      return '🎡'
+    case 'discard_all':
+      return '⇊'
+    case 'skip_everyone':
+      return '⊘⊘'
+    default:
+      return cardShortLabel(card)
+  }
+}
 
 export function UnoCardFace({
   card,
@@ -21,9 +60,14 @@ export function UnoCardFace({
   /** Multi-Play / Jump-In: this card can't join the current selection — faded. */
   dim?: boolean
 }) {
-  const isWild = card.color === 'wild'
-  const bg = isWild ? WILD_BG : UNO_COLOR_HEX[card.color as keyof typeof UNO_COLOR_HEX]
-  const label = cardShortLabel(card)
+  const bg = backgroundFor(card)
+  const label = centreGlyphFor(card)
+  // Longer glyphs (↺+4, +10, ⊘⊘) need a smaller font to fit the oval.
+  const isLongGlyph =
+    card.kind === 'wild_draw4' ||
+    card.kind === 'wild_reverse_draw4' ||
+    card.kind === 'draw10' ||
+    card.kind === 'skip_everyone'
 
   return (
     <View
@@ -42,7 +86,7 @@ export function UnoCardFace({
           numberOfLines={1}
           adjustsFontSizeToFit
           minimumFontScale={0.5}
-          style={[styles.label, big && styles.labelBig, card.kind === 'wild_draw4' && styles.labelSmall]}
+          style={[styles.label, big && styles.labelBig, isLongGlyph && styles.labelSmall]}
         >
           {label}
         </Text>

@@ -66,7 +66,7 @@ const makeStyles = (theme: Theme) =>
   StyleSheet.create({
     panel: {
       backgroundColor: theme.surface,
-      borderRadius: 12,
+      borderRadius: theme.radius.md,
       padding: 12,
       gap: 8,
       maxHeight: 220,
@@ -78,7 +78,7 @@ const makeStyles = (theme: Theme) =>
     },
     title: {
       color: theme.primaryMuted,
-      fontSize: 12,
+      fontSize: theme.type.caption.size,
       fontWeight: '800',
       textTransform: 'uppercase',
       letterSpacing: 1,
@@ -105,12 +105,12 @@ const makeStyles = (theme: Theme) =>
     name: {
       flex: 1,
       color: theme.text,
-      fontSize: 15,
+      fontSize: theme.type.body.size,
       fontWeight: '600',
     },
     score: {
       color: theme.primaryMuted,
       fontWeight: '700',
-      fontSize: 14,
+      fontSize: theme.type.label.size,
     },
   })

@@ -336,6 +336,26 @@ export function pickTriviaQuestions(
   return pickLeastUsed(pool, triviaQuestionKey, usageCounts, count)
 }
 
+const TRIVIA_CAT_LABELS: Record<string, string> = {
+  tech: 'Tech',
+  general: 'General (All)',
+  art: 'Art',
+  food: 'Food',
+  geography: 'Geography',
+  history: 'History',
+  language: 'Language',
+  literature: 'Literature',
+  math: 'Math',
+  movies: 'Movies',
+  music: 'Music',
+  nature: 'Nature',
+  pop_culture: 'Pop Culture',
+  science: 'Science',
+  sports: 'Sports',
+  technology: 'Technology',
+  world_culture: 'World Culture',
+}
+
 export function triviaCategoryLabel(category: TriviaCategory): string {
-  return category === 'tech' ? 'Tech' : 'General Knowledge'
+  return TRIVIA_CAT_LABELS[category] ?? category
 }

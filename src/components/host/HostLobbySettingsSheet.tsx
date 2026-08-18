@@ -5,13 +5,11 @@ import { Modal } from '@/components/ui/Modal'
 import { useTheme } from '@/components/ThemeProvider'
 import { useGameAlertsToggle } from '@/components/NotificationToggle'
 import { isSoundMuted, setSoundMuted, subscribeSoundMuted } from '@/lib/sounds'
+import { Glyph } from '@/components/icons/Glyph'
+import { Sun01Icon, Moon02Icon, VolumeHighIcon, VolumeOffIcon, Notification01Icon } from '@hugeicons/core-free-icons'
 
 /**
- * The shared in-game ⚙ settings sheet — used by the lobby AND the in-game chrome
- * (via GameChromeSettings). Holds the app-level controls (light/dark, sound, game
- * alerts), then any caller-supplied settings as `children` (theme picker, transfer
- * host, edit questions, …). Light/dark lives here (not a floating toggle) so the
- * in-game chrome stays clean and nothing overlaps the top bar.
+ * The shared in-game settings sheet — used by the lobby AND the in-game chrome.
  */
 export function HostLobbySettingsSheet({
   open,
@@ -24,18 +22,25 @@ export function HostLobbySettingsSheet({
   open: boolean
   onClose: () => void
   title?: string
-  /** Enables the "Game alerts" push row (needs a game code + the viewer's resume token). */
   gameCode?: string | null
   resumeToken?: string | null
   children?: React.ReactNode
 }) {
   return (
     <Modal open={open} onClose={onClose} title={title} size="md">
-      <div className="space-y-6">
-        <ThemeRow />
-        <SoundRow />
-        {gameCode ? <GameAlertsRow gameCode={gameCode} resumeToken={resumeToken ?? null} /> : null}
-        {children ? <div className="space-y-4 border-t border-[var(--border)] pt-6">{children}</div> : null}
+      <div className="space-y-4">
+        <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-inset-bg)] p-3.5 space-y-4">
+          <ThemeRow />
+          <div className="border-t border-[var(--border)] pt-3.5">
+            <SoundRow />
+          </div>
+          {gameCode ? (
+            <div className="border-t border-[var(--border)] pt-3.5">
+              <GameAlertsRow gameCode={gameCode} resumeToken={resumeToken ?? null} />
+            </div>
+          ) : null}
+        </div>
+        {children ? <div className="space-y-4 pt-2">{children}</div> : null}
       </div>
     </Modal>
   )
@@ -44,18 +49,16 @@ export function HostLobbySettingsSheet({
 function GameAlertsRow({ gameCode, resumeToken }: { gameCode: string; resumeToken: string | null }) {
   const { available, on, busy, toggle } = useGameAlertsToggle(gameCode, resumeToken)
 
-  // Push can't be delivered here (un-installed iOS, denied permission, no resume
-  // token / VAPID key) — hide the row rather than promise alerts we can't send.
   if (!available) return null
 
   return (
     <section className="flex items-center justify-between gap-4">
-      <div className="flex items-center gap-2.5">
-        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[color-mix(in_srgb,var(--primary)_12%,transparent)] text-[var(--primary)]">
-          <BellIcon />
+      <div className="flex items-center gap-3">
+        <span className="fr-glyph text-[var(--primary)] flex h-9 w-9 items-center justify-center rounded-xl bg-[color-mix(in_srgb,var(--primary)_12%,transparent)]">
+          <Glyph icon={Notification01Icon} size={18} />
         </span>
         <div>
-          <p className="text-sm font-semibold text-body">Game alerts</p>
+          <p className="text-sm font-bold text-body">Game alerts</p>
           <p className="text-xs text-muted">Get notified when the game starts, restarts, or ends</p>
         </div>
       </div>
@@ -72,12 +75,12 @@ function ThemeRow() {
 
   return (
     <section className="flex items-center justify-between gap-4">
-      <div className="flex items-center gap-2.5">
-        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[color-mix(in_srgb,var(--primary)_12%,transparent)] text-[var(--primary)]">
-          {isDark ? <MoonIcon /> : <SunIcon />}
+      <div className="flex items-center gap-3">
+        <span className="fr-glyph text-[var(--primary)] flex h-9 w-9 items-center justify-center rounded-xl bg-[color-mix(in_srgb,var(--primary)_12%,transparent)]">
+          <Glyph icon={isDark ? Moon02Icon : Sun01Icon} size={18} />
         </span>
         <div>
-          <p className="text-sm font-semibold text-body">Appearance</p>
+          <p className="text-sm font-bold text-body">Appearance</p>
           <p className="text-xs text-muted">{isDark ? 'Dark' : 'Light'} mode</p>
         </div>
       </div>
@@ -95,12 +98,12 @@ function SoundRow() {
 
   return (
     <section className="flex items-center justify-between gap-4">
-      <div className="flex items-center gap-2.5">
-        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[color-mix(in_srgb,var(--primary)_12%,transparent)] text-[var(--primary)]">
-          {muted ? <SpeakerOffIcon /> : <SpeakerIcon />}
+      <div className="flex items-center gap-3">
+        <span className="fr-glyph text-[var(--primary)] flex h-9 w-9 items-center justify-center rounded-xl bg-[color-mix(in_srgb,var(--primary)_12%,transparent)]">
+          <Glyph icon={muted ? VolumeOffIcon : VolumeHighIcon} size={18} />
         </span>
         <div>
-          <p className="text-sm font-semibold text-body">Sound effects</p>
+          <p className="text-sm font-bold text-body">Sound effects</p>
           <p className="text-xs text-muted">{muted ? 'Off' : 'On'} — game sounds and alerts</p>
         </div>
       </div>
@@ -129,7 +132,7 @@ function Switch({
       onClick={onToggle}
       disabled={disabled}
       className={[
-        'flex h-7 w-[3.25rem] shrink-0 items-center rounded-full p-0.5 transition-colors duration-200 disabled:opacity-50',
+        'flex h-7 w-[3.25rem] shrink-0 items-center rounded-full p-0.5 transition-colors duration-200 cursor-pointer disabled:opacity-50',
         on ? 'bg-[var(--primary)]' : 'bg-[var(--surface-inset-bg)] border border-[var(--border-strong)]',
       ].join(' ')}
     >
@@ -140,108 +143,5 @@ function Switch({
         ].join(' ')}
       />
     </button>
-  )
-}
-
-function SunIcon() {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <circle cx="12" cy="12" r="5" />
-      <line x1="12" y1="1" x2="12" y2="3" />
-      <line x1="12" y1="21" x2="12" y2="23" />
-      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
-      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
-      <line x1="1" y1="12" x2="3" y2="12" />
-      <line x1="21" y1="12" x2="23" y2="12" />
-      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
-      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
-    </svg>
-  )
-}
-
-function MoonIcon() {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-    </svg>
-  )
-}
-
-function SpeakerIcon() {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
-      <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
-      <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
-    </svg>
-  )
-}
-
-function BellIcon() {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
-      <path d="M13.73 21a2 2 0 0 1-3.46 0" />
-    </svg>
-  )
-}
-
-function SpeakerOffIcon() {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
-      <line x1="23" y1="9" x2="17" y2="15" />
-      <line x1="17" y1="9" x2="23" y2="15" />
-    </svg>
   )
 }

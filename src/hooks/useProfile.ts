@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { authHeaders } from '@/lib/identity'
+import { rememberName } from '@/lib/identity-local'
+import { supabase } from '@/lib/supabase'
 
 export type Profile = {
   id: string
@@ -14,6 +16,8 @@ export type Profile = {
   longest_streak: number
   last_active_date: string | null
   streak_freezes: number
+  default_voice_on: boolean | null
+  preferred_theme: string | null
 }
 
 /**
@@ -47,7 +51,16 @@ async function fetchProfileShared(): Promise<FetchResult> {
         return { ok: false }
       }
       const data = await res.json()
-      return { ok: true, profile: (data.profile ?? null) as Profile | null }
+      const profile = (data.profile ?? null) as Profile | null
+
+      // Mirror the handle into the local identity record. That record is what every name
+      // prefill already reads — join, create, the lobby, and mobile — so setting a profile name
+      // propagates everywhere without any of those surfaces learning about profiles. It also
+      // means a signed-in player on a NEW device gets their name back on first load, which the
+      // purely-local record could never do.
+      if (profile?.handle) rememberName(profile.handle)
+
+      return { ok: true, profile }
     } catch {
       return { ok: false }
     } finally {
@@ -84,6 +97,22 @@ export function useProfile(): { profile: Profile | null; loading: boolean; refre
       cancelled = true
     }
   }, [nonce])
+
+  // Re-fetch when the auth session changes. The Supabase session hydrates from storage
+  // ASYNCHRONOUSLY, so the mount fetch above can run before there is a session and resolve to
+  // `null` — a guest — for a player who is actually signed in. Without this, that stale snapshot
+  // stuck forever (the only other refresh was manual, after the save modal), which is why a
+  // signed-in player still saw the "Save to profile" nudge while the header chip, whose own
+  // instance happened to fetch post-hydration, correctly showed their name. `onAuthStateChange`
+  // fires `INITIAL_SESSION` once the session is restored (and on sign-in/out, token refresh and
+  // email upgrade), so bumping the nonce here makes every instance converge on the true identity.
+  useEffect(() => {
+    if (!supabase?.auth) return
+    const { data } = supabase.auth.onAuthStateChange(() => {
+      setNonce((n) => n + 1)
+    })
+    return () => data.subscription.unsubscribe()
+  }, [])
 
   return { profile, loading, refresh }
 }

@@ -35,20 +35,30 @@ These come straight from `account-tiers.md` and constrain every decision below:
 3. **Ask for signup at the moment of earned value, never at the door.** The prompt fires
    right after the user earned something they'd hate to lose (a trophy, a streak day).
 4. **No pay-to-win.** Trophies and streaks are earned by playing, never bought. (Cosmetics
-   are a separate line — see `revenue-model.md`.)
+   are a FateRound+ *entitlement*, not an à-la-carte purchase — the standalone cosmetics shop
+   in the original draft is gone. Updated 2026-08-02; see the note below and
+   [`revenue-model.md`](./revenue-model.md).)
 5. **Accessibility/fun is never behind the account.** The games are all free; the account
    only adds *persistence*.
 
 ### Revenue boundaries (see [`revenue-model.md`](./revenue-model.md))
 
+> **2026-08-02:** `revenue-model.md` moved from a one-time Pro + à-la-carte cosmetics shop to a
+> **FateRound+ / Club Pro subscription** model. The boundary below is updated accordingly —
+> there is no longer a standalone cosmetics storefront; the trophy case and premium themes are
+> a **FateRound+ perk**, not individually purchasable items.
+
 Trophies and streaks are **retention**, not a revenue line:
 
-- **Never sell** trophies, trophy progress, streak length, or tournament placement.
-- **Do sell** optional flair *around* trophies: profile frames, showcase borders, champion
-  podium art — cosmetics only.
+- **Never sell** trophies, trophy progress, streak length, or tournament placement — earning
+  is always free, on every tier.
+- **FateRound+ perk, not a purchase:** full trophy case customisation (rare trophies, badges,
+  cosmetic flair) and the daily-challenge/streak archive are gated behind the FateRound+
+  subscription, not sold as individual items.
 - **Tournament trophies** (First Tournament Win, Game Night Host, etc.) are earned like any
   other trophy — they drive signup, not checkout.
-- Trophies hook into the flywheel: earn → save to account → see shop → buy cosmetic.
+- Trophies hook into the flywheel: earn → save to account → see the trophy case → upgrade to
+  FateRound+ for the full case + archive.
 
 ---
 
@@ -295,11 +305,60 @@ can be tuned in one place (`TROPHY_POINTS` constant).
 
 ### 3.8 The award engine
 
-**Where it hooks in.** Game completion already flows through
-`src/app/api/games/[code]/finish-game/route.ts`, and the winner is already detected
-client-side by `PostWinToCommunity` (which posts to the leaderboard). The award engine
-runs in the **same server path** as finish/leaderboard-post so a win reliably produces
-both a leaderboard entry and any trophies.
+> **⚠️ Corrected 2026-08-02, after checking against the code.** The two paragraphs below are
+> wrong on both counts. Read this box first.
+>
+> **1. `finish-game/route.ts` is not the hook — and neither is `markGameFinished`.**
+> That route is one of ~40 finish paths (a bingo claim, a chess move, a turn expiry and the
+> server ticker all finish games too). `src/lib/game-finish.ts` `markGameFinished()` *is* the
+> real chokepoint, and it has the `onlyIfActive` CAS that guarantees single-fire — but hooking
+> it still doesn't work, because of ordering:
+>
+> **`players.profile_id` is written by `/api/profile/attribute`, which the player's own client
+> calls when it sees the finished screen — i.e. normally *after* `markGameFinished` has already
+> run.** An award pass there would find `profile_id IS NULL` on every player and award nothing.
+>
+> So the award pass hooks **attribution**, not finish. That is the moment both facts are known
+> — this profile, this finished game — and `awarded_sessions (profile_id, session_id)` is
+> already exactly the right idempotency key for a per-player pass.
+>
+> **2. The winner is not detected server-side, for most games.** `PostWinToCommunity` is
+> client-side and cannot be trusted for anything that grants an entitlement. Server-side there
+> is only `getCompetitiveStandings` in `src/lib/room-points.ts` — module-private, an if-chain
+> covering **12 of ~60 game types**. Separately, 17 per-game session tables persist
+> `winner_player_id`. There is no `games.winner_id` and no shared standings builder on web.
+>
+> Consequence: `games_played` is universal, but **`games_won` and anything placement-based are
+> `partial`** — see `availability` in `src/lib/trophies/counters.ts`. A "win 10 games" trophy
+> silently never fires for a game whose outcome the server can't resolve, so the admin UI has
+> to show which measures are live.
+>
+> **Partly closed 2026-08-02:** `src/lib/trophies/outcome.ts` now maps the `winner_player_id`
+> session tables, so wins resolve server-side for the 16 seat-based game types (whot, chess,
+> monopoly, uno, ludo, mahjong, scrabble, yahtzee, the draughts family, …). Call
+> `gameTypesWithWinners()` rather than hardcoding the list. `resolveWinners` returns three
+> outcomes on purpose — ids, `[]` for a genuine draw, and `null` for "cannot determine" —
+> because collapsing the last into the second would record "did not win" for every trivia game
+> and make a "never lost" trophy earnable by playing the ones we can't measure.
+>
+> **Resolved 2026-08-02.** The line is *has a winner concept* vs *doesn't*, not hard vs easy:
+>
+> - **Competitive games without a winner column** (trivia, bingo, codewords, sudoku, word hunt)
+>   now resolve through `getCompetitiveStandings`, which `room-points.ts` already used for room
+>   points and which is now exported. Reused rather than reimplemented — two independent
+>   notions of "who won" would drift, and the trophy one grants entitlements.
+> - **The poll family has no winner by design** and is listed in `NO_WINNER_BY_DESIGN`. Everyone
+>   answers, nothing is scored, nobody comes first. That is the product, not a gap: those games
+>   carry `games_played` and streaks instead. `isWinnerlessByDesign()` lets the admin UI say
+>   "this game has no winner" rather than "not supported yet" — different messages, and
+>   conflating them makes the warning meaningless.
+
+**Where it hooks in.** ⚠️ **Not `finish-game`** — see the correction box in §3.8. `finish-game`
+runs before any identity exists: `players.profile_id` is written afterwards, by the attribution
+call the client makes once the finished screen mounts. The award pass therefore runs in
+`src/app/api/profile/attribute/route.ts`, which is the first point where a finished session and
+a profile are both known. `PostWinToCommunity` does not detect the winner for us either — the
+server resolves it via `resolveWinners()` (`src/lib/trophies/outcome.ts`).
 
 **Flow (server-side, uses the admin client + the authenticated `auth.uid()`):**
 
@@ -425,7 +484,7 @@ trophy type. We match this exactly, and it falls straight out of the criteria DS
 | Criteria type | Progress behaviour | Example (unearned) |
 |---|---|---|
 | `counter`, `distinct`, `streak` | **Measurable** — show `min(100, current/target × 100)%` while unearned | "Collect 36 Outfits" → **Not earned · 11%** (you have 4/36) |
-| `event`, `platinum` | **Binary** — no partial progress; **0%** until the moment it's earned, then 100% | "Land on Mayfair" → **Not earned · 0%** |
+| `event`, `platinum` | **Binary** — no partial progress; **0%** until the moment it's earned, then 100% | "Land on Winnington Road" → **Not earned · 0%** |
 
 - This is the user's exact requirement: a *collection/threshold* trophy shows partial
   progress (11%); a *do-it-or-you-don't* trophy shows 0% until earned.
@@ -572,9 +631,11 @@ Aligned with `account-tiers.md` §"Streak = any game played today":
   available (Duolingo model). One freeze auto-consumes to cover one missed day.
 - Grant freezes slowly (e.g. earn 1 per 7 consecutive days, cap ~2 held). Tunable
   constants. This forgiveness is a large part of why streaks retain instead of demoralise.
-- Extra streak freezes (beyond the free base) may be sold later as a **₦300 cosmetic
-  convenience** — never bundled in Pro, never required to keep a streak. The **base
-  forgiveness stays free**; see principle §0.5 and [`revenue-model.md`](./revenue-model.md).
+- The **base freeze allowance stays free on every tier** — never required to be FateRound+ to
+  keep a streak. What FateRound+ gates is the **archive/history view**, not forgiveness itself;
+  see principle §0.5 and [`revenue-model.md`](./revenue-model.md). (A later "extra freeze"
+  convenience purchase is no longer part of the plan — the current model has no à-la-carte
+  purchases below a full subscription.)
 
 ### 4.5 Milestones & nudges
 
@@ -826,7 +887,8 @@ The push infra already exists (VAPID keys + `push_subscriptions`), but it is cur
    Whot, Trivia, Monopoly, Scrabble, Chess** (each carries ~25–30 trophies; mix of most-played
    + richest event surface) + the platform set; the rest of the 606 seed straight from the file.
    Bench for the next wave: Yahtzee, Ludo, Checkers.
-3. Award engine wired into `finish-game`; unlock toast on the end screen.
+3. Award engine wired into `/api/profile/attribute` (NOT `finish-game` — no profile exists yet
+   at finish time); unlock toast on the end screen.
 4. The general streak (any-game-or-Daily) + WAT day boundary + basic freeze.
 5. The four PSN-modeled screens (§3A): profile overview → per-game summary → all-trophies
    list → trophy detail, plus the corner profile button (Guest + logged-in states) and the
@@ -843,8 +905,7 @@ The push infra already exists (VAPID keys + `push_subscriptions`), but it is cur
 
 **Phase 3:**
 11. Community auto-posts for Ultra-Rare unlocks; seasonal leaderboard tie-in; tournament
-    trophy catalog (see [`revenue-model.md`](./revenue-model.md) §Tournaments); extra streak
-    freeze as optional cosmetic (not Pro).
+    trophy catalog (see [`trophy-catalog.md`](./trophy-catalog.md)).
 
 ---
 

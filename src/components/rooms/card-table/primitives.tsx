@@ -180,10 +180,47 @@ export function UnoCardFace({ card, sel, dim, big, playable, onClick }: UnoCardF
   const wild = card.color === 'wild'
   const colorClass = wild ? 'uno-wild' : `uno-${card.color}`
   const glyph = cardShortLabel(card)
-  const cornerGlyph = wild ? (card.kind === 'wild_draw4' ? '+4' : 'W') : glyph
+
+  // Centre glyph — every kind picks the tightest symbol that still reads. Wilds get the rainbow
+  // ring background; coloured cards get their solid-colour face. Corner glyph is a compact echo.
+  const centreGlyph = (() => {
+    if (card.kind === 'wild') return '🌈'
+    if (card.kind === 'wild_draw4') return '+4'
+    if (card.kind === 'wild_reverse_draw4') return '↺+4'
+    if (card.kind === 'draw6') return '+6'
+    if (card.kind === 'draw10') return '+10'
+    if (card.kind === 'wild_color_roulette') return '🎡'
+    if (card.kind === 'discard_all') return '⇊'
+    if (card.kind === 'skip_everyone') return '⊘⊘'
+    return glyph
+  })()
+  const cornerGlyph = wild ? centreGlyph : glyph
+
+  // No Mercy modifier gets its own class so hosts can restyle just those faces without touching
+  // classic .uno-wild. Kept additive — the base .uno-wild treatment (rainbow ring) still applies.
+  const noMercyClass = (() => {
+    switch (card.kind) {
+      case 'wild_reverse_draw4':
+        return ' uno-wildrev4'
+      case 'draw6':
+        return ' uno-draw6'
+      case 'draw10':
+        return ' uno-draw10'
+      case 'wild_color_roulette':
+        return ' uno-roulette'
+      case 'discard_all':
+        return ' uno-discardall'
+      case 'skip_everyone':
+        return ' uno-skipall'
+      default:
+        return ''
+    }
+  })()
+
   const cls =
     'pc uno ' +
     colorClass +
+    noMercyClass +
     (big ? ' lg' : '') +
     (sel ? ' sel' : '') +
     (dim ? ' dim' : '') +
@@ -195,7 +232,7 @@ export function UnoCardFace({ card, sel, dim, big, playable, onClick }: UnoCardF
       <span className="c tl">{cornerGlyph}</span>
       <div className="mid">
         <span className="uno-oval">
-          <span>{wild ? (card.kind === 'wild_draw4' ? '+4' : '🌈') : glyph}</span>
+          <span>{centreGlyph}</span>
         </span>
       </div>
       <span className="c br">{cornerGlyph}</span>
@@ -287,6 +324,9 @@ export type TurnSeat = {
   timeLabel?: string
   /** flag the countdown as running low (turns it red) */
   timeLow?: boolean
+  /** No-Mercy knockout — grey the seat, strike the name, add a 💥 badge so the
+   *  room can see at a glance who's out of the round. */
+  out?: boolean
 }
 
 export type TurnRailProps = {
@@ -302,7 +342,11 @@ export function TurnRail({ seats }: TurnRailProps) {
   return (
     <div className="turnrail">
       {seats.map((s, i) => (
-        <div className={'seat' + (s.turn ? ' turn' : '')} key={s.name + i}>
+        <div
+          className={'seat' + (s.turn ? ' turn' : '') + (s.out ? ' out' : '')}
+          key={s.name + i}
+          aria-label={s.out ? `${s.name} — knocked out` : undefined}
+        >
           <div className="sav">
             {s.name.charAt(0).toUpperCase()}
             {s.cards != null && <span className="cc">{s.cards}</span>}
@@ -311,6 +355,7 @@ export function TurnRail({ seats }: TurnRailProps) {
             {s.name}
             {s.you ? ' (you)' : ''}
             {s.host || s.winner ? ' 👑' : ''}
+            {s.out ? ' 💥' : ''}
           </span>
           {s.turn && s.timeLabel != null && (
             <span className={'seat-timer' + (s.timeLow ? ' low' : '')}>{s.timeLabel}</span>

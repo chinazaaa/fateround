@@ -86,7 +86,7 @@ describe('platform-content: word-pool games (codewords / describe_it / quick_dra
   })
 
   it('all defs are registered', () => {
-    expect(platformGameList().length).toBe(12)
+    expect(platformGameList().length).toBe(27)
   })
 })
 

@@ -105,10 +105,14 @@ describe('tickActiveGames', () => {
 
     await tickActiveGames()
 
-    expect(fetchMock).toHaveBeenCalledTimes(3)
+    // Whot fires TWO pokes per tick since Phase 1 of bots-in-room shipped:
+    // the regular expire-turn (timer) and the bot-tick (drives any bot player
+    // whose turn is up). Trivia + Mafia have one each. Total = 4.
+    expect(fetchMock).toHaveBeenCalledTimes(4)
     const calls = fetchMock.mock.calls.map(([url, opts]) => ({ url, body: JSON.parse(opts.body) }))
     expect(calls).toContainEqual({ url: 'http://127.0.0.1:4567/api/trivia/advance', body: { gameId: 'TRIV' } })
     expect(calls).toContainEqual({ url: 'http://127.0.0.1:4567/api/whot/expire-turn', body: { gameId: 'WHT1' } })
+    expect(calls).toContainEqual({ url: 'http://127.0.0.1:4567/api/whot/bot-tick', body: { gameId: 'WHT1' } })
     expect(calls).toContainEqual({ url: 'http://127.0.0.1:4567/api/mafia/MAF1/advance', body: { isAuto: true } })
   })
 
