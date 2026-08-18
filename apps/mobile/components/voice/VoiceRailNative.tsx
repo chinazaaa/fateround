@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native'
+import Svg, { Line, Path } from 'react-native-svg'
 import { AudioSession, LiveKitRoom, useLocalParticipant, useParticipants } from '@livekit/react-native'
 import type { DisconnectReason } from 'livekit-client'
 import { voiceDisconnectKind, voiceDisconnectMessage } from '@/lib/voice-errors'
@@ -20,6 +21,46 @@ export type VoiceRailProps = {
    * hardcoding a height — the footer grows when it shows an error.
    */
   bottomOffset?: number
+}
+
+// Inline SVGs instead of emoji: U+1F399 (studio microphone) falls back to a
+// monochrome text glyph — rendered as a dark dot — on many Android builds when
+// the containing Text has explicit color/weight. SVG paths sidestep the
+// emoji font entirely.
+function MicIcon({ color, size = 18 }: { color: string; size?: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Z" fill={color} />
+      <Path
+        d="M5 11a1 1 0 0 1 2 0 5 5 0 0 0 10 0 1 1 0 1 1 2 0 7 7 0 0 1-6 6.93V21a1 1 0 1 1-2 0v-3.07A7 7 0 0 1 5 11Z"
+        fill={color}
+      />
+    </Svg>
+  )
+}
+
+function MicOffIcon({ color, size = 18 }: { color: string; size?: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Z" fill={color} />
+      <Path
+        d="M5 11a1 1 0 0 1 2 0 5 5 0 0 0 10 0 1 1 0 1 1 2 0 7 7 0 0 1-6 6.93V21a1 1 0 1 1-2 0v-3.07A7 7 0 0 1 5 11Z"
+        fill={color}
+      />
+      <Line x1="3" y1="3" x2="21" y2="21" stroke={color} strokeWidth={2.2} strokeLinecap="round" />
+    </Svg>
+  )
+}
+
+function PeopleIcon({ color, size = 18 }: { color: string; size?: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Zm7 0a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm-7 2c-3.31 0-6 1.79-6 4v2h12v-2c0-2.21-2.69-4-6-4Zm7 .5c-.86 0-1.66.12-2.36.34 1.15.86 1.86 2.01 1.86 3.16V19h6v-1.75c0-2.07-2.46-3.75-5.5-3.75Z"
+        fill={color}
+      />
+    </Svg>
+  )
 }
 
 function mapParticipants(participants: ReturnType<typeof useParticipants>): VoiceParticipant[] {
@@ -55,10 +96,19 @@ function ConnectedControls({
           style={[styles.mainBtn, muted ? styles.mainBtnMuted : styles.mainBtnLive]}
           onPress={() => void localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled)}
         >
-          <Text style={styles.mainBtnText}>{muted ? '🔇' : '🎙️'}</Text>
+          <View style={styles.iconWrap}>
+            {muted ? (
+              <MicOffIcon color={styles.mainBtnText.color as string} />
+            ) : (
+              <MicIcon color={styles.mainBtnText.color as string} />
+            )}
+          </View>
         </Pressable>
         <Pressable style={styles.secondaryBtn} onPress={() => setShowList(true)}>
-          <Text style={styles.secondaryText}>👥 {people.length || presenceHint}</Text>
+          <View style={styles.iconRow}>
+            <PeopleIcon color={styles.secondaryText.color as string} size={16} />
+            <Text style={styles.secondaryText}>{people.length || presenceHint}</Text>
+          </View>
         </Pressable>
         <Pressable style={styles.secondaryBtn} onPress={onLeave}>
           <Text style={styles.leaveText}>Leave</Text>
@@ -103,9 +153,14 @@ function DisconnectedBar({
   return (
     <View style={styles.pill}>
       <Pressable style={styles.joinBtn} disabled={isConnecting} onPress={onJoin}>
-        <Text style={styles.joinText}>
-          {isConnecting ? 'Connecting…' : `🎙️ Join voice${presenceCount > 0 ? ` · ${presenceCount}` : ''}`}
-        </Text>
+        {isConnecting ? (
+          <Text style={styles.joinText}>Connecting…</Text>
+        ) : (
+          <View style={styles.iconRow}>
+            <MicIcon color={styles.joinText.color as string} size={16} />
+            <Text style={styles.joinText}>{`Join voice${presenceCount > 0 ? ` · ${presenceCount}` : ''}`}</Text>
+          </View>
+        )}
       </Pressable>
     </View>
   )
@@ -274,6 +329,8 @@ const makeStyles = (theme: Theme) =>
       alignSelf: 'stretch',
       textAlign: 'center',
     },
+    iconWrap: { alignItems: 'center', justifyContent: 'center' },
+    iconRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
     secondaryBtn: {
       borderRadius: 999,
       borderWidth: 1,
