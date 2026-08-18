@@ -9,6 +9,7 @@ import { tallyTriviaPlayerScores } from '@/lib/trivia'
 import { tallySudokuScores } from '@/lib/sudoku'
 import { tallyWordHuntScores } from '@/lib/word-hunt'
 import { tallyWordGroupingScores } from '@/lib/word-grouping'
+import { tallyWordleRoomScores } from '@/lib/wordle-room'
 import {
   parseGameType,
   isMonopolyGame,
@@ -23,6 +24,7 @@ import {
   isSudokuGame,
   isWordHuntGame,
   isWordGroupingGame,
+  isWordleRoomGame,
   isTriviaGame,
 } from '@/lib/game-types'
 import type {
@@ -70,6 +72,7 @@ export function isCompetitiveRoomGame(gameType: GameType): boolean {
     isSudokuGame(gameType) ||
     isWordHuntGame(gameType) ||
     isWordGroupingGame(gameType) ||
+    isWordleRoomGame(gameType) ||
     isTriviaGame(gameType)
   )
 }
@@ -362,6 +365,16 @@ export async function getCompetitiveStandings(
     if (!submissions?.length) return []
     const seated = players.filter((p) => p.spectator !== true).map((p) => ({ id: p.id, name: p.name }))
     return tallyWordGroupingScores(seated, submissions).map((row) => row.id)
+  }
+
+  if (isWordleRoomGame(gameType)) {
+    const { data: progress } = await supabase
+      .from('wordle_room_progress')
+      .select('player_id, word_index, words_solved, total_guesses, total_time_ms, finished')
+      .eq('game_id', gameId)
+    if (!progress?.length) return []
+    const seated = players.filter((p) => p.spectator !== true).map((p) => ({ id: p.id, name: p.name }))
+    return tallyWordleRoomScores(progress, seated).map((row) => row.player_id)
   }
 
   return []

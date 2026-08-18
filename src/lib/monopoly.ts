@@ -25,10 +25,15 @@ import {
   MONOPOLY_JAIL_FINE,
   MONOPOLY_JAIL_POSITION,
   MONOPOLY_STARTING_CASH,
+  MONOPOLY_EXPANDED_STARTING_CASH,
   formatMonopolyMoney,
+  housesInBankForSize,
+  hotelsInBankForSize,
+  jailPositionForSize,
   mortgageValue,
   monopolyBoardForSize,
   spaceAt,
+  startingCashForSize,
   unmortgageCost,
   type MonopolyBoardSize,
   type MonopolyColorGroup,
@@ -99,13 +104,16 @@ export async function getMonopolyGameSettings(
   estateDividend: boolean
   boardSize: 40 | 48
 }> {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('games')
     .select(
       'timer_seconds, monopoly_auction_timer_seconds, monopoly_double_go_salary, monopoly_forced_auctions, monopoly_no_rent_in_jail, monopoly_estate_dividend, monopoly_board_size'
     )
     .eq('id', gameId)
     .maybeSingle()
+  if (error) {
+    console.error(`[getMonopolyGameSettings] Error reading settings for game ${gameId}:`, error)
+  }
   return {
     timerSeconds: (data?.timer_seconds ?? 0) as number,
     auctionTimerSeconds: (data?.monopoly_auction_timer_seconds ?? MONOPOLY_AUCTION_TIMER_SECONDS) as number,
@@ -573,12 +581,12 @@ function parseDeck(raw: unknown): number[] {
   return raw as number[]
 }
 
-function defaultBoardFields(): Partial<MonopolyBoard> {
+function defaultBoardFields(boardSize: MonopolyBoardSize = 40): Partial<MonopolyBoard> {
   return {
     property_buildings: {},
     mortgaged_properties: {},
-    houses_in_bank: MONOPOLY_HOUSES_IN_BANK,
-    hotels_in_bank: MONOPOLY_HOTELS_IN_BANK,
+    houses_in_bank: housesInBankForSize(boardSize),
+    hotels_in_bank: hotelsInBankForSize(boardSize),
     chance_deck: createShuffledDeck('chance'),
     community_deck: createShuffledDeck('community'),
     chance_discard: [],
@@ -666,7 +674,7 @@ type LandingResolution = {
   pendingDebt?: MonopolyPendingDebt
 }
 
-function resolveSpaceLanding(
+export function resolveSpaceLanding(
   landed: MonopolySpace,
   ctx: {
     playerId: string
@@ -694,13 +702,14 @@ function resolveSpaceLanding(
   let pendingDebt: MonopolyPendingDebt | undefined
 
   if (landed.type === 'go_to_jail') {
+    const jailPos = jailPositionForSize(ctx.boardSize)
     // First-lap training wheels: same rule as "can't buy before passing PAYDAY"
     // and "no tax on the first lap". A player who hasn't crossed PAYDAY yet
     // lands on the jail square as "just visiting" instead of being incarcerated.
     if (!ctx.passedGoOnce) {
       return {
         cash,
-        position: MONOPOLY_JAIL_POSITION,
+        position: jailPos,
         inJail: false,
         jailTurns,
         getOutCards,
@@ -712,7 +721,7 @@ function resolveSpaceLanding(
     }
     return {
       cash,
-      position: MONOPOLY_JAIL_POSITION,
+      position: jailPos,
       inJail: true,
       jailTurns: 0,
       getOutCards,
@@ -1153,12 +1162,24 @@ export async function initializeMonopolyGame(
   playerIds: string[],
   timerSeconds = 0
 ): Promise<{ error: string | null }> {
+  const { data: gameRow, error: gameError } = await supabase
+    .from('games')
+    .select(
+      'timer_seconds, monopoly_auction_timer_seconds, monopoly_double_go_salary, monopoly_forced_auctions, monopoly_no_rent_in_jail, monopoly_estate_dividend, monopoly_board_size'
+    )
+    .eq('id', gameId)
+    .maybeSingle()
+  if (gameError) return { error: internalErrorMessage('monopoly', gameError) }
+  if (!gameRow) return { error: 'Game settings not found' }
+
+  const boardSize: 40 | 48 = gameRow.monopoly_board_size === 48 ? 48 : 40
+
   const turnOrder = shuffle(playerIds)
   const stateRows = turnOrder.map((playerId, index) => ({
     game_id: gameId,
     player_id: playerId,
     position: 0,
-    cash: MONOPOLY_STARTING_CASH,
+    cash: startingCashForSize(boardSize),
     player_order: index,
   }))
 
@@ -1173,8 +1194,8 @@ export async function initializeMonopolyGame(
     property_owners: {},
     status_message: 'Game started — pass PAYDAY once before you can buy property.',
     turn_deadline_at: monopolyTurnDeadline(timerSeconds),
-    ...defaultBoardFields(),
-    board_size: (await getMonopolyGameSettings(supabase, gameId)).boardSize,
+    ...defaultBoardFields(boardSize),
+    board_size: boardSize,
   })
   if (boardError) return { error: internalErrorMessage('monopoly', boardError) }
 
@@ -1204,7 +1225,7 @@ export async function addMonopolyLateJoinPlayer(
     game_id: gameId,
     player_id: playerId,
     position: 0,
-    cash: MONOPOLY_STARTING_CASH,
+    cash: startingCashForSize(board.board_size ?? 40),
     player_order: playerOrder,
   })
   if (stateError) return { error: internalErrorMessage('monopoly', stateError) }
@@ -1261,8 +1282,8 @@ export async function processMonopolyRoll(
   let owners = parsePropertyOwners(board.property_owners)
   let buildings = parseBuildings(board.property_buildings)
   let mortgaged = parseMortgaged(board.mortgaged_properties)
-  let housesInBank = board.houses_in_bank ?? MONOPOLY_HOUSES_IN_BANK
-  let hotelsInBank = board.hotels_in_bank ?? MONOPOLY_HOTELS_IN_BANK
+  let housesInBank = board.houses_in_bank ?? housesInBankForSize(board.board_size ?? 40)
+  let hotelsInBank = board.hotels_in_bank ?? hotelsInBankForSize(board.board_size ?? 40)
 
   const repaired = repairStaleBankruptOwnership(states, owners, buildings, mortgaged, housesInBank, hotelsInBank)
   if (repaired.repaired) {
@@ -2142,8 +2163,8 @@ export async function processMonopolyBuild(
     .maybeSingle()
   if (!state) return { error: 'Player not found' }
 
-  let housesInBank = board.houses_in_bank ?? MONOPOLY_HOUSES_IN_BANK
-  let hotelsInBank = board.hotels_in_bank ?? MONOPOLY_HOTELS_IN_BANK
+  let housesInBank = board.houses_in_bank ?? housesInBankForSize(board.board_size ?? 40)
+  let hotelsInBank = board.hotels_in_bank ?? hotelsInBankForSize(board.board_size ?? 40)
   let cash = state.cash
   const houseCost = space.houseCost ?? 0
 
@@ -2719,8 +2740,8 @@ async function attemptRemoveMonopolyPlayer(
     property_owners: owners,
     property_buildings: buildings,
     mortgaged_properties: mortgaged,
-    houses_in_bank: (board.houses_in_bank ?? MONOPOLY_HOUSES_IN_BANK) + returned.housesReturned,
-    hotels_in_bank: (board.hotels_in_bank ?? MONOPOLY_HOTELS_IN_BANK) + returned.hotelsReturned,
+    houses_in_bank: (board.houses_in_bank ?? housesInBankForSize(board.board_size ?? 40)) + returned.housesReturned,
+    hotels_in_bank: (board.hotels_in_bank ?? hotelsInBankForSize(board.board_size ?? 40)) + returned.hotelsReturned,
     pending_trade: pendingTrade,
     auction_state: auctionState,
     pending_debt: pendingDebt,
@@ -3197,8 +3218,8 @@ async function bankruptPlayer(
       property_owners: returned.owners,
       property_buildings: returned.buildings,
       mortgaged_properties: returned.mortgaged,
-      houses_in_bank: (board.houses_in_bank ?? MONOPOLY_HOUSES_IN_BANK) + returned.housesReturned,
-      hotels_in_bank: (board.hotels_in_bank ?? MONOPOLY_HOTELS_IN_BANK) + returned.hotelsReturned,
+      houses_in_bank: (board.houses_in_bank ?? housesInBankForSize(board.board_size ?? 40)) + returned.housesReturned,
+      hotels_in_bank: (board.hotels_in_bank ?? hotelsInBankForSize(board.board_size ?? 40)) + returned.hotelsReturned,
       phase: nextPhase,
       current_turn_index: upcomingTurnIndex,
       winner_player_id: winner,

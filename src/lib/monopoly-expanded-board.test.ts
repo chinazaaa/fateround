@@ -3,13 +3,22 @@ import {
   MONOPOLY_BOARD,
   MONOPOLY_EXPANDED_BOARD,
   MONOPOLY_MAX_PLAYERS,
+  housesInBankForSize,
+  hotelsInBankForSize,
   monopolyGoToJailPosition,
   monopolyJailPosition,
   ownsColorMonopoly,
   spaceAt,
   spacesInGroup,
+  startingCashForSize,
 } from '@/lib/monopoly-board'
-import { movePosition, computeMonopolyNetWorth, resolveMonopolyWinnerId, buildMonopolyStandings } from '@/lib/monopoly'
+import {
+  movePosition,
+  computeMonopolyNetWorth,
+  resolveMonopolyWinnerId,
+  buildMonopolyStandings,
+  resolveSpaceLanding,
+} from '@/lib/monopoly'
 import { boardGridCell } from '@/components/monopoly/monopoly-ui'
 import { themedSpaceName } from '@/components/monopoly/monopoly-themes'
 import { buildColorGroupStatuses } from '@/lib/monopoly-color-portfolio'
@@ -105,10 +114,13 @@ describe('Estate Kings expanded board', () => {
     expect(tradeSideHasValue(0, [46, 47], 0, 48)).toBe(true)
     expect(tradeSideHasValue(0, [46, 47], 0, 40)).toBe(false)
 
-    const text48 = formatTradeSideText(100, [46, 47], 1, 'classic', 48)
+    const text48 = formatTradeSideText(100, [46, 47], 1, 'default', 48)
     expect(text48).toContain('Regent Street')
     expect(text48).toContain('Mayfair Mews')
-    expect(text48).toContain('1 jail card')
+    expect(text48).toContain('1 skip-the-queue card')
+
+    const text48Naija = formatTradeSideText(0, [1, 47], 0, 'naija', 48)
+    expect(text48Naija).toBe('Oshodi Market · Banana Island')
   })
 
   it('computes net worth and standings accurately for expanded board early finish', () => {
@@ -167,5 +179,60 @@ describe('Estate Kings expanded board', () => {
     expect(standings[0].playerId).toBe('p2')
     expect(standings[0].rank).toBe(1)
     expect(standings[0].netWorth).toBe(910)
+  })
+
+  it('sends player to correct jail index (12 on 48-space, 10 on 40-space) when landing on go_to_jail', () => {
+    // 48-space board: index 36 is OFF TO NICKED (go_to_jail) -> sends to index 12 (NICKED)
+    const res48 = resolveSpaceLanding(spaceAt(36, 48), {
+      cash: 1500,
+      position: 36,
+      inJail: false,
+      jailTurns: 0,
+      getOutCards: 0,
+      playerId: 'p1',
+      owners: {},
+      buildings: {},
+      mortgaged: {},
+      states: [],
+      diceTotal: 4,
+      extraTurn: false,
+      passedGoOnce: true,
+      boardSize: 48,
+    })
+    expect(res48.position).toBe(12)
+    expect(res48.inJail).toBe(true)
+
+    // 40-space board: index 30 is OFF TO JAIL (go_to_jail) -> sends to index 10 (JAIL)
+    const res40 = resolveSpaceLanding(spaceAt(30, 40), {
+      cash: 1500,
+      position: 30,
+      inJail: false,
+      jailTurns: 0,
+      getOutCards: 0,
+      playerId: 'p1',
+      owners: {},
+      buildings: {},
+      mortgaged: {},
+      states: [],
+      diceTotal: 4,
+      extraTurn: false,
+      passedGoOnce: true,
+      boardSize: 40,
+    })
+    expect(res40.position).toBe(10)
+    expect(res40.inJail).toBe(true)
+  })
+
+  it('scales bank houses and hotels proportionally for 48-space board', () => {
+    expect(housesInBankForSize(40)).toBe(32)
+    expect(hotelsInBankForSize(40)).toBe(12)
+
+    expect(housesInBankForSize(48)).toBe(48)
+    expect(hotelsInBankForSize(48)).toBe(18)
+  })
+
+  it('quadruples starting capital per player for 48-space board (6000 vs 1500)', () => {
+    expect(startingCashForSize(40)).toBe(1500)
+    expect(startingCashForSize(48)).toBe(6000)
   })
 })

@@ -693,7 +693,7 @@ export function MonopolyClassicBoard({
       </Modal>
       <div
         className={[
-          'relative w-full aspect-[7/8] sm:aspect-square overflow-hidden rounded-xl sm:rounded-2xl',
+          'relative w-full aspect-[11/12] sm:aspect-square overflow-hidden rounded-xl sm:rounded-2xl',
           p.boardBg,
           `border-2 sm:border-[3px] ${p.boardBorder} ${p.boardShadow}`,
         ].join(' ')}
@@ -857,13 +857,13 @@ export function MonopolyClassicBoard({
 
         <style>{`
           .monopoly-grid-tracks {
-            grid-template-columns: minmax(0, 1.85fr) repeat(${innerTrackCount}, minmax(0, 1fr)) minmax(0, 1.85fr);
-            grid-template-rows: minmax(0, 1.85fr) repeat(${innerTrackCount}, minmax(0, 1.25fr)) minmax(0, 1.85fr);
+            grid-template-columns: minmax(0, 1.25fr) repeat(${innerTrackCount}, minmax(0, 1.18fr)) minmax(0, 1.25fr);
+            grid-template-rows: minmax(0, 1.6fr) repeat(${innerTrackCount}, minmax(0, 1.15fr)) minmax(0, 1.6fr);
           }
           @media (min-width: 640px) {
             .monopoly-grid-tracks {
-              grid-template-columns: minmax(0, 1.55fr) repeat(${innerTrackCount}, minmax(0, 1fr)) minmax(0, 1.55fr);
-              grid-template-rows: minmax(0, 1.55fr) repeat(${innerTrackCount}, minmax(0, 1fr)) minmax(0, 1.55fr);
+              grid-template-columns: minmax(0, 1.18fr) repeat(${innerTrackCount}, minmax(0, 1.08fr)) minmax(0, 1.18fr);
+              grid-template-rows: minmax(0, 1.3fr) repeat(${innerTrackCount}, minmax(0, 1fr)) minmax(0, 1.3fr);
             }
           }
         `}</style>

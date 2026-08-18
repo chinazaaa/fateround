@@ -57,6 +57,7 @@ import {
 } from '@/lib/word-grouping'
 import { LANDMINE_MIN_PLAYERS, LANDMINE_MAX_PLAYERS, LANDMINE_DEFAULT_MAX_PLAYERS } from '@/lib/landmine'
 import { PING_PONG_MIN_PLAYERS, PING_PONG_MAX_PLAYERS, PING_PONG_DEFAULT_MAX_PLAYERS } from '@/lib/ping-pong'
+import { WORDLE_ROOM_MIN_PLAYERS, WORDLE_ROOM_MAX_PLAYERS, WORDLE_ROOM_DEFAULT_MAX_PLAYERS } from '@/lib/wordle-room'
 
 export const LOBBY_LIMIT_GAME_TYPES = [
   'anonymous_messages',
@@ -94,6 +95,7 @@ export const LOBBY_LIMIT_GAME_TYPES = [
   'word_grouping',
   'landmine',
   'ping_pong',
+  'wordle_room',
 ] as const
 
 export type LobbyLimitGameType = (typeof LOBBY_LIMIT_GAME_TYPES)[number]
@@ -287,6 +289,11 @@ export const GAME_LIMIT_CODE_DEFAULTS: GamePlayerLimitsMap = {
     max: PING_PONG_MAX_PLAYERS,
     default: PING_PONG_DEFAULT_MAX_PLAYERS,
   },
+  wordle_room: {
+    min: WORDLE_ROOM_MIN_PLAYERS,
+    max: WORDLE_ROOM_MAX_PLAYERS,
+    default: WORDLE_ROOM_DEFAULT_MAX_PLAYERS,
+  },
 }
 
 export function isLobbyLimitGameType(value: string): value is LobbyLimitGameType {
@@ -330,6 +337,7 @@ export function getCodeDefaultLimits(): GamePlayerLimitsMap {
     word_grouping: { ...GAME_LIMIT_CODE_DEFAULTS.word_grouping },
     landmine: { ...GAME_LIMIT_CODE_DEFAULTS.landmine },
     ping_pong: { ...GAME_LIMIT_CODE_DEFAULTS.ping_pong },
+    wordle_room: { ...GAME_LIMIT_CODE_DEFAULTS.wordle_room },
   }
 }
 

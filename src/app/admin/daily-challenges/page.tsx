@@ -18,6 +18,7 @@ type GameTypeId =
   | 'chess_mate'
   | 'codenames_codeword'
   | 'ludo_puzzle'
+  | 'wordle'
 
 const GAME_TYPES: { id: GameTypeId; label: string; hint: string }[] = [
   { id: 'crossword', label: 'Crossword', hint: 'ANSWER,clue — one per line. Min 4 entries, max 13 letters per word.' },
@@ -52,6 +53,11 @@ const GAME_TYPES: { id: GameTypeId; label: string; hint: string }[] = [
     id: 'ludo_puzzle',
     label: 'Ludo Puzzle',
     hint: 'JSON. Required: startingPieces (4 tokens with id/zone/pos), diceSequence (1-6[]), optimalRolls. Optional: obstacles [{trackPos}].',
+  },
+  {
+    id: 'wordle',
+    label: 'Wordle',
+    hint: 'WORD,hint,category — one per line. Category REQUIRED (shows as the day\'s badge, e.g. "Naija Slang"); hint optional but shown on loss. Min 1 entry. 3–8 letters, alpha only. One word picked per day by seed.',
   },
 ]
 
@@ -117,6 +123,17 @@ function contentToText(gameType: GameTypeId, content: unknown): string {
       .map((e) => `${e.question} | ${e.choices.join(' | ')} | ${e.correct_index}`)
       .join('\n')
   }
+  if (gameType === 'wordle') {
+    return (content as { word?: string; hint?: string; categoryLabel?: string }[])
+      .map((e) => {
+        const w = (e.word ?? '').toUpperCase()
+        const bits = [w, e.hint ?? '', e.categoryLabel ?? '']
+        // Trim trailing empty columns so a WORD-only line stays "WORD" not "WORD,,".
+        while (bits.length > 1 && bits[bits.length - 1] === '') bits.pop()
+        return bits.join(',')
+      })
+      .join('\n')
+  }
   return (content as { answer?: string; word?: string; clue?: string }[])
     .map((e) => {
       const w = e.answer ?? e.word ?? ''
@@ -164,6 +181,19 @@ function textToContent(gameType: GameTypeId, text: string): unknown {
         return { answer, clue }
       })
       .filter((e) => e.answer.length >= 3)
+  }
+  if (gameType === 'wordle') {
+    return lines
+      .map((l) => {
+        const parts = l.split(',').map((p) => p.trim())
+        const word = (parts[0] ?? '').toLowerCase().replace(/[^a-z]/g, '')
+        const hint = parts[1] ?? ''
+        const categoryLabel = parts[2] ?? ''
+        const entry: { word: string; hint: string; categoryLabel?: string } = { word, hint }
+        if (categoryLabel) entry.categoryLabel = categoryLabel
+        return entry
+      })
+      .filter((e) => e.word.length >= 3 && e.word.length <= 8)
   }
   return lines
     .map((l) => {
@@ -219,6 +249,19 @@ function validateContent(gameType: GameTypeId, content: unknown): string | null 
     case 'word_scramble': {
       if (!Array.isArray(content)) return 'Expected a list of entries'
       if (content.length < 3) return `Need at least 3 entries (got ${content.length})`
+      return null
+    }
+    case 'wordle': {
+      if (!Array.isArray(content)) return 'Expected a list of entries'
+      if (content.length < 1) return 'Add at least one word'
+      for (let i = 0; i < content.length; i++) {
+        const e = content[i] as { word?: string; categoryLabel?: string }
+        const w = (e.word ?? '').toLowerCase()
+        if (!/^[a-z]+$/.test(w)) return `Entry ${i + 1}: word must be letters only`
+        if (w.length < 3 || w.length > 8) return `Entry ${i + 1} ("${w}"): 3–8 letters`
+        if (!e.categoryLabel || !e.categoryLabel.trim())
+          return `Entry ${i + 1} ("${w}"): category is required (add it as the 3rd column, e.g. WORD,hint,Naija Slang)`
+      }
       return null
     }
     case 'trivia': {

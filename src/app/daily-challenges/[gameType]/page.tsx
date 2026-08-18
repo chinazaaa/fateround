@@ -66,6 +66,11 @@ const GAME_SEO: Record<string, { title: string; description: string }> = {
     description:
       "A free daily Ludo puzzle — the same board and dice rolls for everyone. Plan your moves, get all four tokens home in as few rolls as you can, and climb today's leaderboard.",
   },
+  wordle: {
+    title: 'Daily Wordle — Free 5-Letter Word Puzzle, New Every Day',
+    description:
+      "A free daily Wordle — the same word for everyone. Guess the word in six tries or fewer and climb today's leaderboard. Naija Slang days included.",
+  },
 }
 
 const GAME_KEYWORDS: Record<string, string[]> = {
@@ -100,6 +105,7 @@ const GAME_KEYWORDS: Record<string, string[]> = {
   ],
   'whot-puzzle': ['daily whot puzzle', 'whot card game', 'whot puzzle', 'daily card puzzle', 'play whot online'],
   'ludo-puzzle': ['daily ludo puzzle', 'ludo puzzle', 'ludo board game', 'free ludo online', 'ludo king alternative'],
+  wordle: ['daily wordle', 'wordle today', 'free wordle', 'wordle online', 'wordle alternative'],
 }
 
 export async function generateMetadata({ params }: { params: Promise<{ gameType: string }> }): Promise<Metadata> {

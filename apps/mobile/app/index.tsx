@@ -6,6 +6,7 @@ import { normalizeGameCode } from '@fateround/shared'
 import { FateRoundLogo } from '@/components/FateRoundLogo'
 import { BrowseGamesList } from '@/components/browse/BrowseGamesList'
 import { SubscribeHomeBanner } from '@/components/notifications/SubscribeHomeBanner'
+import { YourUpcomingGamesStrip } from '@/components/notifications/YourUpcomingGamesStrip'
 import { AmbientBackground } from '@/components/ui/AmbientBackground'
 import { AppButton } from '@/components/ui/AppButton'
 import { KeyboardFormScreen } from '@/components/ui/KeyboardFormScreen'
@@ -119,15 +120,25 @@ export default function HomeScreen() {
             onPress={() => void Linking.openURL(`${WEB_BASE_URL}/create`)}
           />
           <AppButton
-            label="🏆 Community leaderboard"
+            label="🗓️ Daily Challenges"
             tone="ghost"
-            // Cast: expo-router's typed href doesn't know about the /community
-            // route registered in _layout.tsx.
-            onPress={() => router.push('/community' as never)}
+            // Cast: expo-router's typed href doesn't know about the
+            // /daily-challenges route registered in _layout.tsx.
+            onPress={() => router.push('/daily-challenges' as never)}
+          />
+          <AppButton
+            label="🏆 Leaderboards"
+            tone="ghost"
+            // Cast: expo-router's typed href doesn't know about the
+            // /leaderboard route registered in _layout.tsx. Hub screen has
+            // three cards — daily, trophies, community — matching web.
+            onPress={() => router.push('/leaderboard' as never)}
           />
         </View>
 
         <SubscribeHomeBanner />
+
+        <YourUpcomingGamesStrip />
 
         <BrowseGamesList previewLimit={5} onSeeAll={() => router.push('/browse' as never)} />
 

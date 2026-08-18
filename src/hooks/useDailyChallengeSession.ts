@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { ensureServerIdentity, authHeaders } from '@/lib/identity'
+import { clearDailyProgress } from '@/lib/daily-progress'
 import type { DailyChallengeGameType } from '@/lib/daily-challenge'
 
 export type DailyChallengePhase = 'loading' | 'playing' | 'submitting' | 'results' | 'error' | 'notLive'
@@ -25,6 +26,8 @@ export interface DailyChallengeResult {
   totalPlayers: number
   personalBest: { bestScore: number; bestTime: number; totalPlays: number } | null
   isNewBest: boolean
+  /** Spoiler-free emoji share grid (Wordle). */
+  grid?: string
 }
 
 interface UseDailyChallengeSessionReturn {
@@ -133,12 +136,27 @@ export function useDailyChallengeSession(gameType: DailyChallengeGameType): UseD
         })
 
         if (res.status === 409) {
+          // Server already has this player's score — safe to drop the local attempt so a refresh
+          // doesn't re-fire an auto-submit against a locked row. Populate previousScore from a
+          // fresh GET so the results screen shows the real numbers instead of nulls.
+          clearDailyProgress(challengeData.challengeId)
+          try {
+            const getRes = await fetch(`/api/daily-challenges/${gameType}`, { headers })
+            if (getRes.ok) {
+              const getData = (await getRes.json()) as { previousScore?: Record<string, unknown> | null }
+              if (getData.previousScore) setPreviousScore(getData.previousScore)
+            }
+          } catch {
+            /* best-effort — the results screen already handles a missing previousScore */
+          }
           setError('Already submitted')
           setPhase('results')
           return
         }
 
         if (!res.ok) {
+          // Leave localStorage intact so a refresh restores the finished board and the auto-submit
+          // effect can retry — otherwise the player loses both server state AND local state.
           const body = await res.json().catch(() => ({}))
           setError(body.error ?? 'Submit failed')
           setPhase('error')
@@ -146,9 +164,11 @@ export function useDailyChallengeSession(gameType: DailyChallengeGameType): UseD
         }
 
         const data = await res.json()
+        clearDailyProgress(challengeData.challengeId)
         setResult(data)
         setPhase('results')
       } catch {
+        // Network error — same as !res.ok above: keep localStorage so refresh can retry.
         setError('Failed to submit score')
         setPhase('error')
       }

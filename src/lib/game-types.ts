@@ -1452,6 +1452,49 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
       },
     },
   },
+  wordle_room: {
+    id: 'wordle_room',
+    label: 'Wordle',
+    tagline: 'Race to solve the same words — most solved, fewest guesses wins',
+    headerEmoji: '🟩🟨',
+    card: {
+      accent: '#16a34a',
+      accentSoft: 'rgba(22, 163, 74, 0.15)',
+      emoji: '🟩',
+      players: '2–20 players',
+      vibe: 'Head-to-head Wordle race',
+      featured: true,
+    },
+    slots: {
+      kiss: {
+        emoji: '✅',
+        label: 'Words',
+        color: '#16a34a',
+        leaderboardLabel: 'Words solved',
+        activeClass: 'bg-green-500/20 text-green-100 border-green-400',
+        borderClass: 'border-green-500/50 bg-green-500/10',
+        textColor: '#86efac',
+      },
+      marry: {
+        emoji: '⭐',
+        label: 'Points',
+        color: '#fbbf24',
+        leaderboardLabel: 'Total points',
+        activeClass: 'bg-amber-500/20 text-amber-100 border-amber-400',
+        borderClass: 'border-amber-500/50 bg-amber-500/10',
+        textColor: '#fcd34d',
+      },
+      kill: {
+        emoji: '⏱️',
+        label: 'Timer',
+        color: '#0ea5e9',
+        leaderboardLabel: 'Race against the clock',
+        activeClass: 'bg-sky-500/20 text-sky-100 border-sky-400',
+        borderClass: 'border-sky-500/50 bg-sky-500/10',
+        textColor: '#7dd3fc',
+      },
+    },
+  },
   chess: {
     id: 'chess',
     label: 'Chess',
@@ -2160,6 +2203,7 @@ export const GAME_TYPE_OPTIONS: GameType[] = [
   'landmine',
   'ping_pong',
   'uno',
+  'wordle_room',
 ]
 
 // Games pinned to the top of the picker / games list, in this exact order.
@@ -2183,6 +2227,7 @@ const PINNED_GAME_TYPES: GameType[] = [
   'word_hunt',
   'describe_it',
   'word_rush',
+  'wordle_room',
   'i_call_on',
   'landmine',
   'ping_pong',
@@ -2268,6 +2313,7 @@ const GAME_CATEGORY_BY_TYPE: Partial<Record<GameType, GameCategory>> = {
   word_grouping: 'puzzle',
   word_hunt: 'puzzle',
   word_rush: 'puzzle',
+  wordle_room: 'puzzle',
 }
 
 export function gameTypeCategory(gameType: GameType): GameCategory {
@@ -2301,6 +2347,8 @@ export function parseGameType(raw: unknown): GameType {
   if (raw === 'sudoku') return 'sudoku'
   if (raw === 'tic_tac_toe') return 'tic_tac_toe'
   if (raw === 'word_hunt') return 'word_hunt'
+  if (raw === 'wordle_room' || raw === 'wordle-room' || raw === 'wordle_room_race' || raw === 'wordle')
+    return 'wordle_room'
   if (raw === 'chess') return 'chess'
   if (raw === 'describe_it' || raw === 'text-charades') return 'describe_it'
   if (raw === 'word_rush' || raw === 'word-rush') return 'word_rush'
@@ -2418,6 +2466,8 @@ export function gameHowItWorks(
       return 'Two players join with their name. The host can play too. Ultimate Tic-Tac-Toe is nine small 3x3 boards in one big grid — the cell you play sends your opponent to the matching board. Win a small board with three in a row, and win the game by taking three boards in a row.'
     case 'word_hunt':
       return 'Players join with their name. Everyone gets the same 4×4 letter grid — connect adjacent letters to spell valid words (3+ letters) before the timer runs out. Longer words score more points.'
+    case 'wordle_room':
+      return 'Players join with their name. Everyone races through the same fixed set of words (5–20). Each word is solved like Wordle — six guesses to crack it. Solve it in fewer guesses for more points, and finish your words before anyone else to top the standings.'
     case 'matching_pairs':
       return 'Players join with their name. Everyone gets their own board with the same set of icons — flip two cards per turn; a match keeps them face-up and scores +1000 pts. Hit 3 in a row with no miss for a +500 streak bonus. Match every pair with zero misses for a +2000 perfect-game bonus. Fastest to finish scores a placement bonus. Most points when everyone is done wins.'
     case 'quiplash':
@@ -2729,6 +2779,7 @@ const NAME_ONLY_PLAYER_JOIN_GAMES: Record<GameType, boolean> = {
   ping_pong: true,
   uno: true,
   mafia: false,
+  wordle_room: true,
 }
 
 const LOBBY_GAMES: Record<GameType, boolean> = {
@@ -2780,6 +2831,7 @@ const LOBBY_GAMES: Record<GameType, boolean> = {
   ping_pong: false,
   uno: false,
   mafia: false,
+  wordle_room: false,
 }
 
 // Does this game record its history as rows in the `votes` table (plus `participants` /
@@ -2840,6 +2892,7 @@ const VOTE_HISTORY_GAMES: Record<GameType, boolean> = {
   ping_pong: false,
   uno: false,
   mafia: false,
+  wordle_room: false,
 }
 
 /**
@@ -3012,6 +3065,10 @@ export function isSudokuGame(gameType: GameType | string | undefined): boolean {
 
 export function isWordHuntGame(gameType: GameType | string | undefined): boolean {
   return parseGameType(gameType) === 'word_hunt'
+}
+
+export function isWordleRoomGame(gameType: GameType | string | undefined): boolean {
+  return parseGameType(gameType) === 'wordle_room'
 }
 
 export function isMatchingPairsGame(gameType: GameType | string | undefined): boolean {

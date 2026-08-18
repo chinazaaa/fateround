@@ -43,6 +43,7 @@ const GAME_TO_DAILY: Partial<Record<string, string[]>> = {
   codewords: ['codenames_codeword'],
   ludo: ['ludo_puzzle'],
   word_grouping: ['word_grouping'],
+  wordle_room: ['wordle'],
 }
 
 export const revalidate = 3600

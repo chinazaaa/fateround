@@ -17,6 +17,7 @@ import { DailyWordGroupingPlay } from './DailyWordGroupingPlay'
 import { DailyChessMatePlay } from './DailyChessMatePlay'
 import { DailyCodenamesCodewordPlay } from './DailyCodenamesCodewordPlay'
 import { DailyLudoPuzzlePlay } from './DailyLudoPuzzlePlay'
+import { DailyWordlePlay } from './DailyWordlePlay'
 import { DAILY_GAME_LABELS, DAILY_GAME_TIMER, type DailyChallengeGameType } from '@/lib/daily-challenge'
 
 function LoadingState({ gameType }: { gameType: DailyChallengeGameType }) {
@@ -127,6 +128,8 @@ function PlaySurface({
       return <DailyCodenamesCodewordPlay challengeId={challengeId} puzzle={puzzle} timer={timer} onSubmit={onSubmit} />
     case 'ludo_puzzle':
       return <DailyLudoPuzzlePlay challengeId={challengeId} puzzle={puzzle} timer={timer} onSubmit={onSubmit} />
+    case 'wordle':
+      return <DailyWordlePlay challengeId={challengeId} puzzle={puzzle} timer={timer} onSubmit={onSubmit} />
   }
 }
 

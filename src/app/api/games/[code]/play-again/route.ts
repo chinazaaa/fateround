@@ -26,6 +26,7 @@ import {
   isWordSearchGame,
   isPingPongGame,
   isWhoSaidThis,
+  isWordleRoomGame,
 } from '@/lib/game-types'
 import { clearAnonymousRoomSessionData, reopenSecretMessageBoard } from '@/lib/anonymous-messages'
 import { clearBingoSessionData } from '@/lib/bingo'
@@ -53,6 +54,7 @@ import { clearCrosswordSessionData } from '@/lib/crossword'
 import { clearWordSearchSessionData } from '@/lib/word-search'
 import { clearWordScrambleSessionData } from '@/lib/word-scramble'
 import { clearWordHuntSessionData } from '@/lib/word-hunt'
+import { clearWordleRoomSessionData } from '@/lib/wordle-room'
 import { clearMafiaSessionData } from '@/lib/mafia'
 import { clearTriviaSessionData } from '@/lib/trivia'
 import { clearTwoTruthsSessionData } from '@/lib/two-truths'
@@ -120,6 +122,7 @@ type ClearableSessionGameType = Extract<
   | 'i_call_on'
   | 'sudoku'
   | 'word_hunt'
+  | 'wordle_room'
   | 'mafia'
   | 'crossword'
   | 'word_search'
@@ -161,6 +164,7 @@ const SESSION_CLEARERS: Record<ClearableSessionGameType, SessionClearer> = {
   i_call_on: clearNpatSessionData,
   sudoku: clearSudokuSessionData,
   word_hunt: clearWordHuntSessionData,
+  wordle_room: clearWordleRoomSessionData,
   mafia: clearMafiaSessionData,
   crossword: clearCrosswordSessionData,
   word_search: clearWordSearchSessionData,
@@ -231,6 +235,7 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
     (isICallOnGame(gameType) && game.status === 'active') ||
     (isSudokuGame(gameType) && game.status === 'active') ||
     (isWordHuntGame(gameType) && game.status === 'active') ||
+    (isWordleRoomGame(gameType) && game.status === 'active') ||
     (isCrosswordGame(gameType) && game.status === 'active') ||
     (isWordSearchGame(gameType) && game.status === 'active')
   if (!canReturnToLobby) {

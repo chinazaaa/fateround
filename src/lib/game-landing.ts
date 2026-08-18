@@ -84,6 +84,7 @@ export const GAME_TYPE_TO_SLUG: Record<GameType, string> = {
   word_scramble: 'word-scramble',
   word_grouping: 'word-grouping',
   landmine: 'landmine',
+  wordle_room: 'wordle',
 }
 
 const SLUG_TO_GAME_TYPE = Object.fromEntries(
@@ -91,6 +92,7 @@ const SLUG_TO_GAME_TYPE = Object.fromEntries(
 ) as Record<string, GameType>
 
 SLUG_TO_GAME_TYPE.monopoly = 'monopoly'
+SLUG_TO_GAME_TYPE['wordle-room'] = 'wordle_room'
 
 export function gameTypeFromSlug(slug: string): GameType | null {
   return SLUG_TO_GAME_TYPE[slug] ?? null
@@ -2084,6 +2086,69 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         question: 'How is it scored?',
         answer:
           'Longer words are worth more points, so it pays to find the big ones, not just the easy three-letter words. Only valid dictionary words count. Highest score when the clock hits zero wins.',
+      },
+    ],
+  }),
+
+  wordle_room: landing('wordle_room', {
+    seoTitle: 'Wordle — Multiplayer Wordle Race Online',
+    seoDescription:
+      'Play multiplayer Wordle online with friends. Everyone races through the same words — most solved, fewest guesses wins. No sign-up, free.',
+    keywords: [
+      'multiplayer wordle',
+      'wordle with friends online',
+      'wordle race game',
+      'wordle party game',
+      'play wordle online multiplayer',
+      'wordle challenge friends',
+      'wordle room game',
+      'naija slang wordle',
+      'word guessing race game online',
+      'play wordle online free no download',
+    ],
+    heroSubtitle:
+      'Everyone races through the same fixed set of words, Wordle-style. Solve more words in fewer guesses — beat your friends to the finish.',
+    highlights: ['Same words for everyone', 'Head-to-head race', 'Perfect-bonus scoring'],
+    features: [
+      {
+        title: 'Wordle-style guesses',
+        description: 'Type a guess and get colour feedback on every letter — green, yellow or grey.',
+        emoji: '🟩',
+      },
+      {
+        title: 'Race to the finish',
+        description: 'Solve a word to unlock the next. Most words solved, fewest guesses, fastest time wins.',
+        emoji: '⚡',
+      },
+      {
+        title: 'No reading ahead',
+        description: 'You only ever see your current word — the full sequence stays hidden from the room.',
+        emoji: '🔒',
+      },
+      SHARED_FEATURES.noSignup,
+    ],
+    steps: [
+      { title: 'Join the room', description: 'Enter your name and wait for the host to pick the word list and start.' },
+      {
+        title: 'Solve words',
+        description: 'Each word works like Wordle — crack it in as few guesses as you can.',
+      },
+      {
+        title: 'Finish first',
+        description: 'Beat the timer or everyone else to top the standings.',
+      },
+    ],
+    perfectFor: ['Wordle fans', 'Group chats', 'Family game night', 'Quick competitive rounds'],
+    extraFaqs: [
+      {
+        question: 'How do you play multiplayer Wordle?',
+        answer:
+          'The host picks a category (General English or Naija Slang), how many words to race through (5, 10, 15 or 20), and an optional whole-game timer. Everyone starts on word one and solves each word like classic Wordle — six guesses to crack it. Solve it and you move on; run out of guesses and it counts as a miss and you advance anyway.',
+      },
+      {
+        question: 'How is multiplayer Wordle scored?',
+        answer:
+          'Every solved word scores base points — the fewer guesses you use, the more you earn, and a first-guess solve scores a +200 perfect bonus. There are no streaks. Standings rank by most words solved, then fewer total guesses, then faster total time.',
       },
     ],
   }),

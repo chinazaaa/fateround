@@ -4,6 +4,11 @@ export const MONOPOLY_MIN_PLAYERS = 2
 export const MONOPOLY_MAX_PLAYERS = 8
 export const MONOPOLY_DEFAULT_MAX_PLAYERS = 6
 export const MONOPOLY_STARTING_CASH = 1500
+export const MONOPOLY_EXPANDED_STARTING_CASH = 6000
+
+export function startingCashForSize(boardSize: MonopolyBoardSize = 40): number {
+  return boardSize === 48 ? MONOPOLY_EXPANDED_STARTING_CASH : MONOPOLY_STARTING_CASH
+}
 export const MONOPOLY_GO_SALARY = 200
 export const MONOPOLY_JAIL_FINE = 50
 export const MONOPOLY_JAIL_POSITION = 10
@@ -11,8 +16,26 @@ export const MONOPOLY_GO_TO_JAIL_POSITION = 30
 export const MONOPOLY_BOARD_SIZE = 40
 export const MONOPOLY_EXPANDED_BOARD_SIZE = 48
 export type MonopolyBoardSize = typeof MONOPOLY_BOARD_SIZE | typeof MONOPOLY_EXPANDED_BOARD_SIZE
+
+export function jailPositionForSize(boardSize: MonopolyBoardSize = 40): number {
+  return boardSize === 48 ? 12 : MONOPOLY_JAIL_POSITION
+}
+
+export function goToJailPositionForSize(boardSize: MonopolyBoardSize = 40): number {
+  return boardSize === 48 ? 36 : MONOPOLY_GO_TO_JAIL_POSITION
+}
 export const MONOPOLY_HOUSES_IN_BANK = 32
 export const MONOPOLY_HOTELS_IN_BANK = 12
+export const MONOPOLY_EXPANDED_HOUSES_IN_BANK = 48
+export const MONOPOLY_EXPANDED_HOTELS_IN_BANK = 18
+
+export function housesInBankForSize(boardSize: MonopolyBoardSize = 40): number {
+  return boardSize === 48 ? MONOPOLY_EXPANDED_HOUSES_IN_BANK : MONOPOLY_HOUSES_IN_BANK
+}
+
+export function hotelsInBankForSize(boardSize: MonopolyBoardSize = 40): number {
+  return boardSize === 48 ? MONOPOLY_EXPANDED_HOTELS_IN_BANK : MONOPOLY_HOTELS_IN_BANK
+}
 export const MONOPOLY_MORTGAGE_INTEREST_RATE = 0.1
 
 export type MonopolySpaceType =
@@ -326,13 +349,13 @@ function expandedSite(
 
 export const MONOPOLY_EXPANDED_BOARD: MonopolySpace[] = [
   { index: 0, name: 'PAYDAY', type: 'go' },
-  expandedSite(1, 'Thamesmead Walk', 'light_blue', 100, 6, 50),
+  expandedSite(1, 'Barking Road', 'brown', 60, 2, 50),
   { index: 2, name: 'Fate', type: 'chance' },
-  expandedSite(3, 'Croydon High', 'light_blue', 110, 7, 50),
-  expandedSite(4, 'Erith Road', 'light_blue', 120, 8, 50),
-  expandedSite(5, 'Barking Road', 'brown', 60, 2, 50),
+  expandedSite(3, 'Dagenham Ave', 'brown', 60, 4, 50),
+  expandedSite(4, 'Thamesmead Walk', 'light_blue', 100, 6, 50),
+  expandedSite(5, 'Croydon High', 'light_blue', 110, 7, 50),
   { index: 6, name: 'Paddington', type: 'station', price: 200, rent: 25, color: 'station' },
-  expandedSite(7, 'Dagenham Ave', 'brown', 60, 4, 50),
+  expandedSite(7, 'Erith Road', 'light_blue', 120, 8, 50),
   expandedSite(8, 'Canary Wharf', 'indigo', 140, 10, 100),
   { index: 9, name: 'Esusu Fund', type: 'community' },
   expandedSite(10, 'Bermondsey', 'indigo', 150, 11, 100),

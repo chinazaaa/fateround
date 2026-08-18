@@ -33,6 +33,7 @@ import { TournamentContinueCard, TournamentResumeEntry } from '@/components/tour
 import { TournamentBrandingWrapper } from '@/components/tournament/BrandingWrapper'
 import { TournamentEventPackCard } from '@/components/tournament/EventPackCard'
 import { ScheduledEventCard } from '@/components/tournament/ScheduledEventCard'
+import { TournamentScheduledHostActionsPanel } from '@/components/tournament/TournamentScheduledHostActionsPanel'
 import { TournamentTransferHostControl } from '@/components/tournament/TournamentTransferHostControl'
 import { TournamentHostNominationBanner } from '@/components/tournament/TournamentHostNominationBanner'
 import { TournamentIosInstallPushNudge } from '@/components/tournament/TournamentIosInstallPushNudge'
@@ -1329,6 +1330,19 @@ export default function TournamentLobbyPage() {
             presentPlayerCount={presentPlayerCount}
             playerToken={joined ? myCode : null}
             hostToken={isHost ? hostToken : null}
+          />
+        )}
+
+        {/* Tournament-parallels follow-up: the host controls the plan calls
+            for at the bottom of docs/mobile-discovery-plan.md § "Related
+            work — tournaments". Only rendered for the host of a scheduled
+            tournament (not-yet-started). Reschedule / Cancel / Transfer. */}
+        {isHost && !hasStarted && tournament.scheduled_at && hostToken && (
+          <TournamentScheduledHostActionsPanel
+            tournamentId={tournament.id}
+            hostToken={hostToken}
+            currentScheduledAt={tournament.scheduled_at}
+            players={players.map((p) => ({ id: p.id, name: p.player_name, is_eliminated: p.is_eliminated }))}
           />
         )}
 
