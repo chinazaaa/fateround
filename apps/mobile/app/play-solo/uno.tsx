@@ -55,7 +55,7 @@ import {
   saveSoloState,
   wasSoloStateScored,
 } from '@/lib/solo-state-store'
-import { logSoloPlayStarted } from '@/lib/solo-play'
+import { logSoloPlayFinished, logSoloPlayStarted, resetSoloSessionId, soloSessionId } from '@/lib/solo-play'
 
 const BOT_THINK_MS = 900
 
@@ -109,6 +109,9 @@ export default function SoloUnoScreen() {
       setScoreboard(next)
       void markSoloStateScored('solo-uno-state-v1')
     })
+    void soloSessionId('uno').then((sessionId) =>
+      logSoloPlayFinished({ gameType: 'uno', outcome, sessionId, difficulty })
+    )
   }, [state])
 
   // Reset the multi-play selection when the turn or hand size changes — a stale
@@ -178,6 +181,7 @@ export default function SoloUnoScreen() {
     setMultiMode(false)
     setSelectedIds([])
     void clearSoloState('solo-uno-state-v1')
+    void resetSoloSessionId('uno')
     setState(initUnoSolo())
     logSoloPlayStarted('uno', difficulty)
   }, [difficulty])
@@ -387,7 +391,6 @@ export default function SoloUnoScreen() {
             <View style={styles.scoreRow}>
               <ScoreCell label="You" value={scoreboard.human} />
               <ScoreCell label="Bot" value={scoreboard.bot} />
-              <ScoreCell label="Draws" value={scoreboard.draws} />
             </View>
 
             <View style={styles.finishActions}>

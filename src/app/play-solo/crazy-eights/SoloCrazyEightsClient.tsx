@@ -26,7 +26,7 @@ import {
 } from '@/lib/crazy-eights-solo'
 import { pickBotAction, type Crazy8BotDifficulty } from '@/lib/crazy-eights-bot'
 import { getNormalizedPenalties, hasPlayableCard, isDrawPileDepleted, parseCrazyEightsRules } from '@/lib/crazy-eights'
-import { logSoloPlayStarted } from '@/lib/solo-play'
+import { logSoloPlayFinished, logSoloPlayStarted, resetSoloSessionId, soloSessionId } from '@/lib/solo-play'
 import { readSoloScoreboard, recordSoloOutcome, resetSoloScoreboard, type SoloScoreboard } from '@/lib/solo-scoreboard'
 import { SoloScoreboardRow } from '@/components/solo/SoloScoreboardRow'
 
@@ -105,6 +105,12 @@ export function SoloCrazyEightsClient() {
     if (!state || state.outcome == null || scoredRef.current) return
     const outcome: 'human' | 'bot' | 'draw' = state.outcome === 0 ? 'human' : state.outcome === 'draw' ? 'draw' : 'bot'
     setScoreboard(recordSoloOutcome('crazy_eights', outcome))
+    logSoloPlayFinished({
+      gameType: 'crazy_eights',
+      outcome,
+      sessionId: soloSessionId('crazy_eights'),
+      difficulty,
+    })
     scoredRef.current = true
   }, [state])
 
@@ -174,6 +180,7 @@ export function SoloCrazyEightsClient() {
     clearPersistedState()
     setState(initCrazy8Solo({ rules: SOLO_RULES }))
     scoredRef.current = false
+    resetSoloSessionId('crazy_eights')
     logSoloPlayStarted('crazy_eights', difficulty)
   }, [difficulty])
 

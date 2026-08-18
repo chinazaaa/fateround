@@ -27,7 +27,7 @@ import {
   type YahtzeeSoloState,
 } from '@/lib/yahtzee-solo'
 import { pickYahtzeeBotCategory, pickYahtzeeBotHold } from '@/lib/yahtzee-bot'
-import { logSoloPlayStarted } from '@/lib/solo-play'
+import { logSoloPlayFinished, logSoloPlayStarted, resetSoloSessionId, soloSessionId } from '@/lib/solo-play'
 import { readSoloScoreboard, recordSoloOutcome, resetSoloScoreboard, type SoloScoreboard } from '@/lib/solo-scoreboard'
 import { SoloScoreboardRow } from '@/components/solo/SoloScoreboardRow'
 import type { YahtzeeCategory, YahtzeePlayerScore } from '@/types'
@@ -108,6 +108,7 @@ export function SoloYahtzeeClient() {
   useEffect(() => {
     if (!state || state.outcome == null || scoredRef.current) return
     setScoreboard(recordSoloOutcome('yahtzee', state.outcome))
+    logSoloPlayFinished({ gameType: 'yahtzee', outcome: state.outcome, sessionId: soloSessionId('yahtzee') })
     scoredRef.current = true
   }, [state])
 
@@ -199,6 +200,7 @@ export function SoloYahtzeeClient() {
     clearPersistedState()
     setState(initYahtzeeSolo())
     scoredRef.current = false
+    resetSoloSessionId('yahtzee')
     logSoloPlayStarted('yahtzee')
   }, [])
 
