@@ -5,23 +5,19 @@
  * → DailyHubClient). Lists today's puzzles with per-game status (played /
  * in progress / expired) using the same /api/daily-challenges/status endpoint
  * the web uses, so the hub, the leaderboard, and the play-count are all one
- * source of truth across platforms.
- *
- * Games that don't have a native mobile play surface yet still appear here —
- * tapping one opens the web version in the device browser. As each game gets
- * ported (see NATIVE_DAILY_GAMES in lib/daily-challenge.ts) the tap flips over
- * to the native route without touching this file.
+ * source of truth across platforms. Every daily game has a native mobile play
+ * surface (see the play route in [slug].tsx); tapping a tile routes there.
  */
 
 import { useCallback, useEffect, useState } from 'react'
-import { Linking, StyleSheet, Text, View, ScrollView, ActivityIndicator, RefreshControl } from 'react-native'
+import { StyleSheet, Text, View, ScrollView, ActivityIndicator, RefreshControl } from 'react-native'
 import { Stack, useFocusEffect, useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { AmbientBackground } from '@/components/ui/AmbientBackground'
 import { AppButton } from '@/components/ui/AppButton'
 import { ListRow } from '@/components/ui/ListRow'
 import { SurfaceCard } from '@/components/ui/SurfaceCard'
-import { apiUrl, WEB_BASE_URL } from '@/lib/config'
+import { apiUrl } from '@/lib/config'
 import { authHeaders } from '@/lib/identity'
 import {
   DAILY_CHALLENGE_GAME_TYPES,
@@ -31,16 +27,11 @@ import {
   DAILY_GAME_PRIMARY_METRIC,
   DAILY_GAME_TIMER,
   DAILY_GAME_TYPE_TO_SLUG,
-  hasNativeDailyPlay,
   isDailyChallengeLive,
   type DailyChallengeGameType,
 } from '@/lib/daily-challenge'
 import { formatDayLabel, watToday } from '@/lib/community-dates'
-import {
-  getStartedAtCached,
-  loadDailyStartedAt,
-  preloadDailyProgress,
-} from '@/lib/daily-progress'
+import { getStartedAtCached, preloadDailyProgress } from '@/lib/daily-progress'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
 import { centeredContent } from '@/constants/layout'
@@ -121,19 +112,8 @@ export default function DailyChallengesHub() {
   }, [load])
 
   const openGame = useCallback(
-    async (gameType: DailyChallengeGameType, challengeId: string | null) => {
-      if (hasNativeDailyPlay(gameType)) {
-        router.push(`/daily-challenges/${DAILY_GAME_TYPE_TO_SLUG[gameType]}` as never)
-        return
-      }
-      // Fallback for not-yet-ported games: open the web version. Ensures the
-      // hub is complete even before every game has landed natively.
-      const slug = DAILY_GAME_TYPE_TO_SLUG[gameType]
-      const url = `${WEB_BASE_URL}/daily-challenges/${slug}`
-      // Also warm the local startedAt cache for symmetry — the web tab persists
-      // its own progress, so this is just a no-op if never touched here.
-      if (challengeId) void loadDailyStartedAt(challengeId)
-      await Linking.openURL(url)
+    (gameType: DailyChallengeGameType) => {
+      router.push(`/daily-challenges/${DAILY_GAME_TYPE_TO_SLUG[gameType]}` as never)
     },
     [router]
   )
@@ -213,12 +193,11 @@ export default function DailyChallengesHub() {
               startedAt != null && now < startedAt + DAILY_GAME_TIMER[gameType] * 1000
             const expired = startedAt != null && !inProgress
             const metric = DAILY_GAME_PRIMARY_METRIC[gameType]
-            const native = hasNativeDailyPlay(gameType)
 
             return (
               <ListRow
                 key={gameType}
-                onPress={() => void openGame(gameType, challengeId)}
+                onPress={() => openGame(gameType)}
                 divider={i < DAILY_CHALLENGE_GAME_TYPES.length - 1}
                 left={
                   <View style={styles.gameGlyph}>
@@ -237,11 +216,9 @@ export default function DailyChallengesHub() {
                         ? 'Continue where you left off'
                         : expired
                           ? 'Time expired — see result'
-                          : native
-                            ? metric === 'time'
-                              ? 'Fastest time wins'
-                              : 'Highest score wins'
-                            : 'Play on web ↗'
+                          : metric === 'time'
+                            ? 'Fastest time wins'
+                            : 'Highest score wins'
                 }
                 right={
                   <Text style={[styles.chevron, { color: theme.textFaint }]}>
@@ -254,9 +231,9 @@ export default function DailyChallengesHub() {
         </SurfaceCard>
 
         <AppButton
-          label="View leaderboards on web"
+          label="View leaderboards"
           tone="ghost"
-          onPress={() => void Linking.openURL(`${WEB_BASE_URL}/daily-challenges/sudoku/leaderboard`)}
+          onPress={() => router.push('/leaderboard/daily' as never)}
         />
 
         {loading ? <ActivityIndicator color={theme.primaryMuted} style={styles.spinner} /> : null}
