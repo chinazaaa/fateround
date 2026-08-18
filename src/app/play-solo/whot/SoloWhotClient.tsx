@@ -32,7 +32,7 @@ import {
 } from '@/lib/whot-solo'
 import { pickBotAction, type WhotBotDifficulty } from '@/lib/whot-bot'
 import { getActivePickPenalty, hasPlayableCard, isDrawPileDepleted, parseWhotRules } from '@/lib/whot'
-import { logSoloPlayStarted } from '@/lib/solo-play'
+import { logSoloPlayFinished, logSoloPlayStarted, resetSoloSessionId, soloSessionId } from '@/lib/solo-play'
 import { readSoloScoreboard, recordSoloOutcome, resetSoloScoreboard, type SoloScoreboard } from '@/lib/solo-scoreboard'
 
 const STORAGE_KEY = 'solo-whot-state-v1'
@@ -126,6 +126,9 @@ export function SoloWhotClient() {
     if (!state || state.outcome == null || scoredRef.current) return
     const outcome: 'human' | 'bot' | 'draw' = state.outcome === 0 ? 'human' : state.outcome === 'draw' ? 'draw' : 'bot'
     setScoreboard(recordSoloOutcome('whot', outcome))
+    // Persist to the signed-in profile so wins/games-played/streaks/trophies land the
+    // same way multiplayer rooms do. Silent no-op for guests. Idempotent per solo session.
+    logSoloPlayFinished({ gameType: 'whot', outcome, sessionId: soloSessionId('whot'), difficulty })
     scoredRef.current = true
   }, [state])
 
@@ -205,6 +208,9 @@ export function SoloWhotClient() {
     clearPersistedState()
     setState(initSoloWhot({ rules: SOLO_RULES }))
     scoredRef.current = false
+    // Fresh game → fresh session id so the next finish claim can't collide with the
+    // previous game's already-claimed session.
+    resetSoloSessionId('whot')
     logSoloPlayStarted('whot', difficulty)
   }, [difficulty])
 

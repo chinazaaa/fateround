@@ -27,7 +27,7 @@ import {
   type LudoSoloState,
 } from '@/lib/ludo-solo'
 import { pickLudoBotMove } from '@/lib/ludo-bot'
-import { logSoloPlayStarted } from '@/lib/solo-play'
+import { logSoloPlayFinished, logSoloPlayStarted, resetSoloSessionId, soloSessionId } from '@/lib/solo-play'
 import { readSoloScoreboard, recordSoloOutcome, resetSoloScoreboard, type SoloScoreboard } from '@/lib/solo-scoreboard'
 import { SoloScoreboardRow } from '@/components/solo/SoloScoreboardRow'
 import type { Player } from '@/types'
@@ -85,6 +85,7 @@ export function SoloLudoClient() {
   useEffect(() => {
     if (!state || state.outcome == null || scoredRef.current) return
     setScoreboard(recordSoloOutcome('ludo', state.outcome))
+    logSoloPlayFinished({ gameType: 'ludo', outcome: state.outcome, sessionId: soloSessionId('ludo') })
     scoredRef.current = true
   }, [state])
 
@@ -158,6 +159,7 @@ export function SoloLudoClient() {
     clearPersistedState()
     setState(initLudoSolo())
     scoredRef.current = false
+    resetSoloSessionId('ludo')
     logSoloPlayStarted('ludo')
   }, [])
 
