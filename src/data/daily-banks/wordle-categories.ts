@@ -132,7 +132,7 @@ export const WORDLE_ANIMALS: readonly WordleThemedEntry[] = [
   { word: 'BUNNY', hint: 'Cottontail hopper.' },
   { word: 'FOXES', hint: 'Bushy-tailed sly canines.' },
   { word: 'DINGO', hint: 'Wild Australian dog.' },
-  { word: 'HORSE', hint: "Rider's four-legged mount." },
+  { word: 'LEMUR', hint: 'Big-eyed Madagascar primate.' },
   { word: 'PRAWN', hint: 'Shrimp-like shellfish.' },
 ]
 
@@ -261,7 +261,7 @@ export const WORDLE_MUSIC: readonly WordleThemedEntry[] = [
   { word: 'VOCAL', hint: 'The sung part of a song.' },
   { word: 'FUNKY', hint: 'Syncopated with a hard groove.' },
   { word: 'CHANT', hint: 'Repetitive rhythmic sung phrase.' },
-  { word: 'REMIX', hint: 'Reworked version of a track.' },
+  { word: 'STRUM', hint: 'Sweep of the fingers across guitar strings.' },
   { word: 'STAFF', hint: 'The five-line music notation grid.' },
 ]
 
@@ -304,7 +304,7 @@ export const WORDLE_SCIENCE: readonly WordleThemedEntry[] = [
   { word: 'STARS', hint: 'Distant suns in the night sky.' },
   { word: 'PRISM', hint: 'Triangular glass that splits light.' },
   { word: 'NERVE', hint: 'Fiber carrying signals to the brain.' },
-  { word: 'PROBE', hint: 'Unmanned spacecraft sent to study.' },
+  { word: 'AXIOM', hint: 'Self-evident starting truth of a proof.' },
   { word: 'FIELD', hint: 'Region of force, as magnetic or gravitational.' },
 ]
 
