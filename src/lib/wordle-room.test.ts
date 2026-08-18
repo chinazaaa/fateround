@@ -132,21 +132,36 @@ describe('wordle room standings', () => {
     finished: false,
   }
 
-  it('ranks by words solved, then fewer total guesses, then faster finish', () => {
+  it('ranks by total points, then faster finish', () => {
+    // Points-primary: more solves and fewer guesses per solve both raise your score, and a
+    // hint deducts 300 from that word — so this single comparator captures the full spec.
     const rows = [
-      { ...base, player_id: 'a', words_solved: 3, total_guesses: 10, total_time_ms: 60000, finished: true },
-      { ...base, player_id: 'b', words_solved: 5, total_guesses: 20, total_time_ms: 120000, finished: true },
-      { ...base, player_id: 'c', words_solved: 5, total_guesses: 18, total_time_ms: 90000, finished: true },
-      { ...base, player_id: 'd', words_solved: 5, total_guesses: 18, total_time_ms: 70000, finished: true },
+      // Fewer solves → strictly fewer points, ranks last.
+      { ...base, player_id: 'a', words_solved: 3, total_points: 2000, total_time_ms: 60000, finished: true },
+      { ...base, player_id: 'b', words_solved: 5, total_points: 3000, total_time_ms: 120000, finished: true },
+      { ...base, player_id: 'c', words_solved: 5, total_points: 3000, total_time_ms: 90000, finished: true },
+      { ...base, player_id: 'd', words_solved: 5, total_points: 3000, total_time_ms: 70000, finished: true },
     ]
     const ranked = rankWordleRoomStandings(rows).map((r) => r.player_id)
     expect(ranked).toEqual(['d', 'c', 'b', 'a'])
   })
 
-  it('unfinished players rank below finishers on equal words + guesses (timer cutoff)', () => {
+  it('hint use costs points and moves you down the leaderboard', () => {
+    // Both players solved the same words with the same guesses, but honest earns 3000; hint
+    // user earns 3000 − 300 = 2700. Points-primary ranks honest first even though hint user
+    // was faster.
     const rows = [
-      { ...base, player_id: 'done', words_solved: 4, total_guesses: 20, total_time_ms: 100000, finished: true },
-      { ...base, player_id: 'cutoff', words_solved: 4, total_guesses: 20, total_time_ms: null, finished: false },
+      { ...base, player_id: 'honest', words_solved: 5, total_points: 3000, total_time_ms: 100000, finished: true },
+      { ...base, player_id: 'hinted', words_solved: 5, total_points: 2700, total_time_ms: 60000, finished: true },
+    ]
+    const ranked = rankWordleRoomStandings(rows).map((r) => r.player_id)
+    expect(ranked).toEqual(['honest', 'hinted'])
+  })
+
+  it('unfinished players rank below finishers on equal points (timer cutoff)', () => {
+    const rows = [
+      { ...base, player_id: 'done', words_solved: 4, total_points: 2500, total_time_ms: 100000, finished: true },
+      { ...base, player_id: 'cutoff', words_solved: 4, total_points: 2500, total_time_ms: null, finished: false },
     ]
     const ranked = rankWordleRoomStandings(rows).map((r) => r.player_id)
     expect(ranked).toEqual(['done', 'cutoff'])
@@ -154,8 +169,24 @@ describe('wordle room standings', () => {
 
   it('tallyWordleScores filters spectators and exposes progress rows', () => {
     const progress = [
-      { player_id: 'p1', word_index: 3, words_solved: 3, total_guesses: 15, total_time_ms: 50000, finished: false },
-      { player_id: 'p2', word_index: 5, words_solved: 5, total_guesses: 22, total_time_ms: 110000, finished: true },
+      {
+        player_id: 'p1',
+        word_index: 3,
+        words_solved: 3,
+        total_guesses: 15,
+        total_points: 2000,
+        total_time_ms: 50000,
+        finished: false,
+      },
+      {
+        player_id: 'p2',
+        word_index: 5,
+        words_solved: 5,
+        total_guesses: 22,
+        total_points: 3500,
+        total_time_ms: 110000,
+        finished: true,
+      },
     ]
     const players = [
       { id: 'p1', name: 'A', spectator: false },

@@ -75,11 +75,13 @@ export interface WordleRoomProgressRow {
   current_word_guesses: number
   words_solved: number
   total_guesses: number
+  total_points: number
   total_time_ms: number | null
   finished: boolean
   finished_at: string | null
   created_at: string
   updated_at: string
+  hints_used?: number[]
 }
 
 export interface WordleRoomStandingRow {
@@ -90,6 +92,8 @@ export interface WordleRoomStandingRow {
   total_guesses: number
   total_time_ms: number | null
   finished: boolean
+  total_points: number
+  hints_used_count: number
 }
 
 export interface WordleRoomWordResult {
@@ -387,21 +391,25 @@ export interface WordleRoomStandingInput {
   total_guesses: number
   total_time_ms: number | null
   finished: boolean
+  /** Sum of per-word `points_awarded` after hint deductions. Legacy rows that predate
+   *  the points-primary ranking default to 0, which sinks them below any real player. */
+  total_points?: number
 }
 
 /**
  * Rank players by:
- *  1. most words solved (out of the full sequence)
- *  2. tie → fewer total guesses summed across all solved words
- *  3. still tied → faster total completion time (only meaningful for finishers; for a
- *     timed cutoff, ranking effectively stops at rules 1–2 for unfinished players)
+ *  1. Total points — solving more words adds points; solving in fewer guesses adds more
+ *     per word; purchasing a hint deducts 300 from that word's earned points. So the
+ *     honest, thorough player wins by construction, and hints can never be a free ride
+ *     to the top of the leaderboard.
+ *  2. Tie → faster total completion time (only meaningful for finishers; for a timed
+ *     cutoff, ranking effectively stops at rule 1 for unfinished players).
  * Then name as a stable final tiebreak.
  */
 export function rankWordleRoomStandings<T extends WordleRoomStandingInput>(rows: readonly T[]): T[] {
   return [...rows].sort(
     (a, b) =>
-      b.words_solved - a.words_solved ||
-      a.total_guesses - b.total_guesses ||
+      (b.total_points ?? 0) - (a.total_points ?? 0) ||
       (a.finished ? (a.total_time_ms ?? Number.MAX_SAFE_INTEGER) : Number.MAX_SAFE_INTEGER) -
         (b.finished ? (b.total_time_ms ?? Number.MAX_SAFE_INTEGER) : Number.MAX_SAFE_INTEGER)
   )
@@ -412,7 +420,7 @@ export function tallyWordleRoomScores(
     Pick<
       WordleRoomProgressRow,
       'player_id' | 'word_index' | 'words_solved' | 'total_guesses' | 'total_time_ms' | 'finished'
-    >
+    > & { total_points?: number | null; hints_used?: unknown }
   >,
   players: { id: string; name: string; spectator?: boolean | null }[]
 ): WordleRoomStandingRow[] {
@@ -421,6 +429,7 @@ export function tallyWordleRoomScores(
   return rankWordleRoomStandings(
     active.map((p) => {
       const row = byPlayer.get(p.id)
+      const hintsCount = Array.isArray(row?.hints_used) ? (row!.hints_used as unknown[]).length : 0
       return {
         player_id: p.id,
         name: p.name,
@@ -429,6 +438,8 @@ export function tallyWordleRoomScores(
         total_guesses: row?.total_guesses ?? 0,
         total_time_ms: row?.total_time_ms ?? null,
         finished: row?.finished ?? false,
+        total_points: row?.total_points ?? 0,
+        hints_used_count: hintsCount,
       }
     })
   )

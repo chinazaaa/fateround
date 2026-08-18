@@ -40,6 +40,7 @@ const WORDLE_CSS = `
   color: var(--text);
 }
 .wl-tile--current { border-color: var(--border-strong); }
+.wl-tile--focus { outline: 2px solid var(--primary); outline-offset: -2px; }
 .wl-tile--graded { border-color: transparent; background: var(--tile-bg); color: #fff; }
 .wl-tile--reveal { border-color: var(--primary); }
 .wl-tile--flip {
@@ -145,6 +146,11 @@ interface Props {
   onAddLetter: (letter: string) => void
   onBackspace: () => void
   onSubmit: () => void
+  /** Optional cursor position within the current row. When provided together with
+   *  onFocusTile, filled tiles become click-to-edit so the player can jump the cursor
+   *  onto any letter and overwrite it in place. */
+  cursorAt?: number
+  onFocusTile?: (index: number) => void
 }
 
 export function WordleRoomBoard({
@@ -159,6 +165,8 @@ export function WordleRoomBoard({
   onAddLetter,
   onBackspace,
   onSubmit,
+  cursorAt,
+  onFocusTile,
 }: Props) {
   const wordLength = word.length
   const revealed = revealWord.length > 0
@@ -234,8 +242,18 @@ export function WordleRoomBoard({
     >
       {Array.from({ length: wordLength }).map((_, i) => {
         const ch = current[i] ?? ''
+        const isFocused = cursorAt === i
+        const clickable = onFocusTile != null && i < current.length && !disabled
         return (
-          <span key={i} className={`wl-tile wl-tile--current ${i === current.length - 1 ? 'wl-tile--pop' : ''}`}>
+          <span
+            key={i}
+            role={clickable ? 'button' : undefined}
+            tabIndex={clickable ? 0 : undefined}
+            aria-label={clickable ? `Edit letter ${i + 1}: ${ch.toUpperCase()}` : undefined}
+            onClick={clickable ? () => onFocusTile!(i) : undefined}
+            style={clickable ? { cursor: 'pointer' } : undefined}
+            className={`wl-tile wl-tile--current ${isFocused ? 'wl-tile--focus' : ''} ${i === current.length - 1 && (cursorAt == null || cursorAt === current.length) ? 'wl-tile--pop' : ''}`}
+          >
             {ch.toUpperCase()}
           </span>
         )

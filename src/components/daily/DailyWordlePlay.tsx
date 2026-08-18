@@ -70,6 +70,7 @@ const WORDLE_CSS = `
   color: var(--text);
 }
 .wl-tile--current { border-color: var(--border-strong); }
+.wl-tile--focus { outline: 2px solid var(--primary); outline-offset: -2px; }
 .wl-tile--graded {
   border-color: transparent;
   background: var(--tile-bg);
@@ -161,6 +162,10 @@ export function DailyWordlePlay({ challengeId, puzzle, timer: maxSeconds, onSubm
   const [startAtMs] = useState(() => getOrCreateStartedAt(challengeId))
   const [guesses, setGuesses] = useState<string[]>(savedProgress?.guesses ?? [])
   const [current, setCurrent] = useState<string>(savedProgress?.current ?? '')
+  // Tile-level cursor: which slot the next typed letter fills. Defaults to the end of the typed
+  // string (classic Wordle append). Click a filled tile to jump the cursor there and overwrite
+  // that letter instead of erasing back to it.
+  const [cursorAt, setCursorAt] = useState<number>(savedProgress?.current?.length ?? 0)
   const [hintUsed, setHintUsed] = useState<boolean>(savedProgress?.hintUsed ?? false)
   const { confirm } = useConfirm()
   const revealHint = useCallback(async () => {
@@ -244,15 +249,42 @@ export function DailyWordlePlay({ challengeId, puzzle, timer: maxSeconds, onSubm
       const ch = key.toLowerCase()
       if (!/^[a-z]$/.test(ch)) return
       setMessage(null)
-      setCurrent((c) => (c.length >= wordLength ? c : c + ch))
+      setCurrent((c) => {
+        if (cursorAt < c.length) {
+          // Overwrite an already-typed letter at the cursor.
+          const next = c.slice(0, cursorAt) + ch + c.slice(cursorAt + 1)
+          setCursorAt(Math.min(cursorAt + 1, wordLength))
+          return next
+        }
+        if (c.length >= wordLength) return c
+        setCursorAt(c.length + 1)
+        return c + ch
+      })
     },
-    [wordLength]
+    [wordLength, cursorAt]
   )
 
   const backspace = useCallback(() => {
     setMessage(null)
-    setCurrent((c) => c.slice(0, -1))
-  }, [])
+    setCurrent((c) => {
+      // Backspace at cursor removes the letter just before it (standard text-input behaviour),
+      // so a click-then-backspace on a mid-row tile deletes that neighbour, not the last letter.
+      if (cursorAt > 0 && cursorAt <= c.length) {
+        const next = c.slice(0, cursorAt - 1) + c.slice(cursorAt)
+        setCursorAt(cursorAt - 1)
+        return next
+      }
+      return c
+    })
+  }, [cursorAt])
+
+  const focusTile = useCallback(
+    (i: number) => {
+      if (i < 0 || i > current.length || i >= wordLength) return
+      setCursorAt(i)
+    },
+    [current.length, wordLength]
+  )
 
   const submitGuess = useCallback(() => {
     if (gameOver || submitted || submitRef.current) return
@@ -326,8 +358,20 @@ export function DailyWordlePlay({ challengeId, puzzle, timer: maxSeconds, onSubm
     >
       {Array.from({ length: wordLength }).map((_, i) => {
         const ch = current[i] ?? ''
+        const isFocused = cursorAt === i
+        // Only filled tiles are clickable — clicking an empty tile past your progress makes no
+        // sense (there's nothing there to edit), and would let you type into a gap.
+        const clickable = i < current.length
         return (
-          <span key={i} className={`wl-tile wl-tile--current ${i === current.length - 1 ? 'wl-tile--pop' : ''}`}>
+          <span
+            key={i}
+            role={clickable ? 'button' : undefined}
+            tabIndex={clickable ? 0 : undefined}
+            aria-label={clickable ? `Edit letter ${i + 1}: ${ch.toUpperCase()}` : undefined}
+            onClick={clickable ? () => focusTile(i) : undefined}
+            className={`wl-tile wl-tile--current ${isFocused ? 'wl-tile--focus' : ''} ${i === current.length - 1 && cursorAt === current.length ? 'wl-tile--pop' : ''}`}
+            style={clickable ? { cursor: 'pointer' } : undefined}
+          >
             {ch.toUpperCase()}
           </span>
         )

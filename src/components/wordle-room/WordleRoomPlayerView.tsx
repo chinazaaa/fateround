@@ -93,6 +93,9 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
   const [hintText, setHintText] = useState<string | null>(null)
   const [guesses, setGuesses] = useState<WordleRoomGradedGuess[]>([])
   const [current, setCurrent] = useState('')
+  // Tile-level cursor — click a filled tile in the current row to jump the cursor there and
+  // overwrite that letter, instead of backspacing letters just to change one in the middle.
+  const [cursorAt, setCursorAt] = useState(0)
   const [revealWord, setRevealWord] = useState('')
   const [message, setMessage] = useState<string | null>(null)
   const [shake, setShake] = useState(false)
@@ -174,6 +177,7 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
       setHintText(data.hint ?? null)
       setGuesses((data.guesses ?? []).map((g) => ({ word: g.guess, states: g.state })))
       setCurrent('')
+      setCursorAt(0)
       setRevealWord('')
     }
     if (data.status === 'finished') void load()
@@ -425,15 +429,39 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
       const ch = key.toLowerCase()
       if (!/^[a-z]$/.test(ch)) return
       setMessage(null)
-      setCurrent((c) => (c.length >= wordLength ? c : c + ch))
+      setCurrent((c) => {
+        if (cursorAt < c.length) {
+          const next = c.slice(0, cursorAt) + ch + c.slice(cursorAt + 1)
+          setCursorAt(Math.min(cursorAt + 1, wordLength))
+          return next
+        }
+        if (c.length >= wordLength) return c
+        setCursorAt(c.length + 1)
+        return c + ch
+      })
     },
-    [wordLength]
+    [wordLength, cursorAt]
   )
 
   const backspace = useCallback(() => {
     setMessage(null)
-    setCurrent((c) => c.slice(0, -1))
-  }, [])
+    setCurrent((c) => {
+      if (cursorAt > 0 && cursorAt <= c.length) {
+        const next = c.slice(0, cursorAt - 1) + c.slice(cursorAt)
+        setCursorAt(cursorAt - 1)
+        return next
+      }
+      return c
+    })
+  }, [cursorAt])
+
+  const focusTile = useCallback(
+    (i: number) => {
+      if (i < 0 || i > current.length || i >= wordLength) return
+      setCursorAt(i)
+    },
+    [current.length, wordLength]
+  )
 
   const submitGuess = useCallback(() => {
     if (!currentWord || !myResumeToken || timeUp || isViewer || myFinished) return
@@ -460,6 +488,7 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
 
     setGuesses((g) => [...g, localRow])
     setCurrent('')
+    setCursorAt(0)
     setMessage(null)
     submitLockRef.current = true
 
@@ -747,6 +776,8 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
             word={currentWord}
             guesses={guesses}
             current={current}
+            cursorAt={cursorAt}
+            onFocusTile={focusTile}
             revealWord={revealWord}
             maxAttempts={maxAttempts}
             disabled={boardDisabled}
@@ -792,7 +823,10 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
                     {isMe ? ' (you)' : ''}
                   </span>
                   <span className="font-bold tabular-nums text-muted">
-                    {row.words_solved} · {row.finished ? 'Done' : `word ${row.word_index + 1}`}
+                    {row.total_points} pts · {row.words_solved} solved
+                    {row.hints_used_count > 0 ? ` · ${row.hints_used_count} hint${row.hints_used_count > 1 ? 's' : ''}` : ''}
+                    {' · '}
+                    {row.finished ? 'Done' : `word ${row.word_index + 1}`}
                   </span>
                 </div>
               )
