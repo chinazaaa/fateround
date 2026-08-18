@@ -98,6 +98,10 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
   const [roundId, setRoundId] = useState<string | null>(null)
   const submitLockRef = useRef(false)
   const advanceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Absolute deadline (ms since epoch) after which the scheduled advance should have
+  // fired. useGameTableSync consults this to skip fetchStatus while the reveal
+  // ("Correct!" / "the word was …") should still be visible.
+  const advanceDeadlineRef = useRef<number>(0)
 
   const me = bootstrap.myPlayerId ? bootstrap.players.find((p) => p.id === bootstrap.myPlayerId) : undefined
   const isViewer = !!(bootstrap.game && me && playerIsViewer(me, bootstrap.game))
@@ -106,9 +110,10 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
     if (!bootstrap.myResumeToken || !bootstrap.game) return
     try {
       const data = await postWordleRoomStatus(bootstrap.code, bootstrap.myResumeToken)
-      // Apply completion state BEFORE the currentWord check so a finished sequence (no
-      // currentWord in the response) locks input immediately, matching the web fix.
-      if (data.finished === true) setMyFinished(true)
+      // Only lock the board on an unambiguous per-player completion signal — `finished:true`
+      // alone can also mean "game not active yet" or "solutions row missing", neither of
+      // which is a real completion. sequenceComplete is only true when progress.finished is.
+      if (data.sequenceComplete === true) setMyFinished(true)
       if (data.currentWord) {
         setCurrentWord(data.currentWord)
         setWordLength(data.wordLength ?? data.currentWord.length)
@@ -117,7 +122,7 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
         setWordCount(data.word_count ?? 5)
         setWordsSolved(data.words_solved ?? 0)
         setCategoryLabel(data.categoryLabel ?? 'Wordle')
-        setMyFinished(data.finished === true)
+        setMyFinished(data.sequenceComplete === true)
         setHintAvailable(data.hintAvailable === true)
         setHintUsed(data.hintUsed === true)
         setHintText(data.hint ?? null)
@@ -142,7 +147,9 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
   const scheduleAdvance = useCallback(
     (delayMs: number) => {
       if (advanceTimerRef.current) clearTimeout(advanceTimerRef.current)
+      advanceDeadlineRef.current = Date.now() + delayMs
       advanceTimerRef.current = setTimeout(() => {
+        advanceDeadlineRef.current = 0
         void fetchStatus()
       }, delayMs)
     },
@@ -194,13 +201,24 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
     void fetchStatus()
   }, [bootstrap.myResumeToken, bootstrap.game, fetchStatus])
 
-  // Realtime standings + status re-sync on any progress change.
+  // Realtime standings + status re-sync on any progress change. Standings refresh
+  // immediately; the status re-fetch is deferred until any pending reveal delay has
+  // elapsed so a completed guess's own progress-row update doesn't race the
+  // scheduled advance and blow away the "the word was …" banner early.
   useGameTableSync(
     gameCode,
     ['players', { table: 'games', column: 'id' }, 'wordle_room_progress'],
     () => {
       void loadProgress()
-      void fetchStatus()
+      const now = Date.now()
+      if (advanceDeadlineRef.current > now) {
+        const wait = advanceDeadlineRef.current - now
+        setTimeout(() => {
+          if (advanceDeadlineRef.current <= Date.now()) void fetchStatus()
+        }, wait + 10)
+      } else {
+        void fetchStatus()
+      }
     },
     !!bootstrap.game && !!roundId
   )

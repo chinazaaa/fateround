@@ -54,6 +54,7 @@ interface WordleRoomStatus {
   total_guesses?: number
   categoryLabel?: string
   finished?: boolean
+  sequenceComplete?: boolean
   status?: string
   guesses?: { guess: string; state: ('correct' | 'present' | 'absent')[] }[]
   hintAvailable?: boolean
@@ -103,6 +104,10 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null)
   const submitLockRef = useRef(false)
   const advanceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Absolute deadline (ms since epoch) after which the scheduled advance should have
+  // fired. Realtime subscriptions consult this to skip fetchStatus while the reveal
+  // ("Correct!" / "the word was …") should still be visible.
+  const advanceDeadlineRef = useRef<number>(0)
 
   function showToast(msg: string, ok: boolean) {
     setToast({ msg, ok })
@@ -162,9 +167,10 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
     })
     if (!res.ok) return
     const data = (await res.json()) as WordleRoomStatus
-    // Mark completion up front so input locks even if we're keeping the last word visible
-    // (boardDisabled includes myFinished, so no need to wipe currentWord to prevent input).
-    if (data.finished === true) setMyFinished(true)
+    // Only lock the board on an unambiguous per-player completion signal — `finished:true`
+    // alone can also mean "game not active yet" or "solutions row missing", neither of
+    // which is a real completion. sequenceComplete is only true when progress.finished is.
+    if (data.sequenceComplete === true) setMyFinished(true)
     if (data.currentWord) {
       setCurrentWord(data.currentWord)
       setWordLength(data.wordLength ?? data.currentWord.length)
@@ -174,7 +180,7 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
       setWordsSolved(data.words_solved ?? 0)
       setTotalGuesses(data.total_guesses ?? 0)
       setCategoryLabel(data.categoryLabel ?? 'General English')
-      setMyFinished(data.finished === true)
+      setMyFinished(data.sequenceComplete === true)
       setHintAvailable(data.hintAvailable === true)
       setHintUsed(data.hintUsed === true)
       setHintText(data.hint ?? null)
@@ -225,7 +231,9 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
   const scheduleAdvance = useCallback(
     (delayMs: number) => {
       if (advanceTimerRef.current) clearTimeout(advanceTimerRef.current)
+      advanceDeadlineRef.current = Date.now() + delayMs
       advanceTimerRef.current = setTimeout(() => {
+        advanceDeadlineRef.current = 0
         void fetchStatus()
       }, delayMs)
     },
@@ -302,7 +310,18 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
           void loadProgress()
           const row = payload.new as Partial<WordleRoomProgressRow>
           if (row && row.player_id === myPlayerId && game?.status === 'active') {
-            void fetchStatus()
+            // Defer the status refetch until any pending reveal delay has elapsed,
+            // otherwise a completed guess's own progress row update would race the
+            // scheduled advance and blow away the "the word was …" banner early.
+            const now = Date.now()
+            if (advanceDeadlineRef.current > now) {
+              const wait = advanceDeadlineRef.current - now
+              window.setTimeout(() => {
+                if (advanceDeadlineRef.current <= Date.now()) void fetchStatus()
+              }, wait + 10)
+            } else {
+              void fetchStatus()
+            }
           }
         }
       )
