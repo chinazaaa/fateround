@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
-import { ActivityIndicator, Pressable, Share, StyleSheet, Text, View } from 'react-native'
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native'
 import type { Game, GameType } from '@fateround/shared'
 import { SegmentedControl } from '@/components/create/SegmentedControl'
 import { fetchLibraryPack, fetchLibraryPacks, type LibraryPackSummary } from '@/lib/api'
-import { pickCsvText } from '@/lib/file-import'
+import { pickCsvText, shareTextAsFile } from '@/lib/file-import'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
 
@@ -321,10 +321,8 @@ export function WordGroupingLobbySection({ value, onChange }: Props) {
       {value.source === 'custom' ? (
         <View style={styles.field}>
           <Text style={styles.label}>Upload puzzles</Text>
-          <Pressable
-            onPress={() => void Share.share({ message: WORD_GROUPING_SAMPLE_CSV, title: 'word-grouping-sample.csv' })}
-          >
-            <Text style={styles.sampleLink}>View / share sample CSV</Text>
+          <Pressable onPress={() => void shareTextAsFile('word-grouping-sample.csv', WORD_GROUPING_SAMPLE_CSV)}>
+            <Text style={styles.sampleLink}>Download sample CSV</Text>
           </Pressable>
           <View style={styles.sampleBox}>
             <Text style={styles.sampleText} numberOfLines={5}>

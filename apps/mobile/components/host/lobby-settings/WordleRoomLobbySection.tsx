@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ActivityIndicator, Pressable, Share, StyleSheet, Text, TextInput, View } from 'react-native'
+import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
 import type { GameType } from '@fateround/shared'
 import {
   WORDLE_ROOM_TIMER_OPTIONS,
@@ -12,7 +12,7 @@ import {
 import { SegmentedControl } from '@/components/create/SegmentedControl'
 import { TimerPicker } from '@/components/create/TimerPicker'
 import { fetchLibraryPack, fetchLibraryPacks, type LibraryPackSummary } from '@/lib/api'
-import { pickCsvText, parsePuzzleCsv } from '@/lib/file-import'
+import { pickCsvText, parsePuzzleCsv, shareTextAsFile } from '@/lib/file-import'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
 
@@ -218,8 +218,8 @@ export function WordleRoomLobbySection({ value, onChange }: Props) {
       {value.source === 'custom' ? (
         <View style={styles.field}>
           <Text style={styles.label}>Upload word list</Text>
-          <Pressable onPress={() => void Share.share({ message: WORDLE_ROOM_SAMPLE_CSV, title: 'wordle-sample.csv' })}>
-            <Text style={styles.sampleLink}>View / share sample CSV</Text>
+          <Pressable onPress={() => void shareTextAsFile('wordle-sample.csv', WORDLE_ROOM_SAMPLE_CSV)}>
+            <Text style={styles.sampleLink}>Download sample CSV</Text>
           </Pressable>
           <View style={styles.sampleBox}>
             <Text style={styles.sampleText} numberOfLines={4}>
