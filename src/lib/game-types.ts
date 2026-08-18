@@ -1461,7 +1461,7 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
       accent: '#16a34a',
       accentSoft: 'rgba(22, 163, 74, 0.15)',
       emoji: '🟩',
-      players: '2–20 players',
+      players: '1–20 players',
       vibe: 'Head-to-head Wordle race',
       featured: true,
     },
