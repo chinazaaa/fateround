@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties } from 're
 import { useDailyChallengeTimer } from '@/hooks/useDailyChallengeTimer'
 import { getOrCreateStartedAt, loadDailyAnswers, saveDailyAnswers } from '@/lib/daily-progress'
 import { gradeWordleGuess, wordleKeyBestStates, type WordleLetterState } from '@/lib/daily-wordle'
+import { useConfirm } from '@/components/ui/ConfirmDialog'
 
 interface DailyWordlePlayProps {
   challengeId: string
@@ -161,6 +162,15 @@ export function DailyWordlePlay({ challengeId, puzzle, timer: maxSeconds, onSubm
   const [guesses, setGuesses] = useState<string[]>(savedProgress?.guesses ?? [])
   const [current, setCurrent] = useState<string>(savedProgress?.current ?? '')
   const [hintUsed, setHintUsed] = useState<boolean>(savedProgress?.hintUsed ?? false)
+  const { confirm } = useConfirm()
+  const revealHint = useCallback(async () => {
+    const ok = await confirm({
+      title: 'Reveal hint?',
+      message: 'This costs 300 points off your final score. Are you sure?',
+      confirmLabel: 'Reveal (−300)',
+    })
+    if (ok) setHintUsed(true)
+  }, [confirm])
   const [message, setMessage] = useState<string | null>(null)
   const [announcement, setAnnouncement] = useState('')
   const [shake, setShake] = useState(false)
@@ -394,7 +404,7 @@ export function DailyWordlePlay({ challengeId, puzzle, timer: maxSeconds, onSubm
             <div className="text-center">
               <button
                 type="button"
-                onClick={() => setHintUsed(true)}
+                onClick={() => void revealHint()}
                 disabled={submitted}
                 className="fr-btn fr-btn--secondary fr-btn--sm"
               >

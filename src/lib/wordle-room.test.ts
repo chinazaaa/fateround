@@ -28,7 +28,7 @@ describe('wordle room sequence', () => {
   })
 
   it('does not just take the first N bank words (it really shuffles)', () => {
-    const seq = buildWordleRoomSequence(1, 'general_english', 5)
+    const seq = buildWordleRoomSequence(1, 'general_english', 5).map((e) => e.word)
     const naive = WORDLE_GENERAL_ENGLISH.slice(0, 5).map((w) => w.toLowerCase())
     expect(seq).not.toEqual(naive)
   })
@@ -36,9 +36,10 @@ describe('wordle room sequence', () => {
   it('returns the requested count of unique, normalized lowercase words', () => {
     for (const count of WORDLE_ROOM_WORD_COUNT_OPTIONS) {
       const seq = buildWordleRoomSequence(7, 'general_english', count)
-      expect(seq).toHaveLength(count)
-      expect(new Set(seq).size).toBe(count)
-      for (const w of seq) {
+      const words = seq.map((e) => e.word)
+      expect(words).toHaveLength(count)
+      expect(new Set(words).size).toBe(count)
+      for (const w of words) {
         expect(w).toMatch(/^[a-z]{5}$/)
       }
     }
@@ -46,9 +47,10 @@ describe('wordle room sequence', () => {
 
   it('supports the naija slang bank (3–7 letters)', () => {
     const seq = buildWordleRoomSequence(99, 'naija_slang', 20)
-    expect(seq).toHaveLength(20)
-    expect(new Set(seq).size).toBe(20)
-    for (const w of seq) {
+    const words = seq.map((e) => e.word)
+    expect(words).toHaveLength(20)
+    expect(new Set(words).size).toBe(20)
+    for (const w of words) {
       expect(w).toMatch(/^[a-z]{3,7}$/)
     }
   })

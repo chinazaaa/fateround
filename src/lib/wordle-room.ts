@@ -163,11 +163,16 @@ function xorshift(seed: number) {
  * Returns normalized lowercase words. The sequence is stored server-only (never in the
  * anon-readable round metadata).
  */
+export interface WordleRoomSequenceEntry {
+  word: string
+  hint: string
+}
+
 export function buildWordleRoomSequence(
   seed: number,
   category: WordleCategoryId,
   count: WordleRoomWordCount
-): string[] {
+): WordleRoomSequenceEntry[] {
   const cat = WORDLE_ROOM_CATEGORIES[category] ?? WORDLE_ROOM_CATEGORIES.general_english
   const rng = xorshift(seed)
   const indices = cat.entries.map((_, i) => i)
@@ -175,7 +180,32 @@ export function buildWordleRoomSequence(
     const j = Math.floor(rng() * (i + 1))
     ;[indices[i], indices[j]] = [indices[j], indices[i]]
   }
-  return indices.slice(0, count).map((idx) => normalizeWordleWord(cat.entries[idx]!.word))
+  return indices.slice(0, count).map((idx) => {
+    const e = cat.entries[idx]!
+    return { word: normalizeWordleWord(e.word), hint: e.hint }
+  })
+}
+
+/**
+ * Tolerate both storage shapes in wordle_room_solutions.words: the legacy `string[]`
+ * (old rounds) and the current `{word, hint}[]` (new rounds after the sequence enrichment).
+ * Returns { words, hints } aligned by index, hints defaulting to '' when unavailable.
+ */
+export function parseWordleRoomSolutionWords(raw: unknown): { words: string[]; hints: string[] } {
+  const words: string[] = []
+  const hints: string[] = []
+  if (!Array.isArray(raw)) return { words, hints }
+  for (const item of raw) {
+    if (typeof item === 'string') {
+      words.push(normalizeWordleWord(item))
+      hints.push('')
+    } else if (item && typeof item === 'object') {
+      const rec = item as { word?: unknown; hint?: unknown }
+      words.push(normalizeWordleWord(typeof rec.word === 'string' ? rec.word : ''))
+      hints.push(typeof rec.hint === 'string' ? rec.hint : '')
+    }
+  }
+  return { words, hints }
 }
 
 export function parseWordleRoomMetadata(raw: unknown): WordleRoomMetadata | null {
@@ -306,11 +336,12 @@ export function evaluateWordleRoomGuess(
   currentWordGuesses: number,
   isCorrect: boolean,
   maxAttempts: number,
-  wordCount: number
+  wordCount: number,
+  hintUsed: boolean = false
 ): WordleRoomWordResult {
   const guessesUsed = currentWordGuesses + 1
   const solved = isCorrect
-  const pointsAwarded = wordleRoomWordScore(guessesUsed, maxAttempts, solved)
+  const pointsAwarded = wordleRoomWordScore(guessesUsed, maxAttempts, solved, hintUsed)
   const wordDone = solved || guessesUsed >= maxAttempts
   const nextWordIndex = wordDone ? wordIndex + 1 : wordIndex
   const finished = wordDone && nextWordIndex >= wordCount
@@ -327,11 +358,20 @@ export function evaluateWordleRoomGuess(
 
 // ── Scoring (spec §7 — per-word, no streaks) ─────────────────────────────────
 
-export function wordleRoomWordScore(guessesUsed: number, maxAttempts: number, won: boolean): number {
+/** Deducted from that word's earned score when the player reveals its hint mid-play. */
+export const WORDLE_ROOM_HINT_COST = 300
+
+export function wordleRoomWordScore(
+  guessesUsed: number,
+  maxAttempts: number,
+  won: boolean,
+  hintUsed: boolean = false
+): number {
   if (!won) return 0
   const base = wordleBasePoints(guessesUsed, maxAttempts)
   const perfect = guessesUsed === 1 ? 200 : 0
-  return Math.max(0, base + perfect)
+  const hintCost = hintUsed ? WORDLE_ROOM_HINT_COST : 0
+  return Math.max(0, base + perfect - hintCost)
 }
 
 /** Total game score = sum of per-word scores across the whole sequence. */

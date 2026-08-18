@@ -41,6 +41,7 @@ import { PLAYER_SELECT } from '@/lib/supabase-selects'
 import { allowLatePlayers, playerIsViewer, preJoinScreen } from '@/lib/viewers'
 import { clearPlayerSession } from '@/lib/utils'
 import { useToast } from '@/components/ui/Toast'
+import { useConfirm } from '@/components/ui/ConfirmDialog'
 import type { Game } from '@/types'
 
 interface WordleRoomStatus {
@@ -55,6 +56,9 @@ interface WordleRoomStatus {
   finished?: boolean
   status?: string
   guesses?: { guess: string; state: ('correct' | 'present' | 'absent')[] }[]
+  hintAvailable?: boolean
+  hintUsed?: boolean
+  hint?: string | null
 }
 
 type Screen =
@@ -70,6 +74,7 @@ type Screen =
 
 export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
   const { error: toastError } = useToast()
+  const { confirm } = useConfirm()
   const cfg = gameTypeConfig('wordle_room')
   const { displayName: roomDisplayName, joinExtras, resolving: resolvingRoomMember } = useRoomMemberJoin(gameCode)
 
@@ -83,6 +88,9 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
   const [totalGuesses, setTotalGuesses] = useState(0)
   const [categoryLabel, setCategoryLabel] = useState('General English')
   const [myFinished, setMyFinished] = useState(false)
+  const [hintAvailable, setHintAvailable] = useState(false)
+  const [hintUsed, setHintUsed] = useState(false)
+  const [hintText, setHintText] = useState<string | null>(null)
   const [guesses, setGuesses] = useState<WordleRoomGradedGuess[]>([])
   const [current, setCurrent] = useState('')
   const [revealWord, setRevealWord] = useState('')
@@ -161,12 +169,42 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
       setTotalGuesses(data.total_guesses ?? 0)
       setCategoryLabel(data.categoryLabel ?? 'General English')
       setMyFinished(data.finished === true)
+      setHintAvailable(data.hintAvailable === true)
+      setHintUsed(data.hintUsed === true)
+      setHintText(data.hint ?? null)
       setGuesses((data.guesses ?? []).map((g) => ({ word: g.guess, states: g.state })))
       setCurrent('')
       setRevealWord('')
     }
     if (data.status === 'finished') void load()
   }, [gameCode, myResumeToken, load])
+
+  const revealHint = useCallback(async () => {
+    if (!myResumeToken || myFinished) return
+    if (!hintAvailable || hintUsed) return
+    const ok = await confirm({
+      title: 'Reveal hint?',
+      message: 'This costs 300 points off this word’s score. Are you sure?',
+      confirmLabel: 'Reveal (−300)',
+    })
+    if (!ok) return
+    try {
+      const res = await fetch('/api/wordle-room/reveal-hint', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gameId: gameCode, resumeToken: myResumeToken, wordIndex }),
+      })
+      const data = (await res.json().catch(() => ({}))) as { hint?: string; error?: string }
+      if (!res.ok) {
+        showToast(data.error ?? 'Could not reveal hint', false)
+        return
+      }
+      setHintUsed(true)
+      setHintText(data.hint ?? null)
+    } catch {
+      showToast('Network error', false)
+    }
+  }, [confirm, gameCode, myResumeToken, myFinished, hintAvailable, hintUsed, wordIndex])
 
   // Advance to the next word after the solve/loss reveal settles.
   const scheduleAdvance = useCallback(
@@ -718,6 +756,26 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
             onBackspace={backspace}
             onSubmit={submitGuess}
           />
+        )}
+
+        {/* Per-word hint purchase — only surfaces when the current word actually has a hint. */}
+        {currentWord && !myFinished && hintAvailable && (
+          hintUsed && hintText ? (
+            <p className="text-center text-sm text-muted">
+              Hint: {hintText} <span className="text-faint">(−300 pts)</span>
+            </p>
+          ) : !hintUsed ? (
+            <div className="text-center">
+              <button
+                type="button"
+                onClick={() => void revealHint()}
+                disabled={boardDisabled}
+                className="fr-btn fr-btn--secondary fr-btn--sm"
+              >
+                Reveal hint (−300 pts)
+              </button>
+            </div>
+          ) : null
         )}
 
         <div className="glass-card p-3 space-y-2">
