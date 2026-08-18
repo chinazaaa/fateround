@@ -101,12 +101,13 @@ export function useDailyChallengeSession(gameType: DailyChallengeGameType): UseD
         }
       } catch (err) {
         if (!cancelled) {
-          // Surface the actual message so device-side debugging isn't blind. Falling back
-          // to the generic string kept the user staring at "Please try again later." with
-          // no clue what failed — a TypeError from a bad JSON parse or a network reject
-          // reads very differently and is the whole diagnostic.
-          const message = err instanceof Error ? err.message : String(err)
-          setError(`Failed to load daily challenge: ${message}`)
+          // User-facing message stays clean; the actual error goes to the JS console so
+          // developer tools / Sentry / bug reports can surface it. Don't leak raw errors
+          // into the UI — a stack trace or "TypeError: Network request failed" is scary
+          // and unhelpful for the person just trying to play today's puzzle.
+          // eslint-disable-next-line no-console
+          console.error('[daily-challenge] load failed', { gameType, err })
+          setError("Failed to load today's challenge")
           setPhase('error')
         }
       }
