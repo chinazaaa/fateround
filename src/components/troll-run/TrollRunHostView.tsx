@@ -12,7 +12,7 @@ import {
 import { useGameTableSync } from '@/hooks/useGameTableSync'
 import { useToast } from '@/components/ui/Toast'
 import type { Game, Player, TrollRunEvent, TrollRunPlayerState, TrollRunSession } from '@/types'
-import { WORLD_1_LEVELS } from '@/lib/troll-run-engine'
+import { getWorldLevels } from '@/lib/troll-run-engine'
 import { TrollRunScoreboard } from './TrollRunScoreboard'
 import { TrollRunLiveFeed } from './TrollRunLiveFeed'
 import { HostLobby } from '@/components/host/HostLobby'
@@ -146,6 +146,10 @@ export function TrollRunHostView({ gameCode, hostToken }: TrollRunHostViewProps)
   const currentStates = useMemo(() => {
     return playerStates.filter((s) => s.current_round === (session?.current_round ?? 1))
   }, [playerStates, session?.current_round])
+
+  const worldLevels = useMemo(() => {
+    return getWorldLevels(session?.current_world)
+  }, [session?.current_world])
 
   const handleStartGame = async () => {
     setAdvancing(true)
@@ -287,7 +291,7 @@ export function TrollRunHostView({ gameCode, hostToken }: TrollRunHostViewProps)
       <div className="my-6 space-y-3 bg-slate-900/60 border border-slate-800/80 rounded-2xl p-5 shadow-2xl">
         <div className="flex items-center justify-between text-xs font-bold text-slate-400 pb-2 border-b border-slate-800">
           <span>RUNNER</span>
-          <span>PROGRESS (LEVEL 1 → 10)</span>
+          <span>PROGRESS (LEVEL 1 → {worldLevels.length})</span>
           <span>DEATHS</span>
         </div>
 
@@ -295,7 +299,7 @@ export function TrollRunHostView({ gameCode, hostToken }: TrollRunHostViewProps)
           {activePlayers.map((player) => {
             const state = currentStates.find((s) => s.player_id === player.id)
             const levelIdx = state?.current_level_index ?? 0
-            const progressPct = Math.min(100, Math.round((levelIdx / WORLD_1_LEVELS.length) * 100))
+            const progressPct = Math.min(100, Math.round((levelIdx / worldLevels.length) * 100))
             const isFinished = state?.round_finished
 
             return (
@@ -310,7 +314,7 @@ export function TrollRunHostView({ gameCode, hostToken }: TrollRunHostViewProps)
                     )}
                   </span>
                   <span className="font-mono text-slate-400 text-[11px]">
-                    Level {levelIdx + 1} / {WORLD_1_LEVELS.length}
+                    Level {levelIdx + 1} / {worldLevels.length}
                   </span>
                   <span className="font-mono font-bold text-rose-400">💀 {state?.deaths ?? 0}</span>
                 </div>

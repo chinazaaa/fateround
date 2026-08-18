@@ -9,7 +9,7 @@ import { useToast } from '@/components/ui/Toast'
 import { supabase } from '@/lib/supabase'
 import { TROLL_RUN_EVENT_SELECT, TROLL_RUN_PLAYER_STATE_SELECT, TROLL_RUN_SESSION_SELECT } from '@/lib/supabase-selects'
 import type { Game, TrollRunEvent, TrollRunPlayerState, TrollRunSession } from '@/types'
-import { WORLD_1_LEVELS } from '@/lib/troll-run-engine'
+import { getWorldLevels } from '@/lib/troll-run-engine'
 import { TrollRunCanvas } from './TrollRunCanvas'
 import { TrollRunLiveFeed } from './TrollRunLiveFeed'
 import { TrollRunScoreboard } from './TrollRunScoreboard'
@@ -42,7 +42,7 @@ export function TrollRunPlayerView({ gameCode }: { gameCode: string }) {
   const [events, setEvents] = useState<TrollRunEvent[]>([])
   const [countdownNum, setCountdownNum] = useState<number | null>(null)
 
-  const { displayName: roomDisplayName, joinExtras, resolving: resolvingRoomMember } = useRoomMemberJoin(gameCode)
+  const { joinExtras } = useRoomMemberJoin(gameCode)
 
   const loadGameState = useCallback(async (): Promise<{ state: null; ok: boolean }> => {
     const [sessRes, statesRes, eventsRes] = await Promise.all([
@@ -155,9 +155,20 @@ export function TrollRunPlayerView({ gameCode }: { gameCode: string }) {
     return playerStates.find((s) => s.player_id === myPlayerId && s.current_round === (session?.current_round ?? 1))
   }, [playerStates, myPlayerId, session?.current_round])
 
+  const worldLevels = useMemo(() => {
+    return getWorldLevels(session?.current_world)
+  }, [session?.current_world])
+
   // Callbacks from canvas
   const handleDeath = useCallback(
     async (levelId: string) => {
+      if (typeof window !== 'undefined' && 'vibrate' in navigator) {
+        try {
+          navigator.vibrate([40, 60, 40])
+        } catch {
+          // ignore vibrate error
+        }
+      }
       if (!myPlayerId) return
       try {
         await fetch('/api/troll-run/report-death', {
@@ -178,6 +189,13 @@ export function TrollRunPlayerView({ gameCode }: { gameCode: string }) {
 
   const handleLevelClear = useCallback(
     async (levelId: string, timeMs: number) => {
+      if (typeof window !== 'undefined' && 'vibrate' in navigator) {
+        try {
+          navigator.vibrate([50, 50, 100])
+        } catch {
+          // ignore vibrate error
+        }
+      }
       if (!myPlayerId || !myState) return
       try {
         await fetch('/api/troll-run/report-clear', {
@@ -200,6 +218,13 @@ export function TrollRunPlayerView({ gameCode }: { gameCode: string }) {
 
   const handleAllLevelsCleared = useCallback(
     async (totalTimeMs: number, totalDeaths: number) => {
+      if (typeof window !== 'undefined' && 'vibrate' in navigator) {
+        try {
+          navigator.vibrate([100, 50, 100, 50, 200])
+        } catch {
+          // ignore vibrate error
+        }
+      }
       if (!myPlayerId) return
       try {
         await fetch('/api/troll-run/report-round-finish', {
@@ -312,7 +337,7 @@ export function TrollRunPlayerView({ gameCode }: { gameCode: string }) {
           <div>
             <span className="text-slate-400">Level: </span>
             <span className="font-mono font-bold text-white">
-              {(myState?.current_level_index ?? 0) + 1} / {WORLD_1_LEVELS.length}
+              {(myState?.current_level_index ?? 0) + 1} / {worldLevels.length}
             </span>
           </div>
           <div>
@@ -338,7 +363,7 @@ export function TrollRunPlayerView({ gameCode }: { gameCode: string }) {
             <span className="text-5xl">🎉</span>
             <h3 className="text-2xl font-black text-white">Finished #{myState.finish_position ?? 1}!</h3>
             <p className="text-xs text-slate-300">
-              You cleared all {WORLD_1_LEVELS.length} levels with{' '}
+              You cleared all {worldLevels.length} levels with{' '}
               <strong className="text-rose-400">{myState.deaths} deaths</strong>!
             </p>
             <div className="text-xs font-mono text-amber-400 bg-amber-500/10 px-3 py-1.5 rounded-lg border border-amber-500/30">
@@ -351,7 +376,7 @@ export function TrollRunPlayerView({ gameCode }: { gameCode: string }) {
         )}
 
         <TrollRunCanvas
-          levels={WORLD_1_LEVELS}
+          levels={worldLevels}
           initialLevelIndex={myState?.current_level_index ?? 0}
           onDeath={handleDeath}
           onLevelClear={handleLevelClear}

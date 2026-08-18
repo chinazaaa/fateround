@@ -32,12 +32,20 @@ const TIME_LIMIT_OPTIONS = [
   { value: 180, label: '3 mins' },
 ]
 
+const WORLD_OPTIONS = [
+  { value: 'pits', label: '🕳️ W1: Pits' },
+  { value: 'doors', label: '🚪 W2: Doors' },
+  { value: 'gravity', label: '🔄 W3: Gravity' },
+  { value: 'gauntlet', label: '👑 W4: Gauntlet' },
+]
+
 export function HostTrollRunLobbyPanel({ gameCode, hostToken, game, onGameUpdate }: Props) {
   const { error: toastError } = useToast()
   const [limits, setLimits] = useState<GamePlayerLimitsMap | null>(null)
   const [maxPlayers, setMaxPlayers] = useState(TROLL_RUN_DEFAULT_MAX_PLAYERS)
   const [rounds, setRounds] = useState(game.troll_run_rounds ?? 5)
   const [timeLimit, setTimeLimit] = useState(game.troll_run_time_limit ?? 120)
+  const [world, setWorld] = useState(game.troll_run_world ?? 'pits')
   const [saveState, setSaveState] = useState<SaveState>('idle')
   const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -55,6 +63,7 @@ export function HostTrollRunLobbyPanel({ gameCode, hostToken, game, onGameUpdate
     setMaxPlayers(lobbyMaxPlayersFromGame('troll_run', game, limits))
     setRounds(game.troll_run_rounds ?? 5)
     setTimeLimit(game.troll_run_time_limit ?? 120)
+    setWorld(game.troll_run_world ?? 'pits')
   }, [game, limits])
 
   useEffect(() => {
@@ -67,14 +76,19 @@ export function HostTrollRunLobbyPanel({ gameCode, hostToken, game, onGameUpdate
   const minPlayers = limitCfg?.min ?? TROLL_RUN_MIN_PLAYERS
   const maxCap = limitCfg?.max ?? TROLL_RUN_MAX_PLAYERS
 
-  const markSaved = useCallback(() => {
+  const markSaved = () => {
     setSaveState('saved')
     if (savedTimerRef.current) clearTimeout(savedTimerRef.current)
     savedTimerRef.current = setTimeout(() => setSaveState('idle'), 2000)
-  }, [])
+  }
 
   const saveSettings = useCallback(
-    async (patch: { max_players?: number; troll_run_rounds?: number; troll_run_time_limit?: number }) => {
+    async (patch: {
+      max_players?: number
+      troll_run_rounds?: number
+      troll_run_time_limit?: number
+      troll_run_world?: string
+    }) => {
       setSaveState('saving')
       try {
         const res = await fetch(`/api/games/${gameCode}/lobby-settings`, {
@@ -101,13 +115,25 @@ export function HostTrollRunLobbyPanel({ gameCode, hostToken, game, onGameUpdate
         setSaveState('idle')
       }
     },
-    [gameCode, hostToken, game, onGameUpdate, markSaved, toastError]
+    [gameCode, hostToken, game, onGameUpdate, toastError]
   )
 
   const playerOpts = playerCountOptions(minPlayers, maxCap)
 
   return (
     <HostLobbySettingsSection title="Troll Run Settings" defaultOpen={true}>
+      {/* World Selector */}
+      <HostLobbySettingBlock title="World Theme">
+        <HostLobbyOptionChips<string>
+          options={WORLD_OPTIONS}
+          value={world}
+          onChange={(val) => {
+            setWorld(val)
+            void saveSettings({ troll_run_world: val })
+          }}
+        />
+      </HostLobbySettingBlock>
+
       {/* Max Players */}
       <HostLobbySettingBlock title="Player Limit">
         <HostLobbyOptionChips

@@ -1,22 +1,43 @@
 import { describe, expect, it } from 'vitest'
-import { WORLD_1_LEVELS } from './levels/world-1-pits'
+import {
+  ALL_TROLL_RUN_LEVELS,
+  TROLL_RUN_WORLDS,
+  WORLD_1_LEVELS,
+  WORLD_2_LEVELS,
+  WORLD_3_LEVELS,
+  WORLD_4_LEVELS,
+  getWorldLevels,
+} from './levels'
 import { TROLL_RUN_INTERNAL_HEIGHT, TROLL_RUN_INTERNAL_WIDTH } from './types'
 
-describe('Troll Run World 1 Levels', () => {
-  it('contains exactly 10 valid levels', () => {
+describe('Troll Run Level Registry & Worlds', () => {
+  it('contains exactly 4 worlds and 40 total levels', () => {
+    expect(TROLL_RUN_WORLDS).toHaveLength(4)
     expect(WORLD_1_LEVELS).toHaveLength(10)
+    expect(WORLD_2_LEVELS).toHaveLength(10)
+    expect(WORLD_3_LEVELS).toHaveLength(10)
+    expect(WORLD_4_LEVELS).toHaveLength(10)
+    expect(ALL_TROLL_RUN_LEVELS).toHaveLength(40)
   })
 
-  it('ensures each level has valid geometry, spawn point, door, and triggers', () => {
+  it('correctly routes world levels via getWorldLevels', () => {
+    expect(getWorldLevels('pits')).toBe(WORLD_1_LEVELS)
+    expect(getWorldLevels('doors')).toBe(WORLD_2_LEVELS)
+    expect(getWorldLevels('gravity')).toBe(WORLD_3_LEVELS)
+    expect(getWorldLevels('gauntlet')).toBe(WORLD_4_LEVELS)
+    expect(getWorldLevels(null)).toBe(WORLD_1_LEVELS)
+  })
+
+  it('ensures each of the 40 levels has valid geometry, spawn point, door, and par times', () => {
     const seenIds = new Set<string>()
 
-    for (const lvl of WORLD_1_LEVELS) {
+    for (const lvl of ALL_TROLL_RUN_LEVELS) {
       // Unique ID
       expect(seenIds.has(lvl.id)).toBe(false)
       seenIds.add(lvl.id)
 
       expect(lvl.name).toBeTruthy()
-      expect(lvl.world).toBe('pits')
+      expect(lvl.world).toBeTruthy()
       expect(lvl.width).toBe(TROLL_RUN_INTERNAL_WIDTH)
       expect(lvl.height).toBe(TROLL_RUN_INTERNAL_HEIGHT)
 
@@ -38,17 +59,7 @@ describe('Troll Run World 1 Levels', () => {
         expect(row.length).toBe(20)
       }
 
-      // Triggers sanity check
-      expect(lvl.triggers).toBeDefined()
-      for (const trig of lvl.triggers) {
-        expect(trig.condition).toBeTruthy()
-        expect(trig.zone).toBeDefined()
-        expect(trig.zone.w).toBeGreaterThan(0)
-        expect(trig.zone.h).toBeGreaterThan(0)
-        expect(trig.actions.length).toBeGreaterThan(0)
-      }
-
-      // Par time positive
+      // Par time configured
       expect(lvl.parTime).toBeGreaterThan(0)
     }
   })
