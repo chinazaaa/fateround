@@ -541,13 +541,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ gam
     return NextResponse.json({ error: 'Challenge not found or expired' }, { status: 404 })
   }
 
-  // Check if already submitted
+  // Check if already submitted. `.maybeSingle()` avoids PostgREST's 406 log noise
+  // that `.single()` emits every time zero rows match — which is the common case on a
+  // fresh submission and was filling Supabase logs with spurious warnings.
   const { data: existing } = await admin
     .from('daily_scores')
     .select('normalized_score')
     .eq('challenge_id', challengeId)
     .eq('profile_id', profileId)
-    .single()
+    .maybeSingle()
 
   if (existing) {
     return NextResponse.json({ error: 'Already submitted', existingScore: existing.normalized_score }, { status: 409 })
@@ -646,13 +648,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ gam
     }
   }
 
-  // Upsert personal best (best-effort)
+  // Upsert personal best (best-effort). `.maybeSingle()` — first-ever play has no row,
+  // and `.single()` would log a spurious 406 on every first-time submission per game.
   const { data: currentBest } = await admin
     .from('personal_bests')
     .select('best_score, best_time, total_plays')
     .eq('profile_id', profileId)
     .eq('game_type', gameType)
-    .single()
+    .maybeSingle()
 
   if (!currentBest) {
     await admin.from('personal_bests').insert({
@@ -726,7 +729,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ gam
     .select('normalized_score, raw_points, items_solved, time_seconds, hints_used, submitted_at')
     .eq('challenge_id', challengeId)
     .eq('profile_id', profileId)
-    .single()
+    .maybeSingle()
   const rank = mine ? await computeDailyRank(admin, gameType, challengeId, mine) : 1
 
   // Match the leaderboard's row set — zero-score/zero-point rows are filtered off the board, so
@@ -739,13 +742,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ gam
     .eq('challenge_id', challengeId)
     .gt(totalCountColumn, 0)
 
-  // Fetch personal best for comparison
+  // Fetch personal best for comparison. `.maybeSingle()` — the row may have been created
+  // one call above, but a fresh player before that insert has no row and `.single()` logs
+  // a 406 there for no reason.
   const { data: personalBest } = await admin
     .from('personal_bests')
     .select('best_score, best_time, total_plays')
     .eq('profile_id', profileId)
     .eq('game_type', gameType)
-    .single()
+    .maybeSingle()
 
   const isNewBest = personalBest ? boardScore >= personalBest.best_score : true
 
