@@ -206,6 +206,16 @@ export const createGameSchema = z.object({
     .int()
     .refine((val: number) => [5, 10, 15, 20].includes(val))
     .optional(),
+  wordle_room_words: z
+    .array(
+      z.object({
+        word: z.string().min(3).max(8),
+        hint: z.string().max(200).optional(),
+      })
+    )
+    .max(2000)
+    .optional(),
+  library_pack_id: z.string().uuid().optional(),
   custom_slots: z
     .object({
       slots: z
@@ -462,6 +472,16 @@ export const boardGameLobbySettingsSchema = z.object({
     .int()
     .refine((val: number) => [5, 10, 15, 20].includes(val))
     .optional(),
+  wordle_room_words: z
+    .array(
+      z.object({
+        word: z.string().min(3).max(8),
+        hint: z.string().max(200).optional(),
+      })
+    )
+    .max(2000)
+    .optional(),
+  library_pack_id: z.string().uuid().optional(),
 })
 
 export type BoardGameLobbySettingsInput = z.infer<typeof boardGameLobbySettingsSchema>

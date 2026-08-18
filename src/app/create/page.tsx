@@ -579,6 +579,8 @@ function CreateGameInner() {
   const [customCrosswordEntries, setCustomCrosswordEntries] = useState<CrosswordEntry[]>([])
   const [customWordSearchWords, setCustomWordSearchWords] = useState<WordSearchEntry[]>([])
   const [customWordScrambleWords, setCustomWordScrambleWords] = useState<WordScrambleEntry[]>([])
+  // Multiplayer Wordle library pack picker — each entry is {word, hint?}, hint optional.
+  const [customWordleRoomWords, setCustomWordleRoomWords] = useState<{ word: string; hint?: string }[]>([])
   const [puzzleUploadError, setPuzzleUploadError] = useState<string | null>(null)
   const [puzzleUploadSummary, setPuzzleUploadSummary] = useState<string | null>(null)
   const [selectedPackId, setSelectedPackId] = useState<string | null>(null)
@@ -652,6 +654,16 @@ function CreateGameInner() {
       else if (isCrosswordGame(settings.game_type)) setCustomCrosswordEntries(parseStoredCrosswordEntries(qs))
       else if (isWordSearchGame(settings.game_type)) setCustomWordSearchWords(parseStoredWordSearchEntries(qs))
       else if (isWordScrambleGame(settings.game_type)) setCustomWordScrambleWords(parseStoredWordScrambleEntries(qs))
+      else if (isWordleRoomGame(settings.game_type)) {
+        // Wordle themes reuse the word-scramble entry shape ({word, hint?}), but wordle
+        // constrains length to 3–8 letters — filter defensively.
+        const raw = parseStoredWordScrambleEntries(qs)
+        setCustomWordleRoomWords(
+          raw
+            .filter((e) => e.word.length >= 3 && e.word.length <= 8)
+            .map((e) => (e.hint ? { word: e.word.toLowerCase(), hint: e.hint } : { word: e.word.toLowerCase() }))
+        )
+      }
       else setCustomMltQuestions(qs as string[])
     }
   }
@@ -1981,6 +1993,7 @@ function CreateGameInner() {
       setWordleRoomCategory('general_english')
       setWordleRoomWordCount(WORDLE_ROOM_DEFAULT_WORD_COUNT)
       setWordleRoomTimer(WORDLE_ROOM_DEFAULT_TIMER)
+      setCustomWordleRoomWords([])
     }
     setSettings({
       ...settings,
@@ -2574,6 +2587,12 @@ function CreateGameInner() {
                 wordle_room_category: wordleRoomCategory,
                 wordle_room_word_count: wordleRoomWordCount,
                 timer_seconds: wordleRoomTimer,
+                // Library pack forwards its parsed words so the start route uses them as the
+                // sequence source instead of the built-in category bank. Empty means "use
+                // platform" — the server falls back to the category unchanged.
+                ...(questionSource === 'library' && customWordleRoomWords.length > 0
+                  ? { wordle_room_words: customWordleRoomWords, library_pack_id: selectedPackId }
+                  : {}),
               }
             : {}),
           rounds_count: isWst
@@ -5795,16 +5814,48 @@ function CreateGameInner() {
                     )}
                   />
                 </Field>
-                <Field label="Category">
-                  <CustomSelect
-                    value={wordleRoomCategory}
-                    onChange={setWordleRoomCategory}
-                    options={[
-                      { value: 'general_english', label: 'General English' },
-                      { value: 'naija_slang', label: 'Naija Slang' },
-                    ]}
+                <Field label="Word source">
+                  <SegmentedControl
+                    value={questionSource}
+                    onChange={(v) => {
+                      setQuestionSource(v as QuestionSource)
+                      setSelectedPackId(null)
+                      setLibraryPackQuestions([])
+                      setCustomWordleRoomWords([])
+                    }}
+                    options={questionSourceOptions('wordle_room')}
                   />
                 </Field>
+                {questionSource === 'platform' && (
+                  <Field label="Category">
+                    <CustomSelect
+                      value={wordleRoomCategory}
+                      onChange={setWordleRoomCategory}
+                      options={[
+                        { value: 'general_english', label: 'General English' },
+                        { value: 'naija_slang', label: 'Naija Slang' },
+                      ]}
+                    />
+                  </Field>
+                )}
+                {questionSource === 'library' && (
+                  <div className="space-y-2 pt-1">
+                    <LibraryPackPicker
+                      loading={libraryPacksLoading}
+                      packs={libraryPacks}
+                      search={libraryPackSearch}
+                      onSearchChange={setLibraryPackSearch}
+                      selectedPackId={selectedPackId}
+                      onSelect={selectLibraryPack}
+                      noun="words"
+                    />
+                    {customWordleRoomWords.length > 0 && (
+                      <p className="text-faint text-xs text-center">
+                        Loaded {customWordleRoomWords.length} words from this pack.
+                      </p>
+                    )}
+                  </div>
+                )}
                 <Field label="Words in the race">
                   <CustomSelect
                     value={wordleRoomWordCount}

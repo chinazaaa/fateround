@@ -1317,9 +1317,23 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
     const seed = Date.now() ^ Math.floor(Math.random() * 0xffffffff)
     const category = clampWordleRoomCategory(game.wordle_room_category)
     const wordCount = clampWordleRoomWordCount(game.wordle_room_word_count)
+
+    // Optional library pool the host picked on the create page. When present, we sample the
+    // word sequence from it (seeded shuffle) instead of the built-in category bank, and the
+    // player-facing badge shows "Custom" so joiners know they're not on the platform banks.
+    const customPool = Array.isArray(game.wordle_room_custom_words)
+      ? (game.wordle_room_custom_words as { word?: string; hint?: string }[])
+          .map((e) => ({
+            word: (e?.word ?? '').toLowerCase().replace(/[^a-z]/g, ''),
+            hint: typeof e?.hint === 'string' ? e.hint : '',
+          }))
+          .filter((e) => e.word.length >= 3 && e.word.length <= 8)
+      : []
+    const useCustom = customPool.length >= wordCount
+
     const metadata: WordleRoomMetadata = {
       category,
-      categoryLabel: wordleRoomCategoryLabel(category),
+      categoryLabel: useCustom ? 'Custom' : wordleRoomCategoryLabel(category),
       word_count: wordCount,
       seed,
     }
@@ -1327,7 +1341,25 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
     // Build the fixed word sequence ONCE per room. Only the seed travels in the anon-readable
     // round metadata — the words themselves live in the RLS-locked solutions table, so nobody
     // can read ahead in a competitive race.
-    const words = buildWordleRoomSequence(seed, category, wordCount)
+    const words = useCustom
+      ? (() => {
+          // Seeded Fisher–Yates over the custom pool, first `wordCount` entries — same shuffle
+          // approach as buildWordleRoomSequence to keep the sample deterministic per seed.
+          let s = (seed ^ 0x9e3779b9) >>> 0 || 1
+          const rng = () => {
+            s ^= s << 13
+            s ^= s >>> 17
+            s ^= s << 5
+            return (s >>> 0) / 0x100000000
+          }
+          const idx = customPool.map((_, i) => i)
+          for (let i = idx.length - 1; i > 0; i--) {
+            const j = Math.floor(rng() * (i + 1))
+            ;[idx[i], idx[j]] = [idx[j], idx[i]]
+          }
+          return idx.slice(0, wordCount).map((k) => customPool[k]!)
+        })()
+      : buildWordleRoomSequence(seed, category, wordCount)
 
     const roundRow = buildWordleRoomRoundRow(code.toUpperCase(), metadata)
     const { data: insertedRound, error: roundError } = await getSupabaseAdmin()

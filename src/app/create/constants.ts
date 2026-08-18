@@ -15,4 +15,5 @@ export const LIBRARY_GAME_TYPE_MAP: Record<string, string> = {
   word_scramble: 'word_scramble',
   word_grouping: 'word_grouping',
   who_said_this: 'who_said_this',
+  wordle_room: 'wordle_room',
 }
