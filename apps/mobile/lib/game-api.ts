@@ -1631,6 +1631,7 @@ export interface WordleRoomStatusResponse {
   total_guesses?: number
   categoryLabel?: string
   finished?: boolean
+  sequenceComplete?: boolean
   guesses?: { guess: string; state: ('correct' | 'present' | 'absent')[] }[]
   timeRemainingMs?: number
   hasProgressRow?: boolean
