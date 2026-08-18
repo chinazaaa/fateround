@@ -430,11 +430,12 @@ export function wordleRoomWordScore(
   won: boolean,
   hintUsed: boolean = false
 ): number {
-  if (!won) return 0
-  const base = wordleBasePoints(guessesUsed, maxAttempts)
-  const perfect = guessesUsed === 1 ? 200 : 0
+  // Hint cost applies whether or not the word is solved — buying a hint you didn't
+  // convert still deducts 300, so the total can dip below zero on a busted purchase.
+  const base = won ? wordleBasePoints(guessesUsed, maxAttempts) : 0
+  const perfect = won && guessesUsed === 1 ? 200 : 0
   const hintCost = hintUsed ? WORDLE_ROOM_HINT_COST : 0
-  return Math.max(0, base + perfect - hintCost)
+  return base + perfect - hintCost
 }
 
 /** Total game score = sum of per-word scores across the whole sequence. */

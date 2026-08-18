@@ -265,11 +265,12 @@ export function wordleFinalScore(
   won: boolean,
   hintUsed: boolean = false
 ): number {
-  if (!won) return 0
-  const base = wordleBasePoints(guessesUsed, maxAttempts)
-  const perfect = guessesUsed === 1 ? WORDLE_PERFECT_BONUS : 0
+  // Hint cost applies whether or not the player wins — buying a hint you didn't
+  // convert still deducts 300, so the final score can dip below zero.
+  const base = won ? wordleBasePoints(guessesUsed, maxAttempts) : 0
+  const perfect = won && guessesUsed === 1 ? WORDLE_PERFECT_BONUS : 0
   const hintCost = hintUsed ? WORDLE_HINT_COST : 0
-  return Math.max(0, base + perfect - hintCost)
+  return base + perfect - hintCost
 }
 
 // ---------------------------------------------------------------------------
