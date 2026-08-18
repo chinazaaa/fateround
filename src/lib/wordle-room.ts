@@ -142,9 +142,9 @@ interface WordleRoomCategory {
   entries: { word: string; hint: string }[]
 }
 
-const themedRoomCategory = (label: string, words: readonly string[]): WordleRoomCategory => ({
+const themedRoomCategory = (label: string, entries: readonly { word: string; hint: string }[]): WordleRoomCategory => ({
   label,
-  entries: words.map((word) => ({ word, hint: label })),
+  entries: entries.map((e) => ({ word: e.word, hint: e.hint })),
 })
 
 const WORDLE_ROOM_CATEGORIES: Record<WordleCategoryId, WordleRoomCategory> = {

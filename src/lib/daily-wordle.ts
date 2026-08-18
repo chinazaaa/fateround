@@ -64,10 +64,14 @@ interface WordleCategory {
   entries: WordleBankEntry[]
 }
 
-const themedCategory = (id: WordleCategoryId, label: string, words: readonly string[]): WordleCategory => ({
+const themedCategory = (
+  id: WordleCategoryId,
+  label: string,
+  entries: readonly { word: string; hint: string }[]
+): WordleCategory => ({
   id,
   label,
-  entries: words.map((word) => ({ word, hint: label })),
+  entries: entries.map((e) => ({ word: e.word, hint: e.hint })),
 })
 
 const WORDLE_CATEGORIES: readonly WordleCategory[] = [
