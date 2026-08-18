@@ -22,6 +22,8 @@ import { DailySudokuPlay } from '@/components/daily/DailySudokuPlay'
 import { DailyWordlePlay } from '@/components/daily/DailyWordlePlay'
 import { DailyWordSearchPlay } from '@/components/daily/DailyWordSearchPlay'
 import { DailyWordHuntPlay } from '@/components/daily/DailyWordHuntPlay'
+import { DailyWordGroupingPlay } from '@/components/daily/DailyWordGroupingPlay'
+import { DailyCodenamesCodewordPlay } from '@/components/daily/DailyCodenamesCodewordPlay'
 import { useDailyChallengeSession } from '@/hooks/useDailyChallengeSession'
 import {
   DAILY_GAME_EMOJIS,
@@ -186,6 +188,17 @@ function PlaySurface({
           challengeId={challengeId}
           grid={puzzle.grid as string[][]}
           validWordHashes={(puzzle.valid_word_hashes as string[]) ?? []}
+          timer={timer}
+          onSubmit={onSubmit}
+        />
+      )
+    case 'word_grouping':
+      return <DailyWordGroupingPlay challengeId={challengeId} puzzle={puzzle} timer={timer} onSubmit={onSubmit} />
+    case 'codenames_codeword':
+      return (
+        <DailyCodenamesCodewordPlay
+          challengeId={challengeId}
+          puzzle={puzzle}
           timer={timer}
           onSubmit={onSubmit}
         />

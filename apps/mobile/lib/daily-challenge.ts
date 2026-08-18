@@ -153,6 +153,8 @@ export const NATIVE_DAILY_GAMES: ReadonlySet<DailyChallengeGameType> = new Set([
   'wordle',
   'word_search',
   'word_hunt',
+  'word_grouping',
+  'codenames_codeword',
 ])
 
 export function hasNativeDailyPlay(gameType: DailyChallengeGameType): boolean {
