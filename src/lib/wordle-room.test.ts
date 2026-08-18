@@ -55,7 +55,7 @@ describe('wordle room sequence', () => {
 
   it('clamps category and word count', () => {
     expect(clampWordleRoomCategory('naija_slang')).toBe('naija_slang')
-    expect(clampWordleRoomCategory('bogus')).toBe('general_english')
+    expect(clampWordleRoomCategory('bogus')).toBe('sports')
     expect(clampWordleRoomWordCount(10)).toBe(10)
     expect(clampWordleRoomWordCount(12)).toBe(WORDLE_ROOM_DEFAULT_WORD_COUNT)
     expect(clampWordleRoomTimer(300)).toBe(300)

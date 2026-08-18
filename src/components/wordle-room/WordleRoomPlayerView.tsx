@@ -355,14 +355,13 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
 
   const { context: lateJoinContext, loading: lateJoinContextLoading } = useLateJoinContext(
     gameCode,
-    game?.game_type,
-    game?.status,
+    game ?? null,
     !myPlayerId
   )
 
   const viewerPromoteContext = useMemo(() => {
     if (!game || !myPlayerId || !me || !playerIsViewer(me, game)) return null
-    return { playerDetail: me }
+    return { hasContext: true }
   }, [game, myPlayerId, me])
 
   const handlePlayerLeft = useCallback(
@@ -528,8 +527,8 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
   ])
 
   const standings: WordleRoomStandingRow[] = useMemo(
-    () => tallyWordleRoomScores(progressRows, players, wordCount),
-    [progressRows, players, wordCount]
+    () => tallyWordleRoomScores(progressRows, players),
+    [progressRows, players]
   )
   const myStanding = useMemo(() => standings.find((s) => s.player_id === myPlayerId), [standings, myPlayerId])
 
@@ -647,9 +646,9 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
             capacityGame={game}
             onToggleReady={(ready) => void toggleReplayReady(ready)}
             onStart={() => {}}
-            pending={replayReadyPending}
+            pending={false}
             gameCode={gameCode}
-            onLeft={handlePlayerLeft}
+            onLeft={() => void handlePlayerLeft(myPlayerId ?? '')}
           />
         </GameJoinLobbyShell>
       )
@@ -666,7 +665,7 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
           onRenamed={() => {
             void load()
           }}
-          onLeft={handlePlayerLeft}
+          onLeft={() => void handlePlayerLeft(myPlayerId ?? '')}
           title="Waiting for host to start"
           description="Race to solve the same words before time runs out."
           rulesLink={<GameRulesLink gameType="wordle_room" variant="subtle" />}
@@ -728,14 +727,7 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
       )}
       <main className="pt-16 flex-1 px-3 py-4 max-w-lg mx-auto w-full space-y-4 overscroll-none">
         {isViewer && (
-          <ViewerModeBanner
-            gameCode={gameCode}
-            playerId={myPlayerId}
-            game={game}
-            player={me}
-            playerDetail={viewerPromoteContext?.playerDetail}
-            onPromoted={load}
-          />
+          <ViewerModeBanner gameCode={gameCode} playerId={myPlayerId} game={game} player={me} onPromoted={load} />
         )}
 
         <div className="flex items-center justify-between gap-3">

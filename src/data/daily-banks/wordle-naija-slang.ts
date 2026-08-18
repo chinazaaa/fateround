@@ -50,4 +50,7 @@ export const WORDLE_NAIJA_SLANG: readonly WordleSlangEntry[] = [
   // 7 letters
   { word: 'WAZOBIA', hint: "'Come join us' — the three-language rallying cry" },
   { word: 'FINEBOY', hint: 'A handsome guy' },
+  // extra entries to satisfy minimum bank size
+  { word: 'KUKUMA', hint: 'Just do it already — Pidgin for might as well' },
+  { word: 'AGBERO', hint: 'A park tout — local area hustler' },
 ]
