@@ -49,6 +49,9 @@ function ThemedStack() {
         <Stack.Screen name="daily-challenges/index" options={{ title: 'Daily Challenges' }} />
         <Stack.Screen name="daily-challenges/[slug]" options={{ title: 'Daily Challenge' }} />
         <Stack.Screen name="daily-challenges/leaderboard/[slug]" options={{ title: 'Leaderboard' }} />
+        <Stack.Screen name="leaderboard/index" options={{ title: 'Leaderboards' }} />
+        <Stack.Screen name="leaderboard/daily" options={{ title: 'Daily Leaderboards' }} />
+        <Stack.Screen name="leaderboard/trophies" options={{ title: 'Trophies' }} />
       </Stack>
     </>
   )

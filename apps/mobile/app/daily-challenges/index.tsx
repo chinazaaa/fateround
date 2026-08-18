@@ -233,7 +233,7 @@ export default function DailyChallengesHub() {
         <AppButton
           label="View leaderboards"
           tone="ghost"
-          onPress={() => router.push('/daily-challenges/leaderboard/sudoku' as never)}
+          onPress={() => router.push('/leaderboard/daily' as never)}
         />
 
         {loading ? <ActivityIndicator color={theme.primaryMuted} style={styles.spinner} /> : null}
