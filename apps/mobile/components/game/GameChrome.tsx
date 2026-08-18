@@ -1,5 +1,5 @@
 import { ReactNode } from 'react'
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native'
+import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from 'react-native'
 import type { Game, GameType, Player } from '@fateround/shared'
 import { ViewerModeBanner } from '@/components/lifecycle/ViewerModeBanner'
 import { useRosterBase } from '@/components/session/RosterDrawerContext'
@@ -78,6 +78,7 @@ export function GameShell({
   players,
   myPlayerId,
   onPromoted,
+  keyboardAvoiding = false,
   children,
 }: {
   // `title` is still accepted from callers but is now rendered by
@@ -91,6 +92,11 @@ export function GameShell({
   players?: Player[]
   myPlayerId?: string | null
   onPromoted?: () => void | Promise<unknown>
+  /** Wrap the shell in KeyboardAvoidingView so a bottom-anchored TextInput
+   *  (chat composer, guess input) lifts above the on-screen keyboard on iOS.
+   *  Opt-in per game so games that manage their own layout (Monopoly, etc)
+   *  don't get an unexpected padding shift. */
+  keyboardAvoiding?: boolean
   children: ReactNode
 }) {
   const styles = useThemedStyles(makeStyles)
@@ -119,8 +125,8 @@ export function GameShell({
   const subtitleIsJustCode = !!subUpper && !!codeUpper && (subUpper === codeUpper || subUpper === `CODE ${codeUpper}`)
   const showSubtitle = !!subtitle && !subtitleIsJustCode
 
-  return (
-    <View style={styles.shell}>
+  const body = (
+    <>
       {showSubtitle ? <Text style={styles.shellSubtitle}>{subtitle}</Text> : null}
       {isViewer ? (
         <ViewerModeBanner
@@ -133,8 +139,16 @@ export function GameShell({
         />
       ) : null}
       {children}
-    </View>
+    </>
   )
+  if (keyboardAvoiding) {
+    return (
+      <KeyboardAvoidingView style={styles.shell} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        {body}
+      </KeyboardAvoidingView>
+    )
+  }
+  return <View style={styles.shell}>{body}</View>
 }
 
 export function WaitingPanel({ message }: { message: string }) {

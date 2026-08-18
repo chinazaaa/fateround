@@ -10,12 +10,24 @@
  *   - Available "Only ping me between START and END."
  * Pushes outside the allowed window are DROPPED server-side, never queued.
  *
- * No new native modules — plain HH:MM inputs (a full date-time picker was
- * scope creep for a two-value time window).
+ * No new native modules — tapping a From/To field opens a bottom-sheet list of
+ * 30-minute slots (a full date-time picker was scope creep for a two-value
+ * time window).
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ActivityIndicator, Alert, StyleSheet, Switch, Text, TextInput, View } from 'react-native'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  Modal,
+  Pressable,
+  StyleSheet,
+  Switch,
+  Text,
+  TextInput,
+  View,
+} from 'react-native'
 import { Stack } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import type { GameType } from '@fateround/shared'
@@ -49,14 +61,8 @@ function formatMinutes(m: number | null): string {
   return `${hh}:${mm}`
 }
 
-function parseMinutes(input: string): number | null {
-  const match = input.trim().match(/^(\d{1,2}):(\d{2})$/)
-  if (!match) return null
-  const h = Number(match[1])
-  const m = Number(match[2])
-  if (h < 0 || h > 23 || m < 0 || m > 59) return null
-  return h * 60 + m
-}
+// 30-minute increments cover the "quiet hours" use case without a native picker.
+const TIME_SLOTS: number[] = Array.from({ length: 48 }, (_, i) => i * 30)
 
 function deviceTimezone(): string | null {
   try {
@@ -215,34 +221,18 @@ export default function NotificationsScreen() {
           />
           {quiet.mode !== 'off' ? (
             <View style={styles.timeRow}>
-              <View style={styles.timeCol}>
-                <Text style={styles.timeLabel}>From</Text>
-                <TextInput
-                  style={styles.timeInput}
-                  value={formatMinutes(quiet.startMinutes)}
-                  placeholder="09:00"
-                  placeholderTextColor={theme.textFaint}
-                  onChangeText={(text) => {
-                    const m = parseMinutes(text)
-                    if (m != null) void onQuietChange({ startMinutes: m })
-                  }}
-                  maxLength={5}
-                />
-              </View>
-              <View style={styles.timeCol}>
-                <Text style={styles.timeLabel}>To</Text>
-                <TextInput
-                  style={styles.timeInput}
-                  value={formatMinutes(quiet.endMinutes)}
-                  placeholder="17:00"
-                  placeholderTextColor={theme.textFaint}
-                  onChangeText={(text) => {
-                    const m = parseMinutes(text)
-                    if (m != null) void onQuietChange({ endMinutes: m })
-                  }}
-                  maxLength={5}
-                />
-              </View>
+              <TimePickerField
+                label="From"
+                value={quiet.startMinutes}
+                placeholder="09:00"
+                onChange={(m) => void onQuietChange({ startMinutes: m })}
+              />
+              <TimePickerField
+                label="To"
+                value={quiet.endMinutes}
+                placeholder="17:00"
+                onChange={(m) => void onQuietChange({ endMinutes: m })}
+              />
             </View>
           ) : null}
           <Text style={styles.hint}>
@@ -273,6 +263,97 @@ export default function NotificationsScreen() {
         />
       </KeyboardFormScreen>
     </SafeAreaView>
+  )
+}
+
+function TimePickerField({
+  label,
+  value,
+  placeholder,
+  onChange,
+}: {
+  label: string
+  value: number | null
+  placeholder: string
+  onChange: (minutes: number) => void
+}) {
+  const theme = useTheme()
+  const styles = useThemedStyles(makeStyles)
+  const [open, setOpen] = useState(false)
+  const listRef = useRef<FlatList<number> | null>(null)
+
+  // When the sheet opens, snap the list to the current (or a sensible default)
+  // slot so the user isn't hunting for their own value.
+  const initialIndex = useMemo(() => {
+    if (value == null) return 0
+    // Nearest 30-min slot.
+    return Math.min(TIME_SLOTS.length - 1, Math.round(value / 30))
+  }, [value])
+
+  const display = value == null ? '' : formatMinutes(value)
+
+  return (
+    <View style={styles.timeCol}>
+      <Text style={styles.timeLabel}>{label}</Text>
+      <Pressable
+        onPress={() => setOpen(true)}
+        style={({ pressed }) => [styles.timeInput, styles.timePickerBtn, pressed && styles.timePickerPressed]}
+        accessibilityRole="button"
+        accessibilityLabel={`${label} time. Currently ${display || placeholder}.`}
+      >
+        <Text style={[styles.timeInputText, !display && styles.timeInputPlaceholder]}>
+          {display || placeholder}
+        </Text>
+        <Text style={styles.timeChevron}>▾</Text>
+      </Pressable>
+
+      <Modal visible={open} transparent animationType="slide" onRequestClose={() => setOpen(false)}>
+        <Pressable style={styles.pickerBackdrop} onPress={() => setOpen(false)}>
+          <Pressable style={styles.pickerSheetWrap} onPress={() => {}}>
+            <SafeAreaView edges={['bottom']} style={styles.pickerSheet}>
+              <View style={styles.pickerGrabber} />
+              <View style={styles.pickerHeader}>
+                <Text style={styles.pickerTitle}>{label}</Text>
+                <Pressable hitSlop={12} onPress={() => setOpen(false)}>
+                  <Text style={styles.pickerClose}>Done</Text>
+                </Pressable>
+              </View>
+              <FlatList
+                ref={listRef}
+                data={TIME_SLOTS}
+                keyExtractor={(m) => String(m)}
+                initialScrollIndex={initialIndex}
+                getItemLayout={(_, i) => ({ length: 48, offset: 48 * i, index: i })}
+                onScrollToIndexFailed={({ index }) => {
+                  setTimeout(() => listRef.current?.scrollToIndex({ index, animated: false }), 50)
+                }}
+                renderItem={({ item }) => {
+                  const selected = value != null && Math.round(value / 30) * 30 === item
+                  return (
+                    <Pressable
+                      onPress={() => {
+                        onChange(item)
+                        setOpen(false)
+                      }}
+                      style={({ pressed }) => [
+                        styles.pickerRow,
+                        selected && styles.pickerRowSelected,
+                        pressed && styles.pickerRowPressed,
+                      ]}
+                    >
+                      <Text style={[styles.pickerRowText, selected && styles.pickerRowTextSelected]}>
+                        {formatMinutes(item)}
+                      </Text>
+                      {selected ? <Text style={styles.pickerCheck}>✓</Text> : null}
+                    </Pressable>
+                  )
+                }}
+              />
+            </SafeAreaView>
+          </Pressable>
+        </Pressable>
+      </Modal>
+    </View>
   )
 }
 
@@ -380,6 +461,66 @@ const makeStyles = (theme: Theme) =>
       textAlign: 'center',
       paddingVertical: 10,
     },
+    timePickerBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+      paddingHorizontal: 12,
+    },
+    timePickerPressed: { opacity: 0.7 },
+    timeInputText: {
+      color: theme.text,
+      fontSize: 20,
+      fontWeight: '700',
+      letterSpacing: 2,
+    },
+    timeInputPlaceholder: { color: theme.textFaint, fontWeight: '600' },
+    timeChevron: { color: theme.textMuted, fontSize: 14, fontWeight: '700' },
+    pickerBackdrop: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.5)',
+      justifyContent: 'flex-end',
+    },
+    pickerSheetWrap: { width: '100%' },
+    pickerSheet: {
+      backgroundColor: theme.bg,
+      borderTopLeftRadius: theme.radius.lg,
+      borderTopRightRadius: theme.radius.lg,
+      borderTopWidth: 1,
+      borderColor: theme.border,
+      maxHeight: '70%',
+      paddingBottom: theme.space.sm,
+    },
+    pickerGrabber: {
+      alignSelf: 'center',
+      width: 40,
+      height: 4,
+      borderRadius: 2,
+      backgroundColor: theme.border,
+      marginTop: theme.space.sm,
+    },
+    pickerHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: theme.space.lg,
+      paddingVertical: theme.space.md,
+    },
+    pickerTitle: { color: theme.text, fontSize: 18, fontWeight: '800' },
+    pickerClose: { color: theme.primaryMuted, fontSize: 16, fontWeight: '700' },
+    pickerRow: {
+      height: 48,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: theme.space.lg,
+    },
+    pickerRowSelected: { backgroundColor: theme.primarySoft },
+    pickerRowPressed: { opacity: 0.6 },
+    pickerRowText: { color: theme.text, fontSize: 18, fontWeight: '600', letterSpacing: 1 },
+    pickerRowTextSelected: { color: theme.primary, fontWeight: '800' },
+    pickerCheck: { color: theme.primary, fontSize: 18, fontWeight: '800' },
     searchInput: {
       backgroundColor: theme.surface,
       borderColor: theme.border,

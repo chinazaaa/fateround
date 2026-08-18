@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from 'react'
 import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
+import { KeyboardAvoidingModalContent } from '@/components/ui/KeyboardAvoidingModalContent'
 
 export type SelectOption<T extends string> = {
   value: T
@@ -70,44 +71,46 @@ export function SelectField<T extends string>({
       </Pressable>
 
       <Modal visible={open} transparent animationType="fade" onRequestClose={handleClose}>
-        <Pressable style={styles.backdrop} onPress={handleClose}>
-          <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
-            {title ? <Text style={styles.sheetTitle}>{title}</Text> : null}
-            {searchable && (
-              <TextInput
-                ref={searchInputRef}
-                style={styles.searchInput}
-                value={search}
-                onChangeText={setSearch}
-                placeholder={searchPlaceholder}
-                placeholderTextColor={styles.searchPlaceholder.color}
-                autoFocus
-                returnKeyType="search"
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
-            )}
-            <ScrollView showsVerticalScrollIndicator={false} bounces={false} keyboardShouldPersistTaps="handled">
-              {filtered.length === 0 && <Text style={styles.noResults}>No matches</Text>}
-              {filtered.map((option) => {
-                const selected = option.value === value
-                return (
-                  <Pressable
-                    key={option.value}
-                    style={[styles.row, selected && styles.rowSelected]}
-                    onPress={() => select(option.value)}
-                  >
-                    <View style={styles.rowText}>
-                      <Text style={[styles.rowLabel, selected && styles.rowLabelSelected]}>{option.label}</Text>
-                      {option.hint ? <Text style={styles.rowHint}>{option.hint}</Text> : null}
-                    </View>
-                    {selected ? <Text style={styles.check}>✓</Text> : null}
-                  </Pressable>
-                )
-              })}
-            </ScrollView>
+        <KeyboardAvoidingModalContent>
+          <Pressable style={styles.backdrop} onPress={handleClose}>
+            <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
+              {title ? <Text style={styles.sheetTitle}>{title}</Text> : null}
+              {searchable && (
+                <TextInput
+                  ref={searchInputRef}
+                  style={styles.searchInput}
+                  value={search}
+                  onChangeText={setSearch}
+                  placeholder={searchPlaceholder}
+                  placeholderTextColor={styles.searchPlaceholder.color}
+                  autoFocus
+                  returnKeyType="search"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+              )}
+              <ScrollView showsVerticalScrollIndicator={false} bounces={false} keyboardShouldPersistTaps="handled">
+                {filtered.length === 0 && <Text style={styles.noResults}>No matches</Text>}
+                {filtered.map((option) => {
+                  const selected = option.value === value
+                  return (
+                    <Pressable
+                      key={option.value}
+                      style={[styles.row, selected && styles.rowSelected]}
+                      onPress={() => select(option.value)}
+                    >
+                      <View style={styles.rowText}>
+                        <Text style={[styles.rowLabel, selected && styles.rowLabelSelected]}>{option.label}</Text>
+                        {option.hint ? <Text style={styles.rowHint}>{option.hint}</Text> : null}
+                      </View>
+                      {selected ? <Text style={styles.check}>✓</Text> : null}
+                    </Pressable>
+                  )
+                })}
+              </ScrollView>
+            </Pressable>
           </Pressable>
-        </Pressable>
+        </KeyboardAvoidingModalContent>
       </Modal>
     </>
   )

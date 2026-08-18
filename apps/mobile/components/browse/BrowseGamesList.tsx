@@ -17,6 +17,7 @@ import { SurfaceCard } from '@/components/ui/SurfaceCard'
 import { apiUrl } from '@/lib/config'
 import { getSupabase } from '@/lib/supabase'
 import { getHostedGameCodes } from '@/lib/secure-session'
+import { getRecentGames } from '@/lib/recent-games'
 import { gameLabel } from '@/lib/mobile-registry'
 import { gameTypeMeta } from '@/lib/game-type-meta'
 import type { Theme } from '@/constants/theme'
@@ -80,6 +81,10 @@ export function BrowseGamesList({ previewLimit, onSeeAll, tab = 'live' }: Props)
   const [refreshing, setRefreshing] = useState(false)
   const [filter, setFilter] = useState<string>(ALL)
   const [hostedSet, setHostedSet] = useState<Set<string>>(() => new Set())
+  // Codes this device joined as a player, uppercased so we can compare against
+  // game.id without worrying about casing. Powers the "Continue" label on games
+  // the user has already joined.
+  const [joinedSet, setJoinedSet] = useState<Set<string>>(() => new Set())
   const inFlight = useRef(false)
 
   const load = useCallback(
@@ -130,6 +135,20 @@ export function BrowseGamesList({ previewLimit, onSeeAll, tab = 'live' }: Props)
       cancelled = true
     }
   }, [tab, games])
+
+  // Rebuild the "already joined" set whenever the visible list changes so the
+  // CTA on a game the user is currently in reads "Continue" instead of "Join".
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      const recent = await getRecentGames()
+      if (cancelled) return
+      setJoinedSet(new Set(recent.map((r) => r.code.toUpperCase())))
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [games])
 
   // Realtime + poll fallback. Any game row change (create / status flip / finish)
   // re-fetches the first page silently — mirrors the web BrowseGamesPage pattern.
@@ -199,7 +218,12 @@ export function BrowseGamesList({ previewLimit, onSeeAll, tab = 'live' }: Props)
         </View>
         <View style={styles.previewList}>
           {visible.map((g) => (
-            <GameCard key={g.id} game={g} onJoin={() => router.push(`/game/${g.id}` as never)} />
+            <GameCard
+              key={g.id}
+              game={g}
+              iAmPlayer={joinedSet.has(g.id.toUpperCase())}
+              onJoin={() => router.push(`/game/${g.id}` as never)}
+            />
           ))}
         </View>
       </View>
@@ -251,11 +275,13 @@ export function BrowseGamesList({ previewLimit, onSeeAll, tab = 'live' }: Props)
         <View style={styles.list}>
           {visible.map((g) => {
             const iAmHost = g.status === 'scheduled' && hostedSet.has(g.id)
+            const iAmPlayer = joinedSet.has(g.id.toUpperCase())
             return (
               <GameCard
                 key={g.id}
                 game={g}
                 iAmHost={iAmHost}
+                iAmPlayer={iAmPlayer}
                 onJoin={() => router.push((iAmHost ? `/host/${g.id}` : `/game/${g.id}`) as never)}
               />
             )
@@ -309,22 +335,45 @@ function formatScheduled(iso: string | null | undefined): string {
   }
 }
 
-function GameCard({ game, iAmHost = false, onJoin }: { game: PublicGame; iAmHost?: boolean; onJoin: () => void }) {
+function GameCard({
+  game,
+  iAmHost = false,
+  iAmPlayer = false,
+  onJoin,
+}: {
+  game: PublicGame
+  iAmHost?: boolean
+  iAmPlayer?: boolean
+  onJoin: () => void
+}) {
   const styles = useThemedStyles(makeStyles)
   const meta = gameTypeMeta(game.game_type as GameType)
   const label = gameLabel(game.game_type as GameType) || game.title || 'Game'
   const isScheduled = game.status === 'scheduled'
   const isLobby = game.status === 'waiting'
+  const isActive = game.status === 'active'
   const count = game.max_players != null ? `${game.playerCount}/${game.max_players}` : `${game.playerCount}`
+  // Once we know the viewer is already in the game, the CTA says so — "Continue"
+  // for a live/lobby game they've joined, otherwise the default join/watch CTA.
+  const showContinue = iAmPlayer && !iAmHost && !isScheduled && (isLobby || isActive)
   const statusLine = iAmHost
     ? `You’re hosting · ${formatScheduled(game.scheduled_at)}`
     : isScheduled
       ? `Scheduled · ${formatScheduled(game.scheduled_at)}`
       : isLobby
         ? `Waiting for players · ${count} player${game.playerCount === 1 ? '' : 's'}`
-        : game.status === 'active'
+        : isActive
           ? `In progress · ${count} player${game.playerCount === 1 ? '' : 's'}`
           : 'Finished'
+  const cta = iAmHost
+    ? 'Open panel'
+    : isScheduled
+      ? 'RSVP'
+      : showContinue
+        ? 'Continue'
+        : isLobby
+          ? 'Join'
+          : 'Watch'
 
   return (
     <SurfaceCard>
@@ -341,10 +390,10 @@ function GameCard({ game, iAmHost = false, onJoin }: { game: PublicGame; iAmHost
           </Text>
         </View>
         <AppButton
-          label={iAmHost ? 'Open panel' : isScheduled ? 'RSVP' : isLobby ? 'Join' : 'Watch'}
+          label={cta}
           onPress={onJoin}
           size="sm"
-          tone={iAmHost || isScheduled || isLobby ? 'primary' : 'secondary'}
+          tone={iAmHost || isScheduled || isLobby || showContinue ? 'primary' : 'secondary'}
         />
       </View>
     </SurfaceCard>

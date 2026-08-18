@@ -9,7 +9,18 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ActivityIndicator, Pressable, Share, StyleSheet, Text, TextInput, View } from 'react-native'
+import {
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  Share,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native'
 import { useRouter } from 'expo-router'
 import type { Game, GameType } from '@fateround/shared'
 import { AppButton } from '@/components/ui/AppButton'
@@ -131,87 +142,126 @@ export function ScheduledGameScreen({ gameCode, game }: { gameCode: string; game
     }
   }, [label, shareUrl])
 
+  const isHost = !!hostToken
+
   return (
     <SafeAreaView style={styles.safe}>
       <AmbientBackground />
-      <View style={styles.content}>
-        <Pressable style={styles.back} onPress={() => router.replace('/browse' as never)} hitSlop={8}>
-          <Text style={styles.backText}>‹ Back</Text>
-        </Pressable>
-        <View style={styles.hero}>
-          <Text style={styles.emoji}>{meta.emoji}</Text>
-          <Text style={styles.kicker}>Scheduled game</Text>
-          <Text style={styles.title}>{label}</Text>
-          {game.scheduled_at ? (
-            <>
-              <Text style={styles.when}>{formatFull(game.scheduled_at)}</Text>
-              <Text style={styles.countdown}>{countdown}</Text>
-            </>
-          ) : null}
-        </View>
+      <KeyboardAvoidingView style={styles.kav} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+          <Pressable style={styles.back} onPress={() => router.replace('/browse' as never)} hitSlop={8}>
+            <Text style={styles.backText}>‹ Back</Text>
+          </Pressable>
+          <View style={styles.hero}>
+            <Text style={styles.emoji}>{meta.emoji}</Text>
+            <Text style={styles.kicker}>Scheduled game</Text>
+            <Text style={styles.title}>{label}</Text>
+            {game.scheduled_at ? (
+              <>
+                <Text style={styles.when}>{formatFull(game.scheduled_at)}</Text>
+                <Text style={styles.countdown}>{countdown}</Text>
+              </>
+            ) : null}
+          </View>
 
-        <SurfaceCard>
-          <Text style={styles.rowLabel}>
-            {rsvpCount === 0 ? 'Be the first to RSVP' : `${rsvpCount} ${rsvpCount === 1 ? 'person' : 'people'} RSVP’d`}
-          </Text>
-          {!rsvped ? (
-            <View style={styles.nameField}>
-              <Text style={styles.subLabel}>Your name (so the host knows it’s you)</Text>
-              <TextInput
-                value={displayName}
-                onChangeText={(t) => setDisplayName(t.slice(0, 60))}
-                placeholder="e.g. Ada"
-                placeholderTextColor={theme.textFaint}
-                style={styles.input}
-                maxLength={60}
-                autoCorrect={false}
-              />
-            </View>
-          ) : null}
-          {loading ? (
-            <ActivityIndicator color={theme.primary} />
-          ) : busy ? (
-            <ActivityIndicator color={theme.primary} />
-          ) : rsvped ? (
-            <AppButton label="RSVP’d — tap to cancel" tone="secondary" onPress={onToggle} fullWidth size="lg" />
+          {isHost ? (
+            // Hosts don't RSVP to their own game — the seat is theirs. Show a
+            // name field instead so the name they'll use in the lobby is captured
+            // now (mobile Create doesn't collect it) and their host controls sit
+            // directly below.
+            <SurfaceCard>
+              <Text style={styles.rowLabel}>You’re hosting this game</Text>
+              <Text style={styles.hint}>
+                {rsvpCount === 0
+                  ? 'No one has RSVP’d yet — share the invite below.'
+                  : `${rsvpCount} ${rsvpCount === 1 ? 'person has' : 'people have'} RSVP’d.`}
+              </Text>
+              <View style={styles.nameField}>
+                <Text style={styles.subLabel}>Your player name</Text>
+                <TextInput
+                  value={displayName}
+                  onChangeText={(t) => {
+                    const next = t.slice(0, 60)
+                    setDisplayName(next)
+                    // Persist as they type so the lobby's name field pre-fills.
+                    void rememberName(next.trim()).catch(() => undefined)
+                  }}
+                  placeholder="e.g. Ada"
+                  placeholderTextColor={theme.textFaint}
+                  style={styles.input}
+                  maxLength={60}
+                  autoCorrect={false}
+                />
+                <Text style={styles.hint}>We’ll use this when the lobby opens.</Text>
+              </View>
+            </SurfaceCard>
           ) : (
-            <AppButton label="RSVP" onPress={onToggle} fullWidth size="lg" />
+            <SurfaceCard>
+              <Text style={styles.rowLabel}>
+                {rsvpCount === 0
+                  ? 'Be the first to RSVP'
+                  : `${rsvpCount} ${rsvpCount === 1 ? 'person' : 'people'} RSVP’d`}
+              </Text>
+              {!rsvped ? (
+                <View style={styles.nameField}>
+                  <Text style={styles.subLabel}>Your name (so the host knows it’s you)</Text>
+                  <TextInput
+                    value={displayName}
+                    onChangeText={(t) => setDisplayName(t.slice(0, 60))}
+                    placeholder="e.g. Ada"
+                    placeholderTextColor={theme.textFaint}
+                    style={styles.input}
+                    maxLength={60}
+                    autoCorrect={false}
+                  />
+                </View>
+              ) : null}
+              {loading ? (
+                <ActivityIndicator color={theme.primary} />
+              ) : busy ? (
+                <ActivityIndicator color={theme.primary} />
+              ) : rsvped ? (
+                <AppButton label="RSVP’d — tap to cancel" tone="secondary" onPress={onToggle} fullWidth size="lg" />
+              ) : (
+                <AppButton label="RSVP" onPress={onToggle} fullWidth size="lg" />
+              )}
+              {error ? <Text style={styles.error}>{error}</Text> : null}
+              <Text style={styles.hint}>
+                We’ll push you a link 15 minutes before it opens — tap it to drop into the lobby as{' '}
+                {displayName.trim() || 'Anon'}.
+              </Text>
+            </SurfaceCard>
           )}
-          {error ? <Text style={styles.error}>{error}</Text> : null}
-          <Text style={styles.hint}>
-            We’ll push you a link 15 minutes before it opens — tap it to drop into the lobby as{' '}
-            {displayName.trim() || 'Anon'}.
-          </Text>
-        </SurfaceCard>
 
-        {rsvped ? (
-          <SurfaceCard>
-            <Text style={styles.rowLabel}>Invite a friend along</Text>
-            <View style={styles.codeBox}>
-              <Text style={styles.subLabel}>Game code</Text>
-              <Text style={styles.codeValue}>{gameCode.toUpperCase()}</Text>
-            </View>
-            <AppButton label="Share invite" tone="secondary" onPress={onShare} fullWidth size="md" />
-          </SurfaceCard>
-        ) : null}
+          {rsvped || isHost ? (
+            <SurfaceCard>
+              <Text style={styles.rowLabel}>Invite a friend along</Text>
+              <View style={styles.codeBox}>
+                <Text style={styles.subLabel}>Game code</Text>
+                <Text style={styles.codeValue}>{gameCode.toUpperCase()}</Text>
+              </View>
+              <AppButton label="Share invite" tone="secondary" onPress={onShare} fullWidth size="md" />
+            </SurfaceCard>
+          ) : null}
 
-        {hostToken ? (
-          <SurfaceCard>
-            <Text style={styles.rowLabel}>Host controls</Text>
-            <Text style={styles.hint}>
-              Reschedule to move it earlier (Now / +5 / +15) or later, or cancel the game entirely. Start is disabled on
-              scheduled games — reschedule to Now to open the lobby immediately.
-            </Text>
-            <AppButton
-              label="Manage scheduled game"
-              tone="secondary"
-              onPress={() => setHostSheetOpen(true)}
-              fullWidth
-              size="md"
-            />
-          </SurfaceCard>
-        ) : null}
-      </View>
+          {hostToken ? (
+            <SurfaceCard>
+              <Text style={styles.rowLabel}>Host controls</Text>
+              <Text style={styles.hint}>
+                Reschedule to move it earlier (Now / +5 / +15) or later, or cancel the game entirely. Start is disabled
+                on scheduled games — reschedule to Now to open the lobby immediately.
+              </Text>
+              <AppButton
+                label="Manage scheduled game"
+                tone="secondary"
+                onPress={() => setHostSheetOpen(true)}
+                fullWidth
+                size="md"
+              />
+            </SurfaceCard>
+          ) : null}
+        </ScrollView>
+      </KeyboardAvoidingView>
       {hostToken ? (
         <ScheduledHostActionsSheet
           visible={hostSheetOpen}
@@ -228,7 +278,8 @@ export function ScheduledGameScreen({ gameCode, game }: { gameCode: string; game
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
     safe: { flex: 1, backgroundColor: theme.bg },
-    content: { flex: 1, padding: theme.space.md, gap: theme.space.md },
+    kav: { flex: 1 },
+    content: { flexGrow: 1, padding: theme.space.md, gap: theme.space.md, paddingBottom: theme.space.xl },
     back: { paddingVertical: 4 },
     backText: { color: theme.primary, fontSize: theme.type.label.size, fontWeight: '700' },
     hero: { alignItems: 'center', gap: 4, paddingVertical: theme.space.md },

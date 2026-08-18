@@ -85,7 +85,7 @@ export function IdleWarningBanner({ game, gameCode, hostToken, onSaved }: Props)
   return (
     <SurfaceCard style={styles.card} accent>
       <Text style={styles.title}>⏳ This lobby closes in 2 minutes</Text>
-      <Text style={styles.body}>Nobody joined and the game hasn’t started. Tap to keep it open.</Text>
+      <Text style={styles.body}>Nothing’s happened here for 13 minutes and the game hasn’t started. Tap to keep it open.</Text>
       {error ? <Text style={styles.error}>{error}</Text> : null}
       {busy ? <ActivityIndicator /> : <AppButton label="Keep open" onPress={() => void onKeepOpen()} size="md" />}
     </SurfaceCard>

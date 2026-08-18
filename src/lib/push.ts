@@ -73,7 +73,7 @@ const PAYLOADS: Record<PushEvent, { title: string; body: string }> = {
   },
   host_idle_warning: {
     title: '⏳ Your lobby closes in 2 min',
-    body: 'Nobody joined and no one started the game — tap to keep it open.',
+    body: 'The lobby’s been quiet for a while and the game hasn’t started — tap to keep it open.',
   },
 }
 

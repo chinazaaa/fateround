@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase'
 import { gameTypeConfig, parseGameType } from '@/lib/game-types'
 import { roomGameStatusLabel } from '@/components/rooms/room-game-display'
 import { readHostToken } from '@/lib/host-session'
+import { getPlayerSession } from '@/lib/utils'
 import type { PublicGame } from '@/lib/game-browse'
 
 const POLL_FALLBACK_MS = 15_000
@@ -28,6 +29,10 @@ export function BrowseGamesPage() {
   // idea as `rsvpedSet` but for the "I created this" case — the host sees
   // "Open host panel" instead of "RSVP" on their own scheduled game.
   const [hostedSet, setHostedSet] = useState<Set<string>>(() => new Set())
+  // gameCode → true when this browser has a live player session for the game
+  // (set on join via setPlayerSession, cleared on leave). Powers the "Continue"
+  // CTA on games the viewer has already joined.
+  const [joinedSet, setJoinedSet] = useState<Set<string>>(() => new Set())
 
   const loadGames = useCallback(
     async (nextCursor?: string | null, silent = false) => {
@@ -82,6 +87,30 @@ export function BrowseGamesPage() {
     const owned = games.filter((g) => g.status === 'scheduled').filter((g) => !!readHostToken(g.id))
     setHostedSet(new Set(owned.map((g) => g.id)))
   }, [tab, games])
+
+  // Any visible game the browser already has a player session for gets the
+  // "Continue" CTA. Reading getPlayerSession is a synchronous localStorage
+  // per-key lookup so this stays cheap across the whole visible list.
+  useEffect(() => {
+    const joined = new Set<string>()
+    for (const g of games) {
+      if (getPlayerSession(g.id)) joined.add(g.id.toUpperCase())
+    }
+    setJoinedSet(joined)
+
+    const handler = (e: Event) => {
+      const code = (e as CustomEvent<{ gameCode: string }>).detail?.gameCode
+      if (!code) return
+      setJoinedSet((prev) => {
+        const next = new Set(prev)
+        if (getPlayerSession(code)) next.add(code.toUpperCase())
+        else next.delete(code.toUpperCase())
+        return next
+      })
+    }
+    window.addEventListener('kmk-player-session', handler)
+    return () => window.removeEventListener('kmk-player-session', handler)
+  }, [games])
 
   useEffect(() => {
     if (tab !== 'upcoming') {
@@ -262,6 +291,7 @@ export function BrowseGamesPage() {
                     {(() => {
                       const iAmHost = isScheduled && hostedSet.has(game.id)
                       const alreadyRsvped = isScheduled && rsvpedSet.has(game.id)
+                      const iAmPlayer = !isScheduled && joinedSet.has(game.id.toUpperCase())
                       const href = iAmHost ? `/host/${game.id}` : `/game/${game.id}`
                       const label = iAmHost
                         ? 'You’re hosting · Open panel'
@@ -269,18 +299,22 @@ export function BrowseGamesPage() {
                           ? alreadyRsvped
                             ? 'RSVP’d · View details'
                             : 'RSVP'
-                          : isLobby
-                            ? 'Join game'
-                            : 'Watch'
+                          : iAmPlayer
+                            ? 'Continue'
+                            : isLobby
+                              ? 'Join game'
+                              : 'Watch'
                       const styleClass = iAmHost
                         ? 'btn-primary'
                         : isScheduled
                           ? alreadyRsvped
                             ? 'btn-secondary'
                             : 'btn-primary'
-                          : isLobby
+                          : iAmPlayer
                             ? 'btn-primary'
-                            : 'btn-secondary'
+                            : isLobby
+                              ? 'btn-primary'
+                              : 'btn-secondary'
                       return (
                         <Link
                           href={href}

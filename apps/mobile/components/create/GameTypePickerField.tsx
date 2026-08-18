@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { GameTypePicker } from '@/components/create/GameTypePicker'
+import { KeyboardAvoidingModalContent } from '@/components/ui/KeyboardAvoidingModalContent'
 import { gameLabel } from '@/lib/mobile-registry'
 import { gameTypeMeta } from '@/lib/game-type-meta'
 import { isMatureGame, MATURE_BADGE_LABEL } from '@/lib/game-maturity'
@@ -51,21 +52,23 @@ export function GameTypePickerField({ options, value, onChange }: Props) {
       </Pressable>
 
       <Modal visible={open} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setOpen(false)}>
-        <SafeAreaView style={styles.sheet} edges={['top', 'bottom']}>
-          <View style={styles.sheetHeader}>
-            <Text style={styles.sheetTitle}>Choose a game</Text>
-            <Pressable hitSlop={12} onPress={() => setOpen(false)}>
-              <Text style={styles.sheetClose}>Done</Text>
-            </Pressable>
-          </View>
-          <ScrollView
-            contentContainerStyle={styles.sheetBody}
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={false}
-          >
-            <GameTypePicker options={options} value={value} onChange={select} />
-          </ScrollView>
-        </SafeAreaView>
+        <KeyboardAvoidingModalContent>
+          <SafeAreaView style={styles.sheet} edges={['top', 'bottom']}>
+            <View style={styles.sheetHeader}>
+              <Text style={styles.sheetTitle}>Choose a game</Text>
+              <Pressable hitSlop={12} onPress={() => setOpen(false)}>
+                <Text style={styles.sheetClose}>Done</Text>
+              </Pressable>
+            </View>
+            <ScrollView
+              contentContainerStyle={styles.sheetBody}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              <GameTypePicker options={options} value={value} onChange={select} />
+            </ScrollView>
+          </SafeAreaView>
+        </KeyboardAvoidingModalContent>
       </Modal>
     </>
   )
