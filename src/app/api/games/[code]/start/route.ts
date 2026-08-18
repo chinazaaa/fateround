@@ -1331,9 +1331,10 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
       : []
     const useCustom = customPool.length >= wordCount
 
+    const customLabel = typeof game.content_label === 'string' ? game.content_label.trim() : ''
     const metadata: WordleRoomMetadata = {
       category,
-      categoryLabel: useCustom ? 'Custom' : wordleRoomCategoryLabel(category),
+      categoryLabel: useCustom ? customLabel || 'Custom' : wordleRoomCategoryLabel(category),
       word_count: wordCount,
       seed,
     }

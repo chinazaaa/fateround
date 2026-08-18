@@ -415,8 +415,8 @@ export function DailyWordlePlay({ challengeId, puzzle, timer: maxSeconds, onSubm
     <div className="fr-card fr-card--xl wordle-scope">
       <div className="space-y-3" style={{ maxWidth: 460, margin: '0 auto' }}>
         <p className="text-center" style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>
-          Guess the {wordLength}-letter word in {maxAttempts} tries. Green = right letter and spot, yellow = right letter
-          wrong spot, grey = not in the word.
+          Guess the {wordLength}-letter word in {maxAttempts} tries. Green = right letter and spot, yellow = right
+          letter wrong spot, grey = not in the word.
         </p>
         <div className="flex items-center justify-between gap-3">
           <span className="wl-cat-badge" style={{ background: 'var(--wl-correct)', color: '#fff' }}>
@@ -439,8 +439,9 @@ export function DailyWordlePlay({ challengeId, puzzle, timer: maxSeconds, onSubm
         {/* Live hint — costs 300 points off the final score. Once bought, the hint stays visible
             for the rest of the game so the player doesn't pay twice. If there's no hint on this
             puzzle (e.g. General English words), the button is hidden entirely. */}
-        {hint && !gameOver && (
-          hintUsed ? (
+        {hint &&
+          !gameOver &&
+          (hintUsed ? (
             <p className="text-center" style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>
               Hint: {hint} <span style={{ color: 'var(--text-faint)' }}>(−300 pts)</span>
             </p>
@@ -455,8 +456,7 @@ export function DailyWordlePlay({ challengeId, puzzle, timer: maxSeconds, onSubm
                 Reveal hint (−300 pts)
               </button>
             </div>
-          )
-        )}
+          ))}
         {gameOver && hintUsed && hint && (
           <p className="text-center" style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>
             Hint: {hint} <span style={{ color: 'var(--text-faint)' }}>(−300 pts)</span>

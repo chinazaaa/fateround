@@ -14,6 +14,7 @@ import type {
 } from '@/types'
 import type { Settings, Step, ParticipantTab, QuestionTab } from './types'
 import { LIBRARY_GAME_TYPE_MAP } from './constants'
+import { parsePuzzleThemeCsv } from '@/lib/puzzle-themes'
 import { trackEvent, GA_EVENTS } from '@/lib/analytics'
 import { GenderBadge } from './components/GenderBadge'
 import { Avatar } from './components/Avatar'
@@ -663,8 +664,7 @@ function CreateGameInner() {
             .filter((e) => e.word.length >= 3 && e.word.length <= 8)
             .map((e) => (e.hint ? { word: e.word.toLowerCase(), hint: e.hint } : { word: e.word.toLowerCase() }))
         )
-      }
-      else setCustomMltQuestions(qs as string[])
+      } else setCustomMltQuestions(qs as string[])
     }
   }
 
@@ -2587,11 +2587,15 @@ function CreateGameInner() {
                 wordle_room_category: wordleRoomCategory,
                 wordle_room_word_count: wordleRoomWordCount,
                 timer_seconds: wordleRoomTimer,
-                // Library pack forwards its parsed words so the start route uses them as the
-                // sequence source instead of the built-in category bank. Empty means "use
-                // platform" — the server falls back to the category unchanged.
-                ...(questionSource === 'library' && customWordleRoomWords.length > 0
-                  ? { wordle_room_words: customWordleRoomWords, library_pack_id: selectedPackId }
+                // Library or custom source forwards its parsed word list so the start route uses
+                // it as the sequence source instead of the built-in category bank. Platform
+                // (default) sends nothing here and the server falls back to the category.
+                ...((questionSource === 'library' || questionSource === 'custom') &&
+                customWordleRoomWords.length >= wordleRoomWordCount
+                  ? {
+                      wordle_room_words: customWordleRoomWords,
+                      ...(questionSource === 'library' && selectedPackId ? { library_pack_id: selectedPackId } : {}),
+                    }
                   : {}),
               }
             : {}),
@@ -5839,7 +5843,7 @@ function CreateGameInner() {
                   </Field>
                 )}
                 {questionSource === 'library' && (
-                  <div className="space-y-2 pt-1">
+                  <div className="space-y-3 pt-1">
                     <LibraryPackPicker
                       loading={libraryPacksLoading}
                       packs={libraryPacks}
@@ -5854,6 +5858,53 @@ function CreateGameInner() {
                         Loaded {customWordleRoomWords.length} words from this pack.
                       </p>
                     )}
+                  </div>
+                )}
+                {(questionSource === 'library' || questionSource === 'custom') && (
+                  <Field label="Category name">
+                    <input
+                      value={settings.content_label}
+                      onChange={(e) => setSettings({ ...settings, content_label: e.target.value })}
+                      placeholder="e.g. Fruits, Slang, Startup jargon"
+                      className="input-field"
+                    />
+                    <p className="text-faint text-xs mt-1">
+                      Shown as the coloured badge above the board so players know what they&apos;re guessing.
+                      {questionSource === 'library'
+                        ? ' Auto-filled from the pack name — edit to make it your own.'
+                        : ''}
+                    </p>
+                  </Field>
+                )}
+                {questionSource === 'custom' && (
+                  <div className="space-y-3 pt-1">
+                    <Field label="Word list (CSV: word,hint — hint optional)">
+                      <input
+                        type="file"
+                        accept=".csv,text/csv"
+                        className="input-field"
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0]
+                          if (!file) return
+                          try {
+                            const csv = await file.text()
+                            const parsed = parsePuzzleThemeCsv('wordle_room', csv)
+                            const entries = parsed.entries.map((r) => {
+                              const word = (r.word ?? '').toLowerCase().replace(/[^a-z]/g, '')
+                              return r.hint ? { word, hint: r.hint } : { word }
+                            })
+                            setCustomWordleRoomWords(entries)
+                          } catch {
+                            setCustomWordleRoomWords([])
+                          }
+                        }}
+                      />
+                    </Field>
+                    <p className="text-faint text-xs">
+                      {customWordleRoomWords.length > 0
+                        ? `Loaded ${customWordleRoomWords.length} valid 3–8 letter word${customWordleRoomWords.length === 1 ? '' : 's'}. Need at least ${wordleRoomWordCount} for a ${wordleRoomWordCount}-word race.`
+                        : `Upload a CSV with one word,hint per line. Words must be 3–8 letters. Need at least ${wordleRoomWordCount} for the race.`}
+                    </p>
                   </div>
                 )}
                 <Field label="Words in the race">
@@ -6913,7 +6964,10 @@ function CreateGameInner() {
                   loading ||
                   (isCodewords &&
                     questionSource === 'custom' &&
-                    customCodewordsWords.length < CODEWORDS_MIN_CUSTOM_POOL)
+                    customCodewordsWords.length < CODEWORDS_MIN_CUSTOM_POOL) ||
+                  (isWordleRoom &&
+                    (questionSource === 'library' || questionSource === 'custom') &&
+                    customWordleRoomWords.length < wordleRoomWordCount)
                 }
               >
                 {loading

@@ -790,8 +790,10 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
         )}
 
         {/* Per-word hint purchase — only surfaces when the current word actually has a hint. */}
-        {currentWord && !myFinished && hintAvailable && (
-          hintUsed && hintText ? (
+        {currentWord &&
+          !myFinished &&
+          hintAvailable &&
+          (hintUsed && hintText ? (
             <p className="text-center text-sm text-muted">
               Hint: {hintText} <span className="text-faint">(−300 pts)</span>
             </p>
@@ -806,8 +808,7 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
                 Reveal hint (−300 pts)
               </button>
             </div>
-          ) : null
-        )}
+          ) : null)}
 
         <div className="glass-card p-3 space-y-2">
           <p className="label-caps text-xs">Race standings</p>
@@ -824,7 +825,9 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
                   </span>
                   <span className="font-bold tabular-nums text-muted">
                     {row.total_points} pts · {row.words_solved} solved
-                    {row.hints_used_count > 0 ? ` · ${row.hints_used_count} hint${row.hints_used_count > 1 ? 's' : ''}` : ''}
+                    {row.hints_used_count > 0
+                      ? ` · ${row.hints_used_count} hint${row.hints_used_count > 1 ? 's' : ''}`
+                      : ''}
                     {' · '}
                     {row.finished ? 'Done' : `word ${row.word_index + 1}`}
                   </span>
