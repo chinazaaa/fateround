@@ -436,13 +436,16 @@ function verifyWordle(
   if (winIndex >= 0 && winIndex !== guesses.length - 1) return { error: 'Invalid submission' }
   const won = winIndex >= 0
   const guessesUsed = guesses.length
-  const rawPoints = wordleFinalScore(guessesUsed, maxAttempts, won)
+  const hintUsed = submission.hintUsed === true
+  const rawPoints = wordleFinalScore(guessesUsed, maxAttempts, won, hintUsed)
 
   return {
     rawPoints,
     itemsSolved: guessesUsed,
     itemsTotal: maxAttempts,
-    hintsUsed: 0,
+    // Report the hint reveal as one "hint used" so it shows up in per-player stats. Score
+    // penalty is already applied above via wordleFinalScore.
+    hintsUsed: hintUsed ? 1 : 0,
     grid: wordleEmojiGrid(guesses, target),
   }
 }

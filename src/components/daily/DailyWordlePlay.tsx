@@ -16,6 +16,7 @@ interface DailyWordlePlayProps {
 type WordleProgress = {
   guesses: string[]
   current: string
+  hintUsed?: boolean
 }
 
 const KEYBOARD_ROWS: ReadonlyArray<readonly string[]> = [
@@ -159,6 +160,7 @@ export function DailyWordlePlay({ challengeId, puzzle, timer: maxSeconds, onSubm
   const [startAtMs] = useState(() => getOrCreateStartedAt(challengeId))
   const [guesses, setGuesses] = useState<string[]>(savedProgress?.guesses ?? [])
   const [current, setCurrent] = useState<string>(savedProgress?.current ?? '')
+  const [hintUsed, setHintUsed] = useState<boolean>(savedProgress?.hintUsed ?? false)
   const [message, setMessage] = useState<string | null>(null)
   const [announcement, setAnnouncement] = useState('')
   const [shake, setShake] = useState(false)
@@ -169,8 +171,8 @@ export function DailyWordlePlay({ challengeId, puzzle, timer: maxSeconds, onSubm
   const gameOver = won || guesses.length >= maxAttempts
 
   useEffect(() => {
-    if (!submitted) saveDailyAnswers<WordleProgress>(challengeId, { guesses, current })
-  }, [challengeId, guesses, current, submitted])
+    if (!submitted) saveDailyAnswers<WordleProgress>(challengeId, { guesses, current, hintUsed })
+  }, [challengeId, guesses, current, hintUsed, submitted])
 
   const { elapsed, formatted, isTimeUp } = useDailyChallengeTimer({
     mode: 'countdown',
@@ -183,8 +185,8 @@ export function DailyWordlePlay({ challengeId, puzzle, timer: maxSeconds, onSubm
     if (submitRef.current) return
     submitRef.current = true
     setSubmitted(true)
-    onSubmit({ timeSeconds: elapsed, submission: { guesses } })
-  }, [guesses, elapsed, onSubmit])
+    onSubmit({ timeSeconds: elapsed, submission: { guesses, hintUsed } })
+  }, [guesses, elapsed, onSubmit, hintUsed])
 
   // Reveal delay before starting the "going to scoreboard" countdown — long enough for the flip
   // animation on the last row (5 tiles × 0.35s stagger + flip) to finish before the countdown
@@ -380,9 +382,30 @@ export function DailyWordlePlay({ challengeId, puzzle, timer: maxSeconds, onSubm
           {message || gameOverMessage ? <span role="alert">{message || gameOverMessage}</span> : null}
         </div>
 
-        {gameOver && !won && hint && (
+        {/* Live hint — costs 300 points off the final score. Once bought, the hint stays visible
+            for the rest of the game so the player doesn't pay twice. If there's no hint on this
+            puzzle (e.g. General English words), the button is hidden entirely. */}
+        {hint && !gameOver && (
+          hintUsed ? (
+            <p className="text-center" style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>
+              Hint: {hint} <span style={{ color: 'var(--text-faint)' }}>(−300 pts)</span>
+            </p>
+          ) : (
+            <div className="text-center">
+              <button
+                type="button"
+                onClick={() => setHintUsed(true)}
+                disabled={submitted}
+                className="fr-btn fr-btn--secondary fr-btn--sm"
+              >
+                Reveal hint (−300 pts)
+              </button>
+            </div>
+          )
+        )}
+        {gameOver && hintUsed && hint && (
           <p className="text-center" style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>
-            Hint: {hint}
+            Hint: {hint} <span style={{ color: 'var(--text-faint)' }}>(−300 pts)</span>
           </p>
         )}
 

@@ -209,6 +209,8 @@ export function wordleKeyBestStates(guesses: readonly string[], target: string):
 // regardless of the category's attempt count. A loss pays 0.
 
 export const WORDLE_PERFECT_BONUS = 200
+/** Deducted from the final score when the player reveals the hint during play. */
+export const WORDLE_HINT_COST = 300
 
 export function wordleBasePoints(guessesUsed: number, maxAttempts: number): number {
   const attempts = Math.max(2, maxAttempts) // guard div-by-zero; real minimum is 4 anyway
@@ -216,11 +218,17 @@ export function wordleBasePoints(guessesUsed: number, maxAttempts: number): numb
   return Math.round(1000 - (used - 1) * (600 / (attempts - 1)))
 }
 
-export function wordleFinalScore(guessesUsed: number, maxAttempts: number, won: boolean): number {
+export function wordleFinalScore(
+  guessesUsed: number,
+  maxAttempts: number,
+  won: boolean,
+  hintUsed: boolean = false
+): number {
   if (!won) return 0
   const base = wordleBasePoints(guessesUsed, maxAttempts)
   const perfect = guessesUsed === 1 ? WORDLE_PERFECT_BONUS : 0
-  return Math.max(0, base + perfect)
+  const hintCost = hintUsed ? WORDLE_HINT_COST : 0
+  return Math.max(0, base + perfect - hintCost)
 }
 
 // ---------------------------------------------------------------------------
