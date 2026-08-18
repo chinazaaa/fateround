@@ -20,6 +20,7 @@ import {
   isCrosswordGame,
   isWordSearchGame,
   isWordScrambleGame,
+  isWordGroupingGame,
   isWhoSaidThis,
   parseGameType,
 } from '@/lib/game-types'
@@ -621,9 +622,16 @@ export function parseQuestionSource(raw: unknown, gameType?: GameType | string):
   // Describe It supports uploaded ('custom') words only — it has no library tier,
   // so never persist 'library' (gameplay would silently fall back to the platform pool).
   if (isDescribeItGame(gameType)) return raw === 'custom' ? 'custom' : 'platform'
-  // Crossword / Word Search / Word Scramble: library is folded into 'custom' at create (the
-  // start route just checks custom_questions), so only 'platform'/'custom' persist.
-  if (isCrosswordGame(gameType) || isWordSearchGame(gameType) || isWordScrambleGame(gameType))
+  // Crossword / Word Search / Word Scramble / Word Grouping: library is folded into 'custom'
+  // at create (the start route just checks custom_questions), so only 'platform'/'custom'
+  // persist. Without WG here, a pack-loaded WG lobby always reads back as 'platform' — the
+  // "✓ N puzzles loaded" chip never fires and the segmented control snaps back.
+  if (
+    isCrosswordGame(gameType) ||
+    isWordSearchGame(gameType) ||
+    isWordScrambleGame(gameType) ||
+    isWordGroupingGame(gameType)
+  )
     return raw === 'custom' ? 'custom' : 'platform'
   // Who Said This Pre-set roster decks: Library folds into 'custom' (start reads the deck from
   // custom_questions); 'platform' is a seeded deck. The player-quote mode ignores this.
@@ -1005,6 +1013,12 @@ export function questionSourceOptions(gameType: GameType | string): {
       { value: 'platform', label: 'Platform', hint: 'Use our built-in themed word banks.' },
       { value: 'library', label: 'Library', hint: 'Pick a community word pack.' },
       { value: 'custom', label: 'Your own', hint: 'Upload a CSV of words + optional hints (4+ words).' },
+    ]
+  }
+  if (isWordGroupingGame(gameType)) {
+    return [
+      { value: 'platform', label: 'Platform', hint: 'Use our built-in puzzle bank.' },
+      { value: 'library', label: 'Library', hint: 'Pick a community puzzle pack.' },
     ]
   }
   const platformCount = isTriviaGame(gameType)

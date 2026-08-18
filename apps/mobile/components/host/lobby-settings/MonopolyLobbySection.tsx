@@ -1,5 +1,6 @@
 import { StyleSheet, Text, View } from 'react-native'
 import type { GameType } from '@fateround/shared'
+import { SegmentedControl } from '@/components/create/SegmentedControl'
 import { SettingToggle } from '@/components/create/SettingToggle'
 import { TimerPicker } from '@/components/create/TimerPicker'
 import type { Theme } from '@/constants/theme'
@@ -17,6 +18,11 @@ export type MonopolyLobbyState = {
   forcedAuctions: boolean
   auctionTimerSeconds: number
   noRentInJail: boolean
+  /**
+   * 40 (classic) or 48 (expanded). The 48-space board requires a room cap of at
+   * least 6 players; the selector hides the 48 option below that threshold.
+   */
+  boardSize: 40 | 48
 }
 
 export function isMonopolyLobbyGame(gameType: GameType): boolean {
@@ -25,14 +31,35 @@ export function isMonopolyLobbyGame(gameType: GameType): boolean {
 
 export function MonopolyLobbySection({
   value,
+  maxPlayers,
   onChange,
 }: {
   value: MonopolyLobbyState
+  /** Current lobby max-players; the 48-space board is only offered when >= 6. */
+  maxPlayers: number | null
   onChange: (patch: Partial<MonopolyLobbyState>) => void
 }) {
   const styles = useThemedStyles(makeStyles)
+  const allowsExpanded = (maxPlayers ?? 0) >= 6
+  const boardSizeOptions = allowsExpanded
+    ? [
+        { value: '40', label: '40 spaces' },
+        { value: '48', label: '48 spaces' },
+      ]
+    : [{ value: '40', label: '40 spaces' }]
   return (
     <View style={styles.wrap}>
+      <View style={styles.field}>
+        <Text style={styles.label}>Board size</Text>
+        <SegmentedControl
+          value={String(value.boardSize)}
+          options={boardSizeOptions}
+          onChange={(v) => onChange({ boardSize: v === '48' ? 48 : 40 })}
+        />
+        {!allowsExpanded ? (
+          <Text style={styles.hint}>Increase the room cap to at least 6 players to unlock the 48-space board.</Text>
+        ) : null}
+      </View>
       <TimerPicker
         label="Auction timer"
         value={value.auctionTimerSeconds}
@@ -56,7 +83,7 @@ export function MonopolyLobbySection({
         />
         <SettingToggle
           label="No Rent in Jail"
-          description="Prevent players in jail from collecting rent on their properties."
+          description="Prevent players in NICKED from collecting rent on their properties."
           value={value.noRentInJail}
           onChange={(noRentInJail) => onChange({ noRentInJail })}
         />
@@ -68,6 +95,8 @@ export function MonopolyLobbySection({
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
     wrap: { gap: theme.space.md },
+    field: { gap: theme.space.sm },
     label: { color: theme.text, fontSize: 16, fontWeight: '800' },
+    hint: { color: theme.textMuted, fontSize: 12 },
     toggles: { gap: theme.space.sm },
   })

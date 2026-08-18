@@ -23,7 +23,12 @@ describe('buildCatalogForGame', () => {
 
   it('scopes each rule to the game, so a counter only reads that game', () => {
     for (const trophy of whot) {
-      expect((trophy.criteria as { gameType?: string }).gameType).toBe('whot')
+      const crit = trophy.criteria as { type?: string; gameType?: string; game_type?: string }
+      if (crit.type === 'platinum') {
+        expect(crit.game_type).toBe('whot')
+      } else {
+        expect(crit.gameType).toBe('whot')
+      }
     }
   })
 

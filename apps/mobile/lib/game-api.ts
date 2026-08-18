@@ -321,6 +321,41 @@ export async function fetchWordScrambleSolution(gameId: string): Promise<string[
   }
 }
 
+export function postWordGroupingSubmit(gameId: string, resumeToken: string, words: string[]) {
+  return postJson<{
+    success: boolean
+    isCorrect: boolean
+    oneAway?: boolean
+    alreadySolved?: boolean
+    group?: { category: string; words: string[]; difficulty: 1 | 2 | 3 | 4 }
+  }>('/api/word-grouping/submit', { gameId, resumeToken, words })
+}
+
+export async function fetchWordGroupingSolution(
+  gameId: string
+): Promise<{ category: string; words: string[]; difficulty: 1 | 2 | 3 | 4 }[] | null> {
+  try {
+    const res = await fetch(apiUrl(`/api/word-grouping/solution?gameId=${encodeURIComponent(gameId)}`), {
+      cache: 'no-store',
+    })
+    if (!res.ok) return null
+    const data = (await res.json()) as {
+      solution?: { groups?: { category: string; words: string[]; difficulty: 1 | 2 | 3 | 4 }[] } | null
+    }
+    return Array.isArray(data.solution?.groups) ? data.solution!.groups! : null
+  } catch {
+    return null
+  }
+}
+
+/** Finishes a Word Grouping game whose timer has run out. Server re-verifies the deadline. */
+export function postExpireWordGrouping(gameCode: string) {
+  return postJson<{ expired?: boolean; finished?: boolean }>(
+    `/api/games/${gameCode.toUpperCase()}/expire-word-grouping`,
+    {}
+  )
+}
+
 export function postYahtzeeRoll(gameId: string, resumeToken: string) {
   return postJson<{ success: boolean }>('/api/yahtzee/roll', { gameId, resumeToken })
 }
@@ -1143,6 +1178,19 @@ export function startGame(gameId: string, hostToken: string, firstTeam?: 'red' |
   })
 }
 
+export type FreshnessResult = {
+  fresh: boolean
+  totalPool: number
+  seenByMost: number
+  seenPercent: number
+  authenticatedPlayers: number
+  totalPlayers: number
+}
+
+export function checkFreshness(gameCode: string, hostToken: string) {
+  return postJson<FreshnessResult>(`/api/games/${gameCode.toUpperCase()}/freshness-check`, { hostToken })
+}
+
 export type LobbySettingsPatch = {
   is_public?: boolean
   content_label?: string
@@ -1167,6 +1215,8 @@ export type LobbySettingsPatch = {
     theme?: string
     customPrompt?: string
   } | null
+  /** Discovery Phase A — "Keep open" on the host T-13min banner. */
+  keep_lobby_alive?: boolean
 }
 
 /** Update editable lobby settings while waiting. Server clamps/validates per game. */
@@ -1203,6 +1253,12 @@ export type BoardLobbyPatch = {
   uno_jump_in?: boolean
   uno_multi_play_mode?: string
   uno_team_mode?: boolean
+  uno_mode?: string
+  uno_no_mercy_win?: string
+  uno_series_scoring?: boolean
+  uno_series_target?: number
+  uno_series_scores?: Record<string, number> | null
+  uno_series_winner_id?: string | null
   ludo_variant?: 'modern' | 'traditional'
   ayo_variant?: 'traditional' | 'oware'
   checkers_nigeria_street_rules?: boolean
@@ -1217,6 +1273,9 @@ export type BoardLobbyPatch = {
   monopoly_forced_auctions?: boolean
   monopoly_auction_timer_seconds?: number
   monopoly_no_rent_in_jail?: boolean
+  monopoly_estate_dividend?: boolean
+  /** 40 (classic) or 48 (expanded). 48 requires max_players >= 6 (server enforces). */
+  monopoly_board_size?: 40 | 48
   operative_timer_seconds?: number
   quick_draw_variant?: 'lie' | 'guess'
   quick_draw_play_mode?: 'team' | 'individual'

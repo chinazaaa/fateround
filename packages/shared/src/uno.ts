@@ -41,18 +41,25 @@ export const UNO_COLOR_HEX: Record<UnoColor, string> = {
 }
 
 // ── Rules ───────────────────────────────────────────────────────────────────────
+export type UnoMode = 'classic' | 'no_mercy'
+export type UnoNoMercyWin = 'first_out' | 'last_standing'
+
+/** Mercy rule: hitting this many cards in No Mercy knocks the player out. */
+export const UNO_MERCY_HAND_LIMIT = 25
+
 export type UnoRules = {
-  /** Allow challenging a Wild Draw Four. Core. */
+  /** Top-level UNO shape. */
+  mode: UnoMode
+  /** Allow challenging a Wild Draw Four. Core. Forced OFF in No Mercy. */
   wd4Challenge: boolean
   /** Cards drawn for a missed "UNO" call. Core. */
   unoPenalty: number
   /** Cards a failed challenger draws. Core. */
   wd4ChallengePenalty: number
-  /** 0 = all hands pass in play direction; 7 = swap hands with a chosen player. Core toggle
-   *  (per the task's ruleset check), but mobile's UI does not yet render the `swap_target`
-   *  picker — see UnoPlayerView.tsx note. */
+  /** 0 = all hands pass in play direction; 7 = swap hands with a chosen player.
+   *  Forced ON in No Mercy. */
   zeroSeven: boolean
-  /** Allow stacking Draw Two on Draw Two / Draw Four on Draw Four. Core. */
+  /** Allow stacking Draw cards. Forced ON in No Mercy (with cross-kind equal-or-higher chaining). */
   stacking: boolean
   /** Multi-Play grouping rule. */
   multiPlay: UnoMultiPlayMode
@@ -60,6 +67,8 @@ export type UnoRules = {
   teamMode: boolean
   /** Jump-In. */
   jumpIn: boolean
+  /** No Mercy: how the round ends. Ignored in Classic. */
+  noMercyWin: UnoNoMercyWin
 }
 
 export const UNO_TEAM_PLAYERS = 4
@@ -71,6 +80,14 @@ const MULTI_PLAY_MODES: UnoMultiPlayMode[] = ['off', 'same_color', 'same_number'
 
 export function parseMultiPlayMode(raw: unknown): UnoMultiPlayMode {
   return (MULTI_PLAY_MODES as readonly string[]).includes(String(raw)) ? (raw as UnoMultiPlayMode) : 'off'
+}
+
+export function parseUnoMode(raw: unknown): UnoMode {
+  return raw === 'no_mercy' ? 'no_mercy' : 'classic'
+}
+
+export function parseUnoNoMercyWin(raw: unknown): UnoNoMercyWin {
+  return raw === 'last_standing' ? 'last_standing' : 'first_out'
 }
 
 export function parseUnoRules(
@@ -85,21 +102,32 @@ export function parseUnoRules(
         | 'uno_multi_play_mode'
         | 'uno_team_mode'
         | 'uno_jump_in'
+        | 'uno_mode'
+        | 'uno_no_mercy_win'
       >
     | null
     | undefined
 ): UnoRules {
   const penalty = Number(game?.uno_uno_penalty ?? 2)
   const wd4Penalty = Number(game?.uno_wd4_challenge_penalty ?? 6)
+  const mode = parseUnoMode(game?.uno_mode)
+  const noMercy = mode === 'no_mercy'
   return {
-    wd4Challenge: game?.uno_wd4_challenge !== false,
+    mode,
+    // No Mercy has no WD4 challenge, forces 0/7 and stacking on, and disables Team-Up.
+    wd4Challenge: noMercy ? false : game?.uno_wd4_challenge !== false,
     unoPenalty: penalty === 4 ? 4 : 2,
     wd4ChallengePenalty: wd4Penalty === 4 ? 4 : 6,
-    zeroSeven: game?.uno_zero_seven === true,
-    stacking: game?.uno_stacking === true,
+    zeroSeven: noMercy ? true : game?.uno_zero_seven === true,
+    stacking: noMercy ? true : game?.uno_stacking === true,
+    // High Stakes has Discard Colour (drop every card of a colour in one turn) built in, so
+    // Multi-Play adds little on top and interacts badly with cross-kind Draw stacking. Forced off.
+    // Multi-Play is allowed in High Stakes too — mirrors src/lib/uno.ts.
     multiPlay: parseMultiPlayMode(game?.uno_multi_play_mode),
-    teamMode: game?.uno_team_mode === true,
-    jumpIn: game?.uno_jump_in === true,
+    teamMode: noMercy ? false : game?.uno_team_mode === true,
+    // Jump-In is OFF in High Stakes (see src/lib/uno.ts sibling for the reason).
+    jumpIn: noMercy ? false : game?.uno_jump_in === true,
+    noMercyWin: parseUnoNoMercyWin(game?.uno_no_mercy_win),
   }
 }
 
@@ -115,12 +143,53 @@ export function formatUnoGameDuration(seconds: number): string {
 }
 
 // ── Card helpers ──────────────────────────────────────────────────────────────
+// Keep in lockstep with src/lib/uno.ts. draw6 + draw10 are colourless — they take a
+// colour choice and can carry pending penalties through choose_color.
+const WILD_KINDS: UnoCard['kind'][] = [
+  'wild',
+  'wild_draw4',
+  'wild_reverse_draw4',
+  'wild_color_roulette',
+  'draw6',
+  'draw10',
+]
+
 export function isWildCard(card: UnoCard): boolean {
-  return card.kind === 'wild' || card.kind === 'wild_draw4'
+  return WILD_KINDS.includes(card.kind)
 }
 
 export function isActionCard(card: UnoCard): boolean {
-  return card.kind === 'skip' || card.kind === 'reverse' || card.kind === 'draw2'
+  return (
+    card.kind === 'skip' ||
+    card.kind === 'reverse' ||
+    card.kind === 'draw2' ||
+    card.kind === 'discard_all' ||
+    card.kind === 'skip_everyone'
+  )
+}
+
+/**
+ * Draw penalty this card carries when played / stacked. 0 = not a draw card.
+ * Used by No-Mercy stacking (any Draw card can stack onto a pending penalty of equal or lower value).
+ */
+export function drawCardValue(kind: UnoCard['kind']): number {
+  switch (kind) {
+    case 'draw2':
+      return 2
+    case 'wild_draw4':
+    case 'wild_reverse_draw4':
+      return 4
+    case 'draw6':
+      return 6
+    case 'draw10':
+      return 10
+    default:
+      return 0
+  }
+}
+
+export function isDrawCard(card: UnoCard): boolean {
+  return drawCardValue(card.kind) > 0
 }
 
 const KIND_SHORT: Record<UnoCard['kind'], string> = {
@@ -129,13 +198,23 @@ const KIND_SHORT: Record<UnoCard['kind'], string> = {
   reverse: 'Reverse',
   draw2: '+2',
   wild: 'Wild',
-  wild_draw4: 'Wild +4',
+  wild_draw4: '+4',
+  discard_all: 'Discard Colour',
+  skip_everyone: 'Skip All',
+  draw6: '+6',
+  draw10: '+10',
+  wild_reverse_draw4: 'Reverse +4',
+  wild_color_roulette: 'Roulette',
 }
 
 export function cardLabel(card: UnoCard): string {
   if (card.kind === 'number') return `${UNO_COLOR_LABELS[card.color as UnoColor]} ${card.value}`
   if (card.kind === 'wild') return 'Wild'
-  if (card.kind === 'wild_draw4') return 'Wild Draw Four'
+  if (card.kind === 'wild_draw4') return 'Draw 4'
+  if (card.kind === 'wild_reverse_draw4') return 'Reverse Draw 4'
+  if (card.kind === 'wild_color_roulette') return 'Colour Roulette'
+  if (card.kind === 'draw6') return 'Draw 6'
+  if (card.kind === 'draw10') return 'Draw 10'
   return `${UNO_COLOR_LABELS[card.color as UnoColor]} ${KIND_SHORT[card.kind]}`
 }
 
@@ -148,7 +227,7 @@ export function cardShortLabel(card: UnoCard): string {
 export function cardPoints(card: UnoCard): number {
   if (card.kind === 'number') return card.value ?? 0
   if (isWildCard(card)) return 50
-  return 20 // skip / reverse / draw2
+  return 20 // any coloured action card
 }
 
 export function unoHandSum(cards: UnoCard[]): number {
@@ -219,11 +298,23 @@ export function specialCardMessage(card: UnoCard): string | null {
     case 'reverse':
       return 'Reverse — direction of play flips'
     case 'draw2':
-      return 'Draw Two — next player draws 2 and loses their turn'
+      return 'Draw 2 — next player draws 2 and loses their turn'
     case 'wild':
       return 'Wild — choose a colour'
     case 'wild_draw4':
-      return 'Wild Draw Four — next player draws 4'
+      return 'Draw 4 — next player draws 4 and loses their turn'
+    case 'discard_all':
+      return 'Discard Colour — drop every matching-colour card in your hand'
+    case 'skip_everyone':
+      return 'Skip All — everyone else is skipped, go again'
+    case 'draw6':
+      return 'Draw 6 — next player draws 6 and loses their turn'
+    case 'draw10':
+      return 'Draw 10 — next player draws 10 and loses their turn'
+    case 'wild_reverse_draw4':
+      return 'Reverse Draw 4 — reverse, then next player draws 4'
+    case 'wild_color_roulette':
+      return 'Colour Roulette — next player picks a colour and draws until they hit it'
     default:
       return null
   }
@@ -238,10 +329,33 @@ export function activeColor(session: UnoSession): UnoColor | null {
 }
 
 export function canPlayCard(card: UnoCard, session: UnoSession): boolean {
-  // A pending forced draw (Draw Two / Draw Four) must be taken — unless stacking is on, in
-  // which case only a matching card stacks onto it.
+  // A pending forced draw (Draw Two / Draw Four / Six / Ten / Wild Rev Draw 4) must be taken —
+  // unless a Draw card of equal or higher value is played to stack. In Classic stacking,
+  // draw_penalty_kind is set to the ONLY compatible kind ('draw2' or 'wild_draw4'). In No Mercy
+  // stacking, any Draw card whose value >= the pending value is legal.
   if ((session.draw_penalty ?? 0) > 0) {
-    return card.kind === session.draw_penalty_kind
+    const pendingKind = session.draw_penalty_kind
+    if (!pendingKind) return false
+    const cardVal = drawCardValue(card.kind)
+    if (cardVal === 0) return false
+    const pendingVal = drawCardValue(pendingKind)
+    // Classic stacking is same-kind only; No Mercy uses value-based cross-kind chaining.
+    // We treat any pending kind that isn't 'draw2' / 'wild_draw4' as No-Mercy-only, and
+    // for the two classic kinds we require an exact kind match to preserve classic behaviour.
+    if (pendingKind === 'draw2' || pendingKind === 'wild_draw4') {
+      // Classic path — must be exact kind. No Mercy allows any >= draw card.
+      // We can't see the mode here, but new draw kinds don't exist in a classic deck, so any
+      // caller that produces them is by definition running No Mercy — allow value-based stacking.
+      if (card.kind === pendingKind) return true
+      if (
+        cardVal >= pendingVal &&
+        (card.kind === 'draw6' || card.kind === 'draw10' || card.kind === 'wild_reverse_draw4')
+      ) {
+        return true
+      }
+      return false
+    }
+    return cardVal >= pendingVal
   }
 
   if (isWildCard(card)) return true
@@ -262,11 +376,11 @@ export function canPlayCard(card: UnoCard, session: UnoSession): boolean {
 export function playPenaltyError(card: UnoCard, session: UnoSession): string | null {
   const penalty = session.draw_penalty ?? 0
   if (penalty <= 0) return null
-  if (card.kind === session.draw_penalty_kind) return null // a legal stack
+  if (canPlayCard(card, session)) return null // a legal stack
   const kind = session.draw_penalty_kind
-  if (kind === 'draw2') return `Draw ${penalty} — play another Draw Two to stack, or draw`
-  if (kind === 'wild_draw4') return `Draw ${penalty} — play another Wild Draw Four to stack, or draw`
-  return `Draw the ${penalty}-card penalty`
+  if (kind === 'draw2') return `Draw ${penalty} — stack with a Draw 2 (or higher in High Stakes)`
+  if (kind === 'wild_draw4') return `Draw ${penalty} — stack with a Draw 4 (or higher in High Stakes)`
+  return `Draw ${penalty} — stack with a Draw card of equal or higher value`
 }
 
 export function hasPlayableCard(hand: UnoCard[], session: UnoSession): boolean {
@@ -381,12 +495,16 @@ export function unoPlacementOrder(
   turnOrder: string[],
   finishOrder: string[],
   teamMode = false,
-  leftPlayerIds: string[] = []
+  leftPlayerIds: string[] = [],
+  // No Mercy — Mercy-knockout ids ALWAYS sort after every live seat, regardless of
+  // hand-sum. Mirrors src/lib/uno.ts.
+  eliminatedPlayerIds: string[] = []
 ): string[] {
   const activeIds = new Set(turnOrder ?? [])
   const finished = (finishOrder ?? []).filter((id) => activeIds.has(id))
   const finishedSet = new Set(finished)
   const leftSet = new Set(leftPlayerIds)
+  const eliminatedSet = new Set(eliminatedPlayerIds)
 
   const order = turnOrder ?? []
   if (teamMode && order.length === UNO_TEAM_PLAYERS) {
@@ -416,19 +534,25 @@ export function unoPlacementOrder(
       .sort((a, b) => byLeft(a, b) || sumOf(a) - sumOf(b) || a.localeCompare(b))
     return [...winners, ...losers]
   }
-  const remaining = hands
+  const stillHolding = hands
     .filter((h) => activeIds.has(h.player_id) && !finishedSet.has(h.player_id))
     .map((h) => {
       const cards = (h.cards as UnoCard[]) ?? []
-      return { playerId: h.player_id, handSum: unoHandSum(cards), cardCount: cards.length }
+      return {
+        playerId: h.player_id,
+        handSum: unoHandSum(cards),
+        cardCount: cards.length,
+        eliminated: eliminatedSet.has(h.player_id),
+      }
     })
     .sort((a, b) => {
       if (a.handSum !== b.handSum) return a.handSum - b.handSum
       if (a.cardCount !== b.cardCount) return a.cardCount - b.cardCount
       return a.playerId.localeCompare(b.playerId)
     })
-    .map((r) => r.playerId)
-  return [...finished, ...remaining]
+  const live = stillHolding.filter((r) => !r.eliminated).map((r) => r.playerId)
+  const eliminated = stillHolding.filter((r) => r.eliminated).map((r) => r.playerId)
+  return [...finished, ...live, ...eliminated]
 }
 
 export function buildUnoStandings(
@@ -437,24 +561,91 @@ export function buildUnoStandings(
   turnOrder: string[],
   finishOrder: string[] = [],
   teamMode = false,
-  leftPlayerIds: string[] = []
+  leftPlayerIds: string[] = [],
+  eliminatedPlayerIds: string[] = []
 ): UnoStanding[] {
   const activeIds = new Set(turnOrder ?? [])
   const byId = new Map(hands.filter((h) => activeIds.has(h.player_id)).map((h) => [h.player_id, h]))
-  return unoPlacementOrder(hands, turnOrder, finishOrder, teamMode, leftPlayerIds).map((playerId, index) => {
-    const cards = (byId.get(playerId)?.cards as UnoCard[]) ?? []
-    return {
-      playerId,
-      name: players.find((p) => p.id === playerId)?.name ?? 'Player',
-      cardCount: cards.length,
-      handSum: unoHandSum(cards),
-      rank: index + 1,
+  return unoPlacementOrder(hands, turnOrder, finishOrder, teamMode, leftPlayerIds, eliminatedPlayerIds).map(
+    (playerId, index) => {
+      const cards = (byId.get(playerId)?.cards as UnoCard[]) ?? []
+      return {
+        playerId,
+        name: players.find((p) => p.id === playerId)?.name ?? 'Player',
+        cardCount: cards.length,
+        handSum: unoHandSum(cards),
+        rank: index + 1,
+      }
     }
-  })
+  )
 }
 
 /** Colour accent for the required-colour card-table hint (falls back to a neutral slate). */
 export function unoColorHex(color: UnoCardColor | null | undefined): string {
   if (!color || color === 'wild') return '#334155'
   return UNO_COLOR_HEX[color]
+}
+
+// ── Pure helpers needed by shared uno-solo (mirrors src/lib/uno.ts) ─────────────
+
+/** Build the standard 108-card UNO deck. Pure — mirrors the web helper. */
+export function buildUnoDeck(): UnoCard[] {
+  const deck: UnoCard[] = []
+  for (const color of UNO_COLORS) {
+    deck.push({ id: `${color}-0`, color, kind: 'number', value: 0 })
+    for (let value = 1; value <= 9; value += 1) {
+      deck.push({ id: `${color}-${value}-a`, color, kind: 'number', value })
+      deck.push({ id: `${color}-${value}-b`, color, kind: 'number', value })
+    }
+    for (const kind of ['skip', 'reverse', 'draw2'] as const) {
+      deck.push({ id: `${color}-${kind}-a`, color, kind })
+      deck.push({ id: `${color}-${kind}-b`, color, kind })
+    }
+  }
+  for (let i = 0; i < 4; i += 1) {
+    deck.push({ id: `wild-${i}`, color: 'wild', kind: 'wild' })
+    deck.push({ id: `wild4-${i}`, color: 'wild', kind: 'wild_draw4' })
+  }
+  return deck
+}
+
+/**
+ * Walk a Multi-Play set into the resulting turn-advance directives (direction,
+ * accumulated Draw Two penalty, skips before/after the Draw Two target). Pure —
+ * mirrors the web helper. See src/lib/uno.ts for the full semantic notes.
+ */
+export function resolveMultiPlayAdvance(
+  cards: UnoCard[],
+  session: Pick<UnoSession, 'direction'>,
+  activeCount: number
+): { direction: number; penalty: number; skipsBefore: number; skipsAfter: number } {
+  const baseDirection = session.direction < 0 ? -1 : 1
+  let direction = baseDirection
+  let skipsBefore = 0
+  let skipsAfter = 0
+  let penalty = 0
+  let seenDraw2 = false
+  for (const c of cards) {
+    if (c.kind === 'reverse') {
+      if (activeCount <= 2) {
+        if (seenDraw2) skipsAfter += 1
+        else skipsBefore += 1
+      } else {
+        direction = -direction
+      }
+    } else if (c.kind === 'skip') {
+      if (seenDraw2) skipsAfter += 1
+      else skipsBefore += 1
+    } else if (c.kind === 'draw2') {
+      seenDraw2 = true
+      penalty += 2
+    } else {
+      direction = baseDirection
+      skipsBefore = 0
+      skipsAfter = 0
+      penalty = 0
+      seenDraw2 = false
+    }
+  }
+  return { direction, penalty, skipsBefore, skipsAfter }
 }

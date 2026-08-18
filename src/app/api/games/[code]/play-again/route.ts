@@ -165,6 +165,10 @@ const SESSION_CLEARERS: Record<ClearableSessionGameType, SessionClearer> = {
   crossword: clearCrosswordSessionData,
   word_search: clearWordSearchSessionData,
   word_scramble: clearWordScrambleSessionData,
+  // No word_grouping entry: word_grouping_solutions is keyed by round_id (no game_id
+  // column) and word_grouping_submissions cascades ON DELETE from rounds. The unconditional
+  // `rounds` delete above already cleans both — a custom clearer here 500'd on the missing
+  // game_id column and blocked play-again.
   landmine: clearLandmineSessionData,
   ping_pong: clearPingPongSessionData,
 }
@@ -280,6 +284,7 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
     // "Play again · same settings" reopens the lobby with the ready-up ring; a plain
     // "Return to lobby" reset (sameSettings falsy) lands in the standard lobby.
     replay_pending: sameSettings === true,
+    sessions_played: (game.sessions_played ?? 1) + 1,
   }
 
   if (rawCustomQuestions !== undefined && isCodewordsGame(gameType)) {

@@ -16,7 +16,9 @@ const NAV: { href: string; label: string; icon: string; exact?: boolean }[] = [
   { href: '/admin/trophies', label: 'Trophies', icon: '🏆' },
   { href: '/admin/landmine-categories', label: 'Landmine', icon: '🧨' },
   { href: '/admin/platform-content', label: 'Platform', icon: '🗂️' },
+  { href: '/admin/collections', label: 'Collections', icon: '🗃️' },
   { href: '/admin/community', label: 'Community', icon: '👥' },
+  { href: '/admin/daily-challenges', label: 'Daily', icon: '📅' },
 ]
 
 const STORAGE_KEY = 'admin-sidebar-collapsed'

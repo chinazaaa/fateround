@@ -26,7 +26,7 @@ import {
 import { supabase } from '@/lib/supabase'
 import { fetchUnoHands } from '@/lib/hands-client'
 import { mergeHandRow, pushedCardCount } from '@/lib/hand-rows'
-import { GAME_SELECT, PLAYER_SELECT, UNO_SESSION_SELECT } from '@/lib/supabase-selects'
+import { GAME_SELECT, PLAYER_SELECT, UNO_SESSION_SELECT, isCompleteUnoSessionRow } from '@/lib/supabase-selects'
 import { appOrigin } from '@/lib/site'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
@@ -118,8 +118,14 @@ export function UnoHostView({ gameCode, hostToken }: { gameCode: string; hostTok
     const next = row as unknown as UnoSession
     const prev = sessionRef.current
     if (prev && next.updated_at < prev.updated_at) return true
-    setSession(next)
-    sessionRef.current = next
+    // Realtime UPDATE payloads drop unchanged TOAST-ed columns (draw_pile, discard_pile,
+    // turn_order once they grow) — arrive as null and would wipe local state, leaving
+    // canPlayCard() to read a stale/blank session and every card looks unplayable.
+    // Discard and let the debounced full reload refetch the complete row.
+    if (!isCompleteUnoSessionRow(row)) return false
+    const merged = prev ? { ...prev, ...next } : next
+    setSession(merged)
+    sessionRef.current = merged
     return prev != null
   }, [])
   const applyHandRow = useCallback((row: Record<string, unknown>): boolean => {
@@ -340,6 +346,7 @@ export function UnoHostView({ gameCode, hostToken }: { gameCode: string; hostTok
     myPlayerId: hostPlayerId,
     myHandCount: myHand.length,
     enabled: hostPlays && game?.status === 'active',
+    players,
   })
 
   const handCounts = useMemo(() => {
@@ -398,7 +405,7 @@ export function UnoHostView({ gameCode, hostToken }: { gameCode: string; hostTok
           hostToken={hostToken}
           onEnded={load}
           label="End game"
-          icon={<ExitIcon size={16} />}
+          icon={<ExitIcon size={14} />}
           confirmTitle="End this game?"
           confirmMessage="Everyone sees the final results. You can start a new game from the room afterward."
           className="btn-danger-soft w-full"
@@ -475,7 +482,7 @@ export function UnoHostView({ gameCode, hostToken }: { gameCode: string; hostTok
             hostToken={hostToken}
             onEnded={load}
             label="End game early"
-            icon={<ExitIcon size={16} />}
+            icon={<ExitIcon size={14} />}
             confirmTitle="End this game early?"
             confirmMessage="The current game will end and players will see the results screen."
             className="btn-danger-soft"
@@ -526,9 +533,10 @@ export function UnoHostView({ gameCode, hostToken }: { gameCode: string; hostTok
             onCallUno={() => void postHostAction('/api/uno/call-uno')}
             onSwap={(targetId) => void postHostAction('/api/uno/swap', { targetId })}
             onPass={() => void postHostAction('/api/uno/pass')}
+            // Multi-Play is allowed in HS (spec update). Jump-In stays forced OFF in HS.
             multiPlayMode={parseMultiPlayMode(game.uno_multi_play_mode)}
             onPlayMulti={(cardIds) => void postHostAction('/api/uno/play-multi', { cardIds })}
-            jumpInEnabled={game.uno_jump_in === true}
+            jumpInEnabled={game.uno_mode !== 'no_mercy' && game.uno_jump_in === true}
             onJumpIn={(cardId) => void postHostAction('/api/uno/jump-in', { cardId })}
             partner={partner}
             quickChat={quickChat}

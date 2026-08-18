@@ -1,7 +1,7 @@
-/** UK Monopoly board — property names, title-deed rents, and building costs. */
+/** London Edition board — property names, title-deed rents, and building costs. */
 
 export const MONOPOLY_MIN_PLAYERS = 2
-export const MONOPOLY_MAX_PLAYERS = 6
+export const MONOPOLY_MAX_PLAYERS = 8
 export const MONOPOLY_DEFAULT_MAX_PLAYERS = 6
 export const MONOPOLY_STARTING_CASH = 1500
 export const MONOPOLY_GO_SALARY = 200
@@ -9,6 +9,8 @@ export const MONOPOLY_JAIL_FINE = 50
 export const MONOPOLY_JAIL_POSITION = 10
 export const MONOPOLY_GO_TO_JAIL_POSITION = 30
 export const MONOPOLY_BOARD_SIZE = 40
+export const MONOPOLY_EXPANDED_BOARD_SIZE = 48
+export type MonopolyBoardSize = typeof MONOPOLY_BOARD_SIZE | typeof MONOPOLY_EXPANDED_BOARD_SIZE
 export const MONOPOLY_HOUSES_IN_BANK = 32
 export const MONOPOLY_HOTELS_IN_BANK = 12
 export const MONOPOLY_MORTGAGE_INTEREST_RATE = 0.1
@@ -34,6 +36,10 @@ export type MonopolyColorGroup =
   | 'yellow'
   | 'green'
   | 'dark_blue'
+  | 'teal'
+  | 'violet'
+  | 'indigo'
+  | 'coral'
   | 'station'
   | 'utility'
 
@@ -58,10 +64,10 @@ export interface MonopolySpace {
 }
 
 export const MONOPOLY_BOARD: MonopolySpace[] = [
-  { index: 0, name: 'GO', type: 'go' },
+  { index: 0, name: 'PAYDAY', type: 'go' },
   {
     index: 1,
-    name: 'Old Kent Road',
+    name: 'Barking Road',
     type: 'property',
     price: 60,
     rent: 2,
@@ -69,10 +75,10 @@ export const MONOPOLY_BOARD: MonopolySpace[] = [
     houseCost: 50,
     color: 'brown',
   },
-  { index: 2, name: 'Community Chest', type: 'community' },
+  { index: 2, name: 'Kitty', type: 'community' },
   {
     index: 3,
-    name: 'Whitechapel Road',
+    name: 'Dagenham Avenue',
     type: 'property',
     price: 60,
     rent: 4,
@@ -80,11 +86,11 @@ export const MONOPOLY_BOARD: MonopolySpace[] = [
     houseCost: 50,
     color: 'brown',
   },
-  { index: 4, name: 'Income Tax', type: 'tax' },
-  { index: 5, name: "King's Cross Station", type: 'station', price: 200, rent: 25, color: 'station' },
+  { index: 4, name: 'TAX OFFICE', type: 'tax' },
+  { index: 5, name: 'Paddington', type: 'station', price: 200, rent: 25, color: 'station' },
   {
     index: 6,
-    name: 'The Angel Islington',
+    name: 'Thamesmead Walk',
     type: 'property',
     price: 100,
     rent: 6,
@@ -92,10 +98,10 @@ export const MONOPOLY_BOARD: MonopolySpace[] = [
     houseCost: 50,
     color: 'light_blue',
   },
-  { index: 7, name: 'Chance', type: 'chance' },
+  { index: 7, name: 'Fate', type: 'chance' },
   {
     index: 8,
-    name: 'Euston Road',
+    name: 'Croydon High Street',
     type: 'property',
     price: 100,
     rent: 6,
@@ -105,7 +111,7 @@ export const MONOPOLY_BOARD: MonopolySpace[] = [
   },
   {
     index: 9,
-    name: 'Pentonville Road',
+    name: 'Erith Road',
     type: 'property',
     price: 120,
     rent: 8,
@@ -113,10 +119,10 @@ export const MONOPOLY_BOARD: MonopolySpace[] = [
     houseCost: 50,
     color: 'light_blue',
   },
-  { index: 10, name: 'Jail', type: 'jail' },
+  { index: 10, name: 'NICKED', type: 'jail' },
   {
     index: 11,
-    name: 'Pall Mall',
+    name: 'Ilford Lane',
     type: 'property',
     price: 140,
     rent: 10,
@@ -124,10 +130,10 @@ export const MONOPOLY_BOARD: MonopolySpace[] = [
     houseCost: 50,
     color: 'pink',
   },
-  { index: 12, name: 'Electric Company', type: 'utility', price: 150, color: 'utility' },
+  { index: 12, name: 'Power Company', type: 'utility', price: 150, color: 'utility' },
   {
     index: 13,
-    name: 'Whitehall',
+    name: 'Romford Road',
     type: 'property',
     price: 140,
     rent: 10,
@@ -137,7 +143,7 @@ export const MONOPOLY_BOARD: MonopolySpace[] = [
   },
   {
     index: 14,
-    name: 'Northumberland Avenue',
+    name: 'Enfield Town',
     type: 'property',
     price: 160,
     rent: 12,
@@ -145,10 +151,10 @@ export const MONOPOLY_BOARD: MonopolySpace[] = [
     houseCost: 50,
     color: 'pink',
   },
-  { index: 15, name: 'Marylebone Station', type: 'station', price: 200, rent: 25, color: 'station' },
+  { index: 15, name: 'Waterloo', type: 'station', price: 200, rent: 25, color: 'station' },
   {
     index: 16,
-    name: 'Bow Street',
+    name: 'Walthamstow Market',
     type: 'property',
     price: 180,
     rent: 14,
@@ -156,10 +162,10 @@ export const MONOPOLY_BOARD: MonopolySpace[] = [
     houseCost: 100,
     color: 'orange',
   },
-  { index: 17, name: 'Community Chest', type: 'community' },
+  { index: 17, name: 'Kitty', type: 'community' },
   {
     index: 18,
-    name: 'Marlborough Street',
+    name: 'Peckham Rye',
     type: 'property',
     price: 180,
     rent: 14,
@@ -169,7 +175,7 @@ export const MONOPOLY_BOARD: MonopolySpace[] = [
   },
   {
     index: 19,
-    name: 'Vine Street',
+    name: 'Deptford Broadway',
     type: 'property',
     price: 200,
     rent: 16,
@@ -177,10 +183,10 @@ export const MONOPOLY_BOARD: MonopolySpace[] = [
     houseCost: 100,
     color: 'orange',
   },
-  { index: 20, name: 'Free Parking', type: 'free_parking' },
+  { index: 20, name: 'LAY-BY', type: 'free_parking' },
   {
     index: 21,
-    name: 'The Strand',
+    name: 'Stratford Cross',
     type: 'property',
     price: 220,
     rent: 18,
@@ -188,10 +194,10 @@ export const MONOPOLY_BOARD: MonopolySpace[] = [
     houseCost: 100,
     color: 'red',
   },
-  { index: 22, name: 'Chance', type: 'chance' },
+  { index: 22, name: 'Fate', type: 'chance' },
   {
     index: 23,
-    name: 'Fleet Street',
+    name: 'Hackney Wick',
     type: 'property',
     price: 220,
     rent: 18,
@@ -201,7 +207,7 @@ export const MONOPOLY_BOARD: MonopolySpace[] = [
   },
   {
     index: 24,
-    name: 'Trafalgar Square',
+    name: 'Brixton Hill',
     type: 'property',
     price: 240,
     rent: 20,
@@ -209,10 +215,10 @@ export const MONOPOLY_BOARD: MonopolySpace[] = [
     houseCost: 100,
     color: 'red',
   },
-  { index: 25, name: 'Fenchurch Street Station', type: 'station', price: 200, rent: 25, color: 'station' },
+  { index: 25, name: 'Victoria', type: 'station', price: 200, rent: 25, color: 'station' },
   {
     index: 26,
-    name: 'Leicester Square',
+    name: 'Clapham Common',
     type: 'property',
     price: 260,
     rent: 22,
@@ -222,7 +228,7 @@ export const MONOPOLY_BOARD: MonopolySpace[] = [
   },
   {
     index: 27,
-    name: 'Coventry Street',
+    name: 'Fulham Broadway',
     type: 'property',
     price: 260,
     rent: 22,
@@ -230,10 +236,10 @@ export const MONOPOLY_BOARD: MonopolySpace[] = [
     houseCost: 150,
     color: 'yellow',
   },
-  { index: 28, name: 'Water Works', type: 'utility', price: 150, color: 'utility' },
+  { index: 28, name: 'Water Board', type: 'utility', price: 150, color: 'utility' },
   {
     index: 29,
-    name: 'Piccadilly',
+    name: 'Battersea Rise',
     type: 'property',
     price: 280,
     rent: 24,
@@ -241,10 +247,10 @@ export const MONOPOLY_BOARD: MonopolySpace[] = [
     houseCost: 150,
     color: 'yellow',
   },
-  { index: 30, name: 'Go To Jail', type: 'go_to_jail' },
+  { index: 30, name: 'OFF TO JAIL', type: 'go_to_jail' },
   {
     index: 31,
-    name: 'Regent Street',
+    name: 'Marylebone Lane',
     type: 'property',
     price: 300,
     rent: 26,
@@ -254,7 +260,7 @@ export const MONOPOLY_BOARD: MonopolySpace[] = [
   },
   {
     index: 32,
-    name: 'Oxford Street',
+    name: 'Notting Hill Gate',
     type: 'property',
     price: 300,
     rent: 26,
@@ -262,10 +268,10 @@ export const MONOPOLY_BOARD: MonopolySpace[] = [
     houseCost: 150,
     color: 'green',
   },
-  { index: 33, name: 'Community Chest', type: 'community' },
+  { index: 33, name: 'Kitty', type: 'community' },
   {
     index: 34,
-    name: 'Bond Street',
+    name: 'South Kensington',
     type: 'property',
     price: 320,
     rent: 28,
@@ -273,11 +279,11 @@ export const MONOPOLY_BOARD: MonopolySpace[] = [
     houseCost: 150,
     color: 'green',
   },
-  { index: 35, name: 'Liverpool Street Station', type: 'station', price: 200, rent: 25, color: 'station' },
-  { index: 36, name: 'Chance', type: 'chance' },
+  { index: 35, name: 'London Bridge', type: 'station', price: 200, rent: 25, color: 'station' },
+  { index: 36, name: 'Fate', type: 'chance' },
   {
     index: 37,
-    name: 'Park Lane',
+    name: 'Chester Square',
     type: 'property',
     price: 350,
     rent: 35,
@@ -285,10 +291,10 @@ export const MONOPOLY_BOARD: MonopolySpace[] = [
     houseCost: 200,
     color: 'dark_blue',
   },
-  { index: 38, name: 'Super Tax', type: 'tax' },
+  { index: 38, name: 'SURCHARGE', type: 'tax' },
   {
     index: 39,
-    name: 'Mayfair',
+    name: 'Winnington Road',
     type: 'property',
     price: 400,
     rent: 50,
@@ -297,6 +303,90 @@ export const MONOPOLY_BOARD: MonopolySpace[] = [
     color: 'dark_blue',
   },
 ]
+
+function expandedSite(
+  index: number,
+  name: string,
+  color: MonopolyColorGroup,
+  price: number,
+  rent: number,
+  houseCost: number
+): MonopolySpace {
+  return {
+    index,
+    name,
+    type: 'property',
+    price,
+    rent,
+    rentTable: [rent, rent * 5, rent * 15, rent * 45, rent * 80, rent * 125],
+    houseCost,
+    color,
+  }
+}
+
+/** 48-space Estate Kings board: every street follows 3-site / event / 2-site / terminal / 3-site / event. */
+export const MONOPOLY_EXPANDED_BOARD: MonopolySpace[] = [
+  { index: 0, name: 'PAYDAY', type: 'go' },
+  expandedSite(1, 'Thamesmead Walk', 'light_blue', 100, 6, 50),
+  { index: 2, name: 'Fate', type: 'chance' },
+  expandedSite(3, 'Croydon High', 'light_blue', 110, 7, 50),
+  expandedSite(4, 'Erith Road', 'light_blue', 120, 8, 50),
+  expandedSite(5, 'Barking Road', 'brown', 60, 2, 50),
+  { index: 6, name: 'Paddington', type: 'station', price: 200, rent: 25, color: 'station' },
+  expandedSite(7, 'Dagenham Ave', 'brown', 60, 4, 50),
+  expandedSite(8, 'Canary Wharf', 'indigo', 140, 10, 100),
+  { index: 9, name: 'Esusu Fund', type: 'community' },
+  expandedSite(10, 'Bermondsey', 'indigo', 150, 11, 100),
+  expandedSite(11, 'Limehouse', 'indigo', 160, 12, 100),
+  { index: 12, name: 'NICKED', type: 'jail' },
+  expandedSite(13, 'Walthamstow', 'orange', 180, 14, 100),
+  { index: 14, name: 'Market Shock', type: 'chance' },
+  expandedSite(15, 'Peckham Rye', 'orange', 190, 15, 100),
+  expandedSite(16, 'Deptford Way', 'orange', 200, 16, 100),
+  expandedSite(17, 'Hampstead', 'violet', 210, 17, 100),
+  { index: 18, name: 'Waterloo', type: 'station', price: 200, rent: 25, color: 'station' },
+  expandedSite(19, 'Islington', 'violet', 220, 18, 100),
+  expandedSite(20, 'Ilford Lane', 'pink', 230, 19, 100),
+  { index: 21, name: 'Water Board', type: 'utility', price: 150, color: 'utility' },
+  expandedSite(22, 'Romford Road', 'pink', 240, 20, 100),
+  expandedSite(23, 'Enfield Town', 'pink', 250, 21, 100),
+  { index: 24, name: 'LAY-BY', type: 'free_parking' },
+  expandedSite(25, 'Stratford Cross', 'red', 260, 22, 150),
+  { index: 26, name: 'Community Grant', type: 'community' },
+  expandedSite(27, 'Hackney Wick', 'red', 270, 23, 150),
+  expandedSite(28, 'Brixton Hill', 'red', 280, 24, 150),
+  expandedSite(29, 'Shoreditch', 'teal', 290, 25, 150),
+  { index: 30, name: 'Victoria', type: 'station', price: 200, rent: 25, color: 'station' },
+  expandedSite(31, 'Kings Cross', 'teal', 300, 26, 150),
+  expandedSite(32, 'Clapham Common', 'yellow', 310, 27, 150),
+  { index: 33, name: 'Power Company', type: 'utility', price: 150, color: 'utility' },
+  expandedSite(34, 'Fulham Broadway', 'yellow', 320, 28, 150),
+  expandedSite(35, 'Battersea Rise', 'yellow', 330, 29, 150),
+  { index: 36, name: 'OFF TO NICKED', type: 'go_to_jail' },
+  expandedSite(37, 'Marylebone Lane', 'green', 340, 30, 200),
+  { index: 38, name: 'Kitty', type: 'community' },
+  expandedSite(39, 'Notting Hill', 'green', 350, 31, 200),
+  expandedSite(40, 'South Kensington', 'green', 360, 32, 200),
+  expandedSite(41, 'Chester Square', 'dark_blue', 370, 35, 200),
+  { index: 42, name: 'London Bridge', type: 'station', price: 200, rent: 25, color: 'station' },
+  expandedSite(43, 'Winnington Road', 'dark_blue', 380, 40, 200),
+  expandedSite(44, 'Kensington Mews', 'coral', 390, 42, 200),
+  { index: 45, name: 'Luxury Tax', type: 'tax' },
+  expandedSite(46, 'Regent Street', 'coral', 400, 45, 200),
+  expandedSite(47, 'Mayfair Mews', 'coral', 410, 48, 200),
+]
+
+export function monopolyBoardForSize(boardSize: MonopolyBoardSize = MONOPOLY_BOARD_SIZE): MonopolySpace[] {
+  return boardSize === MONOPOLY_EXPANDED_BOARD_SIZE ? MONOPOLY_EXPANDED_BOARD : MONOPOLY_BOARD
+}
+
+export function monopolyJailPosition(boardSize: MonopolyBoardSize = MONOPOLY_BOARD_SIZE): number {
+  return boardSize / 4
+}
+
+export function monopolyGoToJailPosition(boardSize: MonopolyBoardSize = MONOPOLY_BOARD_SIZE): number {
+  return (boardSize / 4) * 3
+}
 
 export const MONOPOLY_COLOR_CLASSES: Record<MonopolyColorGroup, string> = {
   brown: 'bg-amber-900',
@@ -307,35 +397,28 @@ export const MONOPOLY_COLOR_CLASSES: Record<MonopolyColorGroup, string> = {
   yellow: 'bg-yellow-400',
   green: 'bg-emerald-600',
   dark_blue: 'bg-blue-800',
+  teal: 'bg-teal-600',
+  violet: 'bg-violet-600',
+  indigo: 'bg-indigo-700',
+  coral: 'bg-rose-500',
   station: 'bg-neutral-700',
   utility: 'bg-neutral-500',
-}
-
-const COLOR_GROUP_SIZES: Record<MonopolyColorGroup, number> = {
-  brown: 2,
-  light_blue: 3,
-  pink: 3,
-  orange: 3,
-  red: 3,
-  yellow: 3,
-  green: 3,
-  dark_blue: 2,
-  station: 4,
-  utility: 2,
 }
 
 export function formatMonopolyMoney(amount: number): string {
   return `£${amount.toLocaleString('en-GB')}`
 }
 
-export function spaceAt(index: number): MonopolySpace {
-  const normalized = ((index % MONOPOLY_BOARD_SIZE) + MONOPOLY_BOARD_SIZE) % MONOPOLY_BOARD_SIZE
-  return MONOPOLY_BOARD[normalized]!
+export function spaceAt(index: number, boardSize: MonopolyBoardSize = MONOPOLY_BOARD_SIZE): MonopolySpace {
+  const board = monopolyBoardForSize(boardSize)
+  const normalized = ((index % boardSize) + boardSize) % boardSize
+  return board[normalized]!
 }
 
-export function spacesInGroup(group: MonopolyColorGroup): MonopolySpace[] {
-  return MONOPOLY_BOARD.filter(
-    (s) => s.color === group && (s.type === 'property' || s.type === 'station' || s.type === 'utility')
+export function spacesInGroup(group: MonopolyColorGroup, boardSize: MonopolyBoardSize = 40): MonopolySpace[] {
+  return monopolyBoardForSize(boardSize).filter(
+    (space) =>
+      space.color === group && (space.type === 'property' || space.type === 'station' || space.type === 'utility')
   )
 }
 
@@ -348,30 +431,46 @@ export function unmortgageCost(space: MonopolySpace): number {
   return base + Math.ceil(base * MONOPOLY_MORTGAGE_INTEREST_RATE)
 }
 
-export function countOwnedInGroup(owners: Record<string, string>, ownerId: string, group: MonopolyColorGroup): number {
-  return MONOPOLY_BOARD.filter((s) => s.color === group && owners[String(s.index)] === ownerId).length
+export function countOwnedInGroup(
+  owners: Record<string, string>,
+  ownerId: string,
+  group: MonopolyColorGroup,
+  boardSize: MonopolyBoardSize = 40
+): number {
+  return spacesInGroup(group, boardSize).filter((space) => owners[String(space.index)] === ownerId).length
 }
 
-export function ownsColorMonopoly(owners: Record<string, string>, ownerId: string, group: MonopolyColorGroup): boolean {
-  if (group === 'station' || group === 'utility') {
-    return countOwnedInGroup(owners, ownerId, group) === COLOR_GROUP_SIZES[group]
-  }
-  return countOwnedInGroup(owners, ownerId, group) === COLOR_GROUP_SIZES[group]
+export function ownsColorMonopoly(
+  owners: Record<string, string>,
+  ownerId: string,
+  group: MonopolyColorGroup,
+  boardSize: MonopolyBoardSize = 40
+): boolean {
+  const groupSize = spacesInGroup(group, boardSize).length
+  return groupSize > 0 && countOwnedInGroup(owners, ownerId, group, boardSize) === groupSize
 }
 
 export function groupHasMortgage(
   group: MonopolyColorGroup,
   ownerId: string,
   owners: Record<string, string>,
-  mortgaged: Record<string, boolean>
+  mortgaged: Record<string, boolean>,
+  boardSize: MonopolyBoardSize = 40
 ): boolean {
-  return MONOPOLY_BOARD.some(
-    (s) => s.color === group && owners[String(s.index)] === ownerId && mortgaged[String(s.index)]
+  return monopolyBoardForSize(boardSize).some(
+    (space) => space.color === group && owners[String(space.index)] === ownerId && mortgaged[String(space.index)]
   )
 }
 
-export function nearestSpaceFrom(from: number, type: 'station' | 'utility', forward = true): number {
-  const indices = MONOPOLY_BOARD.filter((s) => s.type === type).map((s) => s.index)
+export function nearestSpaceFrom(
+  from: number,
+  type: 'station' | 'utility',
+  forward = true,
+  boardSize: MonopolyBoardSize = 40
+): number {
+  const indices = monopolyBoardForSize(boardSize)
+    .filter((space) => space.type === type)
+    .map((space) => space.index)
   if (!forward) {
     const sorted = [...indices].filter((i) => i <= from).sort((a, b) => b - a)
     return sorted[0] ?? indices[indices.length - 1]!

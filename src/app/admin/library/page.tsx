@@ -197,7 +197,25 @@ function PackCard({
   const [status, setStatus] = useState(pack.status)
   const [questionsJson, setQuestionsJson] = useState(() => JSON.stringify(pack.questions ?? [], null, 2))
 
+  // Collection membership (loaded when the editor opens). null = not yet loaded.
+  const [allCollections, setAllCollections] = useState<{ id: string; name: string; is_active: boolean }[] | null>(null)
+  const [collectionIds, setCollectionIds] = useState<string[]>([])
+
   const toggleTag = (t: string) => setTags((prev) => (prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]))
+  const toggleCollection = (id: string) =>
+    setCollectionIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
+
+  // Lazy-load collections + this pack's membership the first time the editor opens.
+  useEffect(() => {
+    if (!editing || allCollections !== null) return
+    fetch(`/api/admin/library/${pack.id}/collections`)
+      .then((r) => r.json())
+      .then((d) => {
+        setAllCollections(d.collections ?? [])
+        setCollectionIds(d.collectionIds ?? [])
+      })
+      .catch(() => setAllCollections([]))
+  }, [editing, allCollections, pack.id])
 
   // Live-parse the questions editor so we can show a count / error and gate saving.
   const parsedQuestions = useMemo<{ ok: true; value: unknown[] } | { ok: false; error: string }>(() => {
@@ -235,6 +253,18 @@ function PackCard({
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Save failed')
+      // Persist collection membership alongside the pack edit (only if the editor loaded it).
+      if (allCollections !== null) {
+        const cRes = await fetch(`/api/admin/library/${pack.id}/collections`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ collection_ids: collectionIds }),
+        })
+        if (!cRes.ok) {
+          const cData = await cRes.json().catch(() => ({}))
+          throw new Error(cData.error ?? 'Saved pack, but collections failed')
+        }
+      }
       onSave({
         ...pack,
         title,
@@ -262,6 +292,9 @@ function PackCard({
     setTags(pack.tags ?? [])
     setStatus(pack.status)
     setQuestionsJson(JSON.stringify(pack.questions ?? [], null, 2))
+    // Drop loaded collection state so re-opening re-fetches the current membership.
+    setAllCollections(null)
+    setCollectionIds([])
     setSaveError(null)
     setEditing(false)
   }
@@ -390,6 +423,42 @@ function PackCard({
                 )
               })}
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-xs font-medium text-muted">Collections</label>
+            {allCollections === null ? (
+              <p className="text-faint text-[10px]">Loading…</p>
+            ) : allCollections.length === 0 ? (
+              <p className="text-faint text-[10px]">
+                No collections yet — create one in{' '}
+                <a href="/admin/collections" className="underline">
+                  Collections
+                </a>
+                .
+              </p>
+            ) : (
+              <div className="flex gap-2 flex-wrap">
+                {allCollections.map((c) => {
+                  const active = collectionIds.includes(c.id)
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => toggleCollection(c.id)}
+                      className={`rounded-full border px-3 py-1 text-xs font-medium transition-all ${
+                        active
+                          ? 'border-[var(--chip-active-border)] bg-[var(--chip-active-bg)] text-[var(--chip-active-text)]'
+                          : 'border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--border-strong)]'
+                      }`}
+                    >
+                      {c.name}
+                      {!c.is_active ? ' (hidden)' : ''}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
           </div>
 
           <div className="space-y-2">

@@ -20,7 +20,7 @@ import {
   UNO_MIN_PLAYERS,
   UNO_TEAM_PLAYERS,
 } from '@/lib/uno'
-import { UNO_SESSION_SELECT } from '@/lib/supabase-selects'
+import { UNO_SESSION_SELECT, isCompleteUnoSessionRow } from '@/lib/supabase-selects'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { supabase } from '@/lib/supabase'
 import { fetchUnoHands } from '@/lib/hands-client'
@@ -157,8 +157,15 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
     const next = row as unknown as UnoSession
     const prev = sessionRef.current
     if (prev && next.updated_at < prev.updated_at) return true
-    setSession(next)
-    sessionRef.current = next
+    // Realtime UPDATE payloads drop unchanged TOAST-ed columns — once the piles grow,
+    // updates that touch only draw_penalty / current_turn_index arrive with
+    // draw_pile/discard_pile/turn_order = null. Applying that wipes the session on
+    // screen and canPlayCard() reads a stale/blank state (every card looks unplayable).
+    // Discard and let the debounced full reload refetch the complete row.
+    if (!isCompleteUnoSessionRow(row)) return false
+    const merged = prev ? { ...prev, ...next } : next
+    setSession(merged)
+    sessionRef.current = merged
     return prev != null
   }, [])
   const applyHandRow = useCallback(
@@ -326,8 +333,12 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
   // `cards: null` means REDACTED (the route couldn't resolve us), NOT "no cards left" — only an
   // actual empty array means the player is out. Without the Array.isArray check a token race
   // silently flips a still-playing player into watching mode for the rest of the game.
+  // High Stakes knockout is separate and authoritative: it comes from public session state, not
+  // from a hand we may not be allowed to read.
+  const isKnockedOut = !!myPlayerId && ((session?.eliminated_player_ids as string[] | null) ?? []).includes(myPlayerId)
   const isOut =
-    !!myHandRow && Array.isArray(myHandRow.cards) && myHandRow.cards.length === 0 && game?.status === 'active'
+    (!!myHandRow && Array.isArray(myHandRow.cards) && myHandRow.cards.length === 0 && game?.status === 'active') ||
+    (isKnockedOut && game?.status === 'active')
   const isWatching = isViewer || isOut
 
   // Team-Up: your teammate's hand is visible to you (read-only), never to opponents.
@@ -368,6 +379,7 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
     myPlayerId,
     myHandCount: myHand.length,
     enabled: game?.status === 'active' && screen === 'active',
+    players,
   })
 
   const drawDepleted = session ? isDrawPileDepleted(session) : false
@@ -441,9 +453,11 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
             subtitle={
               joiningAsViewer
                 ? 'Game in progress — join as a viewer (read-only).'
-                : game?.uno_team_mode
-                  ? 'Team-Up · 4 players in 2 teams of 2'
-                  : '2–10 players · match colour or number'
+                : game?.uno_mode === 'no_mercy'
+                  ? 'High Stakes · 168-card deck, +6/+10, hand-size knockouts'
+                  : game?.uno_team_mode
+                    ? 'Team-Up · 4 players in 2 teams of 2'
+                    : '2–10 players · match colour or number'
             }
             meta={game ? <GameInfoChips game={game} /> : null}
           />
@@ -521,7 +535,7 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
 
   if (screen === 'finished') {
     return (
-      <UnoShell title="Game over!" subtitle={winner ? `${winner.name} wins` : undefined}>
+      <UnoShell>
         {game ? (
           <UnoFinalResultsShareBlock
             game={game}
@@ -581,9 +595,11 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
       onCallUno={() => void postAction('/api/uno/call-uno', {})}
       onSwap={(targetId) => void postAction('/api/uno/swap', { targetId })}
       onPass={() => void postAction('/api/uno/pass', {})}
+      // Multi-Play is allowed in HS (spec update) — just read the raw host setting.
+      // Jump-In stays forced OFF in HS.
       multiPlayMode={parseMultiPlayMode(game?.uno_multi_play_mode)}
       onPlayMulti={(cardIds) => void postAction('/api/uno/play-multi', { cardIds })}
-      jumpInEnabled={game?.uno_jump_in === true}
+      jumpInEnabled={game?.uno_mode !== 'no_mercy' && game?.uno_jump_in === true}
       onJumpIn={(cardId) => void postAction('/api/uno/jump-in', { cardId })}
       partner={partner}
       quickChat={quickChat}

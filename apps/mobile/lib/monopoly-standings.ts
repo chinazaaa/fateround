@@ -1,10 +1,12 @@
 import type { MonopolyPlayerState } from '@fateround/shared'
 import {
+  MONOPOLY_BOARD_SIZE,
   MONOPOLY_HOTEL_LEVEL,
   MONOPOLY_HOUSES_UNDER_HOTEL,
   MONOPOLY_MAX_HOUSES_PER_PROPERTY,
   mortgageValue,
   spaceAt,
+  type MonopolyBoardSize,
   type MonopolySpace,
 } from '@fateround/shared/monopoly-board'
 
@@ -44,13 +46,14 @@ function computeNetWorth(
   state: MonopolyPlayerState,
   owners: Record<string, string>,
   buildings: Record<string, number>,
-  mortgaged: Record<string, boolean>
+  mortgaged: Record<string, boolean>,
+  boardSize: MonopolyBoardSize
 ): number {
   if (state.bankrupt) return 0
   let total = state.cash
   for (const [idx, ownerId] of Object.entries(owners)) {
     if (ownerId !== state.player_id) continue
-    const space = spaceAt(Number(idx))
+    const space = spaceAt(Number(idx), boardSize)
     if (space.type !== 'property' && space.type !== 'station' && space.type !== 'utility') continue
     if (mortgaged[idx]) {
       total += mortgageValue(space)
@@ -67,7 +70,8 @@ export function buildMonopolyStandings(
   players: { id: string; name: string }[],
   propertyOwners: unknown,
   propertyBuildings: unknown,
-  mortgagedProperties: unknown
+  mortgagedProperties: unknown,
+  boardSize: MonopolyBoardSize = MONOPOLY_BOARD_SIZE
 ): MonopolyStanding[] {
   const owners = parseRecord<string>(propertyOwners)
   const buildings = parseRecord<number>(propertyBuildings)
@@ -77,7 +81,7 @@ export function buildMonopolyStandings(
     .map((state) => ({
       playerId: state.player_id,
       cash: state.cash ?? 0,
-      netWorth: computeNetWorth(state, owners, buildings, mortgaged),
+      netWorth: computeNetWorth(state, owners, buildings, mortgaged, boardSize),
       propertyCount: Object.values(owners).filter((o) => o === state.player_id).length,
     }))
     .sort((a, b) => b.netWorth - a.netWorth)

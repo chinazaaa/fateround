@@ -1,4 +1,5 @@
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { byTierDesc } from '@/lib/trophies/tier-rank'
 
 export type PublicTrophy = {
   id: string
@@ -9,9 +10,6 @@ export type PublicTrophy = {
   hidden: boolean
   sortOrder: number
 }
-
-// Display order for the landing page strip: rarest/most prestigious tier first.
-const TIER_RANK: Record<string, number> = { platinum: 0, gold: 1, silver: 2, bronze: 3 }
 
 /**
  * The trophy list for one game, for logged-out/public surfaces (game landing pages).
@@ -48,7 +46,7 @@ export async function getPublicTrophiesForGame(gameType: string): Promise<Public
         hidden: Boolean(row.hidden),
         sortOrder: Number(row.sort_order) || 0,
       }))
-      .sort((a, b) => (TIER_RANK[a.tier] ?? 99) - (TIER_RANK[b.tier] ?? 99) || a.sortOrder - b.sortOrder)
+      .sort((a, b) => byTierDesc(a, b) || a.sortOrder - b.sortOrder)
   } catch {
     // No service-role key (build time) or the query threw — show no trophies rather than break.
     return []

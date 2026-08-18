@@ -8,6 +8,7 @@ import { totalScore } from '@/lib/yahtzee'
 import { tallyTriviaPlayerScores } from '@/lib/trivia'
 import { tallySudokuScores } from '@/lib/sudoku'
 import { tallyWordHuntScores } from '@/lib/word-hunt'
+import { tallyWordGroupingScores } from '@/lib/word-grouping'
 import {
   parseGameType,
   isMonopolyGame,
@@ -21,6 +22,7 @@ import {
   isCodewordsGame,
   isSudokuGame,
   isWordHuntGame,
+  isWordGroupingGame,
   isTriviaGame,
 } from '@/lib/game-types'
 import type {
@@ -67,6 +69,7 @@ export function isCompetitiveRoomGame(gameType: GameType): boolean {
     isCodewordsGame(gameType) ||
     isSudokuGame(gameType) ||
     isWordHuntGame(gameType) ||
+    isWordGroupingGame(gameType) ||
     isTriviaGame(gameType)
   )
 }
@@ -227,7 +230,7 @@ export async function getCompetitiveStandings(
     const [{ data: session }, { data: hands }, { data: gameRow }] = await Promise.all([
       supabase
         .from('uno_sessions')
-        .select('winner_player_id, turn_order, finish_order, left_player_ids')
+        .select('winner_player_id, turn_order, finish_order, left_player_ids, eliminated_player_ids')
         .eq('game_id', gameId)
         .maybeSingle(),
       supabase.from('uno_player_hands').select('player_id, cards').eq('game_id', gameId),
@@ -239,7 +242,8 @@ export async function getCompetitiveStandings(
       session?.turn_order ?? [],
       session?.finish_order ?? [],
       gameRow?.uno_team_mode === true,
-      (session?.left_player_ids as string[] | undefined) ?? []
+      (session?.left_player_ids as string[] | undefined) ?? [],
+      (session?.eliminated_player_ids as string[] | undefined) ?? []
     )
   }
 
@@ -345,6 +349,19 @@ export async function getCompetitiveStandings(
       spectator: p.spectator,
     }))
     return tallyWordHuntScores(submissions, playerRows).map((row) => row.player_id)
+  }
+
+  if (isWordGroupingGame(gameType)) {
+    // tallyWordGroupingScores already ranks by (points desc, groups desc, mistakes asc,
+    // finish-time asc) — the same order the finished screens use, so the trophy pass and the
+    // leaderboard agree on who won.
+    const { data: submissions } = await supabase
+      .from('word_grouping_submissions')
+      .select('player_id, group_index, difficulty, is_correct, mistakes_at_time, submitted_at')
+      .eq('game_id', gameId)
+    if (!submissions?.length) return []
+    const seated = players.filter((p) => p.spectator !== true).map((p) => ({ id: p.id, name: p.name }))
+    return tallyWordGroupingScores(seated, submissions).map((row) => row.id)
   }
 
   return []

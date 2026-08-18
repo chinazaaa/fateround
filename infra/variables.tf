@@ -193,6 +193,20 @@ variable "spotify_client_secret" {
   default     = ""
 }
 
+# AI question/deck generation on /create. Hosts no longer supply their own Claude
+# key, so this is what pays for every generation — leaving it empty makes the
+# /api/ai-questions route return 503 and the "Generate with AI" option inert.
+# NOTE: this is a metered spend. The only ceiling today is the per-IP rate limit
+# in src/lib/rate-limit.ts (RATE_LIMITS.aiQuestions + aiQuestionsDaily); there is
+# no per-account entitlement until billing ships. Set a budget alert on the
+# Anthropic account before pointing real traffic at it.
+variable "anthropic_api_key" {
+  description = "ANTHROPIC_API_KEY — server-side Claude key for AI deck generation. Empty disables AI generation."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
 variable "vapid_subject" {
   description = "VAPID_SUBJECT — contact URL push services can reach (mailto: or https:)."
   type        = string

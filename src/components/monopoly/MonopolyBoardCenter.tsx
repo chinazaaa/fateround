@@ -114,7 +114,8 @@ export function MonopolyBoardCenter({
   const owners = parsePropertyOwners(board.property_owners)
   const buildings = parseBuildings(board.property_buildings)
   const mortgaged = parseMortgaged(board.mortgaged_properties)
-  const pendingSpace = board.pending_space != null ? spaceAt(board.pending_space) : null
+  const boardSize = board.board_size ?? 40
+  const pendingSpace = board.pending_space != null ? spaceAt(board.pending_space, boardSize) : null
 
   const rentOwnerId =
     board.phase === 'pay_rent' && board.pending_space != null ? owners[String(board.pending_space)] : null
@@ -123,11 +124,11 @@ export function MonopolyBoardCenter({
     board.pending_debt?.debt_type === 'rent' && board.pending_debt?.amount != null
       ? board.pending_debt.amount
       : pendingSpace && rentOwnerId
-        ? computeRent(pendingSpace, owners, rentOwnerId, board.last_dice?.total ?? 2, buildings, mortgaged)
+        ? computeRent(pendingSpace, owners, rentOwnerId, board.last_dice?.total ?? 2, buildings, mortgaged, boardSize)
         : 0
 
   const auction = board.auction_state
-  const auctionSpace = auction ? spaceAt(auction.space_index) : null
+  const auctionSpace = auction ? spaceAt(auction.space_index, boardSize) : null
   const isMyAuctionTurn = auction?.current_bidder_id === myPlayerId
   const [bidAmount, setBidAmount] = useState('')
 
@@ -193,8 +194,8 @@ export function MonopolyBoardCenter({
   const phaseColorBar =
     (showBuy || showRent) && pendingSpace?.color
       ? colorBarClass(pendingSpace.color)
-      : showRaiseFunds && debt?.space_index != null && spaceAt(debt.space_index).color
-        ? colorBarClass(spaceAt(debt.space_index).color)
+      : showRaiseFunds && debt?.space_index != null && spaceAt(debt.space_index, boardSize).color
+        ? colorBarClass(spaceAt(debt.space_index, boardSize).color)
         : showAuction && auctionSpace?.color
           ? colorBarClass(auctionSpace.color)
           : null
@@ -240,7 +241,7 @@ export function MonopolyBoardCenter({
           <p className={`hidden sm:block text-[10px] ${palette.centerSubtleText} leading-snug`}>
             Currently on{' '}
             <span className={`font-bold ${palette.centerText}`}>
-              {themedSpaceName(spaceAt(Number(myState.position)).name, Number(myState.position), themeId)}
+              {themedSpaceName(spaceAt(Number(myState.position), boardSize).name, Number(myState.position), themeId)}
             </span>
           </p>
         </div>
@@ -306,8 +307,12 @@ export function MonopolyBoardCenter({
         <div className={panelClass}>
           <p className={labelClass}>For sale</p>
           <p className={titleClass}>
-            <span className="hidden sm:inline">{themedSpaceName(pendingSpace.name, pendingSpace.index, themeId)}</span>
-            <span className="sm:hidden">{shortSpaceName(pendingSpace.name, 16, pendingSpace.index, themeId)}</span>
+            <span className="hidden sm:inline">
+              {themedSpaceName(pendingSpace.name, pendingSpace.index, themeId, boardSize)}
+            </span>
+            <span className="sm:hidden">
+              {shortSpaceName(pendingSpace.name, 16, pendingSpace.index, themeId, boardSize)}
+            </span>
           </p>
           <p className={priceClass}>{formatThemedMoney(pendingSpace.price ?? 0, themeId)}</p>
           {pendingSpace.rent != null && (
@@ -345,8 +350,12 @@ export function MonopolyBoardCenter({
         <div className={panelClass}>
           <p className={labelClass}>Rent Due</p>
           <p className={titleClass}>
-            <span className="hidden sm:inline">{themedSpaceName(pendingSpace.name, pendingSpace.index, themeId)}</span>
-            <span className="sm:hidden">{shortSpaceName(pendingSpace.name, 16, pendingSpace.index, themeId)}</span>
+            <span className="hidden sm:inline">
+              {themedSpaceName(pendingSpace.name, pendingSpace.index, themeId, boardSize)}
+            </span>
+            <span className="sm:hidden">
+              {shortSpaceName(pendingSpace.name, 16, pendingSpace.index, themeId, boardSize)}
+            </span>
           </p>
           <p className={debtPriceClass}>{formatThemedMoney(rentAmount, themeId)}</p>
           <p className={isDock ? 'text-xs text-muted truncate' : 'text-xs text-muted truncate'}>
@@ -383,7 +392,7 @@ export function MonopolyBoardCenter({
       {showJail && (
         <div className={panelClass}>
           <p className={labelClass}>In Jail</p>
-          <p className={titleClass}>{themedSpaceName('Jail', 10, themeId)}</p>
+          <p className={titleClass}>{themedSpaceName('NICKED', boardSize === 48 ? 12 : 10, themeId, boardSize)}</p>
           <p className={isDock ? 'text-xs text-muted leading-tight' : 'text-xs text-muted leading-snug'}>
             Attempt {(myState?.jail_turns ?? 0) + 1}/3 — roll once for doubles, or pay{' '}
             {formatThemedMoney(MONOPOLY_JAIL_FINE, themeId)} now.
@@ -416,8 +425,12 @@ export function MonopolyBoardCenter({
         <div className={panelClass}>
           <p className={labelClass}>Auction</p>
           <p className={titleClass}>
-            <span className="hidden sm:inline">{themedSpaceName(auctionSpace.name, auctionSpace.index, themeId)}</span>
-            <span className="sm:hidden">{shortSpaceName(auctionSpace.name, 16, auctionSpace.index, themeId)}</span>
+            <span className="hidden sm:inline">
+              {themedSpaceName(auctionSpace.name, auctionSpace.index, themeId, boardSize)}
+            </span>
+            <span className="sm:hidden">
+              {shortSpaceName(auctionSpace.name, 16, auctionSpace.index, themeId, boardSize)}
+            </span>
           </p>
           <p className={subtleClass}>
             High: {auction.high_bid > 0 ? formatThemedMoney(auction.high_bid, themeId) : 'None'}
@@ -462,7 +475,7 @@ export function MonopolyBoardCenter({
               isDock ? 'text-xs text-muted leading-snug' : `text-[11px] ${palette.centerSubtleText} leading-snug`
             }
           >
-            {auctionSpace ? themedSpaceName(auctionSpace.name, auctionSpace.index, themeId) : ''}
+            {auctionSpace ? themedSpaceName(auctionSpace.name, auctionSpace.index, themeId, boardSize) : ''}
             <br />
             {players.find((p) => p.id === auction.current_bidder_id)?.name ?? 'Someone'}&apos;s bid
           </p>

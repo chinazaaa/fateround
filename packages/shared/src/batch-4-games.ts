@@ -6,9 +6,9 @@ export function batch4GameLabel(gameType: GameType | string): string {
   const labels: Partial<Record<GameType, string>> = {
     crazy_eights: 'Crazy Eights',
     whot: 'Whot',
-    uno: 'Uno',
+    uno: 'Match Up',
     two_truths: 'Two Truths & a Lie',
-    describe_it: 'Describe It',
+    describe_it: 'Text Charades',
   }
   return labels[gameType as GameType] ?? String(gameType).replace(/_/g, ' ')
 }

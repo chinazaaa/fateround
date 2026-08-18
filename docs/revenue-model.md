@@ -1,5 +1,11 @@
 # Revenue Model — Pricing & Launch Plan
 
+> ⚠️ **Superseded by [`revenue-model-v3.md`](./revenue-model-v3.md) (Aug 2026).** v3 replaces the
+> consumer-subscription strategy below with an organiser-facing, pay-per-event model. **This file
+> is retained for its still-valid research**, which v3 carries forward by reference: §1 (Naira-first
+> pricing, Paystack + Stripe rails, IP detection) and §4 (refunds, VAT, dunning, invoicing). The
+> tier structure in §2 and the launch timeline in §3 are **no longer the plan**.
+>
 > Status: **Revised strategy (Aug 2026), v2.** Supersedes the earlier "Pro Host + Cosmetics"
 > one-time-purchase model that previously lived in this file (see git history if you need it).
 > Companion docs: [`account-tiers.md`](./account-tiers.md) · [`clubs-spec.md`](./clubs-spec.md) ·
@@ -46,7 +52,8 @@ not FX maths.
 |---|---|---|---|
 | **FateRound+** monthly | ₦1,000 | £2.49 | $2.99 |
 | **FateRound+** annual | ₦7,500 | £19.99 | $19.99 |
-| **Club Pro** monthly | ₦3,000 | £6.99 | $7.99 |
+| **Club Pro** per season, per club | ₦1,500 | £3.49 | $3.99 |
+| **Season Pass** per season | ₦800 | £1.49 | $1.99 |
 | **Classroom+** per teacher/mo (annual) | ₦1,000 | £2.49 | $3.00 |
 | **Team** per seat/mo (annual, min 10) | ₦1,500 | £3.49 | $4.00 |
 
@@ -125,22 +132,32 @@ On "No ads": there is no ad system on the free tier, so don't advertise the abse
 downside that doesn't exist — it just plants the idea that free users should expect ads.
 
 ### Club Pro
-**₦3,000/mo per club** (£6.99 / $7.99), paid by the club owner
+**₦1,500/season per club** (£3.49 / $3.99), paid by the club owner when registering for a season
 
-The football-club model — turns a friend group into a community worth maintaining.
+> **2026-08-07 — redesigned for the competitive club system.** The club concept has been
+> completely rebuilt around inter-club matches, leagues, transfer markets, and a virtual economy.
+> [`clubs-spec.md`](./clubs-spec.md) §24 is now the canonical, detailed monetization spec for
+> Club Pro and all club-related revenue (Season Pass, Cosmetic Shop). This section retains the
+> pricing and anti-loophole rules; for the full feature breakdown, see the clubs spec.
+>
+> **Billing is per-season, not monthly.** Seasons are the natural billing cycle — "pay for
+> Season 8" is clearer than "pay monthly forever." If a club skips a season, they don't pay.
+> ₦1,500 is an impulse price — the captain can ask 5 members to chip in ₦300 each. Start low,
+> prove the value, raise later.
 
-**The paying admin gets:**
+The competitive-advantage model — turns a casual crew into a league-ready squad.
+
+**The paying owner gets:**
 - FateRound+ bundled at no extra cost
-- Custom club branding — badge, colours, banner
-- Club-only private tournaments and leaderboards
-- Up to 50 club members
-- Club trophy case / hall of fame
-- Priority support
+- **Roster expansion: 15 → 25** (the biggest competitive lever — more depth across a season)
+- **Scouting & analytics** (opponent stats, player search filters, transfer value history)
+- **Custom crest** (image upload, not just emoji+colour) + club branding
+- **Treasury bonus (+10%)** on all club earnings (match wins, prizes, sales)
+- **Match replays** (round-by-round review of past matches for strategy)
 
 **Regular members get, free:**
-- Access to the club's branded page, tournaments and private leaderboard
-- Visibility in the club trophy case
-- Their personal account stays on the Free tier
+- The full competitive experience — league, cup, matches, transfers, chat
+- Their personal account stays on the Free tier (15-roster club, emoji crest, no scouting)
 
 **Member upgrade discount:**
 - Any member of an active Club Pro club can upgrade to FateRound+ at **50% off** —
@@ -155,9 +172,27 @@ The football-club model — turns a friend group into a community worth maintain
 - It does **not** stack — one 50% discount per person regardless of how many Club Pro clubs
   they belong to
 
-> **Anti-loophole rule — load-bearing, do not relax.** A flat club fee granting 50 people full
-> premium would destroy the individual tier at ₦60/head. Only the paying admin gets +
-> bundled.
+**Additional revenue streams (detailed in [`clubs-spec.md`](./clubs-spec.md) §24):**
+- **Season Pass** (~₦800 / £1.49 / $1.99 per season) — battle-pass-style personal purchase with
+  bonus rewards, exclusive seasonal cosmetics, and milestone coins. Resets each season.
+- **Cosmetic Shop** (à la carte) — a separate purchased currency ("Stars") for crest packs,
+  profile effects, seasonal kits, victory celebrations. Completely separate from FateRound Coins
+  (the competitive currency, which is earned-only and never sold for real money).
+
+> **Anti-loophole rule — load-bearing, do not relax.** A flat club fee granting all members full
+> premium would destroy the individual tier. Only the paying owner gets + bundled.
+>
+> **Competitive integrity rule — load-bearing, do not relax.** FateRound Coins (used for
+> transfers, recruitment, and all competitive actions) are **never sold for real money.** The
+> cosmetic currency is a separate economy. A Division 4 club can beat a Division 1 club on
+> merit. This line must not blur.
+
+> **Phased monetization — validate before billing.**
+> Club Pro and Season Pass are **Phase C** revenue — they only ship after 2-3 free club seasons
+> prove genuine engagement. FateRound+ and the Cosmetic Shop (sticker packs, seasonal kits) are
+> **Phase A** — they convert independently of whether the club system thrives. See
+> [`clubs-spec.md`](./clubs-spec.md) §24 "Launch phases" for the full phasing plan and the
+> engagement signals that gate Phase C.
 
 ### Schools
 

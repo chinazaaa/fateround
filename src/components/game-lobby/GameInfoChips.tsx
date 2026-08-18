@@ -4,14 +4,92 @@ import { crosswordThemeOptions } from '@/lib/crossword-puzzles'
 import { wordSearchThemeOptions } from '@/lib/word-search-puzzles'
 import { wordScrambleThemeOptions } from '@/lib/word-scramble-puzzles'
 import { THEME_MAP } from '@/lib/themes'
+import { parseUnoRules } from '@/lib/uno'
+import { Glyph } from '@/components/icons/Glyph'
+import {
+  UserMultipleIcon,
+  StopWatchIcon,
+  IncognitoIcon,
+  PaintBrush01Icon,
+  Megaphone01Icon,
+  Mic01Icon,
+  Cards01Icon,
+  HashIcon,
+  Layers01Icon,
+  RocketIcon,
+  UserGroupIcon,
+  ShuffleIcon,
+  BalanceScaleIcon,
+  FlashIcon,
+  Coins01Icon,
+  Target01Icon,
+  Cancel01Icon,
+  BombIcon,
+  SparklesIcon,
+  MaskIcon,
+  Moon02Icon,
+  StarIcon,
+  ClipboardIcon,
+  TableTennisBatIcon,
+  Link01Icon,
+  DiceIcon,
+} from '@hugeicons/core-free-icons'
 
-/** Built-in theme id -> its label; an admin theme stores its NAME in the column, so a value
- *  that isn't a known built-in id is shown as-is. */
+const CHIP_EMOJI_ICONS: Record<string, any> = {
+  '👥': UserMultipleIcon,
+  '⏱': StopWatchIcon,
+  '⏳': StopWatchIcon,
+  '🕶️': IncognitoIcon,
+  '🎨': PaintBrush01Icon,
+  '🔊': Megaphone01Icon,
+  '🎙️': Mic01Icon,
+  '🃏': Cards01Icon,
+  '🎴': Cards01Icon,
+  '🌀': Cards01Icon,
+  '🔢': HashIcon,
+  '📚': Layers01Icon,
+  '🎬': RocketIcon,
+  '🤝': UserGroupIcon,
+  '🔁': ShuffleIcon,
+  '⚖️': BalanceScaleIcon,
+  '⚡': FlashIcon,
+  '💰': Coins01Icon,
+  '🏦': Coins01Icon,
+  '🔨': Target01Icon,
+  '🚫': Cancel01Icon,
+  '💥': BombIcon,
+  '💣': BombIcon,
+  '✨': SparklesIcon,
+  '🕵️': IncognitoIcon,
+  '🎭': MaskIcon,
+  '🌙': Moon02Icon,
+  '☀️': StarIcon,
+  '🗳️': ClipboardIcon,
+  '🏓': TableTennisBatIcon,
+  '🙋': UserMultipleIcon,
+  '🎲': DiceIcon,
+  '🚪': Link01Icon,
+  '0️⃣': Cancel01Icon,
+}
+
+function parseChipItem(item: string) {
+  // Strip leading emoji if present and map to fr-glyph
+  const match = item.match(
+    /^((?:[\u{1F0A0}-\u{1F0FF}\u{1F300}-\u{1F9FF}\u{2300}-\u{23FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]|[0-9*#]\u{FE0F}?\u{20E3}|\u{FE0F}|\u{200D})+)\s*/u
+  )
+  if (match) {
+    const rawEmoji = match[1].replace(/\u{FE0F}/gu, '')
+    const cleanText = item.slice(match[0].length).trim()
+    const IconComponent = CHIP_EMOJI_ICONS[match[1]] ?? CHIP_EMOJI_ICONS[rawEmoji] ?? CHIP_EMOJI_ICONS[match[1][0]]
+    return { IconComponent, text: cleanText || item }
+  }
+  return { IconComponent: undefined, text: item }
+}
+
 function puzzleThemeChip(options: { id: string; label: string }[], value: string): string {
   return options.find((o) => o.id === value)?.label ?? value
 }
 
-/** The subset of a game row this reads — kept loose so any game object can be passed. */
 type GameMeta = {
   game_type?: string | null
   question_source?: string | null
@@ -50,6 +128,10 @@ type GameMeta = {
   uno_wd4_challenge?: boolean | null
   uno_multi_play_mode?: string | null
   uno_jump_in?: boolean | null
+  uno_uno_penalty?: number | null
+  uno_wd4_challenge_penalty?: number | null
+  uno_mode?: string | null
+  uno_no_mercy_win?: string | null
   monopoly_double_go_salary?: boolean | null
   monopoly_forced_auctions?: boolean | null
   monopoly_auction_timer_seconds?: number | null
@@ -70,7 +152,6 @@ type GameMeta = {
   operative_timer_seconds?: number | null
 }
 
-/** Game types with a fixed 2-player format — a "players" pill would be pure noise. */
 const FIXED_TWO_PLAYER = new Set([
   'chess',
   'checkers',
@@ -80,21 +161,14 @@ const FIXED_TWO_PLAYER = new Set([
   'ping_pong',
 ])
 
-/** These duel games clock `timer_seconds` themselves (a per-player or per-turn clock set via
- *  HostDuelLobbyPanel) rather than `game_duration_seconds` — shown here instead of the generic
- *  session-length chip below, which would otherwise misreport them as "No time limit". */
 const DUEL_CLOCK_LABEL: Record<string, string> = {
   chess: 'Time per player',
   checkers: 'Time per player',
   tic_tac_toe: 'Turn timer',
 }
 
-/** Game types that already show their own (correctly defaulted/clamped) player-count chip
- *  via `GameLobbySummary` — skip the generic pill here to avoid a duplicate. */
 const SKIP_MAX_PLAYERS_PILL = new Set(['anonymous_messages'])
 
-/** Game types where rounds/per-round timer are the meaningful pace settings (question- or
- *  prompt-based games). Board/card games use their own turn-timer or session-duration fields. */
 const ROUNDS_TIMER_TYPES = new Set([
   'smash_marry_kill',
   'red_flag_green_flag',
@@ -122,9 +196,6 @@ const ROUNDS_TIMER_TYPES = new Set([
   'i_call_on',
 ])
 
-/** Game types where `anonymous` actually changes gameplay (poll-family — hides who said what).
- *  The DB column defaults `true` for every game row regardless of type, so it must be gated
- *  here or every non-poll game would show a meaningless "Anonymous" pill. */
 const ANONYMOUS_CAPABLE_TYPES = new Set([
   'smash_marry_kill',
   'red_flag_green_flag',
@@ -138,7 +209,6 @@ const ANONYMOUS_CAPABLE_TYPES = new Set([
   'hot_seat',
   'custom',
   'parent_approval',
-  'two_truths',
 ])
 
 function formatDuration(seconds: number): string {
@@ -158,19 +228,12 @@ function humanize(s: string): string {
   return s.split('_').map(capitalize).join(' ')
 }
 
-/**
- * Player-facing summary of a game's settings — so people know what they're joining
- * before they commit (player count, timing, house rules, theme, category, etc.).
- * Returns short chips like "Theme · Animals", "Up to 8 players", "Stacking".
- */
 export function gameInfoItems(game: GameMeta | null | undefined): string[] {
   if (!game) return []
   const items: string[] = []
   const isCustomPool = game.question_source === 'custom'
   const gt = game.game_type ?? ''
 
-  // Host-set content label ("Maths", "Bible trivia") leads, so joiners see what the pack
-  // is about before committing.
   if (game.content_label?.trim()) items.push(game.content_label.trim())
 
   if (
@@ -189,8 +252,6 @@ export function gameInfoItems(game: GameMeta | null | undefined): string[] {
     // shown in the mafia-specific block below) rather than a duration, so skip the generic
     // "No time limit" chip that would otherwise misleadingly imply untimed phases too.
   } else if (typeof game.game_duration_seconds === 'number') {
-    // Session-length cap (currently used by Monopoly-style games). Shown even when unlimited —
-    // that's exactly what a time-pressed player needs to know before joining.
     items.push(`⏳ ${formatDuration(game.game_duration_seconds)}`)
   }
 
@@ -258,16 +319,33 @@ export function gameInfoItems(game: GameMeta | null | undefined): string[] {
     if (game.crazy8_jokers) items.push('🃏 Jokers')
     if (game.crazy8_pick2_stacking) items.push('📚 Pick 2 stacking')
   } else if (gt === 'uno') {
-    if (game.uno_team_mode) items.push('🤝 Team-Up')
-    if (game.uno_stacking) items.push('📚 Stacking')
-    if (game.uno_zero_seven) items.push('🔁 0-7 rule')
-    if (game.uno_wd4_challenge !== false) items.push('⚖️ WD4 challenge')
-    if (game.uno_multi_play_mode && game.uno_multi_play_mode !== 'off') items.push('🃏 Multi-Play')
-    if (game.uno_jump_in) items.push('⚡ Jump-In')
+    // Rule chips must reflect the EFFECTIVE rules, not the raw column values. In High
+    // Stakes stacking + 0-7 are locked ON; WD4 challenge, Team-Up, and Jump-In are
+    // forced OFF. Multi-Play is host-picked in HS just like Classic. Reading the DB
+    // flags directly showed stale Classic values (e.g. "WD4 challenge" on a High Stakes
+    // game where challenges are disabled in the engine).
+    // GameMeta only carries the uno_* subset the chips need, so cast to satisfy the
+    // parseUnoRules signature — the fields it actually reads (uno_mode etc.) are all here.
+    const uno = parseUnoRules(game as Parameters<typeof parseUnoRules>[0])
+    if (uno.mode === 'no_mercy') {
+      // High Stakes locks in stacking + 0-7 and disables WD4/Team-Up/Jump-In. Multi-Play
+      // is still host-picked in HS — surface its chip below alongside the "High Stakes"
+      // one so the room can see when it's on. Everything else is implied by "High
+      // Stakes" and would be duplicative.
+      items.push('💥 High Stakes')
+      if (uno.multiPlay !== 'off') items.push('🃏 Multi-Play')
+    } else {
+      if (uno.teamMode) items.push('🤝 Team-Up')
+      if (uno.stacking) items.push('📚 Stacking')
+      if (uno.zeroSeven) items.push('🔁 0-7 rule')
+      if (uno.wd4Challenge) items.push('⚖️ WD4 challenge')
+      if (uno.multiPlay !== 'off') items.push('🃏 Multi-Play')
+      if (uno.jumpIn) items.push('⚡ Jump-In')
+    }
   } else if (gt === 'monopoly') {
     if (game.monopoly_double_go_salary) items.push('💰 Double GO salary')
     if (game.monopoly_forced_auctions) items.push('🔨 Forced auctions')
-    if (game.monopoly_no_rent_in_jail) items.push('🚫 No rent in jail')
+    if (game.monopoly_no_rent_in_jail) items.push('🚫 No rent in NICKED')
     if (game.monopoly_estate_dividend) items.push('🏦 Estate dividend')
   } else if (gt === 'landmine') {
     items.push(game.landmine_mode === 'elimination' ? '💥 Elimination' : '0️⃣ Zero points')
@@ -300,7 +378,7 @@ export function gameInfoItems(game: GameMeta | null | undefined): string[] {
   return items
 }
 
-/** Renders {@link gameInfoItems} as a row of subtle pills. Renders nothing when empty. */
+/** Renders {@link gameInfoItems} as a row of subtle pills with vector fr-glyph icons. */
 export function GameInfoChips({
   game,
   className = '',
@@ -310,18 +388,27 @@ export function GameInfoChips({
   className?: string
   align?: 'center' | 'left'
 }) {
-  const items = gameInfoItems(game)
-  if (items.length === 0) return null
+  const rawItems = gameInfoItems(game)
+  if (rawItems.length === 0) return null
+
   return (
     <div className={`flex flex-wrap gap-1.5 ${align === 'center' ? 'justify-center' : ''} ${className}`}>
-      {items.map((item, i) => (
-        <span
-          key={i}
-          className="rounded-full bg-[var(--surface-inset-bg)] px-2.5 py-1 text-xs font-semibold text-muted"
-        >
-          {item}
-        </span>
-      ))}
+      {rawItems.map((item, i) => {
+        const { IconComponent, text } = parseChipItem(item)
+        return (
+          <span
+            key={i}
+            className="inline-flex items-center gap-1.5 rounded-full bg-[var(--surface-inset-bg)] px-2.5 py-1 text-xs font-semibold text-muted"
+          >
+            {IconComponent && (
+              <span className="inline-flex items-center shrink-0 text-[var(--primary)]">
+                <Glyph icon={IconComponent} size={14} />
+              </span>
+            )}
+            <span>{text}</span>
+          </span>
+        )
+      })}
     </div>
   )
 }

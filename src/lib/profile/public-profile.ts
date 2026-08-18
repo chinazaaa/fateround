@@ -3,6 +3,7 @@ import { GAME_TYPE_CONFIG, gameTypeLabel } from '@/lib/game-types'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { GLOBAL_SCOPE } from '@/lib/trophies/criteria'
 import { hasWinnerSource } from '@/lib/trophies/outcome'
+import { byTierDesc } from '@/lib/trophies/tier-rank'
 import { normalizeUsername } from '@/lib/profile/username'
 import type { GameType } from '@/types'
 
@@ -228,9 +229,10 @@ export async function getPublicProfileSummary(username: string): Promise<PublicP
       gameLabel: gameTypeLabel(t.gameType) ?? 'All games',
       rarityPct: rarityById.has(t.trophyId) ? Math.round(rarityById.get(t.trophyId)!) : null,
     }))
-    // Rarest first — a public profile leads with the trophy worth bragging about. A trophy with no
-    // rarity row yet sorts last rather than pretending to be common.
-    .sort((a, b) => (a.rarityPct ?? 101) - (b.rarityPct ?? 101))
+    // Highest tier first (platinum → bronze), matching every other trophy list in the app;
+    // rarest breaks a tie within a tier. A trophy with no rarity row yet sorts last within its
+    // tier rather than pretending to be common.
+    .sort((a, b) => byTierDesc(a, b) || (a.rarityPct ?? 101) - (b.rarityPct ?? 101))
     .slice(0, 3)
 
   return {
@@ -279,6 +281,11 @@ export async function getPublicProfileCabinet(username: string): Promise<PublicP
       rarityPct: rarityById.has(t.trophyId) ? Math.round(rarityById.get(t.trophyId)!) : null,
       earnedAt: t.earnedAt,
     })
+  }
+
+  // Within each game, highest tier first — matching every other trophy list in the app.
+  for (const group of byGame.values()) {
+    group.trophies.sort((a, b) => byTierDesc(a, b) || (a.rarityPct ?? 101) - (b.rarityPct ?? 101))
   }
 
   const groups = [...byGame.values()].sort(

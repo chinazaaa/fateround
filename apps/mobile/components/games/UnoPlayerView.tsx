@@ -48,6 +48,7 @@ import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
 import { useGameTurnAlerts } from '@/hooks/useGameTurnAlerts'
+import { useUnoMercyKnockoutAlerts } from '@/hooks/useUnoMercyKnockoutAlerts'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import {
   postUnoCallUno,
@@ -223,7 +224,22 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
     enabled: bootstrap.screen === 'playing',
   })
 
-  const choosingColor = session?.phase === 'choose_color' && isMyTurn
+  useUnoMercyKnockoutAlerts({
+    session,
+    players: bootstrap.players,
+    myPlayerId: bootstrap.myPlayerId,
+    enabled: bootstrap.screen === 'playing',
+  })
+
+  // Colour choice — two sub-states.
+  // * choosingColor: classic Wild/+4 flow (choose_color) OR the very start of a Colour
+  //   Roulette when the target hasn't picked yet (required_color null).
+  // * rouletteDrawing: after the roulette target picks, they reveal cards one at a time
+  //   via the Draw button (the picker must be hidden or it would still cover the screen
+  //   and the Draw guard at `canDraw` — phase='playing' only — would refuse).
+  const choosingColor =
+    isMyTurn && (session?.phase === 'choose_color' || (session?.phase === 'color_roulette' && !session.required_color))
+  const rouletteDrawing = isMyTurn && session?.phase === 'color_roulette' && !!session.required_color
   const inChallengeWindow = session?.phase === 'challenge_window' && isMyTurn
   const inSwapTarget = session?.phase === 'swap_target' && isMyTurn
   const owesUnoCall = !!session && session.uno_pending_player === bootstrap.myPlayerId && !session.uno_called
@@ -401,11 +417,13 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
         return {
           id: p.id,
           name: p.name,
-          points: cards.reduce(
-            (sum, c) =>
-              sum + (c.kind === 'number' ? (c.value ?? 0) : c.kind === 'wild' || c.kind === 'wild_draw4' ? 50 : 20),
-            0
-          ),
+          points: cards.reduce((sum, c) => {
+            if (c.kind === 'number') return sum + (c.value ?? 0)
+            const wildKinds = ['wild', 'wild_draw4', 'wild_reverse_draw4', 'wild_color_roulette']
+            const drawWilds = ['draw6', 'draw10']
+            if (wildKinds.includes(c.kind) || drawWilds.includes(c.kind)) return sum + 50
+            return sum + 20 // coloured action card
+          }, 0),
           cardCount: cards.length,
         }
       })
@@ -426,9 +444,25 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
   const turnName = bootstrap.players.find((p) => p.id === turnPlayerId)?.name ?? 'Someone'
   const demandColor = activeColor(session)
   const demandLabel = demandColor ? `Must play ${UNO_COLOR_LABELS[demandColor]}` : null
+  const penaltyKindLabel = (() => {
+    switch (session.draw_penalty_kind) {
+      case 'draw2':
+        return 'Draw 2'
+      case 'wild_draw4':
+        return 'Draw 4'
+      case 'draw6':
+        return 'Draw 6'
+      case 'draw10':
+        return 'Draw 10'
+      case 'wild_reverse_draw4':
+        return 'Reverse Draw 4'
+      default:
+        return null
+    }
+  })()
   const penaltyLabel =
     (session.draw_penalty ?? 0) > 0
-      ? `Draw ${session.draw_penalty}${session.draw_penalty_kind ? ` — stack a ${session.draw_penalty_kind === 'draw2' ? 'Draw Two' : 'Wild Draw Four'} or draw` : ''}`
+      ? `Draw ${session.draw_penalty}${penaltyKindLabel ? ` — stack a ${penaltyKindLabel} (or higher in High Stakes) or draw` : ''}`
       : null
   const tableHint = [demandLabel, penaltyLabel].filter(Boolean).join(' · ')
 
@@ -512,6 +546,7 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
           myPlayerId={bootstrap.myPlayerId}
           handCounts={handCounts}
           finishOrder={session.finish_order ?? []}
+          eliminatedIds={session.eliminated_player_ids ?? []}
         />
 
         <CardTableArea
@@ -547,7 +582,7 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
 
         {!isWatching && inChallengeWindow ? (
           <View style={styles.choosePanel}>
-            <Text style={styles.section}>Wild Draw Four played — accept the draw or challenge?</Text>
+            <Text style={styles.section}>Draw 4 played — accept the draw or challenge?</Text>
             <View style={styles.colorRow}>
               <Pressable style={styles.actionBtn} disabled={acting} onPress={() => void challenge(false)}>
                 <Text style={styles.actionText}>Draw {session.draw_penalty || 4}</Text>
@@ -578,7 +613,7 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
 
         {!isWatching && owesUnoCall && session.phase === 'playing' ? (
           <Pressable style={styles.unoCallBtn} disabled={acting} onPress={() => void callUno()}>
-            <Text style={styles.unoCallText}>Call UNO!</Text>
+            <Text style={styles.unoCallText}>Last card!</Text>
           </Pressable>
         ) : null}
 
@@ -746,6 +781,15 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
               </View>
             ) : (
               <>
+                {rouletteDrawing ? (
+                  // Colour Roulette reveal — one card per tap until the target hits
+                  // their chosen colour. Server routes phase='color_roulette' draws
+                  // to processUnoColorRouletteReveal.
+                  <Pressable style={styles.drawBtn} disabled={acting} onPress={() => void drawCard()}>
+                    <Text style={styles.drawText}>Draw a card</Text>
+                  </Pressable>
+                ) : null}
+
                 {canDraw ? (
                   <Pressable style={styles.drawBtn} disabled={acting} onPress={() => void drawCard()}>
                     <Text style={styles.drawText}>{drawLabel}</Text>

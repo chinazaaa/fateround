@@ -31,8 +31,13 @@ export async function GET(req: NextRequest) {
   if (category) query = query.eq('category', category)
   if (gameType) query = query.eq('game_type', gameType)
 
-  const { data, error } = await query
+  const [{ data, error }, { data: gameTypesRaw }] = await Promise.all([
+    query,
+    supabase.from('app_feedback').select('game_type').order('game_type'),
+  ])
   if (error) return NextResponse.json({ error: internalErrorMessage('admin/feedback', error) }, { status: 500 })
 
-  return NextResponse.json({ feedback: data ?? [] })
+  const gameTypes = [...new Set((gameTypesRaw ?? []).map((r) => r.game_type as string))]
+
+  return NextResponse.json({ feedback: data ?? [], gameTypes })
 }

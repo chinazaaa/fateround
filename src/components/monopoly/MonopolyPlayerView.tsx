@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { MonopolyActiveLayout } from '@/components/monopoly/MonopolyActiveLayout'
 import { MonopolyJoinForm } from '@/components/monopoly/MonopolyJoinForm'
@@ -15,6 +15,8 @@ import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
 import { LeaderboardJoinNote } from '@/components/game-lobby/LeaderboardJoinNote'
 import { MonopolyPageHeader } from '@/components/monopoly/MonopolyChrome'
 import { gameTypeConfig } from '@/lib/game-types'
+import { gameIcon } from '@/lib/game-glyphs'
+import { Glyph } from '@/components/icons/Glyph'
 import { MonopolyFinalResultsShareBlock } from '@/components/monopoly/MonopolyFinalResultsShareBlock'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
@@ -42,6 +44,7 @@ import { markPlayerReady } from '@/lib/player-ready'
 import { useMonopolyNotifications } from '@/hooks/useMonopolyNotifications'
 import { preJoinScreen, playerIsViewer } from '@/lib/viewers'
 import { ViewerModeBanner } from '@/components/ViewerModeBanner'
+import { getRememberedName, subscribeLocalIdentity } from '@/lib/identity-local'
 
 type Screen =
   | 'loading'
@@ -142,6 +145,15 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
 
   useApplyGameTheme(screen === 'game_ended' ? 'default' : game?.theme)
   useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
+  useEffect(() => {
+    const prefill = () => {
+      if (resolvingRoomMember || roomDisplayName || joinName.trim()) return
+      const remembered = getRememberedName()
+      if (remembered) setJoinName(remembered)
+    }
+    prefill()
+    return subscribeLocalIdentity(prefill)
+  }, [joinName, resolvingRoomMember, roomDisplayName, setJoinName])
 
   // The Monopoly player path doesn't go through the shared roster dispatcher, so
   // register base rows here — this gives players the header roster drawer (with the
@@ -373,7 +385,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
           players={players}
           joining={joining}
           joiningAsViewer={joiningAsViewer}
-          submitLabel={joiningAsViewer ? 'Join as viewer' : 'Join Monopoly'}
+          submitLabel={joiningAsViewer ? 'Join as viewer' : 'Join Estate Kings'}
           onSubmit={() => {
             // Non-viewer joins require a board token before we hit the hook's join.
             if (!joiningAsViewer && !joinToken) return
@@ -460,8 +472,9 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
                 </p>
               </>
             )}
+
             <p className="flex items-center justify-center gap-1.5 pt-1 text-sm font-bold text-[var(--foreground)]">
-              <span className="leading-none">{cfg.headerEmoji}</span>
+              <Glyph icon={gameIcon('monopoly')} size={14} className="shrink-0 text-[var(--primary)]" />
               <span>{cfg.label}</span>
             </p>
             {game ? <GameInfoChips game={game} className="pt-2" /> : null}
@@ -517,7 +530,8 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
             players,
             board.property_owners,
             board.property_buildings,
-            board.mortgaged_properties
+            board.mortgaged_properties,
+            board.board_size ?? 40
           )[0]?.name
         : null)
 

@@ -1,7 +1,7 @@
 'use client'
 
 import { MONOPOLY_COLOR_CLASSES } from '@/lib/monopoly'
-import type { MonopolyColorGroup } from '@/lib/monopoly-board'
+import type { MonopolyBoardSize, MonopolyColorGroup } from '@/lib/monopoly-board'
 import { buildColorGroupStatuses, COLOR_SET_ORDER, type ColorGroupStatus } from '@/lib/monopoly-color-portfolio'
 import { themedSpaceName } from '@/components/monopoly/monopoly-themes'
 import type { Player } from '@/types'
@@ -65,14 +65,16 @@ export function MonopolyColorPortfolio({
   myPlayerId,
   players,
   themeId,
+  boardSize = 40,
 }: {
   propertyOwners: Record<string, string>
   myPlayerId: string
   players: Player[]
   themeId?: string | null
+  boardSize?: MonopolyBoardSize
 }) {
   const playerNames = new Map(players.map((p) => [p.id, p.name]))
-  const statuses = buildColorGroupStatuses(propertyOwners, myPlayerId, playerNames)
+  const statuses = buildColorGroupStatuses(propertyOwners, myPlayerId, playerNames, boardSize)
   const streetSets = statuses.filter((s) => s.group !== 'station' && s.group !== 'utility')
   const specialSets = statuses.filter((s) => s.group === 'station' || s.group === 'utility')
   const ownedSetCount = streetSets.filter((s) => s.complete).length

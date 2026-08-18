@@ -152,37 +152,38 @@ export function SaveToProfileModal({ open, onClose, profile, onChanged }: Props)
       <Modal open={open} onClose={onClose} title="Your profile">
         <div className="space-y-5">
           <div className="space-y-2">
-            <label className="block text-sm">
-              <span className="text-muted">Your name</span>
+            <label htmlFor="modal-display-name" className="text-sm text-muted">
+              Your name
+            </label>
+            <div className="flex items-center gap-2">
               <input
-                className="input-field mt-1"
+                id="modal-display-name"
+                className="input-field max-w-48 text-sm"
                 value={handle}
                 maxLength={50}
-                placeholder="What should we call you?"
+                placeholder="Your name"
                 onChange={(e) => setHandle(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && handle.trim() && !busy) void saveHandle()
                 }}
               />
-            </label>
-            {/* The everyday payoff for signing in, and the reason this field is the first thing
-                in the sheet: set it once and no join screen asks again, on any device. */}
-            <p className="text-faint text-xs">Used when you join or host a game, so you never type it again.</p>
+              <button
+                type="button"
+                className="btn-primary btn-fit shrink-0 px-3 py-2 text-sm"
+                disabled={busy || !handle.trim() || handle.trim() === (profile?.handle ?? '')}
+                onClick={() => void saveHandle()}
+              >
+                {busy ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+            <p className="text-faint text-xs">Used when you join or host a game.</p>
             {message ? <p className="text-red-400 text-sm">{message}</p> : null}
-            <button
-              type="button"
-              className="btn-primary"
-              disabled={busy || !handle.trim() || handle.trim() === (profile?.handle ?? '')}
-              onClick={() => void saveHandle()}
-            >
-              {busy ? 'Saving…' : 'Save name'}
-            </button>
           </div>
 
           <div className="space-y-3 border-t border-[var(--border)] pt-4">
             <p className="text-body text-sm">Your streak and trophies follow this account onto any device.</p>
             <Link href="/profile" className="btn-secondary block text-center" onClick={onClose}>
-              View trophies &amp; streak
+              Your profile
             </Link>
             <button type="button" className="btn-ghost" onClick={() => void switchUser()}>
               Not you? Switch
@@ -200,7 +201,7 @@ export function SaveToProfileModal({ open, onClose, profile, onChanged }: Props)
       title={step === 'email' ? 'Save your progress' : 'Enter your code'}
       subtitle={
         step === 'email'
-          ? "New here? We'll create your profile. Been here before? We'll load your trophies."
+          ? 'Submit your email to save your stats, claim trophies, and track your rank.'
           : `We emailed an 8-digit code to ${email}.`
       }
     >

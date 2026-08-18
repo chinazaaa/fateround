@@ -13,6 +13,8 @@ import { NameJoinForm } from '@/components/game-lobby/NameJoinForm'
 import { NpatActiveRound } from '@/components/npat/NpatActiveRound'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { gameTypeConfig } from '@/lib/game-types'
+import { gameIcon } from '@/lib/game-glyphs'
+import { Glyph } from '@/components/icons/Glyph'
 import { NPAT_MIN_PLAYERS } from '@/lib/npat'
 import { supabase } from '@/lib/supabase'
 import { NPAT_ANSWER_SELECT, NPAT_MARK_SELECT, ROUND_SELECT } from '@/lib/supabase-selects'
@@ -355,7 +357,11 @@ export function NpatPlayerView({ gameCode }: { gameCode: string }) {
         <div className="max-w-6xl mx-auto px-4 py-6 space-y-4">
           {game.status !== 'finished' && (
             <div className="text-center space-y-1">
-              <div className="text-3xl">{cfg.headerEmoji}</div>
+              <div className="flex justify-center text-[var(--primary)] pb-1">
+                <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[color-mix(in_srgb,var(--primary)_12%,transparent)]">
+                  <Glyph icon={gameIcon('i_call_on')} size={24} />
+                </span>
+              </div>
               <h1 className="text-xl font-black gradient-title">{game.title}</h1>
             </div>
           )}

@@ -484,7 +484,7 @@ trophy type. We match this exactly, and it falls straight out of the criteria DS
 | Criteria type | Progress behaviour | Example (unearned) |
 |---|---|---|
 | `counter`, `distinct`, `streak` | **Measurable** — show `min(100, current/target × 100)%` while unearned | "Collect 36 Outfits" → **Not earned · 11%** (you have 4/36) |
-| `event`, `platinum` | **Binary** — no partial progress; **0%** until the moment it's earned, then 100% | "Land on Mayfair" → **Not earned · 0%** |
+| `event`, `platinum` | **Binary** — no partial progress; **0%** until the moment it's earned, then 100% | "Land on Winnington Road" → **Not earned · 0%** |
 
 - This is the user's exact requirement: a *collection/threshold* trophy shows partial
   progress (11%); a *do-it-or-you-don't* trophy shows 0% until earned.

@@ -5,9 +5,11 @@
 // them: the bank or another player). Kept in the monopoly game directory so it
 // can't collide with shared files edited by other agents.
 import {
+  MONOPOLY_BOARD_SIZE,
   countOwnedInGroup,
   ownsColorMonopoly,
   spacesInGroup,
+  type MonopolyBoardSize,
   type MonopolyColorGroup,
 } from '@fateround/shared/monopoly-board'
 import { COLOR_GROUP_LABELS, COLOR_SET_ORDER } from './manage-logic'
@@ -35,11 +37,12 @@ export type ColorPortfolioStatus = {
 export function buildColorPortfolio(
   owners: Record<string, string>,
   playerId: string,
-  playerNames: Map<string, string>
+  playerNames: Map<string, string>,
+  boardSize: MonopolyBoardSize = MONOPOLY_BOARD_SIZE
 ): ColorPortfolioStatus[] {
   return COLOR_SET_ORDER.map((group) => {
-    const spaces = spacesInGroup(group)
-    const owned = countOwnedInGroup(owners, playerId, group)
+    const spaces = spacesInGroup(group, boardSize)
+    const owned = countOwnedInGroup(owners, playerId, group, boardSize)
     const missing: ColorGroupMissing[] = spaces
       .filter((s) => owners[String(s.index)] !== playerId)
       .map((s) => {
@@ -57,7 +60,7 @@ export function buildColorPortfolio(
       label: COLOR_GROUP_LABELS[group],
       owned,
       total: spaces.length,
-      complete: owned > 0 && ownsColorMonopoly(owners, playerId, group),
+      complete: owned > 0 && ownsColorMonopoly(owners, playerId, group, boardSize),
       missing,
     }
   })

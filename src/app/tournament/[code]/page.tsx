@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useTournamentRealtime } from '@/hooks/useTournamentRealtime'
+import { useTournamentPresence } from '@/hooks/useTournamentPresence'
 import type { Tournament, TournamentPlayer, TournamentGame } from '@/types/tournament'
 import type { TriviaQuestion } from '@/types'
 import { TOURNAMENT_ELIGIBLE_TYPES } from '@/lib/tournament-validation'
@@ -12,18 +13,38 @@ import { gameTypeLabel } from '@/lib/game-types'
 import {
   parseTriviaQuestionImport,
   parseExcelTriviaQuestionImport,
+  parseWstDeckImport,
+  parseExcelWstDeckImport,
+  formatEntryImportSummary,
   formatTriviaImportSummary,
   questionSampleFile,
 } from '@/lib/custom-questions'
+import { WST_DECK_MIN_ENTRIES, type WstDeckEntry } from '@/lib/who-said-this'
+import { WST_PLATFORM_DECK } from '@/lib/who-said-this-questions'
+import { AiQuestionsGenerator } from '@/components/ui/AiQuestionsGenerator'
+import { LibraryPackPicker } from '@/components/LibraryPackPicker'
+import { useLibraryPacks } from '@/hooks/useLibraryPacks'
 import { PageShell, Field, PrimaryBtn } from '@/components/ui/PageShell'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { useToast } from '@/components/ui/Toast'
 import { TournamentShareLeaderboard } from '@/components/tournament/TournamentShareLeaderboard'
 import { TournamentBracketBoard } from '@/components/tournament/TournamentBracketBoard'
 import { TournamentContinueCard, TournamentResumeEntry } from '@/components/tournament/TournamentPlayerCode'
+import { TournamentBrandingWrapper } from '@/components/tournament/BrandingWrapper'
+import { TournamentEventPackCard } from '@/components/tournament/EventPackCard'
+import { ScheduledEventCard } from '@/components/tournament/ScheduledEventCard'
+import { TournamentTransferHostControl } from '@/components/tournament/TournamentTransferHostControl'
+import { TournamentHostNominationBanner } from '@/components/tournament/TournamentHostNominationBanner'
+import { TournamentIosInstallPushNudge } from '@/components/tournament/TournamentIosInstallPushNudge'
 import { GameLinkQrModal } from '@/components/GameLinkQrModal'
 import { tournamentHostUrl, shareOrigin } from '@/lib/site'
 import { copyToClipboard } from '@/lib/copy'
+import {
+  estimateGameSeconds,
+  estimatePlaylistSeconds,
+  formatEstimatedDuration,
+  TIMING_PLAYER_FALLBACK,
+} from '@/lib/tournament-timing'
 import {
   TournamentGameConfigFields,
   defaultGameConfigValue,
@@ -64,25 +85,6 @@ function winReasonLabel(reason?: string | null): string {
   }
 }
 
-const GAME_TYPE_LABELS: Record<string, string> = {
-  trivia: 'Trivia',
-  scrabble: 'Scrabble',
-  yahtzee: 'Yahtzee',
-  ludo: 'Ludo',
-  whot: 'Whot',
-  'crazy-eights': 'Crazy Eights',
-  uno: 'UNO',
-  monopoly: 'Monopoly',
-  'word-hunt': 'Word Hunt',
-  'i-call-on': 'I Call On',
-  chess: 'Chess',
-  checkers: 'Checkers',
-  bingo: 'Bingo',
-  'who-said-this': 'Who Said This',
-  'describe-it': 'Describe It',
-  codewords: 'Codewords',
-}
-
 export default function TournamentLobbyPage() {
   const { code } = useParams<{ code: string }>()
   const router = useRouter()
@@ -111,14 +113,25 @@ export default function TournamentLobbyPage() {
   const [selectedGameType, setSelectedGameType] = useState('trivia')
   const [roundsCount, setRoundsCount] = useState('10')
   const [timerSeconds, setTimerSeconds] = useState('30')
+  // Big-screen display mode for the game this freestyle picker is about to
+  // spawn. Defaults phone_only so an event with no projector never opts
+  // into the projector rendering by accident.
+  const [selectedBigScreenMode, setSelectedBigScreenMode] = useState<'phone_only' | 'projector'>('phone_only')
   // Head-to-head: shared per-player chess clock for a round's matches.
   // Fallback per-player clock sent when starting a round for older chess
   // tournaments whose game_config has no stored timer (newer ones set it at
   // creation; the round route prefers that). No UI — hence no setter.
   const [h2hTimer] = useState('600')
   const [actionLoading, setActionLoading] = useState(false)
+  // Two-click "start early" confirmation for scheduled events. First Start
+  // attempt gets a 409 from the server; we flip this so the button re-renders
+  // as "Start early anyway" and a second click passes startEarly=true.
+  const [promptStartEarly, setPromptStartEarly] = useState(false)
+  // In-flight ready-toggle guard so the player can't fire it twice while the
+  // POST is still resolving. Cleared after fetchState re-syncs the row.
+  const [readyToggling, setReadyToggling] = useState(false)
 
-  const [questionSource, setQuestionSource] = useState<'platform' | 'custom'>('platform')
+  const [questionSource, setQuestionSource] = useState<'platform' | 'custom' | 'ai' | 'library'>('platform')
   const [customTrivia, setCustomTrivia] = useState<TriviaQuestion[]>([])
   // Size of the custom pack carried over from an earlier game (null if none). Lets the
   // lobby show the pack is still loaded after a reload/new tab, where local upload state
@@ -128,6 +141,22 @@ export default function TournamentLobbyPage() {
   const [copied, setCopied] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const forwardedGameRef = useRef<string | null>(null)
+
+  // Freestyle Who Said This source picker. Mirrors the normal-game WST create
+  // flow: 'player' → each joiner writes a quote in the lobby, 'platform' →
+  // ship the built-in famous-quotes deck, 'custom' → CSV the host uploads on
+  // this Start, 'library' → a community pack picked from the library. No
+  // 'ai' option — the AI backend doesn't support WST yet.
+  const [wstSource, setWstSource] = useState<'player' | 'platform' | 'custom' | 'library'>('player')
+  const [customWst, setCustomWst] = useState<WstDeckEntry[]>([])
+  const [wstUploadMsg, setWstUploadMsg] = useState<string | null>(null)
+  const wstFileRef = useRef<HTMLInputElement>(null)
+
+  // Library packs for freestyle Trivia + WST. Each hook only fetches while
+  // the matching source chip is active, so switching to "Library" is what
+  // triggers the initial list load.
+  const triviaLibrary = useLibraryPacks('trivia', selectedGameType === 'trivia' && questionSource === 'library')
+  const wstLibrary = useLibraryPacks('who_said_this', selectedGameType === 'who_said_this' && wstSource === 'library')
 
   // Host edit-settings panel
   const [showEdit, setShowEdit] = useState(false)
@@ -168,6 +197,20 @@ export default function TournamentLobbyPage() {
   }, [fetchState])
 
   useTournamentRealtime(tournamentId, fetchState)
+
+  // Realtime presence — who has this tournament open in a tab RIGHT NOW.
+  // Called BEFORE any early return so the React hook order stays stable across
+  // renders. Presence key is derived best-effort: joined players publish their
+  // tournament_players.id, host publishes a synthetic "host-<token>" id,
+  // unjoined visitors listen without publishing.
+  const presenceMyName =
+    typeof window !== 'undefined' ? localStorage.getItem(`tournament_player_${tournamentId}`) : null
+  const presenceMe =
+    joined && !isHost && presenceMyName
+      ? (players.find((p) => p.player_name.toLowerCase() === presenceMyName.toLowerCase()) ?? null)
+      : null
+  const presenceKey = presenceMe?.id ?? (isHost && hostToken ? `host-${hostToken}` : null)
+  const presentKeys = useTournamentPresence(tournamentId, presenceKey)
 
   // The "in the room" presence dots come from each staged game's own player roster,
   // which the tournament realtime channel doesn't watch — so a player joining their
@@ -500,6 +543,44 @@ export default function TournamentLobbyPage() {
     }
   }
 
+  // Reorder the still-upcoming tail of a planned tournament's playlist.
+  // `absoluteIndex` is the index of the entry to move within the FULL queue
+  // (not the "Coming up" slice). Server enforces that already-played rounds
+  // stay first — this client only offers arrows on the upcoming tail.
+  async function handleMoveQueue(absoluteIndex: number, dir: -1 | 1) {
+    if (!hostToken || !tournament?.game_queue) return
+    const current = tournament.game_queue
+    const target = absoluteIndex + dir
+    // The next-to-play index is `games.length`. Nothing before it may move.
+    const firstReorderableIndex = games.length
+    if (
+      absoluteIndex < firstReorderableIndex ||
+      target < firstReorderableIndex ||
+      absoluteIndex >= current.length ||
+      target >= current.length
+    ) {
+      return
+    }
+    const nextQueue = current.slice()
+    ;[nextQueue[absoluteIndex], nextQueue[target]] = [nextQueue[target], nextQueue[absoluteIndex]]
+    setActionLoading(true)
+    setError('')
+    try {
+      const res = await fetch(`/api/tournaments/${tournamentId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hostToken, gameQueue: nextQueue }),
+      })
+      const data = await res.json()
+      if (!res.ok) setError(data.error ?? 'Failed to reorder playlist')
+      else fetchState()
+    } catch {
+      setError('Something went wrong')
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
   async function handleFile(file: File) {
     setUploadMsg(null)
     // Clear any previously-loaded pack up front so a failed/invalid replacement
@@ -539,12 +620,118 @@ export default function TournamentLobbyPage() {
     if (fileRef.current) fileRef.current.value = ''
   }
 
-  async function handleStartGame() {
+  // Mirrors handleFile for the WST deck upload. Same parser family; same
+  // shape of "clear-first-then-parse" so a failed replacement can't leave a
+  // stale pack that gets sent on Start.
+  async function handleWstFile(file: File) {
+    setWstUploadMsg(null)
+    setCustomWst([])
+    const ext = file.name.split('.').pop()?.toLowerCase()
+    try {
+      if (ext === 'csv' || ext === 'txt') {
+        const text = await file.text()
+        const result = parseWstDeckImport(text)
+        if (result.questions.length === 0) {
+          setWstUploadMsg('No valid rows. Use quote, option_a–option_d, and correct (A–D) columns.')
+          return
+        }
+        setCustomWst(result.questions)
+        setWstUploadMsg(formatEntryImportSummary(result) ?? `${result.questions.length} quotes ready`)
+      } else if (ext === 'xlsx' || ext === 'xls') {
+        const buffer = await file.arrayBuffer()
+        const result = await parseExcelWstDeckImport(buffer)
+        if (result.questions.length === 0) {
+          setWstUploadMsg('No valid rows. Use quote, option_a–option_d, and correct (A–D) columns.')
+          return
+        }
+        setCustomWst(result.questions)
+        setWstUploadMsg(formatEntryImportSummary(result) ?? `${result.questions.length} quotes ready`)
+      } else {
+        setWstUploadMsg('Please upload a .csv or .xlsx file')
+      }
+    } catch {
+      setWstUploadMsg('Could not read that file. Try the sample CSV.')
+    }
+  }
+
+  function clearCustomWst() {
+    setCustomWst([])
+    setWstUploadMsg(null)
+    if (wstFileRef.current) wstFileRef.current.value = ''
+  }
+
+  // Resolve the effective WST deck to ship on Start based on the picked
+  // source. `player` sends nothing (server spawns lobby-collect mode);
+  // `platform` ships the built-in famous-quotes pack; `custom` ships the
+  // uploaded CSV; `library` ships the currently-selected library pack's
+  // questions. Empty arrays fall through to player-submit server-side.
+  function resolveWstDeckToSend(): unknown[] | null {
+    if (wstSource === 'platform') return WST_PLATFORM_DECK
+    if (wstSource === 'custom') return customWst.length > 0 ? customWst : null
+    if (wstSource === 'library') return wstLibrary.questions.length > 0 ? wstLibrary.questions : null
+    return null
+  }
+
+  // Player-side toggle of their own "I'm ready" flag. Only meaningful on
+  // scheduled events; the tournament page renders the button only when
+  // scheduled_at is set. Uses the player's own resume token as auth so a
+  // spectator or the host can't flip someone else's flag.
+  async function handleReadyToggle(next: boolean) {
+    if (readyToggling) return
+    const token = typeof window !== 'undefined' ? localStorage.getItem(`tournament_ptoken_${tournamentId}`) : null
+    if (!token) {
+      setError('Save your player code first — reload the page and try again.')
+      return
+    }
+    setReadyToggling(true)
+    try {
+      const res = await fetch(`/api/tournaments/${tournamentId}/players/ready`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, isReady: next }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setError((data as { error?: string }).error ?? "Couldn't update ready state")
+        return
+      }
+      fetchState()
+    } catch {
+      setError('Something went wrong')
+    } finally {
+      setReadyToggling(false)
+    }
+  }
+
+  async function handleStartGame(startEarly = false) {
     if (!hostToken) return
     setActionLoading(true)
     setError('')
 
-    const useCustom = selectedGameType === 'trivia' && questionSource === 'custom'
+    // In planned mode the queue entry dictates gameType/settings — the server
+    // enforces this, but we send matching values so the freestyle picker's
+    // stale state can't accidentally override anything.
+    const useQueue = Boolean(plannedNext)
+    const effectiveGameType = useQueue ? plannedNext!.gameType : selectedGameType
+
+    // Trivia: anything that isn't 'platform' ships as custom_questions —
+    // upload / AI / library all end up in the same customQuestions payload
+    // the server treats as "custom" question source.
+    const triviaFreestylePack: unknown[] | null =
+      !useQueue && selectedGameType === 'trivia' && questionSource !== 'platform'
+        ? questionSource === 'custom'
+          ? customTrivia.length > 0
+            ? customTrivia
+            : null
+          : questionSource === 'library'
+            ? triviaLibrary.questions.length > 0
+              ? triviaLibrary.questions
+              : null
+            : /* ai */ customTrivia.length > 0
+              ? customTrivia
+              : null
+        : null
+    const wstFreestylePack = !useQueue && selectedGameType === 'who_said_this' ? resolveWstDeckToSend() : null
 
     try {
       const res = await fetch(`/api/tournaments/${tournamentId}/games`, {
@@ -552,20 +739,42 @@ export default function TournamentLobbyPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           hostToken,
-          gameType: selectedGameType,
-          gameSettings: {
-            rounds_count: parseInt(roundsCount, 10) || 10,
-            timer_seconds: parseInt(timerSeconds, 10) || 30,
-          },
-          questionSource: useCustom ? 'custom' : 'platform',
-          customQuestions: useCustom ? customTrivia : null,
+          gameType: effectiveGameType,
+          gameSettings: useQueue
+            ? {
+                rounds_count: plannedNext!.roundsCount,
+                timer_seconds: plannedNext!.timerSeconds,
+              }
+            : {
+                rounds_count: parseInt(roundsCount, 10) || 10,
+                timer_seconds: parseInt(timerSeconds, 10) || 30,
+              },
+          questionSource: triviaFreestylePack ? 'custom' : 'platform',
+          // Either the trivia pack OR the WST deck rides the shared
+          // `customQuestions` slot — the server routes it by gameType
+          // (trivia → question_source='custom', WST → wst_quote_source='deck').
+          customQuestions: triviaFreestylePack ?? wstFreestylePack ?? null,
+          // Freestyle mode picks its own big-screen mode; planned mode
+          // reads it off the queue entry (server ignores what we send).
+          bigScreenMode: useQueue ? undefined : selectedBigScreenMode,
+          // Explicit opt-in to spawn before scheduled_at. Server otherwise
+          // 409s on the first game so a mis-click can't yank people in early.
+          ...(startEarly ? { startEarly: true } : {}),
         }),
       })
       const data = await res.json()
       if (!res.ok) {
+        // Scheduled-not-yet-reached: surface a two-click "Start early anyway"
+        // path rather than dead-ending the host on a plain error string.
+        if (res.status === 409 && data?.reason === 'not_yet_scheduled') {
+          setError('This tournament is scheduled for later — pre-registered players might not be here yet.')
+          setPromptStartEarly(true)
+          return
+        }
         setError(data.error ?? 'Failed to start game')
         return
       }
+      setPromptStartEarly(false)
       localStorage.setItem(`host_token_${data.gameCode}`, data.gameHostToken)
       // Stay on the lobby — players auto-join the spawned game, then the host taps
       // "Start Game" here to begin it (no host dashboard needed).
@@ -822,6 +1031,12 @@ export default function TournamentLobbyPage() {
   const myName = typeof window !== 'undefined' ? localStorage.getItem(`tournament_player_${tournamentId}`) : null
   const me =
     isParticipant && myName ? (players.find((p) => p.player_name.toLowerCase() === myName.toLowerCase()) ?? null) : null
+
+  // Derived from presenceKeys tracked above the early-return: how many of the
+  // roster is in the lobby right now (host + big-screen use this as the real
+  // "will they actually show up?" signal).
+  const playerIdSet = new Set(players.map((p) => p.id))
+  const presentPlayerCount = Array.from(presentKeys).filter((k) => playerIdSet.has(k)).length
   const iAmEliminated = Boolean(me?.is_eliminated)
   // Show a personal lives readout whenever the tournament runs in lives mode and the
   // player still has a tracked life count (null means lives mode is off for them).
@@ -830,7 +1045,15 @@ export default function TournamentLobbyPage() {
   // Host-control derived state
   const rounds = parseInt(roundsCount, 10) || 10
   const isFirstGame = games.length === 0
-  const isCustom = selectedGameType === 'trivia' && questionSource === 'custom'
+  // Pre-planned playlist: when the tournament was created in "Plan the games"
+  // mode, the host doesn't pick each game live — the next entry is the next
+  // round. `plannedNext` is null in freestyle mode (game_queue null/empty).
+  const queueEntries =
+    Array.isArray(tournament.game_queue) && tournament.game_queue.length > 0 ? tournament.game_queue : null
+  const queueIndex = games.length
+  const plannedNext = queueEntries && queueIndex < queueEntries.length ? queueEntries[queueIndex] : null
+  const queueExhausted = queueEntries != null && queueIndex >= queueEntries.length
+  const isCustom = !plannedNext && selectedGameType === 'trivia' && questionSource === 'custom'
   // Effective pack size for custom trivia: a freshly uploaded pack wins; otherwise the
   // pack carried over from an earlier game (which the server reuses on Start). After a
   // reload/new tab the local upload resets to empty, so without the carry-over fallback
@@ -954,1456 +1177,2006 @@ export default function TournamentLobbyPage() {
 
   return (
     <PageShell>
-      {/* Header */}
-      <div className="text-center space-y-2">
-        <h1 className="text-3xl font-black gradient-title leading-tight">{tournament.title}</h1>
-        <p className="text-faint text-sm">
-          Code:{' '}
-          <span className="font-mono font-bold tracking-wider" style={{ color: 'var(--primary)' }}>
-            {tournament.id}
-          </span>
-          {tournament.target_game_count && (
-            <span>
-              {' '}
-              &middot; {finishedGames.length}/{tournament.target_game_count} games
-            </span>
+      <TournamentBrandingWrapper branding={tournament.branding} className="contents">
+        {/* Header */}
+        <div className="text-center space-y-2">
+          {tournament.branding?.logoUrl && (
+            <img src={tournament.branding.logoUrl} alt="" className="mx-auto h-20 w-20 object-contain rounded-xl" />
           )}
-        </p>
-        <div className="flex flex-wrap items-center justify-center gap-1.5">
-          <span className="chip text-xs">
-            {h2h
-              ? `${isGroupH2h ? '🎮' : '♟'} ${gameTypeLabel(tournament.game_type) ?? 'Chess'}`
-              : knockout
-                ? `${knockoutGroup ? '🎮' : '🧠'} ${gameTypeLabel(tournament.game_type) ?? 'Trivia'}`
-                : school
-                  ? `🃏 ${gameTypeLabel(tournament.game_type) ?? 'Whot'}`
-                  : '🎮 Trivia'}
-          </span>
-          <span className="chip text-xs">
-            {h2h
-              ? '🏆 Head-to-Head'
-              : knockout
-                ? '🏆 Knockout'
-                : school
-                  ? '🎓 School'
-                  : tournament.target_game_count
-                    ? `Best of ${tournament.target_game_count}`
-                    : 'Unlimited games'}
-          </span>
-          {lives && (
+          <h1 className="text-3xl font-black gradient-title leading-tight">{tournament.title}</h1>
+          <p className="text-faint text-sm">
+            Code:{' '}
+            <span className="font-mono font-bold tracking-wider" style={{ color: 'var(--primary)' }}>
+              {tournament.id}
+            </span>
+            {tournament.target_game_count && (
+              <span>
+                {' '}
+                &middot; {finishedGames.length}/{tournament.target_game_count} games
+              </span>
+            )}
+          </p>
+          <div className="flex flex-wrap items-center justify-center gap-1.5">
             <span className="chip text-xs">
-              ❤️ {lives.startingLives} {lives.startingLives === 1 ? 'life' : 'lives'}
+              {h2h
+                ? `${isGroupH2h ? '🎮' : '♟'} ${gameTypeLabel(tournament.game_type) ?? 'Chess'}`
+                : knockout
+                  ? `${knockoutGroup ? '🎮' : '🧠'} ${gameTypeLabel(tournament.game_type) ?? 'Trivia'}`
+                  : school
+                    ? `🃏 ${gameTypeLabel(tournament.game_type) ?? 'Whot'}`
+                    : queueEntries
+                      ? `🎮 ${queueEntries.length}-game playlist`
+                      : '🎮 Mixed rounds'}
             </span>
-          )}
-          <span className="chip text-xs">
-            👥 {players.length}
-            {tournament.max_players ? `/${tournament.max_players}` : ''} player{players.length === 1 ? '' : 's'}
-          </span>
-          {isParticipant && myName && (
-            <span className="chip text-xs" style={{ color: 'var(--primary)' }}>
-              🙋 You: {myName}
+            <span className="chip text-xs">
+              {h2h
+                ? '🏆 Head-to-Head'
+                : knockout
+                  ? '🏆 Knockout'
+                  : school
+                    ? '🎓 School'
+                    : queueEntries
+                      ? '🎯 Planned playlist'
+                      : tournament.target_game_count
+                        ? `Best of ${tournament.target_game_count}`
+                        : 'Freestyle'}
             </span>
+            {lives && (
+              <span className="chip text-xs">
+                ❤️ {lives.startingLives} {lives.startingLives === 1 ? 'life' : 'lives'}
+              </span>
+            )}
+            <span className="chip text-xs">
+              👥 {players.length}
+              {tournament.max_players ? `/${tournament.max_players}` : ''} player{players.length === 1 ? '' : 's'}
+              {presentPlayerCount > 0 && <span className="text-faint"> · {presentPlayerCount} here now</span>}
+            </span>
+            {/* Scheduled events only — surface the "N of M ready" count so
+                hosts can see confirmed-attentive players vs. still-pre-
+                registered before starting. Suppressed for right-now
+                tournaments where everyone joining IS present by definition. */}
+            {tournament.scheduled_at && !hasStarted && (
+              <span
+                className="chip text-xs"
+                style={{
+                  color:
+                    players.filter((p) => p.is_ready).length === players.length && players.length > 0
+                      ? 'var(--primary)'
+                      : undefined,
+                }}
+              >
+                ✋ {players.filter((p) => p.is_ready).length}/{players.length} ready
+              </span>
+            )}
+            {isParticipant && myName && (
+              <span className="chip text-xs" style={{ color: 'var(--primary)' }}>
+                🙋 You: {myName}
+              </span>
+            )}
+          </div>
+          {isFinished ? (
+            <span className="premium-badge" style={{ marginTop: '0.25rem' }}>
+              🏆 Tournament Complete
+            </span>
+          ) : (
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <button onClick={handleShare} className="btn-secondary btn-fit text-sm">
+                {copied ? '✓ Link copied' : '🔗 Copy invite link'}
+              </button>
+              {isHost && (
+                <>
+                  <button
+                    onClick={async () => {
+                      const ok = await copyToClipboard(tournamentHostUrl(tournamentId, hostToken ?? '', shareOrigin()))
+                      setCopied(false)
+                      if (ok) success('Host link copied — open it to manage from another device')
+                      else setError('Could not copy host link')
+                    }}
+                    className="btn-secondary btn-fit text-sm"
+                    title="Manage this tournament from another device"
+                  >
+                    🛠 Copy host link
+                  </button>
+                  <button onClick={() => setHostQrOpen(true)} className="btn-secondary btn-fit text-sm">
+                    Host QR
+                  </button>
+                  <a
+                    href={`/tournament/${tournamentId}/screen`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="btn-secondary btn-fit text-sm"
+                    title="Open a full-screen projector/TV view of this tournament"
+                  >
+                    🖥 Big screen
+                  </a>
+                  <TournamentTransferHostControl
+                    tournamentId={tournamentId}
+                    hostToken={hostToken}
+                    players={players}
+                    pendingPlayerId={tournament.pending_host_player_id ?? null}
+                  />
+                  <button onClick={openEditSettings} className="btn-secondary btn-fit text-sm">
+                    ⚙️ Edit settings
+                  </button>
+                </>
+              )}
+            </div>
           )}
         </div>
-        {isFinished ? (
-          <span className="premium-badge" style={{ marginTop: '0.25rem' }}>
-            🏆 Tournament Complete
-          </span>
-        ) : (
-          <div className="flex flex-wrap items-center justify-center gap-2">
-            <button onClick={handleShare} className="btn-secondary btn-fit text-sm">
-              {copied ? '✓ Link copied' : '🔗 Copy invite link'}
-            </button>
-            {isHost && (
-              <>
-                <button
-                  onClick={async () => {
-                    const ok = await copyToClipboard(tournamentHostUrl(tournamentId, hostToken ?? '', shareOrigin()))
-                    setCopied(false)
-                    if (ok) success('Host link copied — open it to manage from another device')
-                    else setError('Could not copy host link')
-                  }}
-                  className="btn-secondary btn-fit text-sm"
-                  title="Manage this tournament from another device"
-                >
-                  🛠 Copy host link
-                </button>
-                <button onClick={() => setHostQrOpen(true)} className="btn-secondary btn-fit text-sm">
-                  Host QR
-                </button>
-                <button onClick={openEditSettings} className="btn-secondary btn-fit text-sm">
-                  ⚙️ Edit settings
-                </button>
-              </>
+
+        {isHost && (
+          <GameLinkQrModal
+            open={hostQrOpen}
+            onClose={() => setHostQrOpen(false)}
+            url={tournamentHostUrl(tournamentId, hostToken ?? '', shareOrigin())}
+            title="Scan to host on another device"
+            subtitle="Opening this link makes that device the host — keep it private."
+            copyLabel="Copy host link"
+            copySuccessMessage="Host link copied"
+          />
+        )}
+
+        {/* Scheduled start (P5). Pre-start only — once the tournament is
+            active/finished, the countdown becomes noise and the live cards
+            below take over. Passes this viewer's role tokens so the .ics
+            they download restores THEIR seat, not just the anonymous lobby.
+            Also passes presentPlayerCount so the host sees the real "N of M
+            here now" split, not just the pre-registered count. */}
+        {!hasStarted && tournament.scheduled_at && (
+          <ScheduledEventCard
+            tournament={tournament}
+            playerCount={players.length}
+            presentPlayerCount={presentPlayerCount}
+            playerToken={joined ? myCode : null}
+            hostToken={isHost ? hostToken : null}
+          />
+        )}
+
+        {/* Tournament lineup — always visible (planned round-robin only). Shows
+          every game in the playlist with a status marker so a visitor deciding
+          whether to join, a joined player between games, and a host looking
+          for the reorder controls all see the same source of truth. */}
+        {roundRobin && queueEntries && (
+          <div className="glass-card p-5 space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <p className="label-caps">Tournament lineup</p>
+              <span className="text-faint text-xs">
+                {queueEntries.length} games · ≈{' '}
+                {formatEstimatedDuration(
+                  estimatePlaylistSeconds(queueEntries, players.length > 0 ? players.length : TIMING_PLAYER_FALLBACK)
+                )}{' '}
+                total
+              </span>
+            </div>
+            <ol className="space-y-1.5">
+              {queueEntries.map((e, absoluteIndex) => {
+                const played = absoluteIndex < games.length
+                const isPlayingNow = played && absoluteIndex === games.length - 1 && Boolean(activeGame)
+                const isPastFinished = played && !isPlayingNow
+                const isUpNext = !activeGame && absoluteIndex === queueIndex
+                const upcomingReorderable = isHost && absoluteIndex > queueIndex && !activeGame
+                const canMoveUp = upcomingReorderable && absoluteIndex - 1 >= queueIndex + 1
+                // Even reorderable items can't move above the "Up next" slot with a single
+                // arrow — moving to Up next uses a dedicated swap arrow on that item only.
+                const isImmediatelyAfterUpNext = isHost && !activeGame && absoluteIndex === queueIndex + 1
+                const marker = isPlayingNow ? '▶︎' : isPastFinished ? '✓' : isUpNext ? '›' : '·'
+                const markerColor = isPlayingNow
+                  ? 'var(--primary)'
+                  : isPastFinished
+                    ? 'var(--muted)'
+                    : isUpNext
+                      ? 'var(--foreground)'
+                      : 'var(--muted)'
+                const rowOpacity = isPastFinished ? 0.5 : 1
+                return (
+                  <li
+                    key={`${e.gameType}-${absoluteIndex}`}
+                    className="flex items-center gap-2 text-body text-sm"
+                    style={{ opacity: rowOpacity }}
+                  >
+                    <span
+                      className="tabular-nums font-semibold"
+                      style={{ minWidth: '1.75rem', color: markerColor }}
+                      aria-hidden
+                    >
+                      {marker} {absoluteIndex + 1}.
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium truncate">
+                        {gameTypeLabel(e.gameType) ?? e.gameType}
+                        {isPlayingNow && <span className="text-faint text-xs font-normal"> · playing now</span>}
+                        {isUpNext && !isPlayingNow && (
+                          <span className="text-faint text-xs font-normal"> · up next</span>
+                        )}
+                      </p>
+                      <p className="text-faint text-xs">
+                        {e.gameType === 'trivia'
+                          ? `${e.roundsCount ?? 10} questions · ${e.timerSeconds ?? 30}s each`
+                          : e.gameType === 'two_truths' || e.gameType === 'who_said_this'
+                            ? `${e.timerSeconds ?? (e.gameType === 'two_truths' ? 45 : 30)}s per guess`
+                            : `${e.roundsCount ?? 10} rounds · ${e.timerSeconds ?? 30}s`}
+                        {' · ≈ '}
+                        {formatEstimatedDuration(
+                          estimateGameSeconds(e, players.length > 0 ? players.length : TIMING_PLAYER_FALLBACK)
+                        )}
+                      </p>
+                    </div>
+                    {isImmediatelyAfterUpNext && (
+                      <button
+                        type="button"
+                        onClick={() => handleMoveQueue(absoluteIndex, -1)}
+                        disabled={actionLoading}
+                        aria-label={`Swap ${gameTypeLabel(e.gameType) ?? e.gameType} into up-next slot`}
+                        className="chip"
+                        title="Swap with Up next"
+                      >
+                        ↑
+                      </button>
+                    )}
+                    {upcomingReorderable && !isImmediatelyAfterUpNext && (
+                      <button
+                        type="button"
+                        onClick={() => handleMoveQueue(absoluteIndex, -1)}
+                        disabled={actionLoading || !canMoveUp}
+                        aria-label={`Move ${gameTypeLabel(e.gameType) ?? e.gameType} up`}
+                        className="chip"
+                        style={{ opacity: canMoveUp ? 1 : 0.4 }}
+                      >
+                        ↑
+                      </button>
+                    )}
+                    {upcomingReorderable && (
+                      <button
+                        type="button"
+                        onClick={() => handleMoveQueue(absoluteIndex, 1)}
+                        disabled={actionLoading || absoluteIndex === queueEntries.length - 1}
+                        aria-label={`Move ${gameTypeLabel(e.gameType) ?? e.gameType} down`}
+                        className="chip"
+                        style={{ opacity: absoluteIndex === queueEntries.length - 1 ? 0.4 : 1 }}
+                      >
+                        ↓
+                      </button>
+                    )}
+                  </li>
+                )
+              })}
+            </ol>
+            {isHost && !activeGame && queueEntries.length - queueIndex > 1 && (
+              <p className="text-faint text-xs">
+                Rearrange upcoming games with the arrows — the first up-arrow swaps a game into &ldquo;Up next&rdquo;.
+                Played games stay locked.
+              </p>
             )}
           </div>
         )}
-      </div>
 
-      {isHost && (
-        <GameLinkQrModal
-          open={hostQrOpen}
-          onClose={() => setHostQrOpen(false)}
-          url={tournamentHostUrl(tournamentId, hostToken ?? '', shareOrigin())}
-          title="Scan to host on another device"
-          subtitle="Opening this link makes that device the host — keep it private."
-          copyLabel="Copy host link"
-          copySuccessMessage="Host link copied"
-        />
-      )}
-
-      {/* Finished — host either runs it back with this roster or starts fresh. */}
-      {isHost && isFinished && (
-        <div className="glass-card-strong p-5 space-y-3 text-center">
-          <p className="label-caps">What&apos;s next</p>
-          <div className="flex flex-wrap items-center justify-center gap-2">
-            <PrimaryBtn onClick={handleRestartTournament} disabled={actionLoading} className="btn-fit">
-              {actionLoading ? 'Restarting…' : '🔄 Restart tournament'}
-            </PrimaryBtn>
-            <button onClick={() => router.push('/tournament/create')} className="btn-secondary btn-fit text-sm">
-              ➕ Create new tournament
-            </button>
+        {/* Finished — host either runs it back with this roster or starts fresh. */}
+        {isHost && isFinished && (
+          <div className="glass-card-strong p-5 space-y-3 text-center">
+            <p className="label-caps">What&apos;s next</p>
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <PrimaryBtn onClick={handleRestartTournament} disabled={actionLoading} className="btn-fit">
+                {actionLoading ? 'Restarting…' : '🔄 Restart tournament'}
+              </PrimaryBtn>
+              <button onClick={() => router.push('/tournament/create')} className="btn-secondary btn-fit text-sm">
+                ➕ Create new tournament
+              </button>
+            </div>
+            <p className="text-muted text-xs">
+              Restart keeps this roster — scores reset and everyone returns to the lobby. Create new starts a fresh
+              tournament from scratch.
+            </p>
           </div>
-          <p className="text-muted text-xs">
-            Restart keeps this roster — scores reset and everyone returns to the lobby. Create new starts a fresh
-            tournament from scratch.
-          </p>
-        </div>
-      )}
+        )}
 
-      {/* Edit settings (host) */}
-      {isHost && showEdit && !isFinished && (
-        <div className="glass-card-strong p-5 space-y-4">
-          <div className="flex items-center justify-between">
-            <p className="label-caps">Edit Settings</p>
-            <button onClick={() => setShowEdit(false)} className="btn-ghost text-xs">
-              Cancel
-            </button>
-          </div>
+        {/* Edit settings (host) */}
+        {isHost && showEdit && !isFinished && (
+          <div className="glass-card-strong p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <p className="label-caps">Edit Settings</p>
+              <button onClick={() => setShowEdit(false)} className="btn-ghost text-xs">
+                Cancel
+              </button>
+            </div>
 
-          <Field label="Tournament Title" htmlFor="edit-title">
-            <input
-              id="edit-title"
-              type="text"
-              value={editTitle}
-              onChange={(e) => setEditTitle(e.target.value)}
-              maxLength={100}
-              className="input-field"
-            />
-          </Field>
-
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Target Games" htmlFor="edit-target">
+            <Field label="Tournament Title" htmlFor="edit-title">
               <input
-                id="edit-target"
-                type="number"
-                value={editTarget}
-                onChange={(e) => setEditTarget(e.target.value)}
-                placeholder="Unlimited"
-                min={1}
-                max={100}
-                step={1}
+                id="edit-title"
+                type="text"
+                value={editTitle}
+                onChange={(e) => setEditTitle(e.target.value)}
+                maxLength={100}
                 className="input-field"
               />
             </Field>
-            <Field label="Max Players" htmlFor="edit-max">
-              <input
-                id="edit-max"
-                type="number"
-                value={editMax}
-                onChange={(e) => setEditMax(e.target.value)}
-                placeholder="Unlimited"
-                min={2}
-                max={100}
-                step={1}
-                className="input-field"
-              />
-            </Field>
-          </div>
 
-          {tournament.status === 'waiting' ? (
-            <div className="space-y-3">
-              <label className="flex items-center gap-2 text-body text-sm">
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Target Games" htmlFor="edit-target">
                 <input
-                  type="checkbox"
-                  checked={editLives}
-                  onChange={(e) => setEditLives(e.target.checked)}
-                  className="accent-[var(--primary)]"
+                  id="edit-target"
+                  type="number"
+                  value={editTarget}
+                  onChange={(e) => setEditTarget(e.target.value)}
+                  placeholder="Unlimited"
+                  min={1}
+                  max={100}
+                  step={1}
+                  className="input-field"
                 />
-                Lives mode
-              </label>
-              {editLives && (
-                <div className="surface-inset p-4 space-y-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <label className="text-muted text-sm" htmlFor="edit-starting-lives">
-                      Starting lives
-                    </label>
-                    <input
-                      id="edit-starting-lives"
-                      type="number"
-                      min={1}
-                      max={10}
-                      value={editStartingLives}
-                      onChange={(e) => setEditStartingLives(Number(e.target.value) || 3)}
-                      className="input-field w-20 text-center"
-                    />
-                  </div>
-                  <div className="flex items-start justify-between gap-3">
-                    <label className="text-muted text-sm" htmlFor="edit-eliminate">
-                      Players who lose a life each game
-                      <span className="block text-faint text-xs mt-0.5">
-                        {editEliminate === 1
-                          ? 'The bottom finisher loses 1 life'
-                          : `The bottom ${editEliminate} finishers each lose 1 life`}
-                      </span>
-                    </label>
-                    <input
-                      id="edit-eliminate"
-                      type="number"
-                      min={1}
-                      max={10}
-                      value={editEliminate}
-                      onChange={(e) => setEditEliminate(Number(e.target.value) || 1)}
-                      className="input-field w-20 text-center"
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
-          ) : (
-            <p className="text-faint text-xs">Lives settings are locked once the first game starts.</p>
-          )}
-
-          {tournament.game_type && formatHasGameConfig(tournament.format) && (
-            <div className="space-y-3">
-              <div className="divider-soft" />
-              <p className="label-caps">Game settings</p>
-              {tournament.status === 'waiting' ? (
-                <TournamentGameConfigFields
-                  format={tournament.format}
-                  gameType={tournament.game_type}
-                  value={editGameConfig}
-                  onChange={setEditGameConfig}
+              </Field>
+              <Field label="Max Players" htmlFor="edit-max">
+                <input
+                  id="edit-max"
+                  type="number"
+                  value={editMax}
+                  onChange={(e) => setEditMax(e.target.value)}
+                  placeholder="Unlimited"
+                  min={2}
+                  max={100}
+                  step={1}
+                  className="input-field"
                 />
-              ) : (
-                <p className="text-faint text-xs">
-                  House rules, timings{tournament.format === 'school' ? ', and the class ladder' : ''} are locked once
-                  the first game starts, so a live room is never changed mid-play.
-                </p>
-              )}
+              </Field>
             </div>
-          )}
 
-          {editError && <p className="text-red-400 text-sm">{editError}</p>}
+            {tournament.status === 'waiting' ? (
+              <div className="space-y-3">
+                <label className="flex items-center gap-2 text-body text-sm">
+                  <input
+                    type="checkbox"
+                    checked={editLives}
+                    onChange={(e) => setEditLives(e.target.checked)}
+                    className="accent-[var(--primary)]"
+                  />
+                  Lives mode
+                </label>
+                {editLives && (
+                  <div className="surface-inset p-4 space-y-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <label className="text-muted text-sm" htmlFor="edit-starting-lives">
+                        Starting lives
+                      </label>
+                      <input
+                        id="edit-starting-lives"
+                        type="number"
+                        min={1}
+                        max={10}
+                        value={editStartingLives}
+                        onChange={(e) => setEditStartingLives(Number(e.target.value) || 3)}
+                        className="input-field w-20 text-center"
+                      />
+                    </div>
+                    <div className="flex items-start justify-between gap-3">
+                      <label className="text-muted text-sm" htmlFor="edit-eliminate">
+                        Players who lose a life each game
+                        <span className="block text-faint text-xs mt-0.5">
+                          {editEliminate === 1
+                            ? 'The bottom finisher loses 1 life'
+                            : `The bottom ${editEliminate} finishers each lose 1 life`}
+                        </span>
+                      </label>
+                      <input
+                        id="edit-eliminate"
+                        type="number"
+                        min={1}
+                        max={10}
+                        value={editEliminate}
+                        onChange={(e) => setEditEliminate(Number(e.target.value) || 1)}
+                        className="input-field w-20 text-center"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p className="text-faint text-xs">Lives settings are locked once the first game starts.</p>
+            )}
 
-          <PrimaryBtn onClick={handleSaveSettings} disabled={savingEdit}>
-            {savingEdit ? 'Saving…' : 'Save settings'}
-          </PrimaryBtn>
-        </div>
-      )}
+            {tournament.game_type && formatHasGameConfig(tournament.format) && (
+              <div className="space-y-3">
+                <div className="divider-soft" />
+                <p className="label-caps">Game settings</p>
+                {tournament.status === 'waiting' ? (
+                  <TournamentGameConfigFields
+                    format={tournament.format}
+                    gameType={tournament.game_type}
+                    value={editGameConfig}
+                    onChange={setEditGameConfig}
+                  />
+                ) : (
+                  <p className="text-faint text-xs">
+                    House rules, timings{tournament.format === 'school' ? ', and the class ladder' : ''} are locked once
+                    the first game starts, so a live room is never changed mid-play.
+                  </p>
+                )}
+              </div>
+            )}
 
-      {error && <p className="text-red-400 text-sm text-center">{error}</p>}
+            {editError && <p className="text-red-400 text-sm">{editError}</p>}
 
-      {/* Return the current player to their own match as a player (the bracket
+            <PrimaryBtn onClick={handleSaveSettings} disabled={savingEdit}>
+              {savingEdit ? 'Saving…' : 'Save settings'}
+            </PrimaryBtn>
+          </div>
+        )}
+
+        {error && <p className="text-red-400 text-sm text-center">{error}</p>}
+
+        {/* Return the current player to their own match as a player (the bracket
           board's Watch buttons only spectate). Covers coming back to the lobby
           mid-match, where the one-shot auto-forward won't re-fire. */}
-      {myCurrentMatch?.game_id && (
-        <button onClick={() => handleJoinGame(myCurrentMatch.game_id!)} className="btn-primary w-full">
-          ▶ Return to your match
-        </button>
-      )}
+        {myCurrentMatch?.game_id && (
+          <button onClick={() => handleJoinGame(myCurrentMatch.game_id!)} className="btn-primary w-full">
+            ▶ Return to your match
+          </button>
+        )}
 
-      {/* Head-to-head bracket board — the spectator view of the current round.
+        {/* Head-to-head bracket board — the spectator view of the current round.
           Watch a match, then use its "Back to Tournament" button to switch. */}
-      {boardRounds && currentRoundMatches.length > 0 && (
-        <TournamentBracketBoard
-          matches={currentRoundMatches}
-          roundNumber={currentRoundNumber}
-          roundLabel={school ? 'Whot rooms' : labelForRound(currentRoundEntrants)}
-          nameOf={playerNameById}
-          subOf={school ? classLabelOf : undefined}
-          isEliminated={isEliminatedById}
-          onWatch={handleWatchGame}
-          onRemovePlayer={isHost ? handleRemovePlayer : undefined}
-        />
-      )}
+        {boardRounds && currentRoundMatches.length > 0 && (
+          <TournamentBracketBoard
+            matches={currentRoundMatches}
+            roundNumber={currentRoundNumber}
+            roundLabel={school ? 'Whot rooms' : labelForRound(currentRoundEntrants)}
+            nameOf={playerNameById}
+            subOf={school ? classLabelOf : undefined}
+            isEliminated={isEliminatedById}
+            onWatch={handleWatchGame}
+            onRemovePlayer={isHost ? handleRemovePlayer : undefined}
+          />
+        )}
 
-      {/* Knockout live round — status + a watch button for anyone on the lobby
+        {/* Knockout live round — status + a watch button for anyone on the lobby
           (eliminated players, spectators). Players are auto-forwarded into it. */}
-      {knockoutTrivia && knockoutRoundGame && knockoutRoundInProgress && (
-        <div className="glass-card p-5 space-y-3">
-          <div className="flex items-center justify-between gap-2">
-            <p className="label-caps">
-              Round {knockoutRoundNumber} · {roundLabel(survivingCount)}
+        {knockoutTrivia && knockoutRoundGame && knockoutRoundInProgress && (
+          <div className="glass-card p-5 space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <p className="label-caps">
+                Round {knockoutRoundNumber} · {roundLabel(survivingCount)}
+              </p>
+              <span className="chip text-xs">{survivingCount} players</span>
+            </div>
+            <p className="text-muted text-sm">
+              {knockoutRoundStaged
+                ? 'Players are joining the room — the host starts the game shortly.'
+                : 'Everyone is answering now. The bottom half will be knocked out.'}
             </p>
-            <span className="chip text-xs">{survivingCount} players</span>
-          </div>
-          <p className="text-muted text-sm">
-            {knockoutRoundStaged
-              ? 'Players are joining the room — the host starts the game shortly.'
-              : 'Everyone is answering now. The bottom half will be knocked out.'}
-          </p>
-          {/* Who's in the room vs. still on their way — so the host knows who a
+            {/* Who's in the room vs. still on their way — so the host knows who a
               staged round is waiting on before starting. */}
-          {(() => {
-            const survivors = players.filter((p) => !p.is_eliminated)
-            const inRoom = new Set(knockoutRoundGame.joined_member_ids ?? [])
-            const inCount = survivors.filter((p) => inRoom.has(p.id)).length
-            return (
-              <div className="space-y-1.5">
-                <p className="text-[0.6875rem] uppercase tracking-wide text-faint">
-                  In the room · {inCount}/{survivors.length}
-                </p>
-                <div className="grid grid-cols-2 gap-x-3 gap-y-1">
-                  {survivors.map((p) => {
-                    const isIn = inRoom.has(p.id)
-                    return (
-                      <div key={p.id} className="flex items-center gap-1.5 min-w-0">
-                        <span
-                          title={isIn ? 'In the room' : 'Not in the room yet'}
-                          aria-label={isIn ? 'In the room' : 'Not in the room yet'}
-                          className="inline-block h-2 w-2 shrink-0 rounded-full"
-                          style={
-                            isIn
-                              ? { background: 'var(--primary)' }
-                              : { border: '1px solid var(--faint)', background: 'transparent' }
-                          }
-                        />
-                        <span className={`truncate text-sm ${isIn ? 'text-body' : 'text-faint'}`}>
-                          {p.player_name}
-                          {me?.id === p.id && <span className="text-faint"> (you)</span>}
-                        </span>
-                      </div>
-                    )
-                  })}
+            {(() => {
+              const survivors = players.filter((p) => !p.is_eliminated)
+              const inRoom = new Set(knockoutRoundGame.joined_member_ids ?? [])
+              const inCount = survivors.filter((p) => inRoom.has(p.id)).length
+              return (
+                <div className="space-y-1.5">
+                  <p className="text-[0.6875rem] uppercase tracking-wide text-faint">
+                    In the room · {inCount}/{survivors.length}
+                  </p>
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+                    {survivors.map((p) => {
+                      const isIn = inRoom.has(p.id)
+                      return (
+                        <div key={p.id} className="flex items-center gap-1.5 min-w-0">
+                          <span
+                            title={isIn ? 'In the room' : 'Not in the room yet'}
+                            aria-label={isIn ? 'In the room' : 'Not in the room yet'}
+                            className="inline-block h-2 w-2 shrink-0 rounded-full"
+                            style={
+                              isIn
+                                ? { background: 'var(--primary)' }
+                                : { border: '1px solid var(--faint)', background: 'transparent' }
+                            }
+                          />
+                          <span className={`truncate text-sm ${isIn ? 'text-body' : 'text-faint'}`}>
+                            {p.player_name}
+                            {me?.id === p.id && <span className="text-faint"> (you)</span>}
+                          </span>
+                        </div>
+                      )
+                    })}
+                  </div>
                 </div>
-              </div>
-            )
-          })()}
-          {knockoutRoundGame.game_id &&
-            (me && !me.is_eliminated ? (
-              // A surviving player who came back to the lobby rejoins as a player
-              // (the one-shot auto-forward won't re-fire), not as a watcher.
-              <button onClick={() => handleJoinGame(knockoutRoundGame.game_id!)} className="btn-primary w-full">
-                ▶ {knockoutRoundStaged ? 'Go to the game' : 'Return to the game'}
-              </button>
-            ) : knockoutRoundGame.status === 'active' ? (
-              <button onClick={() => handleWatchGame(knockoutRoundGame.game_id!)} className="btn-secondary w-full">
-                👁 Watch live
-              </button>
-            ) : null)}
-        </div>
-      )}
+              )
+            })()}
+            {knockoutRoundGame.game_id &&
+              (me && !me.is_eliminated ? (
+                // A surviving player who came back to the lobby rejoins as a player
+                // (the one-shot auto-forward won't re-fire), not as a watcher.
+                <button onClick={() => handleJoinGame(knockoutRoundGame.game_id!)} className="btn-primary w-full">
+                  ▶ {knockoutRoundStaged ? 'Go to the game' : 'Return to the game'}
+                </button>
+              ) : knockoutRoundGame.status === 'active' ? (
+                <button onClick={() => handleWatchGame(knockoutRoundGame.game_id!)} className="btn-secondary w-full">
+                  👁 Watch live
+                </button>
+              ) : null)}
+          </div>
+        )}
 
-      {/* Host Controls — head-to-head bracket and Scrabble knockout (both play in
+        {/* Host Controls — head-to-head bracket and Scrabble knockout (both play in
           rooms). Kept high (right under the board) so the host doesn't scroll past
           the rules/results to reach Start. */}
-      {isHost && !isFinished && (tournament.format === 'head-to-head' || knockoutGroup) && (
-        <div className="glass-card-strong p-5 space-y-4">
-          <p className="label-caps">{knockoutGroup ? 'Knockout controls' : 'Bracket controls'}</p>
+        {isHost && !isFinished && (tournament.format === 'head-to-head' || knockoutGroup) && (
+          <div className="glass-card-strong p-5 space-y-4">
+            <p className="label-caps">{knockoutGroup ? 'Knockout controls' : 'Bracket controls'}</p>
 
-          {!roundInProgress && (
-            <>
-              {/* Time controls (chess clock, Whot/Scrabble length + rules) are all
+            {!roundInProgress && (
+              <>
+                {/* Time controls (chess clock, Whot/Scrabble length + rules) are all
                   chosen once at tournament creation, so there's no per-round picker
                   here — the host just starts the round. */}
+                <div className="space-y-1.5">
+                  <PrimaryBtn onClick={handleStartRound} disabled={actionLoading || survivingCount < 2}>
+                    {actionLoading
+                      ? groupBracket
+                        ? 'Grouping…'
+                        : 'Pairing…'
+                      : currentRoundNumber > 0
+                        ? 'Start Next Round'
+                        : 'Start Round'}
+                  </PrimaryBtn>
+                  <p className="text-faint text-xs text-center">
+                    {survivingCount < 2
+                      ? 'Waiting for players to join before you can start.'
+                      : knockoutGroup
+                        ? `Splits everyone into rooms of up to ${groupSize}; the whole field is ranked by score and the bottom half is knocked out.`
+                        : isGroupH2h
+                          ? `Splits everyone into rooms of up to ${groupSize} and sends them in.`
+                          : 'Pairs everyone up and sends them to their match rooms.'}
+                  </p>
+                </div>
+              </>
+            )}
+
+            {stagedMatches.length > 0 && (
               <div className="space-y-1.5">
-                <PrimaryBtn onClick={handleStartRound} disabled={actionLoading || survivingCount < 2}>
+                <PrimaryBtn onClick={handleStartMatches} disabled={actionLoading}>
                   {actionLoading
-                    ? groupBracket
-                      ? 'Grouping…'
-                      : 'Pairing…'
-                    : currentRoundNumber > 0
-                      ? 'Start Next Round'
-                      : 'Start Round'}
+                    ? 'Starting…'
+                    : groupBracket
+                      ? `Start ${stagedMatches.length} Room${stagedMatches.length === 1 ? '' : 's'}`
+                      : `Start ${stagedMatches.length} Match${stagedMatches.length === 1 ? '' : 'es'}`}
                 </PrimaryBtn>
                 <p className="text-faint text-xs text-center">
-                  {survivingCount < 2
-                    ? 'Waiting for players to join before you can start.'
-                    : knockoutGroup
-                      ? `Splits everyone into rooms of up to ${groupSize}; the whole field is ranked by score and the bottom half is knocked out.`
-                      : isGroupH2h
-                        ? `Splits everyone into rooms of up to ${groupSize} and sends them in.`
-                        : 'Pairs everyone up and sends them to their match rooms.'}
+                  {groupBracket
+                    ? 'Starts every room at once. Players must be in their rooms first.'
+                    : 'Starts every match at once. Players must be in their rooms first.'}
                 </p>
               </div>
-            </>
-          )}
+            )}
 
-          {stagedMatches.length > 0 && (
-            <div className="space-y-1.5">
-              <PrimaryBtn onClick={handleStartMatches} disabled={actionLoading}>
-                {actionLoading
-                  ? 'Starting…'
-                  : groupBracket
-                    ? `Start ${stagedMatches.length} Room${stagedMatches.length === 1 ? '' : 's'}`
-                    : `Start ${stagedMatches.length} Match${stagedMatches.length === 1 ? '' : 'es'}`}
-              </PrimaryBtn>
-              <p className="text-faint text-xs text-center">
-                {groupBracket
-                  ? 'Starts every room at once. Players must be in their rooms first.'
-                  : 'Starts every match at once. Players must be in their rooms first.'}
-              </p>
-            </div>
-          )}
+            <button onClick={handleEndTournament} disabled={actionLoading} className="btn-danger-soft">
+              End Tournament
+            </button>
+          </div>
+        )}
 
-          <button onClick={handleEndTournament} disabled={actionLoading} className="btn-danger-soft">
-            End Tournament
-          </button>
-        </div>
-      )}
-
-      {/* Host Controls — trivia knockout (group elimination). One game per round;
+        {/* Host Controls — trivia knockout (group elimination). One game per round;
           Start Round sends everyone in, Start Game begins it (no host dashboard). */}
-      {isHost && !isFinished && knockoutTrivia && (
-        <div className="glass-card-strong p-5 space-y-4">
-          <p className="label-caps">Knockout controls</p>
+        {isHost && !isFinished && knockoutTrivia && (
+          <div className="glass-card-strong p-5 space-y-4">
+            <p className="label-caps">Knockout controls</p>
 
-          {!knockoutRoundInProgress && (
-            <div className="space-y-3">
-              {/* Per-round questions: choose the built-in pack or upload a CSV for
+            {!knockoutRoundInProgress && (
+              <div className="space-y-3">
+                {/* Per-round questions: choose the built-in pack or upload a CSV for
                   this round. Uploading a fresh CSV each round lets the host ramp up
                   difficulty (round of 16 → quarter → semi → final). */}
-              {knockoutTrivia && (
-                <Field
-                  label={`Questions for this round${knockoutRoundNumber > 0 ? ` · ${roundLabel(survivingCount)}` : ''}`}
-                >
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      aria-pressed={questionSource === 'platform'}
-                      onClick={() => setQuestionSource('platform')}
-                      className={`chip flex-1 ${questionSource === 'platform' ? 'chip-active' : ''}`}
-                    >
-                      Built-in pack
-                    </button>
-                    <button
-                      type="button"
-                      aria-pressed={questionSource === 'custom'}
-                      onClick={() => setQuestionSource('custom')}
-                      className={`chip flex-1 ${questionSource === 'custom' ? 'chip-active' : ''}`}
-                    >
-                      Upload CSV
-                    </button>
-                  </div>
-
-                  {questionSource === 'custom' && (
-                    <div className="surface-inset p-4 mt-3 space-y-3">
-                      <input
-                        ref={fileRef}
-                        type="file"
-                        accept=".csv,.xlsx,.xls"
-                        onChange={(e) => {
-                          const f = e.target.files?.[0]
-                          if (f) handleFile(f)
-                        }}
-                        className="hidden"
-                      />
-                      {customTrivia.length === 0 ? (
-                        <div className="space-y-2">
-                          {carriedCustomCount != null && (
-                            <div className="surface-inset p-3 space-y-1" style={{ borderColor: 'var(--primary)' }}>
-                              <p className="text-sm text-body font-medium">
-                                ✓ Reusing your pack ({carriedCustomCount} question
-                                {carriedCustomCount === 1 ? '' : 's'}) from the last round
-                              </p>
-                              <p className="text-faint text-xs">
-                                Already-seen questions are skipped automatically. Upload a new file below to make this
-                                round harder.
-                              </p>
-                            </div>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => fileRef.current?.click()}
-                            className="btn-secondary w-full"
-                          >
-                            {carriedCustomCount != null ? 'Upload a different file' : 'Choose CSV or Excel file'}
-                          </button>
-                          <p className="text-faint text-xs">
-                            Columns: question, option_a–option_d, correct (A–D).{' '}
-                            <a
-                              href={questionSampleFile('trivia').href}
-                              download={questionSampleFile('trivia').download}
-                              className="underline hover:text-body"
-                              style={{ color: 'var(--primary)' }}
-                            >
-                              Download sample
-                            </a>
-                          </p>
-                          <p className="text-faint text-xs">
-                            Need at least {knockoutQuestionsPerRound} question
-                            {knockoutQuestionsPerRound === 1 ? '' : 's'} (one per question in the round).
-                          </p>
-                        </div>
-                      ) : (
-                        <div className="flex items-center justify-between gap-3">
-                          <p className="text-sm text-body font-medium">
-                            ✓ {customTrivia.length} question{customTrivia.length === 1 ? '' : 's'} loaded
-                          </p>
-                          <button type="button" onClick={clearCustom} className="btn-ghost text-xs">
-                            Clear
-                          </button>
-                        </div>
-                      )}
-                      {uploadMsg && <p className="text-faint text-xs">{uploadMsg}</p>}
+                {knockoutTrivia && (
+                  <Field
+                    label={`Questions for this round${knockoutRoundNumber > 0 ? ` · ${roundLabel(survivingCount)}` : ''}`}
+                  >
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        aria-pressed={questionSource === 'platform'}
+                        onClick={() => setQuestionSource('platform')}
+                        className={`chip flex-1 ${questionSource === 'platform' ? 'chip-active' : ''}`}
+                      >
+                        Built-in pack
+                      </button>
+                      <button
+                        type="button"
+                        aria-pressed={questionSource === 'custom'}
+                        onClick={() => setQuestionSource('custom')}
+                        className={`chip flex-1 ${questionSource === 'custom' ? 'chip-active' : ''}`}
+                      >
+                        Upload CSV
+                      </button>
                     </div>
-                  )}
-                </Field>
-              )}
 
+                    {questionSource === 'custom' && (
+                      <div className="surface-inset p-4 mt-3 space-y-3">
+                        <input
+                          ref={fileRef}
+                          type="file"
+                          accept=".csv,.xlsx,.xls"
+                          onChange={(e) => {
+                            const f = e.target.files?.[0]
+                            if (f) handleFile(f)
+                          }}
+                          className="hidden"
+                        />
+                        {customTrivia.length === 0 ? (
+                          <div className="space-y-2">
+                            {carriedCustomCount != null && (
+                              <div className="surface-inset p-3 space-y-1" style={{ borderColor: 'var(--primary)' }}>
+                                <p className="text-sm text-body font-medium">
+                                  ✓ Reusing your pack ({carriedCustomCount} question
+                                  {carriedCustomCount === 1 ? '' : 's'}) from the last round
+                                </p>
+                                <p className="text-faint text-xs">
+                                  Already-seen questions are skipped automatically. Upload a new file below to make this
+                                  round harder.
+                                </p>
+                              </div>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => fileRef.current?.click()}
+                              className="btn-secondary w-full"
+                            >
+                              {carriedCustomCount != null ? 'Upload a different file' : 'Choose CSV or Excel file'}
+                            </button>
+                            <p className="text-faint text-xs">
+                              Columns: question, option_a–option_d, correct (A–D).{' '}
+                              <a
+                                href={questionSampleFile('trivia').href}
+                                download={questionSampleFile('trivia').download}
+                                className="underline hover:text-body"
+                                style={{ color: 'var(--primary)' }}
+                              >
+                                Download sample
+                              </a>
+                            </p>
+                            <p className="text-faint text-xs">
+                              Need at least {knockoutQuestionsPerRound} question
+                              {knockoutQuestionsPerRound === 1 ? '' : 's'} (one per question in the round).
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-between gap-3">
+                            <p className="text-sm text-body font-medium">
+                              ✓ {customTrivia.length} question{customTrivia.length === 1 ? '' : 's'} loaded
+                            </p>
+                            <button type="button" onClick={clearCustom} className="btn-ghost text-xs">
+                              Clear
+                            </button>
+                          </div>
+                        )}
+                        {uploadMsg && <p className="text-faint text-xs">{uploadMsg}</p>}
+                      </div>
+                    )}
+                  </Field>
+                )}
+
+                <div className="space-y-1.5">
+                  <PrimaryBtn
+                    onClick={handleStartRound}
+                    disabled={actionLoading || survivingCount < 2 || !canStartKnockoutRound}
+                  >
+                    {actionLoading ? 'Setting up…' : knockoutRoundNumber > 0 ? 'Start Next Round' : 'Start Round'}
+                  </PrimaryBtn>
+                  <p className="text-faint text-xs text-center">
+                    {survivingCount < 2
+                      ? 'Waiting for players to join before you can start.'
+                      : knockoutCustom && !canStartKnockoutRound
+                        ? `Upload at least ${knockoutQuestionsPerRound} question${knockoutQuestionsPerRound === 1 ? '' : 's'} to start this round.`
+                        : 'Sends everyone into one trivia game for this round.'}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {knockoutRoundStaged && (
               <div className="space-y-1.5">
-                <PrimaryBtn
-                  onClick={handleStartRound}
-                  disabled={actionLoading || survivingCount < 2 || !canStartKnockoutRound}
-                >
-                  {actionLoading ? 'Setting up…' : knockoutRoundNumber > 0 ? 'Start Next Round' : 'Start Round'}
+                <PrimaryBtn onClick={handleStartMatches} disabled={actionLoading}>
+                  {actionLoading ? 'Starting…' : 'Start Game'}
+                </PrimaryBtn>
+                <p className="text-faint text-xs text-center">Starts the trivia game once players are in the room.</p>
+              </div>
+            )}
+
+            <button onClick={handleEndTournament} disabled={actionLoading} className="btn-danger-soft">
+              End Tournament
+            </button>
+          </div>
+        )}
+
+        {/* Host Controls — school (class ladder). Same round plumbing as the group
+          bracket (group → start the Whot rooms), but the room winner climbs a class
+          instead of the losers being knocked out. */}
+        {isHost && !isFinished && school && (
+          <div className="glass-card-strong p-5 space-y-4">
+            <p className="label-caps">School controls</p>
+
+            {!roundInProgress && (
+              <div className="space-y-1.5">
+                <PrimaryBtn onClick={handleStartRound} disabled={actionLoading || survivingCount < 2}>
+                  {actionLoading ? 'Grouping…' : currentRoundNumber > 0 ? 'Start Next Round' : 'Start Round'}
                 </PrimaryBtn>
                 <p className="text-faint text-xs text-center">
                   {survivingCount < 2
                     ? 'Waiting for players to join before you can start.'
-                    : knockoutCustom && !canStartKnockoutRound
-                      ? `Upload at least ${knockoutQuestionsPerRound} question${knockoutQuestionsPerRound === 1 ? '' : 's'} to start this round.`
-                      : 'Sends everyone into one trivia game for this round.'}
+                    : 'Groups everyone by class into Whot rooms (up to 5) and sends them in. Empty your hand to climb a class; when time’s up the player left holding the most cards repeats. A player left with no one to play — no classmate and no other straggler to pair with — is out.'}
                 </p>
               </div>
-            </div>
-          )}
+            )}
 
-          {knockoutRoundStaged && (
-            <div className="space-y-1.5">
-              <PrimaryBtn onClick={handleStartMatches} disabled={actionLoading}>
-                {actionLoading ? 'Starting…' : 'Start Game'}
-              </PrimaryBtn>
-              <p className="text-faint text-xs text-center">Starts the trivia game once players are in the room.</p>
-            </div>
-          )}
+            {stagedMatches.length > 0 && (
+              <div className="space-y-1.5">
+                <PrimaryBtn onClick={handleStartMatches} disabled={actionLoading}>
+                  {actionLoading
+                    ? 'Starting…'
+                    : `Start ${stagedMatches.length} Room${stagedMatches.length === 1 ? '' : 's'}`}
+                </PrimaryBtn>
+                <p className="text-faint text-xs text-center">
+                  Starts every room at once. Players must be in their rooms first.
+                </p>
+              </div>
+            )}
 
-          <button onClick={handleEndTournament} disabled={actionLoading} className="btn-danger-soft">
-            End Tournament
-          </button>
-        </div>
-      )}
+            <button onClick={handleEndTournament} disabled={actionLoading} className="btn-danger-soft">
+              End Tournament
+            </button>
+          </div>
+        )}
 
-      {/* Host Controls — school (class ladder). Same round plumbing as the group
-          bracket (group → start the Whot rooms), but the room winner climbs a class
-          instead of the losers being knocked out. */}
-      {isHost && !isFinished && school && (
-        <div className="glass-card-strong p-5 space-y-4">
-          <p className="label-caps">School controls</p>
-
-          {!roundInProgress && (
-            <div className="space-y-1.5">
-              <PrimaryBtn onClick={handleStartRound} disabled={actionLoading || survivingCount < 2}>
-                {actionLoading ? 'Grouping…' : currentRoundNumber > 0 ? 'Start Next Round' : 'Start Round'}
-              </PrimaryBtn>
-              <p className="text-faint text-xs text-center">
-                {survivingCount < 2
-                  ? 'Waiting for players to join before you can start.'
-                  : 'Groups everyone by class into Whot rooms (up to 5) and sends them in. Empty your hand to climb a class; when time’s up the player left holding the most cards repeats. A player left with no one to play — no classmate and no other straggler to pair with — is out.'}
-              </p>
-            </div>
-          )}
-
-          {stagedMatches.length > 0 && (
-            <div className="space-y-1.5">
-              <PrimaryBtn onClick={handleStartMatches} disabled={actionLoading}>
-                {actionLoading
-                  ? 'Starting…'
-                  : `Start ${stagedMatches.length} Room${stagedMatches.length === 1 ? '' : 's'}`}
-              </PrimaryBtn>
-              <p className="text-faint text-xs text-center">
-                Starts every room at once. Players must be in their rooms first.
-              </p>
-            </div>
-          )}
-
-          <button onClick={handleEndTournament} disabled={actionLoading} className="btn-danger-soft">
-            End Tournament
-          </button>
-        </div>
-      )}
-
-      {/* Join Form */}
-      {/* Reconnect — once joining is closed (tournament started or full), a player who
+        {/* Join Form */}
+        {/* Reconnect — once joining is closed (tournament started or full), a player who
           lost their session or is on a new device can still get back into their seat
           with the player code they saved. (Pre-start, the same entry lives, collapsed,
           inside the Join card.) */}
-      {!joined && !isHost && !isFinished && (hasStarted || isFull) && !spectating && (
-        <div className="glass-card p-5 space-y-2">
-          <p className="label-caps">Already in this tournament?</p>
-          <p className="text-muted text-xs">
-            Reconnecting, or on another device? Enter the player code you saved when you joined to get back into your
-            seat — this works even after the tournament has started.
-          </p>
-          {joinError && <p className="text-red-400 text-xs">{joinError}</p>}
-          <TournamentResumeEntry tournamentId={tournamentId} onResumed={handleResumedByCode} alwaysOpen />
-        </div>
-      )}
-
-      {!joined && !isHost && !isFinished && hasStarted && !spectating && (
-        <div className="glass-card-strong p-5 text-center space-y-2">
-          <p className="font-bold text-body">Tournament already started</p>
-          <p className="text-muted text-sm">
-            Joining is closed once the first game begins.
-            {activeGame ? ' You can watch the live game below.' : ' Check back when the next game starts.'}
-          </p>
-          {activeGame && (
-            <button
-              onClick={() => handleWatchGame(activeGame.game_id!)}
-              className="btn-secondary btn-fit mx-auto text-sm"
-            >
-              👁 Watch live
-            </button>
-          )}
-        </div>
-      )}
-
-      {!joined && !isHost && !isFinished && !hasStarted && isFull && !spectating && (
-        <div className="glass-card-strong p-5 text-center space-y-2">
-          <p className="font-bold text-body">Tournament full</p>
-          <p className="text-muted text-sm">
-            This tournament has reached its {tournament.max_players}-player limit.{' '}
-            {activeGame
-              ? 'You can watch the live game below.'
-              : 'Stay on this page — you can watch once a game starts.'}
-          </p>
-          {activeGame && (
-            <button
-              onClick={() => handleWatchGame(activeGame.game_id!)}
-              className="btn-secondary btn-fit mx-auto text-sm"
-            >
-              👁 Watch live
-            </button>
-          )}
-        </div>
-      )}
-
-      {!joined && !isHost && !isFinished && !hasStarted && !isFull && !spectating && (
-        <div className="glass-card-strong p-5 space-y-3">
-          <p className="label-caps">Join Tournament</p>
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={playerName}
-              onChange={(e) => setPlayerName(e.target.value)}
-              placeholder="Your name"
-              aria-label="Your name"
-              maxLength={50}
-              className="input-field flex-1"
-              onKeyDown={(e) => e.key === 'Enter' && handleJoin()}
-            />
-            <PrimaryBtn onClick={handleJoin} className="btn-fit">
-              Join
-            </PrimaryBtn>
+        {!joined && !isHost && !isFinished && (hasStarted || isFull) && !spectating && (
+          <div className="glass-card p-5 space-y-2">
+            <p className="label-caps">Already in this tournament?</p>
+            <p className="text-muted text-xs">
+              Reconnecting, or on another device? Enter the player code you saved when you joined to get back into your
+              seat — this works even after the tournament has started.
+            </p>
+            {joinError && <p className="text-red-400 text-xs">{joinError}</p>}
+            <TournamentResumeEntry tournamentId={tournamentId} onResumed={handleResumedByCode} alwaysOpen />
           </div>
-          {joinError && <p className="text-red-400 text-xs">{joinError}</p>}
-          <TournamentResumeEntry tournamentId={tournamentId} onResumed={handleResumedByCode} />
-          <button onClick={startSpectating} className="btn-secondary btn-fit text-xs mx-auto flex items-center gap-1.5">
-            <span aria-hidden>👁</span>
-            <span className="underline underline-offset-2">Watch instead</span>
-            <span className="text-muted">— don&apos;t add me as a player</span>
-          </button>
-        </div>
-      )}
+        )}
 
-      {/* Spectator waiting room — opted out of playing, will watch each game */}
-      {spectating && !joined && !isHost && !isFinished && !activeGame && (
-        <div className="glass-card-strong p-5 text-center space-y-2">
-          <p className="font-bold text-body">👁 You&apos;re watching</p>
-          <p className="text-muted text-sm">
-            You won&apos;t play — stay on this page and the game will open here for you to watch once the host starts
-            it.
-          </p>
-          <button onClick={stopSpectating} className="btn-secondary btn-fit text-xs mx-auto flex items-center gap-1.5">
-            <span aria-hidden>🎮</span>
-            <span className="underline underline-offset-2">Actually, let me play</span>
-          </button>
-        </div>
-      )}
-
-      {/* Player waiting room */}
-      {isParticipant && !activeGame && !isFinished && iAmEliminated && (
-        <div className="glass-card-strong p-5 text-center space-y-2">
-          <p className="font-bold text-body">You&apos;re out, {playerName}</p>
-          <p className="text-muted text-sm">
-            {school
-              ? 'You were knocked out of the class ladder: there was no one left in your class to play — everyone still in had climbed to a higher class, so you couldn’t be matched. Thanks for playing! You can watch the rest below.'
-              : h2h
-                ? 'Knocked out of the bracket — thanks for playing! You can still watch the remaining matches when they start.'
-                : 'You’ve been eliminated, but you can stick around and watch the rest below.'}
-          </p>
-        </div>
-      )}
-
-      {isParticipant && !activeGame && !isFinished && !iAmEliminated && (
-        <div className="glass-card-strong p-5 text-center space-y-2">
-          <div className="flex items-center justify-center gap-2">
-            <span className="relative flex h-2.5 w-2.5">
-              <span
-                className="absolute inline-flex h-full w-full rounded-full opacity-75 animate-ping"
-                style={{ background: 'var(--primary)' }}
-              />
-              <span
-                className="relative inline-flex h-2.5 w-2.5 rounded-full"
-                style={{ background: 'var(--primary)' }}
-              />
-            </span>
-            <p className="font-bold text-body">You&apos;re in, {playerName}!</p>
+        {!joined && !isHost && !isFinished && hasStarted && !spectating && (
+          <div className="glass-card-strong p-5 text-center space-y-2">
+            <p className="font-bold text-body">Tournament already started</p>
+            <p className="text-muted text-sm">
+              Joining is closed once the first game begins.
+              {activeGame ? ' You can watch the live game below.' : ' Check back when the next game starts.'}
+            </p>
+            {activeGame && (
+              <button
+                onClick={() => handleWatchGame(activeGame.game_id!)}
+                className="btn-secondary btn-fit mx-auto text-sm"
+              >
+                👁 Watch live
+              </button>
+            )}
           </div>
-          <p className="text-muted text-sm">
-            Waiting for the host to start the {bracket ? 'next round' : 'next game'}. Hang tight — it&apos;ll appear
-            here.
-          </p>
-          {myLives != null && (
-            <div className="surface-inset px-4 py-2.5 inline-flex items-center justify-center gap-2 mx-auto">
-              <span aria-hidden="true" className="text-base">
-                {myLives > 0 ? '❤️'.repeat(myLives) : '💔'}
-              </span>
-              <span className="text-sm font-semibold text-body">
-                You have {myLives} {myLives === 1 ? 'life' : 'lives'} left
-              </span>
-            </div>
-          )}
-          {myCode && (
-            <div className="pt-1">
-              <TournamentContinueCard tournamentId={tournamentId} code={myCode} />
-            </div>
-          )}
-          {/* Bow out before it kicks off — no leaving mid-tournament (it'd break the bracket). */}
-          {!hasStarted && (
-            <button
-              onClick={handleLeave}
-              disabled={actionLoading}
-              className="btn-secondary btn-fit text-xs mx-auto flex items-center gap-1.5 disabled:opacity-50"
-            >
-              <span aria-hidden>🚪</span>
-              <span className="underline underline-offset-2">Leave tournament</span>
-            </button>
-          )}
-        </div>
-      )}
+        )}
 
-      {/* Host how-to — collapsed by default so it doesn't crowd the controls. */}
-      {isHost && !isFinished && (
-        <details className="glass-card group p-5">
-          <summary className="label-caps flex cursor-pointer select-none items-center justify-between [&::-webkit-details-marker]:hidden">
-            How to run this tournament
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              viewBox="0 0 20 20"
-              fill="currentColor"
-              className="h-4 w-4 text-faint transition-transform group-open:rotate-180"
-            >
-              <path
-                fillRule="evenodd"
-                d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.168l3.71-3.938a.75.75 0 1 1 1.08 1.04l-4.25 4.5a.75.75 0 0 1-1.08 0l-4.25-4.5a.75.75 0 0 1 .02-1.06Z"
-                clipRule="evenodd"
+        {!joined && !isHost && !isFinished && !hasStarted && isFull && !spectating && (
+          <div className="glass-card-strong p-5 text-center space-y-2">
+            <p className="font-bold text-body">Tournament full</p>
+            <p className="text-muted text-sm">
+              This tournament has reached its {tournament.max_players}-player limit.{' '}
+              {activeGame
+                ? 'You can watch the live game below.'
+                : 'Stay on this page — you can watch once a game starts.'}
+            </p>
+            {activeGame && (
+              <button
+                onClick={() => handleWatchGame(activeGame.game_id!)}
+                className="btn-secondary btn-fit mx-auto text-sm"
+              >
+                👁 Watch live
+              </button>
+            )}
+          </div>
+        )}
+
+        {!joined && !isHost && !isFinished && !hasStarted && !isFull && !spectating && (
+          <div className="glass-card-strong p-5 space-y-3">
+            <p className="label-caps">Join Tournament</p>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={playerName}
+                onChange={(e) => setPlayerName(e.target.value)}
+                placeholder="Your name"
+                aria-label="Your name"
+                maxLength={50}
+                className="input-field flex-1"
+                onKeyDown={(e) => e.key === 'Enter' && handleJoin()}
               />
-            </svg>
-          </summary>
-          <div className="mt-3 space-y-2.5">
+              <PrimaryBtn onClick={handleJoin} className="btn-fit">
+                Join
+              </PrimaryBtn>
+            </div>
+            {joinError && <p className="text-red-400 text-xs">{joinError}</p>}
+            <TournamentResumeEntry tournamentId={tournamentId} onResumed={handleResumedByCode} />
+            <button
+              onClick={startSpectating}
+              className="btn-secondary btn-fit text-xs mx-auto flex items-center gap-1.5"
+            >
+              <span aria-hidden>👁</span>
+              <span className="underline underline-offset-2">Watch instead</span>
+              <span className="text-muted">— don&apos;t add me as a player</span>
+            </button>
+          </div>
+        )}
+
+        {/* Spectator waiting room — opted out of playing, will watch each game */}
+        {spectating && !joined && !isHost && !isFinished && !activeGame && (
+          <div className="glass-card-strong p-5 text-center space-y-2">
+            <p className="font-bold text-body">👁 You&apos;re watching</p>
+            <p className="text-muted text-sm">
+              You won&apos;t play — stay on this page and the game will open here for you to watch once the host starts
+              it.
+            </p>
+            <button
+              onClick={stopSpectating}
+              className="btn-secondary btn-fit text-xs mx-auto flex items-center gap-1.5"
+            >
+              <span aria-hidden>🎮</span>
+              <span className="underline underline-offset-2">Actually, let me play</span>
+            </button>
+          </div>
+        )}
+
+        {/* Player waiting room */}
+        {isParticipant && !activeGame && !isFinished && iAmEliminated && (
+          <div className="glass-card-strong p-5 text-center space-y-2">
+            <p className="font-bold text-body">You&apos;re out, {playerName}</p>
+            <p className="text-muted text-sm">
+              {school
+                ? 'You were knocked out of the class ladder: there was no one left in your class to play — everyone still in had climbed to a higher class, so you couldn’t be matched. Thanks for playing! You can watch the rest below.'
+                : h2h
+                  ? 'Knocked out of the bracket — thanks for playing! You can still watch the remaining matches when they start.'
+                  : 'You’ve been eliminated, but you can stick around and watch the rest below.'}
+            </p>
+          </div>
+        )}
+
+        {isParticipant && !activeGame && !isFinished && !iAmEliminated && (
+          <div className="glass-card-strong p-5 text-center space-y-2">
+            <div className="flex items-center justify-center gap-2">
+              <span className="relative flex h-2.5 w-2.5">
+                <span
+                  className="absolute inline-flex h-full w-full rounded-full opacity-75 animate-ping"
+                  style={{ background: 'var(--primary)' }}
+                />
+                <span
+                  className="relative inline-flex h-2.5 w-2.5 rounded-full"
+                  style={{ background: 'var(--primary)' }}
+                />
+              </span>
+              <p className="font-bold text-body">You&apos;re in, {playerName}!</p>
+            </div>
+            <p className="text-muted text-sm">
+              Waiting for the host to start the {bracket ? 'next round' : 'next game'}. Hang tight — it&apos;ll appear
+              here.
+            </p>
+            {myLives != null && (
+              <div className="surface-inset px-4 py-2.5 inline-flex items-center justify-center gap-2 mx-auto">
+                <span aria-hidden="true" className="text-base">
+                  {myLives > 0 ? '❤️'.repeat(myLives) : '💔'}
+                </span>
+                <span className="text-sm font-semibold text-body">
+                  You have {myLives} {myLives === 1 ? 'life' : 'lives'} left
+                </span>
+              </div>
+            )}
+            {/* Scheduled-event "I'm here" confirmation. Someone registered
+                last week whose phone is face-down on a couch shouldn't be
+                counted as ready when the host taps Start — the host wants
+                an explicit signal per player. Only shown when the
+                tournament is scheduled, hasn't started, and this device
+                actually IS a participant. */}
+            {isParticipant && !hasStarted && tournament.scheduled_at && me && (
+              <div className="pt-1">
+                <button
+                  type="button"
+                  onClick={() => handleReadyToggle(!me.is_ready)}
+                  disabled={readyToggling}
+                  aria-pressed={Boolean(me.is_ready)}
+                  className={me.is_ready ? 'btn-secondary btn-fit w-full' : 'btn-primary btn-fit w-full'}
+                  style={{
+                    background: me.is_ready ? undefined : 'var(--primary)',
+                    color: me.is_ready ? undefined : 'var(--primary-contrast, #fff)',
+                  }}
+                >
+                  {readyToggling
+                    ? 'Saving…'
+                    : me.is_ready
+                      ? "✓ You're marked ready — tap to un-ready"
+                      : "I'm here and ready"}
+                </button>
+                <p className="text-faint text-xs text-center mt-1.5">
+                  {me.is_ready
+                    ? 'The host sees you as here now. Change if you step away before start.'
+                    : "Tap when you're at the lobby ready to play — the host uses this to know who's actually here vs pre-registered."}
+                </p>
+              </div>
+            )}
+            {myCode && (
+              <div className="pt-1">
+                <TournamentContinueCard tournamentId={tournamentId} code={myCode} />
+              </div>
+            )}
+            {/* Bow out before it kicks off — no leaving mid-tournament (it'd break the bracket). */}
+            {!hasStarted && (
+              <button
+                onClick={handleLeave}
+                disabled={actionLoading}
+                className="btn-secondary btn-fit text-xs mx-auto flex items-center gap-1.5 disabled:opacity-50"
+              >
+                <span aria-hidden>🚪</span>
+                <span className="underline underline-offset-2">Leave tournament</span>
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Host how-to — collapsed by default so it doesn't crowd the controls. */}
+        {isHost && !isFinished && (
+          <details className="glass-card group p-5">
+            <summary className="label-caps flex cursor-pointer select-none items-center justify-between [&::-webkit-details-marker]:hidden">
+              How to run this tournament
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+                className="h-4 w-4 text-faint transition-transform group-open:rotate-180"
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.168l3.71-3.938a.75.75 0 1 1 1.08 1.04l-4.25 4.5a.75.75 0 0 1-1.08 0l-4.25-4.5a.75.75 0 0 1 .02-1.06Z"
+                  clipRule="evenodd"
+                />
+              </svg>
+            </summary>
+            <div className="mt-3 space-y-2.5">
+              {h2h ? (
+                <ul className="space-y-2 text-sm text-muted">
+                  <li className="flex gap-2.5">
+                    <span aria-hidden>📣</span>
+                    <span>
+                      Share the invite link so players join. The roster{' '}
+                      <span className="text-body font-semibold">locks</span> when you start the first round, so wait
+                      until everyone&apos;s in.
+                    </span>
+                  </li>
+                  <li className="flex gap-2.5">
+                    <span aria-hidden>▶️</span>
+                    <span>
+                      Pick a time control and tap <span className="text-body font-semibold">Start Round</span> —
+                      everyone is paired 1-v-1 and sent to their own match room.
+                    </span>
+                  </li>
+                  <li className="flex gap-2.5">
+                    <span aria-hidden>⏱️</span>
+                    <span>
+                      Once players are in their rooms, tap{' '}
+                      <span className="text-body font-semibold">Start Matches</span> to begin every game at once. You
+                      host from here — you don&apos;t play.
+                    </span>
+                  </li>
+                  <li className="flex gap-2.5">
+                    <span aria-hidden>🔁</span>
+                    <span>
+                      When every match finishes, tap <span className="text-body font-semibold">Start Next Round</span>{' '}
+                      to advance the winners. A drawn game replays automatically until it&apos;s decisive.
+                    </span>
+                  </li>
+                  <li className="flex gap-2.5">
+                    <span aria-hidden>🏆</span>
+                    <span>The last player standing wins — or tap End Tournament anytime.</span>
+                  </li>
+                </ul>
+              ) : knockoutGroup ? (
+                <ul className="space-y-2 text-sm text-muted">
+                  <li className="flex gap-2.5">
+                    <span aria-hidden>📣</span>
+                    <span>
+                      Share the invite link so players join. The roster{' '}
+                      <span className="text-body font-semibold">locks</span> when you start the first round.
+                    </span>
+                  </li>
+                  <li className="flex gap-2.5">
+                    <span aria-hidden>▶️</span>
+                    <span>
+                      Tap <span className="text-body font-semibold">Start Round</span> — everyone is split into rooms of
+                      up to {groupSize} and sent in.
+                    </span>
+                  </li>
+                  <li className="flex gap-2.5">
+                    <span aria-hidden>🎮</span>
+                    <span>
+                      Once players are in their rooms, tap <span className="text-body font-semibold">Start Rooms</span>{' '}
+                      to begin every game at once. You host from here — you don&apos;t play.
+                    </span>
+                  </li>
+                  <li className="flex gap-2.5">
+                    <span aria-hidden>🔁</span>
+                    <span>
+                      When every room finishes, the whole field is ranked by score and the bottom half is knocked out —
+                      it doesn&apos;t matter which room they were in. Tap{' '}
+                      <span className="text-body font-semibold">Start Next Round</span> for the survivors.
+                    </span>
+                  </li>
+                  <li className="flex gap-2.5">
+                    <span aria-hidden>🏆</span>
+                    <span>Last player standing wins — or tap End Tournament anytime.</span>
+                  </li>
+                </ul>
+              ) : knockout ? (
+                <ul className="space-y-2 text-sm text-muted">
+                  <li className="flex gap-2.5">
+                    <span aria-hidden>📣</span>
+                    <span>
+                      Share the invite link so players join. The roster{' '}
+                      <span className="text-body font-semibold">locks</span> when you start the first round.
+                    </span>
+                  </li>
+                  <li className="flex gap-2.5">
+                    <span aria-hidden>▶️</span>
+                    <span>
+                      Tap <span className="text-body font-semibold">Start Round</span> — everyone is sent into one
+                      trivia game together.
+                    </span>
+                  </li>
+                  <li className="flex gap-2.5">
+                    <span aria-hidden>🧠</span>
+                    <span>
+                      Tap <span className="text-body font-semibold">Start Game</span> to begin. Questions auto-advance —
+                      you host from here, you don&apos;t play.
+                    </span>
+                  </li>
+                  <li className="flex gap-2.5">
+                    <span aria-hidden>🔁</span>
+                    <span>
+                      When the round ends, the bottom half is knocked out. Tap{' '}
+                      <span className="text-body font-semibold">Start Next Round</span> for the survivors.
+                    </span>
+                  </li>
+                  <li className="flex gap-2.5">
+                    <span aria-hidden>🏆</span>
+                    <span>Last player standing wins — or tap End Tournament anytime.</span>
+                  </li>
+                </ul>
+              ) : school ? (
+                <ul className="space-y-2 text-sm text-muted">
+                  <li className="flex gap-2.5">
+                    <span aria-hidden>📣</span>
+                    <span>
+                      Share the invite link so players join. The roster{' '}
+                      <span className="text-body font-semibold">locks</span> when you start the first round. Everyone
+                      begins in the lowest class.
+                    </span>
+                  </li>
+                  <li className="flex gap-2.5">
+                    <span aria-hidden>▶️</span>
+                    <span>
+                      Tap <span className="text-body font-semibold">Start Round</span> — players are grouped by class
+                      into Whot rooms (up to 5) and sent in.
+                    </span>
+                  </li>
+                  <li className="flex gap-2.5">
+                    <span aria-hidden>🃏</span>
+                    <span>
+                      Once players are in their rooms, tap <span className="text-body font-semibold">Start Rooms</span>{' '}
+                      to begin every timed match at once. You host from here — you don&apos;t play.
+                    </span>
+                  </li>
+                  <li className="flex gap-2.5">
+                    <span aria-hidden>🔁</span>
+                    <span>
+                      Empty your hand and you climb a class; when time’s up the player left holding the most cards
+                      repeats. Tap <span className="text-body font-semibold">Start Next Round</span> to group the next
+                      set.
+                    </span>
+                  </li>
+                  <li className="flex gap-2.5">
+                    <span aria-hidden>🎓</span>
+                    <span>The first player to graduate past the top class wins — or tap End Tournament anytime.</span>
+                  </li>
+                </ul>
+              ) : (
+                <ul className="space-y-2 text-sm text-muted">
+                  <li className="flex gap-2.5">
+                    <span aria-hidden>📣</span>
+                    <span>
+                      Share the invite link so players join. The roster{' '}
+                      <span className="text-body font-semibold">locks</span> when you start the first game, so wait
+                      until everyone&apos;s in.
+                    </span>
+                  </li>
+                  <li className="flex gap-2.5">
+                    <span aria-hidden>▶️</span>
+                    <span>
+                      Tap <span className="text-body font-semibold">Start Tournament</span> to create a game, then open
+                      the host dashboard (new tab) and start it there.
+                    </span>
+                  </li>
+                  <li className="flex gap-2.5">
+                    <span aria-hidden>🎮</span>
+                    <span>
+                      Players are pulled into each game automatically. You host from the dashboard — you don&apos;t
+                      play.
+                    </span>
+                  </li>
+                  <li className="flex gap-2.5">
+                    <span aria-hidden>🔁</span>
+                    <span>
+                      When a game ends, return to this tab —{' '}
+                      <span className="text-body font-semibold">Start Next Game</span> appears here. Repeat until
+                      you&apos;re done.
+                    </span>
+                  </li>
+                  <li className="flex gap-2.5">
+                    <span aria-hidden>🏁</span>
+                    <span>
+                      It ends after your target games{lives ? ', or when one player is left in lives mode' : ''} — or
+                      tap End Tournament anytime.
+                    </span>
+                  </li>
+                </ul>
+              )}
+            </div>
+          </details>
+        )}
+
+        {/* How it works */}
+        {!isFinished && !isHost && (
+          <div className="glass-card p-5 space-y-2.5">
+            <p className="label-caps">How this tournament works</p>
             {h2h ? (
               <ul className="space-y-2 text-sm text-muted">
                 <li className="flex gap-2.5">
-                  <span aria-hidden>📣</span>
+                  <span aria-hidden>⚔️</span>
+                  <span>Each round the host pairs everyone 1-v-1. You play your match on your own device.</span>
+                </li>
+                <li className="flex gap-2.5">
+                  <span aria-hidden>♟️</span>
                   <span>
-                    Share the invite link so players join. The roster{' '}
-                    <span className="text-body font-semibold">locks</span> when you start the first round, so wait until
-                    everyone&apos;s in.
+                    <span className="text-body font-semibold">Win to advance, lose and you&apos;re out.</span> A draw
+                    replays automatically until someone wins.
                   </span>
                 </li>
                 <li className="flex gap-2.5">
-                  <span aria-hidden>▶️</span>
+                  <span aria-hidden>🚀</span>
                   <span>
-                    Pick a time control and tap <span className="text-body font-semibold">Start Round</span> — everyone
-                    is paired 1-v-1 and sent to their own match room.
+                    When the host starts the round, you&apos;re taken straight to your match room — an odd one out gets
+                    a <span className="text-body font-semibold">bye</span> to the next round.
                   </span>
                 </li>
                 <li className="flex gap-2.5">
-                  <span aria-hidden>⏱️</span>
-                  <span>
-                    Once players are in their rooms, tap <span className="text-body font-semibold">Start Matches</span>{' '}
-                    to begin every game at once. You host from here — you don&apos;t play.
-                  </span>
-                </li>
-                <li className="flex gap-2.5">
-                  <span aria-hidden>🔁</span>
-                  <span>
-                    When every match finishes, tap <span className="text-body font-semibold">Start Next Round</span> to
-                    advance the winners. A drawn game replays automatically until it&apos;s decisive.
-                  </span>
-                </li>
-                <li className="flex gap-2.5">
-                  <span aria-hidden>🏆</span>
-                  <span>The last player standing wins — or tap End Tournament anytime.</span>
+                  <span aria-hidden>👑</span>
+                  <span>Keep winning your matches to become champion.</span>
                 </li>
               </ul>
             ) : knockoutGroup ? (
               <ul className="space-y-2 text-sm text-muted">
                 <li className="flex gap-2.5">
-                  <span aria-hidden>📣</span>
+                  <span aria-hidden>⚔️</span>
                   <span>
-                    Share the invite link so players join. The roster{' '}
-                    <span className="text-body font-semibold">locks</span> when you start the first round.
+                    You play Word Tiles in a room of up to {groupSize} — but you&apos;re ranked against the whole field,
+                    not just your room.
                   </span>
                 </li>
                 <li className="flex gap-2.5">
-                  <span aria-hidden>▶️</span>
+                  <span aria-hidden>🎯</span>
                   <span>
-                    Tap <span className="text-body font-semibold">Start Round</span> — everyone is split into rooms of
-                    up to {groupSize} and sent in.
+                    <span className="text-body font-semibold">Score as high as you can.</span> The bottom half of
+                    everyone is knocked out each round — it doesn&apos;t matter which room you were in.
                   </span>
                 </li>
                 <li className="flex gap-2.5">
-                  <span aria-hidden>🎮</span>
-                  <span>
-                    Once players are in their rooms, tap <span className="text-body font-semibold">Start Rooms</span> to
-                    begin every game at once. You host from here — you don&apos;t play.
-                  </span>
+                  <span aria-hidden>🚀</span>
+                  <span>When the host starts a round, you&apos;re taken straight to your room.</span>
                 </li>
                 <li className="flex gap-2.5">
-                  <span aria-hidden>🔁</span>
-                  <span>
-                    When every room finishes, the whole field is ranked by score and the bottom half is knocked out — it
-                    doesn&apos;t matter which room they were in. Tap{' '}
-                    <span className="text-body font-semibold">Start Next Round</span> for the survivors.
-                  </span>
-                </li>
-                <li className="flex gap-2.5">
-                  <span aria-hidden>🏆</span>
-                  <span>Last player standing wins — or tap End Tournament anytime.</span>
+                  <span aria-hidden>👑</span>
+                  <span>Survive every round to become champion.</span>
                 </li>
               </ul>
             ) : knockout ? (
               <ul className="space-y-2 text-sm text-muted">
                 <li className="flex gap-2.5">
-                  <span aria-hidden>📣</span>
+                  <span aria-hidden>⚔️</span>
                   <span>
-                    Share the invite link so players join. The roster{' '}
-                    <span className="text-body font-semibold">locks</span> when you start the first round.
-                  </span>
-                </li>
-                <li className="flex gap-2.5">
-                  <span aria-hidden>▶️</span>
-                  <span>
-                    Tap <span className="text-body font-semibold">Start Round</span> — everyone is sent into one trivia
-                    game together.
+                    Everyone plays one trivia game together each round — you&apos;re up against the whole room.
                   </span>
                 </li>
                 <li className="flex gap-2.5">
                   <span aria-hidden>🧠</span>
                   <span>
-                    Tap <span className="text-body font-semibold">Start Game</span> to begin. Questions auto-advance —
-                    you host from here, you don&apos;t play.
+                    <span className="text-body font-semibold">Answer fast and correctly.</span> The bottom half is
+                    knocked out each round.
                   </span>
                 </li>
                 <li className="flex gap-2.5">
-                  <span aria-hidden>🔁</span>
-                  <span>
-                    When the round ends, the bottom half is knocked out. Tap{' '}
-                    <span className="text-body font-semibold">Start Next Round</span> for the survivors.
-                  </span>
+                  <span aria-hidden>🚀</span>
+                  <span>When the host starts a round, you&apos;re taken straight into the game.</span>
                 </li>
                 <li className="flex gap-2.5">
-                  <span aria-hidden>🏆</span>
-                  <span>Last player standing wins — or tap End Tournament anytime.</span>
+                  <span aria-hidden>👑</span>
+                  <span>Survive every round to become champion.</span>
                 </li>
               </ul>
             ) : school ? (
               <ul className="space-y-2 text-sm text-muted">
                 <li className="flex gap-2.5">
-                  <span aria-hidden>📣</span>
+                  <span aria-hidden>🎓</span>
                   <span>
-                    Share the invite link so players join. The roster{' '}
-                    <span className="text-body font-semibold">locks</span> when you start the first round. Everyone
-                    begins in the lowest class.
-                  </span>
-                </li>
-                <li className="flex gap-2.5">
-                  <span aria-hidden>▶️</span>
-                  <span>
-                    Tap <span className="text-body font-semibold">Start Round</span> — players are grouped by class into
-                    Whot rooms (up to 5) and sent in.
+                    Everyone starts in the lowest class. Each round you&apos;re grouped with your classmates into one
+                    timed Whot room (up to 5).
                   </span>
                 </li>
                 <li className="flex gap-2.5">
                   <span aria-hidden>🃏</span>
                   <span>
-                    Once players are in their rooms, tap <span className="text-body font-semibold">Start Rooms</span> to
-                    begin every timed match at once. You host from here — you don&apos;t play.
+                    <span className="text-body font-semibold">Empty your hand and you climb to the next class.</span>{' '}
+                    The rest keep playing; when time&apos;s up the one left holding the most cards repeats the class.
+                    You&apos;re only out if you&apos;re ever left with no one to play.
                   </span>
                 </li>
                 <li className="flex gap-2.5">
-                  <span aria-hidden>🔁</span>
-                  <span>
-                    Empty your hand and you climb a class; when time’s up the player left holding the most cards
-                    repeats. Tap <span className="text-body font-semibold">Start Next Round</span> to group the next
-                    set.
-                  </span>
+                  <span aria-hidden>🚀</span>
+                  <span>When the host starts a round you&apos;re taken straight to your Whot room.</span>
                 </li>
                 <li className="flex gap-2.5">
-                  <span aria-hidden>🎓</span>
-                  <span>The first player to graduate past the top class wins — or tap End Tournament anytime.</span>
+                  <span aria-hidden>👑</span>
+                  <span>Be the first to graduate past the top class to win.</span>
                 </li>
               </ul>
             ) : (
               <ul className="space-y-2 text-sm text-muted">
                 <li className="flex gap-2.5">
-                  <span aria-hidden>📣</span>
-                  <span>
-                    Share the invite link so players join. The roster{' '}
-                    <span className="text-body font-semibold">locks</span> when you start the first game, so wait until
-                    everyone&apos;s in.
-                  </span>
-                </li>
-                <li className="flex gap-2.5">
-                  <span aria-hidden>▶️</span>
-                  <span>
-                    Tap <span className="text-body font-semibold">Start Tournament</span> to create a game, then open
-                    the host dashboard (new tab) and start it there.
-                  </span>
-                </li>
-                <li className="flex gap-2.5">
                   <span aria-hidden>🎮</span>
+                  <span>The host runs a series of games. Everyone plays each one from their own device.</span>
+                </li>
+                <li className="flex gap-2.5">
+                  <span aria-hidden>🏅</span>
                   <span>
-                    Players are pulled into each game automatically. You host from the dashboard — you don&apos;t play.
+                    You earn points by how you place each game —{' '}
+                    <span className="text-body font-semibold">
+                      1st {points[0]}pts, 2nd {points[1] ?? points[points.length - 1]}pts
+                    </span>
+                    , and so on.
+                  </span>
+                </li>
+                {lives && (
+                  <li className="flex gap-2.5">
+                    <span aria-hidden>❤️</span>
+                    <span>
+                      Lives mode: start with <span className="text-body font-semibold">{lives.startingLives}</span>. The
+                      bottom <span className="text-body font-semibold">{lives.eliminateCount}</span> each game lose one
+                      — run out and you&apos;re eliminated.
+                    </span>
+                  </li>
+                )}
+                <li className="flex gap-2.5">
+                  <span aria-hidden>🚀</span>
+                  <span>
+                    When the host starts a game, tap <span className="text-body font-semibold">Join Game</span> to jump
+                    in.
                   </span>
                 </li>
                 <li className="flex gap-2.5">
-                  <span aria-hidden>🔁</span>
+                  <span aria-hidden>👑</span>
                   <span>
-                    When a game ends, return to this tab —{' '}
-                    <span className="text-body font-semibold">Start Next Game</span> appears here. Repeat until
-                    you&apos;re done.
-                  </span>
-                </li>
-                <li className="flex gap-2.5">
-                  <span aria-hidden>🏁</span>
-                  <span>
-                    It ends after your target games{lives ? ', or when one player is left in lives mode' : ''} — or tap
-                    End Tournament anytime.
+                    Most points{' '}
+                    {tournament.target_game_count
+                      ? `after ${tournament.target_game_count} games`
+                      : 'when the host ends it'}{' '}
+                    wins.
                   </span>
                 </li>
               </ul>
             )}
           </div>
-        </details>
-      )}
+        )}
 
-      {/* How it works */}
-      {!isFinished && !isHost && (
-        <div className="glass-card p-5 space-y-2.5">
-          <p className="label-caps">How this tournament works</p>
-          {h2h ? (
-            <ul className="space-y-2 text-sm text-muted">
-              <li className="flex gap-2.5">
-                <span aria-hidden>⚔️</span>
-                <span>Each round the host pairs everyone 1-v-1. You play your match on your own device.</span>
-              </li>
-              <li className="flex gap-2.5">
-                <span aria-hidden>♟️</span>
-                <span>
-                  <span className="text-body font-semibold">Win to advance, lose and you&apos;re out.</span> A draw
-                  replays automatically until someone wins.
+        {/* Active Game Banner */}
+        {activeGame && roundRobin && (
+          <div
+            className="glass-card-strong p-5 space-y-3"
+            style={{ boxShadow: '0 0 0 1px var(--primary), var(--card-shadow-glow)' }}
+          >
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-bold flex items-center gap-2" style={{ color: 'var(--primary)' }}>
+                <span className="relative flex h-2 w-2">
+                  <span
+                    className="absolute inline-flex h-full w-full rounded-full opacity-75 animate-ping"
+                    style={{ background: 'var(--primary)' }}
+                  />
+                  <span
+                    className="relative inline-flex h-2 w-2 rounded-full"
+                    style={{ background: 'var(--primary)' }}
+                  />
                 </span>
-              </li>
-              <li className="flex gap-2.5">
-                <span aria-hidden>🚀</span>
-                <span>
-                  When the host starts the round, you&apos;re taken straight to your match room — an odd one out gets a{' '}
-                  <span className="text-body font-semibold">bye</span> to the next round.
-                </span>
-              </li>
-              <li className="flex gap-2.5">
-                <span aria-hidden>👑</span>
-                <span>Keep winning your matches to become champion.</span>
-              </li>
-            </ul>
-          ) : knockoutGroup ? (
-            <ul className="space-y-2 text-sm text-muted">
-              <li className="flex gap-2.5">
-                <span aria-hidden>⚔️</span>
-                <span>
-                  You play Scrabble in a room of up to {groupSize} — but you&apos;re ranked against the whole field, not
-                  just your room.
-                </span>
-              </li>
-              <li className="flex gap-2.5">
-                <span aria-hidden>🎯</span>
-                <span>
-                  <span className="text-body font-semibold">Score as high as you can.</span> The bottom half of everyone
-                  is knocked out each round — it doesn&apos;t matter which room you were in.
-                </span>
-              </li>
-              <li className="flex gap-2.5">
-                <span aria-hidden>🚀</span>
-                <span>When the host starts a round, you&apos;re taken straight to your room.</span>
-              </li>
-              <li className="flex gap-2.5">
-                <span aria-hidden>👑</span>
-                <span>Survive every round to become champion.</span>
-              </li>
-            </ul>
-          ) : knockout ? (
-            <ul className="space-y-2 text-sm text-muted">
-              <li className="flex gap-2.5">
-                <span aria-hidden>⚔️</span>
-                <span>Everyone plays one trivia game together each round — you&apos;re up against the whole room.</span>
-              </li>
-              <li className="flex gap-2.5">
-                <span aria-hidden>🧠</span>
-                <span>
-                  <span className="text-body font-semibold">Answer fast and correctly.</span> The bottom half is knocked
-                  out each round.
-                </span>
-              </li>
-              <li className="flex gap-2.5">
-                <span aria-hidden>🚀</span>
-                <span>When the host starts a round, you&apos;re taken straight into the game.</span>
-              </li>
-              <li className="flex gap-2.5">
-                <span aria-hidden>👑</span>
-                <span>Survive every round to become champion.</span>
-              </li>
-            </ul>
-          ) : school ? (
-            <ul className="space-y-2 text-sm text-muted">
-              <li className="flex gap-2.5">
-                <span aria-hidden>🎓</span>
-                <span>
-                  Everyone starts in the lowest class. Each round you&apos;re grouped with your classmates into one
-                  timed Whot room (up to 5).
-                </span>
-              </li>
-              <li className="flex gap-2.5">
-                <span aria-hidden>🃏</span>
-                <span>
-                  <span className="text-body font-semibold">Empty your hand and you climb to the next class.</span> The
-                  rest keep playing; when time&apos;s up the one left holding the most cards repeats the class.
-                  You&apos;re only out if you&apos;re ever left with no one to play.
-                </span>
-              </li>
-              <li className="flex gap-2.5">
-                <span aria-hidden>🚀</span>
-                <span>When the host starts a round you&apos;re taken straight to your Whot room.</span>
-              </li>
-              <li className="flex gap-2.5">
-                <span aria-hidden>👑</span>
-                <span>Be the first to graduate past the top class to win.</span>
-              </li>
-            </ul>
-          ) : (
-            <ul className="space-y-2 text-sm text-muted">
-              <li className="flex gap-2.5">
-                <span aria-hidden>🎮</span>
-                <span>The host runs a series of games. Everyone plays each one from their own device.</span>
-              </li>
-              <li className="flex gap-2.5">
-                <span aria-hidden>🏅</span>
-                <span>
-                  You earn points by how you place each game —{' '}
-                  <span className="text-body font-semibold">
-                    1st {points[0]}pts, 2nd {points[1] ?? points[points.length - 1]}pts
-                  </span>
-                  , and so on.
-                </span>
-              </li>
-              {lives && (
-                <li className="flex gap-2.5">
-                  <span aria-hidden>❤️</span>
-                  <span>
-                    Lives mode: start with <span className="text-body font-semibold">{lives.startingLives}</span>. The
-                    bottom <span className="text-body font-semibold">{lives.eliminateCount}</span> each game lose one —
-                    run out and you&apos;re eliminated.
-                  </span>
-                </li>
-              )}
-              <li className="flex gap-2.5">
-                <span aria-hidden>🚀</span>
-                <span>
-                  When the host starts a game, tap <span className="text-body font-semibold">Join Game</span> to jump
-                  in.
-                </span>
-              </li>
-              <li className="flex gap-2.5">
-                <span aria-hidden>👑</span>
-                <span>
-                  Most points{' '}
-                  {tournament.target_game_count
-                    ? `after ${tournament.target_game_count} games`
-                    : 'when the host ends it'}{' '}
-                  wins.
-                </span>
-              </li>
-            </ul>
-          )}
-        </div>
-      )}
-
-      {/* Active Game Banner */}
-      {activeGame && roundRobin && (
-        <div
-          className="glass-card-strong p-5 space-y-3"
-          style={{ boxShadow: '0 0 0 1px var(--primary), var(--card-shadow-glow)' }}
-        >
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-bold flex items-center gap-2" style={{ color: 'var(--primary)' }}>
-              <span className="relative flex h-2 w-2">
-                <span
-                  className="absolute inline-flex h-full w-full rounded-full opacity-75 animate-ping"
-                  style={{ background: 'var(--primary)' }}
-                />
-                <span className="relative inline-flex h-2 w-2 rounded-full" style={{ background: 'var(--primary)' }} />
-              </span>
-              {activeGame.game_status === 'waiting' ? 'Players joining' : 'Game In Progress'}
-            </p>
-            <span className="text-xs text-faint">Game {activeGame.game_order}</span>
-          </div>
-          {isParticipant && !iAmEliminated && (
-            <>
-              {myLives != null && (
-                <p className="text-center text-sm text-body">
-                  <span aria-hidden="true">{myLives > 0 ? '❤️'.repeat(myLives) : '💔'}</span>{' '}
-                  <span className="font-semibold">
-                    {myLives} {myLives === 1 ? 'life' : 'lives'} left
-                  </span>
-                </p>
-              )}
-              <PrimaryBtn onClick={() => handleJoinGame(activeGame.game_id!)}>Join Game</PrimaryBtn>
-            </>
-          )}
-          {/* Eliminated players and opted-in spectators watch instead of playing.
+                {activeGame.game_status === 'waiting' ? 'Players joining' : 'Game In Progress'}
+              </p>
+              <span className="text-xs text-faint">Game {activeGame.game_order}</span>
+            </div>
+            {isParticipant && !iAmEliminated && (
+              <>
+                {myLives != null && (
+                  <p className="text-center text-sm text-body">
+                    <span aria-hidden="true">{myLives > 0 ? '❤️'.repeat(myLives) : '💔'}</span>{' '}
+                    <span className="font-semibold">
+                      {myLives} {myLives === 1 ? 'life' : 'lives'} left
+                    </span>
+                  </p>
+                )}
+                <PrimaryBtn onClick={() => handleJoinGame(activeGame.game_id!)}>Join Game</PrimaryBtn>
+              </>
+            )}
+            {/* Eliminated players and opted-in spectators watch instead of playing.
               This is also the re-entry path if a watcher navigated back to the
               lobby mid-game (the one-shot auto-forward won't fire again). */}
-          {(iAmEliminated || (spectating && !joined && !isHost)) && (
-            <button onClick={() => handleWatchGame(activeGame.game_id!)} className="btn-secondary w-full">
-              👁 Watch live
-            </button>
-          )}
-          {isHost && activeGame.game_status === 'waiting' && (
-            <div className="space-y-1.5">
-              <PrimaryBtn onClick={handleStartActiveGame} disabled={actionLoading}>
-                {actionLoading ? 'Starting…' : 'Start Game'}
-              </PrimaryBtn>
-              <p className="text-faint text-xs text-center">Starts it here for everyone — no host dashboard needed.</p>
-            </div>
-          )}
-          {isHost && (
-            <button onClick={() => openHostDashboard(activeGame.game_id!)} className="btn-ghost w-full text-sm">
-              Open host dashboard instead
-            </button>
-          )}
-        </div>
-      )}
+            {(iAmEliminated || (spectating && !joined && !isHost)) && (
+              <button onClick={() => handleWatchGame(activeGame.game_id!)} className="btn-secondary w-full">
+                👁 Watch live
+              </button>
+            )}
+            {isHost && activeGame.game_status === 'waiting' && (
+              <div className="space-y-1.5">
+                <PrimaryBtn onClick={handleStartActiveGame} disabled={actionLoading}>
+                  {actionLoading ? 'Starting…' : 'Start Game'}
+                </PrimaryBtn>
+                <p className="text-faint text-xs text-center">
+                  Starts it here for everyone — no host dashboard needed.
+                </p>
+              </div>
+            )}
+            {isHost && (
+              <button onClick={() => openHostDashboard(activeGame.game_id!)} className="btn-ghost w-full text-sm">
+                Open host dashboard instead
+              </button>
+            )}
+          </div>
+        )}
 
-      {/* Head-to-head champion */}
-      {h2hChampion && (
-        <div
-          className="glass-card-strong p-6 text-center space-y-1.5"
-          style={{ boxShadow: '0 0 0 1px var(--primary), var(--card-shadow-glow)' }}
-        >
-          <p className="text-4xl" aria-hidden="true">
-            🏆
-          </p>
-          <p className="label-caps">Champion</p>
-          <p className="text-2xl font-black gradient-title">{h2hChampion.player_name}</p>
-        </div>
-      )}
+        {/* Head-to-head champion */}
+        {h2hChampion && (
+          <div
+            className="glass-card-strong p-6 text-center space-y-1.5"
+            style={{ boxShadow: '0 0 0 1px var(--primary), var(--card-shadow-glow)' }}
+          >
+            <p className="text-4xl" aria-hidden="true">
+              🏆
+            </p>
+            <p className="label-caps">Champion</p>
+            <p className="text-2xl font-black gradient-title">{h2hChampion.player_name}</p>
+          </div>
+        )}
 
-      {/* School champion — the first player to graduate. */}
-      {schoolChampion && (
-        <div
-          className="glass-card-strong p-6 text-center space-y-1.5"
-          style={{ boxShadow: '0 0 0 1px var(--primary), var(--card-shadow-glow)' }}
-        >
-          <p className="text-4xl" aria-hidden="true">
-            🎓
-          </p>
-          <p className="label-caps">
-            {hasGraduated(schoolChampion.school_level ?? 0, schoolClassCount) ? 'Graduated — Champion' : 'Champion'}
-          </p>
-          <p className="text-2xl font-black gradient-title">{schoolChampion.player_name}</p>
-        </div>
-      )}
+        {/* School champion — the first player to graduate. */}
+        {schoolChampion && (
+          <div
+            className="glass-card-strong p-6 text-center space-y-1.5"
+            style={{ boxShadow: '0 0 0 1px var(--primary), var(--card-shadow-glow)' }}
+          >
+            <p className="text-4xl" aria-hidden="true">
+              🎓
+            </p>
+            <p className="label-caps">
+              {hasGraduated(schoolChampion.school_level ?? 0, schoolClassCount) ? 'Graduated — Champion' : 'Champion'}
+            </p>
+            <p className="text-2xl font-black gradient-title">{schoolChampion.player_name}</p>
+          </div>
+        )}
 
-      {/* Manage players — host can remove anyone (e.g. a no-show blocking a match).
+        {/* Manage players — host can remove anyone (e.g. a no-show blocking a match).
           The entry point for knockout / round-robin; head-to-head also has the ✕
           on the board. */}
-      {isHost && !isFinished && players.length > 0 && (
-        <details className="glass-card group p-5">
-          <summary className="label-caps flex cursor-pointer select-none items-center justify-between [&::-webkit-details-marker]:hidden">
-            Manage players ({survivingCount})
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              viewBox="0 0 20 20"
-              fill="currentColor"
-              className="h-4 w-4 text-faint transition-transform group-open:rotate-180"
-            >
-              <path
-                fillRule="evenodd"
-                d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.168l3.71-3.938a.75.75 0 1 1 1.08 1.04l-4.25 4.5a.75.75 0 0 1-1.08 0l-4.25-4.5a.75.75 0 0 1 .02-1.06Z"
-                clipRule="evenodd"
-              />
-            </svg>
-          </summary>
-          <div className="mt-3 space-y-1.5">
-            {players.map((p) => (
-              <div key={p.id} className="result-row flex items-center justify-between gap-3 px-4 py-2.5">
-                <span className={`text-sm ${p.is_eliminated ? 'text-faint line-through' : 'text-body'}`}>
-                  {p.player_name}
-                </span>
-                {p.is_eliminated ? (
-                  <span className="text-xs text-faint">out</span>
-                ) : (
-                  <button
-                    onClick={() => handleRemovePlayer(p.id)}
-                    disabled={actionLoading}
-                    className="rounded px-2 py-0.5 text-xs font-semibold text-red-500 transition-colors hover:bg-red-500/10 hover:text-red-400 disabled:opacity-50"
-                  >
-                    Remove
-                  </button>
-                )}
-              </div>
-            ))}
-          </div>
-        </details>
-      )}
-
-      {/* Standings + "Share results" image export — for every format, including School
-          (class ladder), so every tournament game can share its result. */}
-      <TournamentShareLeaderboard
-        tournament={tournament}
-        players={players}
-        games={games}
-        highlightPlayerId={me?.id ?? null}
-      />
-
-      {/* Knockout round results — how the field narrowed each round. */}
-      {knockoutTrivia && knockoutResultRounds.length > 0 && (
-        <div className="glass-card p-5 space-y-3">
-          <p className="label-caps">Rounds</p>
-          <div className="space-y-2">
-            {knockoutResultRounds.map((r) => (
-              <div key={r.round} className="result-row flex items-center justify-between gap-3 px-4 py-2.5">
-                <span className="text-sm font-medium text-body">
-                  Round {r.round} · {roundLabel(r.entrants)}
-                </span>
-                <span className="text-xs text-faint">
-                  {r.advanced} of {r.entrants} advanced
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Game History — round-robin: games + player counts. */}
-      {roundRobin && finishedGames.length > 0 && (
-        <div className="glass-card p-5 space-y-3">
-          <p className="label-caps">Game History</p>
-          <div className="space-y-2">
-            {finishedGames.map((g) => (
-              <div key={g.id} className="result-row flex items-center justify-between px-4 py-2.5">
-                <span className="text-sm font-medium text-body">Game {g.game_order}</span>
-                <span className="text-xs text-faint">
-                  {g.placements ? `${Object.keys(g.placements).length} players` : 'No results'}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Bracket results — head-to-head: every decided round, newest info on page.
-          The champion banner above is the final result; this is the per-round
-          history, with a View button to open each match's final board. */}
-      {boardRounds && resultRounds.length > 0 && (
-        <div className="glass-card p-5 space-y-4">
-          <p className="label-caps">{school ? 'Match results' : knockoutGroup ? 'Round results' : 'Bracket results'}</p>
-          {resultRounds.map((rd) => (
-            <div key={rd.round} className="space-y-2">
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted">
-                {school ? `Round ${rd.round}` : `Round ${rd.round} · ${labelForRound(rd.entrants)}`}
-              </p>
-              {rd.matches.map((g) => {
-                const loserId = g.winner_player_id === g.player_a_id ? g.player_b_id : g.player_a_id
-                const roomLabel = matchMemberIds(g).map(playerNameById).join(', ')
+        {isHost && !isFinished && players.length > 0 && (
+          <details className="glass-card group p-5">
+            <summary className="label-caps flex cursor-pointer select-none items-center justify-between [&::-webkit-details-marker]:hidden">
+              Manage players ({survivingCount})
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+                className="h-4 w-4 text-faint transition-transform group-open:rotate-180"
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.168l3.71-3.938a.75.75 0 1 1 1.08 1.04l-4.25 4.5a.75.75 0 0 1-1.08 0l-4.25-4.5a.75.75 0 0 1 .02-1.06Z"
+                  clipRule="evenodd"
+                />
+              </svg>
+            </summary>
+            <div className="mt-3 space-y-1.5">
+              {players.map((p) => {
+                const isHere = presentKeys.has(p.id)
+                // Ready pill is only rendered for scheduled events. Right-now
+                // tournaments don't have a "pre-registered but not-here" gap
+                // to close, so the extra chip would just be noise.
+                const showReady = Boolean(tournament.scheduled_at) && !hasStarted
                 return (
-                  <div key={g.id} className="result-row flex items-center justify-between gap-3 px-4 py-2.5">
-                    <span className="min-w-0 truncate text-sm font-medium text-body">
-                      {g.is_bye
-                        ? `${playerNameById(g.player_a_id)} — bye`
-                        : g.winner_player_id
-                          ? groupRooms
-                            ? `✓ ${playerNameById(g.winner_player_id)} won the room`
-                            : `✓ ${playerNameById(g.winner_player_id)} beat ${playerNameById(loserId)}${winReasonLabel(g.win_reason)}`
-                          : groupRooms
-                            ? roomLabel
-                            : `${playerNameById(g.player_a_id)} vs ${playerNameById(g.player_b_id)}`}
+                  <div key={p.id} className="result-row flex items-center justify-between gap-3 px-4 py-2.5">
+                    <span className="flex items-center gap-2 min-w-0">
+                      <span
+                        aria-label={isHere ? 'In the lobby now' : 'Not currently in the lobby'}
+                        title={isHere ? 'Here now' : 'Not here right now'}
+                        className="inline-block h-2 w-2 rounded-full shrink-0"
+                        style={{
+                          background: isHere ? 'var(--primary)' : 'transparent',
+                          border: isHere ? undefined : '1px solid var(--faint)',
+                          boxShadow: isHere ? '0 0 6px var(--primary)' : undefined,
+                        }}
+                      />
+                      <span className={`text-sm truncate ${p.is_eliminated ? 'text-faint line-through' : 'text-body'}`}>
+                        {p.player_name}
+                      </span>
+                      {showReady && (
+                        <span
+                          className="shrink-0 text-[0.6875rem] font-semibold rounded-full px-2 py-0.5"
+                          title={p.is_ready ? "This player tapped I'm ready" : 'Waiting for this player to tap ready'}
+                          style={{
+                            background: p.is_ready ? 'var(--primary)' : 'var(--surface-inset-bg)',
+                            color: p.is_ready ? 'var(--primary-contrast, #fff)' : 'var(--faint)',
+                          }}
+                        >
+                          {p.is_ready ? '✓ ready' : 'not ready'}
+                        </span>
+                      )}
                     </span>
-                    {!g.is_bye && g.game_id && (
-                      <button onClick={() => handleWatchGame(g.game_id!)} className="btn-ghost shrink-0 text-xs">
-                        View
+                    {p.is_eliminated ? (
+                      <span className="text-xs text-faint">out</span>
+                    ) : (
+                      <button
+                        onClick={() => handleRemovePlayer(p.id)}
+                        disabled={actionLoading}
+                        className="rounded px-2 py-0.5 text-xs font-semibold text-red-500 transition-colors hover:bg-red-500/10 hover:text-red-400 disabled:opacity-50"
+                      >
+                        Remove
                       </button>
                     )}
                   </div>
                 )
               })}
             </div>
-          ))}
-        </div>
-      )}
+          </details>
+        )}
 
-      {/* Host Controls — round-robin */}
-      {isHost && !isFinished && !activeGame && roundRobin && (
-        <div className="glass-card-strong p-5 space-y-4">
-          <p className="label-caps">Start Next Game</p>
+        {/* Standings + "Share results" image export — for every format, including School
+          (class ladder), so every tournament game can share its result. */}
+        <TournamentShareLeaderboard
+          tournament={tournament}
+          players={players}
+          games={games}
+          highlightPlayerId={me?.id ?? null}
+        />
 
-          <Field label="Game Type" htmlFor="tg-game-type">
-            <select
-              id="tg-game-type"
-              value={selectedGameType}
-              onChange={(e) => setSelectedGameType(e.target.value)}
-              className="input-field"
-            >
-              {TOURNAMENT_ELIGIBLE_TYPES.map((t) => (
-                <option key={t} value={t}>
-                  {GAME_TYPE_LABELS[t] ?? t}
-                </option>
-              ))}
-            </select>
-          </Field>
+        {/* Post-event pack — proof-of-event artifacts for the organiser (P4).
+            Certificate + CSV; the standings image lives on the leaderboard
+            above already. Only shown once the tournament has ended. */}
+        {isFinished && <TournamentEventPackCard tournament={tournament} players={players} games={games} />}
 
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Rounds" htmlFor="tg-rounds">
-              <input
-                id="tg-rounds"
-                type="number"
-                value={roundsCount}
-                onChange={(e) => setRoundsCount(e.target.value)}
-                min={1}
-                max={100}
-                className="input-field"
-              />
-            </Field>
-            <Field label="Timer (s)" htmlFor="tg-timer">
-              <input
-                id="tg-timer"
-                type="number"
-                value={timerSeconds}
-                onChange={(e) => setTimerSeconds(e.target.value)}
-                min={5}
-                max={300}
-                className="input-field"
-              />
-            </Field>
-          </div>
-
-          {/* Trivia question source */}
-          {selectedGameType === 'trivia' && (
-            <Field label="Questions">
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  aria-pressed={questionSource === 'platform'}
-                  onClick={() => setQuestionSource('platform')}
-                  className={`chip flex-1 ${questionSource === 'platform' ? 'chip-active' : ''}`}
-                >
-                  Built-in pack
-                </button>
-                <button
-                  type="button"
-                  aria-pressed={questionSource === 'custom'}
-                  onClick={() => setQuestionSource('custom')}
-                  className={`chip flex-1 ${questionSource === 'custom' ? 'chip-active' : ''}`}
-                >
-                  Upload CSV
-                </button>
-              </div>
-
-              {questionSource === 'custom' && (
-                <div className="surface-inset p-4 mt-3 space-y-3">
-                  <input
-                    ref={fileRef}
-                    type="file"
-                    accept=".csv,.xlsx,.xls"
-                    onChange={(e) => {
-                      const f = e.target.files?.[0]
-                      if (f) handleFile(f)
-                    }}
-                    className="hidden"
-                  />
-                  {customTrivia.length === 0 ? (
-                    <div className="space-y-2">
-                      {carriedCustomCount != null && (
-                        <div className="surface-inset p-3 space-y-1" style={{ borderColor: 'var(--primary)' }}>
-                          <p className="text-sm text-body font-medium">
-                            ✓ Reusing your pack ({carriedCustomCount} question
-                            {carriedCustomCount === 1 ? '' : 's'}) from an earlier game
-                          </p>
-                          <p className="text-faint text-xs">
-                            Already-seen questions are skipped automatically. Upload a new file below to replace it.
-                          </p>
-                        </div>
-                      )}
-                      <button type="button" onClick={() => fileRef.current?.click()} className="btn-secondary w-full">
-                        {carriedCustomCount != null ? 'Upload a different file' : 'Choose CSV or Excel file'}
-                      </button>
-                      <p className="text-faint text-xs">
-                        Columns: question, option_a–option_d, correct (A–D).{' '}
-                        <a
-                          href={questionSampleFile('trivia').href}
-                          download={questionSampleFile('trivia').download}
-                          className="underline hover:text-body"
-                          style={{ color: 'var(--primary)' }}
-                        >
-                          Download sample
-                        </a>
-                      </p>
-                      {carriedCustomCount == null && (
-                        <p className="text-faint text-xs">
-                          Your pack stays loaded between games — already-seen questions are skipped automatically.
-                        </p>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-sm text-body font-medium">
-                        ✓ {customTrivia.length} question{customTrivia.length === 1 ? '' : 's'} loaded
-                      </p>
-                      <button type="button" onClick={clearCustom} className="btn-ghost text-xs">
-                        Clear
-                      </button>
-                    </div>
-                  )}
-                  {uploadMsg && <p className="text-faint text-xs">{uploadMsg}</p>}
+        {/* Knockout round results — how the field narrowed each round. */}
+        {knockoutTrivia && knockoutResultRounds.length > 0 && (
+          <div className="glass-card p-5 space-y-3">
+            <p className="label-caps">Rounds</p>
+            <div className="space-y-2">
+              {knockoutResultRounds.map((r) => (
+                <div key={r.round} className="result-row flex items-center justify-between gap-3 px-4 py-2.5">
+                  <span className="text-sm font-medium text-body">
+                    Round {r.round} · {roundLabel(r.entrants)}
+                  </span>
+                  <span className="text-xs text-faint">
+                    {r.advanced} of {r.entrants} advanced
+                  </span>
                 </div>
-              )}
-            </Field>
-          )}
+              ))}
+            </div>
+          </div>
+        )}
 
-          <div className="space-y-1.5">
-            <PrimaryBtn onClick={handleStartGame} disabled={actionLoading || !canStartCustom || players.length === 0}>
-              {actionLoading ? 'Starting…' : isFirstGame ? 'Start Tournament' : 'Start Next Game'}
+        {/* Game History — round-robin: games + player counts. */}
+        {roundRobin && finishedGames.length > 0 && (
+          <div className="glass-card p-5 space-y-3">
+            <p className="label-caps">Game History</p>
+            <div className="space-y-2">
+              {finishedGames.map((g) => (
+                <div key={g.id} className="result-row flex items-center justify-between px-4 py-2.5">
+                  <span className="text-sm font-medium text-body">Game {g.game_order}</span>
+                  <span className="text-xs text-faint">
+                    {g.placements ? `${Object.keys(g.placements).length} players` : 'No results'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Bracket results — head-to-head: every decided round, newest info on page.
+          The champion banner above is the final result; this is the per-round
+          history, with a View button to open each match's final board. */}
+        {boardRounds && resultRounds.length > 0 && (
+          <div className="glass-card p-5 space-y-4">
+            <p className="label-caps">
+              {school ? 'Match results' : knockoutGroup ? 'Round results' : 'Bracket results'}
+            </p>
+            {resultRounds.map((rd) => (
+              <div key={rd.round} className="space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+                  {school ? `Round ${rd.round}` : `Round ${rd.round} · ${labelForRound(rd.entrants)}`}
+                </p>
+                {rd.matches.map((g) => {
+                  const loserId = g.winner_player_id === g.player_a_id ? g.player_b_id : g.player_a_id
+                  const roomLabel = matchMemberIds(g).map(playerNameById).join(', ')
+                  return (
+                    <div key={g.id} className="result-row flex items-center justify-between gap-3 px-4 py-2.5">
+                      <span className="min-w-0 truncate text-sm font-medium text-body">
+                        {g.is_bye
+                          ? `${playerNameById(g.player_a_id)} — bye`
+                          : g.winner_player_id
+                            ? groupRooms
+                              ? `✓ ${playerNameById(g.winner_player_id)} won the room`
+                              : `✓ ${playerNameById(g.winner_player_id)} beat ${playerNameById(loserId)}${winReasonLabel(g.win_reason)}`
+                            : groupRooms
+                              ? roomLabel
+                              : `${playerNameById(g.player_a_id)} vs ${playerNameById(g.player_b_id)}`}
+                      </span>
+                      {!g.is_bye && g.game_id && (
+                        <button onClick={() => handleWatchGame(g.game_id!)} className="btn-ghost shrink-0 text-xs">
+                          View
+                        </button>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Host Controls — round-robin (planned mode: queue-driven Start button).
+          The full lineup with reorder arrows lives in the always-visible
+          "Tournament lineup" card at the top of the page; this block is just
+          the trigger for the next game. */}
+        {isHost && !isFinished && !activeGame && roundRobin && plannedNext && (
+          <div className="glass-card-strong p-5 space-y-2">
+            <PrimaryBtn
+              onClick={() => handleStartGame(promptStartEarly)}
+              disabled={actionLoading || players.length === 0}
+            >
+              {actionLoading
+                ? 'Starting…'
+                : promptStartEarly
+                  ? 'Start early anyway'
+                  : isFirstGame
+                    ? `Start Tournament — ${gameTypeLabel(plannedNext.gameType) ?? plannedNext.gameType}`
+                    : `Start Next Game — ${gameTypeLabel(plannedNext.gameType) ?? plannedNext.gameType}`}
             </PrimaryBtn>
             <p className="text-faint text-xs text-center">
               {players.length === 0
                 ? 'Waiting for players to join before you can start.'
-                : 'Creates the game room. Open the host dashboard (new tab) to start it once players have joined.'}
+                : promptStartEarly
+                  ? 'Pre-registered players might not be here yet — tap again to override.'
+                  : `Game ${queueIndex + 1} of ${queueEntries!.length}. Players see it appear when you tap Start.`}
             </p>
           </div>
+        )}
 
-          {isCustom && effectiveCustomCount > 0 && effectiveCustomCount < rounds && (
-            <p className="text-faint text-xs text-center -mt-2">
-              Need {rounds} questions for {rounds} rounds — upload more or lower the round count.
-            </p>
-          )}
+        {/* Host Controls — round-robin (planned mode: playlist finished, no more rounds) */}
+        {isHost && !isFinished && !activeGame && roundRobin && queueExhausted && (
+          <div className="glass-card-strong p-5 space-y-2 text-center">
+            <p className="text-body text-sm font-medium">All planned games have been played.</p>
+            <p className="text-faint text-xs">The tournament will finish shortly.</p>
+          </div>
+        )}
 
-          <button onClick={handleEndTournament} disabled={actionLoading} className="btn-danger-soft">
-            End Tournament
-          </button>
-        </div>
+        {/* Host Controls — round-robin (freestyle mode: pick game live) */}
+        {isHost && !isFinished && !activeGame && roundRobin && !plannedNext && !queueExhausted && (
+          <div className="glass-card-strong p-5 space-y-4">
+            <p className="label-caps">Start Next Game</p>
+
+            <Field label="Game Type" htmlFor="tg-game-type">
+              <select
+                id="tg-game-type"
+                value={selectedGameType}
+                onChange={(e) => {
+                  const next = e.target.value
+                  setSelectedGameType(next)
+                  // Reset the two shared fields to that game's sensible defaults —
+                  // hosts can still edit them before starting.
+                  if (next === 'trivia') {
+                    setRoundsCount('10')
+                    setTimerSeconds('30')
+                  } else if (next === 'i_call_on') {
+                    setRoundsCount('5')
+                    setTimerSeconds('60')
+                  } else if (next === 'two_truths') {
+                    // Two Truths always plays one lobby-wide round (forced server-side).
+                    setTimerSeconds('45')
+                  } else if (next === 'who_said_this') {
+                    // Round count comes from submitted quotes at game start; only the
+                    // per-guess timer is host-settable here.
+                    setTimerSeconds('30')
+                  }
+                }}
+                className="input-field"
+              >
+                {TOURNAMENT_ELIGIBLE_TYPES.map((t) => (
+                  <option key={t} value={t}>
+                    {gameTypeLabel(t) ?? t}
+                  </option>
+                ))}
+              </select>
+              <p className="text-faint text-xs mt-1.5">
+                Mix game types across rounds — every round&apos;s placements feed the same leaderboard.
+              </p>
+            </Field>
+
+            <div
+              className={
+                selectedGameType === 'two_truths' || selectedGameType === 'who_said_this'
+                  ? ''
+                  : 'grid grid-cols-2 gap-3'
+              }
+            >
+              {selectedGameType !== 'two_truths' && selectedGameType !== 'who_said_this' && (
+                <Field label={selectedGameType === 'trivia' ? 'Questions' : 'Rounds'} htmlFor="tg-rounds">
+                  <input
+                    id="tg-rounds"
+                    type="number"
+                    value={roundsCount}
+                    onChange={(e) => setRoundsCount(e.target.value)}
+                    min={1}
+                    max={100}
+                    className="input-field"
+                  />
+                </Field>
+              )}
+              <Field label="Timer (s)" htmlFor="tg-timer">
+                <input
+                  id="tg-timer"
+                  type="number"
+                  value={timerSeconds}
+                  onChange={(e) => setTimerSeconds(e.target.value)}
+                  min={5}
+                  max={300}
+                  className="input-field"
+                />
+              </Field>
+            </div>
+
+            <Field label="Big screen">
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  aria-pressed={selectedBigScreenMode === 'phone_only'}
+                  onClick={() => setSelectedBigScreenMode('phone_only')}
+                  className={`chip flex-1 ${selectedBigScreenMode === 'phone_only' ? 'chip-active' : ''}`}
+                >
+                  📱 Phone only
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={selectedBigScreenMode === 'projector'}
+                  onClick={() => setSelectedBigScreenMode('projector')}
+                  className={`chip flex-1 ${selectedBigScreenMode === 'projector' ? 'chip-active' : ''}`}
+                >
+                  🖥 On the projector
+                </button>
+              </div>
+              <p className="text-faint text-xs mt-1.5">
+                {selectedBigScreenMode === 'projector'
+                  ? 'Big screen shows the current question/letter; phones are the answer buttons.'
+                  : 'Big screen shows the leaderboard only; players read from their phones.'}
+              </p>
+            </Field>
+
+            {/* Trivia question source — matches the normal-game create page's
+                four modes (Platform / Library / Your own / AI). Any non-platform
+                pick funnels into `customTrivia` (or `triviaLibrary.questions`
+                for the library case) and rides the shared customQuestions slot
+                on Start. */}
+            {selectedGameType === 'trivia' && (
+              <Field label="Questions">
+                <div className="flex gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    aria-pressed={questionSource === 'platform'}
+                    onClick={() => setQuestionSource('platform')}
+                    className={`chip flex-1 ${questionSource === 'platform' ? 'chip-active' : ''}`}
+                  >
+                    Built-in pack
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={questionSource === 'library'}
+                    onClick={() => setQuestionSource('library')}
+                    className={`chip flex-1 ${questionSource === 'library' ? 'chip-active' : ''}`}
+                  >
+                    Library
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={questionSource === 'custom'}
+                    onClick={() => setQuestionSource('custom')}
+                    className={`chip flex-1 ${questionSource === 'custom' ? 'chip-active' : ''}`}
+                  >
+                    Upload CSV
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={questionSource === 'ai'}
+                    onClick={() => setQuestionSource('ai')}
+                    className={`chip flex-1 ${questionSource === 'ai' ? 'chip-active' : ''}`}
+                  >
+                    Generate with AI
+                  </button>
+                </div>
+
+                {questionSource === 'custom' && (
+                  <div className="surface-inset p-4 mt-3 space-y-3">
+                    <input
+                      ref={fileRef}
+                      type="file"
+                      accept=".csv,.xlsx,.xls"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0]
+                        if (f) handleFile(f)
+                      }}
+                      className="hidden"
+                    />
+                    {customTrivia.length === 0 ? (
+                      <div className="space-y-2">
+                        {carriedCustomCount != null && (
+                          <div className="surface-inset p-3 space-y-1" style={{ borderColor: 'var(--primary)' }}>
+                            <p className="text-sm text-body font-medium">
+                              ✓ Reusing your pack ({carriedCustomCount} question
+                              {carriedCustomCount === 1 ? '' : 's'}) from an earlier game
+                            </p>
+                            <p className="text-faint text-xs">
+                              Already-seen questions are skipped automatically. Upload a new file below to replace it.
+                            </p>
+                          </div>
+                        )}
+                        <button type="button" onClick={() => fileRef.current?.click()} className="btn-secondary w-full">
+                          {carriedCustomCount != null ? 'Upload a different file' : 'Choose CSV or Excel file'}
+                        </button>
+                        <p className="text-faint text-xs">
+                          Columns: question, option_a–option_d, correct (A–D).{' '}
+                          <a
+                            href={questionSampleFile('trivia').href}
+                            download={questionSampleFile('trivia').download}
+                            className="underline hover:text-body"
+                            style={{ color: 'var(--primary)' }}
+                          >
+                            Download sample
+                          </a>
+                        </p>
+                        {carriedCustomCount == null && (
+                          <p className="text-faint text-xs">
+                            Your pack stays loaded between games — already-seen questions are skipped automatically.
+                          </p>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-sm text-body font-medium">
+                          ✓ {customTrivia.length} question{customTrivia.length === 1 ? '' : 's'} loaded
+                        </p>
+                        <button type="button" onClick={clearCustom} className="btn-ghost text-xs">
+                          Clear
+                        </button>
+                      </div>
+                    )}
+                    {uploadMsg && <p className="text-faint text-xs">{uploadMsg}</p>}
+                  </div>
+                )}
+
+                {questionSource === 'ai' && (
+                  <div className="mt-3">
+                    <AiQuestionsGenerator
+                      gameType="trivia"
+                      triviaCategory="general"
+                      defaultCount={20}
+                      maxCount={50}
+                      onGenerated={(questions) => setCustomTrivia(questions as TriviaQuestion[])}
+                    />
+                    {customTrivia.length > 0 && (
+                      <p className="text-faint text-xs mt-2">
+                        ✓ {customTrivia.length} question{customTrivia.length === 1 ? '' : 's'} generated and ready.
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {questionSource === 'library' && (
+                  <div className="mt-3">
+                    <LibraryPackPicker
+                      loading={triviaLibrary.loading}
+                      packs={triviaLibrary.packs}
+                      search={triviaLibrary.search}
+                      onSearchChange={triviaLibrary.setSearch}
+                      selectedPackId={triviaLibrary.selectedPackId}
+                      onSelect={triviaLibrary.selectPack}
+                    />
+                  </div>
+                )}
+              </Field>
+            )}
+
+            {/* Who Said This source picker — mirrors the normal-game shape:
+                Players submit (lobby-collect), Platform (built-in famous
+                quotes), Library (community pack), Your own (CSV upload).
+                AI generation isn't available for WST yet (the AI backend
+                doesn't support the deck shape), so no AI chip here. */}
+            {selectedGameType === 'who_said_this' && (
+              <Field label="Quotes">
+                <div className="flex gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    aria-pressed={wstSource === 'player'}
+                    onClick={() => setWstSource('player')}
+                    className={`chip flex-1 ${wstSource === 'player' ? 'chip-active' : ''}`}
+                    title="Each joiner writes a quote + four options in the lobby"
+                  >
+                    Players submit
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={wstSource === 'platform'}
+                    onClick={() => setWstSource('platform')}
+                    className={`chip flex-1 ${wstSource === 'platform' ? 'chip-active' : ''}`}
+                    title="Our built-in pack of famous quotes"
+                  >
+                    Platform pack
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={wstSource === 'library'}
+                    onClick={() => setWstSource('library')}
+                    className={`chip flex-1 ${wstSource === 'library' ? 'chip-active' : ''}`}
+                    title="Pick a community quote pack"
+                  >
+                    Library
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={wstSource === 'custom'}
+                    onClick={() => setWstSource('custom')}
+                    className={`chip flex-1 ${wstSource === 'custom' ? 'chip-active' : ''}`}
+                    title="Upload a CSV of quotes, options, and answers"
+                  >
+                    Your own (CSV)
+                  </button>
+                </div>
+
+                {wstSource === 'player' && (
+                  <p className="text-faint text-xs mt-2">
+                    Each joiner writes one quote + four options (A–D) and marks the correct answer when they land in the
+                    lobby.
+                  </p>
+                )}
+
+                {wstSource === 'platform' && (
+                  <p className="text-faint text-xs mt-2">
+                    Uses our built-in pack of {WST_PLATFORM_DECK.length} famous quotes — players just join and answer,
+                    fastest correct wins.
+                  </p>
+                )}
+
+                {wstSource === 'custom' && (
+                  <div className="surface-inset p-4 mt-3 space-y-3">
+                    <input
+                      ref={wstFileRef}
+                      type="file"
+                      accept=".csv,.xlsx,.xls"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0]
+                        if (f) handleWstFile(f)
+                      }}
+                      className="hidden"
+                    />
+                    {customWst.length === 0 ? (
+                      <div className="space-y-2">
+                        <button
+                          type="button"
+                          onClick={() => wstFileRef.current?.click()}
+                          className="btn-secondary w-full"
+                        >
+                          Choose CSV or Excel file
+                        </button>
+                        <p className="text-faint text-xs">
+                          Columns:{' '}
+                          <span className="font-mono">quote, option_a, option_b, option_c, option_d, correct</span>. The{' '}
+                          <span className="font-mono">correct</span> column is the answer letter (A–D). At least{' '}
+                          {WST_DECK_MIN_ENTRIES} quotes required.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-sm text-body font-medium">
+                          ✓ {customWst.length} quote{customWst.length === 1 ? '' : 's'} loaded
+                        </p>
+                        <button type="button" onClick={clearCustomWst} className="btn-ghost text-xs">
+                          Clear
+                        </button>
+                      </div>
+                    )}
+                    {wstUploadMsg && <p className="text-faint text-xs">{wstUploadMsg}</p>}
+                  </div>
+                )}
+
+                {wstSource === 'library' && (
+                  <div className="mt-3">
+                    <LibraryPackPicker
+                      loading={wstLibrary.loading}
+                      packs={wstLibrary.packs}
+                      search={wstLibrary.search}
+                      onSearchChange={wstLibrary.setSearch}
+                      selectedPackId={wstLibrary.selectedPackId}
+                      onSelect={wstLibrary.selectPack}
+                      noun="quotes"
+                    />
+                  </div>
+                )}
+              </Field>
+            )}
+
+            <div className="space-y-1.5">
+              <PrimaryBtn
+                onClick={() => handleStartGame(promptStartEarly)}
+                disabled={actionLoading || !canStartCustom || players.length === 0}
+              >
+                {actionLoading
+                  ? 'Starting…'
+                  : promptStartEarly
+                    ? 'Start early anyway'
+                    : isFirstGame
+                      ? 'Start Tournament'
+                      : 'Start Next Game'}
+              </PrimaryBtn>
+              <p className="text-faint text-xs text-center">
+                {players.length === 0
+                  ? 'Waiting for players to join before you can start.'
+                  : promptStartEarly
+                    ? 'Pre-registered players might not be here yet — tap again to override.'
+                    : 'Creates the game room. Open the host dashboard (new tab) to start it once players have joined.'}
+              </p>
+            </div>
+
+            {isCustom && effectiveCustomCount > 0 && effectiveCustomCount < rounds && (
+              <p className="text-faint text-xs text-center -mt-2">
+                Need {rounds} questions for {rounds} rounds — upload more or lower the round count.
+              </p>
+            )}
+
+            <button onClick={handleEndTournament} disabled={actionLoading} className="btn-danger-soft">
+              End Tournament
+            </button>
+          </div>
+        )}
+      </TournamentBrandingWrapper>
+      {/* Player-side host nomination banner — mounted for every viewer;
+          renders only when THIS device's tournament_players.id matches the
+          pending nominee. Kept at the bottom so it can portal from the
+          natural bottom of the tree. */}
+      <TournamentHostNominationBanner
+        tournamentId={tournamentId}
+        pendingPlayerId={tournament.pending_host_player_id ?? null}
+        myPlayerId={me?.id ?? null}
+        resumeToken={myCode || null}
+      />
+      {/* iOS-only PWA install hint — only appears when the viewer holds a
+          role, is on un-installed iOS, and hasn't dismissed. */}
+      {tournament.scheduled_at && (
+        <TournamentIosInstallPushNudge
+          tournamentCode={tournamentId}
+          hasRole={Boolean((joined && myCode) || (isHost && hostToken))}
+        />
       )}
     </PageShell>
   )

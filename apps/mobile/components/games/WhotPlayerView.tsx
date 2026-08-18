@@ -422,7 +422,7 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
       <ScrollView contentContainerStyle={styles.content}>
         {gameTimerPinned ? null : gameTimer}
         <TurnBanner
-          text={isWatching ? `Spectating — ${turnName}'s turn` : (session.status_message ?? `${turnName}'s turn`)}
+          text={session.status_message ?? (isWatching ? `Spectating — ${turnName}'s turn` : `${turnName}'s turn`)}
           isMyTurn={isMyTurn && !isWatching}
         />
         {timerSeconds > 0 ? <WhotTurnTimerChip turnName={turnName} seconds={timerSeconds} /> : null}

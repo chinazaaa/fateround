@@ -10,6 +10,7 @@ type ThemeToggleProps = {
   className?: string
 }
 
+// Shared ThemeToggle - uses fr-icon-btn matching homepage theme switcher
 export function ThemeToggle({ variant = 'fixed', className = '' }: ThemeToggleProps) {
   const pathname = usePathname()
   const { theme, toggle } = useTheme()
@@ -30,27 +31,16 @@ export function ThemeToggle({ variant = 'fixed', className = '' }: ThemeTogglePr
 
   // The fixed toggle is hidden on public/marketing pages (which carry their own
   // design-system toggle in the header) via a `:has(.fr-site)` rule in globals.css.
-  const positionClass = variant === 'fixed' ? 'app-fixed-theme-toggle fixed top-4 right-4 z-50' : 'shrink-0'
+  const positionClass = variant === 'fixed' ? 'app-fixed-theme-toggle' : 'shrink-0'
 
   return (
     <button
       type="button"
       onClick={toggle}
       aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-      className={`${positionClass} flex items-center gap-1.5 rounded-full px-2.5 py-1.5 sm:px-3 sm:py-2 text-xs sm:text-sm font-medium transition-all duration-200 glass-card ${className}`}
-      style={{ color: 'var(--muted)' }}
+      className={`${positionClass} fr-icon-btn ${className}`}
     >
-      {isDark ? (
-        <>
-          <SunIcon />
-          <span className="hidden sm:inline">Light</span>
-        </>
-      ) : (
-        <>
-          <MoonIcon />
-          <span className="hidden sm:inline">Dark</span>
-        </>
-      )}
+      {isDark ? <SunIcon /> : <MoonIcon />}
     </button>
   )
 }

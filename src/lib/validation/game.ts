@@ -86,6 +86,11 @@ export const createGameSchema = z.object({
   gender_based: z.boolean().optional(),
   isPublic: z.boolean().optional(),
   max_players: z.coerce.number().int().min(1).max(100).optional(),
+  monopoly_board_size: z.coerce
+    .number()
+    .int()
+    .refine((value) => value === 40 || value === 48)
+    .optional(),
   codewords_player_picks: z.boolean().optional(),
   codewords_late_join: z.boolean().optional(),
   describe_it_num_teams: z.coerce.number().int().min(2).max(4).optional(),
@@ -137,6 +142,10 @@ export const createGameSchema = z.object({
   uno_multi_play_mode: z.enum(['off', 'same_color', 'same_number', 'same_color_or_number']).optional(),
   uno_team_mode: z.boolean().optional(),
   uno_jump_in: z.boolean().optional(),
+  uno_mode: z.enum(['classic', 'no_mercy']).optional(),
+  uno_no_mercy_win: z.enum(['first_out', 'last_standing']).optional(),
+  uno_series_scoring: z.boolean().optional(),
+  uno_series_target: z.coerce.number().int().min(100).max(10000).optional(),
   ludo_variant: z.enum(['modern', 'traditional']).optional(),
   ayo_variant: z.enum(['traditional', 'oware']).optional(),
   mahjong_ruleset: mahjongRulesetEnum.optional(),
@@ -267,6 +276,12 @@ export const updateGameSchema = z.object({
     .int()
     .refine((val: number) => (PING_PONG_POINTS_OPTIONS as readonly number[]).includes(val))
     .optional(),
+  // Discovery Phase A — "Keep open" button on the host T-13min banner. Bumps
+  // last_activity_at + stamps host_idle_warning_sent_at so the pg_cron close
+  // job holds off and the banner never re-fires for this game. The plan
+  // constrains this to one bite per game (a Keep-open that eventually reaches
+  // T-13min again does not re-warn).
+  keep_lobby_alive: z.boolean().optional(),
 })
 
 export type UpdateGameInput = z.infer<typeof updateGameSchema>
@@ -303,7 +318,7 @@ export const playAgainSchema = hostActionSchema.extend({
   // Who Said This lobby question-source swap: 'player' (lobby-submitted quotes) or 'deck'
   // (host Platform/Library/CSV deck sent in custom_questions).
   wst_quote_source: wstQuoteSourceEnum.optional(),
-  trivia_category: z.enum(['tech', 'general']).optional(),
+  trivia_category: triviaCategoryEnum.optional(),
   timer_seconds: z.union([z.literal(10), z.literal(15), z.literal(30), z.literal(60)]).optional(),
   rounds_count: z.number().int().min(3).max(25).optional(),
   /**
@@ -350,6 +365,11 @@ export const boardGameLobbySettingsSchema = z.object({
   monopoly_auction_timer_seconds: z.number().int().min(5).max(60).nullable().optional(),
   monopoly_no_rent_in_jail: z.boolean().optional(),
   monopoly_estate_dividend: z.boolean().optional(),
+  monopoly_board_size: z.coerce
+    .number()
+    .int()
+    .refine((value) => value === 40 || value === 48)
+    .optional(),
   whot_pick3_enabled: z.boolean().optional(),
   whot_cards_enabled: z.boolean().optional(),
   whot_number_calls_enabled: z.boolean().optional(),
@@ -365,6 +385,10 @@ export const boardGameLobbySettingsSchema = z.object({
   uno_multi_play_mode: z.enum(['off', 'same_color', 'same_number', 'same_color_or_number']).optional(),
   uno_team_mode: z.boolean().optional(),
   uno_jump_in: z.boolean().optional(),
+  uno_mode: z.enum(['classic', 'no_mercy']).optional(),
+  uno_no_mercy_win: z.enum(['first_out', 'last_standing']).optional(),
+  uno_series_scoring: z.boolean().optional(),
+  uno_series_target: z.coerce.number().int().min(100).max(10000).optional(),
   ludo_variant: z.enum(['modern', 'traditional']).optional(),
   ayo_variant: z.enum(['traditional', 'oware']).optional(),
   mahjong_ruleset: mahjongRulesetEnum.optional(),
@@ -410,7 +434,13 @@ export const boardGameLobbySettingsSchema = z.object({
   puzzle_theme_id: z.string().uuid().optional(),
   // Host-supplied puzzle word pool ("Your own" upload or a Library pack pick). Re-validated and
   // normalised server-side per game type; capped to keep the request payload bounded.
-  puzzle_custom_questions: z.array(z.record(z.string(), z.string())).max(500).optional(),
+  //
+  // Element shape varies per game and is checked in the route's per-type branch, not here:
+  //  - crossword / word_search / word_scramble → CSV rows of `Record<string, string>`
+  //  - word_grouping → nested puzzle objects like `{ groups: [{category, words[], difficulty}] }`
+  // We accept any object shape at the wire level so the WG nested-array/number values don't get
+  // 400'd here — the per-game parsers reject anything invalid downstream.
+  puzzle_custom_questions: z.array(z.record(z.string(), z.unknown())).max(500).optional(),
   ping_pong_points_to_win: z.coerce
     .number()
     .int()

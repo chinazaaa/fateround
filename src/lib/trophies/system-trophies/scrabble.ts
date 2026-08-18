@@ -248,7 +248,7 @@ export const SCRABBLE: SystemTrophySpec[] = [
   // ── Platinum ────────────────────────────────────────────────────────────────────────────
   {
     suffix: 'triple_bingo',
-    tier: 'platinum',
+    tier: 'gold',
     title: 'Triple Bingo',
     description: 'Play three bingos in one game.',
     counter: 'scrabble_triple_bingo_games',
@@ -258,7 +258,7 @@ export const SCRABBLE: SystemTrophySpec[] = [
   },
   {
     suffix: 'four_hundred',
-    tier: 'platinum',
+    tier: 'gold',
     title: 'Four Hundred',
     description: 'Finish with 400 or more points.',
     counter: 'scrabble_four_hundred_games',
@@ -267,7 +267,7 @@ export const SCRABBLE: SystemTrophySpec[] = [
   },
   {
     suffix: 'century_word',
-    tier: 'platinum',
+    tier: 'gold',
     title: 'Century Word',
     description: 'Score 100 or more points on a single word.',
     counter: 'scrabble_century_word_games',
