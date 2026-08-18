@@ -120,6 +120,12 @@ import {
   clampWordleRoomWordCount,
 } from '@fateround/shared/wordle-room'
 import {
+  WordGroupingLobbySection,
+  isWordGroupingLobbyGame,
+  wordGroupingStateFromGame,
+  type WordGroupingLobbyState,
+} from '@/components/host/lobby-settings/WordGroupingLobbySection'
+import {
   TeamRoundGamesSection,
   isTeamRoundGame,
   type TeamRoundState,
@@ -269,6 +275,7 @@ export function HostLobbySettingsSheet({
   const isPingPong = isPingPongLobbyGame(gameType)
   const isTrivia = isTriviaLobbyGame(gameType)
   const isWordleRoom = isWordleRoomLobbyGame(gameType)
+  const isWordGrouping = isWordGroupingLobbyGame(gameType)
   const ownsTimer =
     isCardGame ||
     isUno ||
@@ -429,11 +436,27 @@ export function HostLobbySettingsSheet({
     pointsToWin: game.ping_pong_points_to_win ?? 7,
     gameDurationSeconds: game.game_duration_seconds ?? 0,
   }))
-  const [wordle, setWordle] = useState<WordleRoomLobbyState>(() => ({
-    category: clampWordleRoomCategory(game.wordle_room_category),
-    wordCount: clampWordleRoomWordCount(game.wordle_room_word_count ?? WORDLE_ROOM_DEFAULT_WORD_COUNT),
-    timerSeconds: game.timer_seconds ?? WORDLE_ROOM_DEFAULT_TIMER,
-  }))
+  const [wordle, setWordle] = useState<WordleRoomLobbyState>(() => {
+    const rawCustom = (game as unknown as { wordle_room_custom_words?: unknown }).wordle_room_custom_words
+    const hasCustom = Array.isArray(rawCustom) && rawCustom.length > 0
+    const customWords = hasCustom
+      ? (rawCustom as { word?: string; hint?: string }[])
+          .map((e) => {
+            const word = (e.word ?? '').toLowerCase().replace(/[^a-z]/g, '')
+            return e.hint ? { word, hint: e.hint } : { word }
+          })
+          .filter((e) => e.word.length >= 3 && e.word.length <= 8)
+      : []
+    return {
+      category: clampWordleRoomCategory(game.wordle_room_category),
+      wordCount: clampWordleRoomWordCount(game.wordle_room_word_count ?? WORDLE_ROOM_DEFAULT_WORD_COUNT),
+      timerSeconds: game.timer_seconds ?? WORDLE_ROOM_DEFAULT_TIMER,
+      source: hasCustom ? 'library' : 'platform',
+      customWords,
+      categoryLabel: game.content_label ?? '',
+    }
+  })
+  const [wordGrouping, setWordGrouping] = useState<WordGroupingLobbyState>(() => wordGroupingStateFromGame(game))
   const [quickDraw, setQuickDraw] = useState<QuickDrawLobbyState>(() => ({
     variant: game.quick_draw_variant === 'guess' ? 'guess' : 'lie',
     playMode: game.quick_draw_play_mode === 'individual' ? 'individual' : 'team',
@@ -605,6 +628,51 @@ export function HostLobbySettingsSheet({
       if (wordle.category !== game.wordle_room_category) board.wordle_room_category = wordle.category
       if (wordle.wordCount !== game.wordle_room_word_count) board.wordle_room_word_count = wordle.wordCount
       if (wordle.timerSeconds !== game.timer_seconds) board.timer_seconds = wordle.timerSeconds
+      // Word source: Platform clears any previously-picked pool so start falls back to the built-in
+      // category. Library / Your own send the current custom pool (must be ≥ wordCount to start the
+      // race, but we validate at start; here we just persist what the host has). Only send when it
+      // actually changed vs the server-side pool so re-saving unchanged doesn't rewrite it.
+      const currentPool = Array.isArray(
+        (game as unknown as { wordle_room_custom_words?: unknown }).wordle_room_custom_words
+      )
+        ? ((game as unknown as { wordle_room_custom_words?: { word?: string; hint?: string }[] })
+            .wordle_room_custom_words ?? [])
+        : []
+      if (wordle.source === 'platform') {
+        if (currentPool.length > 0) board.wordle_room_words = []
+      } else {
+        if (wordle.customWords.length > 0 && wordle.customWords.length < wordle.wordCount) {
+          setError(
+            wordle.source === 'library'
+              ? `Pick a library pack with at least ${wordle.wordCount} words`
+              : `Add at least ${wordle.wordCount} words`
+          )
+          return
+        }
+        if (wordle.customWords.length > 0 && JSON.stringify(wordle.customWords) !== JSON.stringify(currentPool)) {
+          board.wordle_room_words = wordle.customWords
+        }
+      }
+      const nextLabel = wordle.categoryLabel.trim()
+      if (nextLabel !== (game.content_label ?? '').trim()) patch.content_label = nextLabel
+    }
+    if (isWordGrouping) {
+      // Mirrors web WordGroupingLobbySettings: Platform clears the pool, Library sends the picked
+      // pack's questions. Server folds either into question_source + custom_questions.
+      const currentIsCustom =
+        game.question_source === 'custom' && Array.isArray(game.custom_questions) && game.custom_questions.length > 0
+      if (wordGrouping.source === 'platform') {
+        if (currentIsCustom) board.puzzle_custom_questions = []
+      } else {
+        if (wordGrouping.customQuestions.length < 4) {
+          setError('Pick a library pack with at least 4 puzzles')
+          return
+        }
+        const currentPool = currentIsCustom ? (game.custom_questions as unknown[]) : []
+        if (JSON.stringify(wordGrouping.customQuestions) !== JSON.stringify(currentPool)) {
+          board.puzzle_custom_questions = wordGrouping.customQuestions
+        }
+      }
     }
     if (isQuickDraw) {
       if (quickDraw.variant !== game.quick_draw_variant) board.quick_draw_variant = quickDraw.variant
@@ -986,6 +1054,13 @@ export function HostLobbySettingsSheet({
 
             {isWordleRoom ? (
               <WordleRoomLobbySection value={wordle} onChange={(p) => setWordle((prev) => ({ ...prev, ...p }))} />
+            ) : null}
+
+            {isWordGrouping ? (
+              <WordGroupingLobbySection
+                value={wordGrouping}
+                onChange={(p) => setWordGrouping((prev) => ({ ...prev, ...p }))}
+              />
             ) : null}
 
             {isTeamRound ? (
