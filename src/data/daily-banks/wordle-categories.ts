@@ -107,7 +107,7 @@ export const WORDLE_NATURE: readonly string[] = [
   'STORM',
   'SUNNY',
   'TREES',
-  'VALLEY',
+  'MOUNT',
   'WATER',
   'WAVES',
   'WINDY',
