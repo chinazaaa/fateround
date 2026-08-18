@@ -274,7 +274,7 @@ export function parseWordleRoomSolutionWords(raw: unknown): { words: string[]; h
 export function parseWordleRoomMetadata(raw: unknown): WordleRoomMetadata | null {
   if (!raw || typeof raw !== 'object') return null
   const m = raw as Record<string, unknown>
-  if (m.category !== 'general_english' && m.category !== 'naija_slang') return null
+  if (typeof m.category !== 'string' || !(VALID_CATEGORY_IDS as readonly string[]).includes(m.category)) return null
   if (typeof m.word_count !== 'number') return null
   return m as unknown as WordleRoomMetadata
 }
