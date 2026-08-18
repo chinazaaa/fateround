@@ -2,14 +2,15 @@ import type { SystemTrophySpec } from './types'
 
 /**
  * Multiplayer Wordle — derived at finish from `wordle_room_progress` (words solved, finished,
- * hints purchased) and `wordle_room_guesses` (first-guess solves). See
- * `../game-facts/wordle-room.ts`.
+ * hints purchased) and `wordle_room_guesses` (first-guess solves, per-word attempt counts).
+ * See `../game-facts/wordle-room.ts`.
  *
  * OMITTED (covered by generic catalog):
  *  - First game / 10 / 50 finishes → generic `games_played`.
- *  - First win / 10 / 50 / 100 wins → generic `games_won` (Wordle has a resolvable winner
- *    via `getCompetitiveStandings`).
- *  - Platinum capstone → `${game}.platinum` auto-generated.
+ *  - First win / 10 / 50 / 100 wins → generic `games_won` (Wordle has a resolvable winner via
+ *    `getCompetitiveStandings`).
+ *  - Platinum "Master" capstone → `${game}.platinum` auto-generated, fires when every other
+ *    Wordle trophy has been earned.
  */
 export const WORDLE_ROOM: SystemTrophySpec[] = [
   // ── Bronze ──────────────────────────────────────────────────────────────────────────────
@@ -32,13 +33,31 @@ export const WORDLE_ROOM: SystemTrophySpec[] = [
     sortOrder: 20,
   },
   {
+    suffix: 'sniper',
+    tier: 'bronze',
+    title: 'Sniper',
+    description: 'Solve a word on the second guess.',
+    counter: 'wordle_room_two_guess_solves',
+    points: 10,
+    sortOrder: 30,
+  },
+  {
+    suffix: 'last_gasp',
+    tier: 'bronze',
+    title: 'Last gasp',
+    description: 'Solve a word on your final allowed attempt.',
+    counter: 'wordle_room_last_gasp_solves',
+    points: 15,
+    sortOrder: 40,
+  },
+  {
     suffix: 'full_race',
     tier: 'bronze',
     title: 'Full race',
     description: 'Finish an entire Wordle race (every word).',
     counter: 'wordle_room_finished_games',
     points: 15,
-    sortOrder: 30,
+    sortOrder: 50,
   },
   {
     suffix: 'naija_slang',
@@ -47,7 +66,34 @@ export const WORDLE_ROOM: SystemTrophySpec[] = [
     description: 'Play a Wordle race on the Naija Slang category.',
     counter: 'wordle_room_naija_games',
     points: 10,
-    sortOrder: 40,
+    sortOrder: 60,
+  },
+  {
+    suffix: 'five_solved',
+    tier: 'bronze',
+    title: 'Five solved',
+    description: 'Solve 5 words in a single race.',
+    counter: 'wordle_room_five_solved_games',
+    points: 10,
+    sortOrder: 70,
+  },
+  {
+    suffix: 'stayer',
+    tier: 'bronze',
+    title: 'Stayer',
+    description: 'Finish a 10-word Wordle race.',
+    counter: 'wordle_room_ten_word_finishes',
+    points: 15,
+    sortOrder: 80,
+  },
+  {
+    suffix: 'kept_going',
+    tier: 'bronze',
+    title: 'Kept going',
+    description: 'Finish a race with at least one solve in the back half.',
+    counter: 'wordle_room_second_half_finishes',
+    points: 10,
+    sortOrder: 90,
   },
 
   // ── Silver ──────────────────────────────────────────────────────────────────────────────
@@ -59,7 +105,16 @@ export const WORDLE_ROOM: SystemTrophySpec[] = [
     counter: 'wordle_room_words_solved_total',
     gte: 100,
     points: 40,
-    sortOrder: 50,
+    sortOrder: 110,
+  },
+  {
+    suffix: 'ten_solved',
+    tier: 'silver',
+    title: 'Ten solved',
+    description: 'Solve 10 words in a single race.',
+    counter: 'wordle_room_ten_solved_games',
+    points: 25,
+    sortOrder: 120,
   },
   {
     suffix: 'clean_race',
@@ -68,7 +123,7 @@ export const WORDLE_ROOM: SystemTrophySpec[] = [
     description: 'Finish a full Wordle race without buying any hints.',
     counter: 'wordle_room_no_hint_finished_games',
     points: 30,
-    sortOrder: 60,
+    sortOrder: 130,
   },
   {
     suffix: 'big_race',
@@ -77,17 +132,64 @@ export const WORDLE_ROOM: SystemTrophySpec[] = [
     description: 'Finish a Wordle race in a room of 10+ players.',
     counter: 'wordle_room_big_room_wins',
     points: 35,
-    sortOrder: 70,
+    sortOrder: 140,
   },
   {
     suffix: 'perfectionist',
     tier: 'silver',
     title: 'Perfectionist',
-    description: 'Solve 5 Wordle words on the first guess across your games.',
+    description: 'Solve 5 words on the first guess across your games.',
     counter: 'wordle_room_first_guess_solves',
     gte: 5,
     points: 40,
-    sortOrder: 80,
+    sortOrder: 150,
+  },
+  {
+    suffix: 'race_winner',
+    tier: 'silver',
+    title: 'Race winner',
+    description: 'Top the standings on a Wordle race.',
+    counter: 'wordle_room_race_wins',
+    points: 30,
+    sortOrder: 160,
+  },
+  {
+    suffix: 'endurance',
+    tier: 'silver',
+    title: 'Endurance',
+    description: 'Finish a 15-word Wordle race.',
+    counter: 'wordle_room_fifteen_word_finishes',
+    points: 30,
+    sortOrder: 170,
+  },
+  {
+    suffix: 'fifteen_solved',
+    tier: 'silver',
+    title: 'Fifteen solved',
+    description: 'Solve 15 words in a single race.',
+    counter: 'wordle_room_fifteen_solved_games',
+    points: 35,
+    sortOrder: 180,
+  },
+  {
+    suffix: 'clean_veteran',
+    tier: 'silver',
+    title: 'Clean veteran',
+    description: 'Finish 5 Wordle races without any hints.',
+    counter: 'wordle_room_no_hint_finished_games',
+    gte: 5,
+    points: 45,
+    sortOrder: 190,
+  },
+  {
+    suffix: 'volume',
+    tier: 'silver',
+    title: 'Volume',
+    description: 'Solve 250 Wordle words across your games.',
+    counter: 'wordle_room_words_solved_total',
+    gte: 250,
+    points: 60,
+    sortOrder: 200,
   },
 
   // ── Gold ────────────────────────────────────────────────────────────────────────────────
@@ -98,6 +200,63 @@ export const WORDLE_ROOM: SystemTrophySpec[] = [
     description: 'Finish a 20-word Wordle race with zero hints used.',
     counter: 'wordle_room_marathon_wins',
     points: 75,
-    sortOrder: 100,
+    sortOrder: 220,
+  },
+  {
+    suffix: 'twenty_solved',
+    tier: 'gold',
+    title: 'Twenty solved',
+    description: 'Solve every word in a 20-word race.',
+    counter: 'wordle_room_twenty_solved_games',
+    points: 60,
+    sortOrder: 230,
+  },
+  {
+    suffix: 'clean_big_race',
+    tier: 'gold',
+    title: 'Clean big race',
+    description: 'Finish a big room (10+ players) without buying a single hint.',
+    counter: 'wordle_room_clean_big_wins',
+    points: 60,
+    sortOrder: 240,
+  },
+  {
+    suffix: 'sniper_master',
+    tier: 'gold',
+    title: 'Sniper master',
+    description: 'Solve 25 words on the first guess across your games.',
+    counter: 'wordle_room_first_guess_solves',
+    gte: 25,
+    points: 80,
+    sortOrder: 250,
+  },
+  {
+    suffix: 'race_veteran',
+    tier: 'gold',
+    title: 'Race veteran',
+    description: 'Win 10 Wordle races.',
+    counter: 'wordle_room_race_wins',
+    gte: 10,
+    points: 100,
+    sortOrder: 260,
+  },
+  {
+    suffix: 'wordle_master',
+    tier: 'gold',
+    title: 'Wordle master',
+    description: 'Solve 500 Wordle words across your games.',
+    counter: 'wordle_room_words_solved_total',
+    gte: 500,
+    points: 150,
+    sortOrder: 270,
+  },
+  {
+    suffix: 'perfect_race',
+    tier: 'gold',
+    title: 'Perfect race',
+    description: 'Finish a race with no hints AND every word solved on the first guess.',
+    counter: 'wordle_room_perfect_race_wins',
+    points: 200,
+    sortOrder: 280,
   },
 ]

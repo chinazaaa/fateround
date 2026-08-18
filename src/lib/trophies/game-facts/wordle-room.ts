@@ -83,22 +83,81 @@ export async function wordleRoomFacts(
   const wordCount = typeof meta.word_count === 'number' ? meta.word_count : 0
   const bigRoom = ctx.seated.length >= 10
 
+  // Aggregate per-word max-guess so we can flag "solved a hard-fought word in the final guess"
+  // etc. Also count total guesses per player for pace flags.
+  const guessesByPlayerWord = new Map<string, number>()
+  const wonWordsByPlayer = new Map<string, Set<number>>()
+  for (const g of guesses) {
+    const key = `${g.player_id}|${g.word_index}`
+    guessesByPlayerWord.set(key, (guessesByPlayerWord.get(key) ?? 0) + 1)
+    if (g.is_correct) {
+      const set = wonWordsByPlayer.get(g.player_id) ?? new Set<number>()
+      set.add(g.word_index)
+      wonWordsByPlayer.set(g.player_id, set)
+    }
+  }
+
   for (const row of progress) {
     const facts: Record<string, number> = {}
     const hintsUsed = Array.isArray(row.hints_used) ? row.hints_used.length : 0
     const firstGuess = firstGuessSolvesByPlayer.get(row.player_id) ?? 0
+    const wonWords = wonWordsByPlayer.get(row.player_id) ?? new Set<number>()
 
     // Lifetime tallies (summable across games).
     if (row.words_solved > 0) facts.wordle_room_words_solved_total = row.words_solved
     if (firstGuess > 0) facts.wordle_room_first_guess_solves = firstGuess
 
-    // Per-game flags.
+    // Per-game flags — 0/1 per game.
     if (row.finished) facts.wordle_room_finished_games = 1
     if (row.finished && hintsUsed === 0) facts.wordle_room_no_hint_finished_games = 1
     if (row.finished && bigRoom) facts.wordle_room_big_room_wins = 1
     if (isNaija) facts.wordle_room_naija_games = 1
-    // Full 20-word race finished without any hints — the "marathon" gold trigger.
     if (row.finished && hintsUsed === 0 && wordCount >= 20) facts.wordle_room_marathon_wins = 1
+
+    // Perfect race: finished, no hints, and every solved word was on the first guess.
+    if (row.finished && hintsUsed === 0 && wonWords.size > 0 && firstGuess >= wonWords.size) {
+      facts.wordle_room_perfect_race_wins = 1
+    }
+
+    // Two-guess wins: any word won on guess 2 (as an intermediate step between "Perfect solve"
+    // and "Perfectionist"). Guess count for a solved word == guesses submitted for it.
+    let twoGuessSolves = 0
+    let lastGaspSolves = 0
+    let anySecondHalfSolves = false
+    for (const w of wonWords) {
+      const used = guessesByPlayerWord.get(`${row.player_id}|${w}`) ?? 0
+      if (used === 2) twoGuessSolves++
+      // Last-gasp: solved on the very last allowed attempt for that word. Attempts scale with word
+      // length in the engine (length+1); we don't have per-word length here, so approximate with
+      // 6 (the standard 5-letter cap). Slight under-counting on 3–4 letter Naija words is OK — it
+      // still fires when the player actually cut it close on any 5-letter word.
+      if (used >= 6) lastGaspSolves++
+      if (wordCount >= 10 && w >= Math.ceil(wordCount / 2)) anySecondHalfSolves = true
+    }
+    if (twoGuessSolves > 0) facts.wordle_room_two_guess_solves = twoGuessSolves
+    if (lastGaspSolves > 0) facts.wordle_room_last_gasp_solves = lastGaspSolves
+
+    // Endurance: finished a race of 10 or more words.
+    if (row.finished && wordCount >= 10) facts.wordle_room_ten_word_finishes = 1
+    // Fifteen-word race finish.
+    if (row.finished && wordCount >= 15) facts.wordle_room_fifteen_word_finishes = 1
+
+    // Second half strong: won at least one word in the back half of a >=10-word race. A cheap
+    // "kept going" signal — didn't tap out early.
+    if (row.finished && anySecondHalfSolves) facts.wordle_room_second_half_finishes = 1
+
+    // Volume-per-game flags: solved N in one race.
+    if (row.words_solved >= 5) facts.wordle_room_five_solved_games = 1
+    if (row.words_solved >= 10) facts.wordle_room_ten_solved_games = 1
+    if (row.words_solved >= 15) facts.wordle_room_fifteen_solved_games = 1
+    if (row.words_solved >= 20) facts.wordle_room_twenty_solved_games = 1
+
+    // Hint discipline: won without hints even in a big race (10+ players).
+    if (row.finished && hintsUsed === 0 && bigRoom) facts.wordle_room_clean_big_wins = 1
+
+    // Race winner — top of the standings for this room. Winners resolved by the room-points
+    // ranker (points-primary), so this is only 1 for the player id(s) in ctx.winners.
+    if (ctx.winners.includes(row.player_id) && row.finished) facts.wordle_room_race_wins = 1
 
     if (Object.keys(facts).length) out.set(row.player_id, facts)
   }
