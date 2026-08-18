@@ -7,8 +7,10 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Animated, Easing, Share, StyleSheet, Text, View } from 'react-native'
+import { useRouter } from 'expo-router'
 import { AppButton } from '@/components/ui/AppButton'
 import { SurfaceCard } from '@/components/ui/SurfaceCard'
+import { DailyNamePrompt } from '@/components/daily/DailyNamePrompt'
 import type { DailyChallengeResult } from '@/hooks/useDailyChallengeSession'
 import {
   DAILY_GAME_EMOJIS,
@@ -72,6 +74,7 @@ export function DailyChallengeResults({
 }: Props) {
   const styles = useThemedStyles(makeStyles)
   const theme = useTheme()
+  const router = useRouter()
   const slug = DAILY_GAME_TYPE_TO_SLUG[gameType]
 
   const isPointsGame = DAILY_GAME_PRIMARY_METRIC[gameType] === 'score'
@@ -156,9 +159,20 @@ export function DailyChallengeResults({
           ) : null}
 
           {grid ? <Text style={styles.grid}>{grid}</Text> : null}
+
+          {/* Same slot the web finish screen uses — nudges a first-time player
+              to pick a name so their leaderboard row isn't the auto handle. */}
+          <View style={styles.nameSlot}>
+            <DailyNamePrompt />
+          </View>
         </View>
       </SurfaceCard>
 
+      <AppButton
+        label="View leaderboard"
+        fullWidth
+        onPress={() => router.push(`/daily-challenges/leaderboard/${slug}` as never)}
+      />
       <AppButton label="Share result" tone="secondary" fullWidth onPress={() => void share()} />
       <AppButton label="Back to Daily Challenges" tone="ghost" fullWidth onPress={onBackToHub} />
     </View>
@@ -205,6 +219,7 @@ const makeStyles = (theme: Theme) =>
       marginTop: 4,
     },
     zeroNote: { color: theme.textMuted, fontSize: theme.type.caption.size, marginTop: 12, textAlign: 'center' },
+    nameSlot: { alignSelf: 'stretch', marginTop: 18 },
     grid: {
       color: theme.text,
       fontFamily: 'Menlo',

@@ -4,7 +4,8 @@ import type { GameType } from '@fateround/shared'
 import { SurfaceCard } from '@/components/ui/SurfaceCard'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
-import { parseParticipantsCsv, pickCsvText } from '@/lib/file-import'
+import { parseParticipantsCsv, pickCsvText, shareTextAsFile } from '@/lib/file-import'
+import { PARTICIPANTS_SAMPLE } from '@/lib/sample-csv'
 import {
   emptyParticipant,
   isCustomGame,
@@ -112,6 +113,12 @@ export function ParticipantListEditor({ gameType, people, onChange }: Props) {
           </Pressable>
           <Pressable style={styles.importButton} onPress={() => void onImport()} disabled={importing}>
             <Text style={styles.importButtonText}>{importing ? 'Reading…' : '⭱ Import CSV'}</Text>
+          </Pressable>
+          <Pressable
+            style={styles.importButton}
+            onPress={() => void shareTextAsFile('participants-sample.csv', PARTICIPANTS_SAMPLE)}
+          >
+            <Text style={styles.importButtonText}>⭳ Sample CSV</Text>
           </Pressable>
         </View>
 

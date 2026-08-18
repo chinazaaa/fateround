@@ -5,7 +5,8 @@ import { SurfaceCard } from '@/components/ui/SurfaceCard'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
 import { fetchLibraryPack, fetchLibraryPacks, type LibraryPackSummary } from '@/lib/api'
-import { pickCsvText, parseWstDeckCsv } from '@/lib/file-import'
+import { pickCsvText, parseWstDeckCsv, shareTextAsFile } from '@/lib/file-import'
+import { sampleCsvForGameType } from '@/lib/sample-csv'
 import { WST_PLATFORM_DECK, parseStoredWstDeck } from '@/lib/who-said-this-deck'
 import type { WstCreateState, WstSource } from '@/lib/create-settings/who-said-this'
 
@@ -178,6 +179,8 @@ function WstDeckUpload({ wst, onChange }: Props) {
     }
   }
 
+  const sample = sampleCsvForGameType('who_said_this')
+
   return (
     <View style={styles.uploadWrap}>
       <Pressable style={styles.uploadButton} onPress={() => void onUpload()} disabled={importing}>
@@ -189,6 +192,11 @@ function WstDeckUpload({ wst, onChange }: Props) {
               : 'Upload deck (CSV)'}
         </Text>
       </Pressable>
+      {sample ? (
+        <Pressable onPress={() => void shareTextAsFile(sample.filename, sample.content)}>
+          <Text style={styles.sampleLink}>⭳ Download sample CSV</Text>
+        </Pressable>
+      ) : null}
       {error ? <Text style={styles.error}>{error}</Text> : null}
       <Text style={styles.hint}>
         Columns: quote, option_a, option_b, option_c, option_d, correct. The “correct” column is the answer letter
@@ -232,4 +240,5 @@ const makeStyles = (theme: Theme) =>
       alignItems: 'center',
     },
     uploadButtonText: { color: theme.primaryMuted, fontSize: 15, fontWeight: '800' },
+    sampleLink: { color: theme.primary, fontSize: 13, textDecorationLine: 'underline', fontWeight: '600' },
   })

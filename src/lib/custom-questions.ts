@@ -1020,6 +1020,7 @@ export function questionSourceOptions(gameType: GameType | string): {
     return [
       { value: 'platform', label: 'Platform', hint: 'Use our built-in puzzle bank.' },
       { value: 'library', label: 'Library', hint: 'Pick a community puzzle pack.' },
+      { value: 'custom', label: 'Your own', hint: 'Upload a JSON file — one puzzle per line, 4 groups × 4 words.' },
     ]
   }
   if (isWordleRoomGame(gameType)) {

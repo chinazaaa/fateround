@@ -141,23 +141,3 @@ export function isDailyChallengeLive(today: string): boolean {
   return today >= DAILY_CHALLENGE_EPOCH
 }
 
-/**
- * Which daily games have a native mobile play surface today. Games not in this
- * set open the web version (Linking) as a fallback so every hub entry works
- * while the native ports land incrementally.
- */
-export const NATIVE_DAILY_GAMES: ReadonlySet<DailyChallengeGameType> = new Set([
-  'trivia',
-  'word_scramble',
-  'sudoku',
-  'wordle',
-  'word_search',
-  'word_hunt',
-  'word_grouping',
-  'codenames_codeword',
-  'whot_puzzle',
-])
-
-export function hasNativeDailyPlay(gameType: DailyChallengeGameType): boolean {
-  return NATIVE_DAILY_GAMES.has(gameType)
-}

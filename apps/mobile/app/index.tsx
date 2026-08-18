@@ -127,11 +127,12 @@ export default function HomeScreen() {
             onPress={() => router.push('/daily-challenges' as never)}
           />
           <AppButton
-            label="🏆 Community leaderboard"
+            label="🏆 Leaderboards"
             tone="ghost"
-            // Cast: expo-router's typed href doesn't know about the /community
-            // route registered in _layout.tsx.
-            onPress={() => router.push('/community' as never)}
+            // Cast: expo-router's typed href doesn't know about the
+            // /leaderboard route registered in _layout.tsx. Hub screen has
+            // three cards — daily, trophies, community — matching web.
+            onPress={() => router.push('/leaderboard' as never)}
           />
         </View>
 

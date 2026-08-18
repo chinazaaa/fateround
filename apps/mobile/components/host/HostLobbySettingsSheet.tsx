@@ -657,15 +657,19 @@ export function HostLobbySettingsSheet({
       if (nextLabel !== (game.content_label ?? '').trim()) patch.content_label = nextLabel
     }
     if (isWordGrouping) {
-      // Mirrors web WordGroupingLobbySettings: Platform clears the pool, Library sends the picked
-      // pack's questions. Server folds either into question_source + custom_questions.
+      // Mirrors web WordGroupingLobbySettings: Platform clears the pool; Library / Your own send
+      // the picked pack or uploaded CSV. Server folds either into question_source + custom_questions.
       const currentIsCustom =
         game.question_source === 'custom' && Array.isArray(game.custom_questions) && game.custom_questions.length > 0
       if (wordGrouping.source === 'platform') {
         if (currentIsCustom) board.puzzle_custom_questions = []
       } else {
         if (wordGrouping.customQuestions.length < 4) {
-          setError('Pick a library pack with at least 4 puzzles')
+          setError(
+            wordGrouping.source === 'library'
+              ? 'Pick a library pack with at least 4 puzzles'
+              : 'Upload at least 4 puzzles'
+          )
           return
         }
         const currentPool = currentIsCustom ? (game.custom_questions as unknown[]) : []

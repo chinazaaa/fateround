@@ -33,6 +33,24 @@ export const WORDLE_ROOM_DEFAULT_MAX_PLAYERS = 20
 export const WORDLE_ROOM_MIN_GUESS_INTERVAL_MS = 800
 export const WORDLE_ROOM_HINT_COST = 300
 
+/**
+ * Sample CSV shown as a downloadable template under "Your own" for Wordle pools. The parser
+ * (`parsePuzzleThemeCsv('wordle_room', csv)` on web) accepts `word,hint` per line — hint is
+ * optional. Words must be 3–8 letters; the parser normalises to lowercase + strips non-a-z.
+ */
+export const WORDLE_ROOM_SAMPLE_CSV = [
+  'word,hint',
+  'apple,A common fruit',
+  'happy,Feeling of joy',
+  'chair,You sit on it',
+  'music,Sounds arranged into songs',
+  'river,Flowing water',
+  'plant,Grows in soil',
+  'ocean,Big salty water',
+  'smile,Curved mouth of happiness',
+  '',
+].join('\n')
+
 export interface WordleRoomMetadata {
   category: WordleCategoryId
   categoryLabel: string
