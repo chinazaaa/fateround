@@ -926,6 +926,14 @@ function CreateGameInner() {
               timer_seconds: 30,
             }
           : {}),
+        ...(isTrollRunGame(type)
+          ? {
+              participant_mode: 'joiners' as const,
+              anonymous: true,
+              rounds_count: 5,
+              timer_seconds: 120,
+            }
+          : {}),
         ...(isWhoSaidThis(type)
           ? {
               participant_mode: 'import' as const,

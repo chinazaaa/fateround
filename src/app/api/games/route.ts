@@ -607,7 +607,8 @@ export async function POST(req: NextRequest) {
     isWordScrambleGame(game_type) ||
     isWordGroupingGame(game_type) ||
     isLandmineGame(game_type) ||
-    isWordleRoomGame(game_type)
+    isWordleRoomGame(game_type) ||
+    isTrollRunGame(game_type)
       ? 'joiners'
       : isWhoSaidThis(game_type)
         ? 'joiners'
