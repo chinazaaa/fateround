@@ -135,3 +135,7 @@ export function isPingPongGame(gameType: GameType | string | undefined): boolean
 export function isWordGroupingGame(gameType: GameType | string | undefined): boolean {
   return eq(gameType, 'word_grouping')
 }
+
+export function isWordleRoomGame(gameType: GameType | string | undefined): boolean {
+  return eq(gameType, 'wordle_room')
+}

@@ -40,6 +40,8 @@ export const GAME_LABELS: Partial<Record<GameType, string>> = {
   secret_message: 'Secret Message',
   landmine: 'Landmine',
   ping_pong: 'Ping Pong',
+  wordle_room: 'Wordle',
+  word_grouping: 'Word Grouping',
 }
 
 export { MOBILE_SUPPORTED_GAMES }
