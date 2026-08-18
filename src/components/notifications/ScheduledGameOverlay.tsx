@@ -302,11 +302,15 @@ export function ScheduledGameOverlay({ gameCode }: { gameCode: string }) {
         ) : (
           <div className="glass-card !p-4 space-y-3 text-left">
             <p className="text-sm font-bold text-body">
-              {rsvpCount === 0 ? 'Be the first to RSVP' : `${rsvpCount} ${rsvpCount === 1 ? 'person' : 'people'} RSVP’d`}
+              {rsvpCount === 0
+                ? 'Be the first to RSVP'
+                : `${rsvpCount} ${rsvpCount === 1 ? 'person' : 'people'} RSVP’d`}
             </p>
             {!rsvped ? (
               <label className="block space-y-1">
-                <span className="text-xs uppercase tracking-wide text-muted">Your name (so the host knows it’s you)</span>
+                <span className="text-xs uppercase tracking-wide text-muted">
+                  Your name (so the host knows it’s you)
+                </span>
                 <input
                   type="text"
                   value={displayName}
