@@ -96,7 +96,11 @@ export function CheckersPlayerView({ gameCode }: { gameCode: string }) {
     ['players', { table: 'games', column: 'id' }, 'checkers_sessions'],
     () => bootstrap.load(),
     !!bootstrap.game,
-    bootstrap.game?.status
+    bootstrap.game?.status,
+    // Reconcile every 10s during active play: checkers has a cumulative clock that loses the game
+    // on time, so a silently-stale realtime channel would otherwise strand a waiting player on the
+    // wrong turn, ticking the wrong clock, until they lose. Opt into the safety poll like chess.
+    10_000
   )
 
   const activeSession = session ?? bootstrap.gameState

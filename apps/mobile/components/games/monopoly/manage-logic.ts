@@ -3,16 +3,18 @@
 // monopoly-trade-messages.ts). Kept local to the monopoly game directory so it
 // can't collide with shared files edited by other agents.
 import {
-  MONOPOLY_BOARD,
+  MONOPOLY_BOARD_SIZE,
   MONOPOLY_HOTEL_LEVEL,
   MONOPOLY_HOUSES_UNDER_HOTEL,
   MONOPOLY_MAX_HOUSES_PER_PROPERTY,
   countOwnedInGroup,
   groupHasMortgage,
+  monopolyBoardForSize,
   ownsColorMonopoly,
   spaceAt,
   spacesInGroup,
   type BuildingLevel,
+  type MonopolyBoardSize,
   type MonopolyColorGroup,
   type MonopolySpace,
 } from '@fateround/shared/monopoly-board'
@@ -55,26 +57,40 @@ export function buildingLevel(buildings: Record<string, number>, spaceIndex: num
   return Math.min(5, Math.max(0, level)) as BuildingLevel
 }
 
-export function playerProperties(owners: Record<string, string>, playerId: string): MonopolySpace[] {
-  return MONOPOLY_BOARD.filter((s) => owners[String(s.index)] === playerId)
+export function playerProperties(
+  owners: Record<string, string>,
+  playerId: string,
+  boardSize: MonopolyBoardSize = MONOPOLY_BOARD_SIZE
+): MonopolySpace[] {
+  return monopolyBoardForSize(boardSize).filter((s) => owners[String(s.index)] === playerId)
 }
 
 // ---------------------------------------------------------------------------
 // Rent computation (for display)
 // ---------------------------------------------------------------------------
-function stationRent(owners: Record<string, string>, ownerId: string, baseRent: number): number {
+function stationRent(
+  owners: Record<string, string>,
+  ownerId: string,
+  baseRent: number,
+  boardSize: MonopolyBoardSize
+): number {
   const count = owners
     ? Object.entries(owners).filter(([idx, id]) => {
-        const space = spaceAt(Number(idx))
+        const space = spaceAt(Number(idx), boardSize)
         return id === ownerId && space.type === 'station'
       }).length
     : 0
   return baseRent * 2 ** Math.max(0, count - 1)
 }
 
-function utilityRent(owners: Record<string, string>, ownerId: string, diceTotal: number): number {
+function utilityRent(
+  owners: Record<string, string>,
+  ownerId: string,
+  diceTotal: number,
+  boardSize: MonopolyBoardSize
+): number {
   const count = Object.entries(owners).filter(([idx, id]) => {
-    const space = spaceAt(Number(idx))
+    const space = spaceAt(Number(idx), boardSize)
     return id === ownerId && space.type === 'utility'
   }).length
   return diceTotal * (count >= 2 ? 10 : 4)
@@ -86,12 +102,13 @@ export function computeRent(
   ownerId: string,
   diceTotal: number,
   buildings: Record<string, number>,
-  mortgaged: Record<string, boolean>
+  mortgaged: Record<string, boolean>,
+  boardSize: MonopolyBoardSize = MONOPOLY_BOARD_SIZE
 ): number {
   if (mortgaged[String(space.index)]) return 0
 
-  if (space.type === 'station') return stationRent(owners, ownerId, space.rent ?? 25)
-  if (space.type === 'utility') return utilityRent(owners, ownerId, diceTotal)
+  if (space.type === 'station') return stationRent(owners, ownerId, space.rent ?? 25, boardSize)
+  if (space.type === 'utility') return utilityRent(owners, ownerId, diceTotal, boardSize)
 
   if (space.type === 'property' && space.rentTable) {
     const level = buildingLevel(buildings, space.index)
@@ -99,8 +116,8 @@ export function computeRent(
     const base = space.rent ?? space.rentTable[0] ?? 0
     if (
       space.color &&
-      ownsColorMonopoly(owners, ownerId, space.color) &&
-      !groupHasMortgage(space.color, ownerId, owners, mortgaged)
+      ownsColorMonopoly(owners, ownerId, space.color, boardSize) &&
+      !groupHasMortgage(space.color, ownerId, owners, mortgaged, boardSize)
     ) {
       return base * 2
     }
@@ -117,20 +134,22 @@ function canBuildOnGroup(
   group: MonopolyColorGroup,
   ownerId: string,
   owners: Record<string, string>,
-  mortgaged: Record<string, boolean>
+  mortgaged: Record<string, boolean>,
+  boardSize: MonopolyBoardSize
 ): boolean {
   if (group === 'station' || group === 'utility') return false
-  if (!ownsColorMonopoly(owners, ownerId, group)) return false
-  return !spacesInGroup(group).some((s) => mortgaged[String(s.index)])
+  if (!ownsColorMonopoly(owners, ownerId, group, boardSize)) return false
+  return !spacesInGroup(group, boardSize).some((s) => mortgaged[String(s.index)])
 }
 
 function minBuildingsInGroup(
   group: MonopolyColorGroup,
   ownerId: string,
   owners: Record<string, string>,
-  buildings: Record<string, number>
+  buildings: Record<string, number>,
+  boardSize: MonopolyBoardSize
 ): number {
-  const sites = spacesInGroup(group).filter((s) => owners[String(s.index)] === ownerId)
+  const sites = spacesInGroup(group, boardSize).filter((s) => owners[String(s.index)] === ownerId)
   if (sites.length === 0) return 0
   return Math.min(...sites.map((s) => buildingLevel(buildings, s.index)))
 }
@@ -139,9 +158,10 @@ function maxBuildingsInGroup(
   group: MonopolyColorGroup,
   ownerId: string,
   owners: Record<string, string>,
-  buildings: Record<string, number>
+  buildings: Record<string, number>,
+  boardSize: MonopolyBoardSize
 ): number {
-  const sites = spacesInGroup(group).filter((s) => owners[String(s.index)] === ownerId)
+  const sites = spacesInGroup(group, boardSize).filter((s) => owners[String(s.index)] === ownerId)
   if (sites.length === 0) return 0
   return Math.max(...sites.map((s) => buildingLevel(buildings, s.index)))
 }
@@ -152,16 +172,17 @@ export function canAddHouse(
   owners: Record<string, string>,
   buildings: Record<string, number>,
   mortgaged: Record<string, boolean>,
-  housesInBank: number
+  housesInBank: number,
+  boardSize: MonopolyBoardSize = MONOPOLY_BOARD_SIZE
 ): boolean {
-  const space = spaceAt(spaceIndex)
+  const space = spaceAt(spaceIndex, boardSize)
   if (space.type !== 'property' || !space.color || !space.houseCost) return false
   if (owners[String(spaceIndex)] !== ownerId) return false
-  if (!canBuildOnGroup(space.color, ownerId, owners, mortgaged)) return false
+  if (!canBuildOnGroup(space.color, ownerId, owners, mortgaged, boardSize)) return false
   const level = buildingLevel(buildings, spaceIndex)
   if (level >= MONOPOLY_MAX_HOUSES_PER_PROPERTY) return false
   if (housesInBank < 1) return false
-  const min = minBuildingsInGroup(space.color, ownerId, owners, buildings)
+  const min = minBuildingsInGroup(space.color, ownerId, owners, buildings, boardSize)
   return level <= min
 }
 
@@ -171,16 +192,17 @@ export function canAddHotel(
   owners: Record<string, string>,
   buildings: Record<string, number>,
   mortgaged: Record<string, boolean>,
-  hotelsInBank: number
+  hotelsInBank: number,
+  boardSize: MonopolyBoardSize = MONOPOLY_BOARD_SIZE
 ): boolean {
-  const space = spaceAt(spaceIndex)
+  const space = spaceAt(spaceIndex, boardSize)
   if (space.type !== 'property' || !space.color) return false
   if (owners[String(spaceIndex)] !== ownerId) return false
-  if (!canBuildOnGroup(space.color, ownerId, owners, mortgaged)) return false
+  if (!canBuildOnGroup(space.color, ownerId, owners, mortgaged, boardSize)) return false
   const siteLevel = buildingLevel(buildings, spaceIndex)
   if (siteLevel !== MONOPOLY_MAX_HOUSES_PER_PROPERTY) return false
   if (hotelsInBank < 1) return false
-  const groupSites = spacesInGroup(space.color).filter((s) => owners[String(s.index)] === ownerId)
+  const groupSites = spacesInGroup(space.color, boardSize).filter((s) => owners[String(s.index)] === ownerId)
   return groupSites.every((s) => {
     const level = buildingLevel(buildings, s.index)
     return level === MONOPOLY_MAX_HOUSES_PER_PROPERTY || level === MONOPOLY_HOTEL_LEVEL
@@ -191,14 +213,15 @@ export function canRemoveHouse(
   spaceIndex: number,
   ownerId: string,
   owners: Record<string, string>,
-  buildings: Record<string, number>
+  buildings: Record<string, number>,
+  boardSize: MonopolyBoardSize = MONOPOLY_BOARD_SIZE
 ): boolean {
-  const space = spaceAt(spaceIndex)
+  const space = spaceAt(spaceIndex, boardSize)
   if (space.type !== 'property' || !space.color) return false
   if (owners[String(spaceIndex)] !== ownerId) return false
   const level = buildingLevel(buildings, spaceIndex)
   if (level <= 0 || level === MONOPOLY_HOTEL_LEVEL) return false
-  const max = maxBuildingsInGroup(space.color, ownerId, owners, buildings)
+  const max = maxBuildingsInGroup(space.color, ownerId, owners, buildings, boardSize)
   return level >= max
 }
 
@@ -224,7 +247,8 @@ export function canRemoveHotel(
   ownerId: string,
   owners: Record<string, string>,
   buildings: Record<string, number>,
-  housesInBank: number
+  housesInBank: number,
+  _boardSize: MonopolyBoardSize = MONOPOLY_BOARD_SIZE
 ): boolean {
   return hotelRemovalBlocker(spaceIndex, ownerId, owners, buildings, housesInBank) === null
 }
@@ -239,6 +263,7 @@ export function getMonopolyBuildActionCount(
     mortgaged_properties?: unknown
     houses_in_bank?: number
     hotels_in_bank?: number
+    board_size?: number
   },
   myPlayerId: string
 ): number {
@@ -247,11 +272,12 @@ export function getMonopolyBuildActionCount(
   const mortgaged = parseMortgaged(board.mortgaged_properties)
   const housesInBank = board.houses_in_bank ?? 32
   const hotelsInBank = board.hotels_in_bank ?? 12
+  const boardSize: MonopolyBoardSize = board.board_size === 48 ? 48 : MONOPOLY_BOARD_SIZE
   let count = 0
 
-  for (const space of playerProperties(owners, myPlayerId)) {
-    if (canAddHouse(space.index, myPlayerId, owners, buildings, mortgaged, housesInBank)) count += 1
-    if (canAddHotel(space.index, myPlayerId, owners, buildings, mortgaged, hotelsInBank)) count += 1
+  for (const space of playerProperties(owners, myPlayerId, boardSize)) {
+    if (canAddHouse(space.index, myPlayerId, owners, buildings, mortgaged, housesInBank, boardSize)) count += 1
+    if (canAddHotel(space.index, myPlayerId, owners, buildings, mortgaged, hotelsInBank, boardSize)) count += 1
   }
 
   return count
@@ -269,6 +295,10 @@ export const COLOR_SET_ORDER: MonopolyColorGroup[] = [
   'yellow',
   'green',
   'dark_blue',
+  'teal',
+  'violet',
+  'indigo',
+  'coral',
   'station',
   'utility',
 ]
@@ -282,6 +312,10 @@ export const COLOR_GROUP_LABELS: Record<MonopolyColorGroup, string> = {
   yellow: 'Yellow',
   green: 'Green',
   dark_blue: 'Dark blue',
+  teal: 'Teal',
+  violet: 'Violet',
+  indigo: 'Indigo',
+  coral: 'Coral',
   station: 'Stations',
   utility: 'Utilities',
 }
@@ -296,34 +330,40 @@ export type ColorGroupStatus = {
 
 export function buildColorGroupStatuses(
   owners: Record<string, string>,
-  playerId: string
+  playerId: string,
+  boardSize: MonopolyBoardSize = MONOPOLY_BOARD_SIZE
 ): Map<MonopolyColorGroup, ColorGroupStatus> {
   const map = new Map<MonopolyColorGroup, ColorGroupStatus>()
   for (const group of COLOR_SET_ORDER) {
-    const spaces = spacesInGroup(group)
-    const owned = countOwnedInGroup(owners, playerId, group)
+    const spaces = spacesInGroup(group, boardSize)
+    const owned = countOwnedInGroup(owners, playerId, group, boardSize)
     map.set(group, {
       group,
       label: COLOR_GROUP_LABELS[group],
       owned,
       total: spaces.length,
-      complete: owned > 0 && ownsColorMonopoly(owners, playerId, group),
+      complete: owned > 0 && ownsColorMonopoly(owners, playerId, group, boardSize),
     })
   }
   return map
 }
 
 /** Property groups the player has a stake in, in board order. */
-export function ownedColorGroups(owners: Record<string, string>, playerId: string): MonopolyColorGroup[] {
-  return COLOR_SET_ORDER.filter((group) => countOwnedInGroup(owners, playerId, group) > 0)
+export function ownedColorGroups(
+  owners: Record<string, string>,
+  playerId: string,
+  boardSize: MonopolyBoardSize = MONOPOLY_BOARD_SIZE
+): MonopolyColorGroup[] {
+  return COLOR_SET_ORDER.filter((group) => countOwnedInGroup(owners, playerId, group, boardSize) > 0)
 }
 
 export function propertiesInGroupForPlayer(
   owners: Record<string, string>,
   playerId: string,
-  group: MonopolyColorGroup
+  group: MonopolyColorGroup,
+  boardSize: MonopolyBoardSize = MONOPOLY_BOARD_SIZE
 ): MonopolySpace[] {
-  return spacesInGroup(group).filter((s) => owners[String(s.index)] === playerId)
+  return spacesInGroup(group, boardSize).filter((s) => owners[String(s.index)] === playerId)
 }
 
 // ---------------------------------------------------------------------------
@@ -334,7 +374,7 @@ export type TradeSideItem =
   | { kind: 'property'; name: string; index: number }
   | { kind: 'jail_cards'; count: number }
 
-export function normalizeTradePropertyList(raw: unknown): number[] {
+export function normalizeTradePropertyList(raw: unknown, boardSize: MonopolyBoardSize = MONOPOLY_BOARD_SIZE): number[] {
   const values: unknown[] = []
   if (raw == null) return []
   if (Array.isArray(raw)) values.push(...raw)
@@ -344,16 +384,20 @@ export function normalizeTradePropertyList(raw: unknown): number[] {
 
   const seen = new Set<number>()
   const normalized: number[] = []
+  const maxIndex = boardSize - 1
   for (const value of values) {
     const index = Number(value)
-    if (!Number.isInteger(index) || index < 0 || index > 39 || seen.has(index)) continue
+    if (!Number.isInteger(index) || index < 0 || index > maxIndex || seen.has(index)) continue
     seen.add(index)
     normalized.push(index)
   }
   return normalized
 }
 
-export function normalizePendingTrade(raw: unknown): MonopolyPendingTrade | null {
+export function normalizePendingTrade(
+  raw: unknown,
+  boardSize: MonopolyBoardSize = MONOPOLY_BOARD_SIZE
+): MonopolyPendingTrade | null {
   if (!raw || typeof raw !== 'object') return null
   const trade = raw as Record<string, unknown>
   if (typeof trade.from_player_id !== 'string' || typeof trade.to_player_id !== 'string') return null
@@ -361,34 +405,49 @@ export function normalizePendingTrade(raw: unknown): MonopolyPendingTrade | null
     from_player_id: trade.from_player_id,
     to_player_id: trade.to_player_id,
     offer_cash: Number(trade.offer_cash) || 0,
-    offer_properties: normalizeTradePropertyList(trade.offer_properties),
+    offer_properties: normalizeTradePropertyList(trade.offer_properties, boardSize),
     offer_get_out_cards: Number(trade.offer_get_out_cards) || 0,
     request_cash: Number(trade.request_cash) || 0,
-    request_properties: normalizeTradePropertyList(trade.request_properties),
+    request_properties: normalizeTradePropertyList(trade.request_properties, boardSize),
     request_get_out_cards: Number(trade.request_get_out_cards) || 0,
   }
 }
 
-export function buildTradeSideItems(cash: number, propertyIndexes: unknown, jailCards = 0): TradeSideItem[] {
+export function buildTradeSideItems(
+  cash: number,
+  propertyIndexes: unknown,
+  jailCards = 0,
+  boardSize: MonopolyBoardSize = MONOPOLY_BOARD_SIZE
+): TradeSideItem[] {
   const items: TradeSideItem[] = []
   if (cash > 0) items.push({ kind: 'cash', amount: cash })
-  for (const index of normalizeTradePropertyList(propertyIndexes)) {
-    items.push({ kind: 'property', name: spaceAt(index).name, index })
+  for (const index of normalizeTradePropertyList(propertyIndexes, boardSize)) {
+    items.push({ kind: 'property', name: spaceAt(index, boardSize).name, index })
   }
   if (jailCards > 0) items.push({ kind: 'jail_cards', count: jailCards })
   return items
 }
 
-export function tradeSideHasValue(cash: number, propertyIndexes: unknown, jailCards = 0): boolean {
-  return cash > 0 || normalizeTradePropertyList(propertyIndexes).length > 0 || jailCards > 0
+export function tradeSideHasValue(
+  cash: number,
+  propertyIndexes: unknown,
+  jailCards = 0,
+  boardSize: MonopolyBoardSize = MONOPOLY_BOARD_SIZE
+): boolean {
+  return cash > 0 || normalizeTradePropertyList(propertyIndexes, boardSize).length > 0 || jailCards > 0
 }
 
-export function tradeSideCountLabel(cash: number, propertyIndexes: unknown, jailCards = 0): string | null {
-  const propertyCount = normalizeTradePropertyList(propertyIndexes).length
+export function tradeSideCountLabel(
+  cash: number,
+  propertyIndexes: unknown,
+  jailCards = 0,
+  boardSize: MonopolyBoardSize = MONOPOLY_BOARD_SIZE
+): string | null {
+  const propertyCount = normalizeTradePropertyList(propertyIndexes, boardSize).length
   const parts: string[] = []
   if (propertyCount > 0) parts.push(`${propertyCount} propert${propertyCount === 1 ? 'y' : 'ies'}`)
   if (cash > 0) parts.push('cash')
-  if (jailCards > 0) parts.push(`${jailCards} Jail card${jailCards === 1 ? '' : 's'}`)
+  if (jailCards > 0) parts.push(`${jailCards} skip-the-queue card${jailCards === 1 ? '' : 's'}`)
   if (parts.length === 0) return null
   return parts.join(' · ')
 }

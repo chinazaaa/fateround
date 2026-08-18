@@ -5,7 +5,7 @@ import { allOf, counterCrit, type SystemTrophySpec } from './types'
 // lives in the shared base so it shows (and can be earned toward) on all three boards.
 const CROSS_VARIANT_CHAMPION: SystemTrophySpec = {
   suffix: 'grandmaster',
-  tier: 'platinum',
+  tier: 'gold',
   title: 'Draughts Grandmaster',
   description: 'Win a game on all three boards: American 8x8, International 10x10 and Nigerian.',
   criteria: allOf(
@@ -239,7 +239,7 @@ const CHECKERS_BASE: SystemTrophySpec[] = [
   // Platinum
   {
     suffix: 'untouched',
-    tier: 'platinum',
+    tier: 'gold',
     title: 'Untouched',
     description: 'Win without losing a single piece.',
     counter: 'checkers_untouched_wins',
@@ -263,7 +263,7 @@ const CHECKERS_10_EXTRA: SystemTrophySpec[] = [
   },
   {
     suffix: 'majority_rule',
-    tier: 'platinum',
+    tier: 'gold',
     title: 'Majority rule',
     description: 'Take a forced majority capture of five pieces in one sequence.',
     counter: 'checkers_majority_rule_games',

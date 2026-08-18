@@ -473,7 +473,7 @@ export function WordHuntHostView({ gameCode, hostToken }: { gameCode: string; ho
           hostToken={hostToken}
           onEnded={load}
           label="End game"
-          icon={<ExitIcon size={16} />}
+          icon={<ExitIcon size={14} />}
           confirmTitle="End this hunt early?"
           confirmMessage="The round will end and players will see the final scores."
           className="btn-danger-soft"

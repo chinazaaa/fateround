@@ -221,7 +221,7 @@ export const AYO: SystemTrophySpec[] = [
   // ── Platinum ──────────────────────────────────────────────────────────────────────────────
   {
     suffix: 'total_control',
-    tier: 'platinum',
+    tier: 'gold',
     title: 'Total Control',
     description: 'Capture forty-four or more of the forty-eight seeds in one game.',
     counter: 'ayo_total_control_games',
@@ -231,7 +231,7 @@ export const AYO: SystemTrophySpec[] = [
   },
   {
     suffix: 'undefeated_ota',
-    tier: 'platinum',
+    tier: 'gold',
     title: 'Undefeated Ọta',
     description: 'Win five games in a row.',
     counter: 'ayo_streak5_wins',
@@ -241,7 +241,7 @@ export const AYO: SystemTrophySpec[] = [
   },
   {
     suffix: 'mo_ki_ota',
-    tier: 'platinum',
+    tier: 'gold',
     title: 'Mo Ki Ọta',
     description: 'Win a game having captured a house on every one of your moves.',
     counter: 'ayo_perfect_capture_wins',

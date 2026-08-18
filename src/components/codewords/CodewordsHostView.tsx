@@ -691,6 +691,7 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
       {waitingLobby ? (
         <HostLobby
           gameCode={gameCode}
+          questionSource={game.question_source}
           hostToken={hostToken}
           game={game}
           gameTypeLabel={cfg.label}

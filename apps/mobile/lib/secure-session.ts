@@ -3,6 +3,34 @@ import type { PlayerGender } from '@fateround/shared'
 
 const playerKey = (gameCode: string) => `kmk_player_${gameCode.toUpperCase()}`
 const hostKey = (gameCode: string) => `game_host_${gameCode.toUpperCase()}`
+// Manifest of game codes this device currently holds a host token for. Kept
+// in sync by setHostToken/clearHostToken so the Home "upcoming" list can
+// enumerate hosted scheduled games without scanning every SecureStore key
+// (SecureStore has no listKeys API on iOS).
+const HOST_CODES_MANIFEST_KEY = 'game_host_codes_v1'
+
+async function readHostCodesManifest(): Promise<string[]> {
+  try {
+    const raw = await SecureStore.getItemAsync(HOST_CODES_MANIFEST_KEY)
+    if (!raw) return []
+    const parsed = JSON.parse(raw) as unknown
+    return Array.isArray(parsed) ? (parsed.filter((x) => typeof x === 'string') as string[]) : []
+  } catch {
+    return []
+  }
+}
+
+async function writeHostCodesManifest(codes: string[]): Promise<void> {
+  try {
+    await SecureStore.setItemAsync(HOST_CODES_MANIFEST_KEY, JSON.stringify(codes))
+  } catch {
+    // Non-fatal — the strip just won't include hosted rows.
+  }
+}
+
+export async function getHostedGameCodes(): Promise<string[]> {
+  return readHostCodesManifest()
+}
 
 export type PlayerSession = {
   playerId: string
@@ -55,9 +83,16 @@ export async function getHostToken(gameCode: string): Promise<string | null> {
 }
 
 export async function setHostToken(gameCode: string, token: string): Promise<void> {
-  await SecureStore.setItemAsync(hostKey(gameCode), token)
+  const code = gameCode.toUpperCase()
+  await SecureStore.setItemAsync(hostKey(code), token)
+  const codes = await readHostCodesManifest()
+  if (!codes.includes(code)) await writeHostCodesManifest([...codes, code])
 }
 
 export async function clearHostToken(gameCode: string): Promise<void> {
-  await SecureStore.deleteItemAsync(hostKey(gameCode))
+  const code = gameCode.toUpperCase()
+  await SecureStore.deleteItemAsync(hostKey(code))
+  const codes = await readHostCodesManifest()
+  const next = codes.filter((c) => c !== code)
+  if (next.length !== codes.length) await writeHostCodesManifest(next)
 }

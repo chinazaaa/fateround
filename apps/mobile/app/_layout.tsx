@@ -37,6 +37,21 @@ function ThemedStack() {
         <Stack.Screen name="create" options={{ title: 'Create game' }} />
         <Stack.Screen name="game/[code]" options={{ title: 'Game' }} />
         <Stack.Screen name="host/[code]" options={{ title: 'Host' }} />
+        <Stack.Screen name="play-solo/whot" options={{ title: 'Whot — solo' }} />
+        <Stack.Screen name="play-solo/ayo" options={{ title: 'Ayo — solo' }} />
+        <Stack.Screen name="play-solo/ludo" options={{ title: 'Ludo — solo' }} />
+        <Stack.Screen name="play-solo/yahtzee" options={{ title: 'Five Dice — solo' }} />
+        <Stack.Screen name="play-solo/uno" options={{ title: 'Match Up — solo' }} />
+        <Stack.Screen name="play-solo/crazy-eights" options={{ title: 'Crazy Eights — solo' }} />
+        <Stack.Screen name="community" options={{ title: 'Community' }} />
+        <Stack.Screen name="browse" options={{ title: 'Browse' }} />
+        <Stack.Screen name="notifications" options={{ title: 'Notifications' }} />
+        <Stack.Screen name="daily-challenges/index" options={{ title: 'Daily Challenges' }} />
+        <Stack.Screen name="daily-challenges/[slug]" options={{ title: 'Daily Challenge' }} />
+        <Stack.Screen name="daily-challenges/leaderboard/[slug]" options={{ title: 'Leaderboard' }} />
+        <Stack.Screen name="leaderboard/index" options={{ title: 'Leaderboards' }} />
+        <Stack.Screen name="leaderboard/daily" options={{ title: 'Daily Leaderboards' }} />
+        <Stack.Screen name="leaderboard/trophies" options={{ title: 'Trophies' }} />
       </Stack>
     </>
   )

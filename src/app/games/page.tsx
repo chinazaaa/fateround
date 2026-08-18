@@ -5,6 +5,8 @@ import { GAME_TYPE_DISPLAY_ORDER, gameTypeConfig } from '@/lib/game-types'
 import { GAME_LANDING_CONTENT, gameLandingSlug } from '@/lib/game-landing'
 import { SITE_NAME, OG_IMAGE, gamesItemListJsonLd, breadcrumbJsonLd } from '@/lib/seo'
 import { GamesGrid } from '@/components/GamesGrid'
+import { Glyph } from '@/components/icons/Glyph'
+import { UI_ICONS } from '@/lib/game-glyphs'
 import { MarketingHeader } from '@/components/MarketingHeader'
 import { SiteFooter } from '@/components/SiteFooter'
 
@@ -46,52 +48,33 @@ export default function GamesIndexPage() {
       <div className="fr-site flex min-h-dvh flex-col">
         <MarketingHeader />
 
-        <main className="mk-wrap flex-1 pb-4">
-          {/* Hero */}
-          <div className="pt-9 pb-7 text-center">
-            <p className="label-caps">{SITE_NAME}</p>
-            <h1
-              className="mx-0 mb-2.5 mt-3 text-[2.25rem] tracking-[-0.035em] sm:text-5xl"
-              style={{ fontFamily: 'var(--font-display)', fontWeight: 800, color: 'var(--text)' }}
-            >
-              Party games
-            </h1>
-            <p className="mx-auto mb-5 max-w-[30rem] text-base leading-[1.55]" style={{ color: 'var(--text-muted)' }}>
-              Pick a mode, create a game, share the code. Every game is free and runs in the browser.
-            </p>
-            <Link href="/create" className="fr-btn fr-btn--primary fr-btn--lg">
-              Create any game
-            </Link>
-          </div>
+        <main className="flex-1">
+          {/* Same band structure as the homepage: full-bleed sections whose
+              contents stop at the shared measure, rather than one narrow column
+              floating under a full-width header. */}
+          <section className="fr-band fr-band--tight">
+            <div className="mk-wrap">
+              <div className="text-center mb-6">
+                <span className="fr-glyph">
+                  <Glyph icon={UI_ICONS.games} size={26} />
+                </span>
+                <h1
+                  className="mx-0 mb-0 mt-3 text-[2.25rem] tracking-[-0.035em] sm:text-5xl"
+                  style={{ fontFamily: 'var(--font-display)', fontWeight: 800, color: 'var(--text)' }}
+                >
+                  Party games
+                </h1>
+                <p className="mt-2 text-sm" style={{ color: 'var(--text-muted)' }}>
+                  47+ party, board, and word games for your group. Create a room, share the link, and play in seconds.
+                </p>
+              </div>
 
-          <Suspense fallback={null}>
-            <GamesGrid games={games} />
-          </Suspense>
+              <Suspense fallback={null}>
+                <GamesGrid games={games} />
+              </Suspense>
+            </div>
+          </section>
         </main>
-
-        <section className="mk-seo">
-          <div className="mk-wrap">
-            <div className="blk">
-              <h2>Free online party games — {games.length}+ modes, one place</h2>
-              <p>
-                {SITE_NAME} brings {games.length}+ multiplayer games into a single browser tab — no sign-up, no
-                download, and free forever. Pick a mode, create a game, and share the room code so friends can join from
-                any phone or laptop. Everything syncs in real time, so it works over a video call, a Discord server, or
-                a group chat.
-              </p>
-            </div>
-            <div className="blk">
-              <p>
-                You&apos;ll find classic party games like Smash Marry Kill, Would You Rather, Most Likely To, Red Flag
-                Green Flag, Never Have I Ever, and Hot Seat; board and card games including Monopoly, Yahtzee, Whot,
-                Ludo, Chess, Checkers, Crazy Eights, UNO, Snakes and Ladders, and Scrabble; plus word, trivia, and
-                puzzle games such as Codewords, Trivia, Word Hunt, Sudoku, Tic-Tac-Toe, and Bingo. Many modes let you
-                upload your own questions or participant lists, so any theme works for birthdays, icebreakers, team
-                socials, or family game night.
-              </p>
-            </div>
-          </div>
-        </section>
 
         <SiteFooter />
       </div>

@@ -41,10 +41,11 @@ export async function GET(req: NextRequest) {
     // agrees with what the player sees on their streak rather than being a second definition.
     const activeSince = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
 
+    let hasCountryColumn = true
     let query = supabase
       .from('profiles')
       .select(
-        'id, handle, is_anonymous, trophy_points, trophy_level, current_streak, longest_streak, last_active_date, created_at',
+        'id, handle, is_anonymous, trophy_points, trophy_level, current_streak, longest_streak, last_active_date, created_at, country',
         { count: 'exact' }
       )
 
@@ -53,12 +54,28 @@ export async function GET(req: NextRequest) {
     if (cohort === 'guest') query = query.eq('is_anonymous', true)
     if (cohort === 'active') query = query.gte('last_active_date', activeSince)
 
-    const {
-      data: profiles,
-      count,
-      error,
-    } = await query.order('created_at', { ascending: false }).range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1)
+    let result = await query
+      .order('created_at', { ascending: false })
+      .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1)
 
+    if (result.error?.message?.includes('country')) {
+      hasCountryColumn = false
+      let retryQuery = supabase
+        .from('profiles')
+        .select(
+          'id, handle, is_anonymous, trophy_points, trophy_level, current_streak, longest_streak, last_active_date, created_at',
+          { count: 'exact' }
+        )
+      if (search) retryQuery = retryQuery.ilike('handle', `%${search}%`)
+      if (cohort === 'account') retryQuery = retryQuery.eq('is_anonymous', false)
+      if (cohort === 'guest') retryQuery = retryQuery.eq('is_anonymous', true)
+      if (cohort === 'active') retryQuery = retryQuery.gte('last_active_date', activeSince)
+      result = (await retryQuery
+        .order('created_at', { ascending: false })
+        .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1)) as typeof result
+    }
+
+    const { data: profiles, count, error } = result
     if (error) return NextResponse.json({ error: internalErrorMessage('admin/users', error) }, { status: 500 })
 
     const ids = (profiles ?? []).map((p) => p.id as string)
@@ -111,6 +128,7 @@ export async function GET(req: NextRequest) {
         gamesWon: roll.won,
         gameTypes: roll.gameTypes,
         trophies: trophyCounts.get(p.id as string) ?? 0,
+        country: hasCountryColumn ? (p.country as string) || null : null,
       }
     })
 

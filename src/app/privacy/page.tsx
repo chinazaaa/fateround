@@ -4,7 +4,7 @@ import { SiteChrome } from '@/components/SiteChrome'
 import { SITE_NAME } from '@/lib/seo'
 
 const CONTACT_EMAIL = 'privacy@fateround.com'
-const LAST_UPDATED = 'July 11, 2026'
+const LAST_UPDATED = 'August 6, 2026'
 
 export const metadata: Metadata = {
   title: 'Privacy Policy',
@@ -23,8 +23,10 @@ export default function PrivacyPolicyPage() {
         <div className="prose-legal mt-8 space-y-6 text-[15px] leading-relaxed text-[var(--foreground)]">
           <p>
             {SITE_NAME} is a free, real-time multiplayer party-game platform: you create a room, share a link or code,
-            and play with friends from your phone or browser. You do not need an account to play — you join with just a
-            display name. This policy explains what information we collect, how we use it, and the choices you have.
+            and play with friends from your phone or browser. You can play without an account — you join with just a
+            display name. When you finish your first game, we create a profile for you so we can track trophies,
+            streaks, and game stats. You can optionally add an email address to secure your profile across devices. This
+            policy explains what information we collect, how we use it, and the choices you have.
           </p>
 
           <Section title="Information we collect">
@@ -33,6 +35,12 @@ export default function PrivacyPolicyPage() {
               &ldquo;people&rdquo; poll games ask for an optional gender so rounds can be matched. As you play, we
               process the content you create in a game — answers, votes, guesses, drawings, quotes, and any chat
               messages — and, for games that use profile pictures, a photo you choose to upload.
+            </p>
+            <p>
+              <strong>Profile and account data.</strong> When you finish your first game, we create a profile tied to
+              your device. Your profile stores a unique username, your trophies, game statistics, and play streaks. If
+              you choose to add an email address, we store that too. Your profile page — including your username,
+              trophies, and stats — is publicly visible at its shareable link.
             </p>
             <p>
               <strong>Voice chat.</strong> If you turn on voice chat, your microphone audio is streamed in real time to
@@ -56,6 +64,7 @@ export default function PrivacyPolicyPage() {
           <Section title="How we use your information">
             <ul className="list-disc space-y-1 pl-5">
               <li>To run and synchronize live games between the players in a room.</li>
+              <li>To maintain your profile, trophies, streaks, and game statistics.</li>
               <li>To deliver the notifications you opt into.</li>
               <li>To keep the service working, secure, and free from abuse, and to improve it over time.</li>
             </ul>
@@ -63,8 +72,9 @@ export default function PrivacyPolicyPage() {
 
           <Section title="How your information is shared">
             <p>
-              <strong>Other players.</strong> By design, your display name, your uploaded photo, and your in-game
-              actions are visible to the other players in your room — that is the game.
+              <strong>Other players and visitors.</strong> By design, your display name, your uploaded photo, and your
+              in-game actions are visible to the other players in your room — that is the game. Your profile page
+              (username, trophies, and stats) is publicly visible to anyone with the link.
             </p>
             <p>
               <strong>Service providers.</strong> We share data only with the providers that help us run the service:
@@ -94,7 +104,11 @@ export default function PrivacyPolicyPage() {
               Game rooms are temporary. The data created in a game is tied to its room and is cleaned up after the game
               ends as part of our routine housekeeping. Uploaded photos are stored for the room and are removed when
               replaced or when the room is cleaned up. Push tokens are kept until you turn notifications off or the
-              token expires. You can ask us to delete data associated with you at any time using the contact below.
+              token expires.
+            </p>
+            <p>
+              Your profile, trophies, streaks, and game statistics are kept for as long as you use the Service. You can
+              ask us to delete your profile and all associated data at any time using the contact below.
             </p>
           </Section>
 
@@ -102,7 +116,11 @@ export default function PrivacyPolicyPage() {
             <ul className="list-disc space-y-1 pl-5">
               <li>You can play without uploading a photo and without enabling voice chat.</li>
               <li>You can turn notifications on or off in Settings; turning them off unsubscribes your device.</li>
-              <li>You can request access to, or deletion of, your data by emailing us.</li>
+              <li>You can change your public username at any time from your profile.</li>
+              <li>
+                You can request access to, or deletion of, your data — including your profile, trophies, and stats — by
+                emailing us.
+              </li>
             </ul>
           </Section>
 

@@ -2,6 +2,8 @@
 
 import { useMemo, useState } from 'react'
 import { buildWordHuntWordList, sortWordHuntSubmissions, type WordHuntSubmission } from '@/lib/word-hunt'
+import { SearchFocusIcon } from '@hugeicons/core-free-icons'
+import { Glyph } from '@/components/icons/Glyph'
 
 const INITIAL_VISIBLE = 15
 
@@ -103,7 +105,7 @@ export function WordHuntPersonalResults({ submissions, validWords = [] }: Props)
             onClick={() => setRevealAll((open) => !open)}
             className="w-full flex items-center justify-center gap-2 rounded-2xl border-2 border-[color-mix(in_srgb,var(--primary)_22%,var(--border))] bg-[var(--card-strong)] px-4 py-3 text-sm font-black shadow-[var(--card-shadow)] active:scale-[0.99] transition-transform"
           >
-            <span aria-hidden>🔍</span>
+            <Glyph icon={SearchFocusIcon} size={11} className="shrink-0" />
             {revealAll ? 'Hide all words' : 'Reveal all'}
             {!revealAll && missedCount > 0 && (
               <span className="ml-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--primary)] px-1.5 text-[10px] font-black text-white">

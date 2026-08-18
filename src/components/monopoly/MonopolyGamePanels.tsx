@@ -1,6 +1,8 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { Exchange01Icon } from '@hugeicons/core-free-icons'
+import { HugeiconsIcon } from '@hugeicons/react'
 import {
   MonopolyModal,
   MonopolyPrimaryButton,
@@ -27,7 +29,9 @@ import {
   playerProperties,
   unmortgageCost,
   type MonopolyColorGroup,
+  type MonopolyBoardSize,
 } from '@/lib/monopoly'
+import { monopolyTokenEmoji } from '@/lib/monopoly-tokens'
 import {
   canonicalToDisplayMoney,
   displayToCanonicalMoney,
@@ -51,14 +55,16 @@ function TradeSideItems({
   jailCards = 0,
   compact = false,
   themeId,
+  boardSize = 40,
 }: {
   cash: number
   propertyIndexes: unknown
   jailCards?: number
   compact?: boolean
   themeId?: string | null
+  boardSize?: MonopolyBoardSize
 }) {
-  const items = buildTradeSideItems(cash, propertyIndexes, jailCards)
+  const items = buildTradeSideItems(cash, propertyIndexes, jailCards, boardSize)
   if (items.length === 0) {
     return <p className={`text-muted italic ${compact ? 'text-xs' : 'text-sm'}`}>Nothing</p>
   }
@@ -77,11 +83,11 @@ function TradeSideItems({
           )
         }
         if (item.kind === 'property' && 'name' in item && 'index' in item) {
-          return <li key={`prop-${item.index}`}>{themedSpaceName(item.name, item.index, themeId)}</li>
+          return <li key={`prop-${item.index}`}>{themedSpaceName(item.name, item.index, themeId, boardSize)}</li>
         }
         return (
           <li key="jail">
-            {formatThemedText(`${item.count} Get Out of Jail card${item.count === 1 ? '' : 's'}`, themeId)}
+            {formatThemedText(`${item.count} skip-the-queue card${item.count === 1 ? '' : 's'}`, themeId)}
           </li>
         )
       })}
@@ -93,13 +99,15 @@ function tradeSideCountLabel(
   cash: number,
   propertyIndexes: unknown,
   jailCards = 0,
-  themeId?: string | null
+  themeId?: string | null,
+  boardSize: MonopolyBoardSize = 40
 ): string | null {
-  const propertyCount = normalizeTradePropertyList(propertyIndexes).length
+  const propertyCount = normalizeTradePropertyList(propertyIndexes, boardSize).length
   const parts: string[] = []
   if (propertyCount > 0) parts.push(`${propertyCount} propert${propertyCount === 1 ? 'y' : 'ies'}`)
   if (cash > 0) parts.push('cash')
-  if (jailCards > 0) parts.push(formatThemedText(`${jailCards} Jail card${jailCards === 1 ? '' : 's'}`, themeId))
+  if (jailCards > 0)
+    parts.push(formatThemedText(`${jailCards} skip-the-queue card${jailCards === 1 ? '' : 's'}`, themeId))
   if (parts.length === 0) return null
   return parts.join(' · ')
 }
@@ -115,6 +123,7 @@ function TradeExchangeReview({
   getJailCards = 0,
   compact = false,
   themeId,
+  boardSize = 40,
 }: {
   giveLabel: string
   getLabel: string
@@ -126,13 +135,16 @@ function TradeExchangeReview({
   getJailCards?: number
   compact?: boolean
   themeId?: string | null
+  boardSize?: MonopolyBoardSize
 }) {
   const oneSidedGift =
-    tradeSideHasValue(giveCash, giveProps, giveJailCards) && !tradeSideHasValue(getCash, getProps, getJailCards)
+    tradeSideHasValue(giveCash, giveProps, giveJailCards, boardSize) &&
+    !tradeSideHasValue(getCash, getProps, getJailCards, boardSize)
   const oneSidedReceive =
-    tradeSideHasValue(getCash, getProps, getJailCards) && !tradeSideHasValue(giveCash, giveProps, giveJailCards)
-  const giveCountLabel = tradeSideCountLabel(giveCash, giveProps, giveJailCards, themeId)
-  const getCountLabel = tradeSideCountLabel(getCash, getProps, getJailCards, themeId)
+    tradeSideHasValue(getCash, getProps, getJailCards, boardSize) &&
+    !tradeSideHasValue(giveCash, giveProps, giveJailCards, boardSize)
+  const giveCountLabel = tradeSideCountLabel(giveCash, giveProps, giveJailCards, themeId, boardSize)
+  const getCountLabel = tradeSideCountLabel(getCash, getProps, getJailCards, themeId, boardSize)
 
   return (
     <div className={compact ? 'space-y-2' : 'space-y-3'}>
@@ -149,6 +161,7 @@ function TradeExchangeReview({
               jailCards={giveJailCards}
               compact={compact}
               themeId={themeId}
+              boardSize={boardSize}
             />
           </div>
         </div>
@@ -170,6 +183,7 @@ function TradeExchangeReview({
               jailCards={getJailCards}
               compact={compact}
               themeId={themeId}
+              boardSize={boardSize}
             />
           </div>
         </div>
@@ -212,11 +226,13 @@ export function MonopolyTurnModals({
   const tradeFrom = trade ? players.find((p) => p.id === trade.from_player_id) : null
   const tradeTo = trade ? players.find((p) => p.id === trade.to_player_id) : null
   const showTradeModal = !!(trade && trade.to_player_id === myPlayerId && tradeFrom && tradeTo)
+  const boardSize = board?.board_size ?? 40
   const receiveCount = trade
-    ? buildTradeSideItems(trade.offer_cash, trade.offer_properties, trade.offer_get_out_cards).length
+    ? buildTradeSideItems(trade.offer_cash, trade.offer_properties, trade.offer_get_out_cards, boardSize).length
     : 0
   const payCount = trade
-    ? buildTradeSideItems(trade.request_cash, trade.request_properties, trade.request_get_out_cards ?? 0).length
+    ? buildTradeSideItems(trade.request_cash, trade.request_properties, trade.request_get_out_cards ?? 0, boardSize)
+        .length
     : 0
 
   const tradeSig = trade ? JSON.stringify(trade) : null
@@ -308,6 +324,7 @@ export function MonopolyTurnModals({
                 getProps={trade.offer_properties}
                 getJailCards={trade.offer_get_out_cards}
                 themeId={themeId}
+                boardSize={boardSize}
               />
             </div>
             <div className="grid grid-cols-2 gap-2 pt-3">
@@ -331,6 +348,159 @@ export function MonopolyTurnModals({
           </MonopolyModal>
         ))}
     </>
+  )
+}
+
+function TradeTargetSelector({
+  players,
+  myPlayerId,
+  tradeTarget,
+  states,
+  owners,
+  boardSize,
+  themeId,
+  onSelectTarget,
+}: {
+  players: Player[]
+  myPlayerId: string
+  tradeTarget: string
+  states: MonopolyPlayerState[]
+  owners: Record<string, string>
+  boardSize: 40 | 48
+  themeId?: string | null
+  onSelectTarget: (id: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false)
+      }
+    }
+    if (open) {
+      document.addEventListener('mousedown', handleClickOutside)
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [open])
+
+  const selectedPlayer = players.find((p) => p.id === tradeTarget)
+  const selectedState = selectedPlayer ? states.find((s) => s.player_id === selectedPlayer.id) : null
+  const selectedPropsCount = selectedPlayer ? playerProperties(owners, selectedPlayer.id, boardSize).length : 0
+
+  const availablePlayers = players.filter((p) => p.id !== myPlayerId)
+
+  return (
+    <div ref={containerRef} className="relative w-full">
+      {/* Trigger Button — compact layout */}
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center justify-between gap-2 rounded-xl border border-[var(--border-strong)] bg-[var(--surface-inset-bg)] hover:bg-[color-mix(in_srgb,var(--primary)_6%,var(--surface-inset-bg))] px-3 py-2 text-left transition-all shadow-sm focus:outline-none focus:ring-1 focus:ring-[var(--primary)] text-xs"
+      >
+        {selectedPlayer ? (
+          <div className="flex items-center gap-2 min-w-0 flex-1">
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-[color-mix(in_srgb,var(--primary)_15%,transparent)] text-sm">
+              {monopolyTokenEmoji(selectedPlayer.monopoly_token)}
+            </span>
+            <div className="min-w-0 flex-1 flex items-center gap-1.5">
+              <span className="font-bold text-body truncate">{selectedPlayer.name}</span>
+              <span className="text-[11px] text-muted truncate">
+                ({selectedState ? formatThemedMoney(selectedState.cash, themeId) : ''} • {selectedPropsCount}{' '}
+                {selectedPropsCount === 1 ? 'prop' : 'props'})
+              </span>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 text-muted font-semibold">
+            <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-[var(--surface-sunken)] text-[var(--primary)]">
+              <HugeiconsIcon icon={Exchange01Icon} size={14} />
+            </span>
+            <span>Trade with…</span>
+          </div>
+        )}
+        <span
+          className={`text-muted transition-transform duration-200 ${open ? 'rotate-180 text-[var(--primary)]' : ''}`}
+        >
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </span>
+      </button>
+
+      {/* Floating Custom Menu Popover */}
+      {open && (
+        <div className="absolute left-0 right-0 top-full mt-1.5 z-50 overflow-hidden rounded-xl border border-[var(--border-strong)] bg-[var(--surface)] p-1 shadow-xl backdrop-blur-xl animate-in fade-in slide-in-from-top-1 duration-150">
+          <div className="max-h-52 overflow-y-auto space-y-0.5 scrollbar-thin">
+            {/* "Trade with..." reset option */}
+            <button
+              type="button"
+              onClick={() => {
+                onSelectTarget('')
+                setOpen(false)
+              }}
+              className={[
+                'w-full flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs font-semibold transition-all',
+                !tradeTarget
+                  ? 'bg-[color-mix(in_srgb,var(--primary)_12%,var(--surface))] text-[var(--primary)]'
+                  : 'text-muted hover:bg-[color-mix(in_srgb,var(--primary)_6%,var(--surface))]',
+              ].join(' ')}
+            >
+              <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-[var(--surface-sunken)] text-[var(--primary)]">
+                <HugeiconsIcon icon={Exchange01Icon} size={13} />
+              </span>
+              <span>Trade with…</span>
+            </button>
+
+            {/* Player options */}
+            {availablePlayers.map((p) => {
+              const tokenEmoji = monopolyTokenEmoji(p.monopoly_token)
+              const pState = states.find((s) => s.player_id === p.id)
+              const pPropsCount = playerProperties(owners, p.id, boardSize).length
+              const cashText = pState ? formatThemedMoney(pState.cash, themeId) : ''
+              const isBankrupt = pState?.bankrupt ?? false
+              const isSelected = p.id === tradeTarget
+
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  disabled={isBankrupt}
+                  onClick={() => {
+                    onSelectTarget(p.id)
+                    setOpen(false)
+                  }}
+                  className={[
+                    'w-full flex items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-left transition-all text-xs',
+                    isBankrupt
+                      ? 'opacity-40 cursor-not-allowed bg-[var(--surface-sunken)]'
+                      : isSelected
+                        ? 'bg-[color-mix(in_srgb,var(--primary)_14%,var(--surface))] border border-[color-mix(in_srgb,var(--primary)_25%,transparent)] font-bold'
+                        : 'hover:bg-[color-mix(in_srgb,var(--primary)_6%,var(--surface))] font-medium',
+                  ].join(' ')}
+                >
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-[color-mix(in_srgb,var(--primary)_12%,transparent)] text-sm">
+                      {tokenEmoji}
+                    </span>
+                    <div className="min-w-0 flex-1 flex items-center gap-1.5">
+                      <span className="font-bold text-body truncate">{p.name}</span>
+                      <span className="text-[11px] text-muted truncate">
+                        {isBankrupt
+                          ? '(Bankrupt)'
+                          : `${cashText} • ${pPropsCount} ${pPropsCount === 1 ? 'prop' : 'props'}`}
+                      </span>
+                    </div>
+                  </div>
+                  {isSelected && <span className="text-[var(--primary)] text-xs font-bold shrink-0">✓</span>}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -387,10 +557,11 @@ export function MonopolyManagePanel({
   }
 
   const owners = parsePropertyOwners(board.property_owners)
+  const boardSize = board.board_size ?? 40
   const buildings = parseBuildings(board.property_buildings)
   const mortgaged = parseMortgaged(board.mortgaged_properties)
-  const mine = playerProperties(owners, myPlayerId)
-  const theirs = tradeTarget ? playerProperties(owners, tradeTarget) : []
+  const mine = playerProperties(owners, myPlayerId, boardSize)
+  const theirs = tradeTarget ? playerProperties(owners, tradeTarget, boardSize) : []
   const myJailCards = myState.get_out_of_jail_free ?? 0
   const targetJailCards = tradeTarget ? (states.find((s) => s.player_id === tradeTarget)?.get_out_of_jail_free ?? 0) : 0
   const housesInBank = board.houses_in_bank ?? 32
@@ -405,8 +576,8 @@ export function MonopolyManagePanel({
   const targetName = tradeTarget ? (players.find((p) => p.id === tradeTarget)?.name ?? 'player') : ''
   const parsedOfferCash = displayToCanonicalMoney(Number(offerCash) || 0, themeId)
   const parsedRequestCash = displayToCanonicalMoney(Number(requestCash) || 0, themeId)
-  const givingSomething = tradeSideHasValue(parsedOfferCash, offerProps, offerJailCards)
-  const gettingSomething = tradeSideHasValue(parsedRequestCash, requestProps, requestJailCards)
+  const givingSomething = tradeSideHasValue(parsedOfferCash, offerProps, offerJailCards, boardSize)
+  const gettingSomething = tradeSideHasValue(parsedRequestCash, requestProps, requestJailCards, boardSize)
   const isOneWayGift = givingSomething && !gettingSomething
   const isOneWayReceive = gettingSomething && !givingSomething
   const tradeIsEmpty = !givingSomething && !gettingSomething
@@ -471,6 +642,7 @@ export function MonopolyManagePanel({
             getProps={activePendingTrade.request_properties}
             getJailCards={activePendingTrade.request_get_out_cards ?? 0}
             themeId={themeId}
+            boardSize={boardSize}
           />
           <MonopolySecondaryButton
             onClick={() => postAction('/api/monopoly/trade', { cancel: true })}
@@ -501,6 +673,7 @@ export function MonopolyManagePanel({
             getProps={activePendingTrade.offer_properties}
             getJailCards={activePendingTrade.offer_get_out_cards}
             themeId={themeId}
+            boardSize={boardSize}
           />
         </div>
       )}
@@ -525,31 +698,27 @@ export function MonopolyManagePanel({
             <p className="text-xs font-semibold text-[var(--foreground)]">Propose a trade</p>
             <p className="text-xs text-muted leading-relaxed">
               {formatThemedText(
-                'Pick what you give and what you get back — cash, properties, or Get Out of Jail cards. Both sides must be filled in for a normal swap.',
+                'Pick what you give and what you get back — cash, properties, or skip-the-queue cards. Both sides must be filled in for a normal swap.',
                 themeId
               )}
             </p>
           </div>
-          <select
-            value={tradeTarget}
-            onChange={(e) => {
-              setTradeTarget(e.target.value)
+          <TradeTargetSelector
+            players={players}
+            myPlayerId={myPlayerId}
+            tradeTarget={tradeTarget}
+            states={states}
+            owners={owners}
+            boardSize={boardSize}
+            themeId={themeId}
+            onSelectTarget={(id) => {
+              setTradeTarget(id)
               setRequestProps([])
               setRequestJailCards(0)
               setTradeConfirmOpen(false)
               setConfirmOneWayGift(false)
             }}
-            className="btn-secondary w-full text-sm text-left"
-          >
-            <option value="">Trade with…</option>
-            {players
-              .filter((p) => p.id !== myPlayerId)
-              .map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-          </select>
+          />
 
           {tradeTarget && (
             <>
@@ -578,7 +747,7 @@ export function MonopolyManagePanel({
                             checked={offerProps.includes(s.index)}
                             onChange={() => toggleProp(offerProps, setOfferProps, s.index)}
                           />
-                          {themedSpaceName(s.name, s.index, themeId)}
+                          {themedSpaceName(s.name, s.index, themeId, boardSize)}
                         </label>
                       ))}
                     </div>
@@ -596,7 +765,7 @@ export function MonopolyManagePanel({
                           setConfirmOneWayGift(false)
                         }}
                       />
-                      {formatThemedText('Include 1 Get Out of Jail card', themeId)}
+                      {formatThemedText('Include 1 skip-the-queue card', themeId)}
                     </label>
                   )}
                 </div>
@@ -627,7 +796,7 @@ export function MonopolyManagePanel({
                             checked={requestProps.includes(s.index)}
                             onChange={() => toggleProp(requestProps, setRequestProps, s.index)}
                           />
-                          {themedSpaceName(s.name, s.index, themeId)}
+                          {themedSpaceName(s.name, s.index, themeId, boardSize)}
                         </label>
                       ))}
                     </div>
@@ -645,7 +814,7 @@ export function MonopolyManagePanel({
                           setConfirmOneWayGift(false)
                         }}
                       />
-                      {formatThemedText('Ask for 1 Get Out of Jail card', themeId)}
+                      {formatThemedText('Ask for 1 skip-the-queue card', themeId)}
                     </label>
                   )}
                 </div>
@@ -662,6 +831,7 @@ export function MonopolyManagePanel({
                 getProps={requestProps}
                 getJailCards={requestJailCards}
                 themeId={themeId}
+                boardSize={boardSize}
               />
 
               {(isOneWayGift || isOneWayReceive) && (
@@ -706,6 +876,7 @@ export function MonopolyManagePanel({
                     getProps={requestProps}
                     getJailCards={requestJailCards}
                     themeId={themeId}
+                    boardSize={boardSize}
                   />
                   <div className="grid grid-cols-2 gap-2">
                     <button
@@ -735,9 +906,9 @@ export function MonopolyManagePanel({
   )
 
   const playerNames = new Map(players.map((p) => [p.id, p.name]))
-  const groupStatuses = buildColorGroupStatuses(owners, myPlayerId, playerNames)
+  const groupStatuses = buildColorGroupStatuses(owners, myPlayerId, playerNames, boardSize)
   const statusByGroup = new Map(groupStatuses.map((s) => [s.group, s]))
-  const myGroups = ownedColorGroups(owners, myPlayerId)
+  const myGroups = ownedColorGroups(owners, myPlayerId, boardSize)
   const stationAndUtilityProps = mine.filter((s) => s.type === 'station' || s.type === 'utility')
 
   const renderPropertyCard = (space: (typeof mine)[number]) => {
@@ -746,9 +917,9 @@ export function MonopolyManagePanel({
     const levelLabel = level === 5 ? '🏨 Hotel' : level > 0 ? `${level} 🏠` : 'Unimproved'
     const currentRent = isMortgaged
       ? null
-      : computeRent(space, owners, myPlayerId, board.last_dice?.total ?? 2, buildings, mortgaged)
-    const canHouse = canAddHouse(space.index, myPlayerId, owners, buildings, mortgaged, housesInBank)
-    const canHotel = canAddHotel(space.index, myPlayerId, owners, buildings, mortgaged, hotelsInBank)
+      : computeRent(space, owners, myPlayerId, board.last_dice?.total ?? 2, buildings, mortgaged, boardSize)
+    const canHouse = canAddHouse(space.index, myPlayerId, owners, buildings, mortgaged, housesInBank, boardSize)
+    const canHotel = canAddHotel(space.index, myPlayerId, owners, buildings, mortgaged, hotelsInBank, boardSize)
 
     return (
       <div
@@ -759,7 +930,7 @@ export function MonopolyManagePanel({
         <div className="p-3 space-y-2">
           <div className="flex justify-between gap-2">
             <span className="font-semibold text-sm text-[var(--foreground)]">
-              {themedSpaceName(space.name, space.index, themeId)}
+              {themedSpaceName(space.name, space.index, themeId, boardSize)}
             </span>
             <span className="text-xs text-muted shrink-0">{isMortgaged ? 'Mortgaged' : levelLabel}</span>
           </div>
@@ -791,7 +962,7 @@ export function MonopolyManagePanel({
                 + Hotel
               </button>
             )}
-            {canRemoveHouse(space.index, myPlayerId, owners, buildings) && (
+            {canRemoveHouse(space.index, myPlayerId, owners, buildings, boardSize) && (
               <button
                 type="button"
                 disabled={acting}
@@ -845,7 +1016,13 @@ export function MonopolyManagePanel({
         <MonopolyJailCardInventory count={myJailCards} showEmpty themeId={themeId} />
       </div>
 
-      <MonopolyColorPortfolio propertyOwners={owners} myPlayerId={myPlayerId} players={players} themeId={themeId} />
+      <MonopolyColorPortfolio
+        propertyOwners={owners}
+        myPlayerId={myPlayerId}
+        players={players}
+        themeId={themeId}
+        boardSize={boardSize}
+      />
 
       <div className="space-y-3 pt-2 border-t border-[var(--border-strong)]">
         {mine.length === 0 ? (
@@ -867,7 +1044,7 @@ export function MonopolyManagePanel({
             </div>
             {myGroups.map((group) => {
               const status = statusByGroup.get(group)!
-              const groupProps = propertiesInGroupForPlayer(owners, myPlayerId, group)
+              const groupProps = propertiesInGroupForPlayer(owners, myPlayerId, group, boardSize)
               return (
                 <div key={group} className="space-y-2">
                   <div className="flex items-center justify-between gap-2 px-0.5">

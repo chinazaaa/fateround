@@ -806,7 +806,7 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
   },
   monopoly: {
     id: 'monopoly',
-    label: 'Monopoly',
+    label: 'Estate Kings',
     tagline: 'Buy, build, bankrupt your friends',
     headerEmoji: '🎲🏠',
     card: {
@@ -849,7 +849,7 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
   },
   yahtzee: {
     id: 'yahtzee',
-    label: 'Yahtzee',
+    label: 'Five Dice',
     tagline: 'Roll, hold, and score the combos',
     headerEmoji: '🎲🧠',
     card: {
@@ -978,7 +978,7 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
   },
   uno: {
     id: 'uno',
-    label: 'UNO',
+    label: 'Match Up',
     tagline: 'Match colour or number — first to empty their hand wins',
     headerEmoji: '🎴🌈',
     card: {
@@ -1323,7 +1323,7 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
 
   quiplash: {
     id: 'quiplash',
-    label: 'Quiplash',
+    label: 'Punchline',
     tagline: 'Fill in the blank — vote for the funniest answer',
     headerEmoji: '✍️😂',
     card: {
@@ -1446,6 +1446,49 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
         label: 'Timer',
         color: '#0ea5e9',
         leaderboardLabel: 'Race against time',
+        activeClass: 'bg-sky-500/20 text-sky-100 border-sky-400',
+        borderClass: 'border-sky-500/50 bg-sky-500/10',
+        textColor: '#7dd3fc',
+      },
+    },
+  },
+  wordle_room: {
+    id: 'wordle_room',
+    label: 'Wordle',
+    tagline: 'Race to solve the same words — most solved, fewest guesses wins',
+    headerEmoji: '🟩🟨',
+    card: {
+      accent: '#16a34a',
+      accentSoft: 'rgba(22, 163, 74, 0.15)',
+      emoji: '🟩',
+      players: '2–20 players',
+      vibe: 'Head-to-head Wordle race',
+      featured: true,
+    },
+    slots: {
+      kiss: {
+        emoji: '✅',
+        label: 'Words',
+        color: '#16a34a',
+        leaderboardLabel: 'Words solved',
+        activeClass: 'bg-green-500/20 text-green-100 border-green-400',
+        borderClass: 'border-green-500/50 bg-green-500/10',
+        textColor: '#86efac',
+      },
+      marry: {
+        emoji: '⭐',
+        label: 'Points',
+        color: '#fbbf24',
+        leaderboardLabel: 'Total points',
+        activeClass: 'bg-amber-500/20 text-amber-100 border-amber-400',
+        borderClass: 'border-amber-500/50 bg-amber-500/10',
+        textColor: '#fcd34d',
+      },
+      kill: {
+        emoji: '⏱️',
+        label: 'Timer',
+        color: '#0ea5e9',
+        leaderboardLabel: 'Race against the clock',
         activeClass: 'bg-sky-500/20 text-sky-100 border-sky-400',
         borderClass: 'border-sky-500/50 bg-sky-500/10',
         textColor: '#7dd3fc',
@@ -1755,7 +1798,7 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
   },
   scrabble: {
     id: 'scrabble',
-    label: 'Scrabble',
+    label: 'Word Tiles',
     tagline: 'Spell words, rack up points, outscore all',
     headerEmoji: '🔠',
     card: {
@@ -1968,6 +2011,49 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
       },
     },
   },
+  word_grouping: {
+    id: 'word_grouping',
+    label: 'Word Grouping',
+    tagline: 'Find four groups of four — connections-style',
+    headerEmoji: '🔗🧩',
+    card: {
+      accent: '#f97316',
+      accentSoft: 'rgba(249, 115, 22, 0.15)',
+      emoji: '🔗',
+      players: '1–20 players',
+      vibe: 'Group puzzle race',
+      featured: true,
+    },
+    slots: {
+      kiss: {
+        emoji: '🏆',
+        label: 'Points',
+        color: '#f97316',
+        leaderboardLabel: 'Total points',
+        activeClass: 'bg-orange-500/20 text-orange-100 border-orange-400',
+        borderClass: 'border-orange-500/50 bg-orange-500/10',
+        textColor: '#fdba74',
+      },
+      marry: {
+        emoji: '🔗',
+        label: 'Groups',
+        color: '#22c55e',
+        leaderboardLabel: 'Groups found',
+        activeClass: 'bg-emerald-500/20 text-emerald-100 border-emerald-400',
+        borderClass: 'border-emerald-500/50 bg-emerald-500/10',
+        textColor: '#86efac',
+      },
+      kill: {
+        emoji: '❌',
+        label: 'Mistakes',
+        color: '#ef4444',
+        leaderboardLabel: 'Mistakes made',
+        activeClass: 'bg-red-500/20 text-red-100 border-red-400',
+        borderClass: 'border-red-500/50 bg-red-500/10',
+        textColor: '#fca5a5',
+      },
+    },
+  },
   landmine: {
     id: 'landmine',
     label: 'Landmine',
@@ -2064,7 +2150,7 @@ export const HOMEPAGE_FEATURED_GAMES: GameType[] = [
   'codewords',
   'ludo',
   'describe_it',
-  'bingo',
+  'ayo',
   'trivia',
 ]
 
@@ -2113,9 +2199,11 @@ export const GAME_TYPE_OPTIONS: GameType[] = [
   'crossword',
   'word_search',
   'word_scramble',
+  'word_grouping',
   'landmine',
   'ping_pong',
   'uno',
+  'wordle_room',
 ]
 
 // Games pinned to the top of the picker / games list, in this exact order.
@@ -2139,6 +2227,7 @@ const PINNED_GAME_TYPES: GameType[] = [
   'word_hunt',
   'describe_it',
   'word_rush',
+  'wordle_room',
   'i_call_on',
   'landmine',
   'ping_pong',
@@ -2221,8 +2310,10 @@ const GAME_CATEGORY_BY_TYPE: Partial<Record<GameType, GameCategory>> = {
   crossword: 'puzzle',
   word_search: 'puzzle',
   word_scramble: 'puzzle',
+  word_grouping: 'puzzle',
   word_hunt: 'puzzle',
   word_rush: 'puzzle',
+  wordle_room: 'puzzle',
 }
 
 export function gameTypeCategory(gameType: GameType): GameCategory {
@@ -2256,6 +2347,8 @@ export function parseGameType(raw: unknown): GameType {
   if (raw === 'sudoku') return 'sudoku'
   if (raw === 'tic_tac_toe') return 'tic_tac_toe'
   if (raw === 'word_hunt') return 'word_hunt'
+  if (raw === 'wordle_room' || raw === 'wordle-room' || raw === 'wordle_room_race' || raw === 'wordle')
+    return 'wordle_room'
   if (raw === 'chess') return 'chess'
   if (raw === 'describe_it' || raw === 'text-charades') return 'describe_it'
   if (raw === 'word_rush' || raw === 'word-rush') return 'word_rush'
@@ -2286,6 +2379,8 @@ export function parseGameType(raw: unknown): GameType {
   if (raw === 'crossword' || raw === 'crosswords') return 'crossword'
   if (raw === 'word_search' || raw === 'word-search' || raw === 'wordsearch') return 'word_search'
   if (raw === 'word_scramble' || raw === 'word-scramble' || raw === 'wordscramble') return 'word_scramble'
+  if (raw === 'word_grouping' || raw === 'word-grouping' || raw === 'wordgrouping' || raw === 'connections')
+    return 'word_grouping'
   if (raw === 'landmine' || raw === 'land-mine') return 'landmine'
   if (raw === 'ping_pong' || raw === 'ping-pong') return 'ping_pong'
   return 'smash_marry_kill'
@@ -2354,13 +2449,13 @@ export function gameHowItWorks(
     case 'two_truths':
       return 'Everyone joins with their name and submits two truths plus one lie in the lobby. Each round features one player — everyone else guesses which statement is the lie. Spot the fib for points; fool the room for bonus points.'
     case 'monopoly':
-      return 'Players join with their name. Everyone starts on GO with £1,500. UK board — roll, buy or auction, build houses, mortgage, trade, and draw full Chance & Community Chest decks. Last player standing wins!'
+      return 'Players join with their name. Everyone starts on PAYDAY with £1,500. London board — roll, buy or auction, build houses, mortgage, trade, and draw full Fate & Kitty decks. Last player standing wins!'
     case 'yahtzee':
       return 'Players roll, hold dice, and choose a score category each turn. Build the best total across all combos.'
     case 'whot':
       return 'Players join with their name. Match the top card by shape or number — WHOT lets you call the next match. Pick 2 and Pick 3 stacks are separate. First to empty their hand wins — or lowest hand total when the game clock runs out.'
     case 'uno':
-      return 'Players join with their name and are dealt 7 cards. Match the top card by colour, number, or symbol. Skip, Reverse, Draw Two, and Wild cards shake things up — call "UNO" on your second-to-last card or draw a penalty. First to empty their hand wins.'
+      return 'Players join with their name and are dealt 7 cards. Match the top card by colour, number, or symbol. Skip, Reverse, Draw 2, and Wild cards shake things up — call "last card" on your second-to-last card or draw a penalty. First to empty their hand wins.'
     case 'ludo':
       return 'Players join with their name. Roll two dice each turn and use each die separately — a 6 brings pieces out; doubles earn another roll after both dice are played. Capture opponents, block with pairs — first to finish all four pieces wins!'
     case 'mahjong':
@@ -2371,6 +2466,8 @@ export function gameHowItWorks(
       return 'Two players join with their name. The host can play too. Ultimate Tic-Tac-Toe is nine small 3x3 boards in one big grid — the cell you play sends your opponent to the matching board. Win a small board with three in a row, and win the game by taking three boards in a row.'
     case 'word_hunt':
       return 'Players join with their name. Everyone gets the same 4×4 letter grid — connect adjacent letters to spell valid words (3+ letters) before the timer runs out. Longer words score more points.'
+    case 'wordle_room':
+      return 'Players join with their name. Everyone races through the same fixed set of words (5–20). Each word is solved like Wordle — six guesses to crack it. Solve it in fewer guesses for more points, and finish your words before anyone else to top the standings.'
     case 'matching_pairs':
       return 'Players join with their name. Everyone gets their own board with the same set of icons — flip two cards per turn; a match keeps them face-up and scores +1000 pts. Hit 3 in a row with no miss for a +500 streak bonus. Match every pair with zero misses for a +2000 perfect-game bonus. Fastest to finish scores a placement bonus. Most points when everyone is done wins.'
     case 'quiplash':
@@ -2399,6 +2496,8 @@ export function gameHowItWorks(
       return 'Players join with their name — everyone gets the same letter grid and word list. Drag from the first letter to the last to select a hidden word (across, down, or diagonal, sometimes backwards). Each word you find scores points, with a speed bonus for finding it first. First to find every word wins — or the highest score when the timer runs out.'
     case 'word_scramble':
       return 'Players join with their name — everyone gets the same jumbled words. Type the unscrambled answer; correct answers lock in and score, with a speed bonus for solving each scramble first and a bonus for longer words. First to unscramble them all wins — or the highest score when the timer runs out.'
+    case 'word_grouping':
+      return 'Players join with their name — everyone gets the same 16 words arranged in a 4×4 grid. Find 4 groups of 4 words that share something in common. Select 4 words and tap Submit — correct groups are revealed, wrong guesses cost a mistake. Harder groups score more points, with a speed bonus for finding a group first and a perfect-game bonus for zero mistakes. Most points when everyone finishes or the timer runs out wins.'
     case 'i_call_on':
       return "Players join with their name. Set a game timer (or play all 26 letters). Each letter cycle someone calls A–Z, everyone fills Name, Animal, Place, Thing, and Food, then marks the next player's sheet. Duplicates score 5 automatically; unique valid answers score 10. Everyone sees all marks live."
     case 'landmine':
@@ -2675,10 +2774,12 @@ const NAME_ONLY_PLAYER_JOIN_GAMES: Record<GameType, boolean> = {
   crossword: true,
   word_search: true,
   word_scramble: true,
+  word_grouping: true,
   landmine: true,
   ping_pong: true,
   uno: true,
   mafia: false,
+  wordle_room: true,
 }
 
 const LOBBY_GAMES: Record<GameType, boolean> = {
@@ -2725,10 +2826,82 @@ const LOBBY_GAMES: Record<GameType, boolean> = {
   crossword: false,
   word_search: false,
   word_scramble: false,
+  word_grouping: false,
   landmine: false,
   ping_pong: false,
   uno: false,
   mafia: false,
+  wordle_room: false,
+}
+
+// Does this game record its history as rows in the `votes` table (plus `participants` /
+// `hot_seat_submissions`)? Only the poll family does. Everything else keeps its results in
+// its own tables, so the vote-shaped history view ("Votes recorded", "individual voters are
+// hidden", "no votes recorded yet") is meaningless for them and must not be rendered.
+//
+// Games with a bespoke *SessionSummary on the history page (trivia, monopoly, whot, …) never
+// reach either branch, but they are still classified honestly here: they don't use `votes`.
+const VOTE_HISTORY_GAMES: Record<GameType, boolean> = {
+  smash_marry_kill: true,
+  red_flag_green_flag: true,
+  smash_or_pass: true,
+  would_you_rather: true,
+  never_have_i_ever: true,
+  pick_a_number: true,
+  this_or_that: true,
+  most_likely_to: true,
+  who_said_this: true,
+  // Stores hot_seat_submissions rather than votes, but the poll history view has a
+  // dedicated branch that renders them.
+  hot_seat: true,
+  custom: true,
+  parent_approval: true,
+  anonymous_messages: false,
+  secret_message: false,
+  bingo: false,
+  codewords: false,
+  trivia: false,
+  two_truths: false,
+  monopoly: false,
+  yahtzee: false,
+  whot: false,
+  ludo: false,
+  mahjong: false,
+  i_call_on: false,
+  sudoku: false,
+  tic_tac_toe: false,
+  word_hunt: false,
+  chess: false,
+  describe_it: false,
+  word_rush: false,
+  scrabble: false,
+  snake_and_ladder: false,
+  crazy_eights: false,
+  checkers: false,
+  checkers_international: false,
+  checkers_nigeria: false,
+  matching_pairs: false,
+  quiplash: false,
+  quick_draw: false,
+  ayo: false,
+  crossword: false,
+  word_search: false,
+  word_scramble: false,
+  word_grouping: false,
+  landmine: false,
+  ping_pong: false,
+  uno: false,
+  mafia: false,
+  wordle_room: false,
+}
+
+/**
+ * True when a game's results live in the `votes` table, so the vote-shaped history view
+ * applies. New game types default to `false` only by being classified above — the
+ * exhaustive map makes forgetting one a compile error.
+ */
+export function usesVoteHistory(gameType: GameType | string | undefined): boolean {
+  return VOTE_HISTORY_GAMES[parseGameType(gameType)]
 }
 
 /** WYR + MLT + This or That player join: free name entry, no list. Hot Seat uses import + name claim (see isImportNameClaimGame). */
@@ -2894,6 +3067,10 @@ export function isWordHuntGame(gameType: GameType | string | undefined): boolean
   return parseGameType(gameType) === 'word_hunt'
 }
 
+export function isWordleRoomGame(gameType: GameType | string | undefined): boolean {
+  return parseGameType(gameType) === 'wordle_room'
+}
+
 export function isMatchingPairsGame(gameType: GameType | string | undefined): boolean {
   return parseGameType(gameType) === 'matching_pairs'
 }
@@ -2932,6 +3109,10 @@ export function isWordSearchGame(gameType: GameType | string | undefined): boole
 
 export function isWordScrambleGame(gameType: GameType | string | undefined): boolean {
   return parseGameType(gameType) === 'word_scramble'
+}
+
+export function isWordGroupingGame(gameType: GameType | string | undefined): boolean {
+  return parseGameType(gameType) === 'word_grouping'
 }
 
 /** Anonymous room or host-only secret message inbox — shared message storage. */

@@ -37,6 +37,8 @@ export type Criteria =
   | { type: 'all'; of: Criteria[] }
   /** Any branch may hold. */
   | { type: 'any'; of: Criteria[] }
+  /** PS5-style platinum: earned when the profile holds every OTHER active trophy for this game. */
+  | { type: 'platinum'; game_type: string }
 
 /**
  * Everything the evaluator is allowed to know, built server-side from `player_stats` and
@@ -47,6 +49,18 @@ export type ProgressSnapshot = {
   counters: Record<string, Record<string, number>>
   /** distinct-set key → number of members. */
   distinct: Record<string, number>
+}
+
+/**
+ * Extra context needed to evaluate a `platinum` rule. The evaluator stays pure — this is
+ * passed in by the caller, never fetched. Callers without it get UNMET, which is correct
+ * for mid-round instant-unlock checks where platinum can never fire anyway.
+ */
+export type PlatinumContext = {
+  /** game_type → active trophy IDs for that game, EXCLUDING any platinum trophies. */
+  gameTrophyIds: Map<string, string[]>
+  /** Trophy IDs the profile has already earned. */
+  earnedIds: Set<string>
 }
 
 export type Verdict = {
@@ -98,6 +112,10 @@ export function parseCriteria(value: unknown, depth = 0): Criteria | null {
       }
       return { type: value.type, of: branches }
     }
+    case 'platinum': {
+      if (typeof value.game_type !== 'string' || !value.game_type) return null
+      return { type: 'platinum', game_type: value.game_type }
+    }
     default:
       return null
   }
@@ -123,7 +141,7 @@ function counterValue(snapshot: ProgressSnapshot, counter: string, gameType?: st
  * requirement) and for `any` the *maximum* (your best route in). Averaging `all` would show
  * someone at 90% when one branch sits at zero, which reads as nearly-there and isn't.
  */
-export function evaluate(criteria: Criteria, snapshot: ProgressSnapshot): Verdict {
+export function evaluate(criteria: Criteria, snapshot: ProgressSnapshot, platinumCtx?: PlatinumContext): Verdict {
   switch (criteria.type) {
     case 'counter': {
       const current = counterValue(snapshot, criteria.counter, criteria.gameType)
@@ -135,24 +153,31 @@ export function evaluate(criteria: Criteria, snapshot: ProgressSnapshot): Verdic
       return { met: current >= criteria.gte, progress: ratio(current, criteria.gte) }
     }
     case 'all': {
-      const verdicts = criteria.of.map((branch) => evaluate(branch, snapshot))
+      const verdicts = criteria.of.map((branch) => evaluate(branch, snapshot, platinumCtx))
       return {
         met: verdicts.every((v) => v.met),
         progress: Math.min(...verdicts.map((v) => v.progress)),
       }
     }
     case 'any': {
-      const verdicts = criteria.of.map((branch) => evaluate(branch, snapshot))
+      const verdicts = criteria.of.map((branch) => evaluate(branch, snapshot, platinumCtx))
       return {
         met: verdicts.some((v) => v.met),
         progress: Math.max(...verdicts.map((v) => v.progress)),
       }
     }
+    case 'platinum': {
+      if (!platinumCtx) return UNMET
+      const required = platinumCtx.gameTrophyIds.get(criteria.game_type) ?? []
+      if (required.length === 0) return UNMET
+      const earned = required.filter((id) => platinumCtx.earnedIds.has(id)).length
+      return { met: earned >= required.length, progress: ratio(earned, required.length) }
+    }
   }
 }
 
 /** Parse-then-evaluate. Unparseable rules are unmet, never thrown. */
-export function evaluateRaw(criteria: unknown, snapshot: ProgressSnapshot): Verdict {
+export function evaluateRaw(criteria: unknown, snapshot: ProgressSnapshot, platinumCtx?: PlatinumContext): Verdict {
   const parsed = parseCriteria(criteria)
-  return parsed ? evaluate(parsed, snapshot) : UNMET
+  return parsed ? evaluate(parsed, snapshot, platinumCtx) : UNMET
 }

@@ -20,6 +20,7 @@ import { WhoSaidThisCreatePanel } from '@/components/create/WhoSaidThisCreatePan
 import { TemplateQuickStart, SaveTemplateButton } from '@/components/create/TemplatesSection'
 import { AmbientBackground } from '@/components/ui/AmbientBackground'
 import { AppButton } from '@/components/ui/AppButton'
+import { soloPlaySlug } from '@/lib/solo-play'
 import { FormField } from '@/components/ui/FormField'
 import { KeyboardFormScreen } from '@/components/ui/KeyboardFormScreen'
 import { SurfaceCard } from '@/components/ui/SurfaceCard'
@@ -32,6 +33,7 @@ import {
   buildCreatePayload,
   createInitialState,
   needsParticipantStep,
+  supportsSoloMode,
   templatableGame,
   validateCreateState,
   validateSetupStep,
@@ -40,6 +42,7 @@ import {
   type CreateWizardStep,
 } from '@/lib/create-settings'
 import { createGame } from '@/lib/game-api'
+import { setSoloAutoStart } from '@/lib/solo-auto-start'
 import { WEB_BASE_URL } from '@/lib/config'
 import { getTemplates, saveTemplate, deleteTemplate, type GameTemplate, type TemplateSlots } from '@/lib/game-templates'
 import { NATIVE_CREATABLE_GAMES } from '@/lib/native-create'
@@ -189,6 +192,11 @@ export function CreateWizardShell() {
       const payload = buildCreatePayload(state, limits)
       const { gameCode, hostToken } = await createGame(payload)
       await setHostToken(gameCode, hostToken)
+      if (state.soloMode && supportsSoloMode(state.gameType, limits)) {
+        // One-shot flag consumed by the host lobby: it auto-seats the host and
+        // POSTs /start so gameplay opens immediately, skipping the lobby wait.
+        await setSoloAutoStart(gameCode)
+      }
       router.replace(`/host/${gameCode}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not create game')
@@ -220,7 +228,16 @@ export function CreateWizardShell() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingAutoCreate])
 
-  const primaryLabel = step === 'setup' && showPeopleStep ? 'Next: People' : creating ? 'Creating…' : 'Create & host'
+  const primaryLabel =
+    step === 'setup' && showPeopleStep
+      ? 'Next: People'
+      : creating
+        ? state.scheduledAt
+          ? 'Scheduling…'
+          : 'Creating…'
+        : state.scheduledAt
+          ? 'Schedule game'
+          : 'Create & host'
 
   const primaryDisabled = creating || (step === 'setup' && !state.title.trim())
 
@@ -289,6 +306,48 @@ export function CreateWizardShell() {
               />
             </View>
 
+            {soloPlaySlug(state.gameType) ? (
+              <SurfaceCard>
+                <Pressable
+                  style={styles.soloRow}
+                  // Cast: expo-router's typed href doesn't know about the
+                  // per-game static routes registered in _layout.tsx.
+                  onPress={() => router.push(`/play-solo/${soloPlaySlug(state.gameType)}` as never)}
+                  accessibilityRole="link"
+                >
+                  <View style={styles.soloBody}>
+                    <Text style={styles.soloTitle}>Want to play solo?</Text>
+                    <Text style={styles.soloHint}>
+                      Practice against the bot → no room, no account. Score persists per game.
+                    </Text>
+                  </View>
+                  <Text style={styles.soloChevron}>›</Text>
+                </Pressable>
+              </SurfaceCard>
+            ) : null}
+
+            {supportsSoloMode(state.gameType, limits) ? (
+              <SurfaceCard>
+                <Pressable
+                  style={styles.soloRow}
+                  onPress={() => patchState({ soloMode: !state.soloMode })}
+                  accessibilityRole="switch"
+                  accessibilityState={{ checked: state.soloMode }}
+                >
+                  <View style={[styles.soloCheckbox, state.soloMode && styles.soloCheckboxOn]}>
+                    {state.soloMode ? <Text style={styles.soloCheckmark}>✓</Text> : null}
+                  </View>
+                  <View style={styles.soloBody}>
+                    <Text style={styles.soloTitle}>Playing solo</Text>
+                    <Text style={styles.soloHint}>
+                      Skip the lobby — start playing right away. Sets the game to 1 player; you can still choose the
+                      timer, content, and other settings.
+                    </Text>
+                  </View>
+                </Pressable>
+              </SurfaceCard>
+            ) : null}
+
             {templatableGame(state.gameType) && templateSlots ? (
               <TemplateQuickStart
                 slots={templateSlots}
@@ -304,6 +363,7 @@ export function CreateWizardShell() {
             <GameRoomSettingsPanel
               gameType={state.gameType}
               room={state.room}
+              maxPlayers={state.maxPlayers ?? null}
               onChange={(roomPatch) => patchState({ room: { ...state.room, ...roomPatch } })}
             />
 
@@ -436,7 +496,7 @@ const makeStyles = (theme: Theme) =>
       gap: theme.space.lg,
     },
     back: { alignSelf: 'flex-start', marginTop: theme.space.xs },
-    backText: { color: theme.primaryMuted, fontSize: 16, fontWeight: '700' },
+    backText: { color: theme.primaryMuted, fontSize: theme.type.section.size, fontWeight: '700' },
     hero: {
       gap: theme.space.xs,
       paddingBottom: theme.space.xs,
@@ -450,22 +510,39 @@ const makeStyles = (theme: Theme) =>
     },
     heading: {
       color: theme.text,
-      fontSize: 32,
+      fontSize: theme.type.display.size,
       fontWeight: '800',
       letterSpacing: -0.3,
     },
     subtitle: {
       color: theme.textMuted,
-      fontSize: 16,
+      fontSize: theme.type.section.size,
       lineHeight: 24,
       maxWidth: 340,
     },
     typeSection: { gap: theme.space.sm },
     typeHeading: {
       color: theme.text,
-      fontSize: 18,
+      fontSize: theme.type.section.size,
       fontWeight: '800',
     },
+    soloRow: { flexDirection: 'row', alignItems: 'flex-start', gap: theme.space.sm },
+    soloCheckbox: {
+      width: 22,
+      height: 22,
+      borderRadius: theme.radius.sm,
+      borderWidth: 1.5,
+      borderColor: theme.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginTop: 2,
+    },
+    soloCheckboxOn: { backgroundColor: theme.primary, borderColor: theme.primary },
+    soloCheckmark: { color: '#fff', fontSize: theme.type.label.size, fontWeight: '800' },
+    soloBody: { flex: 1, gap: 4 },
+    soloTitle: { color: theme.text, fontSize: theme.type.body.size, fontWeight: '800' },
+    soloHint: { color: theme.textMuted, fontSize: 13, lineHeight: 18 },
+    soloChevron: { color: theme.primary, fontSize: 28, fontWeight: '800', alignSelf: 'center', paddingHorizontal: 4 },
     footer: {
       paddingHorizontal: theme.space.lg,
       paddingTop: theme.space.sm,
@@ -477,7 +554,7 @@ const makeStyles = (theme: Theme) =>
     },
     error: {
       color: theme.error,
-      fontSize: 14,
+      fontSize: theme.type.label.size,
       textAlign: 'center',
     },
     webLink: {
@@ -492,7 +569,7 @@ const makeStyles = (theme: Theme) =>
     },
     webLinkAction: {
       color: theme.primaryMuted,
-      fontSize: 14,
+      fontSize: theme.type.label.size,
       fontWeight: '700',
     },
   })

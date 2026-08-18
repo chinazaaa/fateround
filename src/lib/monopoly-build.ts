@@ -13,20 +13,22 @@ export function canBuildOnGroup(
   group: MonopolyColorGroup,
   ownerId: string,
   owners: Record<string, string>,
-  mortgaged: Record<string, boolean>
+  mortgaged: Record<string, boolean>,
+  boardSize: 40 | 48 = 40
 ): boolean {
   if (group === 'station' || group === 'utility') return false
-  if (!ownsColorMonopoly(owners, ownerId, group)) return false
-  return !spacesInGroup(group).some((s) => mortgaged[String(s.index)])
+  if (!ownsColorMonopoly(owners, ownerId, group, boardSize)) return false
+  return !spacesInGroup(group, boardSize).some((space) => mortgaged[String(space.index)])
 }
 
 export function minBuildingsInGroup(
   group: MonopolyColorGroup,
   ownerId: string,
   owners: Record<string, string>,
-  buildings: Record<string, number>
+  buildings: Record<string, number>,
+  boardSize: 40 | 48 = 40
 ): number {
-  const sites = spacesInGroup(group).filter((s) => owners[String(s.index)] === ownerId)
+  const sites = spacesInGroup(group, boardSize).filter((space) => owners[String(space.index)] === ownerId)
   if (sites.length === 0) return 0
   return Math.min(...sites.map((s) => buildingLevel(buildings, s.index)))
 }
@@ -35,9 +37,10 @@ export function maxBuildingsInGroup(
   group: MonopolyColorGroup,
   ownerId: string,
   owners: Record<string, string>,
-  buildings: Record<string, number>
+  buildings: Record<string, number>,
+  boardSize: 40 | 48 = 40
 ): number {
-  const sites = spacesInGroup(group).filter((s) => owners[String(s.index)] === ownerId)
+  const sites = spacesInGroup(group, boardSize).filter((space) => owners[String(space.index)] === ownerId)
   if (sites.length === 0) return 0
   return Math.max(...sites.map((s) => buildingLevel(buildings, s.index)))
 }
@@ -49,16 +52,17 @@ export function canAddHouse(
   owners: Record<string, string>,
   buildings: Record<string, number>,
   mortgaged: Record<string, boolean>,
-  housesInBank: number
+  housesInBank: number,
+  boardSize: 40 | 48 = 40
 ): boolean {
-  const space = spaceAt(spaceIndex)
+  const space = spaceAt(spaceIndex, boardSize)
   if (space.type !== 'property' || !space.color || !space.houseCost) return false
   if (owners[String(spaceIndex)] !== ownerId) return false
-  if (!canBuildOnGroup(space.color, ownerId, owners, mortgaged)) return false
+  if (!canBuildOnGroup(space.color, ownerId, owners, mortgaged, boardSize)) return false
   const level = buildingLevel(buildings, spaceIndex)
   if (level >= MONOPOLY_MAX_HOUSES_PER_PROPERTY) return false
   if (housesInBank < 1) return false
-  const min = minBuildingsInGroup(space.color, ownerId, owners, buildings)
+  const min = minBuildingsInGroup(space.color, ownerId, owners, buildings, boardSize)
   return level <= min
 }
 
@@ -69,16 +73,17 @@ export function canAddHotel(
   owners: Record<string, string>,
   buildings: Record<string, number>,
   mortgaged: Record<string, boolean>,
-  hotelsInBank: number
+  hotelsInBank: number,
+  boardSize: 40 | 48 = 40
 ): boolean {
-  const space = spaceAt(spaceIndex)
+  const space = spaceAt(spaceIndex, boardSize)
   if (space.type !== 'property' || !space.color) return false
   if (owners[String(spaceIndex)] !== ownerId) return false
-  if (!canBuildOnGroup(space.color, ownerId, owners, mortgaged)) return false
+  if (!canBuildOnGroup(space.color, ownerId, owners, mortgaged, boardSize)) return false
   const siteLevel = buildingLevel(buildings, spaceIndex)
   if (siteLevel !== MONOPOLY_MAX_HOUSES_PER_PROPERTY) return false
   if (hotelsInBank < 1) return false
-  const groupSites = spacesInGroup(space.color).filter((s) => owners[String(s.index)] === ownerId)
+  const groupSites = spacesInGroup(space.color, boardSize).filter((site) => owners[String(site.index)] === ownerId)
   return groupSites.every((s) => {
     const level = buildingLevel(buildings, s.index)
     return level === MONOPOLY_MAX_HOUSES_PER_PROPERTY || level === MONOPOLY_HOTEL_LEVEL
@@ -89,14 +94,15 @@ export function canRemoveHouse(
   spaceIndex: number,
   ownerId: string,
   owners: Record<string, string>,
-  buildings: Record<string, number>
+  buildings: Record<string, number>,
+  boardSize: 40 | 48 = 40
 ): boolean {
-  const space = spaceAt(spaceIndex)
+  const space = spaceAt(spaceIndex, boardSize)
   if (space.type !== 'property' || !space.color) return false
   if (owners[String(spaceIndex)] !== ownerId) return false
   const level = buildingLevel(buildings, spaceIndex)
   if (level <= 0 || level === MONOPOLY_HOTEL_LEVEL) return false
-  const max = maxBuildingsInGroup(space.color, ownerId, owners, buildings)
+  const max = maxBuildingsInGroup(space.color, ownerId, owners, buildings, boardSize)
   return level >= max
 }
 
@@ -135,7 +141,10 @@ export function groupHasBuildings(
   group: MonopolyColorGroup,
   ownerId: string,
   owners: Record<string, string>,
-  buildings: Record<string, number>
+  buildings: Record<string, number>,
+  boardSize: 40 | 48 = 40
 ): boolean {
-  return spacesInGroup(group).some((s) => owners[String(s.index)] === ownerId && buildingLevel(buildings, s.index) > 0)
+  return spacesInGroup(group, boardSize).some(
+    (space) => owners[String(space.index)] === ownerId && buildingLevel(buildings, space.index) > 0
+  )
 }

@@ -149,7 +149,7 @@ export const MAFIA: SystemTrophySpec[] = [
   // ── Platinum ────────────────────────────────────────────────────────────────────────────
   {
     suffix: 'clean_sweep',
-    tier: 'platinum',
+    tier: 'gold',
     title: 'Clean Sweep',
     description: 'Win with the Mafia without losing a single member.',
     counter: 'mafia_clean_sweep_wins',
@@ -160,7 +160,7 @@ export const MAFIA: SystemTrophySpec[] = [
     // A CONJUNCTION over the three solo-role win counters: win as the Jester AND the Serial Killer
     // AND the Arsonist, across any number of games.
     suffix: 'solo_artist',
-    tier: 'platinum',
+    tier: 'gold',
     title: 'Solo Artist',
     description: 'Win a game as each of the three solo roles: the Jester, the Serial Killer and the Arsonist.',
     criteria: allOf(g('mafia_jester_wins'), g('mafia_serial_killer_wins'), g('mafia_arsonist_wins')),
@@ -172,7 +172,7 @@ export const MAFIA: SystemTrophySpec[] = [
     // One win on each of the four winning sides. Neutral is "any solo role", so it is an `any`
     // branch inside the `all`.
     suffix: 'all_four_teams',
-    tier: 'platinum',
+    tier: 'gold',
     title: 'All Four Teams',
     description: 'Win with the Village, with the Mafia, as a solo role, and as a Lover.',
     criteria: allOf(
@@ -189,7 +189,7 @@ export const MAFIA: SystemTrophySpec[] = [
     // A DISTINCT set: won as five different roles. Backed by `mafia_winning_roles`, emitted on a
     // win by the facts builder.
     suffix: 'role_player',
-    tier: 'platinum',
+    tier: 'gold',
     title: 'Role Player',
     description: 'Win a game as five different roles.',
     criteria: distinctCrit('mafia_winning_roles', 5),

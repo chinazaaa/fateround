@@ -9,7 +9,16 @@ import { awardForFinishedGame, extractDistinctMembers, levelForPoints } from './
  */
 function makeDb(over: Partial<Record<string, unknown[]>> = {}) {
   const tables: Record<string, Record<string, unknown>[]> = {
-    games: [{ id: 'ABCD', game_type: 'whot', status: 'finished', max_players: 4, finished_at: '2026-08-02T12:00:00Z' }],
+    games: [
+      {
+        id: 'ABCD',
+        game_type: 'whot',
+        status: 'finished',
+        max_players: 4,
+        finished_at: '2026-08-02T12:00:00Z',
+        session_started_at: '2026-08-02T11:50:00Z',
+      },
+    ],
     players: [
       { id: 'pl-1', game_id: 'ABCD', profile_id: 'prof-1', spectator: false },
       { id: 'pl-2', game_id: 'ABCD', profile_id: 'prof-2', spectator: false },
@@ -259,6 +268,7 @@ describe('awardForFinishedGame', () => {
           status: 'finished',
           max_players: 10,
           finished_at: '2026-08-02T12:00:00Z',
+          session_started_at: '2026-08-02T11:50:00Z',
         },
       ],
     })
@@ -331,7 +341,15 @@ describe('awardForFinishedGame — a win needs an opponent', () => {
     // Yahtzee and Sudoku allow one player and still write winner_player_id. Counting that as a
     // win would make every Champion track farmable alone.
     const db = makeDb({
-      games: [{ id: 'SOLO01', status: 'finished', game_type: 'yahtzee', finished_at: '2026-08-02T12:00:00Z' }],
+      games: [
+        {
+          id: 'SOLO01',
+          status: 'finished',
+          game_type: 'yahtzee',
+          finished_at: '2026-08-02T12:00:00Z',
+          session_started_at: '2026-08-02T11:50:00Z',
+        },
+      ],
       players: [{ id: 'p1', game_id: 'SOLO01', profile_id: 'prof-1', spectator: false }],
       yahtzee_sessions: [{ game_id: 'SOLO01', winner_player_id: 'p1' }],
       profiles: [{ id: 'prof-1', current_streak: 0, longest_streak: 0, last_active_date: null, trophy_points: 0 }],
@@ -356,7 +374,15 @@ describe('awardForFinishedGame — every round in a room awards', () => {
     // The claim used to be keyed on the code alone, which meant round 2 onwards silently
     // awarded nothing — a room that played all evening recorded one game.
     const db = makeDb({
-      games: [{ id: 'ROOM01', status: 'finished', game_type: 'trivia', finished_at: '2026-08-02T12:00:00Z' }],
+      games: [
+        {
+          id: 'ROOM01',
+          status: 'finished',
+          game_type: 'trivia',
+          finished_at: '2026-08-02T12:00:00Z',
+          session_started_at: '2026-08-02T11:50:00Z',
+        },
+      ],
       players: [
         { id: 'p1', game_id: 'ROOM01', profile_id: 'prof-1', spectator: false },
         { id: 'p2', game_id: 'ROOM01', profile_id: 'prof-2', spectator: false },
@@ -390,7 +416,15 @@ describe('awardForFinishedGame — the card-game winner is flagged spectator but
     // Whot/UNO/Crazy Eights flip a player to spectator=true the moment they empty their hand —
     // winner included. Without the finish_order rescue the winner earns nothing at all.
     const db = makeDb({
-      games: [{ id: 'WHOT01', status: 'finished', game_type: 'whot', finished_at: '2026-08-02T12:00:00Z' }],
+      games: [
+        {
+          id: 'WHOT01',
+          status: 'finished',
+          game_type: 'whot',
+          finished_at: '2026-08-02T12:00:00Z',
+          session_started_at: '2026-08-02T11:50:00Z',
+        },
+      ],
       players: [
         { id: 'winner', game_id: 'WHOT01', profile_id: 'prof-1', spectator: true }, // went out -> spectator
         { id: 'loser', game_id: 'WHOT01', profile_id: 'prof-2', spectator: false },

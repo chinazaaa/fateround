@@ -34,6 +34,26 @@ export interface TournamentGameConfig {
   schoolClassCount?: number
 }
 
+// One entry in a round-robin tournament's pre-planned playlist.
+export interface TournamentQueueEntry {
+  gameType: string
+  roundsCount?: number
+  timerSeconds?: number
+  /** Display mode for this game — 'projector' shows the game's current state
+   *  on the big screen (question / letter / etc.); 'phone_only' (default)
+   *  leaves the big screen on the leaderboard. */
+  bigScreenMode?: 'phone_only' | 'projector'
+}
+
+// Optional event branding — two colours + a logo — that the host attaches at
+// creation (or edits later). Applied to the lobby, in-game header, and results
+// card via CSS custom properties. Null / all-fields-empty = default palette.
+export interface TournamentBranding {
+  primaryColor?: string | null
+  accentColor?: string | null
+  logoUrl?: string | null
+}
+
 export interface Tournament {
   id: string
   host_token: string
@@ -48,6 +68,28 @@ export interface Tournament {
   target_game_count: number | null
   max_players: number | null
   elimination_config: TournamentEliminationConfig | null
+  // Round-robin only: the ordered playlist of games. Non-empty = planned
+  // mode (auto-spawn each round from this list); null/empty = freestyle
+  // mode (host picks each game live).
+  game_queue: TournamentQueueEntry[] | null
+  // Present ONLY on the raw DB row — never on the API response, since the
+  // shared trivia pack contains answers. The public GET returns the count
+  // separately (as `customTriviaPackCount`) instead of the raw questions.
+  custom_trivia_pack?: unknown[] | null
+  // Same rule as custom_trivia_pack — a preset Who Said This deck the host
+  // attached at creation, used by every planned WST game in this tournament
+  // instead of running player-submit mode. Never returned by the public GET.
+  custom_wst_pack?: unknown[] | null
+  // Event branding — two colours + logo. Public info: safe to ship to any
+  // caller with the tournament code (that's the whole point).
+  branding: TournamentBranding | null
+  // Optional scheduled start time (ISO string). Display-only: the host still
+  // controls the actual start via "Start Next Game" on the day.
+  scheduled_at: string | null
+  // Claim-based host transfer: when non-null, this tournament_players.id is
+  // the pending nominee. On accept, host_token rotates; on decline (or
+  // cancel), this field returns to null.
+  pending_host_player_id: string | null
   created_at: string
 }
 
@@ -64,6 +106,10 @@ export interface TournamentPlayer {
   // School format: 0-based index of the class this player is currently in
   // (0 = the lowest class). Reaching the tournament's schoolClassCount = graduated.
   school_level?: number
+  // Scheduled-event Ready flag — sticky per player, opt-in via the player's
+  // "I'm ready" button. Defaults false. Only meaningful when the tournament
+  // has a scheduled_at; a right-now tournament shouldn't gate on it.
+  is_ready?: boolean
 }
 
 export interface TournamentGame {
@@ -93,4 +139,8 @@ export interface TournamentGame {
   // How the match was decided (e.g. 'checkmate', 'timeout', 'resignation', 'walkover').
   win_reason?: string | null
   is_bye: boolean
+  // 'projector' → big-screen renders the game's current state (question /
+  // letter / etc.); 'phone_only' (default) → big-screen stays on leaderboard.
+  // Frozen at game spawn; can't change mid-game.
+  big_screen_mode?: 'phone_only' | 'projector'
 }

@@ -25,7 +25,7 @@
  */
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { GameType } from '@/types'
-import { GLOBAL_SCOPE, evaluateRaw, type ProgressSnapshot } from './criteria'
+import { GLOBAL_SCOPE, evaluateRaw, type PlatinumContext, type ProgressSnapshot } from './criteria'
 import { unlockedThisRound } from './instant-unlock'
 import { buildGameFacts } from './game-facts'
 import { resolveFinishers, resolveWinners } from './outcome'
@@ -51,7 +51,7 @@ export type AwardResult = {
   earned: AwardedTrophy[]
   /** False when the pass was a no-op: already awarded, unknown game, or nothing to do. */
   applied: boolean
-  reason?: 'already_awarded' | 'game_not_found' | 'not_a_player' | 'error'
+  reason?: 'already_awarded' | 'game_not_found' | 'never_started' | 'not_a_player' | 'error'
 }
 
 const NOOP = (reason: AwardResult['reason']): AwardResult => ({ earned: [], applied: false, reason })
@@ -194,12 +194,18 @@ export async function awardForFinishedGame(
       .from('games')
       // timer_seconds / question_source are read for the per-game facts builders (Trivia uses
       // both). Cheap to carry here; a second round-trip per finish would not be.
-      .select('id, game_type, status, max_players, finished_at, timer_seconds, question_source, theme')
+      .select(
+        'id, game_type, status, max_players, finished_at, session_started_at, timer_seconds, question_source, theme'
+      )
       .eq('id', sessionId)
       .maybeSingle()
     if (!game || game.status !== 'finished') {
       await releaseClaim()
       return NOOP('game_not_found')
+    }
+    if (!game.session_started_at) {
+      await releaseClaim()
+      return NOOP('never_started')
     }
 
     const gameType = game.game_type as GameType
@@ -357,20 +363,53 @@ async function grantEligible(
   forceIds: string[] = []
 ): Promise<AwardedTrophy[]> {
   const [{ data: catalog }, { data: alreadyEarned }] = await Promise.all([
-    supabase.from('trophies').select('id, title, tier, points, criteria').eq('is_active', true),
+    supabase.from('trophies').select('id, game_type, title, tier, points, criteria').eq('is_active', true),
     supabase.from('player_trophies').select('trophy_id').eq('profile_id', profileId),
   ])
   const have = new Set((alreadyEarned ?? []).map((r) => r.trophy_id as string))
   const forced = new Set(forceIds)
 
+  // Build platinum context: per-game lists of non-platinum trophy IDs.
+  const gameTrophyIds = new Map<string, string[]>()
+  const platinumTrophies: typeof catalog = []
+  for (const trophy of catalog ?? []) {
+    const gt = trophy.game_type as string | null
+    const crit = trophy.criteria as Record<string, unknown> | null
+    if (crit?.type === 'platinum') {
+      platinumTrophies.push(trophy)
+    } else if (gt) {
+      const list = gameTrophyIds.get(gt) ?? []
+      list.push(trophy.id as string)
+      gameTrophyIds.set(gt, list)
+    }
+  }
+
+  // Pass 1: evaluate non-platinum trophies.
   const earned: AwardedTrophy[] = []
   for (const trophy of catalog ?? []) {
     const id = trophy.id as string
+    const crit = trophy.criteria as Record<string, unknown> | null
+    if (crit?.type === 'platinum') continue
     if (have.has(id)) continue
-    // A mid-round unlock was already verified by the handler that saw it happen, so it does not
-    // have to satisfy the criteria again. evaluateRaw never throws — one malformed catalog row
-    // must not stop the rest.
     if (!forced.has(id) && !evaluateRaw(trophy.criteria, snapshot).met) continue
+    earned.push({
+      id,
+      title: trophy.title as string,
+      tier: trophy.tier as string,
+      points: Number(trophy.points) || 0,
+    })
+  }
+
+  // Update the earned set with what pass 1 just granted.
+  const earnedIds = new Set(have)
+  for (const t of earned) earnedIds.add(t.id)
+  const platinumCtx: PlatinumContext = { gameTrophyIds, earnedIds }
+
+  // Pass 2: evaluate platinum trophies now that we know the full earned set.
+  for (const trophy of platinumTrophies) {
+    const id = trophy.id as string
+    if (earnedIds.has(id)) continue
+    if (!evaluateRaw(trophy.criteria, snapshot, platinumCtx).met) continue
     earned.push({
       id,
       title: trophy.title as string,

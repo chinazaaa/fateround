@@ -116,6 +116,18 @@ resource "aws_ssm_parameter" "spotify_client_secret" {
   tags  = { Name = "${var.name_prefix}-spotify-client-secret" }
 }
 
+# AI deck generation runtime secret — only created when configured (SSM rejects
+# empty values, and the app treats a missing key as feature-off: /api/ai-questions
+# returns 503 rather than erroring). The instance reads it optionally, so absence
+# never breaks a deploy.
+resource "aws_ssm_parameter" "anthropic_api_key" {
+  count = var.anthropic_api_key != "" ? 1 : 0
+  name  = "/${var.name_prefix}/ANTHROPIC_API_KEY"
+  type  = "SecureString"
+  value = var.anthropic_api_key
+  tags  = { Name = "${var.name_prefix}-anthropic-api-key" }
+}
+
 # OpenTelemetry export (optional). Created only when an OTLP endpoint is configured;
 # without it the app's src/instrumentation.ts is a no-op, so absence keeps telemetry
 # off and never breaks a deploy. The endpoint + resource attributes are non-secret

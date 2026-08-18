@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { getIdentityFromRequest } from '@/lib/identity-server'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { randomDisplayName } from '@/lib/random-name'
 
 /**
  * Ensure a `profiles` row exists for the caller's identity.
@@ -22,6 +23,8 @@ export async function POST(req: NextRequest) {
     // and must carry on playing normally.
     if (!identity) return NextResponse.json({ profileId: null }, { status: 200 })
 
+    const country = req.headers.get('cf-ipcountry') ?? null
+
     const { error } = await getSupabaseAdmin()
       .from('profiles')
       // Only `id` and `is_anonymous` are written, so an existing row keeps its handle, streak
@@ -39,6 +42,18 @@ export async function POST(req: NextRequest) {
 
     if (error) {
       return NextResponse.json({ error: internalErrorMessage('profile/anon', error) }, { status: 500 })
+    }
+
+    const admin = getSupabaseAdmin()
+
+    // Give brand-new profiles a friendly random name so leaderboards aren't a wall of "Guest".
+    // Scoped to handle IS NULL, so it only ever fires on first creation and never overwrites a
+    // name the player has chosen (or a returning player's existing handle).
+    await admin.from('profiles').update({ handle: randomDisplayName() }).eq('id', identity.profileId).is('handle', null)
+
+    // Backfill country for any profile that doesn't have one yet (old or new).
+    if (country) {
+      await admin.from('profiles').update({ country }).eq('id', identity.profileId).is('country', null)
     }
 
     return NextResponse.json({ profileId: identity.profileId }, { status: 200 })

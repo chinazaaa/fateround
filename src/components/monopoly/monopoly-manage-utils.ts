@@ -11,9 +11,10 @@ export function getMonopolyBuildActionCount(board: MonopolyBoard, myPlayerId: st
   const hotelsInBank = board.hotels_in_bank ?? 12
   let count = 0
 
-  for (const space of playerProperties(owners, myPlayerId)) {
-    if (canAddHouse(space.index, myPlayerId, owners, buildings, mortgaged, housesInBank)) count += 1
-    if (canAddHotel(space.index, myPlayerId, owners, buildings, mortgaged, hotelsInBank)) count += 1
+  const boardSize = board.board_size ?? 40
+  for (const space of playerProperties(owners, myPlayerId, boardSize)) {
+    if (canAddHouse(space.index, myPlayerId, owners, buildings, mortgaged, housesInBank, boardSize)) count += 1
+    if (canAddHotel(space.index, myPlayerId, owners, buildings, mortgaged, hotelsInBank, boardSize)) count += 1
   }
 
   return count

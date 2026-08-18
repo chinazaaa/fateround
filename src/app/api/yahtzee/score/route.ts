@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
   if (!game) return NextResponse.json({ error: 'Game not found' }, { status: 404 })
   if (game.status !== 'active') return NextResponse.json({ error: 'Game not active' }, { status: 400 })
   if (!isYahtzeeGame(parseGameType(game.game_type))) {
-    return NextResponse.json({ error: 'Not a Yahtzee game' }, { status: 400 })
+    return NextResponse.json({ error: 'Not a Five Dice game' }, { status: 400 })
   }
 
   // Authorize by the secret resume_token; the resolved player.id is authoritative.

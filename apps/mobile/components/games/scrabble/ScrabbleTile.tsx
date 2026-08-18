@@ -34,19 +34,19 @@ export function ScrabbleTile({
     >
       <Text style={[styles.letter, { fontSize: letterSize }]}>{letter}</Text>
       {points != null ? (
-        <Text style={[styles.points, { fontSize: pointSize, bottom: size * 0.06, right: size * 0.08 }]}>
-          {points}
-        </Text>
+        <Text style={[styles.points, { fontSize: pointSize, bottom: size * 0.06, right: size * 0.08 }]}>{points}</Text>
       ) : null}
     </View>
   )
 }
 
+// Polished off-white tile — distinct from the commercial wooden-cream + brown-border
+// look. Neutral face, neutral border, black letter, dim-grey score subscript.
 const styles = StyleSheet.create({
   tile: {
-    backgroundColor: '#f5e6c8',
+    backgroundColor: '#f9fafb',
     borderWidth: 2,
-    borderColor: '#8b7355',
+    borderColor: '#d4d4d8',
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',
@@ -55,7 +55,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 1 },
     elevation: 2,
   },
-  tileBoard: { backgroundColor: '#fef3c7' },
+  tileBoard: { backgroundColor: '#ffffff' },
   tileSelected: { borderColor: '#f43f5e' },
   tilePending: { borderColor: '#22c55e' },
   // Stretch + centre so the heavy-weight lone "I" (narrowest glyph) isn't clipped to nothing

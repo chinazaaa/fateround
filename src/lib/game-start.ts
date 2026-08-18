@@ -136,6 +136,24 @@ export const GAME_START_SPECS: Partial<Record<GameType, StartSpec>> = {
   },
 }
 
+/**
+ * Bots-in-room invariant: no bot-only games — every room needs at least one
+ * seated human. This gate runs at Start time, complementing the add-bot cap
+ * (max-1 bots) in `/api/games/[code]/bots`: the add-cap keeps a lobby from
+ * becoming 100% bots, but doesn't stop a "Host only" host from padding the
+ * room with bots and hitting Start with zero humans seated. This does.
+ *
+ * Applies to any game with any bot seat — future-proof beyond the games in
+ * BOTS_SUPPORTED_TYPES so a new game accidentally allowing bots still gets
+ * the guard for free.
+ */
+export function startHumanSeatError(players: { is_bot?: boolean | null }[]): string | null {
+  const hasBot = players.some((p) => p.is_bot === true)
+  if (!hasBot) return null
+  const hasHuman = players.some((p) => p.is_bot !== true)
+  return hasHuman ? null : 'Add at least one human player before starting — bot-only games aren’t supported'
+}
+
 /** Validates a (spectator-filtered) player count against a spec; returns an error message or null. */
 export function startCountError(playerCount: number, spec: StartSpec): string | null {
   if (spec.exact) {

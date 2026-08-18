@@ -28,6 +28,7 @@ import {
   isICallOnGame,
   isCodewordsGame,
   isWordHuntGame,
+  isWordleRoomGame,
 } from '@/lib/game-types'
 import { tallyTriviaPlayerScores } from '@/lib/trivia'
 import { totalScore } from '@/lib/yahtzee'
@@ -91,6 +92,8 @@ function buildShareText({
   codewordsWinnerLabel,
   wordHuntLeaderboard,
   wordHuntWinnerName,
+  wordleRoomStandings,
+  wordleRoomWinnerName,
 }: {
   game: Game
   participants: Participant[]
@@ -123,6 +126,8 @@ function buildShareText({
   codewordsWinnerLabel?: string
   wordHuntLeaderboard?: { name: string; score: number; wordCount: number }[]
   wordHuntWinnerName?: string
+  wordleRoomStandings?: { name: string; wordsSolved: number; guesses: number }[]
+  wordleRoomWinnerName?: string
 }): string {
   const gameType = parseGameType(game.game_type)
   const config = gameTypeConfig(gameType)
@@ -137,6 +142,24 @@ function buildShareText({
       ...wordHuntLeaderboard
         .slice(0, 8)
         .map((row, i) => `  ${i + 1}. ${row.name} (${row.score} pts · ${row.wordCount}w)`),
+      '',
+      `Play at ${appDomain()}`,
+    ]
+    return lines.join('\n')
+  }
+
+  if (isWordleRoomGame(gameType) && wordleRoomStandings && wordleRoomStandings.length > 0) {
+    const lines = [
+      ...gameHeader,
+      wordleRoomWinnerName ? `🏆 ${wordleRoomWinnerName} wins!` : '🏁 Race over',
+      '',
+      'Final standings:',
+      ...wordleRoomStandings
+        .slice(0, 8)
+        .map(
+          (row, i) =>
+            `  ${i + 1}. ${row.name} (${row.wordsSolved} word${row.wordsSolved === 1 ? '' : 's'} · ${row.guesses} guess${row.guesses === 1 ? '' : 'es'})`
+        ),
       '',
       `Play at ${appDomain()}`,
     ]
@@ -440,6 +463,8 @@ export function ShareResults({
   codewordsWinnerLabel,
   wordHuntLeaderboard,
   wordHuntWinnerName,
+  wordleRoomStandings,
+  wordleRoomWinnerName,
   primary,
 }: {
   captureRef?: RefObject<HTMLElement | null>
@@ -474,6 +499,8 @@ export function ShareResults({
   codewordsWinnerLabel?: string
   wordHuntLeaderboard?: { name: string; score: number; wordCount: number }[]
   wordHuntWinnerName?: string
+  wordleRoomStandings?: { name: string; wordsSolved: number; guesses: number }[]
+  wordleRoomWinnerName?: string
   /** Render the Share button as the primary action (results screens). */
   primary?: boolean
 }) {
@@ -516,6 +543,8 @@ export function ShareResults({
         codewordsWinnerLabel,
         wordHuntLeaderboard,
         wordHuntWinnerName,
+        wordleRoomStandings,
+        wordleRoomWinnerName,
       }),
     [
       game,
@@ -549,6 +578,8 @@ export function ShareResults({
       codewordsWinnerLabel,
       wordHuntLeaderboard,
       wordHuntWinnerName,
+      wordleRoomStandings,
+      wordleRoomWinnerName,
     ]
   )
 

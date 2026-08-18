@@ -2,22 +2,58 @@ import { NextRequest, NextResponse } from 'next/server'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { z } from 'zod'
 import { generateAiQuestions, AI_QUESTION_GAME_TYPES } from '@/lib/ai-questions'
-import { enforceRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
+import { enforceRateLimit, enforceGlobalLimit, RATE_LIMITS } from '@/lib/rate-limit'
 
 const requestSchema = z.object({
   gameType: z.enum(AI_QUESTION_GAME_TYPES as [string, ...string[]]),
   count: z.number().int().min(1).max(50),
   theme: z.string().max(100).optional(),
   customPrompt: z.string().max(500).optional(),
-  triviaCategory: z.enum(['tech', 'general']).optional(),
-  apiKey: z.string().min(1, 'A Claude API key is required to generate questions'),
+  triviaCategory: z
+    .enum([
+      'tech',
+      'general',
+      'art',
+      'food',
+      'geography',
+      'history',
+      'language',
+      'literature',
+      'math',
+      'movies',
+      'music',
+      'nature',
+      'pop_culture',
+      'science',
+      'sports',
+      'technology',
+      'world_culture',
+    ])
+    .optional(),
 })
 
 export async function POST(req: NextRequest) {
-  // The caller supplies their own Claude key, so this costs us nothing — but it is still an
-  // unauthenticated outbound proxy and shouldn't be usable as a free relay (audit finding M7).
-  const limited = await enforceRateLimit(req, RATE_LIMITS.aiQuestions)
-  if (limited) return limited
+  // We host the Claude key ourselves now, so every request costs real money.
+  // Three caps run in series, and the ORDER matters: each check reserves a slot
+  // as it passes, so the cheapest, most-likely-to-reject one goes first. Putting
+  // the shared global budget last means a caller who trips their own per-IP
+  // limits never consumes any of it.
+  //
+  //   1. per-IP burst  — stops a scripted flood
+  //   2. per-IP daily  — sizes one caller's share
+  //   3. global daily  — the hard ceiling on the bill; per-IP limits can't bound
+  //                      the total, since cycling IPs resets them
+  const burstLimited = await enforceRateLimit(req, RATE_LIMITS.aiQuestions)
+  if (burstLimited) return burstLimited
+  const dailyLimited = await enforceRateLimit(req, RATE_LIMITS.aiQuestionsDaily)
+  if (dailyLimited) return dailyLimited
+  const globalLimited = await enforceGlobalLimit(RATE_LIMITS.aiQuestionsGlobalDaily)
+  if (globalLimited) return globalLimited
+
+  const apiKey = process.env.ANTHROPIC_API_KEY
+  if (!apiKey) {
+    return NextResponse.json({ error: 'AI generation is not configured on this server.' }, { status: 503 })
+  }
 
   let body: unknown
   try {
@@ -31,7 +67,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
   }
 
-  const { gameType, count, theme, customPrompt, triviaCategory, apiKey } = parsed.data
+  const { gameType, count, theme, customPrompt, triviaCategory } = parsed.data
 
   try {
     const result = await generateAiQuestions({

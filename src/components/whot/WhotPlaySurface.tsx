@@ -60,6 +60,8 @@ export type WhotPlaySurfaceProps = {
   isMyTurn: boolean
   /** read-only spectator / out-of-cards viewer */
   watching?: boolean
+  /** hide the hand section entirely (e.g. game finished in solo practice) */
+  hideHand?: boolean
   acting: boolean
   drawCount: number
   drawDepleted: boolean
@@ -86,6 +88,7 @@ export function WhotPlaySurface({
   turnPlayerId,
   isMyTurn,
   watching,
+  hideHand,
   acting,
   drawCount,
   drawDepleted,
@@ -105,10 +108,19 @@ export function WhotPlaySurface({
   const turnTimeLabel =
     turnTimer?.hasTimer && turnTimer.secondsLeft > 0 ? formatCountdown(turnTimer.secondsLeft) : undefined
 
-  // Turn rail: order players by turn_order so seats read left→right in play order.
+  // Turn rail: cluster players who've already finished (winner first, then
+  // runner-ups in finishing order) at the front of the rail, followed by the
+  // players still playing in turn order. This keeps the "podium" together
+  // instead of leaving finished players stranded in their original seat.
   const byId = new Map(players.map((p) => [p.id, p]))
-  const winnerId = (session.finish_order ?? [])[0]
-  const seats: TurnSeat[] = session.turn_order
+  const finishOrder = session.finish_order ?? []
+  const winnerId = finishOrder[0]
+  const finishedIds = new Set(finishOrder)
+  const orderedIds = [
+    ...finishOrder.filter((id) => byId.has(id)),
+    ...session.turn_order.filter((id) => !finishedIds.has(id)),
+  ]
+  const seats: TurnSeat[] = orderedIds
     .map((id) => byId.get(id))
     .filter((p): p is Player => !!p)
     .map((p) => {
@@ -176,22 +188,35 @@ export function WhotPlaySurface({
           </div>
         )}
 
-        {watching ? (
-          <TurnStatus muted>
-            Spectating — {turnName}&apos;s turn · <span className="g">you can join the voice room</span>
-          </TurnStatus>
-        ) : session.status_message ? (
+        {/* Commentary — status_message, pick penalties and the WHOT-call prompt — is shown to
+            spectators too so they can follow the action ("Ibrahim to draw 3", etc.), not just
+            players. Only fall back to the plain "Spectating" hint when there's no live event. */}
+        {session.status_message ? (
           <ActionToast tone="ok">{session.status_message}</ActionToast>
         ) : session.phase === 'choose_whot' ? (
           <TurnStatus>
-            {isMyTurn
+            {!watching && isMyTurn
               ? `You played WHOT — choose ${rules.numberCallsEnabled ? 'a shape or number' : 'a shape'}`
               : `${turnName} is calling the next play…`}
           </TurnStatus>
         ) : pickPenalty.type === 'pick2' ? (
-          <ActionToast tone="hot">🔥 Pick 2 — play a 2 or draw {pickPenalty.count}</ActionToast>
+          <ActionToast tone="hot">
+            🔥 Pick 2 —{' '}
+            {watching
+              ? `${turnName} must play a 2 or draw ${pickPenalty.count}`
+              : `play a 2 or draw ${pickPenalty.count}`}
+          </ActionToast>
         ) : pickPenalty.type === 'pick3' ? (
-          <ActionToast tone="hot">🔥 Pick 3 — play a 5 or draw {pickPenalty.count}</ActionToast>
+          <ActionToast tone="hot">
+            🔥 Pick 3 —{' '}
+            {watching
+              ? `${turnName} must play a 5 or draw ${pickPenalty.count}`
+              : `play a 5 or draw ${pickPenalty.count}`}
+          </ActionToast>
+        ) : watching ? (
+          <TurnStatus muted>
+            Spectating — {turnName}&apos;s turn · <span className="g">you can join the voice room</span>
+          </TurnStatus>
         ) : isMyTurn ? (
           // The required shape/number is shown persistently by the demand badge
           // above, so the turn prompt no longer repeats it inline.
@@ -204,7 +229,7 @@ export function WhotPlaySurface({
       {/* Spectators see who's playing (names + card counts + whose turn) on the table
           above the draw/discard piles, so no separate standings list here. Who's-here
           + remove lives in the roster side-drawer (header people button). */}
-      {watching ? null : (
+      {watching || hideHand ? null : (
         <Hand
           count={myHand.length}
           many={many}

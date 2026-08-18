@@ -390,3 +390,35 @@ export function crazyEightsHandCount(hands: CrazyEightsPlayerHand[], playerId: s
   if (Array.isArray(row.cards)) return (row.cards as CrazyEightsCard[]).length
   return row.card_count ?? 0
 }
+
+/**
+ * Advance `steps` active players from `fromIndex` in `direction` (1 forward,
+ * -1 reversed), skipping seats already out. Mirrors the web helper of the
+ * same name.
+ */
+export function crazyEightsNextTurnIndex(
+  session: CrazyEightsSession,
+  hands: CrazyEightsPlayerHand[],
+  fromIndex: number,
+  steps: number,
+  direction: number
+): number {
+  const order = session.turn_order ?? []
+  const len = order.length
+  if (len === 0) return 0
+  const dir = direction < 0 ? -1 : 1
+
+  let idx = fromIndex
+  for (let s = 0; s < steps; s += 1) {
+    let advanced = false
+    for (let attempt = 0; attempt < len; attempt += 1) {
+      idx = (((idx + dir) % len) + len) % len
+      if (crazyEightsHandCount(hands, order[idx]!) > 0) {
+        advanced = true
+        break
+      }
+    }
+    if (!advanced) return fromIndex
+  }
+  return idx
+}

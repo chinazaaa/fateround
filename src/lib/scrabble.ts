@@ -547,7 +547,7 @@ export async function processScrabblePlay(
   for (const t of tiles) {
     const letter = t.letter.toUpperCase()
     if (!allowedLetters.has(letter)) {
-      return { error: `"${letter}" is not available in this Scrabble edition` }
+      return { error: `"${letter}" is not available in this Word Tiles edition` }
     }
   }
 

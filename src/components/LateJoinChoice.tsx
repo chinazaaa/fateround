@@ -1,8 +1,8 @@
-'use client'
-
 import { GameTypeBadge } from '@/components/GameTypeBadge'
 import { ShareGameLinkCard } from '@/components/ShareGameLinkCard'
 import { gameTypeConfig, parseGameType } from '@/lib/game-types'
+import { gameIcon } from '@/lib/game-glyphs'
+import { Glyph } from '@/components/icons/Glyph'
 import type { LateJoinContext } from '@/lib/late-join-context'
 import type { Game, GameType } from '@/types'
 
@@ -41,7 +41,11 @@ export function LateJoinChoice({
     <div className="page-wrap flex items-center justify-center px-4 py-8">
       <div className="glass-card p-6 w-full max-w-md space-y-5">
         <div className="text-center space-y-2">
-          <div className="text-4xl">{cfg.headerEmoji}</div>
+          <div className="flex justify-center text-[var(--primary)] pb-1">
+            <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[color-mix(in_srgb,var(--primary)_12%,transparent)]">
+              <Glyph icon={gameIcon(gameType)} size={24} />
+            </span>
+          </div>
           <h1 className="text-2xl font-black text-body">{game.title}</h1>
           <GameTypeBadge gameType={gameType as GameType} />
         </div>

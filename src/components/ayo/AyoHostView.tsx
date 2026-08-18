@@ -55,6 +55,11 @@ export function AyoHostView({ gameCode, hostToken }: { gameCode: string; hostTok
   const [session, setSession] = useState<AyoSession | null>(null)
   const sessionRef = useRef<AyoSession | null>(null)
   sessionRef.current = session
+  // Refs applySessionRow reads for the opponent-move animation trigger.
+  // `hostPlayerIdRef` mirrors the resolved host player id (null for pure
+  // watchers), variantRef mirrors the game's variant.
+  const hostPlayerIdRef = useRef<string | null>(null)
+  const variantRef = useRef<'traditional' | 'oware'>('traditional')
   const [starting, setStarting] = useState(false)
   const [playingAgain, setPlayingAgain] = useState(false)
   const [hostActing, setHostActing] = useState(false)
@@ -97,14 +102,34 @@ export function AyoHostView({ gameCode, hostToken }: { gameCode: string; hostTok
 
   // Delta fast-path: patch the session locally on an ordinary move and skip the full reload;
   // a status change (→ finished) or the first row still reloads. See useGameTableSync `apply`.
-  const applySessionRow = useCallback((row: Record<string, unknown>): boolean => {
-    const next = row as unknown as AyoSession
-    const prev = sessionRef.current
-    if (prev && next.updated_at < prev.updated_at) return true
-    setSession(next)
-    sessionRef.current = next
-    return prev != null && prev.status === 'active' && next.status === 'active'
-  }, [])
+  const applySessionRow = useCallback(
+    (row: Record<string, unknown>): boolean => {
+      const next = row as unknown as AyoSession
+      const prev = sessionRef.current
+      if (prev && next.updated_at < prev.updated_at) return true
+
+      // Animate opponent (or spectated) moves that arrive via realtime. The
+      // host's own move already animates via sowPit — skip that so we don't
+      // double-fire and cancel the in-flight animation. A pure watcher (no
+      // hostPlayerId) sees every move animate here.
+      if (
+        prev &&
+        prev.status === 'active' &&
+        next.status === 'active' &&
+        next.last_pit != null &&
+        next.last_pit !== prev.last_pit &&
+        currentTurnPlayerId(prev) !== hostPlayerIdRef.current
+      ) {
+        const config = boardConfigFromSession(prev, variantRef.current)
+        void playSowAnimation(prev.pits, next.last_pit, config)
+      }
+
+      setSession(next)
+      sessionRef.current = next
+      return prev != null && prev.status === 'active' && next.status === 'active'
+    },
+    [playSowAnimation]
+  )
 
   const connected = useGameTableSync(
     gameCode,
@@ -139,6 +164,10 @@ export function AyoHostView({ gameCode, hostToken }: { gameCode: string; hostTok
     onReload: load,
     toast: { success, error: toastError },
   })
+
+  // Keep the refs applySessionRow reads in sync with the live values.
+  hostPlayerIdRef.current = hostPlayerId
+  variantRef.current = parseAyoVariant(game?.ayo_variant)
 
   const handlePlayerRemoved = useCallback(
     (playerId: string) => {
@@ -406,7 +435,7 @@ export function AyoHostView({ gameCode, hostToken }: { gameCode: string; hostTok
             hostToken={hostToken}
             onEnded={load}
             label="End game early"
-            icon={<ExitIcon size={16} />}
+            icon={<ExitIcon size={14} />}
             confirmTitle="End this game early?"
             confirmMessage="The current game will end and players will see the results screen."
             className="btn-danger-soft"
