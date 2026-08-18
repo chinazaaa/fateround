@@ -159,6 +159,7 @@ export const NATIVE_DAILY_GAMES: ReadonlySet<DailyChallengeGameType> = new Set([
   'crossword',
   'mini_crossword',
   'chess_mate',
+  'ludo_puzzle',
 ])
 
 export function hasNativeDailyPlay(gameType: DailyChallengeGameType): boolean {
