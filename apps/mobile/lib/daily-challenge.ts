@@ -156,6 +156,8 @@ export const NATIVE_DAILY_GAMES: ReadonlySet<DailyChallengeGameType> = new Set([
   'word_grouping',
   'codenames_codeword',
   'whot_puzzle',
+  'crossword',
+  'mini_crossword',
 ])
 
 export function hasNativeDailyPlay(gameType: DailyChallengeGameType): boolean {
