@@ -375,7 +375,7 @@ export function QuiplashHostView({ gameCode, hostToken }: { gameCode: string; ho
             hostToken={hostToken}
             onEnded={load}
             label="End game"
-            icon={<ExitIcon size={16} />}
+            icon={<ExitIcon size={14} />}
             className="btn-danger-soft"
           />
         </div>
@@ -504,6 +504,7 @@ export function QuiplashHostView({ gameCode, hostToken }: { gameCode: string; ho
     return (
       <HostLobby
         gameCode={gameCode}
+        questionSource={game.question_source}
         hostToken={hostToken}
         game={game}
         titleMeta={<GameInfoChips game={game} className="mt-2" />}

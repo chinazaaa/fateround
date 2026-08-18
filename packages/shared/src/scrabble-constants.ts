@@ -1,14 +1,22 @@
-// Shared Scrabble constants — imported by both the rules engine (src/lib/scrabble.ts)
-// and the UI (src/components/scrabble/*). Standard English-language Scrabble ruleset.
+// Shared Word Tiles constants — imported by both the rules engine (src/lib/scrabble.ts)
+// and the UI (src/components/scrabble/*). English-language ruleset with an original
+// tile distribution and premium-square layout (see docs below).
 
 export const SCRABBLE_BOARD_SIZE = 15
 export const SCRABBLE_RACK_SIZE = 7
-/** Bonus for using all 7 rack tiles in one play ("bingo"). */
+/** Bonus for using all 7 rack tiles in one play (the "bingo" / full-rack bonus). */
 export const SCRABBLE_BINGO_BONUS = 50
 /** Center square (0-indexed) the first word must cover. */
 export const SCRABBLE_CENTER = { row: 7, col: 7 } as const
 
-/** Point value per letter. '?' (blank) is always 0. */
+/**
+ * Point value per letter. '?' (blank) is always 0.
+ *
+ * Original distribution — English-frequency-based so play is balanced, but the point
+ * values and counts intentionally differ from any specific commercial word game's
+ * economy. Rare consonants stay expensive (J/X at 8, Q/Z at 10) because that's how
+ * English probability works, not because it's a copy of one.
+ */
 export const SCRABBLE_TILE_VALUES: Record<string, number> = {
   A: 1,
   B: 3,
@@ -17,7 +25,7 @@ export const SCRABBLE_TILE_VALUES: Record<string, number> = {
   E: 1,
   F: 4,
   G: 2,
-  H: 4,
+  H: 3,
   I: 1,
   J: 8,
   K: 5,
@@ -39,17 +47,17 @@ export const SCRABBLE_TILE_VALUES: Record<string, number> = {
   '?': 0,
 }
 
-/** Tile counts in a fresh 100-tile bag (2 blanks). */
+/** Tile counts in a fresh 100-tile bag (98 letters + 2 blanks). */
 export const SCRABBLE_TILE_DISTRIBUTION: Record<string, number> = {
   A: 9,
   B: 2,
   C: 2,
   D: 4,
-  E: 12,
+  E: 11,
   F: 2,
   G: 3,
-  H: 2,
-  I: 9,
+  H: 3,
+  I: 8,
   J: 1,
   K: 1,
   L: 4,
@@ -59,7 +67,7 @@ export const SCRABBLE_TILE_DISTRIBUTION: Record<string, number> = {
   P: 2,
   Q: 1,
   R: 6,
-  S: 4,
+  S: 5,
   T: 6,
   U: 4,
   V: 2,
@@ -72,32 +80,54 @@ export const SCRABBLE_TILE_DISTRIBUTION: Record<string, number> = {
 
 export type ScrabblePremium = '' | 'DL' | 'TL' | 'DW' | 'TW'
 
-// Standard board premium squares (0-indexed). The grid is 8-fold symmetric, so we
-// list one set of coordinates and mirror across both axes when building the layout.
+/*
+ * Original 15×15 premium-square layout.
+ *
+ * Base coordinates below live in the top-left quadrant (r ≤ 7, c ≤ 7). buildPremiumLayout
+ * mirrors each across both axes, producing a layout that is 4-fold rotationally symmetric
+ * and mirror-symmetric on both axes — i.e. fair from every seat and identical after a 90°
+ * turn of the physical board. Any base coord on an axis (r = 7 or c = 7) mirrors to 2
+ * squares; off-axis coords mirror to 4. Coord pairs of the form (r, c) plus (c, r) are
+ * included together so 90° rotational symmetry is preserved.
+ *
+ * Design differs from the well-known commercial layout on purpose:
+ *   • Triple-word squares are inset OFF the corners, not on them.
+ *   • True corners get Double-word instead — an intentional inversion of the standard
+ *     "corner triple-word" fingerprint.
+ *   • The centre is a neutral start star (no premium); the first word scores at face
+ *     value. Play is otherwise unchanged: first word must still cross the centre.
+ *   • Premium counts total 8 TW / 16 DW / 12 TL / 24 DL — 60 premium squares plus
+ *     the neutral centre — balanced and playtestable.
+ */
+
+/** 8 total: (2,2) [×4 inset corners] + (7,4) [×2] + (4,7) [×2]. */
 const TW_COORDS: [number, number][] = [
-  [0, 0],
-  [0, 7],
-  [7, 0],
-]
-const DW_COORDS: [number, number][] = [
-  [1, 1],
   [2, 2],
-  [3, 3],
-  [4, 4],
-  [7, 7],
+  [7, 4],
+  [4, 7],
 ]
+/** 16 total: (0,0) [×4 true corners] + (1,1) [×4] + (4,4) [×4] + (5,5) [×4]. */
+const DW_COORDS: [number, number][] = [
+  [0, 0],
+  [1, 1],
+  [4, 4],
+  [5, 5],
+]
+/** 12 total: (1,5) [×4] + (5,1) [×4] + (6,6) [×4 inner cluster]. */
 const TL_COORDS: [number, number][] = [
   [1, 5],
   [5, 1],
-  [5, 5],
+  [6, 6],
 ]
+/** 24 total: 8 outer-edge slots + 8 inner-ring slots + 8 axis pairs. */
 const DL_COORDS: [number, number][] = [
   [0, 3],
-  [2, 6],
   [3, 0],
-  [3, 7],
+  [0, 7],
+  [7, 0],
+  [2, 6],
   [6, 2],
-  [6, 6],
+  [3, 7],
   [7, 3],
 ]
 

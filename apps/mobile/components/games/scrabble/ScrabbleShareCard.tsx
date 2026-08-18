@@ -105,7 +105,7 @@ export function ScrabbleShareCard({ standings, winnerName, isTie, endedEarly, hi
       <View style={styles.offscreen} pointerEvents="none">
         <View ref={captureCardRef} collapsable={false} style={styles.captureCard}>
           <Text style={styles.captureEmoji}>🔤</Text>
-          <Text style={styles.captureGame}>Scrabble</Text>
+          <Text style={styles.captureGame}>Word Tiles</Text>
           <View style={styles.captureDivider} />
           <Text style={styles.captureHero}>{hero}</Text>
           <Text style={styles.captureTitle}>{heroTitle}</Text>
@@ -133,7 +133,7 @@ export function ScrabbleShareCard({ standings, winnerName, isTie, endedEarly, hi
 }
 
 function buildShareText(standings: ScrabbleShareStanding[], heroTitle: string): string {
-  const lines: string[] = ['Scrabble', '', heroTitle]
+  const lines: string[] = ['Word Tiles', '', heroTitle]
   if (standings.length > 0) {
     lines.push('', 'Final scores:')
     standings.slice(0, 8).forEach((row) => {

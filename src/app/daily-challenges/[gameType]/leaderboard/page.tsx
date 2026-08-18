@@ -1,0 +1,43 @@
+import type { Metadata } from 'next'
+import { SITE_NAME, gameLandingOgPath } from '@/lib/seo'
+import { DailyLeaderboardClient } from '@/components/daily/DailyLeaderboardClient'
+import { DAILY_GAME_SLUG_TO_TYPE, DAILY_GAME_LABELS, type DailyChallengeGameType } from '@/lib/daily-challenge'
+
+export const dynamic = 'force-dynamic'
+
+export async function generateMetadata({ params }: { params: Promise<{ gameType: string }> }): Promise<Metadata> {
+  const { gameType: slug } = await params
+  const gameType = DAILY_GAME_SLUG_TO_TYPE[slug] as DailyChallengeGameType | undefined
+  const label = gameType ? DAILY_GAME_LABELS[gameType] : 'Daily Challenge'
+  const description = `Today's top scores on the Daily ${label}. See where you rank against other players.`
+
+  const ogPath = gameLandingOgPath(`daily-${slug}`)
+  const ogImage = { url: ogPath, width: 1200, height: 630, alt: `Daily ${label} Leaderboard | ${SITE_NAME}` }
+
+  return {
+    title: `Daily ${label} Leaderboard — Today's Top Scores`,
+    description,
+    alternates: { canonical: `/daily-challenges/${slug}/leaderboard` },
+    openGraph: {
+      title: `Daily ${label} Leaderboard | ${SITE_NAME}`,
+      description,
+      url: `/daily-challenges/${slug}/leaderboard`,
+      images: [ogImage],
+    },
+  }
+}
+
+export default async function DailyLeaderboardPage({ params }: { params: Promise<{ gameType: string }> }) {
+  const { gameType: slug } = await params
+  const gameType = DAILY_GAME_SLUG_TO_TYPE[slug]
+
+  if (!gameType) {
+    return (
+      <div className="mx-auto max-w-lg px-4 py-16 text-center">
+        <h1 className="text-2xl font-bold">Game not found</h1>
+      </div>
+    )
+  }
+
+  return <DailyLeaderboardClient gameType={gameType} />
+}

@@ -15,6 +15,8 @@ import { rememberHostToken, clearHostToken } from '@/lib/host-session'
 import { useHostToken } from '@/hooks/useHostToken'
 import { useHostIdentity, useHostDisplayName } from '@/hooks/useHostVoiceIdentity'
 import { MatureGameGate } from '@/components/MatureGameGate'
+import { useProfile } from '@/hooks/useProfile'
+import { ScheduledHostWaitingScreen } from '@/components/notifications/ScheduledHostWaitingScreen'
 import type { Game } from '@/types'
 
 /**
@@ -34,6 +36,7 @@ export default function HostPage() {
   // Voice identity for the host's floating pill (mounted for non-header games below).
   const hostIdentity = useHostIdentity(gameCode)
   const hostName = useHostDisplayName(gameCode)
+  const { profile } = useProfile()
 
   const [game, setGame] = useState<Game | null>(null)
   const [loading, setLoading] = useState(true)
@@ -224,6 +227,26 @@ export default function HostPage() {
   }
 
   if (game) {
+    // Scheduled games haven't opened yet — the per-game host views only know
+    // how to render a "waiting for round to begin" one-liner, so intercept and
+    // show the premium countdown + share + host-controls screen instead. It
+    // polls status and reloads once the T-0 cron flips us to 'waiting'.
+    if (game.status === 'scheduled') {
+      return (
+        <ScheduledHostWaitingScreen
+          gameCode={gameCode}
+          hostToken={hostToken}
+          initialGame={{
+            id: gameCode,
+            title: game.title ?? null,
+            game_type: game.game_type,
+            status: game.status,
+            scheduled_at: game.scheduled_at ?? null,
+            is_public: !!game.is_public,
+          }}
+        />
+      )
+    }
     const DedicatedHostView = HOST_VIEW_REGISTRY[parseGameType(game.game_type)]
     return (
       <>
@@ -235,7 +258,12 @@ export default function HostPage() {
         {/* Floating "Join voice" pill for the host. Skipped for games with the
             header voice rail (Whot) so they don't get two voice controls. */}
         {hostToken && !gameHasHeaderVoice(game.game_type) && (
-          <AudioChat roomCode={gameCode} playerName={hostName} auth={{ kind: 'host', token: hostToken }} />
+          <AudioChat
+            roomCode={gameCode}
+            playerName={hostName}
+            auth={{ kind: 'host', token: hostToken }}
+            autoJoin={!!profile?.default_voice_on}
+          />
         )}
         {/* Floating DJ panel — persists across lobby + active play for every game type. */}
         {/* <HostMusicControl gameCode={gameCode} hostToken={hostToken} /> */}

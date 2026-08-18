@@ -42,6 +42,14 @@ describe('matchesGameSearch', () => {
     expect(matchesGameSearch('checkers_nigeria' as GameType, 'naija checkers')).toBe(true)
     expect(matchesGameSearch('checkers_nigeria' as GameType, 'nigerian draughts')).toBe(true)
   })
+
+  it('still finds renamed games by the original trademark', () => {
+    expect(matchesGameSearch('monopoly' as GameType, 'monopoly')).toBe(true)
+    expect(matchesGameSearch('scrabble' as GameType, 'scrabble')).toBe(true)
+    expect(matchesGameSearch('yahtzee' as GameType, 'yahtzee')).toBe(true)
+    expect(matchesGameSearch('uno' as GameType, 'uno')).toBe(true)
+    expect(matchesGameSearch('quiplash' as GameType, 'quiplash')).toBe(true)
+  })
 })
 
 describe('game categories', () => {

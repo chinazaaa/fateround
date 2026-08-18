@@ -18,6 +18,7 @@ import { removeChessPlayer } from '@/lib/chess'
 import { removeCheckersPlayer } from '@/lib/checkers'
 import { removeDraughts10Player } from '@/lib/draughts10'
 import { removeAyoPlayer } from '@/lib/ayo'
+import { maybeNotifyHostPlayerJoined } from '@/lib/push'
 import { removeTicTacToePlayer } from '@/lib/tic-tac-toe'
 import { removePingPongPlayer } from '@/lib/ping-pong'
 import { isMonopolyTokenId } from '@/lib/monopoly-tokens'
@@ -165,6 +166,17 @@ async function jsonPlayerJoin(
   extra: Record<string, unknown> = {}
 ) {
   await linkPlayerToRoomMember(supabase, player.id, roomMemberId)
+  // Discovery Phase A: fire a directed push to the host so they know somebody
+  // arrived. The helper self-gates (waiting + is_public + non-host + 60s dedup);
+  // wrap in a best-effort to keep the join response fast — a failed push must
+  // never turn a successful join into a 500.
+  void maybeNotifyHostPlayerJoined(
+    String((game as { id?: string }).id ?? (player as { game_id?: string }).game_id ?? '').toUpperCase(),
+    String(player.name ?? ''),
+    String((player as { id?: string }).id ?? '')
+  ).catch(() => {
+    // Best-effort — never block a join on a push failure.
+  })
   return NextResponse.json(playerJoinResponse(player, game, extra))
 }
 
@@ -248,6 +260,7 @@ export async function POST(req: NextRequest) {
   } = body
 
   let name = playerName?.trim() ?? ''
+  const country = req.headers.get('cf-ipcountry') ?? null
   const gameId = gameCode.toUpperCase()
   const { data: gameRow } = await getSupabaseAdmin().from('games').select('*').eq('id', gameId).maybeSingle()
   if (!gameRow) return NextResponse.json({ error: 'Game not found' }, { status: 404 })
@@ -380,6 +393,7 @@ export async function POST(req: NextRequest) {
       .from('players')
       .insert({
         game_id: gameId,
+        country,
         name: generatedName,
         gender: 'both',
         identity_gender: null,
@@ -417,6 +431,7 @@ export async function POST(req: NextRequest) {
       .from('players')
       .insert({
         game_id: gameId,
+        country,
         name: generatedName,
         gender: 'both',
         identity_gender: null,
@@ -473,6 +488,7 @@ export async function POST(req: NextRequest) {
       .from('players')
       .insert({
         game_id: gameId,
+        country,
         name,
         gender: 'both',
         identity_gender: null,
@@ -509,7 +525,31 @@ export async function POST(req: NextRequest) {
       .eq('game_id', gameId)
       .eq('spectator', false)
 
-    const seatsFull = gameRow.status === 'waiting' && (playerCount ?? 0) >= maxPlayers
+    let seatsFull = gameRow.status === 'waiting' && (playerCount ?? 0) >= maxPlayers
+
+    // ── Bots-in-room: humans never lose a seat to a bot (Monopoly branch) ──
+    // Mirrors the Whot eviction below. Lobby only — a Monopoly seat mid-game
+    // carries cash + properties + position that we can't safely transfer to a
+    // joining human, so mid-game arrivals fall through to spectator seating
+    // and can take a real seat at the next replay.
+    if (seatsFull && rawJoinAsViewer !== true) {
+      const { data: newestBot } = await supabase
+        .from('players')
+        .select('id')
+        .eq('game_id', gameId)
+        .eq('is_bot', true)
+        .eq('spectator', false)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (newestBot) {
+        // LIFO eviction — same behaviour Whot ships. The delete cascades the
+        // bot's monopoly_token so the joining human can claim it.
+        await getSupabaseAdmin().from('players').delete().eq('id', newestBot.id).eq('game_id', gameId)
+        seatsFull = false
+      }
+    }
+
     const seatFullResp = seatFullGate(gameRow as Game, seatsFull, rawJoinAsViewer, 'This game is full')
     if (seatFullResp) return seatFullResp
 
@@ -518,7 +558,15 @@ export async function POST(req: NextRequest) {
     }
 
     const isSpectator =
-      seatsFull || (gameRow.status === 'active' ? spectatorForActiveJoin(gameRow as Game, true) : false)
+      seatsFull ||
+      // An EXPLICIT "watch only" join is a spectator even in a waiting lobby. Without this the
+      // seat-based games ignored `joinAsViewer` until the game was active, so a deliberate
+      // viewer — most visibly the host who chose "Host only" — was treated as a real player
+      // and made to satisfy the player-join rules (Monopoly demanded a board token). This is
+      // the same clause `spectatorOnJoin` carries; the active-game branch below keeps its
+      // hardcoded `true` because these games never admit a mid-game player.
+      rawJoinAsViewer === true ||
+      (gameRow.status === 'active' ? spectatorForActiveJoin(gameRow as Game, true) : false)
 
     if (!isSpectator) {
       if (!rawMonopolyToken || !isMonopolyTokenId(rawMonopolyToken)) {
@@ -539,6 +587,7 @@ export async function POST(req: NextRequest) {
       .from('players')
       .insert({
         game_id: gameId,
+        country,
         name,
         gender: 'both',
         identity_gender: null,
@@ -585,12 +634,21 @@ export async function POST(req: NextRequest) {
     }
 
     const isSpectator =
-      seatsFull || (gameRow.status === 'active' ? spectatorForActiveJoin(gameRow as Game, true) : false)
+      seatsFull ||
+      // An EXPLICIT "watch only" join is a spectator even in a waiting lobby. Without this the
+      // seat-based games ignored `joinAsViewer` until the game was active, so a deliberate
+      // viewer — most visibly the host who chose "Host only" — was treated as a real player
+      // and made to satisfy the player-join rules (Monopoly demanded a board token). This is
+      // the same clause `spectatorOnJoin` carries; the active-game branch below keeps its
+      // hardcoded `true` because these games never admit a mid-game player.
+      rawJoinAsViewer === true ||
+      (gameRow.status === 'active' ? spectatorForActiveJoin(gameRow as Game, true) : false)
 
     const { data: player, error } = await getSupabaseAdmin()
       .from('players')
       .insert({
         game_id: gameId,
+        country,
         name,
         gender: 'both',
         identity_gender: null,
@@ -623,7 +681,34 @@ export async function POST(req: NextRequest) {
       .eq('game_id', gameId)
       .eq('spectator', false)
 
-    const seatsFull = gameRow.status === 'waiting' && (playerCount ?? 0) >= maxPlayers
+    // ── Bots-in-room: humans never lose a seat to a bot ────────────────────
+    // If the room is at cap but any of the seats are bots (Whot only for now
+    // — see docs/bots-in-room-plan.md), evict the newest bot to make room
+    // for the human, in the lobby only. Mid-game bot eviction is a Phase 2
+    // improvement: dealing a mid-game hand to a joining human needs engine
+    // help we haven't wired for `waiting` → `active` transition yet.
+    let seatsFull = gameRow.status === 'waiting' && (playerCount ?? 0) >= maxPlayers
+    if (seatsFull && isWhotGame(rowGameType) && rawJoinAsViewer !== true) {
+      const { data: newestBot } = await supabase
+        .from('players')
+        .select('id')
+        .eq('game_id', gameId)
+        .eq('is_bot', true)
+        .eq('spectator', false)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (newestBot) {
+        // LIFO — the newest bot cedes first. Comes with a small race window:
+        // if two humans arrive simultaneously to a room with N bots, both
+        // may see N bots and each try to evict; the delete is idempotent so
+        // the second just gets a 0-row result. Worst case one human still
+        // hits "room full" and retries — no data corruption.
+        await getSupabaseAdmin().from('players').delete().eq('id', newestBot.id).eq('game_id', gameId)
+        seatsFull = false
+      }
+    }
+
     const seatFullResp = seatFullGate(gameRow as Game, seatsFull, rawJoinAsViewer, 'This game is full')
     if (seatFullResp) return seatFullResp
 
@@ -632,12 +717,21 @@ export async function POST(req: NextRequest) {
     }
 
     const isSpectator =
-      seatsFull || (gameRow.status === 'active' ? spectatorForActiveJoin(gameRow as Game, true) : false)
+      seatsFull ||
+      // An EXPLICIT "watch only" join is a spectator even in a waiting lobby. Without this the
+      // seat-based games ignored `joinAsViewer` until the game was active, so a deliberate
+      // viewer — most visibly the host who chose "Host only" — was treated as a real player
+      // and made to satisfy the player-join rules (Monopoly demanded a board token). This is
+      // the same clause `spectatorOnJoin` carries; the active-game branch below keeps its
+      // hardcoded `true` because these games never admit a mid-game player.
+      rawJoinAsViewer === true ||
+      (gameRow.status === 'active' ? spectatorForActiveJoin(gameRow as Game, true) : false)
 
     const { data: player, error } = await getSupabaseAdmin()
       .from('players')
       .insert({
         game_id: gameId,
+        country,
         name,
         gender: 'both',
         identity_gender: null,
@@ -683,12 +777,21 @@ export async function POST(req: NextRequest) {
     }
 
     const isSpectator =
-      seatsFull || (gameRow.status === 'active' ? spectatorForActiveJoin(gameRow as Game, true) : false)
+      seatsFull ||
+      // An EXPLICIT "watch only" join is a spectator even in a waiting lobby. Without this the
+      // seat-based games ignored `joinAsViewer` until the game was active, so a deliberate
+      // viewer — most visibly the host who chose "Host only" — was treated as a real player
+      // and made to satisfy the player-join rules (Monopoly demanded a board token). This is
+      // the same clause `spectatorOnJoin` carries; the active-game branch below keeps its
+      // hardcoded `true` because these games never admit a mid-game player.
+      rawJoinAsViewer === true ||
+      (gameRow.status === 'active' ? spectatorForActiveJoin(gameRow as Game, true) : false)
 
     const { data: player, error } = await getSupabaseAdmin()
       .from('players')
       .insert({
         game_id: gameId,
+        country,
         name,
         gender: 'both',
         identity_gender: null,
@@ -747,12 +850,21 @@ export async function POST(req: NextRequest) {
     }
 
     const isSpectator =
-      seatsFull || (gameRow.status === 'active' ? spectatorForActiveJoin(gameRow as Game, true) : false)
+      seatsFull ||
+      // An EXPLICIT "watch only" join is a spectator even in a waiting lobby. Without this the
+      // seat-based games ignored `joinAsViewer` until the game was active, so a deliberate
+      // viewer — most visibly the host who chose "Host only" — was treated as a real player
+      // and made to satisfy the player-join rules (Monopoly demanded a board token). This is
+      // the same clause `spectatorOnJoin` carries; the active-game branch below keeps its
+      // hardcoded `true` because these games never admit a mid-game player.
+      rawJoinAsViewer === true ||
+      (gameRow.status === 'active' ? spectatorForActiveJoin(gameRow as Game, true) : false)
 
     const { data: player, error } = await getSupabaseAdmin()
       .from('players')
       .insert({
         game_id: gameId,
+        country,
         name,
         gender: 'both',
         identity_gender: null,
@@ -804,6 +916,7 @@ export async function POST(req: NextRequest) {
       .from('players')
       .insert({
         game_id: gameId,
+        country,
         name,
         gender: 'both',
         identity_gender: null,
@@ -858,6 +971,7 @@ export async function POST(req: NextRequest) {
       .from('players')
       .insert({
         game_id: gameId,
+        country,
         name,
         gender: 'both',
         identity_gender: null,
@@ -911,6 +1025,7 @@ export async function POST(req: NextRequest) {
       .from('players')
       .insert({
         game_id: gameId,
+        country,
         name,
         gender: 'both',
         identity_gender: null,
@@ -969,6 +1084,7 @@ export async function POST(req: NextRequest) {
       .from('players')
       .insert({
         game_id: id,
+        country,
         name,
         gender: 'both',
         identity_gender: null,
@@ -1023,6 +1139,7 @@ export async function POST(req: NextRequest) {
       .from('players')
       .insert({
         game_id: id,
+        country,
         name,
         gender: 'both',
         identity_gender: null,
@@ -1052,6 +1169,7 @@ export async function POST(req: NextRequest) {
       .from('players')
       .insert({
         game_id: id,
+        country,
         name,
         gender: 'both',
         identity_gender: null,
@@ -1098,6 +1216,7 @@ export async function POST(req: NextRequest) {
       .from('players')
       .insert({
         game_id: id,
+        country,
         name: claimName,
         gender: 'both',
         identity_gender: null,
@@ -1158,6 +1277,7 @@ export async function POST(req: NextRequest) {
       .from('players')
       .insert({
         game_id: id,
+        country,
         name: claimName,
         gender,
         identity_gender: identityGender,
@@ -1194,6 +1314,7 @@ export async function POST(req: NextRequest) {
       .from('players')
       .insert({
         game_id: id,
+        country,
         name,
         gender,
         identity_gender: identityGender,
@@ -1236,6 +1357,7 @@ export async function POST(req: NextRequest) {
       .from('players')
       .insert({
         game_id: id,
+        country,
         name,
         gender,
         identity_gender: identityGender,

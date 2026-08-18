@@ -18,6 +18,30 @@
 
 const KEY = 'fateround_identity'
 
+/**
+ * Fired whenever the local record changes.
+ *
+ * The name is not always known at mount: a signed-in player's handle is written here by
+ * `useProfile` once the profile fetch resolves, which is after every prefill effect has
+ * already read localStorage and found nothing. Without a notification those forms stay
+ * empty for the whole visit even though we know the name — which is exactly what a
+ * "remembered name" is supposed to prevent. Same-tab only; cross-tab is not worth a
+ * `storage` listener for a prefill.
+ */
+const CHANGED_EVENT = 'fateround:identity-changed'
+
+function announceChange() {
+  if (typeof window === 'undefined') return
+  window.dispatchEvent(new Event(CHANGED_EVENT))
+}
+
+/** Subscribe to local-identity changes. Returns an unsubscribe function. */
+export function subscribeLocalIdentity(onChange: () => void): () => void {
+  if (typeof window === 'undefined') return () => {}
+  window.addEventListener(CHANGED_EVENT, onChange)
+  return () => window.removeEventListener(CHANGED_EVENT, onChange)
+}
+
 /** Matches the `maxLength` on the join name inputs. */
 const MAX_NAME = 50
 
@@ -61,6 +85,7 @@ export function rememberName(name: string): void {
   if (!trimmed) return
   try {
     localStorage.setItem(KEY, JSON.stringify({ ...getLocalIdentity(), name: trimmed }))
+    announceChange()
   } catch {
     // Private mode / quota — a forgotten name is not worth breaking a join over.
   }
@@ -71,6 +96,7 @@ export function clearLocalIdentity(): void {
   if (typeof window === 'undefined') return
   try {
     localStorage.removeItem(KEY)
+    announceChange()
   } catch {
     // Nothing to do — the caller can't act on this either.
   }

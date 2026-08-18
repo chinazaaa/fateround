@@ -63,6 +63,7 @@ export function HostBoardGameLobbyPanel({
   const [monopolyAuctionTimerSeconds, setMonopolyAuctionTimerSeconds] = useState(10)
   const [monopolyNoRentInJail, setMonopolyNoRentInJail] = useState(false)
   const [monopolyEstateDividend, setMonopolyEstateDividend] = useState(false)
+  const [monopolyBoardSize, setMonopolyBoardSize] = useState<40 | 48>(40)
   const [whotPick3Enabled, setWhotPick3Enabled] = useState(true)
   const [whotPick2Stacking, setWhotPick2Stacking] = useState(true)
   const [whotCardsEnabled, setWhotCardsEnabled] = useState(true)
@@ -77,6 +78,10 @@ export function HostBoardGameLobbyPanel({
   const [unoJumpIn, setUnoJumpIn] = useState(false)
   const [unoMultiPlayMode, setUnoMultiPlayMode] = useState('off')
   const [unoTeamMode, setUnoTeamMode] = useState(false)
+  const [unoMode, setUnoMode] = useState<'classic' | 'no_mercy'>('classic')
+  const [unoNoMercyWin, setUnoNoMercyWin] = useState<'first_out' | 'last_standing'>('first_out')
+  const [unoSeriesScoring, setUnoSeriesScoring] = useState(false)
+  const [unoSeriesTarget, setUnoSeriesTarget] = useState(1000)
   const [ludoVariant, setLudoVariant] = useState<LudoVariant>('modern')
   const [saveState, setSaveState] = useState<SaveState>('idle')
   const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -107,6 +112,7 @@ export function HostBoardGameLobbyPanel({
       setMonopolyAuctionTimerSeconds(game.monopoly_auction_timer_seconds ?? 10)
       setMonopolyNoRentInJail(game.monopoly_no_rent_in_jail === true)
       setMonopolyEstateDividend(game.monopoly_estate_dividend === true)
+      setMonopolyBoardSize(game.monopoly_board_size === 48 ? 48 : 40)
     }
     if (boardGameType === 'whot') {
       setWhotPick3Enabled(game.whot_pick3_enabled !== false)
@@ -127,6 +133,10 @@ export function HostBoardGameLobbyPanel({
       setUnoJumpIn(game.uno_jump_in === true)
       setUnoMultiPlayMode(game.uno_multi_play_mode ?? 'off')
       setUnoTeamMode(game.uno_team_mode === true)
+      setUnoMode(game.uno_mode === 'no_mercy' ? 'no_mercy' : 'classic')
+      setUnoNoMercyWin(game.uno_no_mercy_win === 'last_standing' ? 'last_standing' : 'first_out')
+      setUnoSeriesScoring(game.uno_series_scoring === true)
+      setUnoSeriesTarget(Number(game.uno_series_target ?? 1000))
     }
     if (boardGameType === 'ludo') {
       setLudoVariant(game.ludo_variant === 'traditional' ? 'traditional' : 'modern')
@@ -219,6 +229,10 @@ export function HostBoardGameLobbyPanel({
     if (patch.uno_jump_in !== undefined) setUnoJumpIn(patch.uno_jump_in as boolean)
     if (patch.uno_multi_play_mode !== undefined) setUnoMultiPlayMode(patch.uno_multi_play_mode as string)
     if (patch.uno_team_mode !== undefined) setUnoTeamMode(patch.uno_team_mode as boolean)
+    if (patch.uno_mode !== undefined) setUnoMode(patch.uno_mode as 'classic' | 'no_mercy')
+    if (patch.uno_no_mercy_win !== undefined) setUnoNoMercyWin(patch.uno_no_mercy_win as 'first_out' | 'last_standing')
+    if (patch.uno_series_scoring !== undefined) setUnoSeriesScoring(patch.uno_series_scoring as boolean)
+    if (patch.uno_series_target !== undefined) setUnoSeriesTarget(patch.uno_series_target as number)
     void patchSettings(patch)
   }
 
@@ -286,6 +300,9 @@ export function HostBoardGameLobbyPanel({
   return (
     <HostLobbySettingsSection
       status={statusLabel}
+      // Open by default — otherwise the sheet reads as "there are no game settings here"
+      // for hosts who don't spot the tiny "Expand" chevron.
+      defaultOpen
       alwaysVisible={
         // Surfaced above the collapse: the player cap is the setting hosts reach for most
         // (let more people in / trim an empty lobby), so it must never hide behind "Edit".
@@ -321,6 +338,21 @@ export function HostBoardGameLobbyPanel({
         {boardGameType === 'monopoly' && (
           <HostLobbySettingBlock title="House rules" className="sm:col-span-2">
             <div className="space-y-4">
+              <div>
+                <div className="mb-2 text-sm font-medium text-default">Board size</div>
+                <HostLobbyOptionChips
+                  value={monopolyBoardSize}
+                  options={[
+                    { value: 40, label: '40 spaces' },
+                    ...(maxPlayers >= 6 ? [{ value: 48, label: '48 spaces' }] : []),
+                  ]}
+                  onChange={(value) => {
+                    const nextSize = value === 48 ? 48 : 40
+                    setMonopolyBoardSize(nextSize)
+                    void patchSettings({ monopoly_board_size: nextSize })
+                  }}
+                />
+              </div>
               <Toggle
                 label="Double GO Salary"
                 description="Collect $400 (instead of $200) when landing exactly on GO."
@@ -340,8 +372,8 @@ export function HostBoardGameLobbyPanel({
                 }}
               />
               <Toggle
-                label="No Rent in Jail"
-                description="Prevent players in jail from collecting rent on their properties."
+                label="No Rent in NICKED"
+                description="Prevent players in NICKED from collecting rent on their properties."
                 value={monopolyNoRentInJail}
                 onChange={(v: boolean) => {
                   setMonopolyNoRentInJail(v)
@@ -424,16 +456,50 @@ export function HostBoardGameLobbyPanel({
         {boardGameType === 'uno' && (
           <HostLobbySettingBlock title="House rules" className="sm:col-span-2">
             <div className="space-y-3">
-              <div className="space-y-1.5">
-                <Toggle
-                  label="Team-Up (2v2)"
-                  description="Play as 2 teams of 2 — partners see each other's hands and share the win. Needs exactly 4 players; caps the room at 4."
-                  value={unoTeamMode}
-                  onChange={(v) => onUnoRuleChange({ uno_team_mode: v })}
-                />
-              </div>
               <div>
-                <p className="label-caps text-[10px] mb-1.5">Missed “UNO” penalty</p>
+                <p className="label-caps text-[10px] mb-1.5">Mode</p>
+                <HostLobbyOptionChips
+                  value={unoMode}
+                  options={[
+                    { value: 'classic', label: 'Classic' },
+                    { value: 'no_mercy', label: 'High Stakes' },
+                  ]}
+                  onChange={(v) => onUnoRuleChange({ uno_mode: v })}
+                />
+                <p className="mt-1 text-xs text-faint">
+                  High Stakes is a Show ’em No Mercy-style variant: 168-card deck (Discard Colour, Skip All, Reverse
+                  Draw 4, Draw 6, Draw 10, Colour Roulette) with 0-7 and stacking locked in. Draw 4 challenges, Team-Up,
+                  and Jump-In are off.
+                </p>
+              </div>
+              {unoMode === 'no_mercy' ? (
+                <div>
+                  <p className="label-caps text-[10px] mb-1.5">Win condition</p>
+                  <HostLobbyOptionChips
+                    value={unoNoMercyWin}
+                    options={[
+                      { value: 'first_out', label: 'First out' },
+                      { value: 'last_standing', label: 'Last standing' },
+                    ]}
+                    onChange={(v) => onUnoRuleChange({ uno_no_mercy_win: v })}
+                  />
+                  <p className="mt-1 text-xs text-faint">
+                    25+ cards knocks you out. Last standing wins when only one player still holds cards.
+                  </p>
+                </div>
+              ) : null}
+              {unoMode === 'classic' ? (
+                <div className="space-y-1.5">
+                  <Toggle
+                    label="Team-Up (2v2)"
+                    description="Play as 2 teams of 2 — partners see each other's hands and share the win. Needs exactly 4 players; caps the room at 4."
+                    value={unoTeamMode}
+                    onChange={(v) => onUnoRuleChange({ uno_team_mode: v })}
+                  />
+                </div>
+              ) : null}
+              <div>
+                <p className="label-caps text-[10px] mb-1.5">Missed last-card penalty</p>
                 <HostLobbyOptionChips
                   value={unoUnoPenalty}
                   options={[
@@ -444,30 +510,39 @@ export function HostBoardGameLobbyPanel({
                 />
               </div>
               <div className="space-y-1.5">
-                <Toggle
-                  label="Wild Draw Four challenge"
-                  description="Let the next player challenge a Wild Draw Four. Off: they always draw 4."
-                  value={unoWd4Challenge}
-                  onChange={(v) => onUnoRuleChange({ uno_wd4_challenge: v })}
-                />
-                <Toggle
-                  label="0-7 rule"
-                  description="Play a 0 → everyone passes their hand in play direction. Play a 7 → swap hands with any player."
-                  value={unoZeroSeven}
-                  onChange={(v) => onUnoRuleChange({ uno_zero_seven: v })}
-                />
-                <Toggle
-                  label="Stacking"
-                  description="Stack Draw Two on Draw Two and Draw Four on Draw Four — the penalty piles up and passes on."
-                  value={unoStacking}
-                  onChange={(v) => onUnoRuleChange({ uno_stacking: v })}
-                />
-                <Toggle
-                  label="Jump-In"
-                  description="Hold an exact match for the top card (same colour + number/symbol)? Play it instantly, out of turn — skipped players lose that turn. Wilds can’t be jumped."
-                  value={unoJumpIn}
-                  onChange={(v) => onUnoRuleChange({ uno_jump_in: v })}
-                />
+                {unoMode === 'classic' ? (
+                  <>
+                    <Toggle
+                      label="Draw 4 challenge"
+                      description="Let the next player challenge a Draw 4. Off: they always draw 4."
+                      value={unoWd4Challenge}
+                      onChange={(v) => onUnoRuleChange({ uno_wd4_challenge: v })}
+                    />
+                    <Toggle
+                      label="0-7 rule"
+                      description="Play a 0 → everyone passes their hand in play direction. Play a 7 → swap hands with any player."
+                      value={unoZeroSeven}
+                      onChange={(v) => onUnoRuleChange({ uno_zero_seven: v })}
+                    />
+                    <Toggle
+                      label="Stacking"
+                      description="Stack Draw 2 on Draw 2 and Draw 4 on Draw 4 — the penalty piles up and passes on."
+                      value={unoStacking}
+                      onChange={(v) => onUnoRuleChange({ uno_stacking: v })}
+                    />
+                    <Toggle
+                      label="Jump-In"
+                      description="Hold an exact match for the top card (same colour + number/symbol)? Play it instantly, out of turn — skipped players lose that turn. Wilds can’t be jumped."
+                      value={unoJumpIn}
+                      onChange={(v) => onUnoRuleChange({ uno_jump_in: v })}
+                    />
+                  </>
+                ) : (
+                  <p className="text-xs text-faint">
+                    Locked in High Stakes: 0-7 and Draw-card stacking (equal-or-higher chains). WD4 challenges and
+                    Jump-In are off.
+                  </p>
+                )}
               </div>
               <div>
                 <p className="label-caps text-[10px] mb-1.5">Multi-Play</p>
@@ -482,6 +557,29 @@ export function HostBoardGameLobbyPanel({
                   onChange={(v) => onUnoRuleChange({ uno_multi_play_mode: v })}
                 />
                 <p className="mt-1 text-xs text-faint">Lay several matching cards in one turn.</p>
+              </div>
+              <div className="space-y-1.5">
+                <Toggle
+                  label="Series scoring"
+                  description="Award points to the round winner (opponents' hand values + 250 per Mercy knockout). First to the target wins the series."
+                  value={unoSeriesScoring}
+                  onChange={(v) => onUnoRuleChange({ uno_series_scoring: v })}
+                />
+                {unoSeriesScoring ? (
+                  <div>
+                    <p className="label-caps text-[10px] mb-1.5">Series target</p>
+                    <HostLobbyOptionChips
+                      value={unoSeriesTarget}
+                      options={[
+                        { value: 300, label: '300' },
+                        { value: 500, label: '500' },
+                        { value: 1000, label: '1000' },
+                        { value: 2000, label: '2000' },
+                      ]}
+                      onChange={(v) => onUnoRuleChange({ uno_series_target: v })}
+                    />
+                  </div>
+                ) : null}
               </div>
             </div>
           </HostLobbySettingBlock>

@@ -15,7 +15,11 @@ import { parseMultiPlayMode, type UnoMultiPlayMode } from '@fateround/shared/uno
 import { DEFAULT_MAHJONG_RULESET, DEFAULT_MAHJONG_RULE_OPTIONS } from '@fateround/shared/mahjong-rulesets'
 import type { ScrabbleDictionaryId } from '@fateround/shared/scrabble-dictionary-meta'
 import { SCRABBLE_DEFAULT_DICTIONARY, parseScrabbleDictionaryId } from '@fateround/shared/scrabble-dictionary-meta'
-import { PING_PONG_DEFAULT_POINTS, PING_PONG_DEFAULT_GAME_DURATION, clampPingPongPoints } from '@fateround/shared/ping-pong'
+import {
+  PING_PONG_DEFAULT_POINTS,
+  PING_PONG_DEFAULT_GAME_DURATION,
+  clampPingPongPoints,
+} from '@fateround/shared/ping-pong'
 
 export const BATCH_19_BOARD_GAMES: GameType[] = [
   'ludo',
@@ -64,6 +68,8 @@ export type GameRoomSettings = {
   /** Nigerian Draughts only — opt-in "Street Rules" (huffing) house rule. Off by default. */
   checkersNigeriaStreetRules: boolean
   pingPongPointsToWin: number
+  /** Estate Kings board size — 40 (classic) or 48 (expanded, requires max_players >= 6). */
+  monopolyBoardSize: 40 | 48
 }
 
 export function defaultGameRoomSettings(gameType: GameType): GameRoomSettings {
@@ -99,6 +105,7 @@ export function defaultGameRoomSettings(gameType: GameType): GameRoomSettings {
     mahjongRuleset: DEFAULT_MAHJONG_RULESET,
     checkersNigeriaStreetRules: false,
     pingPongPointsToWin: PING_PONG_DEFAULT_POINTS,
+    monopolyBoardSize: 40,
   }
 }
 
@@ -227,6 +234,9 @@ export function gameRoomSettingsPayload(gameType: GameType, room: GameRoomSettin
   if (gameType === 'monopoly') {
     payload.timer_seconds = room.timerSeconds
     payload.game_duration_seconds = room.gameDurationSeconds
+    // 48-space board requires >=6 seats; server clamps to 40 when max_players < 6
+    // (see /api/games/[code]/lobby-settings and the web create flow).
+    payload.monopoly_board_size = room.monopolyBoardSize === 48 ? 48 : 40
     return payload
   }
 

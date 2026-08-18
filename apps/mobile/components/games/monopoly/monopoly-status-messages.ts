@@ -1,4 +1,4 @@
-import { formatMonopolyMoney } from '@fateround/shared/monopoly-board'
+import { MONOPOLY_BOARD_SIZE, formatMonopolyMoney, type MonopolyBoardSize } from '@fateround/shared/monopoly-board'
 import { formatThemedText } from '@/components/games/monopoly/monopoly-theme'
 
 /**
@@ -76,7 +76,11 @@ export function parseTradeEvent(value: unknown): MonopolyLastTradeEvent | null {
   }
 }
 
-export function formatCashMessageForPlayer(event: MonopolyLastCashEvent, themeId?: string | null): string {
+export function formatCashMessageForPlayer(
+  event: MonopolyLastCashEvent,
+  themeId?: string | null,
+  boardSize: MonopolyBoardSize = MONOPOLY_BOARD_SIZE
+): string {
   const amount = formatMonopolyMoney(Math.abs(event.change))
   const balance = formatMonopolyMoney(event.balance_after)
 
@@ -90,14 +94,15 @@ export function formatCashMessageForPlayer(event: MonopolyLastCashEvent, themeId
   } else {
     msg = `${event.label} Balance now ${balance}.`
   }
-  return formatThemedText(msg, themeId)
+  return formatThemedText(msg, themeId, boardSize)
 }
 
 export function formatRentMessageForPlayer(
   event: MonopolyLastRentEvent,
   myPlayerId: string | null | undefined,
   players: NamedPlayer[],
-  themeId?: string | null
+  themeId?: string | null,
+  boardSize: MonopolyBoardSize = MONOPOLY_BOARD_SIZE
 ): string {
   const payer = players.find((p) => p.id === event.payer_player_id)?.name ?? 'A player'
   const owner = players.find((p) => p.id === event.owner_player_id)?.name ?? 'A player'
@@ -109,14 +114,15 @@ export function formatRentMessageForPlayer(
   } else if (myPlayerId === event.payer_player_id) {
     msg = `You paid ${money} rent on ${event.space_name} to ${owner}.`
   }
-  return formatThemedText(msg, themeId)
+  return formatThemedText(msg, themeId, boardSize)
 }
 
 export function formatTradeMessageForPlayer(
   event: MonopolyLastTradeEvent,
   myPlayerId: string | null | undefined,
   players: NamedPlayer[],
-  themeId?: string | null
+  themeId?: string | null,
+  boardSize: MonopolyBoardSize = MONOPOLY_BOARD_SIZE
 ): string {
   const from = players.find((p) => p.id === event.from_player_id)?.name ?? 'A player'
   const to = players.find((p) => p.id === event.to_player_id)?.name ?? 'A player'
@@ -156,7 +162,7 @@ export function formatTradeMessageForPlayer(
     }
   }
 
-  return formatThemedText(msg, themeId)
+  return formatThemedText(msg, themeId, boardSize)
 }
 
 /**
@@ -209,12 +215,16 @@ export function monopolyEventBanner(
     myPlayerId: string | null | undefined
     players: NamedPlayer[]
     themeId?: string | null
+    boardSize?: MonopolyBoardSize
   }
 ): { message: string; personal: boolean } | null {
   const { myPlayerId, players, themeId } = args
+  const boardSize = args.boardSize ?? MONOPOLY_BOARD_SIZE
   if (kind === 'cash') {
     const e = parseCashEvent(args.lastCashEvent)
-    return e && e.player_id === myPlayerId ? { message: formatCashMessageForPlayer(e, themeId), personal: true } : null
+    return e && e.player_id === myPlayerId
+      ? { message: formatCashMessageForPlayer(e, themeId, boardSize), personal: true }
+      : null
   }
   if (kind === 'trade') {
     const e = parseTradeEvent(args.lastTradeEvent)
@@ -223,7 +233,10 @@ export function monopolyEventBanner(
       (e.outcome === 'declined' || e.outcome === 'accepted' || e.outcome === 'cancelled') &&
       (e.from_player_id === myPlayerId || e.to_player_id === myPlayerId)
     ) {
-      return { message: formatTradeMessageForPlayer(e, myPlayerId, players, themeId), personal: true }
+      return {
+        message: formatTradeMessageForPlayer(e, myPlayerId, players, themeId, boardSize),
+        personal: true,
+      }
     }
     return null
   }
@@ -231,7 +244,7 @@ export function monopolyEventBanner(
     const e = parseRentEvent(args.lastRentEvent)
     return e
       ? {
-          message: formatRentMessageForPlayer(e, myPlayerId, players, themeId),
+          message: formatRentMessageForPlayer(e, myPlayerId, players, themeId, boardSize),
           personal: e.owner_player_id === myPlayerId || e.payer_player_id === myPlayerId,
         }
       : null

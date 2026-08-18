@@ -7,7 +7,15 @@ import { SurfaceCard } from '@/components/ui/SurfaceCard'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
 import { isWordSearchGame } from '@fateround/shared/game-type-checks'
-import { parseListCsv, parsePuzzleCsv, parseTriviaCsv, parseWyrCsv, pickCsvText } from '@/lib/file-import'
+import {
+  parseListCsv,
+  parsePuzzleCsv,
+  parseTriviaCsv,
+  parseWyrCsv,
+  pickCsvText,
+  shareTextAsFile,
+} from '@/lib/file-import'
+import { sampleCsvForGameType } from '@/lib/sample-csv'
 import {
   MAX_TRIVIA_CHOICES,
   customContentCopy,
@@ -145,6 +153,18 @@ export function CustomContentPanel({ gameType, custom, roundsCount, onChange }: 
               <Pressable style={styles.importButton} onPress={() => void onImportFile()} disabled={importing}>
                 <Text style={styles.importButtonText}>{importing ? 'Reading…' : '⭱ Import CSV'}</Text>
               </Pressable>
+              {(() => {
+                const sample = sampleCsvForGameType(gameType)
+                if (!sample) return null
+                return (
+                  <Pressable
+                    style={styles.importButton}
+                    onPress={() => void shareTextAsFile(sample.filename, sample.content)}
+                  >
+                    <Text style={styles.importButtonText}>⭳ Sample CSV</Text>
+                  </Pressable>
+                )
+              })()}
             </View>
 
             {importError ? <Text style={styles.importError}>{importError}</Text> : null}
@@ -468,14 +488,14 @@ const makeStyles = (theme: Theme) =>
     },
     itemLabel: {
       color: theme.textMuted,
-      fontSize: 12,
+      fontSize: theme.type.caption.size,
       fontWeight: '800',
       letterSpacing: 0.6,
       textTransform: 'uppercase',
     },
     choiceHint: {
       color: theme.textFaint,
-      fontSize: 12,
+      fontSize: theme.type.caption.size,
     },
     remove: {
       width: 34,
@@ -489,13 +509,13 @@ const makeStyles = (theme: Theme) =>
     },
     removeText: {
       color: theme.textMuted,
-      fontSize: 15,
+      fontSize: theme.type.body.size,
       fontWeight: '700',
     },
     radio: {
       width: 24,
       height: 24,
-      borderRadius: 12,
+      borderRadius: theme.radius.md,
       borderWidth: 2,
       borderColor: theme.border,
       alignItems: 'center',
@@ -521,7 +541,7 @@ const makeStyles = (theme: Theme) =>
     },
     addButtonText: {
       color: theme.primaryMuted,
-      fontSize: 14,
+      fontSize: theme.type.label.size,
       fontWeight: '800',
     },
     importButton: {
@@ -532,7 +552,7 @@ const makeStyles = (theme: Theme) =>
       borderColor: theme.border,
       backgroundColor: theme.bgElevated,
     },
-    importButtonText: { color: theme.textSecondary, fontSize: 14, fontWeight: '700' },
+    importButtonText: { color: theme.textSecondary, fontSize: theme.type.label.size, fontWeight: '700' },
     importError: { color: theme.error, fontSize: 13 },
     addChoice: {
       alignSelf: 'flex-start',

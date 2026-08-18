@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
 import { ActivityIndicator, Alert, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
+import { useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
 import { apiUrl } from '@/lib/config'
 import { authHeaders, signOutIdentity } from '@/lib/identity'
 import { requestEmailCode, verifyEmailCode, type EmailCodeFlow } from '@/lib/identity-auth'
+import { getSupabase } from '@/lib/supabase'
 
 type Profile = {
   handle: string | null
@@ -61,6 +63,18 @@ export function ProfileChip() {
     void refresh()
   }, [refresh])
 
+  // Re-fetch when the auth session changes. The session hydrates from AsyncStorage
+  // asynchronously, so the mount fetch above can run before there is a session and read as a
+  // guest for a player who is actually signed in — leaving the chip stuck on "Guest".
+  // `onAuthStateChange` fires `INITIAL_SESSION` once the session is restored (and on sign-in/out,
+  // token refresh and email upgrade), so refreshing here lands the true identity.
+  useEffect(() => {
+    const { data } = getSupabase().auth.onAuthStateChange(() => {
+      void refresh()
+    })
+    return () => data.subscription.unsubscribe()
+  }, [refresh])
+
   const signedIn = Boolean(profile && !profile.is_anonymous)
   // A guest reads "Guest", never their remembered name — the word is how they learn their
   // streak isn't saved anywhere.
@@ -112,6 +126,7 @@ function SaveToProfileSheet({
   theme: Theme
 }) {
   const styles = useThemedStyles(makeStyles)
+  const router = useRouter()
   const [email, setEmail] = useState('')
   const [code, setCode] = useState('')
   const [flow, setFlow] = useState<EmailCodeFlow>('signin')
@@ -136,6 +151,13 @@ function SaveToProfileSheet({
     setBusy(false)
     if (!result.ok) {
       setMessage(result.error ?? 'Could not send the code. Try again.')
+      return
+    }
+    // No code was issued because none was needed — the upgrade already landed. Advancing to
+    // the code step would leave the player waiting for an email that never arrives.
+    if (result.complete) {
+      onChanged()
+      onClose()
       return
     }
     // `flow` decides how the code is verified, so it has to survive to the next step.
@@ -274,6 +296,36 @@ function SaveToProfileSheet({
                   </Pressable>
                 </>
               )}
+
+              {/* Always-available link into the dedicated /profile screen — the
+                  trophy grid + per-game stats live there. Closing the sheet
+                  before push so the route stack stays clean. */}
+              <Pressable
+                onPress={() => {
+                  onClose()
+                  // Expo Router's typed-routes registry regenerates on the
+                  // next build; the cast is a one-turn measure until then.
+                  router.push('/profile' as never)
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="See trophies and stats"
+              >
+                <Text style={styles.link}>See trophies & stats →</Text>
+              </Pressable>
+
+              {/* Persistent entry point to /notifications for anyone who
+                  dismissed the home banner. Lives in the profile sheet so it
+                  doesn't crowd the home actions. */}
+              <Pressable
+                onPress={() => {
+                  onClose()
+                  router.push('/notifications' as never)
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="Notification preferences"
+              >
+                <Text style={styles.link}>🔔 Notification preferences →</Text>
+              </Pressable>
             </View>
           </SafeAreaView>
         </Pressable>

@@ -3,6 +3,11 @@ import { BINGO_DEFAULT_MAX_PLAYERS, BINGO_MAX_PLAYERS, BINGO_MIN_PLAYERS } from 
 import { CODEWORDS_MAX_PLAYERS, CODEWORDS_MIN_PLAYERS } from './codewords'
 import { CROSSWORD_DEFAULT_MAX_PLAYERS, CROSSWORD_MAX_PLAYERS, CROSSWORD_MIN_PLAYERS } from './crossword'
 import { WORD_SEARCH_DEFAULT_MAX_PLAYERS, WORD_SEARCH_MAX_PLAYERS, WORD_SEARCH_MIN_PLAYERS } from './word-search'
+import {
+  WORD_GROUPING_DEFAULT_MAX_PLAYERS,
+  WORD_GROUPING_MAX_PLAYERS,
+  WORD_GROUPING_MIN_PLAYERS,
+} from './word-grouping'
 import { CRAZY8_DEFAULT_MAX_PLAYERS, CRAZY8_MAX_PLAYERS, CRAZY8_MIN_PLAYERS } from './crazy-eights'
 import {
   DESCRIBE_IT_DEFAULT_MAX_PLAYERS,
@@ -59,6 +64,7 @@ export const LOBBY_LIMIT_GAME_TYPES = [
   'ayo',
   'crossword',
   'word_search',
+  'word_grouping',
   'ping_pong',
 ] as const
 
@@ -176,6 +182,11 @@ export const GAME_LIMIT_CODE_DEFAULTS: GamePlayerLimitsMap = {
   },
   crossword: { min: CROSSWORD_MIN_PLAYERS, max: CROSSWORD_MAX_PLAYERS, default: CROSSWORD_DEFAULT_MAX_PLAYERS },
   word_search: { min: WORD_SEARCH_MIN_PLAYERS, max: WORD_SEARCH_MAX_PLAYERS, default: WORD_SEARCH_DEFAULT_MAX_PLAYERS },
+  word_grouping: {
+    min: WORD_GROUPING_MIN_PLAYERS,
+    max: WORD_GROUPING_MAX_PLAYERS,
+    default: WORD_GROUPING_DEFAULT_MAX_PLAYERS,
+  },
   ping_pong: {
     min: PING_PONG_MIN_PLAYERS,
     max: PING_PONG_MAX_PLAYERS,

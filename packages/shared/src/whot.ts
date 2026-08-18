@@ -349,3 +349,36 @@ export function isDrawPileDepleted(session: WhotSession): boolean {
   const discardLen = ((session.discard_pile as WhotCard[]) ?? []).length
   return drawLen === 0 && discardLen === 0
 }
+
+/** Cards dealt per player at game start. 2p = 6, 3p+ = 5. */
+export function dealCount(playerCount: number): number {
+  return playerCount === 2 ? 6 : 5
+}
+
+export function whotHandCount(hands: WhotPlayerHand[], playerId: string): number {
+  return ((hands.find((h) => h.player_id === playerId)?.cards as WhotCard[]) ?? []).length
+}
+
+/**
+ * Advance the turn index `steps` places forward, skipping seats already out
+ * (empty hand). Mirrors the DB engine's helper of the same name.
+ */
+export function whotNextTurnIndex(session: WhotSession, hands: WhotPlayerHand[], fromIndex: number, steps = 1): number {
+  const order = session.turn_order ?? []
+  const len = order.length
+  if (len === 0) return 0
+
+  let idx = fromIndex
+  for (let s = 0; s < steps; s += 1) {
+    let advanced = false
+    for (let attempt = 0; attempt < len; attempt += 1) {
+      idx = (idx + 1) % len
+      if (whotHandCount(hands, order[idx]!) > 0) {
+        advanced = true
+        break
+      }
+    }
+    if (!advanced) return fromIndex
+  }
+  return idx
+}

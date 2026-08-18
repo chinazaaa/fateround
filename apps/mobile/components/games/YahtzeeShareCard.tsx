@@ -3,12 +3,7 @@ import { Platform, Share, StyleSheet, Text, View } from 'react-native'
 import { captureRef } from 'react-native-view-shot'
 import * as Sharing from 'expo-sharing'
 import type { YahtzeePlayerScore } from '@fateround/shared'
-import {
-  YAHTZEE_UPPER_BONUS_POINTS,
-  totalScore,
-  upperBonus,
-  upperScore,
-} from '@fateround/shared/yahtzee'
+import { YAHTZEE_UPPER_BONUS_POINTS, totalScore, upperBonus, upperScore } from '@fateround/shared/yahtzee'
 import { AppButton } from '@/components/ui/AppButton'
 import { useToast } from '@/components/ui/Toast'
 import { shareDomain } from '@/lib/config'
@@ -52,7 +47,7 @@ export function YahtzeeShareCard({ scores, players, winnerName, highlightPlayerI
       .map((s) => ({
         playerId: s.player_id,
         name: players.find((p) => p.id === s.player_id)?.name ?? 'Player',
-        total: totalScore(s.scores.categories),
+        total: totalScore(s.scores.categories, s.scores.bonusYahtzees),
         upper: upperScore(s.scores.categories),
         bonus: upperBonus(s.scores.categories),
       }))
@@ -104,9 +99,7 @@ export function YahtzeeShareCard({ scores, players, winnerName, highlightPlayerI
                     {row.name}
                     {isMe ? <Text style={styles.you}> (you)</Text> : null}
                   </Text>
-                  {row.bonus > 0 ? (
-                    <Text style={styles.detail}>Upper +{YAHTZEE_UPPER_BONUS_POINTS} bonus</Text>
-                  ) : null}
+                  {row.bonus > 0 ? <Text style={styles.detail}>Upper +{YAHTZEE_UPPER_BONUS_POINTS} bonus</Text> : null}
                 </View>
                 <Text style={[styles.total, isWinner && styles.totalWinner]}>{row.total}</Text>
               </View>
@@ -121,7 +114,7 @@ export function YahtzeeShareCard({ scores, players, winnerName, highlightPlayerI
       <View style={styles.offscreen} pointerEvents="none">
         <View ref={captureCardRef} collapsable={false} style={styles.captureCard}>
           <Text style={styles.captureEmoji}>🎲</Text>
-          <Text style={styles.captureGame}>Yahtzee</Text>
+          <Text style={styles.captureGame}>Five Dice</Text>
           <View style={styles.captureDivider} />
           <Text style={styles.captureHero}>🏆</Text>
           <Text style={styles.captureTitle}>{winnerName ? `${winnerName} wins!` : 'Game over'}</Text>
@@ -152,7 +145,7 @@ export function YahtzeeShareCard({ scores, players, winnerName, highlightPlayerI
 }
 
 function buildShareText(rows: Row[], winnerName: string | null): string {
-  const lines: string[] = ['Yahtzee', '']
+  const lines: string[] = ['Five Dice', '']
   lines.push(winnerName ? `🏆 ${winnerName} wins!` : '🏁 Game over')
   if (rows.length > 0) {
     lines.push('', 'Final scores:')

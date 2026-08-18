@@ -24,6 +24,7 @@ const BATCH_3_GAMES: GameType[] = [
   'ludo',
   'crossword',
   'word_search',
+  'word_grouping',
 ]
 
 const BATCH_4_GAMES: GameType[] = ['crazy_eights', 'whot', 'two_truths', 'describe_it']

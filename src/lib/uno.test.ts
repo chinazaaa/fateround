@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
+  buildNoMercyDeck,
   buildUnoDeck,
   canPlayCard,
   isJumpInMatch,
@@ -21,6 +22,8 @@ import {
   unoActiveTeammates,
   resolveMultiPlayAdvance,
   processUnoChallenge,
+  processUnoPlay,
+  processUnoChoose,
 } from './uno'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { UnoCard, UnoColor, UnoPlayerHand, UnoSession } from '@/types'
@@ -90,6 +93,43 @@ describe('buildUnoDeck', () => {
 
   it('has unique card ids', () => {
     expect(new Set(deck.map((c) => c.id)).size).toBe(108)
+  })
+})
+
+describe('buildNoMercyDeck', () => {
+  const deck = buildNoMercyDeck()
+
+  it('has exactly 168 cards (the documented HS total)', () => {
+    expect(deck.length).toBe(168)
+  })
+
+  it('drops the plain Wild — Colour Roulette replaces its "pick a colour" surface', () => {
+    expect(deck.filter((c) => c.kind === 'wild').length).toBe(0)
+  })
+
+  it('carries Skip + Skip Everyone (classic single-skip + HS everyone-skip)', () => {
+    // 2 Skips per colour = 8 from the base deck; 2 Skip Everyone per colour = 8 added.
+    expect(deck.filter((c) => c.kind === 'skip').length).toBe(8)
+    expect(deck.filter((c) => c.kind === 'skip_everyone').length).toBe(8)
+  })
+
+  it('carries 4 base Wild Draw 4 + 12 each of Reverse Draw 4, Draw 6, Draw 10', () => {
+    expect(deck.filter((c) => c.kind === 'wild_draw4').length).toBe(4) // base deck only
+    expect(deck.filter((c) => c.kind === 'wild_reverse_draw4').length).toBe(12)
+    expect(deck.filter((c) => c.kind === 'draw6').length).toBe(12)
+    expect(deck.filter((c) => c.kind === 'draw10').length).toBe(12)
+  })
+
+  it('has 16 Colour Roulettes (12 + 4 backfill for the removed plain Wilds)', () => {
+    expect(deck.filter((c) => c.kind === 'wild_color_roulette').length).toBe(16)
+  })
+
+  it('has 4 Discard All (1 per colour)', () => {
+    expect(deck.filter((c) => c.kind === 'discard_all').length).toBe(4)
+  })
+
+  it('has unique card ids', () => {
+    expect(new Set(deck.map((c) => c.id)).size).toBe(168)
   })
 })
 
@@ -181,6 +221,57 @@ describe('canPlayCard', () => {
     expect(canPlayCard(card({ color: 'red', kind: 'draw2' }), s)).toBe(false)
     expect(canPlayCard(card({ color: 'red', kind: 'number', value: 1 }), s)).toBe(false)
   })
+
+  // High Stakes / No Mercy cross-kind stacking. Every Draw card of equal-or-higher value can
+  // chain onto the pending penalty; smaller-value Draws + all non-Draw cards can't play.
+  describe('cross-kind stacking (High Stakes)', () => {
+    it('pending +4 accepts +4, +4 Reverse, +6, +10 but blocks non-Draw cards', () => {
+      const s = session({
+        top_card: card({ color: 'wild', kind: 'wild_draw4' }),
+        required_color: 'red',
+        draw_penalty: 4,
+        draw_penalty_kind: 'wild_draw4',
+      })
+      expect(canPlayCard(card({ color: 'wild', kind: 'wild_draw4' }), s)).toBe(true)
+      expect(canPlayCard(card({ color: 'wild', kind: 'wild_reverse_draw4' }), s)).toBe(true)
+      expect(canPlayCard(card({ color: 'wild', kind: 'draw6' }), s)).toBe(true)
+      expect(canPlayCard(card({ color: 'wild', kind: 'draw10' }), s)).toBe(true)
+      // Non-Draw cards must draw the pending penalty.
+      expect(canPlayCard(card({ color: 'red', kind: 'number', value: 5 }), s)).toBe(false)
+      expect(canPlayCard(card({ color: 'red', kind: 'skip' }), s)).toBe(false)
+      expect(canPlayCard(card({ color: 'wild', kind: 'wild' }), s)).toBe(false)
+    })
+
+    it('pending +10 accepts only +10 (nothing higher exists)', () => {
+      const s = session({
+        top_card: card({ color: 'wild', kind: 'draw10' }),
+        required_color: 'blue',
+        draw_penalty: 10,
+        draw_penalty_kind: 'draw10',
+      })
+      expect(canPlayCard(card({ color: 'wild', kind: 'draw10' }), s)).toBe(true)
+      // Everything with a smaller value must draw.
+      expect(canPlayCard(card({ color: 'wild', kind: 'draw6' }), s)).toBe(false)
+      expect(canPlayCard(card({ color: 'wild', kind: 'wild_reverse_draw4' }), s)).toBe(false)
+      expect(canPlayCard(card({ color: 'wild', kind: 'wild_draw4' }), s)).toBe(false)
+      expect(canPlayCard(card({ color: 'blue', kind: 'draw2' }), s)).toBe(false)
+      expect(canPlayCard(card({ color: 'blue', kind: 'number', value: 5 }), s)).toBe(false)
+    })
+
+    it('pending +6 accepts +6 and +10 but blocks +4 / +4 Reverse / smaller draws', () => {
+      const s = session({
+        top_card: card({ color: 'wild', kind: 'draw6' }),
+        required_color: 'yellow',
+        draw_penalty: 6,
+        draw_penalty_kind: 'draw6',
+      })
+      expect(canPlayCard(card({ color: 'wild', kind: 'draw6' }), s)).toBe(true)
+      expect(canPlayCard(card({ color: 'wild', kind: 'draw10' }), s)).toBe(true)
+      expect(canPlayCard(card({ color: 'wild', kind: 'wild_reverse_draw4' }), s)).toBe(false)
+      expect(canPlayCard(card({ color: 'wild', kind: 'wild_draw4' }), s)).toBe(false)
+      expect(canPlayCard(card({ color: 'yellow', kind: 'draw2' }), s)).toBe(false)
+    })
+  })
 })
 
 describe('unoNextTurnIndex', () => {
@@ -251,6 +342,18 @@ describe('unoPlacementOrder / buildUnoStandings', () => {
     expect(standings[0].rank).toBe(1)
     expect(standings[1].handSum).toBe(3)
     expect(standings[2].handSum).toBe(50)
+  })
+
+  it('sorts eliminated players (Mercy KO) behind every live player regardless of hand-sum', () => {
+    // High Stakes scenario: `b` was knocked out but still holds their (arbitrarily small)
+    // hand. On a timed finish `b` must NOT win over `c` — the KO puts them last.
+    const order = unoPlacementOrder(hands, ['a', 'b', 'c'], [], false, [], ['b'])
+    // `a` still finishes first (empty hand), then LIVE `c` (50 pts) beats KO'd `b` (3 pts).
+    expect(order).toEqual(['a', 'c', 'b'])
+
+    const standings = buildUnoStandings(hands, players, ['a', 'b', 'c'], [], false, [], ['b'])
+    expect(standings.map((s) => s.name)).toEqual(['Ann', 'Cara', 'Bob'])
+    expect(standings.map((s) => s.rank)).toEqual([1, 2, 3])
   })
 })
 
@@ -561,6 +664,7 @@ describe('parseUnoRules', () => {
   it('defaults: challenge on, penalty 2, wd4 penalty 6, 0-7 off, stacking off', () => {
     const r = parseUnoRules(null)
     expect(r).toEqual({
+      mode: 'classic',
       wd4Challenge: true,
       unoPenalty: 2,
       wd4ChallengePenalty: 6,
@@ -569,6 +673,7 @@ describe('parseUnoRules', () => {
       multiPlay: 'off',
       teamMode: false,
       jumpIn: false,
+      noMercyWin: 'first_out',
     })
   })
   it('reads host overrides', () => {
@@ -583,6 +688,7 @@ describe('parseUnoRules', () => {
       uno_jump_in: true,
     })
     expect(r).toEqual({
+      mode: 'classic',
       wd4Challenge: false,
       unoPenalty: 4,
       wd4ChallengePenalty: 6,
@@ -591,6 +697,7 @@ describe('parseUnoRules', () => {
       multiPlay: 'same_color_or_number',
       teamMode: true,
       jumpIn: true,
+      noMercyWin: 'first_out',
     })
   })
   it('reads the milder wd4 penalty variant (4) and clamps junk to 6', () => {
@@ -809,5 +916,140 @@ describe('processUnoChallenge (turn + hands)', () => {
     expect(handOf(tables, 'A')).toHaveLength(2) // A did NOT draw — challenge failed
     expect(handOf(tables, 'B')).toHaveLength(7) // B drew 6 (1 + 6)
     expect(sess(tables).current_turn_index).toBe(2)
+  })
+})
+
+// ── Match Up High Stakes: end-to-end stacking chain ─────────────────────────────
+// The user reported: "if I play +4 or +4 Reverse and someone else plays 10 shouldn't
+// the total be 14?" and "someone played +10 and I was able to play anything". Walk
+// the full server-side flow to prove the answer is 14 and non-Draw plays are refused.
+describe('High Stakes stacking (server flow)', () => {
+  function highStakesWorld(aHand: UnoCard[], bHand: UnoCard[], cHand: UnoCard[]) {
+    const drawPile: UnoCard[] = Array.from({ length: 40 }, (_, i) =>
+      card({ id: `pool-${i}`, color: 'yellow', kind: 'number', value: (i % 9) as UnoCard['value'] })
+    )
+    const sessionRow: Row = {
+      ...session({
+        turn_order: ['A', 'B', 'C'],
+        current_turn_index: 0,
+        direction: 1,
+        phase: 'playing',
+        draw_pile: drawPile,
+        discard_pile: [],
+        top_card: card({ color: 'yellow', kind: 'number', value: 3 }),
+        required_color: 'yellow',
+        updated_at: 't0',
+      }),
+    }
+    const tables: Record<string, Row[]> = {
+      uno_sessions: [sessionRow],
+      uno_player_hands: [handRow('A', aHand, 0), handRow('B', bHand, 1), handRow('C', cHand, 2)] as unknown as Row[],
+      // uno_mode='no_mercy' — HS rules, stacking on, WD4 challenge off, Jump-In off.
+      games: [
+        {
+          id: 'G',
+          timer_seconds: 0,
+          game_duration_seconds: 0,
+          session_started_at: null,
+          uno_wd4_challenge: false,
+          uno_uno_penalty: 2,
+          uno_wd4_challenge_penalty: 6,
+          uno_zero_seven: true,
+          uno_stacking: true,
+          uno_multi_play_mode: 'off',
+          uno_team_mode: false,
+          uno_jump_in: false,
+          uno_mode: 'no_mercy',
+          uno_no_mercy_win: 'first_out',
+        },
+      ],
+      players: [
+        { id: 'A', name: 'Ann' },
+        { id: 'B', name: 'Bob' },
+        { id: 'C', name: 'Cara' },
+      ],
+    }
+    return { tables, supabase: makeSupabase(tables) }
+  }
+
+  it('+4 → choose colour → +10 → choose colour → pending penalty is 14', async () => {
+    const { tables, supabase } = highStakesWorld(
+      // Each hand carries a filler so nobody goes out just by playing their action card
+      // (an empty hand ends the round and short-circuits the stacking chain).
+      [
+        card({ id: 'plus4', color: 'wild', kind: 'wild_draw4' }),
+        card({ id: 'y7', color: 'yellow', kind: 'number', value: 7 }),
+      ],
+      [
+        card({ id: 'plus10', color: 'wild', kind: 'draw10' }),
+        card({ id: 'g4', color: 'green', kind: 'number', value: 4 }),
+      ],
+      [card({ id: 'y1', color: 'yellow', kind: 'number', value: 1 })]
+    )
+    // A plays +4.
+    let res = await processUnoPlay(supabase, 'G', 'A', 'plus4')
+    expect(res.error).toBeUndefined()
+    expect(sess(tables).phase).toBe('choose_color')
+    expect(sess(tables).pending_wild).toBe('wild_draw4')
+
+    // A picks red.
+    res = await processUnoChoose(supabase, 'G', 'A', 'red')
+    expect(res.error).toBeUndefined()
+    // After choose_color for a lone +4, next player owes 4 with kind wild_draw4.
+    expect(sess(tables).phase).toBe('playing')
+    expect(sess(tables).current_turn_index).toBe(1)
+    expect(sess(tables).draw_penalty).toBe(4)
+    expect(sess(tables).draw_penalty_kind).toBe('wild_draw4')
+    expect(sess(tables).required_color).toBe('red')
+
+    // B stacks +10 on top of the pending +4.
+    res = await processUnoPlay(supabase, 'G', 'B', 'plus10')
+    expect(res.error).toBeUndefined()
+    // Wild branch carries the pending 4 forward through choose_color.
+    expect(sess(tables).phase).toBe('choose_color')
+    expect(sess(tables).pending_wild).toBe('draw10')
+    expect(sess(tables).draw_penalty).toBe(4)
+
+    // B picks blue → accumulated should be 4 + 10 = 14, kind draw10, next player = C.
+    res = await processUnoChoose(supabase, 'G', 'B', 'blue')
+    expect(res.error).toBeUndefined()
+    expect(sess(tables).phase).toBe('playing')
+    expect(sess(tables).current_turn_index).toBe(2)
+    expect(sess(tables).draw_penalty).toBe(14)
+    expect(sess(tables).draw_penalty_kind).toBe('draw10')
+    expect(sess(tables).required_color).toBe('blue')
+  })
+
+  it('non-Draw card played against a pending +10 penalty is rejected', async () => {
+    // Same setup, but C tries to play a plain yellow 1 while +10 is pending on them.
+    // First run the stacking chain to arm the +10 penalty on C.
+    const { tables, supabase } = highStakesWorld(
+      // Each hand carries a filler so nobody goes out just by playing their action card
+      // (an empty hand ends the round and short-circuits the stacking chain).
+      [
+        card({ id: 'plus4', color: 'wild', kind: 'wild_draw4' }),
+        card({ id: 'y7', color: 'yellow', kind: 'number', value: 7 }),
+      ],
+      [
+        card({ id: 'plus10', color: 'wild', kind: 'draw10' }),
+        card({ id: 'g4', color: 'green', kind: 'number', value: 4 }),
+      ],
+      [
+        card({ id: 'y1', color: 'yellow', kind: 'number', value: 1 }),
+        card({ id: 'b3', color: 'blue', kind: 'number', value: 3 }),
+      ]
+    )
+    await processUnoPlay(supabase, 'G', 'A', 'plus4')
+    await processUnoChoose(supabase, 'G', 'A', 'red')
+    await processUnoPlay(supabase, 'G', 'B', 'plus10')
+    await processUnoChoose(supabase, 'G', 'B', 'blue')
+    // C's turn, draw_penalty=14 kind=draw10. A blue 3 would normally match the required
+    // colour, but a non-Draw play must be refused while a penalty is pending.
+    const res = await processUnoPlay(supabase, 'G', 'C', 'b3')
+    expect(res.error).toBeTruthy()
+    expect(res.error).toMatch(/Draw 14|Draw card of equal or higher/i)
+    // The card is still in the hand — nothing persisted.
+    expect(handOf(tables, 'C').some((c) => c.id === 'b3')).toBe(true)
+    expect(sess(tables).draw_penalty).toBe(14)
   })
 })

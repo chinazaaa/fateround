@@ -48,6 +48,28 @@ const SECRET_COLUMNS: ReadonlyArray<[table: string, column: string]> = [
  */
 const ANON_INSERT_ALLOWED = new Set<string>(['app_feedback'])
 
+/**
+ * Tables no public role may read AT ALL — not one column, not one row.
+ *
+ * These carry progression that underpins the paid tiers, so read access is not merely a
+ * privacy question: the catalog reveals hidden trophies before they're earned, and
+ * `awarded_sessions` is the idempotency ledger. They are served exclusively by API routes
+ * holding the service role (20260804000000_trophies_streaks.sql), which is what lets the
+ * server filter `hidden`/`is_active` rather than shipping them and trusting the client.
+ *
+ * The sweeps above only probe WRITES, plus reads of secret-SHAPED column names. Neither
+ * would notice `player_trophies` becoming world-readable, because nothing in it is called
+ * `token`. Hence this list.
+ */
+const SERVICE_ROLE_ONLY_TABLES: ReadonlyArray<string> = [
+  'trophies',
+  'trophy_rarity',
+  'player_stats',
+  'player_distinct',
+  'player_trophies',
+  'awarded_sessions',
+]
+
 let anon: SupabaseClient
 let service: SupabaseClient
 
@@ -55,8 +77,24 @@ async function listTables(): Promise<string[]> {
   const res = await fetch(`${url}/rest/v1/`, {
     headers: { apikey: serviceKey!, Authorization: `Bearer ${serviceKey}` },
   })
-  const spec = (await res.json()) as { definitions?: Record<string, unknown> }
-  return Object.keys(spec.definitions ?? {}).sort()
+  // A non-2xx here is almost always a credential/URL mismatch — a service key issued for a
+  // different project than NEXT_PUBLIC_SUPABASE_URL names. Say that, instead of letting it degrade
+  // into a bare "0 tables" that looks like an empty database. (See the Aug 2026 release: the
+  // Production environment's URL was right but its keys pointed at the Preview project.)
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    throw new Error(
+      `Could not read the schema: GET ${url}/rest/v1/ returned ${res.status}. ` +
+        `NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must point at the SAME project. ${body.slice(0, 200)}`
+    )
+  }
+  // PostgREST <12 (Swagger 2.0) lists tables under `definitions`; newer (OpenAPI 3.0) under
+  // `components.schemas`. Accept either so a PostgREST upgrade doesn't read as "no tables".
+  const spec = (await res.json()) as {
+    definitions?: Record<string, unknown>
+    components?: { schemas?: Record<string, unknown> }
+  }
+  return Object.keys(spec.definitions ?? spec.components?.schemas ?? {}).sort()
 }
 
 /**
@@ -109,7 +147,14 @@ describe.skipIf(!hasCreds)('RLS boundaries (live)', () => {
     anon = createClient(url!, anonKey!, { auth: { persistSession: false } })
     service = createClient(url!, serviceKey!, { auth: { persistSession: false } })
     tables = await listTables()
-    expect(tables.length).toBeGreaterThan(50)
+    // Positive control (verification rule 3): the privileged client must SEE the schema before any
+    // "anon cannot read X" negative below can be trusted. A low count here is NOT a passing security
+    // result — it means this job is pointed at an empty or wrong project and can verify nothing.
+    expect(
+      tables.length,
+      `service role saw ${tables.length} tables at ${url} — expected the full schema (>50). ` +
+        `The URL and service-role key are probably not the same project as the migrated one.`
+    ).toBeGreaterThan(50)
   }, 60_000)
 
   // A passing check proves nothing until you've seen it fail. `canWrite` must report `writable`
@@ -175,6 +220,28 @@ describe.skipIf(!hasCreds)('RLS boundaries (live)', () => {
     },
     SWEEP_TIMEOUT_MS
   )
+
+  // Deliberately asserts EXISTENCE first. Without that this passes vacuously on any
+  // environment where the migration hasn't been applied — green because the table is missing,
+  // which is exactly the "assertion encodes an assumption about fixture state" trap.
+  it.each(SERVICE_ROLE_ONLY_TABLES)('anon cannot read %s at all', async (table) => {
+    const { error: serviceError } = await service.from(table).select('*').limit(1)
+    expect(serviceError, `${table} does not exist — this assertion would pass vacuously`).toBeNull()
+
+    const { data, error } = await anon.from(table).select('*').limit(1)
+    // "Denied", "empty" and "not found" look identical from the outside, so score on the error
+    // code: a successful read of zero rows is a FAILURE here, not a pass.
+    expect(error, `${table} is readable by the anon key`).not.toBeNull()
+    // 42501 = the role lacks the privilege. PGRST205 = PostgREST won't expose the table to this
+    // role at all, which is the same denial one layer out. PGRST106 ("schema not configured") is
+    // deliberately NOT accepted: it signals a misconfigured request, and treating it as denial is
+    // how a broken probe scores green against an open boundary.
+    expect(
+      ['42501', 'PGRST205'],
+      `${table} failed for an unexpected reason (${error?.code}) — investigate rather than assume denied`
+    ).toContain(error?.code)
+    expect(data, `${table} returned rows to the anon key`).toBeNull()
+  })
 
   it.each(SECRET_COLUMNS)('anon cannot read %s.%s', async (table, column) => {
     const { error } = await anon.from(table).select(`${column}`).limit(1)

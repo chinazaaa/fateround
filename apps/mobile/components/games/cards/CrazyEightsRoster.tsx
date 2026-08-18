@@ -18,15 +18,20 @@ export function CrazyEightsRoster({
   myPlayerId,
   handCounts,
   finishOrder,
+  eliminatedIds,
 }: {
   players: Player[]
   turnPlayerId: string | null
   myPlayerId: string | null
   handCounts: Record<string, number>
   finishOrder: string[]
+  /** No-Mercy (UNO High Stakes) knockout ids — greys the chip, appends 💥, and pins
+   *  the seat behind live players so the rail reads "live seats first, out-later". */
+  eliminatedIds?: string[]
 }) {
   const styles = useThemedStyles(makeStyles)
 
+  const eliminatedSet = new Set(eliminatedIds ?? [])
   const isSpectator = (p: Player) => (p as { spectator?: boolean | null }).spectator === true
   const handEmpty = (p: Player) => {
     // Only treat count 0 as "out" once the player's hand row is actually loaded —
@@ -36,13 +41,16 @@ export function CrazyEightsRoster({
   }
 
   // Pure spectators live in the roster drawer now; keep only players in the game.
-  // Active players keep their passed (turn) order; finished trail by finishing place.
+  // Active players keep their passed (turn) order; finished trail by finishing place;
+  // eliminated (No-Mercy KO) trail at the very end so the live block reads left-to-right
+  // without a greyed chip breaking the "who's next" flow.
   const inGame = players.filter((p) => !isSpectator(p))
-  const active = inGame.filter((p) => !handEmpty(p))
+  const active = inGame.filter((p) => !handEmpty(p) && !eliminatedSet.has(p.id))
   const finished = inGame
-    .filter((p) => handEmpty(p))
+    .filter((p) => handEmpty(p) && !eliminatedSet.has(p.id))
     .sort((a, b) => finishOrder.indexOf(a.id) - finishOrder.indexOf(b.id))
-  const ordered = [...active, ...finished]
+  const eliminated = inGame.filter((p) => eliminatedSet.has(p.id))
+  const ordered = [...active, ...finished, ...eliminated]
   if (ordered.length === 0) return null
 
   return (
@@ -60,17 +68,30 @@ export function CrazyEightsRoster({
           const isMe = p.id === myPlayerId
           const finishIdx = finishOrder.indexOf(p.id)
           const isFinished = finishIdx >= 0
+          const isOut = eliminatedSet.has(p.id)
           const place = finishIdx + 1
           const placeLabel = finishIdx === 0 ? '🏆' : `${place}${place === 2 ? 'nd' : place === 3 ? 'rd' : 'th'}`
 
           return (
-            <View key={p.id} style={[styles.chip, isTurn && styles.chipTurn, isFinished && styles.chipFinished]}>
-              <Text style={[styles.name, isTurn && styles.nameTurn]} numberOfLines={1}>
+            <View
+              key={p.id}
+              style={[
+                styles.chip,
+                isTurn && styles.chipTurn,
+                isFinished && styles.chipFinished,
+                isOut && styles.chipOut,
+              ]}
+              accessibilityLabel={isOut ? `${p.name} — knocked out` : undefined}
+            >
+              <Text style={[styles.name, isTurn && styles.nameTurn, isOut && styles.nameOut]} numberOfLines={1}>
                 {p.name}
                 {isMe ? ' (you)' : ''}
+                {isOut ? ' 💥' : ''}
               </Text>
               {isFinished ? (
                 <Text style={styles.place}>{placeLabel}</Text>
+              ) : isOut ? (
+                <Text style={styles.place}>OUT</Text>
               ) : (
                 <View style={styles.countWrap}>
                   {isTurn ? <Text style={styles.turnDot}>▸</Text> : null}
@@ -109,8 +130,12 @@ const makeStyles = (theme: Theme) =>
     },
     chipTurn: { borderColor: theme.primary, backgroundColor: theme.primarySoft },
     chipFinished: { opacity: 0.7, borderStyle: 'dashed' },
+    // No-Mercy KO — greyed avatar/chip so it reads as "out of the round" at a glance
+    // without disappearing from the rail. Matches the web ".seat.out" styling.
+    chipOut: { opacity: 0.55, borderStyle: 'dashed', backgroundColor: theme.surface },
     name: { color: theme.text, fontWeight: '700', fontSize: 13, maxWidth: 110 },
     nameTurn: { color: theme.text, fontWeight: '800' },
+    nameOut: { color: theme.textMuted, textDecorationLine: 'line-through' },
     countWrap: { flexDirection: 'row', alignItems: 'center', gap: 2 },
     turnDot: { color: theme.primary, fontSize: 12, fontWeight: '900' },
     count: { color: theme.textMuted, fontSize: 12, fontWeight: '700', fontVariant: ['tabular-nums'] },

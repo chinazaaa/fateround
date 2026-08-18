@@ -9,6 +9,7 @@ import { BATCH_7_GAMES } from '@fateround/shared/batch-7-games'
 import { BATCH_8_GAMES } from '@fateround/shared/batch-8-games'
 import { BATCH_9_GAMES } from '@fateround/shared/batch-9-games'
 import { BATCH_10_GAMES } from '@fateround/shared/batch-10-games'
+import { BATCH_12_GAMES } from '@fateround/shared/batch-12-games'
 import { BATCH_2_POLL_GAMES } from '@fateround/shared/poll-games'
 import { useTheme } from '@/constants/theme-context'
 import { PlayerPreJoinGate } from '@/components/lifecycle/PlayerPreJoinGate'
@@ -36,6 +37,7 @@ const BATCH_3_VIEWS = {
   crossword: lazyView(() => import('@/components/games/CrosswordPlayerView'), 'CrosswordPlayerView'),
   word_search: lazyView(() => import('@/components/games/WordSearchPlayerView'), 'WordSearchPlayerView'),
   word_scramble: lazyView(() => import('@/components/games/WordScramblePlayerView'), 'WordScramblePlayerView'),
+  word_grouping: lazyView(() => import('@/components/games/WordGroupingPlayerView'), 'WordGroupingPlayerView'),
 } as const satisfies Partial<Record<GameType, PlayerView>>
 
 const BATCH_4_VIEWS = {
@@ -90,6 +92,10 @@ const BATCH_11_VIEWS = {
   ping_pong: lazyView(() => import('@/components/games/PingPongPlayerView'), 'PingPongPlayerView'),
 } as const satisfies Partial<Record<GameType, PlayerView>>
 
+const BATCH_12_VIEWS = {
+  wordle_room: lazyView(() => import('@/components/games/WordleRoomPlayerView'), 'WordleRoomPlayerView'),
+} as const satisfies Partial<Record<GameType, PlayerView>>
+
 const MOBILE_PLAYER_VIEWS: Partial<Record<GameType, PlayerView>> = {
   ayo: lazyView(() => import('@/components/games/AyoPlayerView'), 'AyoPlayerView'),
   tic_tac_toe: lazyView(() => import('@/components/games/TicTacToePlayerView'), 'TicTacToePlayerView'),
@@ -106,6 +112,7 @@ const MOBILE_PLAYER_VIEWS: Partial<Record<GameType, PlayerView>> = {
   ...BATCH_9_VIEWS,
   ...BATCH_10_VIEWS,
   ...BATCH_11_VIEWS,
+  ...BATCH_12_VIEWS,
 }
 
 export function hasMobilePlayerView(gameType: GameType): boolean {
@@ -152,6 +159,7 @@ export {
   BATCH_8_GAMES,
   BATCH_9_GAMES,
   BATCH_10_GAMES,
+  BATCH_12_GAMES,
 }
 
 export const MOBILE_SUPPORTED_GAMES: GameType[] = [
@@ -166,4 +174,5 @@ export const MOBILE_SUPPORTED_GAMES: GameType[] = [
   ...BATCH_9_GAMES,
   ...BATCH_10_GAMES,
   ...BATCH_11_GAMES,
+  ...BATCH_12_GAMES,
 ]

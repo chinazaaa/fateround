@@ -164,7 +164,7 @@ export async function playNaijaOganlaInflectionSound() {
   }
 }
 
-/** Crisp Ankara fabric swipe sound for drawing Chance / Community Chest cards. */
+/** Crisp Ankara fabric swipe sound for drawing Fate / Kitty cards. */
 export async function playNaijaTextileSwipeSound() {
   if (typeof window === 'undefined' || isSoundMuted()) return
 

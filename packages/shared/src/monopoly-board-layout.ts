@@ -1,26 +1,45 @@
 import type { MonopolyColorGroup } from './monopoly-board'
-import { MONOPOLY_BOARD_SIZE } from './monopoly-board'
+import { MONOPOLY_BOARD_SIZE, type MonopolyBoardSize } from './monopoly-board'
 
 export type MonopolyBoardEdge = 'bottom' | 'left' | 'top' | 'right' | 'corner'
 
-export function boardEdgeForSpace(index: number): MonopolyBoardEdge {
-  if (index === 0 || index === 10 || index === 20 || index === 30) return 'corner'
-  if (index >= 1 && index <= 9) return 'bottom'
-  if (index >= 11 && index <= 19) return 'left'
-  if (index >= 21 && index <= 29) return 'top'
+export function boardEdgeForSpace(
+  index: number,
+  boardSize: MonopolyBoardSize = MONOPOLY_BOARD_SIZE
+): MonopolyBoardEdge {
+  const sideLength = boardSize / 4
+  if (index % sideLength === 0) return 'corner'
+  if (index < sideLength) return 'bottom'
+  if (index < sideLength * 2) return 'left'
+  if (index < sideLength * 3) return 'top'
   return 'right'
 }
 
-/** Grid cell (1–11) for the 11×11 classic board layout. */
-export function boardGridCell(index: number): { col: number; row: number } {
-  if (index === 20) return { col: 1, row: 1 }
-  if (index === 30) return { col: 11, row: 1 }
-  if (index === 10) return { col: 1, row: 11 }
-  if (index === 0) return { col: 11, row: 11 }
-  if (index >= 21 && index <= 29) return { col: index - 19, row: 1 }
-  if (index >= 11 && index <= 19) return { col: 1, row: 21 - index }
-  if (index >= 31 && index <= 39) return { col: 11, row: index - 29 }
-  if (index >= 1 && index <= 9) return { col: 11 - index, row: 11 }
+export function monopolyGridSize(boardSize: MonopolyBoardSize = MONOPOLY_BOARD_SIZE): number {
+  return boardSize / 4 + 1
+}
+
+/** Grid cell for the square perimeter corresponding to the selected board size. */
+export function boardGridCell(
+  index: number,
+  boardSize: MonopolyBoardSize = MONOPOLY_BOARD_SIZE
+): { col: number; row: number } {
+  const sideLength = boardSize / 4
+  const gridSize = monopolyGridSize(boardSize)
+  if (index === sideLength * 2) return { col: 1, row: 1 }
+  if (index === sideLength * 3) return { col: gridSize, row: 1 }
+  if (index === sideLength) return { col: 1, row: gridSize }
+  if (index === 0) return { col: gridSize, row: gridSize }
+  if (index > sideLength * 2 && index < sideLength * 3) {
+    return { col: index - sideLength * 2 + 1, row: 1 }
+  }
+  if (index > sideLength && index < sideLength * 2) {
+    return { col: 1, row: sideLength * 2 + 1 - index }
+  }
+  if (index > sideLength * 3) {
+    return { col: gridSize, row: index - sideLength * 3 + 1 }
+  }
+  if (index > 0 && index < sideLength) return { col: gridSize - index, row: gridSize }
   return { col: 1, row: 1 }
 }
 
@@ -40,14 +59,18 @@ export const MONOPOLY_COLOR_HEX: Record<MonopolyColorGroup, string> = {
   yellow: '#eab308',
   green: '#059669',
   dark_blue: '#1e40af',
+  teal: '#0d9488',
+  violet: '#7c3aed',
+  indigo: '#4338ca',
+  coral: '#f43f5e',
   station: '#525252',
   utility: '#737373',
 }
 
-export function buildBoardSpaceGrid(): Map<string, number> {
+export function buildBoardSpaceGrid(boardSize: MonopolyBoardSize = MONOPOLY_BOARD_SIZE): Map<string, number> {
   const map = new Map<string, number>()
-  for (let index = 0; index < MONOPOLY_BOARD_SIZE; index += 1) {
-    const { col, row } = boardGridCell(index)
+  for (let index = 0; index < boardSize; index += 1) {
+    const { col, row } = boardGridCell(index, boardSize)
     map.set(`${col},${row}`, index)
   }
   return map

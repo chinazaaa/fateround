@@ -61,6 +61,10 @@ export function AyoPlayerView({ gameCode }: { gameCode: string }) {
   const [session, setSession] = useState<AyoSession | null>(null)
   const sessionRef = useRef<AyoSession | null>(null)
   sessionRef.current = session
+  // Refs so applySessionRow (defined before the bootstrap) can consult live
+  // values for the opponent-move animation trigger below.
+  const myPlayerIdRef = useRef<string | null>(null)
+  const variantRef = useRef<'traditional' | 'oware'>('traditional')
   const { displayName: roomDisplayName, joinExtras, resolving: resolvingRoomMember } = useRoomMemberJoin(gameCode)
   const [acting, setActing] = useState(false)
 
@@ -119,16 +123,41 @@ export function AyoPlayerView({ gameCode }: { gameCode: string }) {
   useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
   useApplyGameTheme(screen === 'game_ended' ? 'default' : game?.theme)
 
+  // Keep the refs applySessionRow reads in sync with the live bootstrap values.
+  myPlayerIdRef.current = myPlayerId
+  variantRef.current = parseAyoVariant(game?.ayo_variant)
+
   // Delta fast-path: patch the session locally on an ordinary move and skip the full reload;
   // a status change (→ finished) or the first row still reloads. See useGameTableSync `apply`.
-  const applySessionRow = useCallback((row: Record<string, unknown>): boolean => {
-    const next = row as unknown as AyoSession
-    const prev = sessionRef.current
-    if (prev && next.updated_at < prev.updated_at) return true
-    setSession(next)
-    sessionRef.current = next
-    return prev != null && prev.status === 'active' && next.status === 'active'
-  }, [])
+  const applySessionRow = useCallback(
+    (row: Record<string, unknown>): boolean => {
+      const next = row as unknown as AyoSession
+      const prev = sessionRef.current
+      if (prev && next.updated_at < prev.updated_at) return true
+
+      // Opponent-move animation: when a realtime update lands on a still-active
+      // game and the mover was NOT us, replay the sow starting from the previous
+      // pits so the opponent's play unfolds visibly instead of jump-cutting.
+      // My own moves already animate via sowPit's playSowAnimation; skip here to
+      // avoid double-firing.
+      if (
+        prev &&
+        prev.status === 'active' &&
+        next.status === 'active' &&
+        next.last_pit != null &&
+        next.last_pit !== prev.last_pit &&
+        currentTurnPlayerId(prev) !== myPlayerIdRef.current
+      ) {
+        const config = boardConfigFromSession(prev, variantRef.current)
+        void playSowAnimation(prev.pits, next.last_pit, config)
+      }
+
+      setSession(next)
+      sessionRef.current = next
+      return prev != null && prev.status === 'active' && next.status === 'active'
+    },
+    [playSowAnimation]
+  )
 
   const connected = useGameTableSync(
     gameCode,

@@ -1,5 +1,6 @@
 import * as DocumentPicker from 'expo-document-picker'
-import { File } from 'expo-file-system'
+import * as Sharing from 'expo-sharing'
+import { File, Paths } from 'expo-file-system'
 import type { GameType } from '@fateround/shared'
 import { isCodewordsGame } from '@fateround/shared/game-type-checks'
 import {
@@ -26,6 +27,32 @@ export async function pickCsvText(): Promise<{ name: string; text: string } | nu
   const asset = res.assets[0]
   const text = await new File(asset.uri).text()
   return { name: asset.name, text }
+}
+
+/**
+ * Writes `content` to a cache-directory file named `filename` and hands it to the native Share
+ * sheet — on iOS that surfaces "Save to Files" and any installed app that accepts CSV; on
+ * Android it surfaces the app chooser (Files / Drive / mail / etc). Real file download, not a
+ * text share, so users can pick it back up in the Files app to edit and re-upload here.
+ */
+export async function shareTextAsFile(filename: string, content: string): Promise<void> {
+  const file = new File(Paths.cache, filename)
+  try {
+    // `overwrite: true` on create() is enough on iOS, but Android sometimes preserves the old
+    // file. Delete first (best-effort) so a stale sample never gets shared.
+    if (file.exists) file.delete()
+  } catch {
+    // No prior file — safe to fall through.
+  }
+  file.create({ overwrite: true })
+  file.write(content)
+  if (await Sharing.isAvailableAsync()) {
+    await Sharing.shareAsync(file.uri, {
+      mimeType: 'text/csv',
+      UTI: 'public.comma-separated-values-text',
+      dialogTitle: filename,
+    })
+  }
 }
 
 function toLines(text: string): string[] {
