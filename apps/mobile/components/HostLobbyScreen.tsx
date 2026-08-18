@@ -506,76 +506,79 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
             </Text>
           ) : null}
         </ScrollView>
-      </KeyboardAvoidingView>
 
-      <View style={styles.footer} onLayout={(e) => setFooterHeight(e.nativeEvent.layout.height)}>
-        {/* Error lives in the pinned footer, next to the Start button, so a failed
+        {/* Footer lives INSIDE the KeyboardAvoidingView so Start / End lobby lift
+            with the ScrollView when a HostLobbyPlayCard TextInput is focused. Modal
+            sheets below stay siblings (they render into their own window anyway). */}
+        <View style={styles.footer} onLayout={(e) => setFooterHeight(e.nativeEvent.layout.height)}>
+          {/* Error lives in the pinned footer, next to the Start button, so a failed
             Start is visible immediately (it used to render at the bottom of the
             scroll, out of view). */}
-        {error ? <Text style={styles.error}>{error}</Text> : null}
-        {finished ? (
-          <Pressable
-            style={[styles.startButton, replaying && styles.startButtonDisabled]}
-            onPress={onPlayAgain}
-            disabled={replaying}
-          >
-            {replaying ? (
-              // White spinner on the solid rose Start button — correct in both schemes.
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.startButtonText}>Play again · same settings</Text>
-            )}
-          </Pressable>
-        ) : replayLobby ? (
-          <>
-            {!meetsMinimum ? (
-              <Text style={styles.minHint}>
-                Need at least {minPlayers} player{minPlayers === 1 ? '' : 's'} to start ({activePlayers.length}/
-                {minPlayers})
-              </Text>
-            ) : null}
+          {error ? <Text style={styles.error}>{error}</Text> : null}
+          {finished ? (
             <Pressable
-              style={[styles.startButton, (starting || !meetsMinimum) && styles.startButtonDisabled]}
-              onPress={onStart}
-              disabled={starting || !meetsMinimum}
+              style={[styles.startButton, replaying && styles.startButtonDisabled]}
+              onPress={onPlayAgain}
+              disabled={replaying}
             >
-              {starting ? (
+              {replaying ? (
                 // White spinner on the solid rose Start button — correct in both schemes.
                 <ActivityIndicator color="#fff" />
               ) : (
-                <Text style={styles.startButtonText}>Start next round</Text>
+                <Text style={styles.startButtonText}>Play again · same settings</Text>
               )}
             </Pressable>
-          </>
-        ) : (
-          <>
-            {!meetsMinimum ? (
-              <Text style={styles.minHint}>
-                Need at least {minPlayers} player{minPlayers === 1 ? '' : 's'} to start ({activePlayers.length}/
-                {minPlayers})
-              </Text>
-            ) : null}
-            <Pressable
-              style={[styles.startButton, (starting || !meetsMinimum) && styles.startButtonDisabled]}
-              onPress={onStart}
-              disabled={starting || !meetsMinimum}
-            >
-              {starting ? (
-                // White spinner on the solid rose Start button — correct in both schemes.
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.startButtonText}>Start game</Text>
-              )}
-            </Pressable>
-          </>
-        )}
+          ) : replayLobby ? (
+            <>
+              {!meetsMinimum ? (
+                <Text style={styles.minHint}>
+                  Need at least {minPlayers} player{minPlayers === 1 ? '' : 's'} to start ({activePlayers.length}/
+                  {minPlayers})
+                </Text>
+              ) : null}
+              <Pressable
+                style={[styles.startButton, (starting || !meetsMinimum) && styles.startButtonDisabled]}
+                onPress={onStart}
+                disabled={starting || !meetsMinimum}
+              >
+                {starting ? (
+                  // White spinner on the solid rose Start button — correct in both schemes.
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.startButtonText}>Start next round</Text>
+                )}
+              </Pressable>
+            </>
+          ) : (
+            <>
+              {!meetsMinimum ? (
+                <Text style={styles.minHint}>
+                  Need at least {minPlayers} player{minPlayers === 1 ? '' : 's'} to start ({activePlayers.length}/
+                  {minPlayers})
+                </Text>
+              ) : null}
+              <Pressable
+                style={[styles.startButton, (starting || !meetsMinimum) && styles.startButtonDisabled]}
+                onPress={onStart}
+                disabled={starting || !meetsMinimum}
+              >
+                {starting ? (
+                  // White spinner on the solid rose Start button — correct in both schemes.
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.startButtonText}>Start game</Text>
+                )}
+              </Pressable>
+            </>
+          )}
 
-        {!finished ? (
-          <Pressable style={styles.endButton} onPress={onEndLobby} disabled={ending}>
-            {ending ? <ActivityIndicator color={theme.error} /> : <Text style={styles.endButtonText}>End lobby</Text>}
-          </Pressable>
-        ) : null}
-      </View>
+          {!finished ? (
+            <Pressable style={styles.endButton} onPress={onEndLobby} disabled={ending}>
+              {ending ? <ActivityIndicator color={theme.error} /> : <Text style={styles.endButtonText}>End lobby</Text>}
+            </Pressable>
+          ) : null}
+        </View>
+      </KeyboardAvoidingView>
       <ShareGameSheet
         visible={shareOpen}
         gameCode={gameCode}
