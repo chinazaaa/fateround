@@ -63,7 +63,7 @@ export function HostLobbyWaitingFooter({
         hostToken={hostToken}
         onEnded={onEnded}
         label={endLabel}
-        icon={<ExitIcon size={16} />}
+        icon={<ExitIcon size={14} />}
         confirmTitle="Close this lobby?"
         confirmMessage="Players will be disconnected. You can start a new game from Play again afterward."
         className="btn-danger-soft"

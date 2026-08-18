@@ -4,9 +4,13 @@ import { useFocusEffect, useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { normalizeGameCode } from '@fateround/shared'
 import { FateRoundLogo } from '@/components/FateRoundLogo'
+import { BrowseGamesList } from '@/components/browse/BrowseGamesList'
+import { SubscribeHomeBanner } from '@/components/notifications/SubscribeHomeBanner'
+import { YourUpcomingGamesStrip } from '@/components/notifications/YourUpcomingGamesStrip'
 import { AmbientBackground } from '@/components/ui/AmbientBackground'
 import { AppButton } from '@/components/ui/AppButton'
 import { KeyboardFormScreen } from '@/components/ui/KeyboardFormScreen'
+import { ListRow } from '@/components/ui/ListRow'
 import { SurfaceCard } from '@/components/ui/SurfaceCard'
 import { SettingsButton } from '@/components/ui/SettingsSheet'
 import { ProfileChip } from '@/components/profile/ProfileChip'
@@ -85,7 +89,7 @@ export default function HomeScreen() {
           <Text style={styles.tagline}>Join friends with a code. No account, no fuss.</Text>
         </View>
 
-        <SurfaceCard accent>
+        <SurfaceCard accent elevation="raised">
           <Text style={styles.cardLabel}>Join a game</Text>
           <TextInput
             style={styles.codeInput}
@@ -99,52 +103,88 @@ export default function HomeScreen() {
             returnKeyType="go"
             onSubmitEditing={onJoin}
           />
-          <AppButton label="Join game" onPress={onJoin} disabled={!canJoin} />
+          <AppButton label="Join game" onPress={onJoin} disabled={!canJoin} size="lg" fullWidth haptic="medium" />
         </SurfaceCard>
 
         <View style={styles.actions}>
           <AppButton
             label="Create a game"
-            variant="secondary"
+            tone="secondary"
+            size="lg"
+            fullWidth
             onPress={() => router.push('/create')}
-            style={styles.flexBtn}
           />
           <AppButton
             label="Advanced setup on web"
-            variant="ghost"
+            tone="ghost"
             onPress={() => void Linking.openURL(`${WEB_BASE_URL}/create`)}
           />
+          <AppButton
+            label="🗓️ Daily Challenges"
+            tone="ghost"
+            // Cast: expo-router's typed href doesn't know about the
+            // /daily-challenges route registered in _layout.tsx.
+            onPress={() => router.push('/daily-challenges' as never)}
+          />
+          <AppButton
+            label="🏆 Leaderboards"
+            tone="ghost"
+            // Cast: expo-router's typed href doesn't know about the
+            // /leaderboard route registered in _layout.tsx. Hub screen has
+            // three cards — daily, trophies, community — matching web.
+            onPress={() => router.push('/leaderboard' as never)}
+          />
         </View>
+
+        <SubscribeHomeBanner />
+
+        <YourUpcomingGamesStrip />
+
+        <BrowseGamesList previewLimit={5} onSeeAll={() => router.push('/browse' as never)} />
+
+        {recent.length === 0 ? (
+          <View style={styles.recentBlock}>
+            <Text style={styles.sectionTitle}>Recent</Text>
+            {/*
+              Empty-state hint for a fresh device / first-time user. Once the
+              user joins or creates a single game, the recent list replaces
+              this and the hint never renders again.
+            */}
+            <SurfaceCard>
+              <Text style={styles.emptyRecentTitle}>Nothing here yet</Text>
+              <Text style={styles.emptyRecentBody}>
+                Games you join or create show up here so you can jump back in with one tap.
+              </Text>
+            </SurfaceCard>
+          </View>
+        ) : null}
 
         {recent.length > 0 ? (
           <View style={styles.recentBlock}>
             <Text style={styles.sectionTitle}>Recent</Text>
-            {visibleRecent.map((entry) => (
-              <Pressable
-                key={entry.code}
-                style={({ pressed }) => [styles.recentRow, pressed && styles.recentRowPressed]}
-                onPress={() => router.push(`/game/${entry.code}`)}
-              >
-                <View style={styles.recentBadge}>
-                  <Text style={styles.recentBadgeText}>{entry.code.slice(0, 2)}</Text>
-                </View>
-                <View style={styles.recentMeta}>
-                  <Text style={styles.recentCode}>{entry.code}</Text>
-                  <Text style={styles.recentLabel} numberOfLines={1}>
-                    {entry.gameType ? gameLabel(entry.gameType as never) : entry.title || 'Game'}
-                  </Text>
-                </View>
-                <Text style={styles.recentChevron}>›</Text>
-              </Pressable>
-            ))}
+            <SurfaceCard padding={0} gap={0}>
+              {visibleRecent.map((entry, i) => (
+                <ListRow
+                  key={entry.code}
+                  onPress={() => router.push(`/game/${entry.code}`)}
+                  divider={i < visibleRecent.length - 1}
+                  left={
+                    <View style={styles.recentBadge}>
+                      <Text style={styles.recentBadgeText}>{entry.code.slice(0, 2)}</Text>
+                    </View>
+                  }
+                  title={<Text style={styles.recentCode}>{entry.code}</Text>}
+                  subtitle={entry.gameType ? gameLabel(entry.gameType as never) : entry.title || 'Game'}
+                  right={<Text style={styles.recentChevron}>›</Text>}
+                />
+              ))}
+            </SurfaceCard>
             {hiddenRecentCount > 0 ? (
-              <Pressable
-                style={({ pressed }) => [styles.recentToggle, pressed && styles.recentRowPressed]}
+              <AppButton
+                label={showAllRecent ? 'Show less' : `Show all ${recent.length}`}
+                tone="ghost"
                 onPress={() => setShowAllRecent((v) => !v)}
-                hitSlop={8}
-              >
-                <Text style={styles.recentToggleText}>{showAllRecent ? 'Show less' : `Show all ${recent.length}`}</Text>
-              </Pressable>
+              />
             ) : null}
           </View>
         ) : null}
@@ -179,15 +219,15 @@ const makeStyles = (theme: Theme) =>
     },
     tagline: {
       color: theme.textMuted,
-      fontSize: 16,
-      lineHeight: 24,
+      fontSize: theme.type.body.size,
+      lineHeight: theme.type.body.lineHeight + 3,
       textAlign: 'center',
       maxWidth: 280,
       marginTop: 4,
     },
     cardLabel: {
       color: theme.primaryMuted,
-      fontSize: 12,
+      fontSize: theme.type.caption.size,
       fontWeight: '800',
       letterSpacing: 1.2,
       textTransform: 'uppercase',
@@ -209,29 +249,22 @@ const makeStyles = (theme: Theme) =>
       gap: theme.space.xs,
       alignItems: 'stretch',
     },
-    flexBtn: { width: '100%' },
     recentBlock: { gap: theme.space.sm },
     sectionTitle: {
       color: theme.text,
-      fontSize: 18,
-      fontWeight: '800',
+      fontSize: theme.type.title.size,
+      lineHeight: theme.type.title.lineHeight,
+      fontWeight: theme.type.title.weight,
+      letterSpacing: theme.type.title.letterSpacing,
       marginBottom: 2,
     },
-    recentRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      backgroundColor: theme.surface,
-      borderRadius: theme.radius.md,
-      borderWidth: 1,
-      borderColor: theme.border,
-      padding: theme.space.md,
-      gap: theme.space.md,
-    },
-    recentRowPressed: { opacity: 0.85 },
+    // Recent-row primitives — the row itself is now a ListRow; these style the
+    // slots (badge + code + chevron) that ListRow accepts as `left` / `title` /
+    // `right` nodes.
     recentBadge: {
       width: 44,
       height: 44,
-      borderRadius: 12,
+      borderRadius: theme.radius.md,
       backgroundColor: theme.primarySoft,
       borderWidth: 1,
       borderColor: theme.borderAccent,
@@ -240,27 +273,17 @@ const makeStyles = (theme: Theme) =>
     },
     recentBadgeText: {
       color: theme.primaryMuted,
-      fontSize: 14,
+      fontSize: theme.type.label.size,
       fontWeight: '800',
     },
-    recentToggle: {
-      alignItems: 'center',
-      paddingVertical: theme.space.sm,
-      marginTop: 2,
-    },
-    recentToggleText: {
-      color: theme.primaryMuted,
-      fontSize: 14,
-      fontWeight: '700',
-    },
-    recentMeta: { flex: 1, gap: 2 },
     recentCode: {
       color: theme.text,
-      fontSize: 17,
+      fontSize: theme.type.section.size,
       fontWeight: '800',
       letterSpacing: 2,
     },
-    recentLabel: { color: theme.textMuted, fontSize: 14 },
     recentChevron: { color: theme.textFaint, fontSize: 24, fontWeight: '300' },
+    emptyRecentTitle: { color: theme.text, fontSize: theme.type.section.size, fontWeight: '700' },
+    emptyRecentBody: { color: theme.textMuted, fontSize: theme.type.body.size, lineHeight: 21 },
     topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   })

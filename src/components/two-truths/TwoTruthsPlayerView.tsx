@@ -10,6 +10,8 @@ import { NameJoinForm } from '@/components/game-lobby/NameJoinForm'
 import { TwoTruthsActiveRound } from '@/components/two-truths/TwoTruthsActiveRound'
 import { TwoTruthsLobbySubmit } from '@/components/two-truths/TwoTruthsLobbySubmit'
 import { gameTypeConfig } from '@/lib/game-types'
+import { gameIcon } from '@/lib/game-glyphs'
+import { Glyph } from '@/components/icons/Glyph'
 import { supabase } from '@/lib/supabase'
 import { ROUND_SELECT, TTL_GUESS_SELECT, TTL_STATEMENT_SELECT } from '@/lib/supabase-selects'
 import { clearPlayerSession } from '@/lib/utils'
@@ -340,7 +342,11 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
       <div className="min-h-screen pb-16">
         <div className="max-w-2xl mx-auto px-4 py-6 space-y-4">
           <div className="text-center space-y-1">
-            <div className="text-3xl">{cfg.headerEmoji}</div>
+            <div className="flex justify-center text-[var(--primary)] pb-1">
+              <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[color-mix(in_srgb,var(--primary)_12%,transparent)]">
+                <Glyph icon={gameIcon('two_truths')} size={24} />
+              </span>
+            </div>
             <h1 className="text-xl font-black gradient-title">{game.title}</h1>
           </div>
           {me && <EliminationBanner player={me} />}

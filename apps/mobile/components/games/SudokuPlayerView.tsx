@@ -23,6 +23,7 @@ import { SudokuGameTimerBar } from '@/components/games/sudoku/SudokuGameTimerBar
 import { useStickyTimer } from '@/components/session/StickyTimerContext'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
+import { motion } from '@/constants/motion'
 import { pointsLeaderboard } from '@/lib/finish-leaderboards'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { postSudokuSubmit } from '@/lib/game-api'
@@ -274,7 +275,7 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
       pulseAnim.setValue(1)
       Animated.sequence([
         Animated.timing(pulseAnim, { toValue: 1.22, duration: 160, useNativeDriver: true }),
-        Animated.timing(pulseAnim, { toValue: 1, duration: 260, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1, duration: motion.duration.medium, useNativeDriver: true }),
       ]).start(() => setPulseValue(null))
     },
     [pulseAnim]

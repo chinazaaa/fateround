@@ -388,7 +388,7 @@ All resolved with **recommended defaults** (2026-07-17) — reversible, override
 
 ## What is deliberately NOT in this plan
 
-- **Revenue** (Pro, cosmetics, season drops, Season Pass) — [`revenue-model.md`](./revenue-model.md).
+- **Revenue** (FateRound+, Club Pro, Schools, Corporate — subscription tiers) — [`revenue-model.md`](./revenue-model.md).
   Referenced only where a feature creates a future purchase surface (frames, crests, extra freezes,
   podium art). Build the free/earned layer first; monetize around it later, never on trophies/streaks.
 - **Tournaments** — already shipped; trophies/leaderboards reference them but don't rebuild them.

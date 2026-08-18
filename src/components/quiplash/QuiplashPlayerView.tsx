@@ -12,6 +12,8 @@ import { GameLobbyWaitingPanel } from '@/components/game-lobby/GameLobbyWaitingP
 import { NameJoinForm } from '@/components/game-lobby/NameJoinForm'
 import { QuiplashActiveRound } from '@/components/quiplash/QuiplashActiveRound'
 import { gameTypeConfig } from '@/lib/game-types'
+import { gameIcon } from '@/lib/game-glyphs'
+import { Glyph } from '@/components/icons/Glyph'
 import { supabase } from '@/lib/supabase'
 import {
   QUIPLASH_ANSWER_SELECT,
@@ -375,7 +377,11 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
       <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 space-y-5">
         {!isFinished && (
           <div className="text-center space-y-1">
-            <div className="text-4xl sm:text-5xl">{cfg.headerEmoji}</div>
+            <div className="flex justify-center text-[var(--primary)] pb-1">
+              <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[color-mix(in_srgb,var(--primary)_12%,transparent)]">
+                <Glyph icon={gameIcon('quiplash')} size={24} />
+              </span>
+            </div>
             <h1 className="text-2xl sm:text-3xl font-black tracking-tight gradient-title">{game.title}</h1>
             <p className="text-muted text-sm sm:text-base">{cfg.label}</p>
           </div>

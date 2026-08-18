@@ -7,6 +7,7 @@ import { finishScrabbleGameEarly } from '@/lib/scrabble'
 import { finishWordRushGameEarly } from '@/lib/word-rush-server'
 import { finishMafiaGameEarly } from '@/lib/mafia'
 import { markGameFinished } from '@/lib/game-finish'
+import { resolveWinners } from '@/lib/trophies/outcome'
 import { awardTournamentPlacements } from '@/lib/tournament-scoring'
 import {
   parseGameType,
@@ -114,7 +115,19 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
   const snapshotParticipants = participantsRes.data ?? []
   const lastSession = snapshotCountRes.data?.[0]?.session_number ?? 0
 
-  if (snapshotVotes.length > 0) {
+  // Resolve winners before the snapshot so per-session winner names survive play-again resets.
+  let winnerNames: string[] = []
+  try {
+    const winnerIds = await resolveWinners(admin, gameId, gameType)
+    if (winnerIds && winnerIds.length > 0) {
+      const { data: nameRows } = await admin.from('players').select('id, name').in('id', winnerIds)
+      if (nameRows) winnerNames = nameRows.map((r) => r.name as string)
+    }
+  } catch {
+    // Best-effort — don't block game finish
+  }
+
+  if (snapshotVotes.length > 0 || winnerNames.length > 0) {
     const { error: snapErr } = await admin.from('game_snapshots').insert({
       game_id: gameId,
       session_number: lastSession + 1,
@@ -122,6 +135,7 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
         votes: snapshotVotes,
         participants: snapshotParticipants,
         gameType: game.game_type,
+        winnerNames,
       },
     })
     if (snapErr) console.error('Failed to save game snapshot:', snapErr.message)

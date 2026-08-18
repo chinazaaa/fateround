@@ -2,11 +2,7 @@ import { useMemo, useRef } from 'react'
 import { Platform, Share, StyleSheet, Text, View } from 'react-native'
 import { captureRef } from 'react-native-view-shot'
 import * as Sharing from 'expo-sharing'
-import {
-  type DescribeItPlayerScore,
-  type DescribeItTeamScore,
-  teamLabel,
-} from '@fateround/shared/describe-it'
+import { type DescribeItPlayerScore, type DescribeItTeamScore, teamLabel } from '@fateround/shared/describe-it'
 import { AppButton } from '@/components/ui/AppButton'
 import { useToast } from '@/components/ui/Toast'
 import { TeamBadge } from '@/components/party/TeamBadge'
@@ -113,7 +109,7 @@ export function DescribeItShareCard(props: Props) {
       <View style={styles.offscreen} pointerEvents="none">
         <View ref={captureCardRef} collapsable={false} style={styles.captureCard}>
           <Text style={styles.captureEmoji}>💬</Text>
-          <Text style={styles.captureGame}>Describe It</Text>
+          <Text style={styles.captureGame}>Text Charades</Text>
           <View style={styles.captureDivider} />
           <Text style={styles.captureHero}>{model.emoji}</Text>
           <Text style={styles.captureTitle}>{model.headline}</Text>
@@ -121,10 +117,7 @@ export function DescribeItShareCard(props: Props) {
             {model.rows.slice(0, 6).map((row) => {
               const chip = row.team != null ? TEAM_CHIP_COLORS[(row.team - 1) % TEAM_CHIP_COLORS.length]! : null
               return (
-                <View
-                  key={row.key}
-                  style={[styles.captureRow, row.winner && styles.captureRowWinner]}
-                >
+                <View key={row.key} style={[styles.captureRow, row.winner && styles.captureRowWinner]}>
                   <Text style={styles.captureRank}>{row.rank}</Text>
                   <View style={styles.rowText}>
                     {chip ? (
@@ -132,24 +125,17 @@ export function DescribeItShareCard(props: Props) {
                         <Text style={styles.captureBadgeText}>{teamLabel(row.team!)}</Text>
                       </View>
                     ) : (
-                      <Text
-                        style={[styles.captureName, row.winner && styles.captureNameWinner]}
-                        numberOfLines={1}
-                      >
+                      <Text style={[styles.captureName, row.winner && styles.captureNameWinner]} numberOfLines={1}>
                         {row.name}
                       </Text>
                     )}
                   </View>
-                  <Text style={[styles.captureValue, row.winner && styles.captureValueWinner]}>
-                    {row.value}
-                  </Text>
+                  <Text style={[styles.captureValue, row.winner && styles.captureValueWinner]}>{row.value}</Text>
                 </View>
               )
             })}
           </View>
-          {model.topGuessers ? (
-            <Text style={styles.captureTopGuessers}>{model.topGuessers}</Text>
-          ) : null}
+          {model.topGuessers ? <Text style={styles.captureTopGuessers}>{model.topGuessers}</Text> : null}
           <Text style={styles.captureBrand}>{shareDomain()}</Text>
         </View>
       </View>
@@ -180,11 +166,7 @@ function buildModel(props: Props): Model {
     const { teamScores, winners, topGuessers } = props
     const isTie = winners.length > 1
     const headline =
-      winners.length === 0
-        ? 'No words guessed'
-        : isTie
-          ? "It's a tie!"
-          : `${teamLabel(winners[0]!)} wins!`
+      winners.length === 0 ? 'No words guessed' : isTie ? "It's a tie!" : `${teamLabel(winners[0]!)} wins!`
     const rows: Row[] = teamScores.map((s, i) => {
       const isWinner = winners.includes(s.team)
       return {
@@ -210,11 +192,7 @@ function buildModel(props: Props): Model {
   const top = board[0]?.score ?? 0
   const winners = top > 0 ? board.filter((p) => p.score === top) : []
   const headline =
-    winners.length === 0
-      ? 'No points scored'
-      : winners.length > 1
-        ? "It's a tie!"
-        : `${winners[0]!.name} wins!`
+    winners.length === 0 ? 'No points scored' : winners.length > 1 ? "It's a tie!" : `${winners[0]!.name} wins!`
   const rows: Row[] = board.map((p, i) => ({
     key: `p-${p.id}`,
     rank: MEDALS[i] ?? `${i + 1}.`,
@@ -228,7 +206,7 @@ function buildModel(props: Props): Model {
 }
 
 function buildShareText(model: Model): string {
-  const lines: string[] = ['Describe It', '']
+  const lines: string[] = ['Text Charades', '']
   lines.push(`${model.emoji} ${model.headline}`)
   if (model.rows.length > 0) {
     lines.push('', 'Final standings:')

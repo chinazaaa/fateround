@@ -6,6 +6,7 @@ import {
   type CrosswordEntryInput,
   type CrosswordMetadata,
 } from './crossword'
+import { WORD_THEMES } from '@/data/daily-banks/themed-words'
 
 /**
  * Themed answer/clue banks. Each theme is a flat pool of {answer, clue} entries — the
@@ -243,6 +244,14 @@ export const CROSSWORD_THEMES: CrosswordTheme[] = [
       { answer: 'ANTIBODY', clue: 'Immune defence protein' },
     ],
   },
+  ...WORD_THEMES.map((t) => ({
+    id: `daily-${t.tag}-${t.name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/-$/, '')}`,
+    label: t.name,
+    entries: t.entries.map((e) => ({ answer: e.word, clue: e.clue })),
+  })),
 ]
 
 export const CROSSWORD_DEFAULT_THEME = CROSSWORD_THEMES[0].id

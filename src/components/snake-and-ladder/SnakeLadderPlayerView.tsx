@@ -473,7 +473,7 @@ export function SnakeLadderPlayerView({ gameCode }: { gameCode: string }) {
     const shareWinnerName = iWon ? myName : winner?.name
 
     return (
-      <SnakeLadderShell title="Game over!" subtitle={winner ? `${winner.name} wins` : 'Session ended'}>
+      <SnakeLadderShell>
         {game && states.length > 0 ? (
           <SnakeLadderFinalResultsShareBlock
             game={game}

@@ -39,6 +39,7 @@ import {
   isUnoGame,
   isLudoGame,
   isSnakeAndLadderGame,
+  usesVoteHistory,
 } from '@/lib/game-types'
 import {
   BINGO_CALLED_NUMBER_SELECT,
@@ -74,6 +75,7 @@ import { WhotSessionSummary } from '@/components/whot/WhotSessionSummary'
 import { CrazyEightsSessionSummary } from '@/components/crazy-eights/CrazyEightsSessionSummary'
 import { UnoSessionSummary } from '@/components/uno/UnoSessionSummary'
 import { RematchHistory } from '@/components/RematchHistory'
+import { GenericSessionSummary } from '@/components/history/GenericSessionSummary'
 import { LudoSessionSummary } from '@/components/ludo/LudoSessionSummary'
 import { SnakeLadderSessionSummary } from '@/components/snake-and-ladder/SnakeLadderSessionSummary'
 import { mergeCodewordsGuesses } from '@/lib/codewords'
@@ -179,7 +181,7 @@ function HistoryPageShell({
       {children}
       <p className="text-center pb-4">
         <Link href="/" className="text-faint text-sm hover:text-body transition-colors">
-          ← Back home
+          Back home
         </Link>
       </p>
     </div>
@@ -563,6 +565,27 @@ export default function GameHistoryPage() {
         return
       }
 
+      // Games outside the poll family keep their results in their own tables, so there are no
+      // participants/votes/confessions to fetch — skip those queries and render the generic
+      // session summary instead of the vote-shaped view.
+      if (!usesVoteHistory(gameType)) {
+        const { data: plrs } = await supabase
+          .from('players')
+          .select(PLAYER_SELECT)
+          .eq('game_id', gameCode)
+          .order('joined_at')
+        setGame(gameData)
+        setPlayers(plrs ?? [])
+        setParticipants([])
+        setRounds([])
+        setVotes([])
+        setConfessions([])
+        setHotSeatSubmissions([])
+        resetSpecializedState()
+        setLoadState('ready')
+        return
+      }
+
       const [{ data: parts }, { data: plrs }, { data: rds }, { data: vts }, { data: confs }, { data: subs }] =
         await Promise.all([
           supabase.from('participants').select('*').eq('game_id', gameCode).order('display_order'),
@@ -732,6 +755,17 @@ export default function GameHistoryPage() {
           guesses={ttlGuesses}
           statements={ttlStatements}
         />
+      </HistoryPageShell>
+    )
+  }
+
+  // Everything below assumes the poll model (participants + votes). Non-poll games get the
+  // generic summary — without this they rendered "Votes recorded 0", the anonymous-voters
+  // warning and "no votes recorded yet", none of which apply to them.
+  if (!usesVoteHistory(gameType)) {
+    return (
+      <HistoryPageShell game={game} gameType={gameType}>
+        <GenericSessionSummary game={game} players={players} />
       </HistoryPageShell>
     )
   }

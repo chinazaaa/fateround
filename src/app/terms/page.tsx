@@ -4,7 +4,7 @@ import { ContentPage, Section, MailLink } from '@/components/content/ContentPage
 import { SITE_NAME } from '@/lib/seo'
 import { LEGAL_EMAIL, SUPPORT_EMAIL, TERMS_EMAIL } from '@/lib/contact'
 
-const LAST_UPDATED = 'July 20, 2026'
+const LAST_UPDATED = 'August 6, 2026'
 
 export const metadata: Metadata = {
   title: 'Terms of Service',
@@ -41,15 +41,21 @@ export default function TermsPage() {
         </p>
       </Section>
 
-      <Section title="Accounts and rooms">
+      <Section title="Accounts, profiles, and rooms">
         <p>
           Most of the Service works without an account: you join a game with a display name and a room code. You are
           responsible for what happens in rooms you host, including who you share the room code with. Room codes are
           effectively passwords — anyone who has one can join.
         </p>
         <p>
+          When you finish your first game, {SITE_NAME} creates a profile for you. Your profile has a unique username and
+          tracks your trophies, game statistics, and play streaks. Your profile page is publicly visible — anyone with
+          the link can see your username, trophies, and stats. You can change your username at any time. You may
+          optionally add an email address to secure your profile across devices.
+        </p>
+        <p>
           If you create an account, you are responsible for keeping access to it secure and for activity that takes
-          place under it.
+          place under it. You may not impersonate another person through your username or profile.
         </p>
       </Section>
 
@@ -103,8 +109,9 @@ export default function TermsPage() {
       <Section title="Service availability">
         <p>
           The Service is provided free of charge and &ldquo;as is&rdquo;. We do not guarantee that it will be
-          uninterrupted, that games will always finish, or that data such as scores and game history will be retained.
-          We may change, suspend, or discontinue any part of the Service at any time.
+          uninterrupted, that games will always finish, or that data such as scores, trophies, streaks, and game history
+          will be retained. We may change, suspend, or discontinue any part of the Service — including trophy criteria,
+          streak rules, or leaderboard calculations — at any time.
         </p>
       </Section>
 
@@ -120,10 +127,10 @@ export default function TermsPage() {
       <Section title="Trademarks">
         <p>
           Some games on {SITE_NAME} are digital versions inspired by well-known party, board, or card games — for
-          example Yahtzee®, Monopoly®, Scrabble®, UNO®, and Whot®. {SITE_NAME} is an independent platform and is not
-          affiliated with, endorsed by, or sponsored by the owners of these or any other game. All trademarks, logos,
-          and brand names are the property of their respective owners and are used here only to describe the game being
-          played.
+          example Yahtzee®, Monopoly®, Scrabble®, UNO®, Whot®, Codenames®, and Quiplash®. {SITE_NAME} is an independent
+          platform and is not affiliated with, endorsed by, or sponsored by the owners of these or any other game. All
+          trademarks, logos, and brand names are the property of their respective owners and are used here only to
+          describe the game being played.
         </p>
       </Section>
 

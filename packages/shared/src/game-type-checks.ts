@@ -131,3 +131,11 @@ export function isQuickDrawGame(gameType: GameType | string | undefined): boolea
 export function isPingPongGame(gameType: GameType | string | undefined): boolean {
   return eq(gameType, 'ping_pong')
 }
+
+export function isWordGroupingGame(gameType: GameType | string | undefined): boolean {
+  return eq(gameType, 'word_grouping')
+}
+
+export function isWordleRoomGame(gameType: GameType | string | undefined): boolean {
+  return eq(gameType, 'wordle_room')
+}

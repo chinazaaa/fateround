@@ -13,6 +13,9 @@ import { DESCRIBE_IT_WORD_POOL } from '@/lib/describe-it-words'
 import { TRIVIA_TECH_QUESTIONS, TRIVIA_GENERAL_QUESTIONS } from '@/lib/trivia-questions'
 import { parseWyrQuestionRows, parseTriviaQuestionImport } from '@/lib/custom-questions'
 import type { TriviaQuestion, TriviaCategory } from '@/types'
+import { TRIVIA_BANK } from '@/data/daily-banks/trivia-bank'
+import { WORD_GROUPING_BANK } from '@/data/daily-banks/word-grouping-bank'
+import { CODENAMES_BANK } from '@/data/daily-banks/codenames-bank'
 
 /**
  * Admin-managed "platform" content banks (the `platform_content` table). Each supported game
@@ -194,13 +197,13 @@ const THIS_OR_THAT_DEF: PlatformGameDef = {
 
 const QUIPLASH_DEF: PlatformGameDef = {
   gameType: 'quiplash',
-  label: 'Quiplash',
+  label: 'Punchline',
   columns: 'one prompt per line',
   minEntries: 5,
   parse: (text) => parseStringLines(text, 'prompt'),
   toText: (entries) => stringLinesToText(entries, 'prompt'),
   // Stored as plain strings (pickCustomQuiplashPrompts wraps them into {prompt} at draw time).
-  builtins: [{ key: 'default', label: 'Quiplash — Built-in', entries: QUIPLASH_PROMPTS.map((p) => p.prompt) }],
+  builtins: [{ key: 'default', label: 'Punchline — Built-in', entries: QUIPLASH_PROMPTS.map((p) => p.prompt) }],
 }
 
 // Quick Draw has two modes with separate banks. Lie mode = surreal scene prompts (this one);
@@ -236,7 +239,14 @@ const CODEWORDS_DEF: PlatformGameDef = {
   minEntries: CODEWORDS_MIN_CUSTOM_POOL, // a full board needs this many words
   parse: (text) => parseStringLines(text, 'word'),
   toText: (entries) => stringLinesToText(entries, 'word'),
-  builtins: [{ key: 'default', label: 'Codewords — Built-in', entries: CODEWORDS_WORD_POOL }],
+  builtins: [
+    { key: 'default', label: 'Codewords — Built-in', entries: CODEWORDS_WORD_POOL },
+    {
+      key: 'daily-bank',
+      label: 'Codewords — Daily Challenge Bank (898 words)',
+      entries: [...new Set(CODENAMES_BANK.flatMap((p) => p.grid))],
+    },
+  ],
 }
 
 const DESCRIBE_IT_DEF: PlatformGameDef = {
@@ -249,9 +259,39 @@ const DESCRIBE_IT_DEF: PlatformGameDef = {
   builtins: [{ key: 'default', label: 'Text Charades — Built-in', entries: [...DESCRIBE_IT_WORD_POOL] }],
 }
 
-// Trivia has two fixed categories; each is its own editable bank (the game's trivia_category
-// selects which one is drawn — same shape as Quick Draw's lie/guess variants).
+// Trivia: one variant per category. The game's trivia_category selects which bank to draw from.
+// 'general' = all categories combined; 'tech' = legacy built-in; the rest are daily-bank sourced.
 const TRIVIA_COLUMNS = 'question,option_a,option_b,option_c,option_d,correct'
+
+const TRIVIA_CATEGORY_LABELS: Record<string, string> = {
+  tech: 'Tech',
+  general: 'General (All)',
+  art: 'Art',
+  food: 'Food',
+  geography: 'Geography',
+  history: 'History',
+  language: 'Language',
+  literature: 'Literature',
+  math: 'Math',
+  movies: 'Movies',
+  music: 'Music',
+  nature: 'Nature',
+  pop_culture: 'Pop Culture',
+  science: 'Science',
+  sports: 'Sports',
+  technology: 'Technology',
+  world_culture: 'World Culture',
+}
+
+function dailyBankForCategory(cat: string): TriviaQuestion[] {
+  return TRIVIA_BANK.filter((q) => q.category === cat).map((q) => ({
+    question: q.question,
+    choices: q.choices,
+    correctIndex: q.correct_index,
+    category: q.category as TriviaCategory,
+  }))
+}
+
 const TRIVIA_TECH_DEF: PlatformGameDef = {
   gameType: 'trivia',
   variant: 'tech',
@@ -260,17 +300,112 @@ const TRIVIA_TECH_DEF: PlatformGameDef = {
   minEntries: 5,
   parse: parseTrivia('tech'),
   toText: triviaToText,
-  builtins: [{ key: 'default', label: 'Trivia Tech — Built-in', entries: [...TRIVIA_TECH_QUESTIONS] }],
+  builtins: [
+    { key: 'default', label: 'Trivia Tech — Built-in', entries: [...TRIVIA_TECH_QUESTIONS] },
+    { key: 'daily-bank', label: 'Trivia Tech — Daily Bank', entries: dailyBankForCategory('technology') },
+  ],
 }
+
 const TRIVIA_GENERAL_DEF: PlatformGameDef = {
   gameType: 'trivia',
   variant: 'general',
-  label: 'Trivia · General',
+  label: 'Trivia · General (All)',
   columns: TRIVIA_COLUMNS,
   minEntries: 5,
   parse: parseTrivia('general'),
   toText: triviaToText,
-  builtins: [{ key: 'default', label: 'Trivia General — Built-in', entries: [...TRIVIA_GENERAL_QUESTIONS] }],
+  builtins: [
+    { key: 'default', label: 'Trivia General — Built-in', entries: [...TRIVIA_GENERAL_QUESTIONS] },
+    {
+      key: 'daily-bank',
+      label: 'Trivia — Daily Challenge Bank (1,395 questions)',
+      entries: TRIVIA_BANK.map((q) => ({
+        question: q.question,
+        choices: q.choices,
+        correctIndex: q.correct_index,
+        category: q.category as TriviaCategory,
+      })),
+    },
+  ],
+}
+
+const DAILY_TRIVIA_CATEGORIES = [
+  'art',
+  'food',
+  'geography',
+  'history',
+  'language',
+  'literature',
+  'math',
+  'movies',
+  'music',
+  'nature',
+  'pop_culture',
+  'science',
+  'sports',
+  'world_culture',
+] as const
+
+const TRIVIA_CATEGORY_DEFS: PlatformGameDef[] = DAILY_TRIVIA_CATEGORIES.map((cat) => ({
+  gameType: 'trivia' as const,
+  variant: cat,
+  label: `Trivia · ${TRIVIA_CATEGORY_LABELS[cat] ?? cat}`,
+  columns: TRIVIA_COLUMNS,
+  minEntries: 5,
+  parse: parseTrivia(cat as TriviaCategory),
+  toText: triviaToText,
+  builtins: [
+    {
+      key: 'daily-bank',
+      label: `Trivia ${TRIVIA_CATEGORY_LABELS[cat]} — Daily Bank`,
+      entries: dailyBankForCategory(cat),
+    },
+  ],
+}))
+
+// --- Word Grouping banks (stored as { groups: [{category, words, difficulty}] } objects) ---
+
+function parseWordGrouping(text: string): PlatformContentParse {
+  const entries: unknown[] = []
+  let totalRows = 0
+  let skippedRows = 0
+  for (const line of text
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean)) {
+    totalRows++
+    try {
+      const obj = JSON.parse(line)
+      if (Array.isArray(obj?.groups) && obj.groups.length === 4) {
+        entries.push(obj)
+      } else {
+        skippedRows++
+      }
+    } catch {
+      skippedRows++
+    }
+  }
+  return { entries, totalRows, skippedRows, duplicateRows: 0 }
+}
+
+function wordGroupingToText(entries: unknown[]): string {
+  return entries.map((e) => JSON.stringify(e)).join('\n')
+}
+
+const WORD_GROUPING_DEF: PlatformGameDef = {
+  gameType: 'word_grouping',
+  label: 'Word Grouping',
+  columns: 'JSON — one puzzle per line: {"groups":[{"category":"...","words":["a","b","c","d"],"difficulty":1},...]}',
+  minEntries: 1,
+  parse: parseWordGrouping,
+  toText: wordGroupingToText,
+  builtins: [
+    {
+      key: 'daily-bank',
+      label: 'Word Grouping — Daily Challenge Bank (125 puzzles)',
+      entries: [...WORD_GROUPING_BANK],
+    },
+  ],
 }
 
 const PLATFORM_GAME_DEFS: PlatformGameDef[] = [
@@ -286,6 +421,8 @@ const PLATFORM_GAME_DEFS: PlatformGameDef[] = [
   DESCRIBE_IT_DEF,
   TRIVIA_TECH_DEF,
   TRIVIA_GENERAL_DEF,
+  ...TRIVIA_CATEGORY_DEFS,
+  WORD_GROUPING_DEF,
 ]
 
 /** All game defs, optionally keyed by `${gameType}:${variant}` for multi-pool games. */

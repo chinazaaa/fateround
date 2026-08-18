@@ -5,6 +5,19 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { CROSSWORD_THEMES } from '@/lib/crossword-puzzles'
 import { WORD_SEARCH_THEMES } from '@/lib/word-search-puzzles'
 import { WORD_SCRAMBLE_THEMES } from '@/lib/word-scramble-puzzles'
+import { WORDLE_GENERAL_ENGLISH } from '@/data/daily-banks/wordle-general-english'
+import { WORDLE_NAIJA_SLANG } from '@/data/daily-banks/wordle-naija-slang'
+import {
+  WORDLE_SPORTS,
+  WORDLE_FOOD,
+  WORDLE_ANIMALS,
+  WORDLE_TECHNOLOGY,
+  WORDLE_NATURE,
+  WORDLE_MUSIC,
+  WORDLE_SCIENCE,
+  WORDLE_CLOTHING,
+  WORDLE_TRAVEL,
+} from '@/data/daily-banks/wordle-categories'
 import type { PuzzleThemeGameType } from '@/lib/puzzle-themes'
 
 // Server-only: reads the built-in theme registries (which carry the full word banks) and mirrors
@@ -51,6 +64,52 @@ function builtinSeeds(): Seed[] {
         if (e.clue) entry.hint = e.clue
         return entry
       }),
+    })
+  )
+  // Wordle built-in categories seed as two themes so hosts can pick either "General English"
+  // or "Naija Slang" from the multiplayer create-page Library picker — mirroring what the
+  // Category dropdown offers under Platform. Words are filtered to 3–8 letters (the engine's
+  // range) so the seed can never carry a word the game refuses to use.
+  seeds.push({
+    game_type: 'wordle_room',
+    builtin_key: 'wordle_general_english',
+    name: 'General English',
+    sort_order: 0,
+    entries: WORDLE_GENERAL_ENGLISH.filter((w) => w.length >= 3 && w.length <= 8).map((w) => ({
+      word: w.toLowerCase(),
+    })),
+  })
+  seeds.push({
+    game_type: 'wordle_room',
+    builtin_key: 'wordle_naija_slang',
+    name: 'Naija Slang',
+    sort_order: 1,
+    entries: WORDLE_NAIJA_SLANG.filter((e) => e.word.length >= 3 && e.word.length <= 8).map((e) => ({
+      word: e.word.toLowerCase(),
+      hint: e.hint,
+    })),
+  })
+  // The 9 themed banks (Sports, Food & Drink, etc.) — same word source as the built-in
+  // categories in the create-page dropdown, mirrored as pickable Library packs so hosts get
+  // the themed word lists both from the Platform toggle and the Library picker.
+  const THEMED: Array<{ key: string; name: string; words: readonly string[] }> = [
+    { key: 'wordle_sports', name: 'Sports', words: WORDLE_SPORTS },
+    { key: 'wordle_food', name: 'Food & Drink', words: WORDLE_FOOD },
+    { key: 'wordle_animals', name: 'Animals', words: WORDLE_ANIMALS },
+    { key: 'wordle_technology', name: 'Technology', words: WORDLE_TECHNOLOGY },
+    { key: 'wordle_nature', name: 'Nature', words: WORDLE_NATURE },
+    { key: 'wordle_music', name: 'Music', words: WORDLE_MUSIC },
+    { key: 'wordle_science', name: 'Science', words: WORDLE_SCIENCE },
+    { key: 'wordle_clothing', name: 'Clothing & Fashion', words: WORDLE_CLOTHING },
+    { key: 'wordle_travel', name: 'Travel & Places', words: WORDLE_TRAVEL },
+  ]
+  THEMED.forEach((t, i) =>
+    seeds.push({
+      game_type: 'wordle_room',
+      builtin_key: t.key,
+      name: t.name,
+      sort_order: 2 + i,
+      entries: t.words.filter((w) => w.length >= 3 && w.length <= 8).map((w) => ({ word: w.toLowerCase() })),
     })
   )
   return seeds

@@ -12,6 +12,17 @@ body:has(.fr-site) .app-fixed-theme-toggle {
   display: none !important;
 }
 
+.app-fixed-theme-toggle {
+  position: fixed !important;
+  top: 1rem !important;
+  right: 1rem !important;
+  z-index: 50 !important;
+  width: 38px !important;
+  min-width: 38px !important;
+  height: 38px !important;
+  margin: 0 !important;
+}
+
 /* ── Light theme (default) ─────────────────────────────────────── */
 :root {
   color-scheme: light;
@@ -62,6 +73,14 @@ body:has(.fr-site) .app-fixed-theme-toggle {
 
   --modal-backdrop: rgba(10, 10, 18, 0.55);
   --glass-blur: 20px;
+
+  /* Press feedback shared by every interactive control — buttons, game type
+     cards, tiles. Declared on :root so the marketing design system in
+     fate-round-ds.css resolves the same values and the whole site presses
+     identically. Neutralised in the reduced-motion blocks. */
+  --lift-hover: translateY(-2px) scale(1.01);
+  --lift-press: translateY(0) scale(0.99);
+  --lift-transition: transform 0.2s ease;
 
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
@@ -917,6 +936,33 @@ body {
   .ambient-spot {
     animation: none;
   }
+
+  /* Every button, game type card, and tile presses via these tokens, so
+     blanking them here drops all movement while colour, border, and shadow
+     feedback stay intact. `transform 0s` rather than `none` keeps the
+     surrounding shorthand transition lists valid. */
+  :root {
+    --lift-hover: none;
+    --lift-press: none;
+    --lift-transition: transform 0s;
+  }
+
+  /* The aura pulse is motion too. The ring sits at opacity 0 until the
+     animation runs, so suppressing the animation removes it entirely and the
+     hover reads purely as a colour and border change. */
+  .btn-primary:hover:not(:disabled)::after,
+  .btn-secondary:hover:not(:disabled)::after,
+  .btn-danger-soft:hover:not(:disabled)::after,
+  .btn-ghost:hover:not(:disabled)::after,
+  .fr-btn:hover:not(:disabled)::after,
+  .fr-icon-btn:hover::after {
+    animation: none;
+  }
+
+  .btn-nav:hover:not(:disabled),
+  .btn-nav:active:not(:disabled) {
+    transform: none;
+  }
 }
 
 .page-wrap {
@@ -981,13 +1027,13 @@ body {
 }
 
 .game-type-card:hover {
-  transform: translateY(-2px) scale(1.01);
+  transform: var(--lift-hover);
   box-shadow: var(--card-shadow-strong);
   border-color: var(--border-strong);
 }
 
 .game-type-card:active {
-  transform: translateY(0) scale(0.99);
+  transform: var(--lift-press);
 }
 
 .game-type-card-selected {
@@ -1156,8 +1202,13 @@ body {
     background 0.2s;
 }
 
+input::placeholder,
+textarea::placeholder,
 .input-field::placeholder {
-  color: var(--faint);
+  color: var(--text-faint) !important;
+  opacity: 0.35 !important;
+  -webkit-text-fill-color: var(--text-faint) !important;
+  font-style: italic;
 }
 
 .input-field:focus {
@@ -1166,45 +1217,247 @@ body {
   box-shadow: 0 0 0 3px rgba(244, 63, 94, 0.12);
 }
 
+select,
+select.input-field,
+.fr-select {
+  appearance: none !important;
+  -webkit-appearance: none !important;
+  -moz-appearance: none !important;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.75 4.5 6 7.75 9.25 4.5' fill='none' stroke='%23f43f5e' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") !important;
+  background-repeat: no-repeat !important;
+  background-position: right 0.875rem center !important;
+  background-size: 12px 12px !important;
+  padding-right: 2.5rem !important;
+  cursor: pointer;
+}
+
+[data-theme='dark'] select,
+[data-theme='dark'] select.input-field,
+[data-theme='dark'] .fr-select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.75 4.5 6 7.75 9.25 4.5' fill='none' stroke='%23f43f5e' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") !important;
+}
+
+select option,
+select.input-field option,
+.fr-select option {
+  background-color: var(--background-soft, #ffffff);
+  color: var(--foreground, #0a0a12);
+  padding: 0.5rem 0.75rem;
+}
+
+[data-theme='dark'] select option,
+[data-theme='dark'] select.input-field option,
+[data-theme='dark'] .fr-select option {
+  background-color: #14141f;
+  color: #f4f4f7;
+}
+
 /* ── Buttons ────────────────────────────────────────────────────── */
+
+/* Hover aura — one accent-coloured glow that blooms out of the button edge and
+   fades, echoing the glow the game type cards radiate.
+
+   It lives on a ::after layer rather than the button's own box-shadow: every
+   button class already owns a box-shadow stack for its raised edge, so animating
+   that stack would mean restating each one in the keyframes, and the pulse would
+   fight the resting shadow instead of layering over it.
+
+   The layer carries no background and no border — only an *outer* box-shadow,
+   which paints strictly outside its own border-box. That is what makes it safe
+   without a `z-index`: it can never cover the label, so it does not need to be
+   pushed behind it, and it therefore avoids the trap where `z-index: -1` sinks
+   behind the background of a stacking-context ancestor like `.glass-card`
+   (backdrop-filter) or `.btn-secondary` (which sets its own).
+
+   The colour comes from `--accent`, falling back to `--primary` — the same
+   source the cards use, so a button glows whatever the surrounding surface is
+   themed to. It sits at a high alpha because the blur spreads that colour over a
+   wide area and thins it out. */
+.fr-icon-btn {
+  display: inline-flex;
+  position: relative;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  height: 38px;
+  min-width: 38px;
+  padding: 0 10px;
+  border-radius: 10px;
+  cursor: pointer;
+  background: var(--card-strong, rgba(255, 255, 255, 0.92));
+  border: 1.5px solid var(--border-strong, rgba(0, 0, 0, 0.12));
+  color: var(--foreground, #0a0a12);
+  font-size: 0.875rem;
+  font-weight: 500;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    color 0.15s ease,
+    var(--lift-transition);
+}
+.fr-icon-btn:hover {
+  border-color: var(--primary, #f43f5e);
+  background: var(--card-hover, rgba(255, 255, 255, 0.85));
+  transform: var(--lift-hover);
+}
+.fr-icon-btn:active {
+  transform: var(--lift-press);
+}
+
+.btn-primary,
+.btn-secondary,
+.btn-danger-soft,
+.btn-ghost,
+.btn-nav,
+.fr-icon-btn {
+  position: relative;
+  /* Declared on the button, not on :root — a custom property substitutes its
+     own var()s at the element where it is *declared*, so a :root definition
+     would freeze `--accent` to the root value and never see what the
+     surrounding page set. Resolving here also lets it inherit into ::after. */
+  --aura-glow: color-mix(in srgb, var(--accent, var(--primary)) 70%, transparent);
+}
+
+/* Destructive actions stay red rather than borrowing a game's accent. */
+.btn-danger-soft {
+  --aura-glow: color-mix(in srgb, #ef4444 70%, transparent);
+}
+
+.btn-primary::after,
+.btn-secondary::after,
+.btn-danger-soft::after,
+.btn-ghost::after,
+.btn-nav::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+}
+
+.btn-primary:hover:not(:disabled)::after,
+.btn-secondary:hover:not(:disabled)::after,
+.btn-danger-soft:hover:not(:disabled)::after,
+.btn-ghost:hover:not(:disabled)::after,
+.btn-nav:hover:not(:disabled)::after {
+  animation: aura-radiate 0.55s ease-out;
+}
+
+/* One outward pulse per hover, then gone — no fill-mode, so the layer reverts to
+   opacity 0 and leaves nothing behind.
+
+   Blur, not spread, is what makes this read as a glow: spread alone draws a
+   solid band with a hard outer edge. The blur radius stays well ahead of the
+   spread throughout, so the light always feathers off rather than stopping.
+
+   The shadow grows rather than the layer being `transform: scale()`d, because
+   scaling is proportional: on a 300x48 button a 1.14 scale would push 21px out
+   the sides but only 3px off the top, reading as a sideways stretch. A shadow
+   grows by the same distance on all four edges whatever the aspect ratio. */
+@keyframes aura-radiate {
+  from {
+    opacity: 0.85;
+    box-shadow: 0 0 8px 0 var(--aura-glow);
+  }
+  to {
+    opacity: 0;
+    box-shadow: 0 0 26px 8px var(--aura-glow);
+  }
+}
+
+/* Nav — the "leave this page" controls (Back, Home). A filled rose circle
+   so the control is always visible above any page background.
+
+   Hover deepens the fill and lifts the button to acknowledge the tap target
+   without promoting it to a primary action.
+
+   Every value here mirrors `.fr-btn--nav` in fate-round-ds.css so the Home
+   button on /create and the Back button on the marketing pages are the same
+   control. Written as literals because this scope does not import the DS
+   token set, and `--primary` is reassigned per game theme
+   ([data-game-theme]) — these must read the same on every board. */
+.btn-nav {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  padding: 0.4375rem 0.8125rem;
+  min-height: 36px;
+  background: transparent !important;
+  color: var(--primary-strong, #e11d48) !important;
+  border: 1.5px solid var(--primary, #f43f5e) !important;
+  border-radius: var(--radius-md, 0.75rem);
+  box-shadow: none !important;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.btn-nav:hover:not(:disabled) {
+  background: var(--primary, #f43f5e) !important;
+  border-color: var(--primary, #f43f5e) !important;
+  color: #ffffff !important;
+  transform: translateY(-1px);
+  box-shadow: none !important;
+}
+
+.btn-nav:active:not(:disabled) {
+  transform: translateY(0);
+  background: var(--primary-strong, #e11d48) !important;
+  border-color: var(--primary-strong, #e11d48) !important;
+  color: #ffffff !important;
+  box-shadow: none !important;
+}
+
+.btn-nav:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 /* Matches the .fr-btn look used on public/marketing pages (solid, tactile,
    raised-edge — no gradient/glow) but built from this scope's own tokens so
    per-game themes ([data-game-theme]) still tint it correctly. */
 .btn-primary {
   width: 100%;
   display: inline-flex;
+  position: relative;
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
   border-radius: 0.75rem;
-  border: none;
-  background: var(--primary);
+  border: 1.5px solid var(--primary) !important;
+  background: var(--primary) !important;
   padding: 1rem 1.25rem;
   font-size: 1rem;
   font-weight: 700;
-  color: #ffffff;
+  color: #ffffff !important;
   letter-spacing: 0.01em;
-  box-shadow:
-    0 2px 0 var(--primary-strong),
-    0 6px 16px var(--primary-glow);
+  box-shadow: none !important;
   transition:
-    background 0.15s,
-    transform 0.12s,
-    box-shadow 0.2s,
-    opacity 0.15s;
+    background 0.2s ease,
+    border-color 0.2s ease,
+    color 0.15s ease,
+    var(--lift-transition),
+    opacity 0.15s ease;
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: var(--primary-strong);
-  box-shadow:
-    0 2px 0 var(--primary-strong),
-    0 8px 22px var(--primary-glow);
-  transform: translateY(-1px);
+  background: var(--primary-strong) !important;
+  border-color: var(--primary-strong) !important;
+  color: #ffffff !important;
+  transform: var(--lift-hover);
+  box-shadow: none !important;
 }
 
 .btn-primary:active:not(:disabled) {
-  transform: translateY(1px) scale(0.99);
-  box-shadow: 0 2px 6px var(--primary-glow);
+  transform: var(--lift-press);
+  background: var(--primary-strong) !important;
+  border-color: var(--primary-strong) !important;
+  color: #ffffff !important;
+  box-shadow: none !important;
 }
 
 .btn-primary:disabled {
@@ -1242,7 +1495,7 @@ body {
     border-color 0.15s,
     color 0.15s,
     background 0.15s,
-    transform 0.1s,
+    var(--lift-transition),
     box-shadow 0.15s;
 }
 
@@ -1250,12 +1503,12 @@ body {
   border-color: var(--primary);
   color: var(--foreground);
   background: var(--card-hover);
-  transform: translateY(-1px);
+  transform: var(--lift-hover);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
 }
 
 .btn-secondary:active:not(:disabled) {
-  transform: translateY(0) scale(0.99);
+  transform: var(--lift-press);
   box-shadow: none;
 }
 
@@ -1282,17 +1535,17 @@ body {
     border-color 0.15s,
     color 0.15s,
     background 0.15s,
-    transform 0.1s;
+    var(--lift-transition);
 }
 
 .btn-danger-soft:hover:not(:disabled) {
   border-color: color-mix(in srgb, #ef4444 55%, transparent);
   background: color-mix(in srgb, #ef4444 11%, transparent);
-  transform: translateY(-1px);
+  transform: var(--lift-hover);
 }
 
 .btn-danger-soft:active:not(:disabled) {
-  transform: translateY(0) scale(0.99);
+  transform: var(--lift-press);
 }
 
 .btn-danger-soft:disabled {
@@ -1319,16 +1572,17 @@ body {
   transition:
     color 0.15s,
     background 0.15s,
-    transform 0.1s;
+    var(--lift-transition);
 }
 
 .btn-ghost:hover:not(:disabled) {
   background: var(--card);
   color: var(--foreground);
+  transform: var(--lift-hover);
 }
 
 .btn-ghost:active:not(:disabled) {
-  transform: scale(0.98);
+  transform: var(--lift-press);
 }
 
 /* ── Chips ──────────────────────────────────────────────────────── */
@@ -1899,6 +2153,19 @@ body {
   --bg-gradient:
     radial-gradient(ellipse 90% 55% at 50% -10%, rgba(244, 63, 94, 0.2) 0%, transparent 55%),
     radial-gradient(ellipse 50% 35% at 85% 90%, rgba(16, 185, 129, 0.15) 0%, transparent 50%);
+}
+
+/* View Transitions — Circular Ripple Theme Toggle */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+::view-transition-old(root) {
+  z-index: 1;
+}
+::view-transition-new(root) {
+  z-index: 9999;
 }
 
 /* ── Custom Utilities ───────────────────────────────────────────── */

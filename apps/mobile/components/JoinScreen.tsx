@@ -199,7 +199,7 @@ const makeStyles = (theme: Theme) =>
     },
     kicker: {
       color: theme.textMuted,
-      fontSize: 14,
+      fontSize: theme.type.label.size,
       textTransform: 'uppercase',
       letterSpacing: 1,
     },
@@ -211,7 +211,7 @@ const makeStyles = (theme: Theme) =>
     },
     hint: {
       color: theme.textMuted,
-      fontSize: 15,
+      fontSize: theme.type.body.size,
       marginBottom: 8,
     },
     input: {
@@ -226,7 +226,7 @@ const makeStyles = (theme: Theme) =>
     },
     error: {
       color: theme.error,
-      fontSize: 14,
+      fontSize: theme.type.label.size,
     },
     resumeToggle: {
       alignSelf: 'center',
@@ -235,7 +235,7 @@ const makeStyles = (theme: Theme) =>
     },
     resumeToggleText: {
       color: theme.primaryMuted,
-      fontSize: 14,
+      fontSize: theme.type.label.size,
       fontWeight: '600',
     },
     button: {
@@ -251,7 +251,7 @@ const makeStyles = (theme: Theme) =>
     buttonText: {
       // White on the solid rose button — correct in both schemes.
       color: '#fff',
-      fontSize: 17,
+      fontSize: theme.type.section.size,
       fontWeight: '600',
     },
     watchNote: {

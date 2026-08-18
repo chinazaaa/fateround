@@ -1,4 +1,4 @@
-import type { MonopolySpaceType } from '@/lib/monopoly'
+import type { MonopolyBoardSize, MonopolySpaceType } from '@/lib/monopoly'
 import { themedSpaceIcon, themedSpaceLines, themedSpaceName } from '@/components/monopoly/monopoly-themes'
 
 export const PLAYER_TOKEN_COLORS = [
@@ -8,6 +8,8 @@ export const PLAYER_TOKEN_COLORS = [
   { bg: 'bg-amber-500', ring: 'ring-amber-400', text: 'text-amber-100', hex: '#f59e0b' },
   { bg: 'bg-violet-500', ring: 'ring-violet-400', text: 'text-violet-100', hex: '#8b5cf6' },
   { bg: 'bg-pink-500', ring: 'ring-pink-400', text: 'text-pink-100', hex: '#ec4899' },
+  { bg: 'bg-cyan-500', ring: 'ring-cyan-400', text: 'text-cyan-100', hex: '#06b6d4' },
+  { bg: 'bg-lime-500', ring: 'ring-lime-400', text: 'text-lime-950', hex: '#84cc16' },
 ] as const
 
 export function tokenColorForOrder(order: number) {
@@ -43,8 +45,14 @@ export function spaceIcon(type: MonopolySpaceType, themeId?: string | null): str
   }
 }
 
-export function shortSpaceName(name: string, max = 12, spaceIndex?: number, themeId?: string | null): string {
-  const displayName = spaceIndex != null ? themedSpaceName(name, spaceIndex, themeId) : name
+export function shortSpaceName(
+  name: string,
+  max = 12,
+  spaceIndex?: number,
+  themeId?: string | null,
+  boardSize: MonopolyBoardSize = 40
+): string {
+  const displayName = spaceIndex != null ? themedSpaceName(name, spaceIndex, themeId, boardSize) : name
   if (displayName.length <= max) return displayName
   const parts = displayName.trim().split(/\s+/)
   if (parts.length > 1 && parts[0]!.length >= 3 && parts[0]!.length <= max) return parts[0]!
@@ -60,24 +68,27 @@ export function shortPlayerName(name: string, max = 12): string {
 
 export type BoardEdge = 'bottom' | 'left' | 'top' | 'right' | 'corner'
 
-export function boardEdgeForSpace(index: number): BoardEdge {
-  if (index === 0 || index === 10 || index === 20 || index === 30) return 'corner'
-  if (index >= 1 && index <= 9) return 'bottom'
-  if (index >= 11 && index <= 19) return 'left'
-  if (index >= 21 && index <= 29) return 'top'
+export function boardEdgeForSpace(index: number, boardSize: MonopolyBoardSize = 40): BoardEdge {
+  const sideLength = boardSize / 4
+  if (index % sideLength === 0) return 'corner'
+  if (index < sideLength) return 'bottom'
+  if (index < sideLength * 2) return 'left'
+  if (index < sideLength * 3) return 'top'
   return 'right'
 }
 
-/** Grid cell (1–11) for the 11×11 classic board layout. */
-export function boardGridCell(index: number): { col: number; row: number } {
-  if (index === 20) return { col: 1, row: 1 }
-  if (index === 30) return { col: 11, row: 1 }
-  if (index === 10) return { col: 1, row: 11 }
-  if (index === 0) return { col: 11, row: 11 }
-  if (index >= 21 && index <= 29) return { col: index - 19, row: 1 }
-  if (index >= 11 && index <= 19) return { col: 1, row: 21 - index }
-  if (index >= 31 && index <= 39) return { col: 11, row: index - 29 }
-  if (index >= 1 && index <= 9) return { col: 11 - index, row: 11 }
+/** Grid cell for either the 11×11 or 13×13 Estate Kings board. */
+export function boardGridCell(index: number, boardSize: MonopolyBoardSize = 40): { col: number; row: number } {
+  const sideLength = boardSize / 4
+  const gridSize = sideLength + 1
+  if (index === sideLength * 2) return { col: 1, row: 1 }
+  if (index === sideLength * 3) return { col: gridSize, row: 1 }
+  if (index === sideLength) return { col: 1, row: gridSize }
+  if (index === 0) return { col: gridSize, row: gridSize }
+  if (index > sideLength * 2 && index < sideLength * 3) return { col: index - sideLength * 2 + 1, row: 1 }
+  if (index > sideLength && index < sideLength * 2) return { col: 1, row: sideLength * 2 + 1 - index }
+  if (index > sideLength * 3) return { col: gridSize, row: index - sideLength * 3 + 1 }
+  if (index > 0 && index < sideLength) return { col: gridSize - index, row: gridSize }
   return { col: 1, row: 1 }
 }
 
@@ -86,49 +97,71 @@ export function boardSpaceLines(
   name: string,
   type: MonopolySpaceType,
   spaceIndex?: number,
-  themeId?: string | null
+  themeId?: string | null,
+  boardSize: MonopolyBoardSize = 40
 ): string[] {
-  if (spaceIndex != null && themeId) {
-    const themed = themedSpaceLines(name, type, spaceIndex, themeId)
+  if (spaceIndex != null) {
+    const themed = themedSpaceLines(name, type, spaceIndex, themeId, boardSize)
     if (themed) return themed
   }
   const known: Record<string, string[]> = {
-    GO: ['GO', '→'],
-    Jail: ['Jail', '🔒'],
-    'Free Parking': ['Free', 'Parking'],
-    'Go To Jail': ['Go To', 'Jail'],
-    'Income Tax': ['Income', 'Tax'],
-    'Super Tax': ['Super', 'Tax'],
-    'Community Chest': ['Community', 'Chest'],
-    Chance: ['Chance', '?'],
-    'Old Kent Road': ['Old Kent', 'Road'],
-    'Whitechapel Road': ['Whitechapel', 'Road'],
-    'The Angel Islington': ['Angel', 'Islington'],
-    'Euston Road': ['Euston', 'Road'],
-    'Pentonville Road': ['Pentonville', 'Road'],
-    'Pall Mall': ['Pall', 'Mall'],
-    Whitehall: ['Whitehall'],
-    'Northumberland Avenue': ['Northumberland', 'Avenue'],
-    'Bow Street': ['Bow', 'Street'],
-    'Marlborough Street': ['Marlborough', 'Street'],
-    'Vine Street': ['Vine', 'Street'],
-    'The Strand': ['The', 'Strand'],
-    'Fleet Street': ['Fleet', 'Street'],
-    'Trafalgar Square': ['Trafalgar', 'Square'],
-    'Leicester Square': ['Leicester', 'Square'],
-    'Coventry Street': ['Coventry', 'Street'],
-    Piccadilly: ['Piccadilly'],
+    PAYDAY: ['PAYDAY', '→'],
+    NICKED: ['NICKED', '🔒'],
+    'LAY-BY': ['LAY-BY'],
+    'OFF TO JAIL': ['OFF TO', 'JAIL'],
+    'TAX OFFICE': ['TAX', 'OFFICE'],
+    SURCHARGE: ['SURCHARGE'],
+    Kitty: ['Kitty'],
+    Fate: ['Fate', '?'],
+    'Market Shock': ['Market', 'Shock'],
+    'Community Grant': ['Community', 'Grant'],
+    'Esusu Fund': ['Esusu', 'Fund'],
+    'Luxury Tax': ['Luxury', 'Tax'],
+    // Properties
+    'Barking Road': ['Barking', 'Road'],
+    'Dagenham Avenue': ['Dagenham', 'Avenue'],
+    'Dagenham Ave': ['Dagenham', 'Ave'],
+    'Thamesmead Walk': ['Thamesmead', 'Walk'],
+    'Croydon High Street': ['Croydon', 'High St'],
+    'Croydon High': ['Croydon', 'High'],
+    'Erith Road': ['Erith', 'Road'],
+    'Ilford Lane': ['Ilford', 'Lane'],
+    'Romford Road': ['Romford', 'Road'],
+    'Enfield Town': ['Enfield', 'Town'],
+    'Walthamstow Market': ['Walthamstow', 'Market'],
+    'Peckham Rye': ['Peckham', 'Rye'],
+    'Deptford Broadway': ['Deptford', 'Broadway'],
+    'Deptford Way': ['Deptford', 'Way'],
+    'Canary Wharf': ['Canary', 'Wharf'],
+    Bermondsey: ['Bermondsey'],
+    Limehouse: ['Limehouse'],
+    Hampstead: ['Hampstead'],
+    Islington: ['Islington'],
+    'Stratford Cross': ['Stratford', 'Cross'],
+    'Hackney Wick': ['Hackney', 'Wick'],
+    'Brixton Hill': ['Brixton', 'Hill'],
+    Shoreditch: ['Shoreditch'],
+    'Kings Cross': ['Kings', 'Cross'],
+    'Clapham Common': ['Clapham', 'Common'],
+    'Fulham Broadway': ['Fulham', 'Broadway'],
+    'Battersea Rise': ['Battersea', 'Rise'],
+    'Marylebone Lane': ['Marylebone', 'Lane'],
+    'Notting Hill Gate': ['Notting Hill', 'Gate'],
+    'Notting Hill': ['Notting', 'Hill'],
+    'South Kensington': ['South', 'Kensington'],
+    'Chester Square': ['Chester', 'Square'],
+    'Winnington Road': ['Winnington', 'Road'],
+    'Kensington Mews': ['Kensington', 'Mews'],
     'Regent Street': ['Regent', 'Street'],
-    'Oxford Street': ['Oxford', 'Street'],
-    'Bond Street': ['Bond', 'Street'],
-    'Park Lane': ['Park', 'Lane'],
-    Mayfair: ['Mayfair'],
-    "King's Cross Station": ["King's Cross", 'Station'],
-    'Marylebone Station': ['Marylebone', 'Station'],
-    'Fenchurch Street Station': ['Fenchurch St', 'Station'],
-    'Liverpool Street Station': ['Liverpool', 'Station'],
-    'Electric Company': ['Electric', 'Company'],
-    'Water Works': ['Water', 'Works'],
+    'Mayfair Mews': ['Mayfair', 'Mews'],
+    // Stations (no "Station" suffix on the London board)
+    Paddington: ['Paddington'],
+    Waterloo: ['Waterloo'],
+    Victoria: ['Victoria'],
+    'London Bridge': ['London', 'Bridge'],
+    // Utilities
+    'Power Company': ['Power', 'Company'],
+    'Water Board': ['Water', 'Board'],
   }
   if (known[name]) return known[name]
   if (type === 'station') {
@@ -156,9 +189,10 @@ export function mobileBoardSpaceLines(
   name: string,
   type: MonopolySpaceType,
   spaceIndex?: number,
-  themeId?: string | null
+  themeId?: string | null,
+  boardSize: MonopolyBoardSize = 40
 ): string[] {
-  const fullLines = boardSpaceLines(name, type, spaceIndex, themeId)
+  const fullLines = boardSpaceLines(name, type, spaceIndex, themeId, boardSize)
   const abbrMap: Record<string, string> = {
     Avenue: 'Ave',
     Street: 'St',
@@ -166,15 +200,12 @@ export function mobileBoardSpaceLines(
     Station: 'Stn',
     Square: 'Sq',
     Company: 'Co',
-    Islington: 'Isling.',
-    Northumberland: 'North',
-    Whitechapel: 'W.Chapel',
-    Marlborough: 'Marlb.',
-    Leicester: 'Leices.',
-    Fenchurch: 'Fench.',
-    Liverpool: "L'pool",
+    Walthamstow: 'W-stow',
+    Thamesmead: 'T-mead',
+    Battersea: "B'sea",
+    Winnington: "W'ton",
+    Kensington: 'Ken.',
     Community: 'Comm.',
-    Electric: 'Elect.',
   }
   const words: string[] = []
   for (const line of fullLines) {

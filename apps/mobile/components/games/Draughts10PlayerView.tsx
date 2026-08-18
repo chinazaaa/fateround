@@ -114,7 +114,11 @@ export function Draughts10PlayerView({ gameCode }: { gameCode: string }) {
     ['players', { table: 'games', column: 'id' }, 'checkers10_sessions'],
     () => bootstrap.load(),
     !!bootstrap.game,
-    bootstrap.game?.status
+    bootstrap.game?.status,
+    // Reconcile every 10s during active play: this game (checkers international / nigeria) has a
+    // cumulative clock that loses the game on time, so a silently-stale realtime channel would
+    // otherwise strand a waiting player on the wrong turn, ticking the wrong clock, until they lose.
+    10_000
   )
 
   const activeSession = session ?? bootstrap.gameState

@@ -6,6 +6,7 @@ import {
   YAHTZEE_LOWER_CATEGORIES,
   YAHTZEE_UPPER_CATEGORIES,
   categoryScore,
+  jokerApplies,
   upperBonus,
   upperScore,
   totalScore,
@@ -19,7 +20,7 @@ const COMPACT_LABELS: Partial<Record<YahtzeeCategory, string>> = {
   full_house: 'Full House',
   small_straight: 'Sm. Str.',
   large_straight: 'Lg. Str.',
-  yahtzee: 'YAHTZEE',
+  yahtzee: '5 of a Kind',
 }
 
 interface YahtzeeScorecardProps {
@@ -88,7 +89,7 @@ export function YahtzeeScorecard({
 
   const orderedScores = players.map((p) => {
     const pScore = scores.find((s) => s.player_id === p.id)
-    return { player: p, score: pScore?.scores.categories ?? null }
+    return { player: p, score: pScore?.scores.categories ?? null, bonus: pScore?.scores.bonusYahtzees ?? 0 }
   })
 
   const playerColClass = (playerId: string) => {
@@ -115,7 +116,11 @@ export function YahtzeeScorecard({
         const isActive = player.id === activePlayerId
         const isYou = player.id === myPlayerId
         const val = score ? score[category] : null
-        const previewVal = isActive && val == null && dice ? categoryScore(dice, category) : null
+        // Under the Joker rule the lower boxes preview their max (a Large Straight cell showing
+        // 40 for five 4s), so the number itself tells the player the Joker is live before they
+        // click — nothing here forces or blocks, the server still does that.
+        const joker = isActive && score ? jokerApplies(dice ?? [], score) : false
+        const previewVal = isActive && val == null && dice ? categoryScore(dice, category, { joker }) : null
 
         return (
           <td key={player.id} className={playerColClass(player.id)}>
@@ -140,10 +145,10 @@ export function YahtzeeScorecard({
               <th className="sticky left-0 z-20 w-[5.5rem] px-2 py-2 text-left text-[9px] font-black uppercase tracking-widest text-[var(--foreground)]/30 bg-[var(--card-strong)]">
                 Category
               </th>
-              {orderedScores.map(({ player, score }) => {
+              {orderedScores.map(({ player, score, bonus }) => {
                 const isActive = player.id === activePlayerId
                 const isYou = player.id === myPlayerId
-                const total = score ? totalScore(score) : 0
+                const total = score ? totalScore(score, bonus) : 0
                 const initial = player.name.charAt(0).toUpperCase()
                 return (
                   <th
@@ -240,10 +245,10 @@ export function YahtzeeScorecard({
             {/* ── Total row ── */}
             <tr className="yahtzee-score-total">
               <td className="sticky left-0 z-10 px-2 py-1.5 text-[11px] font-black text-[var(--foreground)]">Total</td>
-              {orderedScores.map(({ player, score }) => (
+              {orderedScores.map(({ player, score, bonus }) => (
                 <td key={player.id} className={playerColClass(player.id)}>
                   <span className="text-sm font-black tabular-nums text-[var(--primary)]">
-                    {score ? totalScore(score) : 0}
+                    {score ? totalScore(score, bonus) : 0}
                   </span>
                 </td>
               ))}
@@ -265,17 +270,20 @@ export function YahtzeeLeaderboard({
   players,
   highlightPlayerId,
 }: {
-  rows: { player_id: string; scores: { categories: YahtzeeCategoryPoints } }[]
+  rows: { player_id: string; scores: { categories: YahtzeeCategoryPoints; bonusYahtzees?: number } }[]
   players: { id: string; name: string }[]
   highlightPlayerId?: string | null
 }) {
-  const sorted = [...rows].sort((a, b) => totalScore(b.scores.categories) - totalScore(a.scores.categories))
+  const sorted = [...rows].sort(
+    (a, b) =>
+      totalScore(b.scores.categories, b.scores.bonusYahtzees) - totalScore(a.scores.categories, a.scores.bonusYahtzees)
+  )
 
   return (
     <div className="grid grid-cols-1 gap-2">
       {sorted.map((row, index) => {
         const player = players.find((p) => p.id === row.player_id)
-        const total = totalScore(row.scores.categories)
+        const total = totalScore(row.scores.categories, row.scores.bonusYahtzees)
         const isYou = row.player_id === highlightPlayerId
         const rankColors = ['bg-amber-500', 'bg-slate-400', 'bg-amber-700', 'bg-[var(--faint)]']
 

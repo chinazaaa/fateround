@@ -4,34 +4,41 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { FateRoundLogo } from '@/components/FateRoundLogo'
+import { Glyph } from '@/components/icons/Glyph'
+import { UI_ICONS } from '@/lib/game-glyphs'
 import { ProfileChip } from '@/components/profile/ProfileChip'
 import { useTheme } from '@/components/ThemeProvider'
+import type { IconSvgElement } from '@hugeicons/react'
 
-type NavItem = { href: string; label: string; icon?: string }
+type NavItem = { href: string; label: string; icon: IconSvgElement }
 
 function BackBar() {
   const router = useRouter()
-  const goBack = () => {
-    if (typeof window !== 'undefined' && window.history.length > 1) router.back()
-    else router.push('/')
+
+  const handleClick = () => {
+    if (typeof window !== 'undefined' && window.history.length > 1) {
+      router.back()
+    } else {
+      router.push('/')
+    }
   }
+
   return (
     <div className="fr-backbar">
-      <button type="button" onClick={goBack} className="fr-backbar__link" aria-label="Go back">
+      <button type="button" onClick={handleClick} className="fr-btn--nav" aria-label="Go back">
         <svg
-          width="16"
-          height="16"
+          width="18"
+          height="18"
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
-          strokeWidth="2"
+          strokeWidth="2.5"
           strokeLinecap="round"
           strokeLinejoin="round"
-          aria-hidden
+          aria-hidden="true"
         >
-          <path d="M19 12H5M12 19l-7-7 7-7" />
+          <path d="M19 12H5M11 18l-6-6 6-6" />
         </svg>
-        Back
       </button>
     </div>
   )
@@ -90,18 +97,18 @@ function ThemeButton({ withLabel = false }: { withLabel?: boolean }) {
 }
 
 const NAV: NavItem[] = [
-  { href: '/games', label: 'Games', icon: '🎮' },
-  { href: '/tournament', label: 'Tournaments', icon: '🏆' },
-  { href: '/rooms', label: 'Rooms', icon: '🏠' },
-  { href: '/leaderboard', label: 'Leaderboard', icon: '📊' },
-  { href: '/updates', label: "What's new", icon: '✨' },
+  { href: '/games', label: 'Games', icon: UI_ICONS.games },
+  { href: '/tournament', label: 'Tournaments', icon: UI_ICONS.tournament },
+  { href: '/daily-challenges', label: 'Daily Challenges', icon: UI_ICONS.dailyChallenges },
+  { href: '/leaderboard', label: 'Leaderboard', icon: UI_ICONS.leaderboard },
+  { href: '/updates', label: "What's new", icon: UI_ICONS.whatsNew },
 ]
 
 /**
  * Public-site header — logo + desktop nav + a mobile hamburger drawer.
  * Mirrors the Claude Design marketing header (`site-header` / drawer).
  */
-export function MarketingHeader() {
+export function MarketingHeader({ hideBack = false }: { hideBack?: boolean } = {}) {
   const [menu, setMenu] = useState(false)
   const pathname = usePathname()
   const isHome = pathname === '/'
@@ -121,14 +128,11 @@ export function MarketingHeader() {
         </Link>
 
         <nav className="site-nav">
-          {NAV.slice(0, 4).map((item) => (
+          {NAV.map((item) => (
             <Link key={item.href} href={item.href}>
               {item.label}
             </Link>
           ))}
-          <Link href="/updates" className="fr-btn fr-btn--secondary fr-btn--sm">
-            What&apos;s new
-          </Link>
           <ProfileChip />
           <ThemeButton />
         </nav>
@@ -144,7 +148,7 @@ export function MarketingHeader() {
         </div>
       </header>
 
-      {!isHome && <BackBar />}
+      {!isHome && !hideBack && <BackBar />}
 
       {/* Mobile drawer */}
       <div className={`fr-scrim${menu ? ' on' : ''}`} onClick={() => setMenu(false)} aria-hidden />
@@ -159,7 +163,7 @@ export function MarketingHeader() {
           {NAV.map((item) => (
             <Link key={item.href} href={item.href} onClick={() => setMenu(false)}>
               <span className="di" aria-hidden>
-                {item.icon}
+                <Glyph icon={item.icon} size={18} />
               </span>
               {item.label}
             </Link>

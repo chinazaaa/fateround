@@ -30,6 +30,7 @@ import {
 import { appOrigin } from '@/lib/site'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import { useHostSeat } from '@/hooks/useHostSeat'
+import { clearSoloAutoStart, setSoloAutoStart } from '@/lib/solo-auto-start'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
 import { useGameScores, useGameStats } from '@/components/roster/RosterDrawerContext'
 import type { Game, Player, YahtzeeCategory, YahtzeePlayerScore, YahtzeeSession } from '@/types'
@@ -262,6 +263,11 @@ export function YahtzeeHostView({ gameCode, hostToken }: { gameCode: string; hos
   const resetGame = async (sameSettings: boolean) => {
     setPlayingAgain(true)
     try {
+      // Solo replay: a 1-seat game reopened with the same settings should skip
+      // the lobby just like the initial create — arm the auto-start flag before
+      // the reset lands (useHostSeat consumes it once the host is re-seated in
+      // 'waiting'). Return-to-lobby (sameSettings=false) never arms it.
+      if (sameSettings && game?.max_players === 1) setSoloAutoStart(gameCode)
       const res = await fetch(`/api/games/${gameCode}/play-again`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -272,6 +278,9 @@ export function YahtzeeHostView({ gameCode, hostToken }: { gameCode: string; hos
       success(sameSettings ? 'Ready up for the next game!' : 'Back to the lobby')
       await load()
     } catch (err) {
+      // Don't leave a solo-replay flag armed for a reset that never landed —
+      // otherwise a later Return-to-lobby would find it and unexpectedly start.
+      clearSoloAutoStart(gameCode)
       toastError(err instanceof Error ? err.message : 'Failed to reset')
     } finally {
       setPlayingAgain(false)
@@ -308,7 +317,7 @@ export function YahtzeeHostView({ gameCode, hostToken }: { gameCode: string; hos
   // total AND more than one player — never at a score of 0 or in a solo game
   // (no one to beat). Mirrors the player view.
   const hostScoreRow = scores.find((s) => s.player_id === hostPlayerId)
-  const hostTotal = hostScoreRow ? totalScore(hostScoreRow.scores.categories) : 0
+  const hostTotal = hostScoreRow ? totalScore(hostScoreRow.scores.categories, hostScoreRow.scores.bonusYahtzees) : 0
   const hostPlays = hostMode === 'player' && !!hostPlayerId
 
   const isHostTurn = turnPlayerId === hostPlayerId
@@ -321,7 +330,7 @@ export function YahtzeeHostView({ gameCode, hostToken }: { gameCode: string; hos
 
   // Roster drawer scoreboard: total score headline + filled-categories detail.
   const rosterScores = useMemo(
-    () => Object.fromEntries(scores.map((s) => [s.player_id, totalScore(s.scores.categories)])),
+    () => Object.fromEntries(scores.map((s) => [s.player_id, totalScore(s.scores.categories, s.scores.bonusYahtzees)])),
     [scores]
   )
   useGameScores(rosterScores, { suffix: ' pts' })
@@ -494,7 +503,7 @@ export function YahtzeeHostView({ gameCode, hostToken }: { gameCode: string; hos
             hostToken={hostToken}
             onEnded={load}
             label="End game early"
-            icon={<ExitIcon size={16} />}
+            icon={<ExitIcon size={14} />}
             confirmTitle="End this game early?"
             confirmMessage="The current game will end and players will see the results screen."
             className="btn-danger-soft"

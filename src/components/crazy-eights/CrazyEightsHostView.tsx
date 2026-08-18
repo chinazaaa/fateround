@@ -376,7 +376,7 @@ export function CrazyEightsHostView({ gameCode, hostToken }: { gameCode: string;
           hostToken={hostToken}
           onEnded={load}
           label="End game"
-          icon={<ExitIcon size={16} />}
+          icon={<ExitIcon size={14} />}
           confirmTitle="End this game?"
           confirmMessage="Everyone sees the final results. You can start a new game from the room afterward."
           className="btn-danger-soft w-full"
@@ -524,7 +524,7 @@ export function CrazyEightsHostView({ gameCode, hostToken }: { gameCode: string;
             hostToken={hostToken}
             onEnded={load}
             label="End game early"
-            icon={<ExitIcon size={16} />}
+            icon={<ExitIcon size={14} />}
             confirmTitle="End this game early?"
             confirmMessage="The current game will end and players will see the results screen."
             className="btn-danger-soft"
