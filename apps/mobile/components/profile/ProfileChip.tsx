@@ -226,7 +226,7 @@ function SaveToProfileSheet({
             <View style={styles.header}>
               <Text style={styles.title}>{signedIn ? 'Your profile' : 'Save your progress'}</Text>
               <Pressable hitSlop={12} onPress={onClose} accessibilityRole="button" accessibilityLabel="Close">
-                <Text style={styles.close}>Done</Text>
+                <Text style={styles.close}>✕</Text>
               </Pressable>
             </View>
 
@@ -260,6 +260,10 @@ function SaveToProfileSheet({
                     autoCorrect={false}
                     keyboardType="email-address"
                     textContentType="emailAddress"
+                    returnKeyType="send"
+                    onSubmitEditing={() => {
+                      if (!busy && email.trim()) void sendCode()
+                    }}
                   />
                   {message ? <Text style={styles.error}>{message}</Text> : null}
                   <Pressable
@@ -290,6 +294,10 @@ function SaveToProfileSheet({
                     keyboardType="number-pad"
                     textContentType="oneTimeCode"
                     maxLength={8}
+                    returnKeyType="done"
+                    onSubmitEditing={() => {
+                      if (!busy && code.trim()) void submitCode()
+                    }}
                   />
                   {message ? <Text style={styles.error}>{message}</Text> : null}
                   <Pressable
