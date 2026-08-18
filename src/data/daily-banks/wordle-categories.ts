@@ -86,10 +86,10 @@ export const WORDLE_TECHNOLOGY: readonly string[] = [
   'MOUSE',
   'PIXEL',
   'PRINT',
+  'PROXY',
   'ROBOT',
   'SMART',
   'VIDEO',
-  'WIFI',
 ]
 
 export const WORDLE_NATURE: readonly string[] = [
