@@ -13,6 +13,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { gameTypeConfig, parseGameType } from '@/lib/game-types'
+import { getPlayerSession } from '@/lib/utils'
 import type { PublicGame } from '@/lib/game-browse'
 
 const PREVIEW_LIMIT = 5
@@ -21,6 +22,9 @@ const POLL_FALLBACK_MS = 15_000
 export function LiveGamesStrip() {
   const [games, setGames] = useState<PublicGame[]>([])
   const [loaded, setLoaded] = useState(false)
+  // Uppercased set of game codes this browser has a player session for, so we
+  // can flip the CTA to "Continue" on games the viewer has already joined.
+  const [joinedSet, setJoinedSet] = useState<Set<string>>(() => new Set())
   const inFlight = useRef(false)
 
   const load = useCallback(async () => {
@@ -60,6 +64,20 @@ export function LiveGamesStrip() {
       clearInterval(interval)
     }
   }, [load])
+
+  useEffect(() => {
+    const compute = () => {
+      const joined = new Set<string>()
+      for (const g of games) {
+        if (getPlayerSession(g.id)) joined.add(g.id.toUpperCase())
+      }
+      setJoinedSet(joined)
+    }
+    compute()
+    const handler = () => compute()
+    window.addEventListener('kmk-player-session', handler)
+    return () => window.removeEventListener('kmk-player-session', handler)
+  }, [games])
 
   // Auto-hide: never render an empty strip. On first load we wait for the fetch
   // so we don't briefly render then disappear.
@@ -109,7 +127,7 @@ export function LiveGamesStrip() {
                   target="_blank"
                   rel="noopener noreferrer"
                 >
-                  Join
+                  {joinedSet.has(game.id.toUpperCase()) ? 'Continue' : 'Join'}
                 </Link>
               </div>
             )
