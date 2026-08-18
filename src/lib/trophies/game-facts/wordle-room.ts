@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { FactsContext } from './index'
+import { parseWordleRoomSolutionWords, wordleRoomMaxAttemptsForWord } from '@/lib/wordle-room'
 
 /**
  * Multiplayer Wordle per-game facts, derived at finish from `wordle_room_progress`
@@ -21,6 +22,7 @@ type GuessRow = {
   player_id: string
   word_index: number
   is_correct: boolean
+  submitted_at: string
 }
 
 type WordleRoomMeta = { category?: string; word_count?: number }
@@ -41,7 +43,7 @@ export async function wordleRoomFacts(
   const roundId = roundData?.id as string | undefined
   if (!roundId) return out
 
-  const [{ data: progressData }, { data: guessesData }] = await Promise.all([
+  const [{ data: progressData }, { data: guessesData }, { data: solutionRow }] = await Promise.all([
     supabase
       .from('wordle_room_progress')
       .select('player_id, words_solved, finished, hints_used')
@@ -49,9 +51,11 @@ export async function wordleRoomFacts(
       .eq('round_id', roundId),
     supabase
       .from('wordle_room_guesses')
-      .select('player_id, word_index, is_correct')
+      .select('player_id, word_index, is_correct, submitted_at')
       .eq('game_id', gameId)
-      .eq('round_id', roundId),
+      .eq('round_id', roundId)
+      .order('submitted_at', { ascending: true }),
+    supabase.from('wordle_room_solutions').select('words').eq('round_id', roundId).maybeSingle(),
   ])
 
   const progress = (progressData ?? []) as ProgressRow[]
@@ -82,6 +86,13 @@ export async function wordleRoomFacts(
   const isNaija = meta.category === 'naija_slang'
   const wordCount = typeof meta.word_count === 'number' ? meta.word_count : 0
   const bigRoom = ctx.seated.length >= 10
+  // Per-word max attempts (scales with word length in the engine). Falls back to 6 when the
+  // solutions row is missing so the last-gasp trophy still fires sensibly on legacy rounds.
+  const { words: solutionWords } = parseWordleRoomSolutionWords(solutionRow?.words)
+  const maxAttemptsAt = (idx: number) => {
+    const w = solutionWords[idx]
+    return w ? wordleRoomMaxAttemptsForWord(w) : 6
+  }
 
   // Aggregate per-word max-guess so we can flag "solved a hard-fought word in the final guess"
   // etc. Also count total guesses per player for pace flags.
@@ -114,8 +125,11 @@ export async function wordleRoomFacts(
     if (isNaija) facts.wordle_room_naija_games = 1
     if (row.finished && hintsUsed === 0 && wordCount >= 20) facts.wordle_room_marathon_wins = 1
 
-    // Perfect race: finished, no hints, and every solved word was on the first guess.
-    if (row.finished && hintsUsed === 0 && wonWords.size > 0 && firstGuess >= wonWords.size) {
+    // Perfect race: finished, no hints, ALL words in the sequence solved, and every solve
+    // was a first-guess. Requiring words_solved === wordCount closes the loophole where a
+    // player who solved 1 of 5 words on the first try (and lost the other 4) would have
+    // qualified — a real "perfect race" means the entire sequence.
+    if (row.finished && hintsUsed === 0 && wordCount > 0 && row.words_solved === wordCount && firstGuess >= wordCount) {
       facts.wordle_room_perfect_race_wins = 1
     }
 
@@ -127,11 +141,10 @@ export async function wordleRoomFacts(
     for (const w of wonWords) {
       const used = guessesByPlayerWord.get(`${row.player_id}|${w}`) ?? 0
       if (used === 2) twoGuessSolves++
-      // Last-gasp: solved on the very last allowed attempt for that word. Attempts scale with word
-      // length in the engine (length+1); we don't have per-word length here, so approximate with
-      // 6 (the standard 5-letter cap). Slight under-counting on 3–4 letter Naija words is OK — it
-      // still fires when the player actually cut it close on any 5-letter word.
-      if (used >= 6) lastGaspSolves++
+      // Last-gasp: solved on the very last allowed attempt for THAT word. Attempts scale
+      // with word length in the engine (length + 1), so read the actual max from the
+      // solutions row instead of a fixed 6 — a 4-letter Naija word only gets 5 attempts.
+      if (used >= maxAttemptsAt(w)) lastGaspSolves++
       if (wordCount >= 10 && w >= Math.ceil(wordCount / 2)) anySecondHalfSolves = true
     }
     if (twoGuessSolves > 0) facts.wordle_room_two_guess_solves = twoGuessSolves

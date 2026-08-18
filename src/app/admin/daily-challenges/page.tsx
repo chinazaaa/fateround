@@ -57,7 +57,7 @@ const GAME_TYPES: { id: GameTypeId; label: string; hint: string }[] = [
   {
     id: 'wordle',
     label: 'Wordle',
-    hint: 'WORD,hint,category — one per line. hint and category optional. Min 1 entry. 3–8 letters, alpha only. Category (e.g. "Naija Slang") shows as the day\'s badge; one word picked per day by seed.',
+    hint: 'WORD,hint,category — one per line. Category REQUIRED (shows as the day\'s badge, e.g. "Naija Slang"); hint optional but shown on loss. Min 1 entry. 3–8 letters, alpha only. One word picked per day by seed.',
   },
 ]
 

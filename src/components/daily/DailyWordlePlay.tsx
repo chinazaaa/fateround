@@ -5,6 +5,7 @@ import { useDailyChallengeTimer } from '@/hooks/useDailyChallengeTimer'
 import { getOrCreateStartedAt, loadDailyAnswers, saveDailyAnswers } from '@/lib/daily-progress'
 import { gradeWordleGuess, wordleKeyBestStates, type WordleLetterState } from '@/lib/daily-wordle'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
+import { authHeaders } from '@/lib/identity'
 
 interface DailyWordlePlayProps {
   challengeId: string
@@ -174,8 +175,23 @@ export function DailyWordlePlay({ challengeId, puzzle, timer: maxSeconds, onSubm
       message: 'This costs 300 points off your final score. Are you sure?',
       confirmLabel: 'Reveal (−300)',
     })
-    if (ok) setHintUsed(true)
-  }, [confirm])
+    if (!ok) return
+    // Persist the reveal before showing the hint text — the submit route reads this row as
+    // the authority on hintUsed, so a modified client can't dodge the penalty by omitting
+    // the flag from submission. Failures still fall through to the local flag as a fallback
+    // (best-effort — worst case the client marks itself hintUsed and pays as expected).
+    try {
+      const headers = await authHeaders()
+      await fetch(`/api/daily-challenges/wordle/reveal-hint`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(headers ?? {}) },
+        body: JSON.stringify({ challengeId }),
+      })
+    } catch {
+      /* network hiccup — the local hintUsed still gets sent so the deduction still applies */
+    }
+    setHintUsed(true)
+  }, [confirm, challengeId])
   const [message, setMessage] = useState<string | null>(null)
   const [announcement, setAnnouncement] = useState('')
   const [shake, setShake] = useState(false)
@@ -253,39 +269,35 @@ export function DailyWordlePlay({ challengeId, puzzle, timer: maxSeconds, onSubm
       : `Out of attempts. The word was ${word.toUpperCase()}.`
     : null
 
+  // Both handlers derive the next (current, cursorAt) pair from the live snapshot and apply
+  // the two setters side-by-side, so nothing inside a setState updater has a side effect —
+  // React can safely replay the updaters. Key events fire one at a time, so reading state
+  // directly (not from an updater arg) can't miss a batched second keystroke.
   const addLetter = useCallback(
     (key: string) => {
       const ch = key.toLowerCase()
       if (!/^[a-z]$/.test(ch)) return
       setMessage(null)
-      setCurrent((c) => {
-        if (cursorAt < c.length) {
-          // Overwrite an already-typed letter at the cursor.
-          const next = c.slice(0, cursorAt) + ch + c.slice(cursorAt + 1)
-          setCursorAt(Math.min(cursorAt + 1, wordLength))
-          return next
-        }
-        if (c.length >= wordLength) return c
-        setCursorAt(c.length + 1)
-        return c + ch
-      })
+      if (cursorAt < current.length) {
+        setCurrent(current.slice(0, cursorAt) + ch + current.slice(cursorAt + 1))
+        setCursorAt(Math.min(cursorAt + 1, wordLength))
+      } else if (current.length < wordLength) {
+        setCurrent(current + ch)
+        setCursorAt(current.length + 1)
+      }
     },
-    [wordLength, cursorAt]
+    [current, cursorAt, wordLength]
   )
 
   const backspace = useCallback(() => {
     setMessage(null)
-    setCurrent((c) => {
-      // Backspace at cursor removes the letter just before it (standard text-input behaviour),
-      // so a click-then-backspace on a mid-row tile deletes that neighbour, not the last letter.
-      if (cursorAt > 0 && cursorAt <= c.length) {
-        const next = c.slice(0, cursorAt - 1) + c.slice(cursorAt)
-        setCursorAt(cursorAt - 1)
-        return next
-      }
-      return c
-    })
-  }, [cursorAt])
+    // Backspace at cursor removes the letter just before it (standard text-input behaviour),
+    // so a click-then-backspace on a mid-row tile deletes that neighbour, not the last letter.
+    if (cursorAt > 0 && cursorAt <= current.length) {
+      setCurrent(current.slice(0, cursorAt - 1) + current.slice(cursorAt))
+      setCursorAt(cursorAt - 1)
+    }
+  }, [current, cursorAt])
 
   const focusTile = useCallback(
     (i: number) => {
@@ -378,6 +390,19 @@ export function DailyWordlePlay({ challengeId, puzzle, timer: maxSeconds, onSubm
             tabIndex={clickable ? 0 : undefined}
             aria-label={clickable ? `Edit letter ${i + 1}: ${ch.toUpperCase()}` : undefined}
             onClick={clickable ? () => focusTile(i) : undefined}
+            onKeyDown={
+              clickable
+                ? (e) => {
+                    // Keyboard-activate the tile without letting Enter/Space bubble to the
+                    // window keydown listener (which would submit the row / type a space).
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      focusTile(i)
+                    }
+                  }
+                : undefined
+            }
             className={`wl-tile wl-tile--current ${isFocused ? 'wl-tile--focus' : ''} ${i === current.length - 1 && cursorAt === current.length ? 'wl-tile--pop' : ''}`}
             style={clickable ? { cursor: 'pointer' } : undefined}
           >

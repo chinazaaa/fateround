@@ -597,6 +597,7 @@ function CreateGameInner() {
   >([])
   const [libraryPacksLoading, setLibraryPacksLoading] = useState(false)
   const [libraryPackSearch, setLibraryPackSearch] = useState('')
+  const selectLibraryPackSeqRef = useRef(0)
   const [lobbyLimits, setLobbyLimits] = useState<GamePlayerLimitsMap | null>(null)
   const effectiveLimits = lobbyLimits ?? getCodeDefaultLimits()
 
@@ -635,8 +636,14 @@ function CreateGameInner() {
 
   const selectLibraryPack = async (id: string) => {
     setSelectedPackId(id)
+    // Guard against out-of-order responses when the host clicks pack A then quickly clicks
+    // pack B: A's slower response would otherwise arrive after B's and overwrite the picked
+    // words. Track the sequence and ignore any response for an id that's no longer selected.
+    selectLibraryPackSeqRef.current += 1
+    const seq = selectLibraryPackSeqRef.current
     const res = await fetch(`/api/library/${id}`)
     const data = await res.json()
+    if (seq !== selectLibraryPackSeqRef.current) return
     if (data.pack?.questions) {
       const qs = data.pack.questions
       setLibraryPackQuestions(qs)

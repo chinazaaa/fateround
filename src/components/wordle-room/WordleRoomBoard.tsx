@@ -251,6 +251,17 @@ export function WordleRoomBoard({
             tabIndex={clickable ? 0 : undefined}
             aria-label={clickable ? `Edit letter ${i + 1}: ${ch.toUpperCase()}` : undefined}
             onClick={clickable ? () => onFocusTile!(i) : undefined}
+            onKeyDown={
+              clickable
+                ? (e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      onFocusTile!(i)
+                    }
+                  }
+                : undefined
+            }
             style={clickable ? { cursor: 'pointer' } : undefined}
             className={`wl-tile wl-tile--current ${isFocused ? 'wl-tile--focus' : ''} ${i === current.length - 1 && (cursorAt == null || cursorAt === current.length) ? 'wl-tile--pop' : ''}`}
           >

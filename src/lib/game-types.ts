@@ -2347,7 +2347,8 @@ export function parseGameType(raw: unknown): GameType {
   if (raw === 'sudoku') return 'sudoku'
   if (raw === 'tic_tac_toe') return 'tic_tac_toe'
   if (raw === 'word_hunt') return 'word_hunt'
-  if (raw === 'wordle_room' || raw === 'wordle-room' || raw === 'wordle_room_race') return 'wordle_room'
+  if (raw === 'wordle_room' || raw === 'wordle-room' || raw === 'wordle_room_race' || raw === 'wordle')
+    return 'wordle_room'
   if (raw === 'chess') return 'chess'
   if (raw === 'describe_it' || raw === 'text-charades') return 'describe_it'
   if (raw === 'word_rush' || raw === 'word-rush') return 'word_rush'

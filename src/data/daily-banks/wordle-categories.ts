@@ -128,7 +128,7 @@ export const WORDLE_ANIMALS: readonly string[] = [
   'BUNNY',
   'FOXES',
   'DINGO',
-  'ZORSE',
+  'HORSE',
   'PRAWN',
 ]
 
@@ -211,7 +211,7 @@ export const WORDLE_NATURE: readonly string[] = [
   'MISTY',
   'MUDDY',
   'PONDS',
-  'PEBBL',
+  'RANGE',
   'RAINY',
   'SNOWY',
   'STARS',
@@ -257,7 +257,7 @@ export const WORDLE_MUSIC: readonly string[] = [
   'VOCAL',
   'FUNKY',
   'CHANT',
-  'ENCOR',
+  'REMIX',
   'STAFF',
 ]
 
@@ -300,8 +300,8 @@ export const WORDLE_SCIENCE: readonly string[] = [
   'STARS',
   'PRISM',
   'NERVE',
-  'DNAJS',
-  'CARBO',
+  'PROBE',
+  'FIELD',
 ]
 
 export const WORDLE_CLOTHING: readonly string[] = [
@@ -343,7 +343,7 @@ export const WORDLE_CLOTHING: readonly string[] = [
   'BLAZE',
   'CLASP',
   'BADGE',
-  'BROOC',
+  'CHAIN',
   'DRAPE',
 ]
 
@@ -381,11 +381,11 @@ export const WORDLE_TRAVEL: readonly string[] = [
   'RUINS',
   'SEDAN',
   'SUITE',
-  'CRUZE',
+  'LODGE',
   'DEPOT',
   'RAILS',
   'PIERS',
-  'BAGGA',
+  'CAMPS',
   'INNER',
   'TENTS',
 ]

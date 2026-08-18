@@ -162,6 +162,10 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
     })
     if (!res.ok) return
     const data = (await res.json()) as WordleRoomStatus
+    // Apply completion state BEFORE the currentWord check so that a finished sequence (server
+    // returns finished:true and no currentWord because the player has run out of words)
+    // locks the input immediately instead of leaving the previous word's state editable.
+    if (data.finished === true) setMyFinished(true)
     if (data.currentWord) {
       setCurrentWord(data.currentWord)
       setWordLength(data.wordLength ?? data.currentWord.length)
@@ -179,6 +183,16 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
       setCurrent('')
       setCursorAt(0)
       setRevealWord('')
+    } else if (data.finished === true) {
+      // Sequence complete — clear per-word state so a stale board can't accept more input.
+      setCurrentWord(null)
+      setGuesses([])
+      setCurrent('')
+      setCursorAt(0)
+      setRevealWord('')
+      setHintAvailable(false)
+      setHintUsed(false)
+      setHintText(null)
     }
     if (data.status === 'finished') void load()
   }, [gameCode, myResumeToken, load])
@@ -424,36 +438,33 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
     [gameCode, myResumeToken, load, toastError]
   )
 
+  // Both handlers derive the next (current, cursorAt) pair from the live snapshot and apply
+  // the two setters side-by-side, so nothing inside a setState updater has a side effect —
+  // React can safely replay the updaters. Key events fire one at a time, so reading state
+  // directly (not from an updater arg) can't miss a batched second keystroke.
   const addLetter = useCallback(
     (key: string) => {
       const ch = key.toLowerCase()
       if (!/^[a-z]$/.test(ch)) return
       setMessage(null)
-      setCurrent((c) => {
-        if (cursorAt < c.length) {
-          const next = c.slice(0, cursorAt) + ch + c.slice(cursorAt + 1)
-          setCursorAt(Math.min(cursorAt + 1, wordLength))
-          return next
-        }
-        if (c.length >= wordLength) return c
-        setCursorAt(c.length + 1)
-        return c + ch
-      })
+      if (cursorAt < current.length) {
+        setCurrent(current.slice(0, cursorAt) + ch + current.slice(cursorAt + 1))
+        setCursorAt(Math.min(cursorAt + 1, wordLength))
+      } else if (current.length < wordLength) {
+        setCurrent(current + ch)
+        setCursorAt(current.length + 1)
+      }
     },
-    [wordLength, cursorAt]
+    [current, cursorAt, wordLength]
   )
 
   const backspace = useCallback(() => {
     setMessage(null)
-    setCurrent((c) => {
-      if (cursorAt > 0 && cursorAt <= c.length) {
-        const next = c.slice(0, cursorAt - 1) + c.slice(cursorAt)
-        setCursorAt(cursorAt - 1)
-        return next
-      }
-      return c
-    })
-  }, [cursorAt])
+    if (cursorAt > 0 && cursorAt <= current.length) {
+      setCurrent(current.slice(0, cursorAt - 1) + current.slice(cursorAt))
+      setCursorAt(cursorAt - 1)
+    }
+  }, [current, cursorAt])
 
   const focusTile = useCallback(
     (i: number) => {

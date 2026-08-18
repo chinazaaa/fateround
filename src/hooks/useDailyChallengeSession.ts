@@ -137,8 +137,18 @@ export function useDailyChallengeSession(gameType: DailyChallengeGameType): UseD
 
         if (res.status === 409) {
           // Server already has this player's score — safe to drop the local attempt so a refresh
-          // doesn't re-fire an auto-submit against a locked row.
+          // doesn't re-fire an auto-submit against a locked row. Populate previousScore from a
+          // fresh GET so the results screen shows the real numbers instead of nulls.
           clearDailyProgress(challengeData.challengeId)
+          try {
+            const getRes = await fetch(`/api/daily-challenges/${gameType}`, { headers })
+            if (getRes.ok) {
+              const getData = (await getRes.json()) as { previousScore?: Record<string, unknown> | null }
+              if (getData.previousScore) setPreviousScore(getData.previousScore)
+            }
+          } catch {
+            /* best-effort — the results screen already handles a missing previousScore */
+          }
           setError('Already submitted')
           setPhase('results')
           return

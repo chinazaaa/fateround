@@ -223,7 +223,13 @@ export const createGameSchema = z.object({
   wordle_room_words: z
     .array(
       z.object({
-        word: z.string().min(3).max(8),
+        // Letters-only matches the engine's normalizeWordleWord filter; anything else would
+        // be silently stripped, and a "word" like "1234" or "abc-def" is nonsense here.
+        word: z
+          .string()
+          .min(3)
+          .max(8)
+          .regex(/^[a-zA-Z]+$/),
         hint: z.string().max(200).optional(),
       })
     )
@@ -503,7 +509,13 @@ export const boardGameLobbySettingsSchema = z.object({
   wordle_room_words: z
     .array(
       z.object({
-        word: z.string().min(3).max(8),
+        // Letters-only matches the engine's normalizeWordleWord filter; anything else would
+        // be silently stripped, and a "word" like "1234" or "abc-def" is nonsense here.
+        word: z
+          .string()
+          .min(3)
+          .max(8)
+          .regex(/^[a-zA-Z]+$/),
         hint: z.string().max(200).optional(),
       })
     )

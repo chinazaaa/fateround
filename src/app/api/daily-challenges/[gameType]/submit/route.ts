@@ -414,7 +414,8 @@ function verifyLudoPuzzle(
 
 function verifyWordle(
   puzzleData: Record<string, unknown>,
-  submission: Record<string, unknown>
+  submission: Record<string, unknown>,
+  serverHintUsed?: boolean
 ): VerifiedMetrics | { error: string } {
   const target = typeof puzzleData.word === 'string' ? puzzleData.word.toLowerCase() : ''
   const maxAttempts = Number(puzzleData.maxAttempts) || 0
@@ -436,7 +437,11 @@ function verifyWordle(
   if (winIndex >= 0 && winIndex !== guesses.length - 1) return { error: 'Invalid submission' }
   const won = winIndex >= 0
   const guessesUsed = guesses.length
-  const hintUsed = submission.hintUsed === true
+  // Trust the server-persisted hint reveal (from daily_hint_reveals) over the client field.
+  // The client value is still accepted as an inline signal for callers that never persisted
+  // the reveal, but a server-side "true" always wins — otherwise a forged hintUsed=false in
+  // the submission would let the player pocket the 300 points they should have paid.
+  const hintUsed = serverHintUsed === true || submission.hintUsed === true
   const rawPoints = wordleFinalScore(guessesUsed, maxAttempts, won, hintUsed)
 
   return {
@@ -453,7 +458,8 @@ function verifyWordle(
 function verifySubmission(
   gameType: DailyChallengeGameType,
   puzzleData: Record<string, unknown>,
-  submission: Record<string, unknown>
+  submission: Record<string, unknown>,
+  serverHintUsed?: boolean
 ): VerifiedMetrics | { error: string } {
   switch (gameType) {
     case 'sudoku':
@@ -481,7 +487,7 @@ function verifySubmission(
     case 'ludo_puzzle':
       return verifyLudoPuzzle(puzzleData, submission)
     case 'wordle':
-      return verifyWordle(puzzleData, submission)
+      return verifyWordle(puzzleData, submission, serverHintUsed)
   }
 }
 
@@ -547,9 +553,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ gam
     return NextResponse.json({ error: 'Already submitted', existingScore: existing.normalized_score }, { status: 409 })
   }
 
-  // Server-side verification
+  // Server-side verification. For Wordle, source the hint flag from daily_hint_reveals so
+  // a modified client can't submit hintUsed:false to dodge the −300 penalty after paying.
   const puzzleData = challenge.puzzle_data as Record<string, unknown>
-  const metrics = verifySubmission(gameType, puzzleData, submission)
+  let serverHintUsed = false
+  if (gameType === 'wordle') {
+    const { data: hintRow } = await admin
+      .from('daily_hint_reveals')
+      .select('challenge_id')
+      .eq('challenge_id', challengeId)
+      .eq('profile_id', profileId)
+      .maybeSingle()
+    serverHintUsed = Boolean(hintRow)
+  }
+  const metrics = verifySubmission(gameType, puzzleData, submission, serverHintUsed)
   if ('error' in metrics) {
     return NextResponse.json({ error: metrics.error }, { status: 400 })
   }

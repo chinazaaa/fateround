@@ -74,40 +74,24 @@ export async function POST(req: NextRequest) {
   if (!hint) return NextResponse.json({ error: 'No hint available for this word' }, { status: 400 })
   if (!words[currentIndex]) return NextResponse.json({ error: 'No word to hint' }, { status: 400 })
 
-  const hintsUsedRaw = progress?.hints_used
-  const existing: number[] = Array.isArray(hintsUsedRaw)
-    ? (hintsUsedRaw as unknown[]).filter((n): n is number => typeof n === 'number')
-    : []
-  const alreadyBought = existing.includes(currentIndex)
-
-  if (!alreadyBought) {
-    const nextHintsUsed = [...existing, currentIndex]
-    if (progress) {
-      const { error: updateError } = await supabase
-        .from('wordle_room_progress')
-        .update({ hints_used: nextHintsUsed, updated_at: new Date().toISOString() })
-        .eq('round_id', round.id)
-        .eq('player_id', player.id)
-      if (updateError) {
-        return NextResponse.json({ error: 'Failed to record hint' }, { status: 500 })
-      }
-    } else {
-      // Late-joined player with no progress row yet — insert one seeded with the hint purchase.
-      const { error: insertError } = await supabase.from('wordle_room_progress').insert({
-        game_id: gameId,
-        round_id: round.id,
-        player_id: player.id,
-        word_index: currentIndex,
-        current_word_guesses: 0,
-        words_solved: 0,
-        total_guesses: 0,
-        finished: false,
-        hints_used: nextHintsUsed,
-      })
-      if (insertError) {
-        return NextResponse.json({ error: 'Failed to record hint' }, { status: 500 })
-      }
+  // Atomic reveal via RPC. The record-guess RPC locks the same progress row before scoring,
+  // so any reveal that commits before a guess is picked up by the scoring path — a
+  // concurrent guess submission can't score the word without the −300 deduction.
+  const { error: rpcError } = await supabase.rpc('wordle_room_reveal_hint', {
+    p_game_id: gameId,
+    p_round_id: round.id,
+    p_player_id: player.id,
+    p_word_index: currentIndex,
+    p_now: new Date().toISOString(),
+  })
+  if (rpcError) {
+    if (rpcError.code === 'WR001') {
+      return NextResponse.json({ error: 'You have already finished this room' }, { status: 400 })
     }
+    if (rpcError.code === 'WR002') {
+      return NextResponse.json({ error: 'Not your current word' }, { status: 400 })
+    }
+    return NextResponse.json({ error: 'Failed to record hint' }, { status: 500 })
   }
 
   return NextResponse.json({ success: true, wordIndex: currentIndex, hint, cost: WORDLE_ROOM_HINT_COST })
