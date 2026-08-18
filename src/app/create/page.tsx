@@ -281,6 +281,7 @@ import {
   WORDLE_ROOM_TIMER_OPTIONS,
   WORDLE_ROOM_DEFAULT_WORD_COUNT,
   WORDLE_ROOM_WORD_COUNT_OPTIONS,
+  WORDLE_ROOM_SAMPLE_CSV,
   formatWordleRoomTimer,
 } from '@/lib/wordle-room'
 import type { WordleCategoryId } from '@/lib/daily-wordle'
@@ -318,6 +319,9 @@ import {
   formatWordGroupingGameDuration,
   WORD_GROUPING_GAME_DURATION_OPTIONS,
   WORD_GROUPING_DEFAULT_DURATION,
+  WORD_GROUPING_SAMPLE_CSV,
+  parseStoredWordGroupingPuzzles,
+  parseWordGroupingPoolText,
 } from '@/lib/word-grouping'
 import { MATCHING_PAIRS_GAME_DURATION_OPTIONS, formatMatchingPairsGameDuration } from '@/lib/memory-match'
 import {
@@ -2629,8 +2633,9 @@ function CreateGameInner() {
                     : 'platform'
                   : isWordGrouping
                     ? // Symmetric with the payload gate below: only mark the game as custom
-                      // when the pack meets the same 4-puzzle floor.
-                      questionSource === 'library' && libraryPackQuestions.length >= 4
+                      // when the pack meets the same 4-puzzle floor. Same gate for Library and
+                      // "Your own" — both flow through `libraryPackQuestions`.
+                      questionSource !== 'platform' && libraryPackQuestions.length >= 4
                       ? 'custom'
                       : 'platform'
                     : isCodewords
@@ -2672,7 +2677,9 @@ function CreateGameInner() {
                     ? // Match the same 4-puzzle floor crossword/word-search/word-scramble use above
                       // (and the lobby picker's guard in WordGroupingLobbySettings). Accepting 1–3
                       // here would let the create route persist a pool the lobby then refuses.
-                      questionSource === 'library' && libraryPackQuestions.length >= 4
+                      // Library and "Your own" both feed `libraryPackQuestions` — "Your own" fills
+                      // it after CSV/JSON parse + shape validation.
+                      questionSource !== 'platform' && libraryPackQuestions.length >= 4
                       ? libraryPackQuestions
                       : null
                     : isCodewords
@@ -5584,6 +5591,60 @@ function CreateGameInner() {
                     />
                   </div>
                 )}
+                {questionSource === 'custom' && (
+                  <div className="space-y-2 pt-1">
+                    <a
+                      href={`data:text/csv;charset=utf-8,${encodeURIComponent(WORD_GROUPING_SAMPLE_CSV)}`}
+                      download="word-grouping-sample.csv"
+                      className="inline-block text-sm text-[var(--primary)] underline"
+                    >
+                      Download sample CSV
+                    </a>
+                    <p className="text-faint text-xs">
+                      CSV columns: <code>puzzle, category, difficulty, word1, word2, word3, word4</code>. Four rows per
+                      puzzle (one per group, difficulties 1–4). Need at least 4 puzzles for the pool.
+                    </p>
+                    <input
+                      type="file"
+                      accept=".csv,.json,.jsonl,.ndjson,.txt,text/csv,application/json,text/plain"
+                      className="input-field"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0]
+                        if (!file) return
+                        setPuzzleUploadError(null)
+                        setPuzzleUploadSummary(null)
+                        try {
+                          const text = await file.text()
+                          const { entries, totalRows, skippedRows } = parseWordGroupingPoolText(text)
+                          const validated = parseStoredWordGroupingPuzzles(entries)
+                          if (!validated || validated.length < 4) {
+                            setPuzzleUploadError(
+                              validated
+                                ? `Only ${validated.length} valid puzzle${validated.length === 1 ? '' : 's'} — need at least 4.`
+                                : `No valid puzzles found (${totalRows - skippedRows}/${totalRows} rows recognised).`
+                            )
+                            setLibraryPackQuestions([])
+                            return
+                          }
+                          setLibraryPackQuestions(validated as unknown as unknown[])
+                          setPuzzleUploadSummary(
+                            `${validated.length} puzzle${validated.length === 1 ? '' : 's'} loaded${
+                              skippedRows ? ` · ${skippedRows} row${skippedRows === 1 ? '' : 's'} skipped` : ''
+                            }`
+                          )
+                        } catch (err) {
+                          setPuzzleUploadError(err instanceof Error ? err.message : 'Could not read that file')
+                        }
+                      }}
+                    />
+                    {puzzleUploadSummary && (
+                      <p className="text-emerald-600 dark:text-emerald-400 text-xs font-medium">
+                        {puzzleUploadSummary}
+                      </p>
+                    )}
+                    {puzzleUploadError && <p className="text-red-500 text-xs">{puzzleUploadError}</p>}
+                  </div>
+                )}
                 {categoryUploadField}
                 <Field label="Max time limit">
                   <select
@@ -5894,6 +5955,13 @@ function CreateGameInner() {
                 )}
                 {questionSource === 'custom' && (
                   <div className="space-y-3 pt-1">
+                    <a
+                      href={`data:text/csv;charset=utf-8,${encodeURIComponent(WORDLE_ROOM_SAMPLE_CSV)}`}
+                      download="wordle-sample.csv"
+                      className="inline-block text-sm text-[var(--primary)] underline"
+                    >
+                      Download sample CSV
+                    </a>
                     <Field label="Word list (CSV: word,hint — hint optional)">
                       <input
                         type="file"

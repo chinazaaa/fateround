@@ -7,7 +7,15 @@ import { SurfaceCard } from '@/components/ui/SurfaceCard'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
 import { isWordSearchGame } from '@fateround/shared/game-type-checks'
-import { parseListCsv, parsePuzzleCsv, parseTriviaCsv, parseWyrCsv, pickCsvText } from '@/lib/file-import'
+import {
+  parseListCsv,
+  parsePuzzleCsv,
+  parseTriviaCsv,
+  parseWyrCsv,
+  pickCsvText,
+  shareTextAsFile,
+} from '@/lib/file-import'
+import { sampleCsvForGameType } from '@/lib/sample-csv'
 import {
   MAX_TRIVIA_CHOICES,
   customContentCopy,
@@ -145,6 +153,18 @@ export function CustomContentPanel({ gameType, custom, roundsCount, onChange }: 
               <Pressable style={styles.importButton} onPress={() => void onImportFile()} disabled={importing}>
                 <Text style={styles.importButtonText}>{importing ? 'Reading…' : '⭱ Import CSV'}</Text>
               </Pressable>
+              {(() => {
+                const sample = sampleCsvForGameType(gameType)
+                if (!sample) return null
+                return (
+                  <Pressable
+                    style={styles.importButton}
+                    onPress={() => void shareTextAsFile(sample.filename, sample.content)}
+                  >
+                    <Text style={styles.importButtonText}>⭳ Sample CSV</Text>
+                  </Pressable>
+                )
+              })()}
             </View>
 
             {importError ? <Text style={styles.importError}>{importError}</Text> : null}

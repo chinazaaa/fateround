@@ -142,3 +142,159 @@ export function parseStoredWordGroupingPuzzles(raw: unknown): WordGroupingPuzzle
   }
   return out
 }
+
+/**
+ * Sample CSV shown as a downloadable template under "Your own" for Word Grouping pools —
+ * one row per group, four rows per puzzle, `puzzle` column ties them together. Kept in
+ * lockstep with the library submit page's sample so hosts can share the same file between
+ * both flows.
+ */
+export const WORD_GROUPING_SAMPLE_CSV = [
+  'puzzle,category,difficulty,word1,word2,word3,word4',
+  '1,Fruits,1,Apple,Pear,Peach,Plum',
+  '1,Colors,2,Red,Blue,Purple,Orange',
+  '1,Animals,3,Cat,Dog,Bird,Fish',
+  '1,___ ball,4,Foot,Basket,Base,Snow',
+  '2,Days of the week,1,Monday,Friday,Sunday,Wednesday',
+  '2,Continents,2,Asia,Europe,Africa,Australia',
+  '2,Kitchen tools,3,Knife,Fork,Spoon,Plate',
+  '2,___ time,4,Bed,Show,Dinner,Prime',
+  '',
+].join('\n')
+
+/**
+ * Text uploader for "Your own" WG pools. Accepts two shapes:
+ *   1. JSON-per-line — the same format `parseStoredWordGroupingPuzzles` produces on export
+ *      (`{"groups":[{"category":"...","words":[...],"difficulty":1},...]}`).
+ *   2. CSV — one row per group, four rows sharing a `puzzle` column form one puzzle. Columns
+ *      required: `puzzle, category, difficulty, word1, word2, word3, word4`. Mirrors the format
+ *      used by the library submit page + `WORD_GROUPING_SAMPLE_CSV` above so hosts and pack
+ *      authors share one file layout.
+ * Returns the raw entries plus row counts so the UI can surface `Loaded N, skipped M`. The
+ * result is fed to `parseStoredWordGroupingPuzzles` next, which enforces the final shape.
+ */
+export function parseWordGroupingPoolText(text: string): {
+  entries: unknown[]
+  totalRows: number
+  skippedRows: number
+} {
+  const trimmed = text.trim()
+  if (!trimmed) return { entries: [], totalRows: 0, skippedRows: 0 }
+
+  // Distinguish JSON-per-line (first non-empty line is `{`) from the CSV path. Anything else
+  // falls through to CSV parsing, which fails loudly with row-level errors.
+  const firstLine = trimmed.split(/\r?\n/, 1)[0]!.trim()
+  if (firstLine.startsWith('{')) {
+    const entries: unknown[] = []
+    let totalRows = 0
+    let skippedRows = 0
+    for (const line of trimmed
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter(Boolean)) {
+      totalRows += 1
+      try {
+        const obj = JSON.parse(line)
+        if (obj && typeof obj === 'object' && Array.isArray((obj as { groups?: unknown }).groups)) {
+          entries.push(obj)
+          continue
+        }
+      } catch {
+        // Not JSON — skipped.
+      }
+      skippedRows += 1
+    }
+    return { entries, totalRows, skippedRows }
+  }
+
+  return parseWordGroupingCsvText(trimmed)
+}
+
+/**
+ * CSV-only WG parser. Every four rows sharing a `puzzle` column build one puzzle, with each
+ * row contributing one group (category + difficulty 1–4 + 4 words). Returns raw entries as
+ * `{ groups: [...] }[]` — hand off to `parseStoredWordGroupingPuzzles` for shape validation.
+ * Kept separate from the JSON branch so the smell test in `parseWordGroupingPoolText`
+ * (`startsWith('{')`) stays one glance.
+ */
+function parseWordGroupingCsvText(text: string): {
+  entries: unknown[]
+  totalRows: number
+  skippedRows: number
+} {
+  const lines = text
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean)
+  if (lines.length < 2) return { entries: [], totalRows: 0, skippedRows: 0 }
+
+  const headers = splitCsvLine(lines[0]).map((h) => h.trim().toLowerCase())
+  const required = ['puzzle', 'category', 'difficulty', 'word1', 'word2', 'word3', 'word4']
+  if (!required.every((c) => headers.includes(c))) {
+    // Header missing — treat every data line as skipped so the UI reports 0 loaded.
+    return { entries: [], totalRows: lines.length - 1, skippedRows: lines.length - 1 }
+  }
+
+  const byPuzzle = new Map<string, { category: string; difficulty: number; words: string[] }[]>()
+  let totalRows = 0
+  let skippedRows = 0
+  for (let i = 1; i < lines.length; i += 1) {
+    totalRows += 1
+    const cols = splitCsvLine(lines[i])
+    const row: Record<string, string> = {}
+    for (let j = 0; j < headers.length; j += 1) {
+      row[headers[j]] = (cols[j] ?? '').trim()
+    }
+    const key = row.puzzle
+    const category = row.category
+    const difficulty = Number(row.difficulty)
+    const words = [row.word1, row.word2, row.word3, row.word4].filter(Boolean)
+    if (!key || !category || ![1, 2, 3, 4].includes(difficulty) || words.length !== 4) {
+      skippedRows += 1
+      continue
+    }
+    const list = byPuzzle.get(key) ?? []
+    list.push({ category, difficulty, words })
+    byPuzzle.set(key, list)
+  }
+
+  const entries: unknown[] = []
+  for (const groups of byPuzzle.values()) {
+    if (groups.length !== 4) {
+      // A partial puzzle wasted its rows — count them as skipped.
+      skippedRows += groups.length
+      continue
+    }
+    groups.sort((a, b) => a.difficulty - b.difficulty)
+    entries.push({ groups })
+  }
+  return { entries, totalRows, skippedRows }
+}
+
+/** Minimal quote-aware CSV field splitter (same shape as `src/lib/csv-parse.ts`) to keep this
+ * file self-contained and importable by any client bundle without dragging that helper in. */
+function splitCsvLine(line: string): string[] {
+  const result: string[] = []
+  let current = ''
+  let inQuotes = false
+  for (let i = 0; i < line.length; i += 1) {
+    const ch = line[i]
+    if (ch === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        current += '"'
+        i += 1
+        continue
+      }
+      inQuotes = !inQuotes
+      continue
+    }
+    if (ch === ',' && !inQuotes) {
+      result.push(current)
+      current = ''
+      continue
+    }
+    current += ch
+  }
+  result.push(current)
+  return result
+}
