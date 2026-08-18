@@ -6,24 +6,51 @@ import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
 
 type Props = {
-  game: Pick<Game, 'title' | 'game_type'> | null
+  game: Pick<Game, 'title' | 'game_type' | 'result_reason'> | null
+}
+
+/**
+ * Copy is switched on `result_reason` so a lobby the idle-cron closed doesn't
+ * read like a game that finished normally — the user should know WHY the link
+ * is dead so they don't blame the app. Mirrors the web GameEndedScreen.
+ */
+function endedCopy(reason: string | null | undefined): { headline: string; body: string; emoji: string } {
+  switch (reason) {
+    case 'idle_timeout':
+      return {
+        emoji: '⌛',
+        headline: 'Lobby closed — nobody joined',
+        body: 'This lobby was open for 15 minutes with no activity, so we closed it. Start a new one when everyone’s ready.',
+      }
+    case 'host_cancelled':
+      return {
+        emoji: '❌',
+        headline: 'The host cancelled this game',
+        body: 'The host called it off before the lobby opened. Start a new game to play again.',
+      }
+    default:
+      return {
+        emoji: '🏁',
+        headline: 'This game has ended',
+        body: 'This link is no longer active. Join a new game with a code from the home screen.',
+      }
+  }
 }
 
 export function GameEndedScreen({ game }: Props) {
   const styles = useThemedStyles(makeStyles)
   const router = useRouter()
   const label = game ? gameLabel(game.game_type) : 'Game'
+  const copy = endedCopy(game?.result_reason ?? null)
 
   return (
     <View style={styles.container}>
       <View style={styles.card}>
-        <Text style={styles.emoji}>🏁</Text>
+        <Text style={styles.emoji}>{copy.emoji}</Text>
         <Text style={styles.title}>{game?.title ?? 'This game'}</Text>
         <Text style={styles.badge}>{label}</Text>
-        <Text style={styles.heading}>This game has ended</Text>
-        <Text style={styles.body}>
-          This link is no longer active. Join a new game with a code from the home screen.
-        </Text>
+        <Text style={styles.heading}>{copy.headline}</Text>
+        <Text style={styles.body}>{copy.body}</Text>
         <Pressable style={styles.button} onPress={() => router.replace('/')}>
           <Text style={styles.buttonText}>Go home</Text>
         </Pressable>
