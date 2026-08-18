@@ -45,7 +45,7 @@ import {
   saveSoloState,
   wasSoloStateScored,
 } from '@/lib/solo-state-store'
-import { logSoloPlayStarted } from '@/lib/solo-play'
+import { logSoloPlayFinished, logSoloPlayStarted, resetSoloSessionId, soloSessionId } from '@/lib/solo-play'
 
 const BOT_THINK_MS = 700
 const HUMAN_SIDE: AyoSide = 'a'
@@ -102,6 +102,9 @@ export default function SoloAyoScreen() {
       setScoreboard(next)
       void markSoloStateScored('solo-ayo-state-v1')
     })
+    void soloSessionId('ayo').then((sessionId) =>
+      logSoloPlayFinished({ gameType: 'ayo', outcome, sessionId, difficulty })
+    )
   }, [state])
 
   // Bot turn — fire after a short delay so the play is visible.
@@ -139,6 +142,7 @@ export default function SoloAyoScreen() {
     scoredRef.current = false
     clearAnimation()
     void clearSoloState('solo-ayo-state-v1')
+    void resetSoloSessionId('ayo')
     setState(initAyoSolo())
     logSoloPlayStarted('ayo', difficulty)
   }, [clearAnimation, difficulty])
@@ -209,7 +213,6 @@ export default function SoloAyoScreen() {
             <View style={styles.scoreRow}>
               <ScoreCell label="You" value={scoreboard.human} />
               <ScoreCell label="Bot" value={scoreboard.bot} />
-              <ScoreCell label="Draws" value={scoreboard.draws} />
             </View>
 
             <View style={styles.finishActions}>

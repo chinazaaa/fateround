@@ -34,7 +34,7 @@ import {
 } from '@/lib/uno-solo'
 import { pickBotAction, type UnoBotDifficulty } from '@/lib/uno-bot'
 import { isDrawPileDepleted } from '@/lib/uno'
-import { logSoloPlayStarted } from '@/lib/solo-play'
+import { logSoloPlayFinished, logSoloPlayStarted, resetSoloSessionId, soloSessionId } from '@/lib/solo-play'
 import { readSoloScoreboard, recordSoloOutcome, resetSoloScoreboard, type SoloScoreboard } from '@/lib/solo-scoreboard'
 import { SoloScoreboardRow } from '@/components/solo/SoloScoreboardRow'
 
@@ -107,6 +107,7 @@ export function SoloUnoClient() {
     if (!state || state.outcome == null || scoredRef.current) return
     const outcome: 'human' | 'bot' | 'draw' = state.outcome === 0 ? 'human' : state.outcome === 'draw' ? 'draw' : 'bot'
     setScoreboard(recordSoloOutcome('uno', outcome))
+    logSoloPlayFinished({ gameType: 'uno', outcome, sessionId: soloSessionId('uno'), difficulty })
     scoredRef.current = true
   }, [state])
 
@@ -184,6 +185,7 @@ export function SoloUnoClient() {
     clearPersistedState()
     setState(initUnoSolo())
     scoredRef.current = false
+    resetSoloSessionId('uno')
     logSoloPlayStarted('uno', difficulty)
   }, [difficulty])
 

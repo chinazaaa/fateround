@@ -66,3 +66,86 @@ export function logSoloPlayStarted(gameType: GameType, difficulty?: string | nul
     /* noop */
   }
 }
+
+const SOLO_SESSION_STORAGE_PREFIX = 'solo-session-id:'
+
+/**
+ * Session-scoped id for one solo game, minted on first ask and cleared when the client
+ * starts a fresh game. Two purposes:
+ *
+ * 1. Idempotency for the finish POST. `awarded_sessions(profile_id, session_id)` is the
+ *    lock the multiplayer award pass uses; solo reuses the same PK with a `solo:` prefix
+ *    so a retried finish (network blip → replay) collapses to one award instead of two.
+ *
+ * 2. Rehydrate-safe. A tab-reload mid-game restores state from sessionStorage; asking for
+ *    the id here returns the SAME id, so the finish that eventually fires still lines up
+ *    with the game the user actually played.
+ *
+ * A crypto-strong id is preferred where available — falls back to a timestamp-plus-random
+ * string that is still unique enough to key `awarded_sessions` on.
+ */
+export function soloSessionId(gameType: GameType): string {
+  if (typeof window === 'undefined') return `solo-ssr-${gameType}`
+  const key = `${SOLO_SESSION_STORAGE_PREFIX}${gameType}`
+  try {
+    const existing = window.sessionStorage.getItem(key)
+    if (existing) return existing
+    const fresh =
+      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+    window.sessionStorage.setItem(key, fresh)
+    return fresh
+  } catch {
+    return `solo-fallback-${gameType}-${Date.now()}`
+  }
+}
+
+/** Drop the current solo session id so the next call to `soloSessionId` mints a new one. */
+export function resetSoloSessionId(gameType: GameType): void {
+  if (typeof window === 'undefined') return
+  try {
+    window.sessionStorage.removeItem(`${SOLO_SESSION_STORAGE_PREFIX}${gameType}`)
+  } catch {
+    /* noop */
+  }
+}
+
+export type SoloFinishOutcome = 'human' | 'bot' | 'draw'
+
+export interface SoloFinishPayload {
+  gameType: GameType
+  outcome: SoloFinishOutcome
+  difficulty?: string | null
+  /** Elapsed play time in ms — used by streak/late-night counters if the server wants it. */
+  durationMs?: number | null
+  /**
+   * Session id that identifies this specific solo game. Get it from `soloSessionId`. The
+   * server keys idempotency on `(profile_id, solo:<sessionId>)` so a retried finish only
+   * counts once.
+   */
+  sessionId: string
+}
+
+/**
+ * Persist a finished solo game to the signed-in profile.
+ *
+ * Fire-and-forget: this runs behind the same finish handler that already updated the
+ * local scoreboard, and its result must never bounce back into game state. Silent
+ * no-op for guests (server 401s) — their local scoreboard is still authoritative.
+ */
+export function logSoloPlayFinished(payload: SoloFinishPayload): void {
+  if (typeof window === 'undefined') return
+  try {
+    void fetch('/api/solo-plays/finish', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(payload),
+      keepalive: true,
+    }).catch(() => {
+      /* noop */
+    })
+  } catch {
+    /* noop */
+  }
+}
