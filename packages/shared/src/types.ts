@@ -58,6 +58,7 @@ export type GameType =
   | 'landmine'
   | 'ping_pong'
   | 'word_grouping'
+  | 'wordle_room'
 
 export interface Game {
   id: string
