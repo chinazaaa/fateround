@@ -99,9 +99,14 @@ export function useDailyChallengeSession(gameType: DailyChallengeGameType): UseD
         } else {
           setPhase('playing')
         }
-      } catch {
+      } catch (err) {
         if (!cancelled) {
-          setError('Failed to load daily challenge')
+          // Surface the actual message so device-side debugging isn't blind. Falling back
+          // to the generic string kept the user staring at "Please try again later." with
+          // no clue what failed — a TypeError from a bad JSON parse or a network reject
+          // reads very differently and is the whole diagnostic.
+          const message = err instanceof Error ? err.message : String(err)
+          setError(`Failed to load daily challenge: ${message}`)
           setPhase('error')
         }
       }
