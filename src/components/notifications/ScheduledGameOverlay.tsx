@@ -16,6 +16,7 @@ import { gameTypeConfig, parseGameType } from '@/lib/game-types'
 import { pushSupported } from '@/lib/push-client'
 import { ScheduledHostActionsPanel } from '@/components/notifications/ScheduledHostActionsPanel'
 import { ShareInviteButton } from '@/components/ShareInviteButton'
+import { readHostToken } from '@/lib/host-session'
 
 type ScheduledGame = {
   id: string
@@ -256,9 +257,16 @@ export function ScheduledGameOverlay({ gameCode }: { gameCode: string }) {
 
   if (game.status !== 'scheduled') return null
 
+  // Localhost lookup — the host token lives per-game in localStorage; empty
+  // for anyone but the creator of this game on this browser.
+  const isHost = typeof window !== 'undefined' && !!readHostToken(gameCode)
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--background)] p-4">
-      <div className="mx-auto w-full max-w-md space-y-6 text-center">
+    // overflow-y-auto so the content is reachable on short viewports; the
+    // inner wrapper stops centering (items-center) once the content is
+    // taller than the viewport by letting the flow grow naturally.
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-[var(--background)]">
+      <div className="mx-auto w-full max-w-md space-y-6 text-center p-4 py-8">
         <Link href="/browse" className="inline-block text-sm font-semibold" style={{ color: 'var(--primary)' }}>
           ‹ Back to Browse
         </Link>
@@ -279,39 +287,53 @@ export function ScheduledGameOverlay({ gameCode }: { gameCode: string }) {
             </>
           ) : null}
         </div>
-        <div className="glass-card !p-4 space-y-3 text-left">
-          <p className="text-sm font-bold text-body">
-            {rsvpCount === 0 ? 'Be the first to RSVP' : `${rsvpCount} ${rsvpCount === 1 ? 'person' : 'people'} RSVP’d`}
-          </p>
-          {!rsvped ? (
-            <label className="block space-y-1">
-              <span className="text-xs uppercase tracking-wide text-muted">Your name (so the host knows it’s you)</span>
-              <input
-                type="text"
-                value={displayName}
-                onChange={(e) => setDisplayName(e.target.value.slice(0, 60))}
-                placeholder="e.g. Ada"
-                className="input-field w-full text-sm"
-                maxLength={60}
-              />
-            </label>
-          ) : null}
-          {error ? <p className="text-xs text-red-500">{error}</p> : null}
-          {permissionHint ? <p className="text-xs text-amber-500">{permissionHint}</p> : null}
-          <button
-            type="button"
-            onClick={() => void onRsvpToggle()}
-            disabled={busy}
-            className={`w-full text-sm py-2 ${rsvped ? 'btn-secondary' : 'btn-primary'} disabled:opacity-60`}
-          >
-            {busy ? 'Working…' : rsvped ? 'RSVP’d — tap to cancel' : 'RSVP'}
-          </button>
-          <p className="text-xs text-faint">
-            We’ll push you a link 15 minutes before it opens — tap it to join the lobby with the name above.
-          </p>
-        </div>
+        {isHost ? (
+          // Hosts don't RSVP to their own game — the seat is theirs. Show a
+          // short "you're hosting" card so the RSVP prompt doesn't confuse
+          // them; the reschedule/cancel controls sit further down.
+          <div className="glass-card !p-4 space-y-2 text-left">
+            <p className="text-sm font-bold text-body">You’re hosting this game</p>
+            <p className="text-xs text-muted">
+              {rsvpCount === 0
+                ? 'No one has RSVP’d yet — share the invite below.'
+                : `${rsvpCount} ${rsvpCount === 1 ? 'person has' : 'people have'} RSVP’d.`}
+            </p>
+          </div>
+        ) : (
+          <div className="glass-card !p-4 space-y-3 text-left">
+            <p className="text-sm font-bold text-body">
+              {rsvpCount === 0 ? 'Be the first to RSVP' : `${rsvpCount} ${rsvpCount === 1 ? 'person' : 'people'} RSVP’d`}
+            </p>
+            {!rsvped ? (
+              <label className="block space-y-1">
+                <span className="text-xs uppercase tracking-wide text-muted">Your name (so the host knows it’s you)</span>
+                <input
+                  type="text"
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value.slice(0, 60))}
+                  placeholder="e.g. Ada"
+                  className="input-field w-full text-sm"
+                  maxLength={60}
+                />
+              </label>
+            ) : null}
+            {error ? <p className="text-xs text-red-500">{error}</p> : null}
+            {permissionHint ? <p className="text-xs text-amber-500">{permissionHint}</p> : null}
+            <button
+              type="button"
+              onClick={() => void onRsvpToggle()}
+              disabled={busy}
+              className={`w-full text-sm py-2 ${rsvped ? 'btn-secondary' : 'btn-primary'} disabled:opacity-60`}
+            >
+              {busy ? 'Working…' : rsvped ? 'RSVP’d — tap to cancel' : 'RSVP'}
+            </button>
+            <p className="text-xs text-faint">
+              We’ll push you a link 15 minutes before it opens — tap it to join the lobby with the name above.
+            </p>
+          </div>
+        )}
 
-        {rsvped ? (
+        {rsvped || isHost ? (
           <div className="glass-card !p-4 space-y-3 text-left">
             <p className="text-sm font-bold text-body">Invite a friend along</p>
             <div className="rounded-lg border border-[var(--border)] bg-[var(--surface-inset-bg)] px-3 py-2">
