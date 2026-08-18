@@ -1,6 +1,7 @@
 /**
  * 2D Canvas Renderer for Troll Run.
- * Renders tiles, animated exit door, spikes, hazard entities, player sprite with directional eyes, and particles.
+ * Renders tiles, animated exit door, spikes, hazard entities, player sprite with directional eyes, particles,
+ * and other players' real-time translucent ghost avatars.
  */
 
 import {
@@ -8,6 +9,7 @@ import {
   TROLL_RUN_INTERNAL_WIDTH,
   TROLL_RUN_TILE_SIZE,
   TrollRunTileType,
+  type GhostRunner,
   type PlayerState,
   type TrollMovingEntity,
   type TrollRunLevel,
@@ -80,7 +82,7 @@ export class CanvasRenderer {
     particles: ParticleManager,
     movingEntities: TrollMovingEntity[] = [],
     levelTitle = '',
-    timeRemaining?: number
+    ghosts: GhostRunner[] = []
   ): void {
     const ts = TROLL_RUN_TILE_SIZE
 
@@ -113,13 +115,14 @@ export class CanvasRenderer {
           ctx.fillStyle = '#fbcfe8'
           ctx.fillRect(x + 3, y + 3, ts - 6, ts - 6)
         } else if (tile === TrollRunTileType.COIN) {
-          // Animated coin
           ctx.fillStyle = '#facc15'
           ctx.beginPath()
-          ctx.arc(x + ts / 2, y + ts / 2, 4, 0, Math.PI * 2)
+          ctx.arc(x + ts / 2, y + ts / 2, ts / 3, 0, Math.PI * 2)
           ctx.fill()
           ctx.fillStyle = '#fef08a'
-          ctx.fillRect(x + ts / 2 - 1, y + ts / 2 - 2, 2, 4)
+          ctx.beginPath()
+          ctx.arc(x + ts / 2 - 1, y + ts / 2 - 1, ts / 6, 0, Math.PI * 2)
+          ctx.fill()
         } else if (
           tile === TrollRunTileType.SPIKE_UP ||
           tile === TrollRunTileType.SPIKE_DOWN ||
@@ -152,7 +155,12 @@ export class CanvasRenderer {
     // Render Exit Door
     this.renderDoor(ctx, level.door.x, level.door.y)
 
-    // Render Player
+    // Render other players' real-time ghost avatars on this level
+    for (const ghost of ghosts) {
+      this.renderGhost(ctx, ghost)
+    }
+
+    // Render Main Player
     if (player.alive) {
       this.renderPlayer(ctx, player)
     }
@@ -220,6 +228,42 @@ export class CanvasRenderer {
     // Door Knob / Sparkle
     ctx.fillStyle = '#ffffff'
     ctx.fillRect(Math.round(x + dw - 4), Math.round(y + dh / 2), 2, 2)
+  }
+
+  public renderGhost(ctx: CanvasRenderingContext2D, ghost: GhostRunner): void {
+    if (!ghost.alive) return
+
+    const gx = Math.round(ghost.x)
+    const gy = Math.round(ghost.y)
+    const gw = 12
+    const gh = 14
+
+    ctx.save()
+
+    // Translucent ghost silhouette
+    ctx.globalAlpha = 0.55
+    ctx.fillStyle = ghost.color || '#38bdf8'
+    ctx.fillRect(gx, gy, gw, gh)
+
+    // Ghost directional eyes
+    ctx.fillStyle = '#090d16'
+    const eyeOffsetX = ghost.facing === 'right' ? 6 : 2
+    ctx.fillRect(gx + eyeOffsetX, gy + 3, 2, 3)
+    ctx.fillRect(gx + eyeOffsetX + 3, gy + 3, 2, 3)
+
+    // Floating Name Tag above head
+    ctx.globalAlpha = 0.95
+    ctx.font = 'bold 7px sans-serif'
+    ctx.textAlign = 'center'
+    ctx.strokeStyle = '#000000'
+    ctx.lineWidth = 2
+    ctx.lineJoin = 'round'
+    const tag = ghost.playerName.length > 7 ? ghost.playerName.slice(0, 6) + '…' : ghost.playerName
+    ctx.strokeText(tag, gx + gw / 2, gy - 2)
+    ctx.fillStyle = '#ffffff'
+    ctx.fillText(tag, gx + gw / 2, gy - 2)
+
+    ctx.restore()
   }
 
   private renderPlayer(ctx: CanvasRenderingContext2D, player: PlayerState): void {

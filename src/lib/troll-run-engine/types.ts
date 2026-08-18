@@ -30,6 +30,55 @@ export interface PlayerState {
   gravityInverted: boolean
 }
 
+export interface GhostRunner {
+  playerId: string
+  playerName: string
+  color: string
+  levelIndex: number
+  x: number
+  y: number
+  targetX: number
+  targetY: number
+  vx: number
+  vy: number
+  facing: 'left' | 'right'
+  alive: boolean
+  lastUpdate: number
+}
+
+export interface GhostPositionPayload {
+  playerId: string
+  playerName: string
+  levelIndex: number
+  x: number
+  y: number
+  vx: number
+  vy: number
+  facing: 'left' | 'right'
+  alive: boolean
+}
+
+export const GHOST_COLORS = [
+  '#38bdf8', // sky cyan
+  '#f43f5e', // vibrant rose
+  '#a855f7', // purple
+  '#22c55e', // emerald
+  '#fbbf24', // amber yellow
+  '#f97316', // orange
+  '#06b6d4', // cyan teal
+  '#ec4899', // hot pink
+] as const
+
+export function getPlayerGhostColor(playerId: string): string {
+  let hash = 0
+  for (let i = 0; i < playerId.length; i++) {
+    hash = (hash << 5) - hash + playerId.charCodeAt(i)
+    hash |= 0
+  }
+  const idx = Math.abs(hash) % GHOST_COLORS.length
+  return GHOST_COLORS[idx]
+}
+
 export interface ActiveTween {
   id: string
   target: any
@@ -58,4 +107,5 @@ export interface EngineCallbacks {
   onLevelClear?: (levelId: string, timeMs: number, deathCount: number) => void
   onAllLevelsCleared?: (totalTimeMs: number, totalDeaths: number) => void
   onSound?: (soundName: 'jump' | 'death' | 'clear' | 'trap' | 'coin' | 'invert') => void
+  onPlayerPosition?: (pos: GhostPositionPayload) => void
 }

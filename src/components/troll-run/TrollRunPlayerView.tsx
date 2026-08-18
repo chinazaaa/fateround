@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { useGameTableSync } from '@/hooks/useGameTableSync'
@@ -154,6 +154,55 @@ export function TrollRunPlayerView({ gameCode }: { gameCode: string }) {
   const myState = useMemo(() => {
     return playerStates.find((s) => s.player_id === myPlayerId && s.current_round === (session?.current_round ?? 1))
   }, [playerStates, myPlayerId, session?.current_round])
+
+  const [ghosts, setGhosts] = useState<import('@/lib/troll-run-engine').GhostPositionPayload[]>([])
+  const broadcastChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null)
+
+  // Real-time peer ghost broadcast subscription
+  useEffect(() => {
+    if (!gameCode || !myPlayerId) return
+
+    const channel = supabase.channel(`realtime:troll_run_ghosts:${gameCode}`, {
+      config: { broadcast: { self: false } },
+    })
+
+    channel
+      .on('broadcast', { event: 'ghost_pos' }, ({ payload }) => {
+        if (payload && (payload as any).playerId !== myPlayerId) {
+          setGhosts((prev) => {
+            const idx = prev.findIndex((g) => g.playerId === (payload as any).playerId)
+            if (idx >= 0) {
+              const next = [...prev]
+              next[idx] = payload as import('@/lib/troll-run-engine').GhostPositionPayload
+              return next
+            }
+            return [...prev, payload as import('@/lib/troll-run-engine').GhostPositionPayload]
+          })
+        }
+      })
+      .subscribe()
+
+    broadcastChannelRef.current = channel
+
+    return () => {
+      channel.unsubscribe()
+      broadcastChannelRef.current = null
+    }
+  }, [gameCode, myPlayerId])
+
+  const handlePlayerPosition = useCallback((pos: import('@/lib/troll-run-engine').GhostPositionPayload) => {
+    if (broadcastChannelRef.current) {
+      broadcastChannelRef.current
+        .send({
+          type: 'broadcast',
+          event: 'ghost_pos',
+          payload: pos,
+        })
+        .catch(() => {
+          // best-effort broadcast
+        })
+    }
+  }, [])
 
   const worldLevels = useMemo(() => {
     return getWorldLevels(session?.current_world)
@@ -378,6 +427,10 @@ export function TrollRunPlayerView({ gameCode }: { gameCode: string }) {
         <TrollRunCanvas
           levels={worldLevels}
           initialLevelIndex={myState?.current_level_index ?? 0}
+          playerId={myPlayerId ?? ''}
+          playerName={playerNames.get(myPlayerId ?? '') ?? 'Runner'}
+          ghostPositions={ghosts}
+          onPlayerPosition={handlePlayerPosition}
           onDeath={handleDeath}
           onLevelClear={handleLevelClear}
           onAllLevelsCleared={handleAllLevelsCleared}

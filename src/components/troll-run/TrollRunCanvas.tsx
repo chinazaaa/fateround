@@ -6,16 +6,21 @@ import {
   TROLL_RUN_INTERNAL_WIDTH,
   TrollRunEngine,
   type EngineCallbacks,
+  type GhostPositionPayload,
   type TrollRunLevel,
 } from '@/lib/troll-run-engine'
 
 export interface TrollRunCanvasProps {
   levels: TrollRunLevel[]
   initialLevelIndex?: number
+  playerId?: string
+  playerName?: string
+  ghostPositions?: GhostPositionPayload[]
   onDeath?: (levelId: string, deaths: number) => void
   onLevelClear?: (levelId: string, timeMs: number, deaths: number) => void
   onAllLevelsCleared?: (totalTimeMs: number, totalDeaths: number) => void
   onStatsChange?: (stats: ReturnType<TrollRunEngine['getCurrentStats']>) => void
+  onPlayerPosition?: (pos: GhostPositionPayload) => void
   showTouchControls?: boolean
   muted?: boolean
   theme?: 'dark' | 'retro' | 'neon'
@@ -25,10 +30,14 @@ export interface TrollRunCanvasProps {
 export function TrollRunCanvas({
   levels,
   initialLevelIndex = 0,
+  playerId = '',
+  playerName = '',
+  ghostPositions = [],
   onDeath,
   onLevelClear,
   onAllLevelsCleared,
   onStatsChange,
+  onPlayerPosition,
   showTouchControls = false,
   muted = false,
   theme = 'dark',
@@ -66,9 +75,13 @@ export function TrollRunCanvas({
           onStatsChange(engineRef.current.getCurrentStats())
         }
       },
+      onPlayerPosition: (pos) => {
+        onPlayerPosition?.(pos)
+      },
     }
 
     const engine = new TrollRunEngine(levels, callbacks)
+    engine.setPlayerIdentity(playerId, playerName)
     engine.attachCanvas(canvas)
     engine.setMuted(muted)
     engine.setTheme(theme)
@@ -83,7 +96,16 @@ export function TrollRunCanvas({
       engine.destroy()
       engineRef.current = null
     }
-  }, [levels, initialLevelIndex])
+  }, [levels, initialLevelIndex, playerId, playerName])
+
+  // Sync ghost positions from peers
+  useEffect(() => {
+    const engine = engineRef.current
+    if (!engine || !ghostPositions.length) return
+    for (const ghost of ghostPositions) {
+      engine.setGhostPosition(ghost)
+    }
+  }, [ghostPositions])
 
   // Sync mute state
   useEffect(() => {
