@@ -40,6 +40,12 @@ const WORDLE_CSS = `
   color: var(--text);
 }
 .wl-tile--current { border-color: var(--border-strong); }
+.wl-tile--clickable { cursor: pointer; user-select: none; }
+.wl-tile--clickable:hover { border-color: #3b82f6; }
+.wl-tile--active {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.4);
+}
 .wl-tile--graded { border-color: transparent; background: var(--tile-bg); color: #fff; }
 .wl-tile--reveal { border-color: var(--primary); }
 .wl-tile--flip {
@@ -142,6 +148,8 @@ interface Props {
   disabled?: boolean
   message?: string | null
   shake?: boolean
+  selectedIndex?: number
+  onSelectIndex?: (index: number) => void
   onAddLetter: (letter: string) => void
   onBackspace: () => void
   onSubmit: () => void
@@ -156,6 +164,8 @@ export function WordleRoomBoard({
   disabled = false,
   message,
   shake = false,
+  selectedIndex,
+  onSelectIndex,
   onAddLetter,
   onBackspace,
   onSubmit,
@@ -226,22 +236,38 @@ export function WordleRoomBoard({
     )
   }
 
-  const renderCurrentRow = () => (
-    <div
-      key="current"
-      className={`wl-row ${shake ? 'wl-row--shake' : ''}`}
-      style={{ gridTemplateColumns: `repeat(${wordLength}, minmax(0, 1fr))` }}
-    >
-      {Array.from({ length: wordLength }).map((_, i) => {
-        const ch = current[i] ?? ''
-        return (
-          <span key={i} className={`wl-tile wl-tile--current ${i === current.length - 1 ? 'wl-tile--pop' : ''}`}>
-            {ch.toUpperCase()}
-          </span>
-        )
-      })}
-    </div>
-  )
+  const renderCurrentRow = () => {
+    const activeIndex = selectedIndex !== undefined ? Math.min(selectedIndex, wordLength - 1) : 0
+    return (
+      <div
+        key="current"
+        className={`wl-row ${shake ? 'wl-row--shake' : ''}`}
+        style={{ gridTemplateColumns: `repeat(${wordLength}, minmax(0, 1fr))` }}
+      >
+        {Array.from({ length: wordLength }).map((_, i) => {
+          const rawCh = current[i] ?? ''
+          const ch = rawCh === ' ' ? '' : rawCh
+          const isActive = !gameOver && !disabled && i === activeIndex
+          const isClickable = !gameOver && !disabled
+          return (
+            <span
+              key={i}
+              onClick={() => {
+                if (isClickable && onSelectIndex) {
+                  onSelectIndex(i)
+                }
+              }}
+              className={`wl-tile wl-tile--current ${isClickable ? 'wl-tile--clickable' : ''} ${
+                isActive ? 'wl-tile--active' : ''
+              }`}
+            >
+              {ch.toUpperCase()}
+            </span>
+          )
+        })}
+      </div>
+    )
+  }
 
   const renderRevealRow = () => (
     <div key="reveal" className="wl-row" style={{ gridTemplateColumns: `repeat(${wordLength}, minmax(0, 1fr))` }}>

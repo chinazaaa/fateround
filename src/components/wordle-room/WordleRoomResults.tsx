@@ -70,8 +70,7 @@ export function WordleRoomResults({
                     {isMe ? <span className="label-teal font-semibold"> (you)</span> : null}
                   </p>
                   <p className="text-xs text-muted">
-                    {row.words_solved} word{row.words_solved === 1 ? '' : 's'} · {row.total_guesses} guess
-                    {row.total_guesses === 1 ? '' : 'es'}
+                    {row.words_solved} word{row.words_solved === 1 ? '' : 's'} solved
                   </p>
                 </div>
                 <p
@@ -79,7 +78,7 @@ export function WordleRoomResults({
                     isWinner ? 'gradient-title' : 'text-muted'
                   }`}
                 >
-                  {row.finished ? 'Done' : '—'}
+                  {row.total_score} pts
                 </p>
               </div>
             )

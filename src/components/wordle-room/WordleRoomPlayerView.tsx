@@ -85,6 +85,7 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
   const [myFinished, setMyFinished] = useState(false)
   const [guesses, setGuesses] = useState<WordleRoomGradedGuess[]>([])
   const [current, setCurrent] = useState('')
+  const [selectedIndex, setSelectedIndex] = useState<number | undefined>(undefined)
   const [revealWord, setRevealWord] = useState('')
   const [message, setMessage] = useState<string | null>(null)
   const [shake, setShake] = useState(false)
@@ -163,6 +164,7 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
       setMyFinished(data.finished === true)
       setGuesses((data.guesses ?? []).map((g) => ({ word: g.guess, states: g.state })))
       setCurrent('')
+      setSelectedIndex(undefined)
       setRevealWord('')
     }
     if (data.status === 'finished') void load()
@@ -198,12 +200,28 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
 
   const loadProgress = useCallback(async () => {
     if (!roundId) return
-    const { data } = await supabase
-      .from('wordle_room_progress')
-      .select('*')
-      .eq('game_id', gameCode)
-      .eq('round_id', roundId)
-    if (data) setProgressRows(data as WordleRoomProgressRow[])
+    const [{ data: progData }, { data: guessData }] = await Promise.all([
+      supabase.from('wordle_room_progress').select('*').eq('game_id', gameCode).eq('round_id', roundId),
+      supabase
+        .from('wordle_room_guesses')
+        .select('player_id, points_awarded')
+        .eq('game_id', gameCode)
+        .eq('round_id', roundId),
+    ])
+    if (progData) {
+      const scoreMap: Record<string, number> = {}
+      if (guessData) {
+        for (const g of guessData) {
+          scoreMap[g.player_id] = (scoreMap[g.player_id] ?? 0) + (g.points_awarded ?? 0)
+        }
+      }
+      setProgressRows(
+        (progData as WordleRoomProgressRow[]).map((p) => ({
+          ...p,
+          total_score: scoreMap[p.player_id] ?? 0,
+        }))
+      )
+    }
   }, [gameCode, roundId])
 
   useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
@@ -248,16 +266,14 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
         (payload) => {
           void loadProgress()
           const row = payload.new as Partial<WordleRoomProgressRow>
-          if (row && row.player_id === myPlayerId && game?.status === 'active') {
-            void fetchStatus()
-          }
+          if (row.player_id === myPlayerId) void fetchStatus()
         }
       )
       .subscribe()
     return () => {
       void supabase.removeChannel(ch)
     }
-  }, [gameCode, loadProgress, fetchStatus, myPlayerId, game?.status])
+  }, [gameCode, myPlayerId, loadProgress, fetchStatus])
 
   useEffect(() => {
     const ch = supabase
@@ -339,44 +355,45 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
 
   const { context: lateJoinContext, loading: lateJoinContextLoading } = useLateJoinContext(
     gameCode,
-    game,
-    screen === 'late_join_choice',
-    secondsLeft
-  )
-  const { context: viewerPromoteContext } = useLateJoinContext(
-    gameCode,
-    game,
-    isViewer && screen === 'playing',
-    secondsLeft
+    game?.game_type,
+    game?.status,
+    !myPlayerId
   )
 
-  const handlePlayerLeft = () => {
-    clearPlayerSession(gameCode)
-    setMyPlayerId(null)
-    void load()
-  }
+  const viewerPromoteContext = useMemo(() => {
+    if (!game || !myPlayerId || !me || !playerIsViewer(me, game)) return null
+    return { playerDetail: me }
+  }, [game, myPlayerId, me])
 
-  const [replayReadyPending, setReplayReadyPending] = useState(false)
+  const handlePlayerLeft = useCallback(
+    async (leftPlayerId: string) => {
+      setPlayers((prev) => prev.filter((p) => p.id !== leftPlayerId))
+      if (leftPlayerId === myPlayerId) {
+        clearPlayerSession(gameCode)
+        setMyPlayerId(null)
+        await load()
+      }
+    },
+    [gameCode, myPlayerId, setMyPlayerId, setPlayers, load]
+  )
+
   const toggleReplayReady = useCallback(
     async (ready: boolean) => {
-      if (!myResumeToken) {
-        toastError('Your player session expired — rejoin to continue')
-        return
-      }
-      setReplayReadyPending(true)
+      if (!myResumeToken) return
       try {
-        const res = await fetch('/api/players/ready', {
+        const res = await fetch(`/api/games/${gameCode}/replay-ready`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ gameId: gameCode, resumeToken: myResumeToken, ready }),
+          body: JSON.stringify({ resumeToken: myResumeToken, ready }),
         })
-        const data = await res.json().catch(() => ({}))
-        if (!res.ok) throw new Error(data.error ?? 'Failed to update ready')
-        await load()
-      } catch (err) {
-        toastError(err instanceof Error ? err.message : 'Failed to update ready')
-      } finally {
-        setReplayReadyPending(false)
+        const json = await res.json()
+        if (!res.ok) {
+          toastError(json.error ?? 'Could not update replay status')
+          return
+        }
+        void load()
+      } catch {
+        toastError('Failed to update replay status')
       }
     },
     [gameCode, myResumeToken, load, toastError]
@@ -387,20 +404,56 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
       const ch = key.toLowerCase()
       if (!/^[a-z]$/.test(ch)) return
       setMessage(null)
-      setCurrent((c) => (c.length >= wordLength ? c : c + ch))
+      setCurrent((c) => {
+        const letters = Array.from({ length: wordLength }, (_, i) => (c[i] && c[i] !== ' ' ? c[i] : ' '))
+        let idx = selectedIndex
+        if (idx === undefined) {
+          const firstEmpty = letters.findIndex((l) => l === ' ')
+          idx = firstEmpty !== -1 ? firstEmpty : wordLength - 1
+        }
+        if (idx < 0 || idx >= wordLength) return c
+        letters[idx] = ch
+        const nextIndex = Math.min(idx + 1, wordLength - 1)
+        setSelectedIndex(nextIndex)
+        return letters.join('')
+      })
     },
-    [wordLength]
+    [wordLength, selectedIndex]
   )
 
   const backspace = useCallback(() => {
     setMessage(null)
-    setCurrent((c) => c.slice(0, -1))
-  }, [])
+    setCurrent((c) => {
+      const letters = Array.from({ length: wordLength }, (_, i) => (c[i] && c[i] !== ' ' ? c[i] : ' '))
+      let idx = selectedIndex
+      if (idx === undefined) {
+        let lastFilled = -1
+        for (let i = wordLength - 1; i >= 0; i--) {
+          if (letters[i] !== ' ') {
+            lastFilled = i
+            break
+          }
+        }
+        idx = lastFilled !== -1 ? lastFilled : 0
+      }
+      if (idx < 0 || idx >= wordLength) return c
+      if (letters[idx] !== ' ') {
+        // Clear character at active index, keep others fixed
+        letters[idx] = ' '
+      } else if (idx > 0) {
+        // If already blank, move back one slot and clear it
+        letters[idx - 1] = ' '
+        setSelectedIndex(idx - 1)
+      }
+      return letters.join('')
+    })
+  }, [wordLength, selectedIndex])
 
   const submitGuess = useCallback(() => {
     if (!currentWord || !myResumeToken || timeUp || isViewer || myFinished) return
     if (submitLockRef.current) return
-    if (current.length < wordLength) {
+    const trimmedGuess = current.replace(/\s+/g, '')
+    if (trimmedGuess.length < wordLength || current.includes(' ')) {
       setMessage('Not enough letters')
       setShake(true)
       setTimeout(() => setShake(false), 500)
@@ -475,11 +528,10 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
   ])
 
   const standings: WordleRoomStandingRow[] = useMemo(
-    () => tallyWordleRoomScores(progressRows, players),
-    [progressRows, players]
+    () => tallyWordleRoomScores(progressRows, players, wordCount),
+    [progressRows, players, wordCount]
   )
-
-  const myStanding = standings.find((s) => s.player_id === myPlayerId)
+  const myStanding = useMemo(() => standings.find((s) => s.player_id === myPlayerId), [standings, myPlayerId])
 
   useRosterBase(game?.status === 'active' || game?.status === 'finished' ? players : undefined, game, myPlayerId)
   const rosterScores = useMemo(
@@ -714,6 +766,8 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
             disabled={boardDisabled}
             message={message}
             shake={shake}
+            selectedIndex={selectedIndex}
+            onSelectIndex={setSelectedIndex}
             onAddLetter={addLetter}
             onBackspace={backspace}
             onSubmit={submitGuess}
@@ -729,13 +783,11 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
               const isMe = row.player_id === myPlayerId
               return (
                 <div key={row.player_id} className="flex items-center justify-between text-sm">
-                  <span className={`font-medium truncate ${isMe ? 'text-[var(--primary)]' : ''}`}>
+                  <span className={`font-medium truncate ${isMe ? 'text-[var(--primary)] font-bold' : ''}`}>
                     {i + 1}. {row.name}
                     {isMe ? ' (you)' : ''}
                   </span>
-                  <span className="font-bold tabular-nums text-muted">
-                    {row.words_solved} · {row.finished ? 'Done' : `word ${row.word_index + 1}`}
-                  </span>
+                  <span className="font-bold tabular-nums text-muted">{row.total_score} pts</span>
                 </div>
               )
             })

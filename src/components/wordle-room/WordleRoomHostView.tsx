@@ -245,27 +245,44 @@ export function WordleRoomHostView({ gameCode, hostToken }: { gameCode: string; 
 
   useEffect(() => {
     if (!roundId) return
+    const fetchHostProgress = () => {
+      Promise.all([
+        supabase.from('wordle_room_progress').select('*').eq('game_id', gameCode).eq('round_id', roundId),
+        supabase
+          .from('wordle_room_guesses')
+          .select('player_id, points_awarded')
+          .eq('game_id', gameCode)
+          .eq('round_id', roundId),
+      ]).then(([{ data: progData }, { data: guessData }]) => {
+        if (progData) {
+          const scoreMap: Record<string, number> = {}
+          if (guessData) {
+            for (const g of guessData) {
+              scoreMap[g.player_id] = (scoreMap[g.player_id] ?? 0) + (g.points_awarded ?? 0)
+            }
+          }
+          setProgressRows(
+            (progData as WordleRoomProgressRow[]).map((p) => ({
+              ...p,
+              total_score: scoreMap[p.player_id] ?? 0,
+            }))
+          )
+        }
+      })
+    }
+    fetchHostProgress()
     const ch = supabase
       .channel(`wordle_room_host_progress_${gameCode}`)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'wordle_room_progress', filter: `game_id=eq.${gameCode}` },
-        () => {
-          supabase
-            .from('wordle_room_progress')
-            .select('*')
-            .eq('game_id', gameCode)
-            .eq('round_id', roundId)
-            .then(({ data }) => {
-              if (data) setProgressRows(data as WordleRoomProgressRow[])
-            })
-        }
+        () => fetchHostProgress()
       )
       .subscribe()
     return () => {
       void supabase.removeChannel(ch)
     }
-  }, [roundId, gameCode])
+  }, [gameCode, roundId])
 
   async function startGame() {
     if (starting) return

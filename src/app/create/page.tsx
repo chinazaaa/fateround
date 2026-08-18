@@ -1926,6 +1926,7 @@ function CreateGameInner() {
     isWordScramble ||
     isWordGrouping ||
     isWordHunt ||
+    isWordleRoom ||
     isMatchingPairs
   const isTriviaQuickCreate = isTrivia
   const needsParticipantStep =

@@ -75,6 +75,7 @@ export interface WordleRoomProgressRow {
   current_word_guesses: number
   words_solved: number
   total_guesses: number
+  total_score?: number
   total_time_ms: number | null
   finished: boolean
   finished_at: string | null
@@ -88,6 +89,7 @@ export interface WordleRoomStandingRow {
   word_index: number
   words_solved: number
   total_guesses: number
+  total_score: number
   total_time_ms: number | null
   finished: boolean
 }
@@ -345,6 +347,7 @@ export interface WordleRoomStandingInput {
   player_id: string
   words_solved: number
   total_guesses: number
+  total_score?: number
   total_time_ms: number | null
   finished: boolean
 }
@@ -360,6 +363,7 @@ export interface WordleRoomStandingInput {
 export function rankWordleRoomStandings<T extends WordleRoomStandingInput>(rows: readonly T[]): T[] {
   return [...rows].sort(
     (a, b) =>
+      (b.total_score ?? 0) - (a.total_score ?? 0) ||
       b.words_solved - a.words_solved ||
       a.total_guesses - b.total_guesses ||
       (a.finished ? (a.total_time_ms ?? Number.MAX_SAFE_INTEGER) : Number.MAX_SAFE_INTEGER) -
@@ -371,7 +375,7 @@ export function tallyWordleRoomScores(
   progress: ReadonlyArray<
     Pick<
       WordleRoomProgressRow,
-      'player_id' | 'word_index' | 'words_solved' | 'total_guesses' | 'total_time_ms' | 'finished'
+      'player_id' | 'word_index' | 'words_solved' | 'total_guesses' | 'total_time_ms' | 'finished' | 'total_score'
     >
   >,
   players: { id: string; name: string; spectator?: boolean | null }[]
@@ -381,12 +385,21 @@ export function tallyWordleRoomScores(
   return rankWordleRoomStandings(
     active.map((p) => {
       const row = byPlayer.get(p.id)
+      const wordsSolved = row?.words_solved ?? 0
+      const totalGuesses = row?.total_guesses ?? 0
+      const totalScore =
+        row?.total_score !== undefined
+          ? row.total_score
+          : wordsSolved > 0
+            ? Math.max(10, wordsSolved * 100 - Math.max(0, totalGuesses - wordsSolved) * 10)
+            : 0
       return {
         player_id: p.id,
         name: p.name,
         word_index: row?.word_index ?? 0,
-        words_solved: row?.words_solved ?? 0,
-        total_guesses: row?.total_guesses ?? 0,
+        words_solved: wordsSolved,
+        total_guesses: totalGuesses,
+        total_score: totalScore,
         total_time_ms: row?.total_time_ms ?? null,
         finished: row?.finished ?? false,
       }

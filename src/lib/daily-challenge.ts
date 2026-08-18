@@ -107,7 +107,7 @@ export const DAILY_GAME_TIMER: Record<DailyChallengeGameType, number> = {
   chess_mate: 180,
   codenames_codeword: 180,
   ludo_puzzle: 300,
-  wordle: 900,
+  wordle: 420,
 }
 
 // Whether the primary metric is time (lower is better) or score (higher is better).
