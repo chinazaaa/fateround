@@ -190,6 +190,12 @@ export interface Game {
   word_scramble_theme?: string | null
   word_scramble_difficulty?: WordScrambleDifficulty | string | null
   ping_pong_points_to_win?: number | null
+  /** Wordle Room — built-in category the race draws from. */
+  wordle_room_category?: string | null
+  /** Wordle Room — 5/10/15/20 words per race. */
+  wordle_room_word_count?: number | null
+  /** Wordle Room — optional library/custom pool ({word, hint?}[]) that overrides the category. */
+  wordle_room_custom_words?: unknown | null
 }
 
 export interface Player {

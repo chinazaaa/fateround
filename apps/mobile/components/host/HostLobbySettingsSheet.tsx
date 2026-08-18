@@ -109,6 +109,17 @@ import {
   type PingPongLobbyState,
 } from '@/components/host/lobby-settings/PingPongLobbySection'
 import {
+  WordleRoomLobbySection,
+  isWordleRoomLobbyGame,
+  type WordleRoomLobbyState,
+} from '@/components/host/lobby-settings/WordleRoomLobbySection'
+import {
+  WORDLE_ROOM_DEFAULT_TIMER,
+  WORDLE_ROOM_DEFAULT_WORD_COUNT,
+  clampWordleRoomCategory,
+  clampWordleRoomWordCount,
+} from '@fateround/shared/wordle-room'
+import {
   TeamRoundGamesSection,
   isTeamRoundGame,
   type TeamRoundState,
@@ -175,6 +186,7 @@ const LOBBY_MAX_PLAYERS_GAMES = new Set<GameType>([
   'quiplash',
   'i_call_on',
   'scrabble',
+  'wordle_room',
 ])
 
 /** Party games that play a single round — no editable "Rounds" control (mirrors web create). */
@@ -188,6 +200,7 @@ const ROUNDLESS_GAMES = new Set<GameType>([
   'mafia',
   'crossword',
   'word_search',
+  'wordle_room',
 ])
 
 /** Party games with no round/turn timer on `timer_seconds` (bingo uses a call interval). */
@@ -255,6 +268,7 @@ export function HostLobbySettingsSheet({
   const isCheckers = isCheckersLobbyGame(gameType)
   const isPingPong = isPingPongLobbyGame(gameType)
   const isTrivia = isTriviaLobbyGame(gameType)
+  const isWordleRoom = isWordleRoomLobbyGame(gameType)
   const ownsTimer =
     isCardGame ||
     isUno ||
@@ -268,7 +282,8 @@ export function HostLobbySettingsSheet({
     isCheckers ||
     isTeamRound ||
     isQuickDraw ||
-    isCodewords
+    isCodewords ||
+    isWordleRoom
   const roundOptions = partyRoundOptions(gameType)
   // Rounds apply only to multi-round party games — never single-round ones
   // (codewords, bingo, two truths, word hunt, sudoku, i-call-on, mafia) or board
@@ -413,6 +428,11 @@ export function HostLobbySettingsSheet({
   const [pingPong, setPingPong] = useState<PingPongLobbyState>(() => ({
     pointsToWin: game.ping_pong_points_to_win ?? 7,
     gameDurationSeconds: game.game_duration_seconds ?? 0,
+  }))
+  const [wordle, setWordle] = useState<WordleRoomLobbyState>(() => ({
+    category: clampWordleRoomCategory(game.wordle_room_category),
+    wordCount: clampWordleRoomWordCount(game.wordle_room_word_count ?? WORDLE_ROOM_DEFAULT_WORD_COUNT),
+    timerSeconds: game.timer_seconds ?? WORDLE_ROOM_DEFAULT_TIMER,
   }))
   const [quickDraw, setQuickDraw] = useState<QuickDrawLobbyState>(() => ({
     variant: game.quick_draw_variant === 'guess' ? 'guess' : 'lie',
@@ -580,6 +600,11 @@ export function HostLobbySettingsSheet({
       if (pingPong.pointsToWin !== game.ping_pong_points_to_win) board.ping_pong_points_to_win = pingPong.pointsToWin
       if (pingPong.gameDurationSeconds !== game.game_duration_seconds)
         board.game_duration_seconds = pingPong.gameDurationSeconds
+    }
+    if (isWordleRoom) {
+      if (wordle.category !== game.wordle_room_category) board.wordle_room_category = wordle.category
+      if (wordle.wordCount !== game.wordle_room_word_count) board.wordle_room_word_count = wordle.wordCount
+      if (wordle.timerSeconds !== game.timer_seconds) board.timer_seconds = wordle.timerSeconds
     }
     if (isQuickDraw) {
       if (quickDraw.variant !== game.quick_draw_variant) board.quick_draw_variant = quickDraw.variant
@@ -957,6 +982,10 @@ export function HostLobbySettingsSheet({
 
             {isPingPong ? (
               <PingPongLobbySection value={pingPong} onChange={(p) => setPingPong((prev) => ({ ...prev, ...p }))} />
+            ) : null}
+
+            {isWordleRoom ? (
+              <WordleRoomLobbySection value={wordle} onChange={(p) => setWordle((prev) => ({ ...prev, ...p }))} />
             ) : null}
 
             {isTeamRound ? (

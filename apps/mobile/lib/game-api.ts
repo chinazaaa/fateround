@@ -1279,6 +1279,12 @@ export type BoardLobbyPatch = {
   puzzle_theme_id?: string
   /** Host-supplied puzzle pool (a Library pack or "Your own" upload); server re-validates + normalises. */
   puzzle_custom_questions?: unknown[]
+  /** Wordle Room — built-in category (General English / Naija Slang / themed). */
+  wordle_room_category?: string
+  /** Wordle Room — 5/10/15/20 words per race. */
+  wordle_room_word_count?: number
+  /** Wordle Room — optional library-pack pool ({word, hint?}[]); clears when empty. */
+  wordle_room_words?: { word: string; hint?: string }[] | null
 }
 
 export function postLobbySettings(gameCode: string, hostToken: string, patch: BoardLobbyPatch) {
