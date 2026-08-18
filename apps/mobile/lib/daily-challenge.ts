@@ -150,6 +150,7 @@ export const NATIVE_DAILY_GAMES: ReadonlySet<DailyChallengeGameType> = new Set([
   'trivia',
   'word_scramble',
   'sudoku',
+  'wordle',
 ])
 
 export function hasNativeDailyPlay(gameType: DailyChallengeGameType): boolean {
