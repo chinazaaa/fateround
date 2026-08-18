@@ -7,6 +7,7 @@ import { HostLeaveSeatButton } from '@/components/host/HostLeaveSeatButton'
 import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout } from '@/components/host/HostGameLayout'
+import { LiveLeaderboardLayout } from '@/components/LiveLeaderboardLayout'
 import { HostLobby } from '@/components/host/HostLobby'
 import { GameInfoChips } from '@/components/game-lobby/GameInfoChips'
 import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
@@ -372,7 +373,38 @@ export function WordleRoomHostView({ gameCode, hostToken }: { gameCode: string; 
   const interactivePlay = <WordleRoomPlayerView gameCode={gameCode} />
 
   const watchRound = game.status === 'active' && (
-    <>
+    <LiveLeaderboardLayout
+      sidebar={
+        <div className="glass-card p-3 space-y-3">
+          <p className="label-caps text-xs">Live standings</p>
+          {standings.length === 0 ? (
+            <p className="text-xs text-muted">Waiting on players…</p>
+          ) : (
+            <ul className="divide-y divide-[var(--border)]">
+              {standings.map((row, i) => (
+                <li key={row.player_id} className="py-2 first:pt-0 last:pb-0 space-y-1">
+                  <div className="flex items-baseline justify-between gap-2 text-sm">
+                    <span className="font-semibold truncate text-body">
+                      {i + 1}. {row.name}
+                    </span>
+                    <span className="font-bold tabular-nums whitespace-nowrap text-body">{row.total_points} pts</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2 text-[11px] text-muted">
+                    <span className="truncate">{row.finished ? 'Finished' : `On word ${row.word_index + 1}`}</span>
+                    <span className="whitespace-nowrap">
+                      {row.words_solved} solved
+                      {row.hints_used_count > 0
+                        ? ` · ${row.hints_used_count} hint${row.hints_used_count > 1 ? 's' : ''}`
+                        : ''}
+                    </span>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      }
+    >
       <div className="flex items-center justify-between">
         <div>
           <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)]">Words solved</p>
@@ -412,21 +444,7 @@ export function WordleRoomHostView({ gameCode, hostToken }: { gameCode: string; 
           </div>
         </div>
       )}
-
-      <div className="space-y-3">
-        <p className="label-caps text-xs">Live standings</p>
-        {standings.map((row, i) => (
-          <div key={row.player_id} className="glass-card px-3 py-2 flex items-center justify-between">
-            <span className="text-sm font-medium">
-              {i + 1}. {row.name}
-            </span>
-            <span className="text-sm font-bold">
-              {row.words_solved}w · {row.finished ? 'done' : `word ${row.word_index + 1}`}
-            </span>
-          </div>
-        ))}
-      </div>
-    </>
+    </LiveLeaderboardLayout>
   )
 
   const manage = (
