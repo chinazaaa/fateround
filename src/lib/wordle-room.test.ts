@@ -146,15 +146,17 @@ describe('wordle room standings', () => {
     expect(ranked).toEqual(['d', 'c', 'b', 'a'])
   })
 
-  it('hint deduction: −300 from a solve, clamps at zero', () => {
+  it('hint deduction: −300 applies to solves and to losses (can go negative)', () => {
     // Guess-1 with perfect bonus = 1200; with hint = 900.
     expect(wordleRoomWordScore(1, 6, true, true)).toBe(900)
     // Guess-6 with hint = 400 − 300 = 100.
     expect(wordleRoomWordScore(6, 6, true, true)).toBe(100)
-    // Hypothetical low base (guess-6 on a 3-letter word: attempts=4, base=400) − 300 = 100.
+    // Guess-6 on a 3-letter word (attempts=4, base=400) − 300 = 100.
     expect(wordleRoomWordScore(4, 4, true, true)).toBe(100)
-    // A loss stays at 0 whether or not the hint was bought — no negative scores.
-    expect(wordleRoomWordScore(6, 6, false, true)).toBe(0)
+    // A loss after buying a hint costs the 300 too — the purchase is not refunded.
+    expect(wordleRoomWordScore(6, 6, false, true)).toBe(-300)
+    // A loss WITHOUT a hint still pays 0.
+    expect(wordleRoomWordScore(6, 6, false, false)).toBe(0)
     // evaluateWordleRoomGuess forwards hintUsed through to wordleRoomWordScore.
     const r = evaluateWordleRoomGuess(0, 0, true, 6, 5, true)
     expect(r.pointsAwarded).toBe(900)

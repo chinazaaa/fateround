@@ -11,6 +11,7 @@ import { GameInfoChips } from '@/components/game-lobby/GameInfoChips'
 import { GameLobbyWaitingPanel } from '@/components/game-lobby/GameLobbyWaitingPanel'
 import { NameJoinForm } from '@/components/game-lobby/NameJoinForm'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
+import { LiveLeaderboardLayout } from '@/components/LiveLeaderboardLayout'
 import { WordleRoomBoard, type WordleRoomGradedGuess } from '@/components/wordle-room/WordleRoomBoard'
 import { WordleRoomResults } from '@/components/wordle-room/WordleRoomResults'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
@@ -769,7 +770,7 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
           {toast.msg}
         </div>
       )}
-      <main className="pt-16 flex-1 px-3 py-4 max-w-lg mx-auto w-full space-y-4 overscroll-none">
+      <main className="pt-16 flex-1 px-3 py-4 max-w-3xl mx-auto w-full space-y-4 overscroll-none">
         {isViewer && (
           <ViewerModeBanner
             gameCode={gameCode}
@@ -781,146 +782,162 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
           />
         )}
 
-        <div className="flex items-center justify-between gap-3">
-          <span className="wl-cat-badge inline-block" style={{ background: 'var(--wl-correct)', color: '#fff' }}>
-            {categoryLabel}
-          </span>
-          <span className="text-sm font-semibold text-muted">
-            Word {Math.min(wordIndex + 1, wordCount)}/{wordCount}
-          </span>
-          {timeUp ? (
-            <span className="text-sm font-bold text-[var(--kill)]">Time's up</span>
-          ) : game && (game.timer_seconds ?? 0) > 0 ? (
-            <span className={`text-sm font-bold tabular-nums ${secondsLeft <= 10 ? 'text-[var(--marry)]' : ''}`}>
-              {timeLabel}
+        <LiveLeaderboardLayout
+          sidebar={
+            <div className="glass-card p-3 space-y-3">
+              <p className="label-caps text-xs">Race standings</p>
+              {standings.length === 0 ? (
+                <p className="text-xs text-muted">Waiting for the room to get going…</p>
+              ) : (
+                <ul className="divide-y divide-[var(--border)]">
+                  {standings.map((row, i) => {
+                    const isMe = row.player_id === myPlayerId
+                    return (
+                      <li key={row.player_id} className="py-2 first:pt-0 last:pb-0 space-y-1">
+                        <div className="flex items-baseline justify-between gap-2 text-sm">
+                          <span className={`font-semibold truncate ${isMe ? 'text-[var(--primary)]' : 'text-body'}`}>
+                            {i + 1}. {row.name}
+                            {isMe ? ' (you)' : ''}
+                          </span>
+                          <span className="font-bold tabular-nums whitespace-nowrap text-body">
+                            {row.total_points} pts
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between gap-2 text-[11px] text-muted">
+                          <span className="truncate">
+                            {row.finished ? 'Finished' : `On word ${row.word_index + 1}`}
+                          </span>
+                          <span className="whitespace-nowrap">
+                            {row.words_solved} solved
+                            {row.hints_used_count > 0
+                              ? ` · ${row.hints_used_count} hint${row.hints_used_count > 1 ? 's' : ''}`
+                              : ''}
+                          </span>
+                        </div>
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
+            </div>
+          }
+        >
+          <div className="flex items-center justify-between gap-3">
+            <span className="wl-cat-badge inline-block" style={{ background: 'var(--wl-correct)', color: '#fff' }}>
+              {categoryLabel}
             </span>
-          ) : (
-            <span className="text-sm font-semibold text-muted">Untimed</span>
-          )}
-        </div>
+            <span className="text-sm font-semibold text-muted">
+              Word {Math.min(wordIndex + 1, wordCount)}/{wordCount}
+            </span>
+            {timeUp ? (
+              <span className="text-sm font-bold text-[var(--kill)]">Time's up</span>
+            ) : game && (game.timer_seconds ?? 0) > 0 ? (
+              <span className={`text-sm font-bold tabular-nums ${secondsLeft <= 10 ? 'text-[var(--marry)]' : ''}`}>
+                {timeLabel}
+              </span>
+            ) : (
+              <span className="text-sm font-semibold text-muted">Untimed</span>
+            )}
+          </div>
 
-        {/* Colours are hardcoded (not `var(--wl-…)`) because the board's <style> block that
+          {/* Colours are hardcoded (not `var(--wl-…)`) because the board's <style> block that
             defines those vars only mounts when currentWord is set — the legend needs to
             render even before the first fetchStatus lands. */}
-        <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11px] text-muted">
-          <span className="inline-flex items-center gap-1">
-            <span className="inline-block h-3 w-3 rounded-sm" style={{ background: '#6aaa64' }} />
-            right letter, right spot
-          </span>
-          <span className="inline-flex items-center gap-1">
-            <span className="inline-block h-3 w-3 rounded-sm" style={{ background: '#c9b458' }} />
-            in the word, wrong spot
-          </span>
-          <span className="inline-flex items-center gap-1">
-            <span className="inline-block h-3 w-3 rounded-sm" style={{ background: '#787c7e' }} />
-            not in the word
-          </span>
-        </div>
-
-        {currentWord && (
-          <WordleRoomBoard
-            word={currentWord}
-            guesses={guesses}
-            current={current}
-            cursorAt={cursorAt}
-            onFocusTile={focusTile}
-            revealWord={revealWord}
-            maxAttempts={maxAttempts}
-            disabled={boardDisabled}
-            message={message}
-            shake={shake}
-            onAddLetter={addLetter}
-            onBackspace={backspace}
-            onSubmit={submitGuess}
-          />
-        )}
-
-        {/* Per-word hint purchase — only surfaces when the current word actually has a hint. */}
-        {currentWord &&
-          !myFinished &&
-          hintAvailable &&
-          (hintUsed && hintText ? (
-            <p className="text-center text-sm text-muted">
-              Hint: {hintText} <span className="text-faint">(−300 pts)</span>
-            </p>
-          ) : !hintUsed ? (
-            <div className="text-center">
-              <button
-                type="button"
-                onClick={() => void revealHint()}
-                disabled={boardDisabled}
-                className="fr-btn fr-btn--secondary fr-btn--sm"
-              >
-                Reveal hint (−300 pts)
-              </button>
-            </div>
-          ) : null)}
-
-        <div className="glass-card p-3 space-y-2">
-          <p className="label-caps text-xs">Race standings</p>
-          {standings.length === 0 ? (
-            <p className="text-xs text-muted">Waiting for the room to get going…</p>
-          ) : (
-            standings.map((row, i) => {
-              const isMe = row.player_id === myPlayerId
-              return (
-                <div key={row.player_id} className="flex items-center justify-between text-sm">
-                  <span className={`font-medium truncate ${isMe ? 'text-[var(--primary)]' : ''}`}>
-                    {i + 1}. {row.name}
-                    {isMe ? ' (you)' : ''}
-                  </span>
-                  <span className="font-bold tabular-nums text-muted">
-                    {row.total_points} pts · {row.words_solved} solved
-                    {row.hints_used_count > 0
-                      ? ` · ${row.hints_used_count} hint${row.hints_used_count > 1 ? 's' : ''}`
-                      : ''}
-                    {' · '}
-                    {row.finished ? 'Done' : `word ${row.word_index + 1}`}
-                  </span>
-                </div>
-              )
-            })
-          )}
-        </div>
-
-        <div className="flex items-center justify-between gap-2 text-xs text-muted px-1">
-          <span>
-            Solved: <strong className="text-body">{wordsSolved}</strong>/{wordCount} · Guesses:{' '}
-            <strong className="text-body">{totalGuesses}</strong>
-          </span>
-        </div>
-
-        {myFinished && (
-          <div className="glass-card p-3 text-center space-y-1">
-            <p className="font-semibold text-[var(--primary)]">You finished — waiting on others!</p>
-            <p className="text-xs text-muted">
-              {(() => {
-                const rank = standings.findIndex((s) => s.player_id === myPlayerId) + 1
-                const suffix = rank === 1 ? 'st' : rank === 2 ? 'nd' : rank === 3 ? 'rd' : 'th'
-                const ms = myStanding?.total_time_ms ?? null
-                const timeText =
-                  ms != null
-                    ? `${Math.floor(ms / 60000)}:${String(Math.floor((ms % 60000) / 1000)).padStart(2, '0')}`
-                    : '—'
-                return (
-                  <>
-                    {rank > 0 ? (
-                      <>
-                        <strong className="text-body">
-                          {rank}
-                          {suffix}
-                        </strong>{' '}
-                        so far ·{' '}
-                      </>
-                    ) : null}
-                    <strong className="text-body">{myStanding?.total_points ?? 0}</strong> pts · time{' '}
-                    <strong className="text-body">{timeText}</strong>
-                  </>
-                )
-              })()}
-            </p>
+          <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11px] text-muted">
+            <span className="inline-flex items-center gap-1">
+              <span className="inline-block h-3 w-3 rounded-sm" style={{ background: '#6aaa64' }} />
+              right letter, right spot
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <span className="inline-block h-3 w-3 rounded-sm" style={{ background: '#c9b458' }} />
+              in the word, wrong spot
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <span className="inline-block h-3 w-3 rounded-sm" style={{ background: '#787c7e' }} />
+              not in the word
+            </span>
           </div>
-        )}
+
+          {currentWord && (
+            <WordleRoomBoard
+              word={currentWord}
+              guesses={guesses}
+              current={current}
+              cursorAt={cursorAt}
+              onFocusTile={focusTile}
+              revealWord={revealWord}
+              maxAttempts={maxAttempts}
+              disabled={boardDisabled}
+              message={message}
+              shake={shake}
+              onAddLetter={addLetter}
+              onBackspace={backspace}
+              onSubmit={submitGuess}
+            />
+          )}
+
+          {/* Per-word hint purchase — only surfaces when the current word actually has a hint. */}
+          {currentWord &&
+            !myFinished &&
+            hintAvailable &&
+            (hintUsed && hintText ? (
+              <p className="text-center text-sm text-muted">
+                Hint: {hintText} <span className="text-faint">(−300 pts)</span>
+              </p>
+            ) : !hintUsed ? (
+              <div className="text-center">
+                <button
+                  type="button"
+                  onClick={() => void revealHint()}
+                  disabled={boardDisabled}
+                  className="fr-btn fr-btn--secondary fr-btn--sm"
+                >
+                  Reveal hint (−300 pts)
+                </button>
+              </div>
+            ) : null)}
+
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted px-1">
+            <span>
+              Solved: <strong className="text-body">{wordsSolved}</strong>/{wordCount}
+            </span>
+            <span>
+              Guesses: <strong className="text-body">{totalGuesses}</strong>
+            </span>
+          </div>
+
+          {myFinished && (
+            <div className="glass-card p-3 text-center space-y-1">
+              <p className="font-semibold text-[var(--primary)]">You finished — waiting on others!</p>
+              <p className="text-xs text-muted">
+                {(() => {
+                  const rank = standings.findIndex((s) => s.player_id === myPlayerId) + 1
+                  const suffix = rank === 1 ? 'st' : rank === 2 ? 'nd' : rank === 3 ? 'rd' : 'th'
+                  const ms = myStanding?.total_time_ms ?? null
+                  const timeText =
+                    ms != null
+                      ? `${Math.floor(ms / 60000)}:${String(Math.floor((ms % 60000) / 1000)).padStart(2, '0')}`
+                      : '—'
+                  return (
+                    <>
+                      {rank > 0 ? (
+                        <>
+                          <strong className="text-body">
+                            {rank}
+                            {suffix}
+                          </strong>{' '}
+                          so far ·{' '}
+                        </>
+                      ) : null}
+                      <strong className="text-body">{myStanding?.total_points ?? 0}</strong> pts · time{' '}
+                      <strong className="text-body">{timeText}</strong>
+                    </>
+                  )
+                })()}
+              </p>
+            </div>
+          )}
+        </LiveLeaderboardLayout>
       </main>
     </div>
   )
