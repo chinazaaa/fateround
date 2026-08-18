@@ -1,12 +1,8 @@
 /**
  * Daily challenge play surface (mobile). One dynamic route drives every
  * per-game screen — mirror of `src/app/daily-challenges/[gameType]/page.tsx`
- * plus `DailyChallengeGame` on web.
- *
- * If the requested game type does not have a native play surface yet, the
- * hub already opens the web URL via Linking; landing here for that game
- * means someone deep-linked in, so we redirect straight back to the hub
- * rather than error.
+ * plus `DailyChallengeGame` on web. Every DAILY_CHALLENGE_GAME_TYPES entry
+ * has a native surface in the switch below.
  */
 
 import { useCallback } from 'react'
@@ -34,7 +30,6 @@ import {
   DAILY_GAME_LABELS,
   DAILY_GAME_SLUG_TO_TYPE,
   DAILY_GAME_TIMER,
-  hasNativeDailyPlay,
   type DailyChallengeGameType,
 } from '@/lib/daily-challenge'
 import { formatDayLabel } from '@/lib/community-dates'
@@ -57,7 +52,6 @@ export default function DailyChallengePlay() {
   }, [router])
 
   if (!gameType) return <NotFound onBack={backToHub} />
-  if (!hasNativeDailyPlay(gameType)) return <NotYetPorted gameType={gameType} onBack={backToHub} />
 
   return (
     <SafeAreaView style={styles.safe} edges={['bottom']}>
@@ -216,34 +210,15 @@ function PlaySurface({
       return <DailyChessMatePlay challengeId={challengeId} puzzle={puzzle} timer={timer} onSubmit={onSubmit} />
     case 'ludo_puzzle':
       return <DailyLudoPuzzlePlay challengeId={challengeId} puzzle={puzzle} timer={timer} onSubmit={onSubmit} />
-    default:
-      // Compile-time safety: any gameType listed in NATIVE_DAILY_GAMES but
-      // missing from this switch is a bug in the registry. Runtime fallback
-      // still keeps the user unstuck instead of crashing.
-      return (
-        <View style={{ padding: 20, alignItems: 'center' }}>
-          <Text>This daily game is not yet available on mobile.</Text>
-        </View>
-      )
+    default: {
+      // Exhaustiveness guard — DailyChallengeGameType is a closed union, so if a new
+      // game is added to DAILY_CHALLENGE_GAME_TYPES this assignment fails to compile
+      // until the switch is updated. No runtime fallback needed.
+      const _exhaustive: never = gameType
+      void _exhaustive
+      return null
+    }
   }
-}
-
-function NotYetPorted({ gameType, onBack }: { gameType: DailyChallengeGameType; onBack: () => void }) {
-  const styles = useThemedStyles(makeStyles)
-  return (
-    <SafeAreaView style={styles.safe} edges={['bottom']}>
-      <Stack.Screen options={{ headerShown: true, title: DAILY_GAME_LABELS[gameType] }} />
-      <AmbientBackground />
-      <View style={styles.center}>
-        <Text style={styles.emoji}>{DAILY_GAME_EMOJIS[gameType]}</Text>
-        <Text style={styles.headline}>Daily {DAILY_GAME_LABELS[gameType]}</Text>
-        <Text style={styles.centerText}>
-          This puzzle isn&apos;t available in the mobile app yet. Open it on the web to play today.
-        </Text>
-        <AppButton label="Back to Daily Challenges" tone="secondary" onPress={onBack} />
-      </View>
-    </SafeAreaView>
-  )
 }
 
 function NotFound({ onBack }: { onBack: () => void }) {
