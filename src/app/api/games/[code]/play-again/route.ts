@@ -55,6 +55,7 @@ import { clearWordSearchSessionData } from '@/lib/word-search'
 import { clearWordScrambleSessionData } from '@/lib/word-scramble'
 import { clearWordHuntSessionData } from '@/lib/word-hunt'
 import { clearWordleRoomSessionData } from '@/lib/wordle-room'
+import { clearTrollRunSessionData } from '@/lib/troll-run'
 import { clearMafiaSessionData } from '@/lib/mafia'
 import { clearTriviaSessionData } from '@/lib/trivia'
 import { clearTwoTruthsSessionData } from '@/lib/two-truths'
@@ -129,6 +130,7 @@ type ClearableSessionGameType = Extract<
   | 'word_scramble'
   | 'landmine'
   | 'ping_pong'
+  | 'troll_run'
 >
 
 /**
@@ -175,6 +177,7 @@ const SESSION_CLEARERS: Record<ClearableSessionGameType, SessionClearer> = {
   // game_id column and blocked play-again.
   landmine: clearLandmineSessionData,
   ping_pong: clearPingPongSessionData,
+  troll_run: clearTrollRunSessionData,
 }
 
 async function handlePost(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {

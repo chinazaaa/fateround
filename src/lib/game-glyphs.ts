@@ -122,6 +122,7 @@ const GAME_ICONS: Record<GameType, IconSvgElement> = {
   ping_pong: TableTennisBatIcon,
   uno: CardExchange01Icon,
   wordle_room: GridViewIcon,
+  troll_run: GameController01Icon,
 }
 
 export function gameIcon(type: GameType): IconSvgElement {

@@ -207,6 +207,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     wordle_room_category,
     wordle_room_word_count,
     wordle_room_words,
+    troll_run_rounds,
+    troll_run_time_limit,
+    troll_run_world,
   } = parsed.data
   const gameCode = parsed.data.gameId.toUpperCase()
 
@@ -288,7 +291,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     ping_pong_points_to_win === undefined &&
     wordle_room_category === undefined &&
     wordle_room_word_count === undefined &&
-    wordle_room_words === undefined
+    wordle_room_words === undefined &&
+    troll_run_rounds === undefined &&
+    troll_run_time_limit === undefined &&
+    troll_run_world === undefined
   ) {
     return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
   }
@@ -441,6 +447,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
         }))
         .filter((e: { word: string }) => e.word.length >= 3 && e.word.length <= 8)
     }
+  }
+
+  if (troll_run_rounds !== undefined) {
+    gameUpdate.troll_run_rounds = Math.max(1, Math.min(20, Math.round(troll_run_rounds)))
+    gameUpdate.rounds_count = gameUpdate.troll_run_rounds
+  }
+  if (troll_run_time_limit !== undefined) {
+    gameUpdate.troll_run_time_limit = Math.max(30, Math.min(600, Math.round(troll_run_time_limit)))
+  }
+  if (troll_run_world !== undefined) {
+    gameUpdate.troll_run_world = troll_run_world.trim().toLowerCase().slice(0, 50)
   }
 
   if (limitOnlyType === 'matching_pairs') {

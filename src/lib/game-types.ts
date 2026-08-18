@@ -1495,6 +1495,49 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
       },
     },
   },
+  troll_run: {
+    id: 'troll_run',
+    label: 'Troll Run',
+    tagline: 'Race through trick levels — nothing is what it seems',
+    headerEmoji: '😈💀',
+    card: {
+      accent: '#f59e0b',
+      accentSoft: 'rgba(245, 158, 11, 0.15)',
+      emoji: '😈',
+      players: '2–8 players',
+      vibe: 'Chaotic troll platformer race',
+      featured: true,
+    },
+    slots: {
+      kiss: {
+        emoji: '🏁',
+        label: 'Clears',
+        color: '#22c55e',
+        leaderboardLabel: 'Levels cleared',
+        activeClass: 'bg-green-500/20 text-green-100 border-green-400',
+        borderClass: 'border-green-500/50 bg-green-500/10',
+        textColor: '#86efac',
+      },
+      marry: {
+        emoji: '⭐',
+        label: 'Points',
+        color: '#fbbf24',
+        leaderboardLabel: 'Total points',
+        activeClass: 'bg-amber-500/20 text-amber-100 border-amber-400',
+        borderClass: 'border-amber-500/50 bg-amber-500/10',
+        textColor: '#fcd34d',
+      },
+      kill: {
+        emoji: '💀',
+        label: 'Deaths',
+        color: '#ef4444',
+        leaderboardLabel: 'Total deaths',
+        activeClass: 'bg-rose-500/20 text-rose-100 border-rose-400',
+        borderClass: 'border-rose-500/50 bg-rose-500/10',
+        textColor: '#fca5a5',
+      },
+    },
+  },
   chess: {
     id: 'chess',
     label: 'Chess',
@@ -2204,11 +2247,13 @@ export const GAME_TYPE_OPTIONS: GameType[] = [
   'ping_pong',
   'uno',
   'wordle_room',
+  'troll_run',
 ]
 
 // Games pinned to the top of the picker / games list, in this exact order.
 // Anything not listed here follows in GAME_TYPE_OPTIONS order.
 const PINNED_GAME_TYPES: GameType[] = [
+  'troll_run',
   'monopoly',
   'yahtzee',
   'codewords',
@@ -2314,6 +2359,7 @@ const GAME_CATEGORY_BY_TYPE: Partial<Record<GameType, GameCategory>> = {
   word_rush: 'puzzle',
   wordle_room: 'puzzle',
   landmine: 'puzzle',
+  troll_run: 'puzzle',
 }
 
 export function gameTypeCategory(gameType: GameType): GameCategory {
@@ -2349,6 +2395,7 @@ export function parseGameType(raw: unknown): GameType {
   if (raw === 'word_hunt') return 'word_hunt'
   if (raw === 'wordle_room' || raw === 'wordle-room' || raw === 'wordle_room_race' || raw === 'wordle')
     return 'wordle_room'
+  if (raw === 'troll_run' || raw === 'troll-run' || raw === 'level_devil' || raw === 'level-devil') return 'troll_run'
   if (raw === 'chess') return 'chess'
   if (raw === 'describe_it' || raw === 'text-charades') return 'describe_it'
   if (raw === 'word_rush' || raw === 'word-rush') return 'word_rush'
@@ -2468,6 +2515,8 @@ export function gameHowItWorks(
       return 'Players join with their name. Everyone gets the same 4×4 letter grid — connect adjacent letters to spell valid words (3+ letters) before the timer runs out. Longer words score more points.'
     case 'wordle_room':
       return 'Players join with their name. Everyone races through the same fixed set of words (5–20). Each word is solved like Wordle — six guesses to crack it. Solve it in fewer guesses for more points, and finish your words before anyone else to top the standings.'
+    case 'troll_run':
+      return 'Players join with their name. Everyone races simultaneously through the same set of trick levels. Watch out for collapsing floors, runaway doors, and trap spikes. First to clear all levels with the fewest deaths wins the round!'
     case 'matching_pairs':
       return 'Players join with their name. Everyone gets their own board with the same set of icons — flip two cards per turn; a match keeps them face-up and scores +1000 pts. Hit 3 in a row with no miss for a +500 streak bonus. Match every pair with zero misses for a +2000 perfect-game bonus. Fastest to finish scores a placement bonus. Most points when everyone is done wins.'
     case 'quiplash':
@@ -2780,6 +2829,7 @@ const NAME_ONLY_PLAYER_JOIN_GAMES: Record<GameType, boolean> = {
   uno: true,
   mafia: false,
   wordle_room: true,
+  troll_run: true,
 }
 
 const LOBBY_GAMES: Record<GameType, boolean> = {
@@ -2832,6 +2882,7 @@ const LOBBY_GAMES: Record<GameType, boolean> = {
   uno: false,
   mafia: false,
   wordle_room: false,
+  troll_run: false,
 }
 
 // Does this game record its history as rows in the `votes` table (plus `participants` /
@@ -2893,6 +2944,7 @@ const VOTE_HISTORY_GAMES: Record<GameType, boolean> = {
   uno: false,
   mafia: false,
   wordle_room: false,
+  troll_run: false,
 }
 
 /**
@@ -3069,6 +3121,10 @@ export function isWordHuntGame(gameType: GameType | string | undefined): boolean
 
 export function isWordleRoomGame(gameType: GameType | string | undefined): boolean {
   return parseGameType(gameType) === 'wordle_room'
+}
+
+export function isTrollRunGame(gameType: GameType | string | undefined): boolean {
+  return parseGameType(gameType) === 'troll_run'
 }
 
 export function isMatchingPairsGame(gameType: GameType | string | undefined): boolean {

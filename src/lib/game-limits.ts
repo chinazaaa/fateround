@@ -58,6 +58,7 @@ import {
 import { LANDMINE_MIN_PLAYERS, LANDMINE_MAX_PLAYERS, LANDMINE_DEFAULT_MAX_PLAYERS } from '@/lib/landmine'
 import { PING_PONG_MIN_PLAYERS, PING_PONG_MAX_PLAYERS, PING_PONG_DEFAULT_MAX_PLAYERS } from '@/lib/ping-pong'
 import { WORDLE_ROOM_MIN_PLAYERS, WORDLE_ROOM_MAX_PLAYERS, WORDLE_ROOM_DEFAULT_MAX_PLAYERS } from '@/lib/wordle-room'
+import { TROLL_RUN_MIN_PLAYERS, TROLL_RUN_MAX_PLAYERS, TROLL_RUN_DEFAULT_MAX_PLAYERS } from '@/lib/troll-run'
 
 export const LOBBY_LIMIT_GAME_TYPES = [
   'anonymous_messages',
@@ -96,6 +97,7 @@ export const LOBBY_LIMIT_GAME_TYPES = [
   'landmine',
   'ping_pong',
   'wordle_room',
+  'troll_run',
 ] as const
 
 export type LobbyLimitGameType = (typeof LOBBY_LIMIT_GAME_TYPES)[number]
@@ -294,6 +296,11 @@ export const GAME_LIMIT_CODE_DEFAULTS: GamePlayerLimitsMap = {
     max: WORDLE_ROOM_MAX_PLAYERS,
     default: WORDLE_ROOM_DEFAULT_MAX_PLAYERS,
   },
+  troll_run: {
+    min: TROLL_RUN_MIN_PLAYERS,
+    max: TROLL_RUN_MAX_PLAYERS,
+    default: TROLL_RUN_DEFAULT_MAX_PLAYERS,
+  },
 }
 
 export function isLobbyLimitGameType(value: string): value is LobbyLimitGameType {
@@ -338,6 +345,7 @@ export function getCodeDefaultLimits(): GamePlayerLimitsMap {
     landmine: { ...GAME_LIMIT_CODE_DEFAULTS.landmine },
     ping_pong: { ...GAME_LIMIT_CODE_DEFAULTS.ping_pong },
     wordle_room: { ...GAME_LIMIT_CODE_DEFAULTS.wordle_room },
+    troll_run: { ...GAME_LIMIT_CODE_DEFAULTS.troll_run },
   }
 }
 

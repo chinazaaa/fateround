@@ -85,6 +85,7 @@ export const GAME_TYPE_TO_SLUG: Record<GameType, string> = {
   word_grouping: 'word-grouping',
   landmine: 'landmine',
   wordle_room: 'wordle',
+  troll_run: 'troll-run',
 }
 
 const SLUG_TO_GAME_TYPE = Object.fromEntries(
@@ -3369,6 +3370,62 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         question: 'What’s the difference between the two modes?',
         answer:
           'Zero Points is softer — hitting the mine just scores you 0 for that round and everyone plays every round. Elimination is higher-stakes — hit the mine and you’re out, last player standing wins. Elimination plays best with 5+ players.',
+      },
+    ],
+  }),
+  troll_run: landing('troll_run', {
+    seoTitle: 'Troll Run Online — Free Multiplayer Rage Platformer Game',
+    seoDescription:
+      'Play Troll Run online with friends for free. Race simultaneously through deceptive pixel-art platformer levels packed with hilarious traps, runaway doors, and collapsing floors. No download, no sign-up.',
+    keywords: [
+      'troll run online',
+      'level devil online multiplayer',
+      'rage platformer online',
+      'troll platformer with friends',
+      'multiplayer trap game online',
+      'free browser platformer multiplayer',
+      'level devil with friends',
+    ],
+    heroSubtitle:
+      'The multiplayer rage platformer where everything is a trap. Race friends through trick levels — collapsing floors, runaway exit doors, and pop-up spikes.',
+    bodyParagraph:
+      'Troll Run brings high-energy multiplayer racing to tricky 2D platforming. Every player races through identical levels filled with hilarious invisible triggers and physics traps. Finish 1st with the fewest deaths to top the championship podium.',
+    highlights: ['2–8 player live racing', 'Deceptive troll physics & triggers', 'Instant browser play on mobile & PC'],
+    perfectFor: ['Friend groups', 'Streamers', 'Party nights', 'Rage gamers'],
+    features: [
+      {
+        title: 'Hilarious Traps',
+        description:
+          'Doors that sprint away, floors that crumble under your feet, and spikes that materialize out of thin air.',
+        emoji: '😈',
+      },
+      {
+        title: 'Simultaneous Multi-Runner',
+        description: 'Everyone races at the exact same moment on a live 3-2-1 countdown.',
+        emoji: '🏁',
+      },
+      SHARED_FEATURES.realtime,
+      SHARED_FEATURES.noSignup,
+    ],
+    steps: [
+      {
+        title: 'Create a race room',
+        description: 'Choose round count and time limits, then share your 6-character room code.',
+      },
+      {
+        title: 'Race the levels',
+        description: 'Jump, dodge, and learn the traps as you speed towards the exit door.',
+      },
+      {
+        title: 'Climb the podium',
+        description: 'Score placement points and speed bonuses across all rounds to take the championship.',
+      },
+    ],
+    extraFaqs: [
+      {
+        question: 'How does Troll Run multiplayer work?',
+        answer:
+          'Players race independently through the same level layouts simultaneously. A live ticker announces whenever someone falls for a trap or clears a level. Round placement and total deaths determine the winner.',
       },
     ],
   }),

@@ -236,6 +236,9 @@ export const createGameSchema = z.object({
     .max(2000)
     .optional(),
   library_pack_id: z.string().uuid().optional(),
+  troll_run_rounds: z.coerce.number().int().min(1).max(20).optional(),
+  troll_run_time_limit: z.coerce.number().int().min(30).max(600).optional(),
+  troll_run_world: z.string().max(50).optional(),
   custom_slots: z
     .object({
       slots: z
@@ -522,6 +525,9 @@ export const boardGameLobbySettingsSchema = z.object({
     .max(2000)
     .optional(),
   library_pack_id: z.string().uuid().optional(),
+  troll_run_rounds: z.coerce.number().int().min(1).max(20).optional(),
+  troll_run_time_limit: z.coerce.number().int().min(30).max(600).optional(),
+  troll_run_world: z.string().max(50).optional(),
 })
 
 export type BoardGameLobbySettingsInput = z.infer<typeof boardGameLobbySettingsSchema>

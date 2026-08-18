@@ -49,6 +49,7 @@ const NAME_ONLY_PLAYER_JOIN_EXPECTED = new Set<GameType>([
   'uno',
   'word_grouping',
   'wordle_room',
+  'troll_run',
 ])
 
 const LOBBY_GAMES_EXPECTED = new Set<GameType>([
@@ -65,7 +66,7 @@ describe('game join-style flags (registry-backed, behaviour-preserving)', () => 
     // Exact count, not a floor: adding or removing a GameType must update this test + the
     // maps below in lockstep. (A swap is also caught per-game by the assertions below and by
     // the canonical-list guard in game-type-coverage.test.ts.)
-    expect(ALL_GAME_TYPES.length).toBe(49)
+    expect(ALL_GAME_TYPES.length).toBe(50)
   })
 
   it('isNameOnlyPlayerJoin matches the original OR-list for every game', () => {

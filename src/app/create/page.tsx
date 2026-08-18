@@ -88,6 +88,7 @@ import {
   isWordGroupingGame,
   isWordHuntGame,
   isWordleRoomGame,
+  isTrollRunGame,
   isMafiaGame,
   isMatchingPairsGame,
   isMahjongGame,
@@ -1033,6 +1034,7 @@ function CreateGameInner() {
   const wordScrambleDiffLock = questionSource === 'platform' ? lockedPuzzleDifficulty(wordScrambleTheme) : null
   const isWordHunt = isWordHuntGame(settings.game_type)
   const isWordleRoom = isWordleRoomGame(settings.game_type)
+  const isTrollRun = isTrollRunGame(settings.game_type)
   const isMatchingPairs = isMatchingPairsGame(settings.game_type)
   const isMahjong = isMahjongGame(settings.game_type)
   const showViewerToggle = gameSupportsViewerSetting(settings.game_type)
@@ -2608,6 +2610,13 @@ function CreateGameInner() {
                       ...(questionSource === 'library' && selectedPackId ? { library_pack_id: selectedPackId } : {}),
                     }
                   : {}),
+              }
+            : {}),
+          ...(isTrollRun
+            ? {
+                troll_run_rounds: 5,
+                troll_run_time_limit: 120,
+                troll_run_world: 'pits',
               }
             : {}),
           rounds_count: isWst
