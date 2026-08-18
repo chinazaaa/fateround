@@ -96,6 +96,7 @@ import {
   isQuickDrawGame,
   templatableGame,
 } from '@/lib/game-types'
+import { TROLL_RUN_DEFAULT_MAX_PLAYERS, TROLL_RUN_DEFAULT_ROUNDS, TROLL_RUN_DEFAULT_TIME_LIMIT } from '@/lib/troll-run'
 import { DEFAULT_MAHJONG_RULESET, MAHJONG_RULESETS, MAHJONG_RULESET_CONFIG } from '@/lib/mahjong-rulesets'
 import type { MahjongRuleset } from '@/types'
 import { BOARD_THEMES, PIECE_SETS, useChessAppearance } from '@/lib/chess-appearance'
@@ -560,6 +561,10 @@ function CreateGameInner() {
   const [wordleRoomCategory, setWordleRoomCategory] = useState<WordleCategoryId>('general_english')
   const [wordleRoomWordCount, setWordleRoomWordCount] = useState<WordleRoomWordCount>(WORDLE_ROOM_DEFAULT_WORD_COUNT)
   const [wordleRoomTimer, setWordleRoomTimer] = useState(WORDLE_ROOM_DEFAULT_TIMER)
+  const [trollRunWorld, setTrollRunWorld] = useState('pits')
+  const [trollRunRounds, setTrollRunRounds] = useState(TROLL_RUN_DEFAULT_ROUNDS)
+  const [trollRunTimeLimit, setTrollRunTimeLimit] = useState(TROLL_RUN_DEFAULT_TIME_LIMIT)
+  const [trollRunMaxPlayers, setTrollRunMaxPlayers] = useState(TROLL_RUN_DEFAULT_MAX_PLAYERS)
   const [npatGameDuration, setNpatGameDuration] = useState(NPAT_DEFAULT_GAME_DURATION)
   const [npatMarkingTimer, setNpatMarkingTimer] = useState(NPAT_DEFAULT_MARKING_TIMER)
   const [landmineMode, setLandmineMode] = useState<'zero_points' | 'elimination'>('zero_points')
@@ -1952,7 +1957,8 @@ function CreateGameInner() {
     isWordGrouping ||
     isWordHunt ||
     isMatchingPairs ||
-    isWordleRoom
+    isWordleRoom ||
+    isTrollRun
   const isTriviaQuickCreate = isTrivia
   const needsParticipantStep =
     !isQuickLobby && !isTriviaQuickCreate && !isBinaryLobby && !(isMlt && isJoinersMode) && !isJoinersMode
@@ -2007,6 +2013,12 @@ function CreateGameInner() {
       setWordleRoomWordCount(WORDLE_ROOM_DEFAULT_WORD_COUNT)
       setWordleRoomTimer(WORDLE_ROOM_DEFAULT_TIMER)
       setCustomWordleRoomWords([])
+    }
+    if (isTrollRunGame(type)) {
+      setTrollRunWorld('pits')
+      setTrollRunRounds(TROLL_RUN_DEFAULT_ROUNDS)
+      setTrollRunTimeLimit(TROLL_RUN_DEFAULT_TIME_LIMIT)
+      setTrollRunMaxPlayers(TROLL_RUN_DEFAULT_MAX_PLAYERS)
     }
     setSettings({
       ...settings,
@@ -2197,6 +2209,14 @@ function CreateGameInner() {
             participant_mode: 'joiners' as const,
             anonymous: true,
             rounds_count: 1,
+          }
+        : {}),
+      ...(isTrollRunGame(type)
+        ? {
+            participant_mode: 'joiners' as const,
+            anonymous: true,
+            rounds_count: TROLL_RUN_DEFAULT_ROUNDS,
+            timer_seconds: TROLL_RUN_DEFAULT_TIME_LIMIT,
           }
         : {}),
       ...(isMahjongGame(type)
@@ -2614,9 +2634,12 @@ function CreateGameInner() {
             : {}),
           ...(isTrollRun
             ? {
-                troll_run_rounds: 5,
-                troll_run_time_limit: 120,
-                troll_run_world: 'pits',
+                max_players: trollRunMaxPlayers,
+                troll_run_rounds: trollRunRounds,
+                troll_run_time_limit: trollRunTimeLimit,
+                troll_run_world: trollRunWorld,
+                rounds_count: trollRunRounds,
+                timer_seconds: trollRunTimeLimit,
               }
             : {}),
           rounds_count: isWst
@@ -6023,6 +6046,132 @@ function CreateGameInner() {
                 <p className="text-faint text-sm leading-relaxed">
                   Race through a fixed sequence of Wordle puzzles. Everyone solves the same word — most words solved
                   wins, with fewer guesses and faster time as tiebreakers.
+                </p>
+              </SettingsGroup>
+            ) : isTrollRun ? (
+              <SettingsGroup title="Troll Run race settings">
+                <Field
+                  label={`Max players (${effectiveLimits.troll_run?.min ?? 2}–${effectiveLimits.troll_run?.max ?? 8})`}
+                >
+                  <CustomSelect
+                    value={trollRunMaxPlayers}
+                    onChange={setTrollRunMaxPlayers}
+                    options={playerCountOptions(
+                      effectiveLimits.troll_run?.min ?? 2,
+                      effectiveLimits.troll_run?.max ?? 8
+                    ).map((n) => ({
+                      value: n,
+                      label: `${n} players`,
+                    }))}
+                  />
+                </Field>
+
+                <Field label="World Theme">
+                  <div className="grid grid-cols-2 gap-2.5">
+                    {[
+                      { id: 'pits', title: 'World 1: The Pits', icon: '🕳️', desc: 'Collapsing floors & drop-offs' },
+                      {
+                        id: 'doors',
+                        title: 'World 2: Runaway Doors',
+                        icon: '🚪',
+                        desc: 'Evasive doors & moving walls',
+                      },
+                      {
+                        id: 'gravity',
+                        title: 'World 3: Gravity Flip',
+                        icon: '🔄',
+                        desc: 'Ceiling walks & inverted keys',
+                      },
+                      {
+                        id: 'gauntlet',
+                        title: 'World 4: The Gauntlet',
+                        icon: '👑',
+                        desc: 'Master gauntlet with all traps',
+                      },
+                    ].map((w) => (
+                      <button
+                        key={w.id}
+                        type="button"
+                        onClick={() => setTrollRunWorld(w.id)}
+                        className={[
+                          'rounded-2xl border-2 px-3.5 py-3 text-left transition',
+                          trollRunWorld === w.id
+                            ? 'border-[var(--primary)] bg-[var(--surface-inset-bg)] ring-1 ring-[var(--primary)]'
+                            : 'border-[var(--border-strong)] text-muted hover:border-[var(--border)]',
+                        ].join(' ')}
+                      >
+                        <span className="font-bold block text-sm flex items-center gap-1.5 text-body">
+                          <span>{w.icon}</span>
+                          <span>{w.title}</span>
+                        </span>
+                        <span className="text-faint text-[11px] block mt-0.5">{w.desc}</span>
+                      </button>
+                    ))}
+                  </div>
+                </Field>
+
+                <Field label="Rounds">
+                  <CustomSelect
+                    value={trollRunRounds}
+                    onChange={setTrollRunRounds}
+                    options={[
+                      { value: 3, label: '3 Rounds' },
+                      { value: 5, label: '5 Rounds' },
+                      { value: 7, label: '7 Rounds' },
+                    ]}
+                  />
+                  <p className="text-faint text-xs mt-1">Scores and medals accumulate across all rounds.</p>
+                </Field>
+
+                <Field label="Time limit per round">
+                  <CustomSelect
+                    value={trollRunTimeLimit}
+                    onChange={setTrollRunTimeLimit}
+                    options={[
+                      { value: 60, label: '1 minute (60s)' },
+                      { value: 90, label: '1.5 minutes (90s)' },
+                      { value: 120, label: '2 minutes (120s)' },
+                      { value: 180, label: '3 minutes (180s)' },
+                    ]}
+                  />
+                  <p className="text-faint text-xs mt-1">Time allowed before remaining runners receive a DNF.</p>
+                </Field>
+
+                {showViewerToggle && (
+                  <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="troll_run" />
+                )}
+
+                <Field label="Public game">
+                  <div className="flex rounded-xl border border-[var(--border)] overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => setSettings({ ...settings, isPublic: false })}
+                      className={`flex flex-1 items-center justify-center gap-1.5 py-2 text-sm font-semibold transition-colors ${
+                        !settings.isPublic ? 'bg-[var(--primary)] text-white' : 'text-muted hover:text-body'
+                      }`}
+                    >
+                      <Glyph icon={LockIcon} size={15} />
+                      Private
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSettings({ ...settings, isPublic: true })}
+                      className={`flex flex-1 items-center justify-center gap-1.5 py-2 text-sm font-semibold transition-colors ${
+                        settings.isPublic ? 'bg-[var(--primary)] text-white' : 'text-muted hover:text-body'
+                      }`}
+                    >
+                      <Glyph icon={GlobeIcon} size={15} />
+                      Public
+                    </button>
+                  </div>
+                  <p className="text-faint text-xs mt-2">
+                    List in Browse so anyone can find and join. Off keeps it invite-only via the room code.
+                  </p>
+                </Field>
+
+                <p className="text-faint text-sm leading-relaxed">
+                  Multiplayer rage platformer race. Everyone starts at the exact same moment on a 3-2-1 countdown and
+                  races through identical deceptive levels. Fewest deaths and fastest times take the podium.
                 </p>
               </SettingsGroup>
             ) : isMafia ? (
