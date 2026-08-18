@@ -13,7 +13,31 @@
 import { WORDLE_GENERAL_ENGLISH } from '@/data/daily-banks/wordle-general-english'
 import { WORDLE_NAIJA_SLANG, type WordleSlangEntry } from '@/data/daily-banks/wordle-naija-slang'
 
-export type WordleCategoryId = 'general_english' | 'naija_slang'
+import {
+  WORDLE_SPORTS,
+  WORDLE_FOOD,
+  WORDLE_ANIMALS,
+  WORDLE_TECHNOLOGY,
+  WORDLE_NATURE,
+  WORDLE_MUSIC,
+  WORDLE_SCIENCE,
+  WORDLE_CLOTHING,
+  WORDLE_TRAVEL,
+} from '@/data/daily-banks/wordle-categories'
+
+export type WordleCategoryId =
+  | 'general_english'
+  | 'sports'
+  | 'food'
+  | 'animals'
+  | 'technology'
+  | 'nature'
+  | 'music'
+  | 'science'
+  | 'clothing'
+  | 'travel'
+  | 'naija_slang'
+
 export type WordleLetterState = 'correct' | 'present' | 'absent'
 
 export interface WordlePuzzleData {
@@ -43,6 +67,51 @@ interface WordleCategory {
 }
 
 const WORDLE_CATEGORIES: readonly WordleCategory[] = [
+  {
+    id: 'sports',
+    label: 'Sports',
+    entries: WORDLE_SPORTS.map((word) => ({ word, hint: 'Sports term' })),
+  },
+  {
+    id: 'food',
+    label: 'Food & Drink',
+    entries: WORDLE_FOOD.map((word) => ({ word, hint: 'Food or drink item' })),
+  },
+  {
+    id: 'animals',
+    label: 'Animals',
+    entries: WORDLE_ANIMALS.map((word) => ({ word, hint: 'Animal or creature' })),
+  },
+  {
+    id: 'technology',
+    label: 'Technology',
+    entries: WORDLE_TECHNOLOGY.map((word) => ({ word, hint: 'Tech term' })),
+  },
+  {
+    id: 'nature',
+    label: 'Nature',
+    entries: WORDLE_NATURE.map((word) => ({ word, hint: 'Nature element' })),
+  },
+  {
+    id: 'music',
+    label: 'Music',
+    entries: WORDLE_MUSIC.map((word) => ({ word, hint: 'Music term' })),
+  },
+  {
+    id: 'science',
+    label: 'Science',
+    entries: WORDLE_SCIENCE.map((word) => ({ word, hint: 'Science concept' })),
+  },
+  {
+    id: 'clothing',
+    label: 'Clothing & Fashion',
+    entries: WORDLE_CLOTHING.map((word) => ({ word, hint: 'Clothing item' })),
+  },
+  {
+    id: 'travel',
+    label: 'Travel & Places',
+    entries: WORDLE_TRAVEL.map((word) => ({ word, hint: 'Travel concept' })),
+  },
   {
     id: 'general_english',
     label: 'General English',

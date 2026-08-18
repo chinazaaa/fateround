@@ -323,11 +323,6 @@ export function DailyChallengeResults({
             <button className="fr-btn fr-btn--secondary fr-btn--block" onClick={handleShare} disabled={sharing}>
               {sharing ? 'Generating...' : 'Share Result'}
             </button>
-            {gameType === 'wordle' && grid && (
-              <button className="fr-btn fr-btn--secondary fr-btn--block" onClick={copyGrid}>
-                Copy Grid
-              </button>
-            )}
             <Link href="/daily-challenges" className="fr-btn fr-btn--ghost fr-btn--sm mx-auto">
               Back to Daily Challenges
             </Link>

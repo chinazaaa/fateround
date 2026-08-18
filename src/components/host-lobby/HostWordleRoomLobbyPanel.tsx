@@ -6,7 +6,9 @@ import {
   WORDLE_ROOM_WORD_COUNT_OPTIONS,
   WORDLE_ROOM_DEFAULT_TIMER,
   WORDLE_ROOM_DEFAULT_WORD_COUNT,
+  clampWordleRoomCategory,
 } from '@/lib/wordle-room'
+import type { WordleCategoryId } from '@/lib/daily-wordle'
 import { lobbyMaxPlayersFromGame, playerCountOptions, type GamePlayerLimitsMap } from '@/lib/game-limits'
 import { HostLobbySettingsSection } from '@/components/host-lobby/HostLobbySettingsSection'
 import { HostLobbySettingBlock } from '@/components/host-lobby/HostLobbySettingBlock'
@@ -25,6 +27,15 @@ type Props = {
 type SaveState = 'idle' | 'saving' | 'saved'
 
 const CATEGORY_OPTIONS = [
+  { value: 'sports', label: 'Sports' },
+  { value: 'food', label: 'Food & Drink' },
+  { value: 'animals', label: 'Animals' },
+  { value: 'technology', label: 'Technology' },
+  { value: 'nature', label: 'Nature' },
+  { value: 'music', label: 'Music' },
+  { value: 'science', label: 'Science' },
+  { value: 'clothing', label: 'Clothing & Fashion' },
+  { value: 'travel', label: 'Travel & Places' },
   { value: 'general_english', label: 'General English' },
   { value: 'naija_slang', label: 'Naija Slang' },
 ]
@@ -42,7 +53,7 @@ export function HostWordleRoomLobbyPanel({ gameCode, hostToken, game, playerCoun
   const { error: toastError } = useToast()
   const [limits, setLimits] = useState<GamePlayerLimitsMap | null>(null)
   const [maxPlayers, setMaxPlayers] = useState(20)
-  const [category, setCategory] = useState<'general_english' | 'naija_slang'>('general_english')
+  const [category, setCategory] = useState<WordleCategoryId>('sports')
   const [wordCount, setWordCount] = useState(5)
   const [timer, setTimer] = useState(WORDLE_ROOM_DEFAULT_TIMER)
   const [saveState, setSaveState] = useState<SaveState>('idle')
@@ -60,7 +71,7 @@ export function HostWordleRoomLobbyPanel({ gameCode, hostToken, game, playerCoun
   useEffect(() => {
     if (!limits) return
     setMaxPlayers(lobbyMaxPlayersFromGame('wordle_room', game, limits) ?? game.max_players ?? 20)
-    setCategory(game.wordle_room_category === 'naija_slang' ? 'naija_slang' : 'general_english')
+    setCategory(clampWordleRoomCategory(game.wordle_room_category))
     setWordCount(game.wordle_room_word_count ?? WORDLE_ROOM_DEFAULT_WORD_COUNT)
     setTimer(game.timer_seconds ?? WORDLE_ROOM_DEFAULT_TIMER)
   }, [game, limits])
@@ -112,7 +123,7 @@ export function HostWordleRoomLobbyPanel({ gameCode, hostToken, game, playerCoun
   }
 
   const onCategoryChange = (next: string) => {
-    const value = next === 'naija_slang' ? 'naija_slang' : 'general_english'
+    const value = clampWordleRoomCategory(next)
     setCategory(value)
     void patchSettings({ wordle_room_category: value })
   }

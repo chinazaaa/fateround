@@ -1,3 +1,5 @@
+import type { WordleCategoryId } from '@/lib/daily-wordle'
+
 export type GameStatus = 'scheduled' | 'waiting' | 'active' | 'finished'
 export type RoundStatus = 'pending' | 'active' | 'finished'
 export type AutoSubmitBehavior = 'random' | 'no_answer'
@@ -544,7 +546,7 @@ export interface Game {
   /** Ping Pong — points required to win the match (3, 5, 7, 11, 15, or 21). */
   ping_pong_points_to_win?: number | null
   /** Wordle Room — General English vs Naija Slang word bank. */
-  wordle_room_category?: 'general_english' | 'naija_slang' | null
+  wordle_room_category?: WordleCategoryId | null
   /** Wordle Room — how many words make up the race (5 / 10 / 15 / 20). */
   wordle_room_word_count?: number | null
 }

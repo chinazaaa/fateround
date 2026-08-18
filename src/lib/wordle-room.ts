@@ -111,11 +111,29 @@ interface WordleRoomCategory {
   entries: { word: string; hint: string }[]
 }
 
+import {
+  WORDLE_SPORTS,
+  WORDLE_FOOD,
+  WORDLE_ANIMALS,
+  WORDLE_TECHNOLOGY,
+  WORDLE_NATURE,
+  WORDLE_MUSIC,
+  WORDLE_SCIENCE,
+  WORDLE_CLOTHING,
+  WORDLE_TRAVEL,
+} from '@/data/daily-banks/wordle-categories'
+
 const WORDLE_ROOM_CATEGORIES: Record<WordleCategoryId, WordleRoomCategory> = {
-  general_english: {
-    label: 'General English',
-    entries: WORDLE_GENERAL_ENGLISH.map((word) => ({ word, hint: '' })),
-  },
+  sports: { label: 'Sports', entries: WORDLE_SPORTS.map((word) => ({ word, hint: 'Sports term' })) },
+  food: { label: 'Food & Drink', entries: WORDLE_FOOD.map((word) => ({ word, hint: 'Food or drink item' })) },
+  animals: { label: 'Animals', entries: WORDLE_ANIMALS.map((word) => ({ word, hint: 'Animal or creature' })) },
+  technology: { label: 'Technology', entries: WORDLE_TECHNOLOGY.map((word) => ({ word, hint: 'Tech term' })) },
+  nature: { label: 'Nature', entries: WORDLE_NATURE.map((word) => ({ word, hint: 'Nature element' })) },
+  music: { label: 'Music', entries: WORDLE_MUSIC.map((word) => ({ word, hint: 'Music term' })) },
+  science: { label: 'Science', entries: WORDLE_SCIENCE.map((word) => ({ word, hint: 'Science concept' })) },
+  clothing: { label: 'Clothing & Fashion', entries: WORDLE_CLOTHING.map((word) => ({ word, hint: 'Clothing item' })) },
+  travel: { label: 'Travel & Places', entries: WORDLE_TRAVEL.map((word) => ({ word, hint: 'Travel concept' })) },
+  general_english: { label: 'General English', entries: WORDLE_GENERAL_ENGLISH.map((word) => ({ word, hint: '' })) },
   naija_slang: {
     label: 'Naija Slang',
     entries: (WORDLE_NAIJA_SLANG as readonly WordleSlangEntry[]).map((e) => ({ word: e.word, hint: e.hint })),
@@ -123,11 +141,14 @@ const WORDLE_ROOM_CATEGORIES: Record<WordleCategoryId, WordleRoomCategory> = {
 }
 
 export function wordleRoomCategoryLabel(category: WordleCategoryId): string {
-  return WORDLE_ROOM_CATEGORIES[category]?.label ?? 'General English'
+  return WORDLE_ROOM_CATEGORIES[category]?.label ?? 'Sports'
 }
 
 export function clampWordleRoomCategory(raw: unknown): WordleCategoryId {
-  return raw === 'naija_slang' ? 'naija_slang' : 'general_english'
+  if (typeof raw === 'string' && raw in WORDLE_ROOM_CATEGORIES) {
+    return raw as WordleCategoryId
+  }
+  return 'sports'
 }
 
 export function clampWordleRoomWordCount(raw: unknown): WordleRoomWordCount {
