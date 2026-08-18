@@ -24,6 +24,7 @@ import { DailyWordSearchPlay } from '@/components/daily/DailyWordSearchPlay'
 import { DailyWordHuntPlay } from '@/components/daily/DailyWordHuntPlay'
 import { DailyWordGroupingPlay } from '@/components/daily/DailyWordGroupingPlay'
 import { DailyCodenamesCodewordPlay } from '@/components/daily/DailyCodenamesCodewordPlay'
+import { DailyWhotPuzzlePlay } from '@/components/daily/DailyWhotPuzzlePlay'
 import { useDailyChallengeSession } from '@/hooks/useDailyChallengeSession'
 import {
   DAILY_GAME_EMOJIS,
@@ -203,6 +204,8 @@ function PlaySurface({
           onSubmit={onSubmit}
         />
       )
+    case 'whot_puzzle':
+      return <DailyWhotPuzzlePlay challengeId={challengeId} puzzle={puzzle} timer={timer} onSubmit={onSubmit} />
     default:
       // Compile-time safety: any gameType listed in NATIVE_DAILY_GAMES but
       // missing from this switch is a bug in the registry. Runtime fallback
