@@ -162,9 +162,8 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
     })
     if (!res.ok) return
     const data = (await res.json()) as WordleRoomStatus
-    // Apply completion state BEFORE the currentWord check so that a finished sequence (server
-    // returns finished:true and no currentWord because the player has run out of words)
-    // locks the input immediately instead of leaving the previous word's state editable.
+    // Mark completion up front so input locks even if we're keeping the last word visible
+    // (boardDisabled includes myFinished, so no need to wipe currentWord to prevent input).
     if (data.finished === true) setMyFinished(true)
     if (data.currentWord) {
       setCurrentWord(data.currentWord)
@@ -183,17 +182,15 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
       setCurrent('')
       setCursorAt(0)
       setRevealWord('')
-    } else if (data.finished === true) {
-      // Sequence complete — clear per-word state so a stale board can't accept more input.
-      setCurrentWord(null)
-      setGuesses([])
-      setCurrent('')
-      setCursorAt(0)
-      setRevealWord('')
-      setHintAvailable(false)
-      setHintUsed(false)
-      setHintText(null)
+      // Clear the previous word's transient banner ("Out of attempts — the word was X",
+      // "Correct! +N pts") so it doesn't linger into the next word.
+      setMessage(null)
     }
+    // Deliberately DO NOT wipe currentWord/guesses when the server returns finished:true
+    // without a currentWord: the server uses that shape in several non-completion cases
+    // (game not yet active, solutions row missing, transient races) and blanking state
+    // there hides the grid + hint button for a still-playing user. Real completion locks
+    // input via myFinished → boardDisabled below.
     if (data.status === 'finished') void load()
   }, [gameCode, myResumeToken, load])
 
@@ -524,8 +521,9 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
             setRevealWord(currentWord)
             setMessage(`Out of attempts — the word was ${currentWord.toUpperCase()}`)
           }
-          // Reveal delay then pull the next word from the server.
-          scheduleAdvance(solved ? 1500 : 2200)
+          // Reveal delay then pull the next word from the server. The out-of-attempts
+          // reveal ("the word was …") gets a longer beat so players can actually read it.
+          scheduleAdvance(solved ? 1500 : 5000)
         } else {
           setMessage('Nope — try again')
         }
@@ -741,7 +739,7 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
     )
   }
 
-  const boardDisabled = timeUp || isViewer
+  const boardDisabled = timeUp || isViewer || myFinished
 
   return (
     <div className="min-h-screen flex flex-col bg-[var(--background)]">
@@ -780,6 +778,24 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
           ) : (
             <span className="text-sm font-semibold text-muted">Untimed</span>
           )}
+        </div>
+
+        {/* Colours are hardcoded (not `var(--wl-…)`) because the board's <style> block that
+            defines those vars only mounts when currentWord is set — the legend needs to
+            render even before the first fetchStatus lands. */}
+        <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11px] text-muted">
+          <span className="inline-flex items-center gap-1">
+            <span className="inline-block h-3 w-3 rounded-sm" style={{ background: '#6aaa64' }} />
+            right letter, right spot
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <span className="inline-block h-3 w-3 rounded-sm" style={{ background: '#c9b458' }} />
+            in the word, wrong spot
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <span className="inline-block h-3 w-3 rounded-sm" style={{ background: '#787c7e' }} />
+            not in the word
+          </span>
         </div>
 
         {currentWord && (

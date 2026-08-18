@@ -124,15 +124,15 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
         setGuesses((data.guesses ?? []).map((g) => ({ word: g.guess, states: g.state })))
         setCurrent('')
         setCursorAt(0)
-      } else if (data.finished === true) {
-        setCurrentWord(null)
-        setGuesses([])
-        setCurrent('')
-        setCursorAt(0)
-        setHintAvailable(false)
-        setHintUsed(false)
-        setHintText(null)
+        // Clear the previous word's transient banner ("Out of attempts — the word was X",
+        // "Correct! +N pts") so it doesn't linger into the next word.
+        setMessage(null)
       }
+      // Deliberately DO NOT wipe currentWord/guesses when finished:true arrives without a
+      // currentWord — the server uses that shape in several non-completion cases (game not
+      // yet active, solutions row missing, transient races), and blanking state there hides
+      // the grid + hint button for a still-playing user. Real completion locks input via
+      // myFinished (see addLetter/submitGuess guards).
       if (data.status === 'finished') void bootstrap.load()
     } catch {
       /* swallowed — will retry on next tick */
@@ -274,7 +274,9 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
         setMessage(`Out of attempts — the word was ${currentWord.toUpperCase()}`)
       }
       const wordDone = res.finished === true || (res.wordIndex ?? wordIndex) !== wordIndex
-      if (wordDone) scheduleAdvance(1400)
+      // Longer beat on out-of-attempts so the revealed word is actually readable; solved
+      // is a shorter delay since the player already knows what the word was.
+      if (wordDone) scheduleAdvance(res.solved ? 1400 : 5000)
     } catch (err) {
       setMessage(err instanceof Error ? err.message : 'Guess failed')
     } finally {
@@ -430,6 +432,20 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
             Word {Math.min(wordIndex + 1, wordCount)}/{wordCount}
           </Text>
         </View>
+        <View style={styles.legend}>
+          <View style={styles.legendItem}>
+            <View style={[styles.legendSwatch, { backgroundColor: '#538d4e' }]} />
+            <Text style={styles.legendText}>right letter, right spot</Text>
+          </View>
+          <View style={styles.legendItem}>
+            <View style={[styles.legendSwatch, { backgroundColor: '#b59f3b' }]} />
+            <Text style={styles.legendText}>in the word, wrong spot</Text>
+          </View>
+          <View style={styles.legendItem}>
+            <View style={[styles.legendSwatch, { backgroundColor: '#3a3a3c' }]} />
+            <Text style={styles.legendText}>not in the word</Text>
+          </View>
+        </View>
         {currentWord && <View style={styles.board}>{rows}</View>}
         {message && <Text style={styles.message}>{message}</Text>}
         {currentWord &&
@@ -525,6 +541,18 @@ const makeStyles = (theme: Theme) =>
     },
     badgeText: { color: '#fff', fontSize: 12, fontWeight: '700', letterSpacing: 0.5 },
     headerMeta: { color: theme.textMuted, fontSize: 13, fontWeight: '600' },
+    legend: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      justifyContent: 'center',
+      columnGap: 12,
+      rowGap: 4,
+      width: '100%',
+      maxWidth: 420,
+    },
+    legendItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+    legendSwatch: { width: 10, height: 10, borderRadius: 2 },
+    legendText: { color: theme.textMuted, fontSize: 11 },
     board: { gap: 5, alignItems: 'center' },
     row: { flexDirection: 'row', gap: 5 },
     rowShake: { transform: [{ translateX: 3 }] },
