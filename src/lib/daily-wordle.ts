@@ -12,8 +12,30 @@
 
 import { WORDLE_GENERAL_ENGLISH } from '@/data/daily-banks/wordle-general-english'
 import { WORDLE_NAIJA_SLANG, type WordleSlangEntry } from '@/data/daily-banks/wordle-naija-slang'
+import {
+  WORDLE_SPORTS,
+  WORDLE_FOOD,
+  WORDLE_ANIMALS,
+  WORDLE_TECHNOLOGY,
+  WORDLE_NATURE,
+  WORDLE_MUSIC,
+  WORDLE_SCIENCE,
+  WORDLE_CLOTHING,
+  WORDLE_TRAVEL,
+} from '@/data/daily-banks/wordle-categories'
 
-export type WordleCategoryId = 'general_english' | 'naija_slang'
+export type WordleCategoryId =
+  | 'general_english'
+  | 'naija_slang'
+  | 'sports'
+  | 'food'
+  | 'animals'
+  | 'technology'
+  | 'nature'
+  | 'music'
+  | 'science'
+  | 'clothing'
+  | 'travel'
 export type WordleLetterState = 'correct' | 'present' | 'absent'
 
 export interface WordlePuzzleData {
@@ -42,6 +64,12 @@ interface WordleCategory {
   entries: WordleBankEntry[]
 }
 
+const themedCategory = (id: WordleCategoryId, label: string, words: readonly string[]): WordleCategory => ({
+  id,
+  label,
+  entries: words.map((word) => ({ word, hint: label })),
+})
+
 const WORDLE_CATEGORIES: readonly WordleCategory[] = [
   {
     id: 'general_english',
@@ -53,6 +81,15 @@ const WORDLE_CATEGORIES: readonly WordleCategory[] = [
     label: 'Naija Slang',
     entries: (WORDLE_NAIJA_SLANG as readonly WordleSlangEntry[]).map((e) => ({ word: e.word, hint: e.hint })),
   },
+  themedCategory('sports', 'Sports', WORDLE_SPORTS),
+  themedCategory('food', 'Food & Drink', WORDLE_FOOD),
+  themedCategory('animals', 'Animals', WORDLE_ANIMALS),
+  themedCategory('technology', 'Technology', WORDLE_TECHNOLOGY),
+  themedCategory('nature', 'Nature', WORDLE_NATURE),
+  themedCategory('music', 'Music', WORDLE_MUSIC),
+  themedCategory('science', 'Science', WORDLE_SCIENCE),
+  themedCategory('clothing', 'Clothing & Fashion', WORDLE_CLOTHING),
+  themedCategory('travel', 'Travel & Places', WORDLE_TRAVEL),
 ]
 
 /** LCG-mix a seed so adjacent daily seeds don't trivially alternate category. Deterministic. */

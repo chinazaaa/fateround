@@ -19,6 +19,17 @@ import { msUntilDeadline } from '@/lib/round-timing'
 import type { Game } from '@/types'
 import { WORDLE_GENERAL_ENGLISH } from '@/data/daily-banks/wordle-general-english'
 import { WORDLE_NAIJA_SLANG, type WordleSlangEntry } from '@/data/daily-banks/wordle-naija-slang'
+import {
+  WORDLE_SPORTS,
+  WORDLE_FOOD,
+  WORDLE_ANIMALS,
+  WORDLE_TECHNOLOGY,
+  WORDLE_NATURE,
+  WORDLE_MUSIC,
+  WORDLE_SCIENCE,
+  WORDLE_CLOTHING,
+  WORDLE_TRAVEL,
+} from '@/data/daily-banks/wordle-categories'
 import type { WordleCategoryId, WordleLetterState } from '@/lib/daily-wordle'
 import { normalizeWordleWord, wordleBasePoints, wordleMaxAttempts, gradeWordleGuess } from '@/lib/daily-wordle'
 
@@ -113,6 +124,11 @@ interface WordleRoomCategory {
   entries: { word: string; hint: string }[]
 }
 
+const themedRoomCategory = (label: string, words: readonly string[]): WordleRoomCategory => ({
+  label,
+  entries: words.map((word) => ({ word, hint: label })),
+})
+
 const WORDLE_ROOM_CATEGORIES: Record<WordleCategoryId, WordleRoomCategory> = {
   general_english: {
     label: 'General English',
@@ -122,14 +138,39 @@ const WORDLE_ROOM_CATEGORIES: Record<WordleCategoryId, WordleRoomCategory> = {
     label: 'Naija Slang',
     entries: (WORDLE_NAIJA_SLANG as readonly WordleSlangEntry[]).map((e) => ({ word: e.word, hint: e.hint })),
   },
+  sports: themedRoomCategory('Sports', WORDLE_SPORTS),
+  food: themedRoomCategory('Food & Drink', WORDLE_FOOD),
+  animals: themedRoomCategory('Animals', WORDLE_ANIMALS),
+  technology: themedRoomCategory('Technology', WORDLE_TECHNOLOGY),
+  nature: themedRoomCategory('Nature', WORDLE_NATURE),
+  music: themedRoomCategory('Music', WORDLE_MUSIC),
+  science: themedRoomCategory('Science', WORDLE_SCIENCE),
+  clothing: themedRoomCategory('Clothing & Fashion', WORDLE_CLOTHING),
+  travel: themedRoomCategory('Travel & Places', WORDLE_TRAVEL),
 }
+
+const VALID_CATEGORY_IDS: readonly WordleCategoryId[] = [
+  'general_english',
+  'naija_slang',
+  'sports',
+  'food',
+  'animals',
+  'technology',
+  'nature',
+  'music',
+  'science',
+  'clothing',
+  'travel',
+]
 
 export function wordleRoomCategoryLabel(category: WordleCategoryId): string {
   return WORDLE_ROOM_CATEGORIES[category]?.label ?? 'General English'
 }
 
 export function clampWordleRoomCategory(raw: unknown): WordleCategoryId {
-  return raw === 'naija_slang' ? 'naija_slang' : 'general_english'
+  return typeof raw === 'string' && (VALID_CATEGORY_IDS as readonly string[]).includes(raw)
+    ? (raw as WordleCategoryId)
+    : 'general_english'
 }
 
 export function clampWordleRoomWordCount(raw: unknown): WordleRoomWordCount {

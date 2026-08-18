@@ -196,12 +196,21 @@ export function DailyWordlePlay({ challengeId, puzzle, timer: maxSeconds, onSubm
     startAtMs,
   })
 
+  // Read the LATEST elapsed inside handleSubmit without listing it as a dep — otherwise
+  // handleSubmit recreates every timer tick, which re-runs the countdown effect and cancels
+  // its own pending setTimeout mid-tick (so the "going to scoreboard in Ns" countdown never
+  // advances). The ref carries the live value while handleSubmit's identity stays stable.
+  const elapsedRef = useRef(elapsed)
+  useEffect(() => {
+    elapsedRef.current = elapsed
+  }, [elapsed])
+
   const handleSubmit = useCallback(() => {
     if (submitRef.current) return
     submitRef.current = true
     setSubmitted(true)
-    onSubmit({ timeSeconds: elapsed, submission: { guesses, hintUsed } })
-  }, [guesses, elapsed, onSubmit, hintUsed])
+    onSubmit({ timeSeconds: elapsedRef.current, submission: { guesses, hintUsed } })
+  }, [guesses, onSubmit, hintUsed])
 
   // Reveal delay before starting the "going to scoreboard" countdown — long enough for the flip
   // animation on the last row (5 tiles × 0.35s stagger + flip) to finish before the countdown

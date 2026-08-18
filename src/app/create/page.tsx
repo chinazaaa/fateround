@@ -5838,6 +5838,15 @@ function CreateGameInner() {
                       options={[
                         { value: 'general_english', label: 'General English' },
                         { value: 'naija_slang', label: 'Naija Slang' },
+                        { value: 'sports', label: 'Sports' },
+                        { value: 'food', label: 'Food & Drink' },
+                        { value: 'animals', label: 'Animals' },
+                        { value: 'technology', label: 'Technology' },
+                        { value: 'nature', label: 'Nature' },
+                        { value: 'music', label: 'Music' },
+                        { value: 'science', label: 'Science' },
+                        { value: 'clothing', label: 'Clothing & Fashion' },
+                        { value: 'travel', label: 'Travel & Places' },
                       ]}
                     />
                   </Field>
