@@ -10,6 +10,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native'
+import { useNavigation } from 'expo-router'
 import { useDailyChallengeTimer } from '@/hooks/useDailyChallengeTimer'
 import {
   clearDailyProgress,
@@ -45,6 +46,18 @@ export function DailyWordSearchPlay({ challengeId, puzzle, timer: maxSeconds, on
   const metadata = puzzle.metadata as WordSearchMetadata
   const size = metadata?.size ?? 0
   const totalWords = metadata?.words?.length ?? 0
+
+  // Disable the native stack's swipe-back gesture while the grid is mounted.
+  // Without this, dragging horizontally across the grid to select a word
+  // triggers the navigator's edge-swipe and pops the screen mid-select. The
+  // multiplayer WordSearchBoardView already does this for the same reason.
+  const navigation = useNavigation()
+  useEffect(() => {
+    navigation.setOptions({ gestureEnabled: false })
+    return () => {
+      navigation.setOptions({ gestureEnabled: true })
+    }
+  }, [navigation])
 
   const [hydrated, setHydrated] = useState(false)
   const [startAtMs, setStartAtMs] = useState<number | null>(null)
