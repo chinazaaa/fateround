@@ -148,6 +148,8 @@ export function isDailyChallengeLive(today: string): boolean {
  */
 export const NATIVE_DAILY_GAMES: ReadonlySet<DailyChallengeGameType> = new Set([
   'trivia',
+  'word_scramble',
+  'sudoku',
 ])
 
 export function hasNativeDailyPlay(gameType: DailyChallengeGameType): boolean {

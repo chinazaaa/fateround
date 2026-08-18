@@ -17,6 +17,8 @@ import { AmbientBackground } from '@/components/ui/AmbientBackground'
 import { AppButton } from '@/components/ui/AppButton'
 import { DailyChallengeResults } from '@/components/daily/DailyChallengeResults'
 import { DailyTriviaPlay } from '@/components/daily/DailyTriviaPlay'
+import { DailyWordScramblePlay } from '@/components/daily/DailyWordScramblePlay'
+import { DailySudokuPlay } from '@/components/daily/DailySudokuPlay'
 import { useDailyChallengeSession } from '@/hooks/useDailyChallengeSession'
 import {
   DAILY_GAME_EMOJIS,
@@ -160,6 +162,17 @@ function PlaySurface({
   switch (gameType) {
     case 'trivia':
       return <DailyTriviaPlay challengeId={challengeId} puzzle={puzzle} timer={timer} onSubmit={onSubmit} />
+    case 'word_scramble':
+      return <DailyWordScramblePlay challengeId={challengeId} puzzle={puzzle} timer={timer} onSubmit={onSubmit} />
+    case 'sudoku':
+      return (
+        <DailySudokuPlay
+          challengeId={challengeId}
+          puzzle={puzzle.puzzle as number[][]}
+          timer={timer}
+          onSubmit={onSubmit}
+        />
+      )
     default:
       // Compile-time safety: any gameType listed in NATIVE_DAILY_GAMES but
       // missing from this switch is a bug in the registry. Runtime fallback
