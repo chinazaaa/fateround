@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react'
-import { Linking, Pressable, RefreshControl, StyleSheet, Text, TextInput, View } from 'react-native'
+import { Pressable, RefreshControl, StyleSheet, Text, TextInput, View } from 'react-native'
 import { useFocusEffect, useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { normalizeGameCode } from '@fateround/shared'
@@ -17,7 +17,6 @@ import { ProfileChip } from '@/components/profile/ProfileChip'
 import { centeredContent } from '@/constants/layout'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
-import { WEB_BASE_URL } from '@/lib/config'
 import { gameLabel } from '@/lib/mobile-registry'
 import { getRecentGames, type RecentGame } from '@/lib/recent-games'
 
@@ -113,11 +112,6 @@ export default function HomeScreen() {
             size="lg"
             fullWidth
             onPress={() => router.push('/create')}
-          />
-          <AppButton
-            label="Advanced setup on web"
-            tone="ghost"
-            onPress={() => void Linking.openURL(`${WEB_BASE_URL}/create`)}
           />
           <AppButton
             label="🗓️ Daily Challenges"
