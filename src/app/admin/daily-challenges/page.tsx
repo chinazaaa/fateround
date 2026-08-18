@@ -618,9 +618,7 @@ export default function AdminDailyPage() {
         body: JSON.stringify({
           from: batchRange.from,
           to: batchRange.to,
-          // Wordle isn't in the batch generator's bank yet (no auto-content source);
-          // admins add wordle days manually via the Manual tab.
-          game_types: ALL_GAME_IDS.filter((g) => g !== 'wordle'),
+          game_types: ALL_GAME_IDS,
         }),
       })
       const json = await res.json()

@@ -5,6 +5,8 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { CROSSWORD_THEMES } from '@/lib/crossword-puzzles'
 import { WORD_SEARCH_THEMES } from '@/lib/word-search-puzzles'
 import { WORD_SCRAMBLE_THEMES } from '@/lib/word-scramble-puzzles'
+import { WORDLE_GENERAL_ENGLISH } from '@/data/daily-banks/wordle-general-english'
+import { WORDLE_NAIJA_SLANG } from '@/data/daily-banks/wordle-naija-slang'
 import type { PuzzleThemeGameType } from '@/lib/puzzle-themes'
 
 // Server-only: reads the built-in theme registries (which carry the full word banks) and mirrors
@@ -53,6 +55,29 @@ function builtinSeeds(): Seed[] {
       }),
     })
   )
+  // Wordle built-in categories seed as two themes so hosts can pick either "General English"
+  // or "Naija Slang" from the multiplayer create-page Library picker — mirroring what the
+  // Category dropdown offers under Platform. Words are filtered to 3–8 letters (the engine's
+  // range) so the seed can never carry a word the game refuses to use.
+  seeds.push({
+    game_type: 'wordle_room',
+    builtin_key: 'wordle_general_english',
+    name: 'General English',
+    sort_order: 0,
+    entries: WORDLE_GENERAL_ENGLISH.filter((w) => w.length >= 3 && w.length <= 8).map((w) => ({
+      word: w.toLowerCase(),
+    })),
+  })
+  seeds.push({
+    game_type: 'wordle_room',
+    builtin_key: 'wordle_naija_slang',
+    name: 'Naija Slang',
+    sort_order: 1,
+    entries: WORDLE_NAIJA_SLANG.filter((e) => e.word.length >= 3 && e.word.length <= 8).map((e) => ({
+      word: e.word.toLowerCase(),
+      hint: e.hint,
+    })),
+  })
   return seeds
 }
 
