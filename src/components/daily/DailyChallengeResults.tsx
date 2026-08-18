@@ -135,16 +135,6 @@ export function DailyChallengeResults({
     toastError,
   ])
 
-  const copyGrid = useCallback(async () => {
-    if (!grid) return
-    try {
-      await navigator.clipboard.writeText(grid)
-      success('Grid copied — paste it anywhere!')
-    } catch {
-      toastError('Could not copy grid')
-    }
-  }, [grid, success, toastError])
-
   if (submitting) {
     return (
       <div className="mx-auto max-w-lg px-4 py-16 text-center">
@@ -323,11 +313,8 @@ export function DailyChallengeResults({
             <button className="fr-btn fr-btn--secondary fr-btn--block" onClick={handleShare} disabled={sharing}>
               {sharing ? 'Generating...' : 'Share Result'}
             </button>
-            {gameType === 'wordle' && grid && (
-              <button className="fr-btn fr-btn--secondary fr-btn--block" onClick={copyGrid}>
-                Copy Grid
-              </button>
-            )}
+            {/* "Copy Grid" removed — Share Result already embeds the emoji grid image, so an
+                extra CTA just duplicated the same content in text form. */}
             <Link href="/daily-challenges" className="fr-btn fr-btn--ghost fr-btn--sm mx-auto">
               Back to Daily Challenges
             </Link>

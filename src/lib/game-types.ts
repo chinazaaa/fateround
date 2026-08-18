@@ -1454,7 +1454,7 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
   },
   wordle_room: {
     id: 'wordle_room',
-    label: 'Wordle Room',
+    label: 'Wordle',
     tagline: 'Race to solve the same words — most solved, fewest guesses wins',
     headerEmoji: '🟩🟨',
     card: {
@@ -2347,7 +2347,8 @@ export function parseGameType(raw: unknown): GameType {
   if (raw === 'sudoku') return 'sudoku'
   if (raw === 'tic_tac_toe') return 'tic_tac_toe'
   if (raw === 'word_hunt') return 'word_hunt'
-  if (raw === 'wordle_room' || raw === 'wordle-room' || raw === 'wordle_room_race') return 'wordle_room'
+  if (raw === 'wordle_room' || raw === 'wordle-room' || raw === 'wordle_room_race' || raw === 'wordle')
+    return 'wordle_room'
   if (raw === 'chess') return 'chess'
   if (raw === 'describe_it' || raw === 'text-charades') return 'describe_it'
   if (raw === 'word_rush' || raw === 'word-rush') return 'word_rush'

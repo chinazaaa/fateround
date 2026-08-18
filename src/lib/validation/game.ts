@@ -200,12 +200,42 @@ export const createGameSchema = z.object({
     .int()
     .refine((val: number) => (PING_PONG_POINTS_OPTIONS as readonly number[]).includes(val))
     .optional(),
-  wordle_room_category: z.enum(['general_english', 'naija_slang']).optional(),
+  wordle_room_category: z
+    .enum([
+      'general_english',
+      'naija_slang',
+      'sports',
+      'food',
+      'animals',
+      'technology',
+      'nature',
+      'music',
+      'science',
+      'clothing',
+      'travel',
+    ])
+    .optional(),
   wordle_room_word_count: z.coerce
     .number()
     .int()
     .refine((val: number) => [5, 10, 15, 20].includes(val))
     .optional(),
+  wordle_room_words: z
+    .array(
+      z.object({
+        // Letters-only matches the engine's normalizeWordleWord filter; anything else would
+        // be silently stripped, and a "word" like "1234" or "abc-def" is nonsense here.
+        word: z
+          .string()
+          .min(3)
+          .max(8)
+          .regex(/^[a-zA-Z]+$/),
+        hint: z.string().max(200).optional(),
+      })
+    )
+    .max(2000)
+    .optional(),
+  library_pack_id: z.string().uuid().optional(),
   custom_slots: z
     .object({
       slots: z
@@ -456,12 +486,42 @@ export const boardGameLobbySettingsSchema = z.object({
     .int()
     .refine((val: number) => (PING_PONG_POINTS_OPTIONS as readonly number[]).includes(val))
     .optional(),
-  wordle_room_category: z.enum(['general_english', 'naija_slang']).optional(),
+  wordle_room_category: z
+    .enum([
+      'general_english',
+      'naija_slang',
+      'sports',
+      'food',
+      'animals',
+      'technology',
+      'nature',
+      'music',
+      'science',
+      'clothing',
+      'travel',
+    ])
+    .optional(),
   wordle_room_word_count: z.coerce
     .number()
     .int()
     .refine((val: number) => [5, 10, 15, 20].includes(val))
     .optional(),
+  wordle_room_words: z
+    .array(
+      z.object({
+        // Letters-only matches the engine's normalizeWordleWord filter; anything else would
+        // be silently stripped, and a "word" like "1234" or "abc-def" is nonsense here.
+        word: z
+          .string()
+          .min(3)
+          .max(8)
+          .regex(/^[a-zA-Z]+$/),
+        hint: z.string().max(200).optional(),
+      })
+    )
+    .max(2000)
+    .optional(),
+  library_pack_id: z.string().uuid().optional(),
 })
 
 export type BoardGameLobbySettingsInput = z.infer<typeof boardGameLobbySettingsSchema>

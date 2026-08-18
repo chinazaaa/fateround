@@ -2,8 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
 import { useDailyChallengeTimer } from '@/hooks/useDailyChallengeTimer'
-import { getOrCreateStartedAt, loadDailyAnswers, saveDailyAnswers, clearDailyProgress } from '@/lib/daily-progress'
+import { getOrCreateStartedAt, loadDailyAnswers, saveDailyAnswers } from '@/lib/daily-progress'
 import { gradeWordleGuess, wordleKeyBestStates, type WordleLetterState } from '@/lib/daily-wordle'
+import { useConfirm } from '@/components/ui/ConfirmDialog'
+import { authHeaders } from '@/lib/identity'
 
 interface DailyWordlePlayProps {
   challengeId: string
@@ -16,6 +18,7 @@ interface DailyWordlePlayProps {
 type WordleProgress = {
   guesses: string[]
   current: string
+  hintUsed?: boolean
 }
 
 const KEYBOARD_ROWS: ReadonlyArray<readonly string[]> = [
@@ -68,6 +71,7 @@ const WORDLE_CSS = `
   color: var(--text);
 }
 .wl-tile--current { border-color: var(--border-strong); }
+.wl-tile--focus { outline: 2px solid var(--primary); outline-offset: -2px; }
 .wl-tile--graded {
   border-color: transparent;
   background: var(--tile-bg);
@@ -159,6 +163,35 @@ export function DailyWordlePlay({ challengeId, puzzle, timer: maxSeconds, onSubm
   const [startAtMs] = useState(() => getOrCreateStartedAt(challengeId))
   const [guesses, setGuesses] = useState<string[]>(savedProgress?.guesses ?? [])
   const [current, setCurrent] = useState<string>(savedProgress?.current ?? '')
+  // Tile-level cursor: which slot the next typed letter fills. Defaults to the end of the typed
+  // string (classic Wordle append). Click a filled tile to jump the cursor there and overwrite
+  // that letter instead of erasing back to it.
+  const [cursorAt, setCursorAt] = useState<number>(savedProgress?.current?.length ?? 0)
+  const [hintUsed, setHintUsed] = useState<boolean>(savedProgress?.hintUsed ?? false)
+  const { confirm } = useConfirm()
+  const revealHint = useCallback(async () => {
+    const ok = await confirm({
+      title: 'Reveal hint?',
+      message: 'This costs 300 points off your final score. Are you sure?',
+      confirmLabel: 'Reveal (−300)',
+    })
+    if (!ok) return
+    // Persist the reveal before showing the hint text — the submit route reads this row as
+    // the authority on hintUsed, so a modified client can't dodge the penalty by omitting
+    // the flag from submission. Failures still fall through to the local flag as a fallback
+    // (best-effort — worst case the client marks itself hintUsed and pays as expected).
+    try {
+      const headers = await authHeaders()
+      await fetch(`/api/daily-challenges/wordle/reveal-hint`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(headers ?? {}) },
+        body: JSON.stringify({ challengeId }),
+      })
+    } catch {
+      /* network hiccup — the local hintUsed still gets sent so the deduction still applies */
+    }
+    setHintUsed(true)
+  }, [confirm, challengeId])
   const [message, setMessage] = useState<string | null>(null)
   const [announcement, setAnnouncement] = useState('')
   const [shake, setShake] = useState(false)
@@ -169,8 +202,8 @@ export function DailyWordlePlay({ challengeId, puzzle, timer: maxSeconds, onSubm
   const gameOver = won || guesses.length >= maxAttempts
 
   useEffect(() => {
-    if (!submitted) saveDailyAnswers<WordleProgress>(challengeId, { guesses, current })
-  }, [challengeId, guesses, current, submitted])
+    if (!submitted) saveDailyAnswers<WordleProgress>(challengeId, { guesses, current, hintUsed })
+  }, [challengeId, guesses, current, hintUsed, submitted])
 
   const { elapsed, formatted, isTimeUp } = useDailyChallengeTimer({
     mode: 'countdown',
@@ -179,48 +212,100 @@ export function DailyWordlePlay({ challengeId, puzzle, timer: maxSeconds, onSubm
     startAtMs,
   })
 
+  // Read the LATEST elapsed inside handleSubmit without listing it as a dep — otherwise
+  // handleSubmit recreates every timer tick, which re-runs the countdown effect and cancels
+  // its own pending setTimeout mid-tick (so the "going to scoreboard in Ns" countdown never
+  // advances). The ref carries the live value while handleSubmit's identity stays stable.
+  const elapsedRef = useRef(elapsed)
+  useEffect(() => {
+    elapsedRef.current = elapsed
+  }, [elapsed])
+
   const handleSubmit = useCallback(() => {
     if (submitRef.current) return
     submitRef.current = true
     setSubmitted(true)
-    clearDailyProgress(challengeId)
-    onSubmit({ timeSeconds: elapsed, submission: { guesses } })
-  }, [guesses, elapsed, onSubmit, challengeId])
+    onSubmit({ timeSeconds: elapsedRef.current, submission: { guesses, hintUsed } })
+  }, [guesses, onSubmit, hintUsed])
 
-  // Win/loss reveal delay, then auto-submit. The server re-grades `submission.guesses`, so a player
-  // who closes the tab mid-reveal and reloads is handled too (gameOver restores from saved progress).
+  // Reveal delay before starting the "going to scoreboard" countdown — long enough for the flip
+  // animation on the last row (5 tiles × 0.35s stagger + flip) to finish before the countdown
+  // starts ticking.
+  const REVEAL_DELAY_MS = won ? 1400 : 2400
+  const SCOREBOARD_COUNTDOWN_S = 5
+  const [countdown, setCountdown] = useState<number | null>(null)
+
+  // After the win/loss reveal, show a visible "Going to scoreboard in Ns" countdown, then submit.
+  // The server re-grades `submission.guesses`, so a player who closes the tab mid-reveal and reloads
+  // is handled too (gameOver restores from saved progress).
   useEffect(() => {
     if (!gameOver || submitted || submitRef.current) return
-    const delay = won ? 1400 : 2400
-    const t = setTimeout(handleSubmit, delay)
+    const start = setTimeout(() => setCountdown(SCOREBOARD_COUNTDOWN_S), REVEAL_DELAY_MS)
+    return () => clearTimeout(start)
+  }, [gameOver, submitted, REVEAL_DELAY_MS])
+
+  useEffect(() => {
+    if (countdown == null) return
+    if (countdown <= 0) {
+      handleSubmit()
+      return
+    }
+    const t = setTimeout(() => setCountdown((c) => (c == null ? null : c - 1)), 1000)
     return () => clearTimeout(t)
-  }, [gameOver, won, submitted, handleSubmit])
+  }, [countdown, handleSubmit])
 
   useEffect(() => {
     if (isTimeUp && !submitted && !submitRef.current) handleSubmit()
   }, [isTimeUp, submitted, handleSubmit])
 
-  const gameOverMessage = gameOver ? (won ? 'Correct!' : 'Out of attempts') : null
+  const gameOverBase = gameOver ? (won ? 'Correct!' : 'Out of attempts') : null
+  const gameOverMessage =
+    gameOverBase && countdown != null && countdown > 0
+      ? `${gameOverBase} Going to scoreboard in ${countdown}s`
+      : gameOverBase
   const gameOverAnnouncement = gameOver
     ? won
       ? `Correct! Solved in ${guesses.length} of ${maxAttempts} guesses.`
       : `Out of attempts. The word was ${word.toUpperCase()}.`
     : null
 
+  // Both handlers derive the next (current, cursorAt) pair from the live snapshot and apply
+  // the two setters side-by-side, so nothing inside a setState updater has a side effect —
+  // React can safely replay the updaters. Key events fire one at a time, so reading state
+  // directly (not from an updater arg) can't miss a batched second keystroke.
   const addLetter = useCallback(
     (key: string) => {
       const ch = key.toLowerCase()
       if (!/^[a-z]$/.test(ch)) return
       setMessage(null)
-      setCurrent((c) => (c.length >= wordLength ? c : c + ch))
+      if (cursorAt < current.length) {
+        setCurrent(current.slice(0, cursorAt) + ch + current.slice(cursorAt + 1))
+        setCursorAt(Math.min(cursorAt + 1, wordLength))
+      } else if (current.length < wordLength) {
+        setCurrent(current + ch)
+        setCursorAt(current.length + 1)
+      }
     },
-    [wordLength]
+    [current, cursorAt, wordLength]
   )
 
   const backspace = useCallback(() => {
     setMessage(null)
-    setCurrent((c) => c.slice(0, -1))
-  }, [])
+    // Backspace at cursor removes the letter just before it (standard text-input behaviour),
+    // so a click-then-backspace on a mid-row tile deletes that neighbour, not the last letter.
+    if (cursorAt > 0 && cursorAt <= current.length) {
+      setCurrent(current.slice(0, cursorAt - 1) + current.slice(cursorAt))
+      setCursorAt(cursorAt - 1)
+    }
+  }, [current, cursorAt])
+
+  const focusTile = useCallback(
+    (i: number) => {
+      if (i < 0 || i > current.length || i >= wordLength) return
+      setCursorAt(i)
+    },
+    [current.length, wordLength]
+  )
 
   const submitGuess = useCallback(() => {
     if (gameOver || submitted || submitRef.current) return
@@ -294,8 +379,33 @@ export function DailyWordlePlay({ challengeId, puzzle, timer: maxSeconds, onSubm
     >
       {Array.from({ length: wordLength }).map((_, i) => {
         const ch = current[i] ?? ''
+        const isFocused = cursorAt === i
+        // Only filled tiles are clickable — clicking an empty tile past your progress makes no
+        // sense (there's nothing there to edit), and would let you type into a gap.
+        const clickable = i < current.length
         return (
-          <span key={i} className={`wl-tile wl-tile--current ${i === current.length - 1 ? 'wl-tile--pop' : ''}`}>
+          <span
+            key={i}
+            role={clickable ? 'button' : undefined}
+            tabIndex={clickable ? 0 : undefined}
+            aria-label={clickable ? `Edit letter ${i + 1}: ${ch.toUpperCase()}` : undefined}
+            onClick={clickable ? () => focusTile(i) : undefined}
+            onKeyDown={
+              clickable
+                ? (e) => {
+                    // Keyboard-activate the tile without letting Enter/Space bubble to the
+                    // window keydown listener (which would submit the row / type a space).
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      focusTile(i)
+                    }
+                  }
+                : undefined
+            }
+            className={`wl-tile wl-tile--current ${isFocused ? 'wl-tile--focus' : ''} ${i === current.length - 1 && cursorAt === current.length ? 'wl-tile--pop' : ''}`}
+            style={clickable ? { cursor: 'pointer' } : undefined}
+          >
             {ch.toUpperCase()}
           </span>
         )
@@ -338,6 +448,10 @@ export function DailyWordlePlay({ challengeId, puzzle, timer: maxSeconds, onSubm
   return (
     <div className="fr-card fr-card--xl wordle-scope">
       <div className="space-y-3" style={{ maxWidth: 460, margin: '0 auto' }}>
+        <p className="text-center" style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>
+          Guess the {wordLength}-letter word in {maxAttempts} tries. Green = right letter and spot, yellow = right
+          letter wrong spot, grey = not in the word.
+        </p>
         <div className="flex items-center justify-between gap-3">
           <span className="wl-cat-badge" style={{ background: 'var(--wl-correct)', color: '#fff' }}>
             {categoryLabel}
@@ -356,9 +470,30 @@ export function DailyWordlePlay({ challengeId, puzzle, timer: maxSeconds, onSubm
           {message || gameOverMessage ? <span role="alert">{message || gameOverMessage}</span> : null}
         </div>
 
-        {gameOver && !won && hint && (
+        {/* Live hint — costs 300 points off the final score. Once bought, the hint stays visible
+            for the rest of the game so the player doesn't pay twice. If there's no hint on this
+            puzzle (e.g. General English words), the button is hidden entirely. */}
+        {hint &&
+          !gameOver &&
+          (hintUsed ? (
+            <p className="text-center" style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>
+              Hint: {hint} <span style={{ color: 'var(--text-faint)' }}>(−300 pts)</span>
+            </p>
+          ) : (
+            <div className="text-center">
+              <button
+                type="button"
+                onClick={() => void revealHint()}
+                disabled={submitted}
+                className="fr-btn fr-btn--secondary fr-btn--sm"
+              >
+                Reveal hint (−300 pts)
+              </button>
+            </div>
+          ))}
+        {gameOver && hintUsed && hint && (
           <p className="text-center" style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>
-            Hint: {hint}
+            Hint: {hint} <span style={{ color: 'var(--text-faint)' }}>(−300 pts)</span>
           </p>
         )}
 

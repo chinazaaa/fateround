@@ -14,6 +14,7 @@ import type {
 } from '@/types'
 import type { Settings, Step, ParticipantTab, QuestionTab } from './types'
 import { LIBRARY_GAME_TYPE_MAP } from './constants'
+import { parsePuzzleThemeCsv } from '@/lib/puzzle-themes'
 import { trackEvent, GA_EVENTS } from '@/lib/analytics'
 import { GenderBadge } from './components/GenderBadge'
 import { Avatar } from './components/Avatar'
@@ -579,6 +580,8 @@ function CreateGameInner() {
   const [customCrosswordEntries, setCustomCrosswordEntries] = useState<CrosswordEntry[]>([])
   const [customWordSearchWords, setCustomWordSearchWords] = useState<WordSearchEntry[]>([])
   const [customWordScrambleWords, setCustomWordScrambleWords] = useState<WordScrambleEntry[]>([])
+  // Multiplayer Wordle library pack picker — each entry is {word, hint?}, hint optional.
+  const [customWordleRoomWords, setCustomWordleRoomWords] = useState<{ word: string; hint?: string }[]>([])
   const [puzzleUploadError, setPuzzleUploadError] = useState<string | null>(null)
   const [puzzleUploadSummary, setPuzzleUploadSummary] = useState<string | null>(null)
   const [selectedPackId, setSelectedPackId] = useState<string | null>(null)
@@ -594,6 +597,7 @@ function CreateGameInner() {
   >([])
   const [libraryPacksLoading, setLibraryPacksLoading] = useState(false)
   const [libraryPackSearch, setLibraryPackSearch] = useState('')
+  const selectLibraryPackSeqRef = useRef(0)
   const [lobbyLimits, setLobbyLimits] = useState<GamePlayerLimitsMap | null>(null)
   const effectiveLimits = lobbyLimits ?? getCodeDefaultLimits()
 
@@ -632,8 +636,14 @@ function CreateGameInner() {
 
   const selectLibraryPack = async (id: string) => {
     setSelectedPackId(id)
+    // Guard against out-of-order responses when the host clicks pack A then quickly clicks
+    // pack B: A's slower response would otherwise arrive after B's and overwrite the picked
+    // words. Track the sequence and ignore any response for an id that's no longer selected.
+    selectLibraryPackSeqRef.current += 1
+    const seq = selectLibraryPackSeqRef.current
     const res = await fetch(`/api/library/${id}`)
     const data = await res.json()
+    if (seq !== selectLibraryPackSeqRef.current) return
     if (data.pack?.questions) {
       const qs = data.pack.questions
       setLibraryPackQuestions(qs)
@@ -652,7 +662,16 @@ function CreateGameInner() {
       else if (isCrosswordGame(settings.game_type)) setCustomCrosswordEntries(parseStoredCrosswordEntries(qs))
       else if (isWordSearchGame(settings.game_type)) setCustomWordSearchWords(parseStoredWordSearchEntries(qs))
       else if (isWordScrambleGame(settings.game_type)) setCustomWordScrambleWords(parseStoredWordScrambleEntries(qs))
-      else setCustomMltQuestions(qs as string[])
+      else if (isWordleRoomGame(settings.game_type)) {
+        // Wordle themes reuse the word-scramble entry shape ({word, hint?}), but wordle
+        // constrains length to 3–8 letters — filter defensively.
+        const raw = parseStoredWordScrambleEntries(qs)
+        setCustomWordleRoomWords(
+          raw
+            .filter((e) => e.word.length >= 3 && e.word.length <= 8)
+            .map((e) => (e.hint ? { word: e.word.toLowerCase(), hint: e.hint } : { word: e.word.toLowerCase() }))
+        )
+      } else setCustomMltQuestions(qs as string[])
     }
   }
 
@@ -1849,7 +1868,7 @@ function CreateGameInner() {
   // word_search, word_scramble, word_grouping). When on, the create flow forces
   // max_players=1, seats the host as the sole player, and auto-starts the game
   // right after create so a solo host bypasses the lobby wait entirely.
-  const isSoloEligible = isYahtzee || isCrossword || isWordSearch || isWordScramble || isWordGrouping
+  const isSoloEligible = isYahtzee || isCrossword || isWordSearch || isWordScramble || isWordGrouping || isWordleRoom
   const [soloMode, setSoloMode] = useState(false)
   useEffect(() => {
     // A game type change may make solo unavailable — never carry a stale flag.
@@ -1926,7 +1945,8 @@ function CreateGameInner() {
     isWordScramble ||
     isWordGrouping ||
     isWordHunt ||
-    isMatchingPairs
+    isMatchingPairs ||
+    isWordleRoom
   const isTriviaQuickCreate = isTrivia
   const needsParticipantStep =
     !isQuickLobby && !isTriviaQuickCreate && !isBinaryLobby && !(isMlt && isJoinersMode) && !isJoinersMode
@@ -1980,6 +2000,7 @@ function CreateGameInner() {
       setWordleRoomCategory('general_english')
       setWordleRoomWordCount(WORDLE_ROOM_DEFAULT_WORD_COUNT)
       setWordleRoomTimer(WORDLE_ROOM_DEFAULT_TIMER)
+      setCustomWordleRoomWords([])
     }
     setSettings({
       ...settings,
@@ -2573,6 +2594,16 @@ function CreateGameInner() {
                 wordle_room_category: wordleRoomCategory,
                 wordle_room_word_count: wordleRoomWordCount,
                 timer_seconds: wordleRoomTimer,
+                // Library or custom source forwards its parsed word list so the start route uses
+                // it as the sequence source instead of the built-in category bank. Platform
+                // (default) sends nothing here and the server falls back to the category.
+                ...((questionSource === 'library' || questionSource === 'custom') &&
+                customWordleRoomWords.length >= wordleRoomWordCount
+                  ? {
+                      wordle_room_words: customWordleRoomWords,
+                      ...(questionSource === 'library' && selectedPackId ? { library_pack_id: selectedPackId } : {}),
+                    }
+                  : {}),
               }
             : {}),
           rounds_count: isWst
@@ -5781,7 +5812,7 @@ function CreateGameInner() {
                 </p>
               </SettingsGroup>
             ) : isWordleRoom ? (
-              <SettingsGroup title="Wordle Room">
+              <SettingsGroup title="Wordle">
                 <Field label={`Max players (${effectiveLimits.wordle_room.min}–${effectiveLimits.wordle_room.max})`}>
                   <CustomSelect
                     value={wordleRoomMaxPlayers}
@@ -5794,16 +5825,104 @@ function CreateGameInner() {
                     )}
                   />
                 </Field>
-                <Field label="Category">
-                  <CustomSelect
-                    value={wordleRoomCategory}
-                    onChange={setWordleRoomCategory}
-                    options={[
-                      { value: 'general_english', label: 'General English' },
-                      { value: 'naija_slang', label: 'Naija Slang' },
-                    ]}
+                <Field label="Word source">
+                  <SegmentedControl
+                    value={questionSource}
+                    onChange={(v) => {
+                      setQuestionSource(v as QuestionSource)
+                      setSelectedPackId(null)
+                      setLibraryPackQuestions([])
+                      setCustomWordleRoomWords([])
+                    }}
+                    options={questionSourceOptions('wordle_room')}
                   />
                 </Field>
+                {questionSource === 'platform' && (
+                  <Field label="Category">
+                    <CustomSelect
+                      value={wordleRoomCategory}
+                      onChange={setWordleRoomCategory}
+                      options={[
+                        { value: 'general_english', label: 'General English' },
+                        { value: 'naija_slang', label: 'Naija Slang' },
+                        { value: 'sports', label: 'Sports' },
+                        { value: 'food', label: 'Food & Drink' },
+                        { value: 'animals', label: 'Animals' },
+                        { value: 'technology', label: 'Technology' },
+                        { value: 'nature', label: 'Nature' },
+                        { value: 'music', label: 'Music' },
+                        { value: 'science', label: 'Science' },
+                        { value: 'clothing', label: 'Clothing & Fashion' },
+                        { value: 'travel', label: 'Travel & Places' },
+                      ]}
+                    />
+                  </Field>
+                )}
+                {questionSource === 'library' && (
+                  <div className="space-y-3 pt-1">
+                    <LibraryPackPicker
+                      loading={libraryPacksLoading}
+                      packs={libraryPacks}
+                      search={libraryPackSearch}
+                      onSearchChange={setLibraryPackSearch}
+                      selectedPackId={selectedPackId}
+                      onSelect={selectLibraryPack}
+                      noun="words"
+                    />
+                    {customWordleRoomWords.length > 0 && (
+                      <p className="text-faint text-xs text-center">
+                        Loaded {customWordleRoomWords.length} words from this pack.
+                      </p>
+                    )}
+                  </div>
+                )}
+                {(questionSource === 'library' || questionSource === 'custom') && (
+                  <Field label="Category name">
+                    <input
+                      value={settings.content_label}
+                      onChange={(e) => setSettings({ ...settings, content_label: e.target.value })}
+                      placeholder="e.g. Fruits, Slang, Startup jargon"
+                      className="input-field"
+                    />
+                    <p className="text-faint text-xs mt-1">
+                      Shown as the coloured badge above the board so players know what they&apos;re guessing.
+                      {questionSource === 'library'
+                        ? ' Auto-filled from the pack name — edit to make it your own.'
+                        : ''}
+                    </p>
+                  </Field>
+                )}
+                {questionSource === 'custom' && (
+                  <div className="space-y-3 pt-1">
+                    <Field label="Word list (CSV: word,hint — hint optional)">
+                      <input
+                        type="file"
+                        accept=".csv,text/csv"
+                        className="input-field"
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0]
+                          if (!file) return
+                          try {
+                            const csv = await file.text()
+                            const parsed = parsePuzzleThemeCsv('wordle_room', csv)
+                            const entries = parsed.entries.map((r) => {
+                              const word = (r.word ?? '').toLowerCase().replace(/[^a-z]/g, '')
+                              return r.hint ? { word, hint: r.hint } : { word }
+                            })
+                            setCustomWordleRoomWords(entries)
+                          } catch {
+                            setCustomWordleRoomWords([])
+                          }
+                        }}
+                      />
+                    </Field>
+                    <p className="text-faint text-xs">
+                      {customWordleRoomWords.length > 0
+                        ? `Loaded ${customWordleRoomWords.length} valid 3–8 letter word${customWordleRoomWords.length === 1 ? '' : 's'}. Need at least ${wordleRoomWordCount} for a ${wordleRoomWordCount}-word race.`
+                        : `Upload a CSV with one word,hint per line. Words must be 3–8 letters. Need at least ${wordleRoomWordCount} for the race.`}
+                    </p>
+                  </div>
+                )}
                 <Field label="Words in the race">
                   <CustomSelect
                     value={wordleRoomWordCount}
@@ -6861,7 +6980,10 @@ function CreateGameInner() {
                   loading ||
                   (isCodewords &&
                     questionSource === 'custom' &&
-                    customCodewordsWords.length < CODEWORDS_MIN_CUSTOM_POOL)
+                    customCodewordsWords.length < CODEWORDS_MIN_CUSTOM_POOL) ||
+                  (isWordleRoom &&
+                    (questionSource === 'library' || questionSource === 'custom') &&
+                    customWordleRoomWords.length < wordleRoomWordCount)
                 }
               >
                 {loading

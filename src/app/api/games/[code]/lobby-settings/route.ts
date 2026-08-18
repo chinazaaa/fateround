@@ -206,6 +206,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     content_label,
     wordle_room_category,
     wordle_room_word_count,
+    wordle_room_words,
   } = parsed.data
   const gameCode = parsed.data.gameId.toUpperCase()
 
@@ -286,7 +287,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     puzzle_custom_questions === undefined &&
     ping_pong_points_to_win === undefined &&
     wordle_room_category === undefined &&
-    wordle_room_word_count === undefined
+    wordle_room_word_count === undefined &&
+    wordle_room_words === undefined
   ) {
     return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
   }
@@ -421,6 +423,24 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       return NextResponse.json({ error: 'Wordle Room word count only applies to Wordle Room games' }, { status: 400 })
     }
     gameUpdate.wordle_room_word_count = clampWordleRoomWordCount(wordle_room_word_count)
+  }
+  if (wordle_room_words !== undefined) {
+    if (timedLobbyType !== 'wordle_room') {
+      return NextResponse.json({ error: 'Wordle word list only applies to Wordle games' }, { status: 400 })
+    }
+    // An empty array clears any previously-picked library/custom pool so the room falls back
+    // to the built-in category. Anything non-empty is filtered to the engine's letters-only
+    // 3–8 length range before persisting, matching the shape the start route expects.
+    if (wordle_room_words === null || (Array.isArray(wordle_room_words) && wordle_room_words.length === 0)) {
+      gameUpdate.wordle_room_custom_words = null
+    } else {
+      gameUpdate.wordle_room_custom_words = wordle_room_words
+        .map((e: { word: string; hint?: string }) => ({
+          word: (e.word ?? '').toLowerCase().replace(/[^a-z]/g, ''),
+          hint: typeof e.hint === 'string' ? e.hint : '',
+        }))
+        .filter((e: { word: string }) => e.word.length >= 3 && e.word.length <= 8)
+    }
   }
 
   if (limitOnlyType === 'matching_pairs') {

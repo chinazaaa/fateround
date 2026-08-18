@@ -4,6 +4,8 @@ import { WORD_GROUPING_BANK } from '@/data/daily-banks/word-grouping-bank'
 import { CHESS_BANK } from '@/data/daily-banks/chess-bank'
 import { CODENAMES_BANK } from '@/data/daily-banks/codenames-bank'
 import { LUDO_BANK } from '@/data/daily-banks/ludo-bank'
+import { WORDLE_GENERAL_ENGLISH } from '@/data/daily-banks/wordle-general-english'
+import { WORDLE_NAIJA_SLANG } from '@/data/daily-banks/wordle-naija-slang'
 
 type GameTypeId =
   | 'crossword'
@@ -15,6 +17,7 @@ type GameTypeId =
   | 'chess_mate'
   | 'codenames_codeword'
   | 'ludo_puzzle'
+  | 'wordle'
 
 interface ExistingRow {
   game_type: string
@@ -343,6 +346,28 @@ function generateLudoContent(date: string, usedKeys: Set<string>): { content: un
   }
 }
 
+function generateWordleContent(date: string, usedKeys: Set<string>): { content: unknown; theme: string } | null {
+  // Combined bank: General English + Naija Slang. Category is carried per-entry so the daily
+  // play view's badge reflects the actual word source (matches the admin manual editor's
+  // WORD,hint,category shape, so bulk-seeded and hand-seeded days look identical to players).
+  const bank: { word: string; hint: string; categoryLabel: string }[] = [
+    ...WORDLE_GENERAL_ENGLISH.map((word) => ({ word, hint: '', categoryLabel: 'General English' })),
+    ...WORDLE_NAIJA_SLANG.map((e) => ({ word: e.word, hint: e.hint, categoryLabel: 'Naija Slang' })),
+  ]
+  const available = bank.filter((e) => !usedKeys.has(e.word.toLowerCase()))
+  if (available.length === 0) return null
+  const rng = createRng(dateSeed(date, 'wordle'))
+  const idx = Math.floor(rng() * available.length)
+  const entry = available[idx]!
+  // Content shape matches what buildWordlePuzzleFromContent expects: a list of
+  // {word, hint, categoryLabel} entries, seed-picked at daily-route lazy-creation time.
+  // Emitting a single-entry list keeps that route's seeded index at 0 → deterministic pick.
+  return {
+    content: [{ word: entry.word.toLowerCase(), hint: entry.hint, categoryLabel: entry.categoryLabel }],
+    theme: `${entry.categoryLabel}: ${entry.word.toUpperCase()}`,
+  }
+}
+
 // Simplified BFS solver for ludo puzzles
 function solveLudoPuzzle(
   startPieces: Array<{ id: number; zone: string; pos: number }>,
@@ -572,6 +597,7 @@ const GAME_LABELS: Record<GameTypeId, string> = {
   chess_mate: 'Chess Mate',
   codenames_codeword: 'Codeword',
   ludo_puzzle: 'Ludo Puzzle',
+  wordle: 'Wordle',
 }
 
 function bankSize(gameType: GameTypeId): number {
@@ -591,6 +617,8 @@ function bankSize(gameType: GameTypeId): number {
       return CODENAMES_BANK.length
     case 'ludo_puzzle':
       return 9999 // algorithmic generation — effectively unlimited
+    case 'wordle':
+      return WORDLE_GENERAL_ENGLISH.length + WORDLE_NAIJA_SLANG.length
   }
 }
 
@@ -647,6 +675,13 @@ export function generateBatch(dates: string[], gameTypes: GameTypeId[], existing
         startingPieces?: Array<{ zone: string; pos: number }>
       }
       return (obj.startingPieces ?? []).map((t) => `${t.zone}:${t.pos}`).join('|')
+    }
+  )
+  const usedWordleKeys = extractUsedPuzzleKeys(
+    existingRows.filter((r) => r.game_type === 'wordle'),
+    (c) => {
+      const obj = (Array.isArray(c) ? c[0] : c) as { word?: string }
+      return (obj.word ?? '').toLowerCase()
     }
   )
 
@@ -711,6 +746,9 @@ export function generateBatch(dates: string[], gameTypes: GameTypeId[], existing
         case 'ludo_puzzle':
           result = generateLudoContent(date, usedLudoKeys)
           break
+        case 'wordle':
+          result = generateWordleContent(date, usedWordleKeys)
+          break
       }
 
       if (!result) {
@@ -759,6 +797,10 @@ export function generateBatch(dates: string[], gameTypes: GameTypeId[], existing
           startingPieces?: Array<{ zone: string; pos: number }>
         }
         usedLudoKeys.add((obj.startingPieces ?? []).map((t) => `${t.zone}:${t.pos}`).join('|'))
+      }
+      if (gameType === 'wordle') {
+        const obj = (Array.isArray(content) ? content[0] : content) as { word?: string }
+        usedWordleKeys.add((obj.word ?? '').toLowerCase())
       }
 
       results.push({
@@ -823,5 +865,6 @@ export function getBankStats() {
     chessPuzzles: CHESS_BANK.length,
     codenamesPuzzles: CODENAMES_BANK.length,
     ludoPuzzles: LUDO_BANK.length,
+    wordleWords: WORDLE_GENERAL_ENGLISH.length + WORDLE_NAIJA_SLANG.length,
   }
 }

@@ -461,6 +461,7 @@ export async function POST(req: NextRequest) {
     checkers_nigeria_street_rules: rawCheckersNigeriaStreetRules,
     wordle_room_category: rawWordleRoomCategory,
     wordle_room_word_count: rawWordleRoomWordCount,
+    wordle_room_words: rawWordleRoomWords,
     allow_viewers: rawAllowViewers,
     allow_late_players: rawAllowLatePlayers,
     late_join_policy: rawLateJoinPolicy,
@@ -1109,6 +1110,18 @@ export async function POST(req: NextRequest) {
       ? {
           wordle_room_category: clampWordleRoomCategory(rawWordleRoomCategory),
           wordle_room_word_count: clampWordleRoomWordCount(rawWordleRoomWordCount),
+          // Optional library-pack pool. Filter defensively to letters-only 3–8 chars, matching
+          // the engine's normalizeWordleWord + wordle length constraint.
+          ...(Array.isArray(rawWordleRoomWords) && rawWordleRoomWords.length > 0
+            ? {
+                wordle_room_custom_words: (rawWordleRoomWords as { word: string; hint?: string }[])
+                  .map((e) => ({
+                    word: (e.word ?? '').toLowerCase().replace(/[^a-z]/g, ''),
+                    hint: typeof e.hint === 'string' ? e.hint : '',
+                  }))
+                  .filter((e) => e.word.length >= 3 && e.word.length <= 8),
+              }
+            : {}),
         }
       : {}),
     ...(isQuickDrawGame(game_type)

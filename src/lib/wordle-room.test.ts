@@ -28,7 +28,7 @@ describe('wordle room sequence', () => {
   })
 
   it('does not just take the first N bank words (it really shuffles)', () => {
-    const seq = buildWordleRoomSequence(1, 'general_english', 5)
+    const seq = buildWordleRoomSequence(1, 'general_english', 5).map((e) => e.word)
     const naive = WORDLE_GENERAL_ENGLISH.slice(0, 5).map((w) => w.toLowerCase())
     expect(seq).not.toEqual(naive)
   })
@@ -36,9 +36,10 @@ describe('wordle room sequence', () => {
   it('returns the requested count of unique, normalized lowercase words', () => {
     for (const count of WORDLE_ROOM_WORD_COUNT_OPTIONS) {
       const seq = buildWordleRoomSequence(7, 'general_english', count)
-      expect(seq).toHaveLength(count)
-      expect(new Set(seq).size).toBe(count)
-      for (const w of seq) {
+      const words = seq.map((e) => e.word)
+      expect(words).toHaveLength(count)
+      expect(new Set(words).size).toBe(count)
+      for (const w of words) {
         expect(w).toMatch(/^[a-z]{5}$/)
       }
     }
@@ -46,9 +47,10 @@ describe('wordle room sequence', () => {
 
   it('supports the naija slang bank (3–7 letters)', () => {
     const seq = buildWordleRoomSequence(99, 'naija_slang', 20)
-    expect(seq).toHaveLength(20)
-    expect(new Set(seq).size).toBe(20)
-    for (const w of seq) {
+    const words = seq.map((e) => e.word)
+    expect(words).toHaveLength(20)
+    expect(new Set(words).size).toBe(20)
+    for (const w of words) {
       expect(w).toMatch(/^[a-z]{3,7}$/)
     }
   })
@@ -130,21 +132,50 @@ describe('wordle room standings', () => {
     finished: false,
   }
 
-  it('ranks by words solved, then fewer total guesses, then faster finish', () => {
+  it('ranks by total points, then faster finish', () => {
+    // Points-primary: more solves and fewer guesses per solve both raise your score, and a
+    // hint deducts 300 from that word — so this single comparator captures the full spec.
     const rows = [
-      { ...base, player_id: 'a', words_solved: 3, total_guesses: 10, total_time_ms: 60000, finished: true },
-      { ...base, player_id: 'b', words_solved: 5, total_guesses: 20, total_time_ms: 120000, finished: true },
-      { ...base, player_id: 'c', words_solved: 5, total_guesses: 18, total_time_ms: 90000, finished: true },
-      { ...base, player_id: 'd', words_solved: 5, total_guesses: 18, total_time_ms: 70000, finished: true },
+      // Fewer solves → strictly fewer points, ranks last.
+      { ...base, player_id: 'a', words_solved: 3, total_points: 2000, total_time_ms: 60000, finished: true },
+      { ...base, player_id: 'b', words_solved: 5, total_points: 3000, total_time_ms: 120000, finished: true },
+      { ...base, player_id: 'c', words_solved: 5, total_points: 3000, total_time_ms: 90000, finished: true },
+      { ...base, player_id: 'd', words_solved: 5, total_points: 3000, total_time_ms: 70000, finished: true },
     ]
     const ranked = rankWordleRoomStandings(rows).map((r) => r.player_id)
     expect(ranked).toEqual(['d', 'c', 'b', 'a'])
   })
 
-  it('unfinished players rank below finishers on equal words + guesses (timer cutoff)', () => {
+  it('hint deduction: −300 from a solve, clamps at zero', () => {
+    // Guess-1 with perfect bonus = 1200; with hint = 900.
+    expect(wordleRoomWordScore(1, 6, true, true)).toBe(900)
+    // Guess-6 with hint = 400 − 300 = 100.
+    expect(wordleRoomWordScore(6, 6, true, true)).toBe(100)
+    // Hypothetical low base (guess-6 on a 3-letter word: attempts=4, base=400) − 300 = 100.
+    expect(wordleRoomWordScore(4, 4, true, true)).toBe(100)
+    // A loss stays at 0 whether or not the hint was bought — no negative scores.
+    expect(wordleRoomWordScore(6, 6, false, true)).toBe(0)
+    // evaluateWordleRoomGuess forwards hintUsed through to wordleRoomWordScore.
+    const r = evaluateWordleRoomGuess(0, 0, true, 6, 5, true)
+    expect(r.pointsAwarded).toBe(900)
+  })
+
+  it('hint use costs points and moves you down the leaderboard', () => {
+    // Both players solved the same words with the same guesses, but honest earns 3000; hint
+    // user earns 3000 − 300 = 2700. Points-primary ranks honest first even though hint user
+    // was faster.
     const rows = [
-      { ...base, player_id: 'done', words_solved: 4, total_guesses: 20, total_time_ms: 100000, finished: true },
-      { ...base, player_id: 'cutoff', words_solved: 4, total_guesses: 20, total_time_ms: null, finished: false },
+      { ...base, player_id: 'honest', words_solved: 5, total_points: 3000, total_time_ms: 100000, finished: true },
+      { ...base, player_id: 'hinted', words_solved: 5, total_points: 2700, total_time_ms: 60000, finished: true },
+    ]
+    const ranked = rankWordleRoomStandings(rows).map((r) => r.player_id)
+    expect(ranked).toEqual(['honest', 'hinted'])
+  })
+
+  it('unfinished players rank below finishers on equal points (timer cutoff)', () => {
+    const rows = [
+      { ...base, player_id: 'done', words_solved: 4, total_points: 2500, total_time_ms: 100000, finished: true },
+      { ...base, player_id: 'cutoff', words_solved: 4, total_points: 2500, total_time_ms: null, finished: false },
     ]
     const ranked = rankWordleRoomStandings(rows).map((r) => r.player_id)
     expect(ranked).toEqual(['done', 'cutoff'])
@@ -152,8 +183,24 @@ describe('wordle room standings', () => {
 
   it('tallyWordleScores filters spectators and exposes progress rows', () => {
     const progress = [
-      { player_id: 'p1', word_index: 3, words_solved: 3, total_guesses: 15, total_time_ms: 50000, finished: false },
-      { player_id: 'p2', word_index: 5, words_solved: 5, total_guesses: 22, total_time_ms: 110000, finished: true },
+      {
+        player_id: 'p1',
+        word_index: 3,
+        words_solved: 3,
+        total_guesses: 15,
+        total_points: 2000,
+        total_time_ms: 50000,
+        finished: false,
+      },
+      {
+        player_id: 'p2',
+        word_index: 5,
+        words_solved: 5,
+        total_guesses: 22,
+        total_points: 3500,
+        total_time_ms: 110000,
+        finished: true,
+      },
     ]
     const players = [
       { id: 'p1', name: 'A', spectator: false },

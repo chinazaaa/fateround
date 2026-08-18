@@ -5,6 +5,7 @@ import {
   WORDLE_ROOM_MIN_GUESS_INTERVAL_MS,
   evaluateWordleRoomGuess,
   parseWordleRoomMetadata,
+  parseWordleRoomSolutionWords,
   validateWordleRoomGuess,
   wordleRoomMaxAttemptsForWord,
   wordleRoomSessionExpired,
@@ -72,7 +73,7 @@ export async function POST(req: NextRequest) {
       .maybeSingle(),
   ])
 
-  const words = Array.isArray(solutions?.words) ? (solutions.words as string[]) : []
+  const { words } = parseWordleRoomSolutionWords(solutions?.words)
   if (words.length !== metadata.word_count) {
     return NextResponse.json(
       { error: internalErrorMessage('wordle-room/guess', null, 'Room setup incomplete') },
@@ -118,12 +119,18 @@ export async function POST(req: NextRequest) {
 
   const maxAttempts = wordleRoomMaxAttemptsForWord(currentWord)
   const currentGuesses = existingProgress?.current_word_guesses ?? 0
+  const hintsUsedRaw = existingProgress?.hints_used
+  const hintsUsedList: number[] = Array.isArray(hintsUsedRaw)
+    ? (hintsUsedRaw as unknown[]).filter((n): n is number => typeof n === 'number')
+    : []
+  const hintUsedThisWord = hintsUsedList.includes(wordIndex)
   const result = evaluateWordleRoomGuess(
     wordIndex,
     currentGuesses,
     validation.states.every((s) => s === 'correct'),
     maxAttempts,
-    metadata.word_count
+    metadata.word_count,
+    hintUsedThisWord
   )
 
   const now = new Date().toISOString()

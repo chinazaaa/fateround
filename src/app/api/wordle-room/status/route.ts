@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
-import { parseWordleRoomMetadata, wordleRoomMaxAttemptsForWord, wordleRoomTimeRemainingMs } from '@/lib/wordle-room'
+import {
+  parseWordleRoomMetadata,
+  parseWordleRoomSolutionWords,
+  wordleRoomMaxAttemptsForWord,
+  wordleRoomTimeRemainingMs,
+} from '@/lib/wordle-room'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { assertPlayer } from '@/lib/game-admin'
 import { playerIsViewer } from '@/lib/viewers'
@@ -70,11 +75,17 @@ export async function POST(req: NextRequest) {
       .maybeSingle(),
   ])
 
-  const words = Array.isArray(solutions?.words) ? (solutions.words as string[]) : []
+  const { words, hints } = parseWordleRoomSolutionWords(solutions?.words)
 
   // A late-joined player has no progress row yet — start them at word one.
   const wordIndex = progress?.word_index ?? 0
   const currentWord = words[wordIndex]
+  const currentHint = hints[wordIndex] ?? ''
+  const hintsUsedRaw = progress?.hints_used
+  const hintsUsedList: number[] = Array.isArray(hintsUsedRaw)
+    ? (hintsUsedRaw as unknown[]).filter((n): n is number => typeof n === 'number')
+    : []
+  const hintUsedThisWord = hintsUsedList.includes(wordIndex)
   if (!currentWord) {
     return NextResponse.json({
       success: true,
@@ -117,5 +128,11 @@ export async function POST(req: NextRequest) {
     categoryLabel: metadata.categoryLabel,
     timeRemainingMs: wordleRoomTimeRemainingMs(game.session_started_at, game.timer_seconds ?? 0),
     hasProgressRow: Boolean(progress),
+    // Only include the hint text once the player has actually bought it — otherwise the
+    // presence of a hint string here would leak the meaning of every word to anyone who
+    // opens devtools on the network response.
+    hintAvailable: Boolean(currentHint),
+    hintUsed: hintUsedThisWord,
+    hint: hintUsedThisWord ? currentHint : null,
   })
 }

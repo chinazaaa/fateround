@@ -41,6 +41,7 @@ import { PLAYER_SELECT } from '@/lib/supabase-selects'
 import { allowLatePlayers, playerIsViewer, preJoinScreen } from '@/lib/viewers'
 import { clearPlayerSession } from '@/lib/utils'
 import { useToast } from '@/components/ui/Toast'
+import { useConfirm } from '@/components/ui/ConfirmDialog'
 import type { Game } from '@/types'
 
 interface WordleRoomStatus {
@@ -55,6 +56,9 @@ interface WordleRoomStatus {
   finished?: boolean
   status?: string
   guesses?: { guess: string; state: ('correct' | 'present' | 'absent')[] }[]
+  hintAvailable?: boolean
+  hintUsed?: boolean
+  hint?: string | null
 }
 
 type Screen =
@@ -70,6 +74,7 @@ type Screen =
 
 export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
   const { error: toastError } = useToast()
+  const { confirm } = useConfirm()
   const cfg = gameTypeConfig('wordle_room')
   const { displayName: roomDisplayName, joinExtras, resolving: resolvingRoomMember } = useRoomMemberJoin(gameCode)
 
@@ -83,8 +88,14 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
   const [totalGuesses, setTotalGuesses] = useState(0)
   const [categoryLabel, setCategoryLabel] = useState('General English')
   const [myFinished, setMyFinished] = useState(false)
+  const [hintAvailable, setHintAvailable] = useState(false)
+  const [hintUsed, setHintUsed] = useState(false)
+  const [hintText, setHintText] = useState<string | null>(null)
   const [guesses, setGuesses] = useState<WordleRoomGradedGuess[]>([])
   const [current, setCurrent] = useState('')
+  // Tile-level cursor — click a filled tile in the current row to jump the cursor there and
+  // overwrite that letter, instead of backspacing letters just to change one in the middle.
+  const [cursorAt, setCursorAt] = useState(0)
   const [revealWord, setRevealWord] = useState('')
   const [message, setMessage] = useState<string | null>(null)
   const [shake, setShake] = useState(false)
@@ -151,6 +162,10 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
     })
     if (!res.ok) return
     const data = (await res.json()) as WordleRoomStatus
+    // Apply completion state BEFORE the currentWord check so that a finished sequence (server
+    // returns finished:true and no currentWord because the player has run out of words)
+    // locks the input immediately instead of leaving the previous word's state editable.
+    if (data.finished === true) setMyFinished(true)
     if (data.currentWord) {
       setCurrentWord(data.currentWord)
       setWordLength(data.wordLength ?? data.currentWord.length)
@@ -161,12 +176,53 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
       setTotalGuesses(data.total_guesses ?? 0)
       setCategoryLabel(data.categoryLabel ?? 'General English')
       setMyFinished(data.finished === true)
+      setHintAvailable(data.hintAvailable === true)
+      setHintUsed(data.hintUsed === true)
+      setHintText(data.hint ?? null)
       setGuesses((data.guesses ?? []).map((g) => ({ word: g.guess, states: g.state })))
       setCurrent('')
+      setCursorAt(0)
       setRevealWord('')
+    } else if (data.finished === true) {
+      // Sequence complete — clear per-word state so a stale board can't accept more input.
+      setCurrentWord(null)
+      setGuesses([])
+      setCurrent('')
+      setCursorAt(0)
+      setRevealWord('')
+      setHintAvailable(false)
+      setHintUsed(false)
+      setHintText(null)
     }
     if (data.status === 'finished') void load()
   }, [gameCode, myResumeToken, load])
+
+  const revealHint = useCallback(async () => {
+    if (!myResumeToken || myFinished) return
+    if (!hintAvailable || hintUsed) return
+    const ok = await confirm({
+      title: 'Reveal hint?',
+      message: 'This costs 300 points off this word’s score. Are you sure?',
+      confirmLabel: 'Reveal (−300)',
+    })
+    if (!ok) return
+    try {
+      const res = await fetch('/api/wordle-room/reveal-hint', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gameId: gameCode, resumeToken: myResumeToken, wordIndex }),
+      })
+      const data = (await res.json().catch(() => ({}))) as { hint?: string; error?: string }
+      if (!res.ok) {
+        showToast(data.error ?? 'Could not reveal hint', false)
+        return
+      }
+      setHintUsed(true)
+      setHintText(data.hint ?? null)
+    } catch {
+      showToast('Network error', false)
+    }
+  }, [confirm, gameCode, myResumeToken, myFinished, hintAvailable, hintUsed, wordIndex])
 
   // Advance to the next word after the solve/loss reveal settles.
   const scheduleAdvance = useCallback(
@@ -382,20 +438,41 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
     [gameCode, myResumeToken, load, toastError]
   )
 
+  // Both handlers derive the next (current, cursorAt) pair from the live snapshot and apply
+  // the two setters side-by-side, so nothing inside a setState updater has a side effect —
+  // React can safely replay the updaters. Key events fire one at a time, so reading state
+  // directly (not from an updater arg) can't miss a batched second keystroke.
   const addLetter = useCallback(
     (key: string) => {
       const ch = key.toLowerCase()
       if (!/^[a-z]$/.test(ch)) return
       setMessage(null)
-      setCurrent((c) => (c.length >= wordLength ? c : c + ch))
+      if (cursorAt < current.length) {
+        setCurrent(current.slice(0, cursorAt) + ch + current.slice(cursorAt + 1))
+        setCursorAt(Math.min(cursorAt + 1, wordLength))
+      } else if (current.length < wordLength) {
+        setCurrent(current + ch)
+        setCursorAt(current.length + 1)
+      }
     },
-    [wordLength]
+    [current, cursorAt, wordLength]
   )
 
   const backspace = useCallback(() => {
     setMessage(null)
-    setCurrent((c) => c.slice(0, -1))
-  }, [])
+    if (cursorAt > 0 && cursorAt <= current.length) {
+      setCurrent(current.slice(0, cursorAt - 1) + current.slice(cursorAt))
+      setCursorAt(cursorAt - 1)
+    }
+  }, [current, cursorAt])
+
+  const focusTile = useCallback(
+    (i: number) => {
+      if (i < 0 || i > current.length || i >= wordLength) return
+      setCursorAt(i)
+    },
+    [current.length, wordLength]
+  )
 
   const submitGuess = useCallback(() => {
     if (!currentWord || !myResumeToken || timeUp || isViewer || myFinished) return
@@ -422,6 +499,7 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
 
     setGuesses((g) => [...g, localRow])
     setCurrent('')
+    setCursorAt(0)
     setMessage(null)
     submitLockRef.current = true
 
@@ -709,6 +787,8 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
             word={currentWord}
             guesses={guesses}
             current={current}
+            cursorAt={cursorAt}
+            onFocusTile={focusTile}
             revealWord={revealWord}
             maxAttempts={maxAttempts}
             disabled={boardDisabled}
@@ -719,6 +799,27 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
             onSubmit={submitGuess}
           />
         )}
+
+        {/* Per-word hint purchase — only surfaces when the current word actually has a hint. */}
+        {currentWord &&
+          !myFinished &&
+          hintAvailable &&
+          (hintUsed && hintText ? (
+            <p className="text-center text-sm text-muted">
+              Hint: {hintText} <span className="text-faint">(−300 pts)</span>
+            </p>
+          ) : !hintUsed ? (
+            <div className="text-center">
+              <button
+                type="button"
+                onClick={() => void revealHint()}
+                disabled={boardDisabled}
+                className="fr-btn fr-btn--secondary fr-btn--sm"
+              >
+                Reveal hint (−300 pts)
+              </button>
+            </div>
+          ) : null)}
 
         <div className="glass-card p-3 space-y-2">
           <p className="label-caps text-xs">Race standings</p>
@@ -734,7 +835,12 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
                     {isMe ? ' (you)' : ''}
                   </span>
                   <span className="font-bold tabular-nums text-muted">
-                    {row.words_solved} · {row.finished ? 'Done' : `word ${row.word_index + 1}`}
+                    {row.total_points} pts · {row.words_solved} solved
+                    {row.hints_used_count > 0
+                      ? ` · ${row.hints_used_count} hint${row.hints_used_count > 1 ? 's' : ''}`
+                      : ''}
+                    {' · '}
+                    {row.finished ? 'Done' : `word ${row.word_index + 1}`}
                   </span>
                 </div>
               )

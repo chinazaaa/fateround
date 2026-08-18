@@ -12,8 +12,30 @@
 
 import { WORDLE_GENERAL_ENGLISH } from '@/data/daily-banks/wordle-general-english'
 import { WORDLE_NAIJA_SLANG, type WordleSlangEntry } from '@/data/daily-banks/wordle-naija-slang'
+import {
+  WORDLE_SPORTS,
+  WORDLE_FOOD,
+  WORDLE_ANIMALS,
+  WORDLE_TECHNOLOGY,
+  WORDLE_NATURE,
+  WORDLE_MUSIC,
+  WORDLE_SCIENCE,
+  WORDLE_CLOTHING,
+  WORDLE_TRAVEL,
+} from '@/data/daily-banks/wordle-categories'
 
-export type WordleCategoryId = 'general_english' | 'naija_slang'
+export type WordleCategoryId =
+  | 'general_english'
+  | 'naija_slang'
+  | 'sports'
+  | 'food'
+  | 'animals'
+  | 'technology'
+  | 'nature'
+  | 'music'
+  | 'science'
+  | 'clothing'
+  | 'travel'
 export type WordleLetterState = 'correct' | 'present' | 'absent'
 
 export interface WordlePuzzleData {
@@ -42,6 +64,12 @@ interface WordleCategory {
   entries: WordleBankEntry[]
 }
 
+const themedCategory = (id: WordleCategoryId, label: string, words: readonly string[]): WordleCategory => ({
+  id,
+  label,
+  entries: words.map((word) => ({ word, hint: label })),
+})
+
 const WORDLE_CATEGORIES: readonly WordleCategory[] = [
   {
     id: 'general_english',
@@ -53,6 +81,15 @@ const WORDLE_CATEGORIES: readonly WordleCategory[] = [
     label: 'Naija Slang',
     entries: (WORDLE_NAIJA_SLANG as readonly WordleSlangEntry[]).map((e) => ({ word: e.word, hint: e.hint })),
   },
+  themedCategory('sports', 'Sports', WORDLE_SPORTS),
+  themedCategory('food', 'Food & Drink', WORDLE_FOOD),
+  themedCategory('animals', 'Animals', WORDLE_ANIMALS),
+  themedCategory('technology', 'Technology', WORDLE_TECHNOLOGY),
+  themedCategory('nature', 'Nature', WORDLE_NATURE),
+  themedCategory('music', 'Music', WORDLE_MUSIC),
+  themedCategory('science', 'Science', WORDLE_SCIENCE),
+  themedCategory('clothing', 'Clothing & Fashion', WORDLE_CLOTHING),
+  themedCategory('travel', 'Travel & Places', WORDLE_TRAVEL),
 ]
 
 /** LCG-mix a seed so adjacent daily seeds don't trivially alternate category. Deterministic. */
@@ -80,6 +117,39 @@ export function buildWordlePuzzle(seed: number): WordlePuzzleData {
     hint: entry.hint,
     length: word.length,
     maxAttempts: wordleMaxAttempts(word.length),
+  }
+}
+
+/**
+ * Build the day's puzzle from admin-curated content. Returns null when the content can't produce
+ * a valid puzzle so the caller falls back to the algorithmic path (built-in bank). Category is
+ * reported as "custom"; label defaults to "Daily" and can be overridden per-entry.
+ */
+export function buildWordlePuzzleFromContent(seed: number, adminContent: unknown): WordlePuzzleData | null {
+  if (!Array.isArray(adminContent) || adminContent.length === 0) return null
+  type AdminEntry = { word: string; hint: string; categoryLabel: string }
+  const entries: AdminEntry[] = []
+  for (const raw of adminContent) {
+    if (raw == null || typeof raw !== 'object') continue
+    const rec = raw as { word?: unknown; hint?: unknown; categoryLabel?: unknown }
+    const word = normalizeWordleWord(typeof rec.word === 'string' ? rec.word : '')
+    if (word.length < 3 || word.length > 8) continue
+    const hint = typeof rec.hint === 'string' ? rec.hint : ''
+    const categoryLabel = typeof rec.categoryLabel === 'string' ? rec.categoryLabel.trim() : ''
+    entries.push({ word, hint, categoryLabel })
+  }
+  if (entries.length === 0) return null
+
+  const idx = ((seed % entries.length) + entries.length) % entries.length
+  const entry = entries[idx]!
+
+  return {
+    category: 'general_english',
+    categoryLabel: entry.categoryLabel || 'Daily',
+    word: entry.word,
+    hint: entry.hint,
+    length: entry.word.length,
+    maxAttempts: wordleMaxAttempts(entry.word.length),
   }
 }
 
@@ -176,6 +246,8 @@ export function wordleKeyBestStates(guesses: readonly string[], target: string):
 // regardless of the category's attempt count. A loss pays 0.
 
 export const WORDLE_PERFECT_BONUS = 200
+/** Deducted from the final score when the player reveals the hint during play. */
+export const WORDLE_HINT_COST = 300
 
 export function wordleBasePoints(guessesUsed: number, maxAttempts: number): number {
   const attempts = Math.max(2, maxAttempts) // guard div-by-zero; real minimum is 4 anyway
@@ -183,11 +255,17 @@ export function wordleBasePoints(guessesUsed: number, maxAttempts: number): numb
   return Math.round(1000 - (used - 1) * (600 / (attempts - 1)))
 }
 
-export function wordleFinalScore(guessesUsed: number, maxAttempts: number, won: boolean): number {
+export function wordleFinalScore(
+  guessesUsed: number,
+  maxAttempts: number,
+  won: boolean,
+  hintUsed: boolean = false
+): number {
   if (!won) return 0
   const base = wordleBasePoints(guessesUsed, maxAttempts)
   const perfect = guessesUsed === 1 ? WORDLE_PERFECT_BONUS : 0
-  return Math.max(0, base + perfect)
+  const hintCost = hintUsed ? WORDLE_HINT_COST : 0
+  return Math.max(0, base + perfect - hintCost)
 }
 
 // ---------------------------------------------------------------------------
