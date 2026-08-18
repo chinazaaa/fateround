@@ -208,7 +208,7 @@ export async function fetchLateJoinContext(
   if (isMonopolyGame(type)) {
     return {
       statusLine: 'Game in progress',
-      playerDetail: 'Monopoly does not allow late players — watch only.',
+      playerDetail: 'Estate Kings does not allow late players — watch only.',
       viewerDetail: "Watch the board, trades, and standings live — you can't play.",
     }
   }
@@ -216,7 +216,7 @@ export async function fetchLateJoinContext(
   if (isYahtzeeGame(type)) {
     return {
       statusLine: 'Game in progress',
-      playerDetail: 'Yahtzee does not allow late players — watch only.',
+      playerDetail: 'Five Dice does not allow late players — watch only.',
       viewerDetail: "Watch scores and dice rolls live — you can't play.",
     }
   }

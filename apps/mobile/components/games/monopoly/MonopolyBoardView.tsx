@@ -2,7 +2,7 @@ import { useMemo, useState, type ReactNode } from 'react'
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native'
 import type { MonopolyPlayerState, Player } from '@fateround/shared'
 import { MONOPOLY_COLOR_HEX, boardEdgeForSpace } from '@fateround/shared/monopoly-board-layout'
-import { spaceAt } from '@fateround/shared/monopoly-board'
+import { MONOPOLY_BOARD_SIZE, spaceAt, type MonopolyBoardSize } from '@fateround/shared/monopoly-board'
 import { monopolyTokenEmoji } from '@fateround/shared/monopoly-tokens'
 import {
   getBoardPalette,
@@ -16,10 +16,26 @@ export const TOKEN_COLORS = ['#ef4444', '#3b82f6', '#22c55e', '#f59e0b', '#8b5cf
 
 // Board tiles walked in visual order for the frame layout. Corners bookend each
 // edge run; the index maths mirrors `boardGridCell` in the shared package.
-const TOP_INDICES = [20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30]
-const BOTTOM_INDICES = [10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0]
-const LEFT_INDICES = [19, 18, 17, 16, 15, 14, 13, 12, 11]
-const RIGHT_INDICES = [31, 32, 33, 34, 35, 36, 37, 38, 39]
+// For a `boardSize`-tile board there are `boardSize / 4` tiles per side (12 on
+// the 48-space expanded board, 10 on the classic 40-space board), corners at
+// 0, side, side*2, side*3.
+function buildPerimeterIndices(boardSize: MonopolyBoardSize): {
+  top: number[]
+  bottom: number[]
+  left: number[]
+  right: number[]
+} {
+  const side = boardSize / 4
+  const top: number[] = []
+  for (let i = side * 2; i <= side * 3; i += 1) top.push(i)
+  const bottom: number[] = []
+  for (let i = side; i >= 0; i -= 1) bottom.push(i)
+  const left: number[] = []
+  for (let i = side * 2 - 1; i > side; i -= 1) left.push(i)
+  const right: number[] = []
+  for (let i = side * 3 + 1; i < boardSize; i += 1) right.push(i)
+  return { top, bottom, left, right }
+}
 
 function defaultSpaceIcon(type: string): string {
   switch (type) {
@@ -98,6 +114,7 @@ export function MonopolyBoardView({
   pendingSpace,
   myPlayerId,
   themeId,
+  boardSize = MONOPOLY_BOARD_SIZE,
   center,
   onSpacePress,
 }: {
@@ -107,6 +124,8 @@ export function MonopolyBoardView({
   pendingSpace?: number | null
   myPlayerId?: string | null
   themeId?: string | null
+  /** 40 (classic) or 48 (expanded). Defaults to the classic 40-space board. */
+  boardSize?: MonopolyBoardSize
   /** Content rendered inside the board's empty center (turn UI: cash, dice, actions). */
   center?: ReactNode
   /** Tap-to-inspect — opens the property details modal for the tapped space. */
@@ -117,12 +136,18 @@ export function MonopolyBoardView({
   // paddings), measured via onLayout. `winW - 64` is just the first-paint estimate.
   const [availW, setAvailW] = useState(0)
   const boardW = Math.min(availW || winW - 64, 440)
-  // Corners are ~1.85× an edge tile's short side (matches the web fractional grid).
-  const cornerSize = Math.round((boardW * 1.85) / 12.7)
+  // The perimeter has `sideLength` tiles per side, with corners at both ends.
+  // Classic 40 = 10/side (9 edge tiles between corners), expanded 48 = 12/side
+  // (11 edge tiles between corners). Corners are ~1.25× an edge tile's short
+  // side so the visual weight matches the web fractional grid.
+  const sideLength = boardSize / 4
+  const edgeCount = sideLength - 1
+  const cornerRatio = 1.25
+  const cornerSize = Math.round((boardW * cornerRatio) / (edgeCount + 2 * cornerRatio))
   const centerSize = boardW - cornerSize * 2
-  // Long-axis length of a single edge tile (9 per side between the two corners).
-  const edgeMain = centerSize / 9
+  const edgeMain = centerSize / edgeCount
   const palette = getBoardPalette(themeId)
+  const perimeter = useMemo(() => buildPerimeterIndices(boardSize), [boardSize])
 
   const tokensBySpace = useMemo(() => {
     const map = new Map<number, { emoji: string; playerId: string; order: number }[]>()
@@ -138,15 +163,15 @@ export function MonopolyBoardView({
   }, [states, players])
 
   const renderTile = (spaceIndex: number) => {
-    const space = spaceAt(spaceIndex)
-    const edge = boardEdgeForSpace(spaceIndex)
+    const space = spaceAt(spaceIndex, boardSize)
+    const edge = boardEdgeForSpace(spaceIndex, boardSize)
     const isCorner = edge === 'corner'
     const vertical = edge === 'top' || edge === 'bottom'
     const ownerId = propertyOwners[String(spaceIndex)]
     const ownerOrder = states.find((s) => s.player_id === ownerId)?.player_order ?? 0
     const tokens = tokensBySpace.get(spaceIndex) ?? []
     const highlighted = pendingSpace === spaceIndex
-    const nameLines = mobileBoardSpaceLines(space.name, space.type, spaceIndex, themeId)
+    const nameLines = mobileBoardSpaceLines(space.name, space.type, spaceIndex, themeId, boardSize)
     const icon = themedSpaceIcon(space.type, themeId) || defaultSpaceIcon(space.type)
     const showIcon = space.price == null && space.type !== 'property' && !!icon
     const colorHex = space.color ? MONOPOLY_COLOR_HEX[space.color] : null
@@ -263,10 +288,10 @@ export function MonopolyBoardView({
           { width: boardW, height: boardW, backgroundColor: palette.boardBg, borderColor: palette.boardBorder },
         ]}
       >
-        <View style={[styles.edgeRow, { height: cornerSize }]}>{TOP_INDICES.map(renderTile)}</View>
+        <View style={[styles.edgeRow, { height: cornerSize }]}>{perimeter.top.map(renderTile)}</View>
 
         <View style={[styles.midRow, { height: centerSize }]}>
-          <View style={{ width: cornerSize, height: centerSize }}>{LEFT_INDICES.map(renderTile)}</View>
+          <View style={{ width: cornerSize, height: centerSize }}>{perimeter.left.map(renderTile)}</View>
           <View
             style={[styles.centerCell, { width: centerSize, height: centerSize, backgroundColor: palette.centerBg }]}
           >
@@ -277,10 +302,10 @@ export function MonopolyBoardView({
               </View>
             )}
           </View>
-          <View style={{ width: cornerSize, height: centerSize }}>{RIGHT_INDICES.map(renderTile)}</View>
+          <View style={{ width: cornerSize, height: centerSize }}>{perimeter.right.map(renderTile)}</View>
         </View>
 
-        <View style={[styles.edgeRow, { height: cornerSize }]}>{BOTTOM_INDICES.map(renderTile)}</View>
+        <View style={[styles.edgeRow, { height: cornerSize }]}>{perimeter.bottom.map(renderTile)}</View>
 
         {palette.decoration === 'arctic' ? (
           <View pointerEvents="none" style={styles.snowLayer}>

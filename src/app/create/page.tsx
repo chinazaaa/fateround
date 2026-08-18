@@ -14,6 +14,7 @@ import type {
 } from '@/types'
 import type { Settings, Step, ParticipantTab, QuestionTab } from './types'
 import { LIBRARY_GAME_TYPE_MAP } from './constants'
+import { parsePuzzleThemeCsv } from '@/lib/puzzle-themes'
 import { trackEvent, GA_EVENTS } from '@/lib/analytics'
 import { GenderBadge } from './components/GenderBadge'
 import { Avatar } from './components/Avatar'
@@ -84,7 +85,9 @@ import {
   isCrosswordGame,
   isWordSearchGame,
   isWordScrambleGame,
+  isWordGroupingGame,
   isWordHuntGame,
+  isWordleRoomGame,
   isMafiaGame,
   isMatchingPairsGame,
   isMahjongGame,
@@ -96,6 +99,10 @@ import { DEFAULT_MAHJONG_RULESET, MAHJONG_RULESETS, MAHJONG_RULESET_CONFIG } fro
 import type { MahjongRuleset } from '@/types'
 import { BOARD_THEMES, PIECE_SETS, useChessAppearance } from '@/lib/chess-appearance'
 import { ChessPieceGlyph } from '@/components/chess/ChessPieceDetailed'
+import { Glyph } from '@/components/icons/Glyph'
+import { GlobeIcon, LockIcon, TableTennisBatIcon } from '@hugeicons/core-free-icons'
+import { showsMaxOnePublicHint, showsPartyPublicHint } from '@/lib/public-hints'
+import { ScheduleForLaterField } from '@/components/create/ScheduleForLaterField'
 import { WYR_QUESTION_COUNT } from '@/lib/would-you-rather-questions'
 import { THIS_OR_THAT_QUESTION_COUNT } from '@/lib/this-or-that-questions'
 import type { WyrQuestion } from '@/lib/would-you-rather-questions'
@@ -147,6 +154,7 @@ import { playerQuestionsOrderOptions, parsePlayerQuestionsOrder } from '@/lib/pl
 import { isPeoplePollGame, playerNameSubmissionHint } from '@/lib/player-participant-pool'
 import { getRememberedName, subscribeLocalIdentity } from '@/lib/identity-local'
 import { setHostPlayIntent } from '@/lib/host-play-intent'
+import { setSoloAutoStart } from '@/lib/solo-auto-start'
 import { CustomSlotBuilder } from '@/components/CustomSlotBuilder'
 import { GenderRoundModeControl } from '@/components/GenderRoundModeControl'
 import { customPairVoteModeOptions } from '@/lib/custom-game'
@@ -156,9 +164,11 @@ import { GameTypeModal } from '@/components/GameTypeModal'
 import { GameTypeCard } from '@/components/GameTypeCard'
 import { LibraryPackPicker } from '@/components/LibraryPackPicker'
 import { PuzzleUpload } from '@/components/create/PuzzleUpload'
-import { PageShell, BackBtn, Field, Chip, Toggle, PrimaryBtn } from '@/components/ui/PageShell'
+import { PageShell, BackBtn, Field, Chip, Toggle, PrimaryBtn, CustomSelect } from '@/components/ui/PageShell'
 import { StepIndicator, SettingsGroup, StickyActionBar, SegmentedControl, ChipGrid } from '@/components/ui/CreateWizard'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
+import Link from 'next/link'
+import { soloPlaySlug } from '@/lib/solo-play'
 import { LateJoinPolicyToggle, LateJoinField } from '@/components/AllowViewersToggle'
 import {
   gameSupportsViewerSetting,
@@ -265,6 +275,17 @@ import {
   LANDMINE_DEFAULT_CATEGORY_TIMER,
 } from '@/lib/landmine'
 import { WORD_HUNT_DEFAULT_MAX_PLAYERS, WORD_HUNT_DEFAULT_TIMER, WORD_HUNT_TIMER_OPTIONS } from '@/lib/word-hunt'
+import {
+  WORDLE_ROOM_DEFAULT_MAX_PLAYERS,
+  WORDLE_ROOM_DEFAULT_TIMER,
+  WORDLE_ROOM_TIMER_OPTIONS,
+  WORDLE_ROOM_DEFAULT_WORD_COUNT,
+  WORDLE_ROOM_WORD_COUNT_OPTIONS,
+  WORDLE_ROOM_SAMPLE_CSV,
+  formatWordleRoomTimer,
+} from '@/lib/wordle-room'
+import type { WordleCategoryId } from '@/lib/daily-wordle'
+import type { WordleRoomWordCount } from '@/lib/wordle-room'
 import { formatSudokuGameDuration, SUDOKU_GAME_DURATION_OPTIONS } from '@/lib/sudoku'
 import {
   formatCrosswordGameDuration,
@@ -294,6 +315,14 @@ import {
   type WordScrambleDifficulty,
 } from '@/lib/word-scramble'
 import { wordScrambleThemeOptions, WORD_SCRAMBLE_DEFAULT_THEME } from '@/lib/word-scramble-puzzles'
+import {
+  formatWordGroupingGameDuration,
+  WORD_GROUPING_GAME_DURATION_OPTIONS,
+  WORD_GROUPING_DEFAULT_DURATION,
+  WORD_GROUPING_SAMPLE_CSV,
+  parseStoredWordGroupingPuzzles,
+  parseWordGroupingPoolText,
+} from '@/lib/word-grouping'
 import { MATCHING_PAIRS_GAME_DURATION_OPTIONS, formatMatchingPairsGameDuration } from '@/lib/memory-match'
 import {
   DESCRIBE_IT_DEFAULT_ROUNDS,
@@ -326,6 +355,19 @@ import { useToast } from '@/components/ui/Toast'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { ELIMINATION_COMPATIBLE_TYPES } from '@/types/elimination'
 
+function SoloPracticeCta({ gameType }: { gameType: GameType }) {
+  const slug = soloPlaySlug(gameType)
+  if (!slug) return null
+  return (
+    <p className="text-sm">
+      Want to play solo?{' '}
+      <Link href={`/play-solo/${slug}`} className="font-semibold no-underline" style={{ color: 'var(--accent)' }}>
+        Practice against the bot →
+      </Link>
+    </p>
+  )
+}
+
 function CreateGameInner() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -350,6 +392,9 @@ function CreateGameInner() {
     participant_filter: 'all' as 'all' | 'joined',
     gender_based: true,
     isPublic: false,
+    // Discovery Phase C — optional "Schedule for later" ISO timestamp. Only
+    // sent to the server when isPublic is true; the API rejects the pair.
+    scheduled_at: null as string | null,
     describe_it_num_teams: 2,
     describe_it_mode: 'team',
     quick_draw_variant: 'guess',
@@ -435,6 +480,7 @@ function CreateGameInner() {
   const [quickDrawVoteTimer, setQuickDrawVoteTimer] = useState(QUICK_DRAW_DEFAULT_VOTE_TIMER)
   const [ttlMaxPlayers, setTtlMaxPlayers] = useState(TTL_DEFAULT_MAX_PLAYERS)
   const [monopolyMaxPlayers, setMonopolyMaxPlayers] = useState(MONOPOLY_DEFAULT_MAX_PLAYERS)
+  const [monopolyBoardSize, setMonopolyBoardSize] = useState<40 | 48>(40)
   const [monopolyGameDuration, setMonopolyGameDuration] = useState(0)
   const [scrabbleGameDuration, setScrabbleGameDuration] = useState(0)
   const [scrabbleDictionary, setScrabbleDictionary] = useState<ScrabbleDictionaryId>(SCRABBLE_DEFAULT_DICTIONARY)
@@ -467,8 +513,12 @@ function CreateGameInner() {
   const [unoJumpIn, setUnoJumpIn] = useState(false)
   const [unoMultiPlayMode, setUnoMultiPlayMode] = useState<
     'off' | 'same_color' | 'same_number' | 'same_color_or_number'
-  >('off')
+  >('same_color_or_number')
   const [unoTeamMode, setUnoTeamMode] = useState(false)
+  const [unoMode, setUnoMode] = useState<'classic' | 'no_mercy'>('classic')
+  const [unoNoMercyWin, setUnoNoMercyWin] = useState<'first_out' | 'last_standing'>('first_out')
+  const [unoSeriesScoring, setUnoSeriesScoring] = useState(false)
+  const [unoSeriesTarget, setUnoSeriesTarget] = useState(1000)
   const [ludoMaxPlayers, setLudoMaxPlayers] = useState(LUDO_DEFAULT_MAX_PLAYERS)
   const [ludoVariant, setLudoVariant] = useState<LudoVariant>('modern')
   const [ayoVariant, setAyoVariant] = useState<AyoVariant>('traditional')
@@ -488,6 +538,8 @@ function CreateGameInner() {
   const [wordScrambleMaxPlayers, setWordScrambleMaxPlayers] = useState(20)
   const [wordScrambleGameDuration, setWordScrambleGameDuration] = useState<number>(WORD_SCRAMBLE_DEFAULT_DURATION)
   const [wordScrambleTheme, setWordScrambleTheme] = useState<string>(WORD_SCRAMBLE_DEFAULT_THEME)
+  const [wordGroupingMaxPlayers, setWordGroupingMaxPlayers] = useState(20)
+  const [wordGroupingGameDuration, setWordGroupingGameDuration] = useState<number>(WORD_GROUPING_DEFAULT_DURATION)
   const [wordScrambleDifficulty, setWordScrambleDifficulty] = useState<WordScrambleDifficulty>(
     WORD_SCRAMBLE_DEFAULT_DIFFICULTY
   )
@@ -503,6 +555,10 @@ function CreateGameInner() {
   const [wordRushMaxPlayers, setWordRushMaxPlayers] = useState(WORD_RUSH_DEFAULT_MAX_PLAYERS)
   const [describeItMaxPlayers, setDescribeItMaxPlayers] = useState(DESCRIBE_IT_DEFAULT_MAX_PLAYERS)
   const [wordHuntTimer, setWordHuntTimer] = useState(WORD_HUNT_DEFAULT_TIMER)
+  const [wordleRoomMaxPlayers, setWordleRoomMaxPlayers] = useState(WORDLE_ROOM_DEFAULT_MAX_PLAYERS)
+  const [wordleRoomCategory, setWordleRoomCategory] = useState<WordleCategoryId>('general_english')
+  const [wordleRoomWordCount, setWordleRoomWordCount] = useState<WordleRoomWordCount>(WORDLE_ROOM_DEFAULT_WORD_COUNT)
+  const [wordleRoomTimer, setWordleRoomTimer] = useState(WORDLE_ROOM_DEFAULT_TIMER)
   const [npatGameDuration, setNpatGameDuration] = useState(NPAT_DEFAULT_GAME_DURATION)
   const [npatMarkingTimer, setNpatMarkingTimer] = useState(NPAT_DEFAULT_MARKING_TIMER)
   const [landmineMode, setLandmineMode] = useState<'zero_points' | 'elimination'>('zero_points')
@@ -528,15 +584,24 @@ function CreateGameInner() {
   const [customCrosswordEntries, setCustomCrosswordEntries] = useState<CrosswordEntry[]>([])
   const [customWordSearchWords, setCustomWordSearchWords] = useState<WordSearchEntry[]>([])
   const [customWordScrambleWords, setCustomWordScrambleWords] = useState<WordScrambleEntry[]>([])
+  // Multiplayer Wordle library pack picker — each entry is {word, hint?}, hint optional.
+  const [customWordleRoomWords, setCustomWordleRoomWords] = useState<{ word: string; hint?: string }[]>([])
   const [puzzleUploadError, setPuzzleUploadError] = useState<string | null>(null)
   const [puzzleUploadSummary, setPuzzleUploadSummary] = useState<string | null>(null)
   const [selectedPackId, setSelectedPackId] = useState<string | null>(null)
   const [libraryPackQuestions, setLibraryPackQuestions] = useState<unknown[]>([])
   const [libraryPacks, setLibraryPacks] = useState<
-    { id: string; title: string; author_name: string; question_count: number }[]
+    {
+      id: string
+      title: string
+      author_name: string
+      question_count: number
+      collections?: { slug: string; name: string }[]
+    }[]
   >([])
   const [libraryPacksLoading, setLibraryPacksLoading] = useState(false)
   const [libraryPackSearch, setLibraryPackSearch] = useState('')
+  const selectLibraryPackSeqRef = useRef(0)
   const [lobbyLimits, setLobbyLimits] = useState<GamePlayerLimitsMap | null>(null)
   const effectiveLimits = lobbyLimits ?? getCodeDefaultLimits()
 
@@ -575,8 +640,14 @@ function CreateGameInner() {
 
   const selectLibraryPack = async (id: string) => {
     setSelectedPackId(id)
+    // Guard against out-of-order responses when the host clicks pack A then quickly clicks
+    // pack B: A's slower response would otherwise arrive after B's and overwrite the picked
+    // words. Track the sequence and ignore any response for an id that's no longer selected.
+    selectLibraryPackSeqRef.current += 1
+    const seq = selectLibraryPackSeqRef.current
     const res = await fetch(`/api/library/${id}`)
     const data = await res.json()
+    if (seq !== selectLibraryPackSeqRef.current) return
     if (data.pack?.questions) {
       const qs = data.pack.questions
       setLibraryPackQuestions(qs)
@@ -595,7 +666,16 @@ function CreateGameInner() {
       else if (isCrosswordGame(settings.game_type)) setCustomCrosswordEntries(parseStoredCrosswordEntries(qs))
       else if (isWordSearchGame(settings.game_type)) setCustomWordSearchWords(parseStoredWordSearchEntries(qs))
       else if (isWordScrambleGame(settings.game_type)) setCustomWordScrambleWords(parseStoredWordScrambleEntries(qs))
-      else setCustomMltQuestions(qs as string[])
+      else if (isWordleRoomGame(settings.game_type)) {
+        // Wordle themes reuse the word-scramble entry shape ({word, hint?}), but wordle
+        // constrains length to 3–8 letters — filter defensively.
+        const raw = parseStoredWordScrambleEntries(qs)
+        setCustomWordleRoomWords(
+          raw
+            .filter((e) => e.word.length >= 3 && e.word.length <= 8)
+            .map((e) => (e.hint ? { word: e.word.toLowerCase(), hint: e.hint } : { word: e.word.toLowerCase() }))
+        )
+      } else setCustomMltQuestions(qs as string[])
     }
   }
 
@@ -944,6 +1024,7 @@ function CreateGameInner() {
   const isCrossword = isCrosswordGame(settings.game_type)
   const isWordSearch = isWordSearchGame(settings.game_type)
   const isWordScramble = isWordScrambleGame(settings.game_type)
+  const isWordGrouping = isWordGroupingGame(settings.game_type)
   // Difficulty = grid size, which is independent of where the words come from, so it stays editable
   // under every source. A theme only locks difficulty on the Platform tab (admin themes carry one);
   // under Library/Your own there's no theme, so never treat a stale theme value as a lock there.
@@ -951,6 +1032,7 @@ function CreateGameInner() {
   const wordSearchDiffLock = questionSource === 'platform' ? lockedPuzzleDifficulty(wordSearchTheme) : null
   const wordScrambleDiffLock = questionSource === 'platform' ? lockedPuzzleDifficulty(wordScrambleTheme) : null
   const isWordHunt = isWordHuntGame(settings.game_type)
+  const isWordleRoom = isWordleRoomGame(settings.game_type)
   const isMatchingPairs = isMatchingPairsGame(settings.game_type)
   const isMahjong = isMahjongGame(settings.game_type)
   const showViewerToggle = gameSupportsViewerSetting(settings.game_type)
@@ -1258,6 +1340,27 @@ function CreateGameInner() {
       set: (v) => setWordHuntTimer(v as number),
       appliesTo: isWordHuntGame,
     },
+    // Wordle Room
+    wordle_room_max_players: {
+      get: () => wordleRoomMaxPlayers,
+      set: (v) => setWordleRoomMaxPlayers(v as number),
+      appliesTo: isWordleRoomGame,
+    },
+    wordle_room_category: {
+      get: () => wordleRoomCategory,
+      set: (v) => setWordleRoomCategory(v as WordleCategoryId),
+      appliesTo: isWordleRoomGame,
+    },
+    wordle_room_word_count: {
+      get: () => wordleRoomWordCount,
+      set: (v) => setWordleRoomWordCount(v as WordleRoomWordCount),
+      appliesTo: isWordleRoomGame,
+    },
+    wordle_room_timer: {
+      get: () => wordleRoomTimer,
+      set: (v) => setWordleRoomTimer(v as number),
+      appliesTo: isWordleRoomGame,
+    },
     // Mafia / Werewolf
     mafia_max_players: {
       get: () => settings.max_players,
@@ -1463,6 +1566,26 @@ function CreateGameInner() {
       appliesTo: isUnoGame,
     },
     uno_team_mode: { get: () => unoTeamMode, set: (v) => setUnoTeamMode(v as boolean), appliesTo: isUnoGame },
+    uno_mode: {
+      get: () => unoMode,
+      set: (v) => setUnoMode(v as 'classic' | 'no_mercy'),
+      appliesTo: isUnoGame,
+    },
+    uno_no_mercy_win: {
+      get: () => unoNoMercyWin,
+      set: (v) => setUnoNoMercyWin(v as 'first_out' | 'last_standing'),
+      appliesTo: isUnoGame,
+    },
+    uno_series_scoring: {
+      get: () => unoSeriesScoring,
+      set: (v) => setUnoSeriesScoring(v as boolean),
+      appliesTo: isUnoGame,
+    },
+    uno_series_target: {
+      get: () => unoSeriesTarget,
+      set: (v) => setUnoSeriesTarget(v as number),
+      appliesTo: isUnoGame,
+    },
     // Monopoly
     monopoly_max_players: {
       get: () => monopolyMaxPlayers,
@@ -1472,6 +1595,11 @@ function CreateGameInner() {
     monopoly_game_duration: {
       get: () => monopolyGameDuration,
       set: (v) => setMonopolyGameDuration(v as number),
+      appliesTo: isMonopolyGame,
+    },
+    monopoly_board_size: {
+      get: () => monopolyBoardSize,
+      set: (value) => setMonopolyBoardSize(value === 48 ? 48 : 40),
       appliesTo: isMonopolyGame,
     },
     // Whot
@@ -1740,6 +1868,16 @@ function CreateGameInner() {
     return subscribeLocalIdentity(seed)
   }, [])
   const [hostWillPlay, setHostWillPlay] = useState(true)
+  // "Play solo" opt-in — for games whose lobby min is 1 (yahtzee, crossword,
+  // word_search, word_scramble, word_grouping). When on, the create flow forces
+  // max_players=1, seats the host as the sole player, and auto-starts the game
+  // right after create so a solo host bypasses the lobby wait entirely.
+  const isSoloEligible = isYahtzee || isCrossword || isWordSearch || isWordScramble || isWordGrouping || isWordleRoom
+  const [soloMode, setSoloMode] = useState(false)
+  useEffect(() => {
+    // A game type change may make solo unavailable — never carry a stale flag.
+    if (!isSoloEligible && soloMode) setSoloMode(false)
+  }, [isSoloEligible, soloMode])
   // Games whose host panel supports the "Host only / Host + play" seat toggle.
   // Excludes the poll family (routed through PollHostView, own join flow) and the
   // host-only message-board games. For these, the host's create-screen name + role are
@@ -1753,7 +1891,14 @@ function CreateGameInner() {
   // packs it's auto-filled from the pack name; for a CSV upload we ask the host directly,
   // right under the upload — hence gated on the custom source. Reused across game blocks.
   const showsContentLabel =
-    isLobbyQuestions || isCrossword || isWordSearch || isWordScramble || isCodewords || isDescribeIt || isWst
+    isLobbyQuestions ||
+    isCrossword ||
+    isWordSearch ||
+    isWordScramble ||
+    isWordGrouping ||
+    isCodewords ||
+    isDescribeIt ||
+    isWst
   const categoryUploadField =
     showsContentLabel && questionSource === 'custom' ? (
       <Field label="Category">
@@ -1802,8 +1947,10 @@ function CreateGameInner() {
     isCrossword ||
     isWordSearch ||
     isWordScramble ||
+    isWordGrouping ||
     isWordHunt ||
-    isMatchingPairs
+    isMatchingPairs ||
+    isWordleRoom
   const isTriviaQuickCreate = isTrivia
   const needsParticipantStep =
     !isQuickLobby && !isTriviaQuickCreate && !isBinaryLobby && !(isMlt && isJoinersMode) && !isJoinersMode
@@ -1850,6 +1997,14 @@ function CreateGameInner() {
       // them on a value outside Landmine's allowed set.
       setLandmineCategoryTimer(LANDMINE_DEFAULT_CATEGORY_TIMER)
       setLandmineMarkingTimer(LANDMINE_DEFAULT_MARKING_TIMER)
+    }
+    if (isWordleRoomGame(type)) {
+      // Wordle Room's category/word-count/timer live in standalone state (submitted at
+      // create time), so reset them here rather than pushing them into the settings object.
+      setWordleRoomCategory('general_english')
+      setWordleRoomWordCount(WORDLE_ROOM_DEFAULT_WORD_COUNT)
+      setWordleRoomTimer(WORDLE_ROOM_DEFAULT_TIMER)
+      setCustomWordleRoomWords([])
     }
     setSettings({
       ...settings,
@@ -2033,6 +2188,13 @@ function CreateGameInner() {
             anonymous: true,
             rounds_count: 1,
             timer_seconds: WORD_HUNT_DEFAULT_TIMER,
+          }
+        : {}),
+      ...(isWordleRoomGame(type)
+        ? {
+            participant_mode: 'joiners' as const,
+            anonymous: true,
+            rounds_count: 1,
           }
         : {}),
       ...(isMahjongGame(type)
@@ -2424,7 +2586,30 @@ function CreateGameInner() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...settings,
+          // Discovery Phase C + private-schedule follow-up: forward
+          // scheduled_at whenever the toggle set it, regardless of visibility.
+          // Server accepts private+scheduled (invite-by-link RSVP flow). A
+          // null value would fail Zod's datetime validator, so omit instead.
+          ...(settings.scheduled_at ? { scheduled_at: settings.scheduled_at } : { scheduled_at: undefined }),
           ...(isWordHunt ? { timer_seconds: wordHuntTimer } : {}),
+          ...(isWordleRoom
+            ? {
+                max_players: wordleRoomMaxPlayers,
+                wordle_room_category: wordleRoomCategory,
+                wordle_room_word_count: wordleRoomWordCount,
+                timer_seconds: wordleRoomTimer,
+                // Library or custom source forwards its parsed word list so the start route uses
+                // it as the sequence source instead of the built-in category bank. Platform
+                // (default) sends nothing here and the server falls back to the category.
+                ...((questionSource === 'library' || questionSource === 'custom') &&
+                customWordleRoomWords.length >= wordleRoomWordCount
+                  ? {
+                      wordle_room_words: customWordleRoomWords,
+                      ...(questionSource === 'library' && selectedPackId ? { library_pack_id: selectedPackId } : {}),
+                    }
+                  : {}),
+              }
+            : {}),
           rounds_count: isWst
             ? isWstDeck
               ? Math.max(wstDeckContent.length, 2)
@@ -2446,25 +2631,32 @@ function CreateGameInner() {
                   ? (questionSource === 'custom' || questionSource === 'library') && customWordScrambleWords.length >= 4
                     ? 'custom'
                     : 'platform'
-                  : isCodewords
-                    ? questionSource === 'library'
+                  : isWordGrouping
+                    ? // Symmetric with the payload gate below: only mark the game as custom
+                      // when the pack meets the same 4-puzzle floor. Same gate for Library and
+                      // "Your own" — both flow through `libraryPackQuestions`.
+                      questionSource !== 'platform' && libraryPackQuestions.length >= 4
                       ? 'custom'
-                      : questionSource
-                    : isDescribeIt
-                      ? (questionSource === 'custom' || questionSource === 'library') &&
-                        parseDescribeItWords(describeItWords).length > 0
+                      : 'platform'
+                    : isCodewords
+                      ? questionSource === 'library'
                         ? 'custom'
-                        : 'platform'
-                      : isQuickDraw
+                        : questionSource
+                      : isDescribeIt
                         ? (questionSource === 'custom' || questionSource === 'library') &&
-                          parseDescribeItWords(quickDrawWords).length > 0
+                          parseDescribeItWords(describeItWords).length > 0
                           ? 'custom'
                           : 'platform'
-                        : isLobbyQuestions
-                          ? questionSource === 'library'
+                        : isQuickDraw
+                          ? (questionSource === 'custom' || questionSource === 'library') &&
+                            parseDescribeItWords(quickDrawWords).length > 0
                             ? 'custom'
-                            : questionSource
-                          : 'platform',
+                            : 'platform'
+                          : isLobbyQuestions
+                            ? questionSource === 'library'
+                              ? 'custom'
+                              : questionSource
+                            : 'platform',
           custom_questions: isWst
             ? isWstDeck && wstDeckContent.length >= WST_DECK_MIN_ENTRIES
               ? wstDeckContent
@@ -2481,29 +2673,38 @@ function CreateGameInner() {
                   ? (questionSource === 'custom' || questionSource === 'library') && customWordScrambleWords.length >= 4
                     ? customWordScrambleWords
                     : null
-                  : isCodewords
-                    ? questionSource === 'custom' || questionSource === 'library'
-                      ? customCodewordsWords
+                  : isWordGrouping
+                    ? // Match the same 4-puzzle floor crossword/word-search/word-scramble use above
+                      // (and the lobby picker's guard in WordGroupingLobbySettings). Accepting 1–3
+                      // here would let the create route persist a pool the lobby then refuses.
+                      // Library and "Your own" both feed `libraryPackQuestions` — "Your own" fills
+                      // it after CSV/JSON parse + shape validation.
+                      questionSource !== 'platform' && libraryPackQuestions.length >= 4
+                      ? libraryPackQuestions
                       : null
-                    : isDescribeIt
-                      ? (questionSource === 'custom' || questionSource === 'library') &&
-                        parseDescribeItWords(describeItWords).length > 0
-                        ? parseDescribeItWords(describeItWords)
+                    : isCodewords
+                      ? questionSource === 'custom' || questionSource === 'library'
+                        ? customCodewordsWords
                         : null
-                      : isQuickDraw
+                      : isDescribeIt
                         ? (questionSource === 'custom' || questionSource === 'library') &&
-                          parseDescribeItWords(quickDrawWords).length > 0
-                          ? parseDescribeItWords(quickDrawWords)
+                          parseDescribeItWords(describeItWords).length > 0
+                          ? parseDescribeItWords(describeItWords)
                           : null
-                        : isLobbyQuestions && (questionSource === 'custom' || questionSource === 'library')
-                          ? isWyr || isTot
-                            ? customWyrQuestions
-                            : isTrivia
-                              ? customTriviaQuestions
-                              : isQuiplash
-                                ? customMltQuestions
-                                : customMltQuestions
-                          : null,
+                        : isQuickDraw
+                          ? (questionSource === 'custom' || questionSource === 'library') &&
+                            parseDescribeItWords(quickDrawWords).length > 0
+                            ? parseDescribeItWords(quickDrawWords)
+                            : null
+                          : isLobbyQuestions && (questionSource === 'custom' || questionSource === 'library')
+                            ? isWyr || isTot
+                              ? customWyrQuestions
+                              : isTrivia
+                                ? customTriviaQuestions
+                                : isQuiplash
+                                  ? customMltQuestions
+                                  : customMltQuestions
+                            : null,
           trivia_category: isTrivia ? triviaCategory : undefined,
           describe_it_mode: isDescribeIt ? settings.describe_it_mode : undefined,
           landmine_mode: isLandmine ? landmineMode : undefined,
@@ -2569,15 +2770,21 @@ function CreateGameInner() {
                                               ? wordSearchMaxPlayers
                                               : isWordScramble
                                                 ? wordScrambleMaxPlayers
-                                                : isWordHunt
-                                                  ? wordHuntMaxPlayers
-                                                  : isWordRush
-                                                    ? wordRushMaxPlayers
-                                                    : isDescribeIt
-                                                      ? describeItMaxPlayers
-                                                      : isMatchingPairs
-                                                        ? (settings.max_players ?? effectiveLimits.matching_pairs.max)
-                                                        : undefined,
+                                                : isWordGrouping
+                                                  ? wordGroupingMaxPlayers
+                                                  : isWordHunt
+                                                    ? wordHuntMaxPlayers
+                                                    : isWordleRoom
+                                                      ? wordleRoomMaxPlayers
+                                                      : isWordRush
+                                                        ? wordRushMaxPlayers
+                                                        : isDescribeIt
+                                                          ? describeItMaxPlayers
+                                                          : isMatchingPairs
+                                                            ? (settings.max_players ??
+                                                              effectiveLimits.matching_pairs.max)
+                                                            : undefined,
+          monopoly_board_size: isMonopoly ? monopolyBoardSize : undefined,
           operative_timer_seconds: isCodewords
             ? codewordsOperativeTimer
             : isNpat
@@ -2619,13 +2826,15 @@ function CreateGameInner() {
                             ? wordSearchGameDuration
                             : isWordScramble
                               ? wordScrambleGameDuration
-                              : isMatchingPairs
-                                ? (settings.game_duration_seconds ?? 0)
-                                : isQuickDraw
-                                  ? quickDrawVoteTimer
-                                  : isLandmine
-                                    ? landmineCategoryTimer
-                                    : undefined,
+                              : isWordGrouping
+                                ? wordGroupingGameDuration
+                                : isMatchingPairs
+                                  ? (settings.game_duration_seconds ?? 0)
+                                  : isQuickDraw
+                                    ? quickDrawVoteTimer
+                                    : isLandmine
+                                      ? landmineCategoryTimer
+                                      : undefined,
           whot_pick3_enabled: isWhot ? whotPick3Enabled : undefined,
           whot_pick2_stacking: isWhot ? whotPick2Stacking : undefined,
           whot_cards_enabled: isWhot ? whotCardsEnabled : undefined,
@@ -2640,8 +2849,15 @@ function CreateGameInner() {
           uno_jump_in: isUno ? unoJumpIn : undefined,
           uno_multi_play_mode: isUno ? unoMultiPlayMode : undefined,
           uno_team_mode: isUno ? unoTeamMode : undefined,
+          uno_mode: isUno ? unoMode : undefined,
+          uno_no_mercy_win: isUno && unoMode === 'no_mercy' ? unoNoMercyWin : undefined,
+          uno_series_scoring: isUno ? unoSeriesScoring : undefined,
+          uno_series_target: isUno && unoSeriesScoring ? unoSeriesTarget : undefined,
           // Team-Up is strictly 2v2.
           ...(isUno && unoTeamMode ? { max_players: 4 } : {}),
+          // Solo mode forces a 1-seat lobby. Placed after every other max_players
+          // branch (including Uno team-mode) so nothing can override it back up.
+          ...(soloMode && isSoloEligible ? { max_players: 1 } : {}),
           ludo_variant: isLudo ? ludoVariant : undefined,
           ayo_variant: isAyo ? ayoVariant : undefined,
           mahjong_ruleset: isMahjong ? mahjongRuleset : undefined,
@@ -2725,10 +2941,19 @@ function CreateGameInner() {
         // an empty name still lands in play mode but waits for a manual Join, and
         // "Host only" makes the host a spectator. Consumed once on the host panel.
         if (hostPlaySupported) {
+          // Solo mode: force "play" role and fall back to "You" so useHostSeat
+          // auto-joins without a manual name entry — the lobby is about to be
+          // skipped by the solo auto-start hook.
+          const soloActive = soloMode && isSoloEligible
           setHostPlayIntent(data.gameCode, {
-            name: hostName.trim(),
-            role: hostWillPlay ? 'play' : 'host',
+            name: soloActive ? hostName.trim() || 'You' : hostName.trim(),
+            role: soloActive ? 'play' : hostWillPlay ? 'play' : 'host',
           })
+        }
+        if (soloMode && isSoloEligible) {
+          // One-shot flag consumed by useHostSeat: once the host is seated, it
+          // POSTs /start automatically so gameplay opens immediately.
+          setSoloAutoStart(data.gameCode)
         }
         const roomParam = searchParams.get('room')
         const memberParam = searchParams.get('member')
@@ -2762,6 +2987,7 @@ function CreateGameInner() {
     return (
       <>
         <PageShell>
+          {/* Home button with no arrow */}
           <BackBtn onClick={() => router.push('/')} label="Home" />
 
           {needsParticipantStep && <StepIndicator steps={wizardSteps} current={stepIndex} />}
@@ -2792,20 +3018,22 @@ function CreateGameInner() {
                 <button
                   type="button"
                   onClick={() => setSettings({ ...settings, isPublic: false })}
-                  className={`flex-1 py-2 text-sm font-semibold transition-colors ${
+                  className={`flex flex-1 items-center justify-center gap-1.5 py-2 text-sm font-semibold transition-colors ${
                     !settings.isPublic ? 'bg-[var(--primary)] text-white' : 'text-muted hover:text-body'
                   }`}
                 >
-                  🔒 Private
+                  <Glyph icon={LockIcon} size={15} />
+                  Private
                 </button>
                 <button
                   type="button"
                   onClick={() => setSettings({ ...settings, isPublic: true })}
-                  className={`flex-1 py-2 text-sm font-semibold transition-colors ${
+                  className={`flex flex-1 items-center justify-center gap-1.5 py-2 text-sm font-semibold transition-colors ${
                     settings.isPublic ? 'bg-[var(--primary)] text-white' : 'text-muted hover:text-body'
                   }`}
                 >
-                  🌐 Public
+                  <Glyph icon={GlobeIcon} size={15} />
+                  Public
                 </button>
               </div>
               <p className="mt-1.5 text-xs text-faint">
@@ -2813,6 +3041,19 @@ function CreateGameInner() {
                   ? 'Anyone can find and join this game from Browse.'
                   : 'Only people with the code can join.'}
               </p>
+              {!settings.isPublic && showsPartyPublicHint(settings.game_type, settings.max_players ?? null) ? (
+                <p className="mt-1 text-xs" style={{ color: 'var(--primary)' }}>
+                  Party game? Turn this on so others can find and join.
+                </p>
+              ) : null}
+              {settings.isPublic && showsMaxOnePublicHint(settings.max_players ?? null) ? (
+                <p className="mt-1 text-xs text-muted italic">Bump the max players above 1 so other people can join.</p>
+              ) : null}
+              <ScheduleForLaterField
+                isPublic={settings.isPublic}
+                scheduledAt={settings.scheduled_at ?? null}
+                onChange={(next) => setSettings((s) => ({ ...s, scheduled_at: next }))}
+              />
             </Field>
           </div>
 
@@ -2858,6 +3099,7 @@ function CreateGameInner() {
                         ...theme,
                         label: 'Table Tennis',
                         emoji: '🏓',
+                        icon: TableTennisBatIcon,
                         preview: { bg: '#064e3b', accent: '#f43f5e', text: '#ecfdf5' },
                       }
                     : theme
@@ -2878,15 +3120,34 @@ function CreateGameInner() {
           {hostPlaySupported && (
             <div className="glass-card p-5 space-y-3">
               <p className="label-caps">You</p>
-              <SegmentedControl
-                value={hostWillPlay ? 'play' : 'host'}
-                onChange={(v) => setHostWillPlay(v === 'play')}
-                options={[
-                  { label: 'Host + play', value: 'play' },
-                  { label: 'Host only', value: 'host' },
-                ]}
-              />
-              {hostWillPlay && (
+              {isSoloEligible && (
+                <label className="flex items-start gap-3 rounded-xl border border-[var(--border)] p-3">
+                  <input
+                    type="checkbox"
+                    checked={soloMode}
+                    onChange={(e) => setSoloMode(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 accent-[var(--primary)]"
+                  />
+                  <div className="flex-1">
+                    <div className="text-sm font-semibold">Playing solo</div>
+                    <p className="text-faint text-xs mt-0.5 leading-relaxed">
+                      Skip the lobby — start playing right away. Sets the game to 1 player; you can still choose the
+                      timer, content, and other settings.
+                    </p>
+                  </div>
+                </label>
+              )}
+              {!soloMode && (
+                <SegmentedControl
+                  value={hostWillPlay ? 'play' : 'host'}
+                  onChange={(v) => setHostWillPlay(v === 'play')}
+                  options={[
+                    { label: 'Host + play', value: 'play' },
+                    { label: 'Host only', value: 'host' },
+                  ]}
+                />
+              )}
+              {(hostWillPlay || soloMode) && (
                 <div className="pt-1">
                   <input
                     type="text"
@@ -2895,12 +3156,14 @@ function CreateGameInner() {
                       hostNameTouchedRef.current = true
                       setHostName(e.target.value)
                     }}
-                    placeholder="Your name (optional)"
+                    placeholder={soloMode ? 'Your name' : 'Your name (optional)'}
                     maxLength={24}
                     className="input-field w-full"
                   />
                   <p className="text-faint text-xs mt-1.5 leading-relaxed">
-                    Enter your name to be seated automatically. Leave it blank to add yourself from the lobby.
+                    {soloMode
+                      ? 'Shown on your solo run. Defaults to "You" if left blank.'
+                      : 'Enter your name to be seated automatically. Leave it blank to add yourself from the lobby.'}
                   </p>
                 </div>
               )}
@@ -2922,20 +3185,14 @@ function CreateGameInner() {
                 <Field
                   label={`Max players (${effectiveLimits.anonymous_messages.min}–${effectiveLimits.anonymous_messages.max})`}
                 >
-                  <select
+                  <CustomSelect
                     value={anonymousMaxPlayers}
-                    onChange={(e) => setAnonymousMaxPlayers(Number(e.target.value))}
-                    className="input-field w-full"
-                  >
-                    {playerCountOptions(
+                    onChange={setAnonymousMaxPlayers}
+                    options={playerCountOptions(
                       effectiveLimits.anonymous_messages.min,
                       effectiveLimits.anonymous_messages.max
-                    ).map((n) => (
-                      <option key={n} value={n}>
-                        {n} players
-                      </option>
-                    ))}
-                  </select>
+                    ).map((n) => ({ value: n, label: `${n} players` }))}
+                  />
                 </Field>
                 <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} />
                 <p className="text-faint text-sm leading-relaxed">
@@ -2949,17 +3206,14 @@ function CreateGameInner() {
             ) : isBingo ? (
               <SettingsGroup title="Bingo room">
                 <Field label={`Max players (${effectiveLimits.bingo.min}–${effectiveLimits.bingo.max})`}>
-                  <select
+                  <CustomSelect
                     value={bingoMaxPlayers}
-                    onChange={(e) => setBingoMaxPlayers(Number(e.target.value))}
-                    className="input-field w-full"
-                  >
-                    {playerCountOptions(effectiveLimits.bingo.min, effectiveLimits.bingo.max).map((n) => (
-                      <option key={n} value={n}>
-                        {n} players
-                      </option>
-                    ))}
-                  </select>
+                    onChange={setBingoMaxPlayers}
+                    options={playerCountOptions(effectiveLimits.bingo.min, effectiveLimits.bingo.max).map((n) => ({
+                      value: n,
+                      label: `${n} players`,
+                    }))}
+                  />
                 </Field>
                 <Field label="Number calling">
                   <div className="grid grid-cols-2 gap-3">
@@ -2993,17 +3247,11 @@ function CreateGameInner() {
                 </Field>
                 {bingoCallMode === 'auto' && (
                   <Field label="Seconds between calls">
-                    <select
+                    <CustomSelect
                       value={bingoCallInterval}
-                      onChange={(e) => setBingoCallInterval(Number(e.target.value))}
-                      className="input-field w-full"
-                    >
-                      {BINGO_CALL_INTERVAL_OPTIONS.map((s) => (
-                        <option key={s} value={s}>
-                          {s} seconds
-                        </option>
-                      ))}
-                    </select>
+                      onChange={setBingoCallInterval}
+                      options={BINGO_CALL_INTERVAL_OPTIONS.map((s) => ({ value: s, label: `${s} seconds` }))}
+                    />
                   </Field>
                 )}
                 {showViewerToggle && <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} />}
@@ -3016,19 +3264,18 @@ function CreateGameInner() {
                 </p>
               </SettingsGroup>
             ) : isQuiplash ? (
-              <SettingsGroup title="Quiplash">
+              <SettingsGroup title="Punchline">
                 <Field label={`Max players (${effectiveLimits.quiplash.min}–${effectiveLimits.quiplash.max})`}>
-                  <select
+                  <CustomSelect
                     value={quiplashMaxPlayers}
-                    onChange={(e) => setQuiplashMaxPlayers(Number(e.target.value))}
-                    className="input-field w-full"
-                  >
-                    {playerCountOptions(effectiveLimits.quiplash.min, effectiveLimits.quiplash.max).map((n) => (
-                      <option key={n} value={n}>
-                        {n} players
-                      </option>
-                    ))}
-                  </select>
+                    onChange={setQuiplashMaxPlayers}
+                    options={playerCountOptions(effectiveLimits.quiplash.min, effectiveLimits.quiplash.max).map(
+                      (n) => ({
+                        value: n,
+                        label: `${n} players`,
+                      })
+                    )}
+                  />
                 </Field>
                 <Field label="Rounds">
                   <ChipGrid>
@@ -3048,30 +3295,18 @@ function CreateGameInner() {
                   </ChipGrid>
                 </Field>
                 <Field label="Answer timer">
-                  <select
+                  <CustomSelect
                     value={settings.timer_seconds}
-                    onChange={(e) => setSettings({ ...settings, timer_seconds: Number(e.target.value) })}
-                    className="input-field w-full"
-                  >
-                    {QUIPLASH_SUBMIT_TIMER_OPTIONS.map((s) => (
-                      <option key={s} value={s}>
-                        {s} seconds
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(val) => setSettings({ ...settings, timer_seconds: val })}
+                    options={QUIPLASH_SUBMIT_TIMER_OPTIONS.map((s) => ({ value: s, label: `${s} seconds` }))}
+                  />
                 </Field>
                 <Field label="Vote timer (per battle)">
-                  <select
+                  <CustomSelect
                     value={quiplashVoteTimer}
-                    onChange={(e) => setQuiplashVoteTimer(Number(e.target.value))}
-                    className="input-field w-full"
-                  >
-                    {QUIPLASH_VOTE_TIMER_OPTIONS.map((s) => (
-                      <option key={s} value={s}>
-                        {s} seconds
-                      </option>
-                    ))}
-                  </select>
+                    onChange={setQuiplashVoteTimer}
+                    options={QUIPLASH_VOTE_TIMER_OPTIONS.map((s) => ({ value: s, label: `${s} seconds` }))}
+                  />
                 </Field>
                 {showViewerToggle && <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} />}
                 <p className="text-faint text-sm leading-relaxed">
@@ -3149,33 +3384,26 @@ function CreateGameInner() {
                     </Field>
                     {settings.quick_draw_play_mode !== 'individual' && (
                       <Field label="Teams">
-                        <select
+                        <CustomSelect
                           value={settings.quick_draw_num_teams}
-                          onChange={(e) => setSettings({ ...settings, quick_draw_num_teams: Number(e.target.value) })}
-                          className="input-field w-full"
-                        >
-                          {QUICK_DRAW_GUESS_TEAM_OPTIONS.map((n) => (
-                            <option key={n} value={n}>
-                              {n} teams
-                            </option>
-                          ))}
-                        </select>
+                          onChange={(val) => setSettings({ ...settings, quick_draw_num_teams: val })}
+                          options={QUICK_DRAW_GUESS_TEAM_OPTIONS.map((n) => ({ value: n, label: `${n} teams` }))}
+                        />
                       </Field>
                     )}
                   </>
                 )}
                 <Field label={`Max players (${effectiveLimits.quick_draw.min}–${effectiveLimits.quick_draw.max})`}>
-                  <select
+                  <CustomSelect
                     value={quickDrawMaxPlayers}
-                    onChange={(e) => setQuickDrawMaxPlayers(Number(e.target.value))}
-                    className="input-field w-full"
-                  >
-                    {playerCountOptions(effectiveLimits.quick_draw.min, effectiveLimits.quick_draw.max).map((n) => (
-                      <option key={n} value={n}>
-                        {n} players
-                      </option>
-                    ))}
-                  </select>
+                    onChange={setQuickDrawMaxPlayers}
+                    options={playerCountOptions(effectiveLimits.quick_draw.min, effectiveLimits.quick_draw.max).map(
+                      (n) => ({
+                        value: n,
+                        label: `${n} players`,
+                      })
+                    )}
+                  />
                 </Field>
                 <Field label="Rounds">
                   <ChipGrid>
@@ -3195,45 +3423,30 @@ function CreateGameInner() {
                   </ChipGrid>
                 </Field>
                 <Field label={settings.quick_draw_variant === 'guess' ? 'Turn timer' : 'Draw timer'}>
-                  <select
+                  <CustomSelect
                     value={settings.timer_seconds}
-                    onChange={(e) => setSettings({ ...settings, timer_seconds: Number(e.target.value) })}
-                    className="input-field w-full"
-                  >
-                    {QUICK_DRAW_DRAW_TIMER_OPTIONS.map((s) => (
-                      <option key={s} value={s}>
-                        {settings.quick_draw_variant === 'guess' ? formatQuickDrawTurnTimer(s) : `${s} seconds`}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(val) => setSettings({ ...settings, timer_seconds: val })}
+                    options={QUICK_DRAW_DRAW_TIMER_OPTIONS.map((s) => ({
+                      value: s,
+                      label: settings.quick_draw_variant === 'guess' ? formatQuickDrawTurnTimer(s) : `${s} seconds`,
+                    }))}
+                  />
                 </Field>
                 {settings.quick_draw_variant !== 'guess' && (
                   <>
                     <Field label="Title timer">
-                      <select
+                      <CustomSelect
                         value={quickDrawTitleTimer}
-                        onChange={(e) => setQuickDrawTitleTimer(Number(e.target.value))}
-                        className="input-field w-full"
-                      >
-                        {QUICK_DRAW_TITLE_TIMER_OPTIONS.map((s) => (
-                          <option key={s} value={s}>
-                            {s} seconds
-                          </option>
-                        ))}
-                      </select>
+                        onChange={setQuickDrawTitleTimer}
+                        options={QUICK_DRAW_TITLE_TIMER_OPTIONS.map((s) => ({ value: s, label: `${s} seconds` }))}
+                      />
                     </Field>
                     <Field label="Vote timer">
-                      <select
+                      <CustomSelect
                         value={quickDrawVoteTimer}
-                        onChange={(e) => setQuickDrawVoteTimer(Number(e.target.value))}
-                        className="input-field w-full"
-                      >
-                        {QUICK_DRAW_VOTE_TIMER_OPTIONS.map((s) => (
-                          <option key={s} value={s}>
-                            {s} seconds
-                          </option>
-                        ))}
-                      </select>
+                        onChange={setQuickDrawVoteTimer}
+                        options={QUICK_DRAW_VOTE_TIMER_OPTIONS.map((s) => ({ value: s, label: `${s} seconds` }))}
+                      />
                     </Field>
                   </>
                 )}
@@ -3293,7 +3506,7 @@ function CreateGameInner() {
                         {
                           value: 'ai',
                           label: 'Generate with AI',
-                          hint: 'Generate words with your own Claude API key.',
+                          hint: 'Give a theme, get a ready-made set in seconds.',
                         },
                       ]}
                     />
@@ -3386,30 +3599,23 @@ function CreateGameInner() {
             ) : isTwoTruths ? (
               <SettingsGroup title="Two Truths & a Lie">
                 <Field label={`Max players (${effectiveLimits.two_truths.min}–${effectiveLimits.two_truths.max})`}>
-                  <select
+                  <CustomSelect
                     value={ttlMaxPlayers}
-                    onChange={(e) => setTtlMaxPlayers(Number(e.target.value))}
-                    className="input-field w-full"
-                  >
-                    {playerCountOptions(effectiveLimits.two_truths.min, effectiveLimits.two_truths.max).map((n) => (
-                      <option key={n} value={n}>
-                        {n} players
-                      </option>
-                    ))}
-                  </select>
+                    onChange={setTtlMaxPlayers}
+                    options={playerCountOptions(effectiveLimits.two_truths.min, effectiveLimits.two_truths.max).map(
+                      (n) => ({
+                        value: n,
+                        label: `${n} players`,
+                      })
+                    )}
+                  />
                 </Field>
                 <Field label="Guess timer (per round)">
-                  <select
+                  <CustomSelect
                     value={settings.timer_seconds}
-                    onChange={(e) => setSettings({ ...settings, timer_seconds: Number(e.target.value) })}
-                    className="input-field w-full"
-                  >
-                    {TTL_TIMER_OPTIONS.map((s) => (
-                      <option key={s} value={s}>
-                        {s} seconds
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(val) => setSettings({ ...settings, timer_seconds: val })}
+                    options={TTL_TIMER_OPTIONS.map((s) => ({ value: s, label: `${s} seconds` }))}
+                  />
                 </Field>
                 {showViewerToggle && <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} />}
                 <p className="text-faint text-sm leading-relaxed">
@@ -3418,81 +3624,85 @@ function CreateGameInner() {
                 </p>
               </SettingsGroup>
             ) : isMonopoly ? (
-              <SettingsGroup title="Monopoly room">
+              <SettingsGroup title="Estate Kings room">
                 <Field label={`Max players (${effectiveLimits.monopoly.min}–${effectiveLimits.monopoly.max})`}>
-                  <select
+                  <CustomSelect
                     value={monopolyMaxPlayers}
-                    onChange={(e) => setMonopolyMaxPlayers(Number(e.target.value))}
-                    className="input-field w-full"
-                  >
-                    {playerCountOptions(effectiveLimits.monopoly.min, effectiveLimits.monopoly.max).map((n) => (
-                      <option key={n} value={n}>
-                        {n} players
-                      </option>
-                    ))}
-                  </select>
+                    onChange={setMonopolyMaxPlayers}
+                    options={playerCountOptions(effectiveLimits.monopoly.min, effectiveLimits.monopoly.max).map(
+                      (n) => ({
+                        value: n,
+                        label: `${n} players`,
+                      })
+                    )}
+                  />
+                </Field>
+                <Field label="Board size">
+                  <CustomSelect
+                    value={monopolyBoardSize}
+                    onChange={(value) => setMonopolyBoardSize(value === 48 ? 48 : 40)}
+                    options={[
+                      { value: 40, label: '40 spaces' },
+                      ...(monopolyMaxPlayers >= 6 ? [{ value: 48, label: '48 spaces' }] : []),
+                    ]}
+                  />
                 </Field>
                 <Field label="Turn timer">
-                  <select
+                  <CustomSelect
                     value={settings.timer_seconds}
-                    onChange={(e) => setSettings({ ...settings, timer_seconds: Number(e.target.value) })}
-                    className="input-field w-full"
-                  >
-                    <option value={0}>No timer</option>
-                    <option value={30}>30 seconds</option>
-                    <option value={45}>45 seconds</option>
-                    <option value={60}>60 seconds</option>
-                    <option value={90}>90 seconds</option>
-                  </select>
+                    onChange={(val) => setSettings({ ...settings, timer_seconds: val })}
+                    options={[
+                      { value: 0, label: 'No timer' },
+                      { value: 30, label: '30 seconds' },
+                      { value: 45, label: '45 seconds' },
+                      { value: 60, label: '60 seconds' },
+                      { value: 90, label: '90 seconds' },
+                    ]}
+                  />
                 </Field>
                 <Field label="Game length">
-                  <select
+                  <CustomSelect
                     value={monopolyGameDuration}
-                    onChange={(e) => setMonopolyGameDuration(Number(e.target.value))}
-                    className="input-field w-full"
-                  >
-                    {MONOPOLY_GAME_DURATION_OPTIONS.map((s) => (
-                      <option key={s} value={s}>
-                        {formatMonopolyGameDuration(s)}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={setMonopolyGameDuration}
+                    options={MONOPOLY_GAME_DURATION_OPTIONS.map((s) => ({
+                      value: s,
+                      label: formatMonopolyGameDuration(s),
+                    }))}
+                  />
                 </Field>
                 <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="monopoly" />
                 <p className="text-faint text-sm leading-relaxed">
                   {formatThemedText(
-                    'Players join with their name and start on GO with £1,500. Take turns rolling dice, buying properties, paying rent, and drawing cards. Last player standing wins! If someone stalls, their turn auto-resolves. Set a game length to end automatically — the richest player wins when time runs out.',
+                    'Players join with their name and start on PAYDAY with £1,500. Take turns rolling dice, buying properties, paying rent, and drawing cards. Last player standing wins! If someone stalls, their turn auto-resolves. Set a game length to end automatically — the richest player wins when time runs out.',
                     settings.theme
                   )}
                 </p>
               </SettingsGroup>
             ) : isYahtzee ? (
-              <SettingsGroup title="Yahtzee room">
+              <SettingsGroup title="Five Dice room">
+                <SoloPracticeCta gameType="yahtzee" />
                 <Field label={`Max players (${effectiveLimits.yahtzee.min}–${effectiveLimits.yahtzee.max})`}>
-                  <select
+                  <CustomSelect
                     value={yahtzeeMaxPlayers}
-                    onChange={(e) => setYahtzeeMaxPlayers(Number(e.target.value))}
-                    className="input-field w-full"
-                  >
-                    {playerCountOptions(effectiveLimits.yahtzee.min, effectiveLimits.yahtzee.max).map((n) => (
-                      <option key={n} value={n}>
-                        {n} players
-                      </option>
-                    ))}
-                  </select>
+                    onChange={setYahtzeeMaxPlayers}
+                    options={playerCountOptions(effectiveLimits.yahtzee.min, effectiveLimits.yahtzee.max).map((n) => ({
+                      value: n,
+                      label: `${n} players`,
+                    }))}
+                  />
                 </Field>
                 <Field label="Turn timer">
-                  <select
+                  <CustomSelect
                     value={settings.timer_seconds}
-                    onChange={(e) => setSettings({ ...settings, timer_seconds: Number(e.target.value) })}
-                    className="input-field w-full"
-                  >
-                    <option value={0}>No timer</option>
-                    <option value={30}>30 seconds</option>
-                    <option value={60}>60 seconds</option>
-                    <option value={90}>90 seconds</option>
-                    <option value={120}>2 minutes</option>
-                  </select>
+                    onChange={(val) => setSettings({ ...settings, timer_seconds: val })}
+                    options={[
+                      { value: 0, label: 'No timer' },
+                      { value: 30, label: '30 seconds' },
+                      { value: 60, label: '60 seconds' },
+                      { value: 90, label: '90 seconds' },
+                      { value: 120, label: '2 minutes' },
+                    ]}
+                  />
                 </Field>
                 <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="yahtzee" />
                 <p className="text-faint text-sm leading-relaxed">
@@ -3502,44 +3712,36 @@ function CreateGameInner() {
               </SettingsGroup>
             ) : isWhot ? (
               <SettingsGroup title="Whot room">
+                <SoloPracticeCta gameType="whot" />
                 <Field label={`Max players (${effectiveLimits.whot.min}–${effectiveLimits.whot.max})`}>
-                  <select
+                  <CustomSelect
                     value={whotMaxPlayers}
-                    onChange={(e) => setWhotMaxPlayers(Number(e.target.value))}
-                    className="input-field w-full"
-                  >
-                    {playerCountOptions(effectiveLimits.whot.min, effectiveLimits.whot.max).map((n) => (
-                      <option key={n} value={n}>
-                        {n} players
-                      </option>
-                    ))}
-                  </select>
+                    onChange={setWhotMaxPlayers}
+                    options={playerCountOptions(effectiveLimits.whot.min, effectiveLimits.whot.max).map((n) => ({
+                      value: n,
+                      label: `${n} players`,
+                    }))}
+                  />
                 </Field>
                 <Field label="Turn timer">
-                  <select
+                  <CustomSelect
                     value={settings.timer_seconds}
-                    onChange={(e) => setSettings({ ...settings, timer_seconds: Number(e.target.value) })}
-                    className="input-field w-full"
-                  >
-                    {turnTimerOptionsFor('whot').map((s) => (
-                      <option key={s} value={s}>
-                        {formatBoardGameTurnTimer(s)}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(val) => setSettings({ ...settings, timer_seconds: val })}
+                    options={turnTimerOptionsFor('whot').map((s) => ({
+                      value: s,
+                      label: formatBoardGameTurnTimer(s),
+                    }))}
+                  />
                 </Field>
                 <Field label="Game length">
-                  <select
+                  <CustomSelect
                     value={whotGameDuration}
-                    onChange={(e) => setWhotGameDuration(Number(e.target.value))}
-                    className="input-field w-full"
-                  >
-                    {WHOT_GAME_DURATION_OPTIONS.map((s) => (
-                      <option key={s} value={s}>
-                        {formatWhotGameDuration(s)}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={setWhotGameDuration}
+                    options={WHOT_GAME_DURATION_OPTIONS.map((s) => ({
+                      value: s,
+                      label: formatWhotGameDuration(s),
+                    }))}
+                  />
                 </Field>
                 <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="whot" />
                 <Field label="House rules">
@@ -3582,44 +3784,38 @@ function CreateGameInner() {
               </SettingsGroup>
             ) : isCrazy8 ? (
               <SettingsGroup title="Crazy Eights room">
+                <SoloPracticeCta gameType="crazy_eights" />
                 <Field label={`Max players (${effectiveLimits.crazy_eights.min}–${effectiveLimits.crazy_eights.max})`}>
-                  <select
+                  <CustomSelect
                     value={crazy8MaxPlayers}
-                    onChange={(e) => setCrazy8MaxPlayers(Number(e.target.value))}
-                    className="input-field w-full"
-                  >
-                    {playerCountOptions(effectiveLimits.crazy_eights.min, effectiveLimits.crazy_eights.max).map((n) => (
-                      <option key={n} value={n}>
-                        {n} players
-                      </option>
-                    ))}
-                  </select>
+                    onChange={setCrazy8MaxPlayers}
+                    options={playerCountOptions(effectiveLimits.crazy_eights.min, effectiveLimits.crazy_eights.max).map(
+                      (n) => ({
+                        value: n,
+                        label: `${n} players`,
+                      })
+                    )}
+                  />
                 </Field>
                 <Field label="Turn timer">
-                  <select
+                  <CustomSelect
                     value={settings.timer_seconds}
-                    onChange={(e) => setSettings({ ...settings, timer_seconds: Number(e.target.value) })}
-                    className="input-field w-full"
-                  >
-                    {turnTimerOptionsFor('crazy_eights').map((s) => (
-                      <option key={s} value={s}>
-                        {formatBoardGameTurnTimer(s)}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(val) => setSettings({ ...settings, timer_seconds: val })}
+                    options={turnTimerOptionsFor('crazy_eights').map((s) => ({
+                      value: s,
+                      label: formatBoardGameTurnTimer(s),
+                    }))}
+                  />
                 </Field>
                 <Field label="Game length">
-                  <select
+                  <CustomSelect
                     value={crazy8GameDuration}
-                    onChange={(e) => setCrazy8GameDuration(Number(e.target.value))}
-                    className="input-field w-full"
-                  >
-                    {CRAZY8_GAME_DURATION_OPTIONS.map((s) => (
-                      <option key={s} value={s}>
-                        {formatCrazyEightsGameDuration(s)}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={setCrazy8GameDuration}
+                    options={CRAZY8_GAME_DURATION_OPTIONS.map((s) => ({
+                      value: s,
+                      label: formatCrazyEightsGameDuration(s),
+                    }))}
+                  />
                 </Field>
                 <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="crazy_eights" />
                 <Field label="House rules">
@@ -3655,14 +3851,51 @@ function CreateGameInner() {
               </SettingsGroup>
             ) : isUno ? (
               <SettingsGroup title="UNO room">
-                <Field label="Team-Up (2v2)">
-                  <Toggle
-                    label="Team-Up mode"
-                    description="4 players in 2 teams of 2. Teammates sit across and see each other's hands; a team wins the round the moment either partner empties their hand."
-                    value={unoTeamMode}
-                    onChange={setUnoTeamMode}
+                <SoloPracticeCta gameType="uno" />
+                <Field label="Mode">
+                  <CustomSelect
+                    value={unoMode}
+                    onChange={(val) => setUnoMode(val as 'classic' | 'no_mercy')}
+                    options={[
+                      { value: 'classic', label: 'Classic — the standard game with optional Team-Up' },
+                      {
+                        value: 'no_mercy',
+                        label: 'High Stakes — 168-card deck, +6/+10, hand-size knockouts',
+                      },
+                    ]}
                   />
+                  <p className="mt-1 text-xs text-faint">
+                    High Stakes is a Show ’em No Mercy-style variant: locks in stacking + 0-7, disables Draw 4
+                    challenges and Team-Up, and adds Discard Colour, Skip All, Reverse Draw 4, Draw 6, Draw 10, and
+                    Colour Roulette cards.
+                  </p>
                 </Field>
+                {unoMode === 'no_mercy' ? (
+                  <Field label="Win condition">
+                    <CustomSelect
+                      value={unoNoMercyWin}
+                      onChange={(val) => setUnoNoMercyWin(val as 'first_out' | 'last_standing')}
+                      options={[
+                        { value: 'first_out', label: 'First out — empty your hand to win' },
+                        { value: 'last_standing', label: 'Last standing — outlast every knockout' },
+                      ]}
+                    />
+                    <p className="mt-1 text-xs text-faint">
+                      Any player holding 25+ cards is knocked out. Last standing wins when only one player is still
+                      holding cards.
+                    </p>
+                  </Field>
+                ) : null}
+                {unoMode === 'classic' ? (
+                  <Field label="Team-Up (2v2)">
+                    <Toggle
+                      label="Team-Up mode"
+                      description="4 players in 2 teams of 2. Teammates sit across and see each other's hands; a team wins the round the moment either partner empties their hand."
+                      value={unoTeamMode}
+                      onChange={setUnoTeamMode}
+                    />
+                  </Field>
+                ) : null}
                 {unoTeamMode ? (
                   <Field label="Players">
                     <div className="input-field w-full bg-[var(--surface-inset-bg)] text-muted">
@@ -3671,142 +3904,166 @@ function CreateGameInner() {
                   </Field>
                 ) : (
                   <Field label={`Max players (${effectiveLimits.uno.min}–${effectiveLimits.uno.max})`}>
-                    <select
+                    <CustomSelect
                       value={unoMaxPlayers}
-                      onChange={(e) => setUnoMaxPlayers(Number(e.target.value))}
-                      className="input-field w-full"
-                    >
-                      {playerCountOptions(effectiveLimits.uno.min, effectiveLimits.uno.max).map((n) => (
-                        <option key={n} value={n}>
-                          {n} players
-                        </option>
-                      ))}
-                    </select>
+                      onChange={setUnoMaxPlayers}
+                      options={playerCountOptions(effectiveLimits.uno.min, effectiveLimits.uno.max).map((n) => ({
+                        value: n,
+                        label: `${n} players`,
+                      }))}
+                    />
                   </Field>
                 )}
                 <Field label="Turn timer">
-                  <select
+                  <CustomSelect
                     value={settings.timer_seconds}
-                    onChange={(e) => setSettings({ ...settings, timer_seconds: Number(e.target.value) })}
-                    className="input-field w-full"
-                  >
-                    {turnTimerOptionsFor('uno').map((s) => (
-                      <option key={s} value={s}>
-                        {formatBoardGameTurnTimer(s)}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(val) => setSettings({ ...settings, timer_seconds: val })}
+                    options={turnTimerOptionsFor('uno').map((s) => ({
+                      value: s,
+                      label: formatBoardGameTurnTimer(s),
+                    }))}
+                  />
                 </Field>
                 <Field label="Game length">
-                  <select
+                  <CustomSelect
                     value={unoGameDuration}
-                    onChange={(e) => setUnoGameDuration(Number(e.target.value))}
-                    className="input-field w-full"
-                  >
-                    {UNO_GAME_DURATION_OPTIONS.map((s) => (
-                      <option key={s} value={s}>
-                        {formatUnoGameDuration(s)}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={setUnoGameDuration}
+                    options={UNO_GAME_DURATION_OPTIONS.map((s) => ({
+                      value: s,
+                      label: formatUnoGameDuration(s),
+                    }))}
+                  />
                 </Field>
                 <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="uno" />
-                <Field label="Missed “UNO” penalty">
-                  <select
+                <Field label="Missed last-card penalty">
+                  <CustomSelect
                     value={unoUnoPenalty}
-                    onChange={(e) => setUnoUnoPenalty(Number(e.target.value))}
-                    className="input-field w-full"
-                  >
-                    <option value={2}>Draw 2 cards</option>
-                    <option value={4}>Draw 4 cards (harsher)</option>
-                  </select>
+                    onChange={setUnoUnoPenalty}
+                    options={[
+                      { value: 2, label: 'Draw 2 cards' },
+                      { value: 4, label: 'Draw 4 cards (harsher)' },
+                    ]}
+                  />
                 </Field>
                 <Field label="House rules">
                   <div className="space-y-2">
-                    <Toggle
-                      label="Wild Draw Four challenge"
-                      description="Let the next player challenge a Wild Draw Four — the system reveals the hand. Off: they always draw 4."
-                      value={unoWd4Challenge}
-                      onChange={setUnoWd4Challenge}
-                    />
-                    <Toggle
-                      label="0-7 rule"
-                      description="Play a 0 → everyone passes their whole hand in the direction of play. Play a 7 → swap hands with any player."
-                      value={unoZeroSeven}
-                      onChange={setUnoZeroSeven}
-                    />
-                    <Toggle
-                      label="Stacking"
-                      description="Stack Draw Two on Draw Two and Draw Four on Draw Four — the penalty piles up and passes on. Whoever would draw the pile can still challenge a Draw Four (if challenge is on)."
-                      value={unoStacking}
-                      onChange={setUnoStacking}
-                    />
-                    <Toggle
-                      label="Jump-In"
-                      description="Hold an exact match for the top card (same colour + number, or same colour + symbol)? Play it instantly, even out of turn — the players you skip lose that turn. Wilds can't be jumped. Off keeps strict turn order."
-                      value={unoJumpIn}
-                      onChange={setUnoJumpIn}
-                    />
+                    {unoMode === 'classic' ? (
+                      <>
+                        <Toggle
+                          label="Draw 4 challenge"
+                          description="Let the next player challenge a Draw 4 — the system reveals the hand. Off: they always draw 4."
+                          value={unoWd4Challenge}
+                          onChange={setUnoWd4Challenge}
+                        />
+                        <Toggle
+                          label="0-7 rule"
+                          description="Play a 0 → everyone passes their whole hand in the direction of play. Play a 7 → swap hands with any player."
+                          value={unoZeroSeven}
+                          onChange={setUnoZeroSeven}
+                        />
+                        <Toggle
+                          label="Stacking"
+                          description="Stack Draw 2 on Draw 2 and Draw 4 on Draw 4 — the penalty piles up and passes on. Whoever would draw the pile can still challenge a Draw 4 (if challenge is on)."
+                          value={unoStacking}
+                          onChange={setUnoStacking}
+                        />
+                      </>
+                    ) : (
+                      <p className="text-xs text-faint">
+                        High Stakes locks in 0-7 and Draw-card stacking (any Draw card of equal or higher value chains
+                        onto a stack). Draw 4 challenges and Jump-In are off.
+                      </p>
+                    )}
+                    {unoMode === 'classic' ? (
+                      <Toggle
+                        label="Jump-In"
+                        description="Hold an exact match for the top card (same colour + number, or same colour + symbol)? Play it instantly, even out of turn — the players you skip lose that turn. Wilds can't be jumped. Off keeps strict turn order."
+                        value={unoJumpIn}
+                        onChange={setUnoJumpIn}
+                      />
+                    ) : null}
                   </div>
                 </Field>
                 <Field label="Multi-Play">
-                  <select
+                  <CustomSelect
                     value={unoMultiPlayMode}
-                    onChange={(e) => setUnoMultiPlayMode(e.target.value as typeof unoMultiPlayMode)}
-                    className="input-field w-full"
-                  >
-                    <option value="off">Off — one card per turn</option>
-                    <option value="same_color_or_number">Same colour or number</option>
-                    <option value="same_color">Same colour only</option>
-                    <option value="same_number">Same number only</option>
-                  </select>
+                    onChange={(val) => setUnoMultiPlayMode(val as typeof unoMultiPlayMode)}
+                    options={[
+                      { value: 'off', label: 'Off — one card per turn' },
+                      { value: 'same_color_or_number', label: 'Same colour or number' },
+                      { value: 'same_color', label: 'Same colour only' },
+                      { value: 'same_number', label: 'Same number only' },
+                    ]}
+                  />
                   <p className="mt-1 text-xs text-faint">
                     Lay several matching cards in a single turn — the last one played sets the next colour.
                   </p>
                 </Field>
+                <Field label="Series scoring (optional)">
+                  <Toggle
+                    label="Track points across hands"
+                    description={
+                      'At each hand end the winner scores the sum of every opponent’s cards (number = face, coloured action = 20, wild = 50). In High Stakes, each 25-card knockout adds +250.'
+                    }
+                    value={unoSeriesScoring}
+                    onChange={setUnoSeriesScoring}
+                  />
+                  {unoSeriesScoring ? (
+                    <div className="mt-2">
+                      <CustomSelect
+                        value={unoSeriesTarget}
+                        onChange={setUnoSeriesTarget}
+                        options={[
+                          { value: 300, label: 'First to 300 wins the series' },
+                          { value: 500, label: 'First to 500 wins the series' },
+                          { value: 1000, label: 'First to 1000 wins the series (classic)' },
+                          { value: 2000, label: 'First to 2000 wins the series' },
+                        ]}
+                      />
+                    </div>
+                  ) : null}
+                </Field>
                 <p className="text-faint text-sm leading-relaxed">
-                  The party card classic — match the top card by colour, number, or symbol. Skip, Reverse, Draw Two, and
-                  Wild cards keep it lively; call &quot;UNO&quot; on your second-to-last card or draw a penalty. First
-                  to empty their hand wins! With a game length set, time running out ends the game — lowest hand total
-                  wins.
+                  The party card classic — match the top card by colour, number, or symbol. Skip, Reverse, Draw 2, and
+                  Wild cards keep it lively; call &quot;last card&quot; on your second-to-last play or draw a penalty.
+                  First to empty their hand wins! With a game length set, time running out ends the game — lowest hand
+                  total wins.
                 </p>
               </SettingsGroup>
             ) : isLudo ? (
               <SettingsGroup title="Ludo room">
+                <SoloPracticeCta gameType="ludo" />
                 <Field label={`Max players (${effectiveLimits.ludo.min}–${effectiveLimits.ludo.max})`}>
-                  <select
+                  <CustomSelect
                     value={ludoMaxPlayers}
-                    onChange={(e) => setLudoMaxPlayers(Number(e.target.value))}
-                    className="input-field w-full"
-                  >
-                    {playerCountOptions(effectiveLimits.ludo.min, effectiveLimits.ludo.max).map((n) => (
-                      <option key={n} value={n}>
-                        {n} players
-                      </option>
-                    ))}
-                  </select>
+                    onChange={setLudoMaxPlayers}
+                    options={playerCountOptions(effectiveLimits.ludo.min, effectiveLimits.ludo.max).map((n) => ({
+                      value: n,
+                      label: `${n} players`,
+                    }))}
+                  />
                 </Field>
                 <Field label="Turn timer">
-                  <select
+                  <CustomSelect
                     value={settings.timer_seconds}
-                    onChange={(e) => setSettings({ ...settings, timer_seconds: Number(e.target.value) })}
-                    className="input-field w-full"
-                  >
-                    <option value={0}>No timer</option>
-                    <option value={30}>30 seconds</option>
-                    <option value={60}>60 seconds</option>
-                    <option value={90}>90 seconds</option>
-                  </select>
+                    onChange={(val) => setSettings({ ...settings, timer_seconds: val })}
+                    options={[
+                      { value: 0, label: 'No timer' },
+                      { value: 30, label: '30 seconds' },
+                      { value: 60, label: '60 seconds' },
+                      { value: 90, label: '90 seconds' },
+                    ]}
+                  />
                 </Field>
                 <Field label="Rules">
-                  <select
+                  <CustomSelect
                     value={ludoVariant}
-                    onChange={(e) => setLudoVariant(e.target.value as LudoVariant)}
-                    className="input-field w-full"
-                  >
-                    <option value="modern">Modern — 8 safe squares (starts + star squares)</option>
-                    <option value="traditional">Traditional — no safe squares except your home column</option>
-                  </select>
+                    onChange={(val) => setLudoVariant(val as LudoVariant)}
+                    options={[
+                      { value: 'modern', label: 'Modern — 8 safe squares (starts + star squares)' },
+                      { value: 'traditional', label: 'Traditional — no safe squares except your home column' },
+                    ]}
+                  />
                 </Field>
                 <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="ludo" />
                 <p className="text-faint text-sm leading-relaxed">
@@ -3820,32 +4077,27 @@ function CreateGameInner() {
                 <Field
                   label={`Max players (${effectiveLimits.snake_and_ladder.min}–${effectiveLimits.snake_and_ladder.max})`}
                 >
-                  <select
+                  <CustomSelect
                     value={snakeLadderMaxPlayers}
-                    onChange={(e) => setSnakeLadderMaxPlayers(Number(e.target.value))}
-                    className="input-field w-full"
-                  >
-                    {playerCountOptions(effectiveLimits.snake_and_ladder.min, effectiveLimits.snake_and_ladder.max).map(
-                      (n) => (
-                        <option key={n} value={n}>
-                          {n} players
-                        </option>
-                      )
-                    )}
-                  </select>
+                    onChange={setSnakeLadderMaxPlayers}
+                    options={playerCountOptions(
+                      effectiveLimits.snake_and_ladder.min,
+                      effectiveLimits.snake_and_ladder.max
+                    ).map((n) => ({ value: n, label: `${n} players` }))}
+                  />
                 </Field>
                 <Field label="Turn timer">
-                  <select
+                  <CustomSelect
                     value={settings.timer_seconds}
-                    onChange={(e) => setSettings({ ...settings, timer_seconds: Number(e.target.value) })}
-                    className="input-field w-full"
-                  >
-                    <option value={0}>No timer</option>
-                    <option value={15}>15 seconds</option>
-                    <option value={30}>30 seconds</option>
-                    <option value={60}>60 seconds</option>
-                    <option value={90}>90 seconds</option>
-                  </select>
+                    onChange={(val) => setSettings({ ...settings, timer_seconds: val })}
+                    options={[
+                      { value: 0, label: 'No timer' },
+                      { value: 15, label: '15 seconds' },
+                      { value: 30, label: '30 seconds' },
+                      { value: 60, label: '60 seconds' },
+                      { value: 90, label: '90 seconds' },
+                    ]}
+                  />
                 </Field>
                 <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="snake_and_ladder" />
                 <p className="text-faint text-sm leading-relaxed">
@@ -3857,32 +4109,32 @@ function CreateGameInner() {
               <SettingsGroup title="Ping Pong room">
                 <p className="text-faint text-sm">Exactly 2 players — 1v1 match where the host can play or watch.</p>
                 <Field label="Points to win">
-                  <select
+                  <CustomSelect
                     value={settings.ping_pong_points_to_win ?? 7}
-                    onChange={(e) => setSettings({ ...settings, ping_pong_points_to_win: Number(e.target.value) })}
-                    className="input-field w-full"
-                  >
-                    <option value={3}>First to 3 points (Lightning)</option>
-                    <option value={5}>First to 5 points</option>
-                    <option value={7}>First to 7 points (Quick)</option>
-                    <option value={11}>First to 11 points (Standard)</option>
-                    <option value={15}>First to 15 points</option>
-                    <option value={21}>First to 21 points (Long)</option>
-                  </select>
+                    onChange={(val) => setSettings({ ...settings, ping_pong_points_to_win: val })}
+                    options={[
+                      { value: 3, label: 'First to 3 points (Lightning)' },
+                      { value: 5, label: 'First to 5 points' },
+                      { value: 7, label: 'First to 7 points (Quick)' },
+                      { value: 11, label: 'First to 11 points (Standard)' },
+                      { value: 15, label: 'First to 15 points' },
+                      { value: 21, label: 'First to 21 points (Long)' },
+                    ]}
+                  />
                 </Field>
                 <Field label="Match Timer">
-                  <select
+                  <CustomSelect
                     value={settings.game_duration_seconds ?? 0}
-                    onChange={(e) => setSettings({ ...settings, game_duration_seconds: Number(e.target.value) })}
-                    className="input-field w-full"
-                  >
-                    <option value={0}>No timer</option>
-                    <option value={60}>1 minute</option>
-                    <option value={120}>2 minutes</option>
-                    <option value={180}>3 minutes</option>
-                    <option value={300}>5 minutes</option>
-                    <option value={600}>10 minutes</option>
-                  </select>
+                    onChange={(val) => setSettings({ ...settings, game_duration_seconds: val })}
+                    options={[
+                      { value: 0, label: 'No timer' },
+                      { value: 60, label: '1 minute' },
+                      { value: 120, label: '2 minutes' },
+                      { value: 180, label: '3 minutes' },
+                      { value: 300, label: '5 minutes' },
+                      { value: 600, label: '10 minutes' },
+                    ]}
+                  />
                 </Field>
                 <Field label="Late joiners">
                   <p className="text-sm font-medium">Viewers only</p>
@@ -3895,16 +4147,16 @@ function CreateGameInner() {
               <SettingsGroup title="Tic-Tac-Toe room">
                 <p className="text-faint text-sm">Exactly 2 players — the host can join as one of them.</p>
                 <Field label="Turn timer">
-                  <select
+                  <CustomSelect
                     value={settings.timer_seconds}
-                    onChange={(e) => setSettings({ ...settings, timer_seconds: Number(e.target.value) })}
-                    className="input-field w-full"
-                  >
-                    <option value={0}>No timer</option>
-                    <option value={15}>15 seconds</option>
-                    <option value={30}>30 seconds</option>
-                    <option value={60}>60 seconds</option>
-                  </select>
+                    onChange={(val) => setSettings({ ...settings, timer_seconds: val })}
+                    options={[
+                      { value: 0, label: 'No timer' },
+                      { value: 15, label: '15 seconds' },
+                      { value: 30, label: '30 seconds' },
+                      { value: 60, label: '60 seconds' },
+                    ]}
+                  />
                 </Field>
                 <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="tic_tac_toe" />
                 <p className="text-faint text-sm leading-relaxed">
@@ -3916,16 +4168,16 @@ function CreateGameInner() {
               <SettingsGroup title="Chess room">
                 <p className="text-faint text-sm">Exactly 2 players — the host can join as one of them.</p>
                 <Field label="Time per player">
-                  <select
+                  <CustomSelect
                     value={settings.timer_seconds}
-                    onChange={(e) => setSettings({ ...settings, timer_seconds: Number(e.target.value) })}
-                    className="input-field w-full"
-                  >
-                    <option value={0}>No timer</option>
-                    <option value={180}>3 minutes each</option>
-                    <option value={300}>5 minutes each</option>
-                    <option value={600}>10 minutes each</option>
-                  </select>
+                    onChange={(val) => setSettings({ ...settings, timer_seconds: val })}
+                    options={[
+                      { value: 0, label: 'No timer' },
+                      { value: 180, label: '3 minutes each' },
+                      { value: 300, label: '5 minutes each' },
+                      { value: 600, label: '10 minutes each' },
+                    ]}
+                  />
                 </Field>
                 <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="chess" />
                 <Field label="Board">
@@ -3998,16 +4250,16 @@ function CreateGameInner() {
               <SettingsGroup title="Checkers room">
                 <p className="text-faint text-sm">Exactly 2 players — the host can join as one of them.</p>
                 <Field label="Time per player">
-                  <select
+                  <CustomSelect
                     value={settings.timer_seconds}
-                    onChange={(e) => setSettings({ ...settings, timer_seconds: Number(e.target.value) })}
-                    className="input-field w-full"
-                  >
-                    <option value={0}>No timer</option>
-                    <option value={180}>3 minutes each</option>
-                    <option value={300}>5 minutes each</option>
-                    <option value={600}>10 minutes each</option>
-                  </select>
+                    onChange={(val) => setSettings({ ...settings, timer_seconds: val })}
+                    options={[
+                      { value: 0, label: 'No timer' },
+                      { value: 180, label: '3 minutes each' },
+                      { value: 300, label: '5 minutes each' },
+                      { value: 600, label: '10 minutes each' },
+                    ]}
+                  />
                 </Field>
                 <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="checkers" />
                 <p className="text-faint text-sm leading-relaxed">
@@ -4020,16 +4272,16 @@ function CreateGameInner() {
               <SettingsGroup title={isCheckersNigeria ? 'Nigerian Draughts room' : 'International Draughts room'}>
                 <p className="text-faint text-sm">Exactly 2 players — the host can join as one of them.</p>
                 <Field label="Time per player">
-                  <select
+                  <CustomSelect
                     value={settings.timer_seconds}
-                    onChange={(e) => setSettings({ ...settings, timer_seconds: Number(e.target.value) })}
-                    className="input-field w-full"
-                  >
-                    <option value={0}>No timer</option>
-                    <option value={180}>3 minutes each</option>
-                    <option value={300}>5 minutes each</option>
-                    <option value={600}>10 minutes each</option>
-                  </select>
+                    onChange={(val) => setSettings({ ...settings, timer_seconds: val })}
+                    options={[
+                      { value: 0, label: 'No timer' },
+                      { value: 180, label: '3 minutes each' },
+                      { value: 300, label: '5 minutes each' },
+                      { value: 600, label: '10 minutes each' },
+                    ]}
+                  />
                 </Field>
                 <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType={settings.game_type} />
                 {isCheckersNigeria && (
@@ -4058,49 +4310,47 @@ function CreateGameInner() {
               <SettingsGroup title="Mahjong room">
                 <p className="text-faint text-sm">Exactly 4 players — the host can join as one of them.</p>
                 <Field label="Turn timer">
-                  <select
+                  <CustomSelect
                     value={settings.timer_seconds}
-                    onChange={(e) => setSettings({ ...settings, timer_seconds: Number(e.target.value) })}
-                    className="input-field w-full"
-                  >
-                    <option value={0}>No timer</option>
-                    <option value={30}>30 seconds</option>
-                    <option value={60}>60 seconds</option>
-                    <option value={90}>90 seconds</option>
-                    <option value={120}>2 minutes</option>
-                  </select>
+                    onChange={(val) => setSettings({ ...settings, timer_seconds: val })}
+                    options={[
+                      { value: 0, label: 'No timer' },
+                      { value: 30, label: '30 seconds' },
+                      { value: 60, label: '60 seconds' },
+                      { value: 90, label: '90 seconds' },
+                      { value: 120, label: '2 minutes' },
+                    ]}
+                  />
                 </Field>
                 <Field label="Ruleset">
-                  <select
+                  <CustomSelect
                     value={mahjongRuleset}
-                    onChange={(e) => setMahjongRuleset(e.target.value as MahjongRuleset)}
-                    className="input-field w-full"
-                  >
-                    {MAHJONG_RULESETS.map((id) => (
-                      <option key={id} value={id}>
-                        {MAHJONG_RULESET_CONFIG[id].label}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(val) => setMahjongRuleset(val as MahjongRuleset)}
+                    options={MAHJONG_RULESETS.map((id) => ({
+                      value: id,
+                      label: MAHJONG_RULESET_CONFIG[id].label,
+                    }))}
+                  />
                   <p className="text-faint text-xs mt-2">{MAHJONG_RULESET_CONFIG[mahjongRuleset].description}</p>
                 </Field>
                 <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="mahjong" />
               </SettingsGroup>
             ) : isAyo ? (
               <SettingsGroup title="Ayo room">
+                <SoloPracticeCta gameType="ayo" />
                 <p className="text-faint text-sm">Exactly 2 players — the host can join as one of them.</p>
                 <Field label="Time per player">
-                  <select
+                  <CustomSelect
                     value={settings.timer_seconds}
-                    onChange={(e) => setSettings({ ...settings, timer_seconds: Number(e.target.value) })}
-                    className="input-field w-full"
-                  >
-                    <option value={0}>Casual — no timer</option>
-                    <option value={30}>Ranked — 30 seconds each</option>
-                    <option value={180}>3 minutes each</option>
-                    <option value={300}>5 minutes each</option>
-                    <option value={600}>10 minutes each</option>
-                  </select>
+                    onChange={(val) => setSettings({ ...settings, timer_seconds: val })}
+                    options={[
+                      { value: 0, label: 'Casual — no timer' },
+                      { value: 30, label: 'Ranked — 30 seconds each' },
+                      { value: 180, label: '3 minutes each' },
+                      { value: 300, label: '5 minutes each' },
+                      { value: 600, label: '10 minutes each' },
+                    ]}
+                  />
                 </Field>
                 <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="ayo" />
                 <p className="text-faint text-sm leading-relaxed">
@@ -4112,17 +4362,17 @@ function CreateGameInner() {
                 </p>
               </SettingsGroup>
             ) : isScrabble ? (
-              <SettingsGroup title="Scrabble room">
+              <SettingsGroup title="Word Tiles room">
                 <p className="text-faint text-sm">2–4 players — the host can join as one of them.</p>
                 <Field label="Game mode">
-                  <select
+                  <CustomSelect
                     value={scrabbleClockMode}
-                    onChange={(e) => setScrabbleClockMode(e.target.value as ScrabbleClockMode)}
-                    className="input-field w-full"
-                  >
-                    <option value="standard">Normal (per-turn timer)</option>
-                    <option value="chess">Chess clock (per-player time bank)</option>
-                  </select>
+                    onChange={(val) => setScrabbleClockMode(val as ScrabbleClockMode)}
+                    options={[
+                      { value: 'standard', label: 'Normal (per-turn timer)' },
+                      { value: 'chess', label: 'Chess clock (per-player time bank)' },
+                    ]}
+                  />
                   <p className="text-faint mt-1 text-xs">
                     {scrabbleClockMode === 'chess'
                       ? 'Each player gets a fixed time bank that only counts down on their turn. Run out and you can watch but not play; last clock standing ends the game — highest score wins.'
@@ -4131,60 +4381,48 @@ function CreateGameInner() {
                 </Field>
                 {scrabbleClockMode === 'chess' ? (
                   <Field label="Time per player">
-                    <select
+                    <CustomSelect
                       value={scrabbleClockSeconds}
-                      onChange={(e) => setScrabbleClockSeconds(Number(e.target.value))}
-                      className="input-field w-full"
-                    >
-                      {SCRABBLE_CLOCK_OPTIONS.map((s) => (
-                        <option key={s} value={s}>
-                          {s / 60} minutes
-                        </option>
-                      ))}
-                    </select>
+                      onChange={setScrabbleClockSeconds}
+                      options={SCRABBLE_CLOCK_OPTIONS.map((s) => ({ value: s, label: `${s / 60} minutes` }))}
+                    />
                   </Field>
                 ) : (
                   <>
                     <Field label="Time per turn">
-                      <select
+                      <CustomSelect
                         value={settings.timer_seconds}
-                        onChange={(e) => setSettings({ ...settings, timer_seconds: Number(e.target.value) })}
-                        className="input-field w-full"
-                      >
-                        <option value={0}>No timer</option>
-                        <option value={60}>1 minute</option>
-                        <option value={120}>2 minutes</option>
-                        <option value={180}>3 minutes</option>
-                        <option value={300}>5 minutes</option>
-                      </select>
+                        onChange={(val) => setSettings({ ...settings, timer_seconds: val })}
+                        options={[
+                          { value: 0, label: 'No timer' },
+                          { value: 60, label: '1 minute' },
+                          { value: 120, label: '2 minutes' },
+                          { value: 180, label: '3 minutes' },
+                          { value: 300, label: '5 minutes' },
+                        ]}
+                      />
                     </Field>
                     <Field label="Game length">
-                      <select
+                      <CustomSelect
                         value={scrabbleGameDuration}
-                        onChange={(e) => setScrabbleGameDuration(Number(e.target.value))}
-                        className="input-field w-full"
-                      >
-                        {SCRABBLE_GAME_DURATION_OPTIONS.map((s) => (
-                          <option key={s} value={s}>
-                            {formatScrabbleGameDuration(s)}
-                          </option>
-                        ))}
-                      </select>
+                        onChange={setScrabbleGameDuration}
+                        options={SCRABBLE_GAME_DURATION_OPTIONS.map((s) => ({
+                          value: s,
+                          label: formatScrabbleGameDuration(s),
+                        }))}
+                      />
                     </Field>
                   </>
                 )}
                 <Field label="Dictionary">
-                  <select
+                  <CustomSelect
                     value={scrabbleDictionary}
-                    onChange={(e) => setScrabbleDictionary(e.target.value as ScrabbleDictionaryId)}
-                    className="input-field w-full"
-                  >
-                    {SCRABBLE_DICTIONARY_OPTIONS.map((id) => (
-                      <option key={id} value={id}>
-                        {SCRABBLE_DICTIONARY_LABELS[id]}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(val) => setScrabbleDictionary(val as ScrabbleDictionaryId)}
+                    options={SCRABBLE_DICTIONARY_OPTIONS.map((id) => ({
+                      value: id,
+                      label: SCRABBLE_DICTIONARY_LABELS[id],
+                    }))}
+                  />
                   <p className="text-faint mt-1 text-xs">{SCRABBLE_DICTIONARY_BLURBS[scrabbleDictionary]}</p>
                 </Field>
                 <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="scrabble" />
@@ -4278,17 +4516,14 @@ function CreateGameInner() {
                   </div>
                 </Field>
                 <Field label="Hidden mines each round">
-                  <select
+                  <CustomSelect
                     value={landmineMineCount}
-                    onChange={(e) => setLandmineMineCount(Number(e.target.value))}
-                    className="input-field w-full"
-                  >
-                    {[1, 2, 3].map((n) => (
-                      <option key={n} value={n}>
-                        {n} mine{n > 1 ? 's' : ''}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={setLandmineMineCount}
+                    options={[1, 2, 3].map((n) => ({
+                      value: n,
+                      label: `${n} mine${n > 1 ? 's' : ''}`,
+                    }))}
+                  />
                   <p className="text-faint text-xs mt-1">
                     How many of the answers are secretly booby-trapped each round. Type a mine and you score 0 (or get
                     knocked out). More mines = riskier.
@@ -4428,31 +4663,19 @@ function CreateGameInner() {
                 </Field>
                 {settings.describe_it_mode !== 'individual' && (
                   <Field label="Teams">
-                    <select
+                    <CustomSelect
                       value={settings.describe_it_num_teams}
-                      onChange={(e) => setSettings({ ...settings, describe_it_num_teams: Number(e.target.value) })}
-                      className="input-field w-full"
-                    >
-                      {DESCRIBE_IT_TEAM_OPTIONS.map((n) => (
-                        <option key={n} value={n}>
-                          {n} teams
-                        </option>
-                      ))}
-                    </select>
+                      onChange={(val) => setSettings({ ...settings, describe_it_num_teams: val })}
+                      options={DESCRIBE_IT_TEAM_OPTIONS.map((n) => ({ value: n, label: `${n} teams` }))}
+                    />
                   </Field>
                 )}
                 <Field label={`Max players (up to ${DESCRIBE_IT_MAX_PLAYER_OPTIONS.at(-1)})`}>
-                  <select
+                  <CustomSelect
                     value={describeItMaxPlayers}
-                    onChange={(e) => setDescribeItMaxPlayers(Number(e.target.value))}
-                    className="input-field w-full"
-                  >
-                    {DESCRIBE_IT_MAX_PLAYER_OPTIONS.map((n) => (
-                      <option key={n} value={n}>
-                        {n} players
-                      </option>
-                    ))}
-                  </select>
+                    onChange={setDescribeItMaxPlayers}
+                    options={DESCRIBE_IT_MAX_PLAYER_OPTIONS.map((n) => ({ value: n, label: `${n} players` }))}
+                  />
                 </Field>
                 <Field
                   label={
@@ -4461,17 +4684,11 @@ function CreateGameInner() {
                       : 'Rounds (each team plays once per round)'
                   }
                 >
-                  <select
+                  <CustomSelect
                     value={settings.rounds_count}
-                    onChange={(e) => setSettings({ ...settings, rounds_count: Number(e.target.value) })}
-                    className="input-field w-full"
-                  >
-                    {DESCRIBE_IT_ROUND_OPTIONS.map((n) => (
-                      <option key={n} value={n}>
-                        {n} rounds
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(val) => setSettings({ ...settings, rounds_count: val })}
+                    options={DESCRIBE_IT_ROUND_OPTIONS.map((n) => ({ value: n, label: `${n} rounds` }))}
+                  />
                   {settings.describe_it_mode === 'individual' && (
                     <p className="text-faint text-[11px] pt-1">
                       Total turns = players × rounds. E.g. 6 players × {settings.rounds_count} rounds ={' '}
@@ -4480,17 +4697,14 @@ function CreateGameInner() {
                   )}
                 </Field>
                 <Field label="Time per turn">
-                  <select
+                  <CustomSelect
                     value={settings.timer_seconds}
-                    onChange={(e) => setSettings({ ...settings, timer_seconds: Number(e.target.value) })}
-                    className="input-field w-full"
-                  >
-                    {DESCRIBE_IT_TURN_OPTIONS.map((n) => (
-                      <option key={n} value={n}>
-                        {n === 60 ? '1 minute' : n === 120 ? '2 minutes' : `${n} seconds`}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(val) => setSettings({ ...settings, timer_seconds: val })}
+                    options={DESCRIBE_IT_TURN_OPTIONS.map((n) => ({
+                      value: n,
+                      label: n === 60 ? '1 minute' : n === 120 ? '2 minutes' : `${n} seconds`,
+                    }))}
+                  />
                 </Field>
                 <Field label="Words">
                   <SegmentedControl
@@ -4541,7 +4755,7 @@ function CreateGameInner() {
                         {
                           value: 'ai',
                           label: 'Generate with AI',
-                          hint: 'Generate words with your own Claude API key.',
+                          hint: 'Give a theme, get a ready-made set in seconds.',
                         },
                       ]}
                     />
@@ -4727,59 +4941,35 @@ function CreateGameInner() {
                 </Field>
                 {settings.word_rush_mode !== 'individual' && (
                   <Field label="Teams">
-                    <select
+                    <CustomSelect
                       value={settings.word_rush_num_teams}
-                      onChange={(e) => setSettings({ ...settings, word_rush_num_teams: Number(e.target.value) })}
-                      className="input-field w-full"
-                    >
-                      {WORD_RUSH_TEAM_OPTIONS.map((n) => (
-                        <option key={n} value={n}>
-                          {n} teams
-                        </option>
-                      ))}
-                    </select>
+                      onChange={(val) => setSettings({ ...settings, word_rush_num_teams: val })}
+                      options={WORD_RUSH_TEAM_OPTIONS.map((n) => ({ value: n, label: `${n} teams` }))}
+                    />
                   </Field>
                 )}
                 <Field
                   label={`Max players (${WORD_RUSH_MIN_PLAYERS_INDIVIDUAL}–${WORD_RUSH_MAX_PLAYER_OPTIONS.at(-1)})`}
                 >
-                  <select
+                  <CustomSelect
                     value={wordRushMaxPlayers}
-                    onChange={(e) => setWordRushMaxPlayers(Number(e.target.value))}
-                    className="input-field w-full"
-                  >
-                    {WORD_RUSH_MAX_PLAYER_OPTIONS.map((n) => (
-                      <option key={n} value={n}>
-                        {n} players
-                      </option>
-                    ))}
-                  </select>
+                    onChange={setWordRushMaxPlayers}
+                    options={WORD_RUSH_MAX_PLAYER_OPTIONS.map((n) => ({ value: n, label: `${n} players` }))}
+                  />
                 </Field>
                 <Field label={settings.word_rush_mode === 'individual' ? 'Round length' : 'Team turn length'}>
-                  <select
+                  <CustomSelect
                     value={settings.timer_seconds}
-                    onChange={(e) => setSettings({ ...settings, timer_seconds: Number(e.target.value) })}
-                    className="input-field w-full"
-                  >
-                    {WORD_RUSH_TURN_OPTIONS.map((n) => (
-                      <option key={n} value={n}>
-                        {formatWordRushTurnTimer(n)}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(val) => setSettings({ ...settings, timer_seconds: val })}
+                    options={WORD_RUSH_TURN_OPTIONS.map((n) => ({ value: n, label: formatWordRushTurnTimer(n) }))}
+                  />
                 </Field>
                 <Field label="Rounds">
-                  <select
+                  <CustomSelect
                     value={settings.rounds_count}
-                    onChange={(e) => setSettings({ ...settings, rounds_count: Number(e.target.value) })}
-                    className="input-field w-full"
-                  >
-                    {WORD_RUSH_ROUND_OPTIONS.map((n) => (
-                      <option key={n} value={n}>
-                        {n} rounds
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(val) => setSettings({ ...settings, rounds_count: val })}
+                    options={WORD_RUSH_ROUND_OPTIONS.map((n) => ({ value: n, label: `${n} rounds` }))}
+                  />
                   {settings.word_rush_mode === 'team' && (
                     <p className="text-faint text-xs mt-1">
                       Each round, every team gets one timed run (e.g. {settings.word_rush_num_teams} teams ×{' '}
@@ -4793,56 +4983,37 @@ function CreateGameInner() {
             ) : isNpat ? (
               <SettingsGroup title="I Call On room">
                 <Field label={`Max players (${effectiveLimits.i_call_on.min}–${effectiveLimits.i_call_on.max})`}>
-                  <select
+                  <CustomSelect
                     value={npatMaxPlayers}
-                    onChange={(e) => setNpatMaxPlayers(Number(e.target.value))}
-                    className="input-field w-full"
-                  >
-                    {playerCountOptions(effectiveLimits.i_call_on.min, effectiveLimits.i_call_on.max).map((n) => (
-                      <option key={n} value={n}>
-                        {n} players
-                      </option>
-                    ))}
-                  </select>
+                    onChange={setNpatMaxPlayers}
+                    options={playerCountOptions(effectiveLimits.i_call_on.min, effectiveLimits.i_call_on.max).map(
+                      (n) => ({
+                        value: n,
+                        label: `${n} players`,
+                      })
+                    )}
+                  />
                 </Field>
                 <Field label="Game length">
-                  <select
+                  <CustomSelect
                     value={npatGameDuration}
-                    onChange={(e) => setNpatGameDuration(Number(e.target.value))}
-                    className="input-field w-full"
-                  >
-                    {NPAT_GAME_DURATION_OPTIONS.map((s) => (
-                      <option key={s} value={s}>
-                        {formatNpatGameDuration(s)}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={setNpatGameDuration}
+                    options={NPAT_GAME_DURATION_OPTIONS.map((s) => ({ value: s, label: formatNpatGameDuration(s) }))}
+                  />
                 </Field>
                 <Field label="Writing time (per letter)">
-                  <select
+                  <CustomSelect
                     value={settings.timer_seconds}
-                    onChange={(e) => setSettings({ ...settings, timer_seconds: Number(e.target.value) })}
-                    className="input-field w-full"
-                  >
-                    {NPAT_TIMER_OPTIONS.map((s) => (
-                      <option key={s} value={s}>
-                        {s} seconds
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(val) => setSettings({ ...settings, timer_seconds: val })}
+                    options={NPAT_TIMER_OPTIONS.map((s) => ({ value: s, label: `${s} seconds` }))}
+                  />
                 </Field>
                 <Field label="Marking time (per letter)">
-                  <select
+                  <CustomSelect
                     value={npatMarkingTimer}
-                    onChange={(e) => setNpatMarkingTimer(Number(e.target.value))}
-                    className="input-field w-full"
-                  >
-                    {NPAT_MARKING_TIMER_OPTIONS.map((s) => (
-                      <option key={s} value={s}>
-                        {s} seconds
-                      </option>
-                    ))}
-                  </select>
+                    onChange={setNpatMarkingTimer}
+                    options={NPAT_MARKING_TIMER_OPTIONS.map((s) => ({ value: s, label: `${s} seconds` }))}
+                  />
                 </Field>
                 <p className="text-faint text-sm leading-relaxed">
                   Players take turns calling a letter, then fill Name, Animal, Place, Thing, and Food. Reviewers mark
@@ -4853,43 +5024,30 @@ function CreateGameInner() {
             ) : isCodewords ? (
               <SettingsGroup title="Codewords room">
                 <Field label={`Max players (${effectiveLimits.codewords.min}–${effectiveLimits.codewords.max})`}>
-                  <select
+                  <CustomSelect
                     value={codewordsMaxPlayers}
-                    onChange={(e) => setCodewordsMaxPlayers(Number(e.target.value))}
-                    className="input-field w-full"
-                  >
-                    {playerCountOptions(effectiveLimits.codewords.min, effectiveLimits.codewords.max).map((n) => (
-                      <option key={n} value={n}>
-                        {n} players
-                      </option>
-                    ))}
-                  </select>
+                    onChange={setCodewordsMaxPlayers}
+                    options={playerCountOptions(effectiveLimits.codewords.min, effectiveLimits.codewords.max).map(
+                      (n) => ({
+                        value: n,
+                        label: `${n} players`,
+                      })
+                    )}
+                  />
                 </Field>
                 <Field label="Spymaster timer (per turn)">
-                  <select
+                  <CustomSelect
                     value={settings.timer_seconds}
-                    onChange={(e) => setSettings({ ...settings, timer_seconds: Number(e.target.value) })}
-                    className="input-field w-full"
-                  >
-                    {CODEWORDS_TIMER_OPTIONS.map((s) => (
-                      <option key={s} value={s}>
-                        {s} seconds
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(val) => setSettings({ ...settings, timer_seconds: val })}
+                    options={CODEWORDS_TIMER_OPTIONS.map((s) => ({ value: s, label: `${s} seconds` }))}
+                  />
                 </Field>
                 <Field label="Operative timer (per turn)">
-                  <select
+                  <CustomSelect
                     value={codewordsOperativeTimer}
-                    onChange={(e) => setCodewordsOperativeTimer(Number(e.target.value))}
-                    className="input-field w-full"
-                  >
-                    {CODEWORDS_TIMER_OPTIONS.map((s) => (
-                      <option key={s} value={s}>
-                        {s} seconds
-                      </option>
-                    ))}
-                  </select>
+                    onChange={setCodewordsOperativeTimer}
+                    options={CODEWORDS_TIMER_OPTIONS.map((s) => ({ value: s, label: `${s} seconds` }))}
+                  />
                 </Field>
                 <Field label="Team & role assignment">
                   <SegmentedControl
@@ -4971,7 +5129,7 @@ function CreateGameInner() {
                         {
                           value: 'ai',
                           label: 'Generate with AI',
-                          hint: 'Generate words with your own Claude API key.',
+                          hint: 'Give a theme, get a ready-made set in seconds.',
                         },
                       ]}
                     />
@@ -5107,17 +5265,16 @@ function CreateGameInner() {
             ) : isWordSearch ? (
               <SettingsGroup title="Word Search room">
                 <Field label={`Max players (${effectiveLimits.word_search.min}–${effectiveLimits.word_search.max})`}>
-                  <select
+                  <CustomSelect
                     value={wordSearchMaxPlayers}
-                    onChange={(e) => setWordSearchMaxPlayers(Number(e.target.value))}
-                    className="input-field w-full"
-                  >
-                    {playerCountOptions(effectiveLimits.word_search.min, effectiveLimits.word_search.max).map((n) => (
-                      <option key={n} value={n}>
-                        {n} players
-                      </option>
-                    ))}
-                  </select>
+                    onChange={setWordSearchMaxPlayers}
+                    options={playerCountOptions(effectiveLimits.word_search.min, effectiveLimits.word_search.max).map(
+                      (n) => ({
+                        value: n,
+                        label: `${n} players`,
+                      })
+                    )}
+                  />
                 </Field>
                 <Field label="Words">
                   <SegmentedControl
@@ -5178,32 +5335,23 @@ function CreateGameInner() {
                 {categoryUploadField}
                 {questionSource === 'platform' && (
                   <Field label="Theme">
-                    <select
+                    <CustomSelect
                       value={wordSearchTheme}
-                      onChange={(e) => {
-                        const v = e.target.value
+                      onChange={(val) => {
+                        const v = String(val)
                         setWordSearchTheme(v)
                         const locked = lockedPuzzleDifficulty(v)
                         if (locked) setWordSearchDifficulty(locked)
                       }}
-                      className="input-field w-full"
-                    >
-                      {wordSearchThemeOptions().map((t) => (
-                        <option key={t.id} value={t.id}>
-                          {t.label}
-                        </option>
-                      ))}
-                      {puzzleThemes.length > 0 && (
-                        <optgroup label="Custom themes">
-                          {puzzleThemes.map((t) => (
-                            <option key={t.id} value={`pt:${t.id}`}>
-                              {t.name}
-                              {t.difficulty ? ` (${t.difficulty})` : ''}
-                            </option>
-                          ))}
-                        </optgroup>
-                      )}
-                    </select>
+                      options={[
+                        ...wordSearchThemeOptions().map((t) => ({ value: t.id, label: t.label })),
+                        ...puzzleThemes.map((t) => ({
+                          value: `pt:${t.id}`,
+                          label: `${t.name}${t.difficulty ? ` (${t.difficulty})` : ''}`,
+                        })),
+                      ]}
+                      searchable
+                    />
                   </Field>
                 )}
                 {
@@ -5238,17 +5386,14 @@ function CreateGameInner() {
                   </Field>
                 }
                 <Field label="Max time limit">
-                  <select
+                  <CustomSelect
                     value={wordSearchGameDuration}
-                    onChange={(e) => setWordSearchGameDuration(Number(e.target.value))}
-                    className="input-field w-full"
-                  >
-                    {WORD_SEARCH_GAME_DURATION_OPTIONS.map((seconds) => (
-                      <option key={seconds} value={seconds}>
-                        {seconds === 0 ? 'No timer' : formatWordSearchGameDuration(seconds)}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={setWordSearchGameDuration}
+                    options={WORD_SEARCH_GAME_DURATION_OPTIONS.map((seconds) => ({
+                      value: seconds,
+                      label: seconds === 0 ? 'No timer' : formatWordSearchGameDuration(seconds),
+                    }))}
+                  />
                 </Field>
                 {showViewerToggle && (
                   <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="word_search" />
@@ -5263,19 +5408,14 @@ function CreateGameInner() {
                 <Field
                   label={`Max players (${effectiveLimits.word_scramble.min}–${effectiveLimits.word_scramble.max})`}
                 >
-                  <select
+                  <CustomSelect
                     value={wordScrambleMaxPlayers}
-                    onChange={(e) => setWordScrambleMaxPlayers(Number(e.target.value))}
-                    className="input-field w-full"
-                  >
-                    {playerCountOptions(effectiveLimits.word_scramble.min, effectiveLimits.word_scramble.max).map(
-                      (n) => (
-                        <option key={n} value={n}>
-                          {n} players
-                        </option>
-                      )
-                    )}
-                  </select>
+                    onChange={setWordScrambleMaxPlayers}
+                    options={playerCountOptions(
+                      effectiveLimits.word_scramble.min,
+                      effectiveLimits.word_scramble.max
+                    ).map((n) => ({ value: n, label: `${n} players` }))}
+                  />
                 </Field>
                 <Field label="Words & hints">
                   <SegmentedControl
@@ -5338,32 +5478,23 @@ function CreateGameInner() {
                 {categoryUploadField}
                 {questionSource === 'platform' && (
                   <Field label="Theme">
-                    <select
+                    <CustomSelect
                       value={wordScrambleTheme}
-                      onChange={(e) => {
-                        const v = e.target.value
+                      onChange={(val) => {
+                        const v = String(val)
                         setWordScrambleTheme(v)
                         const locked = lockedPuzzleDifficulty(v)
                         if (locked) setWordScrambleDifficulty(locked)
                       }}
-                      className="input-field w-full"
-                    >
-                      {wordScrambleThemeOptions().map((t) => (
-                        <option key={t.id} value={t.id}>
-                          {t.label}
-                        </option>
-                      ))}
-                      {puzzleThemes.length > 0 && (
-                        <optgroup label="Custom themes">
-                          {puzzleThemes.map((t) => (
-                            <option key={t.id} value={`pt:${t.id}`}>
-                              {t.name}
-                              {t.difficulty ? ` (${t.difficulty})` : ''}
-                            </option>
-                          ))}
-                        </optgroup>
-                      )}
-                    </select>
+                      options={[
+                        ...wordScrambleThemeOptions().map((t) => ({ value: t.id, label: t.label })),
+                        ...puzzleThemes.map((t) => ({
+                          value: `pt:${t.id}`,
+                          label: `${t.name}${t.difficulty ? ` (${t.difficulty})` : ''}`,
+                        })),
+                      ]}
+                      searchable
+                    />
                   </Field>
                 )}
                 {
@@ -5398,17 +5529,14 @@ function CreateGameInner() {
                   </Field>
                 }
                 <Field label="Max time limit">
-                  <select
+                  <CustomSelect
                     value={wordScrambleGameDuration}
-                    onChange={(e) => setWordScrambleGameDuration(Number(e.target.value))}
-                    className="input-field w-full"
-                  >
-                    {WORD_SCRAMBLE_GAME_DURATION_OPTIONS.map((seconds) => (
-                      <option key={seconds} value={seconds}>
-                        {seconds === 0 ? 'No timer' : formatWordScrambleGameDuration(seconds)}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={setWordScrambleGameDuration}
+                    options={WORD_SCRAMBLE_GAME_DURATION_OPTIONS.map((seconds) => ({
+                      value: seconds,
+                      label: seconds === 0 ? 'No timer' : formatWordScrambleGameDuration(seconds),
+                    }))}
+                  />
                 </Field>
                 {showViewerToggle && (
                   <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="word_scramble" />
@@ -5418,20 +5546,140 @@ function CreateGameInner() {
                   speed bonus for solving first and extra for longer words.
                 </p>
               </SettingsGroup>
-            ) : isCrossword ? (
-              <SettingsGroup title="Crossword room">
-                <Field label={`Max players (${effectiveLimits.crossword.min}–${effectiveLimits.crossword.max})`}>
+            ) : isWordGrouping ? (
+              <SettingsGroup title="Word Grouping room">
+                <Field
+                  label={`Max players (${effectiveLimits.word_grouping.min}–${effectiveLimits.word_grouping.max})`}
+                >
                   <select
-                    value={crosswordMaxPlayers}
-                    onChange={(e) => setCrosswordMaxPlayers(Number(e.target.value))}
+                    value={wordGroupingMaxPlayers}
+                    onChange={(e) => setWordGroupingMaxPlayers(Number(e.target.value))}
                     className="input-field w-full"
                   >
-                    {playerCountOptions(effectiveLimits.crossword.min, effectiveLimits.crossword.max).map((n) => (
-                      <option key={n} value={n}>
-                        {n} players
+                    {playerCountOptions(effectiveLimits.word_grouping.min, effectiveLimits.word_grouping.max).map(
+                      (n) => (
+                        <option key={n} value={n}>
+                          {n} players
+                        </option>
+                      )
+                    )}
+                  </select>
+                </Field>
+                <Field label="Answers & clues">
+                  <SegmentedControl
+                    value={questionSource}
+                    onChange={(v) => {
+                      setQuestionSource(v as QuestionSource)
+                      setSelectedPackId(null)
+                      setLibraryPackQuestions([])
+                      setPuzzleUploadError(null)
+                      setPuzzleUploadSummary(null)
+                    }}
+                    options={questionSourceOptions('word_grouping')}
+                  />
+                </Field>
+                {questionSource === 'library' && (
+                  <div className="space-y-2 pt-1">
+                    <LibraryPackPicker
+                      loading={libraryPacksLoading}
+                      packs={libraryPacks}
+                      search={libraryPackSearch}
+                      onSearchChange={setLibraryPackSearch}
+                      selectedPackId={selectedPackId}
+                      onSelect={selectLibraryPack}
+                      noun="puzzles"
+                    />
+                  </div>
+                )}
+                {questionSource === 'custom' && (
+                  <div className="space-y-2 pt-1">
+                    <a
+                      href={`data:text/csv;charset=utf-8,${encodeURIComponent(WORD_GROUPING_SAMPLE_CSV)}`}
+                      download="word-grouping-sample.csv"
+                      className="inline-block text-sm text-[var(--primary)] underline"
+                    >
+                      Download sample CSV
+                    </a>
+                    <p className="text-faint text-xs">
+                      CSV columns: <code>puzzle, category, difficulty, word1, word2, word3, word4</code>. Four rows per
+                      puzzle (one per group, difficulties 1–4). Need at least 4 puzzles for the pool.
+                    </p>
+                    <input
+                      type="file"
+                      accept=".csv,.json,.jsonl,.ndjson,.txt,text/csv,application/json,text/plain"
+                      className="input-field"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0]
+                        if (!file) return
+                        setPuzzleUploadError(null)
+                        setPuzzleUploadSummary(null)
+                        try {
+                          const text = await file.text()
+                          const { entries, totalRows, skippedRows } = parseWordGroupingPoolText(text)
+                          const validated = parseStoredWordGroupingPuzzles(entries)
+                          if (!validated || validated.length < 4) {
+                            setPuzzleUploadError(
+                              validated
+                                ? `Only ${validated.length} valid puzzle${validated.length === 1 ? '' : 's'} — need at least 4.`
+                                : `No valid puzzles found (${totalRows - skippedRows}/${totalRows} rows recognised).`
+                            )
+                            setLibraryPackQuestions([])
+                            return
+                          }
+                          setLibraryPackQuestions(validated as unknown as unknown[])
+                          setPuzzleUploadSummary(
+                            `${validated.length} puzzle${validated.length === 1 ? '' : 's'} loaded${
+                              skippedRows ? ` · ${skippedRows} row${skippedRows === 1 ? '' : 's'} skipped` : ''
+                            }`
+                          )
+                        } catch (err) {
+                          setPuzzleUploadError(err instanceof Error ? err.message : 'Could not read that file')
+                        }
+                      }}
+                    />
+                    {puzzleUploadSummary && (
+                      <p className="text-emerald-600 dark:text-emerald-400 text-xs font-medium">
+                        {puzzleUploadSummary}
+                      </p>
+                    )}
+                    {puzzleUploadError && <p className="text-red-500 text-xs">{puzzleUploadError}</p>}
+                  </div>
+                )}
+                {categoryUploadField}
+                <Field label="Max time limit">
+                  <select
+                    value={wordGroupingGameDuration}
+                    onChange={(e) => setWordGroupingGameDuration(Number(e.target.value))}
+                    className="input-field w-full"
+                  >
+                    {WORD_GROUPING_GAME_DURATION_OPTIONS.map((seconds) => (
+                      <option key={seconds} value={seconds}>
+                        {seconds === 0 ? 'No timer' : formatWordGroupingGameDuration(seconds)}
                       </option>
                     ))}
                   </select>
+                </Field>
+                {showViewerToggle && (
+                  <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="word_grouping" />
+                )}
+                <p className="text-faint text-sm leading-relaxed">
+                  Everyone gets the same 16 words in 4 hidden groups. Find all 4 groups with the fewest mistakes —
+                  harder groups score more points, and the first to find each group gets a bonus.
+                </p>
+              </SettingsGroup>
+            ) : isCrossword ? (
+              <SettingsGroup title="Crossword room">
+                <Field label={`Max players (${effectiveLimits.crossword.min}–${effectiveLimits.crossword.max})`}>
+                  <CustomSelect
+                    value={crosswordMaxPlayers}
+                    onChange={setCrosswordMaxPlayers}
+                    options={playerCountOptions(effectiveLimits.crossword.min, effectiveLimits.crossword.max).map(
+                      (n) => ({
+                        value: n,
+                        label: `${n} players`,
+                      })
+                    )}
+                  />
                 </Field>
                 <Field label="Answers & clues">
                   <SegmentedControl
@@ -5492,32 +5740,23 @@ function CreateGameInner() {
                 {categoryUploadField}
                 {questionSource === 'platform' && (
                   <Field label="Theme">
-                    <select
+                    <CustomSelect
                       value={crosswordTheme}
-                      onChange={(e) => {
-                        const v = e.target.value
+                      onChange={(val) => {
+                        const v = String(val)
                         setCrosswordTheme(v)
                         const locked = lockedPuzzleDifficulty(v)
                         if (locked) setCrosswordDifficulty(locked)
                       }}
-                      className="input-field w-full"
-                    >
-                      {crosswordThemeOptions().map((t) => (
-                        <option key={t.id} value={t.id}>
-                          {t.label}
-                        </option>
-                      ))}
-                      {puzzleThemes.length > 0 && (
-                        <optgroup label="Custom themes">
-                          {puzzleThemes.map((t) => (
-                            <option key={t.id} value={`pt:${t.id}`}>
-                              {t.name}
-                              {t.difficulty ? ` (${t.difficulty})` : ''}
-                            </option>
-                          ))}
-                        </optgroup>
-                      )}
-                    </select>
+                      options={[
+                        ...crosswordThemeOptions().map((t) => ({ value: t.id, label: t.label })),
+                        ...puzzleThemes.map((t) => ({
+                          value: `pt:${t.id}`,
+                          label: `${t.name}${t.difficulty ? ` (${t.difficulty})` : ''}`,
+                        })),
+                      ]}
+                      searchable
+                    />
                   </Field>
                 )}
                 {
@@ -5552,17 +5791,14 @@ function CreateGameInner() {
                   </Field>
                 }
                 <Field label="Max time limit">
-                  <select
+                  <CustomSelect
                     value={crosswordGameDuration}
-                    onChange={(e) => setCrosswordGameDuration(Number(e.target.value))}
-                    className="input-field w-full"
-                  >
-                    {CROSSWORD_GAME_DURATION_OPTIONS.map((seconds) => (
-                      <option key={seconds} value={seconds}>
-                        {seconds === 0 ? 'No timer' : formatCrosswordGameDuration(seconds)}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={setCrosswordGameDuration}
+                    options={CROSSWORD_GAME_DURATION_OPTIONS.map((seconds) => ({
+                      value: seconds,
+                      label: seconds === 0 ? 'No timer' : formatCrosswordGameDuration(seconds),
+                    }))}
+                  />
                 </Field>
                 {showViewerToggle && (
                   <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="crossword" />
@@ -5575,30 +5811,24 @@ function CreateGameInner() {
             ) : isSudoku ? (
               <SettingsGroup title="Sudoku room">
                 <Field label={`Max players (${effectiveLimits.sudoku.min}–${effectiveLimits.sudoku.max})`}>
-                  <select
+                  <CustomSelect
                     value={sudokuMaxPlayers}
-                    onChange={(e) => setSudokuMaxPlayers(Number(e.target.value))}
-                    className="input-field w-full"
-                  >
-                    {playerCountOptions(effectiveLimits.sudoku.min, effectiveLimits.sudoku.max).map((n) => (
-                      <option key={n} value={n}>
-                        {n} players
-                      </option>
-                    ))}
-                  </select>
+                    onChange={setSudokuMaxPlayers}
+                    options={playerCountOptions(effectiveLimits.sudoku.min, effectiveLimits.sudoku.max).map((n) => ({
+                      value: n,
+                      label: `${n} players`,
+                    }))}
+                  />
                 </Field>
                 <Field label="Max time limit">
-                  <select
+                  <CustomSelect
                     value={sudokuGameDuration}
-                    onChange={(e) => setSudokuGameDuration(Number(e.target.value))}
-                    className="input-field w-full"
-                  >
-                    {SUDOKU_GAME_DURATION_OPTIONS.map((seconds) => (
-                      <option key={seconds} value={seconds}>
-                        {seconds === 0 ? 'No timer' : formatSudokuGameDuration(seconds)}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={setSudokuGameDuration}
+                    options={SUDOKU_GAME_DURATION_OPTIONS.map((seconds) => ({
+                      value: seconds,
+                      label: seconds === 0 ? 'No timer' : formatSudokuGameDuration(seconds),
+                    }))}
+                  />
                 </Field>
                 {showViewerToggle && (
                   <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="sudoku" />
@@ -5611,29 +5841,28 @@ function CreateGameInner() {
             ) : isWordHunt ? (
               <SettingsGroup title="Word Hunt room">
                 <Field label={`Max players (${effectiveLimits.word_hunt.min}–${effectiveLimits.word_hunt.max})`}>
-                  <select
+                  <CustomSelect
                     value={wordHuntMaxPlayers}
-                    onChange={(e) => setWordHuntMaxPlayers(Number(e.target.value))}
-                    className="input-field w-full"
-                  >
-                    {playerCountOptions(effectiveLimits.word_hunt.min, effectiveLimits.word_hunt.max).map((n) => (
-                      <option key={n} value={n}>
-                        {n} players
-                      </option>
-                    ))}
-                  </select>
+                    onChange={setWordHuntMaxPlayers}
+                    options={playerCountOptions(effectiveLimits.word_hunt.min, effectiveLimits.word_hunt.max).map(
+                      (n) => ({
+                        value: n,
+                        label: `${n} players`,
+                      })
+                    )}
+                  />
                 </Field>
                 <Field label="Time limit">
-                  <select
+                  <CustomSelect
                     value={wordHuntTimer}
-                    onChange={(e) => setWordHuntTimer(Number(e.target.value))}
-                    className="input-field w-full"
-                  >
-                    <option value={60}>1 minute</option>
-                    <option value={120}>2 minutes</option>
-                    <option value={180}>3 minutes</option>
-                    <option value={300}>5 minutes</option>
-                  </select>
+                    onChange={setWordHuntTimer}
+                    options={[
+                      { value: 60, label: '1 minute' },
+                      { value: 120, label: '2 minutes' },
+                      { value: 180, label: '3 minutes' },
+                      { value: 300, label: '5 minutes' },
+                    ]}
+                  />
                 </Field>
                 {showViewerToggle && (
                   <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="word_hunt" />
@@ -5643,72 +5872,204 @@ function CreateGameInner() {
                   = 100 pts, 4 = 400, 5 = 800, and longer words score even more.
                 </p>
               </SettingsGroup>
+            ) : isWordleRoom ? (
+              <SettingsGroup title="Wordle">
+                <Field label={`Max players (${effectiveLimits.wordle_room.min}–${effectiveLimits.wordle_room.max})`}>
+                  <CustomSelect
+                    value={wordleRoomMaxPlayers}
+                    onChange={setWordleRoomMaxPlayers}
+                    options={playerCountOptions(effectiveLimits.wordle_room.min, effectiveLimits.wordle_room.max).map(
+                      (n) => ({
+                        value: n,
+                        label: `${n} players`,
+                      })
+                    )}
+                  />
+                </Field>
+                <Field label="Word source">
+                  <SegmentedControl
+                    value={questionSource}
+                    onChange={(v) => {
+                      setQuestionSource(v as QuestionSource)
+                      setSelectedPackId(null)
+                      setLibraryPackQuestions([])
+                      setCustomWordleRoomWords([])
+                    }}
+                    options={questionSourceOptions('wordle_room')}
+                  />
+                </Field>
+                {questionSource === 'platform' && (
+                  <Field label="Category">
+                    <CustomSelect
+                      value={wordleRoomCategory}
+                      onChange={setWordleRoomCategory}
+                      options={[
+                        { value: 'general_english', label: 'General English' },
+                        { value: 'naija_slang', label: 'Naija Slang' },
+                        { value: 'sports', label: 'Sports' },
+                        { value: 'food', label: 'Food & Drink' },
+                        { value: 'animals', label: 'Animals' },
+                        { value: 'technology', label: 'Technology' },
+                        { value: 'nature', label: 'Nature' },
+                        { value: 'music', label: 'Music' },
+                        { value: 'science', label: 'Science' },
+                        { value: 'clothing', label: 'Clothing & Fashion' },
+                        { value: 'travel', label: 'Travel & Places' },
+                      ]}
+                    />
+                  </Field>
+                )}
+                {questionSource === 'library' && (
+                  <div className="space-y-3 pt-1">
+                    <LibraryPackPicker
+                      loading={libraryPacksLoading}
+                      packs={libraryPacks}
+                      search={libraryPackSearch}
+                      onSearchChange={setLibraryPackSearch}
+                      selectedPackId={selectedPackId}
+                      onSelect={selectLibraryPack}
+                      noun="words"
+                    />
+                    {customWordleRoomWords.length > 0 && (
+                      <p className="text-faint text-xs text-center">
+                        Loaded {customWordleRoomWords.length} words from this pack.
+                      </p>
+                    )}
+                  </div>
+                )}
+                {(questionSource === 'library' || questionSource === 'custom') && (
+                  <Field label="Category name">
+                    <input
+                      value={settings.content_label}
+                      onChange={(e) => setSettings({ ...settings, content_label: e.target.value })}
+                      placeholder="e.g. Fruits, Slang, Startup jargon"
+                      className="input-field"
+                    />
+                    <p className="text-faint text-xs mt-1">
+                      Shown as the coloured badge above the board so players know what they&apos;re guessing.
+                      {questionSource === 'library'
+                        ? ' Auto-filled from the pack name — edit to make it your own.'
+                        : ''}
+                    </p>
+                  </Field>
+                )}
+                {questionSource === 'custom' && (
+                  <div className="space-y-3 pt-1">
+                    <a
+                      href={`data:text/csv;charset=utf-8,${encodeURIComponent(WORDLE_ROOM_SAMPLE_CSV)}`}
+                      download="wordle-sample.csv"
+                      className="inline-block text-sm text-[var(--primary)] underline"
+                    >
+                      Download sample CSV
+                    </a>
+                    <Field label="Word list (CSV: word,hint — hint optional)">
+                      <input
+                        type="file"
+                        accept=".csv,text/csv"
+                        className="input-field"
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0]
+                          if (!file) return
+                          try {
+                            const csv = await file.text()
+                            const parsed = parsePuzzleThemeCsv('wordle_room', csv)
+                            const entries = parsed.entries.map((r) => {
+                              const word = (r.word ?? '').toLowerCase().replace(/[^a-z]/g, '')
+                              return r.hint ? { word, hint: r.hint } : { word }
+                            })
+                            setCustomWordleRoomWords(entries)
+                          } catch {
+                            setCustomWordleRoomWords([])
+                          }
+                        }}
+                      />
+                    </Field>
+                    <p className="text-faint text-xs">
+                      {customWordleRoomWords.length > 0
+                        ? `Loaded ${customWordleRoomWords.length} valid 3–8 letter word${customWordleRoomWords.length === 1 ? '' : 's'}. Need at least ${wordleRoomWordCount} for a ${wordleRoomWordCount}-word race.`
+                        : `Upload a CSV with one word,hint per line. Words must be 3–8 letters. Need at least ${wordleRoomWordCount} for the race.`}
+                    </p>
+                  </div>
+                )}
+                <Field label="Words in the race">
+                  <CustomSelect
+                    value={wordleRoomWordCount}
+                    onChange={setWordleRoomWordCount}
+                    options={WORDLE_ROOM_WORD_COUNT_OPTIONS.map((n) => ({ value: n, label: `${n} words` }))}
+                  />
+                </Field>
+                <Field label="Whole-game timer">
+                  <CustomSelect
+                    value={wordleRoomTimer}
+                    onChange={setWordleRoomTimer}
+                    options={WORDLE_ROOM_TIMER_OPTIONS.map((seconds) => ({
+                      value: seconds,
+                      label: seconds === 0 ? 'Untimed' : formatWordleRoomTimer(seconds),
+                    }))}
+                  />
+                </Field>
+                {showViewerToggle && (
+                  <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="wordle_room" />
+                )}
+                <p className="text-faint text-sm leading-relaxed">
+                  Race through a fixed sequence of Wordle puzzles. Everyone solves the same word — most words solved
+                  wins, with fewer guesses and faster time as tiebreakers.
+                </p>
+              </SettingsGroup>
             ) : isMafia ? (
               <SettingsGroup title="Mafia room">
                 <Field label={`Max players (${effectiveLimits.mafia.min}–${effectiveLimits.mafia.max})`}>
-                  <select
+                  <CustomSelect
                     value={settings.max_players ?? 10}
-                    onChange={(e) => setSettings({ ...settings, max_players: Number(e.target.value) })}
-                    className="input-field w-full"
-                  >
-                    {playerCountOptions(effectiveLimits.mafia.min, effectiveLimits.mafia.max).map((n) => (
-                      <option key={n} value={n}>
-                        {n} players
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(val) => setSettings({ ...settings, max_players: val })}
+                    options={playerCountOptions(effectiveLimits.mafia.min, effectiveLimits.mafia.max).map((n) => ({
+                      value: n,
+                      label: `${n} players`,
+                    }))}
+                  />
                 </Field>
                 <Field label="Night timer">
-                  <select
+                  <CustomSelect
                     value={settings.timer_seconds ?? 60}
-                    onChange={(e) => {
-                      const v = Number(e.target.value)
-                      setSettings((s) => ({ ...s, timer_seconds: v }))
-                    }}
-                    className="input-field w-full"
-                  >
-                    <option value={30}>30 seconds</option>
-                    <option value={45}>45 seconds</option>
-                    <option value={60}>1 minute</option>
-                    <option value={90}>1.5 minutes</option>
-                    <option value={120}>2 minutes</option>
-                    <option value={180}>3 minutes</option>
-                  </select>
+                    onChange={(seconds) => setSettings((current) => ({ ...current, timer_seconds: seconds }))}
+                    options={[
+                      { value: 30, label: '30 seconds' },
+                      { value: 45, label: '45 seconds' },
+                      { value: 60, label: '1 minute' },
+                      { value: 90, label: '1.5 minutes' },
+                      { value: 120, label: '2 minutes' },
+                      { value: 180, label: '3 minutes' },
+                    ]}
+                  />
                   <p className="text-faint text-xs mt-1.5">How long night-action roles get to submit their move.</p>
                 </Field>
                 <Field label="Day discussion timer">
-                  <select
+                  <CustomSelect
                     value={settings.mafia_day_seconds ?? 90}
-                    onChange={(e) => {
-                      const v = Number(e.target.value)
-                      setSettings((s) => ({ ...s, mafia_day_seconds: v }))
-                    }}
-                    className="input-field w-full"
-                  >
-                    <option value={45}>45 seconds</option>
-                    <option value={60}>1 minute</option>
-                    <option value={90}>1.5 minutes</option>
-                    <option value={120}>2 minutes</option>
-                    <option value={180}>3 minutes</option>
-                    <option value={300}>5 minutes</option>
-                  </select>
+                    onChange={(seconds) => setSettings((current) => ({ ...current, mafia_day_seconds: seconds }))}
+                    options={[
+                      { value: 45, label: '45 seconds' },
+                      { value: 60, label: '1 minute' },
+                      { value: 90, label: '1.5 minutes' },
+                      { value: 120, label: '2 minutes' },
+                      { value: 180, label: '3 minutes' },
+                      { value: 300, label: '5 minutes' },
+                    ]}
+                  />
                   <p className="text-faint text-xs mt-1.5">How long the town gets to talk before voting opens.</p>
                 </Field>
                 <Field label="Voting timer">
-                  <select
+                  <CustomSelect
                     value={settings.mafia_voting_seconds ?? 45}
-                    onChange={(e) => {
-                      const v = Number(e.target.value)
-                      setSettings((s) => ({ ...s, mafia_voting_seconds: v }))
-                    }}
-                    className="input-field w-full"
-                  >
-                    <option value={20}>20 seconds</option>
-                    <option value={30}>30 seconds</option>
-                    <option value={45}>45 seconds</option>
-                    <option value={60}>1 minute</option>
-                    <option value={90}>1.5 minutes</option>
-                  </select>
+                    onChange={(seconds) => setSettings((current) => ({ ...current, mafia_voting_seconds: seconds }))}
+                    options={[
+                      { value: 20, label: '20 seconds' },
+                      { value: 30, label: '30 seconds' },
+                      { value: 45, label: '45 seconds' },
+                      { value: 60, label: '1 minute' },
+                      { value: 90, label: '1.5 minutes' },
+                    ]}
+                  />
                   <p className="text-faint text-xs mt-1.5">How long players get to cast their lynch vote.</p>
                 </Field>
                 <Field label="Role set">
@@ -5769,45 +6130,34 @@ function CreateGameInner() {
                 <Field
                   label={`Max players (${effectiveLimits.matching_pairs.min}–${effectiveLimits.matching_pairs.max})`}
                 >
-                  <select
+                  <CustomSelect
                     value={settings.max_players ?? effectiveLimits.matching_pairs.max}
-                    onChange={(e) => setSettings({ ...settings, max_players: Number(e.target.value) })}
-                    className="input-field w-full"
-                  >
-                    {playerCountOptions(effectiveLimits.matching_pairs.min, effectiveLimits.matching_pairs.max).map(
-                      (n) => (
-                        <option key={n} value={n}>
-                          {n} players
-                        </option>
-                      )
-                    )}
-                  </select>
+                    onChange={(val) => setSettings({ ...settings, max_players: val })}
+                    options={playerCountOptions(
+                      effectiveLimits.matching_pairs.min,
+                      effectiveLimits.matching_pairs.max
+                    ).map((n) => ({ value: n, label: `${n} players` }))}
+                  />
                 </Field>
                 <Field label="Time limit">
-                  <select
+                  <CustomSelect
                     value={settings.timer_seconds ?? 0}
-                    onChange={(e) => setSettings({ ...settings, timer_seconds: Number(e.target.value) })}
-                    className="input-field w-full"
-                  >
-                    {MATCHING_PAIRS_GAME_DURATION_OPTIONS.map((s) => (
-                      <option key={s} value={s}>
-                        {formatMatchingPairsGameDuration(s)}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(val) => setSettings({ ...settings, timer_seconds: val })}
+                    options={MATCHING_PAIRS_GAME_DURATION_OPTIONS.map((s) => ({
+                      value: s,
+                      label: formatMatchingPairsGameDuration(s),
+                    }))}
+                  />
                 </Field>
                 <Field label="Rounds">
-                  <select
+                  <CustomSelect
                     value={settings.rounds_count ?? 1}
-                    onChange={(e) => setSettings({ ...settings, rounds_count: Number(e.target.value) })}
-                    className="input-field w-full"
-                  >
-                    {[1, 2, 3, 5, 10].map((n) => (
-                      <option key={n} value={n}>
-                        {n} round{n === 1 ? '' : 's'}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(val) => setSettings({ ...settings, rounds_count: val })}
+                    options={[1, 2, 3, 5, 10].map((n) => ({
+                      value: n,
+                      label: `${n} round${n === 1 ? '' : 's'}`,
+                    }))}
+                  />
                   <p className="text-faint text-xs mt-1">Scores accumulate across all rounds.</p>
                 </Field>
                 <Field label="Grid size">
@@ -5848,25 +6198,42 @@ function CreateGameInner() {
                     <button
                       type="button"
                       onClick={() => setSettings({ ...settings, isPublic: false })}
-                      className={`flex-1 py-2 text-sm font-semibold transition-colors ${
+                      className={`flex flex-1 items-center justify-center gap-1.5 py-2 text-sm font-semibold transition-colors ${
                         !settings.isPublic ? 'bg-[var(--primary)] text-white' : 'text-muted hover:text-body'
                       }`}
                     >
-                      🔒 Private
+                      <Glyph icon={LockIcon} size={15} />
+                      Private
                     </button>
                     <button
                       type="button"
                       onClick={() => setSettings({ ...settings, isPublic: true })}
-                      className={`flex-1 py-2 text-sm font-semibold transition-colors ${
+                      className={`flex flex-1 items-center justify-center gap-1.5 py-2 text-sm font-semibold transition-colors ${
                         settings.isPublic ? 'bg-[var(--primary)] text-white' : 'text-muted hover:text-body'
                       }`}
                     >
-                      🌐 Public
+                      <Glyph icon={GlobeIcon} size={15} />
+                      Public
                     </button>
                   </div>
                   <p className="text-faint text-xs mt-2">
                     List in Browse so anyone can find and join. Off keeps it invite-only via the share link.
                   </p>
+                  {!settings.isPublic && showsPartyPublicHint(settings.game_type, settings.max_players ?? null) ? (
+                    <p className="mt-1 text-xs" style={{ color: 'var(--primary)' }}>
+                      Party game? Turn this on so others can find and join.
+                    </p>
+                  ) : null}
+                  {settings.isPublic && showsMaxOnePublicHint(settings.max_players ?? null) ? (
+                    <p className="mt-1 text-xs text-muted italic">
+                      Bump the max players above 1 so other people can join.
+                    </p>
+                  ) : null}
+                  <ScheduleForLaterField
+                    isPublic={settings.isPublic}
+                    scheduledAt={settings.scheduled_at ?? null}
+                    onChange={(next) => setSettings((s) => ({ ...s, scheduled_at: next }))}
+                  />
                 </Field>
                 <p className="text-faint text-sm leading-relaxed">
                   Flip cards and find matching pairs. Race to complete the grid with the most matches. Streaks earn
@@ -5878,17 +6245,16 @@ function CreateGameInner() {
                 <SettingsGroup title="Round settings">
                   {isTrivia && (
                     <Field label={`Max players (${effectiveLimits.trivia.min}–${effectiveLimits.trivia.max})`}>
-                      <select
+                      <CustomSelect
                         value={triviaMaxPlayers}
-                        onChange={(e) => setTriviaMaxPlayers(Number(e.target.value))}
-                        className="input-field w-full"
-                      >
-                        {playerCountOptions(effectiveLimits.trivia.min, effectiveLimits.trivia.max).map((n) => (
-                          <option key={n} value={n}>
-                            {n} players
-                          </option>
-                        ))}
-                      </select>
+                        onChange={setTriviaMaxPlayers}
+                        options={playerCountOptions(effectiveLimits.trivia.min, effectiveLimits.trivia.max).map(
+                          (n) => ({
+                            value: n,
+                            label: `${n} players`,
+                          })
+                        )}
+                      />
                     </Field>
                   )}
                   {isTrivia && showViewerToggle && (
@@ -6143,19 +6509,6 @@ function CreateGameInner() {
 
                 {isLobbyQuestions && (
                   <SettingsGroup title="Questions">
-                    {isTrivia && questionSource === 'platform' && (
-                      <Field label="Category">
-                        <SegmentedControl
-                          value={triviaCategory}
-                          onChange={(v) => setTriviaCategory(v as TriviaCategory)}
-                          options={[
-                            { value: 'tech', label: 'Tech', hint: 'Programming, gadgets, internet culture' },
-                            { value: 'general', label: 'General', hint: 'Geography, history, pop culture & more' },
-                          ]}
-                        />
-                      </Field>
-                    )}
-
                     {!isTrivia && (
                       <>
                         <Field label="Player submissions">
@@ -6222,6 +6575,35 @@ function CreateGameInner() {
                       />
                     )}
 
+                    {isTrivia && questionSource === 'platform' && (
+                      <Field label="Category">
+                        <CustomSelect
+                          value={triviaCategory}
+                          onChange={(v) => setTriviaCategory(v as TriviaCategory)}
+                          searchable
+                          options={[
+                            { value: 'general', label: 'General (All Categories)' },
+                            { value: 'tech', label: 'Tech' },
+                            { value: 'art', label: 'Art' },
+                            { value: 'food', label: 'Food' },
+                            { value: 'geography', label: 'Geography' },
+                            { value: 'history', label: 'History' },
+                            { value: 'language', label: 'Language' },
+                            { value: 'literature', label: 'Literature' },
+                            { value: 'math', label: 'Math' },
+                            { value: 'movies', label: 'Movies' },
+                            { value: 'music', label: 'Music' },
+                            { value: 'nature', label: 'Nature' },
+                            { value: 'pop_culture', label: 'Pop Culture' },
+                            { value: 'science', label: 'Science' },
+                            { value: 'sports', label: 'Sports' },
+                            { value: 'technology', label: 'Technology' },
+                            { value: 'world_culture', label: 'World Culture' },
+                          ]}
+                        />
+                      </Field>
+                    )}
+
                     {questionSource === 'custom' && questionCustomHint && (
                       <CustomContentAiTip hint={questionCustomHint} />
                     )}
@@ -6262,7 +6644,7 @@ function CreateGameInner() {
                             {
                               value: 'ai',
                               label: 'Generate with AI',
-                              hint: 'Generate questions with your own Claude API key.',
+                              hint: 'Give a theme, get a ready-made set in seconds.',
                             },
                           ]}
                         />
@@ -6666,18 +7048,39 @@ function CreateGameInner() {
                   loading ||
                   (isCodewords &&
                     questionSource === 'custom' &&
-                    customCodewordsWords.length < CODEWORDS_MIN_CUSTOM_POOL)
+                    customCodewordsWords.length < CODEWORDS_MIN_CUSTOM_POOL) ||
+                  (isWordleRoom &&
+                    (questionSource === 'library' || questionSource === 'custom') &&
+                    customWordleRoomWords.length < wordleRoomWordCount)
                 }
               >
-                {loading ? 'Creating...' : 'Create Game'}
+                {loading
+                  ? settings.scheduled_at
+                    ? 'Scheduling...'
+                    : 'Creating...'
+                  : settings.scheduled_at
+                    ? 'Schedule Game'
+                    : 'Create Game'}
               </PrimaryBtn>
             ) : isBinaryLobby || isTriviaQuickCreate || (isMlt && isJoinersMode) ? (
               <PrimaryBtn onClick={createGame} disabled={!canCreateQuickLobby || loading || !customSlotsValid}>
-                {loading ? 'Creating...' : 'Create Game'}
+                {loading
+                  ? settings.scheduled_at
+                    ? 'Scheduling...'
+                    : 'Creating...'
+                  : settings.scheduled_at
+                    ? 'Schedule Game'
+                    : 'Create Game'}
               </PrimaryBtn>
             ) : isJoinersMode ? (
               <PrimaryBtn onClick={createGame} disabled={!canCreateJoiners || loading || !customSlotsValid}>
-                {loading ? 'Creating...' : 'Create Game'}
+                {loading
+                  ? settings.scheduled_at
+                    ? 'Scheduling...'
+                    : 'Creating...'
+                  : settings.scheduled_at
+                    ? 'Schedule Game'
+                    : 'Create Game'}
               </PrimaryBtn>
             ) : (
               <PrimaryBtn
@@ -6882,7 +7285,11 @@ function CreateGameInner() {
 
         <StickyActionBar>
           <PrimaryBtn onClick={createGame} disabled={!canCreateImport || loading}>
-            {loading ? 'Creating...' : `Create Game · ${participants.length} people`}
+            {loading
+              ? settings.scheduled_at
+                ? 'Scheduling...'
+                : 'Creating...'
+              : `${settings.scheduled_at ? 'Schedule' : 'Create'} Game · ${participants.length} people`}
           </PrimaryBtn>
         </StickyActionBar>
       </PageShell>

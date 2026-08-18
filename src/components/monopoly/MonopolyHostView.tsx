@@ -21,6 +21,7 @@ import { HostManageSection } from '@/components/host/HostManageSection'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
 import { GameInfoChips } from '@/components/game-lobby/GameInfoChips'
 import { ExitIcon } from '@/components/host/host-icons'
+import { AddBotButton } from '@/components/host-lobby/AddBotButton'
 import { HostBoardGameLobbyPanel } from '@/components/host-lobby/HostBoardGameLobbyPanel'
 import { HostLobbyPlayersSection } from '@/components/host-lobby/HostLobbyPlayersSection'
 import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaitingFooter'
@@ -308,7 +309,8 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
           players,
           board.property_owners,
           board.property_buildings,
-          board.mortgaged_properties
+          board.mortgaged_properties,
+          board.board_size ?? 40
         )[0]?.name
       : null)
   const hostPlays = hostMode === 'player' && !!hostPlayerId
@@ -450,6 +452,7 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
             mortgagedProperties={board.mortgaged_properties}
             lastDiceTotal={board.last_dice?.total ?? 2}
             themeId={game?.theme}
+            boardSize={board.board_size ?? 40}
             center={
               <div className="flex flex-col items-center justify-center h-full gap-1">
                 <MonopolyDiceRoll dice={board.last_dice} />
@@ -465,6 +468,7 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
         currentPlayerId={turnPlayerId}
         propertyOwners={board.property_owners}
         themeId={game?.theme}
+        boardSize={board.board_size ?? 40}
       />
     </div>
   ) : (
@@ -561,7 +565,7 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
             hostToken={hostToken}
             onEnded={load}
             label="End game early"
-            icon={<ExitIcon size={16} />}
+            icon={<ExitIcon size={14} />}
             confirmTitle="End this game early?"
             confirmMessage="The current game will end and players will see the results screen."
             className="btn-danger-soft"
@@ -682,7 +686,23 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
         removingPlayerId={removingPlayerId}
         highlightPlayerId={hostPlayerId}
         onEnded={load}
-      />
+      >
+        {/*
+          Bots-in-room "+ Add bot" — inserted between the play card and the
+          roster, same pattern as WhotHostView. Only renders while there's an
+          open seat AND the humans-outnumber-bots invariant holds; onAdded
+          triggers the same load() the join realtime does so the new bot
+          appears in the roster within a tick.
+        */}
+        <AddBotButton
+          gameCode={gameCode}
+          hostToken={hostToken}
+          seatedCount={players.filter((p) => p.spectator !== true).length}
+          botCount={players.filter((p) => p.spectator !== true && p.is_bot === true).length}
+          maxPlayers={lobbyMaxPlayersFromGameClient('monopoly', game) ?? game.max_players ?? 6}
+          onAdded={load}
+        />
+      </HostLobby>
     )
   }
 

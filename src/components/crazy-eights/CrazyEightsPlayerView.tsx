@@ -452,7 +452,7 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
 
   if (screen === 'finished') {
     return (
-      <CrazyEightsShell title="Game over!" subtitle={winner ? `${winner.name} wins` : undefined}>
+      <CrazyEightsShell>
         {game ? (
           <CrazyEightsFinalResultsShareBlock
             game={game}

@@ -33,8 +33,8 @@ export const MONOPOLY: SystemTrophySpec[] = [
   {
     suffix: 'passed_go',
     tier: 'bronze',
-    title: 'Passing GO',
-    description: 'Pass GO and collect your salary.',
+    title: 'Passing PAYDAY',
+    description: 'Pass PAYDAY and collect your salary.',
     counter: 'monopoly_passed_go',
     points: 10,
     sortOrder: 10,
@@ -62,7 +62,7 @@ export const MONOPOLY: SystemTrophySpec[] = [
   {
     suffix: 'full_color_set',
     tier: 'silver',
-    title: 'Monopoly',
+    title: 'Colour set',
     description: 'Own every property in a colour group.',
     counter: 'monopoly_full_color_set',
     points: 25,
@@ -146,7 +146,7 @@ export const MONOPOLY: SystemTrophySpec[] = [
   // ── Platinum ────────────────────────────────────────────────────────────────────────────
   {
     suffix: 'last_one_standing',
-    tier: 'platinum',
+    tier: 'gold',
     title: 'Last one standing',
     description: 'Win a game of three or more by bankrupting every other player.',
     counter: 'monopoly_last_one_standing',

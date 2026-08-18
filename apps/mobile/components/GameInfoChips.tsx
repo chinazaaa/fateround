@@ -4,6 +4,7 @@ import { CREATE_THEMES } from '@fateround/shared/create-themes'
 import { CROSSWORD_THEME_OPTIONS } from '@fateround/shared/crossword'
 import { WORD_SEARCH_THEME_OPTIONS } from '@fateround/shared/word-search'
 import { WORD_SCRAMBLE_THEME_OPTIONS } from '@fateround/shared/word-scramble'
+import { parseUnoRules } from '@fateround/shared/uno'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
 
@@ -202,16 +203,27 @@ export function gameInfoItems(game: Game | null | undefined): string[] {
     if (game.crazy8_jokers) items.push('Jokers')
     if (game.crazy8_pick2_stacking) items.push('Pick 2 stacking')
   } else if (gt === 'uno') {
-    if (game.uno_team_mode) items.push('Team-Up')
-    if (game.uno_stacking) items.push('Stacking')
-    if (game.uno_zero_seven) items.push('0-7 rule')
-    if (game.uno_wd4_challenge !== false) items.push('WD4 challenge')
-    if (game.uno_multi_play_mode && game.uno_multi_play_mode !== 'off') items.push('Multi-Play')
-    if (game.uno_jump_in) items.push('Jump-In')
+    // Mirror web GameInfoChips — chips must reflect the EFFECTIVE rules, not raw DB
+    // flags. In High Stakes stacking + 0-7 are locked ON; WD4 challenge, Team-Up and
+    // Jump-In are forced OFF; Multi-Play is host-picked. Collapse everything under a
+    // single "💥 High Stakes" chip + optional Multi-Play chip alongside it; in Classic,
+    // list the individual toggles as before.
+    const uno = parseUnoRules(game)
+    if (uno.mode === 'no_mercy') {
+      items.push('💥 High Stakes')
+      if (uno.multiPlay !== 'off') items.push('Multi-Play')
+    } else {
+      if (uno.teamMode) items.push('Team-Up')
+      if (uno.stacking) items.push('Stacking')
+      if (uno.zeroSeven) items.push('0-7 rule')
+      if (uno.wd4Challenge) items.push('WD4 challenge')
+      if (uno.multiPlay !== 'off') items.push('Multi-Play')
+      if (uno.jumpIn) items.push('Jump-In')
+    }
   } else if (gt === 'monopoly') {
     if (game.monopoly_double_go_salary) items.push('Double GO salary')
     if (game.monopoly_forced_auctions) items.push('Forced auctions')
-    if (game.monopoly_no_rent_in_jail) items.push('No rent in jail')
+    if (game.monopoly_no_rent_in_jail) items.push('No rent in NICKED')
     if (game.monopoly_estate_dividend) items.push('Estate dividend')
   } else if (gt === 'landmine') {
     items.push(game.landmine_mode === 'elimination' ? 'Elimination' : 'Zero points')

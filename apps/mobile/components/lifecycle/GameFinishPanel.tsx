@@ -1,14 +1,12 @@
 import type { ReactNode } from 'react'
 import { ScrollView, StyleSheet } from 'react-native'
 import type { Game, Player } from '@fateround/shared'
-import {
-  GameFinishedScreen,
-  type FinishedLeaderboardRow,
-} from '@/components/game/GameChrome'
+import { GameFinishedScreen, type FinishedLeaderboardRow } from '@/components/game/GameChrome'
 import { GameFinishedActions } from '@/components/lifecycle/GameFinishedActions'
 import { PlayAgainFooter } from '@/components/lifecycle/PlayAgainFooter'
 import { HostFinishedActions } from '@/components/lifecycle/HostFinishedActions'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
+import { PostJoinSubscribeNudge } from '@/components/notifications/PostJoinSubscribeNudge'
 import { useHostView } from '@/components/host/HostViewContext'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
@@ -73,11 +71,7 @@ export function GameFinishPanel({
   const heroEmoji = winner ? '🏆' : emoji
 
   return (
-    <ScrollView
-      style={styles.scroll}
-      contentContainerStyle={styles.wrap}
-      showsVerticalScrollIndicator={false}
-    >
+    <ScrollView style={styles.scroll} contentContainerStyle={styles.wrap} showsVerticalScrollIndicator={false}>
       {hideDefaultHeader ? null : (
         <GameFinishedScreen
           title={title}
@@ -91,6 +85,7 @@ export function GameFinishPanel({
         />
       )}
       {notice}
+      <PostJoinSubscribeNudge gameType={game.game_type} />
       {iWon && winner ? (
         <PostWinToCommunity
           gameType={game.game_type}
@@ -120,13 +115,13 @@ export function GameFinishPanel({
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-  scroll: {
-    flex: 1,
-  },
-  wrap: {
-    flexGrow: 1,
-    justifyContent: 'center',
-    padding: theme.space.lg,
-    gap: theme.space.md,
-  },
-})
+    scroll: {
+      flex: 1,
+    },
+    wrap: {
+      flexGrow: 1,
+      justifyContent: 'center',
+      padding: theme.space.lg,
+      gap: theme.space.md,
+    },
+  })

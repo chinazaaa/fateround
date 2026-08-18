@@ -29,19 +29,29 @@ export function buildingLevel(buildings: Record<string, number>, spaceIndex: num
   return Math.min(5, Math.max(0, level)) as BuildingLevel
 }
 
-export function stationRent(owners: Record<string, string>, ownerId: string, baseRent: number): number {
+export function stationRent(
+  owners: Record<string, string>,
+  ownerId: string,
+  baseRent: number,
+  boardSize: 40 | 48 = 40
+): number {
   const count = owners
     ? Object.entries(owners).filter(([idx, id]) => {
-        const space = spaceAt(Number(idx))
+        const space = spaceAt(Number(idx), boardSize)
         return id === ownerId && space.type === 'station'
       }).length
     : 0
   return baseRent * 2 ** Math.max(0, count - 1)
 }
 
-export function utilityRent(owners: Record<string, string>, ownerId: string, diceTotal: number): number {
+export function utilityRent(
+  owners: Record<string, string>,
+  ownerId: string,
+  diceTotal: number,
+  boardSize: 40 | 48 = 40
+): number {
   const count = Object.entries(owners).filter(([idx, id]) => {
-    const space = spaceAt(Number(idx))
+    const space = spaceAt(Number(idx), boardSize)
     return id === ownerId && space.type === 'utility'
   }).length
   return diceTotal * (count >= 2 ? 10 : 4)
@@ -53,12 +63,13 @@ export function computeRent(
   ownerId: string,
   diceTotal: number,
   buildings: Record<string, number>,
-  mortgaged: Record<string, boolean>
+  mortgaged: Record<string, boolean>,
+  boardSize: 40 | 48 = 40
 ): number {
   if (mortgaged[String(space.index)]) return 0
 
-  if (space.type === 'station') return stationRent(owners, ownerId, space.rent ?? 25)
-  if (space.type === 'utility') return utilityRent(owners, ownerId, diceTotal)
+  if (space.type === 'station') return stationRent(owners, ownerId, space.rent ?? 25, boardSize)
+  if (space.type === 'utility') return utilityRent(owners, ownerId, diceTotal, boardSize)
 
   if (space.type === 'property' && space.rentTable) {
     const level = buildingLevel(buildings, space.index)
@@ -66,8 +77,8 @@ export function computeRent(
     const base = space.rent ?? space.rentTable[0] ?? 0
     if (
       space.color &&
-      ownsColorMonopoly(owners, ownerId, space.color) &&
-      !groupHasMortgage(space.color, ownerId, owners, mortgaged)
+      ownsColorMonopoly(owners, ownerId, space.color, boardSize) &&
+      !groupHasMortgage(space.color, ownerId, owners, mortgaged, boardSize)
     ) {
       return base * 2
     }

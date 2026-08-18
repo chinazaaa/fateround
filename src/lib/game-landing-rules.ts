@@ -484,15 +484,15 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
     {
       title: 'Setup',
       points: [
-        '2–6 players join a room and pick a board token (car, hat, dog, etc.). Each player starts on GO with £1,500.',
+        '2–8 players join a room and pick a board token (car, hat, dog, etc.). Each player starts on PAYDAY with £1,500.',
         'The Bank holds all Title Deeds until purchased. The host starts when everyone is ready; turn order is set at game start.',
       ],
     },
     {
-      title: 'Moving & GO',
+      title: 'Moving & PAYDAY',
       points: [
-        'On your turn, roll two dice and move clockwise around the 40-space board.',
-        'Collect £200 from the Bank every time you land on or pass GO while moving forward — but not on your first lap around the board.',
+        'On your turn, roll two dice and move clockwise around the 40- or 48-space board.',
+        'Collect £200 from the Bank every time you land on or pass PAYDAY while moving forward — but not on your first lap around the board.',
         'Two or more tokens may occupy the same space.',
       ],
     },
@@ -500,43 +500,43 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
       title: 'Doubles',
       points: [
         'If you roll doubles, move, resolve the space, then roll again for another turn.',
-        'If you roll doubles three times in a row on the same turn, go straight to Jail — your turn ends immediately.',
+        'If you roll doubles three times in a row on the same turn, go straight to NICKED — your turn ends immediately.',
       ],
     },
     {
       title: 'Buying property',
       points: [
-        'You cannot buy from the Bank, pay Income Tax or Super Tax, or draw Chance / Community Chest cards until you have passed GO at least once on your first lap.',
+        'You cannot buy from the Bank, pay TAX OFFICE or SURCHARGE, or draw Fate / Kitty cards until you have passed PAYDAY at least once on your first lap.',
         'Landing on an unowned Property, Station, or Utility after that lets you buy it at the listed price.',
         'If you decline to buy, the property is auctioned to the highest bidder — including you.',
-        'Own all Sites in a colour-group (a monopoly) to charge double rent on unimproved properties in that group.',
+        'Own every Site in a colour group (an estate) to charge double rent on unimproved properties in that group.',
       ],
     },
     {
       title: 'Rent',
       points: [
         "Landing on another player's property requires paying rent before the next player rolls.",
-        'Railroad rent increases with each Station owned: £25, £50, £100, or £200 for one through four.',
+        'Station rent increases with each Station owned: £25, £50, £100, or £200 for one through four.',
         'Utility rent is 4× your dice roll if the owner has one Utility, or 10× if they own both.',
         'Build houses and hotels on complete colour-groups (evenly) to increase rent. Mortgaged properties collect no rent.',
       ],
     },
     {
-      title: 'Chance & Community Chest',
+      title: 'Fate & Kitty',
       points: [
-        'You must pass GO once before drawing cards on your first lap — landing on Chance or Community Chest before that ends your turn without drawing.',
-        'Draw from the full UK 16-card Chance and 16-card Community Chest decks.',
+        'You must pass PAYDAY once before drawing cards on your first lap — landing on Fate or Kitty before that ends your turn without drawing.',
+        'Draw from the full 16-card Fate and 16-card Kitty decks.',
         'Cards may move you, pay or collect money, charge per house/hotel, or collect from every player.',
-        'If a card moves you forward past GO, collect £200 (after your first lap). You do not collect GO salary when sent to Jail.',
-        'Get Out of Jail Free cards are kept until used or traded.',
+        'If a card moves you forward past PAYDAY, collect £200 (after your first lap). You do not collect PAYDAY salary when sent to NICKED.',
+        'Skip-the-queue cards are kept until used or traded.',
       ],
     },
     {
-      title: 'Taxes & Free Parking',
+      title: 'Taxes & LAY-BY',
       points: [
-        'Income Tax (space 4) and Super Tax (space 38) do not apply until you have passed GO once on your first lap.',
-        'After that: Income Tax is £200 and Super Tax is £100, paid to the Bank.',
-        'Free Parking has no penalty — simply rest there until your next turn.',
+        'TAX OFFICE (space 4) and SURCHARGE (space 38) do not apply until you have passed PAYDAY once on your first lap.',
+        'After that: TAX OFFICE is £200 and SURCHARGE is £100, paid to the Bank.',
+        'LAY-BY has no penalty — simply rest there until your next turn.',
       ],
     },
     {
@@ -550,26 +550,26 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
     {
       title: 'Trading',
       points: [
-        'Propose trades with other players at any time — cash, properties, and Get Out of Jail Free cards.',
+        'Propose trades with other players at any time — cash, properties, and skip-the-queue cards.',
         'The other player must accept or decline. You cannot trade properties that still have buildings on the colour-group.',
       ],
     },
     {
-      title: 'Jail',
+      title: 'NICKED',
       points: [
-        'You are sent to Jail by landing on "Go To Jail", drawing a card, or rolling three doubles in one turn.',
-        'Landing on the Jail space while not sent there is "Just Visiting" — no penalty.',
-        'A "Get Out of Jail Free" card may be kept until used or traded.',
-        'To get out: pay a £50 fine before your next roll, use a Get Out of Jail Free card, or roll doubles on any of your next three turns.',
-        'After three turns in Jail without doubles, pay £50 and move according to your roll.',
-        'While in Jail you may still collect rent on properties you own (unless mortgaged).',
+        'You are sent to NICKED by landing on "OFF TO JAIL", drawing a card, or rolling three doubles in one turn.',
+        'Landing on the NICKED space while not sent there is "Just Visiting" — no penalty.',
+        'A skip-the-queue card may be kept until used or traded.',
+        'To get out: pay a £50 fine before your next roll, use a skip-the-queue card, or roll doubles on any of your next three turns.',
+        'After three turns in NICKED without doubles, pay £50 and move according to your roll.',
+        'While in NICKED you may still collect rent on properties you own (unless mortgaged).',
       ],
     },
     {
       title: 'Bankruptcy & winning',
       points: [
         'If you owe more than you can raise from cash and assets, you are bankrupt and out of the game.',
-        'If bankrupt to another player, they receive your cash, properties, and Get Out of Jail Free cards.',
+        'If bankrupt to another player, they receive your cash, properties, and skip-the-queue cards.',
         'If bankrupt to the Bank, the Bank takes your assets and auctions each property.',
         'The game ends when only one solvent player remains.',
       ],
@@ -606,14 +606,14 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
         'Three of a Kind & Four of a Kind: score the total of all five dice when you have 3 (or 4) matching.',
         'Full House: three of one number plus two of another — a flat 25 points.',
         'Small Straight (four in a row) 30 points · Large Straight (five in a row) 40 points.',
-        'Yahtzee (five of a kind) 50 points · Chance: the sum of all five dice, any combination.',
+        'Five of a Kind: 50 points · Chance: the sum of all five dice, any combination.',
       ],
     },
     {
       title: 'Scoring bonus',
       points: [
         'Score 63+ in the upper section (Ones through Sixes) to earn a 35-point bonus.',
-        'After scoring 50 in the Yahtzee box, each extra five-of-a-kind is worth a 100-point Yahtzee bonus.',
+        'After scoring 50 in the Five of a Kind box, each extra five-of-a-kind is worth a 100-point bonus.',
         'Each category can only be scored once per game.',
       ],
     },
@@ -751,15 +751,15 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
       points: [
         'Skip — the next player loses their turn.',
         'Reverse — the direction of play flips (acts as a Skip in a 2-player game).',
-        'Draw Two — the next player draws 2 cards and is skipped.',
+        'Draw 2 — the next player draws 2 cards and is skipped.',
         'Wild — play on anything and name the colour the next player must follow.',
-        'Wild Draw Four — name the colour and the next player draws 4. Playable anytime, but can be challenged.',
+        'Draw 4 — name the colour and the next player draws 4. Playable anytime, but can be challenged.',
       ],
     },
     {
-      title: 'Calling UNO',
+      title: 'Calling last card',
       points: [
-        'When you play your second-to-last card, call "UNO" — leaving you with one card.',
+        'When you play your second-to-last card, call "last card" — leaving you with one card.',
         'If you forget before the next player takes their turn, you draw a penalty (2 cards by default; the host can raise it to 4).',
       ],
     },
@@ -775,10 +775,10 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
       title: 'Stacking (optional)',
       points: [
         'A host toggle — off by default.',
-        'When you are hit with a Draw Two you may play your own Draw Two instead of drawing; the penalty grows by 2 and passes to the next player. Draw Four stacks the same way on Draw Four (+4).',
+        'When you are hit with a Draw 2 you may play your own Draw 2 instead of drawing; the penalty grows by 2 and passes to the next player. Draw 4 stacks the same way on Draw 4 (+4).',
         'The stack keeps growing until someone can’t (or won’t) add to it — that player draws the whole pile and loses their turn.',
-        'You can only stack like-for-like: a Draw Two on a Draw Two, a Draw Four on a Draw Four.',
-        'When stacking and the Wild Draw Four challenge are both on, the player who would have to draw the whole pile can still challenge — they challenge the most recent Wild Draw Four (the last person to stack one).',
+        'You can only stack like-for-like: a Draw 2 on a Draw 2, a Draw 4 on a Draw 4.',
+        'When stacking and the Draw 4 challenge are both on, the player who would have to draw the whole pile can still challenge — they challenge the most recent Draw 4 (the last person to stack one).',
       ],
     },
     {
@@ -788,7 +788,7 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
         'On your turn, tap “Play multiple”, then tap the cards you want to lay down together and confirm — so you can dump all your reds, or all your 6s, in one turn.',
         'The first card must legally match the top of the discard pile, and every card in the set must fit the chosen grouping rule.',
         'Cards resolve in the order you lay them, and the last card decides what the next player must match.',
-        'Action-card effects still apply in sequence — but a plain number/colour card laid on top of an action settles the pile and cancels whatever is buried under it. Cover your own Draw Two with a number and no one draws; leave the Draw Two on top and the next player draws 2. A Draw Two followed by a Skip does both — the next player draws 2 and the player after is skipped.',
+        'Action-card effects still apply in sequence — but a plain number/colour card laid on top of an action settles the pile and cancels whatever is buried under it. Cover your own Draw 2 with a number and no one draws; leave the Draw 2 on top and the next player draws 2. A Draw 2 followed by a Skip does both — the next player draws 2 and the player after is skipped.',
         'Only the action cards after your last number card take effect. The full set you laid is shown above the pile (“Played together”) so covered cards stay visible.',
       ],
     },
@@ -799,7 +799,7 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
         'Teams are drawn at random and seated alternating, so teammates always sit across the table and play in strict order (you never skip to your partner).',
         'You can see your teammate’s hand at all times (shown as a read-only “Partner” panel) — a digital-only edge; opponents still can’t see either of your hands.',
         'The round ends the moment either member of a team empties their hand — that team wins, no matter how many cards their partner is still holding.',
-        'Penalties still hit only the targeted player; with Stacking on, the target can play their own matching Draw card on their turn to pass it to an opponent. Everyone still calls “UNO” for themselves.',
+        'Penalties still hit only the targeted player; with Stacking on, the target can play their own matching Draw card on their turn to pass it to an opponent. Everyone still calls the last card for themselves.',
       ],
     },
     {
@@ -807,20 +807,20 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
       points: [
         'A host setting — off by default (recommended off for strict turn order, on for chaotic casual lobbies).',
         'When on, if you hold an EXACT match for the card on top — same colour AND same number, or same colour AND same symbol (e.g. Red 7 on Red 7, Blue Skip on Blue Skip) — you can play it instantly, even when it isn’t your turn. Just tap the highlighted card.',
-        'Only exact matches qualify: a different-coloured 7, or a red card of another number, does not count. Wild and Wild Draw Four cards can never be jumped on.',
+        'Only exact matches qualify: a different-coloured 7, or a red card of another number, does not count. Wild and Draw 4 cards can never be jumped on.',
         'Play then continues from whoever sits after you (in the current direction) — everyone you jumped over loses that turn entirely.',
         'If two players hold the same card, whoever taps first gets it; the window then closes on the old card (but a match for the new card is fair game).',
-        'Jump-In plays a single card — it never triggers a Multi-Play dump — and it’s disabled while a Draw Two/Four penalty is still pending. Drop to one card on a Jump-In and you must still call “UNO”; jump in a 0 or 7 and its effect fires as normal.',
+        'Jump-In plays a single card — it never triggers a Multi-Play dump — and it’s disabled while a Draw 2/Four penalty is still pending. Drop to one card on a Jump-In and you must still call the last card; jump in a 0 or 7 and its effect fires as normal.',
       ],
     },
     {
-      title: 'Wild Draw Four challenge',
+      title: 'Draw 4 challenge',
       points: [
-        'A Wild Draw Four is only meant to be played when you have no card of the current colour.',
+        'A Draw 4 is only meant to be played when you have no card of the current colour.',
         'The next player can accept the draw, or challenge: the system reveals the hand.',
         'If the player was bluffing (held the colour), they draw 4 instead — the challenger is safe, and it becomes the challenger’s turn to play as normal (they never lost their turn, just the draw).',
         'If the challenge is wrong, the challenger draws 6 (the 4 they refused plus a 2 penalty) and is skipped.',
-        'Hosts can turn the challenge off, in which case a Wild Draw Four always makes the next player draw 4.',
+        'Hosts can turn the challenge off, in which case a Draw 4 always makes the next player draw 4.',
       ],
     },
     {
@@ -828,8 +828,8 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
       points: [
         'Values only matter when a timed game ends before someone empties their hand — lowest hand total wins.',
         'Number cards — worth their face value (0–9).',
-        'Skip, Reverse, Draw Two — 20 points each.',
-        'Wild and Wild Draw Four — 50 points each, so avoid getting stuck holding them.',
+        'Skip, Reverse, Draw 2 — 20 points each.',
+        'Wild and Draw 4 — 50 points each, so avoid getting stuck holding them.',
       ],
     },
     {
@@ -838,6 +838,34 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
         'The host can set a game length (10, 15, 30 minutes, etc.) or play with no limit.',
         'First to empty their hand wins during normal play (no game clock).',
         'With a game clock, time running out ends the game — lowest hand total wins.',
+      ],
+    },
+    {
+      title: 'High Stakes mode',
+      points: [
+        'A host toggle at room creation — flips the whole game to a 168-card deck with new action + wild cards, harder stacking, and knockouts. Classic mode is untouched.',
+        '0-7 rule and Draw-card stacking (any equal-or-higher chain) are locked ON. Draw 4 challenge, Team-Up, and Jump-In are OFF. Multi-Play is host-picked in High Stakes just like Classic — pick Off / colour / number / colour-or-number when creating the room.',
+        'Mercy knockout — the moment you hold 25 or more cards you are knocked out for the round. Host chooses the win condition when creating: “first out” (classic — empty your hand to win) or “last standing” (outlast every knockout).',
+        'If you can’t play, draw — the deck keeps dealing you cards until you finally turn up one that fits, then it stops on that playable card so you can play it or keep it.',
+      ],
+    },
+    {
+      title: 'High Stakes — new cards',
+      points: [
+        'Discard Colour — play it and every other card of its colour in your hand goes to the discard pile with it. A hand dump in one turn.',
+        'Skip All — skip every other player at the table; play returns to you and you go again.',
+        'Reverse Draw 4 (Wild) — flip the direction of play, then the next player in the new direction draws 4. In a 2-player game the flip puts you back in the hot seat — YOU take the 4 (or stack an equal-or-higher Draw on top to bounce it).',
+        'Draw 6 (Wild) — the next player draws 6 and is skipped.',
+        'Draw 10 (Wild) — the next player draws 10 and is skipped.',
+        'Colour Roulette (Wild) — the next player picks a colour, then clicks Draw one card at a time until they turn up a card of that colour. Everything revealed lands in their hand and their turn ends.',
+      ],
+    },
+    {
+      title: 'High Stakes — stacking',
+      points: [
+        'Any Draw card can stack onto a pending Draw penalty, as long as its value is EQUAL OR HIGHER than the pending value: +2 → +4 → +4 Reverse → +6 → +10. You can never reduce the stack (no +4 on a pending +6).',
+        'Every stacked card adds its own value to the running penalty — pending +4 with a +10 played on top becomes 14 for the next player to draw (or continue stacking to +24 with a second +10).',
+        'The chain resolves the moment someone can’t (or won’t) add to it — that player draws the whole running total. If the draw pushes them past 25 cards, the Mercy rule knocks them out.',
       ],
     },
   ],
@@ -1501,6 +1529,48 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
     },
   ],
 
+  wordle_room: [
+    {
+      title: 'Objective',
+      points: [
+        'Everyone races through the same fixed set of 5–20 words — all solved Wordle-style.',
+        'The player who solves the most words (fewest guesses, fastest time) wins.',
+      ],
+    },
+    {
+      title: 'Setup',
+      points: [
+        'The host picks a word category (General English or Naija Slang) and how many words the race covers (5, 10, 15 or 20).',
+        'The host can set a whole-game timer (2, 5, 10 or 15 minutes) or leave it untimed so the race runs until everyone finishes.',
+        'Everyone gets the exact same word sequence, in the same order.',
+      ],
+    },
+    {
+      title: 'How it works',
+      points: [
+        'Each word is solved like Wordle — type a guess and get colour feedback on every letter.',
+        'Solve a word to move on to the next one. Run out of guesses and the word counts as a miss and you advance anyway — nobody gets stuck.',
+        'You only see the word you are currently solving; nobody can read ahead in the sequence.',
+      ],
+    },
+    {
+      title: 'Scoring',
+      points: [
+        'Every solved word scores base points — fewer guesses means more points.',
+        'Solving a word on your first guess earns a +200 perfect bonus.',
+        'Unsolvable words score 0. There are no streaks — each word scores independently.',
+      ],
+    },
+    {
+      title: 'Game end',
+      points: [
+        'Untimed races end when every seated player finishes the sequence.',
+        'Timed races auto-submit when the clock hits zero: solved words keep their points, your current word is lost, and unreached words score nothing.',
+        'Standings rank by most words solved, then fewer total guesses, then faster total time.',
+      ],
+    },
+  ],
+
   snake_and_ladder: [
     {
       title: 'Objective',
@@ -1778,6 +1848,33 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
         'Look for common prefixes and suffixes (RE-, -ING, -TION) to crack longer words fast.',
         'Solving first is worth extra, so trust your first instinct and keep moving.',
         'Sound the letters out — saying them aloud often reveals the word.',
+      ],
+    },
+  ],
+  word_grouping: [
+    {
+      title: 'Objective',
+      points: [
+        'You are shown 16 words. Find the 4 hidden groups of 4 words that share a common connection.',
+        'You have a maximum of 4 mistakes — after that the puzzle is over and any remaining groups are revealed.',
+        'Harder groups score more points, so solving the trickiest connection first pays off.',
+      ],
+    },
+    {
+      title: 'How it works',
+      points: [
+        'Select 4 words you think belong together and submit your guess.',
+        'If the group is correct it locks in and you see the connection. If not, you lose one of your 4 lives.',
+        'Groups are colour-coded by difficulty: the easiest group scores 1 point and the hardest scores 4.',
+        'Keep going until you find all 4 groups or run out of mistakes.',
+      ],
+    },
+    {
+      title: 'Tips',
+      points: [
+        'Start with the group you are most confident about — locking it in removes 4 words and makes the rest easier.',
+        'Watch for red herrings: some words could fit more than one category, but each word belongs to exactly one group.',
+        'If you are stuck, look for the oddest connection — the hardest group is often the least obvious theme.',
       ],
     },
   ],

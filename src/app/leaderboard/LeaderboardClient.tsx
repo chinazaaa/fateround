@@ -1,10 +1,14 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import { Chip } from '@/components/ui/PageShell'
+import { WhatsappIcon, ChampionIcon, Calendar01Icon } from '@hugeicons/core-free-icons'
+import { SiteChrome } from '@/components/SiteChrome'
+import { Glyph } from '@/components/icons/Glyph'
+import { UI_ICONS } from '@/lib/game-glyphs'
 import { addDays, addMonths, watToday } from '@/lib/community-dates'
 import { DEFAULT_WHATSAPP_INVITE_URL } from '@/lib/community-constants'
+import { WhatsAppChannelLink } from '@/components/WhatsAppChannelLink'
 import type { LeaderboardResponse, LeaderboardWindow } from '@/types/community'
 
 const TABS: { key: LeaderboardWindow; label: string }[] = [
@@ -13,24 +17,273 @@ const TABS: { key: LeaderboardWindow; label: string }[] = [
   { key: 'month', label: 'This Month' },
 ]
 
-const MEDALS = ['🥇', '🥈', '🥉']
+/**
+ * Podium tints for ranks 1–3.
+ */
+const PODIUM_TINTS = ['#d4a017', '#8e9099', '#a4682d']
 
-function CrownIcon({ className = '' }: { className?: string }) {
+const ALL_GAMES = ''
+
+function CustomGameSelect({
+  value,
+  disabled,
+  options,
+  onChange,
+}: {
+  value: string
+  disabled?: boolean
+  options: { slug: string; name: string }[]
+  onChange: (val: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false)
+      }
+    }
+    if (open) {
+      document.addEventListener('mousedown', handleClickOutside)
+      return () => document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [open])
+
+  const selectedName = value === ALL_GAMES ? 'All games' : (options.find((o) => o.slug === value)?.name ?? 'All games')
+
   return (
-    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden>
-      <path
-        d="M3 8l3.5 3L12 5l5.5 6L21 8l-1.5 10h-15L3 8z"
-        fill="currentColor"
-        fillOpacity="0.18"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinejoin="round"
-      />
-    </svg>
+    <div ref={ref} className="relative inline-block text-left">
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => setOpen((o) => !o)}
+        className="inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-xs font-semibold transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+        style={{
+          background: 'var(--surface)',
+          border: '1px solid var(--border)',
+          color: 'var(--text)',
+        }}
+        aria-expanded={open}
+        aria-haspopup="listbox"
+      >
+        <span>{selectedName}</span>
+        <svg
+          width="12"
+          height="12"
+          viewBox="0 0 12 12"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className={`shrink-0 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+          style={{ color: 'var(--text-faint)' }}
+        >
+          <path d="M2.75 4.5 6 7.75 9.25 4.5" />
+        </svg>
+      </button>
+
+      {open && (
+        <div
+          className="absolute right-0 mt-2 min-w-[12rem] max-h-60 overflow-y-auto rounded-[14px] p-1.5 shadow-xl z-30 space-y-0.5"
+          style={{
+            background: 'var(--surface)',
+            border: '1px solid var(--border)',
+          }}
+          role="listbox"
+        >
+          <button
+            type="button"
+            onClick={() => {
+              onChange(ALL_GAMES)
+              setOpen(false)
+            }}
+            className={`w-full text-left px-3 py-2 rounded-[8px] text-xs font-semibold transition-colors cursor-pointer flex items-center justify-between ${
+              value === ALL_GAMES
+                ? '!bg-[var(--primary)] !text-white'
+                : 'hover:bg-[color-mix(in_srgb,var(--primary)_10%,var(--surface))]'
+            }`}
+            style={{ color: value === ALL_GAMES ? '#ffffff' : 'var(--text)' }}
+          >
+            <span>All games</span>
+            {value === ALL_GAMES && <span className="text-xs font-bold">✓</span>}
+          </button>
+          {options.map((g) => {
+            const isSelected = value === g.slug
+            return (
+              <button
+                key={g.slug}
+                type="button"
+                onClick={() => {
+                  onChange(g.slug)
+                  setOpen(false)
+                }}
+                className={`w-full text-left px-3 py-2 rounded-[8px] text-xs font-semibold transition-colors cursor-pointer flex items-center justify-between ${
+                  isSelected
+                    ? '!bg-[var(--primary)] !text-white'
+                    : 'hover:bg-[color-mix(in_srgb,var(--primary)_10%,var(--surface))]'
+                }`}
+                style={{ color: isSelected ? '#ffffff' : 'var(--text)' }}
+              >
+                <span>{g.name}</span>
+                {isSelected && <span className="text-xs font-bold">✓</span>}
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
   )
 }
 
-const ALL_GAMES = ''
+const WEEKDAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']
+
+function CustomDatePicker({ value, max, onChange }: { value: string; max: string; onChange: (val: string) => void }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  const [valYear, valMonth, valDay] = value.split('-').map(Number)
+  const selectedDateObj = new Date(valYear, valMonth - 1, valDay)
+
+  const [viewYear, setViewYear] = useState(valYear)
+  const [viewMonth, setViewMonth] = useState(valMonth - 1)
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false)
+      }
+    }
+    if (open) {
+      document.addEventListener('mousedown', handleClickOutside)
+      return () => document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [open])
+
+  function changeMonth(dir: -1 | 1) {
+    const newDate = new Date(viewYear, viewMonth + dir, 1)
+    setViewYear(newDate.getFullYear())
+    setViewMonth(newDate.getMonth())
+  }
+
+  const firstDayOfWeek = new Date(viewYear, viewMonth, 1).getDay()
+  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate()
+
+  const monthName = new Date(viewYear, viewMonth, 1).toLocaleDateString('en-US', {
+    month: 'long',
+    year: 'numeric',
+  })
+  const formattedDisplay = selectedDateObj.toLocaleDateString('en-US', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  })
+
+  return (
+    <div ref={ref} className="relative inline-block text-left">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-xs font-semibold transition-all cursor-pointer"
+        style={{
+          background: 'var(--surface)',
+          border: '1px solid var(--border)',
+          color: 'var(--text)',
+        }}
+        aria-expanded={open}
+      >
+        <span className="whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>
+          Jump to date:
+        </span>
+        <span className="font-semibold">{formattedDisplay}</span>
+      </button>
+
+      {open && (
+        <div
+          className="absolute left-1/2 -translate-x-1/2 sm:left-auto sm:right-0 sm:translate-x-0 mt-2 w-72 rounded-[16px] p-4 shadow-2xl z-40 space-y-3"
+          style={{
+            background: 'var(--surface)',
+            border: '1px solid var(--border)',
+          }}
+        >
+          {/* Calendar Header */}
+          <div className="flex items-center justify-between">
+            <button
+              type="button"
+              onClick={() => changeMonth(-1)}
+              className="h-7 w-7 rounded-full flex items-center justify-center text-xs font-bold transition-colors cursor-pointer hover:bg-[color-mix(in_srgb,var(--primary)_15%,var(--surface))]"
+              style={{ color: 'var(--text)' }}
+            >
+              ‹
+            </button>
+            <span className="text-xs font-bold" style={{ color: 'var(--text)' }}>
+              {monthName}
+            </span>
+            <button
+              type="button"
+              onClick={() => changeMonth(1)}
+              className="h-7 w-7 rounded-full flex items-center justify-center text-xs font-bold transition-colors cursor-pointer hover:bg-[color-mix(in_srgb,var(--primary)_15%,var(--surface))]"
+              style={{ color: 'var(--text)' }}
+            >
+              ›
+            </button>
+          </div>
+
+          {/* Weekday headers */}
+          <div
+            className="grid grid-cols-7 gap-1 text-center text-[10px] font-bold"
+            style={{ color: 'var(--text-faint)' }}
+          >
+            {WEEKDAYS.map((d) => (
+              <span key={d}>{d}</span>
+            ))}
+          </div>
+
+          {/* Days grid */}
+          <div className="grid grid-cols-7 gap-1 text-center text-xs">
+            {/* Blank leading slots */}
+            {Array.from({ length: firstDayOfWeek }).map((_, i) => (
+              <div key={`empty-${i}`} />
+            ))}
+
+            {/* Month days */}
+            {Array.from({ length: daysInMonth }).map((_, i) => {
+              const dayNum = i + 1
+              const dateStr = `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`
+              const isSelected = dateStr === value
+              const isFuture = dateStr > max
+
+              return (
+                <button
+                  key={dayNum}
+                  type="button"
+                  disabled={isFuture}
+                  onClick={() => {
+                    onChange(dateStr)
+                    setOpen(false)
+                  }}
+                  className={`h-7 w-7 mx-auto rounded-full flex items-center justify-center text-xs font-semibold transition-all cursor-pointer ${
+                    isSelected
+                      ? '!bg-[var(--primary)] !text-white shadow-sm font-bold'
+                      : isFuture
+                        ? 'opacity-25 cursor-not-allowed'
+                        : 'hover:bg-[color-mix(in_srgb,var(--primary)_20%,var(--surface))]'
+                  }`}
+                  style={{
+                    color: isSelected ? '#ffffff' : isFuture ? 'var(--text-faint)' : 'var(--text)',
+                  }}
+                >
+                  {dayNum}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
 
 export function LeaderboardClient() {
   const today = watToday()
@@ -62,14 +315,11 @@ export function LeaderboardClient() {
   }, [])
 
   useEffect(() => {
-    // Abort the in-flight request when the period/date/game changes so a stale
-    // response can't resolve last and overwrite the newer selection.
     const controller = new AbortController()
     load(tab, selectedDate, game, controller.signal)
     return () => controller.abort()
   }, [tab, selectedDate, game, load])
 
-  // Keep the last known game list so the dropdown doesn't empty out mid-load.
   const [games, setGames] = useState<LeaderboardResponse['games']>([])
   useEffect(() => {
     if (data) setGames(data.games)
@@ -81,180 +331,225 @@ export function LeaderboardClient() {
       tab === 'today' ? addDays(d, dir) : tab === 'week' ? addDays(d, dir * 7) : addMonths(d, dir)
     )
 
-  // today falls inside the shown window → we're viewing the current period.
   const isCurrentWindow = !!data && data.rangeStart <= today && today <= data.rangeEnd
   const canGoNext = !!data && data.rangeEnd < today
 
   return (
-    <div className="flex flex-col items-center px-4 py-10">
-      <div className="w-full max-w-2xl space-y-6">
-        <header className="text-center space-y-2">
-          <span
-            className="inline-flex h-16 w-16 items-center justify-center rounded-2xl text-3xl"
-            style={{ background: 'var(--chip-active-bg)' }}
-          >
-            🏆
-          </span>
-          <h1 className="text-4xl font-black tracking-tight gradient-title">Community Leaderboard</h1>
-          <p className="text-muted text-sm">Nightly champions from our community games</p>
-          <div className="pt-1">
-            <a
-              href={data?.whatsappInviteUrl || DEFAULT_WHATSAPP_INVITE_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 rounded-full bg-emerald-500/15 px-4 py-2 text-sm font-semibold text-emerald-600 transition-colors hover:bg-emerald-500/25"
+    <SiteChrome>
+      <div className="fr-band fr-band--tight">
+        <div className="mk-wrap">
+          {/* ── Hero section ── */}
+          <div className="mb-8 space-y-2 text-center">
+            <span className="fr-glyph">
+              <Glyph icon={UI_ICONS.leaderboard} size={26} />
+            </span>
+            <h1
+              className="fr-display m-0 text-[2.5rem] leading-[0.975] tracking-[-0.045em] sm:text-5xl"
+              style={{ color: 'var(--text)' }}
             >
-              💬 Join the community on WhatsApp
-            </a>
+              Community Leaderboard
+            </h1>
+            <p className="mx-auto max-w-md text-sm" style={{ color: 'var(--text-muted)' }}>
+              Nightly champions from our community games
+            </p>
+            <div className="pt-1">
+              <WhatsAppChannelLink className="no-underline">Join the community on WhatsApp</WhatsAppChannelLink>
+            </div>
           </div>
-        </header>
 
-        <div className="flex flex-wrap items-center justify-center gap-2">
-          {TABS.map((t) => (
-            <Chip key={t.key} active={tab === t.key} onClick={() => setTab(t.key)}>
-              {t.label}
-            </Chip>
-          ))}
-          <label className="flex items-center gap-1.5">
-            <span className="sr-only">Filter by game</span>
-            <select
-              value={game}
-              disabled={games.length === 0}
-              onChange={(e) => setGame(e.target.value)}
-              className="input-field py-1.5 px-2 text-sm w-auto disabled:opacity-40"
-            >
-              <option value={ALL_GAMES}>All games</option>
-              {games.map((g) => (
-                <option key={g.slug} value={g.slug}>
-                  {g.name}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-
-        {data && (
-          <div className="space-y-2">
-            <div className="flex items-center justify-center gap-3">
-              <button
-                type="button"
-                onClick={() => step(-1)}
-                aria-label="Previous"
-                className="h-9 w-9 shrink-0 rounded-full border border-[var(--border-strong)] bg-[var(--card)] backdrop-blur flex items-center justify-center text-xl leading-none text-muted hover:text-[var(--foreground)] hover:border-[var(--primary)] transition-colors"
+          <div className="mx-auto max-w-2xl space-y-6">
+            {/* ── Tabs & Filter ── */}
+            <div className="flex flex-wrap items-center justify-center gap-3">
+              <div
+                className="inline-flex p-1 rounded-full"
+                style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
               >
-                ‹
-              </button>
-              <div className="text-center min-w-[11rem]">
-                <span className="block text-[10px] uppercase tracking-widest text-faint">
-                  {tab === 'today' ? 'Winners for' : tab === 'week' ? 'Week of' : 'Month of'}
-                </span>
-                <span className="text-lg font-semibold">{data.label}</span>
+                {TABS.map((t) => (
+                  <button
+                    key={t.key}
+                    type="button"
+                    onClick={() => setTab(t.key)}
+                    className={`px-4 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer ${
+                      tab === t.key
+                        ? 'bg-[var(--primary)] text-white shadow-sm'
+                        : 'text-[var(--text-muted)] hover:text-[var(--text)]'
+                    }`}
+                  >
+                    {t.label}
+                  </button>
+                ))}
               </div>
-              <button
-                type="button"
-                onClick={() => step(1)}
-                disabled={!canGoNext}
-                aria-label="Next"
-                className="h-9 w-9 shrink-0 rounded-full border border-[var(--border-strong)] bg-[var(--card)] backdrop-blur flex items-center justify-center text-xl leading-none text-muted hover:text-[var(--foreground)] hover:border-[var(--primary)] transition-colors disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:border-[var(--border-strong)] disabled:hover:text-muted"
-              >
-                ›
-              </button>
+
+              <CustomGameSelect value={game} disabled={games.length === 0} options={games} onChange={setGame} />
             </div>
-            <div className="flex items-center justify-center gap-3 text-xs">
-              <label className="flex items-center gap-1.5 text-faint">
-                <span className="whitespace-nowrap">Jump to date</span>
-                <input
-                  type="date"
-                  value={selectedDate}
-                  max={today}
-                  onChange={(e) => e.target.value && setSelectedDate(e.target.value)}
-                  className="input-field py-1 px-2 text-xs w-auto"
-                />
-              </label>
-              {!isCurrentWindow && (
-                <button
-                  type="button"
-                  onClick={() => setSelectedDate(today)}
-                  className="text-[var(--primary)] hover:text-[var(--primary-strong)] font-medium transition-colors"
-                >
-                  {tab === 'today' ? 'Back to today' : tab === 'week' ? 'This week' : 'This month'}
-                </button>
-              )}
+
+            {/* ── Date Navigator ── */}
+            {data && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => step(-1)}
+                    aria-label="Previous period"
+                    className="h-9 w-9 shrink-0 rounded-full border border-[var(--border)] bg-transparent flex items-center justify-center text-[var(--text)] hover:text-[var(--primary)] hover:border-[var(--primary)] transition-all cursor-pointer"
+                  >
+                    <svg
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path d="M19 12H5M11 18l-6-6 6-6" />
+                    </svg>
+                  </button>
+                  <div className="text-center min-w-[11rem]">
+                    <span
+                      className="block text-[10px] uppercase tracking-widest"
+                      style={{ color: 'var(--text-faint)' }}
+                    >
+                      {tab === 'today' ? 'Winners for' : tab === 'week' ? 'Week of' : 'Month of'}
+                    </span>
+                    <span className="text-lg font-semibold" style={{ color: 'var(--text)' }}>
+                      {data.label}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => step(1)}
+                    disabled={!canGoNext}
+                    aria-label="Next period"
+                    className="h-9 w-9 shrink-0 rounded-full border border-[var(--border)] bg-transparent flex items-center justify-center text-[var(--text)] hover:text-[var(--primary)] hover:border-[var(--primary)] transition-all disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:border-[var(--border)] disabled:hover:text-[var(--text)] cursor-pointer"
+                  >
+                    <svg
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path d="M5 12h14M13 6l6 6-6 6" />
+                    </svg>
+                  </button>
+                </div>
+                <div className="flex flex-wrap items-center justify-center gap-3 text-xs">
+                  <CustomDatePicker value={selectedDate} max={today} onChange={(val) => setSelectedDate(val)} />
+                  {!isCurrentWindow && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedDate(today)}
+                      className="font-semibold transition-colors cursor-pointer text-[var(--primary)] hover:underline"
+                    >
+                      {tab === 'today' ? 'Back to today' : tab === 'week' ? 'This week' : 'This month'}
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* ── Content View ── */}
+            {loading ? (
+              <p className="text-center text-sm" style={{ color: 'var(--text-muted)' }}>
+                Loading…
+              </p>
+            ) : error ? (
+              <p className="text-center text-sm text-red-500">{error}</p>
+            ) : !data ? null : tab === 'today' ? (
+              <TodayView data={data} />
+            ) : (
+              <StandingsView data={data} gameName={gameName} />
+            )}
+
+            {/* ── Community manager callout ── */}
+            <div className="fr-card space-y-3 text-center mx-auto max-w-lg mt-8">
+              <p className="text-sm font-semibold" style={{ color: 'var(--text)' }}>
+                Community manager?
+              </p>
+              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                Enter scores and record nightly game results for your community.
+              </p>
+              <Link
+                href="/input"
+                className="inline-flex items-center gap-1.5 rounded-full border border-[#25D366]/40 px-3.5 py-1.5 text-xs font-semibold text-[#1a9e4e] transition-colors hover:bg-[#25D366]/10 dark:text-[#25D366] dark:hover:bg-[#25D366]/10 no-underline"
+              >
+                Enter scores
+              </Link>
             </div>
           </div>
-        )}
-
-        {loading ? (
-          <p className="text-center text-muted text-sm">Loading…</p>
-        ) : error ? (
-          <p className="text-center text-red-500 text-sm">{error}</p>
-        ) : !data ? null : tab === 'today' ? (
-          <TodayView data={data} />
-        ) : (
-          <StandingsView data={data} gameName={gameName} />
-        )}
-
-        <p className="text-center text-xs text-faint pt-2">
-          <Link href="/input" className="hover:text-[var(--foreground)] transition-colors">
-            Community manager? Enter scores →
-          </Link>
-        </p>
+        </div>
       </div>
-    </div>
+    </SiteChrome>
   )
 }
 
 function TodayView({ data }: { data: LeaderboardResponse }) {
   if (data.today.length === 0) {
     return (
-      <div className="glass-card p-8 text-center text-muted text-sm">No games are set up yet. Check back soon.</div>
+      <div className="fr-card p-8 text-center text-sm" style={{ color: 'var(--text-muted)' }}>
+        No games are set up yet. Check back soon.
+      </div>
     )
   }
 
-  // Games with winners first; within each group keep the admin's order (stable sort).
   const ordered = [...data.today].sort((a, b) => (b.winners.length ? 1 : 0) - (a.winners.length ? 1 : 0))
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 animate-stagger">
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
       {ordered.map((entry) => {
         const accent = entry.game.accent ?? 'var(--primary)'
         const hasWinners = entry.winners.length > 0
         return (
           <div
             key={entry.game.id}
-            className="glass-card p-5 relative overflow-hidden"
-            style={{ borderColor: hasWinners ? `color-mix(in srgb, ${accent} 25%, transparent)` : undefined }}
+            className="fr-gamecard cursor-default"
+            style={{ '--accent': accent } as React.CSSProperties}
           >
-            <div
-              className="absolute inset-x-0 top-0 h-1"
-              style={{ background: accent, opacity: hasWinners ? 0.9 : 0.25 }}
-            />
-            <div className="flex items-center gap-2 mb-3">
-              <span className="h-2.5 w-2.5 rounded-full" style={{ background: accent }} />
-              <span className="text-sm font-semibold text-muted">{entry.game.name}</span>
+            <div className="flex items-center gap-2">
+              <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: accent }} />
+              <h3 className="fr-gamecard__title text-sm">{entry.game.name}</h3>
             </div>
             {hasWinners ? (
-              <div className="flex items-start gap-3">
-                <CrownIcon className="h-7 w-7 shrink-0" />
+              <div className="flex items-start gap-3 mt-1">
+                <span className="fr-glyph shrink-0">
+                  <Glyph icon={ChampionIcon} size={22} />
+                </span>
                 <div>
-                  <p className="text-xs text-faint uppercase tracking-wide">
+                  <p className="fr-gamecard__vibe text-[10px] uppercase tracking-wide">
                     {entry.winners.length === 1 ? 'Winner' : `Winners · ${entry.winners.length}`}
                   </p>
-                  <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                  <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 mt-0.5">
                     {entry.winners.map((w, i) => (
-                      <span key={`${w.name}-${i}`} className="text-xl font-black tracking-tight">
+                      <span
+                        key={`${w.name}-${i}`}
+                        className="text-lg font-bold tracking-tight"
+                        style={{ color: 'var(--text)' }}
+                      >
                         {w.name}
                         {w.wins > 1 && (
-                          <span className="ml-1 align-middle text-xs font-bold text-[var(--primary)]">×{w.wins}</span>
+                          <span className="ml-1 align-middle text-xs font-bold" style={{ color: 'var(--accent)' }}>
+                            ×{w.wins}
+                          </span>
                         )}
-                        {i < entry.winners.length - 1 && <span className="text-faint font-normal">,</span>}
+                        {i < entry.winners.length - 1 && (
+                          <span className="font-normal" style={{ color: 'var(--text-faint)' }}>
+                            ,
+                          </span>
+                        )}
                       </span>
                     ))}
                   </div>
                 </div>
               </div>
             ) : (
-              <p className="text-sm text-faint py-1">No winner announced yet</p>
+              <p className="fr-gamecard__tagline text-xs py-1">No winner announced yet</p>
             )}
           </div>
         )
@@ -266,53 +561,68 @@ function TodayView({ data }: { data: LeaderboardResponse }) {
 function StandingsView({ data, gameName }: { data: LeaderboardResponse; gameName: string | null }) {
   if (data.standings.length === 0) {
     return (
-      <div className="glass-card p-8 text-center text-muted text-sm">
+      <div className="fr-card p-8 text-center text-sm" style={{ color: 'var(--text-muted)' }}>
         No {gameName ? `${gameName} ` : ''}wins recorded for this {data.window} yet.
       </div>
     )
   }
 
-  // getStandings() shares rank 1 across ties, so there can be more than one champion.
   const champions = data.standings.filter((s) => s.rank === 1)
   const rest = data.standings.filter((s) => s.rank !== 1)
   const joint = champions.length > 1
   const topWins = champions[0].wins
 
   return (
-    <div className="space-y-3 animate-stagger">
+    <div className="space-y-4">
       {/* Champion spotlight */}
       <div
-        className="glass-card-strong p-6 relative overflow-hidden text-center"
-        style={{
-          background:
-            'linear-gradient(135deg, color-mix(in srgb, var(--primary) 14%, var(--card-strong)), var(--card-strong))',
-        }}
+        className="fr-gamecard cursor-default p-6 text-center"
+        style={{ '--accent': '#d4a017' } as React.CSSProperties}
       >
-        <div className="text-4xl mb-1">🥇</div>
-        <p className="text-xs uppercase tracking-widest text-faint">
+        <div className="flex justify-center mb-1">
+          <span className="fr-glyph">
+            <Glyph icon={ChampionIcon} size={28} />
+          </span>
+        </div>
+        <p className="fr-gamecard__vibe text-xs uppercase tracking-widest">
           {joint ? 'Joint champions' : 'Champion'} of the {data.window}
           {gameName ? ` · ${gameName}` : ''}
         </p>
-        <p className="text-3xl font-black tracking-tight mt-1">{champions.map((c) => c.playerName).join(' & ')}</p>
-        <p className="text-sm text-muted mt-1">
+        <p className="fr-gamecard__title text-3xl mt-1">{champions.map((c) => c.playerName).join(' & ')}</p>
+        <p className="fr-gamecard__tagline text-sm mt-1">
           {topWins} {topWins === 1 ? 'win' : 'wins'}
           {joint ? ' each' : champions[0].gamesWon > 1 ? ` · across ${champions[0].gamesWon} games` : ''}
         </p>
       </div>
 
       {rest.length > 0 && (
-        <div className="glass-card divide-y divide-[var(--border)]">
-          {rest.map((s) => (
-            <div key={`${s.rank}-${s.playerName}`} className="flex items-center gap-3 px-4 py-3">
-              <span className="w-8 text-center text-lg font-bold text-muted shrink-0">
-                {s.rank <= 3 ? MEDALS[s.rank - 1] : s.rank}
-              </span>
-              <span className="font-semibold flex-1 truncate">{s.playerName}</span>
-              <span className="text-sm text-muted shrink-0">
-                {s.wins} {s.wins === 1 ? 'win' : 'wins'}
-              </span>
-            </div>
-          ))}
+        <div className="fr-card divide-y" style={{ borderColor: 'var(--border)' }}>
+          {rest.map((s) => {
+            const podium = s.rank <= 3 ? PODIUM_TINTS[s.rank - 1] : null
+            return (
+              <div key={`${s.rank}-${s.playerName}`} className="flex items-center gap-3 px-4 py-3">
+                <span
+                  className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-sm font-bold"
+                  style={
+                    podium
+                      ? {
+                          background: `color-mix(in srgb, ${podium} 18%, transparent)`,
+                          color: podium,
+                        }
+                      : { color: 'var(--text-faint)' }
+                  }
+                >
+                  {s.rank}
+                </span>
+                <span className="font-semibold flex-1 truncate" style={{ color: 'var(--text)' }}>
+                  {s.playerName}
+                </span>
+                <span className="text-sm shrink-0" style={{ color: 'var(--text-muted)' }}>
+                  {s.wins} {s.wins === 1 ? 'win' : 'wins'}
+                </span>
+              </div>
+            )
+          })}
         </div>
       )}
     </div>

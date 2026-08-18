@@ -33,7 +33,6 @@ export function AiQuestionsGenerator({
   const [count, setCount] = useState(Math.max(1, Math.min(maxCount, defaultCount)))
   const [theme, setTheme] = useState('')
   const [customPrompt, setCustomPrompt] = useState('')
-  const [apiKey, setApiKey] = useState('')
   const [generating, setGenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [lastCount, setLastCount] = useState<number | null>(null)
@@ -41,8 +40,7 @@ export function AiQuestionsGenerator({
   const inputClass = 'input-field w-full text-sm'
 
   async function handleGenerate() {
-    const trimmedKey = apiKey.trim()
-    if (!trimmedKey || generating) return
+    if (generating) return
     setGenerating(true)
     setError(null)
     try {
@@ -55,7 +53,6 @@ export function AiQuestionsGenerator({
           ...(theme.trim() ? { theme: theme.trim() } : {}),
           ...(customPrompt.trim() ? { customPrompt: customPrompt.trim() } : {}),
           ...(triviaCategory ? { triviaCategory } : {}),
-          apiKey: trimmedKey,
         }),
       })
       const data = await res.json()
@@ -126,21 +123,9 @@ export function AiQuestionsGenerator({
         />
       </label>
 
-      <label className="block space-y-1">
-        <span className="text-muted text-xs uppercase tracking-wider">Your Claude API key (required)</span>
-        <input
-          type="password"
-          name="ai-api-key"
-          autoComplete="new-password"
-          className={inputClass}
-          placeholder="sk-ant-..."
-          value={apiKey}
-          onChange={(e) => setApiKey(e.target.value)}
-        />
-        <span className="block text-faint text-xs">
-          Generation runs on your own Claude API key, so you only pay for what you use. Your key is never stored.
-        </span>
-      </label>
+      <p className="text-faint text-xs">
+        Powered by Claude. Free during preview — with a small daily limit so nobody drains it.
+      </p>
 
       {error && <p className="text-red-400 text-sm">{error}</p>}
       {lastCount !== null && !error && (
@@ -152,7 +137,7 @@ export function AiQuestionsGenerator({
       <button
         type="button"
         onClick={handleGenerate}
-        disabled={generating || !apiKey.trim()}
+        disabled={generating}
         className="w-full rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lg disabled:opacity-40"
       >
         {generating ? 'Generating…' : lastCount !== null ? 'Re-generate' : `Generate ${noun} with AI`}

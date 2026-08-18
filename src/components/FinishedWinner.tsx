@@ -1,13 +1,19 @@
-'use client'
-
 import type { ReactNode } from 'react'
 import { gameTypeConfig, parseGameType } from '@/lib/game-types'
 import { ContentLabelChip } from '@/components/game-lobby/ContentLabelChip'
+import { Glyph } from '@/components/icons/Glyph'
+import { ChampionIcon, Flag02Icon, HeartHandshakeIcon } from '@hugeicons/core-free-icons'
 import type { Game } from '@/types'
 
 export interface WinnerStat {
   value: ReactNode
   label: string
+}
+
+function HeroIcon({ emoji }: { emoji?: string }) {
+  if (emoji === '🤝') return <Glyph icon={HeartHandshakeIcon} size={32} />
+  if (emoji === '🏁') return <Glyph icon={Flag02Icon} size={32} />
+  return <Glyph icon={ChampionIcon} size={32} />
 }
 
 /**
@@ -46,11 +52,10 @@ export function FinishedWinnerHero({
 
   return (
     <div className="text-center space-y-2">
-      <div
-        className="text-5xl sm:text-6xl leading-none"
-        style={{ filter: 'drop-shadow(0 6px 14px color-mix(in srgb, var(--primary) 25%, transparent))' }}
-      >
-        {emoji}
+      <div className="flex justify-center pb-1">
+        <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[color-mix(in_srgb,var(--primary)_15%,transparent)] text-[var(--primary)] border border-[color-mix(in_srgb,var(--primary)_30%,transparent)] shadow-[0_8px_24px_-4px_color-mix(in_srgb,var(--primary)_35%,transparent)]">
+          <HeroIcon emoji={emoji} />
+        </span>
       </div>
       <h2 className="text-3xl sm:text-4xl font-black tracking-tight leading-tight text-body">
         {headline ??

@@ -242,7 +242,7 @@ export const CRAZY_EIGHTS: SystemTrophySpec[] = [
   // ── Platinum ────────────────────────────────────────────────────────────────────────────
   {
     suffix: 'flawless',
-    tier: 'platinum',
+    tier: 'gold',
     title: 'Flawless',
     description: 'Win a game of three or more players without drawing a single card.',
     counter: 'c8_flawless_wins',
@@ -252,7 +252,7 @@ export const CRAZY_EIGHTS: SystemTrophySpec[] = [
   },
   {
     suffix: 'suit_sweep',
-    tier: 'platinum',
+    tier: 'gold',
     title: 'Suit sweep',
     description: 'Win having played all four suits, an 8 and a Joker.',
     counter: 'c8_suit_sweep_wins',

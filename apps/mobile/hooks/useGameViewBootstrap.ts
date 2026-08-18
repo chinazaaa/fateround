@@ -253,7 +253,14 @@ export function useGameTableSync(
   tables: readonly WatchedTable[],
   reload: () => void | Promise<unknown>,
   enabled = true,
-  gameStatus?: string
+  gameStatus?: string,
+  // Opt-in reconcile cadence for ACTIVE play. Realtime is primary, but a channel can stay
+  // subscribed while silently dropping row changes (no status event fires), and while the app
+  // is foregrounded there's otherwise no recovery — a client would sit on a stale view forever.
+  // For a live clock game that means ticking the wrong player's clock and losing on time
+  // without ever seeing it was your turn. Pass a slow interval (e.g. 10s) for turn/clock-critical
+  // games so a stuck view self-heals. Left unset for the many-player games to avoid broad polling.
+  activePollMs?: number
 ) {
   const reloadRef = useRef(reload)
   reloadRef.current = reload
@@ -328,14 +335,16 @@ export function useGameTableSync(
         .catch(() => {})
     })
 
-    const pollId =
-      gameStatus === 'waiting'
-        ? setInterval(() => {
-            void Promise.resolve()
-              .then(() => reloadRef.current())
-              .catch(() => {})
-          }, LOBBY_POLL_INTERVAL_MS)
-        : null
+    // Lobby polls at a fixed cadence; an active game polls only if the caller opted in with
+    // activePollMs (turn/clock-critical games) — the safety net for a silently-stale channel.
+    const pollMs = gameStatus === 'waiting' ? LOBBY_POLL_INTERVAL_MS : activePollMs
+    const pollId = pollMs
+      ? setInterval(() => {
+          void Promise.resolve()
+            .then(() => reloadRef.current())
+            .catch(() => {})
+        }, pollMs)
+      : null
 
     return () => {
       if (debounce) clearTimeout(debounce)
@@ -345,5 +354,5 @@ export function useGameTableSync(
     }
     // `tables` is intentionally keyed via tablesKey (contents, not identity).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, gameCode, tablesKey, gameStatus])
+  }, [enabled, gameCode, tablesKey, gameStatus, activePollMs])
 }

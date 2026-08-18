@@ -1,5 +1,6 @@
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import type { Player } from '@fateround/shared'
+import { MONOPOLY_BOARD_SIZE, type MonopolyBoardSize } from '@fateround/shared/monopoly-board'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
 import { MonopolyTradeReview } from './MonopolyTradeReview'
@@ -10,21 +11,29 @@ export function MonopolyTradeModal({
   players,
   acting,
   themeId,
+  boardSize = MONOPOLY_BOARD_SIZE,
   onRespond,
 }: {
   trade: MonopolyPendingTrade
   players: Player[]
   acting: boolean
   themeId?: string | null
+  boardSize?: MonopolyBoardSize
   onRespond: (accept: boolean) => void
 }) {
   const styles = useThemedStyles(makeStyles)
   const fromName = players.find((p) => p.id === trade.from_player_id)?.name ?? 'player'
-  const receiveCount = buildTradeSideItems(trade.offer_cash, trade.offer_properties, trade.offer_get_out_cards).length
+  const receiveCount = buildTradeSideItems(
+    trade.offer_cash,
+    trade.offer_properties,
+    trade.offer_get_out_cards,
+    boardSize
+  ).length
   const payCount = buildTradeSideItems(
     trade.request_cash,
     trade.request_properties,
-    trade.request_get_out_cards ?? 0
+    trade.request_get_out_cards ?? 0,
+    boardSize
   ).length
 
   return (
@@ -49,6 +58,7 @@ export function MonopolyTradeModal({
             ) : null}
             <MonopolyTradeReview
               themeId={themeId}
+              boardSize={boardSize}
               giveLabel="You pay"
               getLabel="You receive"
               giveCash={trade.request_cash}

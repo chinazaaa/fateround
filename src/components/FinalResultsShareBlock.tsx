@@ -17,6 +17,9 @@ export function FinalResultsShareBlock({
   triviaAnswers,
   showCreateNewGame = true,
   playAgainButton,
+  variant = 'default',
+  returnToLobbyButton,
+  lobbyNote,
 }: {
   children: ReactNode
   game: Game
@@ -27,6 +30,16 @@ export function FinalResultsShareBlock({
   triviaAnswers?: TriviaAnswer[]
   showCreateNewGame?: boolean
   playAgainButton?: ReactNode
+  /**
+   * 'winner' pairs play-again with return-to-lobby side by side and groups the quiet meta
+   * actions into one divided row, instead of stacking every action full-width. Defaults to
+   * 'default' so existing callers are unchanged.
+   */
+  variant?: 'default' | 'winner'
+  /** 'winner' only — sits beside the play-again button. */
+  returnToLobbyButton?: ReactNode
+  /** 'winner' only — helper text explaining the two play-again paths. */
+  lobbyNote?: ReactNode
 }) {
   const captureRef = useRef<HTMLDivElement>(null)
 
@@ -40,6 +53,9 @@ export function FinalResultsShareBlock({
         gameCode={game.id}
         playAgainButton={playAgainButton}
         showCreateNewGame={showCreateNewGame}
+        variant={variant}
+        returnToLobbyButton={returnToLobbyButton}
+        lobbyNote={lobbyNote}
         shareButton={
           <ShareResults
             captureRef={captureRef}

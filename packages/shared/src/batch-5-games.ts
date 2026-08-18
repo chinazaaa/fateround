@@ -4,7 +4,7 @@ export const BATCH_5_GAMES: GameType[] = ['quiplash', 'word_rush', 'word_hunt', 
 
 export function batch5GameLabel(gameType: GameType | string): string {
   const labels: Partial<Record<GameType, string>> = {
-    quiplash: 'Quiplash',
+    quiplash: 'Punchline',
     word_rush: 'Word Rush',
     word_hunt: 'Word Hunt',
     i_call_on: 'I Call On',

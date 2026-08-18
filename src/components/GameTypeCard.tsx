@@ -1,6 +1,8 @@
 'use client'
 import type { GameType } from '@/types'
 import { gameTypeConfig } from '@/lib/game-types'
+import { gameIcon } from '@/lib/game-glyphs'
+import { Glyph } from '@/components/icons/Glyph'
 import { isMatureGame, MATURE_BADGE_LABEL } from '@/lib/game-maturity'
 
 function MatureBadge({ className = '' }: { className?: string }) {
@@ -39,10 +41,10 @@ export function GameTypeCard({ type, selected, compact, onClick }: GameTypeCardP
         <div className="game-type-card-glow" />
         <div className="relative flex items-center gap-3">
           <span
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-xl"
-            style={{ background: card.accentSoft }}
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl"
+            style={{ background: card.accentSoft, color: card.accent }}
           >
-            {card.emoji}
+            <Glyph icon={gameIcon(type)} size={22} />
           </span>
           <div className="min-w-0 flex-1 text-left">
             <p className="flex items-center gap-1.5 font-semibold">
@@ -51,7 +53,6 @@ export function GameTypeCard({ type, selected, compact, onClick }: GameTypeCardP
             </p>
             <p className="text-faint text-xs truncate">{cfg.tagline}</p>
           </div>
-          <span className="text-faint text-lg shrink-0">→</span>
         </div>
       </button>
     )
@@ -68,10 +69,10 @@ export function GameTypeCard({ type, selected, compact, onClick }: GameTypeCardP
       <div className="relative p-5 space-y-3">
         <div className="flex items-start justify-between gap-3">
           <span
-            className="flex h-14 w-14 items-center justify-center rounded-2xl text-3xl"
-            style={{ background: card.accentSoft }}
+            className="flex h-14 w-14 items-center justify-center rounded-2xl"
+            style={{ background: card.accentSoft, color: card.accent }}
           >
-            {card.emoji}
+            <Glyph icon={gameIcon(type)} size={30} />
           </span>
           <div className="flex flex-wrap items-center justify-end gap-1.5">
             {isMatureGame(type) && <MatureBadge />}

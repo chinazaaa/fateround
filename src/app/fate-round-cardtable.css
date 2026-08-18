@@ -273,6 +273,19 @@
   background: var(--danger-soft);
 }
 
+/* No-Mercy knockout — grey the avatar, strike the name; keeps the seat visible
+   in the rail so the room can see who's out without the seat disappearing. */
+.fr-room .seat.out .sav {
+  filter: grayscale(1);
+  opacity: 0.55;
+}
+.fr-room .seat.out .nm {
+  color: var(--muted);
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+  opacity: 0.75;
+}
+
 /* ── table (the felt: piles + status) ─────────────────────────────── */
 /* `safe center` centres the felt vertically but falls back to top-alignment when
    the content is taller than the (short) felt — otherwise plain `center` clips

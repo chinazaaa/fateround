@@ -426,7 +426,7 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
     const shareWinnerName = iWon ? myName : winner?.name
 
     return (
-      <LudoShell title="Game over!" subtitle={winner ? `${winner.name} wins` : 'Session ended'}>
+      <LudoShell>
         {game && states.length > 0 ? (
           <LudoFinalResultsShareBlock
             game={game}

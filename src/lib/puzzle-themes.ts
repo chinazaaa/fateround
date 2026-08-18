@@ -10,7 +10,7 @@ import {
  * so the admin CRUD routes and the create-game consumption agree on shapes + validation.
  */
 
-export const PUZZLE_THEME_GAME_TYPES = ['crossword', 'word_search', 'word_scramble'] as const
+export const PUZZLE_THEME_GAME_TYPES = ['crossword', 'word_search', 'word_scramble', 'wordle_room'] as const
 export type PuzzleThemeGameType = (typeof PUZZLE_THEME_GAME_TYPES)[number]
 
 export const PUZZLE_THEME_DIFFICULTIES = ['easy', 'medium', 'hard'] as const
@@ -49,6 +49,21 @@ export function parsePuzzleThemeCsv(gameType: PuzzleThemeGameType, csv: string):
     const r = parseWordSearchEntryImport(csv)
     return { entries: r.questions, totalRows: r.totalRows, skippedRows: r.skippedRows, duplicateRows: r.duplicateRows }
   }
+  if (gameType === 'wordle_room') {
+    // Same word[,hint] shape as scramble — but wordle constrains length to 3–8 letters.
+    const r = parseWordScrambleEntryImport(csv)
+    const filtered = r.questions.filter((e) => e.word.length >= 3 && e.word.length <= 8)
+    return {
+      entries: filtered.map((e) => {
+        const entry: Record<string, string> = { word: e.word }
+        if (e.hint) entry.hint = e.hint
+        return entry
+      }),
+      totalRows: r.totalRows,
+      skippedRows: r.skippedRows + (r.questions.length - filtered.length),
+      duplicateRows: r.duplicateRows,
+    }
+  }
   const r = parseWordScrambleEntryImport(csv)
   return {
     entries: r.questions.map((e) => {
@@ -77,7 +92,7 @@ export function puzzleThemeEntriesToCsv(gameType: PuzzleThemeGameType, entries: 
     const rows = entries.map((e) => `${csvField(e.answer ?? '')},${csvField(e.clue ?? '')}`)
     return ['answer,clue', ...rows].join('\n')
   }
-  if (gameType === 'word_scramble') {
+  if (gameType === 'word_scramble' || gameType === 'wordle_room') {
     const rows = entries.map((e) => `${csvField(e.word ?? '')},${csvField(e.hint ?? '')}`)
     return ['word,hint', ...rows].join('\n')
   }

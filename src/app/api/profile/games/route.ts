@@ -32,7 +32,9 @@ export async function GET(req: NextRequest) {
     const [{ data: profile }, { data: stats }, { data: catalog, error }, { data: earnedRows }] = await Promise.all([
       admin
         .from('profiles')
-        .select('handle, trophy_points, trophy_level, current_streak, longest_streak, last_active_date')
+        .select(
+          'id, handle, avatar_url, is_anonymous, trophy_points, trophy_level, current_streak, longest_streak, last_active_date, streak_freezes, default_voice_on, preferred_theme'
+        )
         .eq('id', profileId)
         .maybeSingle(),
       admin.from('player_stats').select('game_type, games_played, games_won').eq('profile_id', profileId),

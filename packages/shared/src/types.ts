@@ -1,4 +1,4 @@
-export type GameStatus = 'waiting' | 'active' | 'finished'
+export type GameStatus = 'scheduled' | 'waiting' | 'active' | 'finished'
 export type RoundStatus = 'pending' | 'active' | 'finished'
 export type PlayerGender = 'male' | 'female' | 'both'
 export type ParticipantGender = 'male' | 'female'
@@ -57,6 +57,8 @@ export type GameType =
   | 'word_scramble'
   | 'landmine'
   | 'ping_pong'
+  | 'word_grouping'
+  | 'wordle_room'
 
 export interface Game {
   id: string
@@ -72,6 +74,16 @@ export interface Game {
   allow_viewers?: boolean | null
   allow_late_players?: boolean | null
   is_public?: boolean | null
+  /** Discovery Phase A — bumped on lobby activity; drives the stale-lobby close cron. */
+  last_activity_at?: string | null
+  /** Discovery Phase C — when a scheduled game is set to open. Null for immediate games. */
+  scheduled_at?: string | null
+  /** Discovery Phase C — stamped when scheduled → waiting; drives the 10-min unconfirmed-drop cron. */
+  opened_at?: string | null
+  /** Discovery Phase A — stamped once when the host got the T-13min warning (one bite per game). */
+  host_idle_warning_sent_at?: string | null
+  /** Discovery Phase A — how the lobby ended ("idle_timeout", null, …). */
+  result_reason?: string | null
   /** Whether responses are shown without attribution (poll-family games only). */
   anonymous?: boolean | null
   theme?: string | null
@@ -102,6 +114,12 @@ export interface Game {
   uno_multi_play_mode?: string | null
   uno_team_mode?: boolean | null
   uno_jump_in?: boolean | null
+  uno_mode?: string | null
+  uno_no_mercy_win?: string | null
+  uno_series_scoring?: boolean | null
+  uno_series_target?: number | null
+  uno_series_scores?: Record<string, number> | null
+  uno_series_winner_id?: string | null
   describe_it_mode?: string | null
   describe_it_num_teams?: number | null
   word_rush_mode?: string | null
@@ -143,6 +161,7 @@ export interface Game {
   monopoly_auction_timer_seconds?: number | null
   monopoly_no_rent_in_jail?: boolean | null
   monopoly_estate_dividend?: boolean | null
+  monopoly_board_size?: 40 | 48 | null
   quick_draw_variant?: QuickDrawVariant | null
   quick_draw_play_mode?: QuickDrawPlayMode | null
   quick_draw_num_teams?: number | null
@@ -171,6 +190,12 @@ export interface Game {
   word_scramble_theme?: string | null
   word_scramble_difficulty?: WordScrambleDifficulty | string | null
   ping_pong_points_to_win?: number | null
+  /** Wordle Room — built-in category the race draws from. */
+  wordle_room_category?: string | null
+  /** Wordle Room — 5/10/15/20 words per race. */
+  wordle_room_word_count?: number | null
+  /** Wordle Room — optional library/custom pool ({word, hint?}[]) that overrides the category. */
+  wordle_room_custom_words?: unknown | null
 }
 
 export interface Player {
@@ -185,6 +210,13 @@ export interface Player {
   eliminated_at?: string | null
   monopoly_token?: string | null
   participant_id?: string | null
+  /**
+   * Bots-in-room marker (Monopoly + Whot today). See
+   * docs/bots-in-room-plan.md — bots are real players rows so every route
+   * that touches players works on them without special-casing; this flag
+   * only drives UI (🤖 badge, add-bot button visibility, leaderboard gate).
+   */
+  is_bot?: boolean
 }
 
 export type TicTacToeMark = 'X' | 'O'
@@ -303,6 +335,7 @@ export interface ChessSession {
 }
 
 export type AyoSide = 'a' | 'b'
+export type AyoVariant = 'traditional' | 'oware'
 
 export interface AyoSession {
   id: string
@@ -346,7 +379,24 @@ export interface BingoCalledNumber {
   number: number
 }
 
-export type TriviaCategory = 'general' | 'tech'
+export type TriviaCategory =
+  | 'general'
+  | 'tech'
+  | 'art'
+  | 'food'
+  | 'geography'
+  | 'history'
+  | 'language'
+  | 'literature'
+  | 'math'
+  | 'movies'
+  | 'music'
+  | 'nature'
+  | 'pop_culture'
+  | 'science'
+  | 'sports'
+  | 'technology'
+  | 'world_culture'
 
 export interface TriviaMetadata {
   question: string
@@ -770,6 +820,7 @@ export interface WhotSession {
   status_message: string | null
   winner_player_id: string | null
   finish_order: string[]
+  reshuffle_count: number
   turn_deadline_at: string | null
 }
 
@@ -792,16 +843,41 @@ export interface WhotPlayerHand {
 export type UnoColor = 'red' | 'yellow' | 'green' | 'blue'
 export type UnoCardColor = UnoColor | 'wild'
 
-/** What a card does. Number cards carry `value` 0–9; everything else is an action. */
-export type UnoCardKind = 'number' | 'skip' | 'reverse' | 'draw2' | 'wild' | 'wild_draw4'
+/**
+ * What a card does. Number cards carry `value` 0–9; everything else is an action.
+ * The High-Stakes-only kinds (`wild_reverse_draw4`, `draw6`, `draw10`, `discard_all`,
+ * `skip_everyone`, `wild_color_roulette`) only appear in a No Mercy deck — mobile
+ * consumers (UnoCardFace glyph mapping, etc.) already reference them by name so
+ * they must live in the shared type alongside the Classic ones.
+ */
+export type UnoCardKind =
+  | 'number'
+  | 'skip'
+  | 'reverse'
+  | 'draw2'
+  | 'wild'
+  | 'wild_draw4'
+  | 'wild_reverse_draw4'
+  | 'draw6'
+  | 'draw10'
+  | 'discard_all'
+  | 'skip_everyone'
+  | 'wild_color_roulette'
 
 /**
  * Phase-1 (this port) only reaches `playing` / `choose_color` / `challenge_window` / `finished`.
- * `swap_target` (0-7 rule) and `team_leave_decision` (Team-Up, Phase 2) are carried in the shared
- * type for parity with web's session shape but are not driven by any mobile UI yet.
+ * `swap_target` (0-7 rule), `team_leave_decision` (Team-Up, Phase 2) and `color_roulette`
+ * (No Mercy Wild Colour Roulette reveal window) are carried in the shared type for parity
+ * with web's session shape.
  */
 export type UnoPhase =
-  'playing' | 'choose_color' | 'challenge_window' | 'swap_target' | 'team_leave_decision' | 'finished'
+  | 'playing'
+  | 'choose_color'
+  | 'challenge_window'
+  | 'swap_target'
+  | 'team_leave_decision'
+  | 'color_roulette'
+  | 'finished'
 
 export interface UnoCard {
   id: string
@@ -826,13 +902,19 @@ export interface UnoSession {
   required_color: UnoColor | null
   /** Pending forced draw the current player must take (Draw Two / Draw Four target). */
   draw_penalty: number
-  /** Which card can stack onto the pending penalty ('draw2' | 'wild_draw4'); null = must draw it. */
-  draw_penalty_kind: 'draw2' | 'wild_draw4' | null
+  /** Which card can stack onto the pending penalty; null = must draw it. Classic tracks
+   *  same-kind stacking ('draw2' | 'wild_draw4'); No Mercy adds value-based cross-kind
+   *  chains via the extra kinds. */
+  draw_penalty_kind: 'draw2' | 'wild_draw4' | 'draw6' | 'draw10' | 'wild_reverse_draw4' | null
   /** Set to the card the current player just drew while they may still play it or keep it (pass). */
   drawn_card_id: string | null
   last_play_cards?: UnoCard[] | null
-  /** During `choose_color`, which wild is being coloured. */
-  pending_wild: 'wild' | 'wild_draw4' | null
+  /** Who played the current top card (for High Stakes knockout / stack attribution). */
+  last_play_player_id?: string | null
+  /** During `choose_color`, which wild is being coloured. In No Mercy this also carries
+   *  the extra wild kinds — including `wild_color_roulette` which enters `color_roulette`
+   *  phase instead of `choose_color`. */
+  pending_wild: 'wild' | 'wild_draw4' | 'wild_reverse_draw4' | 'draw6' | 'draw10' | 'wild_color_roulette' | null
   /** Colour in effect immediately before a Wild Draw Four (for challenge reveal). */
   challenge_prev_color: UnoColor | null
   /** Who played the Wild Draw Four currently in `challenge_window`. */
@@ -849,6 +931,15 @@ export interface UnoSession {
   left_player_ids?: string[]
   /** Team-Up (Phase 2, unwired on mobile). */
   team_decider_id?: string | null
+  /** No Mercy: players knocked out by the 25-card Mercy rule this round. */
+  eliminated_player_ids?: string[]
+  /** No Mercy: who chose the colour for a Wild Colour Roulette (they draw until match). */
+  color_roulette_player_id?: string | null
+  /** No Mercy: reveals so far in the current Colour Roulette event (NULL when none in
+   *  progress). Trophies for Roulette Master (>=5) / Executioner (>=8) key off this. */
+  color_roulette_reveals?: number | null
+  /** No Mercy — running length of the current Draw-stack chain (see engine notes). */
+  draw_stack_chain?: number
   turn_deadline_at: string | null
   created_at?: string
   updated_at?: string
@@ -1405,6 +1496,7 @@ export interface MonopolyLastCardEvent {
 export interface MonopolyBoard {
   id: string
   game_id: string
+  board_size?: 40 | 48
   turn_order: string[]
   current_turn_index: number
   phase: MonopolyPhase

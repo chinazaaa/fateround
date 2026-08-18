@@ -40,9 +40,19 @@ export function UnoFinalResultsShareBlock({
         session?.turn_order ?? [],
         session?.finish_order ?? [],
         game.uno_team_mode === true,
-        session?.left_player_ids ?? []
+        session?.left_player_ids ?? [],
+        // No Mercy — knocked-out seats always rank behind live players in the standings.
+        session?.eliminated_player_ids ?? []
       ),
-    [hands, players, session?.turn_order, session?.finish_order, game.uno_team_mode, session?.left_player_ids]
+    [
+      hands,
+      players,
+      session?.turn_order,
+      session?.finish_order,
+      game.uno_team_mode,
+      session?.left_player_ids,
+      session?.eliminated_player_ids,
+    ]
   )
 
   const teamMode = game.uno_team_mode === true
@@ -75,6 +85,9 @@ export function UnoFinalResultsShareBlock({
                 : undefined
           }
         />
+        {game.uno_series_scoring ? (
+          <UnoSeriesScoreboard game={game} players={players} highlightPlayerId={highlightPlayerId} />
+        ) : null}
         {standings.length > 0 && (
           <div className="space-y-2">
             {standings.map((row) => {
@@ -140,6 +153,58 @@ export function UnoFinalResultsShareBlock({
           />
         }
       />
+    </div>
+  )
+}
+
+/**
+ * Series running-total scoreboard. Shown when the host enabled series scoring — displays
+ * every player's cumulative points across hands, marks the series winner if reached, and
+ * shows the target so the room knows how much further to go.
+ */
+function UnoSeriesScoreboard({
+  game,
+  players,
+  highlightPlayerId,
+}: {
+  game: Game
+  players: Player[]
+  highlightPlayerId?: string | null
+}) {
+  const scores = (game.uno_series_scores ?? {}) as Record<string, number>
+  const target = Number(game.uno_series_target ?? 1000)
+  const winnerId = game.uno_series_winner_id ?? null
+  const rows = players
+    .map((p) => ({ id: p.id, name: p.name, points: Number(scores[p.id] ?? 0) }))
+    .sort((a, b) => b.points - a.points)
+  if (rows.length === 0) return null
+  return (
+    <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-inset-bg)] p-4">
+      <div className="flex items-baseline justify-between mb-2">
+        <p className="label-caps text-[10px]">Series scoreboard</p>
+        <p className="text-[11px] text-muted">{winnerId ? 'Series won!' : `First to ${target}`}</p>
+      </div>
+      <div className="space-y-1.5">
+        {rows.map((row) => {
+          const isWinner = winnerId === row.id
+          const isMe = highlightPlayerId === row.id
+          const pct = Math.min(100, Math.round((row.points / target) * 100))
+          return (
+            <div key={row.id} className="flex items-center gap-3">
+              <span className="min-w-0 flex-1">
+                <span className={`text-sm font-semibold ${isWinner ? 'gradient-title' : ''}`}>
+                  {row.name}
+                  {isMe ? <span className="label-teal font-semibold"> (you)</span> : null}
+                </span>
+                <div className="mt-0.5 h-1.5 rounded-full bg-[var(--border)] overflow-hidden">
+                  <div className="h-full bg-[var(--primary)]" style={{ width: `${pct}%` }} />
+                </div>
+              </span>
+              <span className="shrink-0 text-sm font-black tabular-nums">{row.points}</span>
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }

@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { MonopolyActiveLayout } from '@/components/monopoly/MonopolyActiveLayout'
 import { MonopolyJoinForm } from '@/components/monopoly/MonopolyJoinForm'
@@ -15,10 +15,17 @@ import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
 import { LeaderboardJoinNote } from '@/components/game-lobby/LeaderboardJoinNote'
 import { MonopolyPageHeader } from '@/components/monopoly/MonopolyChrome'
 import { gameTypeConfig } from '@/lib/game-types'
+import { gameIcon } from '@/lib/game-glyphs'
+import { Glyph } from '@/components/icons/Glyph'
 import { MonopolyFinalResultsShareBlock } from '@/components/monopoly/MonopolyFinalResultsShareBlock'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
-import { buildMonopolyStandings, MONOPOLY_MIN_PLAYERS, MONOPOLY_STARTING_CASH } from '@/lib/monopoly'
+import {
+  buildMonopolyStandings,
+  MONOPOLY_MIN_PLAYERS,
+  MONOPOLY_STARTING_CASH,
+  startingCashForSize,
+} from '@/lib/monopoly'
 import { formatThemedMoney } from '@/components/monopoly/monopoly-themes'
 import { supabase } from '@/lib/supabase'
 import { MONOPOLY_BOARD_SELECT, MONOPOLY_PLAYER_STATE_SELECT, isCompleteMonopolyBoardRow } from '@/lib/supabase-selects'
@@ -42,6 +49,7 @@ import { markPlayerReady } from '@/lib/player-ready'
 import { useMonopolyNotifications } from '@/hooks/useMonopolyNotifications'
 import { preJoinScreen, playerIsViewer } from '@/lib/viewers'
 import { ViewerModeBanner } from '@/components/ViewerModeBanner'
+import { getRememberedName, subscribeLocalIdentity } from '@/lib/identity-local'
 
 type Screen =
   | 'loading'
@@ -142,6 +150,15 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
 
   useApplyGameTheme(screen === 'game_ended' ? 'default' : game?.theme)
   useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
+  useEffect(() => {
+    const prefill = () => {
+      if (resolvingRoomMember || roomDisplayName || joinName.trim()) return
+      const remembered = getRememberedName()
+      if (remembered) setJoinName(remembered)
+    }
+    prefill()
+    return subscribeLocalIdentity(prefill)
+  }, [joinName, resolvingRoomMember, roomDisplayName, setJoinName])
 
   // The Monopoly player path doesn't go through the shared roster dispatcher, so
   // register base rows here — this gives players the header roster drawer (with the
@@ -373,7 +390,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
           players={players}
           joining={joining}
           joiningAsViewer={joiningAsViewer}
-          submitLabel={joiningAsViewer ? 'Join as viewer' : 'Join Monopoly'}
+          submitLabel={joiningAsViewer ? 'Join as viewer' : 'Join Estate Kings'}
           onSubmit={() => {
             // Non-viewer joins require a board token before we hit the hook's join.
             if (!joiningAsViewer && !joinToken) return
@@ -397,7 +414,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
         <p className="text-faint text-xs leading-relaxed text-center">
           {joiningAsViewer
             ? 'This game is in progress — you will join as a viewer and watch live (read-only).'
-            : `${MONOPOLY_MIN_PLAYERS}–6 players · ${formatThemedMoney(MONOPOLY_STARTING_CASH, game?.theme)} starting cash.`}
+            : `${MONOPOLY_MIN_PLAYERS}–6 players · ${formatThemedMoney(startingCashForSize(game?.monopoly_board_size ?? 40), game?.theme)} starting cash.`}
         </p>
       </GameJoinLobbyShell>
     )
@@ -456,12 +473,14 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
                 <h2 className="text-xl sm:text-2xl font-black">You&apos;re in, {displayName}!</h2>
                 <p className="text-muted text-sm leading-relaxed">
                   Waiting for the host to start. You&apos;ll begin with{' '}
-                  {formatThemedMoney(MONOPOLY_STARTING_CASH, game?.theme)} when the game begins.
+                  {formatThemedMoney(startingCashForSize(game?.monopoly_board_size ?? 40), game?.theme)} when the game
+                  begins.
                 </p>
               </>
             )}
+
             <p className="flex items-center justify-center gap-1.5 pt-1 text-sm font-bold text-[var(--foreground)]">
-              <span className="leading-none">{cfg.headerEmoji}</span>
+              <Glyph icon={gameIcon('monopoly')} size={14} className="shrink-0 text-[var(--primary)]" />
               <span>{cfg.label}</span>
             </p>
             {game ? <GameInfoChips game={game} className="pt-2" /> : null}
@@ -517,7 +536,8 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
             players,
             board.property_owners,
             board.property_buildings,
-            board.mortgaged_properties
+            board.mortgaged_properties,
+            board.board_size ?? 40
           )[0]?.name
         : null)
 

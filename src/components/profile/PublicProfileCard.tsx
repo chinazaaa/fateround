@@ -1,15 +1,9 @@
 import Link from 'next/link'
 import { Avatar } from '@/components/Avatar'
+import { Glyph } from '@/components/icons/Glyph'
+import { FireIcon, ArrowRight01Icon } from '@hugeicons/core-free-icons'
 import type { PublicProfileSummary } from '@/lib/profile/public-profile'
-
-const TIER_EMOJI: Record<string, string> = { bronze: '🥉', silver: '🥈', gold: '🥇', platinum: '🏆' }
-// Tinted tile behind each top-trophy medal.
-const TIER_TILE: Record<string, string> = {
-  bronze: 'linear-gradient(135deg, #cd7f32, #a86423)',
-  silver: 'linear-gradient(135deg, #d8d8e0, #a8a8b8)',
-  gold: 'linear-gradient(135deg, #f6d365, #f0b429)',
-  platinum: 'linear-gradient(135deg, #e9e4ff, #c4b5fd)',
-}
+import { tierIcon, TIER_COLORS } from '@/lib/game-glyphs'
 
 function plural(count: number, word: string): string {
   return `${count} ${word}${count === 1 ? '' : 's'}`
@@ -39,8 +33,12 @@ export function PublicProfileCard({ summary }: { summary: PublicProfileSummary }
               Level {summary.level} · {summary.points.toLocaleString()} points
             </p>
             {summary.currentStreak > 0 && (
-              <p className="mt-1 whitespace-nowrap text-sm font-semibold" style={{ color: 'var(--accent, #f43f5e)' }}>
-                🔥 {plural(summary.currentStreak, 'day')} streak
+              <p
+                className="mt-1 inline-flex items-center gap-1 whitespace-nowrap text-sm font-semibold"
+                style={{ color: 'var(--accent, #f43f5e)' }}
+              >
+                <Glyph icon={FireIcon} size={16} />
+                {plural(summary.currentStreak, 'day')} streak
               </p>
             )}
             <div className="mt-5 grid w-full max-w-sm grid-cols-3 gap-2 sm:gap-3">
@@ -55,44 +53,57 @@ export function PublicProfileCard({ summary }: { summary: PublicProfileSummary }
       {/* Content */}
       <div className="mx-auto max-w-2xl space-y-4 px-4 pt-6 sm:px-6">
         {summary.topTrophies.length > 0 && (
-          <div className="glass-card p-5">
-            <p className="text-faint mb-3 text-xs font-bold uppercase tracking-wide">Top trophies</p>
+          <div className="fr-card p-5">
+            <p className="text-xs font-bold uppercase tracking-wider text-[var(--primary)] mb-3">Top trophies</p>
             <div className="space-y-3">
-              {summary.topTrophies.map((t) => (
-                <div key={t.id} className="flex items-center gap-3">
-                  <span
-                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-lg"
-                    style={{ background: TIER_TILE[t.tier] ?? 'var(--surface-inset-bg)' }}
-                    aria-hidden
-                  >
-                    {TIER_EMOJI[t.tier] ?? '🏅'}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate font-semibold leading-tight">{t.title}</p>
-                    <p className="text-faint truncate text-xs">
-                      {t.gameLabel}
-                      {t.tier ? ` · ${t.tier[0].toUpperCase()}${t.tier.slice(1)}` : ''}
-                      {t.rarityPct !== null ? ` · ${t.rarityPct}% of players` : ''}
-                    </p>
+              {summary.topTrophies.map((t) => {
+                const tierColor = TIER_COLORS[t.tier] ?? '#a8a8b8'
+                return (
+                  <div key={t.id} className="flex items-center gap-3">
+                    {/* Tinted plate rather than `.fr-glyph`: that plate derives every colour from
+                        `--accent`, which would paint all four tiers the same rose. Tinting the tier's
+                        own metal keeps bronze/silver/gold/platinum distinguishable at a glance, and a
+                        12% wash behind the stroke stays legible in both themes. */}
+                    <span
+                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
+                      style={{
+                        background: `color-mix(in srgb, ${tierColor} 16%, transparent)`,
+                        color: tierColor,
+                      }}
+                    >
+                      <Glyph icon={tierIcon(t.tier)} size={20} />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-semibold leading-tight">{t.title}</p>
+                      <p className="truncate text-xs" style={{ color: 'var(--text-faint)' }}>
+                        {t.gameLabel}
+                        {t.tier ? ` · ${t.tier[0].toUpperCase()}${t.tier.slice(1)}` : ''}
+                        {t.rarityPct !== null ? ` · ${t.rarityPct}% of players` : ''}
+                      </p>
+                    </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
             {summary.trophyCount > 0 && (
               <Link
                 href={`/u/${summary.username}/trophies`}
-                className="mt-4 block text-center text-sm font-semibold no-underline"
-                style={{ color: 'var(--accent, #f43f5e)' }}
+                className="mt-4 flex items-center justify-center gap-1 text-sm font-semibold text-[var(--primary)] no-underline hover:underline"
               >
-                See all {summary.trophyCount} {summary.trophyCount === 1 ? 'trophy' : 'trophies'} →
+                See all {summary.trophyCount} {summary.trophyCount === 1 ? 'trophy' : 'trophies'}
+                <Glyph icon={ArrowRight01Icon} size={16} />
               </Link>
             )}
           </div>
         )}
 
         <div className="mx-auto max-w-sm pt-1">
-          <Link href="/" className="btn-primary block w-full text-center no-underline">
-            Beat {summary.handle}&apos;s score →
+          <Link
+            href="/"
+            className="fr-btn fr-btn--primary flex w-full items-center justify-center gap-1.5 no-underline"
+          >
+            Beat {summary.handle}&apos;s score
+            <Glyph icon={ArrowRight01Icon} size={16} />
           </Link>
         </div>
       </div>
@@ -102,9 +113,11 @@ export function PublicProfileCard({ summary }: { summary: PublicProfileSummary }
 
 function Tile({ value, label }: { value: string; label: string }) {
   return (
-    <div className="glass-card p-3 text-center">
+    <div className="fr-card p-3 text-center">
       <p className="text-2xl font-black">{value}</p>
-      <p className="text-faint mt-0.5 text-[11px] uppercase tracking-wide">{label}</p>
+      <p className="mt-0.5 text-[11px] uppercase tracking-wider" style={{ color: 'var(--text-faint)' }}>
+        {label}
+      </p>
     </div>
   )
 }
