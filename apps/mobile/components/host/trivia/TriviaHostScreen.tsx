@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { uniqueTopic } from '@/lib/realtime'
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native'
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native'
 import type { Game, Player, Round, TriviaAnswer } from '@fateround/shared'
 import {
   formatTriviaChoiceLabel,
@@ -111,16 +111,25 @@ export function TriviaHostScreen({ gameCode, hostToken, game, players, onReload 
     }
   }
 
-  const onFinish = async () => {
-    setActing(true)
-    try {
-      await postFinishGame(gameCode, hostToken)
-      onReload()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not finish')
-    } finally {
-      setActing(false)
-    }
+  const onFinish = () => {
+    Alert.alert('End game', 'End the game for everyone now?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'End game',
+        style: 'destructive',
+        onPress: async () => {
+          setActing(true)
+          try {
+            await postFinishGame(gameCode, hostToken)
+            onReload()
+          } catch (err) {
+            setError(err instanceof Error ? err.message : 'Could not finish')
+          } finally {
+            setActing(false)
+          }
+        },
+      },
+    ])
   }
 
   const onPlayAgain = async () => {
