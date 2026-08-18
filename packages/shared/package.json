@@ -85,6 +85,8 @@
     "./vote-stats": "./src/vote-stats.ts",
     "./draughts10": "./src/draughts10.ts",
     "./batch-10-games": "./src/batch-10-games.ts",
-    "./ping-pong": "./src/ping-pong.ts"
+    "./ping-pong": "./src/ping-pong.ts",
+    "./wordle-room": "./src/wordle-room.ts",
+    "./batch-12-games": "./src/batch-12-games.ts"
   }
 }

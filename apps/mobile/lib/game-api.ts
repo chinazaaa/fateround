@@ -1279,6 +1279,12 @@ export type BoardLobbyPatch = {
   puzzle_theme_id?: string
   /** Host-supplied puzzle pool (a Library pack or "Your own" upload); server re-validates + normalises. */
   puzzle_custom_questions?: unknown[]
+  /** Wordle Room — built-in category (General English / Naija Slang / themed). */
+  wordle_room_category?: string
+  /** Wordle Room — 5/10/15/20 words per race. */
+  wordle_room_word_count?: number
+  /** Wordle Room — optional library-pack pool ({word, hint?}[]); clears when empty. */
+  wordle_room_words?: { word: string; hint?: string }[] | null
 }
 
 export function postLobbySettings(gameCode: string, hostToken: string, patch: BoardLobbyPatch) {
@@ -1608,4 +1614,66 @@ export function removePlayerAsHost(gameCode: string, playerId: string, hostToken
     playerId,
     hostToken,
   })
+}
+
+// ── Wordle Room ──────────────────────────────────────────────────────────────
+
+export interface WordleRoomStatusResponse {
+  success?: boolean
+  gameId?: string
+  status?: string
+  currentWord?: string
+  wordLength?: number
+  maxAttempts?: number
+  word_index?: number
+  word_count?: number
+  words_solved?: number
+  total_guesses?: number
+  categoryLabel?: string
+  finished?: boolean
+  guesses?: { guess: string; state: ('correct' | 'present' | 'absent')[] }[]
+  timeRemainingMs?: number
+  hasProgressRow?: boolean
+  hintAvailable?: boolean
+  hintUsed?: boolean
+  hint?: string | null
+}
+
+export function postWordleRoomStatus(gameId: string, resumeToken: string) {
+  return postJson<WordleRoomStatusResponse>('/api/wordle-room/status', {
+    gameId: gameId.toUpperCase(),
+    resumeToken,
+  })
+}
+
+export interface WordleRoomGuessResponse {
+  success?: boolean
+  solved?: boolean
+  pointsAwarded?: number
+  guessesUsed?: number
+  maxAttempts?: number
+  wordIndex?: number
+  wordsSolved?: number
+  finished?: boolean
+  nextWord?: string | null
+  guessId?: string | null
+}
+
+export function postWordleRoomGuess(gameId: string, resumeToken: string, word: string) {
+  return postJson<WordleRoomGuessResponse>('/api/wordle-room/guess', {
+    gameId: gameId.toUpperCase(),
+    resumeToken,
+    word,
+  })
+}
+
+export function postWordleRoomRevealHint(gameId: string, resumeToken: string, wordIndex: number) {
+  return postJson<{ success?: boolean; wordIndex?: number; hint?: string; cost?: number }>(
+    '/api/wordle-room/reveal-hint',
+    {
+      gameId: gameId.toUpperCase(),
+      resumeToken,
+      wordIndex,
+    }
+  )
 }
