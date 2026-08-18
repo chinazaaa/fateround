@@ -435,6 +435,7 @@ export function TrollRunPlayerView({ gameCode }: { gameCode: string }) {
           onLevelClear={handleLevelClear}
           onAllLevelsCleared={handleAllLevelsCleared}
           showTouchControls={true}
+          theme={(game?.theme as 'dark' | 'retro' | 'neon') || 'dark'}
         />
       </div>
 

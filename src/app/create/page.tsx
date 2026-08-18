@@ -3113,48 +3113,50 @@ function CreateGameInner() {
           />
 
           {/* Theme */}
-          <div className="glass-card p-5 space-y-3">
-            <p className="label-caps">Theme{settings.game_type === 'monopoly' ? ' · Edition' : ''}</p>
-            <div
-              className={`grid ${settings.game_type === 'monopoly' ? 'grid-cols-2 max-w-sm sm:max-w-md' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-5'} gap-1.5 sm:gap-2`}
-            >
-              {(settings.game_type === 'monopoly'
-                ? THEMES.filter((theme) => MONOPOLY_EDITIONS.some((e) => e.themeId === theme.id))
-                : settings.game_type === 'ping_pong'
-                  ? THEMES.filter((theme) => theme.id === 'default' || theme.id === 'grass_court')
-                  : THEMES.filter(
-                      (theme) =>
-                        theme.id !== 'pirate' &&
-                        theme.id !== 'arctic' &&
-                        theme.id !== 'naija' &&
-                        theme.id !== 'grass_court'
-                    )
-              ).map((theme) => {
-                const monopolyEdition =
-                  settings.game_type === 'monopoly' ? MONOPOLY_EDITIONS.find((e) => e.themeId === theme.id) : null
-                const displayTheme = monopolyEdition
-                  ? { ...theme, label: monopolyEdition.editionName, emoji: monopolyEdition.editionEmoji }
-                  : settings.game_type === 'ping_pong' && theme.id === 'default'
-                    ? {
-                        ...theme,
-                        label: 'Table Tennis',
-                        emoji: '🏓',
-                        icon: TableTennisBatIcon,
-                        preview: { bg: '#064e3b', accent: '#f43f5e', text: '#ecfdf5' },
-                      }
-                    : theme
-                return (
-                  <ThemePreviewCard
-                    key={theme.id}
-                    theme={displayTheme}
-                    selected={settings.theme === theme.id}
-                    onClick={() => setSettings({ ...settings, theme: theme.id })}
-                    onPreview={() => setPreviewTheme(displayTheme)}
-                  />
-                )
-              })}
+          {!isTrollRun && (
+            <div className="glass-card p-5 space-y-3">
+              <p className="label-caps">Theme{settings.game_type === 'monopoly' ? ' · Edition' : ''}</p>
+              <div
+                className={`grid ${settings.game_type === 'monopoly' ? 'grid-cols-2 max-w-sm sm:max-w-md' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-5'} gap-1.5 sm:gap-2`}
+              >
+                {(settings.game_type === 'monopoly'
+                  ? THEMES.filter((theme) => MONOPOLY_EDITIONS.some((e) => e.themeId === theme.id))
+                  : settings.game_type === 'ping_pong'
+                    ? THEMES.filter((theme) => theme.id === 'default' || theme.id === 'grass_court')
+                    : THEMES.filter(
+                        (theme) =>
+                          theme.id !== 'pirate' &&
+                          theme.id !== 'arctic' &&
+                          theme.id !== 'naija' &&
+                          theme.id !== 'grass_court'
+                      )
+                ).map((theme) => {
+                  const monopolyEdition =
+                    settings.game_type === 'monopoly' ? MONOPOLY_EDITIONS.find((e) => e.themeId === theme.id) : null
+                  const displayTheme = monopolyEdition
+                    ? { ...theme, label: monopolyEdition.editionName, emoji: monopolyEdition.editionEmoji }
+                    : settings.game_type === 'ping_pong' && theme.id === 'default'
+                      ? {
+                          ...theme,
+                          label: 'Table Tennis',
+                          emoji: '🏓',
+                          icon: TableTennisBatIcon,
+                          preview: { bg: '#064e3b', accent: '#f43f5e', text: '#ecfdf5' },
+                        }
+                      : theme
+                  return (
+                    <ThemePreviewCard
+                      key={theme.id}
+                      theme={displayTheme}
+                      selected={settings.theme === theme.id}
+                      onClick={() => setSettings({ ...settings, theme: theme.id })}
+                      onPreview={() => setPreviewTheme(displayTheme)}
+                    />
+                  )
+                })}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* You — host seat choice, carried into the lobby via host-play intent */}
           {hostPlaySupported && (
@@ -6113,6 +6115,31 @@ function CreateGameInner() {
                           <span>{w.title}</span>
                         </span>
                         <span className="text-faint text-[11px] block mt-0.5">{w.desc}</span>
+                      </button>
+                    ))}
+                  </div>
+                </Field>
+
+                <Field label="Visual Palette">
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { id: 'dark', label: 'Dark Slate', emoji: '🌑' },
+                      { id: 'retro', label: 'Retro 8-Bit', emoji: '🕹️' },
+                      { id: 'neon', label: 'Cyber Neon', emoji: '⚡' },
+                    ].map((t) => (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => setSettings({ ...settings, theme: t.id as any })}
+                        className={[
+                          'rounded-xl border-2 py-2.5 px-2 text-center transition flex flex-col items-center gap-1',
+                          settings.theme === t.id
+                            ? 'border-[var(--primary)] bg-[var(--surface-inset-bg)] ring-1 ring-[var(--primary)] text-body font-bold'
+                            : 'border-[var(--border-strong)] text-muted hover:border-[var(--border)]',
+                        ].join(' ')}
+                      >
+                        <span className="text-xl">{t.emoji}</span>
+                        <span className="text-xs">{t.label}</span>
                       </button>
                     ))}
                   </div>
