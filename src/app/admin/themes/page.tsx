@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { puzzleThemeEntriesToCsv } from '@/lib/puzzle-themes'
 
-type GameTypeId = 'crossword' | 'word_search' | 'word_scramble'
+type GameTypeId = 'crossword' | 'word_search' | 'word_scramble' | 'wordle_room'
 
 const GAME_TYPES: { id: GameTypeId; label: string; columns: string; sample: string }[] = [
   { id: 'crossword', label: 'Crossword', columns: 'answer,clue', sample: '/crossword-answers-sample.csv' },
@@ -12,6 +12,12 @@ const GAME_TYPES: { id: GameTypeId; label: string; columns: string; sample: stri
     id: 'word_scramble',
     label: 'Word Scramble',
     columns: 'word,hint (hint optional)',
+    sample: '/word-scramble-words-sample.csv',
+  },
+  {
+    id: 'wordle_room',
+    label: 'Wordle',
+    columns: 'word,hint (3–8 letters, hint optional)',
     sample: '/word-scramble-words-sample.csv',
   },
 ]
