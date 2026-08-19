@@ -24,11 +24,26 @@ it quietly wrong here. `has_column_privilege` answers the question the app actua
 
 ## The `service_role` check is conditional on purpose
 
-Hosted Supabase bootstraps `GRANT ALL ... TO service_role`; a from-scratch `supabase db reset`
-does not reproduce it, so locally `service_role` holds no privileges on most migration-created
-tables. Asserting unconditionally produces false failures. The guard therefore only flags
-*starvation*: `service_role` reads other columns of the table but not the secret one, which would
-mean a migration revoked from it by mistake.
+Locally, `service_role` holds no privileges on many migration-created tables, so asserting it
+unconditionally produces false failures (10 of them, at the time of writing). The guard therefore
+only flags *starvation*: `service_role` reads other columns of the table but not the secret one,
+which would mean a migration revoked from it by mistake.
+
+The cause is `20260803160000_default_privileges_lockdown.sql`. It sets, via
+`ALTER DEFAULT PRIVILEGES`, `select on tables to anon, authenticated` and `all on tables to
+service_role` — and, as its own comment says, "This affects FUTURE objects only; it does not
+retroactively change existing grants." So on a local database built by replaying migrations in
+order, the grants split strictly by migration timestamp:
+
+| created                      | `anon` SELECT | examples                                                    |
+| ---------------------------- | ------------- | ----------------------------------------------------------- |
+| **before** `20260803160000`  | no            | `codewords_boards`, `codewords_player_roles`, `ttl_statements` |
+| **after** `20260803160000`   | yes           | `notification_subscriptions`, `game_rsvps`, `wordle_room_solutions` |
+
+Hosted projects differ because their default privileges were in force from project creation,
+before any migration ran, so the early tables received grants there too. This is why a table can
+be unreadable locally and perfectly readable on dev — and why a local-only failure is not
+automatically a production bug. Confirm against the hosted project before acting on one.
 
 ## Expect failures for games whose revoke has not merged
 
