@@ -20,8 +20,14 @@ import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { GameEndedScreen } from '@/components/lifecycle/GameEndedScreen'
 import { GameStartedWaitingScreen } from '@/components/lifecycle/GameStartedWaitingScreen'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
+import { useDeadlineCountdown } from '@/hooks/useDeadlineCountdown'
 import { usePlayerSessionActions } from '@/lib/player-session'
-import { postWordleRoomStatus, postWordleRoomGuess, postWordleRoomRevealHint } from '@/lib/game-api'
+import {
+  postWordleRoomStatus,
+  postWordleRoomGuess,
+  postWordleRoomRevealHint,
+  postWordleRoomExpire,
+} from '@/lib/game-api'
 import { gameLabel } from '@/lib/mobile-registry'
 import { getSupabase } from '@/lib/supabase'
 import type { Theme } from '@/constants/theme'
@@ -96,13 +102,6 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
   const [hintUsed, setHintUsed] = useState(false)
   const [hintText, setHintText] = useState<string | null>(null)
   const [progressRows, setProgressRows] = useState<WordleRoomProgressRow[]>([])
-  // Flips true once the standings query has returned at least once, so we can
-  // gate the "active" render on standings + grid both being ready.
-  const [progressLoaded, setProgressLoaded] = useState(false)
-  // Safety net: after a few seconds we render the finish panel with whatever
-  // standings resolved even if the progress query never came back — a missing
-  // rounds row or an RLS gap can't strand the user on a permanent loader.
-  const [progressLoadTimedOut, setProgressLoadTimedOut] = useState(false)
   const [roundId, setRoundId] = useState<string | null>(null)
   const submitLockRef = useRef(false)
   const advanceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -208,28 +207,16 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
       .select('*')
       .eq('game_id', bootstrap.code)
       .eq('round_id', roundId)
-    // Only flip progressLoaded on a successful query. A failed query mustn't
-    // pass the render gate — otherwise the finished screen or the active
-    // board renders with empty/stale standings and the user gets no retry.
+    // Ignore a failed read (keep the last good rows) rather than blanking the
+    // standings; the next realtime tick / mount will retry.
     if (res.error) return
     setProgressRows((res.data ?? []) as WordleRoomProgressRow[])
-    setProgressLoaded(true)
   }, [bootstrap.code, roundId])
 
   useEffect(() => {
     if (!roundId) return
     void loadProgress()
   }, [roundId, loadProgress])
-
-  // Fallback timer: if the standings query never resolves — a missing rounds
-  // row, an RLS gap, or a stalled network — release the render gate after a
-  // few seconds so the finished/active screen renders anyway. Better an empty
-  // panel with the winner header than a permanent loading spinner.
-  useEffect(() => {
-    if (progressLoaded) return
-    const id = setTimeout(() => setProgressLoadTimedOut(true), 5000)
-    return () => clearTimeout(id)
-  }, [progressLoaded])
 
   useEffect(() => {
     if (!bootstrap.myResumeToken || !bootstrap.game) return
@@ -265,11 +252,42 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
   )
   const myStanding = standings.find((s) => s.player_id === bootstrap.myPlayerId)
 
+  // Shared room clock. `timer_seconds` holds the whole-room cap (0 = untimed).
+  // Everyone counts down off the same session_started_at, so the pill in the
+  // header explains exactly why the game ends. When it hits 0 we ask the server
+  // to finalize (any client may — the route re-checks and no-ops otherwise),
+  // then reload so the finished screen appears.
+  const timerDuration = Math.max(0, bootstrap.game?.timer_seconds ?? 0)
+  const timerActive = bootstrap.game?.status === 'active' && !!bootstrap.game?.session_started_at && timerDuration > 0
+  const secondsLeft = useDeadlineCountdown(bootstrap.game?.session_started_at, timerDuration, timerActive)
+  const timeUp = timerActive && secondsLeft <= 0
+  const expireInFlightRef = useRef(false)
+  useEffect(() => {
+    if (!timerActive || secondsLeft > 0 || expireInFlightRef.current) return
+    expireInFlightRef.current = true
+    let cancelled = false
+    void (async () => {
+      try {
+        await postWordleRoomExpire(bootstrap.code)
+      } catch {
+        // best-effort — a retry fires on the next tick if still active
+      } finally {
+        if (!cancelled) {
+          expireInFlightRef.current = false
+          void bootstrap.load()
+        }
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [timerActive, secondsLeft, bootstrap])
+
   const addLetter = useCallback(
     (raw: string) => {
       const ch = raw.toLowerCase()
       if (!/^[a-z]$/.test(ch)) return
-      if (myFinished || !currentWord) return
+      if (myFinished || !currentWord || timeUp) return
       setMessage(null)
       if (cursorAt < current.length) {
         setCurrent(current.slice(0, cursorAt) + ch + current.slice(cursorAt + 1))
@@ -299,7 +317,7 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
   )
 
   const submitGuess = useCallback(async () => {
-    if (!currentWord || !bootstrap.myResumeToken || isViewer || myFinished) return
+    if (!currentWord || !bootstrap.myResumeToken || isViewer || myFinished || timeUp) return
     if (submitLockRef.current) return
     if (current.length < wordLength) {
       setMessage('Not enough letters')
@@ -336,7 +354,7 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
     } finally {
       submitLockRef.current = false
     }
-  }, [bootstrap, current, currentWord, isViewer, myFinished, scheduleAdvance, wordIndex, wordLength])
+  }, [bootstrap, current, currentWord, isViewer, myFinished, timeUp, scheduleAdvance, wordIndex, wordLength])
 
   const revealHint = useCallback(() => {
     if (!bootstrap.myResumeToken || !hintAvailable || hintUsed || myFinished) return
@@ -403,12 +421,11 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
   if (!bootstrap.game) return <GameLoading />
 
   if (bootstrap.screen === 'finished') {
-    // Wait for standings before rendering the finish panel — otherwise the
-    // leaderboard is empty and the panel collapses to just the footer buttons.
-    // Cap the wait so a missing rounds row / RLS gap can't strand the screen
-    // on a permanent loader; after the fallback fires the panel renders with
-    // whatever standings resolved (possibly empty) rather than staying blank.
-    if (!progressLoaded && !progressLoadTimedOut) return <GameLoading />
+    // Render the finish panel immediately — never block on the standings query.
+    // The leaderboard is driven by the `standings` memo, which fills in as soon
+    // as loadProgress resolves (mount + realtime), so a slow/failed progress
+    // read shows the winner header and footer actions right away instead of
+    // stranding everyone on a permanent loader.
     const top = standings[0]
     const winnerId = top?.total_points && top.total_points > 0 ? top.player_id : null
     const title = winnerId ? (bootstrap.myPlayerId === winnerId ? 'You win!' : `${top!.name} wins!`) : 'Game over'
@@ -436,8 +453,10 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
   // Gate the active render on BOTH the grid data (currentWord) and standings
   // (progressLoaded) being ready, so the standings panel doesn't flash before
   // the grid loads in.
+  // Only the grid data (currentWord) gates the active render — never the
+  // standings query, which fills in shortly after and must not be able to
+  // strand a player on a loader if it's slow or errors.
   if (bootstrap.screen === 'active' && !currentWord) return <GameLoading />
-  if (bootstrap.screen === 'active' && !progressLoaded && !progressLoadTimedOut) return <GameLoading />
 
   // Active — render the board + keyboard + standings.
   const rows: React.ReactNode[] = []
@@ -496,6 +515,19 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
           <Text style={styles.headerMeta}>
             Word {Math.min(wordIndex + 1, wordCount)}/{wordCount}
           </Text>
+          {/* Shared room clock — prominent so players understand why the game
+              ends. Red in the final 30s / when time's up; hidden when untimed. */}
+          {timeUp ? (
+            <View style={[styles.timerPill, styles.timerPillUrgent]}>
+              <Text style={styles.timerPillTextUrgent}>⏱ Time's up</Text>
+            </View>
+          ) : timerDuration > 0 ? (
+            <View style={[styles.timerPill, secondsLeft <= 30 && styles.timerPillUrgent]}>
+              <Text style={secondsLeft <= 30 ? styles.timerPillTextUrgent : styles.timerPillText}>
+                ⏱ {formatCountdown(secondsLeft)}
+              </Text>
+            </View>
+          ) : null}
         </View>
         <View style={styles.legend}>
           <View style={styles.legendItem}>
@@ -525,7 +557,12 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
               <Text style={styles.hintButtonText}>Reveal hint (−{WORDLE_ROOM_HINT_COST} pts)</Text>
             </Pressable>
           ) : null)}
-        {currentWord && !myFinished && (
+        {timeUp && !myFinished && (
+          <View style={styles.finishedCard}>
+            <Text style={styles.finishedNote}>⏱ Time's up — the round is over.</Text>
+          </View>
+        )}
+        {currentWord && !myFinished && !timeUp && (
           <View style={styles.keyboard}>
             {(() => {
               // Best per-letter state across all guesses so far, so the
@@ -621,6 +658,12 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
 // text/image. Order: solved · time · hints. Time only appears once the
 // server has recorded a total_time_ms (players who never finished a word
 // keep the shorter "solved · hints" form).
+/** m:ss for the live countdown pill (never negative). */
+function formatCountdown(seconds: number): string {
+  const s = Math.max(0, Math.floor(seconds))
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
+}
+
 function formatWordleRoomTime(ms: number | null | undefined): string | null {
   if (ms == null || ms < 0) return null
   const total = Math.floor(ms / 1000)
@@ -667,6 +710,15 @@ const makeStyles = (theme: Theme) =>
     },
     badgeText: { color: '#fff', fontSize: 12, fontWeight: '700', letterSpacing: 0.5 },
     headerMeta: { color: theme.textMuted, fontSize: 13, fontWeight: '600' },
+    timerPill: {
+      paddingHorizontal: 12,
+      paddingVertical: 5,
+      borderRadius: 999,
+      backgroundColor: theme.primarySoft,
+    },
+    timerPillUrgent: { backgroundColor: theme.error },
+    timerPillText: { color: theme.primaryMuted, fontSize: 15, fontWeight: '800', fontVariant: ['tabular-nums'] },
+    timerPillTextUrgent: { color: '#fff', fontSize: 15, fontWeight: '800', fontVariant: ['tabular-nums'] },
     legend: {
       flexDirection: 'row',
       flexWrap: 'wrap',

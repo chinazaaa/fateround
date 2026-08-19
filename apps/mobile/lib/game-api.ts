@@ -1657,6 +1657,16 @@ export function postWordleRoomGuess(gameId: string, resumeToken: string, word: s
   })
 }
 
+/** Ask the server to finalize a wordle_room game whose shared clock has run out.
+ *  Any active client may call it (the route re-checks the deadline and no-ops if
+ *  the game isn't actually expired). Returns whether it finished/expired. */
+export function postWordleRoomExpire(gameId: string) {
+  return postJson<{ finished?: boolean; expired?: boolean; skipped?: boolean }>(
+    `/api/games/${gameId.toUpperCase()}/expire-wordle-room`,
+    {}
+  )
+}
+
 export function postWordleRoomRevealHint(gameId: string, resumeToken: string, wordIndex: number) {
   return postJson<{ success?: boolean; wordIndex?: number; hint?: string; cost?: number }>(
     '/api/wordle-room/reveal-hint',
