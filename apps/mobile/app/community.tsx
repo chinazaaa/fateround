@@ -19,7 +19,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { Stack } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { AmbientBackground } from '@/components/ui/AmbientBackground'
@@ -91,6 +91,8 @@ export default function CommunityLeaderboardScreen() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
+  const [refreshing, setRefreshing] = useState(false)
+
   const load = useCallback(async (win: LeaderboardWindow, date: string, gameSlug: string, signal: AbortSignal) => {
     setLoading(true)
     setError(null)
@@ -138,12 +140,33 @@ export default function CommunityLeaderboardScreen() {
 
   const canGoNext = !!data && data.rangeEnd < today
 
+  const onRefresh = useCallback(async () => {
+    const controller = new AbortController()
+    setRefreshing(true)
+    try {
+      await load(tab, selectedDate, game, controller.signal)
+    } finally {
+      setRefreshing(false)
+    }
+  }, [game, load, selectedDate, tab])
+
   return (
     <SafeAreaView style={styles.safe} edges={['bottom']}>
       <Stack.Screen options={{ headerShown: true, title: 'Community' }} />
       <AmbientBackground />
 
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => void onRefresh()}
+            tintColor={theme.primaryMuted}
+            colors={[theme.primary]}
+          />
+        }
+      >
         <View style={styles.hero}>
           <Text style={styles.kicker}>🏆 Community</Text>
           <Text style={styles.heroTitle}>Community Leaderboard</Text>

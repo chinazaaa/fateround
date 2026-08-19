@@ -99,6 +99,10 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
   // Flips true once the standings query has returned at least once, so we can
   // gate the "active" render on standings + grid both being ready.
   const [progressLoaded, setProgressLoaded] = useState(false)
+  // Safety net: after a few seconds we render the finish panel with whatever
+  // standings resolved even if the progress query never came back — a missing
+  // rounds row or an RLS gap can't strand the user on a permanent loader.
+  const [progressLoadTimedOut, setProgressLoadTimedOut] = useState(false)
   const [roundId, setRoundId] = useState<string | null>(null)
   const submitLockRef = useRef(false)
   const advanceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -216,6 +220,16 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
     if (!roundId) return
     void loadProgress()
   }, [roundId, loadProgress])
+
+  // Fallback timer: if the standings query never resolves — a missing rounds
+  // row, an RLS gap, or a stalled network — release the render gate after a
+  // few seconds so the finished/active screen renders anyway. Better an empty
+  // panel with the winner header than a permanent loading spinner.
+  useEffect(() => {
+    if (progressLoaded) return
+    const id = setTimeout(() => setProgressLoadTimedOut(true), 5000)
+    return () => clearTimeout(id)
+  }, [progressLoaded])
 
   useEffect(() => {
     if (!bootstrap.myResumeToken || !bootstrap.game) return
@@ -391,7 +405,10 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
   if (bootstrap.screen === 'finished') {
     // Wait for standings before rendering the finish panel — otherwise the
     // leaderboard is empty and the panel collapses to just the footer buttons.
-    if (!progressLoaded) return <GameLoading />
+    // Cap the wait so a missing rounds row / RLS gap can't strand the screen
+    // on a permanent loader; after the fallback fires the panel renders with
+    // whatever standings resolved (possibly empty) rather than staying blank.
+    if (!progressLoaded && !progressLoadTimedOut) return <GameLoading />
     const top = standings[0]
     const winnerId = top?.total_points && top.total_points > 0 ? top.player_id : null
     const title = winnerId ? (bootstrap.myPlayerId === winnerId ? 'You win!' : `${top!.name} wins!`) : 'Game over'
@@ -407,11 +424,10 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
             scoreSuffix: 'pts',
             highlight: s.player_id === bootstrap.myPlayerId,
             you: s.player_id === bootstrap.myPlayerId,
-            detail: `${s.words_solved} solved${s.hints_used_count ? ` · ${s.hints_used_count} hint${s.hints_used_count > 1 ? 's' : ''}` : ''}`,
+            detail: buildWordleRoomDetail(s),
           }))}
           winnerPlayerId={winnerId ?? undefined}
           roundKey={roundId ?? bootstrap.code}
-          hideDefaultHeader
         />
       </GameShell>
     )
@@ -420,7 +436,8 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
   // Gate the active render on BOTH the grid data (currentWord) and standings
   // (progressLoaded) being ready, so the standings panel doesn't flash before
   // the grid loads in.
-  if (bootstrap.screen === 'active' && (!currentWord || !progressLoaded)) return <GameLoading />
+  if (bootstrap.screen === 'active' && !currentWord) return <GameLoading />
+  if (bootstrap.screen === 'active' && !progressLoaded && !progressLoadTimedOut) return <GameLoading />
 
   // Active — render the board + keyboard + standings.
   const rows: React.ReactNode[] = []
@@ -597,6 +614,27 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
       </ScrollView>
     </GameShell>
   )
+}
+
+// Compose the per-row detail line for the finished-screen leaderboard so we
+// can share it — and only it — between the on-screen panel and the shared
+// text/image. Order: solved · time · hints. Time only appears once the
+// server has recorded a total_time_ms (players who never finished a word
+// keep the shorter "solved · hints" form).
+function formatWordleRoomTime(ms: number | null | undefined): string | null {
+  if (ms == null || ms < 0) return null
+  const total = Math.floor(ms / 1000)
+  const minutes = Math.floor(total / 60)
+  const seconds = total % 60
+  return `${minutes}:${String(seconds).padStart(2, '0')}`
+}
+
+function buildWordleRoomDetail(row: WordleRoomStandingRow): string {
+  const time = formatWordleRoomTime(row.total_time_ms)
+  const parts: string[] = [`${row.words_solved} solved`]
+  if (time) parts.push(`time ${time}`)
+  if (row.hints_used_count > 0) parts.push(`${row.hints_used_count} hint${row.hints_used_count > 1 ? 's' : ''}`)
+  return parts.join(' · ')
 }
 
 function tileStateStyle(theme: Theme, state: WordleLetterState) {
