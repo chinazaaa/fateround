@@ -633,7 +633,18 @@ const makeStyles = (theme: Theme) =>
     tileEmpty: { borderColor: theme.border, opacity: 0.6 },
     tileCurrent: { borderColor: theme.text },
     tileFocus: { borderColor: theme.primary, borderWidth: 3 },
-    tileText: { color: theme.text, fontSize: 22, fontWeight: '800', textTransform: 'uppercase' },
+    // alignSelf:'stretch' + textAlign:'center' — RN New Arch measures a narrow
+    // lone glyph inside a flexed Text to zero and renders nothing (the "I" tile
+    // and "I" key were blank). Stretch + center sidesteps the intrinsic-width
+    // measurement.
+    tileText: {
+      color: theme.text,
+      fontSize: 22,
+      fontWeight: '800',
+      textTransform: 'uppercase',
+      alignSelf: 'stretch',
+      textAlign: 'center',
+    },
     message: { color: theme.text, fontSize: 14, fontWeight: '600', textAlign: 'center' },
     hintText: { color: theme.textMuted, fontSize: 13, textAlign: 'center' },
     hintCost: { color: theme.textFaint, fontSize: 11 },
@@ -661,7 +672,14 @@ const makeStyles = (theme: Theme) =>
       justifyContent: 'center',
     },
     keyWide: { flex: 1.5 },
-    keyText: { color: theme.text, fontSize: 15, fontWeight: '700', textTransform: 'uppercase' },
+    keyText: {
+      color: theme.text,
+      fontSize: 15,
+      fontWeight: '700',
+      textTransform: 'uppercase',
+      alignSelf: 'stretch',
+      textAlign: 'center',
+    },
     keyTextWide: { fontSize: 12 },
     finishedNote: { color: theme.primary, fontWeight: '700', textAlign: 'center' },
     finishedCard: {
