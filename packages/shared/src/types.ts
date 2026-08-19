@@ -56,9 +56,9 @@ export type GameType =
   | 'word_search'
   | 'word_scramble'
   | 'landmine'
-  | 'ping_pong'
   | 'word_grouping'
   | 'wordle_room'
+  | 'troll_run'
 
 export interface Game {
   id: string
@@ -180,6 +180,9 @@ export interface Game {
   /** Who Said This: 'player' (players submit) or 'deck' (host Platform/Library/CSV deck). */
   wst_quote_source?: string | null
   trivia_category?: TriviaCategory | string | null
+  troll_run_rounds?: number | null
+  troll_run_time_limit?: number | null
+  troll_run_world?: string | null
   created_at?: string | null
   bingo_call_mode?: 'manual' | 'auto' | string | null
   bingo_call_interval_seconds?: number | null
@@ -189,7 +192,6 @@ export interface Game {
   word_search_difficulty?: WordSearchDifficulty | string | null
   word_scramble_theme?: string | null
   word_scramble_difficulty?: WordScrambleDifficulty | string | null
-  ping_pong_points_to_win?: number | null
   /** Wordle Room — built-in category the race draws from. */
   wordle_room_category?: string | null
   /** Wordle Room — 5/10/15/20 words per race. */
@@ -236,21 +238,6 @@ export interface TicTacToeSession {
   is_draw: boolean
   status_message: string | null
   turn_deadline_at: string | null
-}
-
-export interface PingPongSession {
-  id: string
-  game_id: string
-  player_x_id: string
-  player_o_id: string
-  score_x: number
-  score_o: number
-  points_to_win: number
-  status: 'active' | 'finished'
-  winner_player_id: string | null
-  status_message: string | null
-  created_at?: string
-  updated_at?: string
 }
 
 export type CheckersColor = 'r' | 'b'
@@ -1835,5 +1822,53 @@ export interface AnonymousRoomBan {
   game_id: string
   player_id: string
   banned_until: string
+  created_at: string
+}
+
+export type TrollRunPhase = 'lobby' | 'countdown' | 'racing' | 'scoreboard' | 'finished'
+
+export interface TrollRunSession {
+  id: string
+  game_id: string
+  phase: TrollRunPhase
+  current_round: number
+  total_rounds: number
+  current_world: string
+  levels_per_round: number
+  round_time_limit: number
+  round_started_at: string | null
+  turn_deadline_at: string | null
+  level_order: string[]
+  created_at: string
+  updated_at: string
+}
+
+export interface TrollRunPlayerState {
+  id: string
+  game_id: string
+  player_id: string
+  current_round: number
+  current_level_index: number
+  deaths: number
+  levels_cleared: number
+  total_time_ms: number
+  round_score: number
+  total_score: number
+  finish_position: number | null
+  round_finished: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface TrollRunEvent {
+  id: string
+  game_id: string
+  player_id: string
+  player_name?: string
+  round: number
+  level_id: string
+  level_name?: string
+  event_type: 'death' | 'clear'
+  time_ms?: number | null
   created_at: string
 }

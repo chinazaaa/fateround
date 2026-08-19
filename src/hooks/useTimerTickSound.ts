@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react'
 import { playTickTockSound, TIMER_TICK_THRESHOLD } from '@/lib/sounds'
 
 /** Plays a tick-tock each second when the countdown enters the final seconds. */
-export function useTimerTickSound(seconds: number, enabled: boolean) {
+export function useTimerTickSound(seconds: number, enabled: boolean, threshold: number = TIMER_TICK_THRESHOLD) {
   const lastTickRef = useRef<number | null>(null)
 
   useEffect(() => {
@@ -10,12 +10,12 @@ export function useTimerTickSound(seconds: number, enabled: boolean) {
       lastTickRef.current = null
       return
     }
-    if (seconds <= 0 || seconds > TIMER_TICK_THRESHOLD) {
-      if (seconds > TIMER_TICK_THRESHOLD) lastTickRef.current = null
+    if (seconds <= 0 || seconds > threshold) {
+      if (seconds > threshold) lastTickRef.current = null
       return
     }
     if (lastTickRef.current === seconds) return
     lastTickRef.current = seconds
-    playTickTockSound(seconds)
-  }, [seconds, enabled])
+    playTickTockSound(seconds, threshold)
+  }, [seconds, enabled, threshold])
 }

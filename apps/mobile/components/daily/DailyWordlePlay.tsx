@@ -11,11 +11,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native'
 import { useDailyChallengeTimer } from '@/hooks/useDailyChallengeTimer'
-import {
-  getOrCreateStartedAt,
-  loadDailyAnswers,
-  saveDailyAnswers,
-} from '@/lib/daily-progress'
+import { getOrCreateStartedAt, loadDailyAnswers, saveDailyAnswers } from '@/lib/daily-progress'
 import { gradeWordleGuess, wordleKeyBestStates, type WordleLetterState } from '@/lib/daily-wordle'
 import { apiUrl } from '@/lib/config'
 import { authHeaders } from '@/lib/identity'
@@ -141,32 +137,28 @@ export function DailyWordlePlay({ challengeId, puzzle, timer: maxSeconds, onSubm
 
   const revealHint = useCallback(() => {
     if (submitted || hintUsed) return
-    Alert.alert(
-      'Reveal hint?',
-      'This costs 300 points off your final score. Are you sure?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Reveal (−300)',
-          style: 'destructive',
-          onPress: async () => {
-            // Persist the reveal server-side first so a modified client can't dodge the
-            // deduction. Best-effort — the local flag still travels with the submission.
-            try {
-              const headers = await authHeaders()
-              await fetch(apiUrl('/api/daily-challenges/wordle/reveal-hint'), {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', ...(headers ?? {}) },
-                body: JSON.stringify({ challengeId }),
-              })
-            } catch {
-              /* network hiccup — hintUsed still travels in submission */
-            }
-            setHintUsed(true)
-          },
+    Alert.alert('Reveal hint?', 'This costs 300 points off your final score. Are you sure?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Reveal (−300)',
+        style: 'destructive',
+        onPress: async () => {
+          // Persist the reveal server-side first so a modified client can't dodge the
+          // deduction. Best-effort — the local flag still travels with the submission.
+          try {
+            const headers = await authHeaders()
+            await fetch(apiUrl('/api/daily-challenges/wordle/reveal-hint'), {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', ...(headers ?? {}) },
+              body: JSON.stringify({ challengeId }),
+            })
+          } catch {
+            /* network hiccup — hintUsed still travels in submission */
+          }
+          setHintUsed(true)
         },
-      ]
-    )
+      },
+    ])
   }, [challengeId, hintUsed, submitted])
 
   const addLetter = useCallback(
@@ -207,7 +199,8 @@ export function DailyWordlePlay({ challengeId, puzzle, timer: maxSeconds, onSubm
       : gameOverBase
 
   // Build the rows once so we don't repeat the logic on each render below.
-  const rows: Array<{ kind: 'graded' | 'current' | 'empty' | 'reveal'; word: string; states?: WordleLetterState[] }> = []
+  const rows: Array<{ kind: 'graded' | 'current' | 'empty' | 'reveal'; word: string; states?: WordleLetterState[] }> =
+    []
   for (let r = 0; r < maxAttempts; r++) {
     if (r < guesses.length) {
       const g = guesses[r]
@@ -244,26 +237,12 @@ export function DailyWordlePlay({ challengeId, puzzle, timer: maxSeconds, onSubm
               const ch = row.word[i] ?? ''
               const state = row.states?.[i]
               const bg =
-                row.kind === 'graded' && state
-                  ? TILE_BG[state]
-                  : row.kind === 'reveal'
-                    ? theme.surface
-                    : theme.surface
+                row.kind === 'graded' && state ? TILE_BG[state] : row.kind === 'reveal' ? theme.surface : theme.surface
               const border =
-                row.kind === 'graded' && state
-                  ? 'transparent'
-                  : row.kind === 'reveal'
-                    ? theme.primary
-                    : theme.border
+                row.kind === 'graded' && state ? 'transparent' : row.kind === 'reveal' ? theme.primary : theme.border
               const color = row.kind === 'graded' && state ? '#fff' : theme.text
               return (
-                <View
-                  key={i}
-                  style={[
-                    styles.tile,
-                    { backgroundColor: bg, borderColor: border, borderWidth: 1.5 },
-                  ]}
-                >
+                <View key={i} style={[styles.tile, { backgroundColor: bg, borderColor: border, borderWidth: 1.5 }]}>
                   <Text style={[styles.tileText, { color }]}>{ch.toUpperCase()}</Text>
                 </View>
               )
@@ -272,9 +251,7 @@ export function DailyWordlePlay({ challengeId, puzzle, timer: maxSeconds, onSubm
         ))}
       </View>
 
-      {message || gameOverMessage ? (
-        <Text style={styles.messageText}>{message ?? gameOverMessage}</Text>
-      ) : null}
+      {message || gameOverMessage ? <Text style={styles.messageText}>{message ?? gameOverMessage}</Text> : null}
 
       {/* Hint reveal (−300 pts). Hidden if this puzzle has no hint (General English). */}
       {hint && !gameOver ? (
@@ -303,9 +280,7 @@ export function DailyWordlePlay({ challengeId, puzzle, timer: maxSeconds, onSubm
           <View key={ri} style={styles.keyRow}>
             {row.map((key) => {
               if (key === 'ENTER') {
-                return (
-                  <KeyboardKey key={key} label="Enter" wide onPress={submitGuess} disabled={submitted} />
-                )
+                return <KeyboardKey key={key} label="Enter" wide onPress={submitGuess} disabled={submitted} />
               }
               if (key === 'BACK') {
                 return <KeyboardKey key={key} label="⌫" wide onPress={backspace} disabled={submitted} />
@@ -383,7 +358,11 @@ const makeStyles = (theme: Theme) =>
       alignItems: 'center',
       justifyContent: 'center',
     },
-    tileText: { fontSize: 22, fontWeight: '800' },
+    // alignSelf:'stretch' + textAlign:'center' — RN New Arch measures a narrow
+    // lone glyph inside a flexed Text to zero and renders nothing (the "I" tile
+    // and "I" key were blank). Stretching the Text and centering the glyph
+    // sidesteps the intrinsic-width measurement.
+    tileText: { fontSize: 22, fontWeight: '800', alignSelf: 'stretch', textAlign: 'center' },
     messageText: { color: theme.textMuted, fontSize: theme.type.body.size, textAlign: 'center', fontWeight: '600' },
     hintText: { color: theme.textMuted, fontSize: theme.type.body.size, textAlign: 'center' },
     hintCost: { color: theme.textFaint },
@@ -407,5 +386,5 @@ const makeStyles = (theme: Theme) =>
       justifyContent: 'center',
     },
     keyWide: { flex: 1.5 },
-    keyText: { fontWeight: '800' },
+    keyText: { fontWeight: '800', alignSelf: 'stretch', textAlign: 'center' },
   })

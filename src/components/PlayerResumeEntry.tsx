@@ -35,7 +35,7 @@ export function PlayerResumeEntry({
   const submit = async () => {
     const token = normalizeResumeToken(code)
     if (token.length < 4) {
-      toastError('Enter your 6-character player code')
+      toastError('Enter your player code')
       return
     }
     setLoading(true)
@@ -94,13 +94,20 @@ export function PlayerResumeEntry({
         <p className="text-muted text-xs uppercase tracking-wider">Continue your game</p>
         <p className="text-faint text-xs">Enter the player code from your other device.</p>
       </div>
+      {/*
+        `maxLength` is deliberately not a token length. The DB trigger mints 16-char tokens while
+        RESUME_TOKEN_LENGTH is 24, and `normalizeResumeToken` strips the spaces or dashes a pasted
+        code may carry — so any exact cap is wrong for some code. It was 8, which truncated every
+        real token and made this entry fail with "Player code not found" 100% of the time. Keep a
+        generous bound here and let `submit` do the real validation.
+      */}
       <input
         value={code}
         onChange={(e) => setCode(e.target.value.toUpperCase())}
         onKeyDown={(e) => e.key === 'Enter' && void submit()}
         placeholder="Player code"
         autoFocus
-        maxLength={8}
+        maxLength={64}
         className="input-field w-full text-center font-mono text-lg tracking-[0.2em] uppercase"
       />
       <div className="flex gap-2">

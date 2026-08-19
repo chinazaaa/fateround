@@ -44,7 +44,7 @@ const DUEL_CLOCK_LABEL: Record<string, string> = {
 }
 
 /** Game types with a fixed 2-player format — a "players" pill would be pure noise. */
-const FIXED_TWO_PLAYER = new Set(['chess', 'checkers', 'checkers_international', 'checkers_nigeria', 'ping_pong'])
+const FIXED_TWO_PLAYER = new Set(['chess', 'checkers', 'checkers_international', 'checkers_nigeria'])
 
 /** Game types that already show their own (correctly defaulted/clamped) player-count chip
  *  elsewhere (the room-capacity counter) — skip the generic pill here to avoid a duplicate. */
@@ -234,8 +234,6 @@ export function gameInfoItems(game: Game | null | undefined): string[] {
     if (game.mafia_doctor_enabled) items.push('Doctor')
     if (game.mafia_detective_enabled) items.push('Detective')
     if (game.mafia_anonymous_votes) items.push('Anonymous votes')
-  } else if (gt === 'ping_pong') {
-    if (game.ping_pong_points_to_win) items.push(`First to ${game.ping_pong_points_to_win}`)
   } else if (gt === 'codewords') {
     if (game.codewords_player_picks) items.push('Players pick roles')
     if (game.codewords_randomize_teams) items.push('Randomized operatives')

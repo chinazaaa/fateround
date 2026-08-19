@@ -20,7 +20,6 @@ import { CROSSWORD } from './system-trophies/crossword'
 import { I_CALL_ON } from './system-trophies/i-call-on'
 import { LANDMINE } from './system-trophies/landmine'
 import { MATCHING_PAIRS } from './system-trophies/matching-pairs'
-import { PING_PONG } from './system-trophies/ping-pong'
 import { QUIPLASH } from './system-trophies/quiplash'
 import { SUDOKU } from './system-trophies/sudoku'
 import { TIC_TAC_TOE } from './system-trophies/tic-tac-toe'
@@ -83,7 +82,6 @@ const BY_GAME: Record<string, SystemTrophySpec[]> = {
   i_call_on: I_CALL_ON,
   landmine: LANDMINE,
   matching_pairs: MATCHING_PAIRS,
-  ping_pong: PING_PONG,
   quiplash: QUIPLASH,
   sudoku: SUDOKU,
   tic_tac_toe: TIC_TAC_TOE,
