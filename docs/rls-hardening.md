@@ -232,9 +232,15 @@ revoked column must keep failing loudly rather than be retried into success. It 
 the ordering above, and it is mobile that forces the wait: a web deploy reverts in a minute, an
 installed binary does not. Note that `expo-updates` is already a dependency and `eas.json` defines
 per-profile channels, but OTA is **not** wired — `app.json` has no `updates` block or
-`runtimeVersion` and nothing runs `eas update`. Running `eas update:configure` once would turn
-step 3 from "wait for store adoption" into "push an OTA update"; it is the highest-value thing to
-do before the Quick Draw copy.
+`runtimeVersion` and nothing runs `eas update`.
+
+**Wiring OTA does not rescue builds already installed.** `expo-updates` reads its update URL and
+`runtimeVersion` from config baked into the native binary at build time, so a build produced
+without them never checks for updates; `eas update:configure` affects only future builds. No valid
+config has ever shipped here — `babc8f46` (2026-07-10) added a literal
+`replace-with-eas-project-id` placeholder URL and `f287ac20` removed it the next day. Step 3 is
+therefore a real store-release wait, or an accepted and recorded breakage window. Wire OTA anyway
+so the *next* revoke is hot-fixable, but do not plan this one around it.
 
 ### A failed read is not game state
 

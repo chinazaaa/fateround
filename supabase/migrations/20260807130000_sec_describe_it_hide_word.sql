@@ -60,10 +60,17 @@
 -- deploy is atomic and reversible in a minute, but an installed app binary is not. NOTE for
 -- whoever schedules this: `expo-updates` IS already a dependency (apps/mobile/package.json) and
 -- eas.json defines per-profile channels, but OTA is NOT wired up — app.json has no `updates`
--- block or `runtimeVersion`, and nothing runs `eas update`. So today the only way to roll a
--- shipped build forward is a store release. Running `eas update:configure` once would collapse
--- step 3 from "wait for store adoption" to "push an OTA update", and is the single highest-value
--- thing to do before the Quick Draw copy of this migration.
+-- block or `runtimeVersion`, and nothing runs `eas update`. The only way to roll a shipped build
+-- forward is a store release.
+--
+-- WIRING OTA NOW DOES NOT CHANGE THAT, for the builds this step is about. `expo-updates` reads
+-- its update URL and `runtimeVersion` from config baked into the NATIVE BINARY at build time, so
+-- a build made without them never checks for updates at all; `eas update:configure` only affects
+-- FUTURE builds. And no valid config has ever shipped here — babc8f46 (2026-07-10) added
+-- `"url": "https://u.expo.dev/replace-with-eas-project-id"`, a literal placeholder, and f287ac20
+-- removed it the next day. So step 3 is genuinely "store release, then wait", or an accepted and
+-- recorded breakage window. Wire OTA anyway so the NEXT revoke is hot-fixable — just do not count
+-- on it for this one.
 --
 -- The OTHER skew direction (code ahead of the database) is already handled in code and needs no
 -- ordering discipline: `readDescribeItSession()` retries without `word_seq` on 42703, so a web
