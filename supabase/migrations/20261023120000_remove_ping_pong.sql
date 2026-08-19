@@ -17,7 +17,8 @@ ALTER TABLE games DROP COLUMN IF EXISTS ping_pong_points_to_win;
 
 -- 3. Game limits, trophies & community cleanup
 DELETE FROM game_player_limits WHERE game_type = 'ping_pong';
-DELETE FROM system_trophies WHERE category = 'ping_pong' OR game_type = 'ping_pong';
+DELETE FROM player_trophies WHERE trophy_id IN (SELECT id FROM trophies WHERE game_type = 'ping_pong');
+DELETE FROM trophies WHERE game_type = 'ping_pong';
 DELETE FROM community_games WHERE game_type = 'ping_pong' OR slug = 'ping-pong';
 
 -- 4. Game-type CHECK constraints
