@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
 import type { GameType, Player } from '@fateround/shared'
 import { MONOPOLY_PLAYER_TOKENS, takenMonopolyTokens } from '@fateround/shared/monopoly-tokens'
 import { joinGame } from '@/lib/api'
 import { patchPlayerName, leaveGame } from '@/lib/game-api'
+import { getRememberedName, rememberName } from '@/lib/identity-local'
 import { clearPlayerSession, setPlayerSession, type PlayerSession } from '@/lib/secure-session'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
@@ -40,6 +41,29 @@ export function HostLobbyPlayCard({
   const [error, setError] = useState<string | null>(null)
   const [token, setToken] = useState<string | null>(null)
 
+  // Prefill the host's name from the same "remembered name" store the JoinScreen
+  // uses, so a host who's already told the app their name doesn't have to retype
+  // it on the Play-along card. Weakest source by design: never overrides a name
+  // already provided (existing session, or typed).
+  const nameRef = useRef(name)
+  nameRef.current = name
+  const prefilledRef = useRef(false)
+  useEffect(() => {
+    if (prefilledRef.current) return
+    prefilledRef.current = true
+    if (session?.playerName?.trim()) return
+    let cancelled = false
+    void getRememberedName().then((remembered) => {
+      if (cancelled || !remembered || nameRef.current.trim()) return
+      setName(remembered)
+    })
+    return () => {
+      cancelled = true
+    }
+    // Mount-only: a prefill that fired later would fight the host's own typing.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const isMonopoly = gameType === 'monopoly'
   const taken = isMonopoly ? takenMonopolyTokens(players) : new Set<string>()
   const needsToken = isMonopoly && !token
@@ -58,6 +82,8 @@ export function HostLobbyPlayCard({
         resumeToken: data.resumeToken ?? null,
       }
       await setPlayerSession(gameCode, next.playerId, next.playerName, next.playerGender, next.resumeToken)
+      // Persist the name for the next Join / Create prefill.
+      void rememberName(trimmed)
       onSessionChange(next)
       onReload()
     } catch (err) {
@@ -83,6 +109,8 @@ export function HostLobbyPlayCard({
       await patchPlayerName(gameCode, session.playerId, trimmed, session.resumeToken)
       const next: PlayerSession = { ...session, playerName: trimmed }
       await setPlayerSession(gameCode, next.playerId, next.playerName, next.playerGender, next.resumeToken)
+      // Keep the remembered name in sync with the rename.
+      void rememberName(trimmed)
       onSessionChange(next)
       setRenaming(false)
       onReload()

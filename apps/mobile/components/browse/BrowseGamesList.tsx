@@ -10,7 +10,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View, ActivityIndicator } from 'react-native'
-import { useRouter } from 'expo-router'
+import { useFocusEffect, useRouter } from 'expo-router'
 import type { GameType } from '@fateround/shared'
 import { AppButton } from '@/components/ui/AppButton'
 import { SurfaceCard } from '@/components/ui/SurfaceCard'
@@ -152,11 +152,13 @@ export function BrowseGamesList({ previewLimit, onSeeAll, tab = 'live' }: Props)
 
   // Realtime + poll fallback. Any game row change (create / status flip / finish)
   // re-fetches the first page silently — mirrors the web BrowseGamesPage pattern.
+  // The Home preview strip subscribes too, so a newly-opened public game shows
+  // up without requiring an app restart.
   useEffect(() => {
-    if (previewLimit) return undefined // preview strip on Home refreshes on focus, not realtime
     const supabase = getSupabase()
+    const channelName = previewLimit ? 'public_games_home_preview_mobile' : 'public_games_browse_mobile'
     const channel = supabase
-      .channel('public_games_browse_mobile')
+      .channel(channelName)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'games' }, () => {
         if (inFlight.current) return
         inFlight.current = true
@@ -173,6 +175,14 @@ export function BrowseGamesList({ previewLimit, onSeeAll, tab = 'live' }: Props)
       clearInterval(interval)
     }
   }, [load, previewLimit])
+
+  // Also refetch whenever the screen regains focus. Covers the case where
+  // realtime dropped or a game opened while the app was backgrounded.
+  useFocusEffect(
+    useCallback(() => {
+      void load(null, true)
+    }, [load])
+  )
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true)

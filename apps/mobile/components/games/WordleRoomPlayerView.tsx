@@ -95,6 +95,9 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
   const [hintUsed, setHintUsed] = useState(false)
   const [hintText, setHintText] = useState<string | null>(null)
   const [progressRows, setProgressRows] = useState<WordleRoomProgressRow[]>([])
+  // Flips true once the standings query has returned at least once, so we can
+  // gate the "active" render on standings + grid both being ready.
+  const [progressLoaded, setProgressLoaded] = useState(false)
   const [roundId, setRoundId] = useState<string | null>(null)
   const submitLockRef = useRef(false)
   const advanceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -102,6 +105,9 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
   // fired. useGameTableSync consults this to skip fetchStatus while the reveal
   // ("Correct!" / "the word was …") should still be visible.
   const advanceDeadlineRef = useRef<number>(0)
+  // Track the last (word_index, currentWord) we synced from the server so realtime
+  // resyncs on the *same* word don't wipe the letters the user is currently typing.
+  const lastSyncedWordRef = useRef<{ index: number; word: string } | null>(null)
 
   const me = bootstrap.myPlayerId ? bootstrap.players.find((p) => p.id === bootstrap.myPlayerId) : undefined
   const isViewer = !!(bootstrap.game && me && playerIsViewer(me, bootstrap.game))
@@ -115,10 +121,13 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
       // which is a real completion. sequenceComplete is only true when progress.finished is.
       if (data.sequenceComplete === true) setMyFinished(true)
       if (data.currentWord) {
+        const nextIndex = data.word_index ?? 0
+        const prev = lastSyncedWordRef.current
+        const wordChanged = !prev || prev.index !== nextIndex || prev.word !== data.currentWord
         setCurrentWord(data.currentWord)
         setWordLength(data.wordLength ?? data.currentWord.length)
         setMaxAttempts(data.maxAttempts ?? data.currentWord.length + 1)
-        setWordIndex(data.word_index ?? 0)
+        setWordIndex(nextIndex)
         setWordCount(data.word_count ?? 5)
         setWordsSolved(data.words_solved ?? 0)
         setCategoryLabel(data.categoryLabel ?? 'Wordle')
@@ -127,11 +136,18 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
         setHintUsed(data.hintUsed === true)
         setHintText(data.hint ?? null)
         setGuesses((data.guesses ?? []).map((g) => ({ word: g.guess, states: g.state })))
-        setCurrent('')
-        setCursorAt(0)
-        // Clear the previous word's transient banner ("Out of attempts — the word was X",
-        // "Correct! +N pts") so it doesn't linger into the next word.
-        setMessage(null)
+        // Only wipe the in-progress typed letters + banner when we've actually
+        // advanced to a new word. Realtime resyncs on the same word (another
+        // player's progress row updating) previously blew away whatever the user
+        // was typing.
+        if (wordChanged) {
+          setCurrent('')
+          setCursorAt(0)
+          // Clear the previous word's transient banner ("Out of attempts — the word was X",
+          // "Correct! +N pts") so it doesn't linger into the next word.
+          setMessage(null)
+        }
+        lastSyncedWordRef.current = { index: nextIndex, word: data.currentWord }
       }
       // Deliberately DO NOT wipe currentWord/guesses when finished:true arrives without a
       // currentWord — the server uses that shape in several non-completion cases (game not
@@ -188,6 +204,9 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
       .eq('game_id', bootstrap.code)
       .eq('round_id', roundId)
     if (res.data) setProgressRows(res.data as WordleRoomProgressRow[])
+    // Mark loaded even when the row set is empty — the query succeeded, we just
+    // have no standings yet. This flips the loading gate below to done.
+    setProgressLoaded(true)
   }, [bootstrap.code, roundId])
 
   useEffect(() => {
@@ -367,6 +386,9 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
   if (!bootstrap.game) return <GameLoading />
 
   if (bootstrap.screen === 'finished') {
+    // Wait for standings before rendering the finish panel — otherwise the
+    // leaderboard is empty and the panel collapses to just the footer buttons.
+    if (!progressLoaded) return <GameLoading />
     const top = standings[0]
     const winnerId = top?.total_points && top.total_points > 0 ? top.player_id : null
     const title = winnerId ? (bootstrap.myPlayerId === winnerId ? 'You win!' : `${top!.name} wins!`) : 'Game over'
@@ -391,6 +413,11 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
       </GameShell>
     )
   }
+
+  // Gate the active render on BOTH the grid data (currentWord) and standings
+  // (progressLoaded) being ready, so the standings panel doesn't flash before
+  // the grid loads in.
+  if (bootstrap.screen === 'active' && (!currentWord || !progressLoaded)) return <GameLoading />
 
   // Active — render the board + keyboard + standings.
   const rows: React.ReactNode[] = []
