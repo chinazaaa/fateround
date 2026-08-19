@@ -64,6 +64,15 @@ function formatMinutes(m: number | null): string {
 // 30-minute increments cover the "quiet hours" use case without a native picker.
 const TIME_SLOTS: number[] = Array.from({ length: 48 }, (_, i) => i * 30)
 
+const EMPTY_QUIET_HOURS: QuietHoursState = {
+  mode: 'off',
+  quietStartMinutes: null,
+  quietEndMinutes: null,
+  availableStartMinutes: null,
+  availableEndMinutes: null,
+  timezone: null,
+}
+
 function deviceTimezone(): string | null {
   try {
     return Intl.DateTimeFormat().resolvedOptions().timeZone ?? null
@@ -86,7 +95,7 @@ export default function NotificationsScreen() {
     if (!token) {
       setSnapshot({
         subscribedGameTypes: [],
-        quietHours: { mode: 'off', startMinutes: null, endMinutes: null, timezone: null },
+        quietHours: EMPTY_QUIET_HOURS,
         countsByGameType: {},
       })
       setLoading(false)
@@ -117,7 +126,13 @@ export default function NotificationsScreen() {
 
   const subscribed = useMemo(() => new Set(snapshot?.subscribedGameTypes ?? []), [snapshot])
   const counts = snapshot?.countsByGameType ?? {}
-  const quiet = snapshot?.quietHours ?? { mode: 'off', startMinutes: null, endMinutes: null, timezone: null }
+  const quiet = snapshot?.quietHours ?? EMPTY_QUIET_HOURS
+  // The From/To fields edit whichever window the active mode owns, so switching
+  // between Quiet and Available shows (and saves) each mode's own times.
+  const activeStart = quiet.mode === 'available' ? quiet.availableStartMinutes : quiet.quietStartMinutes
+  const activeEnd = quiet.mode === 'available' ? quiet.availableEndMinutes : quiet.quietEndMinutes
+  const startField = quiet.mode === 'available' ? 'availableStartMinutes' : 'quietStartMinutes'
+  const endField = quiet.mode === 'available' ? 'availableEndMinutes' : 'quietEndMinutes'
 
   const ensureToken = useCallback(async (): Promise<string | null> => {
     if (tokenKey) return tokenKey
@@ -223,15 +238,15 @@ export default function NotificationsScreen() {
             <View style={styles.timeRow}>
               <TimePickerField
                 label="From"
-                value={quiet.startMinutes}
+                value={activeStart}
                 placeholder="09:00"
-                onChange={(m) => void onQuietChange({ startMinutes: m })}
+                onChange={(m) => void onQuietChange({ [startField]: m })}
               />
               <TimePickerField
                 label="To"
-                value={quiet.endMinutes}
+                value={activeEnd}
                 placeholder="17:00"
-                onChange={(m) => void onQuietChange({ endMinutes: m })}
+                onChange={(m) => void onQuietChange({ [endField]: m })}
               />
             </View>
           ) : null}
@@ -301,9 +316,7 @@ function TimePickerField({
         accessibilityRole="button"
         accessibilityLabel={`${label} time. Currently ${display || placeholder}.`}
       >
-        <Text style={[styles.timeInputText, !display && styles.timeInputPlaceholder]}>
-          {display || placeholder}
-        </Text>
+        <Text style={[styles.timeInputText, !display && styles.timeInputPlaceholder]}>{display || placeholder}</Text>
         <Text style={styles.timeChevron}>▾</Text>
       </Pressable>
 
