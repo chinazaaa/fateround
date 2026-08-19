@@ -137,7 +137,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
     // writes) so a host toggling settings back and forth doesn't rate-limit
     // the whole fleet. Rate limit is a secondary guard.
     if (rawIsPublic === true && auth.game?.is_public !== true) {
-      scheduleNewPublicGameFanout(auth.id!, String(auth.game?.game_type ?? ''), String(auth.game?.title ?? ''))
+      scheduleNewPublicGameFanout(
+        auth.id!,
+        String(auth.game?.game_type ?? ''),
+        String(auth.game?.title ?? ''),
+        (auth.game as { host_user_id?: string | null } | null)?.host_user_id ?? null
+      )
     }
   }
 

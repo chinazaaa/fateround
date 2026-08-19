@@ -10,7 +10,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View, ActivityIndicator } from 'react-native'
-import { useRouter } from 'expo-router'
+import { useFocusEffect, useRouter } from 'expo-router'
 import type { GameType } from '@fateround/shared'
 import { AppButton } from '@/components/ui/AppButton'
 import { SurfaceCard } from '@/components/ui/SurfaceCard'
@@ -112,7 +112,13 @@ export function BrowseGamesList({ previewLimit, onSeeAll, tab = 'live' }: Props)
   )
 
   useEffect(() => {
-    void load()
+    // Take the inFlight slot on mount so a focus-effect fire that races the
+    // initial load doesn't double-hit /api/games.
+    if (inFlight.current) return
+    inFlight.current = true
+    void load().finally(() => {
+      inFlight.current = false
+    })
   }, [load])
 
   // Whenever the Upcoming list changes, look up which of the visible
@@ -152,11 +158,13 @@ export function BrowseGamesList({ previewLimit, onSeeAll, tab = 'live' }: Props)
 
   // Realtime + poll fallback. Any game row change (create / status flip / finish)
   // re-fetches the first page silently — mirrors the web BrowseGamesPage pattern.
+  // The Home preview strip subscribes too, so a newly-opened public game shows
+  // up without requiring an app restart.
   useEffect(() => {
-    if (previewLimit) return undefined // preview strip on Home refreshes on focus, not realtime
     const supabase = getSupabase()
+    const channelName = previewLimit ? 'public_games_home_preview_mobile' : 'public_games_browse_mobile'
     const channel = supabase
-      .channel('public_games_browse_mobile')
+      .channel(channelName)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'games' }, () => {
         if (inFlight.current) return
         inFlight.current = true
@@ -173,6 +181,21 @@ export function BrowseGamesList({ previewLimit, onSeeAll, tab = 'live' }: Props)
       clearInterval(interval)
     }
   }, [load, previewLimit])
+
+  // Also refetch whenever the screen regains focus. Covers the case where
+  // realtime dropped or a game opened while the app was backgrounded.
+  // Skip when the initial mount fetch or another silent refresh is already
+  // in flight — otherwise focus races the mount effect and double-hits the
+  // API on first render.
+  useFocusEffect(
+    useCallback(() => {
+      if (inFlight.current) return
+      inFlight.current = true
+      void load(null, true).finally(() => {
+        inFlight.current = false
+      })
+    }, [load])
+  )
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true)
@@ -353,6 +376,10 @@ function GameCard({
   const isLobby = game.status === 'waiting'
   const isActive = game.status === 'active'
   const count = game.max_players != null ? `${game.playerCount}/${game.max_players}` : `${game.playerCount}`
+  const isFull = game.max_players != null && game.playerCount >= game.max_players
+  // Active games can still take new players when the host allowed late joiners
+  // AND there's a seat free. Otherwise the only affordance is spectating.
+  const lateJoinable = isActive && game.allow_late_players === true && !isFull
   // Once we know the viewer is already in the game, the CTA says so — "Continue"
   // for a live/lobby game they've joined, otherwise the default join/watch CTA.
   const showContinue = iAmPlayer && !iAmHost && !isScheduled && (isLobby || isActive)
@@ -361,9 +388,9 @@ function GameCard({
     : isScheduled
       ? `Scheduled · ${formatScheduled(game.scheduled_at)}`
       : isLobby
-        ? `Waiting for players · ${count} player${game.playerCount === 1 ? '' : 's'}`
+        ? `${isFull ? 'Lobby full' : 'Waiting for players'} · ${count} player${game.playerCount === 1 ? '' : 's'}`
         : isActive
-          ? `In progress · ${count} player${game.playerCount === 1 ? '' : 's'}`
+          ? `In progress${lateJoinable ? ' · join or watch' : isFull ? ' · full' : ''} · ${count} player${game.playerCount === 1 ? '' : 's'}`
           : 'Finished'
   const cta = iAmHost
     ? 'Open panel'
@@ -372,8 +399,12 @@ function GameCard({
       : showContinue
         ? 'Continue'
         : isLobby
-          ? 'Join'
-          : 'Watch'
+          ? isFull
+            ? 'Watch'
+            : 'Join'
+          : lateJoinable
+            ? 'Join'
+            : 'Watch'
 
   return (
     <SurfaceCard>

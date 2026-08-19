@@ -16,6 +16,7 @@ import type { Settings, Step, ParticipantTab, QuestionTab } from './types'
 import { LIBRARY_GAME_TYPE_MAP } from './constants'
 import { parsePuzzleThemeCsv } from '@/lib/puzzle-themes'
 import { trackEvent, GA_EVENTS } from '@/lib/analytics'
+import { authHeaders } from '@/lib/auth-headers'
 import { GenderBadge } from './components/GenderBadge'
 import { Avatar } from './components/Avatar'
 import { TemplateQuickStart } from './components/TemplateQuickStart'
@@ -2583,7 +2584,7 @@ function CreateGameInner() {
     try {
       const res = await fetch('/api/games', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
         body: JSON.stringify({
           ...settings,
           // Discovery Phase C + private-schedule follow-up: forward

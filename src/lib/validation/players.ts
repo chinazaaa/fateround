@@ -25,6 +25,11 @@ export const createPlayerSchema = z.object({
   // server reclaim that exact row instead of minting a new (spectator) one. Optional:
   // genuine first-time joiners have none.
   resumeToken: z.string().trim().max(100).optional(),
+  // Cross-device continuation override: set true after the client has confirmed
+  // the "You're already hosting/playing on another device — continue here?"
+  // prompt. Without it Zod would strip the field and the server would keep
+  // returning the 409 forever.
+  continueOnThisDevice: z.boolean().optional(),
 })
 
 export type CreatePlayerInput = z.infer<typeof createPlayerSchema>
