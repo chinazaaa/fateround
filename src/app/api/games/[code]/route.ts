@@ -24,7 +24,6 @@ import {
   isDraughts10Game,
   isCheckersNigeriaGame,
   isTicTacToeGame,
-  isPingPongGame,
   isLandmineGame,
 } from '@/lib/game-types'
 import {
@@ -56,7 +55,6 @@ import { parsePlayerQuestionsEnabled, parsePlayerQuestionsOrder } from '@/lib/pl
 import { supportsPlayerNameSubmissions } from '@/lib/player-participant-pool'
 import { gameSupportsViewerSetting, lateJoinPolicyToFields, gameAllowsLatePlayerJoin } from '@/lib/viewers'
 import { clampPanRounds } from '@/lib/pick-a-number'
-import { clampPingPongPoints } from '@/lib/ping-pong'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { scheduleNewPublicGameFanout } from '@/lib/notification-subscriptions'
 
@@ -84,7 +82,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
     wst_quote_source: rawWstQuoteSource,
     codewords_player_picks: rawCwPlayerPicks,
     codewords_randomize_teams: rawCwRandomize,
-    ping_pong_points_to_win: rawPingPongPointsToWin,
     participant_filter,
     keep_lobby_alive: rawKeepLobbyAlive,
   } = body
@@ -137,7 +134,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
     // writes) so a host toggling settings back and forth doesn't rate-limit
     // the whole fleet. Rate limit is a secondary guard.
     if (rawIsPublic === true && auth.game?.is_public !== true) {
-      scheduleNewPublicGameFanout(auth.id!, String(auth.game?.game_type ?? ''), String(auth.game?.title ?? ''))
+      scheduleNewPublicGameFanout(
+        auth.id!,
+        String(auth.game?.game_type ?? ''),
+        String(auth.game?.title ?? ''),
+        (auth.game as { host_user_id?: string | null } | null)?.host_user_id ?? null
+      )
     }
   }
 
@@ -248,14 +250,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
     return NextResponse.json({ error: 'Board and piece appearance only apply to Chess games' }, { status: 400 })
   }
 
-  if (isPingPongGame(gameType)) {
-    if (rawPingPongPointsToWin !== undefined) {
-      updatePayload.ping_pong_points_to_win = clampPingPongPoints(rawPingPongPointsToWin)
-    }
-  } else if (rawPingPongPointsToWin !== undefined) {
-    return NextResponse.json({ error: 'Points to win only applies to Ping Pong games' }, { status: 400 })
-  }
-
   // Landmine host-lobby settings. Pre-start only (assertHostGameSettings restricts this PATCH to a
   // waiting/finished game). The landmine timers live on the shared timer columns, so they're
   // clamped here rather than in the generic timer blocks below.
@@ -304,8 +298,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
       updatePayload.game_duration_seconds = clampNpatGameDuration(rawGameDurationSeconds)
     } else if (isScrabbleGame(gameType)) {
       updatePayload.game_duration_seconds = clampScrabbleGameDuration(rawGameDurationSeconds)
-    } else if (isPingPongGame(gameType)) {
-      updatePayload.game_duration_seconds = Math.max(0, rawGameDurationSeconds)
     }
   }
 

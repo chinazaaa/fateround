@@ -532,7 +532,7 @@ export function PollPlayerView({ gameCode }: { gameCode: string }) {
     )
 
     return (
-      <GameShell bootstrap={bootstrap} title={title} subtitle={bootstrap.code}>
+      <GameShell bootstrap={bootstrap} title={title} subtitle={bootstrap.code} keyboardAvoiding>
         <ScrollView contentContainerStyle={styles.scroll}>
           {panel}
           <PollAchievements achievements={achievements} />
@@ -688,7 +688,7 @@ export function PollPlayerView({ gameCode }: { gameCode: string }) {
         ? `Round ${currentRound.round_number} / ${roundsCount} results`
         : `Round ${currentRound.round_number} results`
     return (
-      <GameShell bootstrap={bootstrap} title={title} subtitle={resultsSubtitle}>
+      <GameShell bootstrap={bootstrap} title={title} subtitle={resultsSubtitle} keyboardAvoiding>
         <ScrollView contentContainerStyle={styles.scroll}>
           <PollMyVoteRecap
             game={bootstrap.game}
@@ -759,6 +759,7 @@ export function PollPlayerView({ gameCode }: { gameCode: string }) {
       players={bootstrap.players}
       myPlayerId={bootstrap.myPlayerId}
       onPromoted={() => bootstrap.load()}
+      keyboardAvoiding
     >
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         {gameTimerPinned ? null : gameTimer}

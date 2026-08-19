@@ -14,10 +14,11 @@
  */
 
 import { useCallback, useEffect, useState } from 'react'
-import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
+import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { AppButton } from '@/components/ui/AppButton'
 import { SurfaceCard } from '@/components/ui/SurfaceCard'
+import { DatePickerField, TimePickerField } from '@/components/ui/DateTimeFieldSheet'
 import { cancelScheduled, fetchRsvpers, reschedule, transferScheduledHost, type Rsvper } from '@/lib/scheduled-host-api'
 import { clearHostToken } from '@/lib/secure-session'
 import type { Theme } from '@/constants/theme'
@@ -168,22 +169,8 @@ export function ScheduledHostActionsSheet({ visible, onClose, gameCode, hostToke
             </View>
             <Text style={styles.subLabel}>Custom time</Text>
             <View style={styles.row}>
-              <TextInput
-                value={customDate}
-                onChangeText={setCustomDate}
-                placeholder="2026-08-22"
-                style={styles.input}
-                maxLength={10}
-                autoCorrect={false}
-              />
-              <TextInput
-                value={customTime}
-                onChangeText={setCustomTime}
-                placeholder="20:00"
-                style={styles.input}
-                maxLength={5}
-                autoCorrect={false}
-              />
+              <DatePickerField label="Date" value={customDate} placeholder="Pick a day" onChange={setCustomDate} />
+              <TimePickerField label="Time" value={customTime} placeholder="Pick a time" onChange={setCustomTime} />
             </View>
             <AppButton
               label="Save custom time"

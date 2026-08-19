@@ -13,7 +13,6 @@ const HEAD_TO_HEAD_TYPES: ReadonlySet<GameType> = new Set<GameType>([
   'checkers_international',
   'checkers_nigeria',
   'tic_tac_toe',
-  'ping_pong',
   'ayo',
 ])
 

@@ -55,7 +55,7 @@ import {
   saveSoloState,
   wasSoloStateScored,
 } from '@/lib/solo-state-store'
-import { logSoloPlayStarted } from '@/lib/solo-play'
+import { logSoloPlayFinished, logSoloPlayStarted, resetSoloSessionId, soloSessionId } from '@/lib/solo-play'
 
 const BOT_THINK_MS = 900
 
@@ -117,6 +117,9 @@ export default function SoloCrazyEightsScreen() {
       setScoreboard(next)
       void markSoloStateScored('solo-crazy8-state-v1')
     })
+    void soloSessionId('crazy_eights').then((sessionId) =>
+      logSoloPlayFinished({ gameType: 'crazy_eights', outcome, sessionId, difficulty })
+    )
   }, [state])
 
   // Bot loop.
@@ -165,6 +168,7 @@ export default function SoloCrazyEightsScreen() {
   const restart = useCallback(() => {
     scoredRef.current = false
     void clearSoloState('solo-crazy8-state-v1')
+    void resetSoloSessionId('crazy_eights')
     setState(initCrazy8Solo({ rules: SOLO_RULES }))
     logSoloPlayStarted('crazy_eights', difficulty)
   }, [difficulty])
@@ -329,7 +333,6 @@ export default function SoloCrazyEightsScreen() {
             <View style={styles.scoreRow}>
               <ScoreCell label="You" value={scoreboard.human} />
               <ScoreCell label="Bot" value={scoreboard.bot} />
-              <ScoreCell label="Draws" value={scoreboard.draws} />
             </View>
 
             <View style={styles.finishActions}>

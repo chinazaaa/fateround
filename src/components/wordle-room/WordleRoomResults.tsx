@@ -9,6 +9,16 @@ import { FinishedWinnerHero } from '@/components/FinishedWinner'
 import type { Game, Player } from '@/types'
 import type { WordleRoomStandingRow } from '@/lib/wordle-room'
 
+/** Render `total_time_ms` as m:ss for the leaderboard row + shared summary.
+ *  Null / negative → null (row omits the segment entirely). */
+function formatWordleRoomTime(ms: number | null | undefined): string | null {
+  if (ms == null || ms < 0) return null
+  const total = Math.floor(ms / 1000)
+  const minutes = Math.floor(total / 60)
+  const seconds = total % 60
+  return `${minutes}:${String(seconds).padStart(2, '0')}`
+}
+
 export function WordleRoomResults({
   game,
   players,
@@ -69,9 +79,16 @@ export function WordleRoomResults({
                     {row.name}
                     {isMe ? <span className="label-teal font-semibold"> (you)</span> : null}
                   </p>
-                  <p className="text-xs text-muted">
+                  {/* words · guesses · time · hints — wraps on narrow screens
+                      so the row never gets clipped. Time and hint segments
+                      only appear when they have a value. */}
+                  <p className="text-xs text-muted break-words">
                     {row.words_solved} word{row.words_solved === 1 ? '' : 's'} · {row.total_guesses} guess
                     {row.total_guesses === 1 ? '' : 'es'}
+                    {formatWordleRoomTime(row.total_time_ms) ? ` · ⏱ ${formatWordleRoomTime(row.total_time_ms)}` : ''}
+                    {row.hints_used_count > 0
+                      ? ` · ${row.hints_used_count} hint${row.hints_used_count > 1 ? 's' : ''}`
+                      : ''}
                   </p>
                 </div>
                 <p
@@ -105,6 +122,8 @@ export function WordleRoomResults({
               name: row.name,
               wordsSolved: row.words_solved,
               guesses: row.total_guesses,
+              timeMs: row.total_time_ms,
+              hints: row.hints_used_count,
             }))}
             wordleRoomWinnerName={winner?.name}
             primary

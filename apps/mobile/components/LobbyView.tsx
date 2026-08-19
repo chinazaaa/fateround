@@ -1,5 +1,5 @@
-import { ReactNode, useRef, useState } from 'react'
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { ReactNode, useCallback, useRef, useState } from 'react'
+import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native'
 import type { Game, Player } from '@fateround/shared'
 import { playerIsViewer } from '@fateround/shared/viewers'
 import { lobbySeatsFull, resolveLobbyMaxPlayers } from '@fateround/shared/game-limits-lite'
@@ -11,7 +11,7 @@ import { KeyboardAwareGameScroll } from '@/components/ui/KeyboardAwareGameScroll
 import { gameLabel } from '@/lib/mobile-registry'
 import { postPlayerReady } from '@/lib/game-api'
 import type { Theme } from '@/constants/theme'
-import { useThemedStyles } from '@/constants/theme-context'
+import { useTheme, useThemedStyles } from '@/constants/theme-context'
 
 type Props = {
   gameCode: string
@@ -43,11 +43,26 @@ export function LobbyView({
   activity,
 }: Props) {
   const styles = useThemedStyles(makeStyles)
+  const theme = useTheme()
   const me = myPlayerId ? players.find((p) => p.id === myPlayerId) : undefined
   const spectating = !!(me && playerIsViewer(me, game))
   const typeLabel = gameLabel(game.game_type)
   const [readying, setReadying] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
   const scrollRef = useRef<ScrollView>(null)
+
+  // Pull-to-refresh — mirrors the reload the auto-poll and realtime listener
+  // already do, so a player who wants an instant re-check (host hasn't hit
+  // start yet, roster looks stale) can drag down instead of waiting.
+  const onRefresh = useCallback(async () => {
+    if (!onReload) return
+    setRefreshing(true)
+    try {
+      await onReload()
+    } finally {
+      setRefreshing(false)
+    }
+  }, [onReload])
   const maxPlayers = resolveLobbyMaxPlayers(game.game_type, game)
   const seatsFull = lobbySeatsFull(game.game_type, game, players)
 
@@ -83,7 +98,20 @@ export function LobbyView({
   }
 
   return (
-    <KeyboardAwareGameScroll ref={scrollRef} contentContainerStyle={styles.container}>
+    <KeyboardAwareGameScroll
+      ref={scrollRef}
+      contentContainerStyle={styles.container}
+      refreshControl={
+        onReload ? (
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => void onRefresh()}
+            tintColor={theme.primaryMuted}
+            colors={[theme.primary]}
+          />
+        ) : undefined
+      }
+    >
       <View style={styles.hero}>
         <Text style={styles.kicker}>{spectating ? 'New round' : "You're in"}</Text>
         <Text style={styles.title}>{title}</Text>

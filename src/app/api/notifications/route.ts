@@ -4,6 +4,7 @@ import { internalErrorMessage } from '@/lib/api-errors'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { getSubscriptionsForToken } from '@/lib/notification-subscriptions'
 import { parseGameType } from '@/lib/game-types'
+import { getProfileFromRequest } from '@/lib/identity-server'
 
 /**
  * Discovery Phase B — /api/notifications.
@@ -114,6 +115,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'web channel requires webKeys' }, { status: 400 })
   }
 
+  // Attribute the device to the caller's profile when they're signed in. Powers
+  // the "skip fanout to my own devices" filter. Guests keep NULL.
+  const subscriberUserId = await getProfileFromRequest(req)
+
   const admin = getSupabaseAdmin()
   const now = new Date().toISOString()
   const { data: device, error: deviceError } = await admin
@@ -126,6 +131,9 @@ export async function POST(req: NextRequest) {
         web_auth: webKeys?.auth ?? null,
         platform: platform ?? null,
         timezone: timezone ?? null,
+        // Only set user_id when we have one; never clear an existing binding
+        // just because the caller sent no bearer this time.
+        ...(subscriberUserId ? { user_id: subscriberUserId } : {}),
         updated_at: now,
       },
       { onConflict: 'token_key' }
@@ -190,6 +198,12 @@ export async function PATCH(req: NextRequest) {
   if (startMinutes !== undefined) update.quiet_start_minutes = startMinutes
   if (endMinutes !== undefined) update.quiet_end_minutes = endMinutes
   if (timezone !== undefined) update.timezone = timezone
+  // Bind the device to the caller's profile when a bearer is sent (never
+  // clear an existing binding on an anonymous refresh) — matches POST above
+  // so a device that first appeared via a PATCH also enables the "skip
+  // self-notify" filter.
+  const subscriberUserId = await getProfileFromRequest(req)
+  if (subscriberUserId) update.user_id = subscriberUserId
   const admin = getSupabaseAdmin()
   const { error } = await admin.from('notification_subscriber_devices').update(update).eq('token_key', tokenKey)
   if (error) return NextResponse.json({ error: internalErrorMessage('notifications', error) }, { status: 500 })

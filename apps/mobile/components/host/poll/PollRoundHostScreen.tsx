@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { uniqueTopic } from '@/lib/realtime'
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native'
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native'
 import type { Game, Participant, Player, Round, Vote } from '@fateround/shared'
 import {
   isMostLikelyTo,
@@ -222,6 +222,17 @@ export function PollRoundHostScreen({ gameCode, hostToken, game, players, onRelo
     }
   }
 
+  const confirmFinish = (label: string) => {
+    Alert.alert(label, 'End the game for everyone now?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: label,
+        style: 'destructive',
+        onPress: () => void run('finish', () => postFinishGame(gameCode, hostToken)),
+      },
+    ])
+  }
+
   const roundLabel = pollGameLabel(game.game_type)
 
   return (
@@ -374,7 +385,7 @@ export function PollRoundHostScreen({ gameCode, hostToken, game, players, onRelo
         <Pressable
           style={[styles.primaryBtn, acting === 'finish' && styles.btnDisabled]}
           disabled={!!acting}
-          onPress={() => void run('finish', () => postFinishGame(gameCode, hostToken))}
+          onPress={() => confirmFinish('Finish game')}
         >
           {acting === 'finish' ? (
             <ActivityIndicator color="#fff" />
@@ -388,7 +399,7 @@ export function PollRoundHostScreen({ gameCode, hostToken, game, players, onRelo
         <Pressable
           style={[styles.secondaryBtn, acting === 'finish' && styles.btnDisabled]}
           disabled={!!acting}
-          onPress={() => void run('finish', () => postFinishGame(gameCode, hostToken))}
+          onPress={() => confirmFinish('End game early')}
         >
           <Text style={styles.secondaryBtnText}>End game early</Text>
         </Pressable>

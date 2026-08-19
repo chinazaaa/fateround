@@ -1,5 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import {
+  ActivityIndicator,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native'
 import { useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import type { Game, Player } from '@fateround/shared'
@@ -323,247 +333,252 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-      <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.topBar}>
-          <View style={styles.eyebrowRow}>
-            <Text style={styles.eyebrow}>Hosting</Text>
-            {game ? (
-              <View style={styles.typePill}>
-                <Text style={styles.typePillText}>{gameLabel(game.game_type)}</Text>
-              </View>
+      <KeyboardAvoidingView style={styles.kav} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <ScrollView contentContainerStyle={styles.content}>
+          <View style={styles.topBar}>
+            <View style={styles.eyebrowRow}>
+              <Text style={styles.eyebrow}>Hosting</Text>
+              {game ? (
+                <View style={styles.typePill}>
+                  <Text style={styles.typePillText}>{gameLabel(game.game_type)}</Text>
+                </View>
+              ) : null}
+            </View>
+            {game && !finished ? (
+              <Pressable style={styles.gearBtn} onPress={() => setSettingsOpen(true)} hitSlop={8}>
+                <Text style={styles.gearIcon}>⚙</Text>
+              </Pressable>
             ) : null}
           </View>
-          {game && !finished ? (
-            <Pressable style={styles.gearBtn} onPress={() => setSettingsOpen(true)} hitSlop={8}>
-              <Text style={styles.gearIcon}>⚙</Text>
-            </Pressable>
-          ) : null}
-        </View>
-        <GameInfoChips game={game} />
-        <Text style={styles.title}>{game?.title || 'Game'}</Text>
+          <GameInfoChips game={game} />
+          <Text style={styles.title}>{game?.title || 'Game'}</Text>
 
-        <Pressable style={styles.codeCard} onPress={onShare}>
-          <Text style={styles.codeLabel}>Game code — tap for link & QR</Text>
-          <Text style={styles.code}>{gameCode}</Text>
-        </Pressable>
+          <Pressable style={styles.codeCard} onPress={onShare}>
+            <Text style={styles.codeLabel}>Game code — tap for link & QR</Text>
+            <Text style={styles.code}>{gameCode}</Text>
+          </Pressable>
 
-        {/* Not gated on hostPlayerId: a host-only viewer (not seated / "stopped
+          {/* Not gated on hostPlayerId: a host-only viewer (not seated / "stopped
             playing") must still see the ring to watch players ready up and start.
             The ring is null-safe on myPlayerId, and isHost hides the ready toggle. */}
-        {replayLobby ? (
-          <ReplayReadyRing
-            gameCode={gameCode}
-            players={players}
-            myPlayerId={hostPlayerId}
-            myResumeToken={resumeToken}
-            maxPlayers={maxPlayers}
-            onReload={() => void load()}
-            onRemovePlayer={confirmRemove}
-            isHost
-          />
-        ) : null}
+          {replayLobby ? (
+            <ReplayReadyRing
+              gameCode={gameCode}
+              players={players}
+              myPlayerId={hostPlayerId}
+              myResumeToken={resumeToken}
+              maxPlayers={maxPlayers}
+              onReload={() => void load()}
+              onRemovePlayer={confirmRemove}
+              isHost
+            />
+          ) : null}
 
-        {!finished ? (
-          <HostLobbyPlayCard
-            gameCode={gameCode}
-            gameType={game?.game_type ?? 'trivia'}
-            players={players}
-            session={hostSession}
-            onSessionChange={setHostSession}
-            onReload={() => void load()}
-            onTransfer={() => setTransferOpen(true)}
-          />
-        ) : null}
+          {!finished ? (
+            <HostLobbyPlayCard
+              gameCode={gameCode}
+              gameType={game?.game_type ?? 'trivia'}
+              players={players}
+              session={hostSession}
+              onSessionChange={setHostSession}
+              onReload={() => void load()}
+              onTransfer={() => setTransferOpen(true)}
+            />
+          ) : null}
 
-        {(hasTeamManagement || hasWordPool) && game ? (
-          <View style={styles.manageCard}>
-            <Pressable style={styles.manageHeader} onPress={() => setManageOpen((v) => !v)}>
-              <Text style={styles.manageTitle}>{manageTitle}</Text>
-              <Text style={styles.manageChevron}>{manageOpen ? '▾' : '▸'}</Text>
-            </Pressable>
-            {manageOpen ? (
-              <View style={styles.manageBody}>
-                {hasTeamManagement ? (
-                  game.game_type === 'codewords' ? (
-                    <CodewordsHostLobby gameCode={gameCode} hostToken={hostToken} game={game} players={players} />
-                  ) : (
-                    <TeamRosterHostLobby gameCode={gameCode} hostToken={hostToken} game={game} players={players} />
-                  )
-                ) : null}
-                {hasWordPool ? (
-                  <WordPoolLobbyEditor
-                    gameCode={gameCode}
-                    hostToken={hostToken}
-                    game={game}
-                    onSaved={() => void load()}
-                  />
-                ) : null}
-              </View>
-            ) : null}
-          </View>
-        ) : null}
-
-        {game && !finished && !replayLobby ? (
-          <IdleWarningBanner game={game} gameCode={gameCode} hostToken={hostToken} onSaved={() => void load()} />
-        ) : null}
-
-        {game && !finished && !replayLobby ? (
-          <MissingPlayersPrompt
-            game={game}
-            gameCode={gameCode}
-            hostToken={hostToken}
-            activePlayers={activePlayers.length}
-            maxPlayers={maxPlayers}
-            onSaved={() => void load()}
-          />
-        ) : null}
-
-        {/* The ring already lists players (with Remove) during the replay lobby. */}
-        {!replayLobby ? (
-          <>
-            <View style={styles.rosterHeader}>
-              <Text style={styles.sectionTitle}>Players</Text>
-              <View style={styles.countRow}>
-                <Text style={styles.count}>
-                  {maxPlayers != null ? `${activePlayers.length} / ${maxPlayers}` : players.length}
-                </Text>
-                {watcherCount > 0 ? <Text style={styles.watchingCount}>{watcherCount} watching</Text> : null}
-              </View>
+          {(hasTeamManagement || hasWordPool) && game ? (
+            <View style={styles.manageCard}>
+              <Pressable style={styles.manageHeader} onPress={() => setManageOpen((v) => !v)}>
+                <Text style={styles.manageTitle}>{manageTitle}</Text>
+                <Text style={styles.manageChevron}>{manageOpen ? '▾' : '▸'}</Text>
+              </Pressable>
+              {manageOpen ? (
+                <View style={styles.manageBody}>
+                  {hasTeamManagement ? (
+                    game.game_type === 'codewords' ? (
+                      <CodewordsHostLobby gameCode={gameCode} hostToken={hostToken} game={game} players={players} />
+                    ) : (
+                      <TeamRosterHostLobby gameCode={gameCode} hostToken={hostToken} game={game} players={players} />
+                    )
+                  ) : null}
+                  {hasWordPool ? (
+                    <WordPoolLobbyEditor
+                      gameCode={gameCode}
+                      hostToken={hostToken}
+                      game={game}
+                      onSaved={() => void load()}
+                    />
+                  ) : null}
+                </View>
+              ) : null}
             </View>
+          ) : null}
 
-            {players.length === 0 ? (
-              <Text style={styles.empty}>Waiting for players to join…</Text>
-            ) : (
-              players.map((p) => {
-                const isHost = p.id === hostPlayerId
-                const notReady = p.spectator === true
-                const isBot = p.is_bot === true
-                return (
-                  <View key={p.id} style={styles.playerRow}>
-                    <View style={styles.playerNameRow}>
-                      <View style={[styles.readyDot, notReady && styles.readyDotOff]} />
-                      <Text style={[styles.playerName, notReady && styles.playerNameDim]} numberOfLines={1}>
-                        {isBot ? '🤖 ' : ''}
-                        {p.name}
-                        {isHost ? <Text style={styles.youTag}> · you</Text> : null}
-                        {isBot ? <Text style={styles.notReadyTag}> · bot</Text> : null}
-                        {notReady && !isBot ? (
-                          <Text style={styles.notReadyTag}> · {seatsFull ? 'watching' : 'not ready'}</Text>
-                        ) : null}
-                      </Text>
+          {game && !finished && !replayLobby ? (
+            <IdleWarningBanner game={game} gameCode={gameCode} hostToken={hostToken} onSaved={() => void load()} />
+          ) : null}
+
+          {game && !finished && !replayLobby ? (
+            <MissingPlayersPrompt
+              game={game}
+              gameCode={gameCode}
+              hostToken={hostToken}
+              activePlayers={activePlayers.length}
+              maxPlayers={maxPlayers}
+              onSaved={() => void load()}
+            />
+          ) : null}
+
+          {/* The ring already lists players (with Remove) during the replay lobby. */}
+          {!replayLobby ? (
+            <>
+              <View style={styles.rosterHeader}>
+                <Text style={styles.sectionTitle}>Players</Text>
+                <View style={styles.countRow}>
+                  <Text style={styles.count}>
+                    {maxPlayers != null ? `${activePlayers.length} / ${maxPlayers}` : players.length}
+                  </Text>
+                  {watcherCount > 0 ? <Text style={styles.watchingCount}>{watcherCount} watching</Text> : null}
+                </View>
+              </View>
+
+              {players.length === 0 ? (
+                <Text style={styles.empty}>Waiting for players to join…</Text>
+              ) : (
+                players.map((p) => {
+                  const isHost = p.id === hostPlayerId
+                  const notReady = p.spectator === true
+                  const isBot = p.is_bot === true
+                  return (
+                    <View key={p.id} style={styles.playerRow}>
+                      <View style={styles.playerNameRow}>
+                        <View style={[styles.readyDot, notReady && styles.readyDotOff]} />
+                        <Text style={[styles.playerName, notReady && styles.playerNameDim]} numberOfLines={1}>
+                          {isBot ? '🤖 ' : ''}
+                          {p.name}
+                          {isHost ? <Text style={styles.youTag}> · you</Text> : null}
+                          {isBot ? <Text style={styles.notReadyTag}> · bot</Text> : null}
+                          {notReady && !isBot ? (
+                            <Text style={styles.notReadyTag}> · {seatsFull ? 'watching' : 'not ready'}</Text>
+                          ) : null}
+                        </Text>
+                      </View>
+                      {!isHost ? (
+                        <Pressable onPress={() => confirmRemove(p)} disabled={removingId === p.id} hitSlop={8}>
+                          {removingId === p.id ? (
+                            <ActivityIndicator color={theme.error} />
+                          ) : (
+                            <Text style={styles.removeText}>Remove</Text>
+                          )}
+                        </Pressable>
+                      ) : null}
                     </View>
-                    {!isHost ? (
-                      <Pressable onPress={() => confirmRemove(p)} disabled={removingId === p.id} hitSlop={8}>
-                        {removingId === p.id ? (
-                          <ActivityIndicator color={theme.error} />
-                        ) : (
-                          <Text style={styles.removeText}>Remove</Text>
-                        )}
-                      </Pressable>
-                    ) : null}
-                  </View>
-                )
-              })
-            )}
+                  )
+                })
+              )}
 
-            {/*
+              {/*
               Bots-in-room "+ Add bot" — mobile parity with the web
               AddBotButton. Only Whot + Monopoly admit bots today, and only
               during the fresh (waiting, non-replay) lobby. The button hides
               itself when seats are full or the (max-1) bot cap is hit.
             */}
-            {(gameType === 'whot' || gameType === 'monopoly') && game?.status === 'waiting' && maxPlayers != null ? (
-              <AddBotButton
-                gameCode={gameCode}
-                hostToken={hostToken}
-                seatedCount={activePlayers.length}
-                botCount={activePlayers.filter((p) => p.is_bot === true).length}
-                maxPlayers={maxPlayers}
-                onAdded={() => void load()}
-              />
-            ) : null}
-          </>
-        ) : null}
+              {(gameType === 'whot' || gameType === 'monopoly') && game?.status === 'waiting' && maxPlayers != null ? (
+                <AddBotButton
+                  gameCode={gameCode}
+                  hostToken={hostToken}
+                  seatedCount={activePlayers.length}
+                  botCount={activePlayers.filter((p) => p.is_bot === true).length}
+                  maxPlayers={maxPlayers}
+                  onAdded={() => void load()}
+                />
+              ) : null}
+            </>
+          ) : null}
 
-        {finished ? (
-          <Text style={styles.finishedHint}>
-            Game finished. Tap play again to reopen the lobby — players will ready up, then you start the next round.
-          </Text>
-        ) : replayLobby ? (
-          <Text style={styles.replayHint}>
-            Play again lobby open — {readyCount} player{readyCount === 1 ? '' : 's'} ready. Start when everyone is in.
-          </Text>
-        ) : null}
-      </ScrollView>
+          {finished ? (
+            <Text style={styles.finishedHint}>
+              Game finished. Tap play again to reopen the lobby — players will ready up, then you start the next round.
+            </Text>
+          ) : replayLobby ? (
+            <Text style={styles.replayHint}>
+              Play again lobby open — {readyCount} player{readyCount === 1 ? '' : 's'} ready. Start when everyone is in.
+            </Text>
+          ) : null}
+        </ScrollView>
 
-      <View style={styles.footer} onLayout={(e) => setFooterHeight(e.nativeEvent.layout.height)}>
-        {/* Error lives in the pinned footer, next to the Start button, so a failed
+        {/* Footer lives INSIDE the KeyboardAvoidingView so Start / End lobby lift
+            with the ScrollView when a HostLobbyPlayCard TextInput is focused. Modal
+            sheets below stay siblings (they render into their own window anyway). */}
+        <View style={styles.footer} onLayout={(e) => setFooterHeight(e.nativeEvent.layout.height)}>
+          {/* Error lives in the pinned footer, next to the Start button, so a failed
             Start is visible immediately (it used to render at the bottom of the
             scroll, out of view). */}
-        {error ? <Text style={styles.error}>{error}</Text> : null}
-        {finished ? (
-          <Pressable
-            style={[styles.startButton, replaying && styles.startButtonDisabled]}
-            onPress={onPlayAgain}
-            disabled={replaying}
-          >
-            {replaying ? (
-              // White spinner on the solid rose Start button — correct in both schemes.
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.startButtonText}>Play again · same settings</Text>
-            )}
-          </Pressable>
-        ) : replayLobby ? (
-          <>
-            {!meetsMinimum ? (
-              <Text style={styles.minHint}>
-                Need at least {minPlayers} player{minPlayers === 1 ? '' : 's'} to start ({activePlayers.length}/
-                {minPlayers})
-              </Text>
-            ) : null}
+          {error ? <Text style={styles.error}>{error}</Text> : null}
+          {finished ? (
             <Pressable
-              style={[styles.startButton, (starting || !meetsMinimum) && styles.startButtonDisabled]}
-              onPress={onStart}
-              disabled={starting || !meetsMinimum}
+              style={[styles.startButton, replaying && styles.startButtonDisabled]}
+              onPress={onPlayAgain}
+              disabled={replaying}
             >
-              {starting ? (
+              {replaying ? (
                 // White spinner on the solid rose Start button — correct in both schemes.
                 <ActivityIndicator color="#fff" />
               ) : (
-                <Text style={styles.startButtonText}>Start next round</Text>
+                <Text style={styles.startButtonText}>Play again · same settings</Text>
               )}
             </Pressable>
-          </>
-        ) : (
-          <>
-            {!meetsMinimum ? (
-              <Text style={styles.minHint}>
-                Need at least {minPlayers} player{minPlayers === 1 ? '' : 's'} to start ({activePlayers.length}/
-                {minPlayers})
-              </Text>
-            ) : null}
-            <Pressable
-              style={[styles.startButton, (starting || !meetsMinimum) && styles.startButtonDisabled]}
-              onPress={onStart}
-              disabled={starting || !meetsMinimum}
-            >
-              {starting ? (
-                // White spinner on the solid rose Start button — correct in both schemes.
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.startButtonText}>Start game</Text>
-              )}
-            </Pressable>
-          </>
-        )}
+          ) : replayLobby ? (
+            <>
+              {!meetsMinimum ? (
+                <Text style={styles.minHint}>
+                  Need at least {minPlayers} player{minPlayers === 1 ? '' : 's'} to start ({activePlayers.length}/
+                  {minPlayers})
+                </Text>
+              ) : null}
+              <Pressable
+                style={[styles.startButton, (starting || !meetsMinimum) && styles.startButtonDisabled]}
+                onPress={onStart}
+                disabled={starting || !meetsMinimum}
+              >
+                {starting ? (
+                  // White spinner on the solid rose Start button — correct in both schemes.
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.startButtonText}>Start next round</Text>
+                )}
+              </Pressable>
+            </>
+          ) : (
+            <>
+              {!meetsMinimum ? (
+                <Text style={styles.minHint}>
+                  Need at least {minPlayers} player{minPlayers === 1 ? '' : 's'} to start ({activePlayers.length}/
+                  {minPlayers})
+                </Text>
+              ) : null}
+              <Pressable
+                style={[styles.startButton, (starting || !meetsMinimum) && styles.startButtonDisabled]}
+                onPress={onStart}
+                disabled={starting || !meetsMinimum}
+              >
+                {starting ? (
+                  // White spinner on the solid rose Start button — correct in both schemes.
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.startButtonText}>Start game</Text>
+                )}
+              </Pressable>
+            </>
+          )}
 
-        {!finished ? (
-          <Pressable style={styles.endButton} onPress={onEndLobby} disabled={ending}>
-            {ending ? <ActivityIndicator color={theme.error} /> : <Text style={styles.endButtonText}>End lobby</Text>}
-          </Pressable>
-        ) : null}
-      </View>
+          {!finished ? (
+            <Pressable style={styles.endButton} onPress={onEndLobby} disabled={ending}>
+              {ending ? <ActivityIndicator color={theme.error} /> : <Text style={styles.endButtonText}>End lobby</Text>}
+            </Pressable>
+          ) : null}
+        </View>
+      </KeyboardAvoidingView>
       <ShareGameSheet
         visible={shareOpen}
         gameCode={gameCode}
@@ -604,6 +619,7 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
     safe: { flex: 1, backgroundColor: theme.bg },
+    kav: { flex: 1 },
     topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
     gearBtn: {
       width: 40,

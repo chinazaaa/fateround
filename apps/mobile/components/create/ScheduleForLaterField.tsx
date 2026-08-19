@@ -9,9 +9,10 @@
  */
 
 import { useCallback, useMemo } from 'react'
-import { StyleSheet, Switch, Text, TextInput, View } from 'react-native'
+import { StyleSheet, Switch, Text, View } from 'react-native'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
+import { DatePickerField, TimePickerField } from '@/components/ui/DateTimeFieldSheet'
 
 type Props = {
   isPublic: boolean
@@ -89,30 +90,8 @@ export function ScheduleForLaterField({ isPublic, scheduledAt, onChange }: Props
       {enabled ? (
         <>
           <View style={styles.row}>
-            <View style={styles.col}>
-              <Text style={styles.subLabel}>Date (YYYY-MM-DD)</Text>
-              <TextInput
-                style={styles.input}
-                value={date}
-                onChangeText={setDate}
-                placeholder="2026-08-22"
-                placeholderTextColor={theme.textFaint}
-                maxLength={10}
-                autoCorrect={false}
-              />
-            </View>
-            <View style={styles.col}>
-              <Text style={styles.subLabel}>Time (24h)</Text>
-              <TextInput
-                style={styles.input}
-                value={time}
-                onChangeText={setTime}
-                placeholder="20:00"
-                placeholderTextColor={theme.textFaint}
-                maxLength={5}
-                autoCorrect={false}
-              />
-            </View>
+            <DatePickerField label="Date" value={date} placeholder="Pick a day" onChange={setDate} />
+            <TimePickerField label="Time" value={time} placeholder="Pick a time" onChange={setTime} />
           </View>
           <Text style={styles.hint}>
             {tz ? `Times are in your local zone (${tz}).` : 'Times use this device’s local zone.'}

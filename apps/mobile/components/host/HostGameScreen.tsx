@@ -3,6 +3,7 @@ import { ActivityIndicator, StyleSheet, View } from 'react-native'
 import { HostLobbyScreen } from '@/components/HostLobbyScreen'
 import { HostRouter } from '@/components/host/HostRouter'
 import { MatureGameGate } from '@/components/MatureGameGate'
+import { ScheduledGameScreen } from '@/components/notifications/ScheduledGameScreen'
 import { useHostGame } from '@/hooks/useHostGame'
 import { recordRecentGame } from '@/lib/recent-games'
 import type { Theme } from '@/constants/theme'
@@ -48,13 +49,21 @@ export function HostGameScreen({ gameCode, hostToken }: Props) {
   }
 
   const inLobby = game.status === 'waiting'
+  const isScheduled = game.status === 'scheduled'
 
   // Apply the game's chosen edition/theme across the lobby, in-game, and finished
   // views. Reading it here means a theme change from the lobby settings sheet
   // re-applies live (useHostGame reloads on the `games` change).
   return (
     <GameThemeProvider theme={game.theme}>
-      {inLobby ? (
+      {isScheduled ? (
+        // Scheduled games have no lobby yet — the game row is 'scheduled', not
+        // 'waiting', so trying to seat players (what the per-game HostRouter
+        // does) hits `canJoinGame`'s "Cannot join this game" rejection. Route
+        // the host into the same scheduled screen viewers see; it detects the
+        // host token and surfaces the reschedule/cancel/transfer sheet.
+        <ScheduledGameScreen gameCode={gameCode} game={game} />
+      ) : inLobby ? (
         <HostLobbyScreen gameCode={gameCode} hostToken={hostToken} />
       ) : (
         <HostRouter
