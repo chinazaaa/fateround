@@ -1,7 +1,6 @@
 import { StyleSheet, Text, View } from 'react-native'
 import type { GameType } from '@fateround/shared'
 import {
-  AYO_VARIANT_OPTIONS,
   LUDO_VARIANT_OPTIONS,
   formatAyoClockLabel,
   formatBoardGameTurnTimer,
@@ -34,22 +33,16 @@ export function BoardVariantSection({ gameType, value, onChange }: Props) {
 
   return (
     <View style={styles.wrap}>
-      <View style={styles.field}>
-        <Text style={styles.label}>Rules</Text>
-        {isLudo ? (
+      {isLudo ? (
+        <View style={styles.field}>
+          <Text style={styles.label}>Rules</Text>
           <SegmentedControl
             value={value.ludoVariant}
             options={LUDO_VARIANT_OPTIONS.map((o) => ({ value: o.value, label: o.label, hint: o.hint }))}
             onChange={(v) => onChange({ ludoVariant: v as BoardVariantState['ludoVariant'] })}
           />
-        ) : (
-          <SegmentedControl
-            value={value.ayoVariant}
-            options={AYO_VARIANT_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
-            onChange={(v) => onChange({ ayoVariant: v as BoardVariantState['ayoVariant'] })}
-          />
-        )}
-      </View>
+        </View>
+      ) : null}
 
       <TimerPicker
         label={isLudo ? 'Turn timer' : 'Time per player'}
@@ -64,7 +57,7 @@ export function BoardVariantSection({ gameType, value, onChange }: Props) {
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-  wrap: { gap: theme.space.md },
-  field: { gap: theme.space.sm },
-  label: { color: theme.text, fontSize: 16, fontWeight: '800' },
-})
+    wrap: { gap: theme.space.md },
+    field: { gap: theme.space.sm },
+    label: { color: theme.text, fontSize: 16, fontWeight: '800' },
+  })

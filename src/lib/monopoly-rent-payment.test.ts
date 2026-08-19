@@ -90,7 +90,7 @@ function makeMockSupabase(opts: {
   return { supabase: supabase as any, updates, rpcCalls }
 }
 
-// Space 1 = Old Kent Road (base rent £2), owned by "owner"; "payer" is on it
+// Space 1 = Barking Road (base rent £2), owned by "owner"; "payer" is on it
 // with the pay_rent phase pending.
 function baseBoard(overrides: Record<string, unknown> = {}) {
   return {
@@ -138,7 +138,7 @@ describe('processMonopolyPayRent — atomic settlement', () => {
     const params = m.rpcCalls[0]!.params
     expect(params.p_payer_id).toBe('payer')
     expect(params.p_creditor_id).toBe('owner')
-    expect(params.p_amount).toBe(2) // Old Kent Road base rent
+    expect(params.p_amount).toBe(2) // Barking Road base rent
     expect(params.p_expected_updated_at).toBe('2026-01-01T00:00:00.000Z')
     expect(params.p_last_rent_event).toMatchObject({ payer_player_id: 'payer', owner_player_id: 'owner', amount: 2 })
     // The transfer must live entirely inside the RPC transaction.

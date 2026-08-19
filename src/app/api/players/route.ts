@@ -4,7 +4,7 @@ import { createPlayerSchema, updatePlayerSchema, deletePlayerSchema } from '@/li
 import { enforceRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { normalizeGender, normalizePlayerGender, type ParticipantGender } from '@/lib/participants'
-import { normalizeResumeToken } from '@/lib/utils'
+import { generateResumeToken, normalizeResumeToken } from '@/lib/utils'
 import { removeMonopolyPlayer } from '@/lib/monopoly'
 import { removeScrabblePlayer } from '@/lib/scrabble'
 import { removeWhotPlayer } from '@/lib/whot'
@@ -18,6 +18,8 @@ import { removeChessPlayer } from '@/lib/chess'
 import { removeCheckersPlayer } from '@/lib/checkers'
 import { removeDraughts10Player } from '@/lib/draughts10'
 import { removeAyoPlayer } from '@/lib/ayo'
+import { maybeNotifyHostPlayerJoined } from '@/lib/push'
+import { getProfileFromRequest } from '@/lib/identity-server'
 import { removeTicTacToePlayer } from '@/lib/tic-tac-toe'
 import { removePingPongPlayer } from '@/lib/ping-pong'
 import { isMonopolyTokenId } from '@/lib/monopoly-tokens'
@@ -162,9 +164,34 @@ async function jsonPlayerJoin(
   roomMemberId: string | null,
   player: Parameters<typeof playerJoinResponse>[0],
   game: Parameters<typeof playerJoinResponse>[1],
-  extra: Record<string, unknown> = {}
+  extra: Record<string, unknown> = {},
+  joinerUserId: string | null = null
 ) {
   await linkPlayerToRoomMember(supabase, player.id, roomMemberId)
+  // Attribute the seat to the caller's profile so future joins from another
+  // device by the same profile can detect the collision. Best-effort — a
+  // failure here mustn't turn a successful join into a 500.
+  if (joinerUserId) {
+    await getSupabaseAdmin()
+      .from('players')
+      .update({ user_id: joinerUserId })
+      .eq('id', (player as { id: string }).id)
+      .then(
+        () => undefined,
+        () => undefined
+      )
+  }
+  // Discovery Phase A: fire a directed push to the host so they know somebody
+  // arrived. The helper self-gates (waiting + is_public + non-host + 60s dedup);
+  // wrap in a best-effort to keep the join response fast — a failed push must
+  // never turn a successful join into a 500.
+  void maybeNotifyHostPlayerJoined(
+    String((game as { id?: string }).id ?? (player as { game_id?: string }).game_id ?? '').toUpperCase(),
+    String(player.name ?? ''),
+    String((player as { id?: string }).id ?? '')
+  ).catch(() => {
+    // Best-effort — never block a join on a push failure.
+  })
   return NextResponse.json(playerJoinResponse(player, game, extra))
 }
 
@@ -248,6 +275,7 @@ export async function POST(req: NextRequest) {
   } = body
 
   let name = playerName?.trim() ?? ''
+  const country = req.headers.get('cf-ipcountry') ?? null
   const gameId = gameCode.toUpperCase()
   const { data: gameRow } = await getSupabaseAdmin().from('games').select('*').eq('id', gameId).maybeSingle()
   if (!gameRow) return NextResponse.json({ error: 'Game not found' }, { status: 404 })
@@ -256,6 +284,63 @@ export async function POST(req: NextRequest) {
   const roomMemberId = roomMember?.id ?? null
   if (!name && roomMember?.display_name) {
     name = roomMember.display_name.trim()
+  }
+
+  // Cross-device continuation: if the caller is a signed-in profile that is
+  // already hosting this game, or already sitting in it from another device,
+  // return a soft 409 so the client can prompt "Continue here / Keep on the
+  // other device" instead of silently seating a second copy of the same
+  // account. The client retries with continueOnThisDevice: true to bypass —
+  // and when they were already a player, we hand back the existing row so
+  // they pick up right where they left off instead of starting a new seat.
+  const joinerUserId = await getProfileFromRequest(req)
+  const continueOnThisDevice = body.continueOnThisDevice === true
+  if (joinerUserId) {
+    const hostUserId = (gameRow as { host_user_id?: string | null }).host_user_id ?? null
+    if (hostUserId && hostUserId === joinerUserId && !continueOnThisDevice) {
+      return NextResponse.json(
+        {
+          error: 'You’re already hosting this game on another device.',
+          reason: 'already_hosting',
+          gameCode: gameId,
+        },
+        { status: 409 }
+      )
+    }
+    const { data: existingPlayer } = await getSupabaseAdmin()
+      .from('players')
+      .select('id, name, gender, identity_gender, joined_at, spectator, is_eliminated, resume_token')
+      .eq('game_id', gameId)
+      .eq('user_id', joinerUserId)
+      .maybeSingle()
+    if (existingPlayer) {
+      if (!continueOnThisDevice) {
+        return NextResponse.json(
+          {
+            error: 'You’re already a player in this game on another device.',
+            reason: 'already_joined',
+            gameCode: gameId,
+            existingPlayerName: (existingPlayer as { name?: string | null }).name ?? null,
+          },
+          { status: 409 }
+        )
+      }
+      // Continue on this device: rotate the resume token first so the old
+      // device's stored token stops authenticating — a "Continue here" must
+      // move control, not clone it. Only the freshly-minted token is returned
+      // to this device.
+      const rotatedResumeToken = generateResumeToken()
+      const { data: rotated, error: rotateError } = await getSupabaseAdmin()
+        .from('players')
+        .update({ resume_token: rotatedResumeToken })
+        .eq('id', (existingPlayer as { id: string }).id)
+        .select('id, name, gender, identity_gender, joined_at, spectator, is_eliminated, resume_token')
+        .single()
+      if (rotateError || !rotated) {
+        return NextResponse.json({ error: internalErrorMessage('players', rotateError) }, { status: 500 })
+      }
+      return jsonPlayerJoin(roomMemberId, rotated, gameRow as Game, {}, joinerUserId)
+    }
   }
 
   // Reconnect / refresh reclaim: if this device already holds a seat in this game — proven
@@ -283,7 +368,7 @@ export async function POST(req: NextRequest) {
           const { error: assignError } = await registerQuickDrawLateJoinPlayer(getSupabaseAdmin(), gameId, existing.id)
           if (assignError) return NextResponse.json({ error: assignError }, { status: 500 })
         }
-        return jsonPlayerJoin(roomMemberId, existing, gameRow as Game)
+        return jsonPlayerJoin(roomMemberId, existing, gameRow as Game, {}, joinerUserId)
       }
     }
   }
@@ -324,7 +409,7 @@ export async function POST(req: NextRequest) {
         .order('joined_at', { ascending: true })
         .limit(1)
       const existing = existingRows?.[0]
-      if (existing) return jsonPlayerJoin(roomMemberId, existing, gameRow as Game)
+      if (existing) return jsonPlayerJoin(roomMemberId, existing, gameRow as Game, {}, joinerUserId)
       // Otherwise fall through to a normal first-time seat under the canonical name.
     } else if (name) {
       // No valid token: refuse to let this join take a name that belongs to a
@@ -380,6 +465,7 @@ export async function POST(req: NextRequest) {
       .from('players')
       .insert({
         game_id: gameId,
+        country,
         name: generatedName,
         gender: 'both',
         identity_gender: null,
@@ -417,6 +503,7 @@ export async function POST(req: NextRequest) {
       .from('players')
       .insert({
         game_id: gameId,
+        country,
         name: generatedName,
         gender: 'both',
         identity_gender: null,
@@ -473,6 +560,7 @@ export async function POST(req: NextRequest) {
       .from('players')
       .insert({
         game_id: gameId,
+        country,
         name,
         gender: 'both',
         identity_gender: null,
@@ -489,7 +577,7 @@ export async function POST(req: NextRequest) {
       if (cardError) return NextResponse.json({ error: cardError }, { status: 500 })
     }
 
-    return jsonPlayerJoin(roomMemberId, player, gameRow as Game)
+    return jsonPlayerJoin(roomMemberId, player, gameRow as Game, {}, joinerUserId)
   }
 
   if (isMonopolyGame(rowGameType)) {
@@ -509,7 +597,31 @@ export async function POST(req: NextRequest) {
       .eq('game_id', gameId)
       .eq('spectator', false)
 
-    const seatsFull = gameRow.status === 'waiting' && (playerCount ?? 0) >= maxPlayers
+    let seatsFull = gameRow.status === 'waiting' && (playerCount ?? 0) >= maxPlayers
+
+    // ── Bots-in-room: humans never lose a seat to a bot (Monopoly branch) ──
+    // Mirrors the Whot eviction below. Lobby only — a Monopoly seat mid-game
+    // carries cash + properties + position that we can't safely transfer to a
+    // joining human, so mid-game arrivals fall through to spectator seating
+    // and can take a real seat at the next replay.
+    if (seatsFull && rawJoinAsViewer !== true) {
+      const { data: newestBot } = await supabase
+        .from('players')
+        .select('id')
+        .eq('game_id', gameId)
+        .eq('is_bot', true)
+        .eq('spectator', false)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (newestBot) {
+        // LIFO eviction — same behaviour Whot ships. The delete cascades the
+        // bot's monopoly_token so the joining human can claim it.
+        await getSupabaseAdmin().from('players').delete().eq('id', newestBot.id).eq('game_id', gameId)
+        seatsFull = false
+      }
+    }
+
     const seatFullResp = seatFullGate(gameRow as Game, seatsFull, rawJoinAsViewer, 'This game is full')
     if (seatFullResp) return seatFullResp
 
@@ -518,7 +630,15 @@ export async function POST(req: NextRequest) {
     }
 
     const isSpectator =
-      seatsFull || (gameRow.status === 'active' ? spectatorForActiveJoin(gameRow as Game, true) : false)
+      seatsFull ||
+      // An EXPLICIT "watch only" join is a spectator even in a waiting lobby. Without this the
+      // seat-based games ignored `joinAsViewer` until the game was active, so a deliberate
+      // viewer — most visibly the host who chose "Host only" — was treated as a real player
+      // and made to satisfy the player-join rules (Monopoly demanded a board token). This is
+      // the same clause `spectatorOnJoin` carries; the active-game branch below keeps its
+      // hardcoded `true` because these games never admit a mid-game player.
+      rawJoinAsViewer === true ||
+      (gameRow.status === 'active' ? spectatorForActiveJoin(gameRow as Game, true) : false)
 
     if (!isSpectator) {
       if (!rawMonopolyToken || !isMonopolyTokenId(rawMonopolyToken)) {
@@ -539,6 +659,7 @@ export async function POST(req: NextRequest) {
       .from('players')
       .insert({
         game_id: gameId,
+        country,
         name,
         gender: 'both',
         identity_gender: null,
@@ -556,7 +677,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: internalErrorMessage('players', error) }, { status: 500 })
     }
 
-    return jsonPlayerJoin(roomMemberId, player, gameRow as Game)
+    return jsonPlayerJoin(roomMemberId, player, gameRow as Game, {}, joinerUserId)
   }
 
   if (isYahtzeeGame(rowGameType)) {
@@ -585,12 +706,21 @@ export async function POST(req: NextRequest) {
     }
 
     const isSpectator =
-      seatsFull || (gameRow.status === 'active' ? spectatorForActiveJoin(gameRow as Game, true) : false)
+      seatsFull ||
+      // An EXPLICIT "watch only" join is a spectator even in a waiting lobby. Without this the
+      // seat-based games ignored `joinAsViewer` until the game was active, so a deliberate
+      // viewer — most visibly the host who chose "Host only" — was treated as a real player
+      // and made to satisfy the player-join rules (Monopoly demanded a board token). This is
+      // the same clause `spectatorOnJoin` carries; the active-game branch below keeps its
+      // hardcoded `true` because these games never admit a mid-game player.
+      rawJoinAsViewer === true ||
+      (gameRow.status === 'active' ? spectatorForActiveJoin(gameRow as Game, true) : false)
 
     const { data: player, error } = await getSupabaseAdmin()
       .from('players')
       .insert({
         game_id: gameId,
+        country,
         name,
         gender: 'both',
         identity_gender: null,
@@ -602,7 +732,7 @@ export async function POST(req: NextRequest) {
 
     if (error) return NextResponse.json({ error: internalErrorMessage('players', error) }, { status: 500 })
 
-    return jsonPlayerJoin(roomMemberId, player, gameRow as Game)
+    return jsonPlayerJoin(roomMemberId, player, gameRow as Game, {}, joinerUserId)
   }
 
   if (isWhotGame(rowGameType) || isCrazyEightsGame(rowGameType) || isUnoGame(rowGameType)) {
@@ -623,7 +753,34 @@ export async function POST(req: NextRequest) {
       .eq('game_id', gameId)
       .eq('spectator', false)
 
-    const seatsFull = gameRow.status === 'waiting' && (playerCount ?? 0) >= maxPlayers
+    // ── Bots-in-room: humans never lose a seat to a bot ────────────────────
+    // If the room is at cap but any of the seats are bots (Whot only for now
+    // — see docs/bots-in-room-plan.md), evict the newest bot to make room
+    // for the human, in the lobby only. Mid-game bot eviction is a Phase 2
+    // improvement: dealing a mid-game hand to a joining human needs engine
+    // help we haven't wired for `waiting` → `active` transition yet.
+    let seatsFull = gameRow.status === 'waiting' && (playerCount ?? 0) >= maxPlayers
+    if (seatsFull && isWhotGame(rowGameType) && rawJoinAsViewer !== true) {
+      const { data: newestBot } = await supabase
+        .from('players')
+        .select('id')
+        .eq('game_id', gameId)
+        .eq('is_bot', true)
+        .eq('spectator', false)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (newestBot) {
+        // LIFO — the newest bot cedes first. Comes with a small race window:
+        // if two humans arrive simultaneously to a room with N bots, both
+        // may see N bots and each try to evict; the delete is idempotent so
+        // the second just gets a 0-row result. Worst case one human still
+        // hits "room full" and retries — no data corruption.
+        await getSupabaseAdmin().from('players').delete().eq('id', newestBot.id).eq('game_id', gameId)
+        seatsFull = false
+      }
+    }
+
     const seatFullResp = seatFullGate(gameRow as Game, seatsFull, rawJoinAsViewer, 'This game is full')
     if (seatFullResp) return seatFullResp
 
@@ -632,12 +789,21 @@ export async function POST(req: NextRequest) {
     }
 
     const isSpectator =
-      seatsFull || (gameRow.status === 'active' ? spectatorForActiveJoin(gameRow as Game, true) : false)
+      seatsFull ||
+      // An EXPLICIT "watch only" join is a spectator even in a waiting lobby. Without this the
+      // seat-based games ignored `joinAsViewer` until the game was active, so a deliberate
+      // viewer — most visibly the host who chose "Host only" — was treated as a real player
+      // and made to satisfy the player-join rules (Monopoly demanded a board token). This is
+      // the same clause `spectatorOnJoin` carries; the active-game branch below keeps its
+      // hardcoded `true` because these games never admit a mid-game player.
+      rawJoinAsViewer === true ||
+      (gameRow.status === 'active' ? spectatorForActiveJoin(gameRow as Game, true) : false)
 
     const { data: player, error } = await getSupabaseAdmin()
       .from('players')
       .insert({
         game_id: gameId,
+        country,
         name,
         gender: 'both',
         identity_gender: null,
@@ -649,7 +815,7 @@ export async function POST(req: NextRequest) {
 
     if (error) return NextResponse.json({ error: internalErrorMessage('players', error) }, { status: 500 })
 
-    return jsonPlayerJoin(roomMemberId, player, gameRow as Game)
+    return jsonPlayerJoin(roomMemberId, player, gameRow as Game, {}, joinerUserId)
   }
 
   if (isLudoGame(rowGameType) || isMahjongGame(rowGameType) || isSnakeAndLadderGame(rowGameType)) {
@@ -683,12 +849,21 @@ export async function POST(req: NextRequest) {
     }
 
     const isSpectator =
-      seatsFull || (gameRow.status === 'active' ? spectatorForActiveJoin(gameRow as Game, true) : false)
+      seatsFull ||
+      // An EXPLICIT "watch only" join is a spectator even in a waiting lobby. Without this the
+      // seat-based games ignored `joinAsViewer` until the game was active, so a deliberate
+      // viewer — most visibly the host who chose "Host only" — was treated as a real player
+      // and made to satisfy the player-join rules (Monopoly demanded a board token). This is
+      // the same clause `spectatorOnJoin` carries; the active-game branch below keeps its
+      // hardcoded `true` because these games never admit a mid-game player.
+      rawJoinAsViewer === true ||
+      (gameRow.status === 'active' ? spectatorForActiveJoin(gameRow as Game, true) : false)
 
     const { data: player, error } = await getSupabaseAdmin()
       .from('players')
       .insert({
         game_id: gameId,
+        country,
         name,
         gender: 'both',
         identity_gender: null,
@@ -700,7 +875,7 @@ export async function POST(req: NextRequest) {
 
     if (error) return NextResponse.json({ error: internalErrorMessage('players', error) }, { status: 500 })
 
-    return jsonPlayerJoin(roomMemberId, player, gameRow as Game)
+    return jsonPlayerJoin(roomMemberId, player, gameRow as Game, {}, joinerUserId)
   }
 
   if (
@@ -747,12 +922,21 @@ export async function POST(req: NextRequest) {
     }
 
     const isSpectator =
-      seatsFull || (gameRow.status === 'active' ? spectatorForActiveJoin(gameRow as Game, true) : false)
+      seatsFull ||
+      // An EXPLICIT "watch only" join is a spectator even in a waiting lobby. Without this the
+      // seat-based games ignored `joinAsViewer` until the game was active, so a deliberate
+      // viewer — most visibly the host who chose "Host only" — was treated as a real player
+      // and made to satisfy the player-join rules (Monopoly demanded a board token). This is
+      // the same clause `spectatorOnJoin` carries; the active-game branch below keeps its
+      // hardcoded `true` because these games never admit a mid-game player.
+      rawJoinAsViewer === true ||
+      (gameRow.status === 'active' ? spectatorForActiveJoin(gameRow as Game, true) : false)
 
     const { data: player, error } = await getSupabaseAdmin()
       .from('players')
       .insert({
         game_id: gameId,
+        country,
         name,
         gender: 'both',
         identity_gender: null,
@@ -764,7 +948,7 @@ export async function POST(req: NextRequest) {
 
     if (error) return NextResponse.json({ error: internalErrorMessage('players', error) }, { status: 500 })
 
-    return jsonPlayerJoin(roomMemberId, player, gameRow as Game)
+    return jsonPlayerJoin(roomMemberId, player, gameRow as Game, {}, joinerUserId)
   }
 
   if (isCodewordsGame(rowGameType)) {
@@ -804,6 +988,7 @@ export async function POST(req: NextRequest) {
       .from('players')
       .insert({
         game_id: gameId,
+        country,
         name,
         gender: 'both',
         identity_gender: null,
@@ -821,10 +1006,10 @@ export async function POST(req: NextRequest) {
         await getSupabaseAdmin().from('players').delete().eq('id', player.id)
         return NextResponse.json({ error: assignError }, { status: 500 })
       }
-      return jsonPlayerJoin(roomMemberId, player, gameRow as Game, role ? { codewordsRole: role } : {})
+      return jsonPlayerJoin(roomMemberId, player, gameRow as Game, role ? { codewordsRole: role } : {}, joinerUserId)
     }
 
-    return jsonPlayerJoin(roomMemberId, player, gameRow as Game)
+    return jsonPlayerJoin(roomMemberId, player, gameRow as Game, {}, joinerUserId)
   }
 
   if (isDescribeItGame(rowGameType)) {
@@ -858,6 +1043,7 @@ export async function POST(req: NextRequest) {
       .from('players')
       .insert({
         game_id: gameId,
+        country,
         name,
         gender: 'both',
         identity_gender: null,
@@ -877,7 +1063,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    return jsonPlayerJoin(roomMemberId, player, gameRow as Game)
+    return jsonPlayerJoin(roomMemberId, player, gameRow as Game, {}, joinerUserId)
   }
 
   if (isWordRushGame(rowGameType)) {
@@ -911,6 +1097,7 @@ export async function POST(req: NextRequest) {
       .from('players')
       .insert({
         game_id: gameId,
+        country,
         name,
         gender: 'both',
         identity_gender: null,
@@ -929,7 +1116,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    return jsonPlayerJoin(roomMemberId, player, gameRow as Game)
+    return jsonPlayerJoin(roomMemberId, player, gameRow as Game, {}, joinerUserId)
   }
 
   const joinCheck = canJoinGame(gameRow as Game)
@@ -969,6 +1156,7 @@ export async function POST(req: NextRequest) {
       .from('players')
       .insert({
         game_id: id,
+        country,
         name,
         gender: 'both',
         identity_gender: null,
@@ -992,7 +1180,7 @@ export async function POST(req: NextRequest) {
       await announceMafiaLateJoin(getSupabaseAdmin(), id, player.name)
     }
 
-    return jsonPlayerJoin(roomMemberId, player, game as Game)
+    return jsonPlayerJoin(roomMemberId, player, game as Game, {}, joinerUserId)
   }
 
   if (isGenderFreeJoinersJoin(game as import('@/types').Game)) {
@@ -1023,6 +1211,7 @@ export async function POST(req: NextRequest) {
       .from('players')
       .insert({
         game_id: id,
+        country,
         name,
         gender: 'both',
         identity_gender: null,
@@ -1037,7 +1226,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: internalErrorMessage('players', playerError) }, { status: 500 })
     }
 
-    return jsonPlayerJoin(roomMemberId, player, game as Game)
+    return jsonPlayerJoin(roomMemberId, player, game as Game, {}, joinerUserId)
   }
 
   if (isGenderFreeVotersJoin(game as import('@/types').Game)) {
@@ -1052,6 +1241,7 @@ export async function POST(req: NextRequest) {
       .from('players')
       .insert({
         game_id: id,
+        country,
         name,
         gender: 'both',
         identity_gender: null,
@@ -1063,7 +1253,7 @@ export async function POST(req: NextRequest) {
 
     if (error) return NextResponse.json({ error: internalErrorMessage('players', error) }, { status: 500 })
 
-    return jsonPlayerJoin(roomMemberId, player, game as Game)
+    return jsonPlayerJoin(roomMemberId, player, game as Game, {}, joinerUserId)
   }
 
   if (isGenderFreeImportJoin(game as import('@/types').Game) && isImportClaimMode(game as import('@/types').Game)) {
@@ -1098,6 +1288,7 @@ export async function POST(req: NextRequest) {
       .from('players')
       .insert({
         game_id: id,
+        country,
         name: claimName,
         gender: 'both',
         identity_gender: null,
@@ -1109,7 +1300,7 @@ export async function POST(req: NextRequest) {
 
     if (error) return NextResponse.json({ error: internalErrorMessage('players', error) }, { status: 500 })
 
-    return jsonPlayerJoin(roomMemberId, player, game as Game)
+    return jsonPlayerJoin(roomMemberId, player, game as Game, {}, joinerUserId)
   }
 
   const gender = normalizePlayerGender(String(rawGender ?? ''))
@@ -1158,6 +1349,7 @@ export async function POST(req: NextRequest) {
       .from('players')
       .insert({
         game_id: id,
+        country,
         name: claimName,
         gender,
         identity_gender: identityGender,
@@ -1171,7 +1363,7 @@ export async function POST(req: NextRequest) {
 
     await syncImportParticipantBallot(supabase, id, participantId, gender, identityGender, rawPollGender ?? undefined)
 
-    return jsonPlayerJoin(roomMemberId, player, game as Game)
+    return jsonPlayerJoin(roomMemberId, player, game as Game, {}, joinerUserId)
   }
 
   if (!name) {
@@ -1194,6 +1386,7 @@ export async function POST(req: NextRequest) {
       .from('players')
       .insert({
         game_id: id,
+        country,
         name,
         gender,
         identity_gender: identityGender,
@@ -1205,7 +1398,7 @@ export async function POST(req: NextRequest) {
 
     if (playerError) return NextResponse.json({ error: internalErrorMessage('players', playerError) }, { status: 500 })
 
-    return jsonPlayerJoin(roomMemberId, player, game as Game)
+    return jsonPlayerJoin(roomMemberId, player, game as Game, {}, joinerUserId)
   }
 
   if (isJoinersPollMode(game as import('@/types').Game)) {
@@ -1236,6 +1429,7 @@ export async function POST(req: NextRequest) {
       .from('players')
       .insert({
         game_id: id,
+        country,
         name,
         gender,
         identity_gender: identityGender,
@@ -1250,7 +1444,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: internalErrorMessage('players', playerError) }, { status: 500 })
     }
 
-    return jsonPlayerJoin(roomMemberId, player, game as Game)
+    return jsonPlayerJoin(roomMemberId, player, game as Game, {}, joinerUserId)
   }
 
   return NextResponse.json({ error: 'Invalid game mode' }, { status: 400 })

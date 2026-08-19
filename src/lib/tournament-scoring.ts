@@ -1,7 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { tallyTriviaPlayerScores } from './trivia'
+import { tallyWstPlayerScores } from './who-said-this'
 import { splitKnockoutField, resolveGroupSize, rankKnockoutScores } from './tournament-bracket'
-import type { TriviaAnswer, Player } from '@/types'
+import type { TriviaAnswer, Player, Vote } from '@/types'
 import type { EliminationConfig } from '@/types/elimination'
 
 export function computePlacementPoints(
@@ -73,6 +74,40 @@ async function computeNpatPlacements(
   for (let i = 0; i < sorted.length; i++) {
     if (i > 0 && sorted[i][1] < sorted[i - 1][1]) rank = i + 1
     const tournamentPlayerId = playerMap.get(sorted[i][0])
+    if (tournamentPlayerId) placements[tournamentPlayerId] = rank
+  }
+  return placements
+}
+
+async function computeWhoSaidThisPlacements(
+  supabase: SupabaseClient,
+  gameId: string,
+  playerMap: Map<string, string>
+): Promise<Record<string, number>> {
+  const [roundsRes, votesRes, playersRes] = await Promise.all([
+    supabase
+      .from('rounds')
+      .select('id, quote_author_participant_id, submitter_player_id, anime_metadata')
+      .eq('game_id', gameId),
+    supabase.from('votes').select('*').eq('game_id', gameId),
+    supabase.from('players').select('*').eq('game_id', gameId),
+  ])
+
+  const rounds = roundsRes.data ?? []
+  const votes = (votesRes.data ?? []) as Vote[]
+  const players = (playersRes.data ?? []) as Player[]
+
+  const scores = tallyWstPlayerScores(rounds, votes, players)
+
+  // Dense-tie by primary score (points), matching computeTriviaPlacements. The
+  // finer tie-breakers tallyWstPlayerScores applies (correct count, speed, name)
+  // only affect the sort order within a tie — they don't split rank here, so
+  // two players with equal points share the placement.
+  const placements: Record<string, number> = {}
+  let rank = 1
+  for (let i = 0; i < scores.length; i++) {
+    if (i > 0 && scores[i].points < scores[i - 1].points) rank = i + 1
+    const tournamentPlayerId = playerMap.get(scores[i].playerId)
     if (tournamentPlayerId) placements[tournamentPlayerId] = rank
   }
   return placements
@@ -364,10 +399,12 @@ export async function awardTournamentPlacements(supabase: SupabaseClient, gameId
   const gameType = game.game_type?.toLowerCase() ?? ''
   if (gameType === 'trivia') {
     placements = await computeTriviaPlacements(supabase, gameId, playerMap)
-  } else if (gameType === 'npat') {
+  } else if (gameType === 'i_call_on') {
     placements = await computeNpatPlacements(supabase, gameId, playerMap)
-  } else if (gameType === 'two-truths') {
+  } else if (gameType === 'two_truths') {
     placements = await computeTwoTruthsPlacements(supabase, gameId, playerMap)
+  } else if (gameType === 'who_said_this') {
+    placements = await computeWhoSaidThisPlacements(supabase, gameId, playerMap)
   }
 
   if (Object.keys(placements).length === 0) {

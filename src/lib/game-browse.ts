@@ -2,16 +2,18 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { GameStatus } from '@/types'
 
 /** Safe, non-secret columns exposed by the public /browse list (never host_token). */
-export const GAME_BROWSE_FIELDS = 'id, title, game_type, status, max_players, allow_late_players, created_at'
+export const GAME_BROWSE_FIELDS =
+  'id, title, game_type, status, max_players, allow_late_players, created_at, scheduled_at'
 
 export type BrowseGameRow = {
   id: string
   title: string
   game_type: string
-  status: GameStatus
+  status: GameStatus | 'scheduled'
   max_players: number | null
   allow_late_players: boolean | null
   created_at: string
+  scheduled_at: string | null
 }
 
 export type PublicGame = BrowseGameRow & { playerCount: number }

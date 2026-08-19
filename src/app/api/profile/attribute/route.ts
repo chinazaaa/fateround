@@ -5,7 +5,9 @@ import { getProfileFromRequest } from '@/lib/identity-server'
 import { parseJsonBody } from '@/lib/parse-body'
 import { enforceRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { awardForFinishedGame } from '@/lib/trophies/award'
 import { normalizeResumeToken } from '@/lib/utils'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 /**
  * Link a `players` row to the caller's profile — the single join between the two identity
@@ -66,8 +68,11 @@ export async function POST(req: NextRequest) {
     if (!player) return NextResponse.json({ attributed: false, reason: 'player_not_found' })
 
     // Already linked to this profile — the client retries on every mount of the finished
-    // screen, so this is the normal repeat case, not a conflict.
-    if (player.profile_id === profileId) return NextResponse.json({ attributed: true })
+    // screen, so this is the normal repeat case, not a conflict. Still run the award pass:
+    // it is idempotent, and a first attempt whose award failed must be able to recover.
+    if (player.profile_id === profileId) {
+      return NextResponse.json({ attributed: true, ...(await runAwardPass(admin, profileId, gameId)) })
+    }
 
     // Linked to somebody else: two different profiles used this device/seat (a sign-out and
     // sign-in mid-game). Leave the original owner in place rather than silently stealing the
@@ -85,8 +90,38 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: internalErrorMessage('profile/attribute', updateError) }, { status: 500 })
     }
 
-    return NextResponse.json({ attributed: true })
+    return NextResponse.json({ attributed: true, ...(await runAwardPass(admin, profileId, gameId)) })
   } catch (err) {
     return NextResponse.json({ error: internalErrorMessage('profile/attribute', err) }, { status: 500 })
+  }
+}
+
+/**
+ * Award trophies and advance the streak for this profile and game.
+ *
+ * THIS is the award hook — not the finish path. `players.profile_id` is written here, after
+ * the game ended, so an award pass at finish would find no profile to award to
+ * (see `src/lib/trophies/award.ts`).
+ *
+ * Best-effort by design: the attribution itself already succeeded, and a trophy that failed to
+ * land must not turn the player's finished game into an error. `awardForFinishedGame` is
+ * idempotent, so the next retry picks it up.
+ */
+async function runAwardPass(
+  admin: SupabaseClient,
+  profileId: string,
+  gameId: string
+): Promise<{ earned?: { id: string; title: string; tier: string; points: number }[]; gameType?: string }> {
+  try {
+    const result = await awardForFinishedGame(admin, profileId, gameId)
+    // Only surface trophies earned by THIS pass — that is what the post-win prompt celebrates.
+    if (!result.earned.length) return {}
+    // The game type travels with the result so the finished-screen link knows where to point.
+    // Reading it here costs one small select on a path that already did several; the
+    // alternative was threading the type through both game chromes into ~40 views.
+    const { data: game } = await admin.from('games').select('game_type').eq('id', gameId).maybeSingle()
+    return { earned: result.earned, gameType: (game?.game_type as string) ?? undefined }
+  } catch {
+    return {}
   }
 }

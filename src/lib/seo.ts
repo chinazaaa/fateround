@@ -90,11 +90,11 @@ export function rootMetadata(): Metadata {
 }
 
 const HOME_DESCRIPTION =
-  'Play Yahtzee, Whot, Monopoly, Codewords and 25+ party games free with friends. Create a game, share the code — no sign-up, no download.'
+  'Play Five Dice, Whot, Estate Kings, Codewords and 25+ party games free with friends. Create a game, share the code — no sign-up, no download.'
 
 export function homeMetadata(): Metadata {
   return {
-    title: 'Free Online Party Games — Yahtzee, Whot, Monopoly & More',
+    title: 'Free Online Party Games — Five Dice, Whot, Estate Kings & More',
     description: HOME_DESCRIPTION,
     alternates: { canonical: '/' },
     openGraph: {
@@ -421,9 +421,23 @@ export const GAME_LANDING_OG_BY_SLUG: Record<string, string> = {
   crossword: '/og/crossword.png',
   'word-search': '/og/word-search.png',
   'word-scramble': '/og/word-scramble.png',
+  'word-grouping': '/og/word-grouping.png',
   landmine: '/og/landmine.png',
   'ping-pong': '/og/ping-pong.png',
   uno: '/og/uno.png',
+  'daily-challenges': '/og/daily-challenges.png',
+  'daily-crossword': '/og/daily-crossword.png',
+  'daily-word-search': '/og/daily-word-search.png',
+  'daily-word-scramble': '/og/daily-word-scramble.png',
+  'daily-sudoku': '/og/daily-sudoku.png',
+  'daily-trivia': '/og/daily-trivia.png',
+  'daily-word-hunt': '/og/daily-word-hunt.png',
+  'daily-mini-crossword': '/og/daily-mini-crossword.png',
+  'daily-word-grouping': '/og/daily-word-grouping.png',
+  'daily-chess-mate': '/og/daily-chess-mate.png',
+  'daily-codenames-codeword': '/og/daily-codenames-codeword.png',
+  'daily-whot-puzzle': '/og/daily-whot-puzzle.png',
+  'daily-ludo-puzzle': '/og/daily-ludo-puzzle.png',
 }
 
 export function gameLandingOgPath(slug: string): string {

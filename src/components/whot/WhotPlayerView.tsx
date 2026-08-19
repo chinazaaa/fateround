@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { WhotCard, WhotLoadingScreen, WhotSecondaryButton, WhotShell } from '@/components/whot/WhotChrome'
 import { WhotPlaySurface } from '@/components/whot/WhotPlaySurface'
@@ -64,6 +64,10 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
   const sessionRef = useRef<WhotSession | null>(null)
   sessionRef.current = session
   const [hands, setHands] = useState<WhotPlayerHand[]>([])
+  // The authoritative resume token, mirrored to a ref so the hand fetch can use it without a
+  // dependency cycle (loadGameState is defined before useGameViewBootstrap resolves the token).
+  // It's the fallback when the localStorage session isn't populated yet — see the fetch below.
+  const myResumeTokenRef = useRef<string | null>(null)
   const { displayName: roomDisplayName, joinExtras, resolving: resolvingRoomMember } = useRoomMemberJoin(gameCode)
   const [acting, setActing] = useState(false)
 
@@ -75,10 +79,15 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
     // arrive as `card_count`.
     const [sessionRes, handsData] = await Promise.all([
       supabase.from('whot_sessions').select(WHOT_SESSION_SELECT).eq('game_id', gameCode).maybeSingle(),
-      // Read the token from the session store rather than the hook value: this callback is
-      // defined before useGameViewBootstrap (which itself takes `load`), so closing over
-      // myResumeToken here would be a cycle.
-      fetchWhotHands(gameCode, { resumeToken: getPlayerSession(gameCode)?.resumeToken }),
+      // Prefer the localStorage session token, falling back to the bootstrap-resolved token via a
+      // ref. This callback runs BEFORE the player is resolved on the first load (see
+      // useGameViewBootstrap: loadGameState is called before resolvePlayerSession), so for a
+      // player who arrived via a share link the localStorage session isn't written yet — without
+      // a token the route redacts our OWN hand to empty. The ref covers subsequent loads; the
+      // effect below re-fetches the moment the token resolves.
+      fetchWhotHands(gameCode, {
+        resumeToken: getPlayerSession(gameCode)?.resumeToken ?? myResumeTokenRef.current ?? undefined,
+      }),
     ])
     const sessionData = supabasePollOk(sessionRes) ? (sessionRes.data as WhotSession | null) : null
     if (sessionData) setSession(sessionData)
@@ -123,6 +132,21 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
     joinExtras,
     onJoinError: toastError,
   })
+  myResumeTokenRef.current = myResumeToken
+
+  // The first hand fetch (in loadGameState) can run before the player — and thus the resume
+  // token — is resolved, which the redaction route answers with our own hand blanked. Re-fetch
+  // with the authoritative token the moment it lands, so a share-link player sees their cards.
+  useEffect(() => {
+    if (!myResumeToken || game?.status !== 'active') return
+    let cancelled = false
+    void fetchWhotHands(gameCode, { resumeToken: myResumeToken }).then((h) => {
+      if (!cancelled && h) setHands(h)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [myResumeToken, game?.status, gameCode])
 
   useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
   useApplyGameTheme(screen === 'game_ended' ? 'default' : game?.theme)
@@ -147,7 +171,9 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
       // an empty hand, it would read as "you are out" mid-game. So: never let a payload shrink
       // our own hand; re-fetch through the authorized route instead.
       if (myPlayerId && next.player_id === myPlayerId && !Array.isArray(next.cards)) {
-        void fetchWhotHands(gameCode, { resumeToken: getPlayerSession(gameCode)?.resumeToken }).then((hands) => {
+        void fetchWhotHands(gameCode, {
+          resumeToken: getPlayerSession(gameCode)?.resumeToken ?? myResumeTokenRef.current ?? undefined,
+        }).then((hands) => {
           if (hands) setHands(hands)
         })
         return true

@@ -187,7 +187,7 @@ describe('updatePlayerAndBoard-backed handlers — atomic claim', () => {
     expect(m.rpcCalls).toHaveLength(1)
     expect(m.rpcCalls[0]!.fn).toBe('monopoly_claim_and_apply')
     const params = m.rpcCalls[0]!.params
-    // Old Kent Road: price £60 → mortgage value £30.
+    // Barking Road: price £60 → mortgage value £30.
     expect(params.p_player_patches).toEqual([{ player_id: 'payer', cash: 530 }])
     expect(
       ((params.p_board_patch as Record<string, unknown>).mortgaged_properties as Record<string, boolean>)['1']
@@ -207,7 +207,7 @@ describe('processMonopolyForfeit — atomic bankruptcy transfer', () => {
           player_id: 'payer',
           creditor_player_id: 'owner',
           amount: 4,
-          reason: 'Owe £4 rent on Whitechapel Road',
+          reason: 'Owe £4 rent on Dagenham Avenue',
           debt_type: 'rent',
           space_index: 3,
         },
@@ -232,6 +232,49 @@ describe('processMonopolyForfeit — atomic bankruptcy transfer', () => {
     expect(m.updates.filter((u) => u.table === 'monopoly_player_state')).toHaveLength(0)
   })
 
+  it('drops queued debts owed BY the bankrupt player and advances off them', async () => {
+    // "Drawer can't pay everyone" card path (planMultiPlayerCashDeltas Scenario A):
+    // the drawer owes each opponent, chained as pending_debt.next_debts, and the
+    // active debt.player_id + every next_debt.player_id is the drawer. When the
+    // drawer forfeits, the remaining chained debts must NOT be resurrected as a
+    // fresh pending_debt against them with current_turn_index still parked on
+    // their (now bankrupt) index — nothing would ever move the turn off them.
+    const remainingOwnDebt = {
+      player_id: 'payer',
+      creditor_player_id: 'third',
+      amount: 100,
+      reason: 'Owe £100 to third',
+      debt_type: 'card',
+    }
+    const m = makeMockSupabase({
+      board: baseBoard({
+        phase: 'raise_funds',
+        current_turn_index: 0,
+        property_owners: {},
+        pending_space: null,
+        pending_debt: {
+          player_id: 'payer',
+          creditor_player_id: 'owner',
+          amount: 50,
+          reason: 'Owe £50 to owner',
+          debt_type: 'card',
+          next_debts: [remainingOwnDebt],
+        },
+      }),
+      states: [playerState('payer', 3, 0), playerState('owner', 800, 1), playerState('third', 300, 2)],
+    })
+    const result = await processMonopolyForfeit(m.supabase, 'GAME1', 'payer')
+
+    expect(result.error).toBeUndefined()
+    expect(m.rpcCalls).toHaveLength(1)
+    const boardPatch = m.rpcCalls[0]!.params.p_board_patch as Record<string, unknown>
+    // Chained debt was for the bankrupt player themselves — drop it, don't queue.
+    expect(boardPatch.pending_debt).toBeNull()
+    // Turn advances off the bankrupt player so the game keeps moving.
+    expect(boardPatch.current_turn_index).toBe(1)
+    expect(boardPatch.phase).not.toBe('raise_funds')
+  })
+
   it('advances the debt queue to the next player when the current debtor forfeits', async () => {
     const nextDebt = {
       player_id: 'third',
@@ -250,7 +293,7 @@ describe('processMonopolyForfeit — atomic bankruptcy transfer', () => {
           player_id: 'payer',
           creditor_player_id: 'owner',
           amount: 4,
-          reason: 'Owe £4 rent on Whitechapel Road',
+          reason: 'Owe £4 rent on Dagenham Avenue',
           debt_type: 'rent',
           space_index: 3,
           next_debts: [nextDebt],

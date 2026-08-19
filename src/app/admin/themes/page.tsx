@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { puzzleThemeEntriesToCsv } from '@/lib/puzzle-themes'
 
-type GameTypeId = 'crossword' | 'word_search' | 'word_scramble'
+type GameTypeId = 'crossword' | 'word_search' | 'word_scramble' | 'wordle_room'
 
 const GAME_TYPES: { id: GameTypeId; label: string; columns: string; sample: string }[] = [
   { id: 'crossword', label: 'Crossword', columns: 'answer,clue', sample: '/crossword-answers-sample.csv' },
@@ -12,6 +12,12 @@ const GAME_TYPES: { id: GameTypeId; label: string; columns: string; sample: stri
     id: 'word_scramble',
     label: 'Word Scramble',
     columns: 'word,hint (hint optional)',
+    sample: '/word-scramble-words-sample.csv',
+  },
+  {
+    id: 'wordle_room',
+    label: 'Wordle',
+    columns: 'word,hint (3–8 letters, hint optional)',
     sample: '/word-scramble-words-sample.csv',
   },
 ]
@@ -68,29 +74,28 @@ export default function AdminThemesPage() {
     void load()
   }, [load])
 
-  // Import built-in themes — already imported, hidden.
-  // const [importing, setImporting] = useState(false)
-  // const [importMsg, setImportMsg] = useState<string | null>(null)
-  // const importBuiltins = async () => {
-  //   setImporting(true)
-  //   setImportMsg(null)
-  //   try {
-  //     const res = await fetch('/api/admin/puzzle-themes/import-builtins', { method: 'POST' })
-  //     const json = await res.json()
-  //     if (!res.ok) {
-  //       setImportMsg(json.error ?? 'Import failed')
-  //       return
-  //     }
-  //     setImportMsg(
-  //       json.inserted > 0 ? `Imported ${json.inserted} built-in theme(s).` : 'Built-in themes are already imported.'
-  //     )
-  //     load()
-  //   } catch {
-  //     setImportMsg('Network error')
-  //   } finally {
-  //     setImporting(false)
-  //   }
-  // }
+  const [importing, setImporting] = useState(false)
+  const [importMsg, setImportMsg] = useState<string | null>(null)
+  const importBuiltins = async () => {
+    setImporting(true)
+    setImportMsg(null)
+    try {
+      const res = await fetch('/api/admin/puzzle-themes/import-builtins', { method: 'POST' })
+      const json = await res.json()
+      if (!res.ok) {
+        setImportMsg(json.error ?? 'Import failed')
+        return
+      }
+      setImportMsg(
+        json.inserted > 0 ? `Imported ${json.inserted} built-in theme(s).` : 'Built-in themes are already imported.'
+      )
+      load()
+    } catch {
+      setImportMsg('Network error')
+    } finally {
+      setImporting(false)
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -102,7 +107,6 @@ export default function AdminThemesPage() {
             &ldquo;Geography Hard&rdquo; its own theme; leave it unlocked to let the host choose.
           </p>
         </div>
-        {/* Import built-in themes — already imported, hidden.
         <div className="text-right">
           <button
             type="button"
@@ -114,7 +118,6 @@ export default function AdminThemesPage() {
           </button>
           {importMsg && <p className="mt-1 text-xs text-[var(--muted)]">{importMsg}</p>}
         </div>
-        */}
       </div>
 
       <div className="flex flex-wrap gap-2">

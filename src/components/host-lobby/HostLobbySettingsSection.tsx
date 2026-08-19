@@ -1,18 +1,14 @@
 'use client'
 
 import { useState } from 'react'
-import { ChevronRightIcon, SlidersIcon } from '@/components/host/host-icons'
+import { Glyph } from '@/components/icons/Glyph'
+import { Settings01Icon, ArrowDown01Icon } from '@hugeicons/core-free-icons'
 
 type Props = {
   title?: string
   status?: string | null
   defaultOpen?: boolean
-  /** Rendered inside the card but ALWAYS shown (not gated by the collapse) — for the
-   *  one setting the host reaches for most, so it never hides behind "Edit". */
   alwaysVisible?: React.ReactNode
-  /** Omit when there's nothing to hide behind a collapse (e.g. a panel whose only setting is
-   *  already in `alwaysVisible`) — the Expand/Collapse toggle itself is hidden in that case,
-   *  since expanding into an empty panel is just a confusing extra tap. */
   children?: React.ReactNode
   className?: string
 }
@@ -27,24 +23,24 @@ export function HostLobbySettingsSection({
 }: Props) {
   const [open, setOpen] = useState(defaultOpen)
   const collapsible = children != null
-  const headerClassName = 'w-full px-4 py-4 flex items-center gap-3 text-left transition-colors'
+  const headerClassName = 'w-full px-4 py-3.5 flex items-center gap-3 text-left transition-colors cursor-pointer'
 
   const headerContent = (
     <>
-      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[color-mix(in_srgb,var(--primary)_12%,transparent)] text-[var(--primary)]">
-        <SlidersIcon size={17} />
+      <span className="fr-glyph flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[color-mix(in_srgb,var(--primary)_12%,transparent)] text-[var(--primary)]">
+        <Glyph icon={Settings01Icon} size={18} />
       </span>
 
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2 flex-wrap">
-          <p className="text-sm font-bold leading-tight">{title}</p>
+          <p className="text-sm font-bold leading-tight" style={{ color: 'var(--text)' }}>
+            {title}
+          </p>
           {status ? (
             <span
               className={[
-                'text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full',
-                status === 'Saved'
-                  ? 'text-emerald-700 dark:text-emerald-300 bg-emerald-500/10'
-                  : 'text-muted bg-[var(--surface-inset-bg)]',
+                'text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full',
+                status === 'Saved' ? 'text-emerald-600 bg-emerald-500/10' : 'text-muted bg-[var(--surface-inset-bg)]',
               ].join(' ')}
             >
               {status}
@@ -56,12 +52,13 @@ export function HostLobbySettingsSection({
       {collapsible ? (
         <span
           className={[
-            'shrink-0 flex items-center gap-1 text-xs font-semibold transition-colors',
-            open ? 'text-muted' : 'text-[var(--primary-strong)]',
+            'shrink-0 flex items-center gap-1 text-xs font-bold transition-colors text-[var(--primary)]',
           ].join(' ')}
         >
           {open ? 'Collapse' : 'Expand'}
-          <ChevronRightIcon size={15} className={`transition-transform ${open ? '-rotate-90' : 'rotate-90'}`} />
+          <span className={`transition-transform duration-200 ${open ? 'rotate-180' : ''}`}>
+            <Glyph icon={ArrowDown01Icon} size={14} />
+          </span>
         </span>
       ) : null}
     </>
@@ -71,7 +68,7 @@ export function HostLobbySettingsSection({
     <div
       className={[
         'rounded-2xl border border-[color-mix(in_srgb,var(--primary)_14%,var(--border))]',
-        'bg-[var(--card-strong)]/95 overflow-hidden',
+        'bg-[var(--card-strong)] overflow-hidden',
         className,
       ].join(' ')}
     >

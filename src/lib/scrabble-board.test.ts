@@ -22,7 +22,7 @@ describe('tileScore', () => {
 })
 
 describe('scorePlacement (English)', () => {
-  it('scores the first word across the centre (double-word) — CAT = 10', () => {
+  it('scores the first word across the neutral centre — CAT = 5', () => {
     const cat: ScrabblePlacedTile[] = [
       { row: 7, col: 6, letter: 'C', isBlank: false },
       { row: 7, col: 7, letter: 'A', isBlank: false },
@@ -30,11 +30,11 @@ describe('scorePlacement (English)', () => {
     ]
     const r = scorePlacement(emptyScrabbleBoard(), cat, EN)
     expect(r.valid).toBe(true)
-    expect(r.score).toBe(10) // (3+1+1) × 2 centre DW
+    expect(r.score).toBe(5) // 3+1+1 — centre is neutral, no word multiplier
     expect(r.words).toEqual(['CAT'])
   })
 
-  it('scores a connecting word using an existing tile — TOP = 6', () => {
+  it('scores a connecting word using an existing tile — TOP = 7', () => {
     let board = emptyScrabbleBoard()
     board = withPlacedTiles(board, [
       { row: 7, col: 6, letter: 'C', isBlank: false },
@@ -47,11 +47,11 @@ describe('scorePlacement (English)', () => {
     ]
     const r = scorePlacement(board, top, EN)
     expect(r.valid).toBe(true)
-    expect(r.score).toBe(6) // T1 + O(1×2 DL) + P3
+    expect(r.score).toBe(7) // T1 + O(1×3 TL at 8,8) + P3
     expect(r.words).toEqual(['TOP'])
   })
 
-  it('adds the 50-point bingo bonus for using all 7 tiles', () => {
+  it('adds the 50-point full-rack bonus for using all 7 tiles', () => {
     const seven: ScrabblePlacedTile[] = 'AEINRST'.split('').map((ch, i) => ({
       row: 7,
       col: 4 + i,
@@ -60,8 +60,10 @@ describe('scorePlacement (English)', () => {
     }))
     const r = scorePlacement(emptyScrabbleBoard(), seven, EN)
     expect(r.valid).toBe(true)
-    // 7 one-point letters × 2 (centre double-word) + 50 bingo bonus
-    expect(r.score).toBe(64)
+    // First and last tiles land on TW squares at (7,4) and (7,10); the seven
+    // one-point letters sum to 7, doubled by two triple-word multipliers (×3×3 = ×9),
+    // plus the 50-point bonus for using all 7 tiles → 7×9 + 50 = 113.
+    expect(r.score).toBe(113)
   })
 
   it('scores a blank tile as 0 within the word', () => {

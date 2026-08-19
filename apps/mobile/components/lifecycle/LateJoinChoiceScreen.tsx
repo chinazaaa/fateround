@@ -136,7 +136,7 @@ const makeStyles = (theme: Theme) =>
     },
     card: {
       backgroundColor: theme.surface,
-      borderRadius: 16,
+      borderRadius: theme.radius.lg,
       padding: 24,
       gap: 10,
       alignItems: 'stretch',
@@ -174,7 +174,7 @@ const makeStyles = (theme: Theme) =>
     },
     body: {
       color: theme.textMuted,
-      fontSize: 15,
+      fontSize: theme.type.body.size,
       lineHeight: 22,
       textAlign: 'center',
     },
@@ -183,7 +183,7 @@ const makeStyles = (theme: Theme) =>
     },
     fieldLabel: {
       color: theme.textMuted,
-      fontSize: 12,
+      fontSize: theme.type.caption.size,
       textTransform: 'uppercase',
       letterSpacing: 1,
       marginTop: 8,
@@ -192,15 +192,15 @@ const makeStyles = (theme: Theme) =>
       backgroundColor: theme.bg,
       borderColor: theme.border,
       borderWidth: 1,
-      borderRadius: 12,
+      borderRadius: theme.radius.md,
       color: theme.text,
-      fontSize: 17,
+      fontSize: theme.type.section.size,
       paddingHorizontal: 16,
       paddingVertical: 14,
     },
     error: {
       color: theme.error,
-      fontSize: 14,
+      fontSize: theme.type.label.size,
       textAlign: 'center',
     },
     actions: {
@@ -212,25 +212,25 @@ const makeStyles = (theme: Theme) =>
     },
     primaryButton: {
       backgroundColor: theme.primary,
-      borderRadius: 12,
+      borderRadius: theme.radius.md,
       paddingVertical: 14,
       alignItems: 'center',
     },
     primaryButtonText: {
       // white on the solid rose button — intentional
       color: '#fff',
-      fontSize: 15,
+      fontSize: theme.type.body.size,
       fontWeight: '700',
     },
     secondaryButton: {
       backgroundColor: theme.border,
-      borderRadius: 12,
+      borderRadius: theme.radius.md,
       paddingVertical: 14,
       alignItems: 'center',
     },
     secondaryButtonText: {
       color: theme.text,
-      fontSize: 15,
+      fontSize: theme.type.body.size,
       fontWeight: '700',
     },
     buttonDisabled: {
@@ -244,7 +244,7 @@ const makeStyles = (theme: Theme) =>
     },
     codeLabel: {
       color: theme.textFaint,
-      fontSize: 12,
+      fontSize: theme.type.caption.size,
       textTransform: 'uppercase',
       letterSpacing: 1,
       textAlign: 'center',
@@ -252,7 +252,7 @@ const makeStyles = (theme: Theme) =>
     },
     code: {
       color: theme.text,
-      fontSize: 22,
+      fontSize: theme.type.title.size,
       fontWeight: '700',
       letterSpacing: 3,
       textAlign: 'center',

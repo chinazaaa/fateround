@@ -25,18 +25,18 @@ export const monopolyAuctionSchema = monopolyActionSchema.extend({
 })
 
 export const monopolyBuildSchema = monopolyActionSchema.extend({
-  spaceIndex: z.number().int().min(0).max(39),
+  spaceIndex: z.number().int().min(0).max(47),
   action: z.enum(['buy_house', 'sell_house', 'buy_hotel', 'sell_hotel']),
 })
 
 export const monopolyMortgageSchema = monopolyActionSchema.extend({
-  spaceIndex: z.number().int().min(0).max(39),
+  spaceIndex: z.number().int().min(0).max(47),
   action: z.enum(['mortgage', 'unmortgage']),
 })
 
 const monopolyTradePropertyListSchema = z.preprocess(
   (raw) => normalizeTradePropertyList(raw),
-  z.array(z.number().int().min(0).max(39))
+  z.array(z.number().int().min(0).max(47))
 )
 
 export const monopolyTradeProposeSchema = monopolyActionSchema.extend({

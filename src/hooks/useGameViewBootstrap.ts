@@ -8,7 +8,7 @@ import { GAME_SELECT, PLAYER_SELECT } from '@/lib/supabase-selects'
 import { getPlayerSession, setPlayerSession } from '@/lib/utils'
 import { currentTournamentPlayerToken } from '@/lib/tournament-player-token'
 import { trackEvent, GA_EVENTS } from '@/lib/analytics'
-import { useProfileAttribution } from '@/hooks/useProfileAttribution'
+import { authHeaders } from '@/lib/auth-headers'
 import type { Game, Player } from '@/types'
 
 /**
@@ -221,25 +221,45 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
         // creating a fresh one. On an active game a fresh row defaults to spectator, which is
         // how a real player gets silently demoted to a viewer after a network blip.
         const existingToken = getPlayerSession(gameCode)?.resumeToken ?? null
-        const res = await fetch('/api/players', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            gameCode,
-            playerName: name,
-            ...joinExtras,
-            ...(tournamentToken ? { tournamentToken } : {}),
-            ...(existingToken ? { resumeToken: existingToken } : {}),
-            // An explicit choice (e.g. "watch instead" on a full lobby) wins in any state;
-            // otherwise active games still default a fresh join to viewer.
-            ...(joinOpts?.joinAsViewer !== undefined
-              ? { joinAsViewer: joinOpts.joinAsViewer }
-              : game?.status === 'active'
-                ? { joinAsViewer: true }
-                : {}),
-          }),
-        })
-        const data = await res.json()
+        const doJoin = async (continueOnThisDevice: boolean) =>
+          fetch('/api/players', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+            body: JSON.stringify({
+              gameCode,
+              playerName: name,
+              ...joinExtras,
+              ...(tournamentToken ? { tournamentToken } : {}),
+              ...(existingToken ? { resumeToken: existingToken } : {}),
+              ...(continueOnThisDevice ? { continueOnThisDevice: true } : {}),
+              // An explicit choice (e.g. "watch instead" on a full lobby) wins in any state;
+              // otherwise active games still default a fresh join to viewer.
+              ...(joinOpts?.joinAsViewer !== undefined
+                ? { joinAsViewer: joinOpts.joinAsViewer }
+                : game?.status === 'active'
+                  ? { joinAsViewer: true }
+                  : {}),
+            }),
+          })
+        let res = await doJoin(false)
+        let data = await res.json()
+        if (res.status === 409 && (data?.reason === 'already_hosting' || data?.reason === 'already_joined')) {
+          // Cross-device continuation prompt: same profile already hosting or
+          // seated from another device. Ask the user; on confirm re-issue the
+          // join with the override flag.
+          const isHost = data.reason === 'already_hosting'
+          const message = isHost
+            ? 'You’re already hosting this game on another device. Continue on this device, or keep it on the other one?'
+            : `You’re already a player in this game on another device${
+                data.existingPlayerName ? ` (as ${data.existingPlayerName})` : ''
+              }. Continue on this device, or keep it on the other one?`
+          const proceed = typeof window !== 'undefined' && window.confirm(message)
+          if (!proceed) {
+            return
+          }
+          res = await doJoin(true)
+          data = await res.json()
+        }
         if (!res.ok) {
           setLobbyFull(data?.full === true)
           onJoinError?.(data.error ?? 'Failed to join')
@@ -269,10 +289,6 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
     },
     [gameCode, joinName, joinExtras, tournamentToken, game?.status, onJoinError, onJoinSuccess, load]
   )
-
-  // Link this player to their profile once the game is over. Best-effort and silent — see
-  // the hook for why attribution lives here rather than on the finish request itself.
-  useProfileAttribution({ gameCode, status: game?.status, resumeToken: myResumeToken })
 
   return {
     screen,

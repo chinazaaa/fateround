@@ -2,6 +2,7 @@ import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { SITE_NAME } from '@/lib/seo'
 import { getMarketingPage } from '@/lib/marketing-landing'
+import { SOLO_PLAY_INDEX } from '@/lib/solo-play'
 
 type FooterLink = { href: string; label: string }
 
@@ -34,8 +35,11 @@ const PRIMARY_LINKS: FooterLink[] = [
   { href: '/tournament', label: 'Tournaments' },
   { href: '/rooms', label: 'Rooms' },
   { href: '/leaderboard', label: 'Leaderboard' },
+  { href: '/daily-challenges', label: 'Daily Challenges' },
+  { href: '/library', label: 'Question Library' },
   { href: '/blog', label: 'Blog' },
   { href: '/faq', label: 'FAQ & help' },
+  { href: '/feedback', label: 'Feedback' },
   { href: '/contact', label: 'Contact us' },
 ]
 
@@ -60,6 +64,13 @@ const ALTERNATIVE_SLUGS = [
   'houseparty-alternative',
   'free-ludo-king-alternative',
   'whot-vs-uno',
+]
+
+// Fed from SOLO_PLAY_INDEX so a new /play-solo/<slug> route automatically shows
+// up here, and always in the same order as the hub page.
+const SOLO_PLAY_LINKS: FooterLink[] = [
+  { href: '/play-solo', label: 'Solo hub' },
+  ...SOLO_PLAY_INDEX.map((g) => ({ href: `/play-solo/${g.slug}`, label: g.label })),
 ]
 
 function marketingLinks(slugs: string[]): FooterLink[] {
@@ -97,7 +108,7 @@ export function SiteFooter() {
           <div className="foot-brand">
             <p className="foot-name">{SITE_NAME}</p>
             <p className="foot-tag">
-              Free online party games — one link, everyone plays from their phone. No sign-up, no download.
+              Free party and board games for your squad. Share the room link and play from any device.
             </p>
             <div className="foot-social">
               {SOCIAL_LINKS.map((social) => (
@@ -114,6 +125,7 @@ export function SiteFooter() {
             </div>
           </div>
           <FooterColumn title="FateRound" links={PRIMARY_LINKS} />
+          <FooterColumn title="Play solo vs bot" links={SOLO_PLAY_LINKS} />
           <FooterColumn title="Ways to play" links={marketingLinks(WAYS_TO_PLAY_SLUGS)} />
           <FooterColumn title="Free alternatives" links={marketingLinks(ALTERNATIVE_SLUGS)} />
         </div>
@@ -126,8 +138,8 @@ export function SiteFooter() {
 
         <p className="foot-legal">
           {SITE_NAME} is an independent platform and is not affiliated with, endorsed by, or sponsored by the owners of
-          Yahtzee®, Monopoly®, Scrabble®, UNO®, Whot® or any other game. All trademarks are the property of their
-          respective owners and are used here only to describe the game being played.
+          Yahtzee®, Monopoly®, Scrabble®, UNO®, Whot®, Codenames®, Quiplash® or any other game. All trademarks are the
+          property of their respective owners and are used here only to describe the game being played.
         </p>
       </div>
     </footer>

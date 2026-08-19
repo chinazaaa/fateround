@@ -12,6 +12,8 @@ import {
 } from '@/lib/game-types'
 import { matchesGameSearch } from '@/lib/game-search'
 import { isMatureGame, MATURE_BADGE_LABEL } from '@/lib/game-maturity'
+import { gameIcon } from '@/lib/game-glyphs'
+import { Glyph } from '@/components/icons/Glyph'
 
 interface Props {
   open: boolean
@@ -176,7 +178,7 @@ export function MarketingGameTypeModal({ open, onClose, onSelect }: Props) {
                       role="tab"
                       aria-selected={active}
                       onClick={() => setCategory(tab.key)}
-                      className="fr-chip shrink-0"
+                      className="fr-chip fr-chip--control shrink-0"
                       style={
                         active
                           ? {
@@ -214,7 +216,9 @@ export function MarketingGameTypeModal({ open, onClose, onSelect }: Props) {
                       onClose()
                     }}
                   >
-                    <span className="fr-gamecard__emoji">{cfg.card.emoji}</span>
+                    <span className="fr-glyph">
+                      <Glyph icon={gameIcon(type)} size={28} />
+                    </span>
                     <h3 className="fr-gamecard__title">
                       {cfg.label}
                       {isMatureGame(type) && (

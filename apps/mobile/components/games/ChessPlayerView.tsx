@@ -45,14 +45,7 @@ import { ChessShareCard } from './chess/ChessShareCard'
 import { type Premove, premoveNeedsPromotion, premoveTargets, type PremovePiece } from './chess/chess-premove'
 
 type Screen =
-  | 'loading'
-  | 'join'
-  | 'game_started_waiting'
-  | 'game_ended'
-  | 'waiting'
-  | 'active'
-  | 'finished'
-  | 'not_found'
+  'loading' | 'join' | 'game_started_waiting' | 'game_ended' | 'waiting' | 'active' | 'finished' | 'not_found'
 type Promotion = 'q' | 'r' | 'b' | 'n'
 
 const FILES = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'] as const
@@ -127,7 +120,11 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
     ['players', { table: 'games', column: 'id' }, 'chess_sessions'],
     () => bootstrap.load(),
     !!bootstrap.game,
-    bootstrap.game?.status
+    bootstrap.game?.status,
+    // Reconcile every 10s during active play: a silently-stale realtime channel would
+    // otherwise strand a waiting player on the wrong turn, ticking the wrong clock until
+    // they lose on time. Chess is turn/clock-critical, so it opts into the safety poll.
+    10_000
   )
 
   const activeSession = session ?? bootstrap.gameState

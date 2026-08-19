@@ -1,3 +1,6 @@
+import { RocketIcon, SparklesIcon, Wrench01Icon } from '@hugeicons/core-free-icons'
+import type { IconSvgElement } from '@hugeicons/react'
+
 export type UpdateCategory = 'new' | 'changed' | 'upcoming'
 
 export interface ProductUpdate {
@@ -12,20 +15,28 @@ export interface ProductUpdate {
   updated_at: string
 }
 
-export const UPDATE_CATEGORY_META: Record<UpdateCategory, { label: string; emoji: string; description: string }> = {
+/**
+ * Icons, not emoji: the rest of the marketing surface draws from Hugeicons so
+ * the glyphs inherit `currentColor` and render identically on every platform,
+ * rather than picking up whichever emoji font the OS happens to ship.
+ */
+export const UPDATE_CATEGORY_META: Record<
+  UpdateCategory,
+  { label: string; icon: IconSvgElement; description: string }
+> = {
   new: {
     label: 'New',
-    emoji: '✨',
+    icon: SparklesIcon,
     description: 'Fresh features and game modes',
   },
   changed: {
     label: 'Changed',
-    emoji: '🔧',
+    icon: Wrench01Icon,
     description: 'Improvements and fixes',
   },
   upcoming: {
     label: 'Upcoming',
-    emoji: '🚀',
+    icon: RocketIcon,
     description: 'What we are working on next',
   },
 }

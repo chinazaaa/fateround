@@ -1,5 +1,7 @@
 'use client'
 
+import { CheckmarkCircle02Icon, HandIcon, PlayIcon } from '@hugeicons/core-free-icons'
+import { HugeiconsIcon } from '@hugeicons/react'
 import { TrashIcon } from '@/components/host/host-icons'
 import { LeaveGameButton, leaveButtonQuietClassName } from '@/components/ui/LeaveGameButton'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
@@ -75,11 +77,6 @@ export function ReplayReadyRing({
       <h2 className="mt-2 text-2xl font-black tracking-tight text-body sm:text-3xl">
         {canStart ? 'Ready when you are' : 'Waiting for players…'}
       </h2>
-      <p className="mx-auto mt-1.5 max-w-xs text-sm leading-relaxed text-muted">
-        {isHost
-          ? `Same players, same settings. Start the next game once everyone’s in (${minPlayers}+ needed).`
-          : 'Same players, same settings. Tap to get ready — the host starts the next game.'}
-      </p>
 
       <div className="relative my-6" style={{ width: 132, height: 132 }}>
         <svg width="132" height="132" viewBox="0 0 132 132" style={{ transform: 'rotate(-90deg)' }}>
@@ -136,7 +133,9 @@ export function ReplayReadyRing({
               </span>
               <div className="flex shrink-0 items-center gap-2">
                 {on ? (
-                  <span className="text-xs font-bold text-[var(--primary)]">✅ Ready</span>
+                  <span className="inline-flex items-center gap-1 text-xs font-bold text-[var(--primary)]">
+                    <HugeiconsIcon icon={CheckmarkCircle02Icon} size={13} className="shrink-0" /> Ready
+                  </span>
                 ) : (
                   <span className="text-xs font-semibold text-faint">{seatsFull ? 'watching' : 'not ready'}</span>
                 )}
@@ -166,7 +165,13 @@ export function ReplayReadyRing({
               disabled={!canStart || starting}
               className="btn-primary w-full py-3.5 text-base disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {starting ? 'Starting…' : '▶ Start game'}
+              {starting ? (
+                'Starting…'
+              ) : (
+                <span className="inline-flex items-center justify-center gap-1.5">
+                  <HugeiconsIcon icon={PlayIcon} size={16} className="shrink-0" /> Start game
+                </span>
+              )}
             </button>
             {!canStart ? (
               <p className="mt-2 text-xs text-faint">
@@ -181,7 +186,10 @@ export function ReplayReadyRing({
             disabled={pending}
             className="btn-secondary w-full py-3.5 text-base disabled:opacity-60"
           >
-            ✅ You’re ready — tap to cancel
+            <span className="inline-flex items-center justify-center gap-1.5">
+              <HugeiconsIcon icon={CheckmarkCircle02Icon} size={16} className="shrink-0" /> You&apos;re ready — tap to
+              cancel
+            </span>
           </button>
         ) : seatsFull ? (
           <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-center">
@@ -195,7 +203,9 @@ export function ReplayReadyRing({
             disabled={pending}
             className="btn-primary w-full py-3.5 text-base disabled:opacity-60"
           >
-            ✋ Tap to get ready
+            <span className="inline-flex items-center justify-center gap-1.5">
+              <HugeiconsIcon icon={HandIcon} size={16} className="shrink-0" /> Tap to get ready
+            </span>
           </button>
         )}
         {!isHost && gameCode && meId && onLeft ? (

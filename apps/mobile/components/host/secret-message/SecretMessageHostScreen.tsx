@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ActivityIndicator, FlatList, Platform, Pressable, Share, StyleSheet, Text, View } from 'react-native'
+import { ActivityIndicator, Alert, FlatList, Platform, Pressable, Share, StyleSheet, Text, View } from 'react-native'
 import { captureRef } from 'react-native-view-shot'
 import * as Sharing from 'expo-sharing'
 import * as Clipboard from 'expo-clipboard'
@@ -77,17 +77,26 @@ export function SecretMessageHostScreen({ gameCode, hostToken, game, players, on
     }
   }
 
-  const closeBoard = async () => {
-    setActing(true)
-    setError(null)
-    try {
-      await postFinishGame(gameCode, hostToken)
-      onReload()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to close board')
-    } finally {
-      setActing(false)
-    }
+  const closeBoard = () => {
+    Alert.alert('Close board', 'Close this board for everyone now?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Close board',
+        style: 'destructive',
+        onPress: async () => {
+          setActing(true)
+          setError(null)
+          try {
+            await postFinishGame(gameCode, hostToken)
+            onReload()
+          } catch (err) {
+            setError(err instanceof Error ? err.message : 'Failed to close board')
+          } finally {
+            setActing(false)
+          }
+        },
+      },
+    ])
   }
 
   const reopenBoard = async () => {

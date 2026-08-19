@@ -205,6 +205,7 @@ export function MonopolyActiveLayout({
               mortgagedProperties={board.mortgaged_properties}
               lastDiceTotal={board.last_dice?.total ?? 2}
               themeId={themeId}
+              boardSize={board.board_size ?? 40}
             />
           ) : !spectator ? (
             <div className="rounded-2xl border border-dashed border-[var(--border-strong)] bg-[var(--surface-inset-bg)]/50 min-h-[3.25rem]" />
@@ -270,6 +271,7 @@ export function MonopolyActiveLayout({
               highlightIndex={myState != null ? Number(myState.position) : null}
               myPlayerId={myPlayerId}
               themeId={themeId}
+              boardSize={board.board_size ?? 40}
               center={
                 spectator ? (
                   <div className="flex flex-col items-center justify-center h-full gap-1.5 px-2 text-center">
@@ -329,6 +331,7 @@ export function MonopolyActiveLayout({
                     propertyOwners={owners}
                     myPlayerId={myPlayerId}
                     themeId={themeId}
+                    boardSize={board.board_size ?? 40}
                   />
                 </div>
               )}

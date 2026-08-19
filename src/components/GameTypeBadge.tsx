@@ -1,8 +1,11 @@
 import { gameTypeConfig, parseGameType } from '@/lib/game-types'
+import { gameIcon } from '@/lib/game-glyphs'
+import { Glyph } from '@/components/icons/Glyph'
 import type { GameType } from '@/types'
 
 export function GameTypeBadge({ gameType, className = '' }: { gameType?: GameType | string; className?: string }) {
-  const cfg = gameTypeConfig(parseGameType(gameType))
+  const type = parseGameType(gameType)
+  const cfg = gameTypeConfig(type)
   const { card } = cfg
 
   return (
@@ -14,7 +17,7 @@ export function GameTypeBadge({ gameType, className = '' }: { gameType?: GameTyp
         color: card.accent,
       }}
     >
-      <span aria-hidden>{cfg.card.emoji}</span>
+      <Glyph icon={gameIcon(type)} size={11} className="shrink-0" />
       <span>{cfg.label}</span>
     </span>
   )

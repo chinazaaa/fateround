@@ -546,7 +546,7 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
             hostToken={hostToken}
             onEnded={load}
             label="End game"
-            icon={<ExitIcon size={16} />}
+            icon={<ExitIcon size={14} />}
             className="btn-danger-soft"
           />
         </>
@@ -971,6 +971,7 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
     return (
       <HostLobby
         gameCode={gameCode}
+        questionSource={game.question_source}
         hostToken={hostToken}
         game={game}
         gameTypeLabel={cfg.label}

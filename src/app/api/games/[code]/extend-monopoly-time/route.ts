@@ -22,7 +22,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   if (!game) return NextResponse.json({ error: 'Game not found' }, { status: 404 })
   if (game.host_token !== hostToken) return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
   if (!isMonopolyGame(parseGameType(game.game_type))) {
-    return NextResponse.json({ error: 'Not a Monopoly game' }, { status: 400 })
+    return NextResponse.json({ error: 'Not an Estate Kings game' }, { status: 400 })
   }
 
   const { error, newDurationSeconds } = await extendMonopolyGameDuration(

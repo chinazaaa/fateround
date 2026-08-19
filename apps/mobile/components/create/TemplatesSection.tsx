@@ -5,6 +5,7 @@ import { useTheme, useThemedStyles } from '@/constants/theme-context'
 import { AppButton } from '@/components/ui/AppButton'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { SurfaceCard } from '@/components/ui/SurfaceCard'
+import { KeyboardAvoidingModalContent } from '@/components/ui/KeyboardAvoidingModalContent'
 import {
   MAX_TEMPLATE_SLOTS,
   firstFreeSlot,
@@ -199,53 +200,55 @@ export function SaveTemplateModal({ visible, slots, presetSlot, onClose, onConfi
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose}>
-        <Pressable style={styles.modalCard} onPress={(e) => e.stopPropagation()}>
-          <Text style={styles.modalTitle}>{picking ? 'Both slots are full' : 'Save as template'}</Text>
+      <KeyboardAvoidingModalContent>
+        <Pressable style={styles.backdrop} onPress={onClose}>
+          <Pressable style={styles.modalCard} onPress={(e) => e.stopPropagation()}>
+            <Text style={styles.modalTitle}>{picking ? 'Both slots are full' : 'Save as template'}</Text>
 
-          {picking ? (
-            <View style={styles.pickList}>
-              <Text style={styles.modalHint}>Pick a slot to replace, or cancel.</Text>
-              {Array.from({ length: MAX_TEMPLATE_SLOTS }, (_, i) => i).map((i) => (
-                <Pressable
-                  key={i}
-                  style={styles.pickRow}
+            {picking ? (
+              <View style={styles.pickList}>
+                <Text style={styles.modalHint}>Pick a slot to replace, or cancel.</Text>
+                {Array.from({ length: MAX_TEMPLATE_SLOTS }, (_, i) => i).map((i) => (
+                  <Pressable
+                    key={i}
+                    style={styles.pickRow}
+                    onPress={() => {
+                      setChosenSlot(i)
+                      setPicking(false)
+                      setNameInput(slots[i]?.name ?? slotLabel(i))
+                    }}
+                  >
+                    <Text style={styles.pickRowTitle}>{slots[i]?.name ?? slotLabel(i)}</Text>
+                    {slots[i] ? <Text style={styles.pickRowSummary}>{summarizeTemplate(slots[i]!.values)}</Text> : null}
+                  </Pressable>
+                ))}
+                <AppButton label="Cancel" variant="secondary" onPress={onClose} />
+              </View>
+            ) : (
+              <View style={styles.form}>
+                <Text style={styles.modalHint}>Template name (optional)</Text>
+                <TextInput
+                  value={nameInput}
+                  onChangeText={setNameInput}
+                  placeholder={chosenSlot !== null ? slotLabel(chosenSlot) : ''}
+                  placeholderTextColor={theme.textFaint}
+                  maxLength={30}
+                  style={styles.input}
+                  autoFocus
+                />
+                <AppButton
+                  label={`Save to ${chosenSlot !== null ? slotLabel(chosenSlot) : ''}`}
                   onPress={() => {
-                    setChosenSlot(i)
-                    setPicking(false)
-                    setNameInput(slots[i]?.name ?? slotLabel(i))
+                    if (chosenSlot === null) return
+                    onConfirm(chosenSlot, nameInput.trim() || slotLabel(chosenSlot))
                   }}
-                >
-                  <Text style={styles.pickRowTitle}>{slots[i]?.name ?? slotLabel(i)}</Text>
-                  {slots[i] ? <Text style={styles.pickRowSummary}>{summarizeTemplate(slots[i]!.values)}</Text> : null}
-                </Pressable>
-              ))}
-              <AppButton label="Cancel" variant="secondary" onPress={onClose} />
-            </View>
-          ) : (
-            <View style={styles.form}>
-              <Text style={styles.modalHint}>Template name (optional)</Text>
-              <TextInput
-                value={nameInput}
-                onChangeText={setNameInput}
-                placeholder={chosenSlot !== null ? slotLabel(chosenSlot) : ''}
-                placeholderTextColor={theme.textFaint}
-                maxLength={30}
-                style={styles.input}
-                autoFocus
-              />
-              <AppButton
-                label={`Save to ${chosenSlot !== null ? slotLabel(chosenSlot) : ''}`}
-                onPress={() => {
-                  if (chosenSlot === null) return
-                  onConfirm(chosenSlot, nameInput.trim() || slotLabel(chosenSlot))
-                }}
-              />
-              <AppButton label="Cancel" variant="ghost" onPress={onClose} />
-            </View>
-          )}
+                />
+                <AppButton label="Cancel" variant="ghost" onPress={onClose} />
+              </View>
+            )}
+          </Pressable>
         </Pressable>
-      </Pressable>
+      </KeyboardAvoidingModalContent>
     </Modal>
   )
 }
@@ -255,7 +258,7 @@ const makeStyles = (theme: Theme) =>
     card: { gap: theme.space.sm },
     label: {
       color: theme.textSecondary,
-      fontSize: 12,
+      fontSize: theme.type.caption.size,
       fontWeight: '800',
       letterSpacing: 0.6,
       textTransform: 'uppercase',
@@ -271,8 +274,8 @@ const makeStyles = (theme: Theme) =>
     },
     rowHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: theme.space.sm },
     rowInfo: { flex: 1, gap: 2 },
-    rowName: { color: theme.text, fontSize: 15, fontWeight: '700' },
-    rowSummary: { color: theme.textFaint, fontSize: 12, lineHeight: 16 },
+    rowName: { color: theme.text, fontSize: theme.type.body.size, fontWeight: '700' },
+    rowSummary: { color: theme.textFaint, fontSize: theme.type.caption.size, lineHeight: 16 },
     menuBtn: {
       paddingHorizontal: 8,
       paddingVertical: 4,
@@ -289,8 +292,8 @@ const makeStyles = (theme: Theme) =>
       minWidth: 160,
     },
     menuItem: { paddingHorizontal: 14, paddingVertical: 10 },
-    menuItemText: { color: theme.text, fontSize: 14, fontWeight: '600' },
-    menuItemTextDanger: { color: theme.error, fontSize: 14, fontWeight: '600' },
+    menuItemText: { color: theme.text, fontSize: theme.type.label.size, fontWeight: '600' },
+    menuItemTextDanger: { color: theme.error, fontSize: theme.type.label.size, fontWeight: '600' },
     actions: { flexDirection: 'row', gap: theme.space.sm },
     actionBtn: { flex: 1 },
     backdrop: {
@@ -322,8 +325,8 @@ const makeStyles = (theme: Theme) =>
       padding: theme.space.md,
       gap: 2,
     },
-    pickRowTitle: { color: theme.text, fontSize: 14, fontWeight: '700' },
-    pickRowSummary: { color: theme.textFaint, fontSize: 12 },
+    pickRowTitle: { color: theme.text, fontSize: theme.type.label.size, fontWeight: '700' },
+    pickRowSummary: { color: theme.textFaint, fontSize: theme.type.caption.size },
     input: {
       backgroundColor: theme.surface,
       borderColor: theme.border,

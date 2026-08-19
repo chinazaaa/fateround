@@ -155,7 +155,7 @@ export function RoomSettings({ open, onClose, roomCode, creatorToken, room, onUp
           <label className="label-caps">
             Timezone <span className="normal-case text-faint font-normal">(optional)</span>
           </label>
-          <select value={timezone} onChange={(e) => setTimezone(e.target.value)} className="input-field w-full">
+          <select value={timezone} onChange={(e) => setTimezone(e.target.value)} className="fr-select">
             <option value="">No timezone set</option>
             {timezoneOptions.map((opt) => (
               <option key={opt.value} value={opt.value}>

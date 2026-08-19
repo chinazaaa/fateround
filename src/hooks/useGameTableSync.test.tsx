@@ -12,6 +12,7 @@ const cap = vi.hoisted(() => ({
   removed: false,
   channelName: '',
   statusCb: undefined as ((status: string) => void) | undefined,
+  socketConnected: true,
 }))
 
 vi.mock('@/lib/supabase', () => {
@@ -35,6 +36,9 @@ vi.mock('@/lib/supabase', () => {
       removeChannel() {
         cap.removed = true
       },
+      realtime: {
+        isConnected: () => cap.socketConnected,
+      },
     },
   }
 })
@@ -47,6 +51,7 @@ beforeEach(() => {
   cap.removed = false
   cap.channelName = ''
   cap.statusCb = undefined
+  cap.socketConnected = true
   vi.useFakeTimers()
 })
 afterEach(() => vi.useRealTimers())
@@ -140,13 +145,28 @@ describe('useGameTableSync', () => {
     expect(reload).toHaveBeenCalledTimes(1)
   })
 
-  it('returns connected only while the channel reports SUBSCRIBED (gates the safety-net poll)', () => {
+  it('returns connected only while SUBSCRIBED and the socket is live (gates the safety-net poll)', () => {
     const { result } = renderHook(() => useGameTableSync('ABCD', ['scrabble_sessions'], () => {}))
     expect(result.current).toBe(false) // not connected until the channel confirms
     act(() => cap.statusCb?.('SUBSCRIBED'))
     expect(result.current).toBe(true)
     act(() => cap.statusCb?.('CHANNEL_ERROR')) // socket dropped → poll should resume
     expect(result.current).toBe(false)
+  })
+
+  it('flips connected false on a SILENT socket drop the status callback never reports', () => {
+    const { result } = renderHook(() => useGameTableSync('ABCD', ['scrabble_sessions'], () => {}))
+    act(() => cap.statusCb?.('SUBSCRIBED'))
+    expect(result.current).toBe(true)
+    // Socket dies without emitting CLOSED/CHANNEL_ERROR — the callback stays silent.
+    cap.socketConnected = false
+    expect(result.current).toBe(true) // still stale between heartbeats
+    act(() => vi.advanceTimersByTime(3000)) // heartbeat re-reads live socket state
+    expect(result.current).toBe(false) // caught → fallback poll re-enables
+    // Recovery: realtime auto-reconnects and re-fires SUBSCRIBED.
+    cap.socketConnected = true
+    act(() => vi.advanceTimersByTime(3000))
+    expect(result.current).toBe(true)
   })
 
   it('does not subscribe when disabled or missing gameCode', () => {
