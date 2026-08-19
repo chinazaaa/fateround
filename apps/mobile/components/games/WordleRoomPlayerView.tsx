@@ -357,7 +357,7 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
   }, [bootstrap, current, currentWord, isViewer, myFinished, timeUp, scheduleAdvance, wordIndex, wordLength])
 
   const revealHint = useCallback(() => {
-    if (!bootstrap.myResumeToken || !hintAvailable || hintUsed || myFinished) return
+    if (!bootstrap.myResumeToken || !hintAvailable || hintUsed || myFinished || timeUp) return
     Alert.alert('Reveal hint?', `This costs ${WORDLE_ROOM_HINT_COST} points off this word's score. Are you sure?`, [
       { text: 'Cancel', style: 'cancel' },
       {
@@ -374,7 +374,7 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
         },
       },
     ])
-  }, [bootstrap, hintAvailable, hintUsed, myFinished, wordIndex])
+  }, [bootstrap, hintAvailable, hintUsed, myFinished, timeUp, wordIndex])
 
   const label = gameLabel((bootstrap.game?.game_type ?? 'wordle_room') as GameType)
 
@@ -547,6 +547,7 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
         {message && <Text style={styles.message}>{message}</Text>}
         {currentWord &&
           !myFinished &&
+          !timeUp &&
           hintAvailable &&
           (hintUsed && hintText ? (
             <Text style={styles.hintText}>

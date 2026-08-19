@@ -18,7 +18,7 @@
  * SegmentedControl). No new native modules — plain fetch + AsyncStorage-free.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { Stack } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
@@ -92,35 +92,64 @@ export default function CommunityLeaderboardScreen() {
   const [error, setError] = useState<string | null>(null)
 
   const [refreshing, setRefreshing] = useState(false)
+  // Holds the latest in-flight request so a newer selection / refresh aborts the
+  // previous one — otherwise a slow request could resolve after a newer one and
+  // show data for the wrong selection.
+  const loadControllerRef = useRef<AbortController | null>(null)
 
-  const load = useCallback(async (win: LeaderboardWindow, date: string, gameSlug: string, signal: AbortSignal) => {
-    setLoading(true)
-    setError(null)
-    try {
-      const query = new URLSearchParams({ window: win, date })
-      if (gameSlug) query.set('game', gameSlug)
-      const res = await fetch(apiUrl(`/api/leaderboard?${query.toString()}`), {
-        cache: 'no-store',
-        signal,
-      })
-      const json = await res.json()
-      if (!res.ok) throw new Error((json && json.error) || 'Failed to load')
-      if (signal.aborted) return
-      setData(json as LeaderboardResponse)
-    } catch (err) {
-      if (signal.aborted) return
-      setError(err instanceof Error ? err.message : 'Failed to load')
-      setData(null)
-    } finally {
-      if (!signal.aborted) setLoading(false)
-    }
-  }, [])
+  const load = useCallback(
+    async (
+      win: LeaderboardWindow,
+      date: string,
+      gameSlug: string,
+      signal: AbortSignal,
+      opts?: { isRefresh?: boolean }
+    ) => {
+      // A pull-to-refresh keeps the current leaderboard visible (its own spinner
+      // covers the wait); only an initial/selection load shows the full loader.
+      if (!opts?.isRefresh) setLoading(true)
+      setError(null)
+      try {
+        const query = new URLSearchParams({ window: win, date })
+        if (gameSlug) query.set('game', gameSlug)
+        const res = await fetch(apiUrl(`/api/leaderboard?${query.toString()}`), {
+          cache: 'no-store',
+          signal,
+        })
+        const json = await res.json()
+        if (!res.ok) throw new Error((json && json.error) || 'Failed to load')
+        if (signal.aborted) return
+        setData(json as LeaderboardResponse)
+      } catch (err) {
+        if (signal.aborted) return
+        setError(err instanceof Error ? err.message : 'Failed to load')
+        // Only blank the content on an initial/selection load. A failed refresh
+        // must keep the last good leaderboard rather than replacing it with an
+        // empty error state.
+        if (!opts?.isRefresh) setData(null)
+      } finally {
+        if (!signal.aborted && !opts?.isRefresh) setLoading(false)
+      }
+    },
+    []
+  )
+
+  // Start a request, aborting whatever was in flight, and hand back the controller
+  // so callers can track which request is theirs.
+  const startLoad = useCallback(
+    (win: LeaderboardWindow, date: string, gameSlug: string, opts?: { isRefresh?: boolean }) => {
+      loadControllerRef.current?.abort()
+      const controller = new AbortController()
+      loadControllerRef.current = controller
+      return { controller, promise: load(win, date, gameSlug, controller.signal, opts) }
+    },
+    [load]
+  )
 
   useEffect(() => {
-    const controller = new AbortController()
-    void load(tab, selectedDate, game, controller.signal)
-    return () => controller.abort()
-  }, [tab, selectedDate, game, load])
+    startLoad(tab, selectedDate, game)
+    return () => loadControllerRef.current?.abort()
+  }, [tab, selectedDate, game, startLoad])
 
   // Reset the selected date whenever the window changes so the user always
   // lands on the current period rather than a stale offset from the last tab.
@@ -141,14 +170,16 @@ export default function CommunityLeaderboardScreen() {
   const canGoNext = !!data && data.rangeEnd < today
 
   const onRefresh = useCallback(async () => {
-    const controller = new AbortController()
     setRefreshing(true)
+    const { controller, promise } = startLoad(tab, selectedDate, game, { isRefresh: true })
     try {
-      await load(tab, selectedDate, game, controller.signal)
+      await promise
     } finally {
-      setRefreshing(false)
+      // Only the request that's still current clears the spinner — a stale
+      // refresh that was aborted by a newer selection must not touch it.
+      if (loadControllerRef.current === controller) setRefreshing(false)
     }
-  }, [game, load, selectedDate, tab])
+  }, [game, startLoad, selectedDate, tab])
 
   return (
     <SafeAreaView style={styles.safe} edges={['bottom']}>

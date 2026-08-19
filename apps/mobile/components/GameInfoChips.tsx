@@ -259,7 +259,11 @@ export function gameInfoItems(game: Game | null | undefined): string[] {
     }
     const category = (game as unknown as { wordle_room_category?: string | null }).wordle_room_category
     if (category) {
-      const label = WORDLE_ROOM_CATEGORY_LABELS[category as keyof typeof WORDLE_ROOM_CATEGORY_LABELS]
+      // Fall back to General English for an unknown/stale category value so
+      // mobile and web (which clamps the same way) show matching metadata.
+      const label =
+        WORDLE_ROOM_CATEGORY_LABELS[category as keyof typeof WORDLE_ROOM_CATEGORY_LABELS] ??
+        WORDLE_ROOM_CATEGORY_LABELS.general_english
       if (label) items.push(label)
     }
   }

@@ -213,8 +213,12 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
     if (data.status === 'finished') void load()
   }, [gameCode, myResumeToken, load])
 
+  // Shared room clock — declared before revealHint so it can reject a hint
+  // requested after time's up but before the finished screen loads.
+  const { label: timeLabel, timeUp, secondsLeft } = useWordleRoomGameTimer(gameCode, game, () => void load())
+
   const revealHint = useCallback(async () => {
-    if (!myResumeToken || myFinished) return
+    if (!myResumeToken || myFinished || timeUp) return
     if (!hintAvailable || hintUsed) return
     const ok = await confirm({
       title: 'Reveal hint?',
@@ -238,7 +242,7 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
     } catch {
       showToast('Network error', false)
     }
-  }, [confirm, gameCode, myResumeToken, myFinished, hintAvailable, hintUsed, wordIndex])
+  }, [confirm, gameCode, myResumeToken, myFinished, timeUp, hintAvailable, hintUsed, wordIndex])
 
   // Advance to the next word after the solve/loss reveal settles.
   const scheduleAdvance = useCallback(
@@ -286,8 +290,6 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
   useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
 
   useTurnNotifications({ status: game?.status })
-
-  const { label: timeLabel, timeUp, secondsLeft } = useWordleRoomGameTimer(gameCode, game, () => void load())
 
   useLobbyOpenNotification(game?.status, () => {
     if (screen === 'finished' || screen === 'game_started_waiting' || screen === 'late_join_choice') void load()
@@ -931,6 +933,7 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
           {/* Per-word hint purchase — only surfaces when the current word actually has a hint. */}
           {currentWord &&
             !myFinished &&
+            !timeUp &&
             hintAvailable &&
             (hintUsed && hintText ? (
               <p className="text-center text-sm text-muted">
