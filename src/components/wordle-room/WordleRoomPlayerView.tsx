@@ -102,9 +102,6 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
   const [message, setMessage] = useState<string | null>(null)
   const [shake, setShake] = useState(false)
   const [progressRows, setProgressRows] = useState<WordleRoomProgressRow[]>([])
-  // Flips true once the standings query has returned at least once, so the
-  // playing render can gate on grid + standings both being ready.
-  const [progressLoaded, setProgressLoaded] = useState(false)
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null)
   const submitLockRef = useRef(false)
   const advanceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -216,8 +213,12 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
     if (data.status === 'finished') void load()
   }, [gameCode, myResumeToken, load])
 
+  // Shared room clock — declared before revealHint so it can reject a hint
+  // requested after time's up but before the finished screen loads.
+  const { label: timeLabel, timeUp, secondsLeft } = useWordleRoomGameTimer(gameCode, game, () => void load())
+
   const revealHint = useCallback(async () => {
-    if (!myResumeToken || myFinished) return
+    if (!myResumeToken || myFinished || timeUp) return
     if (!hintAvailable || hintUsed) return
     const ok = await confirm({
       title: 'Reveal hint?',
@@ -241,7 +242,7 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
     } catch {
       showToast('Network error', false)
     }
-  }, [confirm, gameCode, myResumeToken, myFinished, hintAvailable, hintUsed, wordIndex])
+  }, [confirm, gameCode, myResumeToken, myFinished, timeUp, hintAvailable, hintUsed, wordIndex])
 
   // Advance to the next word after the solve/loss reveal settles.
   const scheduleAdvance = useCallback(
@@ -280,19 +281,15 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
       .select('*')
       .eq('game_id', gameCode)
       .eq('round_id', roundId)
-    // Only flip progressLoaded on a successful query. A failed query mustn't
-    // pass the render gate — otherwise the finished screen or the active
-    // board renders with empty/stale standings and the user gets no retry.
+    // Ignore a failed read (keep the last good rows) rather than blanking the
+    // standings; the next realtime tick / mount will retry.
     if (error) return
     setProgressRows((data ?? []) as WordleRoomProgressRow[])
-    setProgressLoaded(true)
   }, [gameCode, roundId])
 
   useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
 
   useTurnNotifications({ status: game?.status })
-
-  const { label: timeLabel, timeUp, secondsLeft } = useWordleRoomGameTimer(gameCode, game, () => void load())
 
   useLobbyOpenNotification(game?.status, () => {
     if (screen === 'finished' || screen === 'game_started_waiting' || screen === 'late_join_choice') void load()
@@ -318,6 +315,18 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
     if (!roundId) return
     void loadProgress()
   }, [roundId, loadProgress])
+
+  // Poll fallback for the standings read. Realtime is primary, but if the socket
+  // drops or the very first read raced ahead of the rows being written, some
+  // players saw an all-zero "Race standings" while others saw the real numbers.
+  // A light poll while the game is live or finished guarantees every client
+  // converges on the real standings within a few seconds regardless of realtime.
+  useEffect(() => {
+    if (!roundId) return
+    if (game?.status !== 'active' && game?.status !== 'finished') return
+    const id = window.setInterval(() => void loadProgress(), 4000)
+    return () => window.clearInterval(id)
+  }, [roundId, game?.status, loadProgress])
 
   // Realtime standings: progress rows + players both refresh live. My own row's update
   // re-syncs the current word (handles a second device or a missed transition).
@@ -750,15 +759,10 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
   }
 
   if (screen === 'finished' && game) {
-    // Same gate as the playing branch — a direct visit to a finished game
-    // otherwise flashes empty standings before the progress query resolves.
-    if (!progressLoaded) {
-      return (
-        <div className="min-h-screen flex items-center justify-center">
-          <p className="text-muted">Loading…</p>
-        </div>
-      )
-    }
+    // Render the results immediately — never block on the standings query.
+    // The leaderboard fills in as soon as loadProgress resolves (mount +
+    // realtime), so a slow/failed read shows the panel right away instead of
+    // stranding everyone on a permanent loader.
     const iWon =
       !!myStanding &&
       standings.length > 1 &&
@@ -788,10 +792,10 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
     )
   }
 
-  // Gate the playing render on BOTH the grid data (currentWord) and standings
-  // (progressLoaded) being ready, so the standings panel doesn't flash before
-  // the grid loads in.
-  if (screen === 'playing' && (!currentWord || !progressLoaded)) {
+  // Only the grid data (currentWord) gates the playing render — never the
+  // standings query, which fills in shortly after and must not be able to
+  // strand a player on a loader if it's slow or errors.
+  if (screen === 'playing' && !currentWord) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <p className="text-muted">Loading…</p>
@@ -869,11 +873,21 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
             <span className="text-sm font-semibold text-muted">
               Word {Math.min(wordIndex + 1, wordCount)}/{wordCount}
             </span>
+            {/* Prominent countdown pill — the whole room shares one clock, so it
+                has to be obvious why the game ends. Turns red in the last 30s. */}
             {timeUp ? (
-              <span className="text-sm font-bold text-[var(--kill)]">Time's up</span>
+              <span className="inline-flex items-center gap-1 rounded-full bg-[var(--kill)] px-3 py-1 text-sm font-black text-white">
+                ⏱ Time's up
+              </span>
             ) : game && (game.timer_seconds ?? 0) > 0 ? (
-              <span className={`text-sm font-bold tabular-nums ${secondsLeft <= 10 ? 'text-[var(--marry)]' : ''}`}>
-                {timeLabel}
+              <span
+                className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-base font-black tabular-nums ${
+                  secondsLeft <= 30
+                    ? 'bg-[var(--kill)] text-white'
+                    : 'bg-[color-mix(in_srgb,var(--primary)_14%,transparent)] text-[var(--primary)]'
+                }`}
+              >
+                ⏱ {timeLabel}
               </span>
             ) : (
               <span className="text-sm font-semibold text-muted">Untimed</span>
@@ -919,6 +933,7 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
           {/* Per-word hint purchase — only surfaces when the current word actually has a hint. */}
           {currentWord &&
             !myFinished &&
+            !timeUp &&
             hintAvailable &&
             (hintUsed && hintText ? (
               <p className="text-center text-sm text-muted">

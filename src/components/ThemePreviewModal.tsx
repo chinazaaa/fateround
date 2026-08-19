@@ -62,55 +62,6 @@ function PreviewModeToggle({ mode, onChange }: { mode: Theme; onChange: (mode: T
 }
 
 function ThemeSampleRoom({ theme, siteMode, gameType }: { theme: ThemeConfig; siteMode: Theme; gameType?: string }) {
-  if (gameType === 'ping_pong') {
-    return (
-      <div
-        className="rounded-2xl overflow-hidden shadow-lg p-5 flex flex-col items-center justify-center gap-5"
-        style={{ backgroundColor: theme.preview.bg }}
-      >
-        <div className="text-center space-y-2" style={{ color: theme.preview.text }}>
-          <Glyph icon={theme.icon} filled={theme.iconFilled} size={30} className="mx-auto" />
-          <h3 className="text-lg font-black tracking-tight">{theme.label}</h3>
-          <span className="inline-flex items-center rounded-full bg-black/20 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide">
-            Ping Pong
-          </span>
-        </div>
-
-        <div
-          className="w-full max-w-[180px] aspect-[3/4] relative rounded-lg border-2 shadow-2xl"
-          style={{
-            backgroundColor: theme.preview.bg,
-            borderColor: 'rgba(255,255,255,0.3)',
-          }}
-        >
-          {/* Net */}
-          <div className="absolute top-1/2 left-0 right-0 border-t-2 border-dashed border-white/40" />
-
-          {/* Top Paddle */}
-          <div
-            className="absolute top-3 left-1/2 -translate-x-1/2 w-10 h-2.5 rounded-full shadow-lg"
-            style={{ backgroundColor: theme.id === 'grass_court' ? '#ffffff' : '#f97316' }}
-          />
-
-          {/* Bottom Paddle */}
-          <div
-            className="absolute bottom-3 left-1/2 -translate-x-1/2 w-10 h-2.5 rounded-full shadow-lg"
-            style={{ backgroundColor: theme.id === 'grass_court' ? '#ffffff' : '#0ea5e9' }}
-          />
-
-          {/* Ball */}
-          <div
-            className="absolute top-[60%] left-[40%] w-3.5 h-3.5 rounded-full"
-            style={{
-              backgroundColor: theme.preview.accent,
-              boxShadow: `0 0 10px ${theme.preview.accent}`,
-            }}
-          />
-        </div>
-      </div>
-    )
-  }
-
   const hasRoomVars = Object.keys(theme.cssVars || {}).length > 0
   const roomStyle = (theme.cssVars || {}) as unknown as React.CSSProperties
 
@@ -197,7 +148,7 @@ export function ThemePreviewModal({
   // Every theme now carries its palette in globals.css (light + dark variants),
   // so all of them adapt to the site's light/dark mode. A non-empty `cssVars`
   // would mark a legacy fixed-palette theme (none remain today).
-  const isAdaptiveTheme = theme ? (gameType === 'ping_pong' ? false : Object.keys(theme.cssVars).length === 0) : false
+  const isAdaptiveTheme = theme ? Object.keys(theme.cssVars).length === 0 : false
 
   useEffect(() => {
     if (open) setPreviewMode(siteTheme)

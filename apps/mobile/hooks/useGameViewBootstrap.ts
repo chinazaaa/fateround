@@ -328,9 +328,7 @@ export function useGameTableSync(
   // so the subscription (keyed on table names + columns) never has to be torn
   // down and rebuilt. Same trick as web useGameTableSync.
   const applyRef = useRef(new Map<string, ((row: Record<string, unknown>) => void | boolean) | undefined>())
-  applyRef.current = new Map(
-    tables.map((t) => (typeof t === 'string' ? [t, undefined] : [t.table, t.apply]))
-  )
+  applyRef.current = new Map(tables.map((t) => (typeof t === 'string' ? [t, undefined] : [t.table, t.apply])))
 
   useEffect(() => {
     if (!enabled || !gameCode || tables.length === 0) return
@@ -378,12 +376,7 @@ export function useGameTableSync(
             // still reload as before.
             const apply = applyRef.current.get(table)
             let handled = false
-            if (
-              apply &&
-              payload?.eventType !== 'DELETE' &&
-              payload?.new &&
-              Object.keys(payload.new).length > 0
-            ) {
+            if (apply && payload?.eventType !== 'DELETE' && payload?.new && Object.keys(payload.new).length > 0) {
               try {
                 handled = apply(payload.new) === true
               } catch {

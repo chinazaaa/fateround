@@ -11,6 +11,7 @@ import {
   type WordleRoomProgressRow,
   type WordleRoomStandingRow,
 } from '@fateround/shared/wordle-room'
+import { wordleKeyBestStates } from '@/lib/daily-wordle'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameInfoChips } from '@/components/GameInfoChips'
@@ -19,8 +20,14 @@ import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { GameEndedScreen } from '@/components/lifecycle/GameEndedScreen'
 import { GameStartedWaitingScreen } from '@/components/lifecycle/GameStartedWaitingScreen'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
+import { useDeadlineCountdown } from '@/hooks/useDeadlineCountdown'
 import { usePlayerSessionActions } from '@/lib/player-session'
-import { postWordleRoomStatus, postWordleRoomGuess, postWordleRoomRevealHint } from '@/lib/game-api'
+import {
+  postWordleRoomStatus,
+  postWordleRoomGuess,
+  postWordleRoomRevealHint,
+  postWordleRoomExpire,
+} from '@/lib/game-api'
 import { gameLabel } from '@/lib/mobile-registry'
 import { getSupabase } from '@/lib/supabase'
 import type { Theme } from '@/constants/theme'
@@ -95,9 +102,6 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
   const [hintUsed, setHintUsed] = useState(false)
   const [hintText, setHintText] = useState<string | null>(null)
   const [progressRows, setProgressRows] = useState<WordleRoomProgressRow[]>([])
-  // Flips true once the standings query has returned at least once, so we can
-  // gate the "active" render on standings + grid both being ready.
-  const [progressLoaded, setProgressLoaded] = useState(false)
   const [roundId, setRoundId] = useState<string | null>(null)
   const submitLockRef = useRef(false)
   const advanceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -203,12 +207,10 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
       .select('*')
       .eq('game_id', bootstrap.code)
       .eq('round_id', roundId)
-    // Only flip progressLoaded on a successful query. A failed query mustn't
-    // pass the render gate — otherwise the finished screen or the active
-    // board renders with empty/stale standings and the user gets no retry.
+    // Ignore a failed read (keep the last good rows) rather than blanking the
+    // standings; the next realtime tick / mount will retry.
     if (res.error) return
     setProgressRows((res.data ?? []) as WordleRoomProgressRow[])
-    setProgressLoaded(true)
   }, [bootstrap.code, roundId])
 
   useEffect(() => {
@@ -250,11 +252,42 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
   )
   const myStanding = standings.find((s) => s.player_id === bootstrap.myPlayerId)
 
+  // Shared room clock. `timer_seconds` holds the whole-room cap (0 = untimed).
+  // Everyone counts down off the same session_started_at, so the pill in the
+  // header explains exactly why the game ends. When it hits 0 we ask the server
+  // to finalize (any client may — the route re-checks and no-ops otherwise),
+  // then reload so the finished screen appears.
+  const timerDuration = Math.max(0, bootstrap.game?.timer_seconds ?? 0)
+  const timerActive = bootstrap.game?.status === 'active' && !!bootstrap.game?.session_started_at && timerDuration > 0
+  const secondsLeft = useDeadlineCountdown(bootstrap.game?.session_started_at, timerDuration, timerActive)
+  const timeUp = timerActive && secondsLeft <= 0
+  const expireInFlightRef = useRef(false)
+  useEffect(() => {
+    if (!timerActive || secondsLeft > 0 || expireInFlightRef.current) return
+    expireInFlightRef.current = true
+    let cancelled = false
+    void (async () => {
+      try {
+        await postWordleRoomExpire(bootstrap.code)
+      } catch {
+        // best-effort — a retry fires on the next tick if still active
+      } finally {
+        if (!cancelled) {
+          expireInFlightRef.current = false
+          void bootstrap.load()
+        }
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [timerActive, secondsLeft, bootstrap])
+
   const addLetter = useCallback(
     (raw: string) => {
       const ch = raw.toLowerCase()
       if (!/^[a-z]$/.test(ch)) return
-      if (myFinished || !currentWord) return
+      if (myFinished || !currentWord || timeUp) return
       setMessage(null)
       if (cursorAt < current.length) {
         setCurrent(current.slice(0, cursorAt) + ch + current.slice(cursorAt + 1))
@@ -284,7 +317,7 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
   )
 
   const submitGuess = useCallback(async () => {
-    if (!currentWord || !bootstrap.myResumeToken || isViewer || myFinished) return
+    if (!currentWord || !bootstrap.myResumeToken || isViewer || myFinished || timeUp) return
     if (submitLockRef.current) return
     if (current.length < wordLength) {
       setMessage('Not enough letters')
@@ -321,10 +354,10 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
     } finally {
       submitLockRef.current = false
     }
-  }, [bootstrap, current, currentWord, isViewer, myFinished, scheduleAdvance, wordIndex, wordLength])
+  }, [bootstrap, current, currentWord, isViewer, myFinished, timeUp, scheduleAdvance, wordIndex, wordLength])
 
   const revealHint = useCallback(() => {
-    if (!bootstrap.myResumeToken || !hintAvailable || hintUsed || myFinished) return
+    if (!bootstrap.myResumeToken || !hintAvailable || hintUsed || myFinished || timeUp) return
     Alert.alert('Reveal hint?', `This costs ${WORDLE_ROOM_HINT_COST} points off this word's score. Are you sure?`, [
       { text: 'Cancel', style: 'cancel' },
       {
@@ -341,7 +374,7 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
         },
       },
     ])
-  }, [bootstrap, hintAvailable, hintUsed, myFinished, wordIndex])
+  }, [bootstrap, hintAvailable, hintUsed, myFinished, timeUp, wordIndex])
 
   const label = gameLabel((bootstrap.game?.game_type ?? 'wordle_room') as GameType)
 
@@ -388,9 +421,11 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
   if (!bootstrap.game) return <GameLoading />
 
   if (bootstrap.screen === 'finished') {
-    // Wait for standings before rendering the finish panel — otherwise the
-    // leaderboard is empty and the panel collapses to just the footer buttons.
-    if (!progressLoaded) return <GameLoading />
+    // Render the finish panel immediately — never block on the standings query.
+    // The leaderboard is driven by the `standings` memo, which fills in as soon
+    // as loadProgress resolves (mount + realtime), so a slow/failed progress
+    // read shows the winner header and footer actions right away instead of
+    // stranding everyone on a permanent loader.
     const top = standings[0]
     const winnerId = top?.total_points && top.total_points > 0 ? top.player_id : null
     const title = winnerId ? (bootstrap.myPlayerId === winnerId ? 'You win!' : `${top!.name} wins!`) : 'Game over'
@@ -406,11 +441,10 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
             scoreSuffix: 'pts',
             highlight: s.player_id === bootstrap.myPlayerId,
             you: s.player_id === bootstrap.myPlayerId,
-            detail: `${s.words_solved} solved${s.hints_used_count ? ` · ${s.hints_used_count} hint${s.hints_used_count > 1 ? 's' : ''}` : ''}`,
+            detail: buildWordleRoomDetail(s),
           }))}
           winnerPlayerId={winnerId ?? undefined}
           roundKey={roundId ?? bootstrap.code}
-          hideDefaultHeader
         />
       </GameShell>
     )
@@ -419,7 +453,10 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
   // Gate the active render on BOTH the grid data (currentWord) and standings
   // (progressLoaded) being ready, so the standings panel doesn't flash before
   // the grid loads in.
-  if (bootstrap.screen === 'active' && (!currentWord || !progressLoaded)) return <GameLoading />
+  // Only the grid data (currentWord) gates the active render — never the
+  // standings query, which fills in shortly after and must not be able to
+  // strand a player on a loader if it's slow or errors.
+  if (bootstrap.screen === 'active' && !currentWord) return <GameLoading />
 
   // Active — render the board + keyboard + standings.
   const rows: React.ReactNode[] = []
@@ -478,6 +515,19 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
           <Text style={styles.headerMeta}>
             Word {Math.min(wordIndex + 1, wordCount)}/{wordCount}
           </Text>
+          {/* Shared room clock — prominent so players understand why the game
+              ends. Red in the final 30s / when time's up; hidden when untimed. */}
+          {timeUp ? (
+            <View style={[styles.timerPill, styles.timerPillUrgent]}>
+              <Text style={styles.timerPillTextUrgent}>⏱ Time's up</Text>
+            </View>
+          ) : timerDuration > 0 ? (
+            <View style={[styles.timerPill, secondsLeft <= 30 && styles.timerPillUrgent]}>
+              <Text style={secondsLeft <= 30 ? styles.timerPillTextUrgent : styles.timerPillText}>
+                ⏱ {formatCountdown(secondsLeft)}
+              </Text>
+            </View>
+          ) : null}
         </View>
         <View style={styles.legend}>
           <View style={styles.legendItem}>
@@ -497,6 +547,7 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
         {message && <Text style={styles.message}>{message}</Text>}
         {currentWord &&
           !myFinished &&
+          !timeUp &&
           hintAvailable &&
           (hintUsed && hintText ? (
             <Text style={styles.hintText}>
@@ -507,27 +558,48 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
               <Text style={styles.hintButtonText}>Reveal hint (−{WORDLE_ROOM_HINT_COST} pts)</Text>
             </Pressable>
           ) : null)}
-        {currentWord && !myFinished && (
+        {timeUp && !myFinished && (
+          <View style={styles.finishedCard}>
+            <Text style={styles.finishedNote}>⏱ Time's up — the round is over.</Text>
+          </View>
+        )}
+        {currentWord && !myFinished && !timeUp && (
           <View style={styles.keyboard}>
-            {KEYBOARD_ROWS.map((krow, ri) => (
-              <View key={ri} style={styles.keyRow}>
-                {krow.map((key) => {
-                  const wide = key === 'ENTER' || key === 'BACK'
-                  const onPress = () => {
-                    if (key === 'ENTER') void submitGuess()
-                    else if (key === 'BACK') backspace()
-                    else addLetter(key)
-                  }
-                  return (
-                    <Pressable key={key} style={[styles.key, wide && styles.keyWide]} onPress={onPress}>
-                      <Text style={[styles.keyText, wide && styles.keyTextWide]}>
-                        {key === 'BACK' ? '⌫' : key === 'ENTER' ? 'Enter' : key}
-                      </Text>
-                    </Pressable>
-                  )
-                })}
-              </View>
-            ))}
+            {(() => {
+              // Best per-letter state across all guesses so far, so the
+              // keyboard shades used letters green/yellow/gray like web does.
+              const bestStates = wordleKeyBestStates(
+                guesses.map((g) => g.word),
+                currentWord
+              )
+              return KEYBOARD_ROWS.map((krow, ri) => (
+                <View key={ri} style={styles.keyRow}>
+                  {krow.map((key) => {
+                    const wide = key === 'ENTER' || key === 'BACK'
+                    const state = wide ? null : bestStates.get(key.toLowerCase())
+                    const stateStyle = state ? keyStateStyle(state) : null
+                    const onPress = () => {
+                      if (key === 'ENTER') void submitGuess()
+                      else if (key === 'BACK') backspace()
+                      else addLetter(key)
+                    }
+                    return (
+                      <Pressable key={key} style={[styles.key, wide && styles.keyWide, stateStyle]} onPress={onPress}>
+                        <Text
+                          style={[
+                            styles.keyText,
+                            wide && styles.keyTextWide,
+                            stateStyle ? styles.keyTextOnState : null,
+                          ]}
+                        >
+                          {key === 'BACK' ? '⌫' : key === 'ENTER' ? 'Enter' : key}
+                        </Text>
+                      </Pressable>
+                    )
+                  })}
+                </View>
+              ))
+            })()}
           </View>
         )}
         {myFinished && (
@@ -582,7 +654,41 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
   )
 }
 
+// Compose the per-row detail line for the finished-screen leaderboard so we
+// can share it — and only it — between the on-screen panel and the shared
+// text/image. Order: solved · time · hints. Time only appears once the
+// server has recorded a total_time_ms (players who never finished a word
+// keep the shorter "solved · hints" form).
+/** m:ss for the live countdown pill (never negative). */
+function formatCountdown(seconds: number): string {
+  const s = Math.max(0, Math.floor(seconds))
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
+}
+
+function formatWordleRoomTime(ms: number | null | undefined): string | null {
+  if (ms == null || ms < 0) return null
+  const total = Math.floor(ms / 1000)
+  const minutes = Math.floor(total / 60)
+  const seconds = total % 60
+  return `${minutes}:${String(seconds).padStart(2, '0')}`
+}
+
+function buildWordleRoomDetail(row: WordleRoomStandingRow): string {
+  const time = formatWordleRoomTime(row.total_time_ms)
+  const parts: string[] = [`${row.words_solved} solved`]
+  if (time) parts.push(`time ${time}`)
+  if (row.hints_used_count > 0) parts.push(`${row.hints_used_count} hint${row.hints_used_count > 1 ? 's' : ''}`)
+  return parts.join(' · ')
+}
+
 function tileStateStyle(theme: Theme, state: WordleLetterState) {
+  const bg = state === 'correct' ? '#538d4e' : state === 'present' ? '#b59f3b' : '#3a3a3c'
+  return { backgroundColor: bg, borderColor: 'transparent' }
+}
+
+// Same three swatches as the tiles, applied to the keyboard keys so a player
+// can see at-a-glance which letters they've ruled out / half-placed / placed.
+function keyStateStyle(state: WordleLetterState) {
   const bg = state === 'correct' ? '#538d4e' : state === 'present' ? '#b59f3b' : '#3a3a3c'
   return { backgroundColor: bg, borderColor: 'transparent' }
 }
@@ -605,6 +711,15 @@ const makeStyles = (theme: Theme) =>
     },
     badgeText: { color: '#fff', fontSize: 12, fontWeight: '700', letterSpacing: 0.5 },
     headerMeta: { color: theme.textMuted, fontSize: 13, fontWeight: '600' },
+    timerPill: {
+      paddingHorizontal: 12,
+      paddingVertical: 5,
+      borderRadius: 999,
+      backgroundColor: theme.primarySoft,
+    },
+    timerPillUrgent: { backgroundColor: theme.error },
+    timerPillText: { color: theme.primaryMuted, fontSize: 15, fontWeight: '800', fontVariant: ['tabular-nums'] },
+    timerPillTextUrgent: { color: '#fff', fontSize: 15, fontWeight: '800', fontVariant: ['tabular-nums'] },
     legend: {
       flexDirection: 'row',
       flexWrap: 'wrap',
@@ -633,7 +748,18 @@ const makeStyles = (theme: Theme) =>
     tileEmpty: { borderColor: theme.border, opacity: 0.6 },
     tileCurrent: { borderColor: theme.text },
     tileFocus: { borderColor: theme.primary, borderWidth: 3 },
-    tileText: { color: theme.text, fontSize: 22, fontWeight: '800', textTransform: 'uppercase' },
+    // alignSelf:'stretch' + textAlign:'center' — RN New Arch measures a narrow
+    // lone glyph inside a flexed Text to zero and renders nothing (the "I" tile
+    // and "I" key were blank). Stretch + center sidesteps the intrinsic-width
+    // measurement.
+    tileText: {
+      color: theme.text,
+      fontSize: 22,
+      fontWeight: '800',
+      textTransform: 'uppercase',
+      alignSelf: 'stretch',
+      textAlign: 'center',
+    },
     message: { color: theme.text, fontSize: 14, fontWeight: '600', textAlign: 'center' },
     hintText: { color: theme.textMuted, fontSize: 13, textAlign: 'center' },
     hintCost: { color: theme.textFaint, fontSize: 11 },
@@ -661,8 +787,17 @@ const makeStyles = (theme: Theme) =>
       justifyContent: 'center',
     },
     keyWide: { flex: 1.5 },
-    keyText: { color: theme.text, fontSize: 15, fontWeight: '700', textTransform: 'uppercase' },
+    keyText: {
+      color: theme.text,
+      fontSize: 15,
+      fontWeight: '700',
+      textTransform: 'uppercase',
+      alignSelf: 'stretch',
+      textAlign: 'center',
+    },
     keyTextWide: { fontSize: 12 },
+    // White text when a key is filled with a state color — matches the tiles.
+    keyTextOnState: { color: '#fff' },
     finishedNote: { color: theme.primary, fontWeight: '700', textAlign: 'center' },
     finishedCard: {
       alignSelf: 'stretch',

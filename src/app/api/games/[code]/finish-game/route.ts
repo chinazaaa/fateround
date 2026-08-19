@@ -6,6 +6,7 @@ import { finishCodewordsGame } from '@/lib/codewords'
 import { finishScrabbleGameEarly } from '@/lib/scrabble'
 import { finishWordRushGameEarly } from '@/lib/word-rush-server'
 import { finishMafiaGameEarly } from '@/lib/mafia'
+import { finishTrollRunGameEarly } from '@/lib/troll-run'
 import { markGameFinished } from '@/lib/game-finish'
 import { resolveWinners } from '@/lib/trophies/outcome'
 import { awardTournamentPlacements } from '@/lib/tournament-scoring'
@@ -18,6 +19,7 @@ import {
   isScrabbleGame,
   isWordRushGame,
   isMafiaGame,
+  isTrollRunGame,
 } from '@/lib/game-types'
 import { hostActionSchema } from '@/lib/validation'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
@@ -96,6 +98,11 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
   // the finished screen shows no winning team and only already-dead players' roles reveal.
   if (isMafiaGame(gameType) && !inLobby) {
     const { error } = await finishMafiaGameEarly(admin, gameId)
+    if (error) return NextResponse.json({ error }, { status: 500 })
+  }
+
+  if (isTrollRunGame(gameType) && !inLobby) {
+    const { error } = await finishTrollRunGameEarly(admin, gameId)
     if (error) return NextResponse.json({ error }, { status: 500 })
   }
 

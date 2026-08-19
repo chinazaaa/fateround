@@ -111,17 +111,6 @@ export function postCheckersNigeriaHuff(gameId: string, resumeToken: string, squ
   return postJson<{ success: boolean }>('/api/checkers-nigeria/huff', { gameId, resumeToken, square })
 }
 
-/** Report a point scored client-side (physics is client-authoritative; the server re-validates
- * sequence via `rally` and is the single source of truth for score/win state). */
-export function postPingPongPoint(gameId: string, resumeToken: string, scorer: 'X' | 'O', rally: number) {
-  return postJson<{ success?: boolean }>('/api/ping-pong/point', { gameId, resumeToken, scorer, rally })
-}
-
-/** Idempotent poke to conclude a timed match once the clock runs out. */
-export function postPingPongExpire(gameId: string) {
-  return postJson<{ expired?: boolean; finished?: boolean }>(`/api/games/${gameId.toUpperCase()}/expire-ping-pong`, {})
-}
-
 export function postAyoMove(gameId: string, resumeToken: string, pitIndex: number) {
   return postJson<{ success: boolean }>('/api/ayo/move', { gameId, resumeToken, pitIndex })
 }
@@ -1250,7 +1239,6 @@ export type BoardLobbyPatch = {
   ludo_variant?: 'modern' | 'traditional'
   ayo_variant?: 'traditional' | 'oware'
   checkers_nigeria_street_rules?: boolean
-  ping_pong_points_to_win?: number
   mafia_doctor_enabled?: boolean
   mafia_detective_enabled?: boolean
   mafia_anonymous_votes?: boolean
@@ -1667,6 +1655,16 @@ export function postWordleRoomGuess(gameId: string, resumeToken: string, word: s
     resumeToken,
     word,
   })
+}
+
+/** Ask the server to finalize a wordle_room game whose shared clock has run out.
+ *  Any active client may call it (the route re-checks the deadline and no-ops if
+ *  the game isn't actually expired). Returns whether it finished/expired. */
+export function postWordleRoomExpire(gameId: string) {
+  return postJson<{ finished?: boolean; expired?: boolean; skipped?: boolean }>(
+    `/api/games/${gameId.toUpperCase()}/expire-wordle-room`,
+    {}
+  )
 }
 
 export function postWordleRoomRevealHint(gameId: string, resumeToken: string, wordIndex: number) {

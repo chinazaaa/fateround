@@ -206,7 +206,7 @@ const GAME_KEY_PREFIXES = [
   'quick_draw_',
   'word_rush_',
   'describe_it_',
-  'ping_pong_',
+  'troll_run_',
   'crazy8_',
   'landmine_',
   'codewords_',

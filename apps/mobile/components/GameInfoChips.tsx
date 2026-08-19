@@ -5,6 +5,7 @@ import { CROSSWORD_THEME_OPTIONS } from '@fateround/shared/crossword'
 import { WORD_SEARCH_THEME_OPTIONS } from '@fateround/shared/word-search'
 import { WORD_SCRAMBLE_THEME_OPTIONS } from '@fateround/shared/word-scramble'
 import { parseUnoRules } from '@fateround/shared/uno'
+import { WORDLE_ROOM_CATEGORY_LABELS } from '@fateround/shared/wordle-room'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
 
@@ -44,7 +45,7 @@ const DUEL_CLOCK_LABEL: Record<string, string> = {
 }
 
 /** Game types with a fixed 2-player format — a "players" pill would be pure noise. */
-const FIXED_TWO_PLAYER = new Set(['chess', 'checkers', 'checkers_international', 'checkers_nigeria', 'ping_pong'])
+const FIXED_TWO_PLAYER = new Set(['chess', 'checkers', 'checkers_international', 'checkers_nigeria'])
 
 /** Game types that already show their own (correctly defaulted/clamped) player-count chip
  *  elsewhere (the room-capacity counter) — skip the generic pill here to avoid a duplicate. */
@@ -126,6 +127,12 @@ export function gameInfoItems(game: Game | null | undefined): string[] {
   const duelLabel = DUEL_CLOCK_LABEL[gt]
   if (duelLabel) {
     items.push(`${duelLabel} · ${formatDuration(game.timer_seconds ?? 0)}`)
+  } else if (gt === 'wordle_room') {
+    // Wordle Room stores its session cap in `timer_seconds` (not
+    // `game_duration_seconds`), so the generic fallback below would read a
+    // stale 0 and always render "No time limit" even after the host bumps
+    // the timer in the lobby. Read timer_seconds directly and always emit.
+    items.push(formatDuration(game.timer_seconds ?? 0))
   } else if (typeof game.game_duration_seconds === 'number') {
     // Session-length cap (currently used by Monopoly-style games). Shown even when unlimited —
     // that's exactly what a time-pressed player needs to know before joining.
@@ -234,8 +241,6 @@ export function gameInfoItems(game: Game | null | undefined): string[] {
     if (game.mafia_doctor_enabled) items.push('Doctor')
     if (game.mafia_detective_enabled) items.push('Detective')
     if (game.mafia_anonymous_votes) items.push('Anonymous votes')
-  } else if (gt === 'ping_pong') {
-    if (game.ping_pong_points_to_win) items.push(`First to ${game.ping_pong_points_to_win}`)
   } else if (gt === 'codewords') {
     if (game.codewords_player_picks) items.push('Players pick roles')
     if (game.codewords_randomize_teams) items.push('Randomized operatives')
@@ -245,6 +250,22 @@ export function gameInfoItems(game: Game | null | undefined): string[] {
     }
   } else if (gt === 'checkers_nigeria') {
     if (game.checkers_nigeria_street_rules) items.push('Street Rules')
+  } else if (gt === 'wordle_room') {
+    // Wordle Room pool: word count + category label so a joiner sees what
+    // they're racing on. Mirrors the web GameInfoChips branch.
+    const wordCount = (game as unknown as { wordle_room_word_count?: number | null }).wordle_room_word_count
+    if (typeof wordCount === 'number' && wordCount > 0) {
+      items.push(`${wordCount} words`)
+    }
+    const category = (game as unknown as { wordle_room_category?: string | null }).wordle_room_category
+    if (category) {
+      // Fall back to General English for an unknown/stale category value so
+      // mobile and web (which clamps the same way) show matching metadata.
+      const label =
+        WORDLE_ROOM_CATEGORY_LABELS[category as keyof typeof WORDLE_ROOM_CATEGORY_LABELS] ??
+        WORDLE_ROOM_CATEGORY_LABELS.general_english
+      if (label) items.push(label)
+    }
   }
 
   return items

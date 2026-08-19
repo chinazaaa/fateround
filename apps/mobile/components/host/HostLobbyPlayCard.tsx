@@ -5,7 +5,7 @@ import { MONOPOLY_PLAYER_TOKENS, takenMonopolyTokens } from '@fateround/shared/m
 import { JoinError, joinGame } from '@/lib/api'
 import { patchPlayerName, leaveGame } from '@/lib/game-api'
 import { getRememberedName, rememberName } from '@/lib/identity-local'
-import { clearPlayerSession, setPlayerSession, type PlayerSession } from '@/lib/secure-session'
+import { clearPlayerSession, getHostToken, setPlayerSession, type PlayerSession } from '@/lib/secure-session'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
 
@@ -71,8 +71,13 @@ export function HostLobbyPlayCard({
   const onJoin = async () => {
     const trimmed = name.trim()
     if (!trimmed || busy || needsToken) return
+    // Send the local host_token so the server recognises this as the host
+    // device (not another device on the same profile) and skips the
+    // already_hosting 409 that would otherwise fire on a host playing along
+    // in their own lobby.
+    const hostToken = await getHostToken(gameCode)
     const attempt = (continueOnThisDevice: boolean) =>
-      joinGame({ gameCode, playerName: trimmed, monopolyToken: token, continueOnThisDevice })
+      joinGame({ gameCode, playerName: trimmed, monopolyToken: token, continueOnThisDevice, hostToken })
     setBusy(true)
     setError(null)
     try {

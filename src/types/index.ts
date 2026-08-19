@@ -54,10 +54,10 @@ export type GameType =
   | 'word_search'
   | 'word_scramble'
   | 'landmine'
-  | 'ping_pong'
   | 'uno'
   | 'word_grouping'
   | 'wordle_room'
+  | 'troll_run'
 
 export type NpatPhase = 'letter_pick' | 'writing' | 'marking' | 'host_review' | 'reveal'
 export type NpatCategory = 'name' | 'animal' | 'place' | 'thing' | 'food'
@@ -272,6 +272,7 @@ export interface CodewordsMessage {
 }
 export type ThemeId =
   | 'default'
+  | 'dark'
   | 'neon'
   | 'retro'
   | 'elegant'
@@ -387,6 +388,9 @@ export interface Game {
   monopoly_no_rent_in_jail?: boolean
   monopoly_estate_dividend?: boolean
   monopoly_board_size?: 40 | 48
+  troll_run_rounds?: number
+  troll_run_time_limit?: number
+  troll_run_world?: string
   anonymous: boolean
   auto_reveal: boolean
   auto_submit_behavior: AutoSubmitBehavior
@@ -541,8 +545,6 @@ export interface Game {
   landmine_review_seconds?: number | null
   /** Nigerian Draughts — opt-in "Street Rules" (huffing): decline a capture, risk the piece. */
   checkers_nigeria_street_rules?: boolean | null
-  /** Ping Pong — points required to win the match (3, 5, 7, 11, 15, or 21). */
-  ping_pong_points_to_win?: number | null
   /** Wordle Room — which built-in word bank the race draws from. */
   wordle_room_category?:
     | 'general_english'
@@ -1181,21 +1183,6 @@ export interface TicTacToeSession {
   is_draw: boolean
   status_message: string | null
   turn_deadline_at: string | null
-  created_at: string
-  updated_at: string
-}
-
-export interface PingPongSession {
-  id: string
-  game_id: string
-  player_x_id: string
-  player_o_id: string
-  score_x: number
-  score_o: number
-  points_to_win: number
-  status: 'active' | 'finished'
-  winner_player_id: string | null
-  status_message: string | null
   created_at: string
   updated_at: string
 }
@@ -2220,4 +2207,52 @@ export interface MafiaMyState {
    *  the roster grid can mark their tiles with a heart without exposing it to anyone else. */
   loverIds?: string[]
   enabledRoles?: MafiaRole[]
+}
+
+export type TrollRunPhase = 'lobby' | 'countdown' | 'racing' | 'scoreboard' | 'finished'
+
+export interface TrollRunSession {
+  id: string
+  game_id: string
+  phase: TrollRunPhase
+  current_round: number
+  total_rounds: number
+  current_world: string
+  levels_per_round: number
+  round_time_limit: number
+  round_started_at: string | null
+  turn_deadline_at: string | null
+  level_order: string[]
+  created_at: string
+  updated_at: string
+}
+
+export interface TrollRunPlayerState {
+  id: string
+  game_id: string
+  player_id: string
+  current_round: number
+  current_level_index: number
+  deaths: number
+  levels_cleared: number
+  total_time_ms: number
+  round_score: number
+  total_score: number
+  finish_position: number | null
+  round_finished: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface TrollRunEvent {
+  id: string
+  game_id: string
+  player_id: string
+  player_name?: string
+  round: number
+  level_id: string
+  level_name?: string
+  event_type: 'death' | 'clear'
+  time_ms?: number | null
+  created_at: string
 }

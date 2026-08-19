@@ -1073,31 +1073,6 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
     },
   ],
 
-  ping_pong: [
-    {
-      title: 'Objective',
-      points: [
-        "Hit the ball back and forth. Don't miss.",
-        'Score when your opponent whiffs it or hits it out of bounds.',
-        'First to the target score wins — but you have to win by two.',
-      ],
-    },
-    {
-      title: 'Setup',
-      points: [
-        'Two players join. The host picks the winning score (3 to 21).',
-        'One player takes the top paddle, the other takes the bottom.',
-      ],
-    },
-    {
-      title: 'How to play',
-      points: [
-        'Drag your paddle to block and return the ball.',
-        'If you tie at match point (like 6-6 in a game to 7), you enter overtime. Play continues until someone takes a 2-point lead.',
-      ],
-    },
-  ],
-
   chess: [
     {
       title: 'Objective',
@@ -1910,6 +1885,42 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
         'The most obvious answer is the most likely mine — a slightly less common but still valid answer is the safe play.',
         'Nobody else giving your answer earns a bonus, so avoid the crowd where you safely can.',
         'When marking, judge only whether the answer fits the category — you won’t know the mine yet.',
+      ],
+    },
+  ],
+  troll_run: [
+    {
+      title: 'Objective',
+      points: [
+        'Race simultaneously with friends through deceptive pixel-art platformer levels.',
+        'Beware of hidden traps: collapsing floors, runaway exit doors, pop-up spikes, and gravity flips.',
+        'Clear all levels as fast as possible with the fewest deaths to score maximum points and win the tournament.',
+      ],
+    },
+    {
+      title: 'Multiplayer Race Mechanics',
+      points: [
+        '2 to 6 players join by room code on mobile or desktop.',
+        'Everyone starts each round at the exact same moment on a 3-2-1 countdown.',
+        'All players race through identical level layouts with the same troll triggers.',
+        'A live ticker alerts everyone whenever a rival dies or clears a checkpoint.',
+      ],
+    },
+    {
+      title: 'Scoring & Placements',
+      points: [
+        'Finish 1st: 500 pts, 2nd: 350 pts, 3rd: 250 pts, 4th+: 100 pts.',
+        'Speed Bonus: +50 pts if you beat the round par time.',
+        'Death Penalty: -5 pts deducted for every death in the round.',
+        'DNF (Did Not Finish): Earn points for each level cleared before time expires.',
+      ],
+    },
+    {
+      title: 'Controls & Physics',
+      points: [
+        'Desktop: Arrow keys or A/D to run, Space/Up/W to jump.',
+        'Mobile: On-screen touch buttons for Left, Right, and Jump.',
+        'Responsive platforming with coyote time (80ms) and jump buffering (100ms) for snappy jumps.',
       ],
     },
   ],
