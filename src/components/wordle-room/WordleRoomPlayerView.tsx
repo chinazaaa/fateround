@@ -102,6 +102,9 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
   const [message, setMessage] = useState<string | null>(null)
   const [shake, setShake] = useState(false)
   const [progressRows, setProgressRows] = useState<WordleRoomProgressRow[]>([])
+  // Flips true once the standings query has returned at least once, so the
+  // playing render can gate on grid + standings both being ready.
+  const [progressLoaded, setProgressLoaded] = useState(false)
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null)
   const submitLockRef = useRef(false)
   const advanceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -109,6 +112,9 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
   // fired. Realtime subscriptions consult this to skip fetchStatus while the reveal
   // ("Correct!" / "the word was …") should still be visible.
   const advanceDeadlineRef = useRef<number>(0)
+  // Track the last (word_index, currentWord) synced so realtime resyncs on the
+  // *same* word don't wipe the letters the user is currently typing.
+  const lastSyncedWordRef = useRef<{ index: number; word: string } | null>(null)
 
   function showToast(msg: string, ok: boolean) {
     setToast({ msg, ok })
@@ -173,10 +179,13 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
     // which is a real completion. sequenceComplete is only true when progress.finished is.
     if (data.sequenceComplete === true) setMyFinished(true)
     if (data.currentWord) {
+      const nextIndex = data.word_index ?? 0
+      const prev = lastSyncedWordRef.current
+      const wordChanged = !prev || prev.index !== nextIndex || prev.word !== data.currentWord
       setCurrentWord(data.currentWord)
       setWordLength(data.wordLength ?? data.currentWord.length)
       setMaxAttempts(data.maxAttempts ?? data.currentWord.length + 1)
-      setWordIndex(data.word_index ?? 0)
+      setWordIndex(nextIndex)
       setWordCount(data.word_count ?? 5)
       setWordsSolved(data.words_solved ?? 0)
       setTotalGuesses(data.total_guesses ?? 0)
@@ -186,12 +195,18 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
       setHintUsed(data.hintUsed === true)
       setHintText(data.hint ?? null)
       setGuesses((data.guesses ?? []).map((g) => ({ word: g.guess, states: g.state })))
-      setCurrent('')
-      setCursorAt(0)
-      setRevealWord('')
-      // Clear the previous word's transient banner ("Out of attempts — the word was X",
-      // "Correct! +N pts") so it doesn't linger into the next word.
-      setMessage(null)
+      // Only wipe in-progress typed letters + banner when we've actually
+      // advanced to a new word. Same-word resyncs (another player's progress
+      // row updating) previously blew away whatever the user was typing.
+      if (wordChanged) {
+        setCurrent('')
+        setCursorAt(0)
+        setRevealWord('')
+        // Clear the previous word's transient banner ("Out of attempts — the word was X",
+        // "Correct! +N pts") so it doesn't linger into the next word.
+        setMessage(null)
+      }
+      lastSyncedWordRef.current = { index: nextIndex, word: data.currentWord }
     }
     // Deliberately DO NOT wipe currentWord/guesses when the server returns finished:true
     // without a currentWord: the server uses that shape in several non-completion cases
@@ -260,12 +275,17 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
 
   const loadProgress = useCallback(async () => {
     if (!roundId) return
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('wordle_room_progress')
       .select('*')
       .eq('game_id', gameCode)
       .eq('round_id', roundId)
-    if (data) setProgressRows(data as WordleRoomProgressRow[])
+    // Only flip progressLoaded on a successful query. A failed query mustn't
+    // pass the render gate — otherwise the finished screen or the active
+    // board renders with empty/stale standings and the user gets no retry.
+    if (error) return
+    setProgressRows((data ?? []) as WordleRoomProgressRow[])
+    setProgressLoaded(true)
   }, [gameCode, roundId])
 
   useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
@@ -730,6 +750,15 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
   }
 
   if (screen === 'finished' && game) {
+    // Same gate as the playing branch — a direct visit to a finished game
+    // otherwise flashes empty standings before the progress query resolves.
+    if (!progressLoaded) {
+      return (
+        <div className="min-h-screen flex items-center justify-center">
+          <p className="text-muted">Loading…</p>
+        </div>
+      )
+    }
     const iWon =
       !!myStanding &&
       standings.length > 1 &&
@@ -755,6 +784,17 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
             />
           )}
         </main>
+      </div>
+    )
+  }
+
+  // Gate the playing render on BOTH the grid data (currentWord) and standings
+  // (progressLoaded) being ready, so the standings panel doesn't flash before
+  // the grid loads in.
+  if (screen === 'playing' && (!currentWord || !progressLoaded)) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <p className="text-muted">Loading…</p>
       </div>
     )
   }

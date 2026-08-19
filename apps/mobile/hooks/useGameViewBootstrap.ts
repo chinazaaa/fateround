@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { AppState } from 'react-native'
 import type { Game, Player } from '@fateround/shared'
 import { normalizeGameCode } from '@fateround/shared'
-import { joinGame } from '@/lib/api'
+import { Alert } from 'react-native'
+import { JoinError, joinGame } from '@/lib/api'
 import { recordRecentGame } from '@/lib/recent-games'
 import { getPlayerSession, setPlayerSession } from '@/lib/secure-session'
 import { reconcilePlayerSession } from '@/lib/player-session-reconcile'
@@ -174,11 +175,9 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
         return
       }
 
-      setJoining(true)
-      setError(null)
-      try {
+      const attemptJoin = async (continueOnThisDevice: boolean) => {
         const existing = await getPlayerSession(code)
-        const data = await joinGame({
+        return joinGame({
           gameCode: code,
           playerName: playerName || 'Player',
           resumeToken: existing?.resumeToken ?? undefined,
@@ -187,7 +186,47 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
           gender: options?.gender,
           identityGender: options?.identityGender,
           pollGender: options?.pollGender,
+          continueOnThisDevice,
         })
+      }
+
+      setJoining(true)
+      setError(null)
+      try {
+        let data
+        try {
+          data = await attemptJoin(false)
+        } catch (err) {
+          // Cross-device continuation prompt: same profile already hosting or
+          // seated from another device. Ask the user which device wins; on
+          // "Continue here" re-issue the join with the override flag.
+          if (err instanceof JoinError && (err.reason === 'already_hosting' || err.reason === 'already_joined')) {
+            const isHost = err.reason === 'already_hosting'
+            const proceed = await new Promise<boolean>((resolve) => {
+              Alert.alert(
+                isHost ? 'Already hosting elsewhere' : 'Already in this game elsewhere',
+                isHost
+                  ? 'You’re hosting this game on another device. Continue on this device, or keep it on the other one?'
+                  : `You’re already a player in this game on another device${
+                      err.existingPlayerName ? ` (as ${err.existingPlayerName})` : ''
+                    }. Continue on this device, or keep it on the other one?`,
+                [
+                  { text: 'Keep other device', style: 'cancel', onPress: () => resolve(false) },
+                  { text: 'Continue here', style: 'default', onPress: () => resolve(true) },
+                ],
+                { cancelable: false }
+              )
+            })
+            if (!proceed) {
+              setError(null)
+              setJoining(false)
+              return
+            }
+            data = await attemptJoin(true)
+          } else {
+            throw err
+          }
+        }
 
         const gender = data.playerGender ?? 'both'
         await setPlayerSession(code, data.playerId, data.playerName, gender, data.resumeToken ?? null)

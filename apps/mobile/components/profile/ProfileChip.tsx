@@ -282,10 +282,10 @@ function SaveToProfileSheet({
                 </>
               ) : (
                 <>
-                  <Text style={styles.hint}>We emailed a 6-digit code to {email}.</Text>
+                  <Text style={styles.hint}>We emailed an 8-digit code to {email}.</Text>
                   <TextInput
                     style={styles.input}
-                    placeholder="123456"
+                    placeholder="12345678"
                     placeholderTextColor={theme.textFaint}
                     value={code}
                     onChangeText={setCode}

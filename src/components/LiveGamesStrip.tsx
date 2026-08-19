@@ -101,6 +101,22 @@ export function LiveGamesStrip() {
           {shown.map((game) => {
             const cfg = gameTypeConfig(parseGameType(game.game_type))
             const count = game.max_players != null ? `${game.playerCount}/${game.max_players}` : `${game.playerCount}`
+            const isLobby = game.status === 'waiting'
+            const isActive = game.status === 'active'
+            const isFull = game.max_players != null && game.playerCount >= game.max_players
+            const lateJoinable = isActive && game.allow_late_players === true && !isFull
+            const alreadyJoined = joinedSet.has(game.id.toUpperCase())
+            const stateLine = isLobby
+              ? isFull
+                ? 'Lobby full'
+                : 'In lobby'
+              : lateJoinable
+                ? 'Started · join or watch'
+                : isFull
+                  ? 'Started · full'
+                  : 'Started · watch'
+            const cta = alreadyJoined ? 'Continue' : isLobby && !isFull ? 'Join' : lateJoinable ? 'Join' : 'Watch'
+            const ctaClass = alreadyJoined || (isLobby && !isFull) || lateJoinable ? 'btn-primary' : 'btn-secondary'
             return (
               <div
                 key={game.id}
@@ -118,16 +134,16 @@ export function LiveGamesStrip() {
                     {cfg.label}
                   </div>
                   <div className="truncate text-xs" style={{ color: 'var(--text-muted)' }}>
-                    {count} player{game.playerCount === 1 ? '' : 's'}
+                    {stateLine} · {count} player{game.playerCount === 1 ? '' : 's'}
                   </div>
                 </div>
                 <Link
                   href={`/game/${game.id}`}
-                  className="btn-primary btn-fit px-3 py-1.5 text-xs"
+                  className={`${ctaClass} btn-fit px-3 py-1.5 text-xs`}
                   target="_blank"
                   rel="noopener noreferrer"
                 >
-                  {joinedSet.has(game.id.toUpperCase()) ? 'Continue' : 'Join'}
+                  {cta}
                 </Link>
               </div>
             )

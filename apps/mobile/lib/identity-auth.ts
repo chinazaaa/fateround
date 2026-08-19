@@ -2,7 +2,7 @@
  * Mobile mirror of `src/lib/identity-auth.ts` — attaching an email to an identity so it
  * survives a new device (`docs/accounts-and-identity-plan.md` §5, Slice 3/4).
  *
- * LOGIN == SIGNUP: one email field, one 6-digit code, and the backend decides whether that is
+ * LOGIN == SIGNUP: one email field, one 8-digit code, and the backend decides whether that is
  * a sign-in or a new account. UI copy says "Save to profile", never "Sign up".
  *
  * MOBILE SELLS NOTHING. This exists purely so a plan bought on the web is recognised here, and
@@ -40,7 +40,7 @@ function isEmailTaken(error: { message: string; code?: string }): boolean {
   return /already|registered|exists|taken/i.test(error.message)
 }
 
-/** Send a 6-digit code. The returned `flow` must be passed to {@link verifyEmailCode}. */
+/** Send an 8-digit code. The returned `flow` must be passed to {@link verifyEmailCode}. */
 export async function requestEmailCode(email: string): Promise<RequestCodeResult> {
   const address = email.trim().toLowerCase()
   if (!address) return { ok: false, flow: 'signin', error: 'Enter your email address' }
