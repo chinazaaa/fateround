@@ -12,6 +12,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { GAME_TYPE_OPTIONS, gameTypeConfig } from '@/lib/game-types'
 import { isIos, isStandalone, pushSupported } from '@/lib/push-client'
+import { authHeaders } from '@/lib/auth-headers'
 
 type QuietHours = {
   mode: 'off' | 'quiet' | 'available'
@@ -180,7 +181,9 @@ export function NotificationsPage({ preselectGameType }: { preselectGameType?: s
         if (next) {
           const res = await fetch('/api/notifications', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            // Bearer identifies this device with the signed-in profile so the
+            // fanout can skip pushing a game the same profile just opened.
+            headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
             body: JSON.stringify({
               channel: 'web',
               tokenKey: authed.endpoint,
