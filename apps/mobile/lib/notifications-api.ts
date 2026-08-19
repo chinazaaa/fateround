@@ -9,8 +9,12 @@ import { pushPlatform } from '@/lib/push-notifications'
 
 export type QuietHoursState = {
   mode: 'off' | 'quiet' | 'available'
-  startMinutes: number | null
-  endMinutes: number | null
+  // 'quiet' and 'available' keep independent windows — editing one never
+  // touches the other.
+  quietStartMinutes: number | null
+  quietEndMinutes: number | null
+  availableStartMinutes: number | null
+  availableEndMinutes: number | null
   timezone: string | null
 }
 
