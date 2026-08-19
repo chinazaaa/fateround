@@ -20,7 +20,7 @@ import { AYO_SOLO_BOT_ID, AYO_SOLO_HUMAN_ID, initAyoSolo, ayoSoloMove, type AyoS
 import { pickAyoBotMove, type AyoBotDifficulty } from '@/lib/ayo-bot'
 import { useAyoSowAnimation } from '@/hooks/useAyoSowAnimation'
 import { boardConfigFromSession } from '@/lib/ayo'
-import { logSoloPlayStarted } from '@/lib/solo-play'
+import { logSoloPlayFinished, logSoloPlayStarted, resetSoloSessionId, soloSessionId } from '@/lib/solo-play'
 import { readSoloScoreboard, recordSoloOutcome, resetSoloScoreboard, type SoloScoreboard } from '@/lib/solo-scoreboard'
 import { SoloScoreboardRow } from '@/components/solo/SoloScoreboardRow'
 import type { Player } from '@/types'
@@ -97,6 +97,7 @@ export function SoloAyoClient() {
     const outcome: 'human' | 'bot' | 'draw' =
       state.outcome === 'a' ? 'human' : state.outcome === 'draw' ? 'draw' : 'bot'
     setScoreboard(recordSoloOutcome('ayo', outcome))
+    logSoloPlayFinished({ gameType: 'ayo', outcome, sessionId: soloSessionId('ayo'), difficulty })
     scoredRef.current = true
   }, [state])
 
@@ -158,6 +159,7 @@ export function SoloAyoClient() {
     clearAnimation()
     setState(initAyoSolo())
     scoredRef.current = false
+    resetSoloSessionId('ayo')
     logSoloPlayStarted('ayo', difficulty)
   }, [difficulty, clearAnimation])
 

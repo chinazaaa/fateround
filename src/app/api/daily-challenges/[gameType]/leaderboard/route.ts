@@ -98,7 +98,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ game
         .select('normalized_score, raw_points, items_solved, time_seconds, hints_used, submitted_at')
         .eq('challenge_id', challenge.id)
         .eq('profile_id', profileId)
-        .single()
+        .maybeSingle()
 
       if (myEntry) {
         // The footer shows the board metric: raw points for Word Hunt, normalized score otherwise.

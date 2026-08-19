@@ -5,7 +5,7 @@
  *
  * Sits on the shared /game/[code] route (src/app/game/[code]/page.tsx) so every
  * web game gets the same one-shot finish-screen nudge without editing each
- * per-game view (Ludo/Monopoly/PingPong/…). Polls the game's status + type,
+ * per-game view (Ludo/Monopoly/TrollRun/…). Polls the game's status + type,
  * renders a small floating card once status flips to 'finished', and stays
  * hidden forever after the user dismisses or taps Subscribe.
  *

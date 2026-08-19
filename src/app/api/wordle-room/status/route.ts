@@ -87,11 +87,15 @@ export async function POST(req: NextRequest) {
     : []
   const hintUsedThisWord = hintsUsedList.includes(wordIndex)
   if (!currentWord) {
+    // No currentWord within an active game means the player has run out of words for
+    // their sequence — a genuine completion. Mark it explicitly so the client can
+    // distinguish this from the ambiguous pre-active `finished:true` shape.
     return NextResponse.json({
       success: true,
       gameId,
       status: game.status,
       finished: true,
+      sequenceComplete: progress?.finished === true,
       word_count: metadata.word_count,
       category: metadata.category,
       categoryLabel: metadata.categoryLabel,
@@ -115,6 +119,9 @@ export async function POST(req: NextRequest) {
     gameId,
     status: game.status,
     finished: progress?.finished === true,
+    // Unambiguous per-player completion — clients use this (not the multi-purpose
+    // `finished` flag) to lock the board or mark the player done.
+    sequenceComplete: progress?.finished === true,
     word_index: wordIndex,
     currentWord,
     wordLength: currentWord.length,

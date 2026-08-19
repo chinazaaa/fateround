@@ -1461,7 +1461,7 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
       accent: '#16a34a',
       accentSoft: 'rgba(22, 163, 74, 0.15)',
       emoji: '🟩',
-      players: '2–20 players',
+      players: '1–20 players',
       vibe: 'Head-to-head Wordle race',
       featured: true,
     },
@@ -1492,6 +1492,49 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
         activeClass: 'bg-sky-500/20 text-sky-100 border-sky-400',
         borderClass: 'border-sky-500/50 bg-sky-500/10',
         textColor: '#7dd3fc',
+      },
+    },
+  },
+  troll_run: {
+    id: 'troll_run',
+    label: 'Troll Run',
+    tagline: 'Race through levels where every single step is a trap',
+    headerEmoji: '😈💀',
+    card: {
+      accent: '#f59e0b',
+      accentSoft: 'rgba(245, 158, 11, 0.15)',
+      emoji: '😈',
+      players: '2–6 players',
+      vibe: 'Chaotic troll platformer race',
+      featured: true,
+    },
+    slots: {
+      kiss: {
+        emoji: '🏁',
+        label: 'Clears',
+        color: '#22c55e',
+        leaderboardLabel: 'Levels cleared',
+        activeClass: 'bg-green-500/20 text-green-100 border-green-400',
+        borderClass: 'border-green-500/50 bg-green-500/10',
+        textColor: '#86efac',
+      },
+      marry: {
+        emoji: '⭐',
+        label: 'Points',
+        color: '#fbbf24',
+        leaderboardLabel: 'Total points',
+        activeClass: 'bg-amber-500/20 text-amber-100 border-amber-400',
+        borderClass: 'border-amber-500/50 bg-amber-500/10',
+        textColor: '#fcd34d',
+      },
+      kill: {
+        emoji: '💀',
+        label: 'Deaths',
+        color: '#ef4444',
+        leaderboardLabel: 'Total deaths',
+        activeClass: 'bg-rose-500/20 text-rose-100 border-rose-400',
+        borderClass: 'border-rose-500/50 bg-rose-500/10',
+        textColor: '#fca5a5',
       },
     },
   },
@@ -2097,49 +2140,6 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
       },
     },
   },
-  ping_pong: {
-    id: 'ping_pong',
-    label: 'Ping Pong',
-    tagline: '1v1 fast-paced paddle duel',
-    headerEmoji: '🏓⚡',
-    card: {
-      accent: '#3b82f6',
-      accentSoft: 'rgba(59, 130, 246, 0.15)',
-      emoji: '🏓',
-      players: '2 players',
-      vibe: 'Realtime duel',
-      featured: true,
-    },
-    slots: {
-      kiss: {
-        emoji: '🏓',
-        label: 'Win',
-        color: '#3b82f6',
-        leaderboardLabel: 'Matches Won',
-        activeClass: 'bg-blue-500/20 text-blue-100 border-blue-400',
-        borderClass: 'border-blue-500/50 bg-blue-500/10',
-        textColor: '#93c5fd',
-      },
-      marry: {
-        emoji: '⚡',
-        label: 'Points',
-        color: '#eab308',
-        leaderboardLabel: 'Points Scored',
-        activeClass: 'bg-yellow-500/20 text-yellow-100 border-yellow-400',
-        borderClass: 'border-yellow-500/50 bg-yellow-500/10',
-        textColor: '#fde047',
-      },
-      kill: {
-        emoji: '💔',
-        label: 'Loss',
-        color: '#ef4444',
-        leaderboardLabel: 'Matches Lost',
-        activeClass: 'bg-red-500/20 text-red-100 border-red-400',
-        borderClass: 'border-red-500/50 bg-red-500/10',
-        textColor: '#fca5a5',
-      },
-    },
-  },
 }
 
 /** Home page “Popular games” grid — order is display order. */
@@ -2201,14 +2201,15 @@ export const GAME_TYPE_OPTIONS: GameType[] = [
   'word_scramble',
   'word_grouping',
   'landmine',
-  'ping_pong',
   'uno',
   'wordle_room',
+  'troll_run',
 ]
 
 // Games pinned to the top of the picker / games list, in this exact order.
 // Anything not listed here follows in GAME_TYPE_OPTIONS order.
 const PINNED_GAME_TYPES: GameType[] = [
+  'troll_run',
   'monopoly',
   'yahtzee',
   'codewords',
@@ -2230,7 +2231,6 @@ const PINNED_GAME_TYPES: GameType[] = [
   'wordle_room',
   'i_call_on',
   'landmine',
-  'ping_pong',
   'smash_marry_kill',
   'bingo',
   'this_or_that',
@@ -2275,7 +2275,6 @@ const GAME_CATEGORY_BY_TYPE: Partial<Record<GameType, GameCategory>> = {
   secret_message: 'party',
   two_truths: 'party',
   i_call_on: 'party',
-  landmine: 'party',
   mafia: 'party',
   custom: 'party',
   // Guessing / word-and-answer
@@ -2301,7 +2300,6 @@ const GAME_CATEGORY_BY_TYPE: Partial<Record<GameType, GameCategory>> = {
   checkers_nigeria: 'board',
   scrabble: 'board',
   ayo: 'board',
-  ping_pong: 'board',
   // Puzzles
   yahtzee: 'puzzle',
   sudoku: 'puzzle',
@@ -2314,6 +2312,8 @@ const GAME_CATEGORY_BY_TYPE: Partial<Record<GameType, GameCategory>> = {
   word_hunt: 'puzzle',
   word_rush: 'puzzle',
   wordle_room: 'puzzle',
+  landmine: 'puzzle',
+  troll_run: 'puzzle',
 }
 
 export function gameTypeCategory(gameType: GameType): GameCategory {
@@ -2349,6 +2349,7 @@ export function parseGameType(raw: unknown): GameType {
   if (raw === 'word_hunt') return 'word_hunt'
   if (raw === 'wordle_room' || raw === 'wordle-room' || raw === 'wordle_room_race' || raw === 'wordle')
     return 'wordle_room'
+  if (raw === 'troll_run' || raw === 'troll-run' || raw === 'level_devil' || raw === 'level-devil') return 'troll_run'
   if (raw === 'chess') return 'chess'
   if (raw === 'describe_it' || raw === 'text-charades') return 'describe_it'
   if (raw === 'word_rush' || raw === 'word-rush') return 'word_rush'
@@ -2382,7 +2383,6 @@ export function parseGameType(raw: unknown): GameType {
   if (raw === 'word_grouping' || raw === 'word-grouping' || raw === 'wordgrouping' || raw === 'connections')
     return 'word_grouping'
   if (raw === 'landmine' || raw === 'land-mine') return 'landmine'
-  if (raw === 'ping_pong' || raw === 'ping-pong') return 'ping_pong'
   return 'smash_marry_kill'
 }
 
@@ -2468,6 +2468,8 @@ export function gameHowItWorks(
       return 'Players join with their name. Everyone gets the same 4×4 letter grid — connect adjacent letters to spell valid words (3+ letters) before the timer runs out. Longer words score more points.'
     case 'wordle_room':
       return 'Players join with their name. Everyone races through the same fixed set of words (5–20). Each word is solved like Wordle — six guesses to crack it. Solve it in fewer guesses for more points, and finish your words before anyone else to top the standings.'
+    case 'troll_run':
+      return 'Players join with their name. Everyone races simultaneously through the same set of trick levels. Watch out for collapsing floors, runaway doors, and trap spikes. First to clear all levels with the fewest deaths wins the round!'
     case 'matching_pairs':
       return 'Players join with their name. Everyone gets their own board with the same set of icons — flip two cards per turn; a match keeps them face-up and scores +1000 pts. Hit 3 in a row with no miss for a +500 streak bonus. Match every pair with zero misses for a +2000 perfect-game bonus. Fastest to finish scores a placement bonus. Most points when everyone is done wins.'
     case 'quiplash':
@@ -2502,8 +2504,6 @@ export function gameHowItWorks(
       return "Players join with their name. Set a game timer (or play all 26 letters). Each letter cycle someone calls A–Z, everyone fills Name, Animal, Place, Thing, and Food, then marks the next player's sheet. Duplicates score 5 automatically; unique valid answers score 10. Everyone sees all marks live."
     case 'landmine':
       return "Players join with their name. Each round someone picks a category and the system secretly plants a “mine” — one of the obvious answers. Everyone types a blind answer, then marks the next player's for validity before the mine is revealed. A valid answer scores 10 (plus 5 if nobody else said it); hit the mine and you score 0 — or get knocked out in Elimination mode."
-    case 'ping_pong':
-      return 'Two players join with their name. A fast-paced 1v1 paddle duel where players move their paddles in realtime to bounce the ball past their opponent. First to reach the target score (3, 5, 7, 11, 15, or 21 points) wins!'
     case 'most_likely_to':
       return joiners
         ? 'Players add their name to the poll when joining. Each round shows a "most likely to…" prompt — vote for who fits best. Votes stay anonymous.'
@@ -2776,10 +2776,10 @@ const NAME_ONLY_PLAYER_JOIN_GAMES: Record<GameType, boolean> = {
   word_scramble: true,
   word_grouping: true,
   landmine: true,
-  ping_pong: true,
   uno: true,
   mafia: false,
   wordle_room: true,
+  troll_run: true,
 }
 
 const LOBBY_GAMES: Record<GameType, boolean> = {
@@ -2828,10 +2828,10 @@ const LOBBY_GAMES: Record<GameType, boolean> = {
   word_scramble: false,
   word_grouping: false,
   landmine: false,
-  ping_pong: false,
   uno: false,
   mafia: false,
   wordle_room: false,
+  troll_run: false,
 }
 
 // Does this game record its history as rows in the `votes` table (plus `participants` /
@@ -2889,10 +2889,10 @@ const VOTE_HISTORY_GAMES: Record<GameType, boolean> = {
   word_scramble: false,
   word_grouping: false,
   landmine: false,
-  ping_pong: false,
   uno: false,
   mafia: false,
   wordle_room: false,
+  troll_run: false,
 }
 
 /**
@@ -3071,16 +3071,16 @@ export function isWordleRoomGame(gameType: GameType | string | undefined): boole
   return parseGameType(gameType) === 'wordle_room'
 }
 
+export function isTrollRunGame(gameType: GameType | string | undefined): boolean {
+  return parseGameType(gameType) === 'troll_run'
+}
+
 export function isMatchingPairsGame(gameType: GameType | string | undefined): boolean {
   return parseGameType(gameType) === 'matching_pairs'
 }
 
 export function isQuiplashGame(gameType: GameType | string | undefined): boolean {
   return parseGameType(gameType) === 'quiplash'
-}
-
-export function isPingPongGame(gameType: GameType | string | undefined): boolean {
-  return parseGameType(gameType) === 'ping_pong'
 }
 
 // secret_message has no inputs at all (its SettingsGroup is pure descriptive text), and custom's

@@ -66,7 +66,7 @@ export function ProfileChip({ tone = 'site' }: Props) {
         title={signedIn ? label : undefined}
       >
         {streak > 0 ? (
-          <span className="shrink-0" aria-hidden>
+          <span className={`shrink-0 ${tone === 'app' ? 'hidden sm:inline' : ''}`} aria-hidden>
             🔥 {streak}
           </span>
         ) : null}

@@ -34,6 +34,8 @@ export type SubscriberDeviceRow = {
   quiet_mode: 'off' | 'quiet' | 'available'
   quiet_start_minutes: number | null
   quiet_end_minutes: number | null
+  /** auth.users.id of the profile that registered the device (nullable — guests). */
+  user_id: string | null
 }
 
 let vapidConfigured: boolean | null = null
@@ -132,7 +134,8 @@ async function sendExpoPushBatch(
 export async function notifyGameTypeSubscribersOfNewGame(
   gameCode: string,
   gameType: string,
-  hostName?: string | null
+  hostName?: string | null,
+  hostUserId?: string | null
 ): Promise<{ delivered: number; skipped: number }> {
   const admin = getSupabaseAdmin()
   const type = parseGameType(gameType)
@@ -140,7 +143,7 @@ export async function notifyGameTypeSubscribersOfNewGame(
   const { data: subs } = await admin
     .from('notification_subscriptions')
     .select(
-      'device:notification_subscriber_devices(id, channel, token_key, web_p256dh, web_auth, timezone, quiet_mode, quiet_start_minutes, quiet_end_minutes)'
+      'device:notification_subscriber_devices(id, channel, token_key, web_p256dh, web_auth, timezone, quiet_mode, quiet_start_minutes, quiet_end_minutes, user_id)'
     )
     .eq('game_type', type)
 
@@ -148,9 +151,13 @@ export async function notifyGameTypeSubscribersOfNewGame(
   // array (depending on the relationship shape it detected) — cast through
   // unknown to accept both and normalise below.
   const rows = (subs ?? []) as unknown as Array<{ device: SubscriberDeviceRow | SubscriberDeviceRow[] | null }>
-  const devices = rows
+  let devices = rows
     .flatMap((r) => (Array.isArray(r.device) ? r.device : r.device ? [r.device] : []))
     .filter((d): d is SubscriberDeviceRow => !!d)
+  // Suppress the fanout on any device owned by the host's profile — no matter
+  // how many devices they have. Prevents self-notification of a game they
+  // opened themselves on a different device.
+  if (hostUserId) devices = devices.filter((d) => d.user_id !== hostUserId)
   if (devices.length === 0) return { delivered: 0, skipped: 0 }
 
   const now = new Date()
@@ -216,9 +223,14 @@ export async function notifyGameTypeSubscribersOfNewGame(
  * the fan-out via next/server's `after()` when available so the HTTP response
  * doesn't wait on it; falls back to fire-and-forget otherwise.
  */
-export function scheduleNewPublicGameFanout(gameCode: string, gameType: string, hostName?: string | null): void {
+export function scheduleNewPublicGameFanout(
+  gameCode: string,
+  gameType: string,
+  hostName?: string | null,
+  hostUserId?: string | null
+): void {
   const run = () => {
-    void notifyGameTypeSubscribersOfNewGame(gameCode.toUpperCase(), gameType, hostName).catch((err) => {
+    void notifyGameTypeSubscribersOfNewGame(gameCode.toUpperCase(), gameType, hostName, hostUserId).catch((err) => {
       console.error('notifyGameTypeSubscribersOfNewGame failed', err)
     })
   }

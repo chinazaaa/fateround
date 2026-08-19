@@ -136,16 +136,9 @@ describe('driveWhotBotsOnce', () => {
 
   it('returns idle when the current turn is a human', async () => {
     queueResponse(botCountResp(1)) // bot count
-    queueResponse({ data: sessionRow({ current_turn_index: 0 }), error: null }) // session
-    queueResponse({
-      data: [
-        handRow('human', [{ id: 'h1', shape: 'star', number: 3 }]),
-        handRow('bot', [{ id: 'b1', shape: 'circle', number: 5 }]),
-      ],
-      error: null,
-    }) // hands
-    queueResponse({ data: null, error: null }) // game rules row
+    queueResponse({ data: sessionRow({ current_turn_index: 0 }), error: null }) // narrow turn-check session
     queueResponse({ data: { id: 'human', is_bot: false }, error: null }) // turn player lookup
+    // No further fetches happen once the turn holder isn't a bot.
 
     const r = await driveWhotBotsOnce('GAME1')
     expect(r).toEqual({ kind: 'idle' })
@@ -154,7 +147,9 @@ describe('driveWhotBotsOnce', () => {
 
   it('calls processWhotPlay with the bot player id + card id when the bot plays', async () => {
     queueResponse(botCountResp(1))
-    queueResponse({ data: sessionRow({ current_turn_index: 1 }), error: null })
+    queueResponse({ data: sessionRow({ current_turn_index: 1 }), error: null }) // narrow turn-check session
+    queueResponse({ data: { id: 'bot', is_bot: true }, error: null }) // bot is real bot
+    queueResponse({ data: sessionRow({ current_turn_index: 1 }), error: null }) // full session
     queueResponse({
       data: [
         handRow('human', [{ id: 'h1', shape: 'star', number: 3 }]),
@@ -163,7 +158,6 @@ describe('driveWhotBotsOnce', () => {
       error: null,
     })
     queueResponse({ data: null, error: null }) // game rules
-    queueResponse({ data: { id: 'bot', is_bot: true }, error: null }) // bot is real bot
 
     const r = await driveWhotBotsOnce('GAME1')
     expect(r).toEqual({ kind: 'played', action: 'play' })
@@ -177,7 +171,9 @@ describe('driveWhotBotsOnce', () => {
 
   it('reports skipped when the underlying engine returns an error', async () => {
     queueResponse(botCountResp(1))
-    queueResponse({ data: sessionRow({ current_turn_index: 1 }), error: null })
+    queueResponse({ data: sessionRow({ current_turn_index: 1 }), error: null }) // narrow turn-check session
+    queueResponse({ data: { id: 'bot', is_bot: true }, error: null })
+    queueResponse({ data: sessionRow({ current_turn_index: 1 }), error: null }) // full session
     queueResponse({
       data: [
         handRow('human', [{ id: 'h1', shape: 'star', number: 3 }]),
@@ -186,7 +182,6 @@ describe('driveWhotBotsOnce', () => {
       error: null,
     })
     queueResponse({ data: null, error: null })
-    queueResponse({ data: { id: 'bot', is_bot: true }, error: null })
     processPlay.mockResolvedValueOnce({ error: 'Not your turn' })
 
     const r = await driveWhotBotsOnce('GAME1')
@@ -195,7 +190,7 @@ describe('driveWhotBotsOnce', () => {
 
   it('returns idle when the session is finished', async () => {
     queueResponse(botCountResp(1))
-    queueResponse({ data: sessionRow({ phase: 'finished' }), error: null })
+    queueResponse({ data: sessionRow({ phase: 'finished' }), error: null }) // narrow turn-check session
     // No further fetches happen once phase=finished.
     const r = await driveWhotBotsOnce('GAME1')
     expect(r).toEqual({ kind: 'idle' })

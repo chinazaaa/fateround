@@ -57,26 +57,69 @@ export function useDailyChallengeSession(gameType: DailyChallengeGameType): UseD
     let cancelled = false
 
     async function init() {
+      // Track which step failed so the console log names the real stage instead of a
+      // catch-all "Failed to load". Every reported "trivia fails on mobile" case has
+      // fallen into this catch; without a stage marker we can't tell identity vs fetch
+      // vs parse apart, which is exactly the ambiguity that stalled diagnosis.
+      let stage: 'identity' | 'fetch' | 'parse' | 'unknown' = 'unknown'
       try {
+        stage = 'identity'
         const id = await ensureServerIdentity()
         if (cancelled) return
         setUserId(id)
 
+        stage = 'fetch'
         const headers = await authHeaders()
-        const res = await fetch(apiUrl(`/api/daily-challenges/${gameType}`), {
-          headers: headers ?? undefined,
-        })
+        const url = apiUrl(`/api/daily-challenges/${gameType}`)
+        const res = await fetch(url, { headers: headers ?? undefined })
 
-        if (!res.ok) {
-          const body = await res.json().catch(() => null)
+        // Read the response as text first, then JSON.parse defensively. RN's `res.json()`
+        // throws an opaque "Unexpected token …" if a CDN returns an HTML error page or
+        // the body has odd bytes, and that error was landing in the catch below with no
+        // clue what the server actually sent. Reading text first lets us log the first
+        // 200 chars of the real payload before failing.
+        stage = 'parse'
+        const rawText = await res.text()
+        let body: Record<string, unknown> | null = null
+        try {
+          body = rawText ? (JSON.parse(rawText) as Record<string, unknown>) : null
+        } catch (parseErr) {
+          // eslint-disable-next-line no-console
+          console.error('[daily-challenge] non-JSON response', {
+            gameType,
+            url,
+            status: res.status,
+            contentType: res.headers.get('content-type'),
+            bodyPreview: rawText.slice(0, 200),
+            parseErr,
+          })
           if (!cancelled) {
-            setError(body?.error ?? "Failed to load today's challenge")
+            setError("Failed to load today's challenge")
             setPhase('error')
           }
           return
         }
 
-        const data = await res.json()
+        if (!res.ok) {
+          if (!cancelled) {
+            const serverMsg = typeof body?.error === 'string' ? body.error : null
+            setError(serverMsg ?? "Failed to load today's challenge")
+            setPhase('error')
+          }
+          return
+        }
+
+        const data = body as Record<string, unknown> & {
+          notLive?: boolean
+          launchDate?: string
+          challengeId?: string
+          puzzle?: Record<string, unknown>
+          config?: Record<string, unknown>
+          challengeNumber?: number
+          timer?: number
+          alreadyPlayed?: boolean
+          previousScore?: Record<string, unknown>
+        }
         if (cancelled) return
 
         if (data.notLive) {
@@ -86,11 +129,11 @@ export function useDailyChallengeSession(gameType: DailyChallengeGameType): UseD
         }
 
         setChallengeData({
-          challengeId: data.challengeId,
-          puzzle: data.puzzle,
-          config: data.config,
-          challengeNumber: data.challengeNumber,
-          timer: data.timer,
+          challengeId: data.challengeId ?? '',
+          puzzle: data.puzzle ?? {},
+          config: data.config ?? {},
+          challengeNumber: data.challengeNumber ?? 0,
+          timer: data.timer ?? 0,
         })
 
         if (data.alreadyPlayed && data.previousScore) {
@@ -99,9 +142,15 @@ export function useDailyChallengeSession(gameType: DailyChallengeGameType): UseD
         } else {
           setPhase('playing')
         }
-      } catch {
+      } catch (err) {
         if (!cancelled) {
-          setError('Failed to load daily challenge')
+          // User-facing message stays clean; the actual error goes to the JS console
+          // (dev tools / Sentry / bug reports) with the stage that failed so we can
+          // distinguish an ensureServerIdentity throw from a fetch reject from a
+          // response-shape problem after parse succeeded.
+          // eslint-disable-next-line no-console
+          console.error('[daily-challenge] load failed', { gameType, stage, err })
+          setError("Failed to load today's challenge")
           setPhase('error')
         }
       }

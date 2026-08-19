@@ -350,6 +350,110 @@ export async function awardForFinishedGame(
 }
 
 /**
+ * Award for one profile and one finished SOLO (vs bot) game. Idempotent per
+ * (profile, solo session id).
+ *
+ * Separate from `awardForFinishedGame` because a solo game has no `games` row, no
+ * `players` row, no per-game-fact tables and no winner attribution to read — the outcome
+ * comes straight from the client. We reuse the same counter buckets (`player_stats`,
+ * `player_distinct`, `profiles`), the same claim table (`awarded_sessions`, prefixed
+ * `solo:` so it cannot collide with a real game code), and the same downstream trophy
+ * evaluator, so trophies keyed on `games_played` / `games_won` / `days_played` /
+ * `modes_played` all fire uniformly for solo and multiplayer.
+ *
+ * DELIBERATELY NARROW to reduce farming surface:
+ * - No per-game facts (no `whot_won_on_whot`, no `perfect_race`). Solo can't beat those
+ *   trophies without an anti-cheat surface we haven't shipped yet; adding them here
+ *   would need a payload allowlist. Not shipped in v1.
+ * - No spectator/finisher gate. Solo is always one human + one bot, i.e. always past the
+ *   `MIN_PLAYERS_FOR_A_WIN` bar for the platform counters, so wins over the bot count.
+ * - Late-night extra still fires because it is a platform-level counter that any real
+ *   play should credit.
+ * - Big-room extra never fires (solo is 2 participants by definition).
+ */
+export async function awardForSoloFinish(
+  supabase: SupabaseClient,
+  profileId: string,
+  input: { gameType: GameType; outcome: 'human' | 'bot' | 'draw'; sessionId: string; finishedAt?: Date }
+): Promise<AwardResult> {
+  const rawId = String(input.sessionId ?? '').trim()
+  if (!rawId) return NOOP('error')
+  // Prefixed so the solo claim can never collide with an uppercase game code even if the
+  // client sends something odd — the multiplayer path uses `gameId.toUpperCase()`.
+  const claimKey = `solo:${rawId}`
+
+  const { error: claimError } = await supabase
+    .from('awarded_sessions')
+    .insert({ profile_id: profileId, session_id: claimKey })
+  if (claimError) return NOOP('already_awarded')
+
+  const releaseClaim = async () => {
+    await supabase.from('awarded_sessions').delete().eq('profile_id', profileId).eq('session_id', claimKey)
+  }
+
+  try {
+    const won = input.outcome === 'human'
+    const finishedAt = input.finishedAt ?? new Date()
+
+    const extras: Record<string, number> = {}
+    if (watHour(finishedAt) < 5) extras.late_night_games = 1
+
+    await bumpStats(supabase, profileId, input.gameType, { played: 1, won: won ? 1 : 0, counters: extras })
+    await bumpStats(supabase, profileId, GLOBAL_SCOPE, { played: 1, won: won ? 1 : 0, counters: extras })
+
+    await supabase
+      .from('player_distinct')
+      .upsert([{ profile_id: profileId, key: 'modes_played', member: input.gameType }], {
+        onConflict: 'profile_id,key,member',
+      })
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('current_streak, longest_streak, last_active_date, trophy_points')
+      .eq('id', profileId)
+      .maybeSingle()
+
+    const streak = advanceStreak(
+      {
+        current_streak: Number(profile?.current_streak) || 0,
+        longest_streak: Number(profile?.longest_streak) || 0,
+        last_active_date: (profile?.last_active_date as string) ?? null,
+      } satisfies StreakState,
+      watDate(finishedAt)
+    )
+    if (streak.last_active_date !== (profile?.last_active_date ?? null)) {
+      await bumpStats(supabase, profileId, GLOBAL_SCOPE, { counters: { days_played: 1 } })
+    }
+
+    const snapshot = await buildSnapshot(supabase, profileId)
+    snapshot.counters[GLOBAL_SCOPE] = {
+      ...(snapshot.counters[GLOBAL_SCOPE] ?? {}),
+      longest_streak: streak.longest_streak,
+    }
+    // No instant unlocks: they are checked mid-round against a `players.id`, and solo
+    // has no player row for that check to bind to. Trophies still land through the
+    // counter-based evaluator, which is what solo can honestly satisfy.
+    const earned = await grantEligible(supabase, profileId, snapshot, [])
+
+    await supabase
+      .from('profiles')
+      .update({
+        current_streak: streak.current_streak,
+        longest_streak: streak.longest_streak,
+        last_active_date: streak.last_active_date,
+      })
+      .eq('id', profileId)
+
+    await supabase.rpc('recompute_profile_points', { p_profile_id: profileId })
+
+    return { earned, applied: true }
+  } catch {
+    await releaseClaim().catch(() => {})
+    return NOOP('error')
+  }
+}
+
+/**
  * Grant every active trophy this snapshot satisfies and the profile doesn't already hold.
  *
  * `forceIds` are trophies already verified during play (see `instant-unlock.ts`). They bypass

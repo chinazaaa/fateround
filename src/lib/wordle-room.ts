@@ -142,9 +142,9 @@ interface WordleRoomCategory {
   entries: { word: string; hint: string }[]
 }
 
-const themedRoomCategory = (label: string, words: readonly string[]): WordleRoomCategory => ({
+const themedRoomCategory = (label: string, entries: readonly { word: string; hint: string }[]): WordleRoomCategory => ({
   label,
-  entries: words.map((word) => ({ word, hint: label })),
+  entries: entries.map((e) => ({ word: e.word, hint: e.hint })),
 })
 
 const WORDLE_ROOM_CATEGORIES: Record<WordleCategoryId, WordleRoomCategory> = {
@@ -274,7 +274,7 @@ export function parseWordleRoomSolutionWords(raw: unknown): { words: string[]; h
 export function parseWordleRoomMetadata(raw: unknown): WordleRoomMetadata | null {
   if (!raw || typeof raw !== 'object') return null
   const m = raw as Record<string, unknown>
-  if (m.category !== 'general_english' && m.category !== 'naija_slang') return null
+  if (typeof m.category !== 'string' || !(VALID_CATEGORY_IDS as readonly string[]).includes(m.category)) return null
   if (typeof m.word_count !== 'number') return null
   return m as unknown as WordleRoomMetadata
 }
@@ -311,7 +311,13 @@ export async function clearWordleRoomSessionData(
   supabase: SupabaseClient,
   gameId: string
 ): Promise<{ error: string | null }> {
-  return clearSessionTables(supabase, gameId, ['wordle_room_guesses', 'wordle_room_progress', 'wordle_room_solutions'])
+  // Only tables with a `game_id` column can be cleared this way. wordle_room_solutions
+  // is keyed by round_id ONLY (no game_id), so deleting it by game_id errors with
+  // "column game_id does not exist" and 500s the whole play-again route — which blocks
+  // the host from restarting the game. It's already removed by the unconditional
+  // `rounds` delete in the play-again route (ON DELETE CASCADE from rounds), so it must
+  // NOT be listed here. Same pitfall the word_grouping clearer note documents.
+  return clearSessionTables(supabase, gameId, ['wordle_room_guesses', 'wordle_room_progress'])
 }
 
 // ── Timer / expiry ───────────────────────────────────────────────────────────
@@ -430,11 +436,12 @@ export function wordleRoomWordScore(
   won: boolean,
   hintUsed: boolean = false
 ): number {
-  if (!won) return 0
-  const base = wordleBasePoints(guessesUsed, maxAttempts)
-  const perfect = guessesUsed === 1 ? 200 : 0
+  // Hint cost applies whether or not the word is solved — buying a hint you didn't
+  // convert still deducts 300, so the total can dip below zero on a busted purchase.
+  const base = won ? wordleBasePoints(guessesUsed, maxAttempts) : 0
+  const perfect = won && guessesUsed === 1 ? 200 : 0
   const hintCost = hintUsed ? WORDLE_ROOM_HINT_COST : 0
-  return Math.max(0, base + perfect - hintCost)
+  return base + perfect - hintCost
 }
 
 /** Total game score = sum of per-word scores across the whole sequence. */

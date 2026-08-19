@@ -1,4 +1,5 @@
 import { apiUrl } from '@/lib/config'
+import { authHeaders } from '@/lib/auth-headers'
 import { pushPlatform } from '@/lib/push-notifications'
 
 /**
@@ -28,7 +29,9 @@ export async function fetchNotifications(tokenKey: string): Promise<Notification
 export async function subscribeGameType(tokenKey: string, gameType: string, timezone: string | null): Promise<void> {
   const res = await fetch(apiUrl('/api/notifications'), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    // Include the caller's bearer token so the server ties this device to
+    // their profile — enables the "skip self-notify" filter in fanout.
+    headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
     body: JSON.stringify({
       channel: 'mobile',
       tokenKey,
