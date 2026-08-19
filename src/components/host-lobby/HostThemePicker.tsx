@@ -32,20 +32,8 @@ export function HostThemePicker({ gameCode, hostToken, game, onGameUpdate }: Pro
 
   const options = useMemo(() => {
     if (isMonopoly) return THEMES.filter((theme) => MONOPOLY_EDITIONS.some((e) => e.themeId === theme.id))
-    if (game.game_type === 'ping_pong') {
-      return THEMES.filter((theme) => theme.id === 'default' || theme.id === 'grass_court').map((theme) =>
-        theme.id === 'default'
-          ? {
-              ...theme,
-              label: 'Table Tennis',
-              emoji: '🏓',
-              preview: { bg: '#064e3b', accent: '#f43f5e', text: '#ecfdf5' },
-            }
-          : theme
-      )
-    }
     return THEMES.filter((theme) => theme.id !== 'pirate' && theme.id !== 'arctic' && theme.id !== 'naija')
-  }, [isMonopoly, game.game_type])
+  }, [isMonopoly])
 
   const selectTheme = async (themeId: ThemeId) => {
     if (saving || themeId === currentTheme) return

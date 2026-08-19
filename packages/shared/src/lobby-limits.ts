@@ -66,7 +66,6 @@ export const LOBBY_LIMIT_GAME_TYPES = [
   'crossword',
   'word_search',
   'word_grouping',
-  'ping_pong',
   'wordle_room',
 ] as const
 
@@ -103,10 +102,6 @@ const SUDOKU_MAX_PLAYERS = 30
 const TIC_TAC_TOE_MIN_PLAYERS = 2
 const TIC_TAC_TOE_MAX_PLAYERS = 2
 const TIC_TAC_TOE_DEFAULT_MAX_PLAYERS = 2
-
-const PING_PONG_MIN_PLAYERS = 2
-const PING_PONG_MAX_PLAYERS = 2
-const PING_PONG_DEFAULT_MAX_PLAYERS = 2
 
 const CHESS_MIN_PLAYERS = 2
 const CHESS_MAX_PLAYERS = 2
@@ -188,11 +183,6 @@ export const GAME_LIMIT_CODE_DEFAULTS: GamePlayerLimitsMap = {
     min: WORD_GROUPING_MIN_PLAYERS,
     max: WORD_GROUPING_MAX_PLAYERS,
     default: WORD_GROUPING_DEFAULT_MAX_PLAYERS,
-  },
-  ping_pong: {
-    min: PING_PONG_MIN_PLAYERS,
-    max: PING_PONG_MAX_PLAYERS,
-    default: PING_PONG_DEFAULT_MAX_PLAYERS,
   },
   wordle_room: {
     min: WORDLE_ROOM_MIN_PLAYERS,

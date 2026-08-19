@@ -6,19 +6,10 @@ import { TROLL_RUN_DEFAULT_MAX_PLAYERS, TROLL_RUN_MAX_PLAYERS, TROLL_RUN_MIN_PLA
 import { HostLobbySettingsSection } from '@/components/host-lobby/HostLobbySettingsSection'
 import { HostLobbySettingBlock } from '@/components/host-lobby/HostLobbySettingBlock'
 import { HostLobbyOptionChips } from '@/components/host-lobby/HostLobbyOptionChips'
-import { HostAllowViewersField } from '@/components/HostAllowViewersField'
 import { useToast } from '@/components/ui/Toast'
 import { Glyph } from '@/components/icons/Glyph'
-import {
-  ArrowUpDownIcon,
-  BlackHoleIcon,
-  CrownIcon,
-  DoorOpenIcon,
-  FlashIcon,
-  Moon02Icon,
-  Tv01Icon,
-} from '@hugeicons/core-free-icons'
-import type { Game, ThemeId } from '@/types'
+import { ArrowUpDownIcon, BlackHoleIcon, CrownIcon, DoorOpenIcon } from '@hugeicons/core-free-icons'
+import type { Game } from '@/types'
 
 type Props = {
   gameCode: string
@@ -81,36 +72,6 @@ const WORLD_OPTIONS = [
   },
 ]
 
-const THEME_OPTIONS: { value: ThemeId; label: React.ReactNode }[] = [
-  {
-    value: 'dark',
-    label: (
-      <span className="inline-flex items-center gap-1.5">
-        <Glyph icon={Moon02Icon} size={14} />
-        <span>Dark Slate</span>
-      </span>
-    ),
-  },
-  {
-    value: 'retro',
-    label: (
-      <span className="inline-flex items-center gap-1.5">
-        <Glyph icon={Tv01Icon} size={14} />
-        <span>Retro 8-Bit</span>
-      </span>
-    ),
-  },
-  {
-    value: 'neon',
-    label: (
-      <span className="inline-flex items-center gap-1.5">
-        <Glyph icon={FlashIcon} size={14} />
-        <span>Cyber Neon</span>
-      </span>
-    ),
-  },
-]
-
 export function HostTrollRunLobbyPanel({ gameCode, hostToken, game, onGameUpdate }: Props) {
   const { error: toastError } = useToast()
   const [limits, setLimits] = useState<GamePlayerLimitsMap | null>(null)
@@ -118,7 +79,6 @@ export function HostTrollRunLobbyPanel({ gameCode, hostToken, game, onGameUpdate
   const [rounds, setRounds] = useState(game.troll_run_rounds ?? 5)
   const [timeLimit, setTimeLimit] = useState(game.troll_run_time_limit ?? 120)
   const [world, setWorld] = useState(game.troll_run_world ?? 'pits')
-  const [theme, setTheme] = useState<ThemeId>((game.theme as ThemeId) ?? 'dark')
   const [saveState, setSaveState] = useState<SaveState>('idle')
   const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -137,7 +97,6 @@ export function HostTrollRunLobbyPanel({ gameCode, hostToken, game, onGameUpdate
     setRounds(game.troll_run_rounds ?? 5)
     setTimeLimit(game.troll_run_time_limit ?? 120)
     setWorld(game.troll_run_world ?? 'pits')
-    setTheme((game.theme as ThemeId) ?? 'dark')
   }, [game, limits])
 
   useEffect(() => {
@@ -162,7 +121,6 @@ export function HostTrollRunLobbyPanel({ gameCode, hostToken, game, onGameUpdate
       troll_run_rounds?: number
       troll_run_time_limit?: number
       troll_run_world?: string
-      theme?: ThemeId
     }): Promise<boolean> => {
       setSaveState('saving')
       try {
@@ -200,22 +158,6 @@ export function HostTrollRunLobbyPanel({ gameCode, hostToken, game, onGameUpdate
 
   return (
     <HostLobbySettingsSection title="Troll Run Settings" status={statusLabel} defaultOpen={true}>
-      {/* Visual Palette */}
-      <HostLobbySettingBlock title="Visual Palette">
-        <HostLobbyOptionChips<ThemeId>
-          options={THEME_OPTIONS}
-          value={theme}
-          onChange={(value) => {
-            if (saveState === 'saving' || value === theme) return
-            const previous = theme
-            setTheme(value)
-            void saveSettings({ theme: value }).then((ok) => {
-              if (!ok) setTheme(previous)
-            })
-          }}
-        />
-      </HostLobbySettingBlock>
-
       {/* World Selector */}
       <HostLobbySettingBlock title="World Theme">
         <HostLobbyOptionChips<string>
@@ -279,9 +221,6 @@ export function HostTrollRunLobbyPanel({ gameCode, hostToken, game, onGameUpdate
           }}
         />
       </HostLobbySettingBlock>
-
-      {/* Viewers & Spectators */}
-      <HostAllowViewersField gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={onGameUpdate} />
     </HostLobbySettingsSection>
   )
 }

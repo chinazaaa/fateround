@@ -141,6 +141,11 @@ export async function initializeTrollRunGame(
 
   const levelOrder = buildTrollRunLevelOrder(world)
 
+  // Clear any existing session/state rows before initializing to prevent unique constraint conflicts
+  await supabase.from('troll_run_events').delete().eq('game_id', gameId)
+  await supabase.from('troll_run_player_states').delete().eq('game_id', gameId)
+  await supabase.from('troll_run_sessions').delete().eq('game_id', gameId)
+
   // Start the first round straight away — the countdown phase is what players see when
   // the host presses start, and /api/troll-run/advance flips it to racing on deadline.
   const now = new Date()
@@ -328,7 +333,15 @@ export function selectTrollRunRoundStates(
 }
 
 export function buildTrollRunStandings(playerStates: TrollRunPlayerState[], playerNames: Map<string, string>) {
-  return [...playerStates]
+  const seen = new Set<string>()
+  const deduped: TrollRunPlayerState[] = []
+  for (const state of playerStates) {
+    if (!state.player_id || seen.has(state.player_id)) continue
+    seen.add(state.player_id)
+    deduped.push(state)
+  }
+
+  return deduped
     .sort((first, second) => {
       // Sort by total score descending
       if (second.total_score !== first.total_score) return second.total_score - first.total_score

@@ -1,5 +1,4 @@
 import { z } from 'zod'
-import { PING_PONG_POINTS_OPTIONS } from '@/lib/ping-pong'
 import { LOBBY_LIMIT_GAME_TYPES } from '@/lib/game-limits'
 import { SCRABBLE_DICTIONARY_OPTIONS } from '@/lib/scrabble-dictionary-meta'
 import { TROLL_RUN_WORLD_IDS } from '@/lib/troll-run-types'
@@ -200,11 +199,6 @@ export const createGameSchema = z.object({
   mafia_advanced_mode: z.boolean().optional(),
   mafia_day_seconds: z.coerce.number().int().min(10).max(600).optional(),
   mafia_voting_seconds: z.coerce.number().int().min(10).max(600).optional(),
-  ping_pong_points_to_win: z.coerce
-    .number()
-    .int()
-    .refine((val: number) => (PING_PONG_POINTS_OPTIONS as readonly number[]).includes(val))
-    .optional(),
   wordle_room_category: z
     .enum([
       'general_english',
@@ -319,11 +313,6 @@ export const updateGameSchema = z.object({
   landmine_originality_bonus: z.boolean().optional(),
   landmine_review: z.boolean().optional(),
   landmine_review_seconds: z.coerce.number().int().optional(),
-  ping_pong_points_to_win: z.coerce
-    .number()
-    .int()
-    .refine((val: number) => (PING_PONG_POINTS_OPTIONS as readonly number[]).includes(val))
-    .optional(),
   // Discovery Phase A — "Keep open" button on the host T-13min banner. Bumps
   // last_activity_at + stamps host_idle_warning_sent_at so the pg_cron close
   // job holds off and the banner never re-fires for this game. The plan
@@ -490,11 +479,6 @@ export const boardGameLobbySettingsSchema = z.object({
   // We accept any object shape at the wire level so the WG nested-array/number values don't get
   // 400'd here — the per-game parsers reject anything invalid downstream.
   puzzle_custom_questions: z.array(z.record(z.string(), z.unknown())).max(500).optional(),
-  ping_pong_points_to_win: z.coerce
-    .number()
-    .int()
-    .refine((val: number) => (PING_PONG_POINTS_OPTIONS as readonly number[]).includes(val))
-    .optional(),
   wordle_room_category: z
     .enum([
       'general_english',

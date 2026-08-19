@@ -15,7 +15,6 @@ import {
   isChessGame,
   isCheckersGame,
   isDraughts10Game,
-  isPingPongGame,
   isAyoGame,
   isScrabbleGame,
   isDescribeItGame,
@@ -117,7 +116,6 @@ export function gameAllowsLatePlayerJoin(gameType: GameType): boolean {
     !isCheckersGame(gameType) &&
     !isDraughts10Game(gameType) &&
     !isAyoGame(gameType) &&
-    !isPingPongGame(gameType) &&
     !isScrabbleGame(gameType) &&
     !isSudokuGame(gameType) &&
     !isCrosswordGame(gameType) &&

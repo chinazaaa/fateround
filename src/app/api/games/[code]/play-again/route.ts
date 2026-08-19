@@ -24,7 +24,6 @@ import {
   isWordHuntGame,
   isCrosswordGame,
   isWordSearchGame,
-  isPingPongGame,
   isWhoSaidThis,
   isWordleRoomGame,
   isTrollRunGame,
@@ -41,7 +40,6 @@ import { clearLudoSessionData } from '@/lib/ludo'
 import { clearMahjongSessionData, canMahjongPlayAgain } from '@/lib/mahjong'
 import { clearSnakeAndLadderSessionData } from '@/lib/snake-and-ladder'
 import { clearTicTacToeSessionData, canTicTacToePlayAgain } from '@/lib/tic-tac-toe'
-import { clearPingPongSessionData, canPingPongPlayAgain } from '@/lib/ping-pong'
 import { clearChessSessionData, canChessPlayAgain } from '@/lib/chess'
 import { clearCheckersSessionData, canCheckersPlayAgain } from '@/lib/checkers'
 import { clearDraughts10SessionData, canDraughts10PlayAgain } from '@/lib/draughts10'
@@ -130,7 +128,6 @@ type ClearableSessionGameType = Extract<
   | 'word_search'
   | 'word_scramble'
   | 'landmine'
-  | 'ping_pong'
   | 'troll_run'
 >
 
@@ -177,7 +174,6 @@ const SESSION_CLEARERS: Record<ClearableSessionGameType, SessionClearer> = {
   // `rounds` delete above already cleans both — a custom clearer here 500'd on the missing
   // game_id column and blocked play-again.
   landmine: clearLandmineSessionData,
-  ping_pong: clearPingPongSessionData,
   troll_run: clearTrollRunSessionData,
 }
 
@@ -208,7 +204,6 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
   const ticTacToeCanReplay = isTicTacToeGame(gameType)
     ? await canTicTacToePlayAgain(supabase, gameId, game.status)
     : false
-  const pingPongCanReplay = isPingPongGame(gameType) ? await canPingPongPlayAgain(supabase, gameId, game.status) : false
   const chessCanReplay = isChessGame(gameType) ? await canChessPlayAgain(supabase, gameId, game.status) : false
   const checkersCanReplay = isCheckersGame(gameType) ? await canCheckersPlayAgain(supabase, gameId, game.status) : false
   const draughts10CanReplay = isDraughts10Game(gameType)
@@ -225,7 +220,6 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
     game.status === 'waiting' ||
     game.status === 'finished' ||
     ticTacToeCanReplay ||
-    pingPongCanReplay ||
     chessCanReplay ||
     checkersCanReplay ||
     draughts10CanReplay ||

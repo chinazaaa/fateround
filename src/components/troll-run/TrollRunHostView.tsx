@@ -38,6 +38,7 @@ import { useHostSeat } from '@/hooks/useHostSeat'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
+import { useTimerTickSound } from '@/hooks/useTimerTickSound'
 import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { HostActiveSettings } from '@/components/host/HostActiveSettings'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
@@ -100,8 +101,22 @@ export function TrollRunHostView({ gameCode, hostToken }: TrollRunHostViewProps)
   const connected = useGameTableSync(
     gameCode,
     [
-      { table: 'games', apply: (row) => setGame(row as unknown as Game) },
-      'players',
+      { table: 'games', column: 'id', apply: (row) => setGame(row as unknown as Game) },
+      {
+        table: 'players',
+        apply: (row) => {
+          const p = row as unknown as Player
+          setPlayers((prev) => {
+            const index = prev.findIndex((item) => item.id === p.id)
+            if (index >= 0) {
+              const updated = [...prev]
+              updated[index] = { ...updated[index], ...p }
+              return updated
+            }
+            return [...prev, p]
+          })
+        },
+      },
       { table: 'troll_run_sessions', apply: (row) => setSession(row as unknown as TrollRunSession) },
       {
         table: 'troll_run_player_states',
@@ -199,6 +214,9 @@ export function TrollRunHostView({ gameCode, hostToken }: TrollRunHostViewProps)
     0,
     session?.phase === 'countdown' || session?.phase === 'racing'
   )
+
+  const hostPlays = hostMode === 'player' && Boolean(hostPlayerId)
+  useTimerTickSound(deadlineSecondsLeft, !hostPlays && session?.phase === 'racing', 10)
 
   const playerNames = useMemo(() => {
     const map = new Map<string, string>()
@@ -395,19 +413,48 @@ export function TrollRunHostView({ gameCode, hostToken }: TrollRunHostViewProps)
     )
   }
 
-  // If game is active but session row is loading, show loading skeleton
-  if (!session) {
-    return <HostLobbySkeleton />
-  }
+  // 2. Live Race Dashboard for host management or Finished screen
+  const isFinished = game.status === 'finished' || session?.phase === 'finished'
+  const effectiveSession: TrollRunSession | null =
+    session ??
+    (isFinished
+      ? {
+          id: 'finished',
+          game_id: gameCode,
+          phase: 'finished',
+          current_round: game?.rounds_count ?? game?.troll_run_rounds ?? 1,
+          total_rounds: game?.rounds_count ?? game?.troll_run_rounds ?? 1,
+          current_world: game?.troll_run_world ?? 'pits',
+          levels_per_round: 10,
+          round_time_limit: game?.troll_run_time_limit ?? 120,
+          round_started_at: null,
+          turn_deadline_at: null,
+          level_order: [],
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }
+      : null)
 
-  const hostPlays = hostMode === 'player' && Boolean(hostPlayerId)
+  // If game is active but session row is still loading, show loading skeleton with reset fallback
+  if (!effectiveSession) {
+    return (
+      <div className="mx-auto flex max-w-md flex-col items-center justify-center p-8 text-center space-y-4">
+        <HostLobbySkeleton />
+        <div className="pt-4">
+          <button type="button" onClick={() => void resetGame(false)} className="btn-secondary text-xs">
+            Reset to lobby
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   // 2. Live Race Dashboard for host management
   const manageRaceDashboard =
-    session.phase === 'scoreboard' || session.phase === 'finished' || game.status === 'finished' ? (
+    effectiveSession.phase === 'scoreboard' || effectiveSession.phase === 'finished' || isFinished ? (
       <div className="mx-auto flex max-w-4xl flex-col space-y-6 p-4 sm:p-8">
         <TrollRunScoreboard
-          session={session}
+          session={effectiveSession}
           playerStates={playerStates}
           playerNames={playerNames}
           isHost={true}
@@ -432,11 +479,12 @@ export function TrollRunHostView({ gameCode, hostToken }: TrollRunHostViewProps)
             </span>
             <div>
               <h1 className="text-xl font-black text-[var(--foreground)]">
-                Troll Run — Round <span className="tabular-nums">{session.current_round}</span> /{' '}
-                <span className="tabular-nums">{session.total_rounds}</span>
+                Troll Run — Round <span className="tabular-nums">{effectiveSession.current_round}</span> /{' '}
+                <span className="tabular-nums">{effectiveSession.total_rounds}</span>
               </h1>
               <p className="text-muted text-xs">
-                World: <span className="text-[var(--primary)] font-bold capitalize">{session.current_world}</span>
+                World:{' '}
+                <span className="text-[var(--primary)] font-bold capitalize">{effectiveSession.current_world}</span>
               </p>
             </div>
           </div>
@@ -444,7 +492,7 @@ export function TrollRunHostView({ gameCode, hostToken }: TrollRunHostViewProps)
           {/* Timer */}
           <div className="text-right">
             <div className="text-faint text-[10px] font-bold uppercase tracking-wider">
-              {session.phase === 'countdown' ? 'Starting in' : 'Time Remaining'}
+              {effectiveSession.phase === 'countdown' ? 'Starting in' : 'Time Remaining'}
             </div>
             <div
               className={`font-mono text-2xl font-black tabular-nums ${
@@ -453,12 +501,14 @@ export function TrollRunHostView({ gameCode, hostToken }: TrollRunHostViewProps)
                   : 'text-[var(--primary)]'
               }`}
             >
-              {session.phase === 'countdown' ? `${deadlineSecondsLeft}s` : formatMinutesSeconds(deadlineSecondsLeft)}
+              {effectiveSession.phase === 'countdown'
+                ? `${deadlineSecondsLeft}s`
+                : formatMinutesSeconds(deadlineSecondsLeft)}
             </div>
           </div>
         </div>
 
-        <TrollRunRaceProgress session={session} players={players} playerStates={playerStates} />
+        <TrollRunRaceProgress session={effectiveSession} players={players} playerStates={playerStates} />
 
         {/* Live Event Ticker */}
         <div>
@@ -521,8 +571,16 @@ export function TrollRunHostView({ gameCode, hostToken }: TrollRunHostViewProps)
               onNextRound={handleNextRound}
               onPlayAgain={confirmPlayAgain}
               onReturnToLobby={confirmReturnToLobby}
+              onEndGameEarly={reload}
               advancing={advancing}
               playingAgain={playingAgain}
+              initialSession={effectiveSession}
+              initialPlayers={players}
+              initialPlayerStates={playerStates}
+              initialEvents={events}
+              initialGame={game}
+              initialPlayerId={hostPlayerId}
+              initialResumeToken={hostResumeToken}
             />
           </div>
         }
@@ -532,11 +590,11 @@ export function TrollRunHostView({ gameCode, hostToken }: TrollRunHostViewProps)
   }
 
   // 4. Host is spectator: Scoreboard/Finished screen
-  if (session.phase === 'scoreboard' || session.phase === 'finished' || game.status === 'finished') {
+  if (effectiveSession.phase === 'scoreboard' || effectiveSession.phase === 'finished' || isFinished) {
     return (
       <div className="page-wrap flex min-h-[calc(100dvh-4rem)] flex-col items-center justify-center p-4 sm:p-8">
         <TrollRunScoreboard
-          session={session}
+          session={effectiveSession}
           playerStates={playerStates}
           playerNames={playerNames}
           isHost={true}
@@ -555,7 +613,7 @@ export function TrollRunHostView({ gameCode, hostToken }: TrollRunHostViewProps)
   }
 
   // 5. Host is spectator: Countdown overlay
-  if (session.phase === 'countdown') {
+  if (effectiveSession.phase === 'countdown') {
     return (
       <div className="page-wrap flex min-h-[calc(100dvh-4rem)] flex-col items-center justify-center gap-6 p-6 text-center">
         <span className="animate-bounce font-mono text-8xl font-black tabular-nums text-[var(--primary)] sm:text-9xl">
@@ -563,9 +621,9 @@ export function TrollRunHostView({ gameCode, hostToken }: TrollRunHostViewProps)
         </span>
         <h2 className="text-3xl font-black text-[var(--foreground)]">Get Ready to Run!</h2>
         <p className="text-muted text-sm">
-          Round <span className="tabular-nums">{session.current_round}</span> of{' '}
-          <span className="tabular-nums">{session.total_rounds}</span> · World:{' '}
-          <strong className="text-[var(--primary)] capitalize">{session.current_world}</strong>
+          Round <span className="tabular-nums">{effectiveSession.current_round}</span> of{' '}
+          <span className="tabular-nums">{effectiveSession.total_rounds}</span> · World:{' '}
+          <strong className="text-[var(--primary)] capitalize">{effectiveSession.current_world}</strong>
         </p>
       </div>
     )

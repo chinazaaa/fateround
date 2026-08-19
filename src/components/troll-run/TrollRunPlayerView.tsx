@@ -11,7 +11,7 @@ import { useTrollRunAdvanceNudge } from '@/hooks/useTrollRunAdvanceNudge'
 import { useToast } from '@/components/ui/Toast'
 import { supabase } from '@/lib/supabase'
 import { TROLL_RUN_EVENT_SELECT, TROLL_RUN_PLAYER_STATE_SELECT, TROLL_RUN_SESSION_SELECT } from '@/lib/supabase-selects'
-import type { Game, TrollRunEvent, TrollRunPlayerState, TrollRunSession } from '@/types'
+import type { Game, Player, TrollRunEvent, TrollRunPlayerState, TrollRunSession } from '@/types'
 import { resolveTrollRunLevels, type GhostPositionPayload, type TrollRunEngine } from '@/lib/troll-run-engine'
 import { trollRunRoundLevelCount } from '@/lib/troll-run'
 import { formatMinutesSeconds } from '@/lib/timer-format'
@@ -42,6 +42,7 @@ import { clearPlayerSession } from '@/lib/utils'
 import { markPlayerReady } from '@/lib/player-ready'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { LeaderboardJoinNote } from '@/components/game-lobby/LeaderboardJoinNote'
+import { useTimerTickSound } from '@/hooks/useTimerTickSound'
 
 type Screen =
   | 'loading'
@@ -72,8 +73,16 @@ export interface TrollRunPlayerViewProps {
   onNextRound?: () => void
   onPlayAgain?: () => void
   onReturnToLobby?: () => void
+  onEndGameEarly?: () => void
   advancing?: boolean
   playingAgain?: boolean
+  initialSession?: TrollRunSession | null
+  initialPlayers?: Player[]
+  initialPlayerStates?: TrollRunPlayerState[]
+  initialEvents?: TrollRunEvent[]
+  initialGame?: Game | null
+  initialPlayerId?: string | null
+  initialResumeToken?: string | null
 }
 
 export function TrollRunPlayerView({
@@ -82,16 +91,36 @@ export function TrollRunPlayerView({
   onNextRound,
   onPlayAgain,
   onReturnToLobby,
+  onEndGameEarly,
   advancing = false,
   playingAgain = false,
+  initialSession = null,
+  initialPlayers = [],
+  initialPlayerStates = [],
+  initialEvents = [],
+  initialGame = null,
+  initialPlayerId = null,
+  initialResumeToken = null,
 }: TrollRunPlayerViewProps) {
   const router = useRouter()
   const { error: toastError } = useToast()
   const cfg = gameTypeConfig('troll_run')
 
-  const [session, setSession] = useState<TrollRunSession | null>(null)
-  const [playerStates, setPlayerStates] = useState<TrollRunPlayerState[]>([])
-  const [events, setEvents] = useState<TrollRunEvent[]>([])
+  const [session, setSession] = useState<TrollRunSession | null>(initialSession)
+  const [playerStates, setPlayerStates] = useState<TrollRunPlayerState[]>(initialPlayerStates)
+  const [events, setEvents] = useState<TrollRunEvent[]>(initialEvents)
+
+  useEffect(() => {
+    if (initialSession) setSession(initialSession)
+  }, [initialSession])
+
+  useEffect(() => {
+    if (initialPlayerStates && initialPlayerStates.length > 0) setPlayerStates(initialPlayerStates)
+  }, [initialPlayerStates])
+
+  useEffect(() => {
+    if (initialEvents && initialEvents.length > 0) setEvents(initialEvents)
+  }, [initialEvents])
 
   const { joinExtras, resolving: resolvingRoomMember } = useRoomMemberJoin(gameCode)
 
@@ -116,36 +145,71 @@ export function TrollRunPlayerView({
     return { state: null, ok: !sessRes.error }
   }, [gameCode])
 
-  const computeScreen = useCallback((gameData: Game, playerId: string | null): Screen => {
-    if (!playerId) {
-      const pre = preJoinScreen(gameData, false)
-      if (pre === 'game_started_waiting') return 'game_started_waiting'
-      return 'join'
-    }
-    if (gameData.status === 'waiting') return 'waiting'
-    if (gameData.status === 'finished') return 'finished'
-    return 'playing'
-  }, [])
+  const computeScreen = useCallback(
+    (gameData: Game, playerId: string | null): Screen => {
+      const effectiveId = playerId || initialPlayerId
+      if (!effectiveId) {
+        const pre = preJoinScreen(gameData, false)
+        if (pre === 'game_started_waiting') return 'game_started_waiting'
+        return 'join'
+      }
+      if (gameData.status === 'waiting') return 'waiting'
+      if (gameData.status === 'finished') return 'finished'
+      return 'playing'
+    },
+    [initialPlayerId]
+  )
 
-  const { screen, game, players, myPlayerId, myResumeToken, joinName, setJoinName, joining, load, lobbyFull, join } =
-    useGameViewBootstrap<Screen, null>({
-      gameCode,
-      loadingScreen: 'loading',
-      notFoundScreen: 'not_found',
-      loadGameState,
-      computeScreen,
-      joinExtras,
-      onJoinError: toastError,
-    })
+  const {
+    screen,
+    game,
+    players,
+    setPlayers,
+    myPlayerId,
+    myResumeToken,
+    joinName,
+    setJoinName,
+    joining,
+    load,
+    lobbyFull,
+    join,
+  } = useGameViewBootstrap<Screen, null>({
+    gameCode,
+    loadingScreen: 'loading',
+    notFoundScreen: 'not_found',
+    loadGameState,
+    computeScreen,
+    joinExtras,
+    onJoinError: toastError,
+  })
 
-  useApplyGameTheme(game?.theme, game?.game_type)
+  const effectiveMyPlayerId = myPlayerId || initialPlayerId
+  const effectiveMyResumeToken = myResumeToken || initialResumeToken
+  const effectivePlayers = players.length > 0 ? players : initialPlayers
+  const effectiveGame = game || initialGame
+
+  useApplyGameTheme(effectiveGame?.theme, effectiveGame?.game_type)
 
   // Realtime subscription
   const connected = useGameTableSync(
     gameCode,
     [
       { table: 'games', column: 'id' },
-      'players',
+      {
+        table: 'players',
+        apply: (row) => {
+          const p = row as unknown as Player
+          setPlayers((prev) => {
+            const index = prev.findIndex((item) => item.id === p.id)
+            if (index >= 0) {
+              const updated = [...prev]
+              updated[index] = { ...updated[index], ...p }
+              return updated
+            }
+            return [...prev, p]
+          })
+        },
+      },
       {
         table: 'troll_run_sessions',
         apply: (row) => setSession(row as unknown as TrollRunSession),
@@ -185,7 +249,7 @@ export function TrollRunPlayerView({
     runImmediately: false,
   })
 
-  useTrollRunAdvanceNudge({ gameCode, session, resumeToken: myResumeToken })
+  useTrollRunAdvanceNudge({ gameCode, session, resumeToken: effectiveMyResumeToken })
 
   // `turn_deadline_at` already is the deadline, so the shared countdown gets no extra delay.
   const deadlineSecondsLeft = useDeadlineCountdown(
@@ -196,65 +260,63 @@ export function TrollRunPlayerView({
 
   const playerNames = useMemo(() => {
     const map = new Map<string, string>()
-    for (const player of players) {
+    for (const player of effectivePlayers) {
       map.set(player.id, player.name)
     }
     return map
-  }, [players])
+  }, [effectivePlayers])
 
   const myState = useMemo(() => {
-    if (!myPlayerId || !session) return undefined
-    return playerStates.find((state) => state.player_id === myPlayerId && state.current_round === session.current_round)
-  }, [playerStates, myPlayerId, session])
+    if (!effectiveMyPlayerId || !session) return undefined
+    return playerStates.find(
+      (state) => state.player_id === effectiveMyPlayerId && state.current_round === session.current_round
+    )
+  }, [playerStates, effectiveMyPlayerId, session])
 
   const isViewer = useMemo(() => {
-    return players.find((player) => player.id === myPlayerId)?.spectator === true
-  }, [players, myPlayerId])
+    return effectivePlayers.find((player) => player.id === effectiveMyPlayerId)?.spectator === true
+  }, [effectivePlayers, effectiveMyPlayerId])
 
-  const me = useMemo(() => players.find((player) => player.id === myPlayerId), [players, myPlayerId])
+  const isRacing = session?.phase === 'racing'
+  const hasFinishedRound = myState?.round_finished === true
+  const shouldPlayTimerSound = Boolean(isRacing && !isViewer && !hasFinishedRound)
+  useTimerTickSound(deadlineSecondsLeft, shouldPlayTimerSound, 10)
+
+  const me = useMemo(
+    () => effectivePlayers.find((player) => player.id === effectiveMyPlayerId),
+    [effectivePlayers, effectiveMyPlayerId]
+  )
 
   const playerSettingsNode = useMemo(() => {
-    if (!myPlayerId) return null
+    if (!effectiveMyPlayerId || hostToken) return null
     return (
       <div className="space-y-3">
         <EditNameInline
           gameCode={gameCode}
-          playerId={myPlayerId}
+          playerId={effectiveMyPlayerId}
           currentName={me?.name ?? ''}
           onRenamed={() => void load()}
           spectating={isViewer}
         />
-        {hostToken ? (
-          <HostEndGameButton
-            gameCode={gameCode}
-            hostToken={hostToken}
-            onEnded={() => void load()}
-            label="End game"
-            icon={<ExitIcon size={14} />}
-            className="btn-danger-soft"
-            confirmTitle="End this Troll Run race?"
-            confirmMessage="The current match will end and all runners will see the final championship standings."
-          />
-        ) : (
-          <LeaveGameButton
-            gameCode={gameCode}
-            playerId={myPlayerId}
-            onLeft={() => {
-              clearPlayerSession(gameCode)
-              router.push('/')
-            }}
-            confirmMessage="You can rejoin with your player code if the room is still open."
-          />
-        )}
+        <LeaveGameButton
+          gameCode={gameCode}
+          playerId={effectiveMyPlayerId}
+          onLeft={() => {
+            clearPlayerSession(gameCode)
+            router.push('/')
+          }}
+          confirmMessage="You can rejoin with your player code if the room is still open."
+        />
       </div>
     )
-  }, [myPlayerId, me?.name, isViewer, gameCode, hostToken, load, router])
-  useRegisterGameSettings(playerSettingsNode)
+  }, [effectiveMyPlayerId, hostToken, gameCode, me?.name, isViewer, load, router])
+  // Skip registration when embedded by host view (the host chrome already renders EditNameInline for the host's seat)
+  useRegisterGameSettings(playerSettingsNode, !hostToken)
 
   const [replayReadyPending, setReplayReadyPending] = useState(false)
   const toggleReplayReady = useCallback(
     async (ready: boolean) => {
-      if (!myResumeToken) {
+      if (!effectiveMyResumeToken) {
         toastError('Your player session expired — rejoin to continue')
         return
       }
@@ -263,7 +325,7 @@ export function TrollRunPlayerView({
         const res = await fetch('/api/players/ready', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ gameId: gameCode, resumeToken: myResumeToken, ready }),
+          body: JSON.stringify({ gameId: gameCode, resumeToken: effectiveMyResumeToken, ready }),
         })
         const data = await res.json().catch(() => ({}))
         if (!res.ok) throw new Error(data.error ?? 'Failed to update ready')
@@ -274,7 +336,7 @@ export function TrollRunPlayerView({
         setReplayReadyPending(false)
       }
     },
-    [gameCode, myResumeToken, load, toastError]
+    [gameCode, effectiveMyResumeToken, load, toastError]
   )
 
   const engineRef = useRef<TrollRunEngine | null>(null)
@@ -287,7 +349,7 @@ export function TrollRunPlayerView({
   // Peer positions ride ephemeral Broadcast rather than the database: they are worthless a frame
   // later, and at ~20 updates a second per runner they must never pass through React state.
   useEffect(() => {
-    if (!gameCode || !myPlayerId) return
+    if (!gameCode || !effectiveMyPlayerId) return
 
     const channel = supabase.channel(`realtime:troll_run_ghosts:${gameCode}`, {
       config: { broadcast: { self: false } },
@@ -307,7 +369,7 @@ export function TrollRunPlayerView({
       channel.unsubscribe()
       broadcastChannelRef.current = null
     }
-  }, [gameCode, myPlayerId])
+  }, [gameCode, effectiveMyPlayerId])
 
   const handlePlayerPosition = useCallback((position: GhostPositionPayload) => {
     broadcastChannelRef.current?.send({ type: 'broadcast', event: 'ghost_pos', payload: position }).catch(() => {
@@ -332,8 +394,8 @@ export function TrollRunPlayerView({
    */
   const postRaceReport = useCallback(
     async (path: string, payload: Record<string, unknown>): Promise<boolean> => {
-      if (!myResumeToken) return false
-      const body = JSON.stringify({ gameId: gameCode, resumeToken: myResumeToken, ...payload })
+      if (!effectiveMyResumeToken) return false
+      const body = JSON.stringify({ gameId: gameCode, resumeToken: effectiveMyResumeToken, ...payload })
 
       for (let attempt = 0; attempt < 2; attempt += 1) {
         try {
@@ -346,7 +408,7 @@ export function TrollRunPlayerView({
       }
       return false
     },
-    [gameCode, myResumeToken]
+    [gameCode, effectiveMyResumeToken]
   )
 
   const handleDeath = useCallback(
@@ -375,6 +437,11 @@ export function TrollRunPlayerView({
     // shows every level cleared, and reads the finishing time off the shared round clock.
     void postRaceReport('/api/troll-run/report-round-finish', {})
   }, [postRaceReport])
+
+  const handleEndGameEarly = useCallback(async () => {
+    await onEndGameEarly?.()
+    await load()
+  }, [onEndGameEarly, load])
 
   // 1. Join Screen
   if (screen === 'join') {
@@ -502,25 +569,39 @@ export function TrollRunPlayerView({
 
   // 4. Game Ended / Finished
   if (game?.status === 'finished' || screen === 'finished' || session?.phase === 'finished') {
+    const effectiveSession: TrollRunSession = session ?? {
+      id: 'finished',
+      game_id: gameCode,
+      phase: 'finished',
+      current_round: game?.rounds_count ?? game?.troll_run_rounds ?? 1,
+      total_rounds: game?.rounds_count ?? game?.troll_run_rounds ?? 1,
+      current_world: game?.troll_run_world ?? 'pits',
+      levels_per_round: 10,
+      round_time_limit: game?.troll_run_time_limit ?? 120,
+      round_started_at: null,
+      turn_deadline_at: null,
+      level_order: [],
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }
+
     return (
       <div className="page-wrap flex min-h-[calc(100dvh-4rem)] items-center justify-center px-4 py-8">
-        {session && (
-          <TrollRunScoreboard
-            session={session}
-            playerStates={playerStates}
-            playerNames={playerNames}
-            isHost={Boolean(hostToken)}
-            onNextRound={onNextRound}
-            loading={advancing}
-            gameCode={gameCode}
-            hostToken={hostToken}
-            onEndGameEarly={load}
-            myPlayerId={myPlayerId}
-            onPlayAgain={onPlayAgain}
-            onReturnToLobby={onReturnToLobby}
-            playingAgain={playingAgain}
-          />
-        )}
+        <TrollRunScoreboard
+          session={effectiveSession}
+          playerStates={playerStates}
+          playerNames={playerNames}
+          isHost={Boolean(hostToken)}
+          onNextRound={onNextRound}
+          loading={advancing}
+          gameCode={gameCode}
+          hostToken={hostToken}
+          onEndGameEarly={handleEndGameEarly}
+          myPlayerId={myPlayerId}
+          onPlayAgain={onPlayAgain}
+          onReturnToLobby={onReturnToLobby}
+          playingAgain={playingAgain}
+        />
       </div>
     )
   }
@@ -538,7 +619,7 @@ export function TrollRunPlayerView({
           loading={advancing}
           gameCode={gameCode}
           hostToken={hostToken}
-          onEndGameEarly={load}
+          onEndGameEarly={handleEndGameEarly}
           myPlayerId={myPlayerId}
           onPlayAgain={onPlayAgain}
           onReturnToLobby={onReturnToLobby}
@@ -566,7 +647,6 @@ export function TrollRunPlayerView({
   }
 
   const levelCount = trollRunRoundLevelCount(session)
-  const isRacing = session.phase === 'racing'
   const roundClockSeconds = isRacing ? deadlineSecondsLeft : session.round_time_limit
 
   // 7. Watching rather than running — viewers, and anyone with no row in this round.
@@ -620,8 +700,6 @@ export function TrollRunPlayerView({
   }
 
   // 8. Racing / countdown
-  const hasFinishedRound = myState.round_finished === true
-
   return (
     <div className="page-wrap flex flex-col items-center gap-3 px-2 sm:px-4 py-2 sm:py-4 select-none w-full">
       {/* Top HUD Bar */}

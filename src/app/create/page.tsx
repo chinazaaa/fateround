@@ -70,7 +70,6 @@ import {
   isLudoGame,
   isSnakeAndLadderGame,
   isTicTacToeGame,
-  isPingPongGame,
   isChessGame,
   isCheckersGame,
   isDraughts10Game,
@@ -115,7 +114,6 @@ import {
   GlobeIcon,
   LockIcon,
   Moon02Icon,
-  TableTennisBatIcon,
   Tv01Icon,
 } from '@hugeicons/core-free-icons'
 import { showsMaxOnePublicHint, showsPartyPublicHint } from '@/lib/public-hints'
@@ -848,15 +846,6 @@ function CreateGameInner() {
               rounds_count: 1,
             }
           : {}),
-        ...(isPingPongGame(type)
-          ? {
-              participant_mode: 'joiners' as const,
-              anonymous: true,
-              rounds_count: 1,
-              ping_pong_points_to_win: 7,
-              game_duration_seconds: 0,
-            }
-          : {}),
         ...(isChessGame(type)
           ? {
               participant_mode: 'joiners' as const,
@@ -1037,7 +1026,6 @@ function CreateGameInner() {
   const isLudo = isLudoGame(settings.game_type)
   const isSnakeLadder = isSnakeAndLadderGame(settings.game_type)
   const isTicTacToe = isTicTacToeGame(settings.game_type)
-  const isPingPong = isPingPongGame(settings.game_type)
   const isChess = isChessGame(settings.game_type)
   const isCheckers = isCheckersGame(settings.game_type)
   const isDraughts10 = isDraughts10Game(settings.game_type)
@@ -1736,17 +1724,6 @@ function CreateGameInner() {
       set: (v) => setYahtzeeMaxPlayers(v as number),
       appliesTo: isYahtzeeGame,
     },
-    // Ping Pong
-    ping_pong_points_to_win: {
-      get: () => settings.ping_pong_points_to_win,
-      set: (v) => setSettings((s) => ({ ...s, ping_pong_points_to_win: v as number })),
-      appliesTo: isPingPongGame,
-    },
-    ping_pong_game_duration: {
-      get: () => settings.game_duration_seconds,
-      set: (v) => setSettings((s) => ({ ...s, game_duration_seconds: v as number })),
-      appliesTo: isPingPongGame,
-    },
   }
   const captureTemplateValues = (): Record<string, unknown> => {
     const out: Record<string, unknown> = {}
@@ -1965,7 +1942,6 @@ function CreateGameInner() {
     isLudo ||
     isSnakeLadder ||
     isTicTacToe ||
-    isPingPong ||
     isChess ||
     isScrabble ||
     isDescribeIt ||
@@ -3136,29 +3112,19 @@ function CreateGameInner() {
               >
                 {(settings.game_type === 'monopoly'
                   ? THEMES.filter((theme) => MONOPOLY_EDITIONS.some((e) => e.themeId === theme.id))
-                  : settings.game_type === 'ping_pong'
-                    ? THEMES.filter((theme) => theme.id === 'default' || theme.id === 'grass_court')
-                    : THEMES.filter(
-                        (theme) =>
-                          theme.id !== 'pirate' &&
-                          theme.id !== 'arctic' &&
-                          theme.id !== 'naija' &&
-                          theme.id !== 'grass_court'
-                      )
+                  : THEMES.filter(
+                      (theme) =>
+                        theme.id !== 'pirate' &&
+                        theme.id !== 'arctic' &&
+                        theme.id !== 'naija' &&
+                        theme.id !== 'grass_court'
+                    )
                 ).map((theme) => {
                   const monopolyEdition =
                     settings.game_type === 'monopoly' ? MONOPOLY_EDITIONS.find((e) => e.themeId === theme.id) : null
                   const displayTheme = monopolyEdition
                     ? { ...theme, label: monopolyEdition.editionName, emoji: monopolyEdition.editionEmoji }
-                    : settings.game_type === 'ping_pong' && theme.id === 'default'
-                      ? {
-                          ...theme,
-                          label: 'Table Tennis',
-                          emoji: '🏓',
-                          icon: TableTennisBatIcon,
-                          preview: { bg: '#064e3b', accent: '#f43f5e', text: '#ecfdf5' },
-                        }
-                      : theme
+                    : theme
                   return (
                     <ThemePreviewCard
                       key={theme.id}
@@ -4161,44 +4127,6 @@ function CreateGameInner() {
                   Classic Snakes &amp; Ladders — roll one die, climb the ladders, dodge the snakes. Roll a 6 to go
                   again. First to land on 100 exactly wins!
                 </p>
-              </SettingsGroup>
-            ) : isPingPong ? (
-              <SettingsGroup title="Ping Pong room">
-                <p className="text-faint text-sm">Exactly 2 players — 1v1 match where the host can play or watch.</p>
-                <Field label="Points to win">
-                  <CustomSelect
-                    value={settings.ping_pong_points_to_win ?? 7}
-                    onChange={(val) => setSettings({ ...settings, ping_pong_points_to_win: val })}
-                    options={[
-                      { value: 3, label: 'First to 3 points (Lightning)' },
-                      { value: 5, label: 'First to 5 points' },
-                      { value: 7, label: 'First to 7 points (Quick)' },
-                      { value: 11, label: 'First to 11 points (Standard)' },
-                      { value: 15, label: 'First to 15 points' },
-                      { value: 21, label: 'First to 21 points (Long)' },
-                    ]}
-                  />
-                </Field>
-                <Field label="Match Timer">
-                  <CustomSelect
-                    value={settings.game_duration_seconds ?? 0}
-                    onChange={(val) => setSettings({ ...settings, game_duration_seconds: val })}
-                    options={[
-                      { value: 0, label: 'No timer' },
-                      { value: 60, label: '1 minute' },
-                      { value: 120, label: '2 minutes' },
-                      { value: 180, label: '3 minutes' },
-                      { value: 300, label: '5 minutes' },
-                      { value: 600, label: '10 minutes' },
-                    ]}
-                  />
-                </Field>
-                <Field label="Late joiners">
-                  <p className="text-sm font-medium">Viewers only</p>
-                  <p className="text-xs text-faint mt-1">
-                    Once the 2-player match starts, anyone else joining the room will automatically become a viewer.
-                  </p>
-                </Field>
               </SettingsGroup>
             ) : isTicTacToe ? (
               <SettingsGroup title="Tic-Tac-Toe room">

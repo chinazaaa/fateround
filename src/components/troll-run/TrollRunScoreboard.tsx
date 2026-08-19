@@ -80,7 +80,7 @@ export function TrollRunScoreboard({
 
               return (
                 <div
-                  key={standing.playerId}
+                  key={standing.playerId ? `champ-${standing.playerId}` : `champ-pos-${index}`}
                   className="flex items-center justify-between gap-3 rounded-xl border p-3 transition-all"
                   style={
                     isLeader
@@ -148,7 +148,7 @@ export function TrollRunScoreboard({
 
               return (
                 <div
-                  key={standing.playerId}
+                  key={standing.playerId ? `round-${standing.playerId}` : `round-pos-${index}`}
                   className="flex items-center justify-between gap-3 rounded-xl border p-3 transition-all"
                   style={
                     isLeader
@@ -252,16 +252,16 @@ export function TrollRunScoreboard({
           >
             {loading ? 'Starting next round…' : `Start Round ${session.current_round + 1}`}
           </button>
-          {gameCode && hostToken && onEndGameEarly && (
+          {gameCode && hostToken && (
             <HostEndGameButton
               gameCode={gameCode}
               hostToken={hostToken}
               onEnded={onEndGameEarly}
               label="End match early"
-              icon={<ExitIcon size={12} />}
+              icon={<ExitIcon size={14} />}
               confirmTitle="End this Troll Run race early?"
               confirmMessage="The match will end immediately and all players will see the final championship standings."
-              className="w-full py-2 text-xs font-bold text-rose-400/80 hover:text-rose-300 transition text-center"
+              className="btn-ghost flex w-full items-center justify-center gap-1.5 py-2.5 text-xs font-bold !text-rose-400 hover:!text-rose-300 hover:bg-rose-500/10 rounded-xl transition"
             />
           )}
         </div>

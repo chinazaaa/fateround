@@ -58,7 +58,6 @@ const WINNER_SOURCES: Partial<Record<GameType, WinnerSource>> = {
   checkers_international: { table: 'checkers10_sessions', column: 'winner_player_id' },
   checkers_nigeria: { table: 'checkers10_sessions', column: 'winner_player_id' },
   ayo: { table: 'ayo_sessions', column: 'winner_player_id' },
-  ping_pong: { table: 'ping_pong_sessions', column: 'winner_player_id' },
   uno: { table: 'uno_sessions', column: 'winner_player_id' },
   // Mahjong can end with several winners, so prefer the array and fall back to the scalar.
 }

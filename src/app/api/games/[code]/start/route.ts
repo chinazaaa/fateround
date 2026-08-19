@@ -1433,6 +1433,7 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
         session_started_at: sessionStartedAt,
         current_round_number: 1,
         rounds_count: game.troll_run_rounds ?? 5,
+        replay_pending: false,
       })
       .eq('id', code.toUpperCase())
 

@@ -54,7 +54,6 @@ export type GameType =
   | 'word_search'
   | 'word_scramble'
   | 'landmine'
-  | 'ping_pong'
   | 'uno'
   | 'word_grouping'
   | 'wordle_room'
@@ -546,8 +545,6 @@ export interface Game {
   landmine_review_seconds?: number | null
   /** Nigerian Draughts — opt-in "Street Rules" (huffing): decline a capture, risk the piece. */
   checkers_nigeria_street_rules?: boolean | null
-  /** Ping Pong — points required to win the match (3, 5, 7, 11, 15, or 21). */
-  ping_pong_points_to_win?: number | null
   /** Wordle Room — which built-in word bank the race draws from. */
   wordle_room_category?:
     | 'general_english'
@@ -1186,21 +1183,6 @@ export interface TicTacToeSession {
   is_draw: boolean
   status_message: string | null
   turn_deadline_at: string | null
-  created_at: string
-  updated_at: string
-}
-
-export interface PingPongSession {
-  id: string
-  game_id: string
-  player_x_id: string
-  player_o_id: string
-  score_x: number
-  score_o: number
-  points_to_win: number
-  status: 'active' | 'finished'
-  winner_player_id: string | null
-  status_message: string | null
   created_at: string
   updated_at: string
 }
