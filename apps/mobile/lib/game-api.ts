@@ -1,4 +1,5 @@
 import { apiUrl } from '@/lib/config'
+import { authHeaders } from '@/lib/auth-headers'
 import type { BingoCard, GameType, WhotPlayerHand } from '@fateround/shared'
 import type { GamePlayerLimitsMap } from '@fateround/shared/lobby-limits'
 import { getCodeDefaultLimits } from '@fateround/shared/lobby-limits'
@@ -9,7 +10,7 @@ import type { WordSearchPlacement } from '@fateround/shared'
 async function postJson<T>(path: string, body: Record<string, unknown>): Promise<T> {
   const res = await fetch(apiUrl(path), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
     body: JSON.stringify(body),
   })
   const data = (await res.json()) as T & { error?: string }
@@ -108,17 +109,6 @@ export function postCheckersNigeriaExpireTurn(gameId: string) {
 /** Street Rules only: spend the turn huffing (removing) a declined-capture piece instead of moving. */
 export function postCheckersNigeriaHuff(gameId: string, resumeToken: string, square: string) {
   return postJson<{ success: boolean }>('/api/checkers-nigeria/huff', { gameId, resumeToken, square })
-}
-
-/** Report a point scored client-side (physics is client-authoritative; the server re-validates
- * sequence via `rally` and is the single source of truth for score/win state). */
-export function postPingPongPoint(gameId: string, resumeToken: string, scorer: 'X' | 'O', rally: number) {
-  return postJson<{ success?: boolean }>('/api/ping-pong/point', { gameId, resumeToken, scorer, rally })
-}
-
-/** Idempotent poke to conclude a timed match once the clock runs out. */
-export function postPingPongExpire(gameId: string) {
-  return postJson<{ expired?: boolean; finished?: boolean }>(`/api/games/${gameId.toUpperCase()}/expire-ping-pong`, {})
 }
 
 export function postAyoMove(gameId: string, resumeToken: string, pitIndex: number) {
@@ -1285,7 +1275,6 @@ export type BoardLobbyPatch = {
   ludo_variant?: 'modern' | 'traditional'
   ayo_variant?: 'traditional' | 'oware'
   checkers_nigeria_street_rules?: boolean
-  ping_pong_points_to_win?: number
   mafia_doctor_enabled?: boolean
   mafia_detective_enabled?: boolean
   mafia_anonymous_votes?: boolean
@@ -1667,6 +1656,7 @@ export interface WordleRoomStatusResponse {
   total_guesses?: number
   categoryLabel?: string
   finished?: boolean
+  sequenceComplete?: boolean
   guesses?: { guess: string; state: ('correct' | 'present' | 'absent')[] }[]
   timeRemainingMs?: number
   hasProgressRow?: boolean

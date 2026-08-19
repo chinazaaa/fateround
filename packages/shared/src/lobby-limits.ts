@@ -8,6 +8,7 @@ import {
   WORD_GROUPING_MAX_PLAYERS,
   WORD_GROUPING_MIN_PLAYERS,
 } from './word-grouping'
+import { WORDLE_ROOM_DEFAULT_MAX_PLAYERS, WORDLE_ROOM_MAX_PLAYERS, WORDLE_ROOM_MIN_PLAYERS } from './wordle-room'
 import { CRAZY8_DEFAULT_MAX_PLAYERS, CRAZY8_MAX_PLAYERS, CRAZY8_MIN_PLAYERS } from './crazy-eights'
 import {
   DESCRIBE_IT_DEFAULT_MAX_PLAYERS,
@@ -65,7 +66,7 @@ export const LOBBY_LIMIT_GAME_TYPES = [
   'crossword',
   'word_search',
   'word_grouping',
-  'ping_pong',
+  'wordle_room',
 ] as const
 
 export type LobbyLimitGameType = (typeof LOBBY_LIMIT_GAME_TYPES)[number]
@@ -101,10 +102,6 @@ const SUDOKU_MAX_PLAYERS = 30
 const TIC_TAC_TOE_MIN_PLAYERS = 2
 const TIC_TAC_TOE_MAX_PLAYERS = 2
 const TIC_TAC_TOE_DEFAULT_MAX_PLAYERS = 2
-
-const PING_PONG_MIN_PLAYERS = 2
-const PING_PONG_MAX_PLAYERS = 2
-const PING_PONG_DEFAULT_MAX_PLAYERS = 2
 
 const CHESS_MIN_PLAYERS = 2
 const CHESS_MAX_PLAYERS = 2
@@ -187,10 +184,10 @@ export const GAME_LIMIT_CODE_DEFAULTS: GamePlayerLimitsMap = {
     max: WORD_GROUPING_MAX_PLAYERS,
     default: WORD_GROUPING_DEFAULT_MAX_PLAYERS,
   },
-  ping_pong: {
-    min: PING_PONG_MIN_PLAYERS,
-    max: PING_PONG_MAX_PLAYERS,
-    default: PING_PONG_DEFAULT_MAX_PLAYERS,
+  wordle_room: {
+    min: WORDLE_ROOM_MIN_PLAYERS,
+    max: WORDLE_ROOM_MAX_PLAYERS,
+    default: WORDLE_ROOM_DEFAULT_MAX_PLAYERS,
   },
 }
 

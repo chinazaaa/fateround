@@ -22,8 +22,8 @@ function endedCopy(reason: string | null | undefined): { headline: string; body:
     case 'idle_timeout':
       return {
         icon: '⌛',
-        headline: 'Lobby closed — nobody joined',
-        body: 'This lobby was open for 15 minutes with no activity, so we closed it. Start a new one when everyone’s ready.',
+        headline: 'Lobby closed for inactivity',
+        body: 'Nothing happened here for 15 minutes, so we closed the lobby. Start a new game when everyone’s ready.',
       }
     case 'host_cancelled':
       return {

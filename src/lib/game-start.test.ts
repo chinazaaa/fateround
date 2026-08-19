@@ -55,10 +55,10 @@ describe('GAME_START_SPECS', () => {
       'mafia',
       'mahjong',
       'monopoly',
-      'ping_pong',
       'scrabble',
       'snake_and_ladder',
       'tic_tac_toe',
+      'troll_run',
       'uno',
       'whot',
       'yahtzee',
@@ -70,8 +70,8 @@ describe('GAME_START_SPECS', () => {
     expect(GAME_START_SPECS.chess?.exact).toBe(true)
     expect(GAME_START_SPECS.checkers?.exact).toBe(true)
     expect(GAME_START_SPECS.tic_tac_toe?.exact).toBe(true)
-    expect(GAME_START_SPECS.ping_pong?.exact).toBe(true)
     expect(GAME_START_SPECS.scrabble?.maxPlayers).toBeGreaterThan(GAME_START_SPECS.scrabble!.minPlayers)
+    expect(GAME_START_SPECS.troll_run?.maxPlayers).toBeGreaterThan(GAME_START_SPECS.troll_run!.minPlayers)
     expect(GAME_START_SPECS.whot?.exact).toBeUndefined()
   })
 })

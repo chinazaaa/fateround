@@ -74,6 +74,12 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
   // Authoritative resume token, mirrored to a ref so the hand fetch (defined before the bootstrap
   // resolves the token) can fall back to it. See the fetch + effect below.
   const myResumeTokenRef = useRef<string | null>(null)
+  // Live mirror of `session` for the realtime apply fast-path — it can't read
+  // `session` directly (stale closure inside the subscription callback).
+  const sessionRef = useRef<WhotSession | null>(null)
+  sessionRef.current = session
+  // Mirror of the resolved player id, set after `bootstrap` is declared below.
+  const myPlayerIdRef = useRef<string | null>(null)
 
   const loadGameState = useCallback(
     async (_game: Game, _players: Player[]): Promise<{ state: WhotSession | null; ok: boolean }> => {
@@ -127,6 +133,7 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
   })
   const { onLeft, lobbyProps } = usePlayerSessionActions(bootstrap)
   myResumeTokenRef.current = bootstrap.myResumeToken
+  myPlayerIdRef.current = bootstrap.myPlayerId ?? null
 
   // The first hand fetch can run before the resume token is resolved, which the redaction route
   // answers with our own hand blanked. Re-fetch with the authoritative token once it lands.
@@ -144,9 +151,63 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
     }
   }, [bootstrap.myResumeToken, bootstrap.game?.status, gameCode])
 
+  // Delta fast-path (mirrors web WhotPlayerView). The screen is derived from
+  // game.status, so session/hand row changes only need to update the board and
+  // hand — patch them locally and skip the full reload + hand re-fetch. The
+  // start/finish transitions ride the `games` row (no apply → still reloads).
+  const applySessionRow = useCallback((row: Record<string, unknown>): boolean => {
+    const next = row as unknown as WhotSession
+    const prev = sessionRef.current
+    // Ignore stale/reordered events so a delayed WAL row can't stomp fresher state.
+    if (prev && next.updated_at && prev.updated_at && next.updated_at < prev.updated_at) return true
+    setSession(next)
+    sessionRef.current = next
+    return prev != null // first session still reloads (games event also fires)
+  }, [])
+
+  const applyHandRow = useCallback(
+    (row: Record<string, unknown>): boolean => {
+      const next = row as unknown as WhotPlayerHand
+      const myPlayerId = myPlayerIdRef.current
+      // Once `cards` is revoked from anon, realtime payloads carry no cards.
+      // Applying one to OUR OWN row would blank the hand — and because `isOut`
+      // is derived from an empty hand, it would read as "you are out" mid-game.
+      // Re-fetch via the authorized route instead.
+      if (myPlayerId && next.player_id === myPlayerId && !Array.isArray(next.cards)) {
+        void postWhotHands(gameCode.toUpperCase(), {
+          resumeToken: myResumeTokenRef.current ?? undefined,
+        })
+          .then((res) => {
+            if (res) setHands(res.hands ?? [])
+          })
+          .catch(() => {})
+        return true
+      }
+      setHands((prev) => {
+        const i = prev.findIndex((h) => h.id === next.id)
+        const merged: WhotPlayerHand = {
+          ...next,
+          // Carry a known count forward if the payload omits it, so an opponent
+          // never momentarily renders as holding zero cards.
+          card_count: next.card_count ?? (Array.isArray(next.cards) ? next.cards.length : prev[i]?.card_count),
+        }
+        if (i === -1) return [...prev, merged].sort((a, b) => a.player_order - b.player_order)
+        const copy = [...prev]
+        copy[i] = merged
+        return copy
+      })
+      return true
+    },
+    [gameCode]
+  )
+
   useGameTableSync(
     gameCode,
-    [{ table: 'games', column: 'id' }, 'whot_sessions', 'whot_player_hands'],
+    [
+      { table: 'games', column: 'id' },
+      { table: 'whot_sessions', apply: applySessionRow },
+      { table: 'whot_player_hands', apply: applyHandRow },
+    ],
     () => bootstrap.load(),
     !!bootstrap.game,
     bootstrap.game?.status
@@ -268,11 +329,12 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
     try {
       await fn()
     } finally {
-      // Unblock input as soon as the action lands — don't hold the hand frozen
-      // through a second round-trip. The refresh runs in the background (and the
-      // realtime subscription reloads on the server write anyway; load() de-dupes).
+      // Don't re-fetch here — the realtime fast-path (applySessionRow /
+      // applyHandRow above) merges the server's write into local state on
+      // arrival, without a second Supabase SELECT + /api/whot/hands POST. A
+      // trailing bootstrap.load() cost a full board re-render + hand fetch on
+      // every tap, which was most of the perceived latency vs. web.
       setActing(false)
-      void bootstrap.load()
     }
   }
 

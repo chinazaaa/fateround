@@ -16,11 +16,6 @@ import {
   turnTimerOptionsFor,
 } from '@fateround/shared/create-board-games'
 import { WHOT_GAME_DURATION_OPTIONS } from '@fateround/shared/whot'
-import {
-  PING_PONG_POINTS_OPTIONS,
-  PING_PONG_GAME_DURATION_OPTIONS,
-  formatPingPongDuration,
-} from '@fateround/shared/ping-pong'
 import { UNO_GAME_DURATION_OPTIONS } from '@fateround/shared/uno'
 import { MAHJONG_RULESET_LABELS, MAHJONG_RULESETS } from '@fateround/shared/mahjong-rulesets'
 import {
@@ -148,25 +143,6 @@ export function GameRoomSettingsPanel({ gameType, room, maxPlayers, onChange }: 
                 />
               </View>
             ) : null}
-          </>
-        ) : null}
-
-        {gameType === 'ping_pong' ? (
-          <>
-            <TimerPicker
-              label="Points to win"
-              value={room.pingPongPointsToWin}
-              options={PING_PONG_POINTS_OPTIONS}
-              format={(pts) => `${pts} pts`}
-              onChange={(pingPongPointsToWin) => onChange({ pingPongPointsToWin })}
-            />
-            <TimerPicker
-              label="Match timer"
-              value={room.gameDurationSeconds}
-              options={PING_PONG_GAME_DURATION_OPTIONS}
-              format={formatPingPongDuration}
-              onChange={(gameDurationSeconds) => onChange({ gameDurationSeconds })}
-            />
           </>
         ) : null}
 

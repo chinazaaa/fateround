@@ -133,7 +133,7 @@ export function HostWordleRoomLobbyPanel({ gameCode, hostToken, game, playerCoun
   }, [])
 
   const limitCfg = limits?.wordle_room
-  const minPlayers = limitCfg?.min ?? 2
+  const minPlayers = limitCfg?.min ?? 1
   const maxCap = limitCfg?.max ?? 20
 
   const markSaved = useCallback(() => {

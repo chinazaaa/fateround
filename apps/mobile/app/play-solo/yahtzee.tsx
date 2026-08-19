@@ -44,7 +44,7 @@ import {
   saveSoloState,
   wasSoloStateScored,
 } from '@/lib/solo-state-store'
-import { logSoloPlayStarted } from '@/lib/solo-play'
+import { logSoloPlayFinished, logSoloPlayStarted, resetSoloSessionId, soloSessionId } from '@/lib/solo-play'
 
 const BOT_STEP_MS = 700
 const ROLL_ANIM_MS = 500
@@ -111,6 +111,7 @@ export default function SoloYahtzeeScreen() {
       setScoreboard(next)
       void markSoloStateScored('solo-yahtzee-state-v1')
     })
+    void soloSessionId('yahtzee').then((sessionId) => logSoloPlayFinished({ gameType: 'yahtzee', outcome, sessionId }))
   }, [state])
 
   // Bot loop — walk roll/hold/score one step per timeout.
@@ -204,6 +205,7 @@ export default function SoloYahtzeeScreen() {
     scoredRef.current = false
     setRolling(false)
     void clearSoloState('solo-yahtzee-state-v1')
+    void resetSoloSessionId('yahtzee')
     setState(initYahtzeeSolo())
     logSoloPlayStarted('yahtzee')
   }, [])
@@ -309,7 +311,6 @@ export default function SoloYahtzeeScreen() {
             <View style={styles.scoreRow}>
               <ScoreCell label="You" value={scoreboard.human} />
               <ScoreCell label="Bot" value={scoreboard.bot} />
-              <ScoreCell label="Draws" value={scoreboard.draws} />
             </View>
 
             <View style={styles.finishActions}>

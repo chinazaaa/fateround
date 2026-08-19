@@ -1,12 +1,33 @@
-import { Stack } from 'expo-router'
+import { Stack, router } from 'expo-router'
+import * as Notifications from 'expo-notifications'
 import * as SplashScreen from 'expo-splash-screen'
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { StatusBar } from 'expo-status-bar'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 import 'react-native-reanimated'
 import { ToastProvider } from '@/components/ui/Toast'
 import { ThemeProvider, useTheme, useThemeMode } from '@/constants/theme-context'
 import { PreferencesProvider } from '@/constants/preferences-context'
+
+type NotificationData = {
+  event?: string
+  gameCode?: string
+  url?: string
+}
+
+function routeFromNotification(data: NotificationData | null | undefined): string | null {
+  if (!data) return null
+  const code = typeof data.gameCode === 'string' ? data.gameCode.trim() : ''
+  if (code) return `/game/${code}`
+  // Fall back to a server-provided url like "/game/ABC123".
+  if (typeof data.url === 'string' && data.url.startsWith('/')) return data.url
+  return null
+}
+
+function handleNotificationResponse(response: Notifications.NotificationResponse) {
+  const target = routeFromNotification(response.notification.request.content.data as NotificationData)
+  if (target) router.push(target as never)
+}
 
 export { ErrorBoundary } from 'expo-router'
 
@@ -58,8 +79,23 @@ function ThemedStack() {
 }
 
 export default function RootLayout() {
+  const coldStartHandledRef = useRef(false)
+
   useEffect(() => {
     void SplashScreen.hideAsync()
+  }, [])
+
+  useEffect(() => {
+    // Cold start: an OS-delivered tap that launched the app.
+    if (!coldStartHandledRef.current) {
+      coldStartHandledRef.current = true
+      void Notifications.getLastNotificationResponseAsync().then((response) => {
+        if (response) handleNotificationResponse(response)
+      })
+    }
+
+    const subscription = Notifications.addNotificationResponseReceivedListener(handleNotificationResponse)
+    return () => subscription.remove()
   }, [])
 
   return (

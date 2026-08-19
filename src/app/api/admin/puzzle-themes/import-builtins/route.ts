@@ -92,7 +92,7 @@ function builtinSeeds(): Seed[] {
   // The 9 themed banks (Sports, Food & Drink, etc.) — same word source as the built-in
   // categories in the create-page dropdown, mirrored as pickable Library packs so hosts get
   // the themed word lists both from the Platform toggle and the Library picker.
-  const THEMED: Array<{ key: string; name: string; words: readonly string[] }> = [
+  const THEMED: Array<{ key: string; name: string; words: readonly { word: string; hint: string }[] }> = [
     { key: 'wordle_sports', name: 'Sports', words: WORDLE_SPORTS },
     { key: 'wordle_food', name: 'Food & Drink', words: WORDLE_FOOD },
     { key: 'wordle_animals', name: 'Animals', words: WORDLE_ANIMALS },
@@ -109,7 +109,9 @@ function builtinSeeds(): Seed[] {
       builtin_key: t.key,
       name: t.name,
       sort_order: 2 + i,
-      entries: t.words.filter((w) => w.length >= 3 && w.length <= 8).map((w) => ({ word: w.toLowerCase() })),
+      entries: t.words
+        .filter((e) => e.word.length >= 3 && e.word.length <= 8)
+        .map((e) => ({ word: e.word.toLowerCase(), hint: e.hint })),
     })
   )
   return seeds
