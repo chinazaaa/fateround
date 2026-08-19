@@ -198,6 +198,12 @@ export async function PATCH(req: NextRequest) {
   if (startMinutes !== undefined) update.quiet_start_minutes = startMinutes
   if (endMinutes !== undefined) update.quiet_end_minutes = endMinutes
   if (timezone !== undefined) update.timezone = timezone
+  // Bind the device to the caller's profile when a bearer is sent (never
+  // clear an existing binding on an anonymous refresh) — matches POST above
+  // so a device that first appeared via a PATCH also enables the "skip
+  // self-notify" filter.
+  const subscriberUserId = await getProfileFromRequest(req)
+  if (subscriberUserId) update.user_id = subscriberUserId
   const admin = getSupabaseAdmin()
   const { error } = await admin.from('notification_subscriber_devices').update(update).eq('token_key', tokenKey)
   if (error) return NextResponse.json({ error: internalErrorMessage('notifications', error) }, { status: 500 })

@@ -112,7 +112,13 @@ export function BrowseGamesList({ previewLimit, onSeeAll, tab = 'live' }: Props)
   )
 
   useEffect(() => {
-    void load()
+    // Take the inFlight slot on mount so a focus-effect fire that races the
+    // initial load doesn't double-hit /api/games.
+    if (inFlight.current) return
+    inFlight.current = true
+    void load().finally(() => {
+      inFlight.current = false
+    })
   }, [load])
 
   // Whenever the Upcoming list changes, look up which of the visible
@@ -178,9 +184,16 @@ export function BrowseGamesList({ previewLimit, onSeeAll, tab = 'live' }: Props)
 
   // Also refetch whenever the screen regains focus. Covers the case where
   // realtime dropped or a game opened while the app was backgrounded.
+  // Skip when the initial mount fetch or another silent refresh is already
+  // in flight — otherwise focus races the mount effect and double-hits the
+  // API on first render.
   useFocusEffect(
     useCallback(() => {
-      void load(null, true)
+      if (inFlight.current) return
+      inFlight.current = true
+      void load(null, true).finally(() => {
+        inFlight.current = false
+      })
     }, [load])
   )
 

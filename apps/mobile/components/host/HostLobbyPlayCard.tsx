@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
+import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
 import type { GameType, Player } from '@fateround/shared'
 import { MONOPOLY_PLAYER_TOKENS, takenMonopolyTokens } from '@fateround/shared/monopoly-tokens'
-import { joinGame } from '@/lib/api'
+import { JoinError, joinGame } from '@/lib/api'
 import { patchPlayerName, leaveGame } from '@/lib/game-api'
 import { getRememberedName, rememberName } from '@/lib/identity-local'
 import { clearPlayerSession, setPlayerSession, type PlayerSession } from '@/lib/secure-session'
@@ -71,10 +71,41 @@ export function HostLobbyPlayCard({
   const onJoin = async () => {
     const trimmed = name.trim()
     if (!trimmed || busy || needsToken) return
+    const attempt = (continueOnThisDevice: boolean) =>
+      joinGame({ gameCode, playerName: trimmed, monopolyToken: token, continueOnThisDevice })
     setBusy(true)
     setError(null)
     try {
-      const data = await joinGame({ gameCode, playerName: trimmed, monopolyToken: token })
+      let data
+      try {
+        data = await attempt(false)
+      } catch (err) {
+        // Cross-device continuation: the signed-in host may already be seated
+        // in this game (or hosting it) from another device. Ask before taking
+        // the seat over on this one.
+        if (err instanceof JoinError && (err.reason === 'already_hosting' || err.reason === 'already_joined')) {
+          const isHost = err.reason === 'already_hosting'
+          const proceed = await new Promise<boolean>((resolve) => {
+            Alert.alert(
+              isHost ? 'Already hosting elsewhere' : 'Already in this game elsewhere',
+              isHost
+                ? 'You’re hosting this game on another device. Continue on this device, or keep it on the other one?'
+                : `You’re already a player in this game on another device${
+                    err.existingPlayerName ? ` (as ${err.existingPlayerName})` : ''
+                  }. Continue on this device, or keep it on the other one?`,
+              [
+                { text: 'Keep other device', style: 'cancel', onPress: () => resolve(false) },
+                { text: 'Continue here', style: 'default', onPress: () => resolve(true) },
+              ],
+              { cancelable: false }
+            )
+          })
+          if (!proceed) return
+          data = await attempt(true)
+        } else {
+          throw err
+        }
+      }
       const next: PlayerSession = {
         playerId: data.playerId,
         playerName: data.playerName,
@@ -82,8 +113,9 @@ export function HostLobbyPlayCard({
         resumeToken: data.resumeToken ?? null,
       }
       await setPlayerSession(gameCode, next.playerId, next.playerName, next.playerGender, next.resumeToken)
-      // Persist the name for the next Join / Create prefill.
-      void rememberName(trimmed)
+      // Persist the name for the next Join / Create prefill. Await so a fast
+      // downstream reader (via onSessionChange → parent reload) sees the write.
+      await rememberName(trimmed)
       onSessionChange(next)
       onReload()
     } catch (err) {
@@ -109,8 +141,9 @@ export function HostLobbyPlayCard({
       await patchPlayerName(gameCode, session.playerId, trimmed, session.resumeToken)
       const next: PlayerSession = { ...session, playerName: trimmed }
       await setPlayerSession(gameCode, next.playerId, next.playerName, next.playerGender, next.resumeToken)
-      // Keep the remembered name in sync with the rename.
-      void rememberName(trimmed)
+      // Keep the remembered name in sync with the rename — awaited so any
+      // fast subsequent read of getRememberedName sees the new value.
+      await rememberName(trimmed)
       onSessionChange(next)
       setRenaming(false)
       onReload()

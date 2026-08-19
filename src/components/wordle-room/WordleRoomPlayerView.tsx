@@ -275,14 +275,16 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
 
   const loadProgress = useCallback(async () => {
     if (!roundId) return
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('wordle_room_progress')
       .select('*')
       .eq('game_id', gameCode)
       .eq('round_id', roundId)
-    if (data) setProgressRows(data as WordleRoomProgressRow[])
-    // Mark loaded even when the row set is empty — the query succeeded, we
-    // just have no standings yet. This flips the loading gate below to done.
+    // Only flip progressLoaded on a successful query. A failed query mustn't
+    // pass the render gate — otherwise the finished screen or the active
+    // board renders with empty/stale standings and the user gets no retry.
+    if (error) return
+    setProgressRows((data ?? []) as WordleRoomProgressRow[])
     setProgressLoaded(true)
   }, [gameCode, roundId])
 
@@ -748,6 +750,15 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
   }
 
   if (screen === 'finished' && game) {
+    // Same gate as the playing branch — a direct visit to a finished game
+    // otherwise flashes empty standings before the progress query resolves.
+    if (!progressLoaded) {
+      return (
+        <div className="min-h-screen flex items-center justify-center">
+          <p className="text-muted">Loading…</p>
+        </div>
+      )
+    }
     const iWon =
       !!myStanding &&
       standings.length > 1 &&

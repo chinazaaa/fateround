@@ -203,9 +203,11 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
       .select('*')
       .eq('game_id', bootstrap.code)
       .eq('round_id', roundId)
-    if (res.data) setProgressRows(res.data as WordleRoomProgressRow[])
-    // Mark loaded even when the row set is empty — the query succeeded, we just
-    // have no standings yet. This flips the loading gate below to done.
+    // Only flip progressLoaded on a successful query. A failed query mustn't
+    // pass the render gate — otherwise the finished screen or the active
+    // board renders with empty/stale standings and the user gets no retry.
+    if (res.error) return
+    setProgressRows((res.data ?? []) as WordleRoomProgressRow[])
     setProgressLoaded(true)
   }, [bootstrap.code, roundId])
 

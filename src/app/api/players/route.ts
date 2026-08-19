@@ -4,7 +4,7 @@ import { createPlayerSchema, updatePlayerSchema, deletePlayerSchema } from '@/li
 import { enforceRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { normalizeGender, normalizePlayerGender, type ParticipantGender } from '@/lib/participants'
-import { normalizeResumeToken } from '@/lib/utils'
+import { generateResumeToken, normalizeResumeToken } from '@/lib/utils'
 import { removeMonopolyPlayer } from '@/lib/monopoly'
 import { removeScrabblePlayer } from '@/lib/scrabble'
 import { removeWhotPlayer } from '@/lib/whot'
@@ -294,7 +294,7 @@ export async function POST(req: NextRequest) {
   // and when they were already a player, we hand back the existing row so
   // they pick up right where they left off instead of starting a new seat.
   const joinerUserId = await getProfileFromRequest(req)
-  const continueOnThisDevice = (body as { continueOnThisDevice?: boolean }).continueOnThisDevice === true
+  const continueOnThisDevice = body.continueOnThisDevice === true
   if (joinerUserId) {
     const hostUserId = (gameRow as { host_user_id?: string | null }).host_user_id ?? null
     if (hostUserId && hostUserId === joinerUserId && !continueOnThisDevice) {
@@ -325,10 +325,21 @@ export async function POST(req: NextRequest) {
           { status: 409 }
         )
       }
-      // Continue on this device: return the existing seat so the new device
-      // resumes with the same player id + resume token (same shape as a
-      // resume-by-token reclaim above).
-      return jsonPlayerJoin(roomMemberId, existingPlayer, gameRow as Game, {}, joinerUserId)
+      // Continue on this device: rotate the resume token first so the old
+      // device's stored token stops authenticating — a "Continue here" must
+      // move control, not clone it. Only the freshly-minted token is returned
+      // to this device.
+      const rotatedResumeToken = generateResumeToken()
+      const { data: rotated, error: rotateError } = await getSupabaseAdmin()
+        .from('players')
+        .update({ resume_token: rotatedResumeToken })
+        .eq('id', (existingPlayer as { id: string }).id)
+        .select('id, name, gender, identity_gender, joined_at, spectator, is_eliminated, resume_token')
+        .single()
+      if (rotateError || !rotated) {
+        return NextResponse.json({ error: internalErrorMessage('players', rotateError) }, { status: 500 })
+      }
+      return jsonPlayerJoin(roomMemberId, rotated, gameRow as Game, {}, joinerUserId)
     }
   }
 

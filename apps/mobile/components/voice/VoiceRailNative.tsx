@@ -1,5 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
-import { Animated, Dimensions, Modal, PanResponder, Pressable, StyleSheet, Text, View } from 'react-native'
+import {
+  ActivityIndicator,
+  Animated,
+  Dimensions,
+  Modal,
+  PanResponder,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native'
 import Svg, { Line, Path } from 'react-native-svg'
 import { AudioSession, LiveKitRoom, useLocalParticipant, useParticipants } from '@livekit/react-native'
 import type { DisconnectReason } from 'livekit-client'
@@ -190,18 +200,24 @@ function DisconnectedBar({
   return (
     <View style={styles.pill}>
       <Pressable
-        style={styles.joinBtn}
+        style={[styles.joinBtn, isConnecting && styles.joinBtnConnecting]}
         disabled={isConnecting}
         onPress={onJoin}
         accessibilityRole="button"
         accessibilityLabel={
-          isConnecting ? 'Connecting to voice' : `Join voice chat${presenceCount > 0 ? `, ${presenceCount} in call` : ''}`
+          isConnecting
+            ? 'Connecting to voice'
+            : `Join voice chat${presenceCount > 0 ? `, ${presenceCount} in call` : ''}`
         }
       >
-        <View style={styles.iconRow}>
-          <MicIcon color={styles.joinText.color as string} size={18} />
-          {!isConnecting && presenceCount > 0 ? <Text style={styles.joinCount}>{presenceCount}</Text> : null}
-        </View>
+        {isConnecting ? (
+          <ActivityIndicator size="small" color={styles.joinText.color as string} />
+        ) : (
+          <View style={styles.iconRow}>
+            <MicIcon color={styles.joinText.color as string} size={18} />
+            {presenceCount > 0 ? <Text style={styles.joinCount}>{presenceCount}</Text> : null}
+          </View>
+        )}
       </Pressable>
     </View>
   )
@@ -415,6 +431,9 @@ const makeStyles = (theme: Theme) =>
     joinText: { color: '#fff', fontSize: 14, fontWeight: '800' },
     // Tiny count of active voice participants shown next to the mic icon.
     joinCount: { color: '#fff', fontSize: 12, fontWeight: '800' },
+    // Slight dim while a connect attempt is in flight so the pill visibly
+    // reads as "busy" alongside the disabled Pressable + spinner.
+    joinBtnConnecting: { opacity: 0.7 },
     mainBtn: {
       flex: 1,
       borderRadius: 999,

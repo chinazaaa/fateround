@@ -503,7 +503,12 @@ function DraggablePill({ children }: { children: React.ReactNode }) {
     if (!d.active) {
       if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return
       d.active = true
-      ;(e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId)
+      try {
+        ;(e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId)
+      } catch {
+        // Some browsers reject a late capture for an invalid/inactive pointer;
+        // the drag still works via bubbling — never let it block setPos below.
+      }
     }
     setPos(clamp(d.baseX + dx, d.baseY + dy))
   }

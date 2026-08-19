@@ -233,7 +233,7 @@ export function NotificationsPage({ preselectGameType }: { preselectGameType?: s
       }
       await fetch('/api/notifications', {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
         body: JSON.stringify({ tokenKey: effectiveToken, ...patch, timezone: deviceTimezone() }),
       }).catch(() => {})
     },
