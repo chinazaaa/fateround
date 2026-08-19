@@ -35,7 +35,9 @@ import {
   isWordGroupingGame,
   isLandmineGame,
   isWordleRoomGame,
+  isTrollRunGame,
 } from '@/lib/game-types'
+import { initializeTrollRunGame, TROLL_RUN_MIN_PLAYERS } from '@/lib/troll-run'
 import { isGameGenderBased } from '@/lib/gender-based'
 import { getCustomSlotCount } from '@/lib/custom-game'
 import { buildHotSeatRoundRows } from '@/lib/hot-seat'
@@ -1395,6 +1397,43 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
         session_started_at: sessionStartedAt,
         current_round_number: 1,
         rounds_count: 1,
+      })
+      .eq('id', code.toUpperCase())
+
+    if (gameError)
+      return NextResponse.json({ error: internalErrorMessage('games/code/start', gameError) }, { status: 500 })
+    return NextResponse.json({ success: true })
+  }
+
+  if (isTrollRunGame(gameType)) {
+    const playingPlayers = playersData.filter((p) => p.spectator !== true)
+    if (playingPlayers.length < TROLL_RUN_MIN_PLAYERS) {
+      return NextResponse.json({ error: `Need at least ${TROLL_RUN_MIN_PLAYERS} players to start` }, { status: 400 })
+    }
+
+    const { error: initError } = await initializeTrollRunGame(
+      getSupabaseAdmin(),
+      code.toUpperCase(),
+      playingPlayers.map((p) => p.id),
+      {
+        totalRounds: game.troll_run_rounds ?? 5,
+        timeLimitSeconds: game.troll_run_time_limit ?? 120,
+        world: game.troll_run_world ?? 'pits',
+      }
+    )
+
+    if (initError) {
+      return NextResponse.json({ error: 'Failed to initialize Troll Run game' }, { status: 500 })
+    }
+
+    const { error: gameError } = await getSupabaseAdmin()
+      .from('games')
+      .update({
+        status: 'active',
+        session_started_at: sessionStartedAt,
+        current_round_number: 1,
+        rounds_count: game.troll_run_rounds ?? 5,
+        replay_pending: false,
       })
       .eq('id', code.toUpperCase())
 

@@ -105,11 +105,6 @@ import {
   type CheckersLobbyState,
 } from '@/components/host/lobby-settings/CheckersLobbySection'
 import {
-  PingPongLobbySection,
-  isPingPongLobbyGame,
-  type PingPongLobbyState,
-} from '@/components/host/lobby-settings/PingPongLobbySection'
-import {
   WordleRoomLobbySection,
   isWordleRoomLobbyGame,
   type WordleRoomLobbyState,
@@ -273,7 +268,6 @@ export function HostLobbySettingsSheet({
   const isBingo = isBingoLobbyGame(gameType)
   const isMahjong = isMahjongLobbyGame(gameType)
   const isCheckers = isCheckersLobbyGame(gameType)
-  const isPingPong = isPingPongLobbyGame(gameType)
   const isTrivia = isTriviaLobbyGame(gameType)
   const isWordleRoom = isWordleRoomLobbyGame(gameType)
   const isWordGrouping = isWordGroupingLobbyGame(gameType)
@@ -432,10 +426,6 @@ export function HostLobbySettingsSheet({
   const [checkers, setCheckers] = useState<CheckersLobbyState>(() => ({
     timerSeconds: game.timer_seconds ?? 0,
     checkersNigeriaStreetRules: game.checkers_nigeria_street_rules === true,
-  }))
-  const [pingPong, setPingPong] = useState<PingPongLobbyState>(() => ({
-    pointsToWin: game.ping_pong_points_to_win ?? 7,
-    gameDurationSeconds: game.game_duration_seconds ?? 0,
   }))
   const [wordle, setWordle] = useState<WordleRoomLobbyState>(() => {
     const rawCustom = (game as unknown as { wordle_room_custom_words?: unknown }).wordle_room_custom_words
@@ -619,11 +609,6 @@ export function HostLobbySettingsSheet({
       if (checkers.timerSeconds !== game.timer_seconds) board.timer_seconds = checkers.timerSeconds
       if (gameType === 'checkers_nigeria' && checkers.checkersNigeriaStreetRules !== game.checkers_nigeria_street_rules)
         board.checkers_nigeria_street_rules = checkers.checkersNigeriaStreetRules
-    }
-    if (isPingPong) {
-      if (pingPong.pointsToWin !== game.ping_pong_points_to_win) board.ping_pong_points_to_win = pingPong.pointsToWin
-      if (pingPong.gameDurationSeconds !== game.game_duration_seconds)
-        board.game_duration_seconds = pingPong.gameDurationSeconds
     }
     if (isWordleRoom) {
       if (wordle.category !== game.wordle_room_category) board.wordle_room_category = wordle.category
@@ -1052,10 +1037,6 @@ export function HostLobbySettingsSheet({
                   value={checkers}
                   onChange={(p) => setCheckers((prev) => ({ ...prev, ...p }))}
                 />
-              ) : null}
-
-              {isPingPong ? (
-                <PingPongLobbySection value={pingPong} onChange={(p) => setPingPong((prev) => ({ ...prev, ...p }))} />
               ) : null}
 
               {isWordleRoom ? (

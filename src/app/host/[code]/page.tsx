@@ -26,9 +26,11 @@ import type { Game } from '@/types'
  * page stays a thin load-and-dispatch.
  */
 export default function HostPage() {
-  const { code } = useParams<{ code: string }>()
+  const params = useParams<{ code?: string | string[] }>()
+  const code = params?.code
   const router = useRouter()
-  const gameCode = (Array.isArray(code) ? code[0] : code).toUpperCase()
+  const rawCode = Array.isArray(code) ? code[0] : code
+  const gameCode = (typeof rawCode === 'string' ? rawCode : '').toUpperCase()
   // URL token drives the primary flow; when it's absent (host reopened /host/[code] on
   // this device) we fall back to the remembered token — resolved in an effect so there's
   // no hydration mismatch, and `resolved` lets us hold off "access denied" until checked.

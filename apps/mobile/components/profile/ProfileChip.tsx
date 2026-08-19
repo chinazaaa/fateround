@@ -214,142 +214,139 @@ function SaveToProfileSheet({
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
+      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <Pressable style={styles.backdrop} onPress={onClose}>
           {/* Stop taps inside the sheet from dismissing it. */}
           <Pressable style={styles.sheetWrap} onPress={() => {}}>
             <SafeAreaView edges={['bottom']} style={styles.sheet}>
-            <View style={styles.grabber} />
-            <View style={styles.header}>
-              <Text style={styles.title}>{signedIn ? 'Your profile' : 'Save your progress'}</Text>
-              <Pressable hitSlop={12} onPress={onClose} accessibilityRole="button" accessibilityLabel="Close">
-                <Text style={styles.close}>✕</Text>
-              </Pressable>
-            </View>
+              <View style={styles.grabber} />
+              <View style={styles.header}>
+                <Text style={styles.title}>{signedIn ? 'Your profile' : 'Save your progress'}</Text>
+                <Pressable hitSlop={12} onPress={onClose} accessibilityRole="button" accessibilityLabel="Close">
+                  <Text style={styles.close}>✕</Text>
+                </Pressable>
+              </View>
 
-            <View style={styles.body}>
-              {signedIn ? (
-                <>
-                  <Text style={styles.hint}>
-                    Signed in as {handle || 'you'}. Your streak and trophies follow this account onto any device.
-                  </Text>
-                  <Pressable
-                    style={styles.secondaryBtn}
-                    onPress={() => void switchUser()}
-                    accessibilityRole="button"
-                    accessibilityLabel="Not you? Switch account"
-                  >
-                    <Text style={styles.secondaryBtnText}>Not you? Switch</Text>
-                  </Pressable>
-                </>
-              ) : step === 'email' ? (
-                <>
-                  <Text style={styles.hint}>
-                    New here? We&apos;ll create your profile. Been here before? We&apos;ll load your trophies.
-                  </Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="you@example.com"
-                    placeholderTextColor={theme.textFaint}
-                    value={email}
-                    onChangeText={setEmail}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    keyboardType="email-address"
-                    textContentType="emailAddress"
-                    returnKeyType="send"
-                    onSubmitEditing={() => {
-                      if (!busy && email.trim()) void sendCode()
-                    }}
-                  />
-                  {message ? <Text style={styles.error}>{message}</Text> : null}
-                  <Pressable
-                    style={[styles.primaryBtn, (busy || !email.trim()) && styles.btnDisabled]}
-                    disabled={busy || !email.trim()}
-                    onPress={() => void sendCode()}
-                    accessibilityRole="button"
-                    accessibilityLabel="Save to profile"
-                  >
-                    {busy ? (
-                      <ActivityIndicator color="#fff" />
-                    ) : (
-                      <Text style={styles.primaryBtnText}>Save to profile</Text>
-                    )}
-                  </Pressable>
-                </>
-              ) : (
-                <>
-                  <Text style={styles.hint}>We emailed an 8-digit code to {email}.</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="12345678"
-                    placeholderTextColor={theme.textFaint}
-                    value={code}
-                    onChangeText={setCode}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    keyboardType="number-pad"
-                    textContentType="oneTimeCode"
-                    maxLength={8}
-                    returnKeyType="done"
-                    onSubmitEditing={() => {
-                      if (!busy && code.trim()) void submitCode()
-                    }}
-                  />
-                  {message ? <Text style={styles.error}>{message}</Text> : null}
-                  <Pressable
-                    style={[styles.primaryBtn, (busy || !code.trim()) && styles.btnDisabled]}
-                    disabled={busy || !code.trim()}
-                    onPress={() => void submitCode()}
-                    accessibilityRole="button"
-                    accessibilityLabel="Confirm code"
-                  >
-                    {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>Confirm</Text>}
-                  </Pressable>
-                  <Pressable
-                    disabled={busy}
-                    onPress={() => setStep('email')}
-                    accessibilityRole="button"
-                    accessibilityLabel="Use a different email"
-                  >
-                    <Text style={styles.link}>Use a different email</Text>
-                  </Pressable>
-                </>
-              )}
+              <View style={styles.body}>
+                {signedIn ? (
+                  <>
+                    <Text style={styles.hint}>
+                      Signed in as {handle || 'you'}. Your streak and trophies follow this account onto any device.
+                    </Text>
+                    <Pressable
+                      style={styles.secondaryBtn}
+                      onPress={() => void switchUser()}
+                      accessibilityRole="button"
+                      accessibilityLabel="Not you? Switch account"
+                    >
+                      <Text style={styles.secondaryBtnText}>Not you? Switch</Text>
+                    </Pressable>
+                  </>
+                ) : step === 'email' ? (
+                  <>
+                    <Text style={styles.hint}>
+                      New here? We&apos;ll create your profile. Been here before? We&apos;ll load your trophies.
+                    </Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="you@example.com"
+                      placeholderTextColor={theme.textFaint}
+                      value={email}
+                      onChangeText={setEmail}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      keyboardType="email-address"
+                      textContentType="emailAddress"
+                      returnKeyType="send"
+                      onSubmitEditing={() => {
+                        if (!busy && email.trim()) void sendCode()
+                      }}
+                    />
+                    {message ? <Text style={styles.error}>{message}</Text> : null}
+                    <Pressable
+                      style={[styles.primaryBtn, (busy || !email.trim()) && styles.btnDisabled]}
+                      disabled={busy || !email.trim()}
+                      onPress={() => void sendCode()}
+                      accessibilityRole="button"
+                      accessibilityLabel="Save to profile"
+                    >
+                      {busy ? (
+                        <ActivityIndicator color="#fff" />
+                      ) : (
+                        <Text style={styles.primaryBtnText}>Save to profile</Text>
+                      )}
+                    </Pressable>
+                  </>
+                ) : (
+                  <>
+                    <Text style={styles.hint}>We emailed an 8-digit code to {email}.</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="12345678"
+                      placeholderTextColor={theme.textFaint}
+                      value={code}
+                      onChangeText={setCode}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      keyboardType="number-pad"
+                      textContentType="oneTimeCode"
+                      maxLength={8}
+                      returnKeyType="done"
+                      onSubmitEditing={() => {
+                        if (!busy && code.trim()) void submitCode()
+                      }}
+                    />
+                    {message ? <Text style={styles.error}>{message}</Text> : null}
+                    <Pressable
+                      style={[styles.primaryBtn, (busy || !code.trim()) && styles.btnDisabled]}
+                      disabled={busy || !code.trim()}
+                      onPress={() => void submitCode()}
+                      accessibilityRole="button"
+                      accessibilityLabel="Confirm code"
+                    >
+                      {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>Confirm</Text>}
+                    </Pressable>
+                    <Pressable
+                      disabled={busy}
+                      onPress={() => setStep('email')}
+                      accessibilityRole="button"
+                      accessibilityLabel="Use a different email"
+                    >
+                      <Text style={styles.link}>Use a different email</Text>
+                    </Pressable>
+                  </>
+                )}
 
-              {/* Always-available link into the dedicated /profile screen — the
+                {/* Always-available link into the dedicated /profile screen — the
                   trophy grid + per-game stats live there. Closing the sheet
                   before push so the route stack stays clean. */}
-              <Pressable
-                onPress={() => {
-                  onClose()
-                  // Expo Router's typed-routes registry regenerates on the
-                  // next build; the cast is a one-turn measure until then.
-                  router.push('/profile' as never)
-                }}
-                accessibilityRole="button"
-                accessibilityLabel="See trophies and stats"
-              >
-                <Text style={styles.link}>See trophies & stats →</Text>
-              </Pressable>
+                <Pressable
+                  onPress={() => {
+                    onClose()
+                    // Expo Router's typed-routes registry regenerates on the
+                    // next build; the cast is a one-turn measure until then.
+                    router.push('/profile' as never)
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel="See trophies and stats"
+                >
+                  <Text style={styles.link}>See trophies & stats →</Text>
+                </Pressable>
 
-              {/* Persistent entry point to /notifications for anyone who
+                {/* Persistent entry point to /notifications for anyone who
                   dismissed the home banner. Lives in the profile sheet so it
                   doesn't crowd the home actions. */}
-              <Pressable
-                onPress={() => {
-                  onClose()
-                  router.push('/notifications' as never)
-                }}
-                accessibilityRole="button"
-                accessibilityLabel="Notification preferences"
-              >
-                <Text style={styles.link}>🔔 Notification preferences →</Text>
-              </Pressable>
-            </View>
+                <Pressable
+                  onPress={() => {
+                    onClose()
+                    router.push('/notifications' as never)
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Notification preferences"
+                >
+                  <Text style={styles.link}>🔔 Notification preferences →</Text>
+                </Pressable>
+              </View>
             </SafeAreaView>
           </Pressable>
         </Pressable>

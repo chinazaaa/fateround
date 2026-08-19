@@ -62,7 +62,6 @@ export interface Settings {
   mafia_anonymous_votes?: boolean
   mafia_day_seconds?: number
   mafia_voting_seconds?: number
-  ping_pong_points_to_win?: number
 }
 
 export type Step = 'settings' | 'participants' | 'done'

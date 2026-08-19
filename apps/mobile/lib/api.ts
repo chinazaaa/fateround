@@ -20,7 +20,11 @@ export class JoinError extends Error {
   /** Set when the server returned a cross-device 409 (already_hosting / already_joined). */
   reason?: 'already_hosting' | 'already_joined'
   existingPlayerName?: string | null
-  constructor(message: string, full: boolean, extras?: { reason?: JoinError['reason']; existingPlayerName?: string | null }) {
+  constructor(
+    message: string,
+    full: boolean,
+    extras?: { reason?: JoinError['reason']; existingPlayerName?: string | null }
+  ) {
     super(message)
     this.name = 'JoinError'
     this.full = full

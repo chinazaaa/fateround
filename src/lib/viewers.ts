@@ -15,7 +15,6 @@ import {
   isChessGame,
   isCheckersGame,
   isDraughts10Game,
-  isPingPongGame,
   isAyoGame,
   isScrabbleGame,
   isDescribeItGame,
@@ -39,6 +38,7 @@ import {
   isMafiaGame,
   isWordGroupingGame,
   isWordleRoomGame,
+  isTrollRunGame,
   parseGameType,
 } from '@/lib/game-types'
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -116,12 +116,12 @@ export function gameAllowsLatePlayerJoin(gameType: GameType): boolean {
     !isCheckersGame(gameType) &&
     !isDraughts10Game(gameType) &&
     !isAyoGame(gameType) &&
-    !isPingPongGame(gameType) &&
     !isScrabbleGame(gameType) &&
     !isSudokuGame(gameType) &&
     !isCrosswordGame(gameType) &&
     !isWordSearchGame(gameType) &&
-    !isWordScrambleGame(gameType)
+    !isWordScrambleGame(gameType) &&
+    !isTrollRunGame(gameType)
   )
 }
 

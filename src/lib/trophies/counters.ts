@@ -3104,56 +3104,6 @@ export const COUNTERS: readonly CounterDef[] = [
     phrase: 'won capturing on every move at least {n} time{s}',
   },
 
-  // ── Ping Pong ──────────────────────────────────────────────────────────
-  {
-    key: 'ping_pong_match_to_3',
-    label: 'Ping Pong — match to 3',
-    description: 'Matches played to 3 points.',
-    scope: 'per-game',
-    availability: 'partial',
-    phrase: 'played at least {n} match{s} to 3 points',
-  },
-  {
-    key: 'ping_pong_match_to_21',
-    label: 'Ping Pong — match to 21',
-    description: 'Matches played to 21 points.',
-    scope: 'per-game',
-    availability: 'partial',
-    phrase: 'played at least {n} match{s} to 21 points',
-  },
-  {
-    key: 'ping_pong_shutout_wins',
-    label: 'Ping Pong — shutout wins',
-    description: 'Wins where the opponent scored zero points.',
-    scope: 'per-game',
-    availability: 'partial',
-    phrase: 'won a shutout at least {n} time{s}',
-  },
-  {
-    key: 'ping_pong_deuce_wins',
-    label: 'Ping Pong — deuce wins',
-    description: 'Wins in matches that went to deuce.',
-    scope: 'per-game',
-    availability: 'partial',
-    phrase: 'won from deuce at least {n} time{s}',
-  },
-  {
-    key: 'ping_pong_comeback_wins',
-    label: 'Ping Pong — comeback wins',
-    description: 'Wins after trailing during the match.',
-    scope: 'per-game',
-    availability: 'partial',
-    phrase: 'came back to win at least {n} time{s}',
-  },
-  {
-    key: 'ping_pong_match_wins',
-    label: 'Ping Pong — matches won',
-    description: 'Total matches won.',
-    scope: 'per-game',
-    availability: 'partial',
-    phrase: 'won at least {n} match{s}',
-  },
-
   // ── Tic Tac Toe (Ultimate) ─────────────────────────────────────────────
   {
     key: 'ttt_sub_boards_won',
