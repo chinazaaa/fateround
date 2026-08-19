@@ -363,6 +363,10 @@ function GameCard({
   const isLobby = game.status === 'waiting'
   const isActive = game.status === 'active'
   const count = game.max_players != null ? `${game.playerCount}/${game.max_players}` : `${game.playerCount}`
+  const isFull = game.max_players != null && game.playerCount >= game.max_players
+  // Active games can still take new players when the host allowed late joiners
+  // AND there's a seat free. Otherwise the only affordance is spectating.
+  const lateJoinable = isActive && game.allow_late_players === true && !isFull
   // Once we know the viewer is already in the game, the CTA says so — "Continue"
   // for a live/lobby game they've joined, otherwise the default join/watch CTA.
   const showContinue = iAmPlayer && !iAmHost && !isScheduled && (isLobby || isActive)
@@ -371,9 +375,9 @@ function GameCard({
     : isScheduled
       ? `Scheduled · ${formatScheduled(game.scheduled_at)}`
       : isLobby
-        ? `Waiting for players · ${count} player${game.playerCount === 1 ? '' : 's'}`
+        ? `${isFull ? 'Lobby full' : 'Waiting for players'} · ${count} player${game.playerCount === 1 ? '' : 's'}`
         : isActive
-          ? `In progress · ${count} player${game.playerCount === 1 ? '' : 's'}`
+          ? `In progress${lateJoinable ? ' · join or watch' : isFull ? ' · full' : ''} · ${count} player${game.playerCount === 1 ? '' : 's'}`
           : 'Finished'
   const cta = iAmHost
     ? 'Open panel'
@@ -382,8 +386,12 @@ function GameCard({
       : showContinue
         ? 'Continue'
         : isLobby
-          ? 'Join'
-          : 'Watch'
+          ? isFull
+            ? 'Watch'
+            : 'Join'
+          : lateJoinable
+            ? 'Join'
+            : 'Watch'
 
   return (
     <SurfaceCard>
