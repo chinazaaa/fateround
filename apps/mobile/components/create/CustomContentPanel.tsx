@@ -87,7 +87,7 @@ export function CustomContentPanel({ gameType, custom, roundsCount, onChange }: 
     if (kind === 'binary') {
       const rows = parseWyrCsv(text)
       if (rows.length === 0) {
-        setImportError('No option_a / option_b rows found')
+        setImportError(`No option_a / option_b rows found in ${source}`)
         return false
       }
       const existing = custom.pairs.filter((p) => p.optionA.trim() && p.optionB.trim())
@@ -95,7 +95,7 @@ export function CustomContentPanel({ gameType, custom, roundsCount, onChange }: 
     } else if (kind === 'trivia') {
       const rows = parseTriviaCsv(text)
       if (rows.length === 0) {
-        setImportError('No question rows found (question, answers, correct)')
+        setImportError(`No question rows found in ${source} (question, answers, correct)`)
         return false
       }
       const existing = custom.trivia.filter((t) => t.question.trim() && t.choices.filter(Boolean).length >= 2)
