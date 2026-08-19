@@ -237,10 +237,13 @@ export function BrowseGamesPage() {
                 const cfg = gameTypeConfig(parseGameType(game.game_type))
                 const isScheduled = game.status === 'scheduled'
                 const isLobby = game.status === 'waiting'
+                const isActive = game.status === 'active'
                 const title = game.title?.trim()
                 const titleLine = title && title.toLowerCase() !== cfg.label.toLowerCase() ? title : null
                 const count =
                   game.max_players != null ? `${game.playerCount}/${game.max_players}` : `${game.playerCount}`
+                const isFull = game.max_players != null && game.playerCount >= game.max_players
+                const lateJoinable = isActive && game.allow_late_players === true && !isFull
                 const scheduledLabel = game.scheduled_at
                   ? new Date(game.scheduled_at).toLocaleString(undefined, {
                       weekday: 'short',
@@ -283,6 +286,7 @@ export function BrowseGamesPage() {
                             </span>
                           )}
                           {roomGameStatusLabel(game.status)}
+                          {lateJoinable ? ' · join or watch' : isFull ? ' · full' : ''}
                           {` · ${count} player${game.playerCount !== 1 ? 's' : ''}`}
                         </>
                       )}
@@ -302,8 +306,12 @@ export function BrowseGamesPage() {
                           : iAmPlayer
                             ? 'Continue'
                             : isLobby
-                              ? 'Join game'
-                              : 'Watch'
+                              ? isFull
+                                ? 'Watch'
+                                : 'Join game'
+                              : lateJoinable
+                                ? 'Join game'
+                                : 'Watch'
                       const styleClass = iAmHost
                         ? 'btn-primary'
                         : isScheduled
@@ -312,9 +320,11 @@ export function BrowseGamesPage() {
                             : 'btn-primary'
                           : iAmPlayer
                             ? 'btn-primary'
-                            : isLobby
+                            : isLobby && !isFull
                               ? 'btn-primary'
-                              : 'btn-secondary'
+                              : lateJoinable
+                                ? 'btn-primary'
+                                : 'btn-secondary'
                       return (
                         <Link
                           href={href}

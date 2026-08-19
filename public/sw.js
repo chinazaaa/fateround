@@ -37,10 +37,31 @@ self.addEventListener('notificationclick', (event) => {
   const targetUrl = (event.notification.data && event.notification.data.url) || '/'
 
   event.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-      // Focus an existing tab for this game if one is open, otherwise open a new one.
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(async (clientList) => {
+      // Prefer a tab that's already on the target URL — just focus it.
       for (const client of clientList) {
+        try {
+          const clientPath = new URL(client.url).pathname
+          if (clientPath === targetUrl && 'focus' in client) return client.focus()
+        } catch {
+          // Fall through to the substring check for exotic URLs.
+        }
         if (client.url.includes(targetUrl) && 'focus' in client) return client.focus()
+      }
+      // Otherwise reuse the first same-origin PWA window: navigate it to the
+      // target and focus it. Without this the click was a no-op on installed
+      // PWAs on iOS/Android where openWindow can be blocked when a same-origin
+      // client is already registered.
+      for (const client of clientList) {
+        if ('navigate' in client && 'focus' in client) {
+          try {
+            await client.navigate(targetUrl)
+            return client.focus()
+          } catch {
+            // navigate() can reject on cross-origin transitions or older
+            // browsers; fall through to openWindow.
+          }
+        }
       }
       if (self.clients.openWindow) return self.clients.openWindow(targetUrl)
     })
