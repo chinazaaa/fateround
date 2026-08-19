@@ -60,9 +60,29 @@ export async function driveWhotBotsOnce(gameCode: string): Promise<DriveResult> 
     .eq('is_bot', true)
   if (!botCount || botCount === 0) return { kind: 'idle' }
 
-  // Load the current session + hands + game rules. Mirrors what the DB
-  // engine's loadGameState does, but skipped the timerSeconds / duration
-  // logic — the ticker separately drives expire-turn for those.
+  // Narrow pre-check: whose turn is it? `whot_sessions` carries the full
+  // draw/discard piles (up to 54 cards of JSONB) and `whot_player_hands`
+  // carries every player's cards — both expensive to pull on every 2.5s
+  // tick. Read only the columns needed to resolve turn order first, so a
+  // bot-containing game where a HUMAN currently holds the turn (the common
+  // case) costs one small row instead of the full session + all hands.
+  const { data: turnRow } = await admin
+    .from('whot_sessions')
+    .select('phase, turn_order, current_turn_index')
+    .eq('game_id', code)
+    .maybeSingle()
+  if (!turnRow || turnRow.phase === 'finished') return { kind: 'idle' }
+  const turnPlayerId = turnRow.turn_order[turnRow.current_turn_index]
+  if (!turnPlayerId) return { kind: 'idle' }
+  const { data: turnPlayer } = await admin
+    .from('players')
+    .select('id, is_bot')
+    .eq('id', turnPlayerId)
+    .eq('game_id', code)
+    .maybeSingle()
+  if (!turnPlayer?.is_bot) return { kind: 'idle' }
+
+  // It's actually a bot's turn — now it's worth paying for the full state.
   const [sessionRes, handsRes, gameRes] = await Promise.all([
     admin.from('whot_sessions').select('*').eq('game_id', code).maybeSingle(),
     admin.from('whot_player_hands').select('*').eq('game_id', code).order('player_order'),
@@ -74,18 +94,8 @@ export async function driveWhotBotsOnce(gameCode: string): Promise<DriveResult> 
   ])
   const session = sessionRes.data as WhotSession | null
   const hands = (handsRes.data ?? []) as WhotPlayerHand[]
+  // Re-check phase — it could have flipped to 'finished' between the two reads.
   if (!session || session.phase === 'finished') return { kind: 'idle' }
-
-  // Whose turn is it? If it's a human, no-op — humans move on their own.
-  const turnPlayerId = session.turn_order[session.current_turn_index]
-  if (!turnPlayerId) return { kind: 'idle' }
-  const { data: turnPlayer } = await admin
-    .from('players')
-    .select('id, is_bot')
-    .eq('id', turnPlayerId)
-    .eq('game_id', code)
-    .maybeSingle()
-  if (!turnPlayer?.is_bot) return { kind: 'idle' }
 
   const rules = parseWhotRules(gameRes.data ?? null)
   const adapted = adaptForBot(session, hands, turnPlayerId, rules)
