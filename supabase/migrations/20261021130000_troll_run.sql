@@ -123,15 +123,18 @@ CREATE INDEX IF NOT EXISTS idx_troll_run_events_game_id ON troll_run_events(game
 -- 7. RLS Policies
 ALTER TABLE troll_run_sessions ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "public_troll_run_sessions" ON troll_run_sessions;
-CREATE POLICY "public_troll_run_sessions" ON troll_run_sessions FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "public_troll_run_sessions" ON troll_run_sessions FOR SELECT USING (true);
+GRANT SELECT ON public.troll_run_sessions TO anon, authenticated;
 
 ALTER TABLE troll_run_player_states ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "public_troll_run_player_states" ON troll_run_player_states;
-CREATE POLICY "public_troll_run_player_states" ON troll_run_player_states FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "public_troll_run_player_states" ON troll_run_player_states FOR SELECT USING (true);
+GRANT SELECT ON public.troll_run_player_states TO anon, authenticated;
 
 ALTER TABLE troll_run_events ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "public_troll_run_events" ON troll_run_events;
-CREATE POLICY "public_troll_run_events" ON troll_run_events FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "public_troll_run_events" ON troll_run_events FOR SELECT USING (true);
+GRANT SELECT ON public.troll_run_events TO anon, authenticated;
 
 -- 8. Realtime Publications
 DO $$ BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE troll_run_sessions; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
