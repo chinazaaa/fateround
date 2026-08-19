@@ -314,6 +314,18 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
     void loadProgress()
   }, [roundId, loadProgress])
 
+  // Poll fallback for the standings read. Realtime is primary, but if the socket
+  // drops or the very first read raced ahead of the rows being written, some
+  // players saw an all-zero "Race standings" while others saw the real numbers.
+  // A light poll while the game is live or finished guarantees every client
+  // converges on the real standings within a few seconds regardless of realtime.
+  useEffect(() => {
+    if (!roundId) return
+    if (game?.status !== 'active' && game?.status !== 'finished') return
+    const id = window.setInterval(() => void loadProgress(), 4000)
+    return () => window.clearInterval(id)
+  }, [roundId, game?.status, loadProgress])
+
   // Realtime standings: progress rows + players both refresh live. My own row's update
   // re-syncs the current word (handles a second device or a missed transition).
   useEffect(() => {
