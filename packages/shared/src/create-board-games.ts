@@ -170,17 +170,3 @@ export function parseScrabbleClockMode(value: unknown): ScrabbleClockMode {
 export function formatScrabbleClockMinutes(seconds: number): string {
   return `${seconds / 60} min each`
 }
-
-export const PING_PONG_POINTS_OPTIONS = [3, 5, 7, 11, 15, 21] as const
-export const PING_PONG_DEFAULT_POINTS = 7
-
-export function clampPingPongPoints(value: unknown): number {
-  const n = Number(value)
-  return (PING_PONG_POINTS_OPTIONS as readonly number[]).includes(n) ? n : PING_PONG_DEFAULT_POINTS
-}
-
-export function pingPongServingSide(scoreX: number, scoreO: number, pointsToWin: number): 'X' | 'O' {
-  const total = scoreX + scoreO
-  const deuce = scoreX >= pointsToWin - 1 && scoreO >= pointsToWin - 1
-  return deuce ? (total % 2 === 0 ? 'X' : 'O') : total % 4 < 2 ? 'X' : 'O'
-}

@@ -58,7 +58,6 @@ const WINNER_SOURCES: Partial<Record<GameType, WinnerSource>> = {
   checkers_international: { table: 'checkers10_sessions', column: 'winner_player_id' },
   checkers_nigeria: { table: 'checkers10_sessions', column: 'winner_player_id' },
   ayo: { table: 'ayo_sessions', column: 'winner_player_id' },
-  ping_pong: { table: 'ping_pong_sessions', column: 'winner_player_id' },
   uno: { table: 'uno_sessions', column: 'winner_player_id' },
   // Mahjong can end with several winners, so prefer the array and fall back to the scalar.
 }
@@ -258,6 +257,38 @@ const CUSTOM_WINNER_RESOLVERS: Partial<
   mafia: resolveMafiaWinners,
   mahjong: resolveMahjongWinners,
   describe_it: resolveDescribeItWinners,
+  troll_run: resolveTrollRunWinners,
+}
+
+async function resolveTrollRunWinners(supabase: SupabaseClient, gameId: string): Promise<string[] | null> {
+  try {
+    const { data: states } = await supabase
+      .from('troll_run_player_states')
+      .select('player_id, total_score, deaths, total_time_ms')
+      .eq('game_id', gameId)
+
+    if (!states || states.length === 0) return null
+
+    const byPlayer = new Map<string, { totalScore: number; deaths: number; totalTimeMs: number }>()
+    for (const state of states) {
+      const prev = byPlayer.get(state.player_id) ?? { totalScore: 0, deaths: 0, totalTimeMs: 0 }
+      prev.totalScore = Math.max(prev.totalScore, state.total_score ?? 0)
+      prev.deaths += state.deaths ?? 0
+      prev.totalTimeMs += state.total_time_ms ?? 0
+      byPlayer.set(state.player_id, prev)
+    }
+
+    const sorted = [...byPlayer.entries()].sort(([, a], [, b]) => {
+      if (b.totalScore !== a.totalScore) return b.totalScore - a.totalScore
+      if (a.deaths !== b.deaths) return a.deaths - b.deaths
+      return a.totalTimeMs - b.totalTimeMs
+    })
+
+    if (sorted.length === 0 || sorted[0][1].totalScore === 0) return []
+    return [sorted[0][0]]
+  } catch {
+    return null
+  }
 }
 
 async function resolveMafiaWinners(supabase: SupabaseClient, gameId: string): Promise<string[] | null> {

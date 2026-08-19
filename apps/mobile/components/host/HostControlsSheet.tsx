@@ -29,6 +29,7 @@ import { AddGameTimeControl } from '@/components/host/AddGameTimeControl'
 import { RotatePlayerCodeRow } from '@/components/session/RotatePlayerCodeRow'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
+import { KeyboardAvoidingModalContent } from '@/components/ui/KeyboardAvoidingModalContent'
 
 type Props = {
   visible: boolean
@@ -195,173 +196,175 @@ export function HostControlsSheet({
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <SafeAreaView style={styles.sheet} edges={['top', 'bottom']}>
-        <View style={styles.header}>
-          <Text style={styles.title}>Host settings</Text>
-          <Pressable hitSlop={12} onPress={onClose}>
-            <Text style={styles.close}>Done</Text>
-          </Pressable>
-        </View>
+      <KeyboardAvoidingModalContent>
+        <SafeAreaView style={styles.sheet} edges={['top', 'bottom']}>
+          <View style={styles.header}>
+            <Text style={styles.title}>Host settings</Text>
+            <Pressable hitSlop={12} onPress={onClose}>
+              <Text style={styles.close}>Done</Text>
+            </Pressable>
+          </View>
 
-        <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
-          <Text style={styles.sectionLabel}>Players · {activePlayers.length}</Text>
-          {activePlayers.length === 0 ? (
-            <Text style={styles.muted}>No players yet.</Text>
-          ) : (
-            activePlayers.map((p) => {
-              const isHost = p.id === hostPlayerId
-              const canEditSelf = isHost && !!hostResumeToken
-              if (isHost && editingName) {
+          <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
+            <Text style={styles.sectionLabel}>Players · {activePlayers.length}</Text>
+            {activePlayers.length === 0 ? (
+              <Text style={styles.muted}>No players yet.</Text>
+            ) : (
+              activePlayers.map((p) => {
+                const isHost = p.id === hostPlayerId
+                const canEditSelf = isHost && !!hostResumeToken
+                if (isHost && editingName) {
+                  return (
+                    <View key={p.id} style={styles.playerRow}>
+                      <TextInput
+                        style={styles.nameInput}
+                        value={nameDraft}
+                        onChangeText={setNameDraft}
+                        placeholder="Your name"
+                        placeholderTextColor={theme.textFaint}
+                        autoCapitalize="words"
+                        autoFocus
+                        maxLength={24}
+                        returnKeyType="done"
+                        onSubmitEditing={saveName}
+                      />
+                      <Pressable onPress={saveName} disabled={busy === 'rename' || !nameDraft.trim()} hitSlop={8}>
+                        {busy === 'rename' ? (
+                          <ActivityIndicator color={theme.primaryMuted} />
+                        ) : (
+                          <Text style={[styles.editText, !nameDraft.trim() && styles.editDisabled]}>Save</Text>
+                        )}
+                      </Pressable>
+                      <Pressable onPress={() => setEditingName(false)} disabled={busy === 'rename'} hitSlop={8}>
+                        <Text style={styles.cancelText}>Cancel</Text>
+                      </Pressable>
+                    </View>
+                  )
+                }
                 return (
                   <View key={p.id} style={styles.playerRow}>
-                    <TextInput
-                      style={styles.nameInput}
-                      value={nameDraft}
-                      onChangeText={setNameDraft}
-                      placeholder="Your name"
-                      placeholderTextColor={theme.textFaint}
-                      autoCapitalize="words"
-                      autoFocus
-                      maxLength={24}
-                      returnKeyType="done"
-                      onSubmitEditing={saveName}
-                    />
-                    <Pressable onPress={saveName} disabled={busy === 'rename' || !nameDraft.trim()} hitSlop={8}>
-                      {busy === 'rename' ? (
-                        <ActivityIndicator color={theme.primaryMuted} />
-                      ) : (
-                        <Text style={[styles.editText, !nameDraft.trim() && styles.editDisabled]}>Save</Text>
-                      )}
-                    </Pressable>
-                    <Pressable onPress={() => setEditingName(false)} disabled={busy === 'rename'} hitSlop={8}>
-                      <Text style={styles.cancelText}>Cancel</Text>
-                    </Pressable>
+                    <Text style={styles.playerName} numberOfLines={1}>
+                      {p.name}
+                      {isHost ? <Text style={styles.hostTag}> · you</Text> : null}
+                    </Text>
+                    {canEditSelf ? (
+                      <Pressable onPress={() => startEditName(p.name)} hitSlop={8}>
+                        <Text style={styles.editText}>Edit name</Text>
+                      </Pressable>
+                    ) : !isHost ? (
+                      <Pressable onPress={() => confirmRemove(p)} disabled={busy === `remove-${p.id}`}>
+                        {busy === `remove-${p.id}` ? (
+                          <ActivityIndicator color={theme.error} />
+                        ) : (
+                          <Text style={styles.removeText}>Remove</Text>
+                        )}
+                      </Pressable>
+                    ) : null}
                   </View>
                 )
-              }
-              return (
-                <View key={p.id} style={styles.playerRow}>
-                  <Text style={styles.playerName} numberOfLines={1}>
-                    {p.name}
-                    {isHost ? <Text style={styles.hostTag}> · you</Text> : null}
-                  </Text>
-                  {canEditSelf ? (
-                    <Pressable onPress={() => startEditName(p.name)} hitSlop={8}>
-                      <Text style={styles.editText}>Edit name</Text>
-                    </Pressable>
-                  ) : !isHost ? (
-                    <Pressable onPress={() => confirmRemove(p)} disabled={busy === `remove-${p.id}`}>
-                      {busy === `remove-${p.id}` ? (
-                        <ActivityIndicator color={theme.error} />
-                      ) : (
-                        <Text style={styles.removeText}>Remove</Text>
-                      )}
-                    </Pressable>
-                  ) : null}
-                </View>
-              )
-            })
-          )}
+              })
+            )}
 
-          <Text style={[styles.sectionLabel, styles.sectionSpacer]}>Game settings</Text>
-          <SettingToggle
-            label="Public game"
-            description="Listed in Browse for anyone to find and join"
-            value={!!game.is_public}
-            onChange={(v) => void saveSetting('public', { is_public: v })}
-            disabled={busy === 'setting-public'}
-          />
-          {showLateJoin ? (
-            <View style={styles.settingBlock}>
-              <Text style={styles.settingTitle}>Late join</Text>
-              <LateJoinPolicyPicker
-                gameType={game.game_type}
-                value={lateJoinPolicyFromGame(game)}
-                onChange={(v) => void saveSetting('late', { late_join_policy: v })}
+            <Text style={[styles.sectionLabel, styles.sectionSpacer]}>Game settings</Text>
+            <SettingToggle
+              label="Public game"
+              description="Listed in Browse for anyone to find and join"
+              value={!!game.is_public}
+              onChange={(v) => void saveSetting('public', { is_public: v })}
+              disabled={busy === 'setting-public'}
+            />
+            {showLateJoin ? (
+              <View style={styles.settingBlock}>
+                <Text style={styles.settingTitle}>Late join</Text>
+                <LateJoinPolicyPicker
+                  gameType={game.game_type}
+                  value={lateJoinPolicyFromGame(game)}
+                  onChange={(v) => void saveSetting('late', { late_join_policy: v })}
+                />
+              </View>
+            ) : null}
+            <Text style={styles.note}>Rounds & timing can only be changed from the lobby.</Text>
+
+            <Text style={[styles.sectionLabel, styles.sectionSpacer]}>Session</Text>
+
+            {finished ? (
+              <>
+                <Pressable
+                  style={[styles.primaryBtn, busy === 'replay' && styles.btnDisabled]}
+                  disabled={!!busy}
+                  onPress={() => void run('replay', () => postPlayAgain(gameCode, hostToken, true, hostPlayerId), true)}
+                >
+                  {busy === 'replay' ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <Text style={styles.primaryBtnText}>Play again · same settings</Text>
+                  )}
+                </Pressable>
+                <Pressable
+                  style={[styles.secondaryBtn, busy === 'lobby' && styles.btnDisabled]}
+                  disabled={!!busy}
+                  onPress={() => void run('lobby', () => postPlayAgain(gameCode, hostToken, false, hostPlayerId), true)}
+                >
+                  {busy === 'lobby' ? (
+                    <ActivityIndicator color={theme.text} />
+                  ) : (
+                    <Text style={styles.secondaryBtnText}>Return to lobby</Text>
+                  )}
+                </Pressable>
+              </>
+            ) : null}
+
+            <Pressable style={styles.secondaryBtn} onPress={onTransfer}>
+              <Text style={styles.secondaryBtnText}>Transfer host to another player</Text>
+            </Pressable>
+
+            {hostResumeToken ? (
+              <RotatePlayerCodeRow
+                gameCode={gameCode}
+                style={styles.secondaryBtn}
+                textStyle={styles.secondaryBtnText}
+                spinnerColor={theme.text}
               />
-            </View>
-          ) : null}
-          <Text style={styles.note}>Rounds & timing can only be changed from the lobby.</Text>
+            ) : null}
 
-          <Text style={[styles.sectionLabel, styles.sectionSpacer]}>Session</Text>
+            {active && game.game_type === 'word_rush' ? (
+              <WordRushHostRoundControl gameCode={gameCode} hostToken={hostToken} onReload={onReload} />
+            ) : null}
 
-          {finished ? (
-            <>
+            {active && game.game_type === 'quick_draw' ? (
+              <QuickDrawHostAdvanceControl gameCode={gameCode} hostToken={hostToken} game={game} onReload={onReload} />
+            ) : null}
+
+            <AddGameTimeControl gameCode={gameCode} hostToken={hostToken} game={game} onExtended={onReload} />
+
+            {active && hostIsPlaying ? (
               <Pressable
-                style={[styles.primaryBtn, busy === 'replay' && styles.btnDisabled]}
+                style={[styles.secondaryBtn, busy === 'leave' && styles.btnDisabled]}
                 disabled={!!busy}
-                onPress={() => void run('replay', () => postPlayAgain(gameCode, hostToken, true, hostPlayerId), true)}
+                onPress={confirmLeaveGame}
               >
-                {busy === 'replay' ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <Text style={styles.primaryBtnText}>Play again · same settings</Text>
-                )}
-              </Pressable>
-              <Pressable
-                style={[styles.secondaryBtn, busy === 'lobby' && styles.btnDisabled]}
-                disabled={!!busy}
-                onPress={() => void run('lobby', () => postPlayAgain(gameCode, hostToken, false, hostPlayerId), true)}
-              >
-                {busy === 'lobby' ? (
+                {busy === 'leave' ? (
                   <ActivityIndicator color={theme.text} />
                 ) : (
-                  <Text style={styles.secondaryBtnText}>Return to lobby</Text>
+                  <Text style={styles.secondaryBtnText}>Leave game (keep hosting)</Text>
                 )}
               </Pressable>
-            </>
-          ) : null}
+            ) : null}
 
-          <Pressable style={styles.secondaryBtn} onPress={onTransfer}>
-            <Text style={styles.secondaryBtnText}>Transfer host to another player</Text>
-          </Pressable>
+            {active ? (
+              <Pressable
+                style={[styles.dangerBtn, busy === 'finish' && styles.btnDisabled]}
+                disabled={!!busy}
+                onPress={confirmEndGame}
+              >
+                <Text style={styles.dangerBtnText}>End game</Text>
+              </Pressable>
+            ) : null}
 
-          {hostResumeToken ? (
-            <RotatePlayerCodeRow
-              gameCode={gameCode}
-              style={styles.secondaryBtn}
-              textStyle={styles.secondaryBtnText}
-              spinnerColor={theme.text}
-            />
-          ) : null}
-
-          {active && game.game_type === 'word_rush' ? (
-            <WordRushHostRoundControl gameCode={gameCode} hostToken={hostToken} onReload={onReload} />
-          ) : null}
-
-          {active && game.game_type === 'quick_draw' ? (
-            <QuickDrawHostAdvanceControl gameCode={gameCode} hostToken={hostToken} game={game} onReload={onReload} />
-          ) : null}
-
-          <AddGameTimeControl gameCode={gameCode} hostToken={hostToken} game={game} onExtended={onReload} />
-
-          {active && hostIsPlaying ? (
-            <Pressable
-              style={[styles.secondaryBtn, busy === 'leave' && styles.btnDisabled]}
-              disabled={!!busy}
-              onPress={confirmLeaveGame}
-            >
-              {busy === 'leave' ? (
-                <ActivityIndicator color={theme.text} />
-              ) : (
-                <Text style={styles.secondaryBtnText}>Leave game (keep hosting)</Text>
-              )}
-            </Pressable>
-          ) : null}
-
-          {active ? (
-            <Pressable
-              style={[styles.dangerBtn, busy === 'finish' && styles.btnDisabled]}
-              disabled={!!busy}
-              onPress={confirmEndGame}
-            >
-              <Text style={styles.dangerBtnText}>End game</Text>
-            </Pressable>
-          ) : null}
-
-          {error ? <Text style={styles.error}>{error}</Text> : null}
-        </ScrollView>
-      </SafeAreaView>
+            {error ? <Text style={styles.error}>{error}</Text> : null}
+          </ScrollView>
+        </SafeAreaView>
+      </KeyboardAvoidingModalContent>
     </Modal>
   )
 }

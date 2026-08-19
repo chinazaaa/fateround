@@ -56,7 +56,7 @@ import {
   saveSoloState,
   wasSoloStateScored,
 } from '@/lib/solo-state-store'
-import { logSoloPlayStarted } from '@/lib/solo-play'
+import { logSoloPlayFinished, logSoloPlayStarted, resetSoloSessionId, soloSessionId } from '@/lib/solo-play'
 
 const BOT_THINK_MS = 900
 const WHOT_CALL_SHAPES: WhotShape[] = ['circle', 'triangle', 'cross', 'square', 'star']
@@ -134,6 +134,11 @@ export default function SoloWhotScreen() {
       setScoreboard(next)
       void markSoloStateScored('solo-whot-state-v1')
     })
+    // Persist to the signed-in profile so wins/games-played/streaks/trophies land the
+    // same way multiplayer rooms do. Silent no-op for guests. Idempotent per session id.
+    void soloSessionId('whot').then((sessionId) =>
+      logSoloPlayFinished({ gameType: 'whot', outcome, sessionId, difficulty })
+    )
   }, [state])
 
   // Bot turn: fire on delay so the human sees the move unfold, not jump-cut.
@@ -190,6 +195,7 @@ export default function SoloWhotScreen() {
   const restart = useCallback(() => {
     scoredRef.current = false
     void clearSoloState('solo-whot-state-v1')
+    void resetSoloSessionId('whot')
     setState(initSoloWhot({ rules: SOLO_RULES }))
     logSoloPlayStarted('whot', difficulty)
   }, [difficulty])
@@ -349,7 +355,6 @@ export default function SoloWhotScreen() {
             <View style={styles.scoreRow}>
               <ScoreCell label="You" value={scoreboard.human} />
               <ScoreCell label="Bot" value={scoreboard.bot} />
-              <ScoreCell label="Draws" value={scoreboard.draws} />
             </View>
 
             <View style={styles.finishActions}>

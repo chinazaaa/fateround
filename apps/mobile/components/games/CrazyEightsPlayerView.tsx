@@ -85,6 +85,9 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
   // Authoritative resume token, mirrored to a ref so the hand fetch (defined before the bootstrap
   // resolves the token) can fall back to it. See the fetch + effect below.
   const myResumeTokenRef = useRef<string | null>(null)
+  // Live mirror for the realtime apply fast-path.
+  const sessionRef = useRef<CrazyEightsSession | null>(null)
+  sessionRef.current = session
 
   const loadGameState = useCallback(
     async (_game: Game, _players: Player[]): Promise<{ state: CrazyEightsSession | null; ok: boolean }> => {
@@ -151,9 +154,34 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
     }
   }, [bootstrap.myResumeToken, bootstrap.game?.status, gameCode])
 
+  // Delta fast-path — mirrors web CrazyEightsPlayerView.
+  const applySessionRow = useCallback((row: Record<string, unknown>): boolean => {
+    const next = row as unknown as CrazyEightsSession
+    const prev = sessionRef.current
+    if (prev && next.updated_at && prev.updated_at && next.updated_at < prev.updated_at) return true
+    setSession(next)
+    sessionRef.current = next
+    return prev != null
+  }, [])
+  const applyHandRow = useCallback((row: Record<string, unknown>): boolean => {
+    const next = row as unknown as CrazyEightsPlayerHand
+    setHands((prev) => {
+      const i = prev.findIndex((h) => h.id === next.id)
+      if (i === -1) return [...prev, next].sort((a, b) => a.player_order - b.player_order)
+      const copy = [...prev]
+      copy[i] = next
+      return copy
+    })
+    return true
+  }, [])
+
   useGameTableSync(
     gameCode,
-    [{ table: 'games', column: 'id' }, 'crazy_eights_sessions', 'crazy_eights_player_hands'],
+    [
+      { table: 'games', column: 'id' },
+      { table: 'crazy_eights_sessions', apply: applySessionRow },
+      { table: 'crazy_eights_player_hands', apply: applyHandRow },
+    ],
     () => bootstrap.load(),
     !!bootstrap.game,
     bootstrap.game?.status
@@ -277,11 +305,9 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
     try {
       await fn()
     } finally {
-      // Unblock input as soon as the action lands — don't hold the hand frozen
-      // through a second round-trip. The refresh runs in the background (and the
-      // realtime subscription reloads on the server write anyway; load() de-dupes).
+      // Realtime fast-path (applySessionRow / applyHandRow above) merges the
+      // server write into local state — no need to burn a full re-fetch here.
       setActing(false)
-      void bootstrap.load()
     }
   }
 

@@ -3,11 +3,7 @@ import { uniqueTopic } from '@/lib/realtime'
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import type { BingoCalledNumber, Game, Player } from '@fateround/shared'
 import { formatBingoNumber } from '@fateround/shared/bingo'
-import {
-  postBingoCall,
-  postFinishGame,
-  postPlayAgain,
-} from '@/lib/game-api'
+import { postBingoCall, postFinishGame, postPlayAgain } from '@/lib/game-api'
 import { getSupabase } from '@/lib/supabase'
 import { BINGO_CALLED_NUMBER_SELECT, BINGO_CLAIM_SELECT } from '@/lib/supabase-selects'
 import { useBingoAutoCall } from '@/hooks/useBingoAutoCall'
@@ -94,16 +90,25 @@ export function BingoHostScreen({ gameCode, hostToken, game, players, onReload }
     }
   }
 
-  const onFinish = async () => {
-    setActing(true)
-    try {
-      await postFinishGame(gameCode, hostToken)
-      onReload()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not finish')
-    } finally {
-      setActing(false)
-    }
+  const onFinish = () => {
+    Alert.alert('End game', 'End the game for everyone now?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'End game',
+        style: 'destructive',
+        onPress: async () => {
+          setActing(true)
+          try {
+            await postFinishGame(gameCode, hostToken)
+            onReload()
+          } catch (err) {
+            setError(err instanceof Error ? err.message : 'Could not finish')
+          } finally {
+            setActing(false)
+          }
+        },
+      },
+    ])
   }
 
   const resetGame = async (sameSettings: boolean) => {
@@ -159,7 +164,11 @@ export function BingoHostScreen({ gameCode, hostToken, game, players, onReload }
       ) : null}
 
       {game.status === 'active' && manualMode ? (
-        <Pressable style={[styles.primaryBtn, calling && styles.btnDisabled]} disabled={calling} onPress={() => void onCall()}>
+        <Pressable
+          style={[styles.primaryBtn, calling && styles.btnDisabled]}
+          disabled={calling}
+          onPress={() => void onCall()}
+        >
           {calling ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>Call next number</Text>}
         </Pressable>
       ) : null}
@@ -169,9 +178,7 @@ export function BingoHostScreen({ gameCode, hostToken, game, players, onReload }
       ) : null}
 
       {winner ? (
-        <Text style={styles.winner}>
-          Winner: {players.find((p) => p.id === winner.player_id)?.name ?? 'Player'}
-        </Text>
+        <Text style={styles.winner}>Winner: {players.find((p) => p.id === winner.player_id)?.name ?? 'Player'}</Text>
       ) : null}
 
       <Text style={styles.sectionTitle}>Called numbers</Text>
@@ -192,17 +199,29 @@ export function BingoHostScreen({ gameCode, hostToken, game, players, onReload }
       />
 
       {game.status === 'active' && !winner ? (
-        <Pressable style={[styles.secondaryBtn, acting && styles.btnDisabled]} disabled={acting} onPress={() => void onFinish()}>
+        <Pressable
+          style={[styles.secondaryBtn, acting && styles.btnDisabled]}
+          disabled={acting}
+          onPress={() => void onFinish()}
+        >
           <Text style={styles.secondaryBtnText}>End game</Text>
         </Pressable>
       ) : null}
 
       {game.status === 'finished' ? (
         <>
-          <Pressable style={[styles.primaryBtn, acting && styles.btnDisabled]} disabled={acting} onPress={confirmPlayAgain}>
+          <Pressable
+            style={[styles.primaryBtn, acting && styles.btnDisabled]}
+            disabled={acting}
+            onPress={confirmPlayAgain}
+          >
             <Text style={styles.primaryBtnText}>Play again · same settings</Text>
           </Pressable>
-          <Pressable style={[styles.secondaryBtn, acting && styles.btnDisabled]} disabled={acting} onPress={confirmReturnToLobby}>
+          <Pressable
+            style={[styles.secondaryBtn, acting && styles.btnDisabled]}
+            disabled={acting}
+            onPress={confirmReturnToLobby}
+          >
             <Text style={styles.secondaryBtnText}>Return to lobby</Text>
           </Pressable>
           <GameFinishedActions
@@ -223,42 +242,42 @@ export function BingoHostScreen({ gameCode, hostToken, game, players, onReload }
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-  statsRow: { flexDirection: 'row', justifyContent: 'space-between' },
-  stat: { color: theme.textMuted, fontSize: 14, fontWeight: '600' },
-  latest: {
-    backgroundColor: theme.primarySoft,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: theme.primary,
-    padding: 16,
-    alignItems: 'center',
-    gap: 4,
-  },
-  latestLabel: { color: theme.primaryMuted, fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
-  latestNumber: { color: theme.text, fontSize: 32, fontWeight: '800' },
-  autoHint: { color: theme.textMuted, fontSize: 14, textAlign: 'center' },
-  winner: { color: '#86efac', fontSize: 16, fontWeight: '700', textAlign: 'center' },
-  sectionTitle: { color: theme.text, fontSize: 16, fontWeight: '700' },
-  calledScroll: { maxHeight: 44 },
-  calledRow: { flexDirection: 'row', gap: 8 },
-  chip: { backgroundColor: theme.surface, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 },
-  chipText: { color: theme.text, fontWeight: '700' },
-  primaryBtn: {
-    backgroundColor: theme.primary,
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  // White on the solid rose button — intentional, correct in both schemes.
-  primaryBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
-  secondaryBtn: {
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: theme.border,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  secondaryBtnText: { color: theme.text, fontWeight: '600' },
-  btnDisabled: { opacity: 0.5 },
-  error: { color: theme.error, fontSize: 14 },
-})
+    statsRow: { flexDirection: 'row', justifyContent: 'space-between' },
+    stat: { color: theme.textMuted, fontSize: 14, fontWeight: '600' },
+    latest: {
+      backgroundColor: theme.primarySoft,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: theme.primary,
+      padding: 16,
+      alignItems: 'center',
+      gap: 4,
+    },
+    latestLabel: { color: theme.primaryMuted, fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
+    latestNumber: { color: theme.text, fontSize: 32, fontWeight: '800' },
+    autoHint: { color: theme.textMuted, fontSize: 14, textAlign: 'center' },
+    winner: { color: '#86efac', fontSize: 16, fontWeight: '700', textAlign: 'center' },
+    sectionTitle: { color: theme.text, fontSize: 16, fontWeight: '700' },
+    calledScroll: { maxHeight: 44 },
+    calledRow: { flexDirection: 'row', gap: 8 },
+    chip: { backgroundColor: theme.surface, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 },
+    chipText: { color: theme.text, fontWeight: '700' },
+    primaryBtn: {
+      backgroundColor: theme.primary,
+      borderRadius: 12,
+      paddingVertical: 14,
+      alignItems: 'center',
+    },
+    // White on the solid rose button — intentional, correct in both schemes.
+    primaryBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+    secondaryBtn: {
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: theme.border,
+      paddingVertical: 14,
+      alignItems: 'center',
+    },
+    secondaryBtnText: { color: theme.text, fontWeight: '600' },
+    btnDisabled: { opacity: 0.5 },
+    error: { color: theme.error, fontSize: 14 },
+  })

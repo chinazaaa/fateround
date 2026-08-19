@@ -45,10 +45,10 @@ const NAME_ONLY_PLAYER_JOIN_EXPECTED = new Set<GameType>([
   'word_search',
   'word_scramble',
   'landmine',
-  'ping_pong',
   'uno',
   'word_grouping',
   'wordle_room',
+  'troll_run',
 ])
 
 const LOBBY_GAMES_EXPECTED = new Set<GameType>([

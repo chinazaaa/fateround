@@ -126,7 +126,7 @@ function buildShareText({
   codewordsWinnerLabel?: string
   wordHuntLeaderboard?: { name: string; score: number; wordCount: number }[]
   wordHuntWinnerName?: string
-  wordleRoomStandings?: { name: string; wordsSolved: number; guesses: number }[]
+  wordleRoomStandings?: { name: string; wordsSolved: number; guesses: number; timeMs?: number | null; hints?: number }[]
   wordleRoomWinnerName?: string
 }): string {
   const gameType = parseGameType(game.game_type)
@@ -154,12 +154,18 @@ function buildShareText({
       wordleRoomWinnerName ? `🏆 ${wordleRoomWinnerName} wins!` : '🏁 Race over',
       '',
       'Final standings:',
-      ...wordleRoomStandings
-        .slice(0, 8)
-        .map(
-          (row, i) =>
-            `  ${i + 1}. ${row.name} (${row.wordsSolved} word${row.wordsSolved === 1 ? '' : 's'} · ${row.guesses} guess${row.guesses === 1 ? '' : 'es'})`
-        ),
+      ...wordleRoomStandings.slice(0, 8).map((row, i) => {
+        const parts = [
+          `${row.wordsSolved} word${row.wordsSolved === 1 ? '' : 's'}`,
+          `${row.guesses} guess${row.guesses === 1 ? '' : 'es'}`,
+        ]
+        if (row.timeMs != null && row.timeMs >= 0) {
+          const total = Math.floor(row.timeMs / 1000)
+          parts.push(`⏱ ${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`)
+        }
+        if (row.hints && row.hints > 0) parts.push(`${row.hints} hint${row.hints > 1 ? 's' : ''}`)
+        return `  ${i + 1}. ${row.name} (${parts.join(' · ')})`
+      }),
       '',
       `Play at ${appDomain()}`,
     ]
@@ -499,7 +505,7 @@ export function ShareResults({
   codewordsWinnerLabel?: string
   wordHuntLeaderboard?: { name: string; score: number; wordCount: number }[]
   wordHuntWinnerName?: string
-  wordleRoomStandings?: { name: string; wordsSolved: number; guesses: number }[]
+  wordleRoomStandings?: { name: string; wordsSolved: number; guesses: number; timeMs?: number | null; hints?: number }[]
   wordleRoomWinnerName?: string
   /** Render the Share button as the primary action (results screens). */
   primary?: boolean

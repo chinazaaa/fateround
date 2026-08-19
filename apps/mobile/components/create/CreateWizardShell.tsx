@@ -478,8 +478,8 @@ export function CreateWizardShell() {
 
         {step === 'setup' ? (
           <Pressable style={styles.webLink} onPress={() => void Linking.openURL(`${WEB_BASE_URL}/create`)}>
-            <Text style={styles.webLinkText}>Prefer a bigger screen, or need .xlsx import?</Text>
-            <Text style={styles.webLinkAction}>Full setup on web →</Text>
+            <Text style={styles.webLinkText}>Prefer a bigger screen?</Text>
+            <Text style={styles.webLinkAction}>Open on web →</Text>
           </Pressable>
         ) : null}
       </KeyboardFormScreen>

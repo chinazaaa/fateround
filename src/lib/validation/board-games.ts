@@ -430,14 +430,3 @@ export const scrabbleExtendTimeSchema = hostActionSchema.extend({
 
 export type ScrabblePlayInput = z.infer<typeof scrabblePlaySchema>
 export type ScrabbleExchangeInput = z.infer<typeof scrabbleExchangeSchema>
-
-// Ping Pong (POST /api/ping-pong/*)
-
-export const pingPongPointSchema = z.object({
-  gameId: gameCodeString(),
-  resumeToken: z.string().min(4),
-  scorer: z.enum(['X', 'O']),
-  rally: z.number().int().nonnegative().optional(),
-})
-
-export type PingPongPointInput = z.infer<typeof pingPongPointSchema>

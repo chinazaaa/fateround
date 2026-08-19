@@ -4,7 +4,7 @@ import { Chip } from '@/components/ui/PageShell'
 
 export type HostLobbyOption<T extends number | string = number> = {
   value: T
-  label: string
+  label: React.ReactNode
 }
 
 export function HostLobbyOptionChips<T extends number | string = number>({

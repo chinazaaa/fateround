@@ -6,7 +6,7 @@
  */
 
 import { useCallback } from 'react'
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { AmbientBackground } from '@/components/ui/AmbientBackground'
@@ -57,9 +57,11 @@ export default function DailyChallengePlay() {
     <SafeAreaView style={styles.safe} edges={['bottom']}>
       <Stack.Screen options={{ headerShown: true, title: DAILY_GAME_LABELS[gameType] }} />
       <AmbientBackground />
-      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
-        <GameBody gameType={gameType} onBackToHub={backToHub} />
-      </ScrollView>
+      <KeyboardAvoidingView style={styles.kav} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+          <GameBody gameType={gameType} onBackToHub={backToHub} />
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   )
 }
@@ -83,9 +85,7 @@ function GameBody({ gameType, onBackToHub }: { gameType: DailyChallengeGameType;
     return (
       <View style={styles.center}>
         <Text style={styles.emoji}>{DAILY_GAME_EMOJIS[gameType]}</Text>
-        <Text style={styles.headline}>
-          Daily Challenge starts {launchDate ? formatDayLabel(launchDate) : 'soon'}
-        </Text>
+        <Text style={styles.headline}>Daily Challenge starts {launchDate ? formatDayLabel(launchDate) : 'soon'}</Text>
         <Text style={styles.centerText}>
           Come back on launch day for Daily {DAILY_GAME_LABELS[gameType]} — same puzzle for everyone, one attempt.
         </Text>
@@ -193,14 +193,7 @@ function PlaySurface({
     case 'word_grouping':
       return <DailyWordGroupingPlay challengeId={challengeId} puzzle={puzzle} timer={timer} onSubmit={onSubmit} />
     case 'codenames_codeword':
-      return (
-        <DailyCodenamesCodewordPlay
-          challengeId={challengeId}
-          puzzle={puzzle}
-          timer={timer}
-          onSubmit={onSubmit}
-        />
-      )
+      return <DailyCodenamesCodewordPlay challengeId={challengeId} puzzle={puzzle} timer={timer} onSubmit={onSubmit} />
     case 'whot_puzzle':
       return <DailyWhotPuzzlePlay challengeId={challengeId} puzzle={puzzle} timer={timer} onSubmit={onSubmit} />
     case 'crossword':
@@ -238,6 +231,7 @@ function NotFound({ onBack }: { onBack: () => void }) {
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
     safe: { flex: 1, backgroundColor: theme.bg },
+    kav: { flex: 1 },
     container: { paddingBottom: 40, ...centeredContent },
     playWrap: { gap: theme.space.md },
     playHeader: { alignItems: 'center', paddingTop: theme.space.md, gap: 6 },
