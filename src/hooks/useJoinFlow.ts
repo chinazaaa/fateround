@@ -282,7 +282,11 @@ export function useJoinFlow(deps: JoinFlowDeps) {
         })
       let res = await doJoin(false)
       let data = await res.json()
-      if (!isSelfEdit && res.status === 409 && (data?.reason === 'already_hosting' || data?.reason === 'already_joined')) {
+      if (
+        !isSelfEdit &&
+        res.status === 409 &&
+        (data?.reason === 'already_hosting' || data?.reason === 'already_joined')
+      ) {
         const isHost = data.reason === 'already_hosting'
         const message = isHost
           ? 'You’re already hosting this game on another device. Continue on this device, or keep it on the other one?'

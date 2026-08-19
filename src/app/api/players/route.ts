@@ -280,6 +280,12 @@ export async function POST(req: NextRequest) {
   const { data: gameRow } = await getSupabaseAdmin().from('games').select('*').eq('id', gameId).maybeSingle()
   if (!gameRow) return NextResponse.json({ error: 'Game not found' }, { status: 404 })
 
+  const roomMember = await resolveRoomMemberForGame(supabase, gameId, roomMemberCode)
+  const roomMemberId = roomMember?.id ?? null
+  if (!name && roomMember?.display_name) {
+    name = roomMember.display_name.trim()
+  }
+
   // Cross-device continuation: if the caller is a signed-in profile that is
   // already hosting this game, or already sitting in it from another device,
   // return a soft 409 so the client can prompt "Continue here / Keep on the
@@ -324,12 +330,6 @@ export async function POST(req: NextRequest) {
       // resume-by-token reclaim above).
       return jsonPlayerJoin(roomMemberId, existingPlayer, gameRow as Game, {}, joinerUserId)
     }
-  }
-
-  const roomMember = await resolveRoomMemberForGame(supabase, gameId, roomMemberCode)
-  const roomMemberId = roomMember?.id ?? null
-  if (!name && roomMember?.display_name) {
-    name = roomMember.display_name.trim()
   }
 
   // Reconnect / refresh reclaim: if this device already holds a seat in this game — proven

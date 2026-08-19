@@ -116,8 +116,7 @@ export function LiveGamesStrip() {
                   ? 'Started · full'
                   : 'Started · watch'
             const cta = alreadyJoined ? 'Continue' : isLobby && !isFull ? 'Join' : lateJoinable ? 'Join' : 'Watch'
-            const ctaClass =
-              alreadyJoined || (isLobby && !isFull) || lateJoinable ? 'btn-primary' : 'btn-secondary'
+            const ctaClass = alreadyJoined || (isLobby && !isFull) || lateJoinable ? 'btn-primary' : 'btn-secondary'
             return (
               <div
                 key={game.id}

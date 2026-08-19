@@ -1,6 +1,7 @@
 /* Minimal service worker — web push only (no offline caching).
  * Handles incoming push messages and clicks. Payload shape is set by
  * src/lib/push.ts: { title, body, event, gameCode, url }. */
+/* global URL */
 
 self.addEventListener('install', () => {
   self.skipWaiting()
