@@ -832,7 +832,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   // transition (same rule as PATCH /api/games/[code]; the two paths flip the
   // same flag so both need to fire). Rate limit + quiet hours per subscriber.
   if (is_public === true && game.is_public !== true) {
-    scheduleNewPublicGameFanout(gameCode, String(game.game_type ?? ''), String(game.title ?? ''))
+    scheduleNewPublicGameFanout(
+      gameCode,
+      String(game.game_type ?? ''),
+      String(game.title ?? ''),
+      (game as { host_user_id?: string | null }).host_user_id ?? null
+    )
   }
 
   if (quickDrawLobby && quick_draw_num_teams !== undefined) {

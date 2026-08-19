@@ -19,6 +19,7 @@ import { removeCheckersPlayer } from '@/lib/checkers'
 import { removeDraughts10Player } from '@/lib/draughts10'
 import { removeAyoPlayer } from '@/lib/ayo'
 import { maybeNotifyHostPlayerJoined } from '@/lib/push'
+import { getProfileFromRequest } from '@/lib/identity-server'
 import { removeTicTacToePlayer } from '@/lib/tic-tac-toe'
 import { removePingPongPlayer } from '@/lib/ping-pong'
 import { isMonopolyTokenId } from '@/lib/monopoly-tokens'
@@ -163,9 +164,23 @@ async function jsonPlayerJoin(
   roomMemberId: string | null,
   player: Parameters<typeof playerJoinResponse>[0],
   game: Parameters<typeof playerJoinResponse>[1],
-  extra: Record<string, unknown> = {}
+  extra: Record<string, unknown> = {},
+  joinerUserId: string | null = null
 ) {
   await linkPlayerToRoomMember(supabase, player.id, roomMemberId)
+  // Attribute the seat to the caller's profile so future joins from another
+  // device by the same profile can detect the collision. Best-effort — a
+  // failure here mustn't turn a successful join into a 500.
+  if (joinerUserId) {
+    await getSupabaseAdmin()
+      .from('players')
+      .update({ user_id: joinerUserId })
+      .eq('id', (player as { id: string }).id)
+      .then(
+        () => undefined,
+        () => undefined
+      )
+  }
   // Discovery Phase A: fire a directed push to the host so they know somebody
   // arrived. The helper self-gates (waiting + is_public + non-host + 60s dedup);
   // wrap in a best-effort to keep the join response fast — a failed push must
@@ -265,6 +280,52 @@ export async function POST(req: NextRequest) {
   const { data: gameRow } = await getSupabaseAdmin().from('games').select('*').eq('id', gameId).maybeSingle()
   if (!gameRow) return NextResponse.json({ error: 'Game not found' }, { status: 404 })
 
+  // Cross-device continuation: if the caller is a signed-in profile that is
+  // already hosting this game, or already sitting in it from another device,
+  // return a soft 409 so the client can prompt "Continue here / Keep on the
+  // other device" instead of silently seating a second copy of the same
+  // account. The client retries with continueOnThisDevice: true to bypass —
+  // and when they were already a player, we hand back the existing row so
+  // they pick up right where they left off instead of starting a new seat.
+  const joinerUserId = await getProfileFromRequest(req)
+  const continueOnThisDevice = (body as { continueOnThisDevice?: boolean }).continueOnThisDevice === true
+  if (joinerUserId) {
+    const hostUserId = (gameRow as { host_user_id?: string | null }).host_user_id ?? null
+    if (hostUserId && hostUserId === joinerUserId && !continueOnThisDevice) {
+      return NextResponse.json(
+        {
+          error: 'You’re already hosting this game on another device.',
+          reason: 'already_hosting',
+          gameCode: gameId,
+        },
+        { status: 409 }
+      )
+    }
+    const { data: existingPlayer } = await getSupabaseAdmin()
+      .from('players')
+      .select('id, name, gender, identity_gender, joined_at, spectator, is_eliminated, resume_token')
+      .eq('game_id', gameId)
+      .eq('user_id', joinerUserId)
+      .maybeSingle()
+    if (existingPlayer) {
+      if (!continueOnThisDevice) {
+        return NextResponse.json(
+          {
+            error: 'You’re already a player in this game on another device.',
+            reason: 'already_joined',
+            gameCode: gameId,
+            existingPlayerName: (existingPlayer as { name?: string | null }).name ?? null,
+          },
+          { status: 409 }
+        )
+      }
+      // Continue on this device: return the existing seat so the new device
+      // resumes with the same player id + resume token (same shape as a
+      // resume-by-token reclaim above).
+      return jsonPlayerJoin(roomMemberId, existingPlayer, gameRow as Game, {}, joinerUserId)
+    }
+  }
+
   const roomMember = await resolveRoomMemberForGame(supabase, gameId, roomMemberCode)
   const roomMemberId = roomMember?.id ?? null
   if (!name && roomMember?.display_name) {
@@ -296,7 +357,7 @@ export async function POST(req: NextRequest) {
           const { error: assignError } = await registerQuickDrawLateJoinPlayer(getSupabaseAdmin(), gameId, existing.id)
           if (assignError) return NextResponse.json({ error: assignError }, { status: 500 })
         }
-        return jsonPlayerJoin(roomMemberId, existing, gameRow as Game)
+        return jsonPlayerJoin(roomMemberId, existing, gameRow as Game, {}, joinerUserId)
       }
     }
   }
@@ -337,7 +398,7 @@ export async function POST(req: NextRequest) {
         .order('joined_at', { ascending: true })
         .limit(1)
       const existing = existingRows?.[0]
-      if (existing) return jsonPlayerJoin(roomMemberId, existing, gameRow as Game)
+      if (existing) return jsonPlayerJoin(roomMemberId, existing, gameRow as Game, {}, joinerUserId)
       // Otherwise fall through to a normal first-time seat under the canonical name.
     } else if (name) {
       // No valid token: refuse to let this join take a name that belongs to a
@@ -505,7 +566,7 @@ export async function POST(req: NextRequest) {
       if (cardError) return NextResponse.json({ error: cardError }, { status: 500 })
     }
 
-    return jsonPlayerJoin(roomMemberId, player, gameRow as Game)
+    return jsonPlayerJoin(roomMemberId, player, gameRow as Game, {}, joinerUserId)
   }
 
   if (isMonopolyGame(rowGameType)) {
@@ -605,7 +666,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: internalErrorMessage('players', error) }, { status: 500 })
     }
 
-    return jsonPlayerJoin(roomMemberId, player, gameRow as Game)
+    return jsonPlayerJoin(roomMemberId, player, gameRow as Game, {}, joinerUserId)
   }
 
   if (isYahtzeeGame(rowGameType)) {
@@ -660,7 +721,7 @@ export async function POST(req: NextRequest) {
 
     if (error) return NextResponse.json({ error: internalErrorMessage('players', error) }, { status: 500 })
 
-    return jsonPlayerJoin(roomMemberId, player, gameRow as Game)
+    return jsonPlayerJoin(roomMemberId, player, gameRow as Game, {}, joinerUserId)
   }
 
   if (isWhotGame(rowGameType) || isCrazyEightsGame(rowGameType) || isUnoGame(rowGameType)) {
@@ -743,7 +804,7 @@ export async function POST(req: NextRequest) {
 
     if (error) return NextResponse.json({ error: internalErrorMessage('players', error) }, { status: 500 })
 
-    return jsonPlayerJoin(roomMemberId, player, gameRow as Game)
+    return jsonPlayerJoin(roomMemberId, player, gameRow as Game, {}, joinerUserId)
   }
 
   if (isLudoGame(rowGameType) || isMahjongGame(rowGameType) || isSnakeAndLadderGame(rowGameType)) {
@@ -803,7 +864,7 @@ export async function POST(req: NextRequest) {
 
     if (error) return NextResponse.json({ error: internalErrorMessage('players', error) }, { status: 500 })
 
-    return jsonPlayerJoin(roomMemberId, player, gameRow as Game)
+    return jsonPlayerJoin(roomMemberId, player, gameRow as Game, {}, joinerUserId)
   }
 
   if (
@@ -876,7 +937,7 @@ export async function POST(req: NextRequest) {
 
     if (error) return NextResponse.json({ error: internalErrorMessage('players', error) }, { status: 500 })
 
-    return jsonPlayerJoin(roomMemberId, player, gameRow as Game)
+    return jsonPlayerJoin(roomMemberId, player, gameRow as Game, {}, joinerUserId)
   }
 
   if (isCodewordsGame(rowGameType)) {
@@ -934,10 +995,10 @@ export async function POST(req: NextRequest) {
         await getSupabaseAdmin().from('players').delete().eq('id', player.id)
         return NextResponse.json({ error: assignError }, { status: 500 })
       }
-      return jsonPlayerJoin(roomMemberId, player, gameRow as Game, role ? { codewordsRole: role } : {})
+      return jsonPlayerJoin(roomMemberId, player, gameRow as Game, role ? { codewordsRole: role } : {}, joinerUserId)
     }
 
-    return jsonPlayerJoin(roomMemberId, player, gameRow as Game)
+    return jsonPlayerJoin(roomMemberId, player, gameRow as Game, {}, joinerUserId)
   }
 
   if (isDescribeItGame(rowGameType)) {
@@ -991,7 +1052,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    return jsonPlayerJoin(roomMemberId, player, gameRow as Game)
+    return jsonPlayerJoin(roomMemberId, player, gameRow as Game, {}, joinerUserId)
   }
 
   if (isWordRushGame(rowGameType)) {
@@ -1044,7 +1105,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    return jsonPlayerJoin(roomMemberId, player, gameRow as Game)
+    return jsonPlayerJoin(roomMemberId, player, gameRow as Game, {}, joinerUserId)
   }
 
   const joinCheck = canJoinGame(gameRow as Game)
@@ -1108,7 +1169,7 @@ export async function POST(req: NextRequest) {
       await announceMafiaLateJoin(getSupabaseAdmin(), id, player.name)
     }
 
-    return jsonPlayerJoin(roomMemberId, player, game as Game)
+    return jsonPlayerJoin(roomMemberId, player, game as Game, {}, joinerUserId)
   }
 
   if (isGenderFreeJoinersJoin(game as import('@/types').Game)) {
@@ -1154,7 +1215,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: internalErrorMessage('players', playerError) }, { status: 500 })
     }
 
-    return jsonPlayerJoin(roomMemberId, player, game as Game)
+    return jsonPlayerJoin(roomMemberId, player, game as Game, {}, joinerUserId)
   }
 
   if (isGenderFreeVotersJoin(game as import('@/types').Game)) {
@@ -1181,7 +1242,7 @@ export async function POST(req: NextRequest) {
 
     if (error) return NextResponse.json({ error: internalErrorMessage('players', error) }, { status: 500 })
 
-    return jsonPlayerJoin(roomMemberId, player, game as Game)
+    return jsonPlayerJoin(roomMemberId, player, game as Game, {}, joinerUserId)
   }
 
   if (isGenderFreeImportJoin(game as import('@/types').Game) && isImportClaimMode(game as import('@/types').Game)) {
@@ -1228,7 +1289,7 @@ export async function POST(req: NextRequest) {
 
     if (error) return NextResponse.json({ error: internalErrorMessage('players', error) }, { status: 500 })
 
-    return jsonPlayerJoin(roomMemberId, player, game as Game)
+    return jsonPlayerJoin(roomMemberId, player, game as Game, {}, joinerUserId)
   }
 
   const gender = normalizePlayerGender(String(rawGender ?? ''))
@@ -1291,7 +1352,7 @@ export async function POST(req: NextRequest) {
 
     await syncImportParticipantBallot(supabase, id, participantId, gender, identityGender, rawPollGender ?? undefined)
 
-    return jsonPlayerJoin(roomMemberId, player, game as Game)
+    return jsonPlayerJoin(roomMemberId, player, game as Game, {}, joinerUserId)
   }
 
   if (!name) {
@@ -1326,7 +1387,7 @@ export async function POST(req: NextRequest) {
 
     if (playerError) return NextResponse.json({ error: internalErrorMessage('players', playerError) }, { status: 500 })
 
-    return jsonPlayerJoin(roomMemberId, player, game as Game)
+    return jsonPlayerJoin(roomMemberId, player, game as Game, {}, joinerUserId)
   }
 
   if (isJoinersPollMode(game as import('@/types').Game)) {
@@ -1372,7 +1433,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: internalErrorMessage('players', playerError) }, { status: 500 })
     }
 
-    return jsonPlayerJoin(roomMemberId, player, game as Game)
+    return jsonPlayerJoin(roomMemberId, player, game as Game, {}, joinerUserId)
   }
 
   return NextResponse.json({ error: 'Invalid game mode' }, { status: 400 })
