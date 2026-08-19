@@ -48,6 +48,8 @@ export type MonopolyBotAction =
   | { type: 'auction_pass' }
   | { type: 'trade_accept' }
   | { type: 'trade_decline' }
+  | { type: 'borrow_loan'; amount: number }
+  | { type: 'repay_loan'; amount: number }
 
 // ── Tunables (all ratios / small integers, no absolute-dollar figures) ────
 
@@ -184,6 +186,17 @@ export function pickBotAction(view: MonopolyBotView): MonopolyBotAction | null {
 // ── Roll phase: build first if it makes sense, otherwise roll ─────────────
 
 function pickRollPhaseAction(view: MonopolyBotView): MonopolyBotAction {
+  // If we hold an active loan and have surplus cash (or deadline is urgent), repay it
+  if (view.activeLoan) {
+    const due = view.activeLoan.balanceRemaining
+    if (view.activeLoan.roundsRemaining <= 1 && view.me.cash >= due) {
+      return { type: 'repay_loan', amount: due }
+    }
+    if (view.me.cash >= due + 200) {
+      return { type: 'repay_loan', amount: due }
+    }
+  }
+
   const build = pickBuildAction(view)
   return build ?? { type: 'roll' }
 }
@@ -265,6 +278,14 @@ function pickRaiseFundsAction(view: MonopolyBotView): MonopolyBotAction {
     })
   if (mortgageable.length > 0) {
     return { type: 'mortgage', spaceIndex: mortgageable[0]!.spaceIndex }
+  }
+
+  // If about to forfeit, try borrowing a loan first if eligible and credit limit allows
+  const creditLimit = view.creditLimit ?? 0
+  if (!view.activeLoan && debt.amount > view.me.cash && creditLimit >= 100) {
+    const needed = debt.amount - view.me.cash
+    const borrowAmount = Math.max(100, Math.min(creditLimit, needed))
+    return { type: 'borrow_loan', amount: borrowAmount }
   }
 
   // Nothing left to raise. Forfeit — the engine handles the bankruptcy tree.

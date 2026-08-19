@@ -381,8 +381,33 @@ describe('pickBotAction — raise_funds', () => {
       },
       myProperties: [owned(1, 0, true), owned(3, 0, true)],
       pendingDebt: debt(200),
+      activeLoan: {
+        principal: 500,
+        balanceRemaining: 575,
+        roundsRemaining: 2,
+        totalDue: 575,
+      },
     })
     expect(pickBotAction(v)).toEqual({ type: 'forfeit' })
+  })
+
+  it('tries to borrow a loan before forfeiting if no active loan is held', () => {
+    const v = view({
+      phase: 'raise_funds',
+      me: {
+        playerId: BOT,
+        cash: 10,
+        position: 0,
+        in_jail: false,
+        jail_turns: 0,
+        get_out_of_jail_free: 0,
+        bankrupt: false,
+      },
+      creditLimit: 500,
+      myProperties: [owned(1, 0, true), owned(3, 0, true)],
+      pendingDebt: debt(200),
+    })
+    expect(pickBotAction(v)).toEqual({ type: 'borrow_loan', amount: 190 })
   })
 })
 

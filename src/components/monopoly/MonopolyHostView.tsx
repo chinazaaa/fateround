@@ -102,8 +102,19 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
     if (!supabasePollOk(gameRes, plrsRes, boardRes, stateRes)) return false
     setGame(gameRes.data)
     setPlayers(plrsRes.data ?? [])
-    setBoard(boardRes.data as MonopolyBoard | null)
-    setStates((stateRes.data as MonopolyPlayerState[]) ?? [])
+    const nextBoard = boardRes.data as MonopolyBoard | null
+    const prevBoard = boardRef.current
+    if (
+      !nextBoard ||
+      !prevBoard ||
+      !nextBoard.updated_at ||
+      !prevBoard.updated_at ||
+      new Date(nextBoard.updated_at).getTime() >= new Date(prevBoard.updated_at).getTime()
+    ) {
+      setBoard(nextBoard)
+      boardRef.current = nextBoard
+      setStates((stateRes.data as MonopolyPlayerState[]) ?? [])
+    }
     return true
   }, [gameCode])
 
@@ -124,7 +135,14 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
   const applyBoardRow = useCallback((row: Record<string, unknown>): boolean => {
     const next = row as unknown as MonopolyBoard
     const prev = boardRef.current
-    if (prev && next.updated_at < prev.updated_at) return true
+    if (
+      prev &&
+      next.updated_at &&
+      prev.updated_at &&
+      new Date(next.updated_at).getTime() < new Date(prev.updated_at).getTime()
+    ) {
+      return true
+    }
     // Realtime UPDATE payloads drop unchanged TOAST-ed columns (large jsonb such as
     // property_owners) — they arrive as null once a game has enough owned properties. Applying
     // such a partial row would wipe ownership/buildings on screen. Discard it and let the
@@ -310,7 +328,8 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
           board.property_owners,
           board.property_buildings,
           board.mortgaged_properties,
-          board.board_size ?? 40
+          board.board_size ?? 40,
+          board.loans
         )[0]?.name
       : null)
   const hostPlays = hostMode === 'player' && !!hostPlayerId

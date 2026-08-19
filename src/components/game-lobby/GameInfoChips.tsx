@@ -138,6 +138,7 @@ type GameMeta = {
   monopoly_auction_timer_seconds?: number | null
   monopoly_no_rent_in_jail?: boolean | null
   monopoly_estate_dividend?: boolean | null
+  monopoly_loans_enabled?: boolean | null
   landmine_mode?: string | null
   landmine_mine_count?: number | null
   landmine_originality_bonus?: boolean | null
@@ -348,6 +349,7 @@ export function gameInfoItems(game: GameMeta | null | undefined): string[] {
     if (game.monopoly_forced_auctions) items.push('🔨 Forced auctions')
     if (game.monopoly_no_rent_in_jail) items.push('🚫 No rent in NICKED')
     if (game.monopoly_estate_dividend) items.push('🏦 Estate dividend')
+    if (game.monopoly_loans_enabled) items.push('🏦 Bank loans')
   } else if (gt === 'landmine') {
     items.push(game.landmine_mode === 'elimination' ? '💥 Elimination' : '0️⃣ Zero points')
     if (typeof game.landmine_mine_count === 'number') items.push(`💣 ${game.landmine_mine_count} mines`)

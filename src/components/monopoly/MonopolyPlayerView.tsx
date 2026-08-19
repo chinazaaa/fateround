@@ -96,7 +96,20 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
     ])
     const ok = supabasePollOk(boardRes, stateRes)
     if (ok) {
-      setBoard(boardRes.data as MonopolyBoard | null)
+      const nextBoard = boardRes.data as MonopolyBoard | null
+      const prevBoard = boardRef.current
+      if (
+        nextBoard &&
+        prevBoard &&
+        nextBoard.updated_at &&
+        prevBoard.updated_at &&
+        new Date(nextBoard.updated_at).getTime() < new Date(prevBoard.updated_at).getTime()
+      ) {
+        // Do not overwrite a newer state that already arrived via realtime push!
+        return { state: null, ok }
+      }
+      setBoard(nextBoard)
+      boardRef.current = nextBoard
       setStates((stateRes.data as MonopolyPlayerState[]) ?? [])
     }
     return { state: null, ok }
@@ -172,7 +185,14 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
   const applyBoardRow = useCallback((row: Record<string, unknown>): boolean => {
     const next = row as unknown as MonopolyBoard
     const prev = boardRef.current
-    if (prev && next.updated_at < prev.updated_at) return true
+    if (
+      prev &&
+      next.updated_at &&
+      prev.updated_at &&
+      new Date(next.updated_at).getTime() < new Date(prev.updated_at).getTime()
+    ) {
+      return true
+    }
     // Realtime UPDATE payloads drop unchanged TOAST-ed columns (large jsonb such as
     // property_owners) — they arrive as null once a game has enough owned properties. Applying
     // such a partial row would wipe ownership/buildings on screen (players show 0 property, can't
@@ -537,7 +557,8 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
             board.property_owners,
             board.property_buildings,
             board.mortgaged_properties,
-            board.board_size ?? 40
+            board.board_size ?? 40,
+            board.loans
           )[0]?.name
         : null)
 

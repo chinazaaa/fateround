@@ -18,6 +18,8 @@ import { formatCashMessageForPlayer } from '@/lib/monopoly-cash-messages'
 import { formatTradeMessageForPlayer } from '@/lib/monopoly-trade-messages'
 import { formatThemedText } from '@/components/monopoly/monopoly-themes'
 import { currentPlayerId, parsePropertyOwners, effectivePropertyOwners, type MonopolyColorGroup } from '@/lib/monopoly'
+import { getActiveMonopolyLoan } from '@/lib/monopoly-loan'
+import { MonopolyLoanModal } from '@/components/monopoly/MonopolyLoanModal'
 import { useMonopolyTurnTimer } from '@/hooks/useMonopolyTurnTimer'
 import type { Game, MonopolyBoard, MonopolyPlayerState, Player } from '@/types'
 
@@ -41,7 +43,15 @@ export function MonopolyActiveLayout({
   themeId,
 }: {
   gameCode: string
-  game: Pick<Game, 'status' | 'session_started_at' | 'game_duration_seconds' | 'monopoly_forced_auctions'> | null
+  game: Pick<
+    Game,
+    | 'status'
+    | 'session_started_at'
+    | 'game_duration_seconds'
+    | 'monopoly_forced_auctions'
+    | 'monopoly_loan_interest'
+    | 'monopoly_loan_term_rounds'
+  > | null
   board: MonopolyBoard
   states: MonopolyPlayerState[]
   players: Player[]
@@ -55,6 +65,8 @@ export function MonopolyActiveLayout({
   themeId?: string | null
 }) {
   const [panel, setPanel] = useState<SidePanel>(spectator ? 'players' : 'build')
+  const [loanModalOpen, setLoanModalOpen] = useState(false)
+  const myActiveLoan = myPlayerId ? getActiveMonopolyLoan(board.loans, myPlayerId) : undefined
 
   const incomingTrade =
     board.pending_trade && board.pending_trade.to_player_id === myPlayerId ? board.pending_trade : null
@@ -66,6 +78,8 @@ export function MonopolyActiveLayout({
   const owners = effectivePropertyOwners(parsePropertyOwners(board.property_owners), states)
   const turnPlayerId = currentPlayerId(board)
   const turnPlayer = players.find((p) => p.id === turnPlayerId)
+  const turnPlayerState = states.find((s) => s.player_id === turnPlayerId)
+  const turnPlayerBankrupt = turnPlayerState?.bankrupt === true
   const isMyTurn = turnPlayerId === myPlayerId && !myState?.bankrupt
   const auctionBidderId = board.phase === 'auction' ? (board.auction_state?.current_bidder_id ?? null) : null
   const isMyAuctionTurn = auctionBidderId === myPlayerId
@@ -77,6 +91,36 @@ export function MonopolyActiveLayout({
     .sort(([a], [b]) => Number(a) - Number(b))
     .map(([index, playerId]) => `${index}:${playerId}`)
     .join('|')
+
+  // Proactively drive bot turns/auctions without waiting for turn timeouts
+  useEffect(() => {
+    const turnPlayerIsBot = turnPlayer?.is_bot && !turnPlayer?.is_eliminated && !turnPlayerBankrupt
+    const auctionBidderIsBot =
+      board.phase === 'auction' && players.find((p) => p.id === board.auction_state?.current_bidder_id)?.is_bot
+    const tradeToIsBot = incomingTrade && players.find((p) => p.id === incomingTrade.to_player_id)?.is_bot
+
+    if (turnPlayerIsBot || auctionBidderIsBot || tradeToIsBot) {
+      const timer = setTimeout(() => {
+        void fetch('/api/monopoly/bot-tick', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ gameId: gameCode }),
+        }).catch(() => {})
+      }, 700)
+      return () => clearTimeout(timer)
+    }
+  }, [
+    turnPlayer?.id,
+    turnPlayer?.is_bot,
+    turnPlayer?.is_eliminated,
+    turnPlayerBankrupt,
+    board.phase,
+    board.current_turn_index,
+    board.auction_state?.current_bidder_id,
+    incomingTrade?.to_player_id,
+    gameCode,
+    players,
+  ])
 
   // Feed the roster drawer scoreboard: cash headline (sorts richest-first) +
   // "N properties" detail. Property counts derive from the stable ownershipKey so
@@ -216,6 +260,8 @@ export function MonopolyActiveLayout({
               amount={myState.cash}
               label="Cash"
               bankrupt={myState.bankrupt}
+              loan={myActiveLoan}
+              onOpenLoans={() => setLoanModalOpen(true)}
               themeId={themeId}
             />
           ) : !spectator ? (
@@ -320,6 +366,7 @@ export function MonopolyActiveLayout({
                   acting={acting}
                   postAction={postAction}
                   themeId={themeId}
+                  onOpenLoans={() => setLoanModalOpen(true)}
                 />
               ) : (
                 <div className="glass-card p-4">
@@ -341,16 +388,29 @@ export function MonopolyActiveLayout({
       </div>
 
       {!spectator && (
-        <MonopolyTurnModals
-          board={board}
-          myPlayerId={myPlayerId}
-          myState={myState}
-          players={players}
-          acting={acting}
-          postAction={postAction}
-          colorBarClass={colorBarClass}
-          themeId={themeId}
-        />
+        <>
+          <MonopolyTurnModals
+            board={board}
+            myPlayerId={myPlayerId}
+            myState={myState}
+            players={players}
+            acting={acting}
+            postAction={postAction}
+            colorBarClass={colorBarClass}
+            themeId={themeId}
+          />
+          <MonopolyLoanModal
+            open={loanModalOpen}
+            onClose={() => setLoanModalOpen(false)}
+            board={board}
+            myState={myState}
+            themeId={themeId}
+            postAction={postAction}
+            acting={acting}
+            interestRate={game?.monopoly_loan_interest ?? 15}
+            termRounds={game?.monopoly_loan_term_rounds ?? 4}
+          />
+        </>
       )}
     </>
   )

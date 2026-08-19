@@ -388,6 +388,9 @@ export interface Game {
   monopoly_no_rent_in_jail?: boolean
   monopoly_estate_dividend?: boolean
   monopoly_board_size?: 40 | 48
+  monopoly_loans_enabled?: boolean
+  monopoly_loan_interest?: number
+  monopoly_loan_term_rounds?: number
   troll_run_rounds?: number
   troll_run_time_limit?: number
   troll_run_world?: string
@@ -630,6 +633,20 @@ export interface MonopolyLastTradeEvent {
   outcome: 'proposed' | 'declined' | 'accepted' | 'cancelled'
 }
 
+export interface MonopolyLoan {
+  id: string
+  player_id: string
+  principal: number
+  interest_rate: number
+  total_due: number
+  amount_repaid: number
+  balance_remaining: number
+  term_rounds: number
+  rounds_remaining: number
+  created_at: string
+  status: 'active' | 'repaid' | 'defaulted'
+}
+
 export interface MonopolyBoard {
   id: string
   game_id: string
@@ -657,6 +674,7 @@ export interface MonopolyBoard {
   last_rent_event: MonopolyLastRentEvent | null
   last_cash_event: MonopolyLastCashEvent | null
   last_trade_event: MonopolyLastTradeEvent | null
+  loans?: MonopolyLoan[]
   turn_deadline_at: string | null
   winner_player_id: string | null
   created_at: string

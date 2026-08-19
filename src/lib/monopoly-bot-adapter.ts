@@ -26,10 +26,13 @@
 import {
   countOwnedInGroup,
   monopolyBoardForSize,
+  mortgageValue,
   spacesInGroup,
   type MonopolyColorGroup,
   type MonopolySpace,
 } from '@/lib/monopoly-board'
+import { currentPlayerId } from '@/lib/monopoly'
+import { calculateMonopolyCreditLimit } from '@/lib/monopoly-loan'
 import type { MonopolyBoard, MonopolyPhase, MonopolyPlayerState } from '@/types'
 
 export interface MonopolyBotOwnedProperty {
@@ -184,6 +187,15 @@ export interface MonopolyBotView {
    * regardless of whose turn it is.
    */
   pendingTradeToMe?: MonopolyBotTradeContext
+  /** Active loan state if the bot currently holds a bank loan. */
+  activeLoan?: {
+    principal: number
+    balanceRemaining: number
+    roundsRemaining: number
+    totalDue: number
+  }
+  /** Current maximum borrow limit based on cash + unencumbered mortgage collateral. */
+  creditLimit?: number
   /**
    * 0.0 at game start, ~1.0 once the last unowned property has been claimed.
    * Proxy for "how deep into the game are we?" used to gate late-game moves
@@ -230,8 +242,7 @@ export function adaptMonopolyForBot(
   if (!meState) return null
   if (meState.bankrupt) return null
 
-  const turnOrder = board.turn_order ?? []
-  const turnHolderId = turnOrder[board.current_turn_index] ?? null
+  const turnHolderId = currentPlayerId(board)
   const isTurnPhase =
     board.phase === 'roll' ||
     board.phase === 'buy' ||
@@ -431,6 +442,25 @@ export function adaptMonopolyForBot(
     }
   }
 
+  const loans = Array.isArray(board.loans) ? board.loans : []
+  const rawLoan = loans.find((loan) => loan.player_id === botPlayerId && loan.status === 'active')
+  const activeLoan = rawLoan
+    ? {
+        principal: rawLoan.principal,
+        balanceRemaining: rawLoan.balance_remaining,
+        roundsRemaining: rawLoan.rounds_remaining,
+        totalDue: rawLoan.total_due,
+      }
+    : undefined
+
+  const unencumberedMortgages: number[] = []
+  for (const property of myProperties) {
+    if (!property.mortgaged && property.space.price) {
+      unencumberedMortgages.push(mortgageValue(property.space))
+    }
+  }
+  const creditLimit = calculateMonopolyCreditLimit(meState.cash, unencumberedMortgages)
+
   const ownedCount = buyableSpaces.reduce(
     (ownedSpaceCount, space) => (owners[String(space.index)] ? ownedSpaceCount + 1 : ownedSpaceCount),
     0
@@ -456,6 +486,8 @@ export function adaptMonopolyForBot(
     pendingDebt,
     auction,
     pendingTradeToMe,
+    activeLoan,
+    creditLimit,
     ownedPropertyFraction,
   }
 }

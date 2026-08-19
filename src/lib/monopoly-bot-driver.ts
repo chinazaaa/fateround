@@ -11,6 +11,8 @@ import {
   processMonopolyForfeit,
   processMonopolyAuction,
   processMonopolyTradeRespond,
+  processMonopolyBorrowLoan,
+  processMonopolyRepayLoan,
   advanceMonopolyTurnPastBankrupt,
 } from '@/lib/monopoly'
 import { scheduleTurnNotification } from '@/lib/push'
@@ -86,18 +88,19 @@ export async function driveMonopolyBotsOnce(gameCode: string): Promise<DriveResu
 
   const tradeToId = slotRow.pending_trade?.to_player_id ?? null
   const auctionBidderId = slotRow.auction_state?.current_bidder_id ?? null
-  const turnHolderId = slotRow.turn_order?.[slotRow.current_turn_index] ?? null
+  const orderLen = slotRow.turn_order?.length ?? 0
+  const turnHolderId =
+    orderLen > 0 && Number.isInteger(slotRow.current_turn_index)
+      ? (slotRow.turn_order[((slotRow.current_turn_index % orderLen) + orderLen) % orderLen] ?? null)
+      : null
 
   // Bankrupt-turn-holder recovery runs regardless of whether the stuck
   // holder is a bot or human — a bankrupt human's UI is disabled too, so
   // either can stall the game. Check with a single narrow row instead of
   // pulling every player's full state, mirroring `isTurnHolderBankrupt`'s
   // logic exactly but without the full-state fetch.
-  const orderLen = slotRow.turn_order?.length ?? 0
   if (orderLen > 0) {
-    const idx = slotRow.current_turn_index
-    const indexInvalid = !Number.isInteger(idx) || idx < 0 || idx >= orderLen
-    let holderBankrupt = indexInvalid || !turnHolderId
+    let holderBankrupt = !turnHolderId
     if (!holderBankrupt && turnHolderId) {
       const { data: holderState } = await admin
         .from('monopoly_player_state')
@@ -204,5 +207,9 @@ async function applyMonopolyBotAction(
       return processMonopolyTradeRespond(admin, gameCode, botPlayerId, true)
     case 'trade_decline':
       return processMonopolyTradeRespond(admin, gameCode, botPlayerId, false)
+    case 'borrow_loan':
+      return processMonopolyBorrowLoan(admin, gameCode, botPlayerId, action.amount)
+    case 'repay_loan':
+      return processMonopolyRepayLoan(admin, gameCode, botPlayerId, action.amount)
   }
 }
