@@ -430,6 +430,7 @@ function CreateGameInner() {
   const crosswordFileRef = useRef<HTMLInputElement>(null)
   const wordSearchFileRef = useRef<HTMLInputElement>(null)
   const wordScrambleFileRef = useRef<HTMLInputElement>(null)
+  const wordGroupingFileRef = useRef<HTMLInputElement>(null)
   const [participants, setParticipants] = useState<ParticipantInput[]>([])
   const [nameInput, setNameInput] = useState('')
   const [defaultGender, setDefaultGender] = useState<ParticipantGender>('female')
@@ -5299,14 +5300,15 @@ function CreateGameInner() {
                     sample={questionSampleFile('word_search')}
                     hint={questionUploadHint('word_search')}
                     buttonLabel="Choose CSV"
+                    pastePlaceholder="Paste one word per line (e.g. PLANET)"
                     fileRef={wordSearchFileRef}
                     error={puzzleUploadError}
                     summary={puzzleUploadSummary}
-                    onFile={async (file) => {
+                    onText={async (text) => {
                       setPuzzleUploadError(null)
                       setPuzzleUploadSummary(null)
                       try {
-                        const result = parseWordSearchEntryImport(await file.text())
+                        const result = parseWordSearchEntryImport(text)
                         if (result.questions.length < 4) throw new Error('Need at least 4 words')
                         setCustomWordSearchWords(result.questions)
                         const extra = formatEntryImportSummary(result)
@@ -5442,14 +5444,15 @@ function CreateGameInner() {
                     sample={questionSampleFile('word_scramble')}
                     hint={questionUploadHint('word_scramble')}
                     buttonLabel="Choose CSV"
+                    pastePlaceholder="Paste one word per line, optional hint after a comma (e.g. PLANET,Found in space)"
                     fileRef={wordScrambleFileRef}
                     error={puzzleUploadError}
                     summary={puzzleUploadSummary}
-                    onFile={async (file) => {
+                    onText={async (text) => {
                       setPuzzleUploadError(null)
                       setPuzzleUploadSummary(null)
                       try {
-                        const result = parseWordScrambleEntryImport(await file.text())
+                        const result = parseWordScrambleEntryImport(text)
                         if (result.questions.length < 4) throw new Error('Need at least 4 words')
                         setCustomWordScrambleWords(result.questions)
                         const extra = formatEntryImportSummary(result)
@@ -5578,58 +5581,45 @@ function CreateGameInner() {
                   </div>
                 )}
                 {questionSource === 'custom' && (
-                  <div className="space-y-2 pt-1">
-                    <a
-                      href={`data:text/csv;charset=utf-8,${encodeURIComponent(WORD_GROUPING_SAMPLE_CSV)}`}
-                      download="word-grouping-sample.csv"
-                      className="inline-block text-sm text-[var(--primary)] underline"
-                    >
-                      Download sample CSV
-                    </a>
-                    <p className="text-faint text-xs">
-                      CSV columns: <code>puzzle, category, difficulty, word1, word2, word3, word4</code>. Four rows per
-                      puzzle (one per group, difficulties 1–4). Need at least 4 puzzles for the pool.
-                    </p>
-                    <input
-                      type="file"
-                      accept=".csv,.json,.jsonl,.ndjson,.txt,text/csv,application/json,text/plain"
-                      className="input-field"
-                      onChange={async (e) => {
-                        const file = e.target.files?.[0]
-                        if (!file) return
-                        setPuzzleUploadError(null)
-                        setPuzzleUploadSummary(null)
-                        try {
-                          const text = await file.text()
-                          const { entries, totalRows, skippedRows } = parseWordGroupingPoolText(text)
-                          const validated = parseStoredWordGroupingPuzzles(entries)
-                          if (!validated || validated.length < 4) {
-                            setPuzzleUploadError(
-                              validated
-                                ? `Only ${validated.length} valid puzzle${validated.length === 1 ? '' : 's'} — need at least 4.`
-                                : `No valid puzzles found (${totalRows - skippedRows}/${totalRows} rows recognised).`
-                            )
-                            setLibraryPackQuestions([])
-                            return
-                          }
-                          setLibraryPackQuestions(validated as unknown as unknown[])
-                          setPuzzleUploadSummary(
-                            `${validated.length} puzzle${validated.length === 1 ? '' : 's'} loaded${
-                              skippedRows ? ` · ${skippedRows} row${skippedRows === 1 ? '' : 's'} skipped` : ''
-                            }`
+                  <PuzzleUpload
+                    sample={{
+                      href: `data:text/csv;charset=utf-8,${encodeURIComponent(WORD_GROUPING_SAMPLE_CSV)}`,
+                      download: 'word-grouping-sample.csv',
+                    }}
+                    hint="CSV columns: puzzle, category, difficulty, word1, word2, word3, word4. Four rows per puzzle (one per group, difficulties 1–4). Need at least 4 puzzles for the pool."
+                    buttonLabel="Choose CSV or JSON"
+                    accept=".csv,.json,.jsonl,.ndjson,.txt,text/csv,application/json,text/plain"
+                    pasteButtonLabel="Import pasted puzzles"
+                    pastePlaceholder="Paste puzzle,category,difficulty,word1,word2,word3,word4 rows (four rows per puzzle)"
+                    fileRef={wordGroupingFileRef}
+                    error={puzzleUploadError}
+                    summary={puzzleUploadSummary}
+                    onText={async (text) => {
+                      setPuzzleUploadError(null)
+                      setPuzzleUploadSummary(null)
+                      try {
+                        const { entries, totalRows, skippedRows } = parseWordGroupingPoolText(text)
+                        const validated = parseStoredWordGroupingPuzzles(entries)
+                        if (!validated || validated.length < 4) {
+                          setPuzzleUploadError(
+                            validated
+                              ? `Only ${validated.length} valid puzzle${validated.length === 1 ? '' : 's'} — need at least 4.`
+                              : `No valid puzzles found (${totalRows - skippedRows}/${totalRows} rows recognised).`
                           )
-                        } catch (err) {
-                          setPuzzleUploadError(err instanceof Error ? err.message : 'Could not read that file')
+                          setLibraryPackQuestions([])
+                          return
                         }
-                      }}
-                    />
-                    {puzzleUploadSummary && (
-                      <p className="text-emerald-600 dark:text-emerald-400 text-xs font-medium">
-                        {puzzleUploadSummary}
-                      </p>
-                    )}
-                    {puzzleUploadError && <p className="text-red-500 text-xs">{puzzleUploadError}</p>}
-                  </div>
+                        setLibraryPackQuestions(validated as unknown as unknown[])
+                        setPuzzleUploadSummary(
+                          `${validated.length} puzzle${validated.length === 1 ? '' : 's'} loaded${
+                            skippedRows ? ` · ${skippedRows} row${skippedRows === 1 ? '' : 's'} skipped` : ''
+                          }`
+                        )
+                      } catch (err) {
+                        setPuzzleUploadError(err instanceof Error ? err.message : 'Could not read that file')
+                      }
+                    }}
+                  />
                 )}
                 {categoryUploadField}
                 <Field label="Max time limit">
@@ -5704,14 +5694,16 @@ function CreateGameInner() {
                     sample={questionSampleFile('crossword')}
                     hint={questionUploadHint('crossword')}
                     buttonLabel="Choose CSV"
+                    pasteButtonLabel="Import pasted answers"
+                    pastePlaceholder="Paste answer,clue per line (e.g. PLANET,Found in space). Header row optional."
                     fileRef={crosswordFileRef}
                     error={puzzleUploadError}
                     summary={puzzleUploadSummary}
-                    onFile={async (file) => {
+                    onText={async (text) => {
                       setPuzzleUploadError(null)
                       setPuzzleUploadSummary(null)
                       try {
-                        const result = parseCrosswordEntryImport(await file.text())
+                        const result = parseCrosswordEntryImport(text)
                         if (result.questions.length < 4) throw new Error('Need at least 4 answers with clues')
                         setCustomCrosswordEntries(result.questions)
                         const extra = formatEntryImportSummary(result)
