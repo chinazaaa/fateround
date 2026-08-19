@@ -47,6 +47,7 @@ import {
   SearchAreaIcon,
   SearchFocusIcon,
   ShuffleIcon,
+  SkullIcon,
   SparklesIcon,
   SpeechIcon,
   Stairs01Icon,
@@ -122,7 +123,7 @@ const GAME_ICONS: Record<GameType, IconSvgElement> = {
   ping_pong: TableTennisBatIcon,
   uno: CardExchange01Icon,
   wordle_room: GridViewIcon,
-  troll_run: GameController01Icon,
+  troll_run: SkullIcon,
 }
 
 export function gameIcon(type: GameType): IconSvgElement {

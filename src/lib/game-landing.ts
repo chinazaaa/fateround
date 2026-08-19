@@ -3376,7 +3376,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
   troll_run: landing('troll_run', {
     seoTitle: 'Troll Run Online — Free Multiplayer Rage Platformer Game',
     seoDescription:
-      'Play Troll Run online with friends for free. Race simultaneously through deceptive pixel-art platformer levels packed with hilarious traps, runaway doors, and collapsing floors. No download, no sign-up.',
+      'Play Troll Run online with friends for free. Race simultaneously through trick platformer levels packed with collapsing floors, runaway doors, and surprise spikes in your browser. No download or signup required.',
     keywords: [
       'troll run online',
       'level devil online multiplayer',
@@ -3387,21 +3387,20 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       'level devil with friends',
     ],
     heroSubtitle:
-      'The multiplayer rage platformer where everything is a trap. Race friends through trick levels — collapsing floors, runaway exit doors, and pop-up spikes.',
+      'A multiplayer race through trick levels where nothing works the way you expect. Dodge collapsing floors, chase runaway doors, and survive sneaky traps to finish first.',
     bodyParagraph:
-      'Troll Run brings high-energy multiplayer racing to tricky 2D platforming. Every player races through identical levels filled with hilarious invisible triggers and physics traps. Finish 1st with the fewest deaths to top the championship podium.',
-    highlights: ['2–8 player live racing', 'Deceptive troll physics & triggers', 'Instant browser play on mobile & PC'],
+      'Everyone gets the same course and starts at the exact same second. The goal is simple: reach the door. The catch? Floors vanish under your feet, spikes pop up from nowhere, and the exit door might literally run away from you. Quick reflexes and pattern memory take the crown.',
+    highlights: ['2–6 player live racing', 'Surprise physics & trick triggers', 'Instant browser play on mobile & PC'],
     perfectFor: ['Friend groups', 'Streamers', 'Party nights', 'Rage gamers'],
     features: [
       {
-        title: 'Hilarious Traps',
-        description:
-          'Doors that sprint away, floors that crumble under your feet, and spikes that materialize out of thin air.',
+        title: 'Sneaky Traps',
+        description: 'Doors that sprint away, floors that drop out, and spikes that appear right when you land.',
         emoji: '😈',
       },
       {
-        title: 'Simultaneous Multi-Runner',
-        description: 'Everyone races at the exact same moment on a live 3-2-1 countdown.',
+        title: 'Simultaneous Racing',
+        description: 'Everyone runs the exact same course at the same time on a live countdown.',
         emoji: '🏁',
       },
       SHARED_FEATURES.realtime,

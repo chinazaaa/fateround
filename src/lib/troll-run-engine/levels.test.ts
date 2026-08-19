@@ -8,7 +8,15 @@ import {
   WORLD_4_LEVELS,
   getWorldLevels,
 } from './levels'
-import { TROLL_RUN_INTERNAL_HEIGHT, TROLL_RUN_INTERNAL_WIDTH } from './types'
+import { checkTrollRunReachable, trollRunDoorIsBuried, trollRunDoorPlacements } from './levels/reach'
+import {
+  TROLL_RUN_DOOR_HEIGHT,
+  TROLL_RUN_DOOR_WIDTH,
+  TROLL_RUN_GRID_COLS,
+  TROLL_RUN_GRID_ROWS,
+  TROLL_RUN_INTERNAL_HEIGHT,
+  TROLL_RUN_INTERNAL_WIDTH,
+} from './types'
 
 describe('Troll Run Level Registry & Worlds', () => {
   it('contains exactly 4 worlds and 40 total levels', () => {
@@ -61,6 +69,74 @@ describe('Troll Run Level Registry & Worlds', () => {
 
       // Par time configured
       expect(lvl.parTime).toBeGreaterThan(0)
+    }
+  })
+
+  it('leaves every door — including the ones traps move — inside the level and clear of geometry', () => {
+    for (const level of ALL_TROLL_RUN_LEVELS) {
+      for (const door of trollRunDoorPlacements(level)) {
+        const where = `${level.id} (${door.origin})`
+
+        expect(door.x, `${where}: door left edge`).toBeGreaterThanOrEqual(0)
+        expect(door.x + TROLL_RUN_DOOR_WIDTH, `${where}: door right edge`).toBeLessThanOrEqual(TROLL_RUN_INTERNAL_WIDTH)
+        expect(door.y, `${where}: door top edge`).toBeGreaterThanOrEqual(0)
+        expect(door.y + TROLL_RUN_DOOR_HEIGHT, `${where}: door bottom edge`).toBeLessThanOrEqual(
+          TROLL_RUN_INTERNAL_HEIGHT
+        )
+
+        expect(trollRunDoorIsBuried(level.tiles, door), `${where}: door is buried in solid tiles`).toBe(false)
+      }
+    }
+  })
+
+  // Reachability, not the harsher all-traps-sprung bar: several authored levels are deliberately
+  // cleverer than that, and `checkTrollRunSolvable`'s own comment says so. What no authored level may
+  // be is a dead end on its own layout — the fault "The Grand Chase" shipped with.
+  it('gives every authored level a route from spawn to its final door position', () => {
+    for (const level of ALL_TROLL_RUN_LEVELS) {
+      const verdict = checkTrollRunReachable(level)
+      expect(verdict.solvable, `${level.id} (${level.name}) has no route to its door`).toBe(true)
+      expect(verdict.seconds, `${level.id}: route is instant, so the door sits on the spawn`).toBeGreaterThan(0)
+    }
+  })
+
+  it('keeps trigger zones and the tiles their actions address inside the grid', () => {
+    for (const level of ALL_TROLL_RUN_LEVELS) {
+      level.triggers.forEach((trigger, triggerIndex) => {
+        const where = `${level.id} / ${trigger.id ?? `trigger #${triggerIndex}`}`
+
+        expect(trigger.zone.w, `${where}: zone width`).toBeGreaterThan(0)
+        expect(trigger.zone.h, `${where}: zone height`).toBeGreaterThan(0)
+        expect(trigger.zone.x, `${where}: zone left edge`).toBeGreaterThanOrEqual(0)
+        expect(trigger.zone.x + trigger.zone.w, `${where}: zone right edge`).toBeLessThanOrEqual(
+          TROLL_RUN_INTERNAL_WIDTH
+        )
+        expect(trigger.zone.y, `${where}: zone top edge`).toBeGreaterThanOrEqual(0)
+        expect(trigger.zone.y + trigger.zone.h, `${where}: zone bottom edge`).toBeLessThanOrEqual(
+          TROLL_RUN_INTERNAL_HEIGHT
+        )
+
+        // A trap that names a tile outside the grid silently does nothing, which reads in play as a
+        // trap that never fires rather than as a level-authoring mistake.
+        for (const action of trigger.actions) {
+          const addressedTiles =
+            action.type === 'collapse_tiles'
+              ? action.tiles
+              : action.type === 'spawn_spikes'
+                ? action.positions
+                : action.type === 'ice_floor'
+                  ? action.tiles
+                  : []
+
+          for (const [col, row] of addressedTiles) {
+            expect(col, `${where}: ${action.type} column`).toBeGreaterThanOrEqual(0)
+            expect(col, `${where}: ${action.type} column`).toBeLessThan(TROLL_RUN_GRID_COLS)
+            expect(row, `${where}: ${action.type} row`).toBeGreaterThanOrEqual(0)
+            expect(row, `${where}: ${action.type} row`).toBeLessThan(TROLL_RUN_GRID_ROWS)
+            expect(level.tiles[row]?.[col], `${where}: ${action.type} targets a tile that exists`).not.toBeUndefined()
+          }
+        }
+      })
     }
   })
 })

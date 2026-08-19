@@ -4,14 +4,23 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { useGameTableSync } from '@/hooks/useGameTableSync'
+import { usePolling, POLL_INTERVALS } from '@/hooks/usePolling'
 import { useRoomMemberJoin } from '@/hooks/useRoomMemberJoin'
+import { useDeadlineCountdown } from '@/hooks/useDeadlineCountdown'
+import { useTrollRunAdvanceNudge } from '@/hooks/useTrollRunAdvanceNudge'
 import { useToast } from '@/components/ui/Toast'
 import { supabase } from '@/lib/supabase'
 import { TROLL_RUN_EVENT_SELECT, TROLL_RUN_PLAYER_STATE_SELECT, TROLL_RUN_SESSION_SELECT } from '@/lib/supabase-selects'
 import type { Game, TrollRunEvent, TrollRunPlayerState, TrollRunSession } from '@/types'
-import { getWorldLevels } from '@/lib/troll-run-engine'
-import { TrollRunCanvas } from './TrollRunCanvas'
-import { TrollRunLiveFeed } from './TrollRunLiveFeed'
+import { resolveTrollRunLevels, type GhostPositionPayload, type TrollRunEngine } from '@/lib/troll-run-engine'
+import { trollRunRoundLevelCount } from '@/lib/troll-run'
+import { formatMinutesSeconds } from '@/lib/timer-format'
+import { Glyph } from '@/components/icons/Glyph'
+import { gameIcon } from '@/lib/game-glyphs'
+import { Clock01Icon, Flag02Icon, SkullIcon, Target01Icon } from '@hugeicons/core-free-icons'
+import { TrollRunCanvas, TROLL_RUN_STAGE_MAX_WIDTH } from './TrollRunCanvas'
+import { TrollRunLiveFeed, TROLL_RUN_FEED_HISTORY } from './TrollRunLiveFeed'
+import { TrollRunRaceProgress } from './TrollRunRaceProgress'
 import { TrollRunScoreboard } from './TrollRunScoreboard'
 import { NameJoinForm } from '@/components/game-lobby/NameJoinForm'
 import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
@@ -19,8 +28,20 @@ import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
 import { GameLobbyWaitingPanel } from '@/components/game-lobby/GameLobbyWaitingPanel'
 import { GameInfoChips } from '@/components/game-lobby/GameInfoChips'
 import { GameStartedWaiting } from '@/components/GameStartedWaiting'
+import { ReplayReadyRing } from '@/components/ReplayReadyRing'
+import { TROLL_RUN_MIN_PLAYERS } from '@/lib/troll-run-types'
 import { preJoinScreen } from '@/lib/viewers'
 import { gameTypeConfig } from '@/lib/game-types'
+import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
+import { useRegisterGameSettings } from '@/components/GameSettingsContext'
+import { EditNameInline } from '@/components/ui/EditNameInline'
+import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
+import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
+import { ExitIcon } from '@/components/host/host-icons'
+import { clearPlayerSession } from '@/lib/utils'
+import { markPlayerReady } from '@/lib/player-ready'
+import { GameRulesLink } from '@/components/ui/GameRulesLink'
+import { LeaderboardJoinNote } from '@/components/game-lobby/LeaderboardJoinNote'
 
 type Screen =
   | 'loading'
@@ -32,7 +53,38 @@ type Screen =
   | 'finished'
   | 'not_found'
 
-export function TrollRunPlayerView({ gameCode }: { gameCode: string }) {
+/** Seconds left on the round clock below which the timer reads as urgent. */
+const TROLL_RUN_URGENT_SECONDS = 20
+
+/** Haptic nudge where the device supports one; a browser that refuses is not an error. */
+function vibrate(pattern: number[]) {
+  if (typeof navigator === 'undefined' || typeof navigator.vibrate !== 'function') return
+  try {
+    navigator.vibrate(pattern)
+  } catch {
+    // Some browsers throw when the document is not the active one.
+  }
+}
+
+export interface TrollRunPlayerViewProps {
+  gameCode: string
+  hostToken?: string
+  onNextRound?: () => void
+  onPlayAgain?: () => void
+  onReturnToLobby?: () => void
+  advancing?: boolean
+  playingAgain?: boolean
+}
+
+export function TrollRunPlayerView({
+  gameCode,
+  hostToken,
+  onNextRound,
+  onPlayAgain,
+  onReturnToLobby,
+  advancing = false,
+  playingAgain = false,
+}: TrollRunPlayerViewProps) {
   const router = useRouter()
   const { error: toastError } = useToast()
   const cfg = gameTypeConfig('troll_run')
@@ -40,24 +92,26 @@ export function TrollRunPlayerView({ gameCode }: { gameCode: string }) {
   const [session, setSession] = useState<TrollRunSession | null>(null)
   const [playerStates, setPlayerStates] = useState<TrollRunPlayerState[]>([])
   const [events, setEvents] = useState<TrollRunEvent[]>([])
-  const [countdownNum, setCountdownNum] = useState<number | null>(null)
 
-  const { joinExtras } = useRoomMemberJoin(gameCode)
+  const { joinExtras, resolving: resolvingRoomMember } = useRoomMemberJoin(gameCode)
 
   const loadGameState = useCallback(async (): Promise<{ state: null; ok: boolean }> => {
     const [sessRes, statesRes, eventsRes] = await Promise.all([
       supabase.from('troll_run_sessions').select(TROLL_RUN_SESSION_SELECT).eq('game_id', gameCode).maybeSingle(),
       supabase.from('troll_run_player_states').select(TROLL_RUN_PLAYER_STATE_SELECT).eq('game_id', gameCode),
+      // Newest first with a cap, flipped back into feed order below: a race logs a death for every
+      // trap every runner falls for, and only the tail is ever shown.
       supabase
         .from('troll_run_events')
         .select(TROLL_RUN_EVENT_SELECT)
         .eq('game_id', gameCode)
-        .order('created_at', { ascending: true }),
+        .order('created_at', { ascending: false })
+        .limit(TROLL_RUN_FEED_HISTORY),
     ])
 
-    if (sessRes.data) setSession(sessRes.data as unknown as TrollRunSession)
-    if (statesRes.data) setPlayerStates(statesRes.data as unknown as TrollRunPlayerState[])
-    if (eventsRes.data) setEvents(eventsRes.data as unknown as TrollRunEvent[])
+    setSession(sessRes.data ? (sessRes.data as unknown as TrollRunSession) : null)
+    setPlayerStates((statesRes.data as unknown as TrollRunPlayerState[]) ?? [])
+    setEvents(((eventsRes.data as unknown as TrollRunEvent[]) ?? []).slice().reverse())
 
     return { state: null, ok: !sessRes.error }
   }, [gameCode])
@@ -73,7 +127,7 @@ export function TrollRunPlayerView({ gameCode }: { gameCode: string }) {
     return 'playing'
   }, [])
 
-  const { screen, game, players, myPlayerId, joinName, setJoinName, joining, load, lobbyFull, join } =
+  const { screen, game, players, myPlayerId, myResumeToken, joinName, setJoinName, joining, load, lobbyFull, join } =
     useGameViewBootstrap<Screen, null>({
       gameCode,
       loadingScreen: 'loading',
@@ -84,10 +138,14 @@ export function TrollRunPlayerView({ gameCode }: { gameCode: string }) {
       onJoinError: toastError,
     })
 
+  useApplyGameTheme(game?.theme, game?.game_type)
+
   // Realtime subscription
-  useGameTableSync(
+  const connected = useGameTableSync(
     gameCode,
     [
+      { table: 'games', column: 'id' },
+      'players',
       {
         table: 'troll_run_sessions',
         apply: (row) => setSession(row as unknown as TrollRunSession),
@@ -96,10 +154,10 @@ export function TrollRunPlayerView({ gameCode }: { gameCode: string }) {
         table: 'troll_run_player_states',
         apply: (row) => {
           setPlayerStates((prev) => {
-            const idx = prev.findIndex((p) => p.id === row.id)
-            if (idx >= 0) {
+            const index = prev.findIndex((state) => state.id === row.id)
+            if (index >= 0) {
               const updated = [...prev]
-              updated[idx] = row as unknown as TrollRunPlayerState
+              updated[index] = row as unknown as TrollRunPlayerState
               return updated
             }
             return [...prev, row as unknown as TrollRunPlayerState]
@@ -109,56 +167,125 @@ export function TrollRunPlayerView({ gameCode }: { gameCode: string }) {
       {
         table: 'troll_run_events',
         apply: (row) => {
-          setEvents((prev) => [...prev, row as unknown as TrollRunEvent])
+          const rowObj = row as unknown as TrollRunEvent
+          setEvents((prev) => {
+            if (prev.some((existing) => existing.id === rowObj.id)) return prev
+            return [...prev, rowObj].slice(-TROLL_RUN_FEED_HISTORY)
+          })
         },
       },
     ],
-    load
+    load,
+    { channelKey: 'player' }
   )
 
-  // Countdown timer effect
-  useEffect(() => {
-    if (session?.phase !== 'countdown' || !session?.turn_deadline_at) {
-      setCountdownNum(null)
-      return
-    }
+  usePolling(() => load(), [gameCode, load], {
+    intervalMs: game?.status === 'waiting' ? POLL_INTERVALS.lobby : POLL_INTERVALS.realtimeFallback,
+    enabled: game?.status === 'waiting' || !connected,
+    runImmediately: false,
+  })
 
-    const interval = setInterval(() => {
-      const diff = new Date(session.turn_deadline_at!).getTime() - Date.now()
-      const secs = Math.ceil(diff / 1000)
-      if (secs <= 0) {
-        setCountdownNum(0)
-        clearInterval(interval)
-        // Nudge advance endpoint
-        fetch('/api/troll-run/advance', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ gameId: gameCode }),
-        }).catch(() => {})
-      } else {
-        setCountdownNum(secs)
-      }
-    }, 200)
+  useTrollRunAdvanceNudge({ gameCode, session, resumeToken: myResumeToken })
 
-    return () => clearInterval(interval)
-  }, [session?.phase, session?.turn_deadline_at, gameCode])
+  // `turn_deadline_at` already is the deadline, so the shared countdown gets no extra delay.
+  const deadlineSecondsLeft = useDeadlineCountdown(
+    session?.turn_deadline_at,
+    0,
+    session?.phase === 'countdown' || session?.phase === 'racing'
+  )
 
   const playerNames = useMemo(() => {
     const map = new Map<string, string>()
-    for (const p of players) {
-      map.set(p.id, p.name)
+    for (const player of players) {
+      map.set(player.id, player.name)
     }
     return map
   }, [players])
 
   const myState = useMemo(() => {
-    return playerStates.find((s) => s.player_id === myPlayerId && s.current_round === (session?.current_round ?? 1))
-  }, [playerStates, myPlayerId, session?.current_round])
+    if (!myPlayerId || !session) return undefined
+    return playerStates.find((state) => state.player_id === myPlayerId && state.current_round === session.current_round)
+  }, [playerStates, myPlayerId, session])
 
-  const [ghosts, setGhosts] = useState<import('@/lib/troll-run-engine').GhostPositionPayload[]>([])
+  const isViewer = useMemo(() => {
+    return players.find((player) => player.id === myPlayerId)?.spectator === true
+  }, [players, myPlayerId])
+
+  const me = useMemo(() => players.find((player) => player.id === myPlayerId), [players, myPlayerId])
+
+  const playerSettingsNode = useMemo(() => {
+    if (!myPlayerId) return null
+    return (
+      <div className="space-y-3">
+        <EditNameInline
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          currentName={me?.name ?? ''}
+          onRenamed={() => void load()}
+          spectating={isViewer}
+        />
+        {hostToken ? (
+          <HostEndGameButton
+            gameCode={gameCode}
+            hostToken={hostToken}
+            onEnded={() => void load()}
+            label="End game"
+            icon={<ExitIcon size={14} />}
+            className="btn-danger-soft"
+            confirmTitle="End this Troll Run race?"
+            confirmMessage="The current match will end and all runners will see the final championship standings."
+          />
+        ) : (
+          <LeaveGameButton
+            gameCode={gameCode}
+            playerId={myPlayerId}
+            onLeft={() => {
+              clearPlayerSession(gameCode)
+              router.push('/')
+            }}
+            confirmMessage="You can rejoin with your player code if the room is still open."
+          />
+        )}
+      </div>
+    )
+  }, [myPlayerId, me?.name, isViewer, gameCode, hostToken, load, router])
+  useRegisterGameSettings(playerSettingsNode)
+
+  const [replayReadyPending, setReplayReadyPending] = useState(false)
+  const toggleReplayReady = useCallback(
+    async (ready: boolean) => {
+      if (!myResumeToken) {
+        toastError('Your player session expired — rejoin to continue')
+        return
+      }
+      setReplayReadyPending(true)
+      try {
+        const res = await fetch('/api/players/ready', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ gameId: gameCode, resumeToken: myResumeToken, ready }),
+        })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error(data.error ?? 'Failed to update ready')
+        await load()
+      } catch (err) {
+        toastError(err instanceof Error ? err.message : 'Failed to update ready')
+      } finally {
+        setReplayReadyPending(false)
+      }
+    },
+    [gameCode, myResumeToken, load, toastError]
+  )
+
+  const engineRef = useRef<TrollRunEngine | null>(null)
   const broadcastChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null)
 
-  // Real-time peer ghost broadcast subscription
+  const handleEngineReady = useCallback((engine: TrollRunEngine | null) => {
+    engineRef.current = engine
+  }, [])
+
+  // Peer positions ride ephemeral Broadcast rather than the database: they are worthless a frame
+  // later, and at ~20 updates a second per runner they must never pass through React state.
   useEffect(() => {
     if (!gameCode || !myPlayerId) return
 
@@ -168,17 +295,9 @@ export function TrollRunPlayerView({ gameCode }: { gameCode: string }) {
 
     channel
       .on('broadcast', { event: 'ghost_pos' }, ({ payload }) => {
-        if (payload && (payload as any).playerId !== myPlayerId) {
-          setGhosts((prev) => {
-            const idx = prev.findIndex((g) => g.playerId === (payload as any).playerId)
-            if (idx >= 0) {
-              const next = [...prev]
-              next[idx] = payload as import('@/lib/troll-run-engine').GhostPositionPayload
-              return next
-            }
-            return [...prev, payload as import('@/lib/troll-run-engine').GhostPositionPayload]
-          })
-        }
+        const ghost = payload as GhostPositionPayload | null
+        if (!ghost || typeof ghost.playerId !== 'string') return
+        engineRef.current?.setGhostPosition(ghost)
       })
       .subscribe()
 
@@ -190,117 +309,92 @@ export function TrollRunPlayerView({ gameCode }: { gameCode: string }) {
     }
   }, [gameCode, myPlayerId])
 
-  const handlePlayerPosition = useCallback((pos: import('@/lib/troll-run-engine').GhostPositionPayload) => {
-    if (broadcastChannelRef.current) {
-      broadcastChannelRef.current
-        .send({
-          type: 'broadcast',
-          event: 'ghost_pos',
-          payload: pos,
-        })
-        .catch(() => {
-          // best-effort broadcast
-        })
-    }
+  const handlePlayerPosition = useCallback((position: GhostPositionPayload) => {
+    broadcastChannelRef.current?.send({ type: 'broadcast', event: 'ghost_pos', payload: position }).catch(() => {
+      // Ghosts are cosmetic; a dropped frame is replaced 50ms later.
+    })
   }, [])
 
-  const worldLevels = useMemo(() => {
-    return getWorldLevels(session?.current_world)
-  }, [session?.current_world])
+  // The order drawn at round start is what the server scores against, so every client runs exactly
+  // that sequence. Keyed on the joined ids because each realtime session row arrives as a fresh
+  // array, and reacting to its identity would tear the running engine down on every row update.
+  const levelOrderKey = session?.level_order.join('|') ?? ''
+  const currentWorld = session?.current_world
+  const roundLevels = useMemo(() => {
+    return resolveTrollRunLevels(levelOrderKey ? levelOrderKey.split('|') : null, currentWorld)
+  }, [levelOrderKey, currentWorld])
 
-  // Callbacks from canvas
-  const handleDeath = useCallback(
-    async (levelId: string) => {
-      if (typeof window !== 'undefined' && 'vibrate' in navigator) {
+  /**
+   * Posts one in-race report. Progress is server-authoritative, so a report that never lands
+   * strands the runner on that level for the rest of the round — worth one retry on a network blip
+   * or a server fault. A refusal is a decision the server already made (round over, level already
+   * cleared) and repeating the request would only get the same answer.
+   */
+  const postRaceReport = useCallback(
+    async (path: string, payload: Record<string, unknown>): Promise<boolean> => {
+      if (!myResumeToken) return false
+      const body = JSON.stringify({ gameId: gameCode, resumeToken: myResumeToken, ...payload })
+
+      for (let attempt = 0; attempt < 2; attempt += 1) {
         try {
-          navigator.vibrate([40, 60, 40])
+          const res = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body })
+          if (res.ok) return true
+          if (res.status < 500) return false
         } catch {
-          // ignore vibrate error
+          // Network blip — worth exactly one more try.
         }
       }
-      if (!myPlayerId) return
-      try {
-        await fetch('/api/troll-run/report-death', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            gameId: gameCode,
-            playerId: myPlayerId,
-            levelId,
-          }),
-        })
-      } catch {
-        // best effort
-      }
+      return false
     },
-    [gameCode, myPlayerId]
+    [gameCode, myResumeToken]
+  )
+
+  const handleDeath = useCallback(
+    (levelId: string, levelName: string) => {
+      vibrate([40, 60, 40])
+      void postRaceReport('/api/troll-run/report-death', { levelId, levelName })
+    },
+    [postRaceReport]
   )
 
   const handleLevelClear = useCallback(
-    async (levelId: string, timeMs: number) => {
-      if (typeof window !== 'undefined' && 'vibrate' in navigator) {
-        try {
-          navigator.vibrate([50, 50, 100])
-        } catch {
-          // ignore vibrate error
-        }
-      }
-      if (!myPlayerId || !myState) return
-      try {
-        await fetch('/api/troll-run/report-clear', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            gameId: gameCode,
-            playerId: myPlayerId,
-            levelId,
-            timeMs,
-            newLevelIndex: (myState.current_level_index || 0) + 1,
-          }),
-        })
-      } catch {
-        // best effort
-      }
+    (levelId: string, levelName: string, timeMs: number) => {
+      vibrate([50, 50, 100])
+      void postRaceReport('/api/troll-run/report-clear', {
+        levelId,
+        levelName,
+        timeMs: Math.max(0, Math.round(timeMs)),
+      })
     },
-    [gameCode, myPlayerId, myState]
+    [postRaceReport]
   )
 
-  const handleAllLevelsCleared = useCallback(
-    async (totalTimeMs: number, totalDeaths: number) => {
-      if (typeof window !== 'undefined' && 'vibrate' in navigator) {
-        try {
-          navigator.vibrate([100, 50, 100, 50, 200])
-        } catch {
-          // ignore vibrate error
-        }
-      }
-      if (!myPlayerId) return
-      try {
-        await fetch('/api/troll-run/report-round-finish', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            gameId: gameCode,
-            playerId: myPlayerId,
-            totalTimeMs,
-            totalDeaths,
-          }),
-        })
-      } catch {
-        // best effort
-      }
-    },
-    [gameCode, myPlayerId]
-  )
+  const handleAllLevelsCleared = useCallback(() => {
+    vibrate([100, 50, 100, 50, 200])
+    // Nothing about the result is sent: the server accepts the claim only if its own progress row
+    // shows every level cleared, and reads the finishing time off the shared round clock.
+    void postRaceReport('/api/troll-run/report-round-finish', {})
+  }, [postRaceReport])
 
   // 1. Join Screen
   if (screen === 'join') {
+    if (resolvingRoomMember) {
+      return (
+        <div className="min-h-screen flex items-center justify-center">
+          <p className="text-muted text-lg">Joining from your game room…</p>
+        </div>
+      )
+    }
+
+    const joiningAsViewer = game?.status === 'active'
     return (
       <GameJoinLobbyShell
         gameCode={gameCode}
         onResumed={load}
+        wide
         header={
           <GameJoinHeader
+            emoji={cfg.headerEmoji}
             title={game?.title ?? cfg.label}
             gameType="troll_run"
             subtitle={cfg.tagline}
@@ -317,6 +411,25 @@ export function TrollRunPlayerView({ gameCode }: { gameCode: string }) {
           joining={joining}
           gameType="troll_run"
         />
+        {lobbyFull && !joiningAsViewer && (
+          <div className="space-y-2 text-center">
+            <p className="text-faint text-xs leading-relaxed">This race is full — you can watch.</p>
+            <button
+              type="button"
+              onClick={() => void join({ joinAsViewer: true })}
+              disabled={joining}
+              className="btn-secondary w-full"
+            >
+              Watch instead
+            </button>
+          </div>
+        )}
+        <LeaderboardJoinNote gameType="troll_run" />
+        <p className="text-faint text-xs leading-relaxed text-center">
+          {joiningAsViewer
+            ? 'This race is in progress — you will join as a spectator and watch live (read-only).'
+            : `${TROLL_RUN_MIN_PLAYERS}–${game?.max_players ?? 6} runners · ${game?.troll_run_rounds ?? 5} rounds · ${game?.troll_run_world ?? 'pits'} world.`}
+        </p>
       </GameJoinLobbyShell>
     )
   }
@@ -327,33 +440,86 @@ export function TrollRunPlayerView({ gameCode }: { gameCode: string }) {
   }
 
   // 3. Lobby Waiting Room
-  if (screen === 'waiting') {
+  if (screen === 'waiting' || game?.status === 'waiting') {
+    const me = players.find((player) => player.id === myPlayerId)
+    const displayName = me?.name ?? 'Player'
+    const isSpectator = me?.spectator === true
+
+    if (game?.replay_pending) {
+      return (
+        <GameJoinLobbyShell gameCode={gameCode} onResumed={load}>
+          <ReplayReadyRing
+            players={players}
+            meId={myPlayerId}
+            isHost={false}
+            minPlayers={TROLL_RUN_MIN_PLAYERS}
+            capacityGame={game}
+            onToggleReady={(ready) => void toggleReplayReady(ready)}
+            onStart={() => {}}
+            pending={replayReadyPending}
+            gameCode={gameCode}
+            onLeft={() => {
+              clearPlayerSession(gameCode)
+              router.push('/')
+            }}
+          />
+        </GameJoinLobbyShell>
+      )
+    }
+
     return (
       <GameJoinLobbyShell gameCode={gameCode} onResumed={load}>
         <GameLobbyWaitingPanel
           gameCode={gameCode}
-          gameType={game?.game_type}
-          capacityGame={game}
           players={players}
           myPlayerId={myPlayerId}
-          myPlayerName={players.find((p) => p.id === myPlayerId)?.name ?? ''}
+          myPlayerName={displayName}
           onRenamed={() => {
             void load()
           }}
-          onLeft={() => router.push('/')}
-          title="Waiting for host to start"
-          description="Race to clear all trick levels with the fewest deaths."
+          onLeft={() => {
+            clearPlayerSession(gameCode)
+            router.push('/')
+          }}
+          title={isSpectator ? 'Ready for another race?' : 'Waiting for host to start'}
+          gameType={game?.game_type}
+          game={game}
+          capacityGame={game}
+          description={`Waiting for the host to start. Race through ${game?.troll_run_rounds ?? 3} rounds of trick levels with the fewest deaths.`}
+          rulesLink={<GameRulesLink gameType="troll_run" variant="subtle" />}
+          playerListLabel="Runners"
+          isSpectator={isSpectator}
+          onReady={async () => {
+            if (!myResumeToken) return
+            await markPlayerReady(gameCode, myResumeToken)
+            await load()
+          }}
+          onReadyError={toastError}
         />
       </GameJoinLobbyShell>
     )
   }
 
   // 4. Game Ended / Finished
-  if (screen === 'finished' || session?.phase === 'finished') {
+  if (game?.status === 'finished' || screen === 'finished' || session?.phase === 'finished') {
     return (
-      <div className="min-h-screen bg-slate-950 p-4 sm:p-8 flex items-center justify-center">
+      <div className="page-wrap flex min-h-[calc(100dvh-4rem)] items-center justify-center px-4 py-8">
         {session && (
-          <TrollRunScoreboard session={session} playerStates={playerStates} playerNames={playerNames} isHost={false} />
+          <TrollRunScoreboard
+            session={session}
+            playerStates={playerStates}
+            playerNames={playerNames}
+            isHost={Boolean(hostToken)}
+            onNextRound={onNextRound}
+            loading={advancing}
+            gameCode={gameCode}
+            hostToken={hostToken}
+            onEndGameEarly={load}
+            myPlayerId={myPlayerId}
+            onPlayAgain={onPlayAgain}
+            onReturnToLobby={onReturnToLobby}
+            playingAgain={playingAgain}
+          />
         )}
       </div>
     )
@@ -362,74 +528,199 @@ export function TrollRunPlayerView({ gameCode }: { gameCode: string }) {
   // 5. Scoreboard between rounds
   if (session?.phase === 'scoreboard') {
     return (
-      <div className="min-h-screen bg-slate-950 p-4 sm:p-8 flex items-center justify-center">
-        <TrollRunScoreboard session={session} playerStates={playerStates} playerNames={playerNames} isHost={false} />
+      <div className="page-wrap flex min-h-[calc(100dvh-4rem)] items-center justify-center px-4 py-8">
+        <TrollRunScoreboard
+          session={session}
+          playerStates={playerStates}
+          playerNames={playerNames}
+          isHost={Boolean(hostToken)}
+          onNextRound={onNextRound}
+          loading={advancing}
+          gameCode={gameCode}
+          hostToken={hostToken}
+          onEndGameEarly={load}
+          myPlayerId={myPlayerId}
+          onPlayAgain={onPlayAgain}
+          onReturnToLobby={onReturnToLobby}
+          playingAgain={playingAgain}
+        />
       </div>
     )
   }
 
-  // 6. Active Racing / Countdown Phase
-  return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center justify-between p-3 sm:p-6 select-none font-sans">
-      {/* Top HUD Bar */}
-      <div className="w-full max-w-[640px] flex items-center justify-between bg-slate-900/80 border border-slate-800 rounded-xl px-4 py-2.5 mb-3 text-xs">
-        <div className="flex items-center gap-2">
-          <span className="text-base">😈</span>
-          <span className="font-black text-amber-400">
-            Round {session?.current_round ?? 1} / {session?.total_rounds ?? 5}
-          </span>
-          <span className="text-slate-500">·</span>
-          <span className="text-slate-400 capitalize">{session?.current_world ?? 'Pits'}</span>
-        </div>
-
-        <div className="flex items-center gap-4">
-          <div>
-            <span className="text-slate-400">Level: </span>
-            <span className="font-mono font-bold text-white">
-              {(myState?.current_level_index ?? 0) + 1} / {worldLevels.length}
+  // 6. The room is active but the first round has not been drawn yet.
+  if (!session || session.phase === 'lobby') {
+    return (
+      <div className="page-wrap flex min-h-[calc(100dvh-4rem)] items-center justify-center px-4 py-8">
+        <div className="rounded-2xl border border-[color-mix(in_srgb,var(--primary)_14%,var(--border))] bg-[var(--card-strong)]/95 backdrop-blur-md p-6 sm:p-8 space-y-3 text-center max-w-sm w-full shadow-2xl">
+          <div className="flex justify-center text-[var(--primary)] pb-1">
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[color-mix(in_srgb,var(--primary)_12%,transparent)]">
+              <Glyph icon={gameIcon('troll_run')} size={18} />
             </span>
           </div>
-          <div>
-            <span className="text-slate-400">Deaths: </span>
-            <span className="font-mono font-bold text-rose-400">{myState?.deaths ?? 0}</span>
+          <h2 className="text-xl font-black text-[var(--foreground)]">Setting the traps…</h2>
+          <p className="text-muted text-xs leading-relaxed">The first round starts in a moment.</p>
+        </div>
+      </div>
+    )
+  }
+
+  const levelCount = trollRunRoundLevelCount(session)
+  const isRacing = session.phase === 'racing'
+  const roundClockSeconds = isRacing ? deadlineSecondsLeft : session.round_time_limit
+
+  // 7. Watching rather than running — viewers, and anyone with no row in this round.
+  if (isViewer || !myState) {
+    return (
+      <div className="page-wrap mx-auto max-w-2xl space-y-4 px-4 py-5">
+        <div className="glass-card flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-xs">
+          <span className="flex items-center gap-1.5 font-black text-[var(--primary)]">
+            <Glyph icon={Flag02Icon} size={13} />
+            Round {session.current_round} / {session.total_rounds}
+          </span>
+          <span className="text-muted capitalize">{session.current_world}</span>
+          <span className="flex items-center gap-1.5 font-mono font-bold tabular-nums text-[var(--foreground)]">
+            <Glyph icon={Clock01Icon} size={13} className="text-muted" />
+            {formatMinutesSeconds(roundClockSeconds)}
+          </span>
+        </div>
+        <p className="text-muted text-center text-xs">
+          {isViewer ? 'You are watching this race.' : 'You will be seated for the next round.'}
+        </p>
+        <TrollRunRaceProgress session={session} players={players} playerStates={playerStates} />
+        <TrollRunLiveFeed events={events} playerNames={playerNames} />
+        {hostToken ? (
+          <div className="pt-3">
+            <HostEndGameButton
+              gameCode={gameCode}
+              hostToken={hostToken}
+              onEnded={load}
+              label="End race"
+              icon={<ExitIcon size={12} />}
+              confirmTitle="End this Troll Run race?"
+              confirmMessage="The match will end immediately and all players will see the championship results."
+              className="btn-danger-soft"
+            />
           </div>
+        ) : myPlayerId ? (
+          <div className="pt-3">
+            <LeaveGameButton
+              gameCode={gameCode}
+              playerId={myPlayerId}
+              onLeft={() => {
+                clearPlayerSession(gameCode)
+                router.push('/')
+              }}
+              className="btn-secondary w-full text-xs"
+            />
+          </div>
+        ) : null}
+      </div>
+    )
+  }
+
+  // 8. Racing / countdown
+  const hasFinishedRound = myState.round_finished === true
+
+  return (
+    <div className="page-wrap flex flex-col items-center gap-3 px-2 sm:px-4 py-2 sm:py-4 select-none w-full">
+      {/* Top HUD Bar */}
+      <div
+        className="glass-card flex w-full flex-wrap items-center justify-between gap-x-4 gap-y-2 px-3.5 py-2.5 text-xs"
+        style={{ maxWidth: TROLL_RUN_STAGE_MAX_WIDTH }}
+      >
+        <div className="flex items-center gap-2">
+          <span className="inline-flex items-center text-[var(--primary)] shrink-0">
+            <Glyph icon={gameIcon('troll_run')} size={12} />
+          </span>
+          <span className="font-black text-[var(--primary)]">
+            Round {session.current_round} / {session.total_rounds}
+          </span>
+          <span className="text-faint">·</span>
+          <span className="text-muted capitalize">{session.current_world}</span>
+        </div>
+
+        <div className="flex items-center gap-3 sm:gap-4">
+          <span className="flex items-center gap-1.5" title="Level">
+            <Glyph icon={Target01Icon} size={13} className="text-muted" />
+            <span className="font-mono font-bold tabular-nums text-[var(--foreground)]">
+              {Math.min(myState.current_level_index + 1, levelCount)}/{levelCount}
+            </span>
+          </span>
+          <span className="flex items-center gap-1.5" title="Deaths">
+            <Glyph icon={SkullIcon} size={13} className="text-rose-400" />
+            <span className="font-mono font-bold tabular-nums text-rose-400">{myState.deaths}</span>
+          </span>
+          <span className="flex items-center gap-1.5" title="Time remaining">
+            <Glyph
+              icon={Clock01Icon}
+              size={13}
+              className={isRacing && roundClockSeconds <= TROLL_RUN_URGENT_SECONDS ? 'text-rose-400' : 'text-muted'}
+            />
+            <span
+              className={`font-mono font-bold tabular-nums ${
+                isRacing && roundClockSeconds <= TROLL_RUN_URGENT_SECONDS
+                  ? 'text-rose-400 animate-pulse'
+                  : 'text-[var(--foreground)]'
+              }`}
+            >
+              {formatMinutesSeconds(roundClockSeconds)}
+            </span>
+          </span>
         </div>
       </div>
 
       {/* Main Canvas / Overlay */}
-      <div className="relative w-full max-w-[640px] flex flex-col items-center">
+      <div className="relative w-full flex flex-col items-center" style={{ maxWidth: TROLL_RUN_STAGE_MAX_WIDTH }}>
         {/* 3-2-1 Countdown Overlay */}
-        {session?.phase === 'countdown' && (
-          <div className="absolute inset-0 bg-slate-950/90 backdrop-blur-sm z-30 flex flex-col items-center justify-center rounded-2xl border border-amber-500/40">
-            <span className="text-7xl font-black text-amber-400 animate-bounce">{countdownNum ?? 3}</span>
-            <p className="text-sm font-bold text-slate-300 mt-2">Get ready to race!</p>
+        {session.phase === 'countdown' && (
+          <div
+            className="absolute inset-0 z-30 flex flex-col items-center justify-center rounded-2xl border backdrop-blur-sm"
+            style={{
+              background: 'color-mix(in srgb, var(--background) 88%, transparent)',
+              borderColor: 'color-mix(in srgb, var(--primary) 40%, var(--border))',
+            }}
+          >
+            <span className="text-7xl font-black tabular-nums text-[var(--primary)] animate-bounce">
+              {deadlineSecondsLeft > 0 ? deadlineSecondsLeft : 'GO!'}
+            </span>
+            <p className="text-muted mt-2 text-sm font-bold">Get ready to race!</p>
           </div>
         )}
 
         {/* Finished Round Waiting Overlay */}
-        {myState?.round_finished && session?.phase === 'racing' && (
-          <div className="absolute inset-0 bg-slate-950/90 backdrop-blur-sm z-30 flex flex-col items-center justify-center rounded-2xl border border-emerald-500/40 p-6 text-center space-y-3">
-            <span className="text-5xl">🎉</span>
-            <h3 className="text-2xl font-black text-white">Finished #{myState.finish_position ?? 1}!</h3>
-            <p className="text-xs text-slate-300">
-              You cleared all {worldLevels.length} levels with{' '}
-              <strong className="text-rose-400">{myState.deaths} deaths</strong>!
+        {hasFinishedRound && isRacing && (
+          <div
+            className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-3 rounded-2xl border p-6 text-center backdrop-blur-sm"
+            style={{
+              background: 'color-mix(in srgb, var(--background) 88%, transparent)',
+              borderColor: 'color-mix(in srgb, #10b981 40%, var(--border))',
+            }}
+          >
+            <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-500/15 text-emerald-400">
+              <Glyph icon={Flag02Icon} size={24} />
+            </span>
+            <h3 className="text-2xl font-black text-[var(--foreground)]">All levels cleared!</h3>
+            <p className="text-muted text-xs">
+              You cleared all {levelCount} levels in{' '}
+              <strong className="font-mono tabular-nums text-emerald-400">
+                {(myState.total_time_ms / 1000).toFixed(1)}s
+              </strong>{' '}
+              with <strong className="font-mono tabular-nums text-rose-400">{myState.deaths} deaths</strong>.
             </p>
-            <div className="text-xs font-mono text-amber-400 bg-amber-500/10 px-3 py-1.5 rounded-lg border border-amber-500/30">
-              Round Score: +{myState.round_score} pts
-            </div>
-            <p className="text-[11px] text-slate-500 italic">
-              Waiting for other players to finish or timer to expire...
+            <p className="text-faint text-[11px] italic">
+              Places and points are decided once every runner is home or the timer runs out.
             </p>
           </div>
         )}
 
         <TrollRunCanvas
-          levels={worldLevels}
-          initialLevelIndex={myState?.current_level_index ?? 0}
+          levels={roundLevels}
+          initialLevelIndex={Math.min(myState.current_level_index, Math.max(0, roundLevels.length - 1))}
           playerId={myPlayerId ?? ''}
           playerName={playerNames.get(myPlayerId ?? '') ?? 'Runner'}
-          ghostPositions={ghosts}
+          active={isRacing && !hasFinishedRound}
+          onEngineReady={handleEngineReady}
           onPlayerPosition={handlePlayerPosition}
           onDeath={handleDeath}
           onLevelClear={handleLevelClear}
@@ -440,7 +731,7 @@ export function TrollRunPlayerView({ gameCode }: { gameCode: string }) {
       </div>
 
       {/* Live Death/Clear Feed */}
-      <div className="w-full max-w-[640px] mt-3">
+      <div className="w-full" style={{ maxWidth: TROLL_RUN_STAGE_MAX_WIDTH }}>
         <TrollRunLiveFeed events={events} playerNames={playerNames} />
       </div>
     </div>

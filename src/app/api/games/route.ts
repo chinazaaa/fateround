@@ -916,7 +916,16 @@ export async function POST(req: NextRequest) {
                                                                           lobbyLimits
                                                                         )
                                                                       )
-                                                                    : null
+                                                                    : isTrollRunGame(game_type)
+                                                                      ? resolveMaxPlayers(
+                                                                          'troll_run',
+                                                                          rawMaxPlayers,
+                                                                          lobbyDefaultMaxPlayers(
+                                                                            'troll_run',
+                                                                            lobbyLimits
+                                                                          )
+                                                                        )
+                                                                      : null
   const isSecret = isSecretMessageGame(game_type)
   const lateJoinFields = gameSupportsViewerSetting(game_type)
     ? rawLateJoinPolicy

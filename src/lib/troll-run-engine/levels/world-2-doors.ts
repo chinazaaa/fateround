@@ -328,8 +328,11 @@ export const WORLD_2_LEVELS: TrollRunLevel[] = [
   (() => {
     const tiles = createEmptyGrid()
     for (let c = 0; c < 20; c++) tiles[9][c] = TrollRunTileType.SOLID
-    // Hidden bounce pad
-    tiles[9][8] = TrollRunTileType.BOUNCE
+    // Hidden bounce pad. Col 12 is where the launch arc actually crosses the sky door: the pad throws
+    // the runner up at 450px/s, which peaks 103px high and holds them level with the door for ~0.49s.
+    // At 160px/s that covers the ~90px from here with room to spare, but not the ~130px it would be
+    // from further left — from col 8 the door was only touchable for three frames, if at all.
+    tiles[9][12] = TrollRunTileType.BOUNCE
 
     return {
       id: 'doors-09',
@@ -338,7 +341,7 @@ export const WORLD_2_LEVELS: TrollRunLevel[] = [
       width: 320,
       height: 180,
       spawn: { x: 32, y: 120 },
-      door: { x: 260, y: 36 },
+      door: { x: 260, y: 44 },
       tiles,
       triggers: [
         {
@@ -362,7 +365,9 @@ export const WORLD_2_LEVELS: TrollRunLevel[] = [
 
   // -------------------------------------------------------------
   // LEVEL 10: "The Grand Chase"
-  // Trap: Multi-stage runaway door across islands.
+  // Trap: the door flees the middle island for the high ledge on the far right, so the runner has
+  // to cross the spike gap to follow it. The destination is absolute rather than a plain sideways
+  // run because the ledge it lands on is two rows higher than where the door starts.
   // -------------------------------------------------------------
   (() => {
     const tiles = createEmptyGrid()
@@ -388,9 +393,9 @@ export const WORLD_2_LEVELS: TrollRunLevel[] = [
           condition: 'enter',
           actions: [
             {
-              type: 'door_runs_away',
-              direction: 'right',
-              distance: 142,
+              type: 'move_door',
+              // Row 5 spans cols 14–19 with its surface at y=80, so a 20px-tall door sits at y=60.
+              to: { x: 272, y: 60 },
               duration: 0.5,
             },
           ],

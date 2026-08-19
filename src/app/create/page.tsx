@@ -96,13 +96,28 @@ import {
   isQuickDrawGame,
   templatableGame,
 } from '@/lib/game-types'
-import { TROLL_RUN_DEFAULT_MAX_PLAYERS, TROLL_RUN_DEFAULT_ROUNDS, TROLL_RUN_DEFAULT_TIME_LIMIT } from '@/lib/troll-run'
+import {
+  TROLL_RUN_DEFAULT_MAX_PLAYERS,
+  TROLL_RUN_DEFAULT_ROUNDS,
+  TROLL_RUN_DEFAULT_TIME_LIMIT,
+} from '@/lib/troll-run-types'
 import { DEFAULT_MAHJONG_RULESET, MAHJONG_RULESETS, MAHJONG_RULESET_CONFIG } from '@/lib/mahjong-rulesets'
 import type { MahjongRuleset } from '@/types'
 import { BOARD_THEMES, PIECE_SETS, useChessAppearance } from '@/lib/chess-appearance'
 import { ChessPieceGlyph } from '@/components/chess/ChessPieceDetailed'
 import { Glyph } from '@/components/icons/Glyph'
-import { GlobeIcon, LockIcon, TableTennisBatIcon } from '@hugeicons/core-free-icons'
+import {
+  ArrowUpDownIcon,
+  BlackHoleIcon,
+  CrownIcon,
+  DoorOpenIcon,
+  FlashIcon,
+  GlobeIcon,
+  LockIcon,
+  Moon02Icon,
+  TableTennisBatIcon,
+  Tv01Icon,
+} from '@hugeicons/core-free-icons'
 import { showsMaxOnePublicHint, showsPartyPublicHint } from '@/lib/public-hints'
 import { ScheduleForLaterField } from '@/components/create/ScheduleForLaterField'
 import { WYR_QUESTION_COUNT } from '@/lib/would-you-rather-questions'
@@ -6061,14 +6076,14 @@ function CreateGameInner() {
             ) : isTrollRun ? (
               <SettingsGroup title="Troll Run race settings">
                 <Field
-                  label={`Max players (${effectiveLimits.troll_run?.min ?? 2}–${effectiveLimits.troll_run?.max ?? 8})`}
+                  label={`Max players (${effectiveLimits.troll_run?.min ?? 2}–${effectiveLimits.troll_run?.max ?? 6})`}
                 >
                   <CustomSelect
                     value={trollRunMaxPlayers}
                     onChange={setTrollRunMaxPlayers}
                     options={playerCountOptions(
                       effectiveLimits.troll_run?.min ?? 2,
-                      effectiveLimits.troll_run?.max ?? 8
+                      effectiveLimits.troll_run?.max ?? 6
                     ).map((n) => ({
                       value: n,
                       label: `${n} players`,
@@ -6077,25 +6092,30 @@ function CreateGameInner() {
                 </Field>
 
                 <Field label="World Theme">
-                  <div className="grid grid-cols-2 gap-2.5">
+                  <div className="grid grid-cols-2 gap-2">
                     {[
-                      { id: 'pits', title: 'World 1: The Pits', icon: '🕳️', desc: 'Collapsing floors & drop-offs' },
+                      {
+                        id: 'pits',
+                        title: 'World 1: The Pits',
+                        icon: BlackHoleIcon,
+                        desc: 'Collapsing floors & drop-offs',
+                      },
                       {
                         id: 'doors',
                         title: 'World 2: Runaway Doors',
-                        icon: '🚪',
+                        icon: DoorOpenIcon,
                         desc: 'Evasive doors & moving walls',
                       },
                       {
                         id: 'gravity',
                         title: 'World 3: Gravity Flip',
-                        icon: '🔄',
+                        icon: ArrowUpDownIcon,
                         desc: 'Ceiling walks & inverted keys',
                       },
                       {
                         id: 'gauntlet',
                         title: 'World 4: The Gauntlet',
-                        icon: '👑',
+                        icon: CrownIcon,
                         desc: 'Master gauntlet with all traps',
                       },
                     ].map((w) => (
@@ -6104,17 +6124,17 @@ function CreateGameInner() {
                         type="button"
                         onClick={() => setTrollRunWorld(w.id)}
                         className={[
-                          'rounded-2xl border-2 px-3.5 py-3 text-left transition',
+                          'rounded-xl border-2 px-3 py-2 text-left transition',
                           trollRunWorld === w.id
                             ? 'border-[var(--primary)] bg-[var(--surface-inset-bg)] ring-1 ring-[var(--primary)]'
                             : 'border-[var(--border-strong)] text-muted hover:border-[var(--border)]',
                         ].join(' ')}
                       >
-                        <span className="font-bold block text-sm flex items-center gap-1.5 text-body">
-                          <span>{w.icon}</span>
+                        <span className="font-semibold block text-xs flex items-center gap-1.5 text-body">
+                          <Glyph icon={w.icon} size={13} className="shrink-0 text-[var(--primary)]" />
                           <span>{w.title}</span>
                         </span>
-                        <span className="text-faint text-[11px] block mt-0.5">{w.desc}</span>
+                        <span className="text-faint text-[10px] block mt-0.5 leading-snug">{w.desc}</span>
                       </button>
                     ))}
                   </div>
@@ -6123,22 +6143,22 @@ function CreateGameInner() {
                 <Field label="Visual Palette">
                   <div className="grid grid-cols-3 gap-2">
                     {[
-                      { id: 'dark', label: 'Dark Slate', emoji: '🌑' },
-                      { id: 'retro', label: 'Retro 8-Bit', emoji: '🕹️' },
-                      { id: 'neon', label: 'Cyber Neon', emoji: '⚡' },
+                      { id: 'dark', label: 'Dark Slate', icon: Moon02Icon },
+                      { id: 'retro', label: 'Retro 8-Bit', icon: Tv01Icon },
+                      { id: 'neon', label: 'Cyber Neon', icon: FlashIcon },
                     ].map((t) => (
                       <button
                         key={t.id}
                         type="button"
                         onClick={() => setSettings({ ...settings, theme: t.id as any })}
                         className={[
-                          'rounded-xl border-2 py-2.5 px-2 text-center transition flex flex-col items-center gap-1',
+                          'rounded-xl border-2 py-2 px-2 text-center transition flex items-center justify-center gap-1.5',
                           settings.theme === t.id
-                            ? 'border-[var(--primary)] bg-[var(--surface-inset-bg)] ring-1 ring-[var(--primary)] text-body font-bold'
+                            ? 'border-[var(--primary)] bg-[var(--surface-inset-bg)] ring-1 ring-[var(--primary)] text-body font-semibold'
                             : 'border-[var(--border-strong)] text-muted hover:border-[var(--border)]',
                         ].join(' ')}
                       >
-                        <span className="text-xl">{t.emoji}</span>
+                        <Glyph icon={t.icon} size={13} className="shrink-0 text-[var(--primary)]" />
                         <span className="text-xs">{t.label}</span>
                       </button>
                     ))}
@@ -6163,10 +6183,10 @@ function CreateGameInner() {
                     value={trollRunTimeLimit}
                     onChange={setTrollRunTimeLimit}
                     options={[
-                      { value: 60, label: '1 minute (60s)' },
-                      { value: 90, label: '1.5 minutes (90s)' },
-                      { value: 120, label: '2 minutes (120s)' },
-                      { value: 180, label: '3 minutes (180s)' },
+                      { value: 60, label: '1 minute' },
+                      { value: 90, label: '1.5 minutes' },
+                      { value: 120, label: '2 minutes' },
+                      { value: 180, label: '3 minutes' },
                     ]}
                   />
                   <p className="text-faint text-xs mt-1">Time allowed before remaining runners receive a DNF.</p>

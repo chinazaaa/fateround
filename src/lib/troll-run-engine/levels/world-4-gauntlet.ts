@@ -50,7 +50,7 @@ export const WORLD_4_LEVELS: TrollRunLevel[] = [
       triggers: [
         {
           zone: { x: 96, y: 100, w: 32, h: 40 },
-          condition: 'enter',
+          condition: 'land_on',
           actions: [
             {
               type: 'collapse_tiles',
@@ -58,12 +58,14 @@ export const WORLD_4_LEVELS: TrollRunLevel[] = [
                 [6, 8],
                 [7, 8],
               ],
+              // Long enough to feel the ground go and jump off it, short enough to punish dawdling.
+              delay: 0.4,
             },
           ],
         },
         {
           zone: { x: 176, y: 80, w: 32, h: 40 },
-          condition: 'enter',
+          condition: 'land_on',
           actions: [
             {
               type: 'collapse_tiles',
@@ -71,6 +73,7 @@ export const WORLD_4_LEVELS: TrollRunLevel[] = [
                 [11, 7],
                 [12, 7],
               ],
+              delay: 0.4,
             },
           ],
         },
@@ -247,7 +250,9 @@ export const WORLD_4_LEVELS: TrollRunLevel[] = [
 
   // -------------------------------------------------------------
   // LEVEL 6: "The False Horizon"
-  // Trap: Huge 10-tile cascading collapse across middle floor.
+  // Trap: the middle floor caves in behind the runner, left to right. The delays are paced slower
+  // than the 160px/s run speed so committing to the sprint carries you to the far ledge, while
+  // hesitating lets the collapse catch up — dropping you onto the spikes below.
   // -------------------------------------------------------------
   (() => {
     const tiles = createEmptyGrid()
@@ -273,15 +278,40 @@ export const WORLD_4_LEVELS: TrollRunLevel[] = [
               tiles: [
                 [6, 9],
                 [7, 9],
+              ],
+              delay: 0.8,
+            },
+            {
+              type: 'collapse_tiles',
+              tiles: [
                 [8, 9],
                 [9, 9],
+              ],
+              delay: 1.15,
+            },
+            {
+              type: 'collapse_tiles',
+              tiles: [
                 [10, 9],
                 [11, 9],
+              ],
+              delay: 1.5,
+            },
+            {
+              type: 'collapse_tiles',
+              tiles: [
                 [12, 9],
                 [13, 9],
+              ],
+              delay: 1.85,
+            },
+            {
+              type: 'collapse_tiles',
+              tiles: [
                 [14, 9],
                 [15, 9],
               ],
+              delay: 2.2,
             },
           ],
         },
@@ -398,7 +428,8 @@ export const WORLD_4_LEVELS: TrollRunLevel[] = [
 
   // -------------------------------------------------------------
   // LEVEL 10: "Troll King's Finale"
-  // Trap: 3-phase epic gauntlet! Runaway door + collapsing floor + gravity flip!
+  // Trap: the door bolts for the far ceiling corner, and the spike pit is far too wide to jump — so
+  // the only way after it is to flip gravity and run along the ceiling.
   // -------------------------------------------------------------
   (() => {
     const tiles = createEmptyGrid()
@@ -420,15 +451,14 @@ export const WORLD_4_LEVELS: TrollRunLevel[] = [
       door: { x: 120, y: 124 },
       tiles,
       triggers: [
-        // Phase 1: Door flees up to ceiling
+        // Phase 1: door abandons the pit for the top-right corner
         {
           zone: { x: 60, y: 80, w: 40, h: 60 },
           condition: 'enter',
           actions: [
             {
-              type: 'door_runs_away',
-              direction: 'right',
-              distance: 152,
+              type: 'move_door',
+              to: { x: 272, y: 36 },
               duration: 0.5,
             },
           ],

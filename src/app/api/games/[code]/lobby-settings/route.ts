@@ -130,6 +130,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const {
     hostToken,
     is_public,
+    theme,
     max_players,
     timer_seconds,
     game_duration_seconds,
@@ -215,6 +216,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   if (
     content_label === undefined &&
+    theme === undefined &&
     is_public === undefined &&
     max_players === undefined &&
     timer_seconds === undefined &&
@@ -351,6 +353,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   // tied to a specific board type; any lobby-settings game can toggle it.
   if (is_public !== undefined) {
     gameUpdate.is_public = is_public
+  }
+
+  if (theme !== undefined) {
+    gameUpdate.theme = theme
   }
 
   // Single source of truth for capacity rules (board-size gate + reset).

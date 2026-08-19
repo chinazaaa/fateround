@@ -118,6 +118,7 @@ describe('PingPongViews lifecycle unit tests', () => {
   })
 
   it('renders PingPongHostView waiting lobby screen correctly when game is in waiting status', async () => {
+    localStorage.setItem('host_mode_PONG1', 'spectator')
     render(<PingPongHostView gameCode="PONG1" hostToken="T1" />)
     await waitFor(() => {
       expect(screen.getByText(/Ping Pong/i)).toBeTruthy()

@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { PING_PONG_POINTS_OPTIONS } from '@/lib/ping-pong'
 import { LOBBY_LIMIT_GAME_TYPES } from '@/lib/game-limits'
 import { SCRABBLE_DICTIONARY_OPTIONS } from '@/lib/scrabble-dictionary-meta'
+import { TROLL_RUN_WORLD_IDS } from '@/lib/troll-run-types'
 import {
   sanitizedString,
   gameCodeString,
@@ -20,6 +21,10 @@ import {
 } from './shared'
 
 const mahjongRulesetEnum = z.enum(['fate_round', 'hong_kong', 'riichi', 'mcr'])
+
+// A world id the server does not recognise would silently fall back to World 1 while the
+// room's settings claimed otherwise, so reject it at the edge instead.
+const trollRunWorldEnum = z.enum(TROLL_RUN_WORLD_IDS)
 const mahjongRuleOptionsSchema = z
   .object({
     matchLength: z.enum(['east', 'hanchan']).optional(),
@@ -238,7 +243,7 @@ export const createGameSchema = z.object({
   library_pack_id: z.string().uuid().optional(),
   troll_run_rounds: z.coerce.number().int().min(1).max(20).optional(),
   troll_run_time_limit: z.coerce.number().int().min(30).max(600).optional(),
-  troll_run_world: z.string().max(50).optional(),
+  troll_run_world: trollRunWorldEnum.optional(),
   custom_slots: z
     .object({
       slots: z
@@ -396,6 +401,7 @@ export const boardGameLobbySettingsSchema = z.object({
   gameId: gameCodeString(),
   hostToken: hostTokenString(),
   is_public: z.boolean().optional(),
+  theme: themeEnum.optional(),
   checkers_nigeria_street_rules: z.boolean().optional(),
   // Player-facing content label ("Maths", "Bible trivia"). Empty string clears it.
   content_label: z.string().max(40).optional(),
@@ -435,7 +441,7 @@ export const boardGameLobbySettingsSchema = z.object({
   ludo_variant: z.enum(['modern', 'traditional']).optional(),
   ayo_variant: z.enum(['traditional', 'oware']).optional(),
   mahjong_ruleset: mahjongRulesetEnum.optional(),
-  mahjong_rule_options: mahjongRuleOptionsSchema,
+  mahjong_rule_options: mahjongRuleOptionsSchema.optional(),
   mafia_doctor_enabled: z.boolean().optional(),
   mafia_detective_enabled: z.boolean().optional(),
   mafia_bodyguard_enabled: z.boolean().optional(),
@@ -527,7 +533,7 @@ export const boardGameLobbySettingsSchema = z.object({
   library_pack_id: z.string().uuid().optional(),
   troll_run_rounds: z.coerce.number().int().min(1).max(20).optional(),
   troll_run_time_limit: z.coerce.number().int().min(30).max(600).optional(),
-  troll_run_world: z.string().max(50).optional(),
+  troll_run_world: trollRunWorldEnum.optional(),
 })
 
 export type BoardGameLobbySettingsInput = z.infer<typeof boardGameLobbySettingsSchema>

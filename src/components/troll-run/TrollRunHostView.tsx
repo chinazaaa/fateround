@@ -10,23 +10,52 @@ import {
   TROLL_RUN_SESSION_SELECT,
 } from '@/lib/supabase-selects'
 import { useGameTableSync } from '@/hooks/useGameTableSync'
+import { usePolling, POLL_INTERVALS } from '@/hooks/usePolling'
+import { useDeadlineCountdown } from '@/hooks/useDeadlineCountdown'
+import { useTrollRunAdvanceNudge } from '@/hooks/useTrollRunAdvanceNudge'
 import { useToast } from '@/components/ui/Toast'
 import type { Game, Player, TrollRunEvent, TrollRunPlayerState, TrollRunSession } from '@/types'
-import { getWorldLevels } from '@/lib/troll-run-engine'
+import { formatMinutesSeconds } from '@/lib/timer-format'
 import { TrollRunScoreboard } from './TrollRunScoreboard'
-import { TrollRunLiveFeed } from './TrollRunLiveFeed'
+import { TrollRunLiveFeed, TROLL_RUN_FEED_HISTORY } from './TrollRunLiveFeed'
+import { TrollRunRaceProgress } from './TrollRunRaceProgress'
+import { TrollRunPlayerView } from './TrollRunPlayerView'
 import { HostLobby } from '@/components/host/HostLobby'
 import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
+import { HostModeSelector } from '@/components/host/HostModeSelector'
+import { HostGameLayout } from '@/components/host/HostGameLayout'
+import { HostGameHeader } from '@/components/host/HostGameHeader'
+import { GameInfoChips } from '@/components/game-lobby/GameInfoChips'
 import { HostTrollRunLobbyPanel } from '@/components/host-lobby/HostTrollRunLobbyPanel'
+import { TransferHostControl } from '@/components/TransferHostControl'
+import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { gameTypeConfig } from '@/lib/game-types'
+import { gameIcon } from '@/lib/game-glyphs'
+import { Glyph } from '@/components/icons/Glyph'
+import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
+import { TROLL_RUN_MIN_PLAYERS } from '@/lib/troll-run-types'
+import { useHostSeat } from '@/hooks/useHostSeat'
+import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
+import { useConfirm } from '@/components/ui/ConfirmDialog'
+import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
+import { useRegisterGameSettings } from '@/components/GameSettingsContext'
+import { HostActiveSettings } from '@/components/host/HostActiveSettings'
+import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
+import { ExitIcon } from '@/components/host/host-icons'
 
 export interface TrollRunHostViewProps {
   gameCode: string
   hostToken: string
 }
 
+type HostTab = 'manage' | 'play'
+
+/** Seconds left on the round clock below which the host's timer reads as urgent. */
+const TROLL_RUN_HOST_URGENT_SECONDS = 20
+
 export function TrollRunHostView({ gameCode, hostToken }: TrollRunHostViewProps) {
-  const { error: toastError } = useToast()
+  const { error: toastError, success } = useToast()
+  const { confirm } = useConfirm()
   const cfg = gameTypeConfig('troll_run')
 
   const [game, setGame] = useState<Game | null>(null)
@@ -34,47 +63,54 @@ export function TrollRunHostView({ gameCode, hostToken }: TrollRunHostViewProps)
   const [session, setSession] = useState<TrollRunSession | null>(null)
   const [playerStates, setPlayerStates] = useState<TrollRunPlayerState[]>([])
   const [events, setEvents] = useState<TrollRunEvent[]>([])
-  const [timeRemainingSec, setTimeRemainingSec] = useState<number | null>(null)
-  const [countdownNum, setCountdownNum] = useState<number | null>(null)
+  const [starting, setStarting] = useState(false)
   const [advancing, setAdvancing] = useState(false)
+  const [playingAgain, setPlayingAgain] = useState(false)
+  const [tab, setTab] = useState<HostTab>('play')
+
+  useApplyGameTheme(game?.theme, game?.game_type)
 
   const reload = useCallback(async () => {
     const [gameRes, playersRes, sessRes, statesRes, eventsRes] = await Promise.all([
       supabase.from('games').select(HOST_GAME_SELECT).eq('id', gameCode).maybeSingle(),
-      supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode),
+      supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at'),
       supabase.from('troll_run_sessions').select(TROLL_RUN_SESSION_SELECT).eq('game_id', gameCode).maybeSingle(),
       supabase.from('troll_run_player_states').select(TROLL_RUN_PLAYER_STATE_SELECT).eq('game_id', gameCode),
+      // Newest first with a cap, flipped back into feed order below: a race logs a death for every
+      // trap every runner falls for, and the ticker only ever shows the tail.
       supabase
         .from('troll_run_events')
         .select(TROLL_RUN_EVENT_SELECT)
         .eq('game_id', gameCode)
-        .order('created_at', { ascending: true }),
+        .order('created_at', { ascending: false })
+        .limit(TROLL_RUN_FEED_HISTORY),
     ])
 
-    if (gameRes.data) setGame(gameRes.data as unknown as Game)
-    if (playersRes.data) setPlayers(playersRes.data as unknown as Player[])
-    if (sessRes.data) setSession(sessRes.data as unknown as TrollRunSession)
-    if (statesRes.data) setPlayerStates(statesRes.data as unknown as TrollRunPlayerState[])
-    if (eventsRes.data) setEvents(eventsRes.data as unknown as TrollRunEvent[])
+    setGame((gameRes.data as unknown as Game) ?? null)
+    setPlayers((playersRes.data as unknown as Player[]) ?? [])
+    setSession(sessRes.data ? (sessRes.data as unknown as TrollRunSession) : null)
+    setPlayerStates((statesRes.data as unknown as TrollRunPlayerState[]) ?? [])
+    setEvents(((eventsRes.data as unknown as TrollRunEvent[]) ?? []).slice().reverse())
   }, [gameCode])
 
   useEffect(() => {
     reload()
   }, [reload])
 
-  useGameTableSync(
+  const connected = useGameTableSync(
     gameCode,
     [
       { table: 'games', apply: (row) => setGame(row as unknown as Game) },
+      'players',
       { table: 'troll_run_sessions', apply: (row) => setSession(row as unknown as TrollRunSession) },
       {
         table: 'troll_run_player_states',
         apply: (row) => {
           setPlayerStates((prev) => {
-            const idx = prev.findIndex((p) => p.id === row.id)
-            if (idx >= 0) {
+            const index = prev.findIndex((state) => state.id === row.id)
+            if (index >= 0) {
               const updated = [...prev]
-              updated[idx] = row as unknown as TrollRunPlayerState
+              updated[index] = row as unknown as TrollRunPlayerState
               return updated
             }
             return [...prev, row as unknown as TrollRunPlayerState]
@@ -83,76 +119,101 @@ export function TrollRunHostView({ gameCode, hostToken }: TrollRunHostViewProps)
       },
       {
         table: 'troll_run_events',
-        apply: (row) => setEvents((prev) => [...prev, row as unknown as TrollRunEvent]),
+        apply: (row) => {
+          const rowObj = row as unknown as TrollRunEvent
+          setEvents((prev) => {
+            if (prev.some((e) => e.id === rowObj.id)) return prev
+            return [...prev, rowObj].slice(-TROLL_RUN_FEED_HISTORY)
+          })
+        },
       },
     ],
-    reload
+    reload,
+    { channelKey: 'host' }
   )
 
-  // Timer loop
-  useEffect(() => {
-    if (!session?.turn_deadline_at) {
-      setTimeRemainingSec(null)
-      setCountdownNum(null)
-      return
-    }
+  usePolling(() => reload(), [gameCode, reload], {
+    intervalMs: game?.status === 'waiting' ? POLL_INTERVALS.lobby : POLL_INTERVALS.realtimeFallback,
+    enabled: game?.status === 'waiting' || !connected,
+    runImmediately: false,
+  })
 
-    const interval = setInterval(() => {
-      const diff = new Date(session.turn_deadline_at!).getTime() - Date.now()
-      const secs = Math.ceil(diff / 1000)
+  const hostSettingsNode = useMemo(
+    () =>
+      game?.status === 'active' ? (
+        <HostActiveSettings
+          gameCode={gameCode}
+          hostToken={hostToken}
+          gameType="troll_run"
+          onEnded={reload}
+          endGameLabel="End race"
+          endGameConfirmTitle="End this Troll Run race?"
+          endGameConfirmMessage="All runners will see the final championship results."
+        />
+      ) : null,
+    [game?.status, gameCode, hostToken, reload]
+  )
+  useRegisterGameSettings(hostSettingsNode)
 
-      if (session.phase === 'countdown') {
-        if (secs <= 0) {
-          setCountdownNum(0)
-          clearInterval(interval)
-          fetch('/api/troll-run/advance', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ gameId: gameCode }),
-          }).catch(() => {})
-        } else {
-          setCountdownNum(secs)
-        }
-      } else if (session.phase === 'racing') {
-        if (secs <= 0) {
-          setTimeRemainingSec(0)
-          clearInterval(interval)
-          fetch('/api/troll-run/advance', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ gameId: gameCode }),
-          }).catch(() => {})
-        } else {
-          setTimeRemainingSec(secs)
-        }
-      }
-    }, 250)
+  const {
+    hostMode,
+    hostPlayerId,
+    hostResumeToken,
+    hostPlayerName,
+    hostJoinName,
+    setHostJoinName,
+    hostJoining,
+    changeHostMode,
+    hostJoinGame,
+    renameHost,
+    handlePlayerRemoved: onHostSeatRemoved,
+  } = useHostSeat({
+    gameCode,
+    hostToken,
+    gameStatus: game?.status,
+    players,
+    onReload: reload,
+    toast: { success, error: toastError },
+    onModeChange: (mode) => {
+      if (mode === 'player') setTab('play')
+      else if (mode === 'spectator') setTab('manage')
+    },
+  })
 
-    return () => clearInterval(interval)
-  }, [session?.phase, session?.turn_deadline_at, gameCode])
+  const handlePlayerRemoved = useCallback(
+    (playerId: string) => {
+      onHostSeatRemoved(playerId)
+      setHostJoinName('')
+      setPlayers((prev) => prev.filter((player) => player.id !== playerId))
+    },
+    [onHostSeatRemoved, setHostJoinName]
+  )
+
+  const { removingPlayerId, removePlayer } = useHostRemovePlayer(gameCode, hostToken, handlePlayerRemoved)
+
+  useTrollRunAdvanceNudge({ gameCode, session, hostToken })
+
+  // `turn_deadline_at` already is the deadline, so the shared countdown gets no extra delay.
+  const deadlineSecondsLeft = useDeadlineCountdown(
+    session?.turn_deadline_at,
+    0,
+    session?.phase === 'countdown' || session?.phase === 'racing'
+  )
 
   const playerNames = useMemo(() => {
     const map = new Map<string, string>()
-    for (const p of players) {
-      map.set(p.id, p.name)
+    for (const player of players) {
+      map.set(player.id, player.name)
     }
     return map
   }, [players])
 
   const activePlayers = useMemo(() => {
-    return players.filter((p) => p.spectator !== true)
+    return players.filter((player) => player.spectator !== true)
   }, [players])
 
-  const currentStates = useMemo(() => {
-    return playerStates.filter((s) => s.current_round === (session?.current_round ?? 1))
-  }, [playerStates, session?.current_round])
-
-  const worldLevels = useMemo(() => {
-    return getWorldLevels(session?.current_world)
-  }, [session?.current_world])
-
   const handleStartGame = async () => {
-    setAdvancing(true)
+    setStarting(true)
     try {
       const res = await fetch(`/api/games/${gameCode}/start`, {
         method: 'POST',
@@ -168,7 +229,7 @@ export function TrollRunHostView({ gameCode, hostToken }: TrollRunHostViewProps)
     } catch {
       toastError('Network error starting game')
     } finally {
-      setAdvancing(false)
+      setStarting(false)
     }
   }
 
@@ -178,11 +239,13 @@ export function TrollRunHostView({ gameCode, hostToken }: TrollRunHostViewProps)
       const res = await fetch('/api/troll-run/advance', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameId: gameCode, forceNextRound: true }),
+        body: JSON.stringify({ gameId: gameCode, hostToken, forceNextRound: true }),
       })
       if (!res.ok) {
         const data = await res.json()
         toastError(data.error || 'Failed to advance round')
+      } else {
+        await reload()
       }
     } catch {
       toastError('Network error')
@@ -191,156 +254,323 @@ export function TrollRunHostView({ gameCode, hostToken }: TrollRunHostViewProps)
     }
   }
 
-  // 1. Lobby screen
-  if (game?.status === 'waiting' || session?.phase === 'lobby') {
-    if (!game) return <HostLobbySkeleton />
+  /**
+   * "Play again · same settings" reopens the room as an open lobby flagged for the ready-up ring;
+   * a plain reset (sameSettings=false) is the normal "Return to lobby". Both go through the same
+   * endpoint, which is also what clears the finished race's session rows.
+   */
+  const resetGame = async (sameSettings: boolean) => {
+    setPlayingAgain(true)
+    try {
+      const res = await fetch(`/api/games/${gameCode}/play-again`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hostToken, hostPlayerId: hostPlayerId ?? undefined, same_settings: sameSettings }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        toastError(data.error || 'Failed to reset the room')
+        return
+      }
+      success(sameSettings ? 'Ready up for the next race!' : 'Back to the lobby')
+      await reload()
+    } catch {
+      toastError('Network error')
+    } finally {
+      setPlayingAgain(false)
+    }
+  }
+
+  const confirmPlayAgain = async () => {
+    const ok = await confirm({
+      title: 'Play again with same settings?',
+      message: 'This will reset the room and let runners ready up for another match.',
+      confirmLabel: 'Play again',
+    })
+    if (!ok) return
+    await resetGame(true)
+  }
+
+  const confirmReturnToLobby = async () => {
+    const ok = await confirm({
+      title: 'Return to lobby?',
+      message: 'This will return all runners to the lobby so you can adjust settings.',
+      confirmLabel: 'Return to lobby',
+    })
+    if (!ok) return
+    await resetGame(false)
+  }
+
+  // 0. Ensure no flash when initial game row is loading
+  if (!game) {
+    return <HostLobbySkeleton />
+  }
+
+  // Replay ready ring if play again was triggered
+  if (game.status === 'waiting' && game.replay_pending) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-[var(--background)] px-3 py-8 text-[var(--foreground)]">
+        <ReplayReadyRing
+          players={players}
+          meId={hostPlayerId}
+          isHost
+          gameCode={gameCode}
+          hostToken={hostToken}
+          minPlayers={TROLL_RUN_MIN_PLAYERS}
+          capacityGame={game}
+          onToggleReady={() => {}}
+          onStart={() => void handleStartGame()}
+          starting={starting}
+        />
+        <button
+          type="button"
+          onClick={() => void confirmReturnToLobby()}
+          disabled={playingAgain}
+          className="mt-1 py-2 text-sm font-medium text-muted transition-colors hover:text-body disabled:opacity-60"
+        >
+          Return to lobby instead
+        </button>
+      </div>
+    )
+  }
+
+  const canStart = activePlayers.length >= TROLL_RUN_MIN_PLAYERS
+
+  // 1. Lobby screen — strictly when waiting for initial launch
+  if (game.status === 'waiting') {
+    const lobbyModeCard = (
+      <HostModeSelector
+        mode={hostMode}
+        onChange={changeHostMode}
+        onEditName={renameHost}
+        joinedPlayerId={hostPlayerId}
+        joinedPlayerName={hostPlayerName}
+        joinName={hostJoinName}
+        onJoinNameChange={setHostJoinName}
+        onJoin={() => void hostJoinGame()}
+        joining={hostJoining}
+        spectatorHint="Direct the race from the big screen"
+        playerHint="Run alongside the other players"
+        playingNote={
+          <p className="text-sm text-muted">
+            Playing as <strong className="text-body">{hostPlayerName}</strong> — run once you start.
+          </p>
+        }
+      />
+    )
+
+    const lobbySettings = (
+      <>
+        <HostTrollRunLobbyPanel gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
+        <TransferHostControl triggerClassName="btn-secondary w-full flex items-center justify-center gap-2" />
+      </>
+    )
+
     return (
       <HostLobby
         gameCode={gameCode}
         hostToken={hostToken}
         game={game}
         gameTypeLabel={cfg.label}
+        titleMeta={<GameInfoChips game={game} className="mt-2" />}
+        resumeToken={hostResumeToken}
         players={players}
-        onStart={handleStartGame}
-        starting={advancing}
-        startDisabled={activePlayers.length < 2}
-        startDisabledHint="Need at least 2 runners to start"
-        settingsChildren={
-          <HostTrollRunLobbyPanel gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
+        maxPlayers={lobbyMaxPlayersFromGameClient('troll_run', game) ?? game.max_players ?? 6}
+        playCard={lobbyModeCard}
+        settingsChildren={lobbySettings}
+        onStart={() => void handleStartGame()}
+        starting={starting}
+        startDisabled={!canStart}
+        startDisabledHint={
+          canStart
+            ? null
+            : `Need at least ${TROLL_RUN_MIN_PLAYERS} runners to start (${activePlayers.length}/${TROLL_RUN_MIN_PLAYERS})`
         }
+        startLabel="Start race"
+        onRemovePlayer={removePlayer}
+        removingPlayerId={removingPlayerId}
+        highlightPlayerId={hostPlayerId}
+        onEnded={reload}
       />
     )
   }
 
-  // 2. Scoreboard / Finished screen
-  if (session?.phase === 'scoreboard' || session?.phase === 'finished' || game?.status === 'finished') {
-    return (
-      <div className="min-h-screen bg-slate-950 p-4 sm:p-8 flex items-center justify-center">
-        {session && (
-          <TrollRunScoreboard
-            session={session}
-            playerStates={playerStates}
-            playerNames={playerNames}
-            isHost={true}
-            onNextRound={handleNextRound}
-            loading={advancing}
+  // If game is active but session row is loading, show loading skeleton
+  if (!session) {
+    return <HostLobbySkeleton />
+  }
+
+  const hostPlays = hostMode === 'player' && Boolean(hostPlayerId)
+
+  // 2. Live Race Dashboard for host management
+  const manageRaceDashboard =
+    session.phase === 'scoreboard' || session.phase === 'finished' || game.status === 'finished' ? (
+      <div className="mx-auto flex max-w-4xl flex-col space-y-6 p-4 sm:p-8">
+        <TrollRunScoreboard
+          session={session}
+          playerStates={playerStates}
+          playerNames={playerNames}
+          isHost={true}
+          onNextRound={handleNextRound}
+          loading={advancing}
+          gameCode={gameCode}
+          hostToken={hostToken}
+          onEndGameEarly={reload}
+          myPlayerId={hostPlayerId}
+          onPlayAgain={confirmPlayAgain}
+          onReturnToLobby={confirmReturnToLobby}
+          playingAgain={playingAgain}
+        />
+      </div>
+    ) : (
+      <div className="mx-auto flex max-w-4xl flex-col space-y-6 p-4 sm:p-8">
+        {/* Header Bar */}
+        <div className="glass-card-strong flex flex-wrap items-center justify-between gap-4 p-4">
+          <div className="flex items-center gap-3">
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[color-mix(in_srgb,var(--primary)_15%,transparent)] text-[var(--primary)] shrink-0">
+              <Glyph icon={gameIcon('troll_run')} size={18} />
+            </span>
+            <div>
+              <h1 className="text-xl font-black text-[var(--foreground)]">
+                Troll Run — Round <span className="tabular-nums">{session.current_round}</span> /{' '}
+                <span className="tabular-nums">{session.total_rounds}</span>
+              </h1>
+              <p className="text-muted text-xs">
+                World: <span className="text-[var(--primary)] font-bold capitalize">{session.current_world}</span>
+              </p>
+            </div>
+          </div>
+
+          {/* Timer */}
+          <div className="text-right">
+            <div className="text-faint text-[10px] font-bold uppercase tracking-wider">
+              {session.phase === 'countdown' ? 'Starting in' : 'Time Remaining'}
+            </div>
+            <div
+              className={`font-mono text-2xl font-black tabular-nums ${
+                deadlineSecondsLeft <= TROLL_RUN_HOST_URGENT_SECONDS
+                  ? 'text-rose-400 animate-pulse'
+                  : 'text-[var(--primary)]'
+              }`}
+            >
+              {session.phase === 'countdown' ? `${deadlineSecondsLeft}s` : formatMinutesSeconds(deadlineSecondsLeft)}
+            </div>
+          </div>
+        </div>
+
+        <TrollRunRaceProgress session={session} players={players} playerStates={playerStates} />
+
+        {/* Live Event Ticker */}
+        <div>
+          <div className="text-faint mb-2 text-xs font-bold uppercase tracking-wider">Live Trap Ticker</div>
+          <TrollRunLiveFeed events={events} playerNames={playerNames} />
+        </div>
+
+        {/* Cutting a round short or ending the match are deliberate actions, so they sit in their
+            own block below the live view rather than beside the ticking timer. */}
+        <div className="glass-card-strong space-y-3 p-5 sm:p-6">
+          <p className="label-caps">Game controls</p>
+          <button
+            type="button"
+            onClick={() => void handleNextRound()}
+            disabled={advancing}
+            className="btn-secondary w-full"
+          >
+            {advancing ? 'Ending…' : 'End round early'}
+          </button>
+
+          <HostEndGameButton
+            gameCode={gameCode}
+            hostToken={hostToken}
+            onEnded={reload}
+            label="End game"
+            icon={<ExitIcon size={14} />}
+            className="btn-danger-soft"
+            confirmTitle="End this Troll Run race?"
+            confirmMessage="The current match will end and all runners will see the final championship standings."
           />
-        )}
+        </div>
+      </div>
+    )
+
+  // 3. Host is playing: Render HostGameLayout with TrollRunPlayerView as primary
+  if (hostPlays) {
+    return (
+      <HostGameLayout
+        onRemovePlayer={removePlayer}
+        gameCode={gameCode}
+        status={game.status}
+        tab={tab}
+        onTabChange={setTab}
+        primaryKind="play"
+        game={game}
+        players={players}
+        hostPlayerId={hostPlayerId}
+        onHostRejoined={reload}
+        showTabs={false}
+        noManageTab
+        gameStarted={true}
+        header={<HostGameHeader game={game} />}
+        primary={
+          // No width cap here: the race view sizes its own stage to the viewport, and a 42rem
+          // wrapper would hold the canvas at its old postage-stamp size on a desktop.
+          <div className="mx-auto w-full">
+            <TrollRunPlayerView
+              gameCode={gameCode}
+              hostToken={hostToken}
+              onNextRound={handleNextRound}
+              onPlayAgain={confirmPlayAgain}
+              onReturnToLobby={confirmReturnToLobby}
+              advancing={advancing}
+              playingAgain={playingAgain}
+            />
+          </div>
+        }
+        manage={manageRaceDashboard}
+      />
+    )
+  }
+
+  // 4. Host is spectator: Scoreboard/Finished screen
+  if (session.phase === 'scoreboard' || session.phase === 'finished' || game.status === 'finished') {
+    return (
+      <div className="page-wrap flex min-h-[calc(100dvh-4rem)] flex-col items-center justify-center p-4 sm:p-8">
+        <TrollRunScoreboard
+          session={session}
+          playerStates={playerStates}
+          playerNames={playerNames}
+          isHost={true}
+          onNextRound={handleNextRound}
+          loading={advancing}
+          gameCode={gameCode}
+          hostToken={hostToken}
+          onEndGameEarly={reload}
+          myPlayerId={hostPlayerId}
+          onPlayAgain={confirmPlayAgain}
+          onReturnToLobby={confirmReturnToLobby}
+          playingAgain={playingAgain}
+        />
       </div>
     )
   }
 
-  // 3. Countdown Overlay on big screen
-  if (session?.phase === 'countdown') {
+  // 5. Host is spectator: Countdown overlay
+  if (session.phase === 'countdown') {
     return (
-      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 text-center space-y-6">
-        <span className="text-9xl font-black text-amber-400 animate-bounce font-mono">{countdownNum ?? 3}</span>
-        <h2 className="text-3xl font-black text-white">Get Ready to Run!</h2>
-        <p className="text-slate-400 text-sm">
-          Round {session.current_round} of {session.total_rounds} · World:{' '}
-          <strong className="text-amber-400 capitalize">{session.current_world}</strong>
+      <div className="page-wrap flex min-h-[calc(100dvh-4rem)] flex-col items-center justify-center gap-6 p-6 text-center">
+        <span className="animate-bounce font-mono text-8xl font-black tabular-nums text-[var(--primary)] sm:text-9xl">
+          {deadlineSecondsLeft > 0 ? deadlineSecondsLeft : 'GO!'}
+        </span>
+        <h2 className="text-3xl font-black text-[var(--foreground)]">Get Ready to Run!</h2>
+        <p className="text-muted text-sm">
+          Round <span className="tabular-nums">{session.current_round}</span> of{' '}
+          <span className="tabular-nums">{session.total_rounds}</span> · World:{' '}
+          <strong className="text-[var(--primary)] capitalize">{session.current_world}</strong>
         </p>
       </div>
     )
   }
 
-  // 4. Live Racing Dashboard
-  return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 p-4 sm:p-8 font-sans flex flex-col justify-between max-w-4xl mx-auto">
-      {/* Header Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-4 bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl">
-        <div className="flex items-center gap-3">
-          <span className="text-3xl">😈</span>
-          <div>
-            <h1 className="text-xl font-black text-white">
-              Troll Run — Round {session?.current_round} / {session?.total_rounds}
-            </h1>
-            <p className="text-xs text-slate-400">
-              World: <span className="text-amber-400 font-bold capitalize">{session?.current_world}</span>
-            </p>
-          </div>
-        </div>
-
-        {/* Timer */}
-        <div className="flex items-center gap-4">
-          <div className="text-right">
-            <div className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Time Remaining</div>
-            <div
-              className={`font-mono text-2xl font-black ${
-                (timeRemainingSec ?? 60) <= 20 ? 'text-rose-400 animate-pulse' : 'text-amber-400'
-              }`}
-            >
-              {timeRemainingSec !== null
-                ? `${Math.floor(timeRemainingSec / 60)}:${(timeRemainingSec % 60).toString().padStart(2, '0')}`
-                : '--:--'}
-            </div>
-          </div>
-
-          <button
-            type="button"
-            onClick={handleNextRound}
-            disabled={advancing}
-            className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-300 border border-slate-700 transition"
-          >
-            End Round Early
-          </button>
-        </div>
-      </div>
-
-      {/* Live Track / Progress Bars */}
-      <div className="my-6 space-y-3 bg-slate-900/60 border border-slate-800/80 rounded-2xl p-5 shadow-2xl">
-        <div className="flex items-center justify-between text-xs font-bold text-slate-400 pb-2 border-b border-slate-800">
-          <span>RUNNER</span>
-          <span>PROGRESS (LEVEL 1 → {worldLevels.length})</span>
-          <span>DEATHS</span>
-        </div>
-
-        <div className="space-y-3">
-          {activePlayers.map((player) => {
-            const state = currentStates.find((s) => s.player_id === player.id)
-            const levelIdx = state?.current_level_index ?? 0
-            const progressPct = Math.min(100, Math.round((levelIdx / worldLevels.length) * 100))
-            const isFinished = state?.round_finished
-
-            return (
-              <div key={player.id} className="space-y-1">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-bold text-white flex items-center gap-2">
-                    {player.name}
-                    {isFinished && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-bold">
-                        🏆 #{state?.finish_position}
-                      </span>
-                    )}
-                  </span>
-                  <span className="font-mono text-slate-400 text-[11px]">
-                    Level {levelIdx + 1} / {worldLevels.length}
-                  </span>
-                  <span className="font-mono font-bold text-rose-400">💀 {state?.deaths ?? 0}</span>
-                </div>
-
-                {/* Track bar */}
-                <div className="relative w-full h-3.5 bg-slate-950 rounded-full overflow-hidden border border-slate-800">
-                  <div
-                    className={`h-full transition-all duration-300 rounded-full ${
-                      isFinished
-                        ? 'bg-gradient-to-r from-emerald-500 to-teal-400'
-                        : 'bg-gradient-to-r from-amber-500 to-orange-500'
-                    }`}
-                    style={{ width: `${progressPct}%` }}
-                  />
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      </div>
-
-      {/* Live Event Ticker */}
-      <div>
-        <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Live Trap Ticker</div>
-        <TrollRunLiveFeed events={events} playerNames={playerNames} />
-      </div>
-    </div>
-  )
+  // 6. Host is spectator: Live race dashboard
+  return manageRaceDashboard
 }

@@ -1,31 +1,49 @@
 'use client'
 
 import React, { useMemo, useState } from 'react'
-import { TROLL_RUN_WORLDS, getWorldLevels } from '@/lib/troll-run-engine'
+import {
+  TROLL_RUN_WORLDS,
+  buildTrollRunRoundDescriptors,
+  getWorldLevels,
+  resolveTrollRunLevels,
+  type TrollRunWorldId,
+} from '@/lib/troll-run-engine'
 import { TrollRunCanvas } from './TrollRunCanvas'
 
 export function TrollRunDevPlayground() {
-  const [selectedWorld, setSelectedWorld] = useState('pits')
+  const [selectedWorld, setSelectedWorld] = useState<TrollRunWorldId>('pits')
   const [selectedLevelIdx, setSelectedLevelIdx] = useState(0)
   const [muted, setMuted] = useState(false)
   const [theme, setTheme] = useState<'dark' | 'retro' | 'neon'>('dark')
   const [showTouch, setShowTouch] = useState(true)
   const [key, setKey] = useState(0) // increment to force reload
+  /** Null plays the world's authored order; a number plays the round that seed builds. */
+  const [roundSeed, setRoundSeed] = useState<number | null>(null)
+  const [seedDraft, setSeedDraft] = useState('')
 
   const currentWorldConfig = useMemo(() => {
     return TROLL_RUN_WORLDS.find((w) => w.id === selectedWorld) ?? TROLL_RUN_WORLDS[0]
   }, [selectedWorld])
 
+  /**
+   * The round's descriptors, rebuilt whenever the world or the seed changes. This runs the solver over
+   * every generated slot, which is why it is memoised rather than recomputed on each render — in a game
+   * the server does this once per round.
+   */
+  const roundDescriptors = useMemo(() => {
+    return roundSeed === null ? null : buildTrollRunRoundDescriptors(selectedWorld, roundSeed)
+  }, [selectedWorld, roundSeed])
+
   const levels = useMemo(() => {
-    return getWorldLevels(selectedWorld)
-  }, [selectedWorld])
+    return roundDescriptors ? resolveTrollRunLevels(roundDescriptors, selectedWorld) : getWorldLevels(selectedWorld)
+  }, [roundDescriptors, selectedWorld])
 
   const [stats, setStats] = useState({
     levelIndex: 0,
     totalLevels: levels.length,
     levelId: levels[0]?.id ?? '',
     levelName: levels[0]?.name ?? '',
-    world: selectedWorld,
+    world: selectedWorld as string,
     levelDeaths: 0,
     totalDeaths: 0,
     parTime: 5,
@@ -40,7 +58,7 @@ export function TrollRunDevPlayground() {
     setKey((k) => k + 1)
   }
 
-  const handleWorldSelect = (worldId: string) => {
+  const handleWorldSelect = (worldId: TrollRunWorldId) => {
     setSelectedWorld(worldId)
     setSelectedLevelIdx(0)
     setKey((k) => k + 1)
@@ -51,6 +69,25 @@ export function TrollRunDevPlayground() {
     setSelectedLevelIdx(idx)
     setKey((k) => k + 1)
     setFinishedModal(null)
+  }
+
+  const playRound = (seed: number | null) => {
+    setRoundSeed(seed)
+    setSeedDraft(seed === null ? '' : String(seed))
+    setSelectedLevelIdx(0)
+    setKey((current) => current + 1)
+    setFinishedModal(null)
+  }
+
+  /** The same range the server rolls from, so a seed pasted from a real game reproduces its round. */
+  const rollSeed = () => playRound(Math.floor(Math.random() * 0x100000000))
+
+  const loadSeedDraft = () => {
+    const trimmed = seedDraft.trim()
+    if (!/^\d+$/.test(trimmed)) return
+    const seed = Number(trimmed)
+    if (!Number.isSafeInteger(seed)) return
+    playRound(seed)
   }
 
   return (
@@ -122,6 +159,67 @@ export function TrollRunDevPlayground() {
         ))}
       </div>
 
+      {/* Round Source: authored order, or the ten levels a seed builds */}
+      <div className="w-full max-w-2xl mb-4 bg-slate-900/80 border border-slate-800 p-2.5 rounded-2xl">
+        <div className="text-[11px] font-bold text-slate-400 mb-2 uppercase tracking-wider px-1">Round source</div>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => playRound(null)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition border ${
+              roundSeed === null
+                ? 'bg-amber-500 text-slate-950 border-amber-400'
+                : 'bg-slate-950 text-slate-300 border-slate-800 hover:bg-slate-800'
+            }`}
+          >
+            Authored order
+          </button>
+          <button
+            type="button"
+            onClick={rollSeed}
+            className="px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-black transition"
+          >
+            🎲 Roll a round
+          </button>
+          <input
+            type="text"
+            inputMode="numeric"
+            value={seedDraft}
+            onChange={(event) => setSeedDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') loadSeedDraft()
+            }}
+            placeholder="seed"
+            aria-label="Round seed"
+            className="w-36 px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-xs font-mono text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-amber-500"
+          />
+          <button
+            type="button"
+            onClick={loadSeedDraft}
+            className="px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-900 text-xs font-semibold hover:bg-slate-800 transition"
+          >
+            Load seed
+          </button>
+        </div>
+
+        {roundDescriptors && (
+          <ol className="mt-2.5 grid gap-1 sm:grid-cols-2">
+            {roundDescriptors.map((entry, slot) => (
+              <li
+                key={entry}
+                className={`flex items-baseline gap-2 rounded-lg px-2 py-1 text-[11px] ${
+                  selectedLevelIdx === slot ? 'bg-amber-500/15 ring-1 ring-amber-500/40' : 'bg-slate-950/60'
+                }`}
+              >
+                <span className="font-mono text-slate-500">{String(slot + 1).padStart(2, '0')}</span>
+                <span className="font-semibold text-slate-200 truncate">{levels[slot]?.name ?? '—'}</span>
+                <span className="ml-auto font-mono text-slate-500 truncate">{entry}</span>
+              </li>
+            ))}
+          </ol>
+        )}
+      </div>
+
       {/* Level Selector Pills */}
       <div className="w-full max-w-2xl mb-6 bg-slate-900/80 border border-slate-800 p-2.5 rounded-2xl">
         <div className="text-[11px] font-bold text-slate-400 mb-2 uppercase tracking-wider px-1 flex items-center justify-between">
@@ -151,7 +249,7 @@ export function TrollRunDevPlayground() {
       {/* Main Game Canvas */}
       <div className="relative w-full max-w-2xl flex flex-col items-center">
         <TrollRunCanvas
-          key={`${selectedWorld}-${key}-${selectedLevelIdx}`}
+          key={`${selectedWorld}-${roundSeed ?? 'authored'}-${key}-${selectedLevelIdx}`}
           levels={levels}
           initialLevelIndex={selectedLevelIdx}
           theme={theme}
@@ -161,7 +259,7 @@ export function TrollRunDevPlayground() {
             setStats(newStats)
             setSelectedLevelIdx(newStats.levelIndex)
           }}
-          onDeath={(lvlId) => {
+          onDeath={(_lvlId) => {
             if (typeof window !== 'undefined' && 'vibrate' in navigator) {
               try {
                 navigator.vibrate([40, 60, 40])
@@ -170,7 +268,7 @@ export function TrollRunDevPlayground() {
               }
             }
           }}
-          onLevelClear={(lvlId, timeMs) => {
+          onLevelClear={(_lvlId, _timeMs) => {
             if (typeof window !== 'undefined' && 'vibrate' in navigator) {
               try {
                 navigator.vibrate([50, 50, 100])

@@ -1498,13 +1498,13 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
   troll_run: {
     id: 'troll_run',
     label: 'Troll Run',
-    tagline: 'Race through trick levels — nothing is what it seems',
+    tagline: 'Race through levels where every single step is a trap',
     headerEmoji: '😈💀',
     card: {
       accent: '#f59e0b',
       accentSoft: 'rgba(245, 158, 11, 0.15)',
       emoji: '😈',
-      players: '2–8 players',
+      players: '2–6 players',
       vibe: 'Chaotic troll platformer race',
       featured: true,
     },

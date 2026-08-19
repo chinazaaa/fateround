@@ -273,6 +273,7 @@ export interface CodewordsMessage {
 }
 export type ThemeId =
   | 'default'
+  | 'dark'
   | 'neon'
   | 'retro'
   | 'elegant'

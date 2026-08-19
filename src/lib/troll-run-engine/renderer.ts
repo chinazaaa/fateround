@@ -1,10 +1,20 @@
 /**
  * 2D Canvas Renderer for Troll Run.
- * Renders tiles, animated exit door, spikes, hazard entities, player sprite with directional eyes, particles,
- * and other players' real-time translucent ghost avatars.
+ *
+ * The buffer is 320×180 upscaled with `image-rendering: pixelated`, so everything here is drawn
+ * on whole-pixel boundaries and shaded with flat bands rather than gradients. Two rules keep it
+ * reading as deliberate pixel art instead of a grid of coloured boxes:
+ *
+ * 1. A run of touching tiles is one mass. Outlines and lit top faces are drawn only where the
+ *    mass ends, so a ten-tile floor looks like one platform.
+ * 2. No text is drawn into the buffer. Level names and status warnings are DOM overlays in
+ *    `TrollRunCanvas`, where they stay crisp; only the short ghost initials live on the canvas
+ *    because they have to track a moving position.
  */
 
 import {
+  TROLL_RUN_DOOR_HEIGHT,
+  TROLL_RUN_DOOR_WIDTH,
   TROLL_RUN_INTERNAL_HEIGHT,
   TROLL_RUN_INTERNAL_WIDTH,
   TROLL_RUN_TILE_SIZE,
@@ -16,63 +26,135 @@ import {
 } from './types'
 import type { ParticleManager } from './particles'
 
-export interface RenderTheme {
-  bg: string
-  solid: string
-  solidOutline: string
-  fakeSolid: string
-  ice: string
-  spike: string
-  doorGlow: string
-  doorFrame: string
-  playerColor: string
-  playerEye: string
+/** Flat-shaded material: a body, a lit face where it meets open air, an outline, and a shadow. */
+export interface MassPalette {
+  body: string
+  top: string
+  edge: string
+  shade: string
 }
 
+export interface RenderTheme {
+  bgTop: string
+  bgBottom: string
+  bgGrid: string
+  solid: MassPalette
+  ice: MassPalette
+  bounce: MassPalette
+  block: MassPalette
+  spike: { body: string; lit: string; socket: string }
+  hazard: { body: string; lit: string }
+  saw: { blade: string; teeth: string; hub: string }
+  door: { frame: string; body: string; glow: string; lit: string }
+  coin: { body: string; lit: string }
+  player: { body: string; top: string; outline: string; eye: string }
+  ghostOutline: string
+  ghostTagText: string
+}
+
+/**
+ * One palette per lobby "Visual Palette" choice. These are deliberately far apart — the previous
+ * set differed by two hex values, so picking a theme changed nothing anyone could see. Each is
+ * tuned against the matching app theme in `globals.css` so the canvas and its chrome agree.
+ *
+ * Platforms are mid-tone on purpose: filling ~40% of the screen with near-white glares and
+ * flattens every hazard drawn on top of it.
+ */
 export const THEMES: Record<string, RenderTheme> = {
   dark: {
-    bg: '#0f172a', // slate 900
-    solid: '#f8fafc', // slate 50
-    solidOutline: '#cbd5e1', // slate 300
-    fakeSolid: '#f8fafc', // identical to solid to deceive player!
-    ice: '#38bdf8', // sky blue
-    spike: '#ef4444', // vibrant red
-    doorGlow: '#facc15', // gold yellow
-    doorFrame: '#eab308',
-    playerColor: '#ffffff',
-    playerEye: '#090d16',
+    bgTop: '#0b1120',
+    bgBottom: '#182338',
+    bgGrid: 'rgba(148, 163, 184, 0.06)',
+    solid: { body: '#475569', top: '#94a3b8', edge: '#0f172a', shade: '#334155' },
+    ice: { body: '#0ea5e9', top: '#a5f3fc', edge: '#082f49', shade: '#0369a1' },
+    bounce: { body: '#be185d', top: '#f9a8d4', edge: '#4c0519', shade: '#9d174d' },
+    block: { body: '#57534e', top: '#a8a29e', edge: '#1c1917', shade: '#44403c' },
+    spike: { body: '#e11d48', lit: '#fda4af', socket: '#4c0519' },
+    hazard: { body: '#e11d48', lit: '#fda4af' },
+    saw: { blade: '#cbd5e1', teeth: '#f1f5f9', hub: '#e11d48' },
+    door: { frame: '#a16207', body: '#facc15', glow: '#fde047', lit: '#fefce8' },
+    coin: { body: '#eab308', lit: '#fef9c3' },
+    player: { body: '#38bdf8', top: '#bae6fd', outline: '#082f49', eye: '#04121f' },
+    ghostOutline: 'rgba(8, 47, 73, 0.85)',
+    ghostTagText: '#f8fafc',
   },
   retro: {
-    bg: '#18181b', // zinc 900
-    solid: '#e4e4e7',
-    solidOutline: '#a1a1aa',
-    fakeSolid: '#e4e4e7',
-    ice: '#67e8f9',
-    spike: '#dc2626',
-    doorGlow: '#fbbf24',
-    doorFrame: '#d97706',
-    playerColor: '#ffffff',
-    playerEye: '#18181b',
+    bgTop: '#241a12',
+    bgBottom: '#3b2a1a',
+    bgGrid: 'rgba(232, 145, 43, 0.07)',
+    solid: { body: '#8a6a44', top: '#d1a86b', edge: '#1a1109', shade: '#6b5133' },
+    ice: { body: '#7ea8b8', top: '#d6ecf2', edge: '#1e3038', shade: '#5c8593' },
+    bounce: { body: '#a8481f', top: '#f0a97a', edge: '#2b0f05', shade: '#83350f' },
+    block: { body: '#6f5a3e', top: '#b39364', edge: '#1a1109', shade: '#54432d' },
+    spike: { body: '#b91c1c', lit: '#f0846f', socket: '#2b0805' },
+    hazard: { body: '#b91c1c', lit: '#f0846f' },
+    saw: { blade: '#c1a684', teeth: '#f2e4cd', hub: '#b91c1c' },
+    door: { frame: '#7c4a10', body: '#e8912b', glow: '#f6c46a', lit: '#fff3dc' },
+    coin: { body: '#d97706', lit: '#fde9c0' },
+    player: { body: '#f2e4cd', top: '#fffaf0', outline: '#2b1c0d', eye: '#2b1c0d' },
+    ghostOutline: 'rgba(43, 28, 13, 0.85)',
+    ghostTagText: '#fff8ee',
   },
   neon: {
-    bg: '#050510',
-    solid: '#a855f7',
-    solidOutline: '#d8b4fe',
-    fakeSolid: '#a855f7',
-    ice: '#06b6d4',
-    spike: '#f43f5e',
-    doorGlow: '#22c55e',
-    doorFrame: '#16a34a',
-    playerColor: '#ffffff',
-    playerEye: '#050510',
+    bgTop: '#05050f',
+    bgBottom: '#120a24',
+    bgGrid: 'rgba(0, 229, 255, 0.08)',
+    solid: { body: '#3b2a63', top: '#a855f7', edge: '#0a0618', shade: '#2a1d49' },
+    ice: { body: '#0e7490', top: '#67e8f9', edge: '#062b33', shade: '#0b5567' },
+    bounce: { body: '#9d174d', top: '#f472b6', edge: '#2b0316', shade: '#7a0f3c' },
+    block: { body: '#312e5c', top: '#8b7fd6', edge: '#0a0618', shade: '#241f45' },
+    spike: { body: '#ff1744', lit: '#ff8aa3', socket: '#2b0310' },
+    hazard: { body: '#ff1744', lit: '#ff8aa3' },
+    saw: { blade: '#00e5ff', teeth: '#b3f7ff', hub: '#ff1744' },
+    door: { frame: '#2f7a12', body: '#76ff03', glow: '#b6ff6b', lit: '#eaffd6' },
+    coin: { body: '#00e5ff', lit: '#d6feff' },
+    player: { body: '#00e5ff', top: '#c8feff', outline: '#04202b', eye: '#04202b' },
+    ghostOutline: 'rgba(4, 32, 43, 0.85)',
+    ghostTagText: '#e0ffe0',
   },
+}
+
+/** Which tiles fill their cell, and which of them read as the same material. */
+const MASS_GROUP_NONE = 0
+const MASS_GROUP_SOLID = 1
+const MASS_GROUP_ICE = 2
+const MASS_GROUP_BOUNCE = 3
+
+/**
+ * Neighbours in the same group share no internal outline. `FAKE_SOLID` groups with `SOLID` because
+ * the whole trap depends on a collapsing floor being indistinguishable from a real one.
+ */
+function tileMassGroup(tile: number | undefined): number {
+  switch (tile) {
+    case TrollRunTileType.SOLID:
+    case TrollRunTileType.FAKE_SOLID:
+      return MASS_GROUP_SOLID
+    case TrollRunTileType.ICE:
+      return MASS_GROUP_ICE
+    case TrollRunTileType.BOUNCE:
+      return MASS_GROUP_BOUNCE
+    default:
+      return MASS_GROUP_NONE
+  }
+}
+
+interface OpenEdges {
+  up: boolean
+  down: boolean
+  left: boolean
+  right: boolean
 }
 
 export class CanvasRenderer {
   private theme: RenderTheme = THEMES.dark
+  private backdrop: CanvasGradient | null = null
+  private backdropTheme: RenderTheme | null = null
 
   public setTheme(themeName: 'dark' | 'retro' | 'neon'): void {
     this.theme = THEMES[themeName] || THEMES.dark
+    // The cached gradient belongs to the palette it was built from.
+    this.backdrop = null
+    this.backdropTheme = null
   }
 
   public render(
@@ -81,207 +163,409 @@ export class CanvasRenderer {
     player: PlayerState,
     particles: ParticleManager,
     movingEntities: TrollMovingEntity[] = [],
-    levelTitle = '',
-    ghosts: GhostRunner[] = []
+    ghosts: GhostRunner[] = [],
+    nowMs = 0
   ): void {
-    const ts = TROLL_RUN_TILE_SIZE
+    const tileSize = TROLL_RUN_TILE_SIZE
 
-    // Background
-    ctx.fillStyle = this.theme.bg
-    ctx.fillRect(0, 0, TROLL_RUN_INTERNAL_WIDTH, TROLL_RUN_INTERNAL_HEIGHT)
+    this.renderBackdrop(ctx)
 
-    // Render Tiles
     const tiles = level.tiles
-    for (let r = 0; r < tiles.length; r++) {
-      for (let c = 0; c < (tiles[r]?.length ?? 0); c++) {
-        const tile = tiles[r][c]
-        const x = c * ts
-        const y = r * ts
+    for (let row = 0; row < tiles.length; row++) {
+      const rowTiles = tiles[row]
+      if (!rowTiles) continue
 
-        if (tile === TrollRunTileType.SOLID || tile === TrollRunTileType.FAKE_SOLID) {
-          ctx.fillStyle = this.theme.solid
-          ctx.fillRect(x, y, ts, ts)
-          ctx.strokeStyle = this.theme.solidOutline
-          ctx.lineWidth = 1
-          ctx.strokeRect(x + 0.5, y + 0.5, ts - 1, ts - 1)
-        } else if (tile === TrollRunTileType.ICE) {
-          ctx.fillStyle = this.theme.ice
-          ctx.fillRect(x, y, ts, ts)
-          ctx.fillStyle = '#ffffff'
-          ctx.fillRect(x + 2, y + 2, ts - 4, 2)
-        } else if (tile === TrollRunTileType.BOUNCE) {
-          ctx.fillStyle = '#ec4899' // pink bouncy
-          ctx.fillRect(x, y, ts, ts)
-          ctx.fillStyle = '#fbcfe8'
-          ctx.fillRect(x + 3, y + 3, ts - 6, ts - 6)
-        } else if (tile === TrollRunTileType.COIN) {
-          ctx.fillStyle = '#facc15'
-          ctx.beginPath()
-          ctx.arc(x + ts / 2, y + ts / 2, ts / 3, 0, Math.PI * 2)
-          ctx.fill()
-          ctx.fillStyle = '#fef08a'
-          ctx.beginPath()
-          ctx.arc(x + ts / 2 - 1, y + ts / 2 - 1, ts / 6, 0, Math.PI * 2)
-          ctx.fill()
+      for (let col = 0; col < rowTiles.length; col++) {
+        const tile = rowTiles[col]
+        const x = col * tileSize
+        const y = row * tileSize
+        const group = tileMassGroup(tile)
+
+        if (group !== MASS_GROUP_NONE) {
+          this.renderMassTile(ctx, x, y, tileSize, group, {
+            up: tileMassGroup(tiles[row - 1]?.[col]) !== group,
+            down: tileMassGroup(tiles[row + 1]?.[col]) !== group,
+            left: tileMassGroup(rowTiles[col - 1]) !== group,
+            right: tileMassGroup(rowTiles[col + 1]) !== group,
+          })
+          continue
+        }
+
+        if (tile === TrollRunTileType.COIN) {
+          this.renderCoin(ctx, x, y, tileSize, col + row, nowMs)
         } else if (
           tile === TrollRunTileType.SPIKE_UP ||
           tile === TrollRunTileType.SPIKE_DOWN ||
           tile === TrollRunTileType.SPIKE_LEFT ||
           tile === TrollRunTileType.SPIKE_RIGHT
         ) {
-          this.renderSpike(ctx, x, y, ts, tile)
+          this.renderSpike(ctx, x, y, tileSize, tile)
         }
       }
     }
 
-    // Render Moving Entities
     for (const entity of movingEntities) {
-      if (entity.type === 'buzzsaw') {
-        ctx.save()
-        ctx.translate(entity.x + entity.w / 2, entity.y + entity.h / 2)
-        ctx.fillStyle = '#ef4444'
-        ctx.beginPath()
-        ctx.arc(0, 0, entity.w / 2, 0, Math.PI * 2)
-        ctx.fill()
-        ctx.restore()
-      } else {
-        ctx.fillStyle = this.theme.solid
-        ctx.fillRect(entity.x, entity.y, entity.w, entity.h)
-        ctx.strokeStyle = this.theme.solidOutline
-        ctx.strokeRect(entity.x + 0.5, entity.y + 0.5, entity.w - 1, entity.h - 1)
-      }
+      this.renderEntity(ctx, entity, nowMs)
     }
 
-    // Render Exit Door
-    this.renderDoor(ctx, level.door.x, level.door.y)
+    // A runner who has touched the door is walking into it, so they draw *behind* the leaf and get
+    // occluded by it. Drawing them on top instead is what made a clear look like running past.
+    const enteringDoor = player.alive && player.doorEntryProgress > 0
+    if (enteringDoor) {
+      this.renderEnteringPlayer(ctx, player)
+    }
 
-    // Render other players' real-time ghost avatars on this level
+    this.renderDoor(ctx, level.door.x, level.door.y, nowMs)
+
     for (const ghost of ghosts) {
       this.renderGhost(ctx, ghost)
     }
 
-    // Render Main Player
-    if (player.alive) {
+    if (player.alive && !enteringDoor) {
       this.renderPlayer(ctx, player)
     }
 
-    // Render Particles
     particles.render(ctx)
+  }
 
-    // Level Title / Hint banner at top
-    if (levelTitle) {
-      ctx.save()
-      ctx.font = 'bold 9px monospace'
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.7)'
-      ctx.textAlign = 'center'
-      ctx.fillText(levelTitle.toUpperCase(), TROLL_RUN_INTERNAL_WIDTH / 2, 12)
-      ctx.restore()
+  /**
+   * The runner mid-doorway. The fade is quantised into quarters instead of running smooth so it
+   * reads as a sprite dissolve rather than a CSS transition, and the sprite itself is never scaled —
+   * sub-pixel geometry would soften the pixel edges the rest of the frame keeps hard.
+   */
+  private renderEnteringPlayer(ctx: CanvasRenderingContext2D, player: PlayerState): void {
+    const remaining = Math.max(0, 1 - Math.min(1, player.doorEntryProgress))
+    ctx.save()
+    ctx.globalAlpha = Math.max(0.25, Math.ceil(remaining * 4) / 4)
+    this.renderPlayer(ctx, player)
+    ctx.restore()
+  }
+
+  /** Vertical wash plus a faint tile grid, so the level sits in a space instead of on a flat fill. */
+  private renderBackdrop(ctx: CanvasRenderingContext2D): void {
+    if (!this.backdrop || this.backdropTheme !== this.theme) {
+      const gradient = ctx.createLinearGradient(0, 0, 0, TROLL_RUN_INTERNAL_HEIGHT)
+      gradient.addColorStop(0, this.theme.bgTop)
+      gradient.addColorStop(1, this.theme.bgBottom)
+      this.backdrop = gradient
+      this.backdropTheme = this.theme
     }
 
-    // Inverted controls indicator
-    if (player.invertedControlsTimer > 0) {
-      ctx.save()
-      ctx.font = 'bold 8px monospace'
-      ctx.fillStyle = '#f43f5e'
-      ctx.textAlign = 'center'
-      ctx.fillText('⚠️ CONTROLS INVERTED ⚠️', TROLL_RUN_INTERNAL_WIDTH / 2, 24)
-      ctx.restore()
+    ctx.fillStyle = this.backdrop
+    ctx.fillRect(0, 0, TROLL_RUN_INTERNAL_WIDTH, TROLL_RUN_INTERNAL_HEIGHT)
+
+    ctx.fillStyle = this.theme.bgGrid
+    for (let x = TROLL_RUN_TILE_SIZE; x < TROLL_RUN_INTERNAL_WIDTH; x += TROLL_RUN_TILE_SIZE) {
+      ctx.fillRect(x, 0, 1, TROLL_RUN_INTERNAL_HEIGHT)
+    }
+    for (let y = TROLL_RUN_TILE_SIZE; y < TROLL_RUN_INTERNAL_HEIGHT; y += TROLL_RUN_TILE_SIZE) {
+      ctx.fillRect(0, y, TROLL_RUN_INTERNAL_WIDTH, 1)
     }
   }
 
-  private renderSpike(ctx: CanvasRenderingContext2D, x: number, y: number, ts: number, type: number): void {
-    ctx.fillStyle = this.theme.spike
+  private massPalette(group: number): MassPalette {
+    if (group === MASS_GROUP_ICE) return this.theme.ice
+    if (group === MASS_GROUP_BOUNCE) return this.theme.bounce
+    return this.theme.solid
+  }
+
+  private renderMassTile(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    tileSize: number,
+    group: number,
+    open: OpenEdges
+  ): void {
+    const palette = this.massPalette(group)
+
+    ctx.fillStyle = palette.body
+    ctx.fillRect(x, y, tileSize, tileSize)
+
+    // Lit top face where the mass meets open air, with a shadow band under it for depth.
+    if (open.up) {
+      ctx.fillStyle = palette.top
+      ctx.fillRect(x, y, tileSize, 3)
+      ctx.fillStyle = palette.shade
+      ctx.fillRect(x, y + 3, tileSize, 1)
+      ctx.fillStyle = palette.edge
+      ctx.fillRect(x, y, tileSize, 1)
+    }
+
+    if (open.down) {
+      ctx.fillStyle = palette.shade
+      ctx.fillRect(x, y + tileSize - 2, tileSize, 2)
+      ctx.fillStyle = palette.edge
+      ctx.fillRect(x, y + tileSize - 1, tileSize, 1)
+    }
+
+    if (open.left) {
+      ctx.fillStyle = palette.shade
+      ctx.fillRect(x + 1, y, 1, tileSize)
+      ctx.fillStyle = palette.edge
+      ctx.fillRect(x, y, 1, tileSize)
+    }
+
+    if (open.right) {
+      ctx.fillStyle = palette.shade
+      ctx.fillRect(x + tileSize - 2, y, 1, tileSize)
+      ctx.fillStyle = palette.edge
+      ctx.fillRect(x + tileSize - 1, y, 1, tileSize)
+    }
+
+    // Bounce pads get chevrons so "this launches you" is legible before you touch it.
+    if (group === MASS_GROUP_BOUNCE && open.up) {
+      ctx.fillStyle = palette.top
+      const midX = x + tileSize / 2
+      for (let step = 0; step < 3; step++) {
+        const chevronY = y + 6 + step * 3
+        ctx.fillRect(midX - 3 + step, chevronY, 2, 1)
+        ctx.fillRect(midX + 1 - step, chevronY, 2, 1)
+      }
+    }
+  }
+
+  private renderCoin(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    tileSize: number,
+    phaseOffset: number,
+    nowMs: number
+  ): void {
+    // A one-pixel bob is enough to separate a pickup from the scenery.
+    const bob = Math.round(Math.sin(nowMs / 260 + phaseOffset) * 1.2)
+    const centerX = x + tileSize / 2
+    const centerY = y + tileSize / 2 + bob
+    const radius = tileSize / 3
+
+    ctx.fillStyle = this.theme.coin.body
     ctx.beginPath()
-    if (type === TrollRunTileType.SPIKE_UP) {
-      ctx.moveTo(x, y + ts)
-      ctx.lineTo(x + ts / 2, y + 2)
-      ctx.lineTo(x + ts, y + ts)
-    } else if (type === TrollRunTileType.SPIKE_DOWN) {
-      ctx.moveTo(x, y)
-      ctx.lineTo(x + ts / 2, y + ts - 2)
-      ctx.lineTo(x + ts, y)
-    } else if (type === TrollRunTileType.SPIKE_LEFT) {
-      ctx.moveTo(x + ts, y)
-      ctx.lineTo(x + 2, y + ts / 2)
-      ctx.lineTo(x + ts, y + ts)
-    } else if (type === TrollRunTileType.SPIKE_RIGHT) {
-      ctx.moveTo(x, y)
-      ctx.lineTo(x + ts - 2, y + ts / 2)
-      ctx.lineTo(x, y + ts)
-    }
-    ctx.closePath()
+    ctx.arc(centerX, centerY, radius, 0, Math.PI * 2)
     ctx.fill()
+
+    ctx.fillStyle = this.theme.coin.lit
+    ctx.fillRect(Math.round(centerX - 2), Math.round(centerY - radius + 1), 2, 2)
   }
 
-  private renderDoor(ctx: CanvasRenderingContext2D, x: number, y: number): void {
-    const dw = 14
-    const dh = 20
+  private renderSpike(ctx: CanvasRenderingContext2D, x: number, y: number, tileSize: number, type: number): void {
+    const { body, lit, socket } = this.theme.spike
 
-    // Door Frame
-    ctx.fillStyle = this.theme.doorFrame
-    ctx.fillRect(Math.round(x), Math.round(y), dw, dh)
+    // Socket plate: spikes read as mounted to the surface rather than floating.
+    ctx.fillStyle = socket
+    if (type === TrollRunTileType.SPIKE_UP) ctx.fillRect(x, y + tileSize - 2, tileSize, 2)
+    else if (type === TrollRunTileType.SPIKE_DOWN) ctx.fillRect(x, y, tileSize, 2)
+    else if (type === TrollRunTileType.SPIKE_LEFT) ctx.fillRect(x + tileSize - 2, y, 2, tileSize)
+    else ctx.fillRect(x, y, 2, tileSize)
 
-    // Inner Glowing Gateway
-    ctx.fillStyle = this.theme.doorGlow
-    ctx.fillRect(Math.round(x + 2), Math.round(y + 2), dw - 4, dh - 2)
+    const drawTriangle = (color: string, inset: number) => {
+      ctx.fillStyle = color
+      ctx.beginPath()
+      if (type === TrollRunTileType.SPIKE_UP) {
+        ctx.moveTo(x + inset, y + tileSize)
+        ctx.lineTo(x + tileSize / 2, y + 1 + inset * 2)
+        ctx.lineTo(x + tileSize - inset, y + tileSize)
+      } else if (type === TrollRunTileType.SPIKE_DOWN) {
+        ctx.moveTo(x + inset, y)
+        ctx.lineTo(x + tileSize / 2, y + tileSize - 1 - inset * 2)
+        ctx.lineTo(x + tileSize - inset, y)
+      } else if (type === TrollRunTileType.SPIKE_LEFT) {
+        ctx.moveTo(x + tileSize, y + inset)
+        ctx.lineTo(x + 1 + inset * 2, y + tileSize / 2)
+        ctx.lineTo(x + tileSize, y + tileSize - inset)
+      } else {
+        ctx.moveTo(x, y + inset)
+        ctx.lineTo(x + tileSize - 1 - inset * 2, y + tileSize / 2)
+        ctx.lineTo(x, y + tileSize - inset)
+      }
+      ctx.closePath()
+      ctx.fill()
+    }
 
-    // Door Knob / Sparkle
-    ctx.fillStyle = '#ffffff'
-    ctx.fillRect(Math.round(x + dw - 4), Math.round(y + dh / 2), 2, 2)
+    drawTriangle(body, 0)
+    // Inner highlight along the lit side gives the blade a facet instead of a flat wedge.
+    drawTriangle(lit, 4)
+  }
+
+  private renderDoor(ctx: CanvasRenderingContext2D, doorX: number, doorY: number, nowMs: number): void {
+    const width = TROLL_RUN_DOOR_WIDTH
+    const height = TROLL_RUN_DOOR_HEIGHT
+    const left = Math.round(doorX)
+    const top = Math.round(doorY)
+
+    // Three-frame pulse: a stepped animation stays crisp where a smooth fade would band.
+    const pulseFrame = Math.floor(nowMs / 190) % 3
+
+    // Stepped halo instead of a blurred gradient — nearest-neighbour upscaling keeps it clean.
+    ctx.save()
+    for (let ring = 3; ring >= 1; ring--) {
+      ctx.globalAlpha = 0.05 + (3 - ring) * 0.045 + pulseFrame * 0.02
+      ctx.fillStyle = this.theme.door.glow
+      const spread = ring * 2
+      ctx.fillRect(left - spread, top - spread, width + spread * 2, height + spread * 2)
+    }
+    ctx.restore()
+
+    ctx.fillStyle = this.theme.door.frame
+    ctx.fillRect(left, top, width, height)
+
+    ctx.fillStyle = this.theme.door.body
+    ctx.fillRect(left + 2, top + 2, width - 4, height - 2)
+
+    // Light spilling out of the gateway, growing with the pulse.
+    ctx.fillStyle = this.theme.door.lit
+    const beamInset = 4 - pulseFrame
+    ctx.fillRect(left + beamInset, top + 4, width - beamInset * 2, height - 6)
+
+    ctx.fillStyle = this.theme.door.frame
+    ctx.fillRect(left + width - 4, top + Math.round(height / 2), 2, 2)
+  }
+
+  private renderEntity(ctx: CanvasRenderingContext2D, entity: TrollMovingEntity, nowMs: number): void {
+    if (entity.type === 'buzzsaw') {
+      this.renderSaw(ctx, entity, nowMs)
+      return
+    }
+
+    const left = Math.round(entity.x)
+    const top = Math.round(entity.y)
+
+    if (entity.type === 'bullet') {
+      ctx.fillStyle = this.theme.hazard.body
+      ctx.fillRect(left, top, entity.w, entity.h)
+      ctx.fillStyle = this.theme.hazard.lit
+      ctx.fillRect(left, top, Math.max(1, Math.round(entity.w / 2)), 1)
+      return
+    }
+
+    if (entity.type === 'spike_wall' || entity.killsOnTouch) {
+      ctx.fillStyle = this.theme.hazard.body
+      ctx.fillRect(left, top, entity.w, entity.h)
+      ctx.fillStyle = this.theme.hazard.lit
+      ctx.fillRect(left, top, entity.w, 2)
+      ctx.fillStyle = this.theme.spike.socket
+      ctx.fillRect(left, top + entity.h - 1, entity.w, 1)
+      return
+    }
+
+    // Platforms and falling blocks are standalone masses, so every side gets an edge.
+    const palette = this.theme.block
+    ctx.fillStyle = palette.body
+    ctx.fillRect(left, top, entity.w, entity.h)
+    ctx.fillStyle = palette.top
+    ctx.fillRect(left, top, entity.w, Math.min(3, entity.h))
+    ctx.fillStyle = palette.shade
+    ctx.fillRect(left, top + entity.h - 2, entity.w, 2)
+    ctx.fillStyle = palette.edge
+    ctx.fillRect(left, top, entity.w, 1)
+    ctx.fillRect(left, top + entity.h - 1, entity.w, 1)
+    ctx.fillRect(left, top, 1, entity.h)
+    ctx.fillRect(left + entity.w - 1, top, 1, entity.h)
+  }
+
+  private renderSaw(ctx: CanvasRenderingContext2D, entity: TrollMovingEntity, nowMs: number): void {
+    const radius = entity.w / 2
+    const teeth = 6
+
+    ctx.save()
+    ctx.translate(entity.x + entity.w / 2, entity.y + entity.h / 2)
+    // Visible rotation: a saw that slides across the screen without spinning reads as a red dot.
+    ctx.rotate((nowMs / 1000) * 7)
+
+    ctx.fillStyle = this.theme.saw.teeth
+    for (let tooth = 0; tooth < teeth; tooth++) {
+      const angle = (Math.PI * 2 * tooth) / teeth
+      ctx.beginPath()
+      ctx.moveTo(Math.cos(angle) * (radius + 2), Math.sin(angle) * (radius + 2))
+      ctx.lineTo(Math.cos(angle + 0.5) * radius * 0.7, Math.sin(angle + 0.5) * radius * 0.7)
+      ctx.lineTo(Math.cos(angle - 0.5) * radius * 0.7, Math.sin(angle - 0.5) * radius * 0.7)
+      ctx.closePath()
+      ctx.fill()
+    }
+
+    ctx.fillStyle = this.theme.saw.blade
+    ctx.beginPath()
+    ctx.arc(0, 0, radius, 0, Math.PI * 2)
+    ctx.fill()
+
+    ctx.fillStyle = this.theme.saw.hub
+    ctx.beginPath()
+    ctx.arc(0, 0, Math.max(1.5, radius / 3), 0, Math.PI * 2)
+    ctx.fill()
+
+    ctx.restore()
   }
 
   public renderGhost(ctx: CanvasRenderingContext2D, ghost: GhostRunner): void {
     if (!ghost.alive) return
 
-    const gx = Math.round(ghost.x)
-    const gy = Math.round(ghost.y)
-    const gw = 12
-    const gh = 14
+    const left = Math.round(ghost.x)
+    const top = Math.round(ghost.y)
+    const width = 12
+    const height = 14
 
     ctx.save()
 
-    // Translucent ghost silhouette
-    ctx.globalAlpha = 0.55
-    ctx.fillStyle = ghost.color || '#38bdf8'
-    ctx.fillRect(gx, gy, gw, gh)
+    ctx.globalAlpha = 0.45
+    ctx.fillStyle = this.theme.ghostOutline
+    ctx.fillRect(left - 1, top - 1, width + 2, height + 2)
 
-    // Ghost directional eyes
-    ctx.fillStyle = '#090d16'
+    ctx.globalAlpha = 0.6
+    ctx.fillStyle = ghost.color
+    ctx.fillRect(left, top, width, height)
+
+    ctx.globalAlpha = 0.9
     const eyeOffsetX = ghost.facing === 'right' ? 6 : 2
-    ctx.fillRect(gx + eyeOffsetX, gy + 3, 2, 3)
-    ctx.fillRect(gx + eyeOffsetX + 3, gy + 3, 2, 3)
+    ctx.fillStyle = this.theme.ghostOutline
+    ctx.fillRect(left + eyeOffsetX, top + 3, 2, 3)
+    ctx.fillRect(left + eyeOffsetX + 3, top + 3, 2, 3)
 
-    // Floating Name Tag above head
-    ctx.globalAlpha = 0.95
-    ctx.font = 'bold 7px sans-serif'
+    // A single initial on a solid plate survives the upscale; a truncated name at 7px did not.
+    // The full name is in the runner lanes in the DOM, keyed by the same colour.
+    const initial = (ghost.playerName.trim()[0] ?? '?').toUpperCase()
+    const badgeSize = 9
+    const badgeLeft = left + Math.round((width - badgeSize) / 2)
+    const badgeTop = top - badgeSize - 2
+
+    ctx.globalAlpha = 1
+    ctx.fillStyle = this.theme.ghostOutline
+    ctx.fillRect(badgeLeft - 1, badgeTop - 1, badgeSize + 2, badgeSize + 2)
+    ctx.fillStyle = ghost.color
+    ctx.fillRect(badgeLeft, badgeTop, badgeSize, badgeSize)
+
+    ctx.fillStyle = this.theme.ghostTagText
+    ctx.font = 'bold 7px monospace'
     ctx.textAlign = 'center'
-    ctx.strokeStyle = '#000000'
-    ctx.lineWidth = 2
-    ctx.lineJoin = 'round'
-    const tag = ghost.playerName.length > 7 ? ghost.playerName.slice(0, 6) + '…' : ghost.playerName
-    ctx.strokeText(tag, gx + gw / 2, gy - 2)
-    ctx.fillStyle = '#ffffff'
-    ctx.fillText(tag, gx + gw / 2, gy - 2)
+    ctx.textBaseline = 'middle'
+    ctx.fillText(initial, badgeLeft + badgeSize / 2, badgeTop + badgeSize / 2 + 0.5)
 
     ctx.restore()
   }
 
   private renderPlayer(ctx: CanvasRenderingContext2D, player: PlayerState): void {
-    const px = Math.round(player.x)
-    const py = Math.round(player.y)
-    const pw = player.width
-    const ph = player.height
+    const { body, top, outline, eye } = this.theme.player
 
-    // Main Body
-    ctx.fillStyle = this.theme.playerColor
-    ctx.fillRect(px, py, pw, ph)
+    // Squash and stretch on the drawn sprite only — the hitbox never changes.
+    const airStretch = player.grounded ? 0 : Math.min(2, Math.round(Math.abs(player.vy) / 260))
+    const width = player.width - airStretch
+    const height = player.height + airStretch
+    const left = Math.round(player.x + airStretch / 2)
+    const drawTop = Math.round(player.gravityInverted ? player.y - airStretch : player.y)
 
-    // Directional Pixel Eyes
-    ctx.fillStyle = this.theme.playerEye
-    const eyeOffsetX = player.facing === 'right' ? 6 : 2
-    const eyeOffsetY = player.gravityInverted ? ph - 5 : 3
+    // The outline is what keeps the runner visible against a pale platform.
+    ctx.fillStyle = outline
+    ctx.fillRect(left - 1, drawTop - 1, width + 2, height + 2)
 
-    ctx.fillRect(px + eyeOffsetX, py + eyeOffsetY, 2, 3)
-    ctx.fillRect(px + eyeOffsetX + 3, py + eyeOffsetY, 2, 3)
+    ctx.fillStyle = body
+    ctx.fillRect(left, drawTop, width, height)
+
+    ctx.fillStyle = top
+    ctx.fillRect(left, player.gravityInverted ? drawTop + height - 2 : drawTop, width, 2)
+
+    ctx.fillStyle = eye
+    const eyeOffsetX = player.facing === 'right' ? width - 6 : 2
+    const eyeOffsetY = player.gravityInverted ? height - 6 : 3
+    ctx.fillRect(left + eyeOffsetX, drawTop + eyeOffsetY, 2, 3)
+    ctx.fillRect(left + eyeOffsetX + 3, drawTop + eyeOffsetY, 2, 3)
   }
 }

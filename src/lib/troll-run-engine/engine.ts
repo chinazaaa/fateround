@@ -5,21 +5,32 @@
 
 import {
   getPlayerGhostColor,
+  TROLL_RUN_DOOR_HEIGHT,
+  TROLL_RUN_DOOR_WIDTH,
   TROLL_RUN_PHYSICS,
+  TrollRunTileType,
   type EngineCallbacks,
   type GhostPositionPayload,
   type GhostRunner,
   type PlayerState,
   type TrollMovingEntity,
+  type TrollRunHudState,
   type TrollRunLevel,
 } from './types'
 import { createInitialPlayerState, updatePlayerPhysics } from './physics'
 import { InputManager } from './input'
 import { TweenManager } from './tweens'
 import { ParticleManager } from './particles'
-import { TriggerManager } from './triggers'
+import { TriggerManager, type TrollRunFrameEvent } from './triggers'
 import { CanvasRenderer } from './renderer'
 import { AudioManager } from './audio'
+
+// Pause on the cleared level so the door sparkles are visible before the next one loads.
+const LEVEL_CLEAR_DELAY_MS = 450
+
+// How long the runner takes to step into the doorway. Kept well inside LEVEL_CLEAR_DELAY_MS so the
+// sparkles that mark the entry land while the level is still on screen.
+const DOOR_ENTRY_SECONDS = 0.28
 
 export class TrollRunEngine {
   private canvas: HTMLCanvasElement | null = null
@@ -41,6 +52,8 @@ export class TrollRunEngine {
   private activeDoor: { x: number; y: number } = { x: 0, y: 0 }
   private activeEntities: TrollMovingEntity[] = []
   private player: PlayerState = createInitialPlayerState({ x: 0, y: 0 })
+  // Where the runner was standing when they touched the door, so the entry animation has a start.
+  private doorEntryOrigin: { x: number; y: number } = { x: 0, y: 0 }
 
   // Multiplayer Ghosts
   private ghosts: Map<string, GhostRunner> = new Map()
@@ -56,11 +69,15 @@ export class TrollRunEngine {
   private totalDeaths = 0
   private levelStartTime = 0
   private totalTimeElapsed = 0
+  private levelCleared = false
 
   private respawnPending = false
   private respawnTimeout: ReturnType<typeof setTimeout> | null = null
+  private levelAdvanceTimeout: ReturnType<typeof setTimeout> | null = null
+  private pausedAt: number | null = null
 
   private callbacks: EngineCallbacks = {}
+  private lastHudState: TrollRunHudState | null = null
 
   constructor(levels: TrollRunLevel[] = [], callbacks: EngineCallbacks = {}) {
     this.levels = levels
@@ -95,6 +112,13 @@ export class TrollRunEngine {
         lastUpdate: Date.now(),
       })
     } else {
+      const levelChanged = existing.levelIndex !== payload.levelIndex
+      const distanceSq = (existing.x - payload.x) ** 2 + (existing.y - payload.y) ** 2
+      // Large displacement (respawn or teleport) or level change -> snap immediately, no backward sliding!
+      if (levelChanged || distanceSq > 48 * 48 || !payload.alive) {
+        existing.x = payload.x
+        existing.y = payload.y
+      }
       existing.playerName = payload.playerName || existing.playerName
       existing.levelIndex = payload.levelIndex
       existing.targetX = payload.x
@@ -126,22 +150,57 @@ export class TrollRunEngine {
     this.currentLevelIndex = 0
     this.totalDeaths = 0
     this.totalTimeElapsed = 0
+    this.levelDeaths = 0
+    this.levelCleared = false
+    // A new round may open on a level with the same index and name, so drop the edge-trigger
+    // baseline or the overlay would keep showing the previous round's plate.
+    this.lastHudState = null
   }
 
   public start(levelIndex = 0): void {
-    if (this.levels.length === 0) return
+    if (this.levels.length === 0 || this.running) return
 
     this.currentLevelIndex = Math.max(0, Math.min(levelIndex, this.levels.length - 1))
     this.running = true
+    this.pausedAt = null
     this.lastTime = performance.now()
     this.loadLevel(this.currentLevelIndex)
 
+    this.runLoop()
+  }
+
+  /** Freezes simulation and rendering without discarding round progress. */
+  public pause(): void {
+    if (!this.running) return
+    this.pausedAt = performance.now()
+    this.running = false
+    if (this.animFrameId !== null) {
+      cancelAnimationFrame(this.animFrameId)
+      this.animFrameId = null
+    }
+  }
+
+  /** Resumes a paused run, discounting the paused span from the level timer. */
+  public resume(): void {
+    if (this.running || !this.activeLevel) return
+    const now = performance.now()
+    if (this.pausedAt !== null) {
+      this.levelStartTime += now - this.pausedAt
+      this.pausedAt = null
+    }
+    this.running = true
+    this.lastTime = now
+    this.runLoop()
+  }
+
+  private runLoop(): void {
     const loop = (now: number) => {
       if (!this.running) return
-      const dt = Math.min(0.05, (now - this.lastTime) / 1000)
+      const deltaSeconds = Math.min(0.05, (now - this.lastTime) / 1000)
       this.lastTime = now
 
-      this.update(dt)
+      this.update(deltaSeconds)
+      this.emitHudState()
       this.render()
 
       this.animFrameId = requestAnimationFrame(loop)
@@ -152,14 +211,24 @@ export class TrollRunEngine {
 
   public stop(): void {
     this.running = false
+    this.pausedAt = null
     if (this.animFrameId !== null) {
       cancelAnimationFrame(this.animFrameId)
       this.animFrameId = null
     }
+    this.clearPendingTimers()
+  }
+
+  private clearPendingTimers(): void {
     if (this.respawnTimeout) {
       clearTimeout(this.respawnTimeout)
       this.respawnTimeout = null
     }
+    if (this.levelAdvanceTimeout) {
+      clearTimeout(this.levelAdvanceTimeout)
+      this.levelAdvanceTimeout = null
+    }
+    this.triggers.reset()
   }
 
   public setTheme(themeName: 'dark' | 'retro' | 'neon'): void {
@@ -182,14 +251,32 @@ export class TrollRunEngine {
     this.levelDeaths = 0
     this.levelStartTime = performance.now()
 
+    this.resetLevelRuntime()
+    this.emitHudState()
+  }
+
+  /**
+   * Rebuilds the level's mutable state after a death. Death count and level timer are
+   * kept so failed attempts still cost the player something.
+   */
+  private reloadAfterDeath(): void {
+    this.resetLevelRuntime()
+    this.emitPlayerPosition()
+  }
+
+  private resetLevelRuntime(): void {
+    if (!this.activeLevel) return
+
+    this.levelCleared = false
+
     // Deep clone level state
     this.activeTiles = this.activeLevel.tiles.map((row) => [...row])
     this.activeDoor = { ...this.activeLevel.door }
-    this.activeEntities = (this.activeLevel.movingEntities || []).map((e) => ({ ...e }))
+    this.activeEntities = (this.activeLevel.movingEntities || []).map((entity) => ({ ...entity }))
 
     this.tweens.clear()
     this.particles.clear()
-    this.triggers.reset()
+    this.triggers.setTriggers(this.activeLevel.triggers)
 
     this.respawnPlayer()
   }
@@ -232,43 +319,72 @@ export class TrollRunEngine {
       '#ffffff'
     )
 
+    this.emitPlayerPosition()
+
     if (this.callbacks.onDeath && this.activeLevel) {
-      this.callbacks.onDeath(this.activeLevel.id, this.levelDeaths)
+      this.callbacks.onDeath(this.activeLevel.id, this.activeLevel.name, this.levelDeaths)
     }
 
     this.respawnTimeout = setTimeout(() => {
-      if (this.running) {
-        this.loadLevel(this.currentLevelIndex)
-      }
+      this.respawnTimeout = null
+      this.reloadAfterDeath()
     }, TROLL_RUN_PHYSICS.RESPAWN_DELAY_MS)
   }
 
   private triggerLevelClear(): void {
-    if (!this.player.alive) return
+    if (!this.player.alive || this.levelCleared) return
 
+    this.levelCleared = true
     this.audio.playClear()
     const clearTimeMs = performance.now() - this.levelStartTime
     this.totalTimeElapsed += clearTimeMs
 
-    this.particles.emitDoorSparkles(this.activeDoor.x + 7, this.activeDoor.y + 10)
+    // Hand the runner over to the door-entry animation: input stops mattering and the momentum that
+    // carried them into the door is dropped so they step in rather than slide through.
+    this.doorEntryOrigin = { x: this.player.x, y: this.player.y }
+    this.player.doorEntryProgress = 0
+    this.player.vx = 0
+    this.player.vy = 0
+    this.player.jumping = false
+    this.player.facing = this.activeDoor.x + TROLL_RUN_DOOR_WIDTH / 2 >= this.player.x ? 'right' : 'left'
 
     if (this.callbacks.onLevelClear && this.activeLevel) {
-      this.callbacks.onLevelClear(this.activeLevel.id, clearTimeMs, this.levelDeaths)
+      this.callbacks.onLevelClear(this.activeLevel.id, this.activeLevel.name, clearTimeMs, this.levelDeaths)
     }
 
-    setTimeout(() => {
+    this.levelAdvanceTimeout = setTimeout(() => {
+      this.levelAdvanceTimeout = null
       this.nextLevel()
-    }, 450)
+    }, LEVEL_CLEAR_DELAY_MS)
+  }
+
+  /**
+   * Walks the runner from wherever they touched the door into the middle of the doorway. Physics is
+   * off for the duration — leaving it running is what let a runner sail past the door they had just
+   * cleared, since nothing stopped them for the 450ms before the next level loaded.
+   */
+  private advanceDoorEntry(dt: number): void {
+    const player = this.player
+    if (player.doorEntryProgress >= 1) return
+
+    player.doorEntryProgress = Math.min(1, player.doorEntryProgress + dt / DOOR_ENTRY_SECONDS)
+
+    // easeOutQuad, the same curve the door's own tweens run on.
+    const eased = player.doorEntryProgress * (2 - player.doorEntryProgress)
+    const targetX = this.activeDoor.x + (TROLL_RUN_DOOR_WIDTH - player.width) / 2
+    const targetY = this.activeDoor.y + TROLL_RUN_DOOR_HEIGHT - player.height
+    player.x = this.doorEntryOrigin.x + (targetX - this.doorEntryOrigin.x) * eased
+    player.y = this.doorEntryOrigin.y + (targetY - this.doorEntryOrigin.y) * eased
+
+    if (player.doorEntryProgress >= 1) {
+      this.particles.emitDoorSparkles(this.activeDoor.x + 7, this.activeDoor.y + 10)
+    }
   }
 
   private update(dt: number): void {
     if (!this.activeLevel) return
 
     const inputState = this.input.update()
-
-    if (inputState.jumpPressed && this.player.alive && this.player.grounded) {
-      this.audio.playJump()
-    }
 
     // Update Tweens
     this.tweens.update(dt)
@@ -293,6 +409,12 @@ export class TrollRunEngine {
       ghost.y += (ghost.targetY - ghost.y) * Math.min(1, dt * 15)
     }
 
+    // The level is already won; the runner is stepping into the door and takes no more input.
+    if (this.levelCleared) {
+      this.advanceDoorEntry(dt)
+      return
+    }
+
     // Step Physics
     const prevGrounded = this.player.grounded
     const collision = updatePlayerPhysics(
@@ -309,9 +431,25 @@ export class TrollRunEngine {
       this.particles.emitLandingDust(this.player.x + this.player.width / 2, this.player.y + this.player.height)
     }
 
+    // Jump actually executed this frame (covers coyote-time and buffered jumps)
+    if (collision.jumped) {
+      this.audio.playJump()
+    }
+
     // Coin collected
     if (collision.collectedCoin) {
       this.audio.playCoin()
+    }
+
+    // Fake floors give way the moment the player puts weight on them
+    if (collision.steppedOnFake.length > 0) {
+      for (const { col, row } of collision.steppedOnFake) {
+        if (this.activeTiles[row] && this.activeTiles[row][col] !== undefined) {
+          this.activeTiles[row][col] = TrollRunTileType.EMPTY
+        }
+      }
+      this.audio.playTrap()
+      this.particles.emitLandingDust(this.player.x + this.player.width / 2, this.player.y + this.player.height)
     }
 
     // Emit Realtime Position for other players
@@ -319,19 +457,7 @@ export class TrollRunEngine {
     if (this.positionEmitTimer >= 0.05) {
       // 20Hz update
       this.positionEmitTimer = 0
-      if (this.callbacks.onPlayerPosition && this.playerId) {
-        this.callbacks.onPlayerPosition({
-          playerId: this.playerId,
-          playerName: this.playerName,
-          levelIndex: this.currentLevelIndex,
-          x: this.player.x,
-          y: this.player.y,
-          vx: this.player.vx,
-          vy: this.player.vy,
-          facing: this.player.facing,
-          alive: this.player.alive,
-        })
-      }
+      this.emitPlayerPosition()
     }
 
     // Handle collision flags
@@ -347,6 +473,13 @@ export class TrollRunEngine {
 
     // Evaluate Triggers
     if (this.player.alive) {
+      // Landings and jumps are what `land_on` / `jump_near` traps wait for, so they travel with the
+      // coin pickup rather than being recomputed inside the trigger manager.
+      const frameEvents: TrollRunFrameEvent[] = []
+      if (!prevGrounded && this.player.grounded) frameEvents.push('land_on')
+      if (collision.jumped) frameEvents.push('jump_near')
+      if (collision.collectedCoin) frameEvents.push('collect_coin')
+
       this.triggers.evaluate(
         {
           player: this.player,
@@ -358,7 +491,7 @@ export class TrollRunEngine {
             if (sound === 'trap') this.audio.playTrap()
           },
         },
-        collision.collectedCoin ? 'collect_coin' : undefined
+        frameEvents
       )
     }
   }
@@ -373,7 +506,9 @@ export class TrollRunEngine {
     }
 
     // Filter ghosts to only those on the same level as the player
-    const currentGhosts = Array.from(this.ghosts.values()).filter((g) => g.levelIndex === this.currentLevelIndex)
+    const currentGhosts = Array.from(this.ghosts.values()).filter(
+      (ghost) => ghost.levelIndex === this.currentLevelIndex
+    )
 
     this.renderer.render(
       this.ctx,
@@ -381,9 +516,45 @@ export class TrollRunEngine {
       this.player,
       this.particles,
       this.activeEntities,
-      this.activeLevel.name,
-      currentGhosts
+      currentGhosts,
+      performance.now()
     )
+  }
+
+  /**
+   * Pushes level identity and trap state out to the DOM overlay, but only on an actual change —
+   * the render loop calls this every frame and the overlay is React state.
+   */
+  private emitHudState(): void {
+    const callback = this.callbacks.onHudChange
+    if (!callback) return
+
+    const next: TrollRunHudState = {
+      levelIndex: this.currentLevelIndex,
+      levelName: this.activeLevel?.name ?? '',
+      controlsInverted: this.player.invertedControlsTimer > 0,
+      gravityInverted: this.player.gravityInverted,
+    }
+
+    const previous = this.lastHudState
+    this.lastHudState = next
+    callback(next)
+  }
+
+  private emitPlayerPosition(): void {
+    if (this.callbacks.onPlayerPosition && this.playerId) {
+      this.callbacks.onPlayerPosition({
+        playerId: this.playerId,
+        playerName: this.playerName,
+        levelIndex: this.currentLevelIndex,
+        x: this.player.x,
+        y: this.player.y,
+        vx: this.player.vx,
+        vy: this.player.vy,
+        facing: this.player.facing,
+        alive: this.player.alive,
+      })
+    }
   }
 
   public getCurrentStats() {

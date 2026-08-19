@@ -66,7 +66,10 @@ export function HostThemePicker({ gameCode, hostToken, game, onGameUpdate }: Pro
     }
   }
 
-  // Theme is only editable pre-game (server enforces waiting/finished); hide it once live.
+  // Theme is only editable pre-game (server enforces waiting/finished); hide it once live. Troll Run
+  // picks a world instead of a theme, so it opts out here rather than above the hooks — returning
+  // before them changes how many hooks run between renders, which React rejects outright.
+  if (game.game_type === 'troll_run') return null
   if (game.status === 'active') return null
   if (options.length <= 1) return null
 

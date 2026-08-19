@@ -1,83 +1,64 @@
-import { NextResponse } from 'next/server'
-import { getSupabaseAdmin } from '@/lib/supabase-admin'
-import { calculateTrollRunScore } from '@/lib/troll-run'
-import { syncTrollRunGameState } from '@/lib/troll-run-advance'
+import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
+import { internalErrorMessage } from '@/lib/api-errors'
+import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { parseJsonBody } from '@/lib/parse-body'
+import { assertTrollRunRacingPlayer, trollRunElapsedMs } from '@/lib/troll-run'
+import { syncTrollRunGameState } from '@/lib/troll-run-advance'
 
 const reportFinishSchema = z.object({
-  gameId: z.string().min(1),
-  playerId: z.string().min(1),
-  totalTimeMs: z.number().int().nonnegative(),
-  totalDeaths: z.number().int().nonnegative(),
+  gameId: z.string().min(1).max(10).toUpperCase(),
+  resumeToken: z.string().min(4),
 })
 
-export async function POST(req: Request) {
-  try {
-    const json = await req.json()
-    const parsed = reportFinishSchema.safeParse(json)
-    if (!parsed.success) {
-      return NextResponse.json({ error: 'Invalid input' }, { status: 400 })
-    }
+/**
+ * Marks the caller as done with the round.
+ *
+ * Nothing about the result is taken from the request: the server only accepts the claim if its
+ * own progress row shows every level cleared, and the finishing time is read off the shared
+ * round clock. Placement and score are deliberately not written here — the whole round is
+ * scored in one pass when it ends, so ranking follows elapsed race time instead of whichever
+ * request happened to arrive first.
+ */
+export async function POST(req: NextRequest) {
+  const { data: body, error: bodyError } = await parseJsonBody(req, reportFinishSchema)
+  if (bodyError) return bodyError
 
-    const { gameId, playerId, totalTimeMs, totalDeaths } = parsed.data
-    const supabase = getSupabaseAdmin()
+  const { gameId, resumeToken } = body
+  const supabase = getSupabaseAdmin()
 
-    // Get current session
-    const { data: session } = await supabase
-      .from('troll_run_sessions')
-      .select('current_round, phase, levels_per_round')
-      .eq('game_id', gameId)
-      .maybeSingle()
+  const guard = await assertTrollRunRacingPlayer(supabase, gameId, resumeToken)
+  if (!guard.ok) return NextResponse.json({ error: guard.error }, { status: guard.status })
+  const { session, state } = guard
 
-    if (!session || session.phase !== 'racing') {
-      return NextResponse.json({ error: 'Session not in racing phase' }, { status: 400 })
-    }
-
-    // Get existing finishers to determine placement
-    const { data: existingFinishers } = await supabase
-      .from('troll_run_player_states')
-      .select('id, finish_position')
-      .eq('game_id', gameId)
-      .eq('current_round', session.current_round)
-      .eq('round_finished', true)
-      .not('finish_position', 'is', null)
-
-    const finishCount = existingFinishers?.length ?? 0
-    const placement = finishCount + 1
-
-    // Calculate score
-    const roundScore = calculateTrollRunScore(placement, session.levels_per_round || 10, totalDeaths, totalTimeMs)
-
-    // Fetch existing player state
-    const { data: state } = await supabase
-      .from('troll_run_player_states')
-      .select('id, total_score')
-      .eq('game_id', gameId)
-      .eq('player_id', playerId)
-      .eq('current_round', session.current_round)
-      .maybeSingle()
-
-    if (state) {
-      await supabase
-        .from('troll_run_player_states')
-        .update({
-          round_finished: true,
-          finish_position: placement,
-          round_score: roundScore,
-          total_score: (state.total_score || 0) + roundScore,
-          deaths: totalDeaths,
-          total_time_ms: totalTimeMs,
-          levels_cleared: session.levels_per_round || 10,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', state.id)
-    }
-
-    // Trigger state advance check in case everyone is finished now
-    await syncTrollRunGameState(supabase, gameId)
-
-    return NextResponse.json({ ok: true, placement, roundScore })
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message || 'Internal error' }, { status: 500 })
+  if (state.current_level_index < session.level_order.length) {
+    return NextResponse.json({ error: 'You still have levels left to clear' }, { status: 400 })
   }
+
+  const { data: claimed, error: updateError } = await supabase
+    .from('troll_run_player_states')
+    .update({
+      round_finished: true,
+      total_time_ms: trollRunElapsedMs(session),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', state.id)
+    .eq('round_finished', false)
+    .select('id')
+
+  if (updateError) {
+    return NextResponse.json(
+      { error: internalErrorMessage('troll_run:report-round-finish', updateError) },
+      { status: 500 }
+    )
+  }
+
+  if (!claimed || claimed.length === 0) {
+    return NextResponse.json({ ok: true, alreadyFinished: true })
+  }
+
+  // The round ends as soon as the last runner is home, without waiting out the clock.
+  const advance = await syncTrollRunGameState(supabase, gameId)
+
+  return NextResponse.json({ ok: true, phase: advance.phase })
 }

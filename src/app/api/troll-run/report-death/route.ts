@@ -1,67 +1,67 @@
-import { NextResponse } from 'next/server'
-import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
+import { internalErrorMessage } from '@/lib/api-errors'
+import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { parseJsonBody } from '@/lib/parse-body'
+import { assertTrollRunRacingPlayer } from '@/lib/troll-run'
 
 const reportDeathSchema = z.object({
-  gameId: z.string().min(1),
-  playerId: z.string().min(1),
-  levelId: z.string().min(1),
-  levelName: z.string().optional(),
+  gameId: z.string().min(1).max(10).toUpperCase(),
+  resumeToken: z.string().min(4),
+  levelId: z.string().min(1).max(80),
+  levelName: z.string().min(1).max(80).optional(),
 })
 
-export async function POST(req: Request) {
-  try {
-    const json = await req.json()
-    const parsed = reportDeathSchema.safeParse(json)
-    if (!parsed.success) {
-      return NextResponse.json({ error: 'Invalid input' }, { status: 400 })
-    }
+/**
+ * Records one death for the calling player.
+ *
+ * The death count is re-derived from the event log rather than incremented from the row that
+ * was just read: a runner can die twice within a few hundred milliseconds, and two
+ * read-then-write increments racing each other would drop one of them (and with it the
+ * score penalty).
+ */
+export async function POST(req: NextRequest) {
+  const { data: body, error: bodyError } = await parseJsonBody(req, reportDeathSchema)
+  if (bodyError) return bodyError
 
-    const { gameId, playerId, levelId, levelName } = parsed.data
-    const supabase = getSupabaseAdmin()
+  const { gameId, resumeToken, levelId, levelName } = body
+  const supabase = getSupabaseAdmin()
 
-    // Get current session round
-    const { data: session } = await supabase
-      .from('troll_run_sessions')
-      .select('current_round, phase')
-      .eq('game_id', gameId)
-      .maybeSingle()
+  const guard = await assertTrollRunRacingPlayer(supabase, gameId, resumeToken)
+  if (!guard.ok) return NextResponse.json({ error: guard.error }, { status: guard.status })
+  const { session, state } = guard
 
-    if (!session || session.phase !== 'racing') {
-      return NextResponse.json({ error: 'Session not in racing phase' }, { status: 400 })
-    }
+  const { error: eventError } = await supabase.from('troll_run_events').insert({
+    game_id: gameId,
+    player_id: state.player_id,
+    round: session.current_round,
+    level_id: levelId,
+    level_name: levelName ?? levelId,
+    event_type: 'death',
+  })
 
-    // Insert death event
-    await supabase.from('troll_run_events').insert({
-      game_id: gameId,
-      player_id: playerId,
-      round: session.current_round,
-      level_id: levelId,
-      level_name: levelName || levelId,
-      event_type: 'death',
-    })
-
-    // Increment player state deaths
-    const { data: state } = await supabase
-      .from('troll_run_player_states')
-      .select('id, deaths')
-      .eq('game_id', gameId)
-      .eq('player_id', playerId)
-      .eq('current_round', session.current_round)
-      .maybeSingle()
-
-    if (state) {
-      await supabase
-        .from('troll_run_player_states')
-        .update({
-          deaths: (state.deaths || 0) + 1,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', state.id)
-    }
-
-    return NextResponse.json({ ok: true })
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message || 'Internal error' }, { status: 500 })
+  if (eventError) {
+    return NextResponse.json({ error: internalErrorMessage('troll_run:report-death', eventError) }, { status: 500 })
   }
+
+  const { count } = await supabase
+    .from('troll_run_events')
+    .select('id', { count: 'exact', head: true })
+    .eq('game_id', gameId)
+    .eq('player_id', state.player_id)
+    .eq('round', session.current_round)
+    .eq('event_type', 'death')
+
+  const deaths = count ?? state.deaths + 1
+
+  const { error: updateError } = await supabase
+    .from('troll_run_player_states')
+    .update({ deaths, updated_at: new Date().toISOString() })
+    .eq('id', state.id)
+
+  if (updateError) {
+    return NextResponse.json({ error: internalErrorMessage('troll_run:report-death', updateError) }, { status: 500 })
+  }
+
+  return NextResponse.json({ ok: true, deaths })
 }

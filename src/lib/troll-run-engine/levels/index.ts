@@ -1,70 +1,70 @@
 import type { TrollRunLevel } from '../types'
-import { WORLD_1_LEVELS } from './world-1-pits'
-import { WORLD_2_LEVELS } from './world-2-doors'
-import { WORLD_3_LEVELS } from './world-3-gravity'
-import { WORLD_4_LEVELS } from './world-4-gauntlet'
+import { getWorldLevels } from './catalogue'
+import { parseTrollRunLevelDescriptor } from './descriptors'
+import { generateTrollRunLevel } from './generate'
+import { mirrorTrollRunLevel } from './mirror'
 
 export { WORLD_1_LEVELS } from './world-1-pits'
 export { WORLD_2_LEVELS } from './world-2-doors'
 export { WORLD_3_LEVELS } from './world-3-gravity'
 export { WORLD_4_LEVELS } from './world-4-gauntlet'
 
-export interface TrollRunWorldConfig {
-  id: string
-  name: string
-  subtitle: string
-  icon: string
-  levels: TrollRunLevel[]
-}
+export { ALL_TROLL_RUN_LEVELS, TROLL_RUN_WORLDS, getWorldLevels, type TrollRunWorldConfig } from './catalogue'
 
-export const TROLL_RUN_WORLDS: TrollRunWorldConfig[] = [
-  {
-    id: 'pits',
-    name: 'World 1: The Pits',
-    subtitle: 'Collapsing floors & hidden drop-offs',
-    icon: '🕳️',
-    levels: WORLD_1_LEVELS,
-  },
-  {
-    id: 'doors',
-    name: 'World 2: Runaway Doors',
-    subtitle: 'Elusive exit doors & moving walls',
-    icon: '🚪',
-    levels: WORLD_2_LEVELS,
-  },
-  {
-    id: 'gravity',
-    name: 'World 3: Gravity Flip',
-    subtitle: 'Ceiling running & inverted controls',
-    icon: '🔄',
-    levels: WORLD_3_LEVELS,
-  },
-  {
-    id: 'gauntlet',
-    name: 'World 4: The Gauntlet',
-    subtitle: 'Master trials combining all traps',
-    icon: '👑',
-    levels: WORLD_4_LEVELS,
-  },
-]
+export {
+  buildTrollRunRoundDescriptors,
+  formatTrollRunLevelDescriptor,
+  parseTrollRunLevelDescriptor,
+  type TrollRunAuthoredDescriptor,
+  type TrollRunGeneratedDescriptor,
+  type TrollRunLevelDescriptor,
+} from './descriptors'
 
-export const ALL_TROLL_RUN_LEVELS: TrollRunLevel[] = [
-  ...WORLD_1_LEVELS,
-  ...WORLD_2_LEVELS,
-  ...WORLD_3_LEVELS,
-  ...WORLD_4_LEVELS,
-]
+/**
+ * Turns the session's stored level order into playable levels so every client runs the
+ * exact sequence the server scored. Unknown ids are skipped; an empty or fully unknown
+ * order falls back to the world's authored order.
+ *
+ * A generated entry is rebuilt here rather than fetched, which is what keeps the round off the wire:
+ * the descriptor already names the seed, the slot and the attempt that passed validation, so this
+ * costs a few array writes and no solving at all.
+ *
+ * The resolved level's id is the descriptor verbatim, because the scoring routes look a player up with
+ * `level_order.indexOf(levelId)`.
+ */
+export function resolveTrollRunLevels(
+  levelOrder: string[] | null | undefined,
+  worldId?: string | null
+): TrollRunLevel[] {
+  const worldLevels = getWorldLevels(worldId)
+  if (!Array.isArray(levelOrder) || levelOrder.length === 0) return worldLevels
 
-export function getWorldLevels(worldId?: string | null): TrollRunLevel[] {
-  switch (worldId?.toLowerCase()) {
-    case 'doors':
-      return WORLD_2_LEVELS
-    case 'gravity':
-      return WORLD_3_LEVELS
-    case 'gauntlet':
-      return WORLD_4_LEVELS
-    case 'pits':
-    default:
-      return WORLD_1_LEVELS
+  const levelsById = new Map(worldLevels.map((level) => [level.id, level]))
+  const ordered: TrollRunLevel[] = []
+
+  for (const entry of levelOrder) {
+    // The order arrives from a jsonb column, so anything that is not a readable descriptor is skipped
+    // exactly as an unknown level id always was.
+    const descriptor = typeof entry === 'string' ? parseTrollRunLevelDescriptor(entry) : null
+    if (!descriptor) continue
+
+    if (descriptor.kind === 'generated') {
+      ordered.push(
+        generateTrollRunLevel({
+          id: entry,
+          world: descriptor.world,
+          seed: descriptor.seed,
+          slot: descriptor.slot,
+          attempt: descriptor.attempt,
+        })
+      )
+      continue
+    }
+
+    const authored = levelsById.get(descriptor.levelId)
+    if (!authored) continue
+    ordered.push(descriptor.mirrored ? mirrorTrollRunLevel(authored, entry) : authored)
   }
+
+  return ordered.length > 0 ? ordered : worldLevels
 }

@@ -27,6 +27,7 @@ import {
   isPingPongGame,
   isWhoSaidThis,
   isWordleRoomGame,
+  isTrollRunGame,
 } from '@/lib/game-types'
 import { clearAnonymousRoomSessionData, reopenSecretMessageBoard } from '@/lib/anonymous-messages'
 import { clearBingoSessionData } from '@/lib/bingo'
@@ -240,7 +241,8 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
     (isWordHuntGame(gameType) && game.status === 'active') ||
     (isWordleRoomGame(gameType) && game.status === 'active') ||
     (isCrosswordGame(gameType) && game.status === 'active') ||
-    (isWordSearchGame(gameType) && game.status === 'active')
+    (isWordSearchGame(gameType) && game.status === 'active') ||
+    (isTrollRunGame(gameType) && game.status === 'active')
   if (!canReturnToLobby) {
     return NextResponse.json({ error: 'Game must be finished before playing again' }, { status: 400 })
   }

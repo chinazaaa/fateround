@@ -2,7 +2,7 @@
  * Troll Run Engine — Internal runtime types.
  */
 
-export * from '@/../../packages/shared/src/troll-run'
+export * from '@/lib/troll-run-types'
 
 export interface InputState {
   left: boolean
@@ -28,6 +28,11 @@ export interface PlayerState {
   jumping: boolean
   invertedControlsTimer: number
   gravityInverted: boolean
+  /**
+   * 0 while the runner is playing, then 0→1 as they step into the door they just touched. The
+   * renderer uses it to draw them behind the door leaf and fade them out.
+   */
+  doorEntryProgress: number
 }
 
 export interface GhostRunner {
@@ -102,10 +107,24 @@ export interface Particle {
   size: number
 }
 
+/**
+ * Engine state the surrounding DOM renders on the player's behalf: the level identity plate and
+ * the active trap warnings. These used to be drawn into the 320×180 buffer, where an 8px font
+ * upscaled to an unreadable smear; as DOM they stay crisp and can be read by screen readers.
+ */
+export interface TrollRunHudState {
+  levelIndex: number
+  levelName: string
+  controlsInverted: boolean
+  gravityInverted: boolean
+}
+
 export interface EngineCallbacks {
-  onDeath?: (levelId: string, deathCount: number) => void
-  onLevelClear?: (levelId: string, timeMs: number, deathCount: number) => void
+  onDeath?: (levelId: string, levelName: string, deathCount: number) => void
+  onLevelClear?: (levelId: string, levelName: string, timeMs: number, deathCount: number) => void
   onAllLevelsCleared?: (totalTimeMs: number, totalDeaths: number) => void
   onSound?: (soundName: 'jump' | 'death' | 'clear' | 'trap' | 'coin' | 'invert') => void
   onPlayerPosition?: (pos: GhostPositionPayload) => void
+  /** Fired only when a field actually changes, so the DOM overlay does not re-render at 60fps. */
+  onHudChange?: (hud: TrollRunHudState) => void
 }

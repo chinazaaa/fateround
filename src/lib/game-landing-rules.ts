@@ -1925,7 +1925,7 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
     {
       title: 'Multiplayer Race Mechanics',
       points: [
-        '2 to 8 players join by room code on mobile or desktop.',
+        '2 to 6 players join by room code on mobile or desktop.',
         'Everyone starts each round at the exact same moment on a 3-2-1 countdown.',
         'All players race through identical level layouts with the same troll triggers.',
         'A live ticker alerts everyone whenever a rival dies or clears a checkpoint.',

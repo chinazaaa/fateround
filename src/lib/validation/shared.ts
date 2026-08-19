@@ -150,6 +150,7 @@ export const playerGenderEnum = z.enum(['male', 'female', 'both'])
 export const pairFlagEnum = z.enum(['kiss', 'kill'])
 export const themeEnum = z.enum([
   'default',
+  'dark',
   'neon',
   'retro',
   'elegant',
