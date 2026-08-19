@@ -1,0 +1,74 @@
+const APP='http://127.0.0.1:3000', REST='http://127.0.0.1:54321/rest/v1'
+const ANON='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0'
+const SRV='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU'
+const h=k=>({apikey:k,Authorization:`Bearer ${k}`})
+const J={'Content-Type':'application/json'}
+const post=async(u,b)=>{const r=await fetch(u,{method:'POST',headers:J,body:JSON.stringify(b)});let d=null;try{d=await r.json()}catch{};return{status:r.status,d}}
+const get=async(u,k)=>{const r=await fetch(u,{headers:h(k)});let d=null;try{d=await r.json()}catch{};return{status:r.status,d}}
+const fail=[],log=[]
+
+const c=await post(`${APP}/api/games`,{title:'PT ttl',game_type:'two_truths'})
+const {gameCode:code,hostToken}=c.d; log.push(`created ${code}`)
+
+const ps=[]
+for(let i=0;i<3;i++){const p=await post(`${APP}/api/players`,{gameCode:code,playerName:`P${i+1}`});ps.push(p.d)}
+log.push(`joined ${ps.length}`)
+
+// each player submits 3 statements with a designated lie
+for(const [i,p] of ps.entries()){
+  const r=await post(`${APP}/api/two-truths/statements`,{gameId:code,resumeToken:p.resumeToken,
+    statementA:`A${i}-true`,statementB:`B${i}-true`,statementC:`C${i}-LIE`,lieIndex:2})
+  log.push(`submit P${i+1} -> ${r.status}${r.status!==200?' '+JSON.stringify(r.d):''}`)
+  if(r.status!==200) fail.push(`submit P${i+1} failed ${r.status} ${JSON.stringify(r.d)}`)
+}
+
+const srows=await get(`${REST}/ttl_statements?game_id=eq.${code}&select=player_id,lie_index`,SRV)
+log.push(`ttl_statements rows(service)=${srows.d?.length}`)
+
+// THE #838 CHECK: start must succeed now that statements exist
+const s=await post(`${APP}/api/games/${code}/start`,{hostToken})
+log.push(`START -> ${s.status} ${s.status!==200?JSON.stringify(s.d):''}`)
+if(s.status!==200) fail.push(`START FAILED: ${JSON.stringify(s.d)} <-- #838 regression signature`)
+const g1=await get(`${REST}/games?id=eq.${code}&select=status`,SRV)
+log.push(`game.status=${g1.d?.[0]?.status}`)
+if(g1.d?.[0]?.status==='waiting') fail.push(`game still waiting after start`)
+
+// redaction: anon must not read lie_index, must still read the rest
+const leak=await get(`${REST}/ttl_statements?game_id=eq.${code}&select=lie_index`,ANON)
+log.push(`anon lie_index -> ${leak.status}`)
+if(leak.status===200) fail.push(`LEAK: anon read lie_index`)
+const okc=await get(`${REST}/ttl_statements?game_id=eq.${code}&select=id,player_id,statement_a`,ANON)
+log.push(`anon non-secret cols -> ${okc.status} (${okc.d?.length} rows)`)
+if(okc.status!==200) fail.push(`BREAK: anon cannot read non-secret ttl_statements cols (${okc.status})`)
+
+// own-lie path: /my-statement must return the caller's own lieIndex
+const mine=await post(`${APP}/api/two-truths/my-statement`,{gameCode:code,resumeToken:ps[0].resumeToken})
+log.push(`my-statement P1 -> ${mine.status} lieIndex=${JSON.stringify(mine.d?.lieIndex ?? mine.d?.statement?.lie_index ?? mine.d)}`.slice(0,160))
+if(mine.status!==200) fail.push(`my-statement failed ${mine.status}`)
+
+// IDOR: P2's token must not yield P1's lie
+const other=await post(`${APP}/api/two-truths/my-statement`,{gameCode:code,resumeToken:ps[1].resumeToken})
+const mineLie=JSON.stringify(mine.d), otherLie=JSON.stringify(other.d)
+log.push(`my-statement P2 -> ${other.status}`)
+if(mineLie===otherLie && mine.status===200) fail.push(`my-statement returns identical payload for two players (not scoped)`)
+
+// play a round: guess then reveal
+const rr=await get(`${REST}/rounds?game_id=eq.${code}&select=id&order=id&limit=1`,SRV)
+const roundId=rr.d?.[0]?.id; log.push(`roundId=${roundId}`)
+const guess=await post(`${APP}/api/two-truths/guess`,{gameId:code,resumeToken:ps[1].resumeToken,roundId,guessedIndex:2})
+log.push(`guess -> ${guess.status} ${guess.status!==200?JSON.stringify(guess.d).slice(0,120):''}`)
+const adv=await post(`${APP}/api/two-truths/advance`,{gameId:code,hostToken})
+log.push(`advance -> ${adv.status} ${adv.status!==200?JSON.stringify(adv.d).slice(0,160):''}`)
+
+// guesses redaction
+const gl=await get(`${REST}/ttl_guesses?game_id=eq.${code}&select=guessed_index`,ANON)
+log.push(`anon ttl_guesses.guessed_index -> ${gl.status}`)
+if(gl.status===200) fail.push(`LEAK: anon read ttl_guesses.guessed_index`)
+const rl=await get(`${REST}/ttl_round_lies?select=*&limit=1`,ANON)
+log.push(`anon ttl_round_lies -> ${rl.status}`)
+if(rl.status===200) fail.push(`LEAK: anon read ttl_round_lies`)
+
+console.log('===== TWO TRUTHS =====')
+log.forEach(l=>console.log('  · '+l))
+fail.forEach(f=>console.log('  ✗ '+f))
+console.log(fail.length?`\nFAIL (${fail.length})`:'\nPASS')
