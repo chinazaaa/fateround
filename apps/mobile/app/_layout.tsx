@@ -29,7 +29,47 @@ function handleNotificationResponse(response: Notifications.NotificationResponse
   if (target) router.push(target as never)
 }
 
-export { ErrorBoundary } from 'expo-router'
+import { Pressable, StyleSheet, Text, View } from 'react-native'
+
+/**
+ * App-wide error boundary — replaces expo-router's default, which puts the raw
+ * Error message on screen (things like "cannot add postgres_changes callbacks
+ * for realtime:public_games_home_preview_mobile after subscribe()"). Nobody
+ * outside engineering should ever see one of those. The real details still go
+ * to the console for whoever's debugging.
+ */
+export function ErrorBoundary({ error, retry }: { error: Error; retry: () => void }) {
+  console.error('App error boundary caught:', error)
+  return (
+    <View style={errorStyles.wrap}>
+      <Text style={errorStyles.emoji}>🎲</Text>
+      <Text style={errorStyles.title}>Something went sideways</Text>
+      <Text style={errorStyles.body}>
+        The screen hit an unexpected hiccup. Tapping Retry usually gets things going again.
+      </Text>
+      <Pressable style={errorStyles.button} onPress={retry} accessibilityRole="button">
+        <Text style={errorStyles.buttonText}>Retry</Text>
+      </Pressable>
+    </View>
+  )
+}
+
+const errorStyles = StyleSheet.create({
+  wrap: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32, gap: 12 },
+  emoji: { fontSize: 44 },
+  title: { fontSize: 22, fontWeight: '800', textAlign: 'center' },
+  body: { fontSize: 15, lineHeight: 22, textAlign: 'center', opacity: 0.7 },
+  button: {
+    marginTop: 12,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 999,
+    backgroundColor: '#e11d48',
+    minWidth: 160,
+    alignItems: 'center',
+  },
+  buttonText: { color: '#fff', fontWeight: '800', fontSize: 15 },
+})
 
 // Anchor the stack to the home screen. When a game/host screen is opened directly
 // (deep link, cold start) or reached via router.replace, home is otherwise absent

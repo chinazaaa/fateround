@@ -162,7 +162,13 @@ export function BrowseGamesList({ previewLimit, onSeeAll, tab = 'live' }: Props)
   // up without requiring an app restart.
   useEffect(() => {
     const supabase = getSupabase()
-    const channelName = previewLimit ? 'public_games_home_preview_mobile' : 'public_games_browse_mobile'
+    // Random per-mount suffix so a lingering channel from the previous mount
+    // (removeChannel is async and supabase caches by name) doesn't collide
+    // with the new one — that collision manifests on iOS as
+    // "cannot add postgres_changes callbacks … after subscribe()" when the
+    // library returns the still-registered channel and we try to .on() it.
+    const base = previewLimit ? 'public_games_home_preview_mobile' : 'public_games_browse_mobile'
+    const channelName = `${base}_${Math.random().toString(36).slice(2, 10)}`
     const channel = supabase
       .channel(channelName)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'games' }, () => {

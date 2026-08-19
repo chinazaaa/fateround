@@ -45,8 +45,11 @@ export function LiveGamesStrip() {
 
   useEffect(() => {
     void load()
+    // Per-mount channel name — supabase-js caches channels by name and
+    // removeChannel is async, so a stale-then-remounted strip could otherwise
+    // hit "cannot add postgres_changes callbacks … after subscribe()".
     const channel = supabase
-      .channel('public_games_home_strip')
+      .channel(`public_games_home_strip_${Math.random().toString(36).slice(2, 10)}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'games' }, () => {
         void load()
       })

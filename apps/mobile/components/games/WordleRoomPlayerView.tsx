@@ -11,6 +11,7 @@ import {
   type WordleRoomProgressRow,
   type WordleRoomStandingRow,
 } from '@fateround/shared/wordle-room'
+import { wordleKeyBestStates } from '@/lib/daily-wordle'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameInfoChips } from '@/components/GameInfoChips'
@@ -509,25 +510,41 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
           ) : null)}
         {currentWord && !myFinished && (
           <View style={styles.keyboard}>
-            {KEYBOARD_ROWS.map((krow, ri) => (
-              <View key={ri} style={styles.keyRow}>
-                {krow.map((key) => {
-                  const wide = key === 'ENTER' || key === 'BACK'
-                  const onPress = () => {
-                    if (key === 'ENTER') void submitGuess()
-                    else if (key === 'BACK') backspace()
-                    else addLetter(key)
-                  }
-                  return (
-                    <Pressable key={key} style={[styles.key, wide && styles.keyWide]} onPress={onPress}>
-                      <Text style={[styles.keyText, wide && styles.keyTextWide]}>
-                        {key === 'BACK' ? '⌫' : key === 'ENTER' ? 'Enter' : key}
-                      </Text>
-                    </Pressable>
-                  )
-                })}
-              </View>
-            ))}
+            {(() => {
+              // Best per-letter state across all guesses so far, so the
+              // keyboard shades used letters green/yellow/gray like web does.
+              const bestStates = wordleKeyBestStates(
+                guesses.map((g) => g.word),
+                currentWord
+              )
+              return KEYBOARD_ROWS.map((krow, ri) => (
+                <View key={ri} style={styles.keyRow}>
+                  {krow.map((key) => {
+                    const wide = key === 'ENTER' || key === 'BACK'
+                    const state = wide ? null : bestStates.get(key.toLowerCase())
+                    const stateStyle = state ? keyStateStyle(state) : null
+                    const onPress = () => {
+                      if (key === 'ENTER') void submitGuess()
+                      else if (key === 'BACK') backspace()
+                      else addLetter(key)
+                    }
+                    return (
+                      <Pressable key={key} style={[styles.key, wide && styles.keyWide, stateStyle]} onPress={onPress}>
+                        <Text
+                          style={[
+                            styles.keyText,
+                            wide && styles.keyTextWide,
+                            stateStyle ? styles.keyTextOnState : null,
+                          ]}
+                        >
+                          {key === 'BACK' ? '⌫' : key === 'ENTER' ? 'Enter' : key}
+                        </Text>
+                      </Pressable>
+                    )
+                  })}
+                </View>
+              ))
+            })()}
           </View>
         )}
         {myFinished && (
@@ -583,6 +600,13 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
 }
 
 function tileStateStyle(theme: Theme, state: WordleLetterState) {
+  const bg = state === 'correct' ? '#538d4e' : state === 'present' ? '#b59f3b' : '#3a3a3c'
+  return { backgroundColor: bg, borderColor: 'transparent' }
+}
+
+// Same three swatches as the tiles, applied to the keyboard keys so a player
+// can see at-a-glance which letters they've ruled out / half-placed / placed.
+function keyStateStyle(state: WordleLetterState) {
   const bg = state === 'correct' ? '#538d4e' : state === 'present' ? '#b59f3b' : '#3a3a3c'
   return { backgroundColor: bg, borderColor: 'transparent' }
 }
@@ -681,6 +705,8 @@ const makeStyles = (theme: Theme) =>
       textAlign: 'center',
     },
     keyTextWide: { fontSize: 12 },
+    // White text when a key is filled with a state color — matches the tiles.
+    keyTextOnState: { color: '#fff' },
     finishedNote: { color: theme.primary, fontWeight: '700', textAlign: 'center' },
     finishedCard: {
       alignSelf: 'stretch',
