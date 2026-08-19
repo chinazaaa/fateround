@@ -64,7 +64,6 @@ export const GAME_TYPE_TO_SLUG: Record<GameType, string> = {
   i_call_on: 'i-call-on',
   sudoku: 'sudoku',
   tic_tac_toe: 'tic-tac-toe',
-  ping_pong: 'ping-pong',
   word_hunt: 'word-hunt',
   chess: 'chess',
   checkers: 'checkers',
@@ -85,6 +84,7 @@ export const GAME_TYPE_TO_SLUG: Record<GameType, string> = {
   word_grouping: 'word-grouping',
   landmine: 'landmine',
   wordle_room: 'wordle',
+  troll_run: 'troll-run',
 }
 
 const SLUG_TO_GAME_TYPE = Object.fromEntries(
@@ -2229,58 +2229,6 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     ],
   }),
 
-  ping_pong: landing('ping_pong', {
-    seoTitle: 'Ping Pong Online — Play Real-Time 2-Player Table Tennis',
-    seoDescription:
-      'Play fast-paced Ping Pong online with a friend. Real-time 60fps paddle and ball physics, custom win targets, and win-by-2 rules.',
-    keywords: [
-      'ping pong online',
-      'table tennis online',
-      'ping pong 2 player online',
-      'play ping pong with friends',
-      'table tennis game online',
-      'real time ping pong online',
-      'ping pong online free',
-      'table tennis 2 player game',
-    ],
-    heroSubtitle: 'Classic 2-player Ping Pong. Hit the ball back and forth, and try not to miss.',
-    bodyParagraph:
-      "Grab a friend and settle who has the better reflexes. No table required — just share a link and you're in. You get a paddle, drag to hit the ball, and score when the other person misses. You can set the game to end anywhere from a quick 3 points up to a 21-point marathon, but you always have to win by two.",
-    highlights: ['2 players', '60fps real-time physics', 'Win-by-2 rules'],
-    features: [
-      {
-        title: 'Real-time 60fps physics',
-        description: 'Ultra-smooth paddle movement and dynamic ball bounces synced instantly.',
-        emoji: '🏓',
-      },
-      {
-        title: 'Custom win targets',
-        description: 'Set points to win from 3 up to 21 in the lobby settings before starting.',
-        emoji: '🎯',
-      },
-      {
-        title: 'Win by 2 rules',
-        description: 'Authentic table tennis scoring requires a clear 2-point lead at match point to take the crown.',
-        emoji: '🏆',
-      },
-      SHARED_FEATURES.mobile,
-      SHARED_FEATURES.noSignup,
-    ],
-    steps: [
-      { title: 'Join a room', description: 'Exactly two players take seats at the table to battle heads-up.' },
-      {
-        title: 'Rally and score',
-        description:
-          'Move your paddle to return the ball across the net. Miss a return and your opponent gets the point.',
-      },
-      {
-        title: 'Win by 2',
-        description: 'First to reach the target points with at least a 2-point margin wins the match.',
-      },
-    ],
-    perfectFor: ['Quick competitive duels', 'Friend challenges', 'Reflex testing'],
-  }),
-
   chess: landing('chess', {
     seoTitle: 'Chess Online — Play with a Friend',
     seoDescription:
@@ -3369,6 +3317,61 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         question: 'What’s the difference between the two modes?',
         answer:
           'Zero Points is softer — hitting the mine just scores you 0 for that round and everyone plays every round. Elimination is higher-stakes — hit the mine and you’re out, last player standing wins. Elimination plays best with 5+ players.',
+      },
+    ],
+  }),
+  troll_run: landing('troll_run', {
+    seoTitle: 'Troll Run Online — Free Multiplayer Rage Platformer Game',
+    seoDescription:
+      'Play Troll Run online with friends for free. Race simultaneously through trick platformer levels packed with collapsing floors, runaway doors, and surprise spikes in your browser. No download or signup required.',
+    keywords: [
+      'troll run online',
+      'level devil online multiplayer',
+      'rage platformer online',
+      'troll platformer with friends',
+      'multiplayer trap game online',
+      'free browser platformer multiplayer',
+      'level devil with friends',
+    ],
+    heroSubtitle:
+      'A multiplayer race through trick levels where nothing works the way you expect. Dodge collapsing floors, chase runaway doors, and survive sneaky traps to finish first.',
+    bodyParagraph:
+      'Everyone gets the same course and starts at the exact same second. The goal is simple: reach the door. The catch? Floors vanish under your feet, spikes pop up from nowhere, and the exit door might literally run away from you. Quick reflexes and pattern memory take the crown.',
+    highlights: ['2–6 player live racing', 'Surprise physics & trick triggers', 'Instant browser play on mobile & PC'],
+    perfectFor: ['Friend groups', 'Streamers', 'Party nights', 'Rage gamers'],
+    features: [
+      {
+        title: 'Sneaky Traps',
+        description: 'Doors that sprint away, floors that drop out, and spikes that appear right when you land.',
+        emoji: '😈',
+      },
+      {
+        title: 'Simultaneous Racing',
+        description: 'Everyone runs the exact same course at the same time on a live countdown.',
+        emoji: '🏁',
+      },
+      SHARED_FEATURES.realtime,
+      SHARED_FEATURES.noSignup,
+    ],
+    steps: [
+      {
+        title: 'Create a race room',
+        description: 'Choose round count and time limits, then share your 6-character room code.',
+      },
+      {
+        title: 'Race the levels',
+        description: 'Jump, dodge, and learn the traps as you speed towards the exit door.',
+      },
+      {
+        title: 'Climb the podium',
+        description: 'Score placement points and speed bonuses across all rounds to take the championship.',
+      },
+    ],
+    extraFaqs: [
+      {
+        question: 'How does Troll Run multiplayer work?',
+        answer:
+          'Players race independently through the same level layouts simultaneously. A live ticker announces whenever someone falls for a trap or clears a level. Round placement and total deaths determine the winner.',
       },
     ],
   }),

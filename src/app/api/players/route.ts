@@ -21,7 +21,6 @@ import { removeAyoPlayer } from '@/lib/ayo'
 import { maybeNotifyHostPlayerJoined } from '@/lib/push'
 import { getProfileFromRequest } from '@/lib/identity-server'
 import { removeTicTacToePlayer } from '@/lib/tic-tac-toe'
-import { removePingPongPlayer } from '@/lib/ping-pong'
 import { isMonopolyTokenId } from '@/lib/monopoly-tokens'
 import { generateAnonymousDisplayName } from '@/lib/anonymous-names'
 import { anonymousPlayerCanChat } from '@/lib/anonymous-messages'
@@ -67,7 +66,6 @@ import {
   isQuickDrawGame,
   isSudokuGame,
   isTwoTruthsGame,
-  isPingPongGame,
   isMafiaGame,
 } from '@/lib/game-types'
 import { announceMafiaLateJoin } from '@/lib/mafia'
@@ -883,8 +881,7 @@ export async function POST(req: NextRequest) {
     isChessGame(rowGameType) ||
     isCheckersGame(rowGameType) ||
     isAyoGame(rowGameType) ||
-    isScrabbleGame(rowGameType) ||
-    isPingPongGame(rowGameType)
+    isScrabbleGame(rowGameType)
   ) {
     const joinCheck = canJoinGame(gameRow as Game)
     if (!joinCheck.ok) {
@@ -903,9 +900,7 @@ export async function POST(req: NextRequest) {
           ? 'ayo'
           : isScrabbleGame(rowGameType)
             ? 'scrabble'
-            : isPingPongGame(rowGameType)
-              ? 'ping_pong'
-              : 'tic_tac_toe'
+            : 'tic_tac_toe'
     const maxPlayers = lobbyMaxPlayersFromGame(limitKey, gameRow, lobbyLimits)
     const { count: playerCount } = await supabase
       .from('players')
@@ -1998,12 +1993,6 @@ export async function DELETE(req: NextRequest) {
     // Tic-Tac-Toe tables are RLS-locked to anon writes — remove via service role.
     // (Caller authority — host, or the player removing themselves — is enforced above.)
     const { error } = await removeTicTacToePlayer(getSupabaseAdmin(), id, playerId, player.name)
-    if (error) return NextResponse.json({ error }, { status: 500 })
-    return NextResponse.json({ success: true })
-  }
-
-  if (isPingPongGame(gameType)) {
-    const { error } = await removePingPongPlayer(getSupabaseAdmin(), id, playerId, player.name)
     if (error) return NextResponse.json({ error }, { status: 500 })
     return NextResponse.json({ success: true })
   }

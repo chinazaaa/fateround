@@ -29,10 +29,10 @@ export function ShareGameButton({
         type="button"
         onClick={() => setOpen(true)}
         aria-label="Share game"
-        className={`btn-secondary flex shrink-0 items-center gap-1.5 px-2.5 py-1.5 text-xs sm:px-3 sm:text-sm ${className}`}
+        className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--surface-inset-bg)] text-muted transition-colors hover:text-[var(--foreground)] hover:border-[var(--border-strong)] sm:h-auto sm:w-auto sm:px-3 sm:py-1.5 sm:gap-1.5 sm:text-xs md:text-sm ${className}`}
       >
-        <ShareIcon />
-        <span className="hidden sm:inline">Share</span>
+        <ShareIcon size={17} />
+        <span className="hidden sm:inline font-semibold text-body">Share</span>
       </button>
       <ShareGameModal
         open={open}

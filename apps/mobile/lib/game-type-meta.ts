@@ -25,7 +25,7 @@ const META: Partial<Record<GameType, GameMeta>> = {
   mahjong: { emoji: '🀄', blurb: 'Match the tiles', category: 'board' },
   matching_pairs: { emoji: '🧩', blurb: 'Flip and match', category: 'puzzle' },
   monopoly: { emoji: '🏠', blurb: 'Buy and build', category: 'board' },
-  ping_pong: { emoji: '🏓', blurb: 'Head-to-head rally', category: 'board' },
+  troll_run: { emoji: '😈', blurb: 'Trap platformer', category: 'party' },
   quick_draw: { emoji: '✏️', blurb: 'Draw and guess', category: 'trivia' },
   quiplash: { emoji: '✍️', blurb: 'Funniest answer wins', category: 'trivia' },
   scrabble: { emoji: '🔤', blurb: 'Words on the board', category: 'board' },

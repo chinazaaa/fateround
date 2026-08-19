@@ -114,8 +114,8 @@ export const gameTypeEnum = z.enum([
   'word_scramble',
   'word_grouping',
   'landmine',
-  'ping_pong',
   'wordle_room',
+  'troll_run',
 ])
 
 export const participantModeEnum = z.enum(['import', 'joiners', 'voters'])
@@ -149,6 +149,7 @@ export const playerGenderEnum = z.enum(['male', 'female', 'both'])
 export const pairFlagEnum = z.enum(['kiss', 'kill'])
 export const themeEnum = z.enum([
   'default',
+  'dark',
   'neon',
   'retro',
   'elegant',

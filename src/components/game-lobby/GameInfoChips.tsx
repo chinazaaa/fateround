@@ -145,21 +145,13 @@ type GameMeta = {
   mafia_anonymous_votes?: boolean | null
   mafia_day_seconds?: number | null
   mafia_voting_seconds?: number | null
-  ping_pong_points_to_win?: number | null
   codewords_player_picks?: boolean | null
   codewords_randomize_teams?: boolean | null
   codewords_late_join?: boolean | null
   operative_timer_seconds?: number | null
 }
 
-const FIXED_TWO_PLAYER = new Set([
-  'chess',
-  'checkers',
-  'checkers_international',
-  'checkers_nigeria',
-  'tic_tac_toe',
-  'ping_pong',
-])
+const FIXED_TWO_PLAYER = new Set(['chess', 'checkers', 'checkers_international', 'checkers_nigeria', 'tic_tac_toe'])
 
 const DUEL_CLOCK_LABEL: Record<string, string> = {
   chess: 'Time per player',
@@ -364,8 +356,6 @@ export function gameInfoItems(game: GameMeta | null | undefined): string[] {
       items.push(`🗳️ ${formatDuration(game.mafia_voting_seconds)} voting`)
     }
     if (game.mafia_anonymous_votes) items.push('🕶️ Anonymous votes')
-  } else if (gt === 'ping_pong') {
-    if (game.ping_pong_points_to_win) items.push(`🏓 First to ${game.ping_pong_points_to_win}`)
   } else if (gt === 'codewords') {
     if (game.codewords_player_picks) items.push('🙋 Players pick roles')
     if (game.codewords_randomize_teams) items.push('🎲 Randomized operatives')
