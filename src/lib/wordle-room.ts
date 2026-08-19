@@ -142,9 +142,9 @@ interface WordleRoomCategory {
   entries: { word: string; hint: string }[]
 }
 
-const themedRoomCategory = (label: string, words: readonly string[]): WordleRoomCategory => ({
+const themedRoomCategory = (label: string, entries: readonly { word: string; hint: string }[]): WordleRoomCategory => ({
   label,
-  entries: words.map((word) => ({ word, hint: label })),
+  entries: entries.map((e) => ({ word: e.word, hint: e.hint })),
 })
 
 const WORDLE_ROOM_CATEGORIES: Record<WordleCategoryId, WordleRoomCategory> = {
@@ -430,11 +430,12 @@ export function wordleRoomWordScore(
   won: boolean,
   hintUsed: boolean = false
 ): number {
-  if (!won) return 0
-  const base = wordleBasePoints(guessesUsed, maxAttempts)
-  const perfect = guessesUsed === 1 ? 200 : 0
+  // Hint cost applies whether or not the word is solved — buying a hint you didn't
+  // convert still deducts 300, so the total can dip below zero on a busted purchase.
+  const base = won ? wordleBasePoints(guessesUsed, maxAttempts) : 0
+  const perfect = won && guessesUsed === 1 ? 200 : 0
   const hintCost = hintUsed ? WORDLE_ROOM_HINT_COST : 0
-  return Math.max(0, base + perfect - hintCost)
+  return base + perfect - hintCost
 }
 
 /** Total game score = sum of per-word scores across the whole sequence. */

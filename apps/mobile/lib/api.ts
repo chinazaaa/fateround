@@ -1,6 +1,7 @@
 import type { GameType, MobileConfig, ParticipantGender, PlayerGender } from '@fateround/shared'
 import { NATIVE_GAME_TYPES } from '@/lib/native-games'
 import { apiUrl } from '@/lib/config'
+import { authHeaders } from '@/lib/auth-headers'
 
 export type JoinPlayerResponse = {
   playerId: string
@@ -16,10 +17,19 @@ export type JoinPlayerResponse = {
 /** Error carrying the server's `full` flag so callers can offer "watch instead". */
 export class JoinError extends Error {
   full: boolean
-  constructor(message: string, full: boolean) {
+  /** Set when the server returned a cross-device 409 (already_hosting / already_joined). */
+  reason?: 'already_hosting' | 'already_joined'
+  existingPlayerName?: string | null
+  constructor(
+    message: string,
+    full: boolean,
+    extras?: { reason?: JoinError['reason']; existingPlayerName?: string | null }
+  ) {
     super(message)
     this.name = 'JoinError'
     this.full = full
+    this.reason = extras?.reason
+    this.existingPlayerName = extras?.existingPlayerName ?? null
   }
 }
 
@@ -54,7 +64,7 @@ export async function resumePlayerByCode(
 export async function autoJoinGame(gameCode: string, resumeToken?: string | null): Promise<JoinPlayerResponse> {
   const res = await fetch(apiUrl('/api/players'), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
     body: JSON.stringify({
       gameCode: gameCode.toUpperCase(),
       resumeToken: resumeToken ?? undefined,
@@ -93,10 +103,12 @@ export async function joinGame(input: {
   gender?: PlayerGender
   identityGender?: ParticipantGender
   pollGender?: ParticipantGender
+  /** Set true to bypass the server's cross-device 409 and take the seat here. */
+  continueOnThisDevice?: boolean
 }): Promise<JoinPlayerResponse> {
   const res = await fetch(apiUrl('/api/players'), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
     body: JSON.stringify({
       gameCode: input.gameCode.toUpperCase(),
       playerName: input.playerName.trim(),
@@ -107,11 +119,19 @@ export async function joinGame(input: {
       participantId: input.participantId ?? undefined,
       identityGender: input.identityGender ?? undefined,
       pollGender: input.pollGender ?? undefined,
+      continueOnThisDevice: input.continueOnThisDevice === true ? true : undefined,
     }),
   })
-  const data = (await res.json()) as JoinPlayerResponse & { error?: string }
+  const data = (await res.json()) as JoinPlayerResponse & {
+    error?: string
+    reason?: 'already_hosting' | 'already_joined'
+    existingPlayerName?: string | null
+  }
   if (!res.ok) {
-    throw new JoinError(data.error ?? 'Failed to join game', data.full === true)
+    throw new JoinError(data.error ?? 'Failed to join game', data.full === true, {
+      reason: data.reason,
+      existingPlayerName: data.existingPlayerName ?? null,
+    })
   }
   return data
 }

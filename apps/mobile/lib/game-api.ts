@@ -1,4 +1,5 @@
 import { apiUrl } from '@/lib/config'
+import { authHeaders } from '@/lib/auth-headers'
 import type { GameType, WhotPlayerHand } from '@fateround/shared'
 import type { GamePlayerLimitsMap } from '@fateround/shared/lobby-limits'
 import { getCodeDefaultLimits } from '@fateround/shared/lobby-limits'
@@ -9,7 +10,7 @@ import type { WordSearchPlacement } from '@fateround/shared'
 async function postJson<T>(path: string, body: Record<string, unknown>): Promise<T> {
   const res = await fetch(apiUrl(path), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
     body: JSON.stringify(body),
   })
   const data = (await res.json()) as T & { error?: string }

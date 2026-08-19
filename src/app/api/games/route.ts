@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { enforceRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
 import { getSupabaseAnon } from '@/lib/supabase-anon'
+import { getProfileFromRequest } from '@/lib/identity-server'
 import { GAME_BROWSE_FIELDS, countPlayersByGame, type BrowseGameRow } from '@/lib/game-browse'
 import { generateGameCode, generateToken } from '@/lib/utils'
 import {
@@ -410,6 +411,11 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const limited = await enforceRateLimit(req, RATE_LIMITS.gameCreate)
   if (limited) return limited
+
+  // Attribute the game to the caller when they sent a bearer token — used to
+  // skip fanout to the host's own devices and to detect same-user joins.
+  // Missing/anonymous is fine; the write below just leaves host_user_id NULL.
+  const hostProfileId = await getProfileFromRequest(req)
 
   const body = await req.json()
   const parsed = createGameSchema.safeParse(body)
@@ -1226,6 +1232,10 @@ export async function POST(req: NextRequest) {
     // scheduled_at; the guard just above already validated isPublic + max
     // capacity, and we validate the timestamp separately here.
     status: isSecret ? 'active' : parsed.data.scheduled_at ? 'scheduled' : 'waiting',
+    // Attribute the game to the creator so we can skip fanout to their own
+    // devices and detect the "same user hosting on another device" case. NULL
+    // for anonymous callers, in which case cross-device rules simply don't fire.
+    host_user_id: hostProfileId,
     is_public: parsed.data.isPublic ?? false,
     ...(parsed.data.scheduled_at ? { scheduled_at: parsed.data.scheduled_at } : {}),
     current_round_number: 0,
@@ -1405,7 +1415,7 @@ export async function POST(req: NextRequest) {
   // subscribers get the T-15 heads-up push instead. Firing here would
   // announce "a Monopoly game just opened" hours before it actually opens.
   if (parsed.data.isPublic === true && !parsed.data.scheduled_at) {
-    scheduleNewPublicGameFanout(gameCode, game_type, title)
+    scheduleNewPublicGameFanout(gameCode, game_type, title, hostProfileId)
   }
 
   return NextResponse.json({ gameCode, hostToken })

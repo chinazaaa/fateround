@@ -99,9 +99,11 @@ describe('scoring', () => {
     expect(wordleFinalScore(2, 6, true)).toBe(880)
   })
 
-  it('a loss is always 0', () => {
+  it('a loss without a hint is 0; a loss after buying a hint pays the −300', () => {
     expect(wordleFinalScore(6, 6, false)).toBe(0)
     expect(wordleFinalScore(3, 6, false)).toBe(0)
+    expect(wordleFinalScore(6, 6, false, true)).toBe(-300)
+    expect(wordleFinalScore(3, 6, false, true)).toBe(-300)
   })
 })
 

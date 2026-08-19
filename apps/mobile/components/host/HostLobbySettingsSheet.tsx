@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import type { Game, GameType } from '@fateround/shared'
 import { FormField } from '@/components/ui/FormField'
+import { KeyboardAvoidingModalContent } from '@/components/ui/KeyboardAvoidingModalContent'
 import { supportsCustomContent } from '@/lib/create-settings'
 import {
   POLL_ROUND_TIMER_OPTIONS,
@@ -880,236 +881,241 @@ export function HostLobbySettingsSheet({
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <View style={styles.backdrop}>
-        <View style={styles.sheet}>
-          <View style={styles.handle} />
-          <Text style={styles.title}>Lobby settings</Text>
+      <KeyboardAvoidingModalContent>
+        <View style={styles.backdrop}>
+          <View style={styles.sheet}>
+            <View style={styles.handle} />
+            <Text style={styles.title}>Lobby settings</Text>
 
-          <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
-            <View style={styles.field}>
-              <Text style={styles.label}>Visibility</Text>
-              <SegmentedControl
-                value={isPublic ? 'public' : 'private'}
-                options={[
-                  { value: 'private', label: '🔒 Private', hint: 'Only people with the code can join.' },
-                  { value: 'public', label: '🌐 Public', hint: 'Anyone can find this game in Browse.' },
-                ]}
-                onChange={(v) => setIsPublic(v === 'public')}
-              />
-            </View>
-
-            {showContentLabel ? (
+            <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
               <View style={styles.field}>
-                <FormField
-                  label="Category"
-                  hint="What the questions are about — shown to players next to the room name."
-                  value={contentLabel}
-                  onChangeText={setContentLabel}
-                  placeholder="e.g. Maths, Bible, 90s Music"
-                  maxLength={40}
-                  autoCapitalize="sentences"
-                  autoCorrect={false}
+                <Text style={styles.label}>Visibility</Text>
+                <SegmentedControl
+                  value={isPublic ? 'public' : 'private'}
+                  options={[
+                    { value: 'private', label: '🔒 Private', hint: 'Only people with the code can join.' },
+                    { value: 'public', label: '🌐 Public', hint: 'Anyone can find this game in Browse.' },
+                  ]}
+                  onChange={(v) => setIsPublic(v === 'public')}
                 />
               </View>
-            ) : null}
 
-            {showTheme ? <ThemePicker gameType={gameType} value={themeId} onChange={setThemeId} /> : null}
+              {showContentLabel ? (
+                <View style={styles.field}>
+                  <FormField
+                    label="Category"
+                    hint="What the questions are about — shown to players next to the room name."
+                    value={contentLabel}
+                    onChangeText={setContentLabel}
+                    placeholder="e.g. Maths, Bible, 90s Music"
+                    maxLength={40}
+                    autoCapitalize="sentences"
+                    autoCorrect={false}
+                  />
+                </View>
+              ) : null}
 
-            {showMaxPlayers && !(isUno && uno.teamMode) ? (
-              <View style={styles.field}>
-                <Text style={styles.label}>Max players</Text>
-                <MaxPlayersPicker gameType={gameType} value={maxPlayers} limits={limits} onChange={setMaxPlayers} />
-              </View>
-            ) : null}
-            {isUno && uno.teamMode ? (
-              <View style={styles.field}>
-                <Text style={styles.label}>Max players</Text>
-                <Text style={styles.label}>4 players (2 teams of 2)</Text>
-              </View>
-            ) : null}
+              {showTheme ? <ThemePicker gameType={gameType} value={themeId} onChange={setThemeId} /> : null}
 
-            {/* WST has no host-set round count — each question is a round — so hide the picker. */}
-            {showRounds && !isWst ? (
-              <RoundCountPicker
-                label="Rounds"
-                value={roundsCount}
-                options={triviaRoundOptions}
-                onChange={setRoundsCount}
-              />
-            ) : null}
+              {showMaxPlayers && !(isUno && uno.teamMode) ? (
+                <View style={styles.field}>
+                  <Text style={styles.label}>Max players</Text>
+                  <MaxPlayersPicker gameType={gameType} value={maxPlayers} limits={limits} onChange={setMaxPlayers} />
+                </View>
+              ) : null}
+              {isUno && uno.teamMode ? (
+                <View style={styles.field}>
+                  <Text style={styles.label}>Max players</Text>
+                  <Text style={styles.label}>4 players (2 teams of 2)</Text>
+                </View>
+              ) : null}
 
-            {showTimer ? (
-              <TimerPicker
-                label={isTrivia || isWst ? 'Time per question' : 'Time per round'}
-                value={timerSeconds}
-                options={timerOptions}
-                format={formatPollRoundTimer}
-                onChange={setTimerSeconds}
-              />
-            ) : null}
+              {/* WST has no host-set round count — each question is a round — so hide the picker. */}
+              {showRounds && !isWst ? (
+                <RoundCountPicker
+                  label="Rounds"
+                  value={roundsCount}
+                  options={triviaRoundOptions}
+                  onChange={setRoundsCount}
+                />
+              ) : null}
 
-            {isCardGame ? (
-              <CardHouseRulesSection
-                gameType={gameType}
-                value={card}
-                onChange={(p) => setCard((prev) => ({ ...prev, ...p }))}
-              />
-            ) : null}
+              {showTimer ? (
+                <TimerPicker
+                  label={isTrivia || isWst ? 'Time per question' : 'Time per round'}
+                  value={timerSeconds}
+                  options={timerOptions}
+                  format={formatPollRoundTimer}
+                  onChange={setTimerSeconds}
+                />
+              ) : null}
 
-            {isUno ? <UnoRulesSection value={uno} onChange={(p) => setUno((prev) => ({ ...prev, ...p }))} /> : null}
+              {isCardGame ? (
+                <CardHouseRulesSection
+                  gameType={gameType}
+                  value={card}
+                  onChange={(p) => setCard((prev) => ({ ...prev, ...p }))}
+                />
+              ) : null}
 
-            {isVariantGame ? (
-              <BoardVariantSection
-                gameType={gameType}
-                value={variant}
-                onChange={(p) => setVariant((prev) => ({ ...prev, ...p }))}
-              />
-            ) : null}
+              {isUno ? <UnoRulesSection value={uno} onChange={(p) => setUno((prev) => ({ ...prev, ...p }))} /> : null}
 
-            {isMafia ? (
-              <MafiaLobbySection value={mafia} onChange={(p) => setMafia((prev) => ({ ...prev, ...p }))} />
-            ) : null}
+              {isVariantGame ? (
+                <BoardVariantSection
+                  gameType={gameType}
+                  value={variant}
+                  onChange={(p) => setVariant((prev) => ({ ...prev, ...p }))}
+                />
+              ) : null}
 
-            {isQuiplash ? (
-              <QuiplashLobbySection value={quiplash} onChange={(p) => setQuiplash((prev) => ({ ...prev, ...p }))} />
-            ) : null}
+              {isMafia ? (
+                <MafiaLobbySection value={mafia} onChange={(p) => setMafia((prev) => ({ ...prev, ...p }))} />
+              ) : null}
 
-            {isMonopoly ? (
-              <MonopolyLobbySection
-                value={monopoly}
-                maxPlayers={maxPlayers}
-                onChange={(p) => {
-                  setMonopoly((prev) => {
-                    const next = { ...prev, ...p }
-                    // The 48-space board requires a room cap of at least 6 players.
-                    // If the host lowers the cap below 6 we automatically fall back
-                    // to the 40-space board (mirrors the web API's server-side clamp).
-                    if ((maxPlayers ?? 0) < 6 && next.boardSize === 48) next.boardSize = 40
-                    return next
-                  })
-                }}
-              />
-            ) : null}
+              {isQuiplash ? (
+                <QuiplashLobbySection value={quiplash} onChange={(p) => setQuiplash((prev) => ({ ...prev, ...p }))} />
+              ) : null}
 
-            {isDuration ? (
-              <DurationGamesSection
-                gameType={gameType}
-                value={duration}
-                onChange={(p) => setDuration((prev) => ({ ...prev, ...p }))}
-              />
-            ) : null}
+              {isMonopoly ? (
+                <MonopolyLobbySection
+                  value={monopoly}
+                  maxPlayers={maxPlayers}
+                  onChange={(p) => {
+                    setMonopoly((prev) => {
+                      const next = { ...prev, ...p }
+                      // The 48-space board requires a room cap of at least 6 players.
+                      // If the host lowers the cap below 6 we automatically fall back
+                      // to the 40-space board (mirrors the web API's server-side clamp).
+                      if ((maxPlayers ?? 0) < 6 && next.boardSize === 48) next.boardSize = 40
+                      return next
+                    })
+                  }}
+                />
+              ) : null}
 
-            {isScrabble ? (
-              <ScrabbleLobbySection value={scrabble} onChange={(p) => setScrabble((prev) => ({ ...prev, ...p }))} />
-            ) : null}
+              {isDuration ? (
+                <DurationGamesSection
+                  gameType={gameType}
+                  value={duration}
+                  onChange={(p) => setDuration((prev) => ({ ...prev, ...p }))}
+                />
+              ) : null}
 
-            {isICallOn ? (
-              <ICallOnLobbySection value={icallon} onChange={(p) => setIcallon((prev) => ({ ...prev, ...p }))} />
-            ) : null}
+              {isScrabble ? (
+                <ScrabbleLobbySection value={scrabble} onChange={(p) => setScrabble((prev) => ({ ...prev, ...p }))} />
+              ) : null}
 
-            {showPollQuestions || showPollParticipantFilter ? (
-              <PollQuestionsSection
-                gameType={gameType}
-                value={poll}
-                onChange={(p) => setPoll((prev) => ({ ...prev, ...p }))}
-                showParticipantFilter={showPollParticipantFilter}
-              />
-            ) : null}
+              {isICallOn ? (
+                <ICallOnLobbySection value={icallon} onChange={(p) => setIcallon((prev) => ({ ...prev, ...p }))} />
+              ) : null}
 
-            {/* Who Said This question source (Players submit / Platform / Library / your own CSV). */}
-            {isWst ? (
-              <WstSourceLobbyEditor gameCode={gameCode} hostToken={hostToken} game={game} onSaved={onSaved} />
-            ) : null}
+              {showPollQuestions || showPollParticipantFilter ? (
+                <PollQuestionsSection
+                  gameType={gameType}
+                  value={poll}
+                  onChange={(p) => setPoll((prev) => ({ ...prev, ...p }))}
+                  showParticipantFilter={showPollParticipantFilter}
+                />
+              ) : null}
 
-            {isBingo ? (
-              <BingoLobbySection value={bingo} onChange={(p) => setBingo((prev) => ({ ...prev, ...p }))} />
-            ) : null}
+              {/* Who Said This question source (Players submit / Platform / Library / your own CSV). */}
+              {isWst ? (
+                <WstSourceLobbyEditor gameCode={gameCode} hostToken={hostToken} game={game} onSaved={onSaved} />
+              ) : null}
 
-            {isMahjong ? (
-              <MahjongLobbySection value={mahjong} onChange={(p) => setMahjong((prev) => ({ ...prev, ...p }))} />
-            ) : null}
+              {isBingo ? (
+                <BingoLobbySection value={bingo} onChange={(p) => setBingo((prev) => ({ ...prev, ...p }))} />
+              ) : null}
 
-            {isCheckers ? (
-              <CheckersLobbySection
-                gameType={gameType}
-                value={checkers}
-                onChange={(p) => setCheckers((prev) => ({ ...prev, ...p }))}
-              />
-            ) : null}
+              {isMahjong ? (
+                <MahjongLobbySection value={mahjong} onChange={(p) => setMahjong((prev) => ({ ...prev, ...p }))} />
+              ) : null}
 
-            {isWordleRoom ? (
-              <WordleRoomLobbySection value={wordle} onChange={(p) => setWordle((prev) => ({ ...prev, ...p }))} />
-            ) : null}
+              {isCheckers ? (
+                <CheckersLobbySection
+                  gameType={gameType}
+                  value={checkers}
+                  onChange={(p) => setCheckers((prev) => ({ ...prev, ...p }))}
+                />
+              ) : null}
 
-            {isWordGrouping ? (
-              <WordGroupingLobbySection
-                value={wordGrouping}
-                onChange={(p) => setWordGrouping((prev) => ({ ...prev, ...p }))}
-              />
-            ) : null}
+              {isWordleRoom ? (
+                <WordleRoomLobbySection value={wordle} onChange={(p) => setWordle((prev) => ({ ...prev, ...p }))} />
+              ) : null}
 
-            {isTeamRound ? (
-              <TeamRoundGamesSection
-                gameType={gameType}
-                value={team}
-                onChange={(p) => setTeam((prev) => ({ ...prev, ...p }))}
-              />
-            ) : null}
+              {isWordGrouping ? (
+                <WordGroupingLobbySection
+                  value={wordGrouping}
+                  onChange={(p) => setWordGrouping((prev) => ({ ...prev, ...p }))}
+                />
+              ) : null}
 
-            {isQuickDraw ? (
-              <QuickDrawLobbySection value={quickDraw} onChange={(p) => setQuickDraw((prev) => ({ ...prev, ...p }))} />
-            ) : null}
+              {isTeamRound ? (
+                <TeamRoundGamesSection
+                  gameType={gameType}
+                  value={team}
+                  onChange={(p) => setTeam((prev) => ({ ...prev, ...p }))}
+                />
+              ) : null}
 
-            {isCodewords ? (
-              <CodewordsLobbySection
-                value={codewords}
-                onChange={(p) => setCodewords((prev) => ({ ...prev, ...p }))}
-                canShuffle={game.codewords_randomize_teams === true}
-                shuffling={shuffling}
-                onShuffle={() => void onShuffle()}
-                firstTeam={firstTeam}
-                onFirstTeamChange={onFirstTeamChange}
-              />
-            ) : null}
+              {isQuickDraw ? (
+                <QuickDrawLobbySection
+                  value={quickDraw}
+                  onChange={(p) => setQuickDraw((prev) => ({ ...prev, ...p }))}
+                />
+              ) : null}
 
-            {isTrivia ? (
-              <TriviaLobbySection
-                value={trivia}
-                roundsCount={roundsCount}
-                onChange={(p) => setTrivia((prev) => ({ ...prev, ...p }))}
-              />
-            ) : null}
+              {isCodewords ? (
+                <CodewordsLobbySection
+                  value={codewords}
+                  onChange={(p) => setCodewords((prev) => ({ ...prev, ...p }))}
+                  canShuffle={game.codewords_randomize_teams === true}
+                  shuffling={shuffling}
+                  onShuffle={() => void onShuffle()}
+                  firstTeam={firstTeam}
+                  onFirstTeamChange={onFirstTeamChange}
+                />
+              ) : null}
 
-            {showLateJoin ? (
-              <View style={styles.field}>
-                <Text style={styles.label}>Late join</Text>
-                <LateJoinPolicyPicker gameType={gameType} value={lateJoin} onChange={setLateJoin} />
-              </View>
-            ) : null}
+              {isTrivia ? (
+                <TriviaLobbySection
+                  value={trivia}
+                  roundsCount={roundsCount}
+                  onChange={(p) => setTrivia((prev) => ({ ...prev, ...p }))}
+                />
+              ) : null}
 
-            {onTransfer ? (
-              <Pressable style={styles.transferBtn} onPress={onTransfer}>
-                <Text style={styles.transferText}>Transfer host to another player</Text>
+              {showLateJoin ? (
+                <View style={styles.field}>
+                  <Text style={styles.label}>Late join</Text>
+                  <LateJoinPolicyPicker gameType={gameType} value={lateJoin} onChange={setLateJoin} />
+                </View>
+              ) : null}
+
+              {onTransfer ? (
+                <Pressable style={styles.transferBtn} onPress={onTransfer}>
+                  <Text style={styles.transferText}>Transfer host to another player</Text>
+                </Pressable>
+              ) : null}
+
+              {error ? <Text style={styles.error}>{error}</Text> : null}
+            </ScrollView>
+
+            <View style={styles.actions}>
+              <Pressable style={[styles.secondary, styles.flex]} onPress={onClose}>
+                <Text style={styles.secondaryText}>Cancel</Text>
               </Pressable>
-            ) : null}
-
-            {error ? <Text style={styles.error}>{error}</Text> : null}
-          </ScrollView>
-
-          <View style={styles.actions}>
-            <Pressable style={[styles.secondary, styles.flex]} onPress={onClose}>
-              <Text style={styles.secondaryText}>Cancel</Text>
-            </Pressable>
-            <Pressable
-              style={[styles.primary, styles.flex, saving && styles.disabled]}
-              disabled={saving}
-              onPress={() => void save()}
-            >
-              <Text style={styles.primaryText}>{saving ? 'Saving…' : 'Save'}</Text>
-            </Pressable>
+              <Pressable
+                style={[styles.primary, styles.flex, saving && styles.disabled]}
+                disabled={saving}
+                onPress={() => void save()}
+              >
+                <Text style={styles.primaryText}>{saving ? 'Saving…' : 'Save'}</Text>
+              </Pressable>
+            </View>
           </View>
         </View>
-      </View>
+      </KeyboardAvoidingModalContent>
     </Modal>
   )
 }
