@@ -189,15 +189,19 @@ function DisconnectedBar({
   const styles = useThemedStyles(makeStyles)
   return (
     <View style={styles.pill}>
-      <Pressable style={styles.joinBtn} disabled={isConnecting} onPress={onJoin}>
-        {isConnecting ? (
-          <Text style={styles.joinText}>Connecting…</Text>
-        ) : (
-          <View style={styles.iconRow}>
-            <MicIcon color={styles.joinText.color as string} size={16} />
-            <Text style={styles.joinText}>{`Join voice${presenceCount > 0 ? ` · ${presenceCount}` : ''}`}</Text>
-          </View>
-        )}
+      <Pressable
+        style={styles.joinBtn}
+        disabled={isConnecting}
+        onPress={onJoin}
+        accessibilityRole="button"
+        accessibilityLabel={
+          isConnecting ? 'Connecting to voice' : `Join voice chat${presenceCount > 0 ? `, ${presenceCount} in call` : ''}`
+        }
+      >
+        <View style={styles.iconRow}>
+          <MicIcon color={styles.joinText.color as string} size={18} />
+          {!isConnecting && presenceCount > 0 ? <Text style={styles.joinCount}>{presenceCount}</Text> : null}
+        </View>
       </Pressable>
     </View>
   )
@@ -391,10 +395,9 @@ const makeStyles = (theme: Theme) =>
       shadowRadius: 6,
       elevation: 4,
     },
-    // Filled primary pill so "Join voice" reads as a clear call-to-action rather
-    // than blending into the toolbar as a plain grey circle.
+    // Icon-only circular action — the mic icon on its own reads as "join voice",
+    // no label needed. Sized to comfortably fit a fingertip.
     joinBtn: {
-      flex: 1,
       flexDirection: 'row',
       gap: 6,
       backgroundColor: theme.primary,
@@ -402,12 +405,16 @@ const makeStyles = (theme: Theme) =>
       borderWidth: 1,
       borderColor: theme.primary,
       paddingVertical: 10,
-      paddingHorizontal: 16,
+      paddingHorizontal: 12,
+      minWidth: 44,
+      minHeight: 44,
       alignItems: 'center',
       justifyContent: 'center',
     },
     // White on the solid primary pill — legible in both schemes.
     joinText: { color: '#fff', fontSize: 14, fontWeight: '800' },
+    // Tiny count of active voice participants shown next to the mic icon.
+    joinCount: { color: '#fff', fontSize: 12, fontWeight: '800' },
     mainBtn: {
       flex: 1,
       borderRadius: 999,
