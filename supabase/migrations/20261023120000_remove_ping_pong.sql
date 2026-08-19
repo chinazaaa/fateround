@@ -17,10 +17,14 @@ ALTER TABLE games DROP COLUMN IF EXISTS ping_pong_points_to_win;
 
 -- 3. Game limits, trophies & community cleanup
 DELETE FROM game_player_limits WHERE game_type = 'ping_pong';
--- system_trophies is not created by any migration (it's provisioned out-of-band and
--- only exists on some environments), so a bare DELETE aborts the whole migration with
--- "relation system_trophies does not exist" (42P01) on any project that lacks it —
--- e.g. Production. Guard on the table's existence so the cleanup is a no-op there.
+-- `system_trophies` is a PHANTOM table — no migration creates it and nothing in the app
+-- references it (the real trophy catalog is `trophies`, see 20260804000000). A bare DELETE
+-- therefore aborted the whole migration with "relation system_trophies does not exist"
+-- (42P01) on any project that lacks the orphan (Production), blocking every migration
+-- behind it. Guard on existence so it's a harmless no-op where the table is absent.
+-- Retiring the real ping_pong trophies is handled by a follow-up migration
+-- (20261024120000_retire_ping_pong_trophies) so it runs on environments that already
+-- applied THIS version.
 do $$ begin
   if to_regclass('public.system_trophies') is not null then
     delete from system_trophies where category = 'ping_pong' or game_type = 'ping_pong';
