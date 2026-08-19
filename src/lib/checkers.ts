@@ -202,6 +202,136 @@ export function hasPieces(board: string, color: CheckersColor): boolean {
 /** Test-only alias for the internal capture generator. */
 export const captureStepsFromForTest = captureStepsFrom
 
+// ---------------------------------------------------------------------------
+// Per-game trophy accumulator (red_stats / black_stats on the session row).
+//
+// American checkers keeps a POSITION, not a record — a crowning, a jump chain,
+// an enemy king taken all vanish once `board` is rewritten. These paired blobs
+// are the trace the finish-time facts builder folds into lifetime trophy
+// counters (src/lib/trophies/game-facts/checkers.ts). Everything here is purely
+// additive: it reads the move the engine already decided and never changes it.
+// ---------------------------------------------------------------------------
+
+/** One seat's per-GAME scratch tallies. All optional; absent == 0. */
+export type CheckersStats = {
+  /** Enemy pieces this seat has captured. */
+  captures?: number
+  /** Own men crowned into kings. */
+  kings_made?: number
+  /** Enemy KINGS captured (a subset of `captures`). */
+  enemy_kings_captured?: number
+  /** Longest capture chain (hops) played in one turn this game. */
+  best_chain?: number
+  /** Hops in the chain currently in progress (a multi-jump is several move calls). */
+  chain_cur?: number
+  /** Most kings this seat held on the board at once. */
+  peak_kings?: number
+  /** Worst piece deficit (opponent count − own count) this seat faced. */
+  max_deficit?: number
+  /** This seat's completed turns (for a real move count — `move_count` is a draw clock). */
+  turns?: number
+  /** Consecutive completed turns still holding a piece on the home back rank. */
+  back_streak?: number
+  back_streak_max?: number
+  /** 0/1 — did this seat's most recent completed turn make a capture (for the Trade check). */
+  made_capture_last_turn?: number
+  /** Even trades: captured on a turn right after the opponent captured. */
+  trades?: number
+  /** 0/1 — the board reached an endgame (few pieces) at some point. */
+  reached_endgame?: number
+  /** Longest single king hop (unused on 8x8 — kings step one square; kept for shape parity). */
+  flying_king_max?: number
+}
+
+/** A position with this many total pieces or fewer counts as an endgame (start is 24). */
+const CHECKERS_ENDGAME_PIECES = 6
+
+function pieceCount(board: string, color: CheckersColor): number {
+  let n = 0
+  for (const ch of board) if (colorOfPiece(ch) === color) n += 1
+  return n
+}
+
+function kingCount(board: string, color: CheckersColor): number {
+  const king = color === 'r' ? 'R' : 'B'
+  let n = 0
+  for (const ch of board) if (ch === king) n += 1
+  return n
+}
+
+/** True when `color` still has a piece on its own home back rank (Red row 7, Black row 0). */
+function holdsBackRank(board: string, color: CheckersColor): boolean {
+  const row = color === 'r' ? 7 : 0
+  for (let c = 0; c < 8; c += 1) if (colorOfPiece(board[row * 8 + c]) === color) return true
+  return false
+}
+
+/**
+ * Fold one accepted hop into the paired seat blobs. Called with the engine's own
+ * decisions (was it a capture, a crowning, does the chain continue) so it can never
+ * disagree with what was played. `!continues` marks the end of the mover's whole turn,
+ * which is where turn-spanning tallies (chain length, trades, back-rank hold) and the
+ * symmetric board-derived ones (peak kings, deficit, endgame) are finalised.
+ */
+export function bumpCheckersStats(
+  prevRed: CheckersStats,
+  prevBlack: CheckersStats,
+  args: {
+    color: CheckersColor
+    captured: boolean
+    crowned: boolean
+    continues: boolean
+    capturedWasKing: boolean
+    nextBoard: string
+  }
+): { red_stats: CheckersStats; black_stats: CheckersStats } {
+  const { color, captured, crowned, continues, capturedWasKing, nextBoard } = args
+  const red: CheckersStats = { ...prevRed }
+  const black: CheckersStats = { ...prevBlack }
+  const mine = color === 'r' ? red : black
+  const theirs = color === 'r' ? black : red
+
+  if (captured) {
+    mine.captures = (mine.captures ?? 0) + 1
+    mine.chain_cur = (mine.chain_cur ?? 0) + 1
+  }
+  if (crowned) mine.kings_made = (mine.kings_made ?? 0) + 1
+  if (capturedWasKing) mine.enemy_kings_captured = (mine.enemy_kings_captured ?? 0) + 1
+
+  if (!continues) {
+    // The mover's turn is over — settle everything that spans the whole turn.
+    const chain = mine.chain_cur ?? 0
+    if (chain > (mine.best_chain ?? 0)) mine.best_chain = chain
+    mine.chain_cur = 0
+    mine.turns = (mine.turns ?? 0) + 1
+
+    // Trade: this turn captured AND the opponent's immediately preceding turn did too.
+    if (captured && (theirs.made_capture_last_turn ?? 0) === 1) mine.trades = (mine.trades ?? 0) + 1
+    mine.made_capture_last_turn = captured ? 1 : 0
+
+    if (holdsBackRank(nextBoard, color)) {
+      mine.back_streak = (mine.back_streak ?? 0) + 1
+      if (mine.back_streak > (mine.back_streak_max ?? 0)) mine.back_streak_max = mine.back_streak
+    } else {
+      mine.back_streak = 0
+    }
+
+    // Board-derived and symmetric — settle from the final position for BOTH seats.
+    const redCount = pieceCount(nextBoard, 'r')
+    const blackCount = pieceCount(nextBoard, 'b')
+    red.peak_kings = Math.max(red.peak_kings ?? 0, kingCount(nextBoard, 'r'))
+    black.peak_kings = Math.max(black.peak_kings ?? 0, kingCount(nextBoard, 'b'))
+    red.max_deficit = Math.max(red.max_deficit ?? 0, blackCount - redCount)
+    black.max_deficit = Math.max(black.max_deficit ?? 0, redCount - blackCount)
+    if (redCount + blackCount <= CHECKERS_ENDGAME_PIECES) {
+      red.reached_endgame = 1
+      black.reached_endgame = 1
+    }
+  }
+
+  return { red_stats: red, black_stats: black }
+}
+
 /** Apply a hop. Crowns a man that lands on the far rank. Returns the new board. */
 export function applyStep(board: string, step: CheckersStep): { board: string; crowned: boolean; captured: boolean } {
   const arr = board.split('')
@@ -399,7 +529,7 @@ async function loadSession(
 async function persistSession(
   supabase: SupabaseClient,
   gameId: string,
-  patch: Partial<CheckersSession>,
+  patch: Partial<CheckersSession> & { red_stats?: CheckersStats; black_stats?: CheckersStats },
   expectedUpdatedAt: string
 ): Promise<boolean> {
   const { data } = await supabase
@@ -436,6 +566,15 @@ export async function processCheckersMove(
 
   // A capturing piece that didn't just crown must keep jumping if it can.
   const continues = captured && !crowned && captureStepsFrom(nextBoard, step.to).length > 0
+
+  // Per-game trophy accumulator (additive; never affects the move above). The captured
+  // square still holds the victim in `session.board`, so its rank is read before applyStep.
+  const capturedWasKing = !!step.captured && isKing(pieceAt(session.board, step.captured))
+  const { red_stats: redStats, black_stats: blackStats } = bumpCheckersStats(
+    (session as unknown as { red_stats?: CheckersStats }).red_stats ?? {},
+    (session as unknown as { black_stats?: CheckersStats }).black_stats ?? {},
+    { color, captured, crowned, continues, capturedWasKing, nextBoard }
+  )
   const nextTurn: CheckersColor = continues ? color : color === 'r' ? 'b' : 'r'
 
   // Draw counter resets on any capture, man move, or crowning; only king moves
@@ -544,6 +683,8 @@ export async function processCheckersMove(
       is_draw: draw,
       status_message: statusMessage,
       turn_deadline_at: nextDeadline,
+      red_stats: redStats,
+      black_stats: blackStats,
     },
     session.updated_at
   )

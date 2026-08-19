@@ -100,6 +100,7 @@ export const BATCH_20_PARTY_GAMES: GameType[] = [
   'crossword',
   'word_search',
   'word_scramble',
+  'word_grouping',
 ]
 
 export function hasPartyRoomSettings(gameType: GameType): boolean {
@@ -260,8 +261,28 @@ export function formatSudokuGameDuration(seconds: number): string {
   return `${seconds}s`
 }
 
+const VALID_TRIVIA_CATEGORIES: readonly string[] = [
+  'general',
+  'tech',
+  'art',
+  'food',
+  'geography',
+  'history',
+  'language',
+  'literature',
+  'math',
+  'movies',
+  'music',
+  'nature',
+  'pop_culture',
+  'science',
+  'sports',
+  'technology',
+  'world_culture',
+]
+
 export function clampTriviaCategory(value: unknown): TriviaCategory {
-  return value === 'tech' ? 'tech' : 'general'
+  return typeof value === 'string' && VALID_TRIVIA_CATEGORIES.includes(value) ? (value as TriviaCategory) : 'general'
 }
 
 export function clampBingoCallMode(value: unknown): BingoCallMode {

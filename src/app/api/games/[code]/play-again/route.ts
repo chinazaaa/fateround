@@ -26,6 +26,7 @@ import {
   isWordSearchGame,
   isPingPongGame,
   isWhoSaidThis,
+  isWordleRoomGame,
 } from '@/lib/game-types'
 import { clearAnonymousRoomSessionData, reopenSecretMessageBoard } from '@/lib/anonymous-messages'
 import { clearBingoSessionData } from '@/lib/bingo'
@@ -53,6 +54,7 @@ import { clearCrosswordSessionData } from '@/lib/crossword'
 import { clearWordSearchSessionData } from '@/lib/word-search'
 import { clearWordScrambleSessionData } from '@/lib/word-scramble'
 import { clearWordHuntSessionData } from '@/lib/word-hunt'
+import { clearWordleRoomSessionData } from '@/lib/wordle-room'
 import { clearMafiaSessionData } from '@/lib/mafia'
 import { clearTriviaSessionData } from '@/lib/trivia'
 import { clearTwoTruthsSessionData } from '@/lib/two-truths'
@@ -120,6 +122,7 @@ type ClearableSessionGameType = Extract<
   | 'i_call_on'
   | 'sudoku'
   | 'word_hunt'
+  | 'wordle_room'
   | 'mafia'
   | 'crossword'
   | 'word_search'
@@ -161,10 +164,15 @@ const SESSION_CLEARERS: Record<ClearableSessionGameType, SessionClearer> = {
   i_call_on: clearNpatSessionData,
   sudoku: clearSudokuSessionData,
   word_hunt: clearWordHuntSessionData,
+  wordle_room: clearWordleRoomSessionData,
   mafia: clearMafiaSessionData,
   crossword: clearCrosswordSessionData,
   word_search: clearWordSearchSessionData,
   word_scramble: clearWordScrambleSessionData,
+  // No word_grouping entry: word_grouping_solutions is keyed by round_id (no game_id
+  // column) and word_grouping_submissions cascades ON DELETE from rounds. The unconditional
+  // `rounds` delete above already cleans both — a custom clearer here 500'd on the missing
+  // game_id column and blocked play-again.
   landmine: clearLandmineSessionData,
   ping_pong: clearPingPongSessionData,
 }
@@ -227,6 +235,7 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
     (isICallOnGame(gameType) && game.status === 'active') ||
     (isSudokuGame(gameType) && game.status === 'active') ||
     (isWordHuntGame(gameType) && game.status === 'active') ||
+    (isWordleRoomGame(gameType) && game.status === 'active') ||
     (isCrosswordGame(gameType) && game.status === 'active') ||
     (isWordSearchGame(gameType) && game.status === 'active')
   if (!canReturnToLobby) {
@@ -280,6 +289,7 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
     // "Play again · same settings" reopens the lobby with the ready-up ring; a plain
     // "Return to lobby" reset (sameSettings falsy) lands in the standard lobby.
     replay_pending: sameSettings === true,
+    sessions_played: (game.sessions_played ?? 1) + 1,
   }
 
   if (rawCustomQuestions !== undefined && isCodewordsGame(gameType)) {

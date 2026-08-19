@@ -1,9 +1,11 @@
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import {
+  MONOPOLY_BOARD_SIZE,
   MONOPOLY_HOTEL_LEVEL,
   countOwnedInGroup,
   mortgageValue,
   spaceAt,
+  type MonopolyBoardSize,
   type MonopolySpace,
 } from '@fateround/shared/monopoly-board'
 import { MONOPOLY_COLOR_HEX } from '@fateround/shared/monopoly-board-layout'
@@ -29,6 +31,7 @@ export function MonopolyPropertyModal({
   buildings,
   mortgaged,
   themeId,
+  boardSize = MONOPOLY_BOARD_SIZE,
 }: {
   spaceIndex: number | null
   onClose: () => void
@@ -38,10 +41,11 @@ export function MonopolyPropertyModal({
   buildings: Record<string, number>
   mortgaged: Record<string, boolean>
   themeId?: string | null
+  boardSize?: MonopolyBoardSize
 }) {
   const styles = useThemedStyles(makeStyles)
   const open = spaceIndex !== null
-  const space = spaceIndex !== null ? spaceAt(spaceIndex) : null
+  const space = spaceIndex !== null ? spaceAt(spaceIndex, boardSize) : null
 
   return (
     <Modal visible={open} transparent animationType="fade" onRequestClose={onClose}>
@@ -53,7 +57,7 @@ export function MonopolyPropertyModal({
                 <View style={[styles.colorBar, { backgroundColor: MONOPOLY_COLOR_HEX[space.color] }]} />
               ) : null}
               <ScrollView contentContainerStyle={styles.body}>
-                <Text style={styles.title}>{themedSpaceName(space.name, spaceIndex!, themeId)}</Text>
+                <Text style={styles.title}>{themedSpaceName(space.name, spaceIndex!, themeId, boardSize)}</Text>
                 <Text style={styles.ownerLine}>
                   {mortgaged[String(spaceIndex)]
                     ? 'Mortgaged'
@@ -70,6 +74,7 @@ export function MonopolyPropertyModal({
                   buildings={buildings}
                   ownerId={ownerId ?? undefined}
                   themeId={themeId}
+                  boardSize={boardSize}
                   styles={styles}
                 />
               </ScrollView>
@@ -93,6 +98,7 @@ function TitleDeedRows({
   buildings,
   ownerId,
   themeId,
+  boardSize,
   styles,
 }: {
   space: MonopolySpace
@@ -101,6 +107,7 @@ function TitleDeedRows({
   buildings: Record<string, number>
   ownerId?: string
   themeId?: string | null
+  boardSize: MonopolyBoardSize
   styles: ReturnType<typeof makeStyles>
 }) {
   const fmt = (amount: number) => formatThemedMoney(amount, themeId)
@@ -126,7 +133,7 @@ function TitleDeedRows({
     rows.push({ label: 'House cost', value: fmt(space.houseCost) })
     rows.push({ label: 'Hotel cost', value: fmt(space.houseCost) })
   } else if (space.type === 'station') {
-    const ownedCount = ownerId ? countOwnedInGroup(owners, ownerId, 'station') : 0
+    const ownedCount = ownerId ? countOwnedInGroup(owners, ownerId, 'station', boardSize) : 0
     const baseRent = space.rent ?? 25
     rows.push({ label: 'Price', value: fmt(space.price!), section: true })
     for (let n = 1; n <= 4; n++) {
@@ -139,7 +146,7 @@ function TitleDeedRows({
     }
     rows.push({ label: 'Mortgage value', value: fmt(mortgageValue(space)), section: true })
   } else if (space.type === 'utility') {
-    const ownedCount = ownerId ? countOwnedInGroup(owners, ownerId, 'utility') : 0
+    const ownedCount = ownerId ? countOwnedInGroup(owners, ownerId, 'utility', boardSize) : 0
     rows.push({ label: 'Price', value: fmt(space.price!), section: true })
     rows.push({ label: '1 utility owned', value: '4× dice roll', active: !!ownerId && ownedCount === 1 })
     rows.push({ label: '2 utilities owned', value: '10× dice roll', active: !!ownerId && ownedCount === 2 })

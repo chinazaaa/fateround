@@ -4,6 +4,8 @@ import type { ReactNode } from 'react'
 import { useTimerTickSound } from '@/hooks/useTimerTickSound'
 import { GameTypeBadge } from '@/components/GameTypeBadge'
 import { gameTypeConfig } from '@/lib/game-types'
+import { gameIcon } from '@/lib/game-glyphs'
+import { Glyph } from '@/components/icons/Glyph'
 import { formatThemedMoney, formatThemedText, getMonopolyEdition } from '@/components/monopoly/monopoly-themes'
 
 export function MonopolyPageHeader({ title, children }: { title?: string; children?: ReactNode }) {
@@ -13,8 +15,8 @@ export function MonopolyPageHeader({ title, children }: { title?: string; childr
     <header className="space-y-3">
       <div className="text-center space-y-2">
         <div className="inline-flex items-center justify-center gap-2 flex-wrap">
-          <span className="text-2xl sm:text-3xl drop-shadow-lg" aria-hidden>
-            {cfg.card.emoji}
+          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[color-mix(in_srgb,var(--primary)_12%,transparent)] text-[var(--primary)]">
+            <Glyph icon={gameIcon('monopoly')} size={20} />
           </span>
           <GameTypeBadge gameType="monopoly" />
         </div>
@@ -243,7 +245,7 @@ export function MonopolyJailCardInventory({
   if (count <= 0) {
     return (
       <p className={['text-xs text-muted leading-relaxed', className].join(' ')}>
-        {formatThemedText('No Get Out of Jail cards — draw one from Chance or Community Chest.', themeId)}
+        {formatThemedText('No skip-the-queue cards — draw one from Fate or Kitty.', themeId)}
       </p>
     )
   }
@@ -262,7 +264,7 @@ export function MonopolyJailCardInventory({
           compact ? 'text-[11px]' : 'text-xs',
         ].join(' ')}
       >
-        {formatThemedText(`🎫 ${count} Get Out of Jail card${count === 1 ? '' : 's'}`, themeId)}
+        {formatThemedText(`🎫 ${count} skip-the-queue card${count === 1 ? '' : 's'}`, themeId)}
       </p>
       {!compact && (
         <p className="text-[10px] text-muted mt-0.5 leading-snug">Use from the jail panel, or include in a trade.</p>
@@ -315,7 +317,7 @@ export function MonopolyTurnStrip({
     </span>
   ) : (
     <span className="text-[10px] text-faint capitalize">
-      {phase === 'roll' ? 'rolling' : phase === 'jail' ? 'in jail' : (phase?.replace('_', ' ') ?? 'wait')}
+      {phase === 'roll' ? 'rolling' : phase === 'jail' ? 'in NICKED' : (phase?.replace('_', ' ') ?? 'wait')}
     </span>
   )
 

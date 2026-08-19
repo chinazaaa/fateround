@@ -4,6 +4,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { consumeHostPlayIntent } from '@/lib/host-play-intent'
+import { getRememberedName } from '@/lib/identity-local'
+import { clearSoloAutoStart, hasSoloAutoStart } from '@/lib/solo-auto-start'
 import { clearPlayerSession, getPlayerSession, setPlayerSession } from '@/lib/utils'
 import { useHostPlayerReconciliation } from '@/hooks/useHostPlayerReconciliation'
 
@@ -430,6 +432,12 @@ export function useHostSeat(options: UseHostSeatOptions): UseHostSeatResult {
       return
     }
 
+    // No session and no create intent — a direct host link, a refresh before seating, or a
+    // host who left the name blank on /create. The name is still known, so prefill it. This
+    // is a PREFILL ONLY, never an auto-join: the create screen promises that leaving the name
+    // blank means you add yourself from the lobby, and auto-seating here would break that.
+    const remembered = getRememberedName()
+    if (remembered) setHostJoinName((current) => (current.trim() ? current : remembered))
     setHostMode(readPersistedMode(gameCode))
   }, [gameCode])
 
@@ -494,6 +502,42 @@ export function useHostSeat(options: UseHostSeatOptions): UseHostSeatResult {
     lastSyncedModeRef.current = rowMode
     applyMode(rowMode)
   }, [players, hostPlayerId, gameCode, gameStatus, applyMode])
+
+  // Solo auto-start: honor the "Play solo" flag by POSTing /start as soon as the
+  // host is seated in a still-waiting game, so a solo host skips the lobby wait
+  // entirely — both on create AND after "Play again" re-arms the flag. The ref
+  // resets whenever the game leaves 'waiting' so the next lobby cycle can fire
+  // again; the localStorage flag is cleared on fire so a Return-to-lobby (which
+  // doesn't re-arm it) never triggers an unwanted start.
+  const soloStartFiredRef = useRef(false)
+  useEffect(() => {
+    if (gameStatus !== 'waiting') {
+      soloStartFiredRef.current = false
+      return
+    }
+    if (soloStartFiredRef.current) return
+    if (!hostToken || !hostPlayerId) return
+    if (!hasSoloAutoStart(gameCode)) return
+    soloStartFiredRef.current = true
+    clearSoloAutoStart(gameCode)
+    void (async () => {
+      try {
+        const res = await fetch(`/api/games/${gameCode}/start`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ hostToken }),
+        })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) {
+          toastRef.current.error(data?.error ?? 'Could not start solo game')
+          return
+        }
+        await onReloadRef.current?.()
+      } catch {
+        toastRef.current.error('Could not start solo game')
+      }
+    })()
+  }, [gameCode, gameStatus, hostPlayerId, hostToken])
 
   // Clear stale host-as-player state if the host's own row is removed elsewhere.
   useHostPlayerReconciliation(players, hostPlayerId, () => handlePlayerRemoved(hostPlayerId!))

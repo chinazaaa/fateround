@@ -90,6 +90,10 @@ VAPID_SUBJECT=$(get_param_opt --name "/$PREFIX/VAPID_SUBJECT")
 # In-game music (optional). Only present when configured; missing = feature off.
 SPOTIFY_CLIENT_SECRET=$(get_param_opt --with-decryption --name "/$PREFIX/SPOTIFY_CLIENT_SECRET")
 
+# AI deck generation (optional). Missing = /api/ai-questions returns 503 and the
+# "Generate with AI" option on /create is inert; nothing else is affected.
+ANTHROPIC_API_KEY=$(get_param_opt --with-decryption --name "/$PREFIX/ANTHROPIC_API_KEY")
+
 # OpenTelemetry export (optional). Present only when an OTLP backend is configured;
 # missing = telemetry off (the app's instrumentation.ts no-ops without an endpoint).
 OTEL_EXPORTER_OTLP_ENDPOINT=$(get_param_opt --name "/$PREFIX/OTEL_EXPORTER_OTLP_ENDPOINT")
@@ -121,6 +125,7 @@ docker run -d --name app --restart always \
   -e VAPID_PRIVATE_KEY="$VAPID_PRIVATE_KEY" \
   -e VAPID_SUBJECT="$VAPID_SUBJECT" \
   -e SPOTIFY_CLIENT_SECRET="$SPOTIFY_CLIENT_SECRET" \
+  -e ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY" \
   -e OTEL_EXPORTER_OTLP_ENDPOINT="$OTEL_EXPORTER_OTLP_ENDPOINT" \
   -e OTEL_EXPORTER_OTLP_HEADERS="$OTEL_EXPORTER_OTLP_HEADERS" \
   -e OTEL_RESOURCE_ATTRIBUTES="$OTEL_RESOURCE_ATTRIBUTES" \

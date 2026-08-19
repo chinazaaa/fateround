@@ -9,18 +9,20 @@ export const BATCH_3_GAMES: GameType[] = [
   'crossword',
   'word_search',
   'word_scramble',
+  'word_grouping',
 ]
 
 export function batch3GameLabel(gameType: GameType | string): string {
   const labels: Partial<Record<GameType, string>> = {
     matching_pairs: 'Matching Pairs',
     sudoku: 'Sudoku',
-    yahtzee: 'Yahtzee',
-    snake_and_ladder: 'Snakes & Ladders',
+    yahtzee: 'Five Dice',
+    snake_and_ladder: 'Snake & Ladder',
     ludo: 'Ludo',
     crossword: 'Crossword',
     word_search: 'Word Search',
     word_scramble: 'Word Scramble',
+    word_grouping: 'Word Grouping',
   }
   return labels[gameType as GameType] ?? String(gameType).replace(/_/g, ' ')
 }

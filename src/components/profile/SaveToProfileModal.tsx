@@ -1,10 +1,12 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { Modal } from '@/components/ui/Modal'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { useToast } from '@/components/ui/Toast'
-import { signOutIdentity } from '@/lib/identity'
+import { authHeaders, signOutIdentity } from '@/lib/identity'
+import { rememberName } from '@/lib/identity-local'
 import { requestEmailCode, verifyEmailCode, type EmailCodeFlow } from '@/lib/identity-auth'
 import type { Profile } from '@/hooks/useProfile'
 
@@ -17,7 +19,7 @@ type Props = {
 }
 
 /**
- * The one door: email → 6-digit code (`docs/trophies-and-streaks.md` §2.2).
+ * The one door: email → 8-digit code (`docs/trophies-and-streaks.md` §2.2).
  *
  * LOGIN == SIGNUP. There is no "sign up" vs "log in" choice, because with an email code they
  * are the same action — the backend loads the account if the address is known and creates one
@@ -38,6 +40,12 @@ export function SaveToProfileModal({ open, onClose, profile, onChanged }: Props)
   const [step, setStep] = useState<'email' | 'code'>('email')
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
+  const [handle, setHandle] = useState('')
+
+  // Seed the name field whenever the sheet opens on a signed-in profile.
+  useEffect(() => {
+    if (open) setHandle(profile?.handle ?? '')
+  }, [open, profile?.handle])
 
   const signedIn = Boolean(profile && !profile.is_anonymous)
 
@@ -60,6 +68,14 @@ export function SaveToProfileModal({ open, onClose, profile, onChanged }: Props)
       setMessage(result.error ?? 'Could not send the code. Try again.')
       return
     }
+    // No code was issued because none was needed — the upgrade already landed. Advancing to
+    // the code step here would leave the player waiting for an email that never arrives.
+    if (result.complete) {
+      success('Saved to your profile')
+      onChanged()
+      onClose()
+      return
+    }
     // `flow` decides how the code is verified (an in-place upgrade vs a sign-in), so it has to
     // survive from this step to the next.
     setFlow(result.flow)
@@ -78,6 +94,39 @@ export function SaveToProfileModal({ open, onClose, profile, onChanged }: Props)
     success('Saved to your profile')
     onChanged()
     onClose()
+  }
+
+  const saveHandle = async () => {
+    const next = handle.trim()
+    if (!next) {
+      setMessage('Enter a name.')
+      return
+    }
+    setBusy(true)
+    setMessage(null)
+    try {
+      const headers = await authHeaders()
+      if (!headers) {
+        setMessage('You are signed out.')
+        return
+      }
+      const res = await fetch('/api/profile/me', {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify({ handle: next }),
+      })
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}))
+        setMessage(json.error ?? 'Could not save your name.')
+        return
+      }
+      // Mirror immediately so join screens pick it up without waiting for a profile refetch.
+      rememberName(next)
+      onChanged()
+      success('Name saved')
+    } finally {
+      setBusy(false)
+    }
   }
 
   const switchUser = async () => {
@@ -101,14 +150,48 @@ export function SaveToProfileModal({ open, onClose, profile, onChanged }: Props)
   if (signedIn) {
     return (
       <Modal open={open} onClose={onClose} title="Your profile">
-        <div className="space-y-6">
-          <p className="text-body">
-            Signed in as <strong>{profile?.handle || 'you'}</strong>. Your streak and trophies follow this account onto
-            any device.
-          </p>
-          <button type="button" className="btn-secondary" onClick={() => void switchUser()}>
-            Not you? Switch
-          </button>
+        <div className="space-y-5">
+          <div className="space-y-2">
+            <label htmlFor="modal-display-name" className="text-sm text-muted">
+              Your name
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                id="modal-display-name"
+                className="input-field max-w-48 text-sm"
+                value={handle}
+                maxLength={50}
+                placeholder="Your name"
+                onChange={(e) => setHandle(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && handle.trim() && !busy) void saveHandle()
+                }}
+              />
+              <button
+                type="button"
+                className="btn-primary btn-fit shrink-0 px-3 py-2 text-sm"
+                disabled={busy || !handle.trim() || handle.trim() === (profile?.handle ?? '')}
+                onClick={() => void saveHandle()}
+              >
+                {busy ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+            <p className="text-faint text-xs">Used when you join or host a game.</p>
+            {message ? <p className="text-red-400 text-sm">{message}</p> : null}
+          </div>
+
+          <div className="border-t border-[var(--border)] pt-4 flex flex-col gap-3">
+            <p className="text-body text-sm">Your streak and trophies follow this account onto any device.</p>
+            <Link href="/profile" className="btn-secondary w-full text-center" onClick={onClose}>
+              Your profile
+            </Link>
+            <Link href="/notifications" className="btn-secondary w-full text-center" onClick={onClose}>
+              🔔 Notification preferences
+            </Link>
+            <button type="button" className="btn-ghost" onClick={() => void switchUser()}>
+              Not you? Switch
+            </button>
+          </div>
         </div>
       </Modal>
     )
@@ -121,8 +204,8 @@ export function SaveToProfileModal({ open, onClose, profile, onChanged }: Props)
       title={step === 'email' ? 'Save your progress' : 'Enter your code'}
       subtitle={
         step === 'email'
-          ? "New here? We'll create your profile. Been here before? We'll load your trophies."
-          : `We emailed a 6-digit code to ${email}.`
+          ? 'Submit your email to save your stats, claim trophies, and track your rank.'
+          : `We emailed an 8-digit code to ${email}.`
       }
     >
       <div className="space-y-4">
@@ -155,7 +238,7 @@ export function SaveToProfileModal({ open, onClose, profile, onChanged }: Props)
             <input
               type="text"
               className="input-field"
-              placeholder="123456"
+              placeholder="12345678"
               value={code}
               autoComplete="one-time-code"
               inputMode="numeric"
@@ -179,6 +262,13 @@ export function SaveToProfileModal({ open, onClose, profile, onChanged }: Props)
             </button>
           </>
         )}
+        {/* Guest-branch entry point to /notifications so users who dismissed
+            the home banner still have a way back without signing in. */}
+        <div className="pt-3 border-t border-[var(--border)]">
+          <Link href="/notifications" className="btn-secondary w-full text-center" onClick={onClose}>
+            🔔 Notification preferences
+          </Link>
+        </div>
       </div>
     </Modal>
   )

@@ -1,6 +1,27 @@
 import { z } from 'zod/v4'
 import { sanitizedString, hostTokenString } from './validation'
 
+// Optional scheduled start time (ISO 8601). Display + reminder only — the host
+// still starts the event manually on the day. Pass null to clear. Reject times
+// more than 60 seconds in the past so hosts can't schedule an event for a
+// yesterday; the grace covers clock skew + the seconds between choosing a time
+// and hitting Create.
+export const SCHEDULE_PAST_GRACE_SECONDS = 60
+export const scheduledAtSchema = z
+  .string()
+  .datetime()
+  .nullable()
+  .optional()
+  .refine(
+    (value) => {
+      if (value == null) return true
+      const parsed = Date.parse(value)
+      if (Number.isNaN(parsed)) return true
+      return parsed >= Date.now() - SCHEDULE_PAST_GRACE_SECONDS * 1000
+    },
+    { message: 'Scheduled start must be in the future' }
+  )
+
 const eliminationConfigSchema = z.object({
   mode: z.literal('lives'),
   startingLives: z.coerce.number().int().min(1).max(10),
@@ -33,6 +54,27 @@ const gameConfigSchema = z.object({
   schoolClassCount: z.coerce.number().int().min(2).max(16).optional(),
 })
 
+// One entry in a round-robin tournament's pre-planned playlist. Each entry
+// becomes one spawned game, in order. Wide bounds here — the values are
+// re-clamped per game type server-side when the game row is inserted.
+export const tournamentQueueEntrySchema = z.object({
+  gameType: z.string().min(1).max(40),
+  roundsCount: z.coerce.number().int().min(1).max(100).optional(),
+  timerSeconds: z.coerce.number().int().min(1).max(600).optional(),
+  bigScreenMode: z.enum(['phone_only', 'projector']).optional(),
+})
+
+// Event branding: two brand colours (validated against #rrggbb) + optional
+// logo URL. The logo is uploaded via a separate route and its URL captured
+// here; the create/update JSON body doesn't accept arbitrary URLs — only the
+// one the upload route just produced.
+const hexColorRegex = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/
+export const tournamentBrandingSchema = z.object({
+  primaryColor: z.string().regex(hexColorRegex, 'Colour must be a hex value like #ff5c00').nullable().optional(),
+  accentColor: z.string().regex(hexColorRegex, 'Colour must be a hex value like #ff5c00').nullable().optional(),
+  logoUrl: z.string().url().max(500).nullable().optional(),
+})
+
 export const createTournamentSchema = z.object({
   title: sanitizedString(1, 100),
   format: z.enum(['round-robin', 'head-to-head', 'knockout', 'school']).optional(),
@@ -42,6 +84,28 @@ export const createTournamentSchema = z.object({
   targetGameCount: z.coerce.number().int().min(1).max(100).optional().nullable(),
   maxPlayers: z.coerce.number().int().min(2).max(100).optional().nullable(),
   eliminationConfig: eliminationConfigSchema.optional(),
+  // Round-robin only: a pre-planned ordered list of games. When present the
+  // detail page's "Start Next Game" spawns each entry in turn instead of
+  // asking the host to pick live. Omitted/empty = freestyle (today's flow).
+  gameQueue: z.array(tournamentQueueEntrySchema).min(1).max(20).optional(),
+  // Optional shared trivia pack (CSV upload or AI-generated) used by every
+  // planned Trivia round in this tournament. Loose type here — the route
+  // re-validates via parseStoredTriviaQuestions before storing so a malformed
+  // upload can't reach the DB.
+  customTriviaPack: z.array(z.unknown()).max(500).optional(),
+  // Optional shared Who Said This deck (CSV upload or platform pack) used by
+  // every planned WST game in this tournament. When present the WST games run
+  // in deck mode (like normal-game "Your own"); when absent they run in
+  // player-submit mode. Loose type — the games route re-validates via
+  // parseStoredWstDeck before storing.
+  customWstPack: z.array(z.unknown()).max(500).optional(),
+  // Event branding — two colours + a logo URL previously produced by the
+  // per-tournament logo-upload route. Every field optional; null/absent = use
+  // the app's default palette.
+  branding: tournamentBrandingSchema.optional(),
+  // Optional scheduled start time (ISO 8601). Display + reminder only — the
+  // host still starts the event manually on the day. Pass null to clear.
+  scheduledAt: scheduledAtSchema,
 })
 
 export const updateTournamentSchema = z.object({
@@ -56,6 +120,18 @@ export const updateTournamentSchema = z.object({
   // Edited game setup (house rules, dictionary, timers, ladder). The route rejects
   // it unless the tournament is still 'waiting', so an in-progress room is untouched.
   gameConfig: gameConfigSchema.optional(),
+  // Reorder / extend the round-robin playlist mid-tournament. The route enforces
+  // that the first N entries of the new queue match the current queue's first N
+  // (where N = number of already-spawned games), so already-played rounds can't
+  // be rewritten. Only the still-upcoming tail can change. Not accepted while a
+  // round is live (a game is in progress).
+  gameQueue: z.array(tournamentQueueEntrySchema).min(1).max(20).optional(),
+  // Event branding — hosts can update at any time (colours + previously
+  // uploaded logo URL). The logo itself is uploaded via the separate
+  // /branding/logo route, not through this PATCH body.
+  branding: tournamentBrandingSchema.optional(),
+  // Update or clear the scheduled start time. Pass null to remove.
+  scheduledAt: scheduledAtSchema,
 })
 
 export const joinTournamentSchema = z.object({
@@ -99,10 +175,19 @@ export const addTournamentGameSchema = z.object({
   // Custom trivia questions uploaded by the host. Loosely typed here and
   // re-validated server-side at game start via parseStoredTriviaQuestions.
   customQuestions: z.array(z.unknown()).max(1000).optional().nullable(),
+  // Freestyle-mode display mode (planned mode pulls this from the queue entry).
+  bigScreenMode: z.enum(['phone_only', 'projector']).optional(),
+  // Explicit opt-in to spawn the tournament's FIRST game before its
+  // scheduled_at. The server otherwise rejects an early start with 409 so a
+  // slip of the finger doesn't yank pre-registered players in early.
+  startEarly: z.boolean().optional(),
 })
 
-// Games eligible for the round-robin (all-vs-all) format.
-export const TOURNAMENT_ELIGIBLE_TYPES = ['trivia'] as const
+// Games eligible for the round-robin (all-vs-all) format — the host picks a game
+// per round, so a tournament can mix rounds of different games and share one
+// leaderboard. Restricted to "everyone in one lobby" games that produce
+// placements via awardTournamentPlacements.
+export const TOURNAMENT_ELIGIBLE_TYPES = ['trivia', 'i_call_on', 'two_truths', 'who_said_this'] as const
 
 // Head-to-head eligibility + room sizes live in tournament-bracket (a dependency-
 // free module) so the bracket-resolution libs can read them without importing this

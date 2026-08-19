@@ -38,6 +38,8 @@ interface RoomVoiceRailProps {
    * taps "Join voice chat" (matches the card-table spectator behaviour).
    */
   autoRejoin?: boolean
+  /** Auto-join voice on mount (from profile `default_voice_on` preference). */
+  autoJoin?: boolean
   /**
    * `floating` (default) — the compact pill parked bottom-right.
    * `topbar` — the full design-system `.pr-rail` voice bar rendered inline as
@@ -76,6 +78,7 @@ export function RoomVoiceRail({
   onEditName,
   variant = 'floating',
   autoRejoin = true,
+  autoJoin = false,
   onVoiceParticipants,
 }: RoomVoiceRailProps) {
   const { error: toastError } = useToast()
@@ -256,6 +259,19 @@ export function RoomVoiceRail({
     return () => window.clearTimeout(timeout)
   }, [autoRejoin, resolvedRoomCode, activeTabId, token, isConnecting])
 
+  // Auto-join on mount when the profile preference is on and there's no
+  // existing session to reconnect to.
+  useEffect(() => {
+    if (!autoJoin || token || isConnecting || activeTabId) return
+    const codeUpper = resolvedRoomCode.toUpperCase()
+    const stored = localStorage.getItem(`fateround_voice_${codeUpper}`)
+    if (stored) return
+    const timeout = window.setTimeout(() => {
+      void joinAudioRef.current?.()
+    }, 500)
+    return () => window.clearTimeout(timeout)
+  }, [autoJoin, resolvedRoomCode, activeTabId, token, isConnecting])
+
   // While not in the call there is no voice roster — report empty so consumers
   // (the desktop side rail) don't show anyone as "in chat".
   useEffect(() => {
@@ -265,13 +281,15 @@ export function RoomVoiceRail({
   if (!serverUrl) return null
 
   // In `topbar` mode the bar is the inline `.pr-rail` top chrome of a room
-  // shell (no fixed portal); otherwise it's the compact floating pill.
+  // shell (no fixed portal); otherwise it's the compact floating pill — which
+  // is draggable so a player can move it if it's covering a card / control /
+  // timer.
   const shell = (children: React.ReactNode) =>
     topbar ? (
       <>{children}</>
     ) : (
       <div className="fr-portal" style={railWrap}>
-        <div style={railPill}>{children}</div>
+        <DraggablePill>{children}</DraggablePill>
       </div>
     )
 
@@ -414,6 +432,117 @@ function ConnectedBar(props: {
       onLeaveVoice={props.onLeaveVoice}
       onLeave={props.onLeave}
     />
+  )
+}
+
+/**
+ * Draggable wrapper for the floating voice pill. Uses pointer events so it
+ * works with mouse, pen, and touch. The pointer-down handler on the pill's
+ * chrome (padding around the buttons) starts a drag once movement exceeds a
+ * few pixels — below that threshold the click still reaches the buttons
+ * inside, so tapping mic / ⋯ / Leave still works normally. On release the
+ * pill is clamped back inside the viewport so it can't be lost off an edge.
+ */
+function DraggablePill({ children }: { children: React.ReactNode }) {
+  const ref = useRef<HTMLDivElement | null>(null)
+  const [pos, setPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
+  const drag = useRef<{
+    startX: number
+    startY: number
+    baseX: number
+    baseY: number
+    active: boolean
+    pointerId: number
+  } | null>(null)
+
+  const clamp = (x: number, y: number) => {
+    const el = ref.current
+    if (!el) return { x, y }
+    const rect = el.getBoundingClientRect()
+    // The pill's origin (translate 0,0) is bottom-right of the viewport with
+    // the container's 1rem inset. Positive x pushes it right (off-screen);
+    // negative left. Positive y pushes down (off-screen); negative up.
+    const w = rect.width
+    const h = rect.height
+    const vw = window.innerWidth
+    const vh = window.innerHeight
+    const minX = -(vw - w - 24)
+    const maxX = 0
+    const minY = -(vh - h - 24)
+    const maxY = 0
+    return { x: Math.max(minX, Math.min(maxX, x)), y: Math.max(minY, Math.min(maxY, y)) }
+  }
+
+  const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    // Only left mouse button (or touch/pen) starts a drag.
+    if (e.pointerType === 'mouse' && e.button !== 0) return
+    drag.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      baseX: pos.x,
+      baseY: pos.y,
+      active: false,
+      pointerId: e.pointerId,
+    }
+    // Capture the pointer on the wrapper so subsequent move/up events land
+    // here even when the initial press was on a child <button>. Without this,
+    // once the pointer left the button's bounds the drag would stall.
+    try {
+      ;(e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId)
+    } catch {
+      // Some browsers (or read-only pointers) reject capture; drag still works
+      // via the fallback capture inside onPointerMove.
+    }
+  }
+
+  const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const d = drag.current
+    if (!d || d.pointerId !== e.pointerId) return
+    const dx = e.clientX - d.startX
+    const dy = e.clientY - d.startY
+    if (!d.active) {
+      if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return
+      d.active = true
+      try {
+        ;(e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId)
+      } catch {
+        // Some browsers reject a late capture for an invalid/inactive pointer;
+        // the drag still works via bubbling — never let it block setPos below.
+      }
+    }
+    setPos(clamp(d.baseX + dx, d.baseY + dy))
+  }
+
+  const endDrag = (e: React.PointerEvent<HTMLDivElement>) => {
+    const d = drag.current
+    if (!d || d.pointerId !== e.pointerId) return
+    if (d.active) {
+      try {
+        ;(e.currentTarget as HTMLDivElement).releasePointerCapture(e.pointerId)
+      } catch {
+        // pointer may already be released; ignore
+      }
+    }
+    drag.current = null
+  }
+
+  return (
+    <div
+      ref={ref}
+      style={{
+        ...railPill,
+        transform: `translate(${pos.x}px, ${pos.y}px)`,
+        touchAction: 'none',
+        cursor: 'grab',
+        userSelect: 'none',
+      }}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={endDrag}
+      onPointerCancel={endDrag}
+    >
+      {children}
+    </div>
   )
 }
 

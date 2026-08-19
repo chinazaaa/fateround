@@ -60,10 +60,21 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: internalErrorMessage('profile/merge', logError) }, { status: 500 })
     }
 
-    // NOTE for whoever implements the real merge: move the data BEFORE deleting anything, and
-    // merge rather than overwrite (union trophies, max counters, longer streak). The anonymous
-    // auth.users row is deliberately left in place here — the 90-day prune collects it.
-    return NextResponse.json({ merged: true, pending: true })
+    // Move the guest's progression onto the account they signed into: seats, earned trophies,
+    // distinct sets, per-game stats (summed) and the better streak. Atomic + idempotent in the DB
+    // (see migration 20260815000000). Best-effort: the sign-in already succeeded and the audit row
+    // is written, so a merge hiccup is a retryable "your trophies will appear shortly", never a
+    // failed login. `bump_player_stats` and this function are service-role only.
+    const { error: mergeError } = await admin.rpc('merge_profiles', { p_from: fromProfile, p_into: intoProfile })
+    if (mergeError) {
+      return NextResponse.json({
+        merged: false,
+        pending: true,
+        error: internalErrorMessage('profile/merge', mergeError),
+      })
+    }
+
+    return NextResponse.json({ merged: true })
   } catch (err) {
     return NextResponse.json({ error: internalErrorMessage('profile/merge', err) }, { status: 500 })
   }

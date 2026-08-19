@@ -27,6 +27,9 @@ export interface PoolUsageState {
   word_scramble?: Record<string, number>
   /** Landmine mine words → times chosen as the mine (spreads the mine across the pool) */
   landmine?: Record<string, number>
+  /** Word Grouping puzzle keys (category-set fingerprint) → times used — stops "play again"
+   *  from dealing the same puzzle out of a small custom pack or the built-in bank. */
+  word_grouping?: Record<string, number>
 }
 
 type RoundForUsage = {
@@ -68,6 +71,10 @@ export function parsePoolUsage(raw: unknown): PoolUsageState {
     codewords: section(o.codewords),
     crossword: section(o.crossword),
     word_search: section(o.word_search),
+    // Missing here before — a WG usage row on the game persisted round-trips as
+    // `undefined`, which is why "play again" could deal the same puzzle back.
+    word_scramble: section(o.word_scramble),
+    word_grouping: section(o.word_grouping),
     landmine: section(o.landmine),
   }
 }
@@ -150,6 +157,8 @@ export function mergePoolUsageState(existing: PoolUsageState, fromRounds: PoolUs
     codewords: mergeUsageRecords(existing.codewords, poolUsageToMap(fromRounds.codewords)),
     crossword: mergeUsageRecords(existing.crossword, poolUsageToMap(fromRounds.crossword)),
     word_search: mergeUsageRecords(existing.word_search, poolUsageToMap(fromRounds.word_search)),
+    word_scramble: mergeUsageRecords(existing.word_scramble, poolUsageToMap(fromRounds.word_scramble)),
+    word_grouping: mergeUsageRecords(existing.word_grouping, poolUsageToMap(fromRounds.word_grouping)),
     landmine: mergeUsageRecords(existing.landmine, poolUsageToMap(fromRounds.landmine)),
   }
 }

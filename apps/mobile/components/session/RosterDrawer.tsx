@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useRosterDrawer, type RosterRow } from '@/components/session/RosterDrawerContext'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
+import { motion } from '@/constants/motion'
 
 /**
  * Right-side slide-in drawer holding the unified roster (seat · name · score ·
@@ -32,14 +33,18 @@ export function RosterDrawer() {
   useEffect(() => {
     if (open) {
       setMounted(true)
+      // Open: `medium` — the drawer is a screen-level surface sliding in, so it
+      // reads a beat slower than a modal fade. Close: `short` — dismissals feel
+      // snappy. Both were hard-coded before (220/180ms); switching to tokens
+      // keeps the same feel and lets a future retune land in one file.
       Animated.parallel([
-        Animated.timing(x, { toValue: 0, duration: 220, useNativeDriver: true }),
-        Animated.timing(fade, { toValue: 1, duration: 220, useNativeDriver: true }),
+        Animated.timing(x, { toValue: 0, duration: motion.duration.medium, useNativeDriver: true }),
+        Animated.timing(fade, { toValue: 1, duration: motion.duration.medium, useNativeDriver: true }),
       ]).start()
     } else if (mounted) {
       Animated.parallel([
-        Animated.timing(x, { toValue: drawerWidth, duration: 180, useNativeDriver: true }),
-        Animated.timing(fade, { toValue: 0, duration: 180, useNativeDriver: true }),
+        Animated.timing(x, { toValue: drawerWidth, duration: motion.duration.short, useNativeDriver: true }),
+        Animated.timing(fade, { toValue: 0, duration: motion.duration.short, useNativeDriver: true }),
       ]).start(({ finished }) => {
         if (finished) setMounted(false)
       })

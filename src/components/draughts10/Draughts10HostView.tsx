@@ -115,9 +115,23 @@ export function Draughts10HostView({ gameCode, hostToken }: { gameCode: string; 
     load
   )
 
+  // Reconciliation poll — mirrors chess. This game (checkers international / nigeria) has a
+  // cumulative clock that LOSES the game on time, so a client stranded on a stale `current_turn`
+  // (ticking the wrong clock, never seeing it's its turn) is catastrophic. `connected` can't detect
+  // a channel that stays subscribed but silently stops delivering rows, so during an active match
+  // we ALWAYS poll: a slow 10s safety reconcile while connected, the tight 4s duel cadence when the
+  // channel is actually down.
+  const activeMatch = game?.status === 'active' && session?.status === 'active'
   usePolling(() => load(), [gameCode, load], {
-    intervalMs: game?.status === 'waiting' ? POLL_INTERVALS.lobby : POLL_INTERVALS.realtimeFallback,
-    enabled: game?.status === 'waiting' || !connected,
+    intervalMs:
+      game?.status === 'waiting'
+        ? POLL_INTERVALS.lobby
+        : !connected
+          ? activeMatch
+            ? POLL_INTERVALS.duelFallback
+            : POLL_INTERVALS.realtimeFallback
+          : POLL_INTERVALS.activeGame,
+    enabled: game?.status === 'waiting' || !connected || activeMatch,
     runImmediately: false,
   })
 
@@ -436,7 +450,7 @@ export function Draughts10HostView({ gameCode, hostToken }: { gameCode: string; 
             hostToken={hostToken}
             onEnded={load}
             label="End game early"
-            icon={<ExitIcon size={16} />}
+            icon={<ExitIcon size={14} />}
             confirmTitle="End this game early?"
             confirmMessage="The current game will end and players will see the results screen."
             className="btn-danger-soft"

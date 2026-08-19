@@ -425,6 +425,7 @@ export function TriviaHostView({ gameCode, hostToken }: { gameCode: string; host
       {waitingLobby ? (
         <HostLobby
           gameCode={gameCode}
+          questionSource={game.question_source}
           hostToken={hostToken}
           game={game}
           gameTypeLabel={cfg.label}

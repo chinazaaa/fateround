@@ -13,6 +13,8 @@ import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { getPlayerSession, filterParticipantsInRounds } from '@/lib/utils'
 import { playVoteSubmittedSound } from '@/lib/sounds'
+import { Glyph } from '@/components/icons/Glyph'
+import { ChampionIcon, CrownIcon, StopWatchIcon } from '@hugeicons/core-free-icons'
 import { hexToRgba } from '@/lib/color'
 import { Avatar } from '@/components/Avatar'
 import { ParticipantPhotoCard } from '@/components/ParticipantPhotoCard'
@@ -3231,7 +3233,17 @@ function LeaderCard({
         backgroundColor: hexToRgba(accentColor, 0.08),
       }}
     >
-      <p className="text-2xl">{emoji}</p>
+      <div className="flex justify-center text-body py-0.5">
+        {emoji === '🏆' || emoji === '🥇' ? (
+          <Glyph icon={ChampionIcon} size={20} />
+        ) : emoji === '👑' ? (
+          <Glyph icon={CrownIcon} size={20} />
+        ) : emoji === '⚡' ? (
+          <Glyph icon={StopWatchIcon} size={20} />
+        ) : (
+          <span className="text-xl leading-none">{emoji}</span>
+        )}
+      </div>
       <p className="text-muted text-xs mt-1 leading-tight">{label}</p>
       <p className="font-bold text-body text-sm mt-1 truncate">{name ?? '—'}</p>
       {count !== undefined && <p className="text-muted text-xs">{count} votes</p>}

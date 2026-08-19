@@ -27,6 +27,8 @@ import { getPlayerSession, setPlayerSession, clearPlayerSession } from '@/lib/ut
 import { resolvePlayerSession } from '@/lib/player-resume'
 import type { AnonymousMessage, Game, Player } from '@/types'
 import { useAnonymousReactions } from '@/hooks/useAnonymousReactions'
+import { gameIcon } from '@/lib/game-glyphs'
+import { Glyph } from '@/components/icons/Glyph'
 import { useToast } from '@/components/ui/Toast'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
 import { GameStartedWaiting } from '@/components/GameStartedWaiting'
@@ -513,7 +515,11 @@ function Header({ game }: { game: Game | null }) {
   if (!game) return null
   return (
     <div className="text-center space-y-1">
-      <div className="text-4xl">{gameTypeConfig(game.game_type).headerEmoji}</div>
+      <div className="flex justify-center text-[var(--primary)] pb-1">
+        <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[color-mix(in_srgb,var(--primary)_12%,transparent)]">
+          <Glyph icon={gameIcon('anonymous_messages')} size={24} />
+        </span>
+      </div>
       <h1 className="text-2xl font-black tracking-tight gradient-title">{game.title}</h1>
       <GameTypeBadge gameType={game.game_type} />
       <GameInfoChips game={game} className="pt-1" />

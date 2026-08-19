@@ -48,7 +48,7 @@ export function YahtzeeSessionSummary({
             <p className="font-medium mt-0.5">{players.length}</p>
           </div>
         </div>
-        <div className="glass-card p-8 text-center text-muted">This Yahtzee session never started.</div>
+        <div className="glass-card p-8 text-center text-muted">This Five Dice session never started.</div>
       </div>
     )
   }

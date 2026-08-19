@@ -2,8 +2,10 @@ import { useEffect, useRef, useState } from 'react'
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
 import type { MonopolyBoard, MonopolyPlayerState, Player } from '@fateround/shared'
 import {
+  MONOPOLY_BOARD_SIZE,
   mortgageValue,
   unmortgageCost,
+  type MonopolyBoardSize,
   type MonopolyColorGroup,
 } from '@fateround/shared/monopoly-board'
 import { MONOPOLY_COLOR_HEX } from '@fateround/shared/monopoly-board-layout'
@@ -84,7 +86,7 @@ export function MonopolyManagePanel({
   const [tradeConfirmOpen, setTradeConfirmOpen] = useState(false)
   const [confirmOneWayGift, setConfirmOneWayGift] = useState(false)
 
-  const pendingTrade = normalizePendingTrade(board.pending_trade)
+  const pendingTrade = normalizePendingTrade(board.pending_trade, board.board_size === 48 ? 48 : MONOPOLY_BOARD_SIZE)
   const pendingTradeKey = pendingTrade ? `${pendingTrade.from_player_id}:${pendingTrade.to_player_id}` : null
   const stalePendingTrade =
     !!pendingTrade &&
@@ -107,15 +109,14 @@ export function MonopolyManagePanel({
     )
   }
 
+  const boardSize: MonopolyBoardSize = board.board_size === 48 ? 48 : MONOPOLY_BOARD_SIZE
   const owners = parsePropertyOwners(board.property_owners)
   const buildings = parseBuildings(board.property_buildings)
   const mortgaged = parseMortgaged(board.mortgaged_properties)
-  const mine = playerProperties(owners, myPlayerId)
-  const theirs = tradeTarget ? playerProperties(owners, tradeTarget) : []
+  const mine = playerProperties(owners, myPlayerId, boardSize)
+  const theirs = tradeTarget ? playerProperties(owners, tradeTarget, boardSize) : []
   const myJailCards = myState.get_out_of_jail_free ?? 0
-  const targetJailCards = tradeTarget
-    ? states.find((s) => s.player_id === tradeTarget)?.get_out_of_jail_free ?? 0
-    : 0
+  const targetJailCards = tradeTarget ? (states.find((s) => s.player_id === tradeTarget)?.get_out_of_jail_free ?? 0) : 0
   const housesInBank = board.houses_in_bank ?? 32
   const hotelsInBank = board.hotels_in_bank ?? 12
 
@@ -135,11 +136,11 @@ export function MonopolyManagePanel({
     setConfirmOneWayGift(false)
   }
 
-  const targetName = tradeTarget ? players.find((p) => p.id === tradeTarget)?.name ?? 'player' : ''
+  const targetName = tradeTarget ? (players.find((p) => p.id === tradeTarget)?.name ?? 'player') : ''
   const parsedOfferCash = Math.max(0, Math.floor(Number(offerCash) || 0))
   const parsedRequestCash = Math.max(0, Math.floor(Number(requestCash) || 0))
-  const givingSomething = tradeSideHasValue(parsedOfferCash, offerProps, offerJailCards)
-  const gettingSomething = tradeSideHasValue(parsedRequestCash, requestProps, requestJailCards)
+  const givingSomething = tradeSideHasValue(parsedOfferCash, offerProps, offerJailCards, boardSize)
+  const gettingSomething = tradeSideHasValue(parsedRequestCash, requestProps, requestJailCards, boardSize)
   const isOneWayGift = givingSomething && !gettingSomething
   const isOneWayReceive = gettingSomething && !givingSomething
   const tradeIsEmpty = !givingSomething && !gettingSomething
@@ -176,14 +177,14 @@ export function MonopolyManagePanel({
     activePendingTrade.from_player_id !== myPlayerId &&
     activePendingTrade.to_player_id !== myPlayerId
 
-  const statusByGroup = buildColorGroupStatuses(owners, myPlayerId)
-  const myGroups = ownedColorGroups(owners, myPlayerId)
+  const statusByGroup = buildColorGroupStatuses(owners, myPlayerId, boardSize)
+  const myGroups = ownedColorGroups(owners, myPlayerId, boardSize)
   const stationAndUtilityProps = mine.filter((s) => s.type === 'station' || s.type === 'utility')
 
   // Full colour-set portfolio (all groups, with the streets still needed) —
   // mirrors web MonopolyColorPortfolio / ColorSetRow.
   const playerNames = new Map(players.map((p) => [p.id, p.name]))
-  const portfolio = buildColorPortfolio(owners, myPlayerId, playerNames)
+  const portfolio = buildColorPortfolio(owners, myPlayerId, playerNames, boardSize)
   const streetSets = portfolio.filter((s) => s.group !== 'station' && s.group !== 'utility')
   const specialSets = portfolio.filter((s) => s.group === 'station' || s.group === 'utility')
   const completeSetCount = streetSets.filter((s) => s.complete).length
@@ -194,10 +195,7 @@ export function MonopolyManagePanel({
     return (
       <View
         key={status.group}
-        style={[
-          styles.setCard,
-          inactive ? styles.setCardInactive : status.complete ? styles.setCardComplete : null,
-        ]}
+        style={[styles.setCard, inactive ? styles.setCardInactive : status.complete ? styles.setCardComplete : null]}
       >
         <View style={[styles.setCardBar, { backgroundColor: MONOPOLY_COLOR_HEX[status.group] }]} />
         <View style={styles.setCardBody}>
@@ -216,7 +214,7 @@ export function MonopolyManagePanel({
               {status.missing.map((m, i) => (
                 <Text key={m.index}>
                   {i > 0 ? ', ' : ''}
-                  <Text style={styles.setCardNeedStreet}>{themedSpaceName(m.name, m.index, themeId)}</Text>
+                  <Text style={styles.setCardNeedStreet}>{themedSpaceName(m.name, m.index, themeId, boardSize)}</Text>
                   <Text style={styles.setCardNeedOwner}>
                     {m.heldBy === 'other' && m.ownerName ? ` (${m.ownerName})` : ' (bank)'}
                   </Text>
@@ -236,9 +234,9 @@ export function MonopolyManagePanel({
     const levelLabel = level === 5 ? '🏨 Hotel' : level > 0 ? `${level} 🏠` : 'Unimproved'
     const currentRent = isMortgaged
       ? null
-      : computeRent(space, owners, myPlayerId, board.last_dice?.total ?? 2, buildings, mortgaged)
-    const canHouse = canAddHouse(space.index, myPlayerId, owners, buildings, mortgaged, housesInBank)
-    const canHotel = canAddHotel(space.index, myPlayerId, owners, buildings, mortgaged, hotelsInBank)
+      : computeRent(space, owners, myPlayerId, board.last_dice?.total ?? 2, buildings, mortgaged, boardSize)
+    const canHouse = canAddHouse(space.index, myPlayerId, owners, buildings, mortgaged, housesInBank, boardSize)
+    const canHotel = canAddHotel(space.index, myPlayerId, owners, buildings, mortgaged, hotelsInBank, boardSize)
 
     return (
       <View key={space.index} style={styles.propCard}>
@@ -247,7 +245,7 @@ export function MonopolyManagePanel({
         ) : null}
         <View style={styles.propBody}>
           <View style={styles.propHeader}>
-            <Text style={styles.propName}>{themedSpaceName(space.name, space.index, themeId)}</Text>
+            <Text style={styles.propName}>{themedSpaceName(space.name, space.index, themeId, boardSize)}</Text>
             <Text style={styles.propMeta}>{isMortgaged ? 'Mortgaged' : levelLabel}</Text>
           </View>
           <Text style={styles.propRent}>
@@ -276,7 +274,7 @@ export function MonopolyManagePanel({
                 <Text style={styles.chipPrimaryText}>+ Hotel</Text>
               </Pressable>
             ) : null}
-            {canRemoveHouse(space.index, myPlayerId, owners, buildings) ? (
+            {canRemoveHouse(space.index, myPlayerId, owners, buildings, boardSize) ? (
               <Pressable
                 disabled={acting}
                 onPress={() => onBuild(space.index, 'sell_house')}
@@ -285,7 +283,7 @@ export function MonopolyManagePanel({
                 <Text style={styles.chipSecondaryText}>Sell house</Text>
               </Pressable>
             ) : null}
-            {canRemoveHotel(space.index, myPlayerId, owners, buildings) ? (
+            {canRemoveHotel(space.index, myPlayerId, owners, buildings, housesInBank, boardSize) ? (
               <Pressable
                 disabled={acting}
                 onPress={() => onBuild(space.index, 'sell_hotel')}
@@ -300,7 +298,9 @@ export function MonopolyManagePanel({
                 onPress={() => onMortgage(space.index, 'mortgage')}
                 style={[styles.chip, styles.chipSecondary, acting && styles.disabled]}
               >
-                <Text style={styles.chipSecondaryText}>Mortgage {formatThemedMoney(mortgageValue(space), themeId)}</Text>
+                <Text style={styles.chipSecondaryText}>
+                  Mortgage {formatThemedMoney(mortgageValue(space), themeId)}
+                </Text>
               </Pressable>
             ) : null}
             {isMortgaged ? (
@@ -318,18 +318,14 @@ export function MonopolyManagePanel({
     )
   }
 
-  const renderCheckRow = (
-    space: { index: number; name: string },
-    list: number[],
-    setList: (v: number[]) => void
-  ) => {
+  const renderCheckRow = (space: { index: number; name: string }, list: number[], setList: (v: number[]) => void) => {
     const checked = list.includes(space.index)
     return (
       <Pressable key={space.index} style={styles.checkRow} onPress={() => toggleProp(list, setList, space.index)}>
         <View style={[styles.checkbox, checked && styles.checkboxOn]}>
           {checked ? <Text style={styles.checkMark}>✓</Text> : null}
         </View>
-        <Text style={styles.checkLabel}>{themedSpaceName(space.name, space.index, themeId)}</Text>
+        <Text style={styles.checkLabel}>{themedSpaceName(space.name, space.index, themeId, boardSize)}</Text>
       </Pressable>
     )
   }
@@ -341,8 +337,8 @@ export function MonopolyManagePanel({
         <Text style={styles.labelCaps}>Inventory</Text>
         <Text style={styles.inventoryText}>
           {myJailCards > 0
-            ? `🎟️ ${myJailCards} Get Out of Jail card${myJailCards === 1 ? '' : 's'}`
-            : 'No Get Out of Jail cards'}
+            ? `🎟️ ${myJailCards} skip-the-queue card${myJailCards === 1 ? '' : 's'}`
+            : 'No skip-the-queue cards'}
         </Text>
       </View>
 
@@ -375,7 +371,7 @@ export function MonopolyManagePanel({
             <Text style={styles.muted}>Grouped by color. Own a full set (✓) to build houses and hotels.</Text>
             {myGroups.map((group) => {
               const status = statusByGroup.get(group)!
-              const groupProps = propertiesInGroupForPlayer(owners, myPlayerId, group)
+              const groupProps = propertiesInGroupForPlayer(owners, myPlayerId, group, boardSize)
               return (
                 <View key={group} style={styles.groupBlock}>
                   <View style={styles.groupHeader}>
@@ -419,6 +415,7 @@ export function MonopolyManagePanel({
             </Text>
             <MonopolyTradeReview
               themeId={themeId}
+              boardSize={boardSize}
               giveLabel="You give"
               getLabel="You get"
               giveCash={activePendingTrade.offer_cash}
@@ -449,6 +446,7 @@ export function MonopolyManagePanel({
             </Text>
             <MonopolyTradeReview
               themeId={themeId}
+              boardSize={boardSize}
               giveLabel="You pay"
               getLabel="You receive"
               giveCash={activePendingTrade.request_cash}
@@ -463,8 +461,7 @@ export function MonopolyManagePanel({
 
         {pendingTradeBlocksOthers && activePendingTrade ? (
           <Text style={styles.infoBox}>
-            A trade between{' '}
-            {players.find((p) => p.id === activePendingTrade.from_player_id)?.name ?? 'player'} and{' '}
+            A trade between {players.find((p) => p.id === activePendingTrade.from_player_id)?.name ?? 'player'} and{' '}
             {players.find((p) => p.id === activePendingTrade.to_player_id)?.name ?? 'player'} is in progress — new
             offers are paused until it finishes.
           </Text>
@@ -474,7 +471,7 @@ export function MonopolyManagePanel({
           <View style={styles.section}>
             <Text style={styles.labelCaps}>Propose a trade</Text>
             <Text style={styles.muted}>
-              Pick what you give and what you get back — cash, properties, or Get Out of Jail cards. Both sides must be
+              Pick what you give and what you get back — cash, properties, or skip-the-queue cards. Both sides must be
               filled in for a normal swap.
             </Text>
 
@@ -527,7 +524,7 @@ export function MonopolyManagePanel({
                         <View style={[styles.checkbox, offerJailCards > 0 && styles.checkboxOn]}>
                           {offerJailCards > 0 ? <Text style={styles.checkMark}>✓</Text> : null}
                         </View>
-                        <Text style={styles.checkLabel}>Include 1 Get Out of Jail card</Text>
+                        <Text style={styles.checkLabel}>Include 1 skip-the-queue card</Text>
                       </Pressable>
                     ) : null}
                   </View>
@@ -565,7 +562,7 @@ export function MonopolyManagePanel({
                         <View style={[styles.checkbox, requestJailCards > 0 && styles.checkboxOn]}>
                           {requestJailCards > 0 ? <Text style={styles.checkMark}>✓</Text> : null}
                         </View>
-                        <Text style={styles.checkLabel}>Ask for 1 Get Out of Jail card</Text>
+                        <Text style={styles.checkLabel}>Ask for 1 skip-the-queue card</Text>
                       </Pressable>
                     ) : null}
                   </View>
@@ -657,7 +654,13 @@ const makeStyles = (theme: Theme) =>
     card: { backgroundColor: theme.surface, borderRadius: 14, padding: 14, gap: 14 },
     section: { gap: 8 },
     divider: { borderTopWidth: 1, borderTopColor: theme.border, paddingTop: 12 },
-    labelCaps: { color: theme.textMuted, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
+    labelCaps: {
+      color: theme.textMuted,
+      fontSize: 11,
+      fontWeight: '700',
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+    },
     muted: { color: theme.textMuted, fontSize: 13, lineHeight: 18 },
     mutedCenter: { color: theme.textMuted, fontSize: 14, textAlign: 'center' },
     strong: { color: theme.text, fontWeight: '700' },
@@ -702,7 +705,13 @@ const makeStyles = (theme: Theme) =>
     groupCheck: { color: theme.primary },
     groupCount: { color: theme.textMuted, fontSize: 12, fontWeight: '600' },
 
-    propCard: { borderRadius: 12, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.bg, overflow: 'hidden' },
+    propCard: {
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: theme.border,
+      backgroundColor: theme.bg,
+      overflow: 'hidden',
+    },
     propColorBar: { height: 6, width: '100%' },
     propBody: { padding: 10, gap: 6 },
     propHeader: { flexDirection: 'row', justifyContent: 'space-between', gap: 8 },
@@ -732,7 +741,13 @@ const makeStyles = (theme: Theme) =>
     miniLabel: { color: theme.textFaint, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', marginTop: 2 },
 
     targetRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-    targetChip: { borderRadius: 20, borderWidth: 1, borderColor: theme.border, paddingHorizontal: 12, paddingVertical: 6 },
+    targetChip: {
+      borderRadius: 20,
+      borderWidth: 1,
+      borderColor: theme.border,
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+    },
     targetChipOn: { borderColor: theme.primary, backgroundColor: theme.primarySoft },
     targetChipText: { color: theme.text, fontSize: 13, fontWeight: '600' },
     targetChipTextOn: { color: theme.primaryMuted },

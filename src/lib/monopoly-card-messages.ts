@@ -11,7 +11,7 @@ export function formatCardAlertForPlayer(
   const drawer = players.find((p) => p.id === event.drawn_by_player_id)
   const drawerName = drawer?.name ?? 'A player'
   const isDrawer = myPlayerId === event.drawn_by_player_id
-  const kindLabel = event.kind === 'chance' ? 'Chance' : 'Community Chest'
+  const kindLabel = event.kind === 'chance' ? 'Fate' : 'Kitty'
   const emoji = event.kind === 'chance' ? '❓' : '🎁'
   const money = event.amount != null ? formatMonopolyMoney(event.amount) : null
   const others = event.other_player_count ?? 0

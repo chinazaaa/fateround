@@ -22,9 +22,11 @@ interface AudioChatProps {
   roomCode: string
   playerName: string
   auth: AudioAuth
+  /** Auto-join voice on mount (from profile `default_voice_on` preference). */
+  autoJoin?: boolean
 }
 
-export function AudioChat({ roomCode, playerName, auth }: AudioChatProps) {
+export function AudioChat({ roomCode, playerName, auth, autoJoin = false }: AudioChatProps) {
   const { error: toastError } = useToast()
   const [token, setToken] = useState<string | null>(null)
   const [isConnecting, setIsConnecting] = useState(false)
@@ -70,6 +72,7 @@ export function AudioChat({ roomCode, playerName, auth }: AudioChatProps) {
   // never clears and our own Leave arrives at `onError` looking exactly like a
   // failed connect. Track the intent ourselves so Leave stays silent.
   const leavingRef = useRef(false)
+  const userDeclinedRef = useRef(false)
   // Keep auth in a ref so the presence poll doesn't restart when the parent
   // passes a fresh auth object on every render.
   const authRef = useRef(auth)
@@ -206,6 +209,7 @@ export function AudioChat({ roomCode, playerName, auth }: AudioChatProps) {
   // 3. Leave voice chat handler
   const leaveAudio = (manual = true) => {
     leavingRef.current = true
+    if (manual) userDeclinedRef.current = true
     setToken(null)
     setIsOpen(false)
     if (manual) {
@@ -280,6 +284,20 @@ export function AudioChat({ roomCode, playerName, auth }: AudioChatProps) {
 
     return () => window.clearTimeout(timeout)
   }, [resolvedRoomCode, activeTabId, token, isConnecting])
+
+  // 6. Auto-join on mount when the profile preference is on and there's no
+  //    existing session to reconnect to. Runs after the auto-reconnect check
+  //    (300ms) so a stored session takes priority over a fresh auto-join.
+  useEffect(() => {
+    if (!autoJoin || token || isConnecting || activeTabId || userDeclinedRef.current) return
+    const resolvedCodeUpper = resolvedRoomCode.toUpperCase()
+    const stored = localStorage.getItem(`fateround_voice_${resolvedCodeUpper}`)
+    if (stored) return
+    const timeout = window.setTimeout(() => {
+      void joinAudioRef.current?.()
+    }, 500)
+    return () => window.clearTimeout(timeout)
+  }, [autoJoin, resolvedRoomCode, activeTabId, token, isConnecting])
 
   if (!serverUrl) {
     return (

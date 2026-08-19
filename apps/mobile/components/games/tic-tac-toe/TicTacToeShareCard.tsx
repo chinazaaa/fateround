@@ -90,7 +90,7 @@ export function TicTacToeShareCard({ gameTitle, winnerName, isDraw, session, pla
 }
 
 function buildShareText(winnerName: string | null, isDraw: boolean): string {
-  const lines: string[] = ['Tic Tac Toe', '']
+  const lines: string[] = ['Tic-Tac-Toe', '']
   lines.push(isDraw ? "🤝 It's a draw!" : winnerName ? `🏆 ${winnerName} wins!` : '🏁 Game over')
   lines.push('', `Play at ${shareDomain()}`)
   return lines.join('\n')

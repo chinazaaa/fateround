@@ -6,6 +6,9 @@ import { copyToClipboard } from '@/lib/copy'
 import { tournamentPlayerResumeUrl, shareOrigin } from '@/lib/site'
 import { useToast } from '@/components/ui/Toast'
 
+import { SmartPhone01Icon } from '@hugeicons/core-free-icons'
+import { Glyph } from '@/components/icons/Glyph'
+
 /**
  * A joined player's "continue on another device" card: their personal code, a resume
  * link, and a QR. Anyone with the code (or link/QR) can pick up this exact player's
@@ -38,7 +41,7 @@ export function TournamentContinueCard({ tournamentId, code }: { tournamentId: s
         onClick={() => setExpanded(true)}
         className="btn-secondary btn-fit text-xs mx-auto flex items-center gap-1.5"
       >
-        <span aria-hidden>📱</span>
+        <Glyph icon={SmartPhone01Icon} size={11} className="shrink-0 text-muted" />
         <span className="underline underline-offset-2">Continue on another device</span>
       </button>
     )

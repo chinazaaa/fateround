@@ -1,32 +1,15 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { PageShell, Field, PrimaryBtn } from '@/components/ui/PageShell'
 import { SiteChrome } from '@/components/SiteChrome'
-import { DEFAULT_WHATSAPP_INVITE_URL } from '@/lib/community-constants'
+import { Glyph } from '@/components/icons/Glyph'
+import { UI_ICONS } from '@/lib/game-glyphs'
+import { WhatsAppChannelLink } from '@/components/WhatsAppChannelLink'
 
 export default function TournamentLandingPage() {
   const router = useRouter()
   const [code, setCode] = useState('')
-  // Community invite link — admin-configured (same link the leaderboard uses),
-  // with the default as a fallback so the prompt always works.
-  const [communityUrl, setCommunityUrl] = useState(DEFAULT_WHATSAPP_INVITE_URL)
-
-  useEffect(() => {
-    let cancelled = false
-    fetch('/api/community/link', { cache: 'no-store' })
-      .then((r) => r.json())
-      .then((d) => {
-        if (!cancelled && d.whatsappInviteUrl) setCommunityUrl(d.whatsappInviteUrl)
-      })
-      .catch(() => {
-        /* keep the default */
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [])
 
   const trimmed = code.trim().toUpperCase()
 
@@ -36,66 +19,91 @@ export default function TournamentLandingPage() {
 
   return (
     <SiteChrome>
-      <PageShell narrow>
-        <div className="text-center space-y-2">
-          <span className="premium-badge">Tournament</span>
-          <h1 className="text-4xl font-black gradient-title leading-tight">Tournaments</h1>
-          <p className="text-muted text-sm">Run a multi-game competition for your group — or join one with a code.</p>
-        </div>
-
-        <div className="glass-card-strong p-5 sm:p-6 space-y-5">
-          <PrimaryBtn onClick={() => router.push('/tournament/create')} className="w-full">
-            Create a tournament
-          </PrimaryBtn>
-
-          <div className="flex items-center gap-3">
-            <div className="flex-1 divider-soft" />
-            <span className="label-caps text-faint">or join</span>
-            <div className="flex-1 divider-soft" />
+      <div className="fr-band fr-band--tight">
+        <div className="mk-wrap">
+          <div className="mb-6 space-y-2 text-center">
+            <span className="fr-glyph">
+              <Glyph icon={UI_ICONS.tournament} size={26} />
+            </span>
+            <h1
+              className="fr-display m-0 text-[2.5rem] leading-[0.975] tracking-[-0.045em] sm:text-5xl"
+              style={{ color: 'var(--text)' }}
+            >
+              Tournaments
+            </h1>
+            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+              Host a multi-game championship for your squad, or enter a code to join.
+            </p>
           </div>
 
-          <Field label="Tournament code" htmlFor="tournament-code">
-            <div className="flex gap-2">
+          <div className="fr-card fr-card--xl mb-5 mx-auto max-w-[33rem]">
+            <button
+              type="button"
+              onClick={() => router.push('/tournament/create')}
+              className="fr-btn fr-btn--primary fr-btn--lg fr-btn--block"
+            >
+              Create a tournament
+            </button>
+
+            <div className="my-5 flex items-center gap-3">
+              <div className="h-px flex-1" style={{ background: 'var(--border)' }} />
+              <span
+                className="text-[11px] font-semibold uppercase tracking-[0.14em]"
+                style={{ color: 'var(--text-faint)' }}
+              >
+                or join
+              </span>
+              <div className="h-px flex-1" style={{ background: 'var(--border)' }} />
+            </div>
+
+            <div className="fr-code-field">
               <input
                 id="tournament-code"
-                type="text"
+                className="fr-input fr-input--code fr-code-field__input"
+                placeholder="ENTER CODE"
+                maxLength={12}
+                aria-label="Tournament code"
                 value={code}
-                onChange={(e) => setCode(e.target.value)}
+                onChange={(e) => setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') join()
                 }}
-                placeholder="Enter code"
-                maxLength={12}
-                autoCapitalize="characters"
-                className="input-field flex-1 uppercase tracking-wider"
               />
               <button
                 type="button"
-                onClick={join}
+                className="fr-code-go"
                 disabled={!trimmed}
-                className="btn-secondary btn-fit disabled:opacity-40"
+                onClick={join}
+                aria-label="Join tournament"
               >
-                Join
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M5 12h14M13 6l6 6-6 6" />
+                </svg>
               </button>
             </div>
-          </Field>
-        </div>
+          </div>
 
-        <div className="glass-card p-5 text-center space-y-2.5">
-          <p className="text-sm font-semibold text-body">Got no code? Not sure when the next game is?</p>
-          <p className="text-xs text-muted">
-            Join our community to get tournament codes and find out when the next game goes live.
-          </p>
-          <a
-            href={communityUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 rounded-full bg-emerald-500/15 px-4 py-2 text-sm font-semibold text-emerald-600 transition-colors hover:bg-emerald-500/25"
-          >
-            💬 Join our community
-          </a>
+          <div className="fr-card space-y-3 text-center mx-auto max-w-[33rem]">
+            <p className="text-sm font-semibold" style={{ color: 'var(--text)' }}>
+              No code yet? Looking for people to play with?
+            </p>
+            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+              Join our community to get active tournament codes and connect with players anytime.
+            </p>
+            <WhatsAppChannelLink />
+          </div>
         </div>
-      </PageShell>
+      </div>
     </SiteChrome>
   )
 }

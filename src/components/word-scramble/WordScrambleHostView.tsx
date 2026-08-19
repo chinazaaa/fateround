@@ -43,6 +43,7 @@ import type { Game, Player } from '@/types'
 import { useGameRosterPoll } from '@/hooks/useGameRosterPoll'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import { useHostSeat } from '@/hooks/useHostSeat'
+import { clearSoloAutoStart, setSoloAutoStart } from '@/lib/solo-auto-start'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
 import { useTurnNotifications } from '@/hooks/useTurnNotifications'
 import { useToast } from '@/components/ui/Toast'
@@ -281,12 +282,20 @@ export function WordScrambleHostView({ gameCode, hostToken }: { gameCode: string
     if (playingAgain) return
     setPlayingAgain(true)
     try {
+      // Solo replay: a 1-seat game reopened with the same settings should skip
+      // the lobby just like the initial create — arm the auto-start flag before
+      // the reset lands (useHostSeat consumes it once the host is re-seated in
+      // 'waiting'). Return-to-lobby (sameSettings=false) never arms it.
+      if (sameSettings && game?.max_players === 1) setSoloAutoStart(gameCode)
       const res = await fetch(`/api/games/${gameCode}/play-again`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ hostToken, hostPlayerId: hostPlayerId ?? undefined, same_settings: sameSettings }),
       })
       if (!res.ok) {
+        // Don't leave a solo-replay flag armed for a reset that never landed —
+        // otherwise a later Return-to-lobby would find it and unexpectedly start.
+        clearSoloAutoStart(gameCode)
         const d = await res.json().catch(() => ({}))
         toastError(d.error || 'Failed to reset')
         return
@@ -294,6 +303,10 @@ export function WordScrambleHostView({ gameCode, hostToken }: { gameCode: string
       if (!sameSettings) setHostJoinName('')
       setTab('manage')
       await load()
+    } catch (err) {
+      // See the !res.ok branch above — same rationale for clearing the flag.
+      clearSoloAutoStart(gameCode)
+      toastError(err instanceof Error ? err.message : 'Failed to reset')
     } finally {
       setPlayingAgain(false)
     }
@@ -473,7 +486,7 @@ export function WordScrambleHostView({ gameCode, hostToken }: { gameCode: string
             hostToken={hostToken}
             onEnded={load}
             label="End game"
-            icon={<ExitIcon size={16} />}
+            icon={<ExitIcon size={14} />}
             confirmTitle="End this game?"
             confirmMessage="Players will see the final results."
             className="btn-danger-soft"
@@ -557,6 +570,7 @@ export function WordScrambleHostView({ gameCode, hostToken }: { gameCode: string
     return (
       <HostLobby
         gameCode={gameCode}
+        questionSource={game.question_source}
         hostToken={hostToken}
         game={game}
         gameTypeLabel={cfg.label}
@@ -609,16 +623,28 @@ export function WordScrambleHostView({ gameCode, hostToken }: { gameCode: string
             votes={[]}
             rounds={[]}
             players={players}
+            variant="winner"
             playAgainButton={
               <button
                 type="button"
                 onClick={() => void confirmPlayAgain()}
                 disabled={playingAgain}
-                className="btn-secondary w-full py-3 text-base font-bold disabled:opacity-60"
+                className="btn-secondary w-full py-3 text-sm font-bold disabled:opacity-60"
               >
-                {playingAgain ? 'Starting…' : '↻ Play again · same settings'}
+                {playingAgain ? 'Starting…' : '↻ Play again'}
               </button>
             }
+            returnToLobbyButton={
+              <button
+                type="button"
+                onClick={() => void confirmReturnToLobby()}
+                disabled={playingAgain}
+                className="btn-secondary w-full py-3 text-sm font-bold disabled:opacity-60"
+              >
+                Return to lobby
+              </button>
+            }
+            lobbyNote="Play again keeps these settings · the lobby lets you change them first."
           >
             <FinishedWinnerHero winnerName={leaderboard[0]?.name} game={game} />
             <PaginatedLeaderboard
@@ -644,14 +670,6 @@ export function WordScrambleHostView({ gameCode, hostToken }: { gameCode: string
               emphasizeLeader
             />
           </FinalResultsShareBlock>
-          <button
-            type="button"
-            onClick={() => void confirmReturnToLobby()}
-            disabled={playingAgain}
-            className="w-full py-2.5 text-sm font-semibold text-muted transition-colors hover:text-body disabled:opacity-60"
-          >
-            Return to lobby
-          </button>
           {hostWon && (
             <PostWinToCommunity
               gameType="word_scramble"

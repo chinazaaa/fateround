@@ -8,6 +8,8 @@ import { totalScore } from '@/lib/yahtzee'
 import { tallyTriviaPlayerScores } from '@/lib/trivia'
 import { tallySudokuScores } from '@/lib/sudoku'
 import { tallyWordHuntScores } from '@/lib/word-hunt'
+import { tallyWordGroupingScores } from '@/lib/word-grouping'
+import { tallyWordleRoomScores } from '@/lib/wordle-room'
 import {
   parseGameType,
   isMonopolyGame,
@@ -21,6 +23,8 @@ import {
   isCodewordsGame,
   isSudokuGame,
   isWordHuntGame,
+  isWordGroupingGame,
+  isWordleRoomGame,
   isTriviaGame,
 } from '@/lib/game-types'
 import type {
@@ -67,6 +71,8 @@ export function isCompetitiveRoomGame(gameType: GameType): boolean {
     isCodewordsGame(gameType) ||
     isSudokuGame(gameType) ||
     isWordHuntGame(gameType) ||
+    isWordGroupingGame(gameType) ||
+    isWordleRoomGame(gameType) ||
     isTriviaGame(gameType)
   )
 }
@@ -131,7 +137,19 @@ function memberIdForPlayer(player: RoomPlayerRow, members: RoomMemberRow[]): str
   return match?.id ?? null
 }
 
-async function getCompetitiveStandings(
+/**
+ * Finishing order for the competitive game types, best first.
+ *
+ * Exported for the trophy award pass (`src/lib/trophies/outcome.ts`), which needs the same
+ * server-derived placement this file already computes for room points. Reused rather than
+ * reimplemented: two independent notions of "who won" would drift, and the trophy one grants
+ * entitlements.
+ *
+ * Returns `[]` for a game type it doesn't cover AND for one it covers but has no data for, so
+ * callers must gate on {@link isCompetitiveRoomGame} first and treat an empty result as
+ * "unknown" rather than "nobody won".
+ */
+export async function getCompetitiveStandings(
   supabase: SupabaseClient,
   gameId: string,
   gameType: GameType,
@@ -146,7 +164,10 @@ async function getCompetitiveStandings(
     return rows
       .map((row) => ({
         playerId: row.player_id as string,
-        total: totalScore((row.scores as { categories: YahtzeeCategoryPoints }).categories),
+        total: totalScore(
+          (row.scores as { categories: YahtzeeCategoryPoints; bonusYahtzees?: number }).categories,
+          (row.scores as { bonusYahtzees?: number }).bonusYahtzees
+        ),
       }))
       .sort((a, b) => b.total - a.total || a.playerId.localeCompare(b.playerId))
       .map((row) => row.playerId)
@@ -212,7 +233,7 @@ async function getCompetitiveStandings(
     const [{ data: session }, { data: hands }, { data: gameRow }] = await Promise.all([
       supabase
         .from('uno_sessions')
-        .select('winner_player_id, turn_order, finish_order, left_player_ids')
+        .select('winner_player_id, turn_order, finish_order, left_player_ids, eliminated_player_ids')
         .eq('game_id', gameId)
         .maybeSingle(),
       supabase.from('uno_player_hands').select('player_id, cards').eq('game_id', gameId),
@@ -224,7 +245,8 @@ async function getCompetitiveStandings(
       session?.turn_order ?? [],
       session?.finish_order ?? [],
       gameRow?.uno_team_mode === true,
-      (session?.left_player_ids as string[] | undefined) ?? []
+      (session?.left_player_ids as string[] | undefined) ?? [],
+      (session?.eliminated_player_ids as string[] | undefined) ?? []
     )
   }
 
@@ -268,19 +290,25 @@ async function getCompetitiveStandings(
   }
 
   if (isCodewordsGame(gameType)) {
-    const { data: board } = await supabase
-      .from('codewords_boards')
-      .select('winner, turn_order')
-      .eq('game_id', gameId)
-      .maybeSingle()
+    // `codewords_boards` has NO `turn_order` column — selecting one made PostgREST reject the
+    // whole query (42703), so `board` was always null and this returned [] for every Codewords
+    // game ever played. That silently cost Codewords both its room-leaderboard points and, once
+    // trophies shipped, every win. The losing side comes from the roles table instead, which is
+    // where the full roster actually lives.
+    const { data: board } = await supabase.from('codewords_boards').select('winner').eq('game_id', gameId).maybeSingle()
     if (!board?.winner) return []
     const { data: roles } = await supabase
       .from('codewords_player_roles')
       .select('player_id, team')
       .eq('game_id', gameId)
-      .eq('team', board.winner)
-    const winners = (roles ?? []).map((r) => r.player_id as string)
-    const rest = ((board.turn_order as string[]) ?? []).filter((id) => !winners.includes(id))
+    // Sorted by player_id so the order is deterministic. The query has no ORDER BY, and placement
+    // points are assigned by index, so an unsorted list would hand the same finish different
+    // points run to run — a real, if small, nondeterminism in a "team share the win" board.
+    const sortedIds = (roles ?? [])
+      .map((r) => ({ id: r.player_id as string, team: r.team }))
+      .sort((a, b) => a.id.localeCompare(b.id))
+    const winners = sortedIds.filter((r) => r.team === board.winner).map((r) => r.id)
+    const rest = sortedIds.filter((r) => r.team !== board.winner).map((r) => r.id)
     return [...winners, ...rest]
   }
 
@@ -324,6 +352,29 @@ async function getCompetitiveStandings(
       spectator: p.spectator,
     }))
     return tallyWordHuntScores(submissions, playerRows).map((row) => row.player_id)
+  }
+
+  if (isWordGroupingGame(gameType)) {
+    // tallyWordGroupingScores already ranks by (points desc, groups desc, mistakes asc,
+    // finish-time asc) — the same order the finished screens use, so the trophy pass and the
+    // leaderboard agree on who won.
+    const { data: submissions } = await supabase
+      .from('word_grouping_submissions')
+      .select('player_id, group_index, difficulty, is_correct, mistakes_at_time, submitted_at')
+      .eq('game_id', gameId)
+    if (!submissions?.length) return []
+    const seated = players.filter((p) => p.spectator !== true).map((p) => ({ id: p.id, name: p.name }))
+    return tallyWordGroupingScores(seated, submissions).map((row) => row.id)
+  }
+
+  if (isWordleRoomGame(gameType)) {
+    const { data: progress } = await supabase
+      .from('wordle_room_progress')
+      .select('player_id, word_index, words_solved, total_guesses, total_time_ms, finished')
+      .eq('game_id', gameId)
+    if (!progress?.length) return []
+    const seated = players.filter((p) => p.spectator !== true).map((p) => ({ id: p.id, name: p.name }))
+    return tallyWordleRoomScores(progress, seated).map((row) => row.player_id)
   }
 
   return []
