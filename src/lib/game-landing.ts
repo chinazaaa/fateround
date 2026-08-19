@@ -54,7 +54,7 @@ export const GAME_TYPE_TO_SLUG: Record<GameType, string> = {
   codewords: 'codewords',
   trivia: 'trivia',
   two_truths: 'two-truths-and-a-lie',
-  monopoly: 'monopoly',
+  monopoly: 'estate-kings',
   yahtzee: 'yahtzee',
   whot: 'whot',
   crazy_eights: 'crazy-eights',
@@ -64,7 +64,6 @@ export const GAME_TYPE_TO_SLUG: Record<GameType, string> = {
   i_call_on: 'i-call-on',
   sudoku: 'sudoku',
   tic_tac_toe: 'tic-tac-toe',
-  ping_pong: 'ping-pong',
   word_hunt: 'word-hunt',
   chess: 'chess',
   checkers: 'checkers',
@@ -82,12 +81,18 @@ export const GAME_TYPE_TO_SLUG: Record<GameType, string> = {
   crossword: 'crossword',
   word_search: 'word-search',
   word_scramble: 'word-scramble',
+  word_grouping: 'word-grouping',
   landmine: 'landmine',
+  wordle_room: 'wordle',
+  troll_run: 'troll-run',
 }
 
 const SLUG_TO_GAME_TYPE = Object.fromEntries(
   Object.entries(GAME_TYPE_TO_SLUG).map(([type, slug]) => [slug, type])
 ) as Record<string, GameType>
+
+SLUG_TO_GAME_TYPE.monopoly = 'monopoly'
+SLUG_TO_GAME_TYPE['wordle-room'] = 'wordle_room'
 
 export function gameTypeFromSlug(slug: string): GameType | null {
   return SLUG_TO_GAME_TYPE[slug] ?? null
@@ -1222,11 +1227,13 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
   }),
 
   monopoly: landing('monopoly', {
-    seoTitle: 'Monopoly — Free Online Board Game for Groups',
+    seoTitle: 'Estate Kings — Free Monopoly-Style Board Game Online',
     seoDescription:
-      'Play Monopoly online with friends. Roll dice, buy properties, pay rent, and bankrupt your opponents — all on your phones.',
+      'Play Estate Kings, a Monopoly-style property game, online with friends. Roll dice, buy properties, pay rent, and bankrupt your opponents — all on your phones.',
     keywords: [
       'online monopoly game',
+      'free monopoly alternative online',
+      'online monopoly alternative with bots',
       'monopoly rules',
       'how to play monopoly',
       'free monopoly multiplayer',
@@ -1240,21 +1247,21 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       'play monopoly online with friends free no download',
     ],
     heroSubtitle:
-      'Classic Monopoly on your phones. Join a room, roll the dice, buy properties, and be the last player standing.',
+      'A classic Monopoly-style property game on your phones. Join a room, roll the dice, buy properties, and be the last player standing.',
     bodyParagraph:
-      'Monopoly on FateRound features customizable themed editions — including classic London streets and Naija Edition — with full Chance and Community Chest decks, property auctions, houses, hotels, mortgages, and player trading. Join 2–6 players and play turn-by-turn in real time.',
-    highlights: ['Full 40-space board', '2–6 players', 'Real-time turns'],
+      'Estate Kings on FateRound is a Monopoly-style property trading game with customizable themed editions — including classic London streets and Naija Edition — with full Fate and Kitty card decks, property auctions, houses, hotels, mortgages, and player trading. Join 2–8 players and play turn-by-turn in real time.',
+    highlights: ['40 or 48-space board', '2–8 players', 'Real-time turns'],
     features: [
       {
         title: 'Classic board',
         description:
-          'All the familiar spaces across editions — famous properties, transport terminals, utilities, Chance, and Community Chest.',
+          'All the familiar spaces across editions — famous properties, transport terminals, utilities, Fate, and Kitty.',
         emoji: '🏠',
       },
       {
         title: 'Turn-based play',
         description:
-          'Roll dice, buy or pass on properties, pay rent, draw cards, and manage Jail — core Monopoly rules on your phones.',
+          'Roll dice, buy or pass on properties, pay rent, draw cards, and manage NICKED — core Monopoly-style rules on your phones.',
         emoji: '🎲',
       },
       SHARED_FEATURES.realtime,
@@ -1267,7 +1274,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       },
       {
         title: 'Start the game',
-        description: 'Everyone begins on GO with 1,500 starting cash. The host starts when ready.',
+        description: 'Everyone begins on PAYDAY with 1,500 starting cash. The host starts when ready.',
       },
       {
         title: 'Last one wins',
@@ -1277,37 +1284,37 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     perfectFor: ['Game nights', 'Family gatherings', 'Friend groups', 'Remote hangouts'],
     extraFaqs: [
       {
-        question: 'How do you win at Monopoly?',
+        question: 'How do you win at a Monopoly-style board game?',
         answer:
-          'Buy properties, charge rent, and manage your cash until every opponent goes bankrupt. The last solvent player left in the game wins — there’s no points total, just survival.',
+          'In Estate Kings — like in Monopoly-style property games generally — you buy properties, charge rent, and manage your cash until every opponent goes bankrupt. The last solvent player left in the game wins; there’s no points total, just survival.',
       },
       {
-        question: 'How much money do you start with in Monopoly?',
+        question: 'How much money do you start with in a Monopoly-style game?',
         answer:
-          'Every player starts on GO with 1,500 starting cash in your selected edition’s currency (e.g., £1,500 or ₦1.5m), and collects 200 each time they pass GO (after their first lap around the board).',
+          'In Estate Kings every player starts on PAYDAY with 1,500 starting cash in your selected edition’s currency (e.g., £1,500 or ₦1.5m), and collects 200 each time they pass PAYDAY (after their first lap around the board). Traditional Monopoly-style rules use similar starting cash and per-lap rewards.',
       },
       {
         question: 'What happens when you land on an unowned property?',
         answer:
-          'You can buy it from the Bank at its listed price. If you decline, it goes to auction and any player — including you — can bid. Note you can’t buy, pay tax, or draw cards until you’ve passed GO once on your first lap.',
+          'In Estate Kings you can buy it from the Bank at its listed price. If you decline, it goes to auction and any player — including you — can bid. You can’t buy, pay tax, or draw cards until you’ve passed PAYDAY once on your first lap.',
       },
       {
-        question: 'How do you get out of Jail in Monopoly?',
+        question: 'How do you get out of Jail in a Monopoly-style game?',
         answer:
-          'Pay the 50 fine before your next roll, use a Get Out of Jail Free card, or roll doubles on any of your next three turns. After three turns without doubles, you pay 50 and move by your roll.',
+          'On Estate Kings the Jail space is called NICKED. Pay the 50 fine before your next roll, use a skip-the-queue card, or roll doubles on any of your next three turns. After three turns without doubles, you pay 50 and move by your roll — similar to how Jail resolves in Monopoly-style property games.',
       },
       {
-        question: 'Can I set how long a Monopoly game lasts?',
+        question: 'Can I set how long a Monopoly-style game lasts?',
         answer:
-          'Yes. The host can set an optional game duration so a session doesn’t run forever — when time’s up, the richest player (cash plus property) wins. Leave it off for a classic last-player-standing game.',
+          'Yes. In Estate Kings the host can set an optional game duration so a session doesn’t run forever — when time’s up, the richest player (cash plus property) wins. Leave it off for a classic last-player-standing game.',
       },
     ],
   }),
 
   yahtzee: landing('yahtzee', {
-    seoTitle: 'Play Yahtzee Online Free with Friends — No Sign-Up',
+    seoTitle: 'Five Dice — Free Yahtzee-Style Dice Game Online',
     seoDescription:
-      'Play Yahtzee online free with friends — no sign-up, no download. Roll five dice, hold what you want, and fill your scorecard. Solo or up to 6 players.',
+      'Play Five Dice, a Yahtzee-style dice scoring game, online free with friends — no sign-up, no download. Roll five dice, hold what you want, and fill your scorecard. Solo or up to 6 players.',
     keywords: [
       'yahtzee game online',
       'yahtzee online multiplayer',
@@ -1335,9 +1342,9 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       'yahtzee 2 player',
       'is yahtzee a game of luck or skill',
     ],
-    heroSubtitle: 'The classic dice puzzle — score straights, full houses, and Yahtzees together.',
+    heroSubtitle: 'The classic Yahtzee-style dice puzzle — score straights, full houses, and five-of-a-kinds together.',
     bodyParagraph:
-      'Yahtzee on FateRound brings roll-and-hold dice scoring to your group online — often mistyped as Yatzee, Yahtzy, Yachtzee, Yathzee, or Tahtzee, it’s the same classic five-dice game. Roll five dice up to three times per turn, hold the ones you want, and fill your scorecard category by category — three of a kind, full house, small and large straights, chance, and the coveted Yahtzee (five of a kind). Play solo or with up to six friends — no physical scorecard or dice cup needed.',
+      'Five Dice on FateRound is a Yahtzee-style roll-and-hold dice scoring game for your group online. Roll five dice up to three times per turn, hold the ones you want, and fill your scorecard category by category — three of a kind, full house, small and large straights, chance, and the coveted five-of-a-kind. Play solo or with up to six friends — no physical scorecard or dice cup needed.',
     highlights: ['5 dice', '1–6 players', 'Turn-based scoring'],
     features: [
       {
@@ -1363,67 +1370,67 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       {
         question: 'How many dice do you play Yahtzee with?',
         answer:
-          'Yahtzee is played with five dice. On FateRound you roll all five on screen — no physical dice or cup needed — and hold the ones you want between rolls.',
+          'Yahtzee-style dice games are played with five dice. On FateRound you roll all five on screen in Five Dice — no physical dice or cup needed — and hold the ones you want between rolls.',
       },
       {
         question: 'How many rolls do you get per turn in Yahtzee?',
         answer:
-          'Up to three rolls per turn. After the first roll you can hold any dice you like and re-roll the rest, then do the same again. After your third roll (or sooner) you must score one unused category.',
+          'In Yahtzee-style games (including Five Dice on FateRound) you get up to three rolls per turn. After the first roll you can hold any dice you like and re-roll the rest, then do the same again. After your third roll (or sooner) you must score one unused category.',
       },
       {
         question: 'What is a full house in Yahtzee?',
         answer:
-          'A full house is three dice showing one number plus two dice showing another — for example three 5s and two 2s. It scores a flat 25 points in the Full House category, no matter which numbers make it up.',
+          'A full house is three dice showing one number plus two dice showing another — for example three 5s and two 2s. In Yahtzee-style games it scores a flat 25 points in the Full House category, no matter which numbers make it up. Same in Five Dice on FateRound.',
       },
       {
         question: 'How does scoring work in online Yahtzee?',
         answer:
-          'Each turn you roll up to three times, holding dice between rolls, then fill one unused category. The upper section (Ones–Sixes) scores the total of those dice — reach 63+ there for a 35-point bonus. Lower-section combos pay fixed amounts: Full House 25, Small Straight 30, Large Straight 40, Yahtzee 50, with Three/Four of a Kind and Chance scoring the sum of all five dice. Highest total when every category is filled wins.',
+          'In Five Dice (and any Yahtzee-style scoring game) each turn you roll up to three times, holding dice between rolls, then fill one unused category. The upper section (Ones–Sixes) scores the total of those dice — reach 63+ there for a 35-point bonus. Lower-section combos pay fixed amounts: Full House 25, Small Straight 30, Large Straight 40, Five of a Kind 50, with Three/Four of a Kind and Chance scoring the sum of all five dice. Highest total when every category is filled wins.',
       },
       {
         question: 'What are the odds of rolling a Yahtzee?',
         answer:
-          'Getting five of a kind on a single roll of five dice is about 1 in 1,296 (roughly 0.08%). Across all three rolls in a turn, playing optimally to chase it, your odds rise to about 4.6%.',
+          'Getting five of a kind on a single roll of five dice is about 1 in 1,296 (roughly 0.08%). Across all three rolls in a turn, playing optimally to chase it, your odds rise to about 4.6%. Same maths in Five Dice on FateRound.',
       },
       {
         question: 'Is it spelled Yahtzee or Yatzee?',
         answer:
-          'The correct spelling is Yahtzee, but it’s commonly mistyped as Yatzee, Yahtzy, Yatzy, Yachtzee, Yathzee, or Tahtzee. However you spell it, it’s the same five-dice scoring game — and you can play it free on FateRound.',
+          'The correct spelling is Yahtzee, but it’s commonly mistyped as Yatzee, Yahtzy, Yatzy, Yachtzee, Yathzee, or Tahtzee. However you spell it, it’s the same five-dice scoring game — and Five Dice, our Yahtzee-style version, is free on FateRound.',
       },
       {
         question: 'What are all the categories on a Yahtzee scorecard?',
         answer:
-          'A Yahtzee scorecard has 13 categories in two sections. The upper section is Ones, Twos, Threes, Fours, Fives, and Sixes — each scores the sum of dice showing that number. The lower section is Three of a Kind, Four of a Kind, Full House (25), Small Straight (30), Large Straight (40), Yahtzee (50), and Chance. You fill exactly one category per turn, and FateRound tracks the whole card for every player automatically.',
+          'A Yahtzee-style scorecard has 13 categories in two sections. The upper section is Ones, Twos, Threes, Fours, Fives, and Sixes — each scores the sum of dice showing that number. The lower section is Three of a Kind, Four of a Kind, Full House (25), Small Straight (30), Large Straight (40), Five of a Kind (50), and Chance. You fill exactly one category per turn, and FateRound’s Five Dice tracks the whole card for every player automatically.',
       },
       {
         question: 'What is the difference between a small straight and a large straight in Yahtzee?',
         answer:
-          'A small straight is four dice in a run (like 3-4-5-6) and scores 30 points. A large straight is all five dice in a run (like 2-3-4-5-6) and scores 40 points. The large straight is harder to roll, which is why it pays more.',
+          'A small straight is four dice in a run (like 3-4-5-6) and scores 30 points. A large straight is all five dice in a run (like 2-3-4-5-6) and scores 40 points. The large straight is harder to roll, which is why it pays more. Same in Five Dice on FateRound.',
       },
       {
         question: 'What is the Yahtzee bonus?',
         answer:
-          'There are two bonuses. The upper-section bonus adds 35 points if your Ones-through-Sixes total reaches 63 or more. The Yahtzee bonus rewards extra Yahtzees: once you have already scored 50 in the Yahtzee box, every additional five-of-a-kind you roll is worth a 100-point bonus. FateRound applies both automatically.',
+          'In Yahtzee-style scoring there are two bonuses. The upper-section bonus adds 35 points if your Ones-through-Sixes total reaches 63 or more. The Five Dice bonus rewards extra five-of-a-kinds: once you have already scored 50 in the Five of a Kind box, every additional five-of-a-kind you roll is worth a 100-point bonus. FateRound applies both automatically.',
       },
       {
         question: 'Is there any strategy to Yahtzee?',
         answer:
-          'Yes. Prioritize the upper section early to chase the 63-point threshold for the 35-point bonus, keep Chance as a flexible fallback for a bad roll, and only zero out a category (like Yahtzee) when you have no better option. Deciding which dice to hold between rolls is where most of the skill lives.',
+          'Yes. In any Yahtzee-style game, prioritize the upper section early to chase the 63-point threshold for the 35-point bonus, keep Chance as a flexible fallback for a bad roll, and only zero out a category (like Five of a Kind) when you have no better option. Deciding which dice to hold between rolls is where most of the skill lives.',
       },
       {
         question: 'Can you play Yahtzee solo?',
         answer:
-          'Yes. FateRound lets you start a Yahtzee room on your own and play through the full scorecard to chase a high score — no other players required. Add friends any time by sharing the room code.',
+          'Yes. FateRound lets you start a Five Dice (our Yahtzee-style game) room on your own and play through the full scorecard to chase a high score — no other players required. Add friends any time by sharing the room code.',
       },
       {
         question: 'Where can I find a Yahtzee scorecard?',
         answer:
-          'You don’t need one — FateRound keeps a full digital scorecard for every player automatically, tracking all 13 categories, both bonuses, and the running total. No printing, no maths, no smudged pencil columns.',
+          'You don’t need one — Five Dice on FateRound keeps a full digital Yahtzee-style scorecard for every player automatically, tracking all 13 categories, both bonuses, and the running total. No printing, no maths, no smudged pencil columns.',
       },
       {
         question: 'Is Yahtzee luck or skill?',
         answer:
-          'Both. The dice are luck, but which dice you hold, which category you fill, and when you chase the upper-section bonus are all skill — which is why a good player beats a lucky one over a full card. FateRound handles the scoring so you can focus on the decisions.',
+          'Both. The dice are luck, but which dice you hold, which category you fill, and when you chase the upper-section bonus are all skill — which is why a good player beats a lucky one over a full card. Five Dice handles the scoring so you can focus on the decisions.',
       },
     ],
     relatedBlogPosts: [
@@ -1657,9 +1664,9 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     ],
   }),
   uno: landing('uno', {
-    seoTitle: 'Play UNO Online Free with Friends — No Sign-Up',
+    seoTitle: 'Match Up — Free UNO-Style Card Game Online (Classic + High Stakes)',
     seoDescription:
-      'Play UNO online free with friends — no sign-up, no download. Match by colour, number, or symbol; Skip, Reverse, Draw Two, and Wild cards; call UNO on your second-to-last card. 2–10 players.',
+      'Play Match Up, a UNO-style card game, online free with friends — no sign-up, no download. Classic mode or High Stakes (a 168-card no-mercy variant with +6/+10, Discard Colour, Skip All, Colour Roulette, and knockouts). 2–10 players.',
     keywords: [
       'uno online',
       'uno rules',
@@ -1673,11 +1680,19 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       'uno game online',
       'uno wild card',
       'uno draw four challenge',
+      "uno show 'em no mercy",
+      'show em no mercy online',
+      'uno no mercy rules',
+      'uno no mercy online',
+      'uno 168 card deck',
+      'match up card game',
+      'match up high stakes',
     ],
-    heroSubtitle: 'The party card classic — match colours and numbers, go wild, and empty your hand first.',
+    heroSubtitle:
+      'The UNO-style party card classic — match colours and numbers, go wild, empty your hand first. Or flip on High Stakes for a 168-card no-mercy deck with Draw Sixes, Draw Tens, and hand-size knockouts.',
     bodyParagraph:
-      'UNO on FateRound plays by the rules everyone knows: match the top card by colour, number, or symbol, and use Skip, Reverse, and Draw Two cards to control the table. Wild cards let you name the next colour, and a Wild Draw Four forces the next player to draw four — unless they challenge it. Call "UNO" the moment you have one card left, or draw a penalty. First to shed every card wins.',
-    highlights: ['108-card deck', '2–10 players', 'Wild + Draw Four challenge'],
+      'Match Up on FateRound is a UNO-style shedding card game that plays by the rules everyone knows: match the top card by colour, number, or symbol, and use Skip, Reverse, and Draw 2 cards to control the table. Wild cards let you name the next colour, and a Draw 4 forces the next player to draw four — unless they challenge it. Call the last card the moment you have one left, or draw a penalty. First to shed every card wins. Hosts can switch to High Stakes — a no-mercy variant on a 168-card deck with Discard Colour, Skip All, Reverse Draw 4, Draw 6, Draw 10, and Colour Roulette, plus the knockout rule: reach 25 cards in your hand and you are out of the round.',
+    highlights: ['108 or 168-card deck', '2–10 players', 'Classic + High Stakes modes'],
     features: [
       {
         title: 'Match or go wild',
@@ -1686,8 +1701,14 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       },
       {
         title: 'Action cards',
-        description: 'Skip and Reverse control the turn order; Draw Two and Wild Draw Four stack the pressure.',
+        description: 'Skip and Reverse control the turn order; Draw 2 and Draw 4 stack the pressure.',
         emoji: '🌈',
+      },
+      {
+        title: 'High Stakes mode',
+        description:
+          'A 168-card no-mercy variant: Discard Colour, Skip All, Reverse Draw 4, +6, +10, and Colour Roulette. Stack any Draw of equal-or-higher value; hit 25 cards and you are knocked out.',
+        emoji: '🔥',
       },
       SHARED_FEATURES.mobile,
       SHARED_FEATURES.noSignup,
@@ -1695,34 +1716,48 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     steps: [
       { title: 'Join a room', description: 'Enter your name and wait for the host to deal 7 cards each.' },
       { title: 'Play your turn', description: 'Match by colour, number, or symbol, play a Wild, or draw a card.' },
-      { title: 'Call UNO & win', description: 'Call "UNO" on your second-to-last card, then empty your hand to win.' },
+      {
+        title: 'Call the last card & win',
+        description:
+          'Call the last card on your second-to-last play, then empty your hand to win — or in High Stakes, outlast every knockout.',
+      },
     ],
-    perfectFor: ['Game nights', 'Family card games', 'Quick card breaks'],
+    perfectFor: ['Game nights', 'Family card games', 'Quick card breaks', 'High Stakes blowouts'],
     extraFaqs: [
       {
-        question: 'How do you win at UNO?',
+        question: 'How do you win at Match Up (or UNO-style card games in general)?',
         answer:
           'Be the first to play every card in your hand. If a game clock is running and time runs out, the player with the lowest points left in hand wins instead — number cards score their face value, action cards 20, and Wild cards 50.',
       },
       {
-        question: 'When do you call UNO?',
+        question: 'When do you call the last card?',
         answer:
-          'You must call "UNO" when you play your second-to-last card, leaving you with one. If you forget before the next player takes their turn, you draw a penalty of 2 cards.',
+          'You call it when you play your second-to-last card, leaving you with one. If you forget before the next player takes their turn, you draw a penalty of 2 cards.',
       },
       {
-        question: 'What is the Wild Draw Four challenge?',
+        question: 'What is the Draw 4 challenge?',
         answer:
-          'A Wild Draw Four can only legally be played if you have no card matching the current colour. The next player can challenge it: the system reveals the player’s hand — if they were bluffing, they draw four instead; if the challenge was wrong, the challenger draws four (or six) as a penalty. Hosts can turn challenges off.',
+          'A Draw 4 can only legally be played if you have no card matching the current colour. The next player can challenge it: the system reveals the player’s hand — if they were bluffing, they draw four instead; if the challenge was wrong, the challenger draws four (or six) as a penalty. Hosts can turn challenges off.',
       },
       {
-        question: 'How many cards do you start with in UNO?',
+        question: 'How many cards do you start with?',
         answer:
           'Each player is dealt 7 cards, with one card turned face-up to start the discard pile. The host deals when everyone is ready.',
       },
       {
-        question: 'Is UNO like Crazy Eights?',
+        question: 'Is Match Up like Crazy Eights?',
         answer:
-          'Yes — UNO is a branded descendant of Crazy Eights. Both are match-by-colour-or-number shedding games where you race to empty your hand. FateRound has both.',
+          'Yes — UNO-style card games (Match Up included) are branded descendants of Crazy Eights. Both are match-by-colour-or-number shedding games where you race to empty your hand. FateRound has both.',
+      },
+      {
+        question: 'What is High Stakes mode?',
+        answer:
+          'A tougher, no-mercy variant played from a 168-card deck. It adds Discard Colour (drop every card of a colour in one turn), Skip All (go again), Reverse Draw 4, Draw 6, Draw 10, and Colour Roulette (the target names a colour and reveals from the pile until they hit it). Draw stacking is always on and cross-kind — any Draw card of equal or higher value chains onto a stack. The knockout rule takes out any player who reaches 25 cards. Hosts choose the win condition: empty your hand first, or be the last player standing.',
+      },
+      {
+        question: 'How does the 25-card knockout rule work?',
+        answer:
+          'In High Stakes mode, any player who accumulates 25 or more cards in their hand is knocked out of the round. If the host chose the "last standing" win condition, the round ends when only one player is still holding cards. Otherwise the round ends the usual way — the first player to empty their hand wins.',
       },
     ],
   }),
@@ -2055,6 +2090,69 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     ],
   }),
 
+  wordle_room: landing('wordle_room', {
+    seoTitle: 'Wordle — Multiplayer Wordle Race Online',
+    seoDescription:
+      'Play multiplayer Wordle online with friends. Everyone races through the same words — most solved, fewest guesses wins. No sign-up, free.',
+    keywords: [
+      'multiplayer wordle',
+      'wordle with friends online',
+      'wordle race game',
+      'wordle party game',
+      'play wordle online multiplayer',
+      'wordle challenge friends',
+      'wordle room game',
+      'naija slang wordle',
+      'word guessing race game online',
+      'play wordle online free no download',
+    ],
+    heroSubtitle:
+      'Everyone races through the same fixed set of words, Wordle-style. Solve more words in fewer guesses — beat your friends to the finish.',
+    highlights: ['Same words for everyone', 'Head-to-head race', 'Perfect-bonus scoring'],
+    features: [
+      {
+        title: 'Wordle-style guesses',
+        description: 'Type a guess and get colour feedback on every letter — green, yellow or grey.',
+        emoji: '🟩',
+      },
+      {
+        title: 'Race to the finish',
+        description: 'Solve a word to unlock the next. Most words solved, fewest guesses, fastest time wins.',
+        emoji: '⚡',
+      },
+      {
+        title: 'No reading ahead',
+        description: 'You only ever see your current word — the full sequence stays hidden from the room.',
+        emoji: '🔒',
+      },
+      SHARED_FEATURES.noSignup,
+    ],
+    steps: [
+      { title: 'Join the room', description: 'Enter your name and wait for the host to pick the word list and start.' },
+      {
+        title: 'Solve words',
+        description: 'Each word works like Wordle — crack it in as few guesses as you can.',
+      },
+      {
+        title: 'Finish first',
+        description: 'Beat the timer or everyone else to top the standings.',
+      },
+    ],
+    perfectFor: ['Wordle fans', 'Group chats', 'Family game night', 'Quick competitive rounds'],
+    extraFaqs: [
+      {
+        question: 'How do you play multiplayer Wordle?',
+        answer:
+          'The host picks a category (General English or Naija Slang), how many words to race through (5, 10, 15 or 20), and an optional whole-game timer. Everyone starts on word one and solves each word like classic Wordle — six guesses to crack it. Solve it and you move on; run out of guesses and it counts as a miss and you advance anyway.',
+      },
+      {
+        question: 'How is multiplayer Wordle scored?',
+        answer:
+          'Every solved word scores base points — the fewer guesses you use, the more you earn, and a first-guess solve scores a +200 perfect bonus. There are no streaks. Standings rank by most words solved, then fewer total guesses, then faster total time.',
+      },
+    ],
+  }),
+
   tic_tac_toe: landing('tic_tac_toe', {
     seoTitle: 'Ultimate Tic-Tac-Toe Online — Play with a Friend',
     seoDescription:
@@ -2129,58 +2227,6 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
           'Regular tic-tac-toe is easily drawn once you know it. Ultimate adds a layer — because each move sends your opponent to a specific board, you have to think several moves ahead about where you’re sending them. Far deeper, and much harder to force a draw.',
       },
     ],
-  }),
-
-  ping_pong: landing('ping_pong', {
-    seoTitle: 'Ping Pong Online — Play Real-Time 2-Player Table Tennis',
-    seoDescription:
-      'Play fast-paced Ping Pong online with a friend. Real-time 60fps paddle and ball physics, custom win targets, and win-by-2 rules.',
-    keywords: [
-      'ping pong online',
-      'table tennis online',
-      'ping pong 2 player online',
-      'play ping pong with friends',
-      'table tennis game online',
-      'real time ping pong online',
-      'ping pong online free',
-      'table tennis 2 player game',
-    ],
-    heroSubtitle: 'Classic 2-player Ping Pong. Hit the ball back and forth, and try not to miss.',
-    bodyParagraph:
-      "Grab a friend and settle who has the better reflexes. No table required — just share a link and you're in. You get a paddle, drag to hit the ball, and score when the other person misses. You can set the game to end anywhere from a quick 3 points up to a 21-point marathon, but you always have to win by two.",
-    highlights: ['2 players', '60fps real-time physics', 'Win-by-2 rules'],
-    features: [
-      {
-        title: 'Real-time 60fps physics',
-        description: 'Ultra-smooth paddle movement and dynamic ball bounces synced instantly.',
-        emoji: '🏓',
-      },
-      {
-        title: 'Custom win targets',
-        description: 'Set points to win from 3 up to 21 in the lobby settings before starting.',
-        emoji: '🎯',
-      },
-      {
-        title: 'Win by 2 rules',
-        description: 'Authentic table tennis scoring requires a clear 2-point lead at match point to take the crown.',
-        emoji: '🏆',
-      },
-      SHARED_FEATURES.mobile,
-      SHARED_FEATURES.noSignup,
-    ],
-    steps: [
-      { title: 'Join a room', description: 'Exactly two players take seats at the table to battle heads-up.' },
-      {
-        title: 'Rally and score',
-        description:
-          'Move your paddle to return the ball across the net. Miss a return and your opponent gets the point.',
-      },
-      {
-        title: 'Win by 2',
-        description: 'First to reach the target points with at least a 2-point margin wins the match.',
-      },
-    ],
-    perfectFor: ['Quick competitive duels', 'Friend challenges', 'Reflex testing'],
   }),
 
   chess: landing('chess', {
@@ -2541,7 +2587,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
   ayo: landing('ayo', {
     seoTitle: 'Ayo Online — Play Ayo Olopon with a Friend',
     seoDescription:
-      'Play Ayo (Ayo Olopon) online — the classic Yoruba seed game. Sow anti-clockwise, capture 2s and 3s, crown Ọta. Two players, optional clock. Free, no sign-up.',
+      'Play Ayo (Ayo Olopon) online — the classic Yoruba seed game. Sow anti-clockwise, complete fours to win houses, crown Ọta. Two players, optional clock. Free, no sign-up.',
     keywords: [
       'ayo online',
       'ayo olopon',
@@ -2561,19 +2607,19 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       'ayo board game',
       'yoruba board game online',
     ],
-    heroSubtitle: 'Sow seeds, capture 2s and 3s, and crown Ọta — the Yoruba classic, head-to-head.',
+    heroSubtitle: 'Sow seeds, complete fours to win houses, and crown Ọta — the Yoruba classic, head-to-head.',
     bodyParagraph:
-      "Ayo on FateRound follows traditional Ayo Olopon rules for two players online. Twelve houses, four seeds each, sow anti-clockwise around the board — skipping the house you picked up. When your last seed lands in an opponent's house with 2 or 3 seeds, you capture those seeds and any linked opponent houses ahead with 2 or 3. If their row is empty, you must sow into it when possible. When your opponent cannot move, you sweep every seed left on the board. Most captured seeds wins. The winner is Ọta; the loser is Ọpẹ. Three straight wins makes an Ọta champion.",
-    highlights: ['2 players', 'Classic capture', 'Ọta & Ọpẹ'],
+      "Ayo on FateRound follows traditional Ayo Olopon rules for two players online. Twelve houses, four seeds each, sow anti-clockwise around the board — relaying whenever your last seed lands in a house that already has seeds, and picking them all up to keep going. Your turn ends when your last seed lands in an empty house. When your last seed makes a house hold exactly four seeds — your own or your opponent's — you win that house. Once only eight seeds remain, the player who captures the first four takes the last four and the game ends. The player who has won the most houses is the winner — Ọta; the loser is Ọpẹ. If houses are equal, the most seeds captured breaks the tie. Winning three straight games makes a player an Ọta champion.",
+    highlights: ['2 players', 'Complete fours', 'Ọta & Ọpẹ'],
     features: [
       {
-        title: 'Traditional sowing',
-        description: "Pick up all seeds from one house and sow anti-clockwise — into your opponent's row too.",
+        title: 'Relay sowing',
+        description: 'Pick up all seeds from one house and sow anti-clockwise — relaying through non-empty houses.',
         emoji: '🌰',
       },
       {
-        title: 'Capture 2s & 3s',
-        description: 'Land your last seed in an opponent house with 2 or 3 seeds — capture linked houses too.',
+        title: 'Complete fours',
+        description: 'Make a house hold exactly four with your last seed — yours or your opponent’s — to win it.',
         emoji: '🎯',
       },
       SHARED_FEATURES.mobile,
@@ -2582,7 +2628,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     steps: [
       { title: 'Join a room', description: 'Two players join with their name — the host can play too.' },
       { title: 'Sow seeds', description: 'On your turn, tap one of your houses with seeds. Seeds sow anti-clockwise.' },
-      { title: 'Crown Ọta', description: 'Capture the most seeds to win. Mo ki ota, mo ki ope o!' },
+      { title: 'Crown Ọta', description: 'Win the most houses to win. Mo ki ota, mo ki ope o!' },
     ],
     perfectFor: ['Cultural game nights', 'Quick strategy duels', 'Mancala fans'],
     extraFaqs: [
@@ -2594,7 +2640,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       {
         question: 'How does capture work?',
         answer:
-          "If your last sown seed lands in an opponent's house with 2 or 3 seeds, you capture those seeds plus any linked opponent houses ahead that also have 2 or 3. If their row is empty, you must feed them when you can.",
+          "When the last seed of your sowing makes a house hold exactly four seeds — your own or your opponent's — you win that house and its four seeds. If your last seed lands in a house that already had seeds (without making four), you pick them all up and keep sowing; your turn only ends when your last seed lands in an empty house.",
       },
       {
         question: 'Can I play untimed?',
@@ -2604,17 +2650,17 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       {
         question: 'What is Ayo / Ayoayo?',
         answer:
-          "Ayo (also called Ayoayo or Ayo Olopon) is a traditional Yoruba board game from Nigeria in the mancala family. Two players sit on opposite sides of a board with 12 houses (6 per side), each starting with 4 seeds. Players take turns sowing seeds anti-clockwise, capturing from the opponent's side when the last seed lands in a house with 2 or 3 seeds.",
+          'Ayo (also called Ayoayo or Ayo Olopon) is a traditional Yoruba board game from Nigeria in the mancala family. Two players sit on opposite sides of a board with 12 houses (6 per side), each starting with 4 seeds. Players take turns sowing seeds anti-clockwise, relaying through non-empty houses, and winning a house whenever the last seed makes it hold exactly four.',
       },
       {
         question: 'How many seeds are in Ayo?',
         answer:
-          'A standard Ayo board starts with 48 seeds — 4 seeds in each of the 12 houses (6 per player). As the game progresses, seeds move around the board and get captured. The player who captures the most seeds wins.',
+          'A standard Ayo board starts with 48 seeds — 4 seeds in each of the 12 houses (6 per player). As the game progresses, seeds move around the board and houses are won four seeds at a time. The player who wins the most houses wins.',
       },
       {
         question: 'Is Ayo the same as Mancala?',
         answer:
-          'Ayo is one game in the mancala family — a group of count-and-capture board games played across Africa and beyond. Ayo follows Yoruba rules (anti-clockwise sowing, capture on 2s and 3s, the Ota/Ope tradition). Other mancala variants include Oware (Ghana), Bao (East Africa), and Kalah (Western adaptation).',
+          'Ayo is one game in the mancala family — a group of count-and-capture board games played across Africa and beyond. Ayo follows Yoruba rules (anti-clockwise relay sowing, winning a house when your last seed completes exactly four, the Ota/Ope tradition). Other mancala variants include Oware (Ghana), Bao (East Africa), and Kalah (Western adaptation).',
       },
       {
         question: 'Can I play Ayo online with friends?',
@@ -2735,9 +2781,9 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
   }),
 
   scrabble: landing('scrabble', {
-    seoTitle: 'Scrabble Online — Play with Friends',
+    seoTitle: 'Word Tiles — Free Scrabble-Style Word Game Online',
     seoDescription:
-      'Play Scrabble online with 2–4 friends. Standard 15×15 board, premium squares, blanks, and full dictionary word-checking. No sign-up.',
+      'Play Word Tiles, a Scrabble-style crossword word game, online with 2–4 friends. Standard 15×15 board, premium squares, blanks, and full dictionary word-checking. No sign-up.',
     keywords: [
       'scrabble online',
       'play scrabble with friends',
@@ -2752,9 +2798,10 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       'online word game with friends free',
       'scrabble online no sign up',
     ],
-    heroSubtitle: 'The classic crossword tile game — build words, hit the premium squares, outscore your friends.',
+    heroSubtitle:
+      'The classic Scrabble-style crossword tile game — build words, hit the premium squares, outscore your friends.',
     bodyParagraph:
-      'Scrabble on FateRound is the classic word game for 2–4 players on a full standard 15×15 board. Draw seven tiles, take turns building interlocking words outward from the center star, and rack up points — letters are worth their standard values, and double/triple letter and word squares multiply your score. Every word you form is checked against a real dictionary, so only valid plays count. Use a blank tile as any letter, swap tiles you do not want, or pass. When the bag is empty and someone uses their last tile, the game ends and the highest score wins.',
+      'Word Tiles on FateRound is a Scrabble-style crossword word game for 2–4 players on a full standard 15×15 board. Draw seven tiles, take turns building interlocking words outward from the center star, and rack up points — letters are worth their standard values, and double/triple letter and word squares multiply your score. Every word you form is checked against a real dictionary, so only valid plays count. Use a blank tile as any letter, swap tiles you do not want, or pass. When the bag is empty and someone uses their last tile, the game ends and the highest score wins.',
     highlights: ['2–4 players', 'Real dictionary', 'Premium squares'],
     features: [
       {
@@ -2807,7 +2854,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       {
         question: 'Can I run a Scrabble tournament online?',
         answer:
-          'Yes. FateRound can run a Scrabble tournament as a head-to-head bracket, with your chosen dictionary and clock. Create one from the Tournaments page and share the join code — free, no app, no sign-up.',
+          'Yes. FateRound can run a Word Tiles tournament as a head-to-head bracket, with your chosen dictionary and clock. Create one from the Tournaments page and share the join code — free, no app, no sign-up.',
       },
     ],
   }),
@@ -3020,9 +3067,9 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
   }),
 
   quiplash: landing('quiplash', {
-    seoTitle: 'Quiplash Online — Free Fill-in-the-Blank Party Game',
+    seoTitle: 'Punchline — Free Quiplash-Style Party Game Online',
     seoDescription:
-      'Play Quiplash-style fill-in-the-blank battles online with friends. Write funny answers, vote head-to-head, and crown the wittiest player. Free, no sign-up.',
+      'Play Punchline, a Quiplash-style fill-in-the-blank party game, online with friends. Write funny answers, vote head-to-head, and crown the wittiest player. Free, no sign-up.',
     keywords: [
       'quiplash online',
       'quiplash game online free',
@@ -3180,6 +3227,42 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     perfectFor: ['Puzzle lovers', 'Family game night', 'Commutes', 'Remote teams'],
   }),
 
+  word_grouping: landing('word_grouping', {
+    seoTitle: 'Word Grouping Online — Free Connections-Style Puzzle Game',
+    seoDescription:
+      'Find the 4 hidden groups of 4 words. Spot the connections, avoid the red herrings — you only get 4 mistakes. Free, no sign-up.',
+    keywords: [
+      'word grouping game online',
+      'connections puzzle game',
+      'find the groups word game',
+      'word association game free',
+      'group puzzle game online',
+      'connections style game multiplayer',
+      'word categories puzzle',
+    ],
+    heroSubtitle:
+      'Sixteen words, four hidden groups. Spot the connections before your mistakes run out — harder groups score more.',
+    highlights: ['16 words, 4 groups', 'Max 4 mistakes', 'Harder groups score more'],
+    features: [
+      {
+        title: 'Find the connections',
+        description: 'Pick 4 words that share a hidden link — lock them in to reveal the group and score points.',
+        emoji: '🔗',
+      },
+      SHARED_FEATURES.realtime,
+      SHARED_FEATURES.noSignup,
+    ],
+    steps: [
+      { title: 'Create a room', description: 'Pick a puzzle or let the host choose a theme.' },
+      { title: 'Share the code', description: 'Friends join from their phones with a nickname.' },
+      {
+        title: 'Group to win',
+        description: 'Find all 4 groups before you run out of mistakes — harder groups score more.',
+      },
+    ],
+    perfectFor: ['Puzzle lovers', 'Family game night', 'Commutes', 'Remote teams'],
+  }),
+
   landmine: landing('landmine', {
     seoTitle: 'Landmine — Free Online Party Word Game',
     seoDescription:
@@ -3237,6 +3320,61 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       },
     ],
   }),
+  troll_run: landing('troll_run', {
+    seoTitle: 'Troll Run Online — Free Multiplayer Rage Platformer Game',
+    seoDescription:
+      'Play Troll Run online with friends for free. Race simultaneously through trick platformer levels packed with collapsing floors, runaway doors, and surprise spikes in your browser. No download or signup required.',
+    keywords: [
+      'troll run online',
+      'level devil online multiplayer',
+      'rage platformer online',
+      'troll platformer with friends',
+      'multiplayer trap game online',
+      'free browser platformer multiplayer',
+      'level devil with friends',
+    ],
+    heroSubtitle:
+      'A multiplayer race through trick levels where nothing works the way you expect. Dodge collapsing floors, chase runaway doors, and survive sneaky traps to finish first.',
+    bodyParagraph:
+      'Everyone gets the same course and starts at the exact same second. The goal is simple: reach the door. The catch? Floors vanish under your feet, spikes pop up from nowhere, and the exit door might literally run away from you. Quick reflexes and pattern memory take the crown.',
+    highlights: ['2–6 player live racing', 'Surprise physics & trick triggers', 'Instant browser play on mobile & PC'],
+    perfectFor: ['Friend groups', 'Streamers', 'Party nights', 'Rage gamers'],
+    features: [
+      {
+        title: 'Sneaky Traps',
+        description: 'Doors that sprint away, floors that drop out, and spikes that appear right when you land.',
+        emoji: '😈',
+      },
+      {
+        title: 'Simultaneous Racing',
+        description: 'Everyone runs the exact same course at the same time on a live countdown.',
+        emoji: '🏁',
+      },
+      SHARED_FEATURES.realtime,
+      SHARED_FEATURES.noSignup,
+    ],
+    steps: [
+      {
+        title: 'Create a race room',
+        description: 'Choose round count and time limits, then share your 6-character room code.',
+      },
+      {
+        title: 'Race the levels',
+        description: 'Jump, dodge, and learn the traps as you speed towards the exit door.',
+      },
+      {
+        title: 'Climb the podium',
+        description: 'Score placement points and speed bonuses across all rounds to take the championship.',
+      },
+    ],
+    extraFaqs: [
+      {
+        question: 'How does Troll Run multiplayer work?',
+        answer:
+          'Players race independently through the same level layouts simultaneously. A live ticker announces whenever someone falls for a trap or clears a level. Round placement and total deaths determine the winner.',
+      },
+    ],
+  }),
 }
 
 export function getGameLandingContent(slug: string): GameLandingContent | null {
@@ -3268,6 +3406,10 @@ export function getGameFaqs(content: GameLandingContent): GameLandingFaq[] {
     {
       question: `Can I play ${label} on my phone?`,
       answer: `Yes. FateRound runs in any mobile browser. Share the room link in your group chat and everyone can play ${label} from their phone or desktop.`,
+    },
+    {
+      question: `How do trophies work in ${label}?`,
+      answer: `Trophies are earned automatically as you play — things like finishing your first game, racking up wins, or hitting a milestone. Bronze, silver, gold, and platinum trophies are listed above with what they need; some are secret and only reveal themselves once you've earned them. Trophies and points carry over to your FateRound profile across every game.`,
     },
     ...(content.extraFaqs ?? []),
   ]

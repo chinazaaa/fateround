@@ -2,7 +2,7 @@
  * Mobile mirror of `src/lib/identity-auth.ts` — attaching an email to an identity so it
  * survives a new device (`docs/accounts-and-identity-plan.md` §5, Slice 3/4).
  *
- * LOGIN == SIGNUP: one email field, one 6-digit code, and the backend decides whether that is
+ * LOGIN == SIGNUP: one email field, one 8-digit code, and the backend decides whether that is
  * a sign-in or a new account. UI copy says "Save to profile", never "Sign up".
  *
  * MOBILE SELLS NOTHING. This exists purely so a plan bought on the web is recognised here, and
@@ -14,7 +14,16 @@ import { getSupabase } from '@/lib/supabase'
 /** Which Supabase verification the code belongs to — the two cases need different types. */
 export type EmailCodeFlow = 'upgrade' | 'signin'
 
-export type RequestCodeResult = { ok: boolean; flow: EmailCodeFlow; error?: string }
+export type RequestCodeResult = {
+  ok: boolean
+  flow: EmailCodeFlow
+  error?: string
+  /**
+   * True when the upgrade already finished and there is no code to enter — Supabase only issues
+   * one when "Confirm email" is enabled. Without this the user waits for a mail that never comes.
+   */
+  complete?: boolean
+}
 export type VerifyCodeResult = { ok: boolean; error?: string }
 
 const GENERIC_ERROR = "That didn't work. Check the address and try again."
@@ -31,7 +40,7 @@ function isEmailTaken(error: { message: string; code?: string }): boolean {
   return /already|registered|exists|taken/i.test(error.message)
 }
 
-/** Send a 6-digit code. The returned `flow` must be passed to {@link verifyEmailCode}. */
+/** Send an 8-digit code. The returned `flow` must be passed to {@link verifyEmailCode}. */
 export async function requestEmailCode(email: string): Promise<RequestCodeResult> {
   const address = email.trim().toLowerCase()
   if (!address) return { ok: false, flow: 'signin', error: 'Enter your email address' }
@@ -43,8 +52,15 @@ export async function requestEmailCode(email: string): Promise<RequestCodeResult
 
     // Case A first — upgrading in place keeps the same auth.uid(), so nothing is lost.
     if (user?.is_anonymous) {
-      const { error } = await supabase.auth.updateUser({ email: address })
-      if (!error) return { ok: true, flow: 'upgrade' }
+      const { data: updated, error } = await supabase.auth.updateUser({ email: address })
+      if (!error) {
+        const applied = updated.user?.email?.toLowerCase() === address && !updated.user?.new_email
+        if (applied) {
+          await postWithSession('/api/profile/anon')
+          return { ok: true, flow: 'upgrade', complete: true }
+        }
+        return { ok: true, flow: 'upgrade' }
+      }
       if (!isEmailTaken(error)) return { ok: false, flow: 'upgrade', error: error.message || GENERIC_ERROR }
     }
 

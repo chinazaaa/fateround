@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { GAME_START_SPECS, startCountError, type StartSpec } from '@/lib/game-start'
+import { GAME_START_SPECS, startCountError, startHumanSeatError, type StartSpec } from '@/lib/game-start'
 
 const atLeast: StartSpec = { minPlayers: 2, initialize: async () => ({ error: null }) }
 const exact: StartSpec = { minPlayers: 2, exact: true, initialize: async () => ({ error: null }) }
@@ -26,6 +26,22 @@ describe('startCountError', () => {
   })
 })
 
+describe('startHumanSeatError', () => {
+  it('passes rooms with zero bots (bot-free is always fine)', () => {
+    expect(startHumanSeatError([{ is_bot: false }, { is_bot: false }])).toBeNull()
+    expect(startHumanSeatError([{}, {}])).toBeNull()
+  })
+
+  it('passes rooms mixing at least one human with bots', () => {
+    expect(startHumanSeatError([{ is_bot: false }, { is_bot: true }])).toBeNull()
+    expect(startHumanSeatError([{ is_bot: true }, { is_bot: true }, { is_bot: false }])).toBeNull()
+  })
+
+  it('rejects rooms with only bots seated (the load-bearing invariant)', () => {
+    expect(startHumanSeatError([{ is_bot: true }, { is_bot: true }])).toMatch(/human/i)
+  })
+})
+
 describe('GAME_START_SPECS', () => {
   it('registers exactly the 17 uniform games', () => {
     expect(Object.keys(GAME_START_SPECS).sort()).toEqual([
@@ -39,10 +55,10 @@ describe('GAME_START_SPECS', () => {
       'mafia',
       'mahjong',
       'monopoly',
-      'ping_pong',
       'scrabble',
       'snake_and_ladder',
       'tic_tac_toe',
+      'troll_run',
       'uno',
       'whot',
       'yahtzee',
@@ -54,8 +70,8 @@ describe('GAME_START_SPECS', () => {
     expect(GAME_START_SPECS.chess?.exact).toBe(true)
     expect(GAME_START_SPECS.checkers?.exact).toBe(true)
     expect(GAME_START_SPECS.tic_tac_toe?.exact).toBe(true)
-    expect(GAME_START_SPECS.ping_pong?.exact).toBe(true)
     expect(GAME_START_SPECS.scrabble?.maxPlayers).toBeGreaterThan(GAME_START_SPECS.scrabble!.minPlayers)
+    expect(GAME_START_SPECS.troll_run?.maxPlayers).toBeGreaterThan(GAME_START_SPECS.troll_run!.minPlayers)
     expect(GAME_START_SPECS.whot?.exact).toBeUndefined()
   })
 })

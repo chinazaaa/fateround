@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { enforceRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
 import { getSupabaseAnon } from '@/lib/supabase-anon'
+import { getProfileFromRequest } from '@/lib/identity-server'
 import { GAME_BROWSE_FIELDS, countPlayersByGame, type BrowseGameRow } from '@/lib/game-browse'
 import { generateGameCode, generateToken } from '@/lib/utils'
 import {
@@ -59,7 +60,10 @@ import {
   isCrosswordGame,
   isWordSearchGame,
   isWordScrambleGame,
+  isWordGroupingGame,
   isLandmineGame,
+  isWordleRoomGame,
+  isTrollRunGame,
 } from '@/lib/game-types'
 import { wstAutoRoundCount } from '@/lib/who-said-this'
 import { parseLudoVariant } from '@/lib/ludo'
@@ -93,6 +97,7 @@ import { WST_DECK_MIN_ENTRIES } from '@/lib/who-said-this'
 import type { WyrQuestion } from '@/lib/would-you-rather-questions'
 import type { ParticipantMode, QuestionSource, TriviaQuestion } from '@/types'
 import { createGameSchema, stripHtml } from '@/lib/validation'
+import { triviaCategoryEnum } from '@/lib/validation/shared'
 import { supportsGenderToggle, defaultGenderBasedForType } from '@/lib/gender-based'
 import { parseParticipantMode, usesHostParticipantList } from '@/lib/participant-mode'
 import { parseThemeId } from '@/lib/themes'
@@ -165,6 +170,7 @@ import { clampCrazyEightsGameDuration } from '@/lib/crazy-eights'
 import { clampUnoGameDuration, parseMultiPlayMode } from '@/lib/uno'
 import { clampBoardGameTurnTimer } from '@/lib/board-game-lobby-settings'
 import { clampWordHuntTimer } from '@/lib/word-hunt'
+import { clampWordleRoomCategory, clampWordleRoomWordCount, clampWordleRoomTimer } from '@/lib/wordle-room'
 import { clampSudokuGameDuration } from '@/lib/sudoku'
 import { parseCrosswordDifficulty, clampCrosswordGameDuration, CROSSWORD_DEFAULT_DURATION } from '@/lib/crossword'
 import { findCrosswordTheme } from '@/lib/crossword-puzzles'
@@ -174,6 +180,11 @@ import {
   clampWordScrambleGameDuration,
   WORD_SCRAMBLE_DEFAULT_DURATION,
 } from '@/lib/word-scramble'
+import {
+  clampWordGroupingGameDuration,
+  parseStoredWordGroupingPuzzles,
+  WORD_GROUPING_DEFAULT_DURATION,
+} from '@/lib/word-grouping'
 import { findWordScrambleTheme } from '@/lib/word-scramble-puzzles'
 import { findWordSearchTheme } from '@/lib/word-search-puzzles'
 import { clampChessTimer, clampChessBoardTheme, clampChessPieceSet } from '@/lib/chess'
@@ -203,6 +214,7 @@ import {
 } from '@/lib/word-rush'
 import { gameSupportsViewerSetting, lateJoinPolicyToFields, type LateJoinPolicy } from '@/lib/viewers'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { scheduleNewPublicGameFanout } from '@/lib/notification-subscriptions'
 import { z } from 'zod/v4'
 import { ELIMINATION_COMPATIBLE_TYPES } from '@/types/elimination'
 
@@ -323,6 +335,13 @@ function parseCustomQuestionsBody(
     const parsed = parseStoredWordScrambleEntries(raw)
     return parsed.length >= 4 ? parsed : null
   }
+  if (isWordGroupingGame(gameType)) {
+    // Same shape validator both write paths use — every puzzle must be a full 4×4 with 16
+    // unique words and difficulties 1-4. Previously we only checked "groups is an array",
+    // so a malformed pool reached custom_questions and silently fell back to the built-in
+    // bank at game start (generateWordGroupingFromContent returns null on bad shapes).
+    return parseStoredWordGroupingPuzzles(raw)
+  }
   return null
 }
 
@@ -338,14 +357,27 @@ export async function GET(req: NextRequest) {
     50
   )
   const cursor = searchParams.get('cursor')
+  // Discovery Phase C — the Upcoming tab passes ?status=scheduled to fetch
+  // future-anchored games; anything else keeps the Live-now default that
+  // Phase A shipped (waiting + active). This is additive — old callers see
+  // no behaviour change.
+  const statusFilter = searchParams.get('status')
 
+  // Feed hides solo/1v1-with-1-seat games. A Public game with max_players < 2 is a
+  // contradiction (nobody to fill the seats) — mirrored by the POST + settings PATCH
+  // rejections below so client-side and server-side agree on what a listable game is.
   let query = supabase
     .from('games')
     .select(GAME_BROWSE_FIELDS)
     .eq('is_public', true)
-    .neq('status', 'finished')
-    .order('created_at', { ascending: false })
+    .gte('max_players', 2)
     .limit(limit + 1)
+
+  if (statusFilter === 'scheduled') {
+    query = query.eq('status', 'scheduled').order('scheduled_at', { ascending: true })
+  } else {
+    query = query.neq('status', 'finished').neq('status', 'scheduled').order('created_at', { ascending: false })
+  }
 
   if (cursor) {
     query = query.lt('created_at', cursor)
@@ -380,6 +412,11 @@ export async function POST(req: NextRequest) {
   const limited = await enforceRateLimit(req, RATE_LIMITS.gameCreate)
   if (limited) return limited
 
+  // Attribute the game to the caller when they sent a bearer token — used to
+  // skip fanout to the host's own devices and to detect same-user joins.
+  // Missing/anonymous is fine; the write below just leaves host_user_id NULL.
+  const hostProfileId = await getProfileFromRequest(req)
+
   const body = await req.json()
   const parsed = createGameSchema.safeParse(body)
   if (!parsed.success) {
@@ -408,6 +445,7 @@ export async function POST(req: NextRequest) {
     player_questions_enabled: rawPlayerQuestionsEnabled,
     player_questions_order: rawPlayerQuestionsOrder,
     max_players: rawMaxPlayers,
+    monopoly_board_size: rawMonopolyBoardSize,
     codewords_player_picks: rawCodewordsPlayerPicks,
     codewords_late_join: rawCodewordsLateJoin,
     codewords_randomize_teams: rawCodewordsRandomizeTeams,
@@ -428,6 +466,12 @@ export async function POST(req: NextRequest) {
     landmine_review: rawLandmineReview,
     landmine_review_seconds: rawLandmineReviewSeconds,
     checkers_nigeria_street_rules: rawCheckersNigeriaStreetRules,
+    wordle_room_category: rawWordleRoomCategory,
+    wordle_room_word_count: rawWordleRoomWordCount,
+    wordle_room_words: rawWordleRoomWords,
+    troll_run_rounds: rawTrollRunRounds,
+    troll_run_time_limit: rawTrollRunTimeLimit,
+    troll_run_world: rawTrollRunWorld,
     allow_viewers: rawAllowViewers,
     allow_late_players: rawAllowLatePlayers,
     late_join_policy: rawLateJoinPolicy,
@@ -450,6 +494,10 @@ export async function POST(req: NextRequest) {
     uno_multi_play_mode: rawUnoMultiPlayMode,
     uno_team_mode: rawUnoTeamMode,
     uno_jump_in: rawUnoJumpIn,
+    uno_mode: rawUnoMode,
+    uno_no_mercy_win: rawUnoNoMercyWin,
+    uno_series_scoring: rawUnoSeriesScoring,
+    uno_series_target: rawUnoSeriesTarget,
     ludo_variant: rawLudoVariant,
     ayo_variant: rawAyoVariant,
     mahjong_ruleset: rawMahjongRuleset,
@@ -484,7 +532,11 @@ export async function POST(req: NextRequest) {
   const question_source = parseQuestionSource(rawQuestionSource, game_type)
   let custom_questions: unknown[] | null = null
 
-  const isPuzzlePool = isCrosswordGame(game_type) || isWordSearchGame(game_type) || isWordScrambleGame(game_type)
+  const isPuzzlePool =
+    isCrosswordGame(game_type) ||
+    isWordSearchGame(game_type) ||
+    isWordScrambleGame(game_type) ||
+    isWordGroupingGame(game_type)
   if (
     question_source === 'custom' &&
     (isBinaryChoiceGame(game_type) ||
@@ -559,7 +611,10 @@ export async function POST(req: NextRequest) {
     isCrosswordGame(game_type) ||
     isWordSearchGame(game_type) ||
     isWordScrambleGame(game_type) ||
-    isLandmineGame(game_type)
+    isWordGroupingGame(game_type) ||
+    isLandmineGame(game_type) ||
+    isWordleRoomGame(game_type) ||
+    isTrollRunGame(game_type)
       ? 'joiners'
       : isWhoSaidThis(game_type)
         ? 'joiners'
@@ -623,6 +678,7 @@ export async function POST(req: NextRequest) {
     isAyoGame(game_type) ||
     isMafiaGame(game_type) ||
     isScrabbleGame(game_type) ||
+    isWordleRoomGame(game_type) ||
     isPuzzlePool
       ? 1
       : isDescribeItGame(game_type)
@@ -848,7 +904,34 @@ export async function POST(req: NextRequest) {
                                                                     rawMaxPlayers,
                                                                     lobbyDefaultMaxPlayers('word_scramble', lobbyLimits)
                                                                   )
-                                                                : null
+                                                                : isWordGroupingGame(game_type)
+                                                                  ? resolveMaxPlayers(
+                                                                      'word_grouping',
+                                                                      rawMaxPlayers,
+                                                                      lobbyDefaultMaxPlayers(
+                                                                        'word_grouping',
+                                                                        lobbyLimits
+                                                                      )
+                                                                    )
+                                                                  : isWordleRoomGame(game_type)
+                                                                    ? resolveMaxPlayers(
+                                                                        'wordle_room',
+                                                                        rawMaxPlayers,
+                                                                        lobbyDefaultMaxPlayers(
+                                                                          'wordle_room',
+                                                                          lobbyLimits
+                                                                        )
+                                                                      )
+                                                                    : isTrollRunGame(game_type)
+                                                                      ? resolveMaxPlayers(
+                                                                          'troll_run',
+                                                                          rawMaxPlayers,
+                                                                          lobbyDefaultMaxPlayers(
+                                                                            'troll_run',
+                                                                            lobbyLimits
+                                                                          )
+                                                                        )
+                                                                      : null
   const isSecret = isSecretMessageGame(game_type)
   const lateJoinFields = gameSupportsViewerSetting(game_type)
     ? rawLateJoinPolicy
@@ -897,6 +980,26 @@ export async function POST(req: NextRequest) {
   const contentLabel =
     typeof rawContentLabel === 'string' && rawContentLabel.trim() ? rawContentLabel.trim().slice(0, 40) : null
 
+  // Discovery Phase C — scheduled_at must be in the future. Originally
+  // Public-only per the plan's discovery lens; relaxed so a host can also
+  // schedule a private game (invite-by-link) and let their friends RSVP.
+  // Private scheduled games skip the Browse Upcoming tab (still Public-only)
+  // AND skip the game-type subscriber fan-out (nobody is subscribed to
+  // "any private Monopoly") — the T-15 / T-0 pushes to RSVPers still fire
+  // because those key off game_rsvps, not is_public.
+  if (parsed.data.scheduled_at) {
+    if (new Date(parsed.data.scheduled_at).getTime() <= Date.now()) {
+      return NextResponse.json({ error: 'Pick a scheduled time in the future.' }, { status: 400 })
+    }
+  }
+
+  // Max-players guard: a Public game with max_players < 2 has no seat for a
+  // stranger to fill, and the /browse feed excludes those rows anyway. Reject
+  // at create so the host doesn't silently ship a game that never surfaces.
+  if (parsed.data.isPublic === true && maxPlayers != null && maxPlayers < 2) {
+    return NextResponse.json({ error: 'Bump the max players above 1 to make this game Public.' }, { status: 400 })
+  }
+
   const { error: gameError } = await admin.from('games').insert({
     id: gameCode,
     title,
@@ -921,37 +1024,39 @@ export async function POST(req: NextRequest) {
                     ? clampMonopolyTurnTimer(timer_seconds)
                     : isWordHuntGame(game_type)
                       ? clampWordHuntTimer(timer_seconds)
-                      : isChessGame(game_type)
-                        ? clampChessTimer(timer_seconds)
-                        : isCheckersGame(game_type)
-                          ? clampCheckersTimer(timer_seconds)
-                          : isDraughts10Game(game_type)
-                            ? clampDraughts10Timer(timer_seconds)
-                            : isAyoGame(game_type)
-                              ? clampAyoTimer(timer_seconds)
-                              : isMafiaGame(game_type)
-                                ? Number(timer_seconds) > 0
-                                  ? Number(timer_seconds)
-                                  : 60
-                                : isScrabbleGame(game_type)
-                                  ? clampScrabbleTimer(timer_seconds)
-                                  : isDescribeItGame(game_type)
-                                    ? clampDescribeItTurnSeconds(timer_seconds)
-                                    : isWordRushGame(game_type)
-                                      ? clampWordRushTurnSeconds(timer_seconds)
-                                      : isWhotGame(game_type)
-                                        ? clampBoardGameTurnTimer(timer_seconds, 'whot')
-                                        : isCrazyEightsGame(game_type)
-                                          ? clampBoardGameTurnTimer(timer_seconds, 'crazy_eights')
-                                          : isUnoGame(game_type)
-                                            ? clampBoardGameTurnTimer(timer_seconds, 'uno')
-                                            : isMahjongGame(game_type)
-                                              ? clampBoardGameTurnTimer(timer_seconds, 'mahjong')
-                                              : isMatchingPairsGame(game_type)
-                                                ? Math.max(0, Math.min(600, Math.round(Number(timer_seconds) || 0)))
-                                                : [15, 30, 60].includes(Number(timer_seconds))
-                                                  ? Number(timer_seconds)
-                                                  : 30,
+                      : isWordleRoomGame(game_type)
+                        ? clampWordleRoomTimer(timer_seconds)
+                        : isChessGame(game_type)
+                          ? clampChessTimer(timer_seconds)
+                          : isCheckersGame(game_type)
+                            ? clampCheckersTimer(timer_seconds)
+                            : isDraughts10Game(game_type)
+                              ? clampDraughts10Timer(timer_seconds)
+                              : isAyoGame(game_type)
+                                ? clampAyoTimer(timer_seconds)
+                                : isMafiaGame(game_type)
+                                  ? Number(timer_seconds) > 0
+                                    ? Number(timer_seconds)
+                                    : 60
+                                  : isScrabbleGame(game_type)
+                                    ? clampScrabbleTimer(timer_seconds)
+                                    : isDescribeItGame(game_type)
+                                      ? clampDescribeItTurnSeconds(timer_seconds)
+                                      : isWordRushGame(game_type)
+                                        ? clampWordRushTurnSeconds(timer_seconds)
+                                        : isWhotGame(game_type)
+                                          ? clampBoardGameTurnTimer(timer_seconds, 'whot')
+                                          : isCrazyEightsGame(game_type)
+                                            ? clampBoardGameTurnTimer(timer_seconds, 'crazy_eights')
+                                            : isUnoGame(game_type)
+                                              ? clampBoardGameTurnTimer(timer_seconds, 'uno')
+                                              : isMahjongGame(game_type)
+                                                ? clampBoardGameTurnTimer(timer_seconds, 'mahjong')
+                                                : isMatchingPairsGame(game_type)
+                                                  ? Math.max(0, Math.min(600, Math.round(Number(timer_seconds) || 0)))
+                                                  : [15, 30, 60].includes(Number(timer_seconds))
+                                                    ? Number(timer_seconds)
+                                                    : 30,
     ...(isCodewordsGame(game_type)
       ? {
           operative_timer_seconds: clampCodewordsTimer(
@@ -1019,6 +1124,32 @@ export async function POST(req: NextRequest) {
     ...(isCheckersNigeriaGame(game_type)
       ? {
           checkers_nigeria_street_rules: rawCheckersNigeriaStreetRules === true,
+        }
+      : {}),
+    ...(isWordleRoomGame(game_type)
+      ? {
+          wordle_room_category: clampWordleRoomCategory(rawWordleRoomCategory),
+          wordle_room_word_count: clampWordleRoomWordCount(rawWordleRoomWordCount),
+          // Optional library-pack pool. Filter defensively to letters-only 3–8 chars, matching
+          // the engine's normalizeWordleWord + wordle length constraint.
+          ...(Array.isArray(rawWordleRoomWords) && rawWordleRoomWords.length > 0
+            ? {
+                wordle_room_custom_words: (rawWordleRoomWords as { word: string; hint?: string }[])
+                  .map((e) => ({
+                    word: (e.word ?? '').toLowerCase().replace(/[^a-z]/g, ''),
+                    hint: typeof e.hint === 'string' ? e.hint : '',
+                  }))
+                  .filter((e) => e.word.length >= 3 && e.word.length <= 8),
+              }
+            : {}),
+        }
+      : {}),
+    ...(isTrollRunGame(game_type)
+      ? {
+          troll_run_rounds: rawTrollRunRounds ? Math.max(1, Math.min(20, Number(rawTrollRunRounds))) : 5,
+          troll_run_time_limit: rawTrollRunTimeLimit ? Math.max(30, Math.min(600, Number(rawTrollRunTimeLimit))) : 120,
+          troll_run_world: typeof rawTrollRunWorld === 'string' ? rawTrollRunWorld.slice(0, 50) : 'pits',
+          rounds_count: rawTrollRunRounds ? Math.max(1, Math.min(20, Number(rawTrollRunRounds))) : 5,
         }
       : {}),
     ...(isQuickDrawGame(game_type)
@@ -1092,11 +1223,21 @@ export async function POST(req: NextRequest) {
         ? question_source
         : 'platform',
     custom_questions,
-    trivia_category: isTriviaGame(game_type) ? (rawTriviaCategory === 'tech' ? 'tech' : 'general') : null,
+    trivia_category: isTriviaGame(game_type) ? triviaCategoryEnum.catch('general').parse(rawTriviaCategory) : null,
     game_type,
     theme,
-    status: isSecret ? 'active' : 'waiting',
+    // Discovery Phase C — a scheduled game starts in 'scheduled' state and
+    // flips to 'waiting' at T-0 via open_scheduled_games_due(). Requires
+    // isPublic=true (a private schedule has no RSVP audience) and a future
+    // scheduled_at; the guard just above already validated isPublic + max
+    // capacity, and we validate the timestamp separately here.
+    status: isSecret ? 'active' : parsed.data.scheduled_at ? 'scheduled' : 'waiting',
+    // Attribute the game to the creator so we can skip fanout to their own
+    // devices and detect the "same user hosting on another device" case. NULL
+    // for anonymous callers, in which case cross-device rules simply don't fire.
+    host_user_id: hostProfileId,
     is_public: parsed.data.isPublic ?? false,
+    ...(parsed.data.scheduled_at ? { scheduled_at: parsed.data.scheduled_at } : {}),
     current_round_number: 0,
     ...(isSecret ? { session_started_at: new Date().toISOString() } : {}),
     wst_quote_source: parsed.data.wst_quote_source ?? 'player',
@@ -1122,6 +1263,9 @@ export async function POST(req: NextRequest) {
           ? parsePlayerQuestionsOrder(rawPlayerQuestionsOrder)
           : 'players_first',
     ...(maxPlayers != null ? { max_players: maxPlayers } : {}),
+    ...(isMonopolyGame(game_type)
+      ? { monopoly_board_size: (maxPlayers ?? 6) >= 6 && rawMonopolyBoardSize === 48 ? 48 : 40 }
+      : {}),
     ...(isBingoGame(game_type)
       ? {
           bingo_call_mode: parseBingoCallMode(rawBingoCallMode),
@@ -1177,6 +1321,10 @@ export async function POST(req: NextRequest) {
                 uno_multi_play_mode: parseMultiPlayMode(rawUnoMultiPlayMode),
                 uno_team_mode: rawUnoTeamMode === true,
                 uno_jump_in: rawUnoJumpIn === true,
+                uno_mode: rawUnoMode === 'no_mercy' ? 'no_mercy' : 'classic',
+                uno_no_mercy_win: rawUnoNoMercyWin === 'last_standing' ? 'last_standing' : 'first_out',
+                uno_series_scoring: rawUnoSeriesScoring === true,
+                uno_series_target: Number.isFinite(Number(rawUnoSeriesTarget)) ? Number(rawUnoSeriesTarget) : 1000,
               }
             : isLudoGame(game_type)
               ? { ludo_variant: parseLudoVariant(rawLudoVariant) }
@@ -1209,21 +1357,27 @@ export async function POST(req: NextRequest) {
                                   rawGameDurationSeconds ?? WORD_SCRAMBLE_DEFAULT_DURATION
                                 ),
                               }
-                            : isMafiaGame(game_type)
+                            : isWordGroupingGame(game_type)
                               ? {
-                                  // Role selection is automatic (see resolveMafiaRoundToggles in
-                                  // @/lib/mafia) — the only role-affecting setting left is this
-                                  // single Classic/Advanced switch.
-                                  mafia_advanced_mode: parsed.data.mafia_advanced_mode === true,
-                                  mafia_anonymous_votes: parsed.data.mafia_anonymous_votes === true,
-                                  ...(parsed.data.mafia_day_seconds !== undefined
-                                    ? { mafia_day_seconds: parsed.data.mafia_day_seconds }
-                                    : {}),
-                                  ...(parsed.data.mafia_voting_seconds !== undefined
-                                    ? { mafia_voting_seconds: parsed.data.mafia_voting_seconds }
-                                    : {}),
+                                  game_duration_seconds: clampWordGroupingGameDuration(
+                                    rawGameDurationSeconds ?? WORD_GROUPING_DEFAULT_DURATION
+                                  ),
                                 }
-                              : {}),
+                              : isMafiaGame(game_type)
+                                ? {
+                                    // Role selection is automatic (see resolveMafiaRoundToggles in
+                                    // @/lib/mafia) — the only role-affecting setting left is this
+                                    // single Classic/Advanced switch.
+                                    mafia_advanced_mode: parsed.data.mafia_advanced_mode === true,
+                                    mafia_anonymous_votes: parsed.data.mafia_anonymous_votes === true,
+                                    ...(parsed.data.mafia_day_seconds !== undefined
+                                      ? { mafia_day_seconds: parsed.data.mafia_day_seconds }
+                                      : {}),
+                                    ...(parsed.data.mafia_voting_seconds !== undefined
+                                      ? { mafia_voting_seconds: parsed.data.mafia_voting_seconds }
+                                      : {}),
+                                  }
+                                : {}),
     ...(isCustomGame(game_type) && parsed.data.custom_slots
       ? {
           custom_slots: {
@@ -1252,6 +1406,16 @@ export async function POST(req: NextRequest) {
       await admin.from('games').delete().eq('id', gameCode)
       return NextResponse.json({ error: internalErrorMessage('games', partError) }, { status: 500 })
     }
+  }
+
+  // Discovery Phase B — fan out to per-game-type subscribers when the host
+  // opens a Public game. Runs via `after()` so the create response returns
+  // immediately; self-gates on rate-limit + quiet hours per subscriber.
+  // NB (Phase C): a scheduled game does NOT fan out at create time —
+  // subscribers get the T-15 heads-up push instead. Firing here would
+  // announce "a Monopoly game just opened" hours before it actually opens.
+  if (parsed.data.isPublic === true && !parsed.data.scheduled_at) {
+    scheduleNewPublicGameFanout(gameCode, game_type, title, hostProfileId)
   }
 
   return NextResponse.json({ gameCode, hostToken })

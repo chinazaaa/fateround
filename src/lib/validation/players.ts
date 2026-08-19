@@ -10,7 +10,12 @@ export const createPlayerSchema = z.object({
   identityGender: participantGenderEnum.or(z.string()).nullish(),
   participantId: uuidString('participantId').nullish(),
   joinAsViewer: z.boolean().optional(),
-  monopolyToken: z.enum(MONOPOLY_TOKEN_ID_LIST as [string, ...string[]]).optional(),
+  // `.nullish()`, not `.optional()`: a caller that sends an explicitly null token means
+  // "none chosen", and the handler already answers that with "Pick a player token to join".
+  // Under `.optional()` the null died in the schema instead and the player was shown the raw
+  // enum list — a validator dump reading "expected one of car|hat|dog…" as if they had typed
+  // something wrong.
+  monopolyToken: z.enum(MONOPOLY_TOKEN_ID_LIST as [string, ...string[]]).nullish(),
   roomMemberCode: z.string().trim().toUpperCase().max(12).optional(),
   // Private tournament identity secret (see tournament-player-token). Proves the
   // joiner really is the named tournament player, so only they can take/reclaim the seat.
@@ -20,6 +25,16 @@ export const createPlayerSchema = z.object({
   // server reclaim that exact row instead of minting a new (spectator) one. Optional:
   // genuine first-time joiners have none.
   resumeToken: z.string().trim().max(100).optional(),
+  // Cross-device continuation override: set true after the client has confirmed
+  // the "You're already hosting/playing on another device — continue here?"
+  // prompt. Without it Zod would strip the field and the server would keep
+  // returning the 409 forever.
+  continueOnThisDevice: z.boolean().optional(),
+  // The host's own host_token from this device's SecureStore. Proves the caller
+  // is the host device (not another device on the same profile), so the server
+  // skips the "already hosting elsewhere" 409 — a host playing along in their
+  // own lobby must never be treated as a cross-device conflict.
+  hostToken: z.string().trim().max(100).optional(),
 })
 
 export type CreatePlayerInput = z.infer<typeof createPlayerSchema>

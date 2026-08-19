@@ -177,12 +177,29 @@ export function PartyRoomSettingsPanel({ gameType, party, onChange, contentSourc
             />
             <View style={styles.field}>
               <Text style={styles.label}>Category</Text>
-              <SegmentedControl
+              <SelectField
+                title="Category"
                 value={party.triviaCategory}
                 options={[
-                  { value: 'tech', label: 'Tech', hint: 'Programming, gadgets, internet culture' },
-                  { value: 'general', label: 'General', hint: 'Geography, history, pop culture & more' },
+                  { value: 'general', label: 'General (All Categories)' },
+                  { value: 'tech', label: 'Tech' },
+                  { value: 'art', label: 'Art' },
+                  { value: 'food', label: 'Food' },
+                  { value: 'geography', label: 'Geography' },
+                  { value: 'history', label: 'History' },
+                  { value: 'language', label: 'Language' },
+                  { value: 'literature', label: 'Literature' },
+                  { value: 'math', label: 'Math' },
+                  { value: 'movies', label: 'Movies' },
+                  { value: 'music', label: 'Music' },
+                  { value: 'nature', label: 'Nature' },
+                  { value: 'pop_culture', label: 'Pop Culture' },
+                  { value: 'science', label: 'Science' },
+                  { value: 'sports', label: 'Sports' },
+                  { value: 'technology', label: 'Technology' },
+                  { value: 'world_culture', label: 'World Culture' },
                 ]}
+                searchable
                 onChange={(value) => onChange({ triviaCategory: value as PartyRoomSettings['triviaCategory'] })}
               />
             </View>
@@ -554,6 +571,7 @@ export function PartyRoomSettingsPanel({ gameType, party, onChange, contentSourc
                     const locked = lockedPuzzleDifficulty(crosswordTheme)
                     onChange({ crosswordTheme, ...(locked ? { crosswordDifficulty: locked } : {}) })
                   }}
+                  searchable
                 />
               </View>
             ) : null}
@@ -600,6 +618,7 @@ export function PartyRoomSettingsPanel({ gameType, party, onChange, contentSourc
                     const locked = lockedPuzzleDifficulty(wordSearchTheme)
                     onChange({ wordSearchTheme, ...(locked ? { wordSearchDifficulty: locked } : {}) })
                   }}
+                  searchable
                 />
               </View>
             ) : null}
@@ -646,6 +665,7 @@ export function PartyRoomSettingsPanel({ gameType, party, onChange, contentSourc
                     const locked = lockedPuzzleDifficulty(wordScrambleTheme)
                     onChange({ wordScrambleTheme, ...(locked ? { wordScrambleDifficulty: locked } : {}) })
                   }}
+                  searchable
                 />
               </View>
             ) : null}

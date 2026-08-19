@@ -9,28 +9,33 @@ import { BackToRoomLink } from '@/components/BackToRoomLink'
 import { RosterButton } from '@/components/roster/RosterButton'
 import { GameChromeSettings } from '@/components/GameChromeSettings'
 import { ProfileChip } from '@/components/profile/ProfileChip'
+import { PostWinPrompt } from '@/components/profile/PostWinPrompt'
+import { GameAttribution } from '@/components/profile/GameAttribution'
+import { TrophiesThisGame } from '@/components/profile/TrophiesThisGame'
+import { InstantTrophyToast } from '@/components/profile/InstantTrophyToast'
 import { useHostPlayerSession } from '@/hooks/useHostPlayerSession'
 import { HostNominationBanner } from '@/components/HostNominationBanner'
 import { setupAudioUnlock } from '@/lib/sounds'
 
 export function GamePlayerChrome() {
   const params = useParams()
-  const code = typeof params?.code === 'string' ? params.code.toUpperCase() : null
+  const raw = Array.isArray(params?.code) ? params.code[0] : params?.code
+  const code = typeof raw === 'string' ? raw.toUpperCase() : null
   const { resumeToken } = useHostPlayerSession(code)
 
   useEffect(() => setupAudioUnlock(), [])
 
   return (
     <>
-      <header className="fixed top-0 inset-x-0 z-40 flex items-center justify-between gap-3 px-4 py-3 pointer-events-none border-b border-[var(--border)]/50 bg-[var(--background)]/90 backdrop-blur-md">
-        <div className="flex items-center gap-2 pointer-events-auto min-w-0">
+      <header className="fixed top-0 inset-x-0 z-40 flex items-center justify-between gap-2 sm:gap-3 px-3 sm:px-4 py-2.5 sm:py-3 pointer-events-none border-b border-[var(--border)]/50 bg-[var(--background)]/90 backdrop-blur-md">
+        <div className="flex items-center gap-1.5 sm:gap-2 pointer-events-auto min-w-0 shrink">
           <Link href="/" className="shrink-0 min-w-0" aria-label="Back to FateRound home">
-            <FateRoundLogo className="h-8 w-auto max-w-[7.5rem] sm:max-w-[11rem]" />
+            <FateRoundLogo className="h-7 sm:h-8 w-auto max-w-[5.25rem] sm:max-w-[11rem]" />
           </Link>
           <BackToRoomLink gameCode={code} compact />
           <RosterButton />
         </div>
-        <div className="flex items-center gap-2 pointer-events-auto shrink-0">
+        <div className="flex items-center gap-1.5 sm:gap-2 pointer-events-auto shrink-0">
           {code ? <ShareGameButton gameCode={code} resumeToken={resumeToken} /> : null}
           {/* The whole funnel is "open a link → play → leave", and that path never touches the
               marketing header. Without the chip here a link-joiner is never told they're a guest
@@ -40,6 +45,15 @@ export function GamePlayerChrome() {
         </div>
       </header>
       <HostNominationBanner />
+
+      {/* Attribution is what links this player row to a profile, and the award pass runs inside
+          it. Without these the player earns NOTHING — no trophies, no games_played, no streak.
+          They must be in BOTH chromes: the host page and the player page share no hook, which is
+          the whole reason this moved out of useGameSession/useGameViewBootstrap. */}
+      <GameAttribution gameCode={code} />
+      <PostWinPrompt />
+      <TrophiesThisGame />
+      <InstantTrophyToast gameCode={code} />
     </>
   )
 }

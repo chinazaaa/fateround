@@ -8,8 +8,10 @@ import {
   H2H_ELIGIBLE_TYPES,
   KNOCKOUT_ELIGIBLE_TYPES,
   SCHOOL_ELIGIBLE_TYPES,
+  TOURNAMENT_ELIGIBLE_TYPES,
 } from '@/lib/tournament-validation'
 import { buildTournamentGameConfig } from '@/lib/tournament-game-config'
+import { parseStoredTriviaQuestions, parseStoredWstDeck } from '@/lib/custom-questions'
 
 export async function POST(req: NextRequest) {
   // Service role: `tournaments` is INSERT-locked for anon since 20260803120000, and the row
@@ -20,8 +22,80 @@ export async function POST(req: NextRequest) {
   const { data: body, error: bodyError } = await parseJsonBody(req, createTournamentSchema)
   if (bodyError) return bodyError
 
-  const { title, format, gameType, gameConfig, placementPoints, targetGameCount, maxPlayers, eliminationConfig } = body
+  const {
+    title,
+    format,
+    gameType,
+    gameConfig,
+    placementPoints,
+    targetGameCount,
+    maxPlayers,
+    eliminationConfig,
+    gameQueue,
+    customTriviaPack,
+    customWstPack,
+    branding,
+    scheduledAt,
+  } = body
   const hostToken = generateToken()
+
+  // The pre-planned round-robin playlist. Only accepted for round-robin; other
+  // formats have their game chosen at creation. Every entry must be an
+  // eligible round-robin game type — the same whitelist the freestyle "add a
+  // game" route enforces. Empty/omitted = freestyle mode (host picks live).
+  const resolvedGameQueue = (() => {
+    if (!gameQueue || gameQueue.length === 0) return null
+    if (format && format !== 'round-robin') return null
+    for (const entry of gameQueue) {
+      if (!TOURNAMENT_ELIGIBLE_TYPES.includes(entry.gameType as (typeof TOURNAMENT_ELIGIBLE_TYPES)[number])) {
+        return { error: `Game "${entry.gameType}" isn't available for tournament playlists` }
+      }
+    }
+    return gameQueue
+  })()
+  if (resolvedGameQueue && 'error' in resolvedGameQueue) {
+    return NextResponse.json({ error: resolvedGameQueue.error }, { status: 400 })
+  }
+
+  // Optional shared trivia question pack — CSV or AI upload attached at
+  // creation. Re-validated through the same parser the /api/games trivia
+  // create path uses, so a malformed upload never reaches the DB. Empty /
+  // omitted means "use the platform bank" (today's behaviour). Only stored
+  // for round-robin — other formats have their game chosen elsewhere.
+  const parsedCustomTriviaPack =
+    Array.isArray(customTriviaPack) && customTriviaPack.length > 0 && (format ?? 'round-robin') === 'round-robin'
+      ? parseStoredTriviaQuestions(customTriviaPack)
+      : []
+  if (Array.isArray(customTriviaPack) && customTriviaPack.length > 0 && parsedCustomTriviaPack.length === 0) {
+    return NextResponse.json(
+      { error: 'Trivia pack had no valid questions — check the CSV format and try again' },
+      { status: 400 }
+    )
+  }
+  const resolvedCustomTriviaPack = parsedCustomTriviaPack.length > 0 ? parsedCustomTriviaPack : null
+
+  // Optional shared Who Said This deck — same shape as the trivia pack: a CSV
+  // upload or the built-in platform pack the host attached at creation. When
+  // set, every planned WST game in this tournament runs in deck mode with
+  // this content; when null the games fall back to player-submit. Only for
+  // round-robin — other formats don't spawn WST.
+  const parsedCustomWstPack =
+    Array.isArray(customWstPack) && customWstPack.length > 0 && (format ?? 'round-robin') === 'round-robin'
+      ? parseStoredWstDeck(customWstPack)
+      : []
+  if (Array.isArray(customWstPack) && customWstPack.length > 0 && parsedCustomWstPack.length === 0) {
+    return NextResponse.json(
+      { error: 'Who Said This deck had no valid entries — check the CSV format and try again' },
+      { status: 400 }
+    )
+  }
+  const resolvedCustomWstPack = parsedCustomWstPack.length > 0 ? parsedCustomWstPack : null
+
+  // Event branding: drop any all-null branding blob so a "cleared" form
+  // doesn't cost a jsonb row for no reason. Otherwise store as-is (schema
+  // has already validated hex colours + URL shape).
+  const brandingHasAny = branding && (branding.primaryColor || branding.accentColor || branding.logoUrl)
+  const resolvedBranding = brandingHasAny ? branding : null
 
   // Head-to-head (1v1 bracket) and knockout (group elimination) are each played
   // with a single game chosen at creation; knockout also stores its per-round
@@ -73,6 +147,11 @@ export async function POST(req: NextRequest) {
     target_game_count: targetGameCount ?? null,
     max_players: maxPlayers ?? null,
     elimination_config: eliminationConfig ?? null,
+    game_queue: resolvedGameQueue,
+    custom_trivia_pack: resolvedCustomTriviaPack,
+    custom_wst_pack: resolvedCustomWstPack,
+    branding: resolvedBranding,
+    scheduled_at: scheduledAt ?? null,
   })
 
   if (error) {

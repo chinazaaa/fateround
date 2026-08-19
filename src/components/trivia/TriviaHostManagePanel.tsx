@@ -204,7 +204,7 @@ export function TriviaHostManagePanel({
             hostToken={hostToken}
             onEnded={onReload}
             label="End game"
-            icon={<ExitIcon size={16} />}
+            icon={<ExitIcon size={14} />}
             className="btn-danger-soft"
           />
         </div>

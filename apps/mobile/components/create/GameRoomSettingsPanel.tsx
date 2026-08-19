@@ -16,7 +16,6 @@ import {
   turnTimerOptionsFor,
 } from '@fateround/shared/create-board-games'
 import { WHOT_GAME_DURATION_OPTIONS } from '@fateround/shared/whot'
-import { PING_PONG_POINTS_OPTIONS, PING_PONG_GAME_DURATION_OPTIONS, formatPingPongDuration } from '@fateround/shared/ping-pong'
 import { UNO_GAME_DURATION_OPTIONS } from '@fateround/shared/uno'
 import { MAHJONG_RULESET_LABELS, MAHJONG_RULESETS } from '@fateround/shared/mahjong-rulesets'
 import {
@@ -30,21 +29,18 @@ import { TimerPicker } from '@/components/create/TimerPicker'
 import { SurfaceCard } from '@/components/ui/SurfaceCard'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
-import {
-  AYO_VARIANT_OPTIONS,
-  boardGameTimerKey,
-  hasGameRoomSettings,
-  type GameRoomSettings,
-} from '@/lib/create-settings/board-games'
+import { boardGameTimerKey, hasGameRoomSettings, type GameRoomSettings } from '@/lib/create-settings/board-games'
 import { gameLabel } from '@/lib/mobile-registry'
 
 type Props = {
   gameType: GameType
   room: GameRoomSettings
+  /** Currently-picked lobby max_players; Estate Kings 48-space board is only offered when >= 6. */
+  maxPlayers?: number | null
   onChange: (patch: Partial<GameRoomSettings>) => void
 }
 
-export function GameRoomSettingsPanel({ gameType, room, onChange }: Props) {
+export function GameRoomSettingsPanel({ gameType, room, maxPlayers, onChange }: Props) {
   const styles = useThemedStyles(makeStyles)
   if (!hasGameRoomSettings(gameType)) return null
 
@@ -150,46 +146,14 @@ export function GameRoomSettingsPanel({ gameType, room, onChange }: Props) {
           </>
         ) : null}
 
-        {gameType === 'ping_pong' ? (
-          <>
-            <TimerPicker
-              label="Points to win"
-              value={room.pingPongPointsToWin}
-              options={PING_PONG_POINTS_OPTIONS}
-              format={(pts) => `${pts} pts`}
-              onChange={(pingPongPointsToWin) => onChange({ pingPongPointsToWin })}
-            />
-            <TimerPicker
-              label="Match timer"
-              value={room.gameDurationSeconds}
-              options={PING_PONG_GAME_DURATION_OPTIONS}
-              format={formatPingPongDuration}
-              onChange={(gameDurationSeconds) => onChange({ gameDurationSeconds })}
-            />
-          </>
-        ) : null}
-
         {gameType === 'ayo' ? (
-          <>
-            <View style={styles.field}>
-              <Text style={styles.label}>Rules</Text>
-              <SegmentedControl
-                value={room.ayoVariant}
-                options={AYO_VARIANT_OPTIONS.map((option) => ({
-                  value: option.value,
-                  label: option.label,
-                }))}
-                onChange={(value) => onChange({ ayoVariant: value as GameRoomSettings['ayoVariant'] })}
-              />
-            </View>
-            <TimerPicker
-              label="Time per player"
-              value={room.timerSeconds}
-              options={turnTimerOptionsFor('ayo')}
-              format={formatAyoClockLabel}
-              onChange={(timerSeconds) => onChange({ timerSeconds })}
-            />
-          </>
+          <TimerPicker
+            label="Time per player"
+            value={room.timerSeconds}
+            options={turnTimerOptionsFor('ayo')}
+            format={formatAyoClockLabel}
+            onChange={(timerSeconds) => onChange({ timerSeconds })}
+          />
         ) : null}
 
         {gameType === 'whot' ? (
@@ -336,7 +300,7 @@ export function GameRoomSettingsPanel({ gameType, room, onChange }: Props) {
               />
               <SettingToggle
                 label="Double penalty"
-                description="Missed UNO calls draw 4 cards instead of 2"
+                description="Missed last-card calls draw 4 cards instead of 2"
                 value={room.unoUnoPenalty === 4}
                 onChange={(on) => onChange({ unoUnoPenalty: on ? 4 : 2 })}
               />
@@ -461,6 +425,24 @@ export function GameRoomSettingsPanel({ gameType, room, onChange }: Props) {
               format={formatBoardGameTurnTimer}
               onChange={(timerSeconds) => onChange({ timerSeconds })}
             />
+            <View style={styles.field}>
+              <Text style={styles.label}>Board size</Text>
+              <SegmentedControl
+                value={String(room.monopolyBoardSize)}
+                options={
+                  (maxPlayers ?? 0) >= 6
+                    ? [
+                        { value: '40', label: '40 spaces' },
+                        { value: '48', label: '48 spaces' },
+                      ]
+                    : [{ value: '40', label: '40 spaces' }]
+                }
+                onChange={(value) => onChange({ monopolyBoardSize: value === '48' ? 48 : 40 })}
+              />
+              {(maxPlayers ?? 0) < 6 ? (
+                <Text style={styles.hint}>Raise the room cap to at least 6 players to unlock the 48-space board.</Text>
+              ) : null}
+            </View>
             <View style={styles.field}>
               <Text style={styles.label}>Game length</Text>
               <SegmentedControl

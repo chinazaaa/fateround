@@ -29,6 +29,9 @@ export interface Settings {
   gender_based: boolean
   /** Public games are listed in /browse for anyone to find and join; private = code-only. */
   isPublic: boolean
+  /** Discovery Phase C — optional ISO timestamp for "Schedule for later".
+   *  Only sent to the server when isPublic=true; null means "open immediately". */
+  scheduled_at: string | null
   describe_it_num_teams: number
   describe_it_mode: DescribeItMode
   quick_draw_variant: QuickDrawVariant
@@ -59,7 +62,6 @@ export interface Settings {
   mafia_anonymous_votes?: boolean
   mafia_day_seconds?: number
   mafia_voting_seconds?: number
-  ping_pong_points_to_win?: number
 }
 
 export type Step = 'settings' | 'participants' | 'done'

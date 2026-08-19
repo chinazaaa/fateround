@@ -234,7 +234,7 @@ export function YahtzeeDiceTray({
             }}
             loading={rolling}
             compact
-            className="w-full sm:w-auto sm:shrink-0 text-center sm:min-w-[5.5rem]"
+            className="w-full sm:w-auto sm:shrink-0 text-center sm:min-w-[5.5rem] sm:max-w-[14rem] sm:self-center"
           >
             {rollsThisTurn === 0 ? '🎲 Roll' : '🎲 Roll again'}
           </YahtzeePrimaryButton>

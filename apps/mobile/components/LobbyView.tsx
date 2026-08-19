@@ -1,5 +1,5 @@
-import { ReactNode, useRef, useState } from 'react'
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { ReactNode, useCallback, useRef, useState } from 'react'
+import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native'
 import type { Game, Player } from '@fateround/shared'
 import { playerIsViewer } from '@fateround/shared/viewers'
 import { lobbySeatsFull, resolveLobbyMaxPlayers } from '@fateround/shared/game-limits-lite'
@@ -11,7 +11,7 @@ import { KeyboardAwareGameScroll } from '@/components/ui/KeyboardAwareGameScroll
 import { gameLabel } from '@/lib/mobile-registry'
 import { postPlayerReady } from '@/lib/game-api'
 import type { Theme } from '@/constants/theme'
-import { useThemedStyles } from '@/constants/theme-context'
+import { useTheme, useThemedStyles } from '@/constants/theme-context'
 
 type Props = {
   gameCode: string
@@ -43,11 +43,26 @@ export function LobbyView({
   activity,
 }: Props) {
   const styles = useThemedStyles(makeStyles)
+  const theme = useTheme()
   const me = myPlayerId ? players.find((p) => p.id === myPlayerId) : undefined
   const spectating = !!(me && playerIsViewer(me, game))
   const typeLabel = gameLabel(game.game_type)
   const [readying, setReadying] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
   const scrollRef = useRef<ScrollView>(null)
+
+  // Pull-to-refresh — mirrors the reload the auto-poll and realtime listener
+  // already do, so a player who wants an instant re-check (host hasn't hit
+  // start yet, roster looks stale) can drag down instead of waiting.
+  const onRefresh = useCallback(async () => {
+    if (!onReload) return
+    setRefreshing(true)
+    try {
+      await onReload()
+    } finally {
+      setRefreshing(false)
+    }
+  }, [onReload])
   const maxPlayers = resolveLobbyMaxPlayers(game.game_type, game)
   const seatsFull = lobbySeatsFull(game.game_type, game, players)
 
@@ -83,7 +98,20 @@ export function LobbyView({
   }
 
   return (
-    <KeyboardAwareGameScroll ref={scrollRef} contentContainerStyle={styles.container}>
+    <KeyboardAwareGameScroll
+      ref={scrollRef}
+      contentContainerStyle={styles.container}
+      refreshControl={
+        onReload ? (
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => void onRefresh()}
+            tintColor={theme.primaryMuted}
+            colors={[theme.primary]}
+          />
+        ) : undefined
+      }
+    >
       <View style={styles.hero}>
         <Text style={styles.kicker}>{spectating ? 'New round' : "You're in"}</Text>
         <Text style={styles.title}>{title}</Text>
@@ -155,7 +183,7 @@ const makeStyles = (theme: Theme) =>
     },
     hero: {
       backgroundColor: theme.primarySoft,
-      borderRadius: 14,
+      borderRadius: theme.radius.md,
       borderWidth: 1,
       borderColor: theme.borderAccent,
       padding: 16,
@@ -177,20 +205,20 @@ const makeStyles = (theme: Theme) =>
     },
     description: {
       color: theme.textSecondary,
-      fontSize: 14,
+      fontSize: theme.type.label.size,
       lineHeight: 20,
       textAlign: 'center',
     },
     gameType: {
       color: theme.text,
-      fontSize: 14,
+      fontSize: theme.type.label.size,
       fontWeight: '700',
       marginTop: 4,
     },
     getReadyBtn: {
       marginTop: 12,
       backgroundColor: theme.primary,
-      borderRadius: 12,
+      borderRadius: theme.radius.md,
       paddingVertical: 12,
       paddingHorizontal: 20,
       alignSelf: 'stretch',
@@ -198,7 +226,7 @@ const makeStyles = (theme: Theme) =>
     },
     getReadyBtnDisabled: { opacity: 0.7 },
     // White on the solid rose button — correct in both schemes.
-    getReadyText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+    getReadyText: { color: '#fff', fontSize: theme.type.section.size, fontWeight: '700' },
     watchNote: {
       marginTop: 8,
       color: theme.textMuted,
@@ -207,14 +235,14 @@ const makeStyles = (theme: Theme) =>
     },
     section: {
       color: theme.text,
-      fontSize: 16,
+      fontSize: theme.type.section.size,
       fontWeight: '700',
       marginTop: 4,
     },
     list: { gap: 8 },
     row: {
       backgroundColor: theme.surface,
-      borderRadius: 10,
+      borderRadius: theme.radius.sm,
       paddingHorizontal: 14,
       paddingVertical: 12,
       flexDirection: 'row',
@@ -222,11 +250,11 @@ const makeStyles = (theme: Theme) =>
       alignItems: 'center',
     },
     rowMe: { borderWidth: 1, borderColor: theme.borderAccent },
-    name: { color: theme.text, fontSize: 16 },
-    badge: { color: theme.textMuted, fontSize: 12, textTransform: 'uppercase' },
+    name: { color: theme.text, fontSize: theme.type.section.size },
+    badge: { color: theme.textMuted, fontSize: theme.type.caption.size, textTransform: 'uppercase' },
     waiting: {
       color: theme.textMuted,
-      fontSize: 15,
+      fontSize: theme.type.body.size,
       textAlign: 'center',
       marginTop: 8,
     },

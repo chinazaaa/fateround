@@ -28,6 +28,7 @@ import {
   isICallOnGame,
   isCodewordsGame,
   isWordHuntGame,
+  isWordleRoomGame,
 } from '@/lib/game-types'
 import { tallyTriviaPlayerScores } from '@/lib/trivia'
 import { totalScore } from '@/lib/yahtzee'
@@ -79,6 +80,8 @@ function buildShareText({
   codewordsWinnerLabel,
   wordHuntLeaderboard,
   wordHuntWinnerName,
+  wordleRoomStandings,
+  wordleRoomWinnerName,
 }: {
   game: Game
   participants: Participant[]
@@ -111,6 +114,8 @@ function buildShareText({
   codewordsWinnerLabel?: string
   wordHuntLeaderboard?: { name: string; score: number; wordCount: number }[]
   wordHuntWinnerName?: string
+  wordleRoomStandings?: { name: string; wordsSolved: number; guesses: number; timeMs?: number | null; hints?: number }[]
+  wordleRoomWinnerName?: string
 }): string {
   const gameType = parseGameType(game.game_type)
   const config = gameTypeConfig(gameType)
@@ -125,6 +130,30 @@ function buildShareText({
       ...wordHuntLeaderboard
         .slice(0, 8)
         .map((row, i) => `  ${i + 1}. ${row.name} (${row.score} pts · ${row.wordCount}w)`),
+      '',
+      `Play at ${appDomain()}`,
+    ]
+    return lines.join('\n')
+  }
+
+  if (isWordleRoomGame(gameType) && wordleRoomStandings && wordleRoomStandings.length > 0) {
+    const lines = [
+      ...gameHeader,
+      wordleRoomWinnerName ? `🏆 ${wordleRoomWinnerName} wins!` : '🏁 Race over',
+      '',
+      'Final standings:',
+      ...wordleRoomStandings.slice(0, 8).map((row, i) => {
+        const parts = [
+          `${row.wordsSolved} word${row.wordsSolved === 1 ? '' : 's'}`,
+          `${row.guesses} guess${row.guesses === 1 ? '' : 'es'}`,
+        ]
+        if (row.timeMs != null && row.timeMs >= 0) {
+          const total = Math.floor(row.timeMs / 1000)
+          parts.push(`⏱ ${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`)
+        }
+        if (row.hints && row.hints > 0) parts.push(`${row.hints} hint${row.hints > 1 ? 's' : ''}`)
+        return `  ${i + 1}. ${row.name} (${parts.join(' · ')})`
+      }),
       '',
       `Play at ${appDomain()}`,
     ]
@@ -264,7 +293,7 @@ function buildShareText({
     const sorted = [...yahtzeeScores]
       .map((row) => ({
         name: players.find((p) => p.id === row.player_id)?.name ?? 'Player',
-        score: totalScore(row.scores.categories),
+        score: totalScore(row.scores.categories, row.scores.bonusYahtzees),
       }))
       .sort((a, b) => b.score - a.score)
 
@@ -426,6 +455,8 @@ export function ShareResults({
   codewordsWinnerLabel,
   wordHuntLeaderboard,
   wordHuntWinnerName,
+  wordleRoomStandings,
+  wordleRoomWinnerName,
   primary,
 }: {
   captureRef?: RefObject<HTMLElement | null>
@@ -460,6 +491,8 @@ export function ShareResults({
   codewordsWinnerLabel?: string
   wordHuntLeaderboard?: { name: string; score: number; wordCount: number }[]
   wordHuntWinnerName?: string
+  wordleRoomStandings?: { name: string; wordsSolved: number; guesses: number; timeMs?: number | null; hints?: number }[]
+  wordleRoomWinnerName?: string
   /** Render the Share button as the primary action (results screens). */
   primary?: boolean
 }) {
@@ -502,6 +535,8 @@ export function ShareResults({
         codewordsWinnerLabel,
         wordHuntLeaderboard,
         wordHuntWinnerName,
+        wordleRoomStandings,
+        wordleRoomWinnerName,
       }),
     [
       game,
@@ -535,6 +570,8 @@ export function ShareResults({
       codewordsWinnerLabel,
       wordHuntLeaderboard,
       wordHuntWinnerName,
+      wordleRoomStandings,
+      wordleRoomWinnerName,
     ]
   )
 

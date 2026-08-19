@@ -78,7 +78,7 @@ const makeStyles = (theme: Theme) =>
       alignItems: 'center',
       gap: 6,
       backgroundColor: theme.primary,
-      borderRadius: 999,
+      borderRadius: theme.radius.pill,
       paddingVertical: 8,
       paddingHorizontal: 16,
       shadowColor: '#000',
@@ -109,7 +109,7 @@ const makeStyles = (theme: Theme) =>
     },
     error: {
       color: theme.error,
-      fontSize: 12,
+      fontSize: theme.type.caption.size,
       textAlign: 'center',
     },
   })

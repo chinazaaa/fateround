@@ -112,15 +112,35 @@ export const gameTypeEnum = z.enum([
   'crossword',
   'word_search',
   'word_scramble',
+  'word_grouping',
   'landmine',
-  'ping_pong',
+  'wordle_room',
+  'troll_run',
 ])
 
 export const participantModeEnum = z.enum(['import', 'joiners', 'voters'])
 export const autoSubmitBehaviorEnum = z.enum(['random', 'no_answer'])
 export const pairVoteModeEnum = z.enum(['any', 'one_each'])
 export const questionSourceEnum = z.enum(['platform', 'custom'])
-export const triviaCategoryEnum = z.enum(['tech', 'general'])
+export const triviaCategoryEnum = z.enum([
+  'tech',
+  'general',
+  'art',
+  'food',
+  'geography',
+  'history',
+  'language',
+  'literature',
+  'math',
+  'movies',
+  'music',
+  'nature',
+  'pop_culture',
+  'science',
+  'sports',
+  'technology',
+  'world_culture',
+])
 export const playerQuestionsOrderEnum = z.enum(['players_first', 'uploaded_first', 'mixed'])
 export const wstQuoteSourceEnum = z.enum(['player', 'anime', 'both', 'deck'])
 export const wyrChoiceEnum = z.enum(['a', 'b'])
@@ -129,6 +149,7 @@ export const playerGenderEnum = z.enum(['male', 'female', 'both'])
 export const pairFlagEnum = z.enum(['kiss', 'kill'])
 export const themeEnum = z.enum([
   'default',
+  'dark',
   'neon',
   'retro',
   'elegant',

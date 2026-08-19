@@ -46,7 +46,7 @@ export default function HistorySearchPage() {
 
       <p className="text-center">
         <Link href="/" className="text-faint text-sm hover:text-[var(--foreground)] transition-colors">
-          ← Back home
+          Back home
         </Link>
       </p>
     </PageShell>

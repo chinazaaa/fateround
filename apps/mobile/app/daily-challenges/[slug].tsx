@@ -1,0 +1,251 @@
+/**
+ * Daily challenge play surface (mobile). One dynamic route drives every
+ * per-game screen — mirror of `src/app/daily-challenges/[gameType]/page.tsx`
+ * plus `DailyChallengeGame` on web. Every DAILY_CHALLENGE_GAME_TYPES entry
+ * has a native surface in the switch below.
+ */
+
+import { useCallback } from 'react'
+import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router'
+import { SafeAreaView } from 'react-native-safe-area-context'
+import { AmbientBackground } from '@/components/ui/AmbientBackground'
+import { AppButton } from '@/components/ui/AppButton'
+import { DailyChallengeResults } from '@/components/daily/DailyChallengeResults'
+import { DailyTriviaPlay } from '@/components/daily/DailyTriviaPlay'
+import { DailyWordScramblePlay } from '@/components/daily/DailyWordScramblePlay'
+import { DailySudokuPlay } from '@/components/daily/DailySudokuPlay'
+import { DailyWordlePlay } from '@/components/daily/DailyWordlePlay'
+import { DailyWordSearchPlay } from '@/components/daily/DailyWordSearchPlay'
+import { DailyWordHuntPlay } from '@/components/daily/DailyWordHuntPlay'
+import { DailyWordGroupingPlay } from '@/components/daily/DailyWordGroupingPlay'
+import { DailyCodenamesCodewordPlay } from '@/components/daily/DailyCodenamesCodewordPlay'
+import { DailyWhotPuzzlePlay } from '@/components/daily/DailyWhotPuzzlePlay'
+import { DailyCrosswordPlay } from '@/components/daily/DailyCrosswordPlay'
+import { DailyChessMatePlay } from '@/components/daily/DailyChessMatePlay'
+import { DailyLudoPuzzlePlay } from '@/components/daily/DailyLudoPuzzlePlay'
+import { useDailyChallengeSession } from '@/hooks/useDailyChallengeSession'
+import {
+  DAILY_GAME_EMOJIS,
+  DAILY_GAME_LABELS,
+  DAILY_GAME_SLUG_TO_TYPE,
+  DAILY_GAME_TIMER,
+  type DailyChallengeGameType,
+} from '@/lib/daily-challenge'
+import { formatDayLabel } from '@/lib/community-dates'
+import { centeredContent } from '@/constants/layout'
+import type { Theme } from '@/constants/theme'
+import { useThemedStyles, useTheme } from '@/constants/theme-context'
+
+export default function DailyChallengePlay() {
+  const styles = useThemedStyles(makeStyles)
+  const router = useRouter()
+  const params = useLocalSearchParams<{ slug: string }>()
+  const slug = typeof params.slug === 'string' ? params.slug : ''
+  const gameType = DAILY_GAME_SLUG_TO_TYPE[slug] as DailyChallengeGameType | undefined
+
+  const backToHub = useCallback(() => {
+    // Prefer pop over replace so the stack stays anchored to the hub the user
+    // came from. Falls back to replace when this route was cold-started.
+    if (router.canGoBack()) router.back()
+    else router.replace('/daily-challenges' as never)
+  }, [router])
+
+  if (!gameType) return <NotFound onBack={backToHub} />
+
+  return (
+    <SafeAreaView style={styles.safe} edges={['bottom']}>
+      <Stack.Screen options={{ headerShown: true, title: DAILY_GAME_LABELS[gameType] }} />
+      <AmbientBackground />
+      <KeyboardAvoidingView style={styles.kav} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+          <GameBody gameType={gameType} onBackToHub={backToHub} />
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
+  )
+}
+
+function GameBody({ gameType, onBackToHub }: { gameType: DailyChallengeGameType; onBackToHub: () => void }) {
+  const styles = useThemedStyles(makeStyles)
+  const theme = useTheme()
+  const session = useDailyChallengeSession(gameType)
+  const { phase, challengeData, result, previousScore, error, launchDate, submitResult } = session
+
+  if (phase === 'loading') {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator color={theme.primaryMuted} size="large" />
+        <Text style={styles.centerText}>Loading Daily {DAILY_GAME_LABELS[gameType]}…</Text>
+      </View>
+    )
+  }
+
+  if (phase === 'notLive') {
+    return (
+      <View style={styles.center}>
+        <Text style={styles.emoji}>{DAILY_GAME_EMOJIS[gameType]}</Text>
+        <Text style={styles.headline}>Daily Challenge starts {launchDate ? formatDayLabel(launchDate) : 'soon'}</Text>
+        <Text style={styles.centerText}>
+          Come back on launch day for Daily {DAILY_GAME_LABELS[gameType]} — same puzzle for everyone, one attempt.
+        </Text>
+        <AppButton label="Back to Daily Challenges" tone="secondary" onPress={onBackToHub} />
+      </View>
+    )
+  }
+
+  if (phase === 'error') {
+    return (
+      <View style={styles.center}>
+        <Text style={styles.headline}>Something went wrong</Text>
+        <Text style={styles.centerText}>{error ?? 'Please try again later.'}</Text>
+        <AppButton label="Back to Daily Challenges" tone="secondary" onPress={onBackToHub} />
+      </View>
+    )
+  }
+
+  if (phase === 'results' || phase === 'submitting') {
+    return (
+      <DailyChallengeResults
+        gameType={gameType}
+        result={result}
+        previousScore={previousScore}
+        challengeNumber={challengeData?.challengeNumber ?? 0}
+        submitting={phase === 'submitting'}
+        onBackToHub={onBackToHub}
+      />
+    )
+  }
+
+  if (!challengeData) {
+    return (
+      <View style={styles.center}>
+        <Text style={styles.headline}>No challenge data</Text>
+        <AppButton label="Back to Daily Challenges" tone="secondary" onPress={onBackToHub} />
+      </View>
+    )
+  }
+
+  const timer = DAILY_GAME_TIMER[gameType] ?? (challengeData.config.timer as number | undefined) ?? 300
+
+  return (
+    <View style={styles.playWrap}>
+      <View style={styles.playHeader}>
+        <Text style={styles.emoji}>{DAILY_GAME_EMOJIS[gameType]}</Text>
+        <Text style={styles.playTitle}>
+          Daily {DAILY_GAME_LABELS[gameType]} #{challengeData.challengeNumber}
+        </Text>
+        <Text style={styles.playSubtitle}>Same puzzle for everyone. One attempt.</Text>
+      </View>
+
+      <PlaySurface
+        gameType={gameType}
+        challengeId={challengeData.challengeId}
+        puzzle={challengeData.puzzle}
+        timer={timer}
+        onSubmit={submitResult}
+      />
+    </View>
+  )
+}
+
+function PlaySurface({
+  gameType,
+  challengeId,
+  puzzle,
+  timer,
+  onSubmit,
+}: {
+  gameType: DailyChallengeGameType
+  challengeId: string
+  puzzle: Record<string, unknown>
+  timer: number
+  onSubmit: (payload: { timeSeconds: number; submission: Record<string, unknown> }) => void
+}) {
+  switch (gameType) {
+    case 'trivia':
+      return <DailyTriviaPlay challengeId={challengeId} puzzle={puzzle} timer={timer} onSubmit={onSubmit} />
+    case 'word_scramble':
+      return <DailyWordScramblePlay challengeId={challengeId} puzzle={puzzle} timer={timer} onSubmit={onSubmit} />
+    case 'sudoku':
+      return (
+        <DailySudokuPlay
+          challengeId={challengeId}
+          puzzle={puzzle.puzzle as number[][]}
+          timer={timer}
+          onSubmit={onSubmit}
+        />
+      )
+    case 'wordle':
+      return <DailyWordlePlay challengeId={challengeId} puzzle={puzzle} timer={timer} onSubmit={onSubmit} />
+    case 'word_search':
+      return <DailyWordSearchPlay challengeId={challengeId} puzzle={puzzle} timer={timer} onSubmit={onSubmit} />
+    case 'word_hunt':
+      return (
+        <DailyWordHuntPlay
+          challengeId={challengeId}
+          grid={puzzle.grid as string[][]}
+          validWordHashes={(puzzle.valid_word_hashes as string[]) ?? []}
+          timer={timer}
+          onSubmit={onSubmit}
+        />
+      )
+    case 'word_grouping':
+      return <DailyWordGroupingPlay challengeId={challengeId} puzzle={puzzle} timer={timer} onSubmit={onSubmit} />
+    case 'codenames_codeword':
+      return <DailyCodenamesCodewordPlay challengeId={challengeId} puzzle={puzzle} timer={timer} onSubmit={onSubmit} />
+    case 'whot_puzzle':
+      return <DailyWhotPuzzlePlay challengeId={challengeId} puzzle={puzzle} timer={timer} onSubmit={onSubmit} />
+    case 'crossword':
+    case 'mini_crossword':
+      return <DailyCrosswordPlay challengeId={challengeId} puzzle={puzzle} timer={timer} onSubmit={onSubmit} />
+    case 'chess_mate':
+      return <DailyChessMatePlay challengeId={challengeId} puzzle={puzzle} timer={timer} onSubmit={onSubmit} />
+    case 'ludo_puzzle':
+      return <DailyLudoPuzzlePlay challengeId={challengeId} puzzle={puzzle} timer={timer} onSubmit={onSubmit} />
+    default: {
+      // Exhaustiveness guard — DailyChallengeGameType is a closed union, so if a new
+      // game is added to DAILY_CHALLENGE_GAME_TYPES this assignment fails to compile
+      // until the switch is updated. No runtime fallback needed.
+      const _exhaustive: never = gameType
+      void _exhaustive
+      return null
+    }
+  }
+}
+
+function NotFound({ onBack }: { onBack: () => void }) {
+  const styles = useThemedStyles(makeStyles)
+  return (
+    <SafeAreaView style={styles.safe} edges={['bottom']}>
+      <Stack.Screen options={{ headerShown: true, title: 'Not found' }} />
+      <View style={styles.center}>
+        <Text style={styles.headline}>Game not found</Text>
+        <Text style={styles.centerText}>This daily challenge type doesn&apos;t exist.</Text>
+        <AppButton label="Back to Daily Challenges" tone="secondary" onPress={onBack} />
+      </View>
+    </SafeAreaView>
+  )
+}
+
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
+    safe: { flex: 1, backgroundColor: theme.bg },
+    kav: { flex: 1 },
+    container: { paddingBottom: 40, ...centeredContent },
+    playWrap: { gap: theme.space.md },
+    playHeader: { alignItems: 'center', paddingTop: theme.space.md, gap: 6 },
+    playTitle: { color: theme.text, fontSize: theme.type.title.size, fontWeight: '800' },
+    playSubtitle: { color: theme.textMuted, fontSize: theme.type.body.size },
+    center: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 14,
+      padding: theme.space.lg,
+      minHeight: 360,
+    },
+    centerText: { color: theme.textMuted, fontSize: theme.type.body.size, textAlign: 'center' },
+    headline: { color: theme.text, fontSize: theme.type.title.size, fontWeight: '800', textAlign: 'center' },
+    emoji: { fontSize: 44 },
+  })

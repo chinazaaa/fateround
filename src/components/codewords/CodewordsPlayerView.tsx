@@ -13,6 +13,8 @@ import { CodewordsScoreboard } from '@/components/codewords/CodewordsScoreboard'
 import { CodewordsBoardGrid, CodewordsTeamBadge } from '@/components/codewords/CodewordsBoardGrid'
 import { CodewordsCurrentClueCard } from '@/components/codewords/CodewordsCurrentClueCard'
 import { CodewordsWaitingPanel } from '@/components/codewords/CodewordsWaitingPanel'
+import { gameIcon } from '@/lib/game-glyphs'
+import { Glyph } from '@/components/icons/Glyph'
 import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
 import { GameInfoChips } from '@/components/game-lobby/GameInfoChips'
 import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
@@ -795,7 +797,11 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
             onPromoted={load}
           />
           <div className="text-center space-y-1">
-            <div className="text-3xl">{cfg.headerEmoji}</div>
+            <div className="flex justify-center text-[var(--primary)] pb-1">
+              <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[color-mix(in_srgb,var(--primary)_12%,transparent)]">
+                <Glyph icon={gameIcon('codewords')} size={24} />
+              </span>
+            </div>
             <h1 className="text-xl font-black gradient-title">{game.title}</h1>
             <p className="text-muted text-sm">Watching as {myPlayerName}</p>
           </div>
@@ -834,7 +840,11 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
     <div className="min-h-screen pb-24">
       <div className="max-w-6xl mx-auto px-4 py-6">
         <div className="text-center space-y-1 mb-5">
-          <div className="text-3xl">{cfg.headerEmoji}</div>
+          <div className="flex justify-center text-[var(--primary)] pb-1">
+            <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[color-mix(in_srgb,var(--primary)_12%,transparent)]">
+              <Glyph icon={gameIcon('codewords')} size={24} />
+            </span>
+          </div>
           <h1 className="text-xl font-black gradient-title">{game.title}</h1>
         </div>
         <CodewordsActiveRound

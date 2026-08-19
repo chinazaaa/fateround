@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import type { Game, GameType } from '@fateround/shared'
 import { FormField } from '@/components/ui/FormField'
+import { KeyboardAvoidingModalContent } from '@/components/ui/KeyboardAvoidingModalContent'
 import { supportsCustomContent } from '@/lib/create-settings'
 import {
   POLL_ROUND_TIMER_OPTIONS,
@@ -104,10 +105,22 @@ import {
   type CheckersLobbyState,
 } from '@/components/host/lobby-settings/CheckersLobbySection'
 import {
-  PingPongLobbySection,
-  isPingPongLobbyGame,
-  type PingPongLobbyState,
-} from '@/components/host/lobby-settings/PingPongLobbySection'
+  WordleRoomLobbySection,
+  isWordleRoomLobbyGame,
+  type WordleRoomLobbyState,
+} from '@/components/host/lobby-settings/WordleRoomLobbySection'
+import {
+  WORDLE_ROOM_DEFAULT_TIMER,
+  WORDLE_ROOM_DEFAULT_WORD_COUNT,
+  clampWordleRoomCategory,
+  clampWordleRoomWordCount,
+} from '@fateround/shared/wordle-room'
+import {
+  WordGroupingLobbySection,
+  isWordGroupingLobbyGame,
+  wordGroupingStateFromGame,
+  type WordGroupingLobbyState,
+} from '@/components/host/lobby-settings/WordGroupingLobbySection'
 import {
   TeamRoundGamesSection,
   isTeamRoundGame,
@@ -175,6 +188,7 @@ const LOBBY_MAX_PLAYERS_GAMES = new Set<GameType>([
   'quiplash',
   'i_call_on',
   'scrabble',
+  'wordle_room',
 ])
 
 /** Party games that play a single round — no editable "Rounds" control (mirrors web create). */
@@ -188,6 +202,7 @@ const ROUNDLESS_GAMES = new Set<GameType>([
   'mafia',
   'crossword',
   'word_search',
+  'wordle_room',
 ])
 
 /** Party games with no round/turn timer on `timer_seconds` (bingo uses a call interval). */
@@ -253,8 +268,9 @@ export function HostLobbySettingsSheet({
   const isBingo = isBingoLobbyGame(gameType)
   const isMahjong = isMahjongLobbyGame(gameType)
   const isCheckers = isCheckersLobbyGame(gameType)
-  const isPingPong = isPingPongLobbyGame(gameType)
   const isTrivia = isTriviaLobbyGame(gameType)
+  const isWordleRoom = isWordleRoomLobbyGame(gameType)
+  const isWordGrouping = isWordGroupingLobbyGame(gameType)
   const ownsTimer =
     isCardGame ||
     isUno ||
@@ -268,7 +284,8 @@ export function HostLobbySettingsSheet({
     isCheckers ||
     isTeamRound ||
     isQuickDraw ||
-    isCodewords
+    isCodewords ||
+    isWordleRoom
   const roundOptions = partyRoundOptions(gameType)
   // Rounds apply only to multi-round party games — never single-round ones
   // (codewords, bingo, two truths, word hunt, sudoku, i-call-on, mafia) or board
@@ -379,6 +396,7 @@ export function HostLobbySettingsSheet({
     forcedAuctions: game.monopoly_forced_auctions === true,
     auctionTimerSeconds: game.monopoly_auction_timer_seconds ?? 10,
     noRentInJail: game.monopoly_no_rent_in_jail === true,
+    boardSize: game.monopoly_board_size === 48 ? 48 : 40,
   }))
   const [icallon, setIcallon] = useState<ICallOnLobbyState>(() => ({
     gameDurationSeconds: game.game_duration_seconds ?? 0,
@@ -409,10 +427,27 @@ export function HostLobbySettingsSheet({
     timerSeconds: game.timer_seconds ?? 0,
     checkersNigeriaStreetRules: game.checkers_nigeria_street_rules === true,
   }))
-  const [pingPong, setPingPong] = useState<PingPongLobbyState>(() => ({
-    pointsToWin: game.ping_pong_points_to_win ?? 7,
-    gameDurationSeconds: game.game_duration_seconds ?? 0,
-  }))
+  const [wordle, setWordle] = useState<WordleRoomLobbyState>(() => {
+    const rawCustom = (game as unknown as { wordle_room_custom_words?: unknown }).wordle_room_custom_words
+    const hasCustom = Array.isArray(rawCustom) && rawCustom.length > 0
+    const customWords = hasCustom
+      ? (rawCustom as { word?: string; hint?: string }[])
+          .map((e) => {
+            const word = (e.word ?? '').toLowerCase().replace(/[^a-z]/g, '')
+            return e.hint ? { word, hint: e.hint } : { word }
+          })
+          .filter((e) => e.word.length >= 3 && e.word.length <= 8)
+      : []
+    return {
+      category: clampWordleRoomCategory(game.wordle_room_category),
+      wordCount: clampWordleRoomWordCount(game.wordle_room_word_count ?? WORDLE_ROOM_DEFAULT_WORD_COUNT),
+      timerSeconds: game.timer_seconds ?? WORDLE_ROOM_DEFAULT_TIMER,
+      source: hasCustom ? 'library' : 'platform',
+      customWords,
+      categoryLabel: game.content_label ?? '',
+    }
+  })
+  const [wordGrouping, setWordGrouping] = useState<WordGroupingLobbyState>(() => wordGroupingStateFromGame(game))
   const [quickDraw, setQuickDraw] = useState<QuickDrawLobbyState>(() => ({
     variant: game.quick_draw_variant === 'guess' ? 'guess' : 'lie',
     playMode: game.quick_draw_play_mode === 'individual' ? 'individual' : 'team',
@@ -575,10 +610,59 @@ export function HostLobbySettingsSheet({
       if (gameType === 'checkers_nigeria' && checkers.checkersNigeriaStreetRules !== game.checkers_nigeria_street_rules)
         board.checkers_nigeria_street_rules = checkers.checkersNigeriaStreetRules
     }
-    if (isPingPong) {
-      if (pingPong.pointsToWin !== game.ping_pong_points_to_win) board.ping_pong_points_to_win = pingPong.pointsToWin
-      if (pingPong.gameDurationSeconds !== game.game_duration_seconds)
-        board.game_duration_seconds = pingPong.gameDurationSeconds
+    if (isWordleRoom) {
+      if (wordle.category !== game.wordle_room_category) board.wordle_room_category = wordle.category
+      if (wordle.wordCount !== game.wordle_room_word_count) board.wordle_room_word_count = wordle.wordCount
+      if (wordle.timerSeconds !== game.timer_seconds) board.timer_seconds = wordle.timerSeconds
+      // Word source: Platform clears any previously-picked pool so start falls back to the built-in
+      // category. Library / Your own send the current custom pool (must be ≥ wordCount to start the
+      // race, but we validate at start; here we just persist what the host has). Only send when it
+      // actually changed vs the server-side pool so re-saving unchanged doesn't rewrite it.
+      const currentPool = Array.isArray(
+        (game as unknown as { wordle_room_custom_words?: unknown }).wordle_room_custom_words
+      )
+        ? ((game as unknown as { wordle_room_custom_words?: { word?: string; hint?: string }[] })
+            .wordle_room_custom_words ?? [])
+        : []
+      if (wordle.source === 'platform') {
+        if (currentPool.length > 0) board.wordle_room_words = []
+      } else {
+        if (wordle.customWords.length > 0 && wordle.customWords.length < wordle.wordCount) {
+          setError(
+            wordle.source === 'library'
+              ? `Pick a library pack with at least ${wordle.wordCount} words`
+              : `Add at least ${wordle.wordCount} words`
+          )
+          return
+        }
+        if (wordle.customWords.length > 0 && JSON.stringify(wordle.customWords) !== JSON.stringify(currentPool)) {
+          board.wordle_room_words = wordle.customWords
+        }
+      }
+      const nextLabel = wordle.categoryLabel.trim()
+      if (nextLabel !== (game.content_label ?? '').trim()) patch.content_label = nextLabel
+    }
+    if (isWordGrouping) {
+      // Mirrors web WordGroupingLobbySettings: Platform clears the pool; Library / Your own send
+      // the picked pack or uploaded CSV. Server folds either into question_source + custom_questions.
+      const currentIsCustom =
+        game.question_source === 'custom' && Array.isArray(game.custom_questions) && game.custom_questions.length > 0
+      if (wordGrouping.source === 'platform') {
+        if (currentIsCustom) board.puzzle_custom_questions = []
+      } else {
+        if (wordGrouping.customQuestions.length < 4) {
+          setError(
+            wordGrouping.source === 'library'
+              ? 'Pick a library pack with at least 4 puzzles'
+              : 'Upload at least 4 puzzles'
+          )
+          return
+        }
+        const currentPool = currentIsCustom ? (game.custom_questions as unknown[]) : []
+        if (JSON.stringify(wordGrouping.customQuestions) !== JSON.stringify(currentPool)) {
+          board.puzzle_custom_questions = wordGrouping.customQuestions
+        }
+      }
     }
     if (isQuickDraw) {
       if (quickDraw.variant !== game.quick_draw_variant) board.quick_draw_variant = quickDraw.variant
@@ -618,6 +702,8 @@ export function HostLobbySettingsSheet({
         board.monopoly_auction_timer_seconds = monopoly.auctionTimerSeconds
       if (monopoly.noRentInJail !== (game.monopoly_no_rent_in_jail === true))
         board.monopoly_no_rent_in_jail = monopoly.noRentInJail
+      const currentBoardSize = game.monopoly_board_size === 48 ? 48 : 40
+      if (monopoly.boardSize !== currentBoardSize) board.monopoly_board_size = monopoly.boardSize
     }
     if (isDuration) {
       if (
@@ -795,216 +881,241 @@ export function HostLobbySettingsSheet({
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <View style={styles.backdrop}>
-        <View style={styles.sheet}>
-          <View style={styles.handle} />
-          <Text style={styles.title}>Lobby settings</Text>
+      <KeyboardAvoidingModalContent>
+        <View style={styles.backdrop}>
+          <View style={styles.sheet}>
+            <View style={styles.handle} />
+            <Text style={styles.title}>Lobby settings</Text>
 
-          <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
-            <View style={styles.field}>
-              <Text style={styles.label}>Visibility</Text>
-              <SegmentedControl
-                value={isPublic ? 'public' : 'private'}
-                options={[
-                  { value: 'private', label: '🔒 Private', hint: 'Only people with the code can join.' },
-                  { value: 'public', label: '🌐 Public', hint: 'Anyone can find this game in Browse.' },
-                ]}
-                onChange={(v) => setIsPublic(v === 'public')}
-              />
-            </View>
-
-            {showContentLabel ? (
+            <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
               <View style={styles.field}>
-                <FormField
-                  label="Category"
-                  hint="What the questions are about — shown to players next to the room name."
-                  value={contentLabel}
-                  onChangeText={setContentLabel}
-                  placeholder="e.g. Maths, Bible, 90s Music"
-                  maxLength={40}
-                  autoCapitalize="sentences"
-                  autoCorrect={false}
+                <Text style={styles.label}>Visibility</Text>
+                <SegmentedControl
+                  value={isPublic ? 'public' : 'private'}
+                  options={[
+                    { value: 'private', label: '🔒 Private', hint: 'Only people with the code can join.' },
+                    { value: 'public', label: '🌐 Public', hint: 'Anyone can find this game in Browse.' },
+                  ]}
+                  onChange={(v) => setIsPublic(v === 'public')}
                 />
               </View>
-            ) : null}
 
-            {showTheme ? <ThemePicker gameType={gameType} value={themeId} onChange={setThemeId} /> : null}
+              {showContentLabel ? (
+                <View style={styles.field}>
+                  <FormField
+                    label="Category"
+                    hint="What the questions are about — shown to players next to the room name."
+                    value={contentLabel}
+                    onChangeText={setContentLabel}
+                    placeholder="e.g. Maths, Bible, 90s Music"
+                    maxLength={40}
+                    autoCapitalize="sentences"
+                    autoCorrect={false}
+                  />
+                </View>
+              ) : null}
 
-            {showMaxPlayers && !(isUno && uno.teamMode) ? (
-              <View style={styles.field}>
-                <Text style={styles.label}>Max players</Text>
-                <MaxPlayersPicker gameType={gameType} value={maxPlayers} limits={limits} onChange={setMaxPlayers} />
-              </View>
-            ) : null}
-            {isUno && uno.teamMode ? (
-              <View style={styles.field}>
-                <Text style={styles.label}>Max players</Text>
-                <Text style={styles.label}>4 players (2 teams of 2)</Text>
-              </View>
-            ) : null}
+              {showTheme ? <ThemePicker gameType={gameType} value={themeId} onChange={setThemeId} /> : null}
 
-            {/* WST has no host-set round count — each question is a round — so hide the picker. */}
-            {showRounds && !isWst ? (
-              <RoundCountPicker
-                label="Rounds"
-                value={roundsCount}
-                options={triviaRoundOptions}
-                onChange={setRoundsCount}
-              />
-            ) : null}
+              {showMaxPlayers && !(isUno && uno.teamMode) ? (
+                <View style={styles.field}>
+                  <Text style={styles.label}>Max players</Text>
+                  <MaxPlayersPicker gameType={gameType} value={maxPlayers} limits={limits} onChange={setMaxPlayers} />
+                </View>
+              ) : null}
+              {isUno && uno.teamMode ? (
+                <View style={styles.field}>
+                  <Text style={styles.label}>Max players</Text>
+                  <Text style={styles.label}>4 players (2 teams of 2)</Text>
+                </View>
+              ) : null}
 
-            {showTimer ? (
-              <TimerPicker
-                label={isTrivia || isWst ? 'Time per question' : 'Time per round'}
-                value={timerSeconds}
-                options={timerOptions}
-                format={formatPollRoundTimer}
-                onChange={setTimerSeconds}
-              />
-            ) : null}
+              {/* WST has no host-set round count — each question is a round — so hide the picker. */}
+              {showRounds && !isWst ? (
+                <RoundCountPicker
+                  label="Rounds"
+                  value={roundsCount}
+                  options={triviaRoundOptions}
+                  onChange={setRoundsCount}
+                />
+              ) : null}
 
-            {isCardGame ? (
-              <CardHouseRulesSection
-                gameType={gameType}
-                value={card}
-                onChange={(p) => setCard((prev) => ({ ...prev, ...p }))}
-              />
-            ) : null}
+              {showTimer ? (
+                <TimerPicker
+                  label={isTrivia || isWst ? 'Time per question' : 'Time per round'}
+                  value={timerSeconds}
+                  options={timerOptions}
+                  format={formatPollRoundTimer}
+                  onChange={setTimerSeconds}
+                />
+              ) : null}
 
-            {isUno ? <UnoRulesSection value={uno} onChange={(p) => setUno((prev) => ({ ...prev, ...p }))} /> : null}
+              {isCardGame ? (
+                <CardHouseRulesSection
+                  gameType={gameType}
+                  value={card}
+                  onChange={(p) => setCard((prev) => ({ ...prev, ...p }))}
+                />
+              ) : null}
 
-            {isVariantGame ? (
-              <BoardVariantSection
-                gameType={gameType}
-                value={variant}
-                onChange={(p) => setVariant((prev) => ({ ...prev, ...p }))}
-              />
-            ) : null}
+              {isUno ? <UnoRulesSection value={uno} onChange={(p) => setUno((prev) => ({ ...prev, ...p }))} /> : null}
 
-            {isMafia ? (
-              <MafiaLobbySection value={mafia} onChange={(p) => setMafia((prev) => ({ ...prev, ...p }))} />
-            ) : null}
+              {isVariantGame ? (
+                <BoardVariantSection
+                  gameType={gameType}
+                  value={variant}
+                  onChange={(p) => setVariant((prev) => ({ ...prev, ...p }))}
+                />
+              ) : null}
 
-            {isQuiplash ? (
-              <QuiplashLobbySection value={quiplash} onChange={(p) => setQuiplash((prev) => ({ ...prev, ...p }))} />
-            ) : null}
+              {isMafia ? (
+                <MafiaLobbySection value={mafia} onChange={(p) => setMafia((prev) => ({ ...prev, ...p }))} />
+              ) : null}
 
-            {isMonopoly ? (
-              <MonopolyLobbySection value={monopoly} onChange={(p) => setMonopoly((prev) => ({ ...prev, ...p }))} />
-            ) : null}
+              {isQuiplash ? (
+                <QuiplashLobbySection value={quiplash} onChange={(p) => setQuiplash((prev) => ({ ...prev, ...p }))} />
+              ) : null}
 
-            {isDuration ? (
-              <DurationGamesSection
-                gameType={gameType}
-                value={duration}
-                onChange={(p) => setDuration((prev) => ({ ...prev, ...p }))}
-              />
-            ) : null}
+              {isMonopoly ? (
+                <MonopolyLobbySection
+                  value={monopoly}
+                  maxPlayers={maxPlayers}
+                  onChange={(p) => {
+                    setMonopoly((prev) => {
+                      const next = { ...prev, ...p }
+                      // The 48-space board requires a room cap of at least 6 players.
+                      // If the host lowers the cap below 6 we automatically fall back
+                      // to the 40-space board (mirrors the web API's server-side clamp).
+                      if ((maxPlayers ?? 0) < 6 && next.boardSize === 48) next.boardSize = 40
+                      return next
+                    })
+                  }}
+                />
+              ) : null}
 
-            {isScrabble ? (
-              <ScrabbleLobbySection value={scrabble} onChange={(p) => setScrabble((prev) => ({ ...prev, ...p }))} />
-            ) : null}
+              {isDuration ? (
+                <DurationGamesSection
+                  gameType={gameType}
+                  value={duration}
+                  onChange={(p) => setDuration((prev) => ({ ...prev, ...p }))}
+                />
+              ) : null}
 
-            {isICallOn ? (
-              <ICallOnLobbySection value={icallon} onChange={(p) => setIcallon((prev) => ({ ...prev, ...p }))} />
-            ) : null}
+              {isScrabble ? (
+                <ScrabbleLobbySection value={scrabble} onChange={(p) => setScrabble((prev) => ({ ...prev, ...p }))} />
+              ) : null}
 
-            {showPollQuestions || showPollParticipantFilter ? (
-              <PollQuestionsSection
-                gameType={gameType}
-                value={poll}
-                onChange={(p) => setPoll((prev) => ({ ...prev, ...p }))}
-                showParticipantFilter={showPollParticipantFilter}
-              />
-            ) : null}
+              {isICallOn ? (
+                <ICallOnLobbySection value={icallon} onChange={(p) => setIcallon((prev) => ({ ...prev, ...p }))} />
+              ) : null}
 
-            {/* Who Said This question source (Players submit / Platform / Library / your own CSV). */}
-            {isWst ? (
-              <WstSourceLobbyEditor gameCode={gameCode} hostToken={hostToken} game={game} onSaved={onSaved} />
-            ) : null}
+              {showPollQuestions || showPollParticipantFilter ? (
+                <PollQuestionsSection
+                  gameType={gameType}
+                  value={poll}
+                  onChange={(p) => setPoll((prev) => ({ ...prev, ...p }))}
+                  showParticipantFilter={showPollParticipantFilter}
+                />
+              ) : null}
 
-            {isBingo ? (
-              <BingoLobbySection value={bingo} onChange={(p) => setBingo((prev) => ({ ...prev, ...p }))} />
-            ) : null}
+              {/* Who Said This question source (Players submit / Platform / Library / your own CSV). */}
+              {isWst ? (
+                <WstSourceLobbyEditor gameCode={gameCode} hostToken={hostToken} game={game} onSaved={onSaved} />
+              ) : null}
 
-            {isMahjong ? (
-              <MahjongLobbySection value={mahjong} onChange={(p) => setMahjong((prev) => ({ ...prev, ...p }))} />
-            ) : null}
+              {isBingo ? (
+                <BingoLobbySection value={bingo} onChange={(p) => setBingo((prev) => ({ ...prev, ...p }))} />
+              ) : null}
 
-            {isCheckers ? (
-              <CheckersLobbySection
-                gameType={gameType}
-                value={checkers}
-                onChange={(p) => setCheckers((prev) => ({ ...prev, ...p }))}
-              />
-            ) : null}
+              {isMahjong ? (
+                <MahjongLobbySection value={mahjong} onChange={(p) => setMahjong((prev) => ({ ...prev, ...p }))} />
+              ) : null}
 
-            {isPingPong ? (
-              <PingPongLobbySection value={pingPong} onChange={(p) => setPingPong((prev) => ({ ...prev, ...p }))} />
-            ) : null}
+              {isCheckers ? (
+                <CheckersLobbySection
+                  gameType={gameType}
+                  value={checkers}
+                  onChange={(p) => setCheckers((prev) => ({ ...prev, ...p }))}
+                />
+              ) : null}
 
-            {isTeamRound ? (
-              <TeamRoundGamesSection
-                gameType={gameType}
-                value={team}
-                onChange={(p) => setTeam((prev) => ({ ...prev, ...p }))}
-              />
-            ) : null}
+              {isWordleRoom ? (
+                <WordleRoomLobbySection value={wordle} onChange={(p) => setWordle((prev) => ({ ...prev, ...p }))} />
+              ) : null}
 
-            {isQuickDraw ? (
-              <QuickDrawLobbySection value={quickDraw} onChange={(p) => setQuickDraw((prev) => ({ ...prev, ...p }))} />
-            ) : null}
+              {isWordGrouping ? (
+                <WordGroupingLobbySection
+                  value={wordGrouping}
+                  onChange={(p) => setWordGrouping((prev) => ({ ...prev, ...p }))}
+                />
+              ) : null}
 
-            {isCodewords ? (
-              <CodewordsLobbySection
-                value={codewords}
-                onChange={(p) => setCodewords((prev) => ({ ...prev, ...p }))}
-                canShuffle={game.codewords_randomize_teams === true}
-                shuffling={shuffling}
-                onShuffle={() => void onShuffle()}
-                firstTeam={firstTeam}
-                onFirstTeamChange={onFirstTeamChange}
-              />
-            ) : null}
+              {isTeamRound ? (
+                <TeamRoundGamesSection
+                  gameType={gameType}
+                  value={team}
+                  onChange={(p) => setTeam((prev) => ({ ...prev, ...p }))}
+                />
+              ) : null}
 
-            {isTrivia ? (
-              <TriviaLobbySection
-                value={trivia}
-                roundsCount={roundsCount}
-                onChange={(p) => setTrivia((prev) => ({ ...prev, ...p }))}
-              />
-            ) : null}
+              {isQuickDraw ? (
+                <QuickDrawLobbySection
+                  value={quickDraw}
+                  onChange={(p) => setQuickDraw((prev) => ({ ...prev, ...p }))}
+                />
+              ) : null}
 
-            {showLateJoin ? (
-              <View style={styles.field}>
-                <Text style={styles.label}>Late join</Text>
-                <LateJoinPolicyPicker gameType={gameType} value={lateJoin} onChange={setLateJoin} />
-              </View>
-            ) : null}
+              {isCodewords ? (
+                <CodewordsLobbySection
+                  value={codewords}
+                  onChange={(p) => setCodewords((prev) => ({ ...prev, ...p }))}
+                  canShuffle={game.codewords_randomize_teams === true}
+                  shuffling={shuffling}
+                  onShuffle={() => void onShuffle()}
+                  firstTeam={firstTeam}
+                  onFirstTeamChange={onFirstTeamChange}
+                />
+              ) : null}
 
-            {onTransfer ? (
-              <Pressable style={styles.transferBtn} onPress={onTransfer}>
-                <Text style={styles.transferText}>Transfer host to another player</Text>
+              {isTrivia ? (
+                <TriviaLobbySection
+                  value={trivia}
+                  roundsCount={roundsCount}
+                  onChange={(p) => setTrivia((prev) => ({ ...prev, ...p }))}
+                />
+              ) : null}
+
+              {showLateJoin ? (
+                <View style={styles.field}>
+                  <Text style={styles.label}>Late join</Text>
+                  <LateJoinPolicyPicker gameType={gameType} value={lateJoin} onChange={setLateJoin} />
+                </View>
+              ) : null}
+
+              {onTransfer ? (
+                <Pressable style={styles.transferBtn} onPress={onTransfer}>
+                  <Text style={styles.transferText}>Transfer host to another player</Text>
+                </Pressable>
+              ) : null}
+
+              {error ? <Text style={styles.error}>{error}</Text> : null}
+            </ScrollView>
+
+            <View style={styles.actions}>
+              <Pressable style={[styles.secondary, styles.flex]} onPress={onClose}>
+                <Text style={styles.secondaryText}>Cancel</Text>
               </Pressable>
-            ) : null}
-
-            {error ? <Text style={styles.error}>{error}</Text> : null}
-          </ScrollView>
-
-          <View style={styles.actions}>
-            <Pressable style={[styles.secondary, styles.flex]} onPress={onClose}>
-              <Text style={styles.secondaryText}>Cancel</Text>
-            </Pressable>
-            <Pressable
-              style={[styles.primary, styles.flex, saving && styles.disabled]}
-              disabled={saving}
-              onPress={() => void save()}
-            >
-              <Text style={styles.primaryText}>{saving ? 'Saving…' : 'Save'}</Text>
-            </Pressable>
+              <Pressable
+                style={[styles.primary, styles.flex, saving && styles.disabled]}
+                disabled={saving}
+                onPress={() => void save()}
+              >
+                <Text style={styles.primaryText}>{saving ? 'Saving…' : 'Save'}</Text>
+              </Pressable>
+            </View>
           </View>
         </View>
-      </View>
+      </KeyboardAvoidingModalContent>
     </Modal>
   )
 }
@@ -1021,10 +1132,10 @@ const makeStyles = (theme: Theme) =>
       maxHeight: '85%',
     },
     handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: theme.border, alignSelf: 'center' },
-    title: { color: theme.text, fontSize: 20, fontWeight: '800' },
+    title: { color: theme.text, fontSize: theme.type.title.size, fontWeight: '800' },
     body: { gap: theme.space.lg, paddingBottom: theme.space.md },
     field: { gap: theme.space.sm },
-    label: { color: theme.text, fontSize: 16, fontWeight: '800' },
+    label: { color: theme.text, fontSize: theme.type.section.size, fontWeight: '800' },
     error: { color: theme.error, fontSize: 13 },
     actions: { flexDirection: 'row', gap: theme.space.sm },
     flex: { flex: 1 },
@@ -1034,7 +1145,7 @@ const makeStyles = (theme: Theme) =>
       paddingVertical: 14,
       alignItems: 'center',
     },
-    primaryText: { color: '#fff', fontWeight: '800', fontSize: 16 },
+    primaryText: { color: '#fff', fontWeight: '800', fontSize: theme.type.section.size },
     secondary: {
       backgroundColor: theme.surface,
       borderWidth: 1,
@@ -1043,7 +1154,7 @@ const makeStyles = (theme: Theme) =>
       paddingVertical: 14,
       alignItems: 'center',
     },
-    secondaryText: { color: theme.textSecondary, fontWeight: '700', fontSize: 16 },
+    secondaryText: { color: theme.textSecondary, fontWeight: '700', fontSize: theme.type.section.size },
     disabled: { opacity: 0.5 },
     transferBtn: {
       marginTop: theme.space.sm,
@@ -1053,5 +1164,5 @@ const makeStyles = (theme: Theme) =>
       paddingVertical: 14,
       alignItems: 'center',
     },
-    transferText: { color: theme.textSecondary, fontWeight: '700', fontSize: 15 },
+    transferText: { color: theme.textSecondary, fontWeight: '700', fontSize: theme.type.body.size },
   })

@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
   const { data: game } = await supabase.from('games').select('status, game_type').eq('id', code).maybeSingle()
   if (!game) return NextResponse.json({ error: 'Game not found' }, { status: 404 })
   if (!isScrabbleGame(parseGameType(game.game_type))) {
-    return NextResponse.json({ error: 'Not a Scrabble game' }, { status: 400 })
+    return NextResponse.json({ error: 'Not a Word Tiles game' }, { status: 400 })
   }
 
   const { error } = await processScrabbleExpireTurn(supabase, code)

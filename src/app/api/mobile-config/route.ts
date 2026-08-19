@@ -24,6 +24,7 @@ const BATCH_3_GAMES: GameType[] = [
   'ludo',
   'crossword',
   'word_search',
+  'word_grouping',
 ]
 
 const BATCH_4_GAMES: GameType[] = ['crazy_eights', 'whot', 'two_truths', 'describe_it']
@@ -42,7 +43,7 @@ const BATCH_10_GAMES: GameType[] = ['uno']
 
 const BATCH_11_GAMES: GameType[] = ['word_scramble', 'landmine', 'checkers_international', 'checkers_nigeria']
 
-const BATCH_12_GAMES: GameType[] = ['ping_pong']
+const BATCH_12_GAMES: GameType[] = ['wordle_room']
 
 /**
  * Server-driven mobile feature flags. Flip `mobileSupportedGames` when a native

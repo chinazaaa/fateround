@@ -4,6 +4,8 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { GameRouter, resolveMobilePlayerView } from '@/components/games/GameRouter'
 import { PlayerSessionShell } from '@/components/session/PlayerSessionShell'
+import { ScheduledGameScreen } from '@/components/notifications/ScheduledGameScreen'
+import { ScheduledConfirmReadyPrompt } from '@/components/notifications/ScheduledConfirmReadyPrompt'
 import { MatureGameGate } from '@/components/MatureGameGate'
 import { GamePushSetup } from '@/components/push/GamePushSetup'
 import { WebFallbackScreen } from '@/components/WebFallbackScreen'
@@ -146,6 +148,13 @@ export default function GameScreen() {
     )
   }
 
+  // Discovery Phase C — a scheduled game shows a bespoke RSVP screen instead
+  // of the normal game router. The router is only meaningful after the T-0
+  // transition to waiting; before then there's no player state to render.
+  if (game.status === 'scheduled') {
+    return <ScheduledGameScreen gameCode={gameCode} game={game} />
+  }
+
   const gameType = game.game_type as GameType
   const NativeView = resolveMobilePlayerView(gameType)
   if (!NativeView) {
@@ -163,6 +172,7 @@ export default function GameScreen() {
       <PlayerSessionShell gameCode={gameCode} game={game}>
         <GamePushSetup gameCode={gameCode} />
         <GameRouter gameCode={gameCode} gameType={gameType} />
+        <ScheduledConfirmReadyPrompt gameCode={gameCode} game={game} />
       </PlayerSessionShell>
       <MatureGameGate gameType={gameType} />
     </GameThemeProvider>

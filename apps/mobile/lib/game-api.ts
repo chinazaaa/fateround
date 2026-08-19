@@ -1,4 +1,5 @@
 import { apiUrl } from '@/lib/config'
+import { authHeaders } from '@/lib/auth-headers'
 import type { GameType, WhotPlayerHand } from '@fateround/shared'
 import type { GamePlayerLimitsMap } from '@fateround/shared/lobby-limits'
 import { getCodeDefaultLimits } from '@fateround/shared/lobby-limits'
@@ -9,7 +10,7 @@ import type { WordSearchPlacement } from '@fateround/shared'
 async function postJson<T>(path: string, body: Record<string, unknown>): Promise<T> {
   const res = await fetch(apiUrl(path), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
     body: JSON.stringify(body),
   })
   const data = (await res.json()) as T & { error?: string }
@@ -108,17 +109,6 @@ export function postCheckersNigeriaExpireTurn(gameId: string) {
 /** Street Rules only: spend the turn huffing (removing) a declined-capture piece instead of moving. */
 export function postCheckersNigeriaHuff(gameId: string, resumeToken: string, square: string) {
   return postJson<{ success: boolean }>('/api/checkers-nigeria/huff', { gameId, resumeToken, square })
-}
-
-/** Report a point scored client-side (physics is client-authoritative; the server re-validates
- * sequence via `rally` and is the single source of truth for score/win state). */
-export function postPingPongPoint(gameId: string, resumeToken: string, scorer: 'X' | 'O', rally: number) {
-  return postJson<{ success?: boolean }>('/api/ping-pong/point', { gameId, resumeToken, scorer, rally })
-}
-
-/** Idempotent poke to conclude a timed match once the clock runs out. */
-export function postPingPongExpire(gameId: string) {
-  return postJson<{ expired?: boolean; finished?: boolean }>(`/api/games/${gameId.toUpperCase()}/expire-ping-pong`, {})
 }
 
 export function postAyoMove(gameId: string, resumeToken: string, pitIndex: number) {
@@ -319,6 +309,41 @@ export async function fetchWordScrambleSolution(gameId: string): Promise<string[
   } catch {
     return null
   }
+}
+
+export function postWordGroupingSubmit(gameId: string, resumeToken: string, words: string[]) {
+  return postJson<{
+    success: boolean
+    isCorrect: boolean
+    oneAway?: boolean
+    alreadySolved?: boolean
+    group?: { category: string; words: string[]; difficulty: 1 | 2 | 3 | 4 }
+  }>('/api/word-grouping/submit', { gameId, resumeToken, words })
+}
+
+export async function fetchWordGroupingSolution(
+  gameId: string
+): Promise<{ category: string; words: string[]; difficulty: 1 | 2 | 3 | 4 }[] | null> {
+  try {
+    const res = await fetch(apiUrl(`/api/word-grouping/solution?gameId=${encodeURIComponent(gameId)}`), {
+      cache: 'no-store',
+    })
+    if (!res.ok) return null
+    const data = (await res.json()) as {
+      solution?: { groups?: { category: string; words: string[]; difficulty: 1 | 2 | 3 | 4 }[] } | null
+    }
+    return Array.isArray(data.solution?.groups) ? data.solution!.groups! : null
+  } catch {
+    return null
+  }
+}
+
+/** Finishes a Word Grouping game whose timer has run out. Server re-verifies the deadline. */
+export function postExpireWordGrouping(gameCode: string) {
+  return postJson<{ expired?: boolean; finished?: boolean }>(
+    `/api/games/${gameCode.toUpperCase()}/expire-word-grouping`,
+    {}
+  )
 }
 
 export function postYahtzeeRoll(gameId: string, resumeToken: string) {
@@ -1145,6 +1170,19 @@ export function startGame(gameId: string, hostToken: string, firstTeam?: 'red' |
   })
 }
 
+export type FreshnessResult = {
+  fresh: boolean
+  totalPool: number
+  seenByMost: number
+  seenPercent: number
+  authenticatedPlayers: number
+  totalPlayers: number
+}
+
+export function checkFreshness(gameCode: string, hostToken: string) {
+  return postJson<FreshnessResult>(`/api/games/${gameCode.toUpperCase()}/freshness-check`, { hostToken })
+}
+
 export type LobbySettingsPatch = {
   is_public?: boolean
   content_label?: string
@@ -1169,6 +1207,8 @@ export type LobbySettingsPatch = {
     theme?: string
     customPrompt?: string
   } | null
+  /** Discovery Phase A — "Keep open" on the host T-13min banner. */
+  keep_lobby_alive?: boolean
 }
 
 /** Update editable lobby settings while waiting. Server clamps/validates per game. */
@@ -1205,10 +1245,15 @@ export type BoardLobbyPatch = {
   uno_jump_in?: boolean
   uno_multi_play_mode?: string
   uno_team_mode?: boolean
+  uno_mode?: string
+  uno_no_mercy_win?: string
+  uno_series_scoring?: boolean
+  uno_series_target?: number
+  uno_series_scores?: Record<string, number> | null
+  uno_series_winner_id?: string | null
   ludo_variant?: 'modern' | 'traditional'
   ayo_variant?: 'traditional' | 'oware'
   checkers_nigeria_street_rules?: boolean
-  ping_pong_points_to_win?: number
   mafia_doctor_enabled?: boolean
   mafia_detective_enabled?: boolean
   mafia_anonymous_votes?: boolean
@@ -1219,6 +1264,9 @@ export type BoardLobbyPatch = {
   monopoly_forced_auctions?: boolean
   monopoly_auction_timer_seconds?: number
   monopoly_no_rent_in_jail?: boolean
+  monopoly_estate_dividend?: boolean
+  /** 40 (classic) or 48 (expanded). 48 requires max_players >= 6 (server enforces). */
+  monopoly_board_size?: 40 | 48
   operative_timer_seconds?: number
   quick_draw_variant?: 'lie' | 'guess'
   quick_draw_play_mode?: 'team' | 'individual'
@@ -1235,6 +1283,12 @@ export type BoardLobbyPatch = {
   puzzle_theme_id?: string
   /** Host-supplied puzzle pool (a Library pack or "Your own" upload); server re-validates + normalises. */
   puzzle_custom_questions?: unknown[]
+  /** Wordle Room — built-in category (General English / Naija Slang / themed). */
+  wordle_room_category?: string
+  /** Wordle Room — 5/10/15/20 words per race. */
+  wordle_room_word_count?: number
+  /** Wordle Room — optional library-pack pool ({word, hint?}[]); clears when empty. */
+  wordle_room_words?: { word: string; hint?: string }[] | null
 }
 
 export function postLobbySettings(gameCode: string, hostToken: string, patch: BoardLobbyPatch) {
@@ -1564,4 +1618,77 @@ export function removePlayerAsHost(gameCode: string, playerId: string, hostToken
     playerId,
     hostToken,
   })
+}
+
+// ── Wordle Room ──────────────────────────────────────────────────────────────
+
+export interface WordleRoomStatusResponse {
+  success?: boolean
+  gameId?: string
+  status?: string
+  currentWord?: string
+  wordLength?: number
+  maxAttempts?: number
+  word_index?: number
+  word_count?: number
+  words_solved?: number
+  total_guesses?: number
+  categoryLabel?: string
+  finished?: boolean
+  sequenceComplete?: boolean
+  guesses?: { guess: string; state: ('correct' | 'present' | 'absent')[] }[]
+  timeRemainingMs?: number
+  hasProgressRow?: boolean
+  hintAvailable?: boolean
+  hintUsed?: boolean
+  hint?: string | null
+}
+
+export function postWordleRoomStatus(gameId: string, resumeToken: string) {
+  return postJson<WordleRoomStatusResponse>('/api/wordle-room/status', {
+    gameId: gameId.toUpperCase(),
+    resumeToken,
+  })
+}
+
+export interface WordleRoomGuessResponse {
+  success?: boolean
+  solved?: boolean
+  pointsAwarded?: number
+  guessesUsed?: number
+  maxAttempts?: number
+  wordIndex?: number
+  wordsSolved?: number
+  finished?: boolean
+  nextWord?: string | null
+  guessId?: string | null
+}
+
+export function postWordleRoomGuess(gameId: string, resumeToken: string, word: string) {
+  return postJson<WordleRoomGuessResponse>('/api/wordle-room/guess', {
+    gameId: gameId.toUpperCase(),
+    resumeToken,
+    word,
+  })
+}
+
+/** Ask the server to finalize a wordle_room game whose shared clock has run out.
+ *  Any active client may call it (the route re-checks the deadline and no-ops if
+ *  the game isn't actually expired). Returns whether it finished/expired. */
+export function postWordleRoomExpire(gameId: string) {
+  return postJson<{ finished?: boolean; expired?: boolean; skipped?: boolean }>(
+    `/api/games/${gameId.toUpperCase()}/expire-wordle-room`,
+    {}
+  )
+}
+
+export function postWordleRoomRevealHint(gameId: string, resumeToken: string, wordIndex: number) {
+  return postJson<{ success?: boolean; wordIndex?: number; hint?: string; cost?: number }>(
+    '/api/wordle-room/reveal-hint',
+    {
+      gameId: gameId.toUpperCase(),
+      resumeToken,
+      wordIndex,
+    }
+  )
 }

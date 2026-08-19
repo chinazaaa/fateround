@@ -15,7 +15,6 @@ import {
   isChessGame,
   isCheckersGame,
   isDraughts10Game,
-  isPingPongGame,
   isAyoGame,
   isScrabbleGame,
   isDescribeItGame,
@@ -37,6 +36,9 @@ import {
   isQuiplashGame,
   isQuickDrawGame,
   isMafiaGame,
+  isWordGroupingGame,
+  isWordleRoomGame,
+  isTrollRunGame,
   parseGameType,
 } from '@/lib/game-types'
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -114,12 +116,12 @@ export function gameAllowsLatePlayerJoin(gameType: GameType): boolean {
     !isCheckersGame(gameType) &&
     !isDraughts10Game(gameType) &&
     !isAyoGame(gameType) &&
-    !isPingPongGame(gameType) &&
     !isScrabbleGame(gameType) &&
     !isSudokuGame(gameType) &&
     !isCrosswordGame(gameType) &&
     !isWordSearchGame(gameType) &&
-    !isWordScrambleGame(gameType)
+    !isWordScrambleGame(gameType) &&
+    !isTrollRunGame(gameType)
   )
 }
 
@@ -141,7 +143,9 @@ export function gameOffersLateJoinChoice(gameType: GameType): boolean {
     isLandmineGame(gameType) ||
     isSudokuGame(gameType) ||
     isQuiplashGame(gameType) ||
-    isQuickDrawGame(gameType)
+    isQuickDrawGame(gameType) ||
+    isWordGroupingGame(gameType) ||
+    isWordleRoomGame(gameType)
   )
 }
 
@@ -279,13 +283,24 @@ export function spectatorForActiveJoin(
   return joinAsViewer === true
 }
 
-/** Mark existing players as spectators when the lobby reopens so they must opt in. */
+/**
+ * Mark existing players as spectators when the lobby reopens so they must opt in
+ * ("ready up"). Bots are excluded from this reset — they have no client to opt
+ * back in from, so demoting them would strand them as spectators through the
+ * replay ring and the human-seat guard would block Start. Bots stay seated
+ * across Play Again and Return to Lobby transitions; a host who wants them
+ * gone uses the DELETE bot endpoint instead.
+ */
 export async function resetSpectatorsForLobby(
   supabase: SupabaseClient,
   gameId: string,
   exceptPlayerIds: string[] = []
 ): Promise<{ error: string | null }> {
-  const { error: resetError } = await supabase.from('players').update({ spectator: true }).eq('game_id', gameId)
+  const { error: resetError } = await supabase
+    .from('players')
+    .update({ spectator: true })
+    .eq('game_id', gameId)
+    .neq('is_bot', true)
   if (resetError) return { error: internalErrorMessage('viewers', resetError) }
 
   if (exceptPlayerIds.length === 0) return { error: null }

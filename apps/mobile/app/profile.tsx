@@ -1,0 +1,248 @@
+import { useCallback, useEffect, useState } from 'react'
+import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { useRouter, useFocusEffect } from 'expo-router'
+import { SafeAreaView } from 'react-native-safe-area-context'
+import { ListRow } from '@/components/ui/ListRow'
+import { SurfaceCard } from '@/components/ui/SurfaceCard'
+import { centeredContent } from '@/constants/layout'
+import type { Theme } from '@/constants/theme'
+import { useTheme, useThemedStyles } from '@/constants/theme-context'
+import { fetchProfileGames, type ProfileGameRow, type ProfileMe } from '@/lib/profile-api'
+
+/**
+ * Profile screen — trophy case + per-game stats surface.
+ *
+ * Identity management (sign in, edit handle, sign out) lives in the
+ * `ProfileChip` sheet on Home — reusing that avoids double-implementing
+ * a flow that already works. This screen focuses on what's genuinely
+ * new: the trophy points/streak roll-up and the per-game rows the plan
+ * called out as the P1 gap.
+ *
+ * Signed-out (anonymous) state renders identically — anon players still
+ * have real trophy stats — so there's no separate "guest" layout.
+ *
+ * Phase 1 of docs/mobile-revamp-plan.md. Follow-ups:
+ *   - /profile/trophies/[gameType] for per-game trophy grid (row tap target).
+ *   - Handle edit could migrate to /profile in Phase 4 once the flow stabilises.
+ */
+export default function ProfileScreen() {
+  const router = useRouter()
+  const theme = useTheme()
+  const styles = useThemedStyles(makeStyles)
+  const [profile, setProfile] = useState<ProfileMe | null>(null)
+  const [games, setGames] = useState<ProfileGameRow[]>([])
+  const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+
+  const load = useCallback(async () => {
+    const { profile, games } = await fetchProfileGames()
+    setProfile(profile)
+    setGames(games)
+    setLoading(false)
+  }, [])
+
+  useEffect(() => {
+    void load()
+  }, [load])
+
+  // Refresh on return so a trophy won in another screen shows up next time we
+  // land here without a manual pull.
+  useFocusEffect(
+    useCallback(() => {
+      void load()
+    }, [load])
+  )
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true)
+    try {
+      await load()
+    } finally {
+      setRefreshing(false)
+    }
+  }, [load])
+
+  const signedIn = !!profile && !profile.is_anonymous
+  const handle = profile?.handle?.trim() || (signedIn ? 'Player' : 'Guest')
+  const totals = {
+    points: profile?.trophy_points ?? 0,
+    level: profile?.trophy_level ?? 1,
+    current: profile?.current_streak ?? 0,
+    best: profile?.longest_streak ?? 0,
+  }
+
+  return (
+    <SafeAreaView style={styles.safe} edges={['top']}>
+      <View style={styles.topBar}>
+        <Pressable
+          onPress={() => router.back()}
+          accessibilityRole="button"
+          accessibilityLabel="Back"
+          hitSlop={12}
+          style={styles.backBtn}
+        >
+          <Text style={styles.backGlyph}>‹</Text>
+        </Pressable>
+        <Text style={styles.pageTitle}>Profile</Text>
+        <View style={styles.topBarSpacer} />
+      </View>
+
+      <ScrollView
+        contentContainerStyle={styles.container}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={() => void onRefresh()} tintColor={theme.primaryMuted} />
+        }
+      >
+        {/* Header card: name + auth state hint. Editing / sign-in / sign-out
+            all still live in the ProfileChip sheet on Home. */}
+        <SurfaceCard elevation="raised">
+          <View style={styles.headerRow}>
+            <View style={styles.avatar}>
+              <Text style={styles.avatarInitial}>{handle.slice(0, 1).toUpperCase()}</Text>
+            </View>
+            <View style={styles.headerBody}>
+              <Text style={styles.handle} numberOfLines={1}>
+                {handle}
+              </Text>
+              <Text style={styles.handleHint}>
+                {signedIn
+                  ? profile?.username
+                    ? `@${profile.username}`
+                    : 'Signed in'
+                  : 'Guest — sign in from Home to save progress across devices'}
+              </Text>
+            </View>
+          </View>
+        </SurfaceCard>
+
+        {/* Totals: two rows of two, so the four glance-numbers stay one
+            tap-target wide even on the narrowest phones. */}
+        <View style={styles.totalsRow}>
+          <StatTile label="Trophy points" value={totals.points} />
+          <StatTile label="Level" value={totals.level} />
+        </View>
+        <View style={styles.totalsRow}>
+          <StatTile label="Current streak" value={`${totals.current}d`} />
+          <StatTile label="Best streak" value={`${totals.best}d`} />
+        </View>
+
+        {/* Per-game section — rows built from ListRow, dividers between,
+            wrapped in a SurfaceCard so the section reads as one grouped list.
+            Row tap opens that game's trophy grid (Phase 1 follow-up route). */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Your games</Text>
+          {loading ? (
+            <Text style={styles.empty}>Loading…</Text>
+          ) : games.length === 0 ? (
+            <Text style={styles.empty}>Finish a game to see it here.</Text>
+          ) : (
+            <SurfaceCard padding={0} gap={0}>
+              {games.map((row, i) => (
+                <ListRow
+                  key={row.gameType}
+                  onPress={() => router.push(`/profile/trophies/${row.gameType}` as never)}
+                  divider={i < games.length - 1}
+                  left={
+                    <View style={styles.gameEmoji}>
+                      <Text style={styles.gameEmojiText}>{row.emoji}</Text>
+                    </View>
+                  }
+                  title={row.label}
+                  subtitle={`${row.gamesWon} won · ${row.gamesPlayed} played · ${row.earned}/${row.total} trophies`}
+                  right={<Text style={styles.chevron}>›</Text>}
+                />
+              ))}
+            </SurfaceCard>
+          )}
+        </View>
+      </ScrollView>
+    </SafeAreaView>
+  )
+}
+
+function StatTile({ label, value }: { label: string; value: number | string }) {
+  const styles = useThemedStyles(makeStyles)
+  return (
+    <SurfaceCard style={styles.tile}>
+      <Text style={styles.tileValue}>{value}</Text>
+      <Text style={styles.tileLabel}>{label}</Text>
+    </SurfaceCard>
+  )
+}
+
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
+    safe: { flex: 1, backgroundColor: theme.bg },
+    topBar: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: theme.space.md,
+      paddingVertical: theme.space.sm,
+    },
+    topBarSpacer: { width: 44 },
+    pageTitle: {
+      color: theme.text,
+      fontSize: theme.type.section.size,
+      fontWeight: theme.type.section.weight,
+    },
+    backBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+    backGlyph: { color: theme.text, fontSize: 28, fontWeight: '400' },
+    container: {
+      padding: theme.space.md,
+      gap: theme.space.md,
+      paddingBottom: theme.space.xl,
+      ...centeredContent,
+    },
+    headerRow: { flexDirection: 'row', alignItems: 'center', gap: theme.space.md },
+    avatar: {
+      width: 56,
+      height: 56,
+      borderRadius: theme.radius.pill,
+      backgroundColor: theme.primary,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    avatarInitial: { color: '#fff', fontSize: theme.type.title.size, fontWeight: '800' },
+    headerBody: { flex: 1, gap: 2 },
+    handle: {
+      color: theme.text,
+      fontSize: theme.type.title.size,
+      lineHeight: theme.type.title.lineHeight,
+      fontWeight: theme.type.title.weight,
+    },
+    handleHint: { color: theme.textMuted, fontSize: theme.type.caption.size },
+    totalsRow: { flexDirection: 'row', gap: theme.space.sm },
+    tile: { flex: 1, alignItems: 'center', paddingVertical: theme.space.md },
+    tileValue: {
+      color: theme.text,
+      fontSize: theme.type.display.size,
+      lineHeight: theme.type.display.lineHeight,
+      fontWeight: theme.type.display.weight,
+      letterSpacing: theme.type.display.letterSpacing,
+    },
+    tileLabel: { color: theme.textMuted, fontSize: theme.type.caption.size, marginTop: 2 },
+    section: { gap: theme.space.sm },
+    sectionTitle: {
+      color: theme.text,
+      fontSize: theme.type.title.size,
+      fontWeight: theme.type.title.weight,
+      letterSpacing: theme.type.title.letterSpacing,
+    },
+    empty: {
+      color: theme.textMuted,
+      fontSize: theme.type.body.size,
+      paddingVertical: theme.space.md,
+      textAlign: 'center',
+    },
+    gameEmoji: {
+      width: 40,
+      height: 40,
+      borderRadius: theme.radius.md,
+      backgroundColor: theme.primarySoft,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    gameEmojiText: { fontSize: 22 },
+    chevron: { color: theme.textFaint, fontSize: 24, fontWeight: '300' },
+  })

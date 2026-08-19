@@ -80,6 +80,26 @@ export async function POST(req: NextRequest) {
     }
     const realGameType = game.game_type as string
 
+    // Bot-heavy games don't feed the community leaderboard. Rule: bots must
+    // be a MINORITY of seats. So a 2+2 (humans/bots) game counts, a 1+3
+    // farming setup doesn't. Strictly `>` so an even 50/50 room passes.
+    // Only games that admit bots at all (Whot / Monopoly today) can hit this;
+    // for everything else, `bots` is always 0 and the check is a no-op.
+    const { data: seated } = await supabase
+      .from('players')
+      .select('is_bot')
+      .eq('game_id', gameId)
+      .eq('spectator', false)
+    const totalSeats = seated?.length ?? 0
+    const botSeats = (seated ?? []).filter((p) => p.is_bot === true).length
+    if (totalSeats > 0 && botSeats * 2 > totalSeats) {
+      await clearPostWinAttempts(ip)
+      return NextResponse.json(
+        { error: 'Games where more than half the seats are bots don’t count for the community leaderboard.' },
+        { status: 403 }
+      )
+    }
+
     // The target board is the real game type by default, or a requested achievement
     // that belongs to it. Reject anything else so a crafted request can't post a win
     // onto an unrelated leaderboard row.

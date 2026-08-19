@@ -24,7 +24,6 @@ import {
   isDraughts10Game,
   isCheckersNigeriaGame,
   isTicTacToeGame,
-  isPingPongGame,
   isLandmineGame,
 } from '@/lib/game-types'
 import {
@@ -56,8 +55,8 @@ import { parsePlayerQuestionsEnabled, parsePlayerQuestionsOrder } from '@/lib/pl
 import { supportsPlayerNameSubmissions } from '@/lib/player-participant-pool'
 import { gameSupportsViewerSetting, lateJoinPolicyToFields, gameAllowsLatePlayerJoin } from '@/lib/viewers'
 import { clampPanRounds } from '@/lib/pick-a-number'
-import { clampPingPongPoints } from '@/lib/ping-pong'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { scheduleNewPublicGameFanout } from '@/lib/notification-subscriptions'
 
 const supabase = getSupabaseAnon()
 
@@ -83,8 +82,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
     wst_quote_source: rawWstQuoteSource,
     codewords_player_picks: rawCwPlayerPicks,
     codewords_randomize_teams: rawCwRandomize,
-    ping_pong_points_to_win: rawPingPongPointsToWin,
     participant_filter,
+    keep_lobby_alive: rawKeepLobbyAlive,
   } = body
 
   // Fail-closed: treat this PATCH as "changeable while live" iff every provided setting is a
@@ -98,6 +97,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
     'allow_late_players',
     'is_public',
     'content_label',
+    // Idle-lobby "Keep open" tap — safe to accept post-start (no-op except in
+    // a waiting lobby anyway) and needs the weaker lobby-only auth.
+    'keep_lobby_alive',
   ])
   const providedSettingKeys = Object.entries(body)
     .filter(([key, value]) => key !== 'hostToken' && value !== undefined)
@@ -116,7 +118,37 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
   // Public/private visibility — controls whether the game is listed in Browse.
   // Applies to every game type, so it's handled up front with no per-type gating.
   if (rawIsPublic !== undefined) {
+    // Guard: a Public game with max_players < 2 has no seat to fill, and the
+    // /browse feed excludes those rows — silently accepting would strand the
+    // host with a toggle that never surfaces. Mirrors the create-route + lobby-
+    // settings-route rejections.
+    if (rawIsPublic === true) {
+      const currentMax = Number(auth.game?.max_players ?? 0)
+      if (currentMax > 0 && currentMax < 2) {
+        return NextResponse.json({ error: 'Bump the max players above 1 to make this game Public.' }, { status: 400 })
+      }
+    }
     updatePayload.is_public = rawIsPublic
+    // Discovery Phase B — false → true transition fans out to per-game-type
+    // subscribers. Fire only on the transition (not on redundant true→true
+    // writes) so a host toggling settings back and forth doesn't rate-limit
+    // the whole fleet. Rate limit is a secondary guard.
+    if (rawIsPublic === true && auth.game?.is_public !== true) {
+      scheduleNewPublicGameFanout(
+        auth.id!,
+        String(auth.game?.game_type ?? ''),
+        String(auth.game?.title ?? ''),
+        (auth.game as { host_user_id?: string | null } | null)?.host_user_id ?? null
+      )
+    }
+  }
+
+  // T-13min "Keep open" tap — bump activity + stamp the warning column so the
+  // pg_cron close job holds off and the client-side banner never re-fires for
+  // this game. One bite per game (see docs/mobile-discovery-plan.md).
+  if (rawKeepLobbyAlive === true) {
+    updatePayload.last_activity_at = new Date().toISOString()
+    updatePayload.host_idle_warning_sent_at = new Date().toISOString()
   }
 
   // Content label ("Maths", "Bible trivia") — trimmed + capped; empty string clears it.
@@ -218,14 +250,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
     return NextResponse.json({ error: 'Board and piece appearance only apply to Chess games' }, { status: 400 })
   }
 
-  if (isPingPongGame(gameType)) {
-    if (rawPingPongPointsToWin !== undefined) {
-      updatePayload.ping_pong_points_to_win = clampPingPongPoints(rawPingPongPointsToWin)
-    }
-  } else if (rawPingPongPointsToWin !== undefined) {
-    return NextResponse.json({ error: 'Points to win only applies to Ping Pong games' }, { status: 400 })
-  }
-
   // Landmine host-lobby settings. Pre-start only (assertHostGameSettings restricts this PATCH to a
   // waiting/finished game). The landmine timers live on the shared timer columns, so they're
   // clamped here rather than in the generic timer blocks below.
@@ -274,8 +298,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
       updatePayload.game_duration_seconds = clampNpatGameDuration(rawGameDurationSeconds)
     } else if (isScrabbleGame(gameType)) {
       updatePayload.game_duration_seconds = clampScrabbleGameDuration(rawGameDurationSeconds)
-    } else if (isPingPongGame(gameType)) {
-      updatePayload.game_duration_seconds = Math.max(0, rawGameDurationSeconds)
     }
   }
 

@@ -215,14 +215,22 @@ export function HostPuzzleSettings({
               sample={questionSampleFile(kind)}
               hint={questionUploadHint(kind)}
               buttonLabel={saving ? 'Saving…' : 'Choose CSV'}
+              pastePlaceholder={
+                kind === 'crossword'
+                  ? 'Paste answer,clue per line (e.g. PLANET,Found in space). Header row optional.'
+                  : kind === 'word_scramble'
+                    ? 'Paste one word per line, optional hint after a comma (e.g. PLANET,Found in space)'
+                    : 'Paste one word per line (e.g. PLANET)'
+              }
+              pasteButtonLabel={kind === 'crossword' ? 'Import pasted answers' : 'Import pasted words'}
               fileRef={fileRef}
               error={uploadError}
               summary={uploadSummary}
-              onFile={async (file) => {
+              onText={async (text) => {
                 setUploadError(null)
                 setUploadSummary(null)
                 try {
-                  const result = cfg.parseImport(await file.text())
+                  const result = cfg.parseImport(text)
                   if (result.questions.length < 4) throw new Error(`Need at least 4 ${cfg.noun}`)
                   const extra = formatEntryImportSummary(result)
                   await applyCustomPool(

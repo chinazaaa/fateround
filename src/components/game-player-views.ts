@@ -18,7 +18,6 @@ import { LudoPlayerView } from '@/components/ludo/LudoPlayerView'
 import { MahjongPlayerView } from '@/components/mahjong/MahjongPlayerView'
 import { SnakeLadderPlayerView } from '@/components/snake-and-ladder/SnakeLadderPlayerView'
 import { TicTacToePlayerView } from '@/components/tic-tac-toe/TicTacToePlayerView'
-import { PingPongPlayerView } from '@/components/ping-pong/PingPongPlayerView'
 import { ChessPlayerView } from '@/components/chess/ChessPlayerView'
 import { CheckersPlayerView } from '@/components/checkers/CheckersPlayerView'
 import { Draughts10PlayerView } from '@/components/draughts10/Draughts10PlayerView'
@@ -35,6 +34,9 @@ import { WordRushPlayerView } from '@/components/word-rush/WordRushPlayerView'
 import { CrosswordPlayerView } from '@/components/crossword/CrosswordPlayerView'
 import { WordSearchPlayerView } from '@/components/word-search/WordSearchPlayerView'
 import { WordScramblePlayerView } from '@/components/word-scramble/WordScramblePlayerView'
+import { WordGroupingPlayerView } from '@/components/word-grouping/WordGroupingPlayerView'
+import { WordleRoomPlayerView } from '@/components/wordle-room/WordleRoomPlayerView'
+import { TrollRunPlayerView } from '@/components/troll-run/TrollRunPlayerView'
 
 export type GamePlayerView = ComponentType<{ gameCode: string }>
 
@@ -62,7 +64,6 @@ export const PLAYER_VIEW_REGISTRY: Partial<Record<GameType, GamePlayerView>> = {
   mahjong: MahjongPlayerView,
   snake_and_ladder: SnakeLadderPlayerView,
   tic_tac_toe: TicTacToePlayerView,
-  ping_pong: PingPongPlayerView,
   chess: ChessPlayerView,
   checkers: CheckersPlayerView,
   checkers_international: Draughts10PlayerView,
@@ -81,4 +82,7 @@ export const PLAYER_VIEW_REGISTRY: Partial<Record<GameType, GamePlayerView>> = {
   crossword: CrosswordPlayerView,
   word_search: WordSearchPlayerView,
   word_scramble: WordScramblePlayerView,
+  word_grouping: WordGroupingPlayerView,
+  wordle_room: WordleRoomPlayerView,
+  troll_run: TrollRunPlayerView,
 }

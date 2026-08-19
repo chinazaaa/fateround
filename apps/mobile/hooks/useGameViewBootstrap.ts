@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { AppState } from 'react-native'
 import type { Game, Player } from '@fateround/shared'
 import { normalizeGameCode } from '@fateround/shared'
-import { joinGame } from '@/lib/api'
+import { Alert } from 'react-native'
+import { JoinError, joinGame } from '@/lib/api'
 import { recordRecentGame } from '@/lib/recent-games'
 import { getPlayerSession, setPlayerSession } from '@/lib/secure-session'
 import { reconcilePlayerSession } from '@/lib/player-session-reconcile'
@@ -174,11 +175,9 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
         return
       }
 
-      setJoining(true)
-      setError(null)
-      try {
+      const attemptJoin = async (continueOnThisDevice: boolean) => {
         const existing = await getPlayerSession(code)
-        const data = await joinGame({
+        return joinGame({
           gameCode: code,
           playerName: playerName || 'Player',
           resumeToken: existing?.resumeToken ?? undefined,
@@ -187,7 +186,47 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
           gender: options?.gender,
           identityGender: options?.identityGender,
           pollGender: options?.pollGender,
+          continueOnThisDevice,
         })
+      }
+
+      setJoining(true)
+      setError(null)
+      try {
+        let data
+        try {
+          data = await attemptJoin(false)
+        } catch (err) {
+          // Cross-device continuation prompt: same profile already hosting or
+          // seated from another device. Ask the user which device wins; on
+          // "Continue here" re-issue the join with the override flag.
+          if (err instanceof JoinError && (err.reason === 'already_hosting' || err.reason === 'already_joined')) {
+            const isHost = err.reason === 'already_hosting'
+            const proceed = await new Promise<boolean>((resolve) => {
+              Alert.alert(
+                isHost ? 'Already hosting elsewhere' : 'Already in this game elsewhere',
+                isHost
+                  ? 'You’re hosting this game on another device. Continue on this device, or keep it on the other one?'
+                  : `You’re already a player in this game on another device${
+                      err.existingPlayerName ? ` (as ${err.existingPlayerName})` : ''
+                    }. Continue on this device, or keep it on the other one?`,
+                [
+                  { text: 'Keep other device', style: 'cancel', onPress: () => resolve(false) },
+                  { text: 'Continue here', style: 'default', onPress: () => resolve(true) },
+                ],
+                { cancelable: false }
+              )
+            })
+            if (!proceed) {
+              setError(null)
+              setJoining(false)
+              return
+            }
+            data = await attemptJoin(true)
+          } else {
+            throw err
+          }
+        }
 
         const gender = data.playerGender ?? 'both'
         await setPlayerSession(code, data.playerId, data.playerName, gender, data.resumeToken ?? null)
@@ -241,7 +280,20 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
   }
 }
 
-type WatchedTable = string | { table: string; column?: string }
+type WatchedTable =
+  | string
+  | {
+      table: string
+      column?: string
+      /**
+       * Delta fast-path. If provided and it returns `true` for a given row change,
+       * skip the debounced reload — the caller has already merged the new row into
+       * local state. Anything else (void / false / DELETE / thrown) falls through
+       * to the normal reload so a bad payload never leaves the view stale.
+       * Mirrors the web `useGameTableSync` contract.
+       */
+      apply?: (row: Record<string, unknown>) => void | boolean
+    }
 
 // Supabase postgres_changes occasionally drops a players INSERT/UPDATE event, and the
 // lobby (join / ready-up / play-again ring) has no other traffic to mask a drop the way
@@ -253,7 +305,14 @@ export function useGameTableSync(
   tables: readonly WatchedTable[],
   reload: () => void | Promise<unknown>,
   enabled = true,
-  gameStatus?: string
+  gameStatus?: string,
+  // Opt-in reconcile cadence for ACTIVE play. Realtime is primary, but a channel can stay
+  // subscribed while silently dropping row changes (no status event fires), and while the app
+  // is foregrounded there's otherwise no recovery — a client would sit on a stale view forever.
+  // For a live clock game that means ticking the wrong player's clock and losing on time
+  // without ever seeing it was your turn. Pass a slow interval (e.g. 10s) for turn/clock-critical
+  // games so a stuck view self-heals. Left unset for the many-player games to avoid broad polling.
+  activePollMs?: number
 ) {
   const reloadRef = useRef(reload)
   reloadRef.current = reload
@@ -261,7 +320,15 @@ export function useGameTableSync(
   // Call sites pass a fresh `tables` array literal each render; keying the
   // effect on the serialized contents (not array identity) stops it from
   // re-subscribing every render.
-  const tablesKey = JSON.stringify(tables)
+  const tablesKey = tables
+    .map((t) => (typeof t === 'string' ? `${t}:game_id` : `${t.table}:${t.column ?? 'game_id'}`))
+    .join(',')
+
+  // `apply` callbacks change identity each render; read the latest through a ref
+  // so the subscription (keyed on table names + columns) never has to be torn
+  // down and rebuilt. Same trick as web useGameTableSync.
+  const applyRef = useRef(new Map<string, ((row: Record<string, unknown>) => void | boolean) | undefined>())
+  applyRef.current = new Map(tables.map((t) => (typeof t === 'string' ? [t, undefined] : [t.table, t.apply])))
 
   useEffect(() => {
     if (!enabled || !gameCode || tables.length === 0) return
@@ -302,7 +369,22 @@ export function useGameTableSync(
         channel = channel.on(
           'postgres_changes',
           { event: '*', schema: 'public', table, filter: `${column}=eq.${gameCode}` },
-          () => schedule()
+          (payload: { eventType?: string; new?: Record<string, unknown> | null }) => {
+            // Delta fast-path: if the caller supplied an `apply` for this
+            // table and it fully absorbed the row (returned true), skip the
+            // debounced reconciliation reload. DELETEs and unopted-in tables
+            // still reload as before.
+            const apply = applyRef.current.get(table)
+            let handled = false
+            if (apply && payload?.eventType !== 'DELETE' && payload?.new && Object.keys(payload.new).length > 0) {
+              try {
+                handled = apply(payload.new) === true
+              } catch {
+                handled = false
+              }
+            }
+            if (!handled) schedule()
+          }
         )
       }
       channel.subscribe()
@@ -328,14 +410,16 @@ export function useGameTableSync(
         .catch(() => {})
     })
 
-    const pollId =
-      gameStatus === 'waiting'
-        ? setInterval(() => {
-            void Promise.resolve()
-              .then(() => reloadRef.current())
-              .catch(() => {})
-          }, LOBBY_POLL_INTERVAL_MS)
-        : null
+    // Lobby polls at a fixed cadence; an active game polls only if the caller opted in with
+    // activePollMs (turn/clock-critical games) — the safety net for a silently-stale channel.
+    const pollMs = gameStatus === 'waiting' ? LOBBY_POLL_INTERVAL_MS : activePollMs
+    const pollId = pollMs
+      ? setInterval(() => {
+          void Promise.resolve()
+            .then(() => reloadRef.current())
+            .catch(() => {})
+        }, pollMs)
+      : null
 
     return () => {
       if (debounce) clearTimeout(debounce)
@@ -345,5 +429,5 @@ export function useGameTableSync(
     }
     // `tables` is intentionally keyed via tablesKey (contents, not identity).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, gameCode, tablesKey, gameStatus])
+  }, [enabled, gameCode, tablesKey, gameStatus, activePollMs])
 }

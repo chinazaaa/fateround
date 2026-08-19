@@ -2,7 +2,10 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { Clock01Icon, LockIcon } from '@hugeicons/core-free-icons'
 import { SiteChrome } from '@/components/SiteChrome'
+import { Glyph } from '@/components/icons/Glyph'
+import { UI_ICONS } from '@/lib/game-glyphs'
 import { supabase } from '@/lib/supabase'
 import { formatRoomTimezone, getRoomTimezoneOptions, getUserTimezone, ROOM_DESCRIPTION_MAX } from '@/lib/room-timezones'
 import type { RoomRow } from '@/lib/room-api'
@@ -10,6 +13,12 @@ import type { RoomRow } from '@/lib/room-api'
 type PublicRoom = RoomRow & { memberCount: number }
 
 type Tab = 'create' | 'join' | 'browse'
+
+const TABS: { key: Tab; label: string }[] = [
+  { key: 'create', label: 'Create' },
+  { key: 'join', label: 'Join' },
+  { key: 'browse', label: 'Browse' },
+]
 
 export function RoomsPage() {
   const router = useRouter()
@@ -171,100 +180,108 @@ export function RoomsPage() {
 
   return (
     <SiteChrome>
-      <div className="flex min-h-full flex-col items-center justify-center px-4 py-10">
-        <div className="w-full max-w-sm space-y-4">
-          <div className="text-center space-y-1">
-            <div className="text-4xl">🏠</div>
-            <h1 className="text-2xl font-black tracking-tight gradient-title">Game Rooms</h1>
-            <p className="text-muted text-sm">
-              A permanent home base for your friend group. Play multiple games, track stats, and chat — no sign-up
-              needed.
+      <div className="fr-band fr-band--tight">
+        <div className="mk-wrap">
+          <div className="mb-6 space-y-2 text-center">
+            <span className="fr-glyph">
+              <Glyph icon={UI_ICONS.home} size={26} />
+            </span>
+            <h1
+              className="mx-0 mb-2.5 mt-3 text-[2.25rem] tracking-[-0.035em] sm:text-5xl"
+              style={{ fontFamily: 'var(--font-display)', fontWeight: 800, color: 'var(--text)' }}
+            >
+              Game Rooms
+            </h1>
+            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+              A permanent home base for your group. Play multiple games, track stats, and chat.
             </p>
           </div>
 
-          <div className="glass-card-strong p-4 space-y-4">
-            <div className="flex rounded-xl border border-[var(--border)] overflow-hidden">
-              <button
-                type="button"
-                onClick={() => switchTab('create')}
-                className={`flex-1 py-2 text-xs sm:text-sm font-semibold transition-colors ${tab === 'create' ? 'bg-[var(--primary)] text-white' : 'text-muted hover:text-body'}`}
-              >
-                Create
-              </button>
-              <button
-                type="button"
-                onClick={() => switchTab('join')}
-                className={`flex-1 py-2 text-xs sm:text-sm font-semibold transition-colors ${tab === 'join' ? 'bg-[var(--primary)] text-white' : 'text-muted hover:text-body'}`}
-              >
-                Join
-              </button>
-              <button
-                type="button"
-                onClick={() => switchTab('browse')}
-                className={`flex-1 py-2 text-xs sm:text-sm font-semibold transition-colors ${tab === 'browse' ? 'bg-[var(--primary)] text-white' : 'text-muted hover:text-body'}`}
-              >
-                Browse
-              </button>
+          <div className="fr-card fr-card--xl space-y-4 mx-auto max-w-[33rem]">
+            <div className="fr-segment" role="tablist" aria-label="Room actions">
+              {TABS.map((entry) => (
+                <button
+                  key={entry.key}
+                  type="button"
+                  role="tab"
+                  aria-selected={tab === entry.key}
+                  onClick={() => switchTab(entry.key)}
+                  className="fr-segment__btn"
+                >
+                  {entry.label}
+                </button>
+              ))}
             </div>
 
             {tab === 'create' && (
               <div className="space-y-3">
                 <div className="space-y-1.5">
-                  <label className="label-caps">Room name</label>
+                  <label htmlFor="room-name" className="label-caps">
+                    Room name
+                  </label>
                   <input
+                    id="room-name"
                     value={roomName}
                     onChange={(e) => setRoomName(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && createRoom()}
                     placeholder="e.g. The Office Crew"
                     maxLength={50}
-                    className="input-field"
+                    className="fr-input"
                     autoFocus
                   />
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="label-caps">Visibility</label>
-                  <div className="flex rounded-xl border border-[var(--border)] overflow-hidden">
+                  <p className="label-caps">Visibility</p>
+                  {/* `aria-pressed` rather than `aria-selected`: these are two
+                      toggle buttons, not tabs — nothing below them swaps. */}
+                  <div className="fr-segment">
                     <button
                       type="button"
+                      aria-pressed={!isPublic}
                       onClick={() => setIsPublic(false)}
-                      className={`flex-1 py-2 text-sm font-semibold transition-colors ${
-                        !isPublic ? 'bg-[var(--primary)] text-white' : 'text-muted hover:text-body'
-                      }`}
+                      className="fr-segment__btn"
                     >
-                      🔒 Private
+                      <Glyph icon={LockIcon} size={15} />
+                      Private
                     </button>
                     <button
                       type="button"
+                      aria-pressed={isPublic}
                       onClick={() => setIsPublic(true)}
-                      className={`flex-1 py-2 text-sm font-semibold transition-colors ${
-                        isPublic ? 'bg-[var(--primary)] text-white' : 'text-muted hover:text-body'
-                      }`}
+                      className="fr-segment__btn"
                     >
-                      🌐 Public
+                      <Glyph icon={UI_ICONS.browse} size={15} />
+                      Public
                     </button>
                   </div>
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="label-caps">
-                    Description <span className="normal-case text-faint font-normal">(optional)</span>
+                  <label htmlFor="room-description" className="label-caps">
+                    Description <span className="font-normal normal-case text-faint">(optional)</span>
                   </label>
                   <textarea
+                    id="room-description"
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
                     placeholder="What's this room about?"
                     maxLength={ROOM_DESCRIPTION_MAX}
                     rows={2}
-                    className="input-field resize-none"
+                    className="fr-input resize-none"
                   />
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="label-caps">
-                    Timezone <span className="normal-case text-faint font-normal">(optional)</span>
+                  <label htmlFor="room-timezone" className="label-caps">
+                    Timezone <span className="font-normal normal-case text-faint">(optional)</span>
                   </label>
-                  <select value={timezone} onChange={(e) => setTimezone(e.target.value)} className="input-field">
+                  <select
+                    id="room-timezone"
+                    value={timezone}
+                    onChange={(e) => setTimezone(e.target.value)}
+                    className="fr-select"
+                  >
                     <option value="">No timezone</option>
                     {timezoneOptions.map((opt) => (
                       <option key={opt.value} value={opt.value}>
@@ -275,25 +292,30 @@ export function RoomsPage() {
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="label-caps">
-                    Max members <span className="normal-case text-faint font-normal">(optional)</span>
+                  <label htmlFor="room-max-members" className="label-caps">
+                    Max members <span className="font-normal normal-case text-faint">(optional)</span>
                   </label>
                   <input
+                    id="room-max-members"
                     value={maxMembers}
                     onChange={(e) => setMaxMembers(e.target.value.replace(/[^0-9]/g, ''))}
                     onKeyDown={(e) => e.key === 'Enter' && createRoom()}
                     placeholder="No limit"
                     maxLength={3}
                     inputMode="numeric"
-                    className="input-field"
+                    className="fr-input"
                   />
                 </div>
-                {error && <p className="text-xs text-red-400">{error}</p>}
+                {error && (
+                  <p className="text-xs" style={{ color: 'var(--danger)' }}>
+                    {error}
+                  </p>
+                )}
                 <button
                   type="button"
                   onClick={createRoom}
                   disabled={!roomName.trim() || loading}
-                  className="btn-primary"
+                  className="fr-btn fr-btn--primary fr-btn--lg fr-btn--block"
                 >
                   {loading ? 'Creating…' : 'Create Room'}
                 </button>
@@ -303,23 +325,30 @@ export function RoomsPage() {
             {tab === 'join' && (
               <div className="space-y-3">
                 <div className="space-y-1.5">
-                  <label className="label-caps">Room code</label>
+                  <label htmlFor="room-code" className="label-caps">
+                    Room code
+                  </label>
                   <input
+                    id="room-code"
                     value={joinCode}
                     onChange={(e) => setJoinCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
                     onKeyDown={(e) => e.key === 'Enter' && joinRoom()}
                     placeholder="Enter code"
                     maxLength={6}
-                    className="input-field text-center text-xl tracking-[0.2em] font-mono font-bold"
+                    className="fr-input fr-input--code"
                     autoFocus
                   />
                 </div>
-                {error && <p className="text-xs text-red-400">{error}</p>}
+                {error && (
+                  <p className="text-xs" style={{ color: 'var(--danger)' }}>
+                    {error}
+                  </p>
+                )}
                 <button
                   type="button"
                   onClick={joinRoom}
                   disabled={joinCode.length < 4 || loading}
-                  className="btn-primary"
+                  className="fr-btn fr-btn--primary fr-btn--lg fr-btn--block"
                 >
                   {loading ? 'Looking up…' : 'Enter Room'}
                 </button>
@@ -328,37 +357,54 @@ export function RoomsPage() {
 
             {tab === 'browse' && (
               <div className="space-y-3">
-                <p className="text-xs text-faint">
-                  Public, unlocked rooms anyone can join. Locked or private rooms are hidden automatically.
-                </p>
                 {browseLoading ? (
-                  <p className="text-sm text-muted text-center py-6">Loading public rooms…</p>
+                  <p className="py-6 text-center text-sm" style={{ color: 'var(--text-muted)' }}>
+                    Loading public rooms…
+                  </p>
                 ) : publicRooms.length === 0 ? (
-                  <p className="text-sm text-muted text-center py-6">
+                  <p className="py-6 text-center text-sm" style={{ color: 'var(--text-muted)' }}>
                     No public rooms right now. Create one and set it to public!
                   </p>
                 ) : (
-                  <ul className="space-y-2 max-h-80 overflow-y-auto -mx-1 px-1">
+                  <ul className="-mx-1 max-h-80 space-y-2 overflow-y-auto px-1">
                     {publicRooms.map((room) => (
                       <li
                         key={room.id}
-                        className="rounded-xl border border-[var(--border)] bg-[var(--surface)]/60 p-3 space-y-2"
+                        className="space-y-2 p-3"
+                        style={{
+                          background: 'var(--bg-subtle)',
+                          border: '1px solid var(--border)',
+                          borderRadius: 'var(--radius-md)',
+                        }}
                       >
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0">
-                            <p className="font-semibold text-body truncate">{room.name}</p>
-                            <p className="text-xs text-faint font-mono tracking-wider">{room.id}</p>
+                            <p className="truncate font-semibold" style={{ color: 'var(--text)' }}>
+                              {room.name}
+                            </p>
+                            <p className="font-mono text-xs tracking-wider" style={{ color: 'var(--text-faint)' }}>
+                              {room.id}
+                            </p>
                           </div>
-                          <span className="shrink-0 text-xs text-faint">
+                          <span className="shrink-0 text-xs" style={{ color: 'var(--text-faint)' }}>
                             {room.memberCount} member{room.memberCount !== 1 ? 's' : ''}
                           </span>
                         </div>
-                        {room.description && <p className="text-xs text-muted line-clamp-2">{room.description}</p>}
-                        {room.timezone && <p className="text-xs text-faint">🕐 {formatRoomTimezone(room.timezone)}</p>}
+                        {room.description && (
+                          <p className="line-clamp-2 text-xs" style={{ color: 'var(--text-muted)' }}>
+                            {room.description}
+                          </p>
+                        )}
+                        {room.timezone && (
+                          <p className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--text-faint)' }}>
+                            <Glyph icon={Clock01Icon} size={13} />
+                            {formatRoomTimezone(room.timezone)}
+                          </p>
+                        )}
                         <button
                           type="button"
                           onClick={() => router.push(`/room/${room.id}`)}
-                          className="btn-secondary w-full text-sm py-2"
+                          className="fr-btn fr-btn--secondary fr-btn--sm fr-btn--block"
                         >
                           Join room
                         </button>
@@ -371,7 +417,7 @@ export function RoomsPage() {
                     type="button"
                     onClick={() => void loadPublicRooms(browseCursor)}
                     disabled={browseLoadingMore}
-                    className="btn-secondary w-full text-sm py-2"
+                    className="fr-btn fr-btn--secondary fr-btn--sm fr-btn--block"
                   >
                     {browseLoadingMore ? 'Loading…' : 'Load more rooms'}
                   </button>

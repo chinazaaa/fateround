@@ -60,7 +60,7 @@ export function HostActiveSettings({
           await onEnded()
         }}
         label={endGameLabel}
-        icon={<ExitIcon size={16} />}
+        icon={<ExitIcon size={14} />}
         confirmTitle={endGameConfirmTitle}
         confirmMessage={endGameConfirmMessage}
         className="btn-danger-soft w-full"

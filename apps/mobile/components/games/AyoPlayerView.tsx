@@ -208,7 +208,6 @@ export function AyoPlayerView({ gameCode }: { gameCode: string }) {
     const subtitle = isWin ? 'Mo ki ota, mo ki ope o' : (reasonText ?? 'Final standings')
     const detailParts: string[] = []
     if (isWin && reasonText) detailParts.push(reasonText)
-    if (variant === 'traditional' && activeSession.match_round) detailParts.push(`Round ${activeSession.match_round}`)
     const detail = detailParts.length > 0 ? detailParts.join(' · ') : activeSession.status_message
     return (
       <GameShell bootstrap={bootstrap} title="Ayo" subtitle={bootstrap.code}>
@@ -227,7 +226,11 @@ export function AyoPlayerView({ gameCode }: { gameCode: string }) {
 
   const legal =
     mySide && isMyTurn && !animation.animating
-      ? legalMovesForSide(activeSession.pits, mySide, activeSession.a_row_size, activeSession.b_row_size)
+      ? legalMovesForSide(activeSession.pits, mySide, {
+          variant: parseAyoVariant(bootstrap.game?.ayo_variant),
+          aRowSize: activeSession.a_row_size,
+          bRowSize: activeSession.b_row_size,
+        })
       : []
   const turnPlayer = bootstrap.players.find((p) => p.id === turnPlayerId)
   const nameOf = (pid: string) => bootstrap.players.find((p) => p.id === pid)?.name ?? 'Player'
@@ -252,9 +255,6 @@ export function AyoPlayerView({ gameCode }: { gameCode: string }) {
         />
         {timed && timeControlSeconds > 0 ? (
           <Text style={styles.hint}>⏱ {timeLabel} each — your clock only counts down on your turn</Text>
-        ) : null}
-        {variant === 'traditional' && activeSession.match_round ? (
-          <Text style={styles.hint}>Round {activeSession.match_round}</Text>
         ) : null}
         <AyoBoard
           session={activeSession}

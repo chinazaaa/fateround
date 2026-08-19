@@ -1,11 +1,24 @@
 import { useCallback, useEffect, useState } from 'react'
-import { ActivityIndicator, Alert, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
+import {
+  ActivityIndicator,
+  Alert,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native'
+import { useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
 import { apiUrl } from '@/lib/config'
 import { authHeaders, signOutIdentity } from '@/lib/identity'
 import { requestEmailCode, verifyEmailCode, type EmailCodeFlow } from '@/lib/identity-auth'
+import { getSupabase } from '@/lib/supabase'
 
 type Profile = {
   handle: string | null
@@ -61,6 +74,18 @@ export function ProfileChip() {
     void refresh()
   }, [refresh])
 
+  // Re-fetch when the auth session changes. The session hydrates from AsyncStorage
+  // asynchronously, so the mount fetch above can run before there is a session and read as a
+  // guest for a player who is actually signed in — leaving the chip stuck on "Guest".
+  // `onAuthStateChange` fires `INITIAL_SESSION` once the session is restored (and on sign-in/out,
+  // token refresh and email upgrade), so refreshing here lands the true identity.
+  useEffect(() => {
+    const { data } = getSupabase().auth.onAuthStateChange(() => {
+      void refresh()
+    })
+    return () => data.subscription.unsubscribe()
+  }, [refresh])
+
   const signedIn = Boolean(profile && !profile.is_anonymous)
   // A guest reads "Guest", never their remembered name — the word is how they learn their
   // streak isn't saved anywhere.
@@ -112,6 +137,7 @@ function SaveToProfileSheet({
   theme: Theme
 }) {
   const styles = useThemedStyles(makeStyles)
+  const router = useRouter()
   const [email, setEmail] = useState('')
   const [code, setCode] = useState('')
   const [flow, setFlow] = useState<EmailCodeFlow>('signin')
@@ -136,6 +162,13 @@ function SaveToProfileSheet({
     setBusy(false)
     if (!result.ok) {
       setMessage(result.error ?? 'Could not send the code. Try again.')
+      return
+    }
+    // No code was issued because none was needed — the upgrade already landed. Advancing to
+    // the code step would leave the player waiting for an email that never arrives.
+    if (result.complete) {
+      onChanged()
+      onClose()
       return
     }
     // `flow` decides how the code is verified, so it has to survive to the next step.
@@ -181,103 +214,143 @@ function SaveToProfileSheet({
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose}>
-        {/* Stop taps inside the sheet from dismissing it. */}
-        <Pressable style={styles.sheetWrap} onPress={() => {}}>
-          <SafeAreaView edges={['bottom']} style={styles.sheet}>
-            <View style={styles.grabber} />
-            <View style={styles.header}>
-              <Text style={styles.title}>{signedIn ? 'Your profile' : 'Save your progress'}</Text>
-              <Pressable hitSlop={12} onPress={onClose} accessibilityRole="button" accessibilityLabel="Close">
-                <Text style={styles.close}>Done</Text>
-              </Pressable>
-            </View>
+      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <Pressable style={styles.backdrop} onPress={onClose}>
+          {/* Stop taps inside the sheet from dismissing it. */}
+          <Pressable style={styles.sheetWrap} onPress={() => {}}>
+            <SafeAreaView edges={['bottom']} style={styles.sheet}>
+              <View style={styles.grabber} />
+              <View style={styles.header}>
+                <Text style={styles.title}>{signedIn ? 'Your profile' : 'Save your progress'}</Text>
+                <Pressable hitSlop={12} onPress={onClose} accessibilityRole="button" accessibilityLabel="Close">
+                  <Text style={styles.close}>✕</Text>
+                </Pressable>
+              </View>
 
-            <View style={styles.body}>
-              {signedIn ? (
-                <>
-                  <Text style={styles.hint}>
-                    Signed in as {handle || 'you'}. Your streak and trophies follow this account onto any device.
-                  </Text>
-                  <Pressable
-                    style={styles.secondaryBtn}
-                    onPress={() => void switchUser()}
-                    accessibilityRole="button"
-                    accessibilityLabel="Not you? Switch account"
-                  >
-                    <Text style={styles.secondaryBtnText}>Not you? Switch</Text>
-                  </Pressable>
-                </>
-              ) : step === 'email' ? (
-                <>
-                  <Text style={styles.hint}>
-                    New here? We&apos;ll create your profile. Been here before? We&apos;ll load your trophies.
-                  </Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="you@example.com"
-                    placeholderTextColor={theme.textFaint}
-                    value={email}
-                    onChangeText={setEmail}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    keyboardType="email-address"
-                    textContentType="emailAddress"
-                  />
-                  {message ? <Text style={styles.error}>{message}</Text> : null}
-                  <Pressable
-                    style={[styles.primaryBtn, (busy || !email.trim()) && styles.btnDisabled]}
-                    disabled={busy || !email.trim()}
-                    onPress={() => void sendCode()}
-                    accessibilityRole="button"
-                    accessibilityLabel="Save to profile"
-                  >
-                    {busy ? (
-                      <ActivityIndicator color="#fff" />
-                    ) : (
-                      <Text style={styles.primaryBtnText}>Save to profile</Text>
-                    )}
-                  </Pressable>
-                </>
-              ) : (
-                <>
-                  <Text style={styles.hint}>We emailed a 6-digit code to {email}.</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="123456"
-                    placeholderTextColor={theme.textFaint}
-                    value={code}
-                    onChangeText={setCode}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    keyboardType="number-pad"
-                    textContentType="oneTimeCode"
-                    maxLength={8}
-                  />
-                  {message ? <Text style={styles.error}>{message}</Text> : null}
-                  <Pressable
-                    style={[styles.primaryBtn, (busy || !code.trim()) && styles.btnDisabled]}
-                    disabled={busy || !code.trim()}
-                    onPress={() => void submitCode()}
-                    accessibilityRole="button"
-                    accessibilityLabel="Confirm code"
-                  >
-                    {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>Confirm</Text>}
-                  </Pressable>
-                  <Pressable
-                    disabled={busy}
-                    onPress={() => setStep('email')}
-                    accessibilityRole="button"
-                    accessibilityLabel="Use a different email"
-                  >
-                    <Text style={styles.link}>Use a different email</Text>
-                  </Pressable>
-                </>
-              )}
-            </View>
-          </SafeAreaView>
+              <View style={styles.body}>
+                {signedIn ? (
+                  <>
+                    <Text style={styles.hint}>
+                      Signed in as {handle || 'you'}. Your streak and trophies follow this account onto any device.
+                    </Text>
+                    <Pressable
+                      style={styles.secondaryBtn}
+                      onPress={() => void switchUser()}
+                      accessibilityRole="button"
+                      accessibilityLabel="Not you? Switch account"
+                    >
+                      <Text style={styles.secondaryBtnText}>Not you? Switch</Text>
+                    </Pressable>
+                  </>
+                ) : step === 'email' ? (
+                  <>
+                    <Text style={styles.hint}>
+                      New here? We&apos;ll create your profile. Been here before? We&apos;ll load your trophies.
+                    </Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="you@example.com"
+                      placeholderTextColor={theme.textFaint}
+                      value={email}
+                      onChangeText={setEmail}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      keyboardType="email-address"
+                      textContentType="emailAddress"
+                      returnKeyType="send"
+                      onSubmitEditing={() => {
+                        if (!busy && email.trim()) void sendCode()
+                      }}
+                    />
+                    {message ? <Text style={styles.error}>{message}</Text> : null}
+                    <Pressable
+                      style={[styles.primaryBtn, (busy || !email.trim()) && styles.btnDisabled]}
+                      disabled={busy || !email.trim()}
+                      onPress={() => void sendCode()}
+                      accessibilityRole="button"
+                      accessibilityLabel="Save to profile"
+                    >
+                      {busy ? (
+                        <ActivityIndicator color="#fff" />
+                      ) : (
+                        <Text style={styles.primaryBtnText}>Save to profile</Text>
+                      )}
+                    </Pressable>
+                  </>
+                ) : (
+                  <>
+                    <Text style={styles.hint}>We emailed an 8-digit code to {email}.</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="12345678"
+                      placeholderTextColor={theme.textFaint}
+                      value={code}
+                      onChangeText={setCode}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      keyboardType="number-pad"
+                      textContentType="oneTimeCode"
+                      maxLength={8}
+                      returnKeyType="done"
+                      onSubmitEditing={() => {
+                        if (!busy && code.trim()) void submitCode()
+                      }}
+                    />
+                    {message ? <Text style={styles.error}>{message}</Text> : null}
+                    <Pressable
+                      style={[styles.primaryBtn, (busy || !code.trim()) && styles.btnDisabled]}
+                      disabled={busy || !code.trim()}
+                      onPress={() => void submitCode()}
+                      accessibilityRole="button"
+                      accessibilityLabel="Confirm code"
+                    >
+                      {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>Confirm</Text>}
+                    </Pressable>
+                    <Pressable
+                      disabled={busy}
+                      onPress={() => setStep('email')}
+                      accessibilityRole="button"
+                      accessibilityLabel="Use a different email"
+                    >
+                      <Text style={styles.link}>Use a different email</Text>
+                    </Pressable>
+                  </>
+                )}
+
+                {/* Always-available link into the dedicated /profile screen — the
+                  trophy grid + per-game stats live there. Closing the sheet
+                  before push so the route stack stays clean. */}
+                <Pressable
+                  onPress={() => {
+                    onClose()
+                    // Expo Router's typed-routes registry regenerates on the
+                    // next build; the cast is a one-turn measure until then.
+                    router.push('/profile' as never)
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel="See trophies and stats"
+                >
+                  <Text style={styles.link}>See trophies & stats →</Text>
+                </Pressable>
+
+                {/* Persistent entry point to /notifications for anyone who
+                  dismissed the home banner. Lives in the profile sheet so it
+                  doesn't crowd the home actions. */}
+                <Pressable
+                  onPress={() => {
+                    onClose()
+                    router.push('/notifications' as never)
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Notification preferences"
+                >
+                  <Text style={styles.link}>🔔 Notification preferences →</Text>
+                </Pressable>
+              </View>
+            </SafeAreaView>
+          </Pressable>
         </Pressable>
-      </Pressable>
+      </KeyboardAvoidingView>
     </Modal>
   )
 }
@@ -298,6 +371,7 @@ const makeStyles = (theme: Theme) =>
     pressed: { opacity: 0.7 },
     chipText: { color: theme.text, fontSize: 14, fontWeight: '700' },
     chipMeta: { color: theme.textSecondary, fontSize: 13, fontWeight: '600' },
+    flex: { flex: 1 },
     backdrop: {
       flex: 1,
       backgroundColor: 'rgba(0,0,0,0.5)',
