@@ -19,7 +19,7 @@ import { initializeDraughts10Game, DRAUGHTS10_MIN_PLAYERS } from '@/lib/draughts
 import { initializeAyoGame, AYO_MIN_PLAYERS } from '@/lib/ayo'
 import { initializeScrabbleGame, SCRABBLE_MIN_PLAYERS, SCRABBLE_MAX_PLAYERS } from '@/lib/scrabble'
 import { initializeMafiaGame, MAFIA_MIN_PLAYERS, MAFIA_MAX_PLAYERS } from '@/lib/mafia'
-import { initializePingPongGame, PING_PONG_MIN_PLAYERS } from '@/lib/ping-pong'
+import { initializeTrollRunGame, TROLL_RUN_MIN_PLAYERS, TROLL_RUN_MAX_PLAYERS } from '@/lib/troll-run'
 
 /** The slice of the game row a start initializer may need. */
 type StartGame = { timer_seconds?: number | null; checkers_nigeria_street_rules?: boolean | null }
@@ -129,10 +129,10 @@ export const GAME_START_SPECS: Partial<Record<GameType, StartSpec>> = {
     maxPlayers: MAFIA_MAX_PLAYERS,
     initialize: (admin, code, ids) => initializeMafiaGame(admin, code, ids),
   },
-  ping_pong: {
-    minPlayers: PING_PONG_MIN_PLAYERS,
-    exact: true,
-    initialize: (admin, code, ids) => initializePingPongGame(admin, code, ids),
+  troll_run: {
+    minPlayers: TROLL_RUN_MIN_PLAYERS,
+    maxPlayers: TROLL_RUN_MAX_PLAYERS,
+    initialize: (admin, code, ids, game) => initializeTrollRunGame(admin, code, ids, game as any),
   },
 }
 

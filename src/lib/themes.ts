@@ -4,6 +4,7 @@ import {
   Diamond01Icon,
   DiceIcon,
   Idea01Icon,
+  Moon02Icon,
   TennisBallIcon,
   TreePalmIcon,
   Tv01Icon,
@@ -12,6 +13,7 @@ import { NAIJA_ICON, PIRATE_ICON } from '@/lib/theme-icon-art'
 
 export type ThemeId =
   | 'default'
+  | 'dark'
   | 'neon'
   | 'retro'
   | 'elegant'
@@ -45,6 +47,14 @@ export const THEMES: ThemeConfig[] = [
     emoji: '🎲',
     icon: DiceIcon,
     preview: { bg: '#08080f', accent: '#f43f5e', text: '#f2f2f8' },
+    cssVars: {},
+  },
+  {
+    id: 'dark',
+    label: 'Dark Slate',
+    emoji: '🌑',
+    icon: Moon02Icon,
+    preview: { bg: '#090d16', accent: '#38bdf8', text: '#f1f5f9' },
     cssVars: {},
   },
   {

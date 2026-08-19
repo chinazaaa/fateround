@@ -63,6 +63,7 @@ import {
   isWordGroupingGame,
   isLandmineGame,
   isWordleRoomGame,
+  isTrollRunGame,
 } from '@/lib/game-types'
 import { wstAutoRoundCount } from '@/lib/who-said-this'
 import { parseLudoVariant } from '@/lib/ludo'
@@ -468,6 +469,9 @@ export async function POST(req: NextRequest) {
     wordle_room_category: rawWordleRoomCategory,
     wordle_room_word_count: rawWordleRoomWordCount,
     wordle_room_words: rawWordleRoomWords,
+    troll_run_rounds: rawTrollRunRounds,
+    troll_run_time_limit: rawTrollRunTimeLimit,
+    troll_run_world: rawTrollRunWorld,
     allow_viewers: rawAllowViewers,
     allow_late_players: rawAllowLatePlayers,
     late_join_policy: rawLateJoinPolicy,
@@ -609,7 +613,8 @@ export async function POST(req: NextRequest) {
     isWordScrambleGame(game_type) ||
     isWordGroupingGame(game_type) ||
     isLandmineGame(game_type) ||
-    isWordleRoomGame(game_type)
+    isWordleRoomGame(game_type) ||
+    isTrollRunGame(game_type)
       ? 'joiners'
       : isWhoSaidThis(game_type)
         ? 'joiners'
@@ -917,7 +922,16 @@ export async function POST(req: NextRequest) {
                                                                           lobbyLimits
                                                                         )
                                                                       )
-                                                                    : null
+                                                                    : isTrollRunGame(game_type)
+                                                                      ? resolveMaxPlayers(
+                                                                          'troll_run',
+                                                                          rawMaxPlayers,
+                                                                          lobbyDefaultMaxPlayers(
+                                                                            'troll_run',
+                                                                            lobbyLimits
+                                                                          )
+                                                                        )
+                                                                      : null
   const isSecret = isSecretMessageGame(game_type)
   const lateJoinFields = gameSupportsViewerSetting(game_type)
     ? rawLateJoinPolicy
@@ -1128,6 +1142,14 @@ export async function POST(req: NextRequest) {
                   .filter((e) => e.word.length >= 3 && e.word.length <= 8),
               }
             : {}),
+        }
+      : {}),
+    ...(isTrollRunGame(game_type)
+      ? {
+          troll_run_rounds: rawTrollRunRounds ? Math.max(1, Math.min(20, Number(rawTrollRunRounds))) : 5,
+          troll_run_time_limit: rawTrollRunTimeLimit ? Math.max(30, Math.min(600, Number(rawTrollRunTimeLimit))) : 120,
+          troll_run_world: typeof rawTrollRunWorld === 'string' ? rawTrollRunWorld.slice(0, 50) : 'pits',
+          rounds_count: rawTrollRunRounds ? Math.max(1, Math.min(20, Number(rawTrollRunRounds))) : 5,
         }
       : {}),
     ...(isQuickDrawGame(game_type)

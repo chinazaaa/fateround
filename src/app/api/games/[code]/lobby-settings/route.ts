@@ -22,7 +22,6 @@ import {
   isWordSearchGame,
   isWordScrambleGame,
   isWordGroupingGame,
-  isPingPongGame,
   isCheckersGame,
   isDraughts10Game,
   isCheckersNigeriaGame,
@@ -69,7 +68,6 @@ import {
   isLobbyLimitGameType,
   type LobbyLimitGameType,
 } from '@/lib/game-limits'
-import { clampPingPongPoints } from '@/lib/ping-pong'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { scheduleNewPublicGameFanout } from '@/lib/notification-subscriptions'
 
@@ -130,6 +128,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const {
     hostToken,
     is_public,
+    theme,
     max_players,
     timer_seconds,
     game_duration_seconds,
@@ -202,16 +201,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     word_scramble_difficulty,
     puzzle_theme_id,
     puzzle_custom_questions,
-    ping_pong_points_to_win,
     content_label,
     wordle_room_category,
     wordle_room_word_count,
     wordle_room_words,
+    troll_run_rounds,
+    troll_run_time_limit,
+    troll_run_world,
   } = parsed.data
   const gameCode = parsed.data.gameId.toUpperCase()
 
   if (
     content_label === undefined &&
+    theme === undefined &&
     is_public === undefined &&
     max_players === undefined &&
     timer_seconds === undefined &&
@@ -285,10 +287,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     word_scramble_difficulty === undefined &&
     puzzle_theme_id === undefined &&
     puzzle_custom_questions === undefined &&
-    ping_pong_points_to_win === undefined &&
     wordle_room_category === undefined &&
     wordle_room_word_count === undefined &&
-    wordle_room_words === undefined
+    wordle_room_words === undefined &&
+    troll_run_rounds === undefined &&
+    troll_run_time_limit === undefined &&
+    troll_run_world === undefined
   ) {
     return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
   }
@@ -308,7 +312,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const limitOnlyType = limitOnlyLobbyType(game.game_type)
   const quiplashLobby = isQuiplashGame(parseGameType(game.game_type))
   const quickDrawLobby = isQuickDrawGame(parseGameType(game.game_type))
-  const pingPongLobby = isPingPongGame(parseGameType(game.game_type))
   const ayoLobby = ayoLobbyType(game.game_type)
   const checkersLobby = checkersLobbyType(game.game_type)
   // max_players + is_public are generic to every lobby-limit game; the more
@@ -322,7 +325,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     !limitOnlyType &&
     !quiplashLobby &&
     !quickDrawLobby &&
-    !pingPongLobby &&
     !ayoLobby &&
     !isLobbyLimitGameType(game.game_type)
   ) {
@@ -335,9 +337,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       ? 'quiplash'
       : quickDrawLobby
         ? 'quick_draw'
-        : pingPongLobby
-          ? 'ping_pong'
-          : (timedLobbyType ?? limitOnlyType ?? boardLobbyType ?? parseGameType(game.game_type))
+        : (timedLobbyType ?? limitOnlyType ?? boardLobbyType ?? parseGameType(game.game_type))
   ) as LobbyLimitGameType
   const gameUpdate: Record<string, unknown> = {}
 
@@ -345,6 +345,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   // tied to a specific board type; any lobby-settings game can toggle it.
   if (is_public !== undefined) {
     gameUpdate.is_public = is_public
+  }
+
+  if (theme !== undefined) {
+    gameUpdate.theme = theme
   }
 
   // Single source of truth for capacity rules (board-size gate + reset).
@@ -443,6 +447,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     }
   }
 
+  if (troll_run_rounds !== undefined) {
+    gameUpdate.troll_run_rounds = Math.max(1, Math.min(20, Math.round(troll_run_rounds)))
+    gameUpdate.rounds_count = gameUpdate.troll_run_rounds
+  }
+  if (troll_run_time_limit !== undefined) {
+    gameUpdate.troll_run_time_limit = Math.max(30, Math.min(600, Math.round(troll_run_time_limit)))
+  }
+  if (troll_run_world !== undefined) {
+    gameUpdate.troll_run_world = troll_run_world.trim().toLowerCase().slice(0, 50)
+  }
+
   if (limitOnlyType === 'matching_pairs') {
     if (rounds_count !== undefined) {
       gameUpdate.rounds_count = Math.max(1, Math.min(100, Math.round(rounds_count)))
@@ -501,8 +516,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       gameUpdate.game_duration_seconds = clampCrazyEightsGameDuration(game_duration_seconds)
     } else if (boardLobbyType === 'uno') {
       gameUpdate.game_duration_seconds = clampUnoGameDuration(game_duration_seconds)
-    } else if (parseGameType(game.game_type) === 'ping_pong') {
-      gameUpdate.game_duration_seconds = Math.max(0, game_duration_seconds)
     } else {
       return NextResponse.json({ error: 'This game type does not support game length settings' }, { status: 400 })
     }
@@ -808,14 +821,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     quick_draw_num_teams !== undefined
   ) {
     return NextResponse.json({ error: 'Quick Draw settings only apply to Quick Draw games' }, { status: 400 })
-  }
-
-  if (pingPongLobby) {
-    if (ping_pong_points_to_win !== undefined) {
-      gameUpdate.ping_pong_points_to_win = clampPingPongPoints(ping_pong_points_to_win)
-    }
-  } else if (ping_pong_points_to_win !== undefined) {
-    return NextResponse.json({ error: 'Points to win only applies to Ping Pong games' }, { status: 400 })
   }
 
   const { data: updated, error } = await getSupabaseAdmin()

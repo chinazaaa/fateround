@@ -47,11 +47,11 @@ import {
   SearchAreaIcon,
   SearchFocusIcon,
   ShuffleIcon,
+  SkullIcon,
   SparklesIcon,
   SpeechIcon,
   Stairs01Icon,
   StopWatchIcon,
-  TableTennisBatIcon,
   Target02Icon,
   Ticket01Icon,
   TokenCircleIcon,
@@ -119,9 +119,9 @@ const GAME_ICONS: Record<GameType, IconSvgElement> = {
   word_scramble: ShuffleIcon,
   word_grouping: GroupLayersIcon,
   landmine: BombIcon,
-  ping_pong: TableTennisBatIcon,
   uno: CardExchange01Icon,
   wordle_room: GridViewIcon,
+  troll_run: SkullIcon,
 }
 
 export function gameIcon(type: GameType): IconSvgElement {

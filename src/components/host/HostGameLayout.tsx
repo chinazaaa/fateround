@@ -81,7 +81,7 @@ export function HostGameLayout({
   suppressViewerBanner?: boolean
 }) {
   const isFinished = status === 'finished'
-  const layout = hostPlayLayoutFlags(tab, showTabs, status)
+  const layout = hostPlayLayoutFlags(tab, showTabs, status, noManageTab)
   const primaryLabel = primaryKind === 'play' ? 'Play' : 'Watch'
 
   // Feed the shared roster drawer (opened from the header) while the game is being
