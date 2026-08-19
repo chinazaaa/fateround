@@ -293,9 +293,16 @@ export async function POST(req: NextRequest) {
   // they pick up right where they left off instead of starting a new seat.
   const joinerUserId = await getProfileFromRequest(req)
   const continueOnThisDevice = body.continueOnThisDevice === true
+  // A host_token that matches the game's own host_token proves the caller IS
+  // the host device (SecureStore holds it only on that device). Without this
+  // shortcut the host would hit the cross-device 409 when playing along in
+  // their own lobby, because host_user_id is set to their own auth uid.
+  const suppliedHostToken = body.hostToken?.trim() || null
+  const gameHostToken = (gameRow as { host_token?: string | null }).host_token ?? null
+  const callerIsHostDevice = !!suppliedHostToken && !!gameHostToken && suppliedHostToken === gameHostToken
   if (joinerUserId) {
     const hostUserId = (gameRow as { host_user_id?: string | null }).host_user_id ?? null
-    if (hostUserId && hostUserId === joinerUserId && !continueOnThisDevice) {
+    if (hostUserId && hostUserId === joinerUserId && !continueOnThisDevice && !callerIsHostDevice) {
       return NextResponse.json(
         {
           error: 'You’re already hosting this game on another device.',
