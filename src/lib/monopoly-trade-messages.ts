@@ -157,16 +157,16 @@ export function formatIncomingTradeAlert(
  * after "… declined your trade offer."
  *
  * Written in the SECOND person because the only reader who needs it is the
- * proposer. The two hard vetoes ('completes_your_set', 'protects_my_monopoly')
- * say plainly that more cash will not help — that is the whole point of the
- * feature: players were re-offering into a veto the bot never even prices.
+ * proposer. Every reason now points at something the player can act on — the
+ * bot prices set-completing cards rather than vetoing them, so the two
+ * expensive cases say "steep", not "never".
  */
 export function monopolyDeclineReasonClause(reason: MonopolyTradeDeclineReason): string {
   switch (reason) {
     case 'completes_your_set':
-      return 'That card would complete a set — no amount of cash will buy it.'
+      return 'That card would complete a set for you, so it carries a steep premium — it takes a much bigger offer.'
     case 'protects_my_monopoly':
-      return "That card is part of a completed monopoly — it isn't for sale at any sensible price."
+      return 'That card is part of a completed monopoly, so it carries a steep premium — it takes a much bigger offer.'
     case 'cannot_fulfil':
       return "The bot doesn't have everything the offer asked for."
     case 'offer_too_low':

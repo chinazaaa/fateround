@@ -41,7 +41,12 @@ describe('bot decline reasons', () => {
     expect(msg).toContain('try offering more')
   })
 
-  it('tells the player plainly when more cash cannot help', () => {
-    expect(monopolyDeclineReasonClause('completes_your_set')).toContain('no amount of cash')
+  it('tells the player a bigger offer can still win a set-completing card', () => {
+    // Wording matters: the bot prices these, it no longer vetoes them, so the
+    // clause must not read as a flat refusal.
+    const clause = monopolyDeclineReasonClause('completes_your_set')
+    expect(clause).toContain('steep premium')
+    expect(clause).toContain('bigger offer')
+    expect(clause).not.toMatch(/never|no amount/i)
   })
 })
