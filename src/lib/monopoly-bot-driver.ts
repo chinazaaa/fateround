@@ -203,6 +203,6 @@ async function applyMonopolyBotAction(
     case 'trade_accept':
       return processMonopolyTradeRespond(admin, gameCode, botPlayerId, true)
     case 'trade_decline':
-      return processMonopolyTradeRespond(admin, gameCode, botPlayerId, false)
+      return processMonopolyTradeRespond(admin, gameCode, botPlayerId, false, action.reason)
   }
 }

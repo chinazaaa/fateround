@@ -51,11 +51,15 @@ const unsubscribeSchema = z.object({
   gameType: z.string().min(1).max(64).optional(),
 })
 
+const minutesField = z.number().int().min(0).max(1439).nullable().optional()
 const quietHoursSchema = z.object({
   tokenKey: z.string().min(1).max(1000),
   mode: z.enum(['off', 'quiet', 'available']).optional(),
-  startMinutes: z.number().int().min(0).max(1439).nullable().optional(),
-  endMinutes: z.number().int().min(0).max(1439).nullable().optional(),
+  // The 'quiet' and 'available' windows are independent — patch each separately.
+  quietStartMinutes: minutesField,
+  quietEndMinutes: minutesField,
+  availableStartMinutes: minutesField,
+  availableEndMinutes: minutesField,
   timezone: z.string().min(1).max(64).optional(),
 })
 
@@ -91,11 +95,20 @@ export async function GET(req: NextRequest) {
     quietHours: device
       ? {
           mode: device.quiet_mode,
-          startMinutes: device.quiet_start_minutes,
-          endMinutes: device.quiet_end_minutes,
+          quietStartMinutes: device.quiet_start_minutes,
+          quietEndMinutes: device.quiet_end_minutes,
+          availableStartMinutes: device.available_start_minutes,
+          availableEndMinutes: device.available_end_minutes,
           timezone: device.timezone,
         }
-      : { mode: 'off', startMinutes: null, endMinutes: null, timezone: null },
+      : {
+          mode: 'off',
+          quietStartMinutes: null,
+          quietEndMinutes: null,
+          availableStartMinutes: null,
+          availableEndMinutes: null,
+          timezone: null,
+        },
     countsByGameType: counts,
   })
 }
@@ -192,11 +205,14 @@ export async function PATCH(req: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
   }
-  const { tokenKey, mode, startMinutes, endMinutes, timezone } = parsed.data
+  const { tokenKey, mode, quietStartMinutes, quietEndMinutes, availableStartMinutes, availableEndMinutes, timezone } =
+    parsed.data
   const update: Record<string, unknown> = { updated_at: new Date().toISOString() }
   if (mode !== undefined) update.quiet_mode = mode
-  if (startMinutes !== undefined) update.quiet_start_minutes = startMinutes
-  if (endMinutes !== undefined) update.quiet_end_minutes = endMinutes
+  if (quietStartMinutes !== undefined) update.quiet_start_minutes = quietStartMinutes
+  if (quietEndMinutes !== undefined) update.quiet_end_minutes = quietEndMinutes
+  if (availableStartMinutes !== undefined) update.available_start_minutes = availableStartMinutes
+  if (availableEndMinutes !== undefined) update.available_end_minutes = availableEndMinutes
   if (timezone !== undefined) update.timezone = timezone
   // Bind the device to the caller's profile when a bearer is sent (never
   // clear an existing binding on an anonymous refresh) — matches POST above

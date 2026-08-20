@@ -96,6 +96,10 @@ export const RATE_LIMITS = {
   // Card-hand fetches. Every player re-fetches on every play, so in a 6-player game a single
   // round is ~36 calls; this has to clear a long session without ever throttling real play.
   handsFetch: { bucket: 'hands-fetch', max: 1200, windowSeconds: 300 },
+  // Host-token reclaim by verified profile. A host who cleared storage or opened the game on a
+  // new signed-in device calls this once. Sized to absorb reconnect storms without stalling a
+  // real recovery — it never gates gameplay, only hands back the token the profile already owns.
+  hostReclaim: { bucket: 'host-reclaim', max: 60, windowSeconds: 300 },
 } as const satisfies Record<string, RateLimitRule>
 
 // Keyed hash so stored keys can't be reversed by offline enumeration. Peppered
