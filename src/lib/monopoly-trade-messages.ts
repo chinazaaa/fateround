@@ -38,6 +38,17 @@ export function normalizeTradePropertyList(raw: unknown, maxIndex = 48): number[
   return normalized
 }
 
+/**
+ * True when a pending trade's response window has passed. Trades stored before
+ * `expires_at` existed have no deadline and never expire — matching the old
+ * behaviour rather than lapsing every in-flight offer on deploy.
+ */
+export function isMonopolyTradeExpired(trade: Pick<MonopolyPendingTrade, 'expires_at'>, now = Date.now()): boolean {
+  if (!trade.expires_at) return false
+  const deadline = Date.parse(trade.expires_at)
+  return Number.isFinite(deadline) && deadline <= now
+}
+
 export function normalizePendingTrade(trade: MonopolyPendingTrade, maxIndex = 48): MonopolyPendingTrade {
   return {
     ...trade,
@@ -196,6 +207,14 @@ export function formatTradeMessageForPlayer(
     // the decliner (a bot) obviously knows why. Absent for human declines.
     if (event.decline_reason && myPlayerId === event.from_player_id) {
       msg += ` ${monopolyDeclineReasonClause(event.decline_reason)}`
+    }
+  } else if (event.outcome === 'expired') {
+    if (myPlayerId === event.from_player_id) {
+      msg = `Your trade offer to ${to} expired — no response in time.`
+    } else if (myPlayerId === event.to_player_id) {
+      msg = `${from}'s trade offer expired before you responded.`
+    } else {
+      msg = `${from}'s trade offer to ${to} expired.`
     }
   } else if (event.outcome === 'cancelled') {
     if (myPlayerId === event.from_player_id) {

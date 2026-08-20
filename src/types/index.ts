@@ -587,6 +587,13 @@ export interface MonopolyAuctionState {
 
 export interface MonopolyPendingTrade {
   from_player_id: string
+  /**
+   * ISO deadline for the recipient to answer. The board holds ONE pending
+   * trade at a time, so an unanswered offer blocks trading for the whole
+   * table — this bounds that. Optional: trades proposed before this field
+   * existed simply never expire, same as the old behaviour.
+   */
+  expires_at?: string | null
   to_player_id: string
   offer_cash: number
   offer_properties: number[]
@@ -642,7 +649,7 @@ export interface MonopolyLastTradeEvent {
   seq: number
   from_player_id: string
   to_player_id: string
-  outcome: 'proposed' | 'declined' | 'accepted' | 'cancelled'
+  outcome: 'proposed' | 'declined' | 'accepted' | 'cancelled' | 'expired'
   /** Bot-only explanation for a decline. Null/absent for human declines. */
   decline_reason?: MonopolyTradeDeclineReason | null
 }

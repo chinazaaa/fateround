@@ -45,6 +45,7 @@ import { applyCardEffect, createShuffledDeck, drawCard, goSalaryForCard, type Ca
 import { canAddHotel, canAddHouse, canRemoveHouse, groupHasBuildings, hotelRemovalBlocker } from '@/lib/monopoly-build'
 import { buildingLevel, computeRent, parseBuildings, parseJsonRecord, parseMortgaged } from '@/lib/monopoly-rent'
 import {
+  isMonopolyTradeExpired,
   monopolyDeclineReasonClause,
   normalizePendingTrade,
   normalizeTradePropertyList,
@@ -70,6 +71,17 @@ export const MONOPOLY_GAME_DURATION_OPTIONS = [0, 900, 1800, 2700, 3600, 5400, 7
 export const MONOPOLY_GAME_TIME_EXTENSION_OPTIONS = [600, 900, 1800] as const
 
 export const MONOPOLY_MAX_GAME_DURATION_SECONDS = 14_400
+
+/**
+ * How long the recipient has to answer a trade offer before it lapses.
+ *
+ * The board has a single `pending_trade` slot and proposing while one is open
+ * returns "A trade is already pending" — so one player who wanders off used to
+ * freeze trading for everyone, with only the proposer able to cancel. Long
+ * enough to actually read a multi-item offer, short enough that the table
+ * isn't held hostage.
+ */
+export const MONOPOLY_TRADE_RESPONSE_SECONDS = 45
 
 export function clampMonopolyTurnTimer(raw: unknown): number {
   const n = Number(raw ?? 0)
@@ -2397,6 +2409,7 @@ export async function processMonopolyTradePropose(
     request_cash: request.cash,
     request_properties: requestProperties,
     request_get_out_cards: request.getOutCards,
+    expires_at: new Date(Date.now() + MONOPOLY_TRADE_RESPONSE_SECONDS * 1000).toISOString(),
   })
 
   const names = await playerNamesById(supabase, gameId, [fromPlayerId, toPlayerId])
@@ -2436,6 +2449,9 @@ export async function processMonopolyTradeRespond(
   if (!board.pending_trade) return { error: 'No pending trade' }
   const trade = normalizePendingTrade(board.pending_trade)
   if (trade.to_player_id !== playerId) return { error: 'Not your trade to accept' }
+  // Defensive: the trade route lapses expired offers before it gets here, but
+  // the bot driver calls this directly. Never apply a swap past its deadline.
+  if (isMonopolyTradeExpired(trade)) return { error: 'Trade offer expired' }
 
   if (!accept) {
     const names = await playerNamesById(supabase, gameId, [trade.from_player_id, trade.to_player_id])
@@ -2590,7 +2606,7 @@ async function clearMonopolyPendingTrade(
   board: MonopolyBoard,
   trade: MonopolyPendingTrade,
   statusMessage: string,
-  outcome: 'declined' | 'cancelled' = 'declined'
+  outcome: 'declined' | 'cancelled' | 'expired' = 'declined'
 ): Promise<void> {
   const lastTradeEvent = nextTradeEvent(board, trade.from_player_id, trade.to_player_id, outcome)
   await persistBoard(
@@ -2622,12 +2638,28 @@ export async function repairMonopolyStalePendingTrade(
     .in('id', [trade.from_player_id, trade.to_player_id])
 
   const activeIds = new Set((players ?? []).map((row) => row.id))
-  if (activeIds.has(trade.from_player_id) && activeIds.has(trade.to_player_id)) {
-    return { repaired: false }
+  if (!activeIds.has(trade.from_player_id) || !activeIds.has(trade.to_player_id)) {
+    await clearMonopolyPendingTrade(supabase, gameId, board, trade, 'Trade cancelled — a player left the game.')
+    return { repaired: true }
   }
 
-  await clearMonopolyPendingTrade(supabase, gameId, board, trade, 'Trade cancelled — a player left the game.')
-  return { repaired: true }
+  // Both players are still here, but the recipient never answered. Lapse it so
+  // the single pending-trade slot frees up for everyone else.
+  if (isMonopolyTradeExpired(trade)) {
+    const names = await playerNamesById(supabase, gameId, [trade.from_player_id, trade.to_player_id])
+    const toName = names[trade.to_player_id] ?? 'player'
+    await clearMonopolyPendingTrade(
+      supabase,
+      gameId,
+      board,
+      trade,
+      `Trade offer expired — ${toName} did not respond in time.`,
+      'expired'
+    )
+    return { repaired: true }
+  }
+
+  return { repaired: false }
 }
 
 export async function processMonopolyTradeCancel(
