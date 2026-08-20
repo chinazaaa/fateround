@@ -61,9 +61,9 @@ describe('secretMatches', () => {
     ['supplied empty, stored present', '', 'abc123'],
     ['supplied present, stored empty', 'abc123', ''],
   ])('never authorizes when %s', async (_label, supplied, stored) => {
-    await expect(secretMatches(supplied as string | null | undefined, stored as string | null | undefined)).resolves.toBe(
-      false
-    )
+    await expect(
+      secretMatches(supplied as string | null | undefined, stored as string | null | undefined)
+    ).resolves.toBe(false)
   })
 
   it('does not coerce — the string "null" is not a null token', async () => {

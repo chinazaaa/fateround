@@ -75,9 +75,7 @@ function mockSupabase(): { client: SupabaseClient; queries: number } {
         },
         maybeSingle: async () => {
           state.queries += 1
-          const row = PLAYERS.find(
-            (pl) => pl.game_id === filters.game_id && pl.resume_token === filters.resume_token
-          )
+          const row = PLAYERS.find((pl) => pl.game_id === filters.game_id && pl.resume_token === filters.resume_token)
           return { data: row ? { id: row.id } : null, error: null }
         },
       }
@@ -102,9 +100,9 @@ describe('resolveHandViewer', () => {
 
   it('normalizes case, spaces and dashes before matching', async () => {
     const { client } = mockSupabase()
-    await expect(
-      resolveHandViewer(client, 'ABC123', { resumeToken: ' aaaa-1111 bbbb-2222 cccc-3333 ' })
-    ).resolves.toBe('p-alice')
+    await expect(resolveHandViewer(client, 'ABC123', { resumeToken: ' aaaa-1111 bbbb-2222 cccc-3333 ' })).resolves.toBe(
+      'p-alice'
+    )
   })
 
   it('returns null for an unknown token rather than guessing a viewer', async () => {
@@ -113,7 +111,7 @@ describe('resolveHandViewer', () => {
   })
 
   // The IDOR case: a token that is perfectly valid in another game must not resolve here.
-  it("does not resolve a token belonging to a DIFFERENT game", async () => {
+  it('does not resolve a token belonging to a DIFFERENT game', async () => {
     const { client } = mockSupabase()
     await expect(resolveHandViewer(client, 'ABC123', { resumeToken: 'GGGG7777HHHH8888IIII9999' })).resolves.toBeNull()
   })

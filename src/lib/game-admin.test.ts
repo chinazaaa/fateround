@@ -154,7 +154,7 @@ describe('assertPlayer', () => {
   })
 
   // The IDOR case: valid in another game must not authorize here.
-  it("403s a token belonging to a DIFFERENT game", async () => {
+  it('403s a token belonging to a DIFFERENT game', async () => {
     const { client } = mockPlayers()
     const res = await assertPlayer(client, 'ABCD', 'GGGG7777HHHH8888IIII9999')
     expect(res.status).toBe(403)
