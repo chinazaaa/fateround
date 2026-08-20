@@ -8,6 +8,7 @@ import type {
   MonopolyLastCardEvent,
   MonopolyLastCashEvent,
   MonopolyLastTradeEvent,
+  MonopolyTradeDeclineReason,
   MonopolyLastRentEvent,
   MonopolyPendingTrade,
   MonopolyPhase,
@@ -43,7 +44,11 @@ import { MONOPOLY_AUCTION_TIMER_SECONDS, MONOPOLY_DEFAULT_TURN_TIMER } from '@/l
 import { applyCardEffect, createShuffledDeck, drawCard, goSalaryForCard, type CardKind } from '@/lib/monopoly-cards'
 import { canAddHotel, canAddHouse, canRemoveHouse, groupHasBuildings, hotelRemovalBlocker } from '@/lib/monopoly-build'
 import { buildingLevel, computeRent, parseBuildings, parseJsonRecord, parseMortgaged } from '@/lib/monopoly-rent'
-import { normalizePendingTrade, normalizeTradePropertyList } from '@/lib/monopoly-trade-messages'
+import {
+  monopolyDeclineReasonClause,
+  normalizePendingTrade,
+  normalizeTradePropertyList,
+} from '@/lib/monopoly-trade-messages'
 import { secondsUntilDeadline } from '@/lib/round-timing'
 
 export * from '@/lib/monopoly-board'
@@ -980,13 +985,15 @@ function nextTradeEvent(
   board: Pick<MonopolyBoard, 'last_trade_event'>,
   fromPlayerId: string,
   toPlayerId: string,
-  outcome: MonopolyLastTradeEvent['outcome']
+  outcome: MonopolyLastTradeEvent['outcome'],
+  declineReason: MonopolyTradeDeclineReason | null = null
 ): MonopolyLastTradeEvent {
   return {
     seq: (board.last_trade_event?.seq ?? 0) + 1,
     from_player_id: fromPlayerId,
     to_player_id: toPlayerId,
     outcome,
+    decline_reason: outcome === 'declined' ? declineReason : null,
   }
 }
 
@@ -2415,7 +2422,13 @@ export async function processMonopolyTradeRespond(
   supabase: SupabaseClient,
   gameId: string,
   playerId: string,
-  accept: boolean
+  accept: boolean,
+  /**
+   * Bot-only. Humans decline with one tap and are never asked to type a
+   * reason — the extra friction is not worth it — so this stays undefined on
+   * the human path and the UI shows the plain "X declined" line.
+   */
+  declineReason: MonopolyTradeDeclineReason | null = null
 ): Promise<{ error?: string }> {
   const { data: boardRaw } = await supabase.from('monopoly_boards').select('*').eq('game_id', gameId).maybeSingle()
   if (!boardRaw) return { error: 'Board not found' }
@@ -2428,14 +2441,15 @@ export async function processMonopolyTradeRespond(
     const names = await playerNamesById(supabase, gameId, [trade.from_player_id, trade.to_player_id])
     const fromName = names[trade.from_player_id] ?? 'A player'
     const toName = names[trade.to_player_id] ?? 'A player'
-    const lastTradeEvent = nextTradeEvent(board, trade.from_player_id, trade.to_player_id, 'declined')
+    const lastTradeEvent = nextTradeEvent(board, trade.from_player_id, trade.to_player_id, 'declined', declineReason)
+    const reasonSuffix = declineReason ? ` ${monopolyDeclineReasonClause(declineReason)}` : ''
 
     await persistBoard(
       supabase,
       gameId,
       {
         pending_trade: null,
-        status_message: `${toName} declined ${fromName}'s trade offer.`,
+        status_message: `${toName} declined ${fromName}'s trade offer.${reasonSuffix}`,
         last_trade_event: lastTradeEvent,
       },
       board.updated_at

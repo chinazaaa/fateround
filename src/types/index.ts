@@ -623,11 +623,28 @@ export interface MonopolyLastCashEvent {
   bankrupt?: boolean
 }
 
+/**
+ * Why a trade was declined. Only ever set by the BOT — humans decline with a
+ * single tap and are never asked to justify it, so `decline_reason` stays null
+ * for human declines and the UI falls back to the plain "X declined" line.
+ */
+export type MonopolyTradeDeclineReason =
+  /** Handing the card over would complete a colour set for the proposer. */
+  | 'completes_your_set'
+  /** The card is part of a monopoly the bot has already completed. */
+  | 'protects_my_monopoly'
+  /** The bot doesn't hold the cash/cards/property the proposer asked for. */
+  | 'cannot_fulfil'
+  /** Valued the offer below its own side plus the accept margin. */
+  | 'offer_too_low'
+
 export interface MonopolyLastTradeEvent {
   seq: number
   from_player_id: string
   to_player_id: string
   outcome: 'proposed' | 'declined' | 'accepted' | 'cancelled'
+  /** Bot-only explanation for a decline. Null/absent for human declines. */
+  decline_reason?: MonopolyTradeDeclineReason | null
 }
 
 export interface MonopolyBoard {

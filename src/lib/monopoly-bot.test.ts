@@ -533,7 +533,7 @@ describe('pickBotAction — trade response', () => {
   it('declines a dead-even swap (no margin ⇒ not worth the risk)', () => {
     // Symmetric cash-for-cash swap — value equal, margin 1.1 fails.
     const v = view({ pendingTradeToMe: trade({ offerCash: 100, requestCash: 100 }) })
-    expect(pickBotAction(v)).toEqual({ type: 'trade_decline' })
+    expect(pickBotAction(v)).toEqual({ type: 'trade_decline', reason: 'offer_too_low' })
   })
 
   it('declines any trade that would break the bot’s completed monopoly (non-scarce cash)', () => {
@@ -557,7 +557,7 @@ describe('pickBotAction — trade response', () => {
         requestProperties: [tp(1)], // Barking Road (brown, £60)
       }),
     })
-    expect(pickBotAction(v)).toEqual({ type: 'trade_decline' })
+    expect(pickBotAction(v)).toEqual({ type: 'trade_decline', reason: 'protects_my_monopoly' })
   })
 
   it('accepts a trade that would complete a set for the bot at a reasonable premium', () => {
@@ -597,7 +597,7 @@ describe('pickBotAction — trade response', () => {
       },
       pendingTradeToMe: trade({ offerCash: 1000, requestCash: 500 }),
     })
-    expect(pickBotAction(v)).toEqual({ type: 'trade_decline' })
+    expect(pickBotAction(v)).toEqual({ type: 'trade_decline', reason: 'cannot_fulfil' })
   })
 
   it('declines if the requested property is not in the bot’s hand', () => {
@@ -608,7 +608,7 @@ describe('pickBotAction — trade response', () => {
         requestProperties: [tp(3)], // bot doesn't own Dagenham
       }),
     })
-    expect(pickBotAction(v)).toEqual({ type: 'trade_decline' })
+    expect(pickBotAction(v)).toEqual({ type: 'trade_decline', reason: 'cannot_fulfil' })
   })
 
   it('accepts a trade that EXTENDS a set even without completing it (1.5× bonus)', () => {
@@ -645,7 +645,38 @@ describe('pickBotAction — trade response', () => {
         requestCash: 250,
       }),
     })
-    expect(pickBotAction(v)).toEqual({ type: 'trade_decline' })
+    expect(pickBotAction(v)).toEqual({ type: 'trade_decline', reason: 'offer_too_low' })
+  })
+
+  it('reports completes_your_set ahead of every other reason — even when the bot also cannot pay', () => {
+    // Both vetoes fire: the bot is asked for £500 it doesn't have AND the card
+    // would finish the human's set. The hard veto is the one that matters to
+    // the proposer (no cash figure fixes it), so it must win the race.
+    const v = view({
+      me: {
+        playerId: BOT,
+        cash: 10,
+        position: 0,
+        in_jail: false,
+        jail_turns: 0,
+        get_out_of_jail_free: 0,
+        bankrupt: false,
+      },
+      pendingTradeToMe: trade({ requestCash: 500, wouldGiveOpponentMonopoly: true }),
+    })
+    expect(pickBotAction(v)).toEqual({ type: 'trade_decline', reason: 'completes_your_set' })
+  })
+
+  it('reports offer_too_low — not protects_my_monopoly — for a card outside any completed set', () => {
+    // Bot owns 1 of 2 browns, so giving Barking breaks nothing. The £10 offer is
+    // simply under the £60 face + margin. Reason must be the actionable one:
+    // this player CAN win by offering more.
+    const v = view({
+      myProperties: [owned(1)],
+      colorSetProgress: [csp('brown', { ownedByMe: 1, totalInGroup: 2, iOwnAll: false })],
+      pendingTradeToMe: trade({ offerCash: 10, requestProperties: [tp(1)] }),
+    })
+    expect(pickBotAction(v)).toEqual({ type: 'trade_decline', reason: 'offer_too_low' })
   })
 
   it('rejects any trade that would COMPLETE the opponent’s monopoly, regardless of cash offered', () => {
@@ -657,7 +688,7 @@ describe('pickBotAction — trade response', () => {
         wouldGiveOpponentMonopoly: true,
       }),
     })
-    expect(pickBotAction(v)).toEqual({ type: 'trade_decline' })
+    expect(pickBotAction(v)).toEqual({ type: 'trade_decline', reason: 'completes_your_set' })
   })
 
   it('scales the break-monopoly penalty by the group’s hotel-rent sum, not flat multiplier', () => {
@@ -683,7 +714,7 @@ describe('pickBotAction — trade response', () => {
         requestProperties: [tp(1)],
       }),
     })
-    expect(pickBotAction(v)).toEqual({ type: 'trade_decline' })
+    expect(pickBotAction(v)).toEqual({ type: 'trade_decline', reason: 'protects_my_monopoly' })
   })
 
   it('scales cash value up when the bot is broke (scarcity multiplier)', () => {
@@ -731,7 +762,7 @@ describe('pickBotAction — trade response', () => {
     })
     // Symmetric cash swap with scarcity = 4 on both sides: both are 160.
     // 160 >= 160 × 1.1 = 176 → decline (unchanged from no-scarcity behavior).
-    expect(pickBotAction(v)).toEqual({ type: 'trade_decline' })
+    expect(pickBotAction(v)).toEqual({ type: 'trade_decline', reason: 'offer_too_low' })
   })
 
   it('cash scarcity makes the bot REJECT a small-cash-out trade it would otherwise accept', () => {
@@ -754,7 +785,7 @@ describe('pickBotAction — trade response', () => {
         requestCash: 30,
       }),
     })
-    expect(pickBotAction(v)).toEqual({ type: 'trade_decline' })
+    expect(pickBotAction(v)).toEqual({ type: 'trade_decline', reason: 'offer_too_low' })
   })
 
   it('discounts a MORTGAGED outgoing property — asymmetric with unmortgaged giveaways', () => {

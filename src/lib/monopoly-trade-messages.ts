@@ -1,6 +1,6 @@
 import { formatMonopolyMoney, spaceAt, type MonopolyBoardSize } from '@/lib/monopoly-board'
 import { formatThemedMoney, formatThemedText, themedSpaceName } from '@/components/monopoly/monopoly-themes'
-import type { MonopolyLastTradeEvent, MonopolyPendingTrade } from '@/types'
+import type { MonopolyLastTradeEvent, MonopolyPendingTrade, MonopolyTradeDeclineReason } from '@/types'
 
 export type TradeSideItem =
   | { kind: 'cash'; amount: number }
@@ -152,6 +152,28 @@ export function formatIncomingTradeAlert(
   return formatThemedText(message, themeId, boardSize)
 }
 
+/**
+ * The bot's explanation for a decline, as a sentence that reads naturally
+ * after "… declined your trade offer."
+ *
+ * Written in the SECOND person because the only reader who needs it is the
+ * proposer. The two hard vetoes ('completes_your_set', 'protects_my_monopoly')
+ * say plainly that more cash will not help — that is the whole point of the
+ * feature: players were re-offering into a veto the bot never even prices.
+ */
+export function monopolyDeclineReasonClause(reason: MonopolyTradeDeclineReason): string {
+  switch (reason) {
+    case 'completes_your_set':
+      return 'That card would complete a set — no amount of cash will buy it.'
+    case 'protects_my_monopoly':
+      return "That card is part of a completed monopoly — it isn't for sale at any sensible price."
+    case 'cannot_fulfil':
+      return "The bot doesn't have everything the offer asked for."
+    case 'offer_too_low':
+      return 'The offer was worth less than what it asked for — try offering more.'
+  }
+}
+
 export function formatTradeMessageForPlayer(
   event: MonopolyLastTradeEvent,
   myPlayerId: string | null | undefined,
@@ -169,6 +191,11 @@ export function formatTradeMessageForPlayer(
       msg = `You declined ${from}'s trade offer.`
     } else {
       msg = `${to} declined ${from}'s trade offer.`
+    }
+    // Only the proposer needs the reason — everyone else is just watching, and
+    // the decliner (a bot) obviously knows why. Absent for human declines.
+    if (event.decline_reason && myPlayerId === event.from_player_id) {
+      msg += ` ${monopolyDeclineReasonClause(event.decline_reason)}`
     }
   } else if (event.outcome === 'cancelled') {
     if (myPlayerId === event.from_player_id) {

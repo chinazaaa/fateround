@@ -24,11 +24,14 @@
  * - **Trade responses only.** Bot NEVER initiates a trade. It only accepts
  *   or declines proposals humans push to it, and rejects anything that isn't
  *   clearly positive-sum (net-gain, with a big penalty for breaking one of
- *   its own monopolies).
+ *   its own monopolies). Every decline carries a `reason` so the proposer is
+ *   told WHY — re-offering more cash into a hard veto is the single most
+ *   common source of "the bot won't trade with me" complaints.
  */
 
 import type { MonopolyBotView, MonopolyBotTradeContext, MonopolyBotTradeProperty } from '@/lib/monopoly-bot-adapter'
 import { MONOPOLY_JAIL_FINE, spacesInGroup } from '@/lib/monopoly-board'
+import type { MonopolyTradeDeclineReason } from '@/types'
 
 export type MonopolyBotAction =
   | { type: 'roll' }
@@ -47,7 +50,7 @@ export type MonopolyBotAction =
   | { type: 'auction_bid'; amount: number }
   | { type: 'auction_pass' }
   | { type: 'trade_accept' }
-  | { type: 'trade_decline' }
+  | { type: 'trade_decline'; reason: MonopolyTradeDeclineReason }
 
 // ── Tunables (all ratios / small integers, no absolute-dollar figures) ────
 
@@ -384,16 +387,18 @@ function pickTradeResponse(view: MonopolyBotView): MonopolyBotAction {
 
   // Opponent-aware early reject: never hand a live opponent a completed
   // monopoly, regardless of what they offer. Precomputed by the adapter.
-  if (trade.wouldGiveOpponentMonopoly) return { type: 'trade_decline' }
+  if (trade.wouldGiveOpponentMonopoly) return { type: 'trade_decline', reason: 'completes_your_set' }
 
   // Belt-and-braces: reject a trade we couldn't fulfil. The engine already
   // checks this on Respond but declining early spares the human a confusing
   // "you don't have that" bounce back from the engine.
-  if (trade.requestCash > view.me.cash) return { type: 'trade_decline' }
-  if (trade.requestGetOutCards > view.me.get_out_of_jail_free) return { type: 'trade_decline' }
+  if (trade.requestCash > view.me.cash) return { type: 'trade_decline', reason: 'cannot_fulfil' }
+  if (trade.requestGetOutCards > view.me.get_out_of_jail_free) {
+    return { type: 'trade_decline', reason: 'cannot_fulfil' }
+  }
   const myPropertyIndexes = new Set(view.myProperties.map((p) => p.spaceIndex))
   for (const p of trade.requestProperties) {
-    if (!myPropertyIndexes.has(p.space.index)) return { type: 'trade_decline' }
+    if (!myPropertyIndexes.has(p.space.index)) return { type: 'trade_decline', reason: 'cannot_fulfil' }
   }
 
   // Look up color-set state for the multiplier ctx.
@@ -427,7 +432,15 @@ function pickTradeResponse(view: MonopolyBotView): MonopolyBotAction {
     isReceiving: false,
   })
 
-  return gainValue >= giveValue * TRADE_ACCEPT_MARGIN ? { type: 'trade_accept' } : { type: 'trade_decline' }
+  if (gainValue >= giveValue * TRADE_ACCEPT_MARGIN) return { type: 'trade_accept' }
+
+  // Split the "no" into the two answers that mean different things to the
+  // proposer: raising the cash CAN win a plain too-low decline, but a card out
+  // of one of my completed monopolies is priced at 2× the group's rent stream,
+  // so telling them "too low" would send them grinding up an offer they will
+  // almost never reach. Name the monopoly instead.
+  const asksForCardFromMyMonopoly = trade.requestProperties.some((p) => ctxBase.iOwnGroup(p.space.color))
+  return { type: 'trade_decline', reason: asksForCardFromMyMonopoly ? 'protects_my_monopoly' : 'offer_too_low' }
 }
 
 // ── Auction: bid up to 60% of face, in ~10%-of-face steps ─────────────────
