@@ -13,7 +13,7 @@ import {
 } from 'react-native'
 import type { Game, Player, ScrabblePlacedTile, ScrabblePlayerState, ScrabbleSession } from '@fateround/shared'
 import { batch6GameLabel } from '@fateround/shared/batch-6-games'
-import { SCRABBLE_BOARD_SIZE, scrabblePremiumAt } from '@fateround/shared/scrabble-constants'
+import { SCRABBLE_BOARD_SIZE, SCRABBLE_CENTER, scrabblePremiumAt } from '@fateround/shared/scrabble-constants'
 import { currentTurnPlayerId, scorePlacement, withPlacedTiles } from '@fateround/shared/scrabble-board'
 import { tileSetForDictionary } from '@fateround/shared/scrabble-rulesets'
 import { playerIsViewer, preJoinScreen } from '@fateround/shared/viewers'
@@ -503,6 +503,9 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
                       onPress={() => onCellPress(row, col)}
                     >
                       {!cell && prem ? <Text style={styles.premLabel}>{prem}</Text> : null}
+                      {!cell && !prem && row === SCRABBLE_CENTER.row && col === SCRABBLE_CENTER.col ? (
+                        <Text style={styles.centerStar}>★</Text>
+                      ) : null}
                       {letter ? (
                         <ScrabbleTile
                           letter={letter}
@@ -720,6 +723,8 @@ const makeStyles = (theme: Theme) =>
     dl: { backgroundColor: '#fda4af' },
     lastCell: { backgroundColor: '#fde68a' },
     premLabel: { fontSize: 7, fontWeight: '800', color: 'rgba(255,255,255,0.85)' },
+    // Mirror web (ScrabbleBoard.tsx:191): a rose star marks the compulsory first-word cell.
+    centerStar: { fontSize: 12, color: '#fb7185', lineHeight: 12 },
     rack: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, justifyContent: 'center', marginVertical: 8 },
     actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center' },
     actionBtn: {
