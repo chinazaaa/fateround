@@ -3289,9 +3289,20 @@ export async function removeUnoPlayer(
       updated_at: new Date().toISOString(),
     }
 
-    const finishing = turnOrder.length < 2
+    // Players who already went out (finish_order) or were knocked out (eliminated_player_ids)
+    // stay in turn_order — they're skipped on their turn — but are NOT still in play. The game
+    // can only continue while at least two players remain active, so count active seats, not raw
+    // turn_order length. Otherwise a finished winner or an eliminated player left sitting in
+    // turn_order masks a lone survivor, and the game keeps dealing turns to a player playing alone.
+    const finishOrder = session.finish_order ?? []
+    const eliminatedIds = (session.eliminated_player_ids as string[] | null) ?? []
+    const outSet = new Set<string>([...finishOrder, ...eliminatedIds])
+    const activeRemaining = turnOrder.filter((id) => !outSet.has(id))
+
+    const finishing = activeRemaining.length < 2
     if (finishing) {
-      const winnerPlayerId = turnOrder[0] ?? null
+      // First to empty wins (finish_order[0]); if nobody finished, the lone survivor wins.
+      const winnerPlayerId = finishOrder[0] ?? activeRemaining[0] ?? turnOrder[0] ?? null
       const winnerName = winnerPlayerId ? (names.get(winnerPlayerId) ?? 'Winner') : null
       update.phase = 'finished'
       update.winner_player_id = winnerPlayerId
