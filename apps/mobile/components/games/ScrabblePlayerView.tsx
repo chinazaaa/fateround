@@ -555,6 +555,13 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
                 // Reorder mode is always tappable (cosmetic); play/exchange taps
                 // stay gated on the active turn.
                 const disabled = reorderMode ? false : !isMyTurn || acting || (used && !exchangeMode)
+                // Placed-on-board tile: reserve the rack slot but blank it out so it's clear
+                // the tile has moved, matching the web behaviour (RackTile placeholder). The
+                // tile only really returns to the rack if the play is recalled or committed —
+                // showing it in both places at once implies it's still available to place.
+                if (used && !exchangeMode) {
+                  return <View key={index} style={styles.rackTilePlaceholder} />
+                }
                 return (
                   <Pressable key={index} disabled={disabled} onPress={() => handleRackTilePress(slot, index, letter)}>
                     <ScrabbleTile letter={letter} points={points} size={40} selected={selected} pending={exchanging} />
@@ -726,6 +733,18 @@ const makeStyles = (theme: Theme) =>
     // Mirror web (ScrabbleBoard.tsx:191): a rose star marks the compulsory first-word cell.
     centerStar: { fontSize: 12, color: '#fb7185', lineHeight: 12 },
     rack: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, justifyContent: 'center', marginVertical: 8 },
+    // Empty slot for a tile that's currently placed on the board — same footprint as
+    // ScrabbleTile size=40 so the rack doesn't shift when tiles are placed/recalled.
+    rackTilePlaceholder: {
+      width: 40,
+      height: 40,
+      borderRadius: 6,
+      borderWidth: 2,
+      borderColor: theme.border,
+      borderStyle: 'dashed',
+      backgroundColor: 'transparent',
+      opacity: 0.4,
+    },
     actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center' },
     actionBtn: {
       paddingHorizontal: 12,
