@@ -1127,6 +1127,16 @@ export function postTransferHost(gameCode: string, hostToken: string, playerId: 
   )
 }
 
+/**
+ * Reclaim the host token by verified profile — the recovery path when SecureStore was
+ * cleared, the phone was replaced, or the host is opening the game on a different device.
+ * Additive per `docs/accounts-and-identity-plan.md` §3: guests and non-hosts get 401/403
+ * and the existing host_token flow keeps working; this never gates gameplay.
+ */
+export function postReclaimHost(gameCode: string) {
+  return postJson<{ hostToken: string }>(`/api/games/${gameCode.toUpperCase()}/reclaim-host`, {})
+}
+
 /** Nominee accepts — mints & returns a fresh host token. Auth: nominee's resume token. */
 export function postClaimHost(gameCode: string, resumeToken: string) {
   return postJson<{ ok: boolean; hostToken: string }>(`/api/games/${gameCode.toUpperCase()}/claim-host`, {
