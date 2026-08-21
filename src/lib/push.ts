@@ -38,7 +38,6 @@ export type PushEvent =
   | 'lobby_reopened'
   | 'game_ended'
   | 'your_turn'
-  | 'round_started'
   | 'host_player_joined'
   | 'host_idle_warning'
 
@@ -63,7 +62,6 @@ const PAYLOADS: Record<PushEvent, { title: string; body: string }> = {
   lobby_reopened: { title: 'Play again? 🔁', body: 'The lobby reopened for another round — come back in!' },
   game_ended: { title: 'Game over 🏁', body: 'The game just ended — see how it played out.' },
   your_turn: { title: 'Your turn!', body: 'Jump back in and make your move.' },
-  round_started: { title: 'New round 🔔', body: 'A new round just started — get back in!' },
   // Discovery Phase A: host-targeted pings. Copy for these is passed in as a
   // bodyOverride (name + game + count vary per push) — the fallback strings
   // here only fire if the caller forgets an override.
@@ -349,14 +347,13 @@ export function scheduleTurnNotification(gameCode: string): void {
   })
 }
 
-/** Notify the whole room that a new round started (e.g. trivia). */
-export function scheduleRoundStartedNotification(gameCode: string, roundNumber?: number): void {
-  after(async () => {
-    try {
-      const body = typeof roundNumber === 'number' ? `Round ${roundNumber} is live — jump back in!` : undefined
-      await notifyGameEvent(gameCode, 'round_started', body)
-    } catch (err) {
-      console.error(`push notify (round_started) failed for ${gameCode}`, err)
-    }
-  })
-}
+/**
+ * REMOVED: a per-round "New round 🔔" push.
+ *
+ * It fired once per question, so a 10-round trivia game sent ten notifications in about two
+ * minutes — and often twice per round, because every connected client polls `/trivia/advance`
+ * and whichever call won the race scheduled its own push. Room-wide pushes are worth it at the
+ * edges of a game (it started, the lobby reopened, it ended); mid-game they are just noise to
+ * players who are already looking at the screen. `your_turn` stays: it is per-player and
+ * actionable. Don't reintroduce a per-round broadcast without per-recipient rate limiting.
+ */

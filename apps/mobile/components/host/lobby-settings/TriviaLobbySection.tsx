@@ -1,7 +1,8 @@
 import { StyleSheet, Text, View } from 'react-native'
 import type { GameType, TriviaCategory } from '@fateround/shared'
 import { TRIVIA_MAX_ROUNDS, TRIVIA_MIN_ROUNDS } from '@fateround/shared/create-party-games'
-import { SegmentedControl } from '@/components/create/SegmentedControl'
+import { TRIVIA_CATEGORY_OPTIONS } from '@fateround/shared/trivia'
+import { SelectField } from '@/components/create/SelectField'
 import { CustomContentPanel } from '@/components/create/CustomContentPanel'
 import { customContentCount, type CustomContentState } from '@/lib/create-settings/custom-content'
 import type { Theme } from '@/constants/theme'
@@ -9,7 +10,7 @@ import { useThemedStyles } from '@/constants/theme-context'
 
 /**
  * Lobby-editable trivia settings: question source (Platform / Library / Your
- * own), platform category (Tech / General), and the custom-question or
+ * own), platform category (all 17), and the custom-question or
  * library-pack editor. Mirrors web's `TriviaPlayAgainSetup` (variant='lobby').
  * Timer + rounds stay on the sheet's shared pickers.
  */
@@ -60,12 +61,14 @@ export function TriviaLobbySection({ value, roundsCount, onChange }: Props) {
       {value.custom.source === 'platform' ? (
         <View style={styles.field}>
           <Text style={styles.label}>Category</Text>
-          <SegmentedControl
+          {/* Every category the create screen offers. This was a Tech/General segmented
+            control, so re-opening the settings of a Maths room showed "General" selected —
+            and one stray tap would have written that back over the host's real choice. */}
+          <SelectField
+            title="Category"
             value={value.category}
-            options={[
-              { value: 'tech', label: 'Tech', hint: 'Programming, gadgets, internet culture' },
-              { value: 'general', label: 'General', hint: 'Geography, history, pop culture & more' },
-            ]}
+            options={[...TRIVIA_CATEGORY_OPTIONS]}
+            searchable
             onChange={(category) => onChange({ category: category as TriviaCategory })}
           />
         </View>

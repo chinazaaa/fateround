@@ -367,7 +367,7 @@ import {
 import { parseDescribeItWords, parseExcelDescribeItWords } from '@/lib/describe-it-words'
 import { getCodeDefaultLimits, playerCountOptions, type GamePlayerLimitsMap } from '@/lib/game-limits'
 import { TriviaTimerPicker } from '@/components/trivia/TriviaTimerPicker'
-import { TRIVIA_QUESTION_COUNT } from '@/lib/trivia-questions'
+import { TRIVIA_CATEGORY_OPTIONS, TRIVIA_QUESTION_COUNT } from '@/lib/trivia-questions'
 import { useToast } from '@/components/ui/Toast'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { ELIMINATION_COMPATIBLE_TYPES } from '@/types/elimination'
@@ -6726,25 +6726,7 @@ function CreateGameInner() {
                           value={triviaCategory}
                           onChange={(v) => setTriviaCategory(v as TriviaCategory)}
                           searchable
-                          options={[
-                            { value: 'general', label: 'General (All Categories)' },
-                            { value: 'tech', label: 'Tech' },
-                            { value: 'art', label: 'Art' },
-                            { value: 'food', label: 'Food' },
-                            { value: 'geography', label: 'Geography' },
-                            { value: 'history', label: 'History' },
-                            { value: 'language', label: 'Language' },
-                            { value: 'literature', label: 'Literature' },
-                            { value: 'math', label: 'Math' },
-                            { value: 'movies', label: 'Movies' },
-                            { value: 'music', label: 'Music' },
-                            { value: 'nature', label: 'Nature' },
-                            { value: 'pop_culture', label: 'Pop Culture' },
-                            { value: 'science', label: 'Science' },
-                            { value: 'sports', label: 'Sports' },
-                            { value: 'technology', label: 'Technology' },
-                            { value: 'world_culture', label: 'World Culture' },
-                          ]}
+                          options={[...TRIVIA_CATEGORY_OPTIONS]}
                         />
                       </Field>
                     )}

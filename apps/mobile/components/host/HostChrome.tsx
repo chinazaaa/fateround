@@ -13,6 +13,7 @@ import { RosterDrawer } from '@/components/session/RosterDrawer'
 import { RosterButton } from '@/components/session/RosterButton'
 import { TransferHostSheet } from '@/components/host/TransferHostSheet'
 import { HostControlsSheet } from '@/components/host/HostControlsSheet'
+import { PostJoinSubscribeNudge } from '@/components/notifications/PostJoinSubscribeNudge'
 import { HostViewProvider } from '@/components/host/HostViewContext'
 import { GameRouter, hasMobilePlayerView } from '@/components/games/GameRouter'
 import { HeaderAction } from '@/components/ui/HeaderAction'
@@ -68,15 +69,37 @@ export function HostChrome({ gameCode, hostToken, game, children, playFirst, pla
   }, [gameCode, hostToken, hostPlayerId])
 
   const canPlay = hasMobilePlayerView(game.game_type)
-  // Play-along games (playFirst) render the game board inline. Host-run games
-  // (bingo/trivia/…) render their control console — the `children` — as the main
-  // screen: no Play/Manage tab, so the drive controls (call number, advance
-  // phase, next round) are always in reach. When the game is over, a seated host
-  // sees the shared finished screen (winner + standings + inline host actions);
-  // a host-only host falls back to the console's own finished controls.
   const finished = game.status === 'finished'
   const seated = !!hostPlayerId
-  const showPlayView = canPlay && (playFirst || (finished && seated))
+
+  /**
+   * Play-along games (`playFirst`) render the game board inline; host controls live behind ⚙.
+   *
+   * Host-run games (trivia, bingo, mafia, quick draw, …) render their control console — the
+   * `children` — because the drive controls (call a number, advance the phase, force the next
+   * round) have to stay in reach. But a host who tapped "Play along" in the lobby and typed a
+   * name holds a real seat, and the console is READ-ONLY: it printed the trivia question and
+   * its four choices as plain text with nothing to tap. So the host could watch their own game
+   * and never answer it. That's the toggle below.
+   *
+   * Both surfaces stay MOUNTED and one is hidden with `display: 'none'`, rather than swapping
+   * which one renders. The console is where several games' drive hooks live (bingo's caller,
+   * trivia's auto-advance); unmounting it while the host plays would quietly stop the game
+   * they're playing. Hiding costs a hidden subtree; unmounting costs correctness.
+   */
+  const canToggleSurface = canPlay && !playFirst && seated && !!children
+  // Default to the console while the game runs — that's where a host-run game is driven, and
+  // a bingo host landing on their own card instead of the call button would be a new bug.
+  // Once it's finished there is nothing left to drive, so open on the shared results screen.
+  const [surface, setSurface] = useState<'play' | 'manage'>(finished ? 'play' : 'manage')
+  // A host who takes a seat mid-game shouldn't get yanked off the console, but the moment the
+  // game ends the results are the point — mirror the pre-toggle behaviour on that transition.
+  useEffect(() => {
+    if (finished) setSurface('play')
+  }, [finished])
+
+  const showPlayView = canPlay && (playFirst || (canToggleSurface && surface === 'play') || (finished && seated))
+  const showManageView = !playFirst && !!children && (!canToggleSurface || surface === 'manage')
   // The ⚙ Host controls sheet (settings, end game, play again) and the roster
   // drawer's Remove are available to any host screen that hands us the roster.
   const showHostControls = !!players && !!onReload
@@ -166,17 +189,50 @@ export function HostChrome({ gameCode, hostToken, game, children, playFirst, pla
           </View>
         </View>
 
+        {canToggleSurface ? (
+          <View style={styles.surfaceTabs}>
+            {(['play', 'manage'] as const).map((key) => (
+              <Pressable
+                key={key}
+                style={[styles.surfaceTab, surface === key && styles.surfaceTabOn]}
+                onPress={() => setSurface(key)}
+                accessibilityRole="button"
+                accessibilityState={{ selected: surface === key }}
+                accessibilityLabel={key === 'play' ? 'Play along' : 'Host controls'}
+              >
+                <Text style={[styles.surfaceTabText, surface === key && styles.surfaceTabTextOn]}>
+                  {key === 'play' ? 'Play' : 'Manage'}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
+
         {showPlayView ? (
           <HostViewProvider value={{ hostToken, hostPlayerId, onReload: () => onReload?.() }}>
             <View style={styles.playBody}>
               <GameRouter gameCode={gameCode} gameType={game.game_type} />
             </View>
           </HostViewProvider>
-        ) : (
-          <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        ) : null}
+        {/* Kept mounted while the host plays — see canToggleSurface. `display: 'none'` on the
+          wrapper, not a conditional render, is what preserves the console's drive hooks. */}
+        {!playFirst && children ? (
+          <ScrollView
+            style={showManageView ? styles.manageBody : styles.hidden}
+            contentContainerStyle={styles.content}
+            showsVerticalScrollIndicator={false}
+          >
             {children}
+            {/* The "want a ping when new <game> games open?" nudge web shows on every finished
+              game. Mobile only had it inside `GameFinishPanel`, which is the PLAYER finish
+              screen — a host watching their own trivia game end saw the console's finished
+              controls and never got the prompt. Gated on !showPlayView because the play view
+              renders GameFinishPanel, which brings its own; the two are mutually exclusive by
+              construction, and this keeps them that way. */}
+            {finished && !showPlayView ? <PostJoinSubscribeNudge gameType={game.game_type} /> : null}
           </ScrollView>
-        )}
+        ) : null}
         {/* Floats over the screen — mounted at the shell root (not in the scroll
           body, where it would scroll away). */}
         <VoiceRail gameCode={gameCode} mode="host" hostToken={hostToken} />
@@ -247,6 +303,30 @@ const makeStyles = (theme: Theme) =>
     },
     iconBtnPressed: { opacity: 0.7 },
     playBody: { flex: 1, ...centeredContent },
+    manageBody: { flex: 1 },
+    // Keeps the subtree mounted (and its drive hooks running) while taking no space.
+    hidden: { display: 'none' },
+    surfaceTabs: {
+      flexDirection: 'row',
+      gap: theme.space.xs,
+      marginHorizontal: theme.space.lg,
+      marginTop: theme.space.sm,
+      padding: 3,
+      borderRadius: theme.radius.pill,
+      backgroundColor: theme.surface,
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
+    surfaceTab: {
+      flex: 1,
+      alignItems: 'center',
+      paddingVertical: 8,
+      borderRadius: theme.radius.pill,
+    },
+    surfaceTabOn: { backgroundColor: theme.primary },
+    surfaceTabText: { color: theme.textSecondary, fontSize: 14, fontWeight: '700' },
+    // White on the solid rose pill — intentional, correct in both schemes.
+    surfaceTabTextOn: { color: '#fff' },
     backBtn: {
       width: 40,
       height: 40,
