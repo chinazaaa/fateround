@@ -4,6 +4,7 @@ import { useRouter, useFocusEffect } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { ListRow } from '@/components/ui/ListRow'
 import { SurfaceCard } from '@/components/ui/SurfaceCard'
+import { StreakStatusCard } from '@/components/profile/StreakStatusCard'
 import { centeredContent } from '@/constants/layout'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
@@ -72,6 +73,9 @@ export default function ProfileScreen() {
     level: profile?.trophy_level ?? 1,
     current: profile?.current_streak ?? 0,
     best: profile?.longest_streak ?? 0,
+    // Freezes were stored per profile and shown nowhere, so a player had no way to learn
+    // forgiveness existed — which is most of its retention value.
+    freezes: profile?.streak_freezes ?? 0,
   }
 
   return (
@@ -127,8 +131,14 @@ export default function ProfileScreen() {
         </View>
         <View style={styles.totalsRow}>
           <StatTile label="Current streak" value={`${totals.current}d`} />
-          <StatTile label="Best streak" value={`${totals.best}d`} />
+          <StatTile
+            label="Best streak"
+            value={totals.freezes > 0 ? `${totals.best}d · ${totals.freezes}❄` : `${totals.best}d`}
+          />
         </View>
+
+        {/* Only renders when the streak is actually in danger — see StreakStatusCard. */}
+        <StreakStatusCard profile={profile} />
 
         {/* Per-game section — rows built from ListRow, dividers between,
             wrapped in a SurfaceCard so the section reads as one grouped list.

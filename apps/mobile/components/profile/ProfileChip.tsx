@@ -13,6 +13,7 @@ import {
 } from 'react-native'
 import { useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
+import { streakIsAtRisk } from '@fateround/shared/streak'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
 import { apiUrl } from '@/lib/config'
@@ -26,6 +27,10 @@ type Profile = {
   is_anonymous: boolean
   current_streak: number
   trophy_points: number
+  // Both already come back from /api/profile/me; they were simply not declared here. Needed to
+  // tell a safe streak from one about to lapse.
+  last_active_date: string | null
+  streak_freezes: number
 }
 
 /**
@@ -95,6 +100,9 @@ export function ProfileChip() {
   const label = signedIn ? profile?.handle || 'You' : 'Guest'
   const streak = profile?.current_streak ?? 0
   const trophies = profile?.trophy_points ?? 0
+  // Dim the flame on a day the player hasn't played yet. The number alone read identically
+  // whether the streak was safe or hours from lapsing — matches web's ProfileChip.
+  const atRisk = streakIsAtRisk(profile)
 
   return (
     <>
@@ -103,11 +111,15 @@ export function ProfileChip() {
         style={({ pressed }) => [styles.chip, pressed && styles.pressed]}
         hitSlop={10}
         accessibilityRole="button"
-        accessibilityLabel={signedIn ? 'Your profile' : 'Save your progress'}
+        accessibilityLabel={
+          signedIn
+            ? `Your profile${streak > 0 ? `, ${streak} day streak${atRisk ? ' — play today to keep it' : ''}` : ''}`
+            : 'Save your progress'
+        }
       >
         {/* Counters stay hidden until they mean something — "🔥 0 · 🏆 0" advertises
             emptiness. They appear on their own once the trophies batch ships. */}
-        {streak > 0 ? <Text style={styles.chipMeta}>🔥 {streak}</Text> : null}
+        {streak > 0 ? <Text style={[styles.chipMeta, atRisk && styles.chipMetaAtRisk]}>🔥 {streak}</Text> : null}
         {trophies > 0 ? <Text style={styles.chipMeta}>🏆 {trophies}</Text> : null}
         <Text style={styles.chipText}>{label}</Text>
       </Pressable>
@@ -374,6 +386,7 @@ const makeStyles = (theme: Theme) =>
     pressed: { opacity: 0.7 },
     chipText: { color: theme.text, fontSize: 14, fontWeight: '700' },
     chipMeta: { color: theme.textSecondary, fontSize: 13, fontWeight: '600' },
+    chipMetaAtRisk: { opacity: 0.5 },
     flex: { flex: 1 },
     backdrop: {
       flex: 1,
