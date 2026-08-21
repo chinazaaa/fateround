@@ -1,0 +1,23 @@
+name: Mobile Rollout Gate
+
+# Only dev -> main. Merging into `dev` is safe: installed mobile builds read the PROD
+# Supabase project, so a revoke reaches users only at the promotion to main.
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  mobile-rollout-gate:
+    name: Mobile Rollout Gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check for revokes that break installed mobile builds
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          # Via env, never interpolated into the shell — PR bodies are untrusted input.
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: node scripts/ci/mobile-rollout-gate.mjs
