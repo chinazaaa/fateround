@@ -227,11 +227,39 @@ README states the migrations are the complete schema definition, so a fresh proj
 missing 18 boards. `docs/new-game-checklist.md` §7 lists the migration as a required step;
 it was skipped for these.
 
-### 3.4 🟡 Streaks are computed but never shown
+### 3.4 🟡 Streaks: the display shipped, the mechanic and the loop did not
 
-`docs/feature-backlog.md`: `profiles.current_streak` / `longest_streak` advance in the award
-pass and streak trophies are earnable, but there is no streak UI on web or mobile, no
-freeze/grace mechanic and no reminder. The engine is built; the player-facing half is not.
+`docs/feature-backlog.md` says "there is no streak UI on web or mobile yet". **That is stale** —
+checked against the code, the display exists on both:
+
+| Surface | Web | Mobile |
+|---|---|---|
+| Profile chip | 🔥 N | 🔥 N |
+| `/profile` | "Day streak" tile + "Best N" | Current / Best streak tiles |
+| Trophy leaderboard | `· Nd streak` on each row | same |
+| Public profile + OG image | ✅ | — (no `/u/[username]` on mobile, see §2.8) |
+
+The engine is solid too: `src/lib/trophies/streak.ts` computes against a fixed WAT calendar
+(so a timezone change can't farm a streak and a flight can't break one), is idempotent per day,
+and treats a future `last_active_date` as already-counted rather than punishing a player for
+our own clock skew.
+
+What is genuinely still open is the **mechanic and the retention loop**, not the display:
+
+- 🟡 **`streak_freezes` is a dead column.** It is created (`20260803000000_profiles_identity.sql`,
+  default 0), selected into every profile payload, and typed on both platforms — but it is
+  never written, never spent, and `advanceStreak` does not consult it. A gap of two or more
+  days resets to 1 unconditionally, so a player who misses one day loses everything with no
+  grace. Either implement the freeze or drop the column; carrying it in every payload while it
+  does nothing is the worst of both.
+- 🟡 **No at-risk state.** Nothing anywhere tells a player their streak is about to break —
+  no "play today to keep your 12-day streak" banner on the home screen or profile. The only
+  streak copy outside the numbers is an FAQ paragraph explaining the concept.
+- 🟡 **No reminder notification.** Push exists for turns, lobby-open and tournaments; there is
+  no streak reminder, which is the notification the mechanic exists to justify.
+
+So this is smaller and better-scoped than "build the streak UI": a freeze rule in
+`advanceStreak`, an at-risk banner, and one scheduled push.
 
 ---
 
