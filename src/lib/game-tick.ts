@@ -1,4 +1,9 @@
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+// game_type → `/api/<slug>/bot-tick` slug, for the games that can seat a bot. Lives in its
+// own dependency-free module because `/api/games/[code]/bots` derives its "may a host seat a
+// bot here" set from the same map — see the note there. A Next route file cannot re-export
+// a plain const, so the shared registry could not live in the route.
+import { BOT_TICK_SLUG } from '@/lib/bots-in-room'
 
 /**
  * Server-side game ticker.
@@ -32,17 +37,6 @@ export const ROUND_ADVANCE_SLUG: Record<string, string> = {
   describe_it: 'describe-it',
   word_rush: 'word-rush',
   landmine: 'landmine',
-}
-
-/**
- * game_type → URL slug for the `/api/<slug>/bot-tick` endpoints. Present only
- * for games where a bot-in-room driver has been shipped. Bots-in-room Phase 1
- * covered Whot; Phase 2 added Monopoly. Add entries here as other games'
- * drivers land.
- */
-const BOT_TICK_SLUG: Record<string, string> = {
-  whot: 'whot',
-  monopoly: 'monopoly',
 }
 
 /**

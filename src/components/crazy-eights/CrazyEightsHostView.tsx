@@ -12,6 +12,7 @@ import { HostBoardGameLobbyPanel } from '@/components/host-lobby/HostBoardGameLo
 import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaitingFooter'
 import { TransferHostControl } from '@/components/TransferHostControl'
 import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
+import { AddBotButton } from '@/components/host-lobby/AddBotButton'
 import { gameTypeConfig } from '@/lib/game-types'
 import {
   currentPlayerId,
@@ -20,6 +21,7 @@ import {
   isDrawPileDepleted,
   parseCrazyEightsRules,
   CRAZY8_MIN_PLAYERS,
+  CRAZY8_MAX_PLAYERS,
 } from '@/lib/crazy-eights'
 import { supabase } from '@/lib/supabase'
 import { CRAZY8_SESSION_SELECT, GAME_SELECT, PLAYER_SELECT } from '@/lib/supabase-selects'
@@ -672,7 +674,24 @@ export function CrazyEightsHostView({ gameCode, hostToken }: { gameCode: string;
         removingPlayerId={removingPlayerId}
         highlightPlayerId={hostPlayerId}
         onEnded={load}
-      />
+      >
+        {/*
+          Bots-in-room "+ Add bot" (Phase 3) — passed as children so it lands between the
+          play card and the roster, matching Whot and Estate Kings. Renders only while a
+          seat is open AND the humans-outnumber-bots invariant holds; onAdded triggers the
+          same load() the join realtime does, so the bot shows up in the roster within a
+          tick. The Crazy Eights bot honours the room's action-cards / jokers /
+          pick-2-stacking toggles, so there's no setting that has to hide this.
+        */}
+        <AddBotButton
+          gameCode={gameCode}
+          hostToken={hostToken}
+          seatedCount={players.filter((p) => p.spectator !== true).length}
+          botCount={players.filter((p) => p.spectator !== true && p.is_bot === true).length}
+          maxPlayers={lobbyMaxPlayersFromGameClient('crazy_eights', game) ?? game.max_players ?? CRAZY8_MAX_PLAYERS}
+          onAdded={load}
+        />
+      </HostLobby>
     )
   }
 

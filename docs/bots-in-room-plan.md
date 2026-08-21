@@ -1,7 +1,9 @@
 # Bots-in-Room — Plan
 
 > Status: **Phase 1 shipped (Whot, PR #886). Phase 2 shipped (Monopoly,
-> `feat/monopoly-bot`).** Companion to
+> `feat/monopoly-bot`). Phase 3 shipped Crazy Eights only** — see the Phase 3
+> note below for why Ayo, Ludo, Five Dice and UNO did not come with it.
+> Companion to
 > [`solo-bot-plan.md`](./solo-bot-plan.md), which covered
 > single-player-vs-bot pages (Whot, Ayo, Crazy Eights, UNO — all shipped).
 > This doc covers the different feature: **letting a host add computer
@@ -163,6 +165,40 @@ Once Phase 1 + 2 are in and used:
 - Whot (from Phase 1)
 - Ayo, Crazy Eights, UNO — adapters over the existing solo bot logic
 - **Cost:** ~1 day each, mostly wiring
+
+> **Phase 3 outcome (shipped: Crazy Eights only).** The "cheap win" framing held for
+> Crazy Eights and does NOT hold for UNO — the difference is whether the solo engine
+> models the room's rules.
+>
+> - **Crazy Eights — genuinely cheap, shipped.** `Crazy8SoloState` carries a full
+>   `CrazyEightsRules`, the SAME type the multiplayer engine parses from the game row, so
+>   the bot already honours the host's action-cards / jokers / pick-2-stacking toggles.
+>   The adapter (`crazy-eights-bot-adapter.ts`) is the Whot one with the nouns swapped,
+>   plus one real difference: the Queen reverses play, so "who is the next player" has to
+>   go through `crazyEightsNextTurnIndex(…, direction)` rather than `(i + 1) % n`. There
+>   is no rule combination that needs the bot disabled.
+>
+> - **UNO — not cheap, deferred.** `uno-solo.ts` and `uno-bot.ts` contain zero references
+>   to `UnoRules`. The solo engine hardcodes exactly one rule subset: two players, classic
+>   same-kind stacking, `same_color_or_number` multi-play, and nothing else. Every one of
+>   these host settings is outside what the bot can play — Zero/Seven (hand passing and
+>   swapping), cross-kind stacking, any other Multi-Play grouping, Jump-In (out-of-turn
+>   plays), Team-Up (2v2, and it changes the win condition), WD4 Challenge, the UNO-call
+>   penalty, and No Mercy (which force-enables Zero/Seven and stacking outright).
+>
+>   Gating the bot on "all of those off" would mean it is unavailable in most real rooms
+>   and, worse, would silently disappear when a host flips a setting after adding it. The
+>   honest options are (a) teach `uno-solo` the real `UnoRules` so the bot plays whatever
+>   the room plays, or (b) skip UNO. Do not ship the gated version.
+>
+> - **Ayo — deliberately skipped**, not blocked. Its solo bot carries real rules like
+>   Crazy Eights', so it remains a genuine cheap win whenever it is wanted.
+
+**Registry:** `src/lib/bots-in-room.ts` is now the single source for "which games can seat a
+bot". The seat gate in `/api/games/[code]/bots` derives its set from the same map the
+game-tick uses to poke bot drivers, so a game cannot be bot-seatable without something to
+take its turns. `bots-in-room.test.ts` additionally checks each entry has a bot-tick route,
+a driver and an adapter on disk.
 
 **Medium** — games with clean decision points but no existing bot:
 - **Ludo** — dice + piece choice (capture > safety > home)
