@@ -182,6 +182,22 @@ place mobile let you change your name (`DailyNamePrompt`) popped *"Could not sav
 try again"* after a rename that had actually gone through. Replaced with `updateProfileHandle`,
 which reads the real response shape and returns the saved handle or an error message.
 
+### 2.9 🟠 Mobile profile numbers only refreshed after a force-quit — ✅ **fixed**
+
+User-reported: trophy points on the Home chip didn't move after finishing a game unless the
+app was closed and reopened.
+
+Cause: trophy points, streaks and trophy counts are written **server-side** by the award pass
+at game finish, but the screens reading them fetched once on mount. Expo keeps a mounted
+screen alive, so navigating away and back doesn't remount it — force-quitting was the only
+thing that ever refetched. Affected `ProfileChip` (Home), `/leaderboard/trophies` (which had
+no pull-to-refresh either, so it had no way to update at all) and `/profile/trophies/[gameType]`.
+`/profile` was already correct.
+
+Fixed with `hooks/useRefreshOnFocus.ts`, which refetches on **two** edges — screen focus (back
+from a game) and app resume (backgrounded while the screen stayed focused). Neither alone is
+enough. `src/lib/mobile-stale-profile.test.ts` fails when a profile-reading screen has neither.
+
 ### 2.8 ⚪ Also web-only, likely deliberate but worth an explicit decision
 
 `/history` · `/library` + `/library/submit` · `/collections` · `/blog` · `/updates` ·

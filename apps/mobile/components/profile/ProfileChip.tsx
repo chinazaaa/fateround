@@ -17,6 +17,7 @@ import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
 import { apiUrl } from '@/lib/config'
 import { authHeaders, signOutIdentity } from '@/lib/identity'
+import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus'
 import { requestEmailCode, verifyEmailCode, type EmailCodeFlow } from '@/lib/identity-auth'
 import { getSupabase } from '@/lib/supabase'
 
@@ -70,9 +71,11 @@ export function ProfileChip() {
     }
   }, [])
 
-  useEffect(() => {
-    void refresh()
-  }, [refresh])
+  // Refetch on first focus, on returning to Home from a game, and when the app comes back
+  // from the background. Trophy points and the streak are written server-side by the award
+  // pass at game finish, so a mount-only fetch left the chip showing pre-game numbers until
+  // the app was force-quit.
+  useRefreshOnFocus(refresh)
 
   // Re-fetch when the auth session changes. The session hydrates from AsyncStorage
   // asynchronously, so the mount fetch above can run before there is a session and read as a
