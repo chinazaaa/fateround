@@ -364,6 +364,10 @@ Also found and fixed while doing the above — none of it visible from the audit
 - **2.9** — ✅ mobile profile numbers refreshing without a force-quit (`useRefreshOnFocus`).
 - **3.1, partly** — ✅ bots-in-room Phase 3 shipped for **Crazy Eights**. Registry is now
   `src/lib/bots-in-room.ts`, so seat-eligibility can't drift from what actually drives a turn.
+- **3.2** — ✅ **complete.** Troll Run has 21 trophies across four tiers, built on ten counters
+  plus a four-world distinct set. The reconcile seed migration is now GENERATED
+  (`system-trophy-migration.gen.test.ts`) rather than hand-assembled, and the parity test finds
+  the newest reconcile migration instead of naming one.
 - **3.4** — ✅ streaks are shown, and now real: the freeze mechanic (§10.2 economics) is
   implemented and persisted, an at-risk banner lands on both profile screens with a dimmed
   flame on both chips, and the §4.5 come-back reminder runs daily off
@@ -376,19 +380,17 @@ Also found and fixed while doing the above — none of it visible from the audit
 - **3.1, rest** — bots-in-room for Ayo, UNO, Ludo, Five Dice. Ayo was explicitly deferred; UNO
   needs a rules decision first (0/7, stacking and jump-in change whose turn it is out of
   order — see [bots-in-room-plan.md](./bots-in-room-plan.md)).
-- **3.2, partly** — Troll Run still has no trophies.
 - **Streak reminder opt-out granularity** — a device gets the come-back nudge if it has
   notifications on at all. The opt-outs today are the master toggle and quiet hours; a
   per-category toggle would need its own column plus UI on both platforms.
 
 ## Suggested order for what remains
 
-1. **Troll Run trophies** (3.2) — smallest of the open items; the Quick Draw pass is a template.
-2. **Bots-in-room for Ludo / Five Dice** (3.1) — turn order is plain, so the Crazy Eights
+1. **Bots-in-room for Ludo / Five Dice** (3.1) — turn order is plain, so the Crazy Eights
    adapter shape ports directly. UNO needs the rules decision first; Ayo is deferred.
-3. **Troll Run on mobile** (2.1) — the largest single parity gap left, and the only one of the
+2. **Troll Run on mobile** (2.1) — the largest single parity gap left, and the only one of the
    49 game types with no mobile player view at all.
-4. **Tournaments / rooms on mobile** (2.2, 2.3) — worth an explicit product decision rather
+3. **Tournaments / rooms on mobile** (2.2, 2.3) — worth an explicit product decision rather
    than a default yes; both are big ports.
-5. **Streak reminder category toggle** — only if a player subscribed to one game type would be
+4. **Streak reminder category toggle** — only if a player subscribed to one game type would be
    surprised to get a streak ping.

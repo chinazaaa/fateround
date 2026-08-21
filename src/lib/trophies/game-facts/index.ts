@@ -22,6 +22,7 @@ import { landmineFacts } from './landmine'
 import { matchingPairsFacts } from './matching-pairs'
 import { quiplashFacts } from './quiplash'
 import { quickDrawFacts } from './quick-draw'
+import { trollRunFacts } from './troll-run'
 import { sudokuFacts } from './sudoku'
 import { ticTacToeFacts } from './tic-tac-toe'
 import { twoTruthsFacts } from './two-truths'
@@ -105,6 +106,7 @@ const BUILDERS: Partial<Record<GameType, FactsBuilder>> = {
   matching_pairs: matchingPairsFacts,
   quiplash: quiplashFacts,
   quick_draw: quickDrawFacts,
+  troll_run: trollRunFacts,
   sudoku: sudokuFacts,
   tic_tac_toe: ticTacToeFacts,
   two_truths: twoTruthsFacts,

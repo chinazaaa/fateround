@@ -28,7 +28,24 @@ import type { CatalogTrophy } from './catalog'
  */
 
 const MIGRATIONS_DIR = join(process.cwd(), 'supabase', 'migrations')
-const RECONCILE = '20261028120000_system_trophies_backfill.sql'
+
+/**
+ * The newest full-catalog reconcile migration.
+ *
+ * Discovered rather than named, because merged migrations are immutable: adding a game means
+ * REGENERATING into a new file (see `system-trophy-migration.gen.test.ts`), and the old one
+ * stays on disk untouched. Migrations run in filename order, so the last match is the one whose
+ * `ON CONFLICT DO UPDATE` has the final word — and therefore the one whose contents must match
+ * the specs. A hard-coded filename here would have quietly kept checking a superseded file.
+ */
+const RECONCILE = (() => {
+  const files = readdirSync(MIGRATIONS_DIR)
+    .filter((f) => /_system_trophies_(backfill|reconcile)\.sql$/.test(f))
+    .sort()
+  const last = files[files.length - 1]
+  if (!last) throw new Error('no system-trophy reconcile migration found')
+  return last
+})()
 
 type SeededRow = {
   id: string

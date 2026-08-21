@@ -4797,6 +4797,91 @@ export const COUNTERS: readonly CounterDef[] = [
     availability: 'partial',
     phrase: 'played at least {n} game{s} with 6+ players',
   },
+
+  // ── Troll Run ──────────────────────────────────────────────────────────
+  // A round is ten levels of one world against a shared clock. `finish_position` (not
+  // `round_finished`, which is set for DNFs too) decides who actually got out — see
+  // ../trophies/game-facts/troll-run.ts.
+  {
+    key: 'troll_run_levels_cleared',
+    label: 'Troll Run — levels cleared',
+    description: 'Levels cleared across all rounds and games.',
+    scope: 'per-game',
+    availability: 'partial',
+    phrase: 'cleared at least {n} level{s}',
+  },
+  {
+    key: 'troll_run_rounds_finished',
+    label: 'Troll Run — rounds finished',
+    description: 'Rounds where you cleared every level before the clock ran out.',
+    scope: 'per-game',
+    availability: 'partial',
+    phrase: 'finished at least {n} round{s}',
+  },
+  {
+    key: 'troll_run_round_wins',
+    label: 'Troll Run — rounds won',
+    description: 'Rounds you finished in first place.',
+    scope: 'per-game',
+    availability: 'partial',
+    phrase: 'won at least {n} round{s}',
+  },
+  {
+    key: 'troll_run_deaths',
+    label: 'Troll Run — deaths',
+    description: 'Total deaths across all games. The badge nobody asks for.',
+    scope: 'per-game',
+    availability: 'partial',
+    phrase: 'died at least {n} time{s}',
+  },
+  {
+    key: 'troll_run_deathless_rounds',
+    label: 'Troll Run — deathless rounds',
+    description: 'Rounds finished without dying once.',
+    scope: 'per-game',
+    availability: 'partial',
+    phrase: 'finished at least {n} round{s} without dying',
+  },
+  {
+    key: 'troll_run_par_rounds',
+    label: 'Troll Run — rounds under par',
+    description: 'Rounds finished inside the combined par time, earning the speed bonus.',
+    scope: 'per-game',
+    availability: 'partial',
+    phrase: 'finished at least {n} round{s} under par',
+  },
+  {
+    key: 'troll_run_first_try_clears',
+    label: 'Troll Run — first-try clears',
+    description: 'Levels cleared without dying on them once.',
+    scope: 'per-game',
+    availability: 'partial',
+    phrase: 'cleared at least {n} level{s} first try',
+  },
+  {
+    key: 'troll_run_flawless_games',
+    label: 'Troll Run — flawless games',
+    description: 'Games where you finished every round without dying once.',
+    scope: 'per-game',
+    availability: 'partial',
+    phrase: 'played at least {n} game{s} without dying',
+  },
+  {
+    key: 'troll_run_clean_sweep_games',
+    label: 'Troll Run — clean sweeps',
+    description: 'Games where you won every single round.',
+    scope: 'per-game',
+    availability: 'partial',
+    phrase: 'swept every round in at least {n} game{s}',
+  },
+  {
+    key: 'troll_run_full_lobby_games',
+    label: 'Troll Run — full-lobby games',
+    description: 'Games finished in a full six-runner lobby.',
+    scope: 'per-game',
+    availability: 'partial',
+    phrase: 'finished at least {n} full-lobby game{s}',
+  },
 ] as const
 
 /**
@@ -4838,6 +4923,16 @@ export const DISTINCT_SETS: readonly DistinctDef[] = [
     description: 'Distinct player counts (2–6) this profile has won a Whot game at.',
     availability: 'partial',
     phrase: 'won a Whot game at least {n} different player count{s}',
+  },
+  {
+    // Emitted by trollRunFacts as `distinct:troll_run_worlds:<world>`, folded into
+    // `player_distinct` by the award pass. Four worlds ship (`TROLL_RUN_WORLD_IDS`), each with
+    // its own hazard vocabulary, so "ran all four" is a breadth measure no sum can express.
+    key: 'troll_run_worlds',
+    label: 'Troll Run — worlds run',
+    description: 'Distinct Troll Run worlds this profile has finished a game in.',
+    availability: 'partial',
+    phrase: 'finished a run in at least {n} different world{s}',
   },
   {
     key: 'rooms',
