@@ -85,6 +85,38 @@ describe('no read site collapses the category to a tech/general binary', () => {
     expect(BINARY.test(src), `${rel} still branches on trivia_category === 'tech'`).toBe(false)
   })
 
+  // Same bug, different column: pickers that offer two of the seventeen. The lobby sheets are
+  // covered by the "picker offers every category" test above (they share the options list);
+  // these two hand-rolled their own two-item arrays.
+  const PICKERS = [
+    'apps/mobile/components/create/CustomContentPanel.tsx',
+    'apps/mobile/components/host/lobby-settings/TriviaLobbySection.tsx',
+    'apps/mobile/components/create/PartyRoomSettingsPanel.tsx',
+    'src/components/trivia/TriviaPlayAgainSetup.tsx',
+    'src/app/create/page.tsx',
+  ]
+
+  it.each(PICKERS)('%s feeds its category picker from the shared options list', (rel) => {
+    const src = readFileSync(join(REPO, rel), 'utf8')
+    expect(src, `${rel} must use TRIVIA_CATEGORY_OPTIONS`).toMatch(/TRIVIA_CATEGORY_OPTIONS/)
+    // The exact shape that was there before: a literal pair of General/Tech options.
+    expect(
+      /\{\s*value: '(general|tech)'[\s\S]{0,80}?\{\s*value: '(general|tech)'[\s\S]{0,80}?\]/.test(src) &&
+        !/TRIVIA_CATEGORY_OPTIONS/.test(src),
+      `${rel} still hand-rolls a two-option category picker`
+    ).toBe(false)
+  })
+
+  it('imported questions are tagged with the game category, not always general', () => {
+    // Web has always passed the game's category into its importer; mobile hardcoded 'general',
+    // so a Maths room that imported its own CSV got a pool tagged General.
+    const parser = readFileSync(join(REPO, 'apps/mobile/lib/file-import.ts'), 'utf8')
+    expect(parser).toMatch(/parseTriviaCsv\(text: string, category: TriviaCategory/)
+    expect(parser, 'must stamp the passed category').not.toMatch(/correctIndex, category: 'general'/)
+    const panel = readFileSync(join(REPO, 'apps/mobile/components/create/CustomContentPanel.tsx'), 'utf8')
+    expect(panel).toMatch(/parseTriviaCsv\(text, triviaCategory/)
+  })
+
   it('the shared metadata parser keeps a non-binary category', () => {
     expect(readFileSync(join(REPO, 'packages/shared/src/trivia.ts'), 'utf8')).not.toMatch(
       /m\.category === 'tech' \|\| m\.category === 'general'/

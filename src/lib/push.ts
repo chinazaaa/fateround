@@ -145,18 +145,58 @@ async function sendExpoPush(tokens: { id: string; expo_push_token: string }[], p
 
 /**
  * Send a lifecycle notification to every device subscribed to this game. Best-effort.
+ *
+ * `excludeHost` drops the host's own device from the fan-out. Every lifecycle event is
+ * something the HOST just did — they tapped Start, or Play again, or End game — so pushing it
+ * back at them notifies them of their own action, on the screen that already shows the result.
+ * Reported as "if I'm the host and I reopen lobby I shouldn't get a notification".
+ *
+ * It is opt-in rather than automatic because `host_idle_warning` is addressed TO the host;
+ * excluding them there would send the warning to everyone except the one person who can act
+ * on it. Callers say who the message is for.
  */
-export async function notifyGameEvent(gameCode: string, event: PushEvent, bodyOverride?: string): Promise<void> {
+export async function notifyGameEvent(
+  gameCode: string,
+  event: PushEvent,
+  opts: { bodyOverride?: string; excludeHost?: boolean } = {}
+): Promise<void> {
   const admin = getSupabaseAdmin()
   const code = gameCode.toUpperCase()
-  const payload = buildPayload(event, code, bodyOverride)
+  const payload = buildPayload(event, code, opts.bodyOverride)
 
+  // Only a host who took a seat has a push row at all (both tables key on a NOT NULL
+  // player_id), so a host-only host needs no exclusion — there is nothing of theirs to skip.
+  let excludeId: string | null = null
+  if (opts.excludeHost) {
+    const { data: game } = await admin.from('games').select('host_player_id').eq('id', code).maybeSingle()
+    excludeId = game?.host_player_id ?? null
+  }
+
+  const webQuery = admin.from('push_subscriptions').select('id, endpoint, p256dh, auth').eq('game_id', code)
+  const expoQuery = admin.from('mobile_push_tokens').select('id, expo_push_token').eq('game_id', code)
   const [{ data: webSubs }, { data: expoTokens }] = await Promise.all([
-    admin.from('push_subscriptions').select('id, endpoint, p256dh, auth').eq('game_id', code),
-    admin.from('mobile_push_tokens').select('id, expo_push_token').eq('game_id', code),
+    excludeId ? webQuery.neq('player_id', excludeId) : webQuery,
+    excludeId ? expoQuery.neq('player_id', excludeId) : expoQuery,
   ])
 
   await Promise.all([sendWebPush(webSubs ?? [], payload), sendExpoPush(expoTokens ?? [], payload)])
+}
+
+/**
+ * "⏳ Your lobby closes in 2 min" — to the host, and only the host.
+ *
+ * This used to go out through `notifyGameEvent`, which fans out to everyone subscribed to the
+ * game. So a message addressed to the host ("YOUR lobby closes") reached every seated player,
+ * none of whom can keep the lobby open. Nobody loses a warning by narrowing it: both push
+ * tables key on a NOT NULL player_id, so a host who never took a seat had no device row and
+ * was never reachable either way.
+ */
+export async function notifyHostIdleWarning(gameCode: string): Promise<void> {
+  const admin = getSupabaseAdmin()
+  const code = gameCode.toUpperCase()
+  const { data: game } = await admin.from('games').select('host_player_id').eq('id', code).maybeSingle()
+  if (!game?.host_player_id) return
+  await notifyPlayerEvent(code, game.host_player_id, 'host_idle_warning')
 }
 
 /**

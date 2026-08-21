@@ -20,12 +20,14 @@ const PUSH = readFileSync(join(REPO, 'src', 'lib', 'push.ts'), 'utf8')
 /**
  * The only events allowed to fan out to everyone subscribed to a game.
  *
- * The first three are lifecycle edges, sent once per transition by `withGameNotification`.
- * `host_idle_warning` is also once-per-lobby (a DB flag stops a second tick re-sending it).
- * Nothing here can fire more than once per game per state change — that is the property that
- * matters, not the count of events in this set.
+ * All three are lifecycle edges sent once per transition by `withGameNotification`. Nothing
+ * here can fire more than once per game per state change — that is the property that matters,
+ * not the count of events in this set.
+ *
+ * `host_idle_warning` is deliberately NOT here: it is addressed to the host and goes out via
+ * `notifyHostIdleWarning`, which targets them directly.
  */
-const ROOM_WIDE_ALLOWED = new Set(['game_started', 'lobby_reopened', 'game_ended', 'host_idle_warning'])
+const ROOM_WIDE_ALLOWED = new Set(['game_started', 'lobby_reopened', 'game_ended'])
 
 function pushEvents(): string[] {
   const match = /export type PushEvent =\n((?:\s*\|\s*'[a-z_]+'\n)+)/.exec(PUSH)
@@ -69,6 +71,29 @@ describe('push events', () => {
         'broadcast notifies players who are already watching the screen — and fires again ' +
         'every round. Use notifyPlayerEvent for anything aimed at one player.'
     ).toEqual([])
+  })
+
+  it('lifecycle broadcasts skip the host who triggered them', () => {
+    // Every event withGameNotification sends is something the host just did — tapped Start,
+    // Play again, or End game. Without excludeHost they get pushed their own action.
+    const route = readFileSync(join(REPO, 'src', 'lib', 'push-route.ts'), 'utf8')
+    expect(route).toMatch(/notifyGameEvent\([\s\S]{0,120}?excludeHost: true/)
+    expect(PUSH, 'notifyGameEvent must honour the flag').toMatch(/opts\.excludeHost/)
+    expect(PUSH, 'and actually filter the host out of both tables').toMatch(/neq\('player_id', excludeId\)/)
+  })
+
+  it('the idle warning reaches the host, not the whole room', () => {
+    // "YOUR lobby closes in 2 min" used to fan out to every seated player, none of whom can
+    // keep it open.
+    expect(PUSH).toMatch(/export async function notifyHostIdleWarning/)
+    expect(PUSH).toMatch(/notifyPlayerEvent\(code, game\.host_player_id, 'host_idle_warning'\)/)
+    for (const rel of [
+      'src/app/api/cron/warn-idle-lobbies/route.ts',
+      'src/app/api/games/[code]/warn-idle-now/route.ts',
+    ]) {
+      const src = readFileSync(join(REPO, rel), 'utf8')
+      expect(src, `${rel} must not broadcast the host's warning`).not.toMatch(/notifyGameEvent/)
+    }
   })
 
   it('every declared event still has copy', () => {

@@ -47,6 +47,7 @@ export function TriviaLobbySection({ value, roundsCount, onChange }: Props) {
         gameType="trivia"
         custom={value.custom}
         roundsCount={roundsCount}
+        triviaCategory={value.category}
         onChange={(patch) => onChange({ custom: { ...value.custom, ...patch } })}
       />
 
