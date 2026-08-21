@@ -113,32 +113,31 @@ at parity. **Roughly 1–2 real gaps per game, and most are systemic rather than
 > team-leave / multi-play (all eleven mobile UNO API wrappers match the eleven web routes),
 > Landmine's originality bonus and voting, Word Search ownership colouring, Draughts flying kings.
 
-### Systemic — one fix each, closes it across all eight
+### Systemic — none, after verification
 
-- 🟠 **No per-game section in the in-game ⚙ settings sheet.** Web builds a `playerSettingsNode`
-  and registers it with `useRegisterGameSettings`, so during play the gear holds
-  `EditNameInline` + `LeaveGameButton` **plus any game-specific controls**. Mobile's gear opens
-  the global `SettingsSheet` — Appearance / Sound effects / Notifications and nothing else — so
-  there is no per-game settings surface in-game at all, and rename/leave are reachable only from
-  the lobby via `LobbyView`. Affects all eight. `web: src/components/GameChromeSettings.tsx +
-  GameSettingsContext.useRegisterGameSettings; mobile: components/ui/SettingsSheet.tsx`
-- 🟡 **No in-lobby rules link** on 6 of 8 (`crossword` and `word_search` have it). Web renders
-  `GameRulesLink` on the join and waiting screens. `web: <GameRulesLink gameType="…" variant="subtle" />`
-- 🟡 **No dedicated late-join choice screen** on 6 of 8 (`landmine` has one; `uno` and
-  `draughts10` don't have one on web either, so N/A there). Mobile's `JoinScreen` does expose
-  `onJoinAsViewer`, so the *capability* exists — what's missing is web's contextual
-  `late_join_choice` screen explaining what you'd be joining mid-game.
-  `web: computeScreen → 'late_join_choice' + LateJoinChoice`
+The first cut of this section listed three systemic gaps. **All three were wrong**, and each
+for the same reason: the feature is provided by a shared shell that wraps every game view, so
+grepping the view for it finds nothing. Recorded here rather than quietly deleted, because the
+next person to run a marker sweep will hit exactly this.
+
+| Claimed gap | Reality |
+|---|---|
+| ~~No per-game section in the in-game ⚙ settings~~ | For all eight, web's `useRegisterGameSettings` payload is **only** `EditNameInline` + `LeaveGameButton` — verified in every one of the eight player views. Mobile has both in-game in `PlayerSessionMenu` (the ⋯ button in `PlayerSessionShell`). Different placement, same capability. |
+| ~~No in-lobby rules link on 6 of 8~~ | `PlayerSessionShell` renders `<GameRulesLink gameType={game.game_type}>` for every game on every screen, ungated by status. |
+| ~~No dedicated late-join choice screen on 6 of 8~~ | `PlayerPreJoinGate` wraps every view via `GameRouter` and renders `LateJoinChoiceScreen` / `GameStartedWaitingScreen` / `GameEndedScreen`, branching on the **shared** `preJoinScreen()` — the same function web calls. |
+
+So the systemic surface is at parity, and the real gap count for these eight is **lower still**:
+one 🟠 (UNO series scoring) and a short tail of 🟡/⚪ polish.
 
 ### Per-game
 
-#### UNO — _mostly_ (🔴0 🟠1 🟡0 ⚪0)
+#### UNO — _mostly_ (🔴0 🟠1 🟡0 ⚪0) — ✅ **fixed**
 
 Action surface is at full parity: all eleven mobile API wrappers (`postUnoPlay`, `…PlayMulti`,
 `…Challenge`, `…Swap`, `…JumpIn`, `…CallUno`, `…TeamLeaveDecision`, …) match the eleven
 `/api/uno/*` routes, and the view handles `challenge_window` and `swap_target` phases.
 
-- 🟠 **Series scoring is invisible.** With series scoring on, web shows a `UnoSeriesScoreboard`
+- 🟠 ✅ **Series scoring is invisible.** _Fixed: `components/games/cards/UnoSeriesScoreboard.tsx`, rendered as the `notice` on the finished screen._ With series scoring on, web shows a `UnoSeriesScoreboard`
   on the final results: every player's cumulative points across hands, the target, and the
   series winner once reached. Mobile **fetches the columns** (`uno_series_scoring`,
   `uno_series_target`, `uno_series_scores`, `uno_series_winner_id` are in
@@ -146,24 +145,24 @@ Action surface is at full parity: all eleven mobile API wrappers (`postUnoPlay`,
   in a series game sees only the current hand's result and cannot tell the running score or that
   the series has been won. `web: src/components/uno/UnoFinalResultsShareBlock.tsx (UnoSeriesScoreboard)`
 
-#### Word Grouping — _mostly_ (🔴0 🟠0 🟡1 ⚪2)
+#### Word Grouping — _mostly_ (🔴0 🟠0 🟡1 ⚪2) — ✅ **all three fixed**
 
-- 🟡 **No answer-reveal hold.** Web keeps the solved board up for a beat (`revealingAnswers`)
+- 🟡 ✅ **No answer-reveal hold.** Web keeps the solved board up for a beat (`revealingAnswers`)
   before the standings replace it, so you can read the groups you just completed. Mobile jumps
   straight from the last guess to the finished screen.
   `web: src/components/word-grouping/WordGroupingPlayerView.tsx (revealingAnswers / ANSWER_REVEAL_MS)`
-- ⚪ **No per-player finish time in the standings.** Web appends `(⏱️ mm:ss)` to each row via
+- ⚪ ✅ **No per-player finish time in the standings.** Web appends `(⏱️ mm:ss)` to each row via
   `wordGroupingFinishSeconds`. Mobile shows `groups/4 · N mistakes` only (its own time is in the
   header). `web: same file, leaderboardRows mapping`
-- ⚪ **No "my score" summary above the leaderboard** — web prints `N points` and
+- ⚪ ✅ **No "my score" summary above the leaderboard** — web prints `N points` and
   `X/4 groups · Y mistakes` above Final Standings; mobile relies on the highlighted row.
 
-#### Wordle Room — _at parity_ (🔴0 🟠0 🟡0 ⚪1)
+#### Wordle Room — _at parity_ (🔴0 🟠0 🟡0 ⚪1) — ✅ **fixed**
 
 Hints (cost confirm → `reveal-hint`), category label, per-word reveal delay and the
 solve/loss reveal beat all match.
 
-- ⚪ **Default category label differs** — `'Wordle'` on mobile vs `'General English'` on web
+- ⚪ ✅ **Default category label differs** — `'Wordle'` on mobile vs `'General English'` on web
   before the status fetch resolves.
 
 #### Crossword · Word Search · Word Scramble · Draughts (International / Nigeria) — _at parity_

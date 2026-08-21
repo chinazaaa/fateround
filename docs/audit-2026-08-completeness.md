@@ -142,7 +142,7 @@ already started — the route has a `BATCH_11_GAMES` the client has no counterpa
 route is the server-driven kill switch, so a drift here ships a game to a client that can't
 render it. Import the shared batches, or add a test asserting the two sets match.
 
-### 2.7 🟠 Account settings are split across three places on mobile, and two are missing
+### 2.7 🟠 Account settings are split across three places on mobile, and two are missing — ✅ **fixed**
 
 Web has one **`/profile` → Settings** tab (`src/components/profile/SettingsTab.tsx`) holding
 everything: **Display name** (edit + save), **Preferences** (Voice chat default, Dark mode) and
@@ -170,8 +170,17 @@ Related, and the same root cause: mobile's ⚙ gear opens only the global `Setti
 `useRegisterGameSettings`. See the systemic finding in
 [mobile-web-parity-plan.md](./mobile-web-parity-plan.md#second-pass--the-ten-games-this-audit-never-covered-2026-08).
 
-**Fix shape:** give `apps/mobile/app/profile.tsx` a Settings tab mirroring `SettingsTab.tsx`
-(display name, voice-chat default, sign out), and move sign-out there from the ProfileChip.
+✅ **Fixed.** `apps/mobile/components/profile/AccountSettingsSection.tsx` gives `/profile` a
+Settings section mirroring web's tab — display name, voice-chat default, sign out — and
+`lib/profile-api.ts` gained `updateProfileSettings` for `/api/profile/settings`. Signing IN
+(email + OTP) stays in the Home ProfileChip; device preferences stay in the ⚙ sheet, matching
+how web splits account state from per-install state.
+
+**And a bug it uncovered:** `updateProfile` read `data.profile` from `/api/profile/me` PATCH,
+which answers `{ handle }`. It therefore returned `null` on every SUCCESSFUL rename, so the one
+place mobile let you change your name (`DailyNamePrompt`) popped *"Could not save name — please
+try again"* after a rename that had actually gone through. Replaced with `updateProfileHandle`,
+which reads the real response shape and returns the saved handle or an error message.
 
 ### 2.8 ⚪ Also web-only, likely deliberate but worth an explicit decision
 

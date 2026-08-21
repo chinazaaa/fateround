@@ -8,15 +8,18 @@ import { centeredContent } from '@/constants/layout'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
 import { fetchProfileGames, type ProfileGameRow, type ProfileMe } from '@/lib/profile-api'
+import { AccountSettingsSection } from '@/components/profile/AccountSettingsSection'
 
 /**
  * Profile screen — trophy case + per-game stats surface.
  *
- * Identity management (sign in, edit handle, sign out) lives in the
- * `ProfileChip` sheet on Home — reusing that avoids double-implementing
- * a flow that already works. This screen focuses on what's genuinely
- * new: the trophy points/streak roll-up and the per-game rows the plan
- * called out as the P1 gap.
+ * Signing IN (email + OTP) still lives in the `ProfileChip` sheet on Home — that flow
+ * works and doesn't need a second implementation. Everything else about the account —
+ * display name, voice-chat default, sign out — is in `AccountSettingsSection` at the
+ * bottom of this screen, mirroring web's `/profile` → Settings tab. Before that existed,
+ * mobile had no account settings surface at all: renaming was reachable only from the
+ * daily-challenge name prompt, the voice-chat default was unreachable, and sign-out was
+ * behind "Not you? Switch" on a Home-screen chip.
  *
  * Signed-out (anonymous) state renders identically — anon players still
  * have real trophy stats — so there's no separate "guest" layout.
@@ -93,8 +96,9 @@ export default function ProfileScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={() => void onRefresh()} tintColor={theme.primaryMuted} />
         }
       >
-        {/* Header card: name + auth state hint. Editing / sign-in / sign-out
-            all still live in the ProfileChip sheet on Home. */}
+        {/* Header card: name + auth state hint. Renaming, the voice-chat default and
+            sign-out live in the Settings section at the bottom of this screen; signing IN
+            (email + OTP) is still the ProfileChip sheet on Home. */}
         <SurfaceCard elevation="raised">
           <View style={styles.headerRow}>
             <View style={styles.avatar}>
@@ -155,6 +159,10 @@ export default function ProfileScreen() {
             </SurfaceCard>
           )}
         </View>
+
+        {/* Account settings — the mobile half of web's /profile → Settings tab. Device
+            preferences (appearance / sound / notifications) stay in the ⚙ sheet. */}
+        <AccountSettingsSection profile={profile} onChanged={() => void load()} />
       </ScrollView>
     </SafeAreaView>
   )
