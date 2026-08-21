@@ -128,6 +128,14 @@ export default function HomeScreen() {
             // three cards — daily, trophies, community — matching web.
             onPress={() => router.push('/leaderboard' as never)}
           />
+          <AppButton
+            label="🤖 Practice vs bot"
+            tone="ghost"
+            // Cast: expo-router's typed href doesn't know about the /play-solo
+            // route registered in _layout.tsx. Before this, the six solo
+            // screens were reachable only from inside the create wizard.
+            onPress={() => router.push('/play-solo' as never)}
+          />
         </View>
 
         <SubscribeHomeBanner />

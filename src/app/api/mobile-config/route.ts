@@ -48,6 +48,18 @@ const BATCH_12_GAMES: GameType[] = ['wordle_room']
 /**
  * Server-driven mobile feature flags. Flip `mobileSupportedGames` when a native
  * screen is ready — no app store review required.
+ *
+ * WHY THIS LIST IS DUPLICATED. The Expo app builds its own `MOBILE_SUPPORTED_GAMES` in
+ * `apps/mobile/components/games/GameRouter.tsx` from the shared `batch-*-games` modules.
+ * This route cannot import it (GameRouter pulls in React Native) and the web app
+ * deliberately does not depend on `@fateround/shared` — see the note in
+ * `src/lib/public-hints.ts`. So the two lists are maintained separately and
+ * `mobile-config.test.ts` is the link: it fails when they diverge in either direction, and
+ * when this route enables a game the app has no player view for.
+ *
+ * The BATCH_n groupings below are ROLLOUT batches — the order native screens shipped in —
+ * and do not have to match how the app groups the same games into modules (word_scramble
+ * lives in the app's BATCH_3 but shipped here in BATCH_11). Only the union matters.
  */
 export async function GET() {
   return NextResponse.json({

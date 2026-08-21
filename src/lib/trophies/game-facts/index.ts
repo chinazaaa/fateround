@@ -21,6 +21,7 @@ import { iCallOnFacts } from './i-call-on'
 import { landmineFacts } from './landmine'
 import { matchingPairsFacts } from './matching-pairs'
 import { quiplashFacts } from './quiplash'
+import { quickDrawFacts } from './quick-draw'
 import { sudokuFacts } from './sudoku'
 import { ticTacToeFacts } from './tic-tac-toe'
 import { twoTruthsFacts } from './two-truths'
@@ -103,6 +104,7 @@ const BUILDERS: Partial<Record<GameType, FactsBuilder>> = {
   landmine: landmineFacts,
   matching_pairs: matchingPairsFacts,
   quiplash: quiplashFacts,
+  quick_draw: quickDrawFacts,
   sudoku: sudokuFacts,
   tic_tac_toe: ticTacToeFacts,
   two_truths: twoTruthsFacts,
