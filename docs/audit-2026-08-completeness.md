@@ -142,7 +142,38 @@ already started — the route has a `BATCH_11_GAMES` the client has no counterpa
 route is the server-driven kill switch, so a drift here ships a game to a client that can't
 render it. Import the shared batches, or add a test asserting the two sets match.
 
-### 2.7 ⚪ Also web-only, likely deliberate but worth an explicit decision
+### 2.7 🟠 Account settings are split across three places on mobile, and two are missing
+
+Web has one **`/profile` → Settings** tab (`src/components/profile/SettingsTab.tsx`) holding
+everything: **Display name** (edit + save), **Preferences** (Voice chat default, Dark mode) and
+**Account** (signed-in state + Sign out / Switch account).
+
+Mobile has no Settings tab on `/profile` at all — that screen is trophy case + per-game stats,
+and its own header comment says so: *"Identity management (sign in, edit handle, sign out) lives
+in the ProfileChip sheet on Home."* What exists is scattered and incomplete:
+
+| Web `/profile` → Settings | Mobile |
+|---|---|
+| Display name (edit + save) | **Missing.** `updateProfile({ handle })` exists but is only reachable from `DailyNamePrompt`, and only when your name is auto-generated |
+| Voice chat default (`default_voice_on`) | **Missing entirely** — zero references anywhere in `apps/mobile` |
+| Dark mode | ✅ `SettingsSheet` (⚙ gear) |
+| Sound effects | ✅ `SettingsSheet` — web has this in the in-game gear instead |
+| Notifications | ✅ `SettingsSheet` |
+| Sign out / Switch account | Present but **hidden and mislabelled** — `signOutIdentity()` behind *"Not you? Switch"* in the Home `ProfileChip` sheet, not in settings |
+
+So a mobile player cannot change their display name outside one narrow daily-challenge prompt,
+cannot set the voice-chat default at all, and has to find sign-out on a Home-screen chip.
+
+Related, and the same root cause: mobile's ⚙ gear opens only the global `SettingsSheet`
+(Appearance / Sound / Notifications). Web's in-game gear also carries a per-game
+`playerSettingsNode` — rename, leave game, and game-specific controls — registered via
+`useRegisterGameSettings`. See the systemic finding in
+[mobile-web-parity-plan.md](./mobile-web-parity-plan.md#second-pass--the-ten-games-this-audit-never-covered-2026-08).
+
+**Fix shape:** give `apps/mobile/app/profile.tsx` a Settings tab mirroring `SettingsTab.tsx`
+(display name, voice-chat default, sign out), and move sign-out there from the ProfileChip.
+
+### 2.8 ⚪ Also web-only, likely deliberate but worth an explicit decision
 
 `/history` · `/library` + `/library/submit` · `/collections` · `/blog` · `/updates` ·
 `/faq` · `/feedback` · `/contact` · `/u/[username]` public profiles · `/leaderboard/community`.
@@ -272,7 +303,11 @@ Also found and fixed while doing the above — none of it visible from the audit
 **Still open** (deliberately out of scope for those commits):
 
 - **2.1 / 2.2 / 2.3** — Troll Run, tournaments and rooms on mobile. Large feature ports.
-- **2.5** — the ten games never given a mobile parity pass.
+- **2.5** — ✅ **done.** The second-pass audit is in
+  [mobile-web-parity-plan.md](./mobile-web-parity-plan.md#second-pass--the-ten-games-this-audit-never-covered-2026-08).
+  Outcome: the newer ten are far closer to parity than the original 39 (they inherit the shared
+  shells that landed in Phase 0–2), leaving three systemic gaps and one real per-game gap
+  (UNO series scoring is fetched but never rendered). Building those fixes is still open.
 - **3.1** — bots-in-room Phase 3 (Ayo, Crazy Eights, UNO, Ludo, Five Dice).
 - **3.2, partly** — Troll Run still has no trophies.
 - **3.4** — streaks are computed and never shown.
