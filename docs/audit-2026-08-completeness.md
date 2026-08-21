@@ -353,26 +353,42 @@ Also found and fixed while doing the above — none of it visible from the audit
   the Wordle set's sort orders were renumbered in code by `20261018122000` while the
   already-seeded rows kept their old values, so that trophy list rendered in the wrong order.
 
-**Still open** (deliberately out of scope for those commits):
+### Closed since (2026-08, later commits)
 
-- **2.1 / 2.2 / 2.3** — Troll Run, tournaments and rooms on mobile. Large feature ports.
-- **2.5** — ✅ **done.** The second-pass audit is in
-  [mobile-web-parity-plan.md](./mobile-web-parity-plan.md#second-pass--the-ten-games-this-audit-never-covered-2026-08).
-  Outcome: the newer ten are far closer to parity than the original 39 (they inherit the shared
-  shells that landed in Phase 0–2), leaving three systemic gaps and one real per-game gap
-  (UNO series scoring is fetched but never rendered). Building those fixes is still open.
-- **3.1** — bots-in-room Phase 3 (Ayo, Crazy Eights, UNO, Ludo, Five Dice).
+- **2.5** — ✅ second-pass audit written up in
+  [mobile-web-parity-plan.md](./mobile-web-parity-plan.md#second-pass--the-ten-games-this-audit-never-covered-2026-08),
+  and its findings built. Note three of the four systemic gaps that pass claimed did **not**
+  survive verification — they were shell-provided all along; the retraction table in that doc
+  keeps the trap visible for the next marker sweep.
+- **2.7** — ✅ mobile account settings (display name, voice-chat default, sign out).
+- **2.9** — ✅ mobile profile numbers refreshing without a force-quit (`useRefreshOnFocus`).
+- **3.1, partly** — ✅ bots-in-room Phase 3 shipped for **Crazy Eights**. Registry is now
+  `src/lib/bots-in-room.ts`, so seat-eligibility can't drift from what actually drives a turn.
+- **3.4** — ✅ streaks are shown, and now real: the freeze mechanic (§10.2 economics) is
+  implemented and persisted, an at-risk banner lands on both profile screens with a dimmed
+  flame on both chips, and the §4.5 come-back reminder runs daily off
+  `notification_subscriber_devices.user_id`.
+
+**Still open:**
+
+- **2.1 / 2.2 / 2.3** — Troll Run, tournaments and rooms on mobile. Large feature ports,
+  deliberately deferred.
+- **3.1, rest** — bots-in-room for Ayo, UNO, Ludo, Five Dice. Ayo was explicitly deferred; UNO
+  needs a rules decision first (0/7, stacking and jump-in change whose turn it is out of
+  order — see [bots-in-room-plan.md](./bots-in-room-plan.md)).
 - **3.2, partly** — Troll Run still has no trophies.
-- **3.4** — streaks are computed and never shown.
+- **Streak reminder opt-out granularity** — a device gets the come-back nudge if it has
+  notifications on at all. The opt-outs today are the master toggle and quiet hours; a
+  per-category toggle would need its own column plus UI on both platforms.
 
-## Suggested order
+## Suggested order for what remains
 
-1. `TURN_EXPIRE_SLUG` + a directory-coverage test (1.1) — smallest diff, worst symptom.
-2. OG map fixes + a file-existence test (1.3).
-3. Sitemap additions (4.1) — pure upside for an SEO-heavy product.
-4. Community leaderboard seed migration for the 18 games (3.3).
-5. Bots-in-room Phase 3 for Ayo / Crazy Eights / UNO (3.1) — adapters already exist.
-6. Trophies for Quick Draw and Troll Run (3.2).
-7. Troll Run mobile view (2.1), then decide explicitly on tournaments/rooms for mobile
-   (2.2, 2.3).
-8. README rewrite (5.1).
+1. **Troll Run trophies** (3.2) — smallest of the open items; the Quick Draw pass is a template.
+2. **Bots-in-room for Ludo / Five Dice** (3.1) — turn order is plain, so the Crazy Eights
+   adapter shape ports directly. UNO needs the rules decision first; Ayo is deferred.
+3. **Troll Run on mobile** (2.1) — the largest single parity gap left, and the only one of the
+   49 game types with no mobile player view at all.
+4. **Tournaments / rooms on mobile** (2.2, 2.3) — worth an explicit product decision rather
+   than a default yes; both are big ports.
+5. **Streak reminder category toggle** — only if a player subscribed to one game type would be
+   surprised to get a streak ping.
