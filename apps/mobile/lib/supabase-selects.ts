@@ -76,12 +76,12 @@ export const BINGO_CLAIM_SELECT = 'id,game_id,player_id,pattern,status,created_a
 export const TRIVIA_ANSWER_SELECT = 'id,game_id,round_id,player_id,choice_index,is_correct,response_ms,points'
 
 export const CRAZY8_SESSION_SELECT =
-  'id,game_id,turn_order,current_turn_index,direction,phase,draw_pile,discard_pile,top_card,required_suit,pick_two_stack,joker_penalty,status_message,winner_player_id,finish_order,turn_deadline_at'
+  'id,game_id,turn_order,current_turn_index,direction,phase,draw_pile,discard_pile,top_card,required_suit,pick_two_stack,joker_penalty,status_message,winner_player_id,finish_order,turn_deadline_at,created_at,updated_at'
 
 export const CRAZY8_PLAYER_HANDS_SELECT = 'id,game_id,player_id,cards,player_order'
 
 export const WHOT_SESSION_SELECT =
-  'id,game_id,turn_order,current_turn_index,phase,draw_pile,discard_pile,top_card,required_shape,required_number,pick_two_stack,pick_five_stack,status_message,winner_player_id,finish_order,reshuffle_count,turn_deadline_at'
+  'id,game_id,turn_order,current_turn_index,phase,draw_pile,discard_pile,top_card,required_shape,required_number,pick_two_stack,pick_five_stack,status_message,winner_player_id,finish_order,reshuffle_count,turn_deadline_at,created_at,updated_at'
 
 export const WHOT_PLAYER_HANDS_SELECT = 'id,game_id,player_id,cards,player_order'
 

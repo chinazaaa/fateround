@@ -5,6 +5,11 @@
 -- database has these rows on migration without needing an admin to click "Seed launch
 -- trophies". Idempotent: ON CONFLICT DO NOTHING skips rows an admin already seeded.
 --
+-- NOTE: 20261028120000_system_trophies_backfill.sql later seeds and reconciles the WHOLE
+-- catalog, this set included, so these rows are re-asserted there. Kept as-is because a
+-- merged migration is history: renumbering or deleting it would break the applied-history
+-- record in supabase_migrations.schema_migrations.
+--
 -- Quick Draw was the last competitive game with no trophies at all: it had neither a facts
 -- builder nor a system-trophy set, so its games recorded `games_played` and nothing else.
 -- Two variants share the game type (`lie` — draw a prompt, everyone writes decoy titles,

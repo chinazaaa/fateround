@@ -1,27 +1,20 @@
 import { describe, it, expect } from 'vitest'
-import { readFileSync } from 'node:fs'
 import { buildSystemCatalog } from '../system-catalog'
 import { QUICK_DRAW } from './quick-draw'
 
 /**
- * Quick Draw's spec ↔ seed-migration parity.
+ * Quick Draw's own shape rules.
  *
- * Most game trophy sets reach a database only through the admin "Seed launch trophies"
- * button, so the code spec is their single source of truth. Wordle set the newer precedent
- * of ALSO shipping a seed migration, so a fresh `supabase db push` has the rows without an
- * admin click — `20261027120000_quick_draw_system_trophies.sql` follows it.
- *
- * Two sources of truth need a guard, or a trophy renamed in the spec quietly keeps its old
- * row in every fresh database. This asserts the migration covers exactly the spec.
- *
- * (Repo-wide, 605 of 649 system trophies still have no seed migration. Backfilling them is
- * its own task — this only holds the line on the set that has one.)
+ * Spec ↔ seed-migration parity is NOT checked here — `../system-trophy-seed-parity.test.ts`
+ * now does that for every game at once, so duplicating it per game would be dead weight.
+ * What is left is the part specific to this set: Quick Draw is one game type wrapping two
+ * unrelated rule sets (`lie` — draw a prompt, everyone writes decoy titles, the room votes
+ * for the real one; `guess` — one drawer, the rest race to type the word) that write disjoint
+ * tables. A player who only plays one variant can only ever move that variant's counters, so
+ * a set that accidentally leaned entirely on one track would leave half the game unrewarded.
  */
-const MIGRATION = 'supabase/migrations/20261027120000_quick_draw_system_trophies.sql'
-
 describe('Quick Draw system trophies', () => {
   const catalog = buildSystemCatalog().filter((trophy) => trophy.game_type === 'quick_draw')
-  const sql = readFileSync(MIGRATION, 'utf8')
 
   it('registers the spec under the quick_draw game type', () => {
     expect(catalog).toHaveLength(QUICK_DRAW.length)
@@ -46,29 +39,5 @@ describe('Quick Draw system trophies', () => {
     expect(new Set(suffixes).size).toBe(suffixes.length)
     const orders = QUICK_DRAW.map((spec) => spec.sortOrder)
     expect(new Set(orders).size).toBe(orders.length)
-  })
-
-  it('seeds every spec trophy in the migration', () => {
-    const missing = catalog.filter((trophy) => !sql.includes(`'${trophy.id}'`)).map((trophy) => trophy.id)
-    expect(missing, 'in the spec but not in the seed migration — a fresh DB would lack it').toEqual([])
-  })
-
-  it('seeds no trophy the spec dropped', () => {
-    const known = new Set(catalog.map((trophy) => trophy.id))
-    const orphans = [...sql.matchAll(/'(quick_draw\.sys\.[a-z0-9_]+)'/g)]
-      .map((match) => match[1])
-      .filter((id) => !known.has(id))
-    expect([...new Set(orphans)], 'seeded but no longer in the spec — remove it in a migration').toEqual([])
-  })
-
-  it('seeds the same counter, threshold, title and points as the spec', () => {
-    for (const trophy of catalog) {
-      const row = sql.slice(sql.indexOf(`'${trophy.id}'`))
-      const end = row.indexOf('),\n  (')
-      const block = end === -1 ? row : row.slice(0, end)
-      expect(block, `${trophy.id} criteria`).toContain(JSON.stringify(trophy.criteria))
-      expect(block, `${trophy.id} title`).toContain(trophy.title.replace(/'/g, "''"))
-      expect(block, `${trophy.id} tier`).toContain(`'${trophy.tier}'`)
-    }
   })
 })

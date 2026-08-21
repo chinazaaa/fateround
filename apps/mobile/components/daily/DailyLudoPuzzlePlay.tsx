@@ -19,12 +19,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, StyleSheet, Text, View } from 'react-native'
-import type {
-  LudoMoveOption,
-  LudoPiece,
-  LudoPlayerState,
-  Player,
-} from '@fateround/shared'
+import type { LudoPiece, LudoPlayerState, Player } from '@fateround/shared'
+// `LudoMoveOption` lives in the ludo engine module, not the package root — the root index
+// only re-exports `types`/`tokens`/`troll-run`. Every other Ludo screen already imports it
+// from the subpath; this one didn't, which broke the mobile typecheck.
+import type { LudoMoveOption } from '@fateround/shared/ludo'
 import { LudoBoard } from '@/components/games/ludo/LudoBoard'
 import { LudoDie } from '@/components/games/ludo/LudoDice'
 import { useDailyChallengeTimer } from '@/hooks/useDailyChallengeTimer'

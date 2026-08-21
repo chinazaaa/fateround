@@ -235,6 +235,48 @@ via one un-sitemapped hub.
 
 ---
 
+## Status
+
+Everything except the four items below was fixed in the two commits that followed this audit;
+each fix ships with a CI guard, since every one of these was a surface no test watched.
+
+| Fixed | Where |
+|---|---|
+| 1.1 turn ticker (7 games) | `TURN_EXPIRE_SLUG` + `expire-turn-coverage.test.ts` |
+| 1.2 Troll Run round driver | new tokenless `/api/troll-run/sync` |
+| 1.3 OG art | rekeyed to `estate-kings`; Troll Run / Wordle / Daily Wordle cards rendered; `seo-og.test.ts` |
+| 1.4 mahjong `parseJsonBody` | `src/app/api/mahjong/expire-turn/route.ts` |
+| 1.5 sitemap solo list | now reads `SOLO_PLAY_INDEX` |
+| 2.4 mobile solo hub | `apps/mobile/app/play-solo/index.tsx` + home entry |
+| 2.6 mobile-config drift | `mobile-config.test.ts` |
+| 3.2 Quick Draw trophies | facts builder + 17 system trophies (Troll Run still open) |
+| 3.3 community boards | `20261026120000_community_games_backfill.sql` + `community-games-coverage.test.ts` |
+| 4.1 sitemap sections | `src/app/sitemap.ts` + `sitemap.test.ts` |
+| 5.1 README | rewritten against the real 49-game surface |
+
+Also found and fixed while doing the above — none of it visible from the audit's own checks:
+
+- **`apps/mobile` had drifted to 13 type errors** because mobile typecheck was not a CI job.
+  Among them, `lib/game-rules.ts` was missing Wordle and Troll Run (a broken in-lobby Rules
+  link for two shipped games) and still pointed Estate Kings at its pre-rename slug; the Whot
+  and Crazy Eights session types had lost the `updated_at` their realtime delta fast-path
+  orders on, and the mobile selects weren't fetching it either, so that ordering guard was
+  inert. Fixed, plus a **Type Check (mobile)** CI job and `mobile-slug-parity.test.ts`.
+- **606 of 649 system trophies had no seed migration** — they reached a database only via the
+  admin "Seed launch trophies" button, so a project built from the migrations alone could
+  never award them. `20261028120000_system_trophies_backfill.sql` seeds and reconciles the
+  whole catalog; `system-trophy-seed-parity.test.ts` guards it. This also surfaced live drift:
+  the Wordle set's sort orders were renumbered in code by `20261018122000` while the
+  already-seeded rows kept their old values, so that trophy list rendered in the wrong order.
+
+**Still open** (deliberately out of scope for those commits):
+
+- **2.1 / 2.2 / 2.3** — Troll Run, tournaments and rooms on mobile. Large feature ports.
+- **2.5** — the ten games never given a mobile parity pass.
+- **3.1** — bots-in-room Phase 3 (Ayo, Crazy Eights, UNO, Ludo, Five Dice).
+- **3.2, partly** — Troll Run still has no trophies.
+- **3.4** — streaks are computed and never shown.
+
 ## Suggested order
 
 1. `TURN_EXPIRE_SLUG` + a directory-coverage test (1.1) — smallest diff, worst symptom.
