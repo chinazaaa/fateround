@@ -291,6 +291,7 @@ export function BrowseGamesPage() {
                           {roomGameStatusLabel(game.status)}
                           {lateJoinable ? ' · join or watch' : isFull ? ' · full' : ''}
                           {` · ${count} player${game.playerCount !== 1 ? 's' : ''}`}
+                          {game.viewerCount > 0 ? ` · ${game.viewerCount} watching` : ''}
                         </>
                       )}
                     </span>

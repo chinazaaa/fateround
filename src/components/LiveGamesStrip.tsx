@@ -109,7 +109,11 @@ export function LiveGamesStrip() {
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {shown.map((game) => {
             const cfg = gameTypeConfig(parseGameType(game.game_type))
-            const count = game.max_players != null ? `${game.playerCount}/${game.max_players}` : `${game.playerCount}`
+            const playerLabel =
+              game.max_players != null ? `${game.playerCount}/${game.max_players}` : `${game.playerCount}`
+            const attendance =
+              `${playerLabel} player${game.playerCount === 1 ? '' : 's'}` +
+              (game.viewerCount > 0 ? ` · ${game.viewerCount} watching` : '')
             const isLobby = game.status === 'waiting'
             const isActive = game.status === 'active'
             const isFull = game.max_players != null && game.playerCount >= game.max_players
@@ -149,7 +153,7 @@ export function LiveGamesStrip() {
                     {cfg.label}
                   </div>
                   <div className="line-clamp-2 text-xs break-words" style={{ color: 'var(--text-muted)' }}>
-                    {stateLine} · {count} player{game.playerCount === 1 ? '' : 's'}
+                    {stateLine} · {attendance}
                   </div>
                 </div>
                 <Link
