@@ -3,7 +3,9 @@ import { AppState } from 'react-native'
 import type { Game, Player } from '@fateround/shared'
 import { normalizeGameCode } from '@fateround/shared'
 import { Alert } from 'react-native'
+import { useRouter } from 'expo-router'
 import { JoinError, joinGame } from '@/lib/api'
+import { takeOverHosting } from '@/lib/take-over-hosting'
 import { recordRecentGame } from '@/lib/recent-games'
 import { getPlayerSession, setPlayerSession } from '@/lib/secure-session'
 import { reconcilePlayerSession } from '@/lib/player-session-reconcile'
@@ -37,6 +39,7 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
     afterResolve,
   } = opts
 
+  const router = useRouter()
   const code = normalizeGameCode(gameCode)
   const [screen, setScreen] = useState<Screen>(loadingScreen)
   const [game, setGame] = useState<Game | null>(null)
@@ -201,15 +204,41 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
           // seated from another device. Ask the user which device wins; on
           // "Continue here" re-issue the join with the override flag.
           if (err instanceof JoinError && (err.reason === 'already_hosting' || err.reason === 'already_joined')) {
-            const isHost = err.reason === 'already_hosting'
+            // Hosting is a different offer from continuing a seat: retrying the join would
+            // seat the host as an ordinary PLAYER and leave hosting on the other device.
+            if (err.reason === 'already_hosting') {
+              const takeOver = await new Promise<boolean>((resolve) => {
+                Alert.alert(
+                  'Hosting on another device',
+                  'You’re hosting this game on another device. Take over hosting on this device?',
+                  [
+                    { text: 'Keep other device', style: 'cancel', onPress: () => resolve(false) },
+                    { text: 'Take over here', style: 'default', onPress: () => resolve(true) },
+                  ],
+                  { cancelable: false }
+                )
+              })
+              if (!takeOver) {
+                setError(null)
+                setJoining(false)
+                return
+              }
+              const hostToken = await takeOverHosting(gameCode)
+              // Null means guest, non-host, or a failed request — fall through to the normal
+              // join rather than surfacing an error.
+              if (hostToken) {
+                setError(null)
+                setJoining(false)
+                router.replace(`/host/${gameCode.toUpperCase()}` as never)
+                return
+              }
+            }
             const proceed = await new Promise<boolean>((resolve) => {
               Alert.alert(
-                isHost ? 'Already hosting elsewhere' : 'Already in this game elsewhere',
-                isHost
-                  ? 'You’re hosting this game on another device. Continue on this device, or keep it on the other one?'
-                  : `You’re already a player in this game on another device${
-                      err.existingPlayerName ? ` (as ${err.existingPlayerName})` : ''
-                    }. Continue on this device, or keep it on the other one?`,
+                'Already in this game elsewhere',
+                `You’re already a player in this game on another device${
+                  err.existingPlayerName ? ` (as ${err.existingPlayerName})` : ''
+                }. Continue on this device, or keep it on the other one?`,
                 [
                   { text: 'Keep other device', style: 'cancel', onPress: () => resolve(false) },
                   { text: 'Continue here', style: 'default', onPress: () => resolve(true) },

@@ -1,5 +1,6 @@
 'use client'
 
+import { hostHref, takeOverHosting } from '@/lib/take-over-hosting'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { supabasePollOk } from '@/hooks/usePolling'
@@ -247,12 +248,25 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
           // Cross-device continuation prompt: same profile already hosting or
           // seated from another device. Ask the user; on confirm re-issue the
           // join with the override flag.
-          const isHost = data.reason === 'already_hosting'
-          const message = isHost
-            ? 'You’re already hosting this game on another device. Continue on this device, or keep it on the other one?'
-            : `You’re already a player in this game on another device${
-                data.existingPlayerName ? ` (as ${data.existingPlayerName})` : ''
-              }. Continue on this device, or keep it on the other one?`
+          // Hosting is a different offer from continuing a seat. Retrying the join would
+          // seat the host as an ordinary PLAYER and leave hosting on the other device —
+          // which is not what "continue on this device" reads as. Move hosting instead.
+          if (data.reason === 'already_hosting') {
+            const takeOver =
+              typeof window !== 'undefined' &&
+              window.confirm('You’re hosting this game on another device. Take over hosting on this device?')
+            if (!takeOver) return
+            const token = await takeOverHosting(gameCode)
+            // Null means guest, not-the-host, or a failed request — all of which mean "just
+            // carry on with the normal join" rather than an error to show.
+            if (token) {
+              window.location.href = hostHref(gameCode)
+              return
+            }
+          }
+          const message = `You’re already a player in this game on another device${
+            data.existingPlayerName ? ` (as ${data.existingPlayerName})` : ''
+          }. Continue on this device, or keep it on the other one?`
           const proceed = typeof window !== 'undefined' && window.confirm(message)
           if (!proceed) {
             return
