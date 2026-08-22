@@ -241,6 +241,24 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
     return () => clearInterval(id)
   }, [])
 
+  // Reset the minimized-trade state whenever a new incoming trade arrives, so a
+  // fresh offer always surfaces the full modal (mirrors web). MUST run before the
+  // conditional returns below — placing it later fires only once bootstrap.screen
+  // reaches 'playing', which changes the hook count across renders and trips the
+  // Rules of Hooks. Signature is derived from board?.pending_trade + myPlayerId
+  // directly so it works before `board` is proven non-null.
+  const incomingTradeForMe =
+    board?.pending_trade && board.pending_trade.to_player_id === bootstrap.myPlayerId ? board.pending_trade : null
+  const tradeSig = incomingTradeForMe ? JSON.stringify(incomingTradeForMe) : null
+  useEffect(() => {
+    if (tradeSig && tradeSig !== previousTradeRef.current) {
+      setTradeMinimized(false)
+      previousTradeRef.current = tradeSig
+    } else if (!tradeSig) {
+      previousTradeRef.current = null
+    }
+  }, [tradeSig])
+
   // Seed a default token, but never clobber the player's own pick. This effect
   // re-runs on every realtime `players` update (heartbeats, other joins), so it
   // must preserve `selectedToken` as long as it's still free — only fall back to
@@ -779,18 +797,6 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
       ? pendingTrade
       : null
 
-  const tradeSig = incomingTrade ? JSON.stringify(incomingTrade) : null
-  useEffect(() => {
-    // A new incoming trade always surfaces the full modal, even if the receiver had
-    // minimized the previous one — mirrors the web behaviour so a fresh offer is
-    // never accidentally dismissed.
-    if (tradeSig && tradeSig !== previousTradeRef.current) {
-      setTradeMinimized(false)
-      previousTradeRef.current = tradeSig
-    } else if (!tradeSig) {
-      previousTradeRef.current = null
-    }
-  }, [tradeSig])
   const incomingTradeFromName = incomingTrade
     ? (bootstrap.players.find((p) => p.id === incomingTrade.from_player_id)?.name ?? 'a player')
     : null

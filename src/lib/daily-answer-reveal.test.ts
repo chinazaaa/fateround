@@ -194,6 +194,13 @@ describe('answer reveal surfaces', () => {
       // reads `date` but doesn't append it would pass the hook check above while silently
       // always fetching yesterday — the visible symptom of the arrows doing nothing.
       expect(src, 'the URL-derived date must be appended to the /answers request').toMatch(/\/answers\$\{[^}]*date/)
+      // A shape-only check (/^\d{4}-\d{2}-\d{2}$/) accepts values like 2024-02-30 or
+      // 2024-13-01 that Date.parse normalises or refuses, and shiftDay() then throws
+      // during navigation and blanks the screen. Both clients must round-trip the
+      // parsed date to reject impossible calendar days before using it.
+      expect(src, 'the date param must be validated as a real calendar day, not just YYYY-MM-DD').toMatch(
+        /isDateSlug\s*\(/
+      )
     }
   )
 })

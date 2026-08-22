@@ -2756,7 +2756,7 @@ const ESTATE_KINGS_ROOM_BOTS: MarketingPageContent = {
   highlights: [
     'Add bots to any room',
     'Full property-trading board game',
-    '2 to 6 players (humans + bots)',
+    '2 to 9 players (humans + bots)',
     'Free, no sign-up',
   ],
   featureCards: [

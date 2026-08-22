@@ -64,10 +64,12 @@ const WORD_SEARCH_HIGHLIGHT_COLORS = [
 
 export default function DailyAnswersScreen() {
   const { slug, date } = useLocalSearchParams<{ slug: string; date?: string }>()
-  // Only accept a well-formed YYYY-MM-DD; anything else and shiftDay() feeds NaN
-  // into toISOString(), which throws and blanks the screen. Malformed → fall
-  // back to the default (yesterday) instead of crashing.
-  const dateParam = typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null
+  // Only accept a real YYYY-MM-DD; anything else — shape mismatch, or a value
+  // like 2024-02-30 that Date.parse silently normalises — and shiftDay() feeds
+  // NaN into toISOString(), which throws and blanks the screen. Round-trip
+  // through Date to reject impossible calendar days. Malformed → fall back to
+  // the default (yesterday) instead of crashing.
+  const dateParam = typeof date === 'string' && isDateSlug(date) ? date : null
   const router = useRouter()
   const theme = useTheme()
   const styles = useThemedStyles(makeStyles)
@@ -333,6 +335,15 @@ function yesterdayWatSlug(): string {
 function shiftDay(date: string, delta: number): string {
   const ms = Date.parse(`${date}T00:00:00Z`) + delta * 86_400_000
   return new Date(ms).toISOString().slice(0, 10)
+}
+
+/** Strict YYYY-MM-DD validator: shape check + a round-trip through Date so a value like
+ *  2024-02-30 (silently normalised to 2024-03-01) or 2024-13-01 (rejected by Date, but
+ *  passes the regex) is refused rather than crashing shiftDay downstream. */
+function isDateSlug(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
+  const parsed = new Date(`${value}T00:00:00Z`)
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value
 }
 
 /** Add an alpha channel to a hex colour without pulling in a colour library. */

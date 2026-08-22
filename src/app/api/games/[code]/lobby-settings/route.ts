@@ -357,12 +357,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     gameUpdate.theme = theme
   }
 
-  // Single source of truth for capacity rules (board-size gate + reset). Enabling
-  // uno_team_mode forces the room to UNO_TEAM_PLAYERS (see the uno block below),
-  // so that transition also lowers the effective cap even when max_players is not
-  // supplied — fold it in here so the seated-count gate covers it.
-  const unoTeamForcesCap = boardLobbyType === 'uno' && uno_team_mode === true
-  const effectiveMaxPlayers = unoTeamForcesCap
+  // Single source of truth for capacity rules (board-size gate + reset). Team-Up
+  // forces the room to UNO_TEAM_PLAYERS (see the uno block below); derive the
+  // NEXT team-mode state from the request when supplied, else from the game's
+  // current state, so an existing Team-Up room raising max_players still stays
+  // capped at 4 instead of the requested cap silently landing.
+  const nextUnoTeamMode =
+    boardLobbyType === 'uno' && (uno_team_mode === undefined ? game.uno_team_mode === true : uno_team_mode === true)
+  const effectiveMaxPlayers = nextUnoTeamMode
     ? UNO_TEAM_PLAYERS
     : max_players !== undefined
       ? clampLobbyMaxPlayers(limitKey, max_players, lobbyLimits)
@@ -386,7 +388,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   // not just an explicit max_players change. Enabling uno_team_mode forces the
   // room to UNO_TEAM_PLAYERS (see the uno block below), which can drop the cap
   // below the current seated count even when max_players wasn't in the request.
-  if (max_players !== undefined || unoTeamForcesCap) {
+  if (max_players !== undefined || uno_team_mode === true) {
     const nextMax = effectiveMaxPlayers
     // Count only ready (non-spectator) players against the new cap. Not-ready players
     // are `spectator: true` (see /api/players/ready — readiness maps directly onto the
