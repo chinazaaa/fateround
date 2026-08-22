@@ -161,9 +161,17 @@ function winnersFromStandings(standings: string[] | null, gameType: GameType): s
 
 /**
  * Game types whose standings are ordered by TEAM, so the leading block is all winners.
- * Adding to this needs a look at how that game builds its standings, not a guess from the name.
+ *
+ * Currently empty on purpose. The only entry ever was `codewords`, but Codewords standings are
+ * actually shaped `[...winning team, ...losing team]` so the room-points leaderboard can rank
+ * both sides — flattening the "leading block" to the whole list credited every seated player,
+ * including the losing team, as a winner. Codewords now goes through its own
+ * CUSTOM_WINNER_RESOLVERS entry which reads `codewords_boards.winner` directly.
+ *
+ * Add here only when a game's standings really do put ONLY the winning side at the front and
+ * nothing else — check the actual shape in `getCompetitiveStandings`, don't guess from the name.
  */
-const TEAM_STANDINGS_GAMES = new Set<string>(['codewords'])
+const TEAM_STANDINGS_GAMES = new Set<string>()
 
 /**
  * UNO Team-Up: the partner of the player who went out also won.
