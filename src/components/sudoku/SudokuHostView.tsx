@@ -336,6 +336,7 @@ export function SudokuHostView({ gameCode, hostToken }: { gameCode: string; host
     () =>
       game?.status === 'active' ? (
         <HostActiveSettings
+          game={game}
           gameCode={gameCode}
           hostToken={hostToken}
           gameType="sudoku"
@@ -451,6 +452,7 @@ export function SudokuHostView({ gameCode, hostToken }: { gameCode: string; host
             hostToken={hostToken}
             game={game}
             playerCount={players.length}
+            seatedCount={players.filter((p) => !p.spectator).length}
             onGameUpdate={setGame}
           />
         ) : (
@@ -546,6 +548,7 @@ export function SudokuHostView({ gameCode, hostToken }: { gameCode: string; host
         hostToken={hostToken}
         game={game}
         playerCount={players.length}
+        seatedCount={players.filter((p) => !p.spectator).length}
         onGameUpdate={setGame}
       />
       <TransferHostControl triggerClassName="btn-secondary w-full flex items-center justify-center gap-2" />

@@ -291,7 +291,7 @@ function QuickDrawLieHostView({ gameCode, hostToken }: { gameCode: string; hostT
   const hostSettingsNode = useMemo(
     () =>
       game?.status === 'active' ? (
-        <HostActiveSettings gameCode={gameCode} hostToken={hostToken} gameType="quick_draw" onEnded={load}>
+        <HostActiveSettings game={game} gameCode={gameCode} hostToken={hostToken} gameType="quick_draw" onEnded={load}>
           <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
           {hostMode === 'player' && !!hostPlayerId && (
             <HostLeaveSeatButton onLeave={leaveSeatKeepHosting} className="btn-secondary w-full py-3 text-base" />
@@ -398,6 +398,7 @@ function QuickDrawLieHostView({ gameCode, hostToken }: { gameCode: string; hostT
           hostToken={hostToken}
           game={game}
           playerCount={players.length}
+          seatedCount={players.filter((p) => !p.spectator).length}
           onGameUpdate={setGame}
         />
       )}
@@ -540,6 +541,7 @@ function QuickDrawLieHostView({ gameCode, hostToken }: { gameCode: string; hostT
         hostToken={hostToken}
         game={game}
         playerCount={players.length}
+        seatedCount={players.filter((p) => !p.spectator).length}
         onGameUpdate={setGame}
       />
       <TransferHostControl triggerClassName="btn-secondary w-full flex items-center justify-center gap-2" />

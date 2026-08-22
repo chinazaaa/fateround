@@ -423,6 +423,7 @@ export function WordSearchHostView({ gameCode, hostToken }: { gameCode: string; 
     () =>
       game?.status === 'active' ? (
         <HostActiveSettings
+          game={game}
           gameCode={gameCode}
           hostToken={hostToken}
           gameType="word_search"
@@ -548,6 +549,7 @@ export function WordSearchHostView({ gameCode, hostToken }: { gameCode: string; 
             hostToken={hostToken}
             game={game}
             playerCount={players.length}
+            seatedCount={players.filter((p) => !p.spectator).length}
             onGameUpdate={setGame}
             durationChoices={WORD_SEARCH_GAME_DURATION_OPTIONS}
             puzzleSettings={
@@ -653,6 +655,7 @@ export function WordSearchHostView({ gameCode, hostToken }: { gameCode: string; 
         hostToken={hostToken}
         game={game}
         playerCount={players.length}
+        seatedCount={players.filter((p) => !p.spectator).length}
         onGameUpdate={setGame}
         durationChoices={WORD_SEARCH_GAME_DURATION_OPTIONS}
         puzzleSettings={

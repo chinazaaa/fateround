@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { EditNameInline } from '@/components/ui/EditNameInline'
 import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
 import { useRegisterGameSettings } from '@/components/GameSettingsContext'
+import { RulesInPlaySection } from '@/components/game-lobby/RulesInPlaySection'
 import { SudokuBoard } from '@/components/sudoku/SudokuBoard'
 import { SudokuGameTimerBar } from '@/components/sudoku/SudokuGameTimerBar'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
@@ -436,6 +437,7 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
     if (!myPlayerId) return null
     return (
       <div className="space-y-3">
+        <RulesInPlaySection game={game} />
         <EditNameInline
           gameCode={gameCode}
           playerId={myPlayerId}
@@ -454,7 +456,7 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
         />
       </div>
     )
-  }, [myPlayerId, game?.status, gameCode, me?.name, isViewer, load, router])
+  }, [game, myPlayerId, game?.status, gameCode, me?.name, isViewer, load, router])
   useRegisterGameSettings(playerSettingsNode)
   const myRank = leaderboard.findIndex((r) => r.player_id === myPlayerId) + 1
   const myCompletion = puzzle && myPlayerId ? playerCompletionPercent(puzzle, submissions, myPlayerId) : 0

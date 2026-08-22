@@ -5,7 +5,7 @@ import { HostRulesRow } from '@/components/host/HostRulesRow'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
 import { ExitIcon } from '@/components/host/host-icons'
 import { useCloseGameSettings } from '@/components/GameSettingsContext'
-import { GameInfoChips } from '@/components/game-lobby/GameInfoChips'
+import { RulesInPlaySection } from '@/components/game-lobby/RulesInPlaySection'
 import type { Game, GameType } from '@/types'
 
 /**
@@ -54,12 +54,7 @@ export function HostActiveSettings({
   const closeSettings = useCloseGameSettings()
   return (
     <div className="space-y-4">
-      {game ? (
-        <div className="space-y-2">
-          <p className="label-caps">Rules in play</p>
-          <GameInfoChips game={game} />
-        </div>
-      ) : null}
+      <RulesInPlaySection game={game ?? null} />
       {children}
       <HostRulesRow gameType={gameType} />
       <HostEndGameButton

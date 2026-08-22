@@ -387,7 +387,7 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
     if (game?.status !== 'active') return null
     const solo = clampDescribeItMode(game.describe_it_mode) === 'individual'
     return (
-      <HostActiveSettings gameCode={gameCode} hostToken={hostToken} gameType="describe_it" onEnded={load}>
+      <HostActiveSettings game={game} gameCode={gameCode} hostToken={hostToken} gameType="describe_it" onEnded={load}>
         {session?.phase === 'break' && (
           <button
             type="button"

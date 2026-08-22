@@ -297,7 +297,7 @@ export function NpatHostView({ gameCode, hostToken }: { gameCode: string; hostTo
   const hostSettingsNode = useMemo(
     () =>
       game?.status === 'active' ? (
-        <HostActiveSettings gameCode={gameCode} hostToken={hostToken} gameType="i_call_on" onEnded={load}>
+        <HostActiveSettings game={game} gameCode={gameCode} hostToken={hostToken} gameType="i_call_on" onEnded={load}>
           {hostMode === 'player' && !!hostPlayerId && (
             <HostLeaveSeatButton onLeave={leaveSeatKeepHosting} className="btn-secondary w-full py-3 text-base" />
           )}
@@ -552,6 +552,7 @@ export function NpatHostView({ gameCode, hostToken }: { gameCode: string; hostTo
         game={game}
         limitType="i_call_on"
         playerCount={players.length}
+        seatedCount={players.filter((p) => !p.spectator).length}
         onGameUpdate={setGame}
       />
       <div className="rounded-2xl border border-[color-mix(in_srgb,var(--primary)_14%,var(--border))] bg-[var(--card-strong)]/95 p-5 space-y-3">

@@ -240,7 +240,7 @@ export function QuiplashHostView({ gameCode, hostToken }: { gameCode: string; ho
   const hostSettingsNode = useMemo(
     () =>
       game?.status === 'active' ? (
-        <HostActiveSettings gameCode={gameCode} hostToken={hostToken} gameType="quiplash" onEnded={load}>
+        <HostActiveSettings game={game} gameCode={gameCode} hostToken={hostToken} gameType="quiplash" onEnded={load}>
           <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
           {hostMode === 'player' && !!hostPlayerId && (
             <HostLeaveSeatButton onLeave={leaveSeatKeepHosting} className="btn-secondary w-full py-3 text-base" />
@@ -352,6 +352,7 @@ export function QuiplashHostView({ gameCode, hostToken }: { gameCode: string; ho
           hostToken={hostToken}
           game={game}
           playerCount={players.length}
+          seatedCount={players.filter((p) => !p.spectator).length}
           onGameUpdate={setGame}
         />
       )}
@@ -494,6 +495,7 @@ export function QuiplashHostView({ gameCode, hostToken }: { gameCode: string; ho
         hostToken={hostToken}
         game={game}
         playerCount={players.length}
+        seatedCount={players.filter((p) => !p.spectator).length}
         onGameUpdate={setGame}
       />
       <TransferHostControl triggerClassName="btn-secondary w-full flex items-center justify-center gap-2" />

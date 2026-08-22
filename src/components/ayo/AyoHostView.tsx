@@ -313,6 +313,7 @@ export function AyoHostView({ gameCode, hostToken }: { gameCode: string; hostTok
     () =>
       game?.status === 'active' && !gameFinished ? (
         <HostActiveSettings
+          game={game}
           gameCode={gameCode}
           hostToken={hostToken}
           gameType="ayo"

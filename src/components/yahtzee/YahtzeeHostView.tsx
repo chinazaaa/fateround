@@ -353,6 +353,7 @@ export function YahtzeeHostView({ gameCode, hostToken }: { gameCode: string; hos
     () =>
       game?.status === 'active' ? (
         <HostActiveSettings
+          game={game}
           gameCode={gameCode}
           hostToken={hostToken}
           gameType="yahtzee"
@@ -477,6 +478,7 @@ export function YahtzeeHostView({ gameCode, hostToken }: { gameCode: string; hos
               game={game}
               boardGameType="yahtzee"
               playerCount={players.length}
+              seatedCount={players.filter((p) => !p.spectator).length}
               onGameUpdate={setGame}
             />
           )}
@@ -577,6 +579,7 @@ export function YahtzeeHostView({ gameCode, hostToken }: { gameCode: string; hos
               game={game}
               boardGameType="yahtzee"
               playerCount={players.length}
+              seatedCount={players.filter((p) => !p.spectator).length}
               onGameUpdate={setGame}
             />
             <TransferHostControl triggerClassName="btn-secondary w-full flex items-center justify-center gap-2" />

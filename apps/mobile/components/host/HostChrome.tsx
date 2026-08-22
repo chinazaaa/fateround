@@ -18,6 +18,7 @@ import { PostJoinSubscribeNudge } from '@/components/notifications/PostJoinSubsc
 import { HostViewProvider } from '@/components/host/HostViewContext'
 import { GameRouter, hasMobilePlayerView } from '@/components/games/GameRouter'
 import { HeaderAction } from '@/components/ui/HeaderAction'
+import { RulesInPlayButton } from '@/components/game/RulesInPlayButton'
 import { GearIcon } from '@/components/ui/SettingsSheet'
 import { centeredContent } from '@/constants/layout'
 import type { Theme } from '@/constants/theme'
@@ -177,6 +178,7 @@ export function HostChrome({
               <RosterButton />
             </View>
             <View style={styles.toolbarActions}>
+              <RulesInPlayButton game={game} />
               {showHostControls ? (
                 <Pressable
                   style={({ pressed }) => [styles.iconBtn, pressed && styles.iconBtnPressed]}
