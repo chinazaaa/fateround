@@ -3726,11 +3726,28 @@ function CreateGameInner() {
                   />
                 </Field>
                 <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="monopoly" />
-                <SettingsGroup
-                  title="Advanced house rules"
-                  description="Optional toggles — you can also change these in the host lobby."
-                  collapsible
-                >
+                <details className="group space-y-3">
+                  <summary className="cursor-pointer list-none flex items-center justify-between gap-3 py-1">
+                    <div>
+                      <p className="font-semibold text-sm">Advanced house rules</p>
+                      <p className="text-faint text-xs mt-0.5">
+                        Optional toggles — you can also change these in the host lobby.
+                      </p>
+                    </div>
+                    <svg
+                      viewBox="0 0 20 20"
+                      className="w-4 h-4 text-faint transition-transform group-open:rotate-90 shrink-0"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                    >
+                      <polyline points="7 4 13 10 7 16" />
+                    </svg>
+                  </summary>
+                  <div className="pt-3 space-y-3">
                   <Toggle
                     label="Double GO Salary"
                     description="Collect £400 (instead of £200) when landing exactly on PAYDAY."
@@ -3796,7 +3813,8 @@ function CreateGameInner() {
                       </Field>
                     </>
                   )}
-                </SettingsGroup>
+                  </div>
+                </details>
                 <p className="text-faint text-sm leading-relaxed">
                   {formatThemedText(
                     'Players join with their name and start on PAYDAY with £1,500. Take turns rolling dice, buying properties, paying rent, and drawing cards. Last player standing wins! If someone stalls, their turn auto-resolves. Set a game length to end automatically — the richest player wins when time runs out.',

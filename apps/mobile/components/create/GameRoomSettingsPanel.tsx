@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
+import Svg, { Polyline } from 'react-native-svg'
 import type { GameType } from '@fateround/shared'
 import { CRAZY8_GAME_DURATION_OPTIONS } from '@fateround/shared/crazy-eights'
 import {
@@ -466,7 +467,7 @@ export function GameRoomSettingsPanel({ gameType, room, maxPlayers, onChange }: 
                 <Text style={styles.label}>Advanced house rules</Text>
                 <Text style={styles.hint}>Optional toggles — you can also change these in the host lobby.</Text>
               </View>
-              <Text style={styles.advancedChevron}>{monopolyAdvancedOpen ? '−' : '+'}</Text>
+              <ChevronArrow open={monopolyAdvancedOpen} color={styles.advancedChevron.color as string} />
             </Pressable>
             {monopolyAdvancedOpen ? (
               <View style={styles.advancedBlock}>
@@ -556,6 +557,22 @@ export function GameRoomSettingsPanel({ gameType, room, maxPlayers, onChange }: 
   )
 }
 
+function ChevronArrow({ open, color }: { open: boolean; color: string }) {
+  return (
+    <View style={{ transform: [{ rotate: open ? '90deg' : '0deg' }] }}>
+      <Svg width={16} height={16} viewBox="0 0 20 20" fill="none">
+        <Polyline
+          points="7 4 13 10 7 16"
+          stroke={color}
+          strokeWidth={2}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </Svg>
+    </View>
+  )
+}
+
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
     wrap: { gap: theme.space.md },
@@ -579,7 +596,7 @@ const makeStyles = (theme: Theme) =>
       gap: 12,
       paddingVertical: 8,
     },
-    advancedChevron: { color: theme.textMuted, fontSize: 22, fontWeight: '700' },
+    advancedChevron: { color: theme.textMuted },
     advancedBlock: {
       gap: theme.space.md,
       paddingLeft: theme.space.md,
