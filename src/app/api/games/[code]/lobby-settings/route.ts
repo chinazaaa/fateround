@@ -138,6 +138,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     monopoly_auction_timer_seconds,
     monopoly_no_rent_in_jail,
     monopoly_estate_dividend,
+    monopoly_loans_enabled,
+    monopoly_loan_interest,
+    monopoly_loan_term_rounds,
     monopoly_board_size,
     whot_pick3_enabled,
     whot_cards_enabled,
@@ -224,6 +227,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     monopoly_auction_timer_seconds === undefined &&
     monopoly_no_rent_in_jail === undefined &&
     monopoly_estate_dividend === undefined &&
+    monopoly_loans_enabled === undefined &&
+    monopoly_loan_interest === undefined &&
+    monopoly_loan_term_rounds === undefined &&
     monopoly_board_size === undefined &&
     whot_pick3_enabled === undefined &&
     whot_cards_enabled === undefined &&
@@ -631,6 +637,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       gameUpdate.monopoly_auction_timer_seconds = monopoly_auction_timer_seconds
     if (monopoly_no_rent_in_jail !== undefined) gameUpdate.monopoly_no_rent_in_jail = monopoly_no_rent_in_jail
     if (monopoly_estate_dividend !== undefined) gameUpdate.monopoly_estate_dividend = monopoly_estate_dividend
+    if (monopoly_loans_enabled !== undefined) gameUpdate.monopoly_loans_enabled = monopoly_loans_enabled
+    if (monopoly_loan_interest !== undefined) gameUpdate.monopoly_loan_interest = monopoly_loan_interest
+    if (monopoly_loan_term_rounds !== undefined) gameUpdate.monopoly_loan_term_rounds = monopoly_loan_term_rounds
     if (monopoly_board_size !== undefined) {
       const requestedBoardSize = monopoly_board_size === 48 ? 48 : 40
       if (requestedBoardSize === 48 && effectiveMaxPlayers < 6) {
@@ -647,6 +656,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     monopoly_auction_timer_seconds !== undefined ||
     monopoly_no_rent_in_jail !== undefined ||
     monopoly_estate_dividend !== undefined ||
+    monopoly_loans_enabled !== undefined ||
+    monopoly_loan_interest !== undefined ||
+    monopoly_loan_term_rounds !== undefined ||
     monopoly_board_size !== undefined
   ) {
     return NextResponse.json({ error: 'These rules only apply to Estate Kings games' }, { status: 400 })

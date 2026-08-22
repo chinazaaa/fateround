@@ -14,6 +14,8 @@ export function parseJsonRecord(raw: unknown): Record<string, string> {
   return raw as Record<string, string>
 }
 
+export const parsePropertyOwners = parseJsonRecord
+
 export function parseBuildings(raw: unknown): Record<string, number> {
   if (!raw || typeof raw !== 'object') return {}
   return raw as Record<string, number>
