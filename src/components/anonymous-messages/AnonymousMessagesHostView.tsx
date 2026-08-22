@@ -463,6 +463,7 @@ export function AnonymousMessagesHostView({ gameCode, hostToken }: { gameCode: s
               game={game}
               limitType="anonymous_messages"
               playerCount={players.length}
+              seatedCount={players.filter((p) => !p.spectator).length}
               onGameUpdate={setGame}
             />
             <TransferHostControl triggerClassName="btn-secondary w-full flex items-center justify-center gap-2" />

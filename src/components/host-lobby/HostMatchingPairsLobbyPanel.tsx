@@ -21,6 +21,9 @@ type Props = {
   hostToken: string
   game: Game
   playerCount: number
+  /** Ready (non-spectator) players — the count that actually consumes a cap seat.
+   *  Defaults to `playerCount` for callers that haven't opted in. */
+  seatedCount?: number
   onGameUpdate: (game: Game) => void
 }
 
@@ -33,7 +36,14 @@ type SaveState = 'idle' | 'saving' | 'saved'
  *   - Grid size chip selector (Standard 4×4 / Large 8×4)
  *   - Late-join / viewers field
  */
-export function HostMatchingPairsLobbyPanel({ gameCode, hostToken, game, playerCount, onGameUpdate }: Props) {
+export function HostMatchingPairsLobbyPanel({
+  gameCode,
+  hostToken,
+  game,
+  playerCount,
+  seatedCount,
+  onGameUpdate,
+}: Props) {
   const { error: toastError } = useToast()
   const [limits, setLimits] = useState<GamePlayerLimitsMap | null>(null)
   const [maxPlayers, setMaxPlayers] = useState(20)
@@ -108,8 +118,14 @@ export function HostMatchingPairsLobbyPanel({ gameCode, hostToken, game, playerC
 
   const onMaxPlayersChange = (next: number) => {
     if (saveState === 'saving') return
-    if (next < playerCount) {
-      toastError(`Already have ${playerCount} players — remove someone first`)
+    // Only ready (non-spectator) players count against the cap — matches the server. Not-ready
+    // players are `spectator: true`, so counting them here would refuse a valid lower-cap change
+    // while they watch. seatedCount defaults to playerCount for callers that haven't opted in.
+    const effectiveSeated = seatedCount ?? playerCount
+    if (next < effectiveSeated) {
+      toastError(
+        `Already have ${effectiveSeated} seated player${effectiveSeated === 1 ? '' : 's'} — remove someone or pick at least ${effectiveSeated}`
+      )
       return
     }
     const previous = maxPlayers

@@ -73,6 +73,7 @@ import {
   computeRent,
   getMonopolyBuildActionCount,
   normalizePendingTrade,
+  type MonopolyPendingTrade,
   parseBuildings,
   parseMortgaged,
   parsePropertyOwners,
@@ -247,8 +248,9 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
   // reaches 'playing', which changes the hook count across renders and trips the
   // Rules of Hooks. Signature is derived from board?.pending_trade + myPlayerId
   // directly so it works before `board` is proven non-null.
+  const pendingTradeMaybe = board?.pending_trade as MonopolyPendingTrade | null | undefined
   const incomingTradeForMe =
-    board?.pending_trade && board.pending_trade.to_player_id === bootstrap.myPlayerId ? board.pending_trade : null
+    pendingTradeMaybe && pendingTradeMaybe.to_player_id === bootstrap.myPlayerId ? pendingTradeMaybe : null
   const tradeSig = incomingTradeForMe ? JSON.stringify(incomingTradeForMe) : null
   useEffect(() => {
     if (tradeSig && tradeSig !== previousTradeRef.current) {
