@@ -6,6 +6,7 @@ import { normalizeGameCode } from '@fateround/shared'
 import { FateRoundLogo } from '@/components/FateRoundLogo'
 import { BrowseGamesList } from '@/components/browse/BrowseGamesList'
 import { SubscribeHomeBanner } from '@/components/notifications/SubscribeHomeBanner'
+import { ContinuePlayingStrip } from '@/components/home/ContinuePlayingStrip'
 import { YourUpcomingGamesStrip } from '@/components/notifications/YourUpcomingGamesStrip'
 import { AmbientBackground } from '@/components/ui/AmbientBackground'
 import { AppButton } from '@/components/ui/AppButton'
@@ -135,7 +136,11 @@ export default function HomeScreen() {
         </View>
 
         {/* Personalised blocks BEFORE discovery. A returning player's own games were below a
-            five-item browse preview, which put the highest-intent block on the screen last. */}
+            five-item browse preview, which put the highest-intent block on the screen last.
+            Continue-playing sits above Recent because it is CROSS-DEVICE and live: a game you
+            left running on another device beats one this phone happens to remember. */}
+        <ContinuePlayingStrip />
+
         <YourUpcomingGamesStrip />
 
         {recent.length === 0 ? (
