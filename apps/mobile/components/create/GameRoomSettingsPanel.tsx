@@ -1,4 +1,5 @@
-import { StyleSheet, Text, View } from 'react-native'
+import { useState } from 'react'
+import { Pressable, StyleSheet, Text, View } from 'react-native'
 import type { GameType } from '@fateround/shared'
 import { CRAZY8_GAME_DURATION_OPTIONS } from '@fateround/shared/crazy-eights'
 import {
@@ -42,6 +43,7 @@ type Props = {
 
 export function GameRoomSettingsPanel({ gameType, room, maxPlayers, onChange }: Props) {
   const styles = useThemedStyles(makeStyles)
+  const [monopolyAdvancedOpen, setMonopolyAdvancedOpen] = useState(false)
   if (!hasGameRoomSettings(gameType)) return null
 
   const timerKey = boardGameTimerKey(gameType)
@@ -454,6 +456,99 @@ export function GameRoomSettingsPanel({ gameType, room, maxPlayers, onChange }: 
                 onChange={(value) => onChange({ gameDurationSeconds: Number(value) })}
               />
             </View>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityState={{ expanded: monopolyAdvancedOpen }}
+              style={styles.advancedHeader}
+              onPress={() => setMonopolyAdvancedOpen((v) => !v)}
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={styles.label}>Advanced house rules</Text>
+                <Text style={styles.hint}>Optional toggles — you can also change these in the host lobby.</Text>
+              </View>
+              <Text style={styles.advancedChevron}>{monopolyAdvancedOpen ? '−' : '+'}</Text>
+            </Pressable>
+            {monopolyAdvancedOpen ? (
+              <View style={styles.advancedBlock}>
+                <SettingToggle
+                  label="Double GO Salary"
+                  description="Collect $400 (instead of $200) when landing exactly on GO."
+                  value={room.monopolyDoubleGoSalary}
+                  onChange={(monopolyDoubleGoSalary) => onChange({ monopolyDoubleGoSalary })}
+                />
+                <SettingToggle
+                  label="Forced Auctions"
+                  description="If a player declines to buy an unowned property, it must go to auction."
+                  value={room.monopolyForcedAuctions}
+                  onChange={(monopolyForcedAuctions) => onChange({ monopolyForcedAuctions })}
+                />
+                <View style={styles.field}>
+                  <Text style={styles.subLabel}>Auction timer</Text>
+                  <SegmentedControl
+                    value={String(room.monopolyAuctionTimerSeconds)}
+                    options={[5, 10, 15, 20, 30, 45, 60].map((s) => ({ value: String(s), label: `${s}s` }))}
+                    onChange={(v) => {
+                      const parsed = Number(v)
+                      if (Number.isFinite(parsed)) onChange({ monopolyAuctionTimerSeconds: parsed })
+                    }}
+                  />
+                </View>
+                <SettingToggle
+                  label="No Rent in NICKED"
+                  description="Prevent players in NICKED from collecting rent on their properties."
+                  value={room.monopolyNoRentInJail}
+                  onChange={(monopolyNoRentInJail) => onChange({ monopolyNoRentInJail })}
+                />
+                <SettingToggle
+                  label="Robin Hood Estate Dividend"
+                  description="When a player leaves mid-game, their estate is liquidated and split equally among remaining players."
+                  value={room.monopolyEstateDividend}
+                  onChange={(monopolyEstateDividend) => onChange({ monopolyEstateDividend })}
+                />
+                <SettingToggle
+                  label="Bank Loans"
+                  description="Allow players to borrow emergency funds from the Bank with flat interest and a foreclosure term limit."
+                  value={room.monopolyLoansEnabled}
+                  onChange={(monopolyLoansEnabled) => onChange({ monopolyLoansEnabled })}
+                />
+                {room.monopolyLoansEnabled ? (
+                  <>
+                    <View style={styles.field}>
+                      <Text style={styles.subLabel}>Loan interest rate</Text>
+                      <SegmentedControl
+                        value={String(room.monopolyLoanInterest)}
+                        options={[
+                          { value: '10', label: '10%' },
+                          { value: '15', label: '15%' },
+                          { value: '20', label: '20%' },
+                          { value: '25', label: '25%' },
+                        ]}
+                        onChange={(v) => {
+                          const parsed = Number(v)
+                          if (Number.isFinite(parsed)) onChange({ monopolyLoanInterest: parsed })
+                        }}
+                      />
+                    </View>
+                    <View style={styles.field}>
+                      <Text style={styles.subLabel}>Loan term (rounds to repay)</Text>
+                      <SegmentedControl
+                        value={String(room.monopolyLoanTermRounds)}
+                        options={[
+                          { value: '2', label: '2 rounds' },
+                          { value: '3', label: '3 rounds' },
+                          { value: '4', label: '4 rounds' },
+                          { value: '5', label: '5 rounds' },
+                        ]}
+                        onChange={(v) => {
+                          const parsed = Number(v)
+                          if (Number.isFinite(parsed)) onChange({ monopolyLoanTermRounds: parsed })
+                        }}
+                      />
+                    </View>
+                  </>
+                ) : null}
+              </View>
+            ) : null}
           </>
         ) : null}
       </View>
@@ -477,4 +572,18 @@ const makeStyles = (theme: Theme) =>
     },
     toggles: { gap: theme.space.sm },
     hint: { color: theme.textMuted, fontSize: 12 },
+    subLabel: { color: theme.textMuted, fontSize: 13, fontWeight: '600' },
+    advancedHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      paddingVertical: 8,
+    },
+    advancedChevron: { color: theme.textMuted, fontSize: 22, fontWeight: '700' },
+    advancedBlock: {
+      gap: theme.space.md,
+      paddingLeft: theme.space.md,
+      borderLeftWidth: 2,
+      borderLeftColor: theme.border,
+    },
   })

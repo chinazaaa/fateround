@@ -6,6 +6,7 @@ import {
   calculateMonopolyCreditLimit,
   calculateMonopolyLoanTotalDue,
   getActiveMonopolyLoan,
+  hasDefaultedMonopolyLoan,
   loanPresetTiersForSize,
   minLoanAmountForSize,
 } from '@/lib/monopoly-loan'
@@ -42,6 +43,7 @@ export function MonopolyLoanModal({
   const minLoanAmount = minLoanAmountForSize(boardSize)
   const presetTiers = loanPresetTiersForSize(boardSize)
   const activeLoan = getActiveMonopolyLoan(board.loans, playerId)
+  const hasDefault = hasDefaultedMonopolyLoan(board.loans, playerId)
   const defaultTab: LoanTab = activeLoan ? 'repay' : 'borrow'
   const [selectedTab, setSelectedTab] = useState<LoanTab | null>(null)
   const tab = selectedTab ?? defaultTab
@@ -117,6 +119,12 @@ export function MonopolyLoanModal({
   return (
     <MonopolyModal open={open} onClose={onClose} title="Bank Loan Facility">
       <div className="space-y-4">
+        {hasDefault && !activeLoan && (
+          <div className="rounded-lg bg-red-500/10 border border-red-500/20 p-2.5 text-[11px] text-red-600 dark:text-red-400 leading-snug">
+            You have a defaulted loan on record. The bank will not extend new credit until it is settled.
+          </div>
+        )}
+
         {/* Tab switch */}
         <div className="flex rounded-xl bg-[var(--background-secondary)] p-1">
           <button
@@ -248,7 +256,9 @@ export function MonopolyLoanModal({
 
             <MonopolyPrimaryButton
               onClick={handleBorrow}
-              disabled={submitting || acting || borrowAmount < minLoanAmount || borrowAmount > creditLimit}
+              disabled={
+                submitting || acting || hasDefault || borrowAmount < minLoanAmount || borrowAmount > creditLimit
+              }
             >
               {submitting ? 'Processing...' : `Borrow ${formatThemedMoney(borrowAmount, themeId)}`}
             </MonopolyPrimaryButton>

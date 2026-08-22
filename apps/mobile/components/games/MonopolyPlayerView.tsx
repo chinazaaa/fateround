@@ -479,10 +479,29 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
     void runManage(() => postMonopolyTrade(bootstrap.code, bootstrap.myResumeToken!, { repair: true }))
   const onRespondTrade = (accept: boolean) =>
     void runManage(() => postMonopolyTrade(bootstrap.code, bootstrap.myResumeToken!, { accept }))
+  // Loan borrow/repay bypass runManage so the modal can surface the server's
+  // error inline instead of the modal closing on a swallowed failure — the
+  // action still reloads the board on success and, on error, sets the
+  // shared manageError banner too so nothing about the failure is silent.
+  const onLoanAction = async (fn: () => Promise<unknown>) => {
+    if (!bootstrap.myResumeToken || acting) throw new Error('Please wait for the previous action to finish.')
+    setActing(true)
+    setManageError(null)
+    try {
+      await fn()
+      await bootstrap.load()
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Action failed'
+      setManageError(message)
+      throw err instanceof Error ? err : new Error(message)
+    } finally {
+      setActing(false)
+    }
+  }
   const onLoanBorrow = (amount: number) =>
-    runManage(() => postMonopolyLoanBorrow(bootstrap.code, bootstrap.myResumeToken!, amount))
+    onLoanAction(() => postMonopolyLoanBorrow(bootstrap.code, bootstrap.myResumeToken!, amount))
   const onLoanRepay = (amount: number) =>
-    runManage(() => postMonopolyLoanRepay(bootstrap.code, bootstrap.myResumeToken!, amount))
+    onLoanAction(() => postMonopolyLoanRepay(bootstrap.code, bootstrap.myResumeToken!, amount))
 
   const tokenOwners = useMemo(() => monopolyTokenOwners(bootstrap.players), [bootstrap.players])
 

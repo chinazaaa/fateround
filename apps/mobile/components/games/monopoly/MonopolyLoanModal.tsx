@@ -6,6 +6,7 @@ import {
   calculateMonopolyCreditLimit,
   calculateMonopolyLoanTotalDue,
   getActiveMonopolyLoan,
+  hasDefaultedMonopolyLoan,
   loanPresetTiersForSize,
   minLoanAmountForSize,
 } from '@fateround/shared/monopoly-loans'
@@ -51,6 +52,7 @@ export function MonopolyLoanModal({
   const minLoanAmount = minLoanAmountForSize(boardSize)
   const presetTiers = loanPresetTiersForSize(boardSize)
   const activeLoan = getActiveMonopolyLoan(board.loans, playerId)
+  const hasDefault = hasDefaultedMonopolyLoan(board.loans, playerId)
   const defaultTab: LoanTab = activeLoan ? 'repay' : 'borrow'
   const [selectedTab, setSelectedTab] = useState<LoanTab | null>(null)
   const tab = selectedTab ?? defaultTab
@@ -80,6 +82,7 @@ export function MonopolyLoanModal({
 
   const [customBorrowAmount, setCustomBorrowAmount] = useState<number | null>(null)
   const [customRepayAmount, setCustomRepayAmount] = useState<number | null>(null)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
   const defaultBorrowSuggestion = presetTiers[1] ?? minLoanAmount
   const borrowAmount = Math.min(
@@ -98,9 +101,12 @@ export function MonopolyLoanModal({
   const handleBorrow = async () => {
     if (borrowAmount < minLoanAmount || borrowAmount > creditLimit || busy) return
     setSubmitting(true)
+    setErrorMessage(null)
     try {
       await onBorrow(borrowAmount)
       onClose()
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : 'Borrow failed')
     } finally {
       setSubmitting(false)
     }
@@ -110,11 +116,14 @@ export function MonopolyLoanModal({
     if (!myState) return
     if (amountToPay <= 0 || amountToPay > myState.cash || busy) return
     setSubmitting(true)
+    setErrorMessage(null)
     try {
       await onRepay(amountToPay)
       if (closeOnFinish || (activeLoan && amountToPay >= activeLoan.balance_remaining)) {
         onClose()
       }
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : 'Repayment failed')
     } finally {
       setSubmitting(false)
     }
@@ -151,6 +160,20 @@ export function MonopolyLoanModal({
               </Text>
             </Pressable>
           </View>
+
+          {hasDefault ? (
+            <View style={styles.defaultedBox}>
+              <Text style={styles.defaultedText}>
+                You have a defaulted loan on record. The bank will not extend new credit until it is settled.
+              </Text>
+            </View>
+          ) : null}
+
+          {errorMessage ? (
+            <View style={styles.errorBox}>
+              <Text style={styles.errorText}>{errorMessage}</Text>
+            </View>
+          ) : null}
 
           <ScrollView contentContainerStyle={styles.body}>
             {tab === 'borrow' ? (
@@ -237,11 +260,11 @@ export function MonopolyLoanModal({
                 </View>
 
                 <Pressable
-                  disabled={busy || borrowAmount < minLoanAmount || borrowAmount > creditLimit}
+                  disabled={busy || hasDefault || borrowAmount < minLoanAmount || borrowAmount > creditLimit}
                   onPress={handleBorrow}
                   style={[
                     styles.primary,
-                    (busy || borrowAmount < minLoanAmount || borrowAmount > creditLimit) &&
+                    (busy || hasDefault || borrowAmount < minLoanAmount || borrowAmount > creditLimit) &&
                       styles.primaryDisabled,
                   ]}
                 >
@@ -550,4 +573,20 @@ const makeStyles = (theme: Theme) =>
     partialBlock: { gap: 10, borderTopWidth: 1, borderTopColor: theme.border, paddingTop: 10 },
     partialHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
     partialAmount: { color: theme.primary, fontWeight: '800' },
+    errorBox: {
+      borderWidth: 1,
+      borderColor: '#ef444455',
+      backgroundColor: '#ef444414',
+      borderRadius: 10,
+      padding: 10,
+    },
+    errorText: { color: '#b91c1c', fontSize: 12, lineHeight: 16 },
+    defaultedBox: {
+      borderWidth: 1,
+      borderColor: '#ef444455',
+      backgroundColor: '#ef444414',
+      borderRadius: 10,
+      padding: 10,
+    },
+    defaultedText: { color: '#b91c1c', fontSize: 12, lineHeight: 16, fontWeight: '600' },
   })
