@@ -3748,71 +3748,71 @@ function CreateGameInner() {
                     </svg>
                   </summary>
                   <div className="pt-3 space-y-3">
-                  <Toggle
-                    label="Double GO Salary"
-                    description="Collect £400 (instead of £200) when landing exactly on PAYDAY."
-                    value={monopolyDoubleGoSalary}
-                    onChange={setMonopolyDoubleGoSalary}
-                  />
-                  <Toggle
-                    label="Forced Auctions"
-                    description="If a player declines to buy an unowned property, it must go to auction."
-                    value={monopolyForcedAuctions}
-                    onChange={setMonopolyForcedAuctions}
-                  />
-                  <Field label="Auction timer">
-                    <CustomSelect
-                      value={monopolyAuctionTimerSeconds}
-                      onChange={setMonopolyAuctionTimerSeconds}
-                      options={[5, 10, 15, 20, 30, 45, 60].map((s) => ({ value: s, label: `${s} seconds` }))}
+                    <Toggle
+                      label="Double GO Salary"
+                      description="Collect £400 (instead of £200) when landing exactly on PAYDAY."
+                      value={monopolyDoubleGoSalary}
+                      onChange={setMonopolyDoubleGoSalary}
                     />
-                  </Field>
-                  <Toggle
-                    label="No Rent in NICKED"
-                    description="Prevent players in NICKED from collecting rent on their properties."
-                    value={monopolyNoRentInJail}
-                    onChange={setMonopolyNoRentInJail}
-                  />
-                  <Toggle
-                    label="Robin Hood Estate Dividend"
-                    description="When a player leaves mid-game, their estate is liquidated and split equally among remaining players."
-                    value={monopolyEstateDividend}
-                    onChange={setMonopolyEstateDividend}
-                  />
-                  <Toggle
-                    label="Bank Loans"
-                    description="Allow players to borrow emergency funds from the Bank with flat interest and a foreclosure term limit."
-                    value={monopolyLoansEnabled}
-                    onChange={setMonopolyLoansEnabled}
-                  />
-                  {monopolyLoansEnabled && (
-                    <>
-                      <Field label="Loan interest rate">
-                        <CustomSelect
-                          value={monopolyLoanInterest}
-                          onChange={setMonopolyLoanInterest}
-                          options={[
-                            { value: 10, label: '10%' },
-                            { value: 15, label: '15% (Default)' },
-                            { value: 20, label: '20%' },
-                            { value: 25, label: '25%' },
-                          ]}
-                        />
-                      </Field>
-                      <Field label="Loan term (rounds to repay)">
-                        <CustomSelect
-                          value={monopolyLoanTermRounds}
-                          onChange={setMonopolyLoanTermRounds}
-                          options={[
-                            { value: 2, label: '2 rounds' },
-                            { value: 3, label: '3 rounds' },
-                            { value: 4, label: '4 rounds (Default)' },
-                            { value: 5, label: '5 rounds' },
-                          ]}
-                        />
-                      </Field>
-                    </>
-                  )}
+                    <Toggle
+                      label="Forced Auctions"
+                      description="If a player declines to buy an unowned property, it must go to auction."
+                      value={monopolyForcedAuctions}
+                      onChange={setMonopolyForcedAuctions}
+                    />
+                    <Field label="Auction timer">
+                      <CustomSelect
+                        value={monopolyAuctionTimerSeconds}
+                        onChange={setMonopolyAuctionTimerSeconds}
+                        options={[5, 10, 15, 20, 30, 45, 60].map((s) => ({ value: s, label: `${s} seconds` }))}
+                      />
+                    </Field>
+                    <Toggle
+                      label="No Rent in NICKED"
+                      description="Prevent players in NICKED from collecting rent on their properties."
+                      value={monopolyNoRentInJail}
+                      onChange={setMonopolyNoRentInJail}
+                    />
+                    <Toggle
+                      label="Robin Hood Estate Dividend"
+                      description="When a player leaves mid-game, their estate is liquidated and split equally among remaining players."
+                      value={monopolyEstateDividend}
+                      onChange={setMonopolyEstateDividend}
+                    />
+                    <Toggle
+                      label="Bank Loans"
+                      description="Allow players to borrow emergency funds from the Bank with flat interest and a foreclosure term limit."
+                      value={monopolyLoansEnabled}
+                      onChange={setMonopolyLoansEnabled}
+                    />
+                    {monopolyLoansEnabled && (
+                      <>
+                        <Field label="Loan interest rate">
+                          <CustomSelect
+                            value={monopolyLoanInterest}
+                            onChange={setMonopolyLoanInterest}
+                            options={[
+                              { value: 10, label: '10%' },
+                              { value: 15, label: '15% (Default)' },
+                              { value: 20, label: '20%' },
+                              { value: 25, label: '25%' },
+                            ]}
+                          />
+                        </Field>
+                        <Field label="Loan term (rounds to repay)">
+                          <CustomSelect
+                            value={monopolyLoanTermRounds}
+                            onChange={setMonopolyLoanTermRounds}
+                            options={[
+                              { value: 2, label: '2 rounds' },
+                              { value: 3, label: '3 rounds' },
+                              { value: 4, label: '4 rounds (Default)' },
+                              { value: 5, label: '5 rounds' },
+                            ]}
+                          />
+                        </Field>
+                      </>
+                    )}
                   </div>
                 </details>
                 <p className="text-faint text-sm leading-relaxed">
