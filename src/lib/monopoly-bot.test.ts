@@ -25,6 +25,7 @@ function view(overrides: Partial<MonopolyBotView> = {}): MonopolyBotView {
   return {
     botPlayerId: BOT,
     phase: 'roll' as MonopolyPhase,
+    boardSize: 40,
     isMyTurn: true,
     me: {
       playerId: BOT,
@@ -40,6 +41,7 @@ function view(overrides: Partial<MonopolyBotView> = {}): MonopolyBotView {
     pendingBuy: undefined,
     pendingDebt: undefined,
     auction: undefined,
+    loansEnabled: true,
     ownedPropertyFraction: 0,
     ...overrides,
   }
@@ -381,8 +383,93 @@ describe('pickBotAction — raise_funds', () => {
       },
       myProperties: [owned(1, 0, true), owned(3, 0, true)],
       pendingDebt: debt(200),
+      activeLoan: {
+        principal: 500,
+        balanceRemaining: 575,
+        roundsRemaining: 2,
+        totalDue: 575,
+      },
     })
     expect(pickBotAction(v)).toEqual({ type: 'forfeit' })
+  })
+
+  it('tries to borrow a loan before forfeiting if no active loan is held', () => {
+    const v = view({
+      phase: 'raise_funds',
+      me: {
+        playerId: BOT,
+        cash: 10,
+        position: 0,
+        in_jail: false,
+        jail_turns: 0,
+        get_out_of_jail_free: 0,
+        bankrupt: false,
+      },
+      creditLimit: 500,
+      myProperties: [owned(1, 0, true), owned(3, 0, true)],
+      pendingDebt: debt(200),
+    })
+    expect(pickBotAction(v)).toEqual({ type: 'borrow_loan', amount: 190 })
+  })
+
+  it('does not borrow when the host disabled loan facilities', () => {
+    const v = view({
+      phase: 'raise_funds',
+      loansEnabled: false,
+      me: {
+        playerId: BOT,
+        cash: 10,
+        position: 0,
+        in_jail: false,
+        jail_turns: 0,
+        get_out_of_jail_free: 0,
+        bankrupt: false,
+      },
+      creditLimit: 500,
+      myProperties: [owned(1, 0, true), owned(3, 0, true)],
+      pendingDebt: debt(200),
+    })
+    expect(pickBotAction(v)).toEqual({ type: 'forfeit' })
+  })
+
+  it('does not borrow when the credit limit cannot clear the whole debt', () => {
+    const v = view({
+      phase: 'raise_funds',
+      me: {
+        playerId: BOT,
+        cash: 10,
+        position: 0,
+        in_jail: false,
+        jail_turns: 0,
+        get_out_of_jail_free: 0,
+        bankrupt: false,
+      },
+      creditLimit: 150,
+      myProperties: [owned(1, 0, true), owned(3, 0, true)],
+      pendingDebt: debt(200),
+    })
+    expect(pickBotAction(v)).toEqual({ type: 'forfeit' })
+  })
+
+  it('rounds the borrow up to the expanded board minimum', () => {
+    const v = view({
+      phase: 'raise_funds',
+      boardSize: 48,
+      me: {
+        playerId: BOT,
+        cash: 200,
+        position: 0,
+        in_jail: false,
+        jail_turns: 0,
+        get_out_of_jail_free: 0,
+        bankrupt: false,
+      },
+      creditLimit: 500,
+      myProperties: [owned(1, 0, true), owned(3, 0, true)],
+      pendingDebt: debt(300),
+    })
+    // Needs only ₦100, but a 48-space board will not issue a loan under ₦300.
+    expect(pickBotAction(v)).toEqual({ type: 'borrow_loan', amount: 300 })
   })
 })
 

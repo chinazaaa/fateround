@@ -7,6 +7,7 @@ import { parseGameType } from '@/lib/game-types'
 import { fetchGamePlayerLimits, lobbyMaxPlayersFromGame } from '@/lib/game-limits'
 import { firstAvailableMonopolyToken } from '@/lib/monopoly-tokens'
 import { internalErrorMessage } from '@/lib/api-errors'
+import { gameSupportsBots } from '@/lib/bots-in-room'
 
 /**
  * Bots-in-room — add/remove a bot seat in an existing game lobby.
@@ -23,12 +24,12 @@ import { internalErrorMessage } from '@/lib/api-errors'
  *     a human arriving at a bot-padded room evicts a bot there.
  *
  * ── Which games? ──────────────────────────────────────────────────────────
- * Phase 1 wired Whot. Phase 2 added Monopoly. Other game types return 400
- * with a clear message. As Ludo / Yahtzee / etc. get bot drivers, add them
- * to BOTS_SUPPORTED_TYPES here and to BOT_TICK_SLUG in src/lib/game-tick.ts.
+ * Phase 1 wired Whot, Phase 2 Monopoly, Phase 3 Crazy Eights. Other game types
+ * return 400 with a clear message. The list is NOT kept here: it is derived in
+ * `src/lib/bots-in-room.ts` from the same map the game-tick uses to poke bot
+ * drivers, so a game can only become bot-seatable once something exists to
+ * actually take its turns.
  */
-
-const BOTS_SUPPORTED_TYPES = new Set<string>(['whot', 'monopoly'])
 
 const addSchema = z.object({ hostToken: z.string().min(1) })
 
@@ -59,14 +60,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const game = auth.game
 
   const gameType = parseGameType(game.game_type)
-  if (!BOTS_SUPPORTED_TYPES.has(gameType)) {
+  if (!gameSupportsBots(gameType)) {
     return NextResponse.json({ error: `Bots aren't supported for ${game.game_type} yet` }, { status: 400 })
   }
 
   // Seat allocation — the "humans + bots" count must not equal max_players.
   // Spectators don't consume seats and are excluded, matching every other
-  // seat-cap check in this route. The cast is safe because BOTS_SUPPORTED_TYPES
-  // has already narrowed the game type to something lobbyMaxPlayersFromGame
+  // seat-cap check in this route. The cast is safe because the bots-supported gate
+  // above has already narrowed the game type to something lobbyMaxPlayersFromGame
   // understands.
   const limits = await fetchGamePlayerLimits(supabase)
   const maxPlayers = lobbyMaxPlayersFromGame(gameType as Parameters<typeof lobbyMaxPlayersFromGame>[0], game, limits)
@@ -82,9 +83,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     return NextResponse.json({ error: 'Room is already full — remove a player first' }, { status: 400 })
   }
 
-  // Whot supports 2..6 players. It'd be weird to have 1 human + 5 bots, so
-  // enforce a soft "at least one bot-less seat" rule: at most (max - 1) bots.
-  // A host who wants to explicitly play alone can use /play-solo/whot instead.
+  // It'd be weird to have 1 human + N bots, so enforce a soft "at least one
+  // bot-less seat" rule: at most (max - 1) bots. A host who wants to play alone
+  // has /play-solo/<game> for exactly that.
   const currentBots = (seated ?? []).filter((p) => p.is_bot).length
   if (currentBots >= maxPlayers - 1) {
     return NextResponse.json({ error: 'At least one seat must be reserved for a human' }, { status: 400 })

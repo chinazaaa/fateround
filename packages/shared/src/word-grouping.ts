@@ -22,6 +22,20 @@ export function formatWordGroupingGameDuration(seconds: number): string {
   return `${minutes} minute${minutes === 1 ? '' : 's'}`
 }
 
+/**
+ * Seconds from the session start to a player's last correct group — their "finish time".
+ * Mirrors `wordGroupingFinishSeconds` in `src/lib/word-grouping.ts`; lives here so the mobile
+ * standings can show the same `(⏱️ mm:ss)` the web leaderboard does.
+ */
+export function wordGroupingFinishSeconds(
+  sessionStartedAt: string | null | undefined,
+  lastAt: string | null | undefined
+): number | null {
+  if (!sessionStartedAt || !lastAt) return null
+  const secs = Math.floor((new Date(lastAt).getTime() - new Date(sessionStartedAt).getTime()) / 1000)
+  return Number.isFinite(secs) ? Math.max(0, secs) : null
+}
+
 export const WORD_GROUPING_FIRST_BONUS = 50
 export const WORD_GROUPING_MISTAKE_PENALTY = -25
 export const WORD_GROUPING_PERFECT_BONUS = 500

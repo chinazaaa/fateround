@@ -20,13 +20,8 @@ import { Glyph } from '@/components/icons/Glyph'
 import { MonopolyFinalResultsShareBlock } from '@/components/monopoly/MonopolyFinalResultsShareBlock'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
-import {
-  buildMonopolyStandings,
-  MONOPOLY_MIN_PLAYERS,
-  MONOPOLY_STARTING_CASH,
-  startingCashForSize,
-} from '@/lib/monopoly'
-import { formatThemedMoney } from '@/components/monopoly/monopoly-themes'
+import { buildMonopolyStandings, MONOPOLY_MIN_PLAYERS, startingCashForSize } from '@/lib/monopoly'
+import { formatThemedMoney, formatThemedText } from '@/components/monopoly/monopoly-themes'
 import { supabase } from '@/lib/supabase'
 import { MONOPOLY_BOARD_SELECT, MONOPOLY_PLAYER_STATE_SELECT, isCompleteMonopolyBoardRow } from '@/lib/supabase-selects'
 import { clearPlayerSession, isFetchNetworkError, messageFromFetchActionError } from '@/lib/utils'
@@ -96,7 +91,20 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
     ])
     const ok = supabasePollOk(boardRes, stateRes)
     if (ok) {
-      setBoard(boardRes.data as MonopolyBoard | null)
+      const nextBoard = boardRes.data as MonopolyBoard | null
+      const prevBoard = boardRef.current
+      if (
+        nextBoard &&
+        prevBoard &&
+        nextBoard.updated_at &&
+        prevBoard.updated_at &&
+        new Date(nextBoard.updated_at).getTime() < new Date(prevBoard.updated_at).getTime()
+      ) {
+        // Do not overwrite a newer state that already arrived via realtime push!
+        return { state: null, ok }
+      }
+      setBoard(nextBoard)
+      boardRef.current = nextBoard
       setStates((stateRes.data as MonopolyPlayerState[]) ?? [])
     }
     return { state: null, ok }
@@ -172,7 +180,14 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
   const applyBoardRow = useCallback((row: Record<string, unknown>): boolean => {
     const next = row as unknown as MonopolyBoard
     const prev = boardRef.current
-    if (prev && next.updated_at < prev.updated_at) return true
+    if (
+      prev &&
+      next.updated_at &&
+      prev.updated_at &&
+      new Date(next.updated_at).getTime() < new Date(prev.updated_at).getTime()
+    ) {
+      return true
+    }
     // Realtime UPDATE payloads drop unchanged TOAST-ed columns (large jsonb such as
     // property_owners) — they arrive as null once a game has enough owned properties. Applying
     // such a partial row would wipe ownership/buildings on screen (players show 0 property, can't
@@ -272,7 +287,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
       if (!res.ok) throw new Error(data.error ?? 'Action failed')
       await load()
     } catch (err) {
-      toastError(messageFromFetchActionError(err))
+      toastError(formatThemedText(messageFromFetchActionError(err), game?.theme))
       if (isFetchNetworkError(err)) await load()
     } finally {
       actingRef.current = false
@@ -537,7 +552,8 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
             board.property_owners,
             board.property_buildings,
             board.mortgaged_properties,
-            board.board_size ?? 40
+            board.board_size ?? 40,
+            board.loans
           )[0]?.name
         : null)
 

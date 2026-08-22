@@ -11,9 +11,12 @@ Record short video reactions when results are shown using the MediaRecorder API.
 ### Daily / cross-session streaks
 **Partially shipped.** The identity layer and the streak engine both landed with trophies:
 `profiles.current_streak` / `longest_streak` advance once per WAT day from the award pass
-(`src/lib/trophies/streak.ts`), and streak trophies are earnable. What is still open is the
-player-facing surface — there is no streak UI on web or mobile yet, no freeze/grace mechanic,
-and no reminder. See [trophies-and-streaks.md](./trophies-and-streaks.md).
+(`src/lib/trophies/streak.ts`), and streak trophies are earnable. The player-facing DISPLAY has since shipped
+too — profile chip, `/profile`, the trophy leaderboard and the public profile all show current
+and best streak on both platforms. What is still open is the mechanic and the loop: the
+`streak_freezes` column is never written or spent (`advanceStreak` ignores it, so one missed
+day resets to 1 with no grace), there is no at-risk warning anywhere, and there is no streak
+reminder notification. See `audit-2026-08-completeness.md` §3.4. See [trophies-and-streaks.md](./trophies-and-streaks.md).
 
 ## Monetization
 

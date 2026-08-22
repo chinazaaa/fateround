@@ -98,7 +98,7 @@ export function isWithinDeliveryWindow(device: SubscriberDeviceRow, now = new Da
   return device.quiet_mode === 'quiet' ? !inWindow : inWindow
 }
 
-async function sendWebPushOne(device: SubscriberDeviceRow, payload: object): Promise<{ stale: boolean }> {
+export async function sendWebPushOne(device: SubscriberDeviceRow, payload: object): Promise<{ stale: boolean }> {
   if (!configureWebPush() || !device.web_p256dh || !device.web_auth) return { stale: false }
   try {
     await webpush.sendNotification(
@@ -112,7 +112,7 @@ async function sendWebPushOne(device: SubscriberDeviceRow, payload: object): Pro
   }
 }
 
-async function sendExpoPushBatch(
+export async function sendExpoPushBatch(
   devices: SubscriberDeviceRow[],
   payload: { title: string; body: string; data: Record<string, unknown> }
 ): Promise<string[]> {

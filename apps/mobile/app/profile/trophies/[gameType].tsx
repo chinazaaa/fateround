@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
@@ -8,6 +8,7 @@ import { centeredContent } from '@/constants/layout'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
 import { fetchProfileTrophies, type TrophyGroup, type TrophyItem } from '@/lib/profile-api'
+import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus'
 
 /**
  * Per-game trophy grid.
@@ -38,9 +39,9 @@ export default function PerGameTrophiesScreen() {
     setLoading(false)
   }, [gameType])
 
-  useEffect(() => {
-    void load()
-  }, [load])
+  // Trophies unlock server-side at game finish, so a mount-only fetch showed pre-game
+  // counts until the app was restarted. Refetch on focus and on app resume.
+  useRefreshOnFocus(load)
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true)

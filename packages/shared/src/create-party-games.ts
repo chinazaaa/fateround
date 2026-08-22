@@ -18,6 +18,7 @@ import {
   isWhoSaidThis,
   parsePairVoteMode,
 } from './poll-games'
+import { isTriviaCategory } from './trivia'
 
 export type BingoCallMode = 'manual' | 'auto'
 export const POLL_DEFAULT_ROUNDS = 3
@@ -261,28 +262,8 @@ export function formatSudokuGameDuration(seconds: number): string {
   return `${seconds}s`
 }
 
-const VALID_TRIVIA_CATEGORIES: readonly string[] = [
-  'general',
-  'tech',
-  'art',
-  'food',
-  'geography',
-  'history',
-  'language',
-  'literature',
-  'math',
-  'movies',
-  'music',
-  'nature',
-  'pop_culture',
-  'science',
-  'sports',
-  'technology',
-  'world_culture',
-]
-
 export function clampTriviaCategory(value: unknown): TriviaCategory {
-  return typeof value === 'string' && VALID_TRIVIA_CATEGORIES.includes(value) ? (value as TriviaCategory) : 'general'
+  return isTriviaCategory(value) ? value : 'general'
 }
 
 export function clampBingoCallMode(value: unknown): BingoCallMode {

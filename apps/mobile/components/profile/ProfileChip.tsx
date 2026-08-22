@@ -13,10 +13,12 @@ import {
 } from 'react-native'
 import { useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
+import { streakIsAtRisk } from '@fateround/shared/streak'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
 import { apiUrl } from '@/lib/config'
 import { authHeaders, signOutIdentity } from '@/lib/identity'
+import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus'
 import { requestEmailCode, verifyEmailCode, type EmailCodeFlow } from '@/lib/identity-auth'
 import { getSupabase } from '@/lib/supabase'
 
@@ -25,6 +27,10 @@ type Profile = {
   is_anonymous: boolean
   current_streak: number
   trophy_points: number
+  // Both already come back from /api/profile/me; they were simply not declared here. Needed to
+  // tell a safe streak from one about to lapse.
+  last_active_date: string | null
+  streak_freezes: number
 }
 
 /**
@@ -70,9 +76,11 @@ export function ProfileChip() {
     }
   }, [])
 
-  useEffect(() => {
-    void refresh()
-  }, [refresh])
+  // Refetch on first focus, on returning to Home from a game, and when the app comes back
+  // from the background. Trophy points and the streak are written server-side by the award
+  // pass at game finish, so a mount-only fetch left the chip showing pre-game numbers until
+  // the app was force-quit.
+  useRefreshOnFocus(refresh)
 
   // Re-fetch when the auth session changes. The session hydrates from AsyncStorage
   // asynchronously, so the mount fetch above can run before there is a session and read as a
@@ -92,6 +100,9 @@ export function ProfileChip() {
   const label = signedIn ? profile?.handle || 'You' : 'Guest'
   const streak = profile?.current_streak ?? 0
   const trophies = profile?.trophy_points ?? 0
+  // Dim the flame on a day the player hasn't played yet. The number alone read identically
+  // whether the streak was safe or hours from lapsing — matches web's ProfileChip.
+  const atRisk = streakIsAtRisk(profile)
 
   return (
     <>
@@ -100,11 +111,15 @@ export function ProfileChip() {
         style={({ pressed }) => [styles.chip, pressed && styles.pressed]}
         hitSlop={10}
         accessibilityRole="button"
-        accessibilityLabel={signedIn ? 'Your profile' : 'Save your progress'}
+        accessibilityLabel={
+          signedIn
+            ? `Your profile${streak > 0 ? `, ${streak} day streak${atRisk ? ' — play today to keep it' : ''}` : ''}`
+            : 'Save your progress'
+        }
       >
         {/* Counters stay hidden until they mean something — "🔥 0 · 🏆 0" advertises
             emptiness. They appear on their own once the trophies batch ships. */}
-        {streak > 0 ? <Text style={styles.chipMeta}>🔥 {streak}</Text> : null}
+        {streak > 0 ? <Text style={[styles.chipMeta, atRisk && styles.chipMetaAtRisk]}>🔥 {streak}</Text> : null}
         {trophies > 0 ? <Text style={styles.chipMeta}>🏆 {trophies}</Text> : null}
         <Text style={styles.chipText}>{label}</Text>
       </Pressable>
@@ -233,13 +248,21 @@ function SaveToProfileSheet({
                     <Text style={styles.hint}>
                       Signed in as {handle || 'you'}. Your streak and trophies follow this account onto any device.
                     </Text>
+                    {/* Points at /settings rather than signing out here. "Not you? Switch" WAS
+                        sign-out under a different name — a third door to settings, next to the
+                        ⚙ in the same top bar. The "this isn't me" entry point is worth keeping,
+                        so it survives as a link to the one place that control now lives.
+                        See docs/mobile-ia-audit-2026-08.md. */}
                     <Pressable
                       style={styles.secondaryBtn}
-                      onPress={() => void switchUser()}
+                      onPress={() => {
+                        onClose()
+                        router.push('/settings' as never)
+                      }}
                       accessibilityRole="button"
-                      accessibilityLabel="Not you? Switch account"
+                      accessibilityLabel="Open settings to switch account or sign out"
                     >
-                      <Text style={styles.secondaryBtnText}>Not you? Switch</Text>
+                      <Text style={styles.secondaryBtnText}>Not you? Settings</Text>
                     </Pressable>
                   </>
                 ) : step === 'email' ? (
@@ -371,6 +394,7 @@ const makeStyles = (theme: Theme) =>
     pressed: { opacity: 0.7 },
     chipText: { color: theme.text, fontSize: 14, fontWeight: '700' },
     chipMeta: { color: theme.textSecondary, fontSize: 13, fontWeight: '600' },
+    chipMetaAtRisk: { opacity: 0.5 },
     flex: { flex: 1 },
     backdrop: {
       flex: 1,

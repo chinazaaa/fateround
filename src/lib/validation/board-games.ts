@@ -55,11 +55,23 @@ export const monopolyTradeRespondSchema = monopolyActionSchema.extend({
 
 export const monopolyTradeCancelSchema = monopolyActionSchema
 
-export const monopolyTradeRepairSchema = monopolyActionSchema
+export const monopolyTradeRepairSchema = monopolyActionSchema.extend({
+  repair: z.literal(true).optional(),
+})
+
+// Borrow and repay take the same shape: an action plus a positive whole-money amount.
+const monopolyLoanAmountSchema = monopolyActionSchema.extend({
+  amount: z.number().int().min(1),
+})
+
+export const monopolyBorrowLoanSchema = monopolyLoanAmountSchema
+export const monopolyRepayLoanSchema = monopolyLoanAmountSchema
 
 export type MonopolyActionInput = z.infer<typeof monopolyActionSchema>
 export type MonopolyBuyInput = z.infer<typeof monopolyBuySchema>
 export type MonopolyJailInput = z.infer<typeof monopolyJailSchema>
+export type MonopolyBorrowLoanInput = z.infer<typeof monopolyBorrowLoanSchema>
+export type MonopolyRepayLoanInput = z.infer<typeof monopolyRepayLoanSchema>
 
 // ---------------------------------------------------------------------------
 // Yahtzee (POST /api/yahtzee/*)

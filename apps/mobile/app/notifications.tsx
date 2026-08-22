@@ -178,16 +178,23 @@ export default function NotificationsScreen() {
 
   const onQuietChange = useCallback(
     async (patch: Partial<QuietHoursState>) => {
-      if (!tokenKey) return
+      // Reflect the edit locally first so the UI stays responsive even if we
+      // still need to prompt for a push token to persist it.
       const next = { ...quiet, ...patch }
       setSnapshot((s) => (s ? { ...s, quietHours: next } : s))
+      const token = await ensureToken()
+      if (!token) {
+        // Permission declined — the toast in ensureToken already told the
+        // user. The local UI still reflects their choice for this session.
+        return
+      }
       try {
-        await patchQuietHours(tokenKey, { ...patch, timezone: deviceTimezone() })
-      } catch {
-        // Non-blocking — the UI already reflects the intended state.
+        await patchQuietHours(token, { ...patch, timezone: deviceTimezone() })
+      } catch (err) {
+        Alert.alert('Could not save', err instanceof Error ? err.message : 'Try again in a moment.')
       }
     },
-    [quiet, tokenKey]
+    [quiet, ensureToken]
   )
 
   if (loading) {

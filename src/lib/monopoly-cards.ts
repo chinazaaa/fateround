@@ -1,8 +1,10 @@
 import {
+  goSalaryForSize,
   MONOPOLY_GO_SALARY,
   MONOPOLY_HOTEL_LEVEL,
   MONOPOLY_MAX_HOUSES_PER_PROPERTY,
   nearestSpaceFrom,
+  type MonopolyBoardSize,
 } from '@/lib/monopoly-board'
 
 export type CardKind = 'chance' | 'community'
@@ -429,8 +431,19 @@ export function applyCardEffect(
   }
 }
 
-export function goSalaryForCard(card: MonopolyCardDef, passedGo: boolean): number {
-  if (card.effect === 'advance_go') return MONOPOLY_GO_SALARY
-  if (passedGo) return MONOPOLY_GO_SALARY
+export function goSalaryForCard(card: MonopolyCardDef, passedGo: boolean, boardSize: MonopolyBoardSize = 40): number {
+  const salary = goSalaryForSize(boardSize)
+  if (card.effect === 'advance_go') return salary
+  if (passedGo) return salary
   return 0
+}
+
+/**
+ * Card copy quotes the PAYDAY salary inline ("Collect £200"). The 48-space board pays a larger
+ * salary, so the quoted figure is rewritten to whatever the engine actually credits there.
+ */
+export function cardMessageForSize(message: string, boardSize: MonopolyBoardSize = 40): string {
+  const salary = goSalaryForSize(boardSize)
+  if (salary === MONOPOLY_GO_SALARY) return message
+  return message.replace(new RegExp(`£${MONOPOLY_GO_SALARY}\\b`, 'g'), `£${salary}`)
 }

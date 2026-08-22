@@ -45,6 +45,7 @@ import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
 import { useGamePlacements, useGameStats } from '@/components/session/RosterDrawerContext'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
+import { UnoSeriesScoreboard } from '@/components/games/cards/UnoSeriesScoreboard'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
 import { useGameTurnAlerts } from '@/hooks/useGameTurnAlerts'
@@ -440,6 +441,16 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
           leaderboard={cardHandLeaderboard(standings, session.winner_player_id, bootstrap.myPlayerId)}
           winnerPlayerId={session.winner_player_id}
           roundKey={session.id}
+          notice={
+            // Series scoring turns the room into a best-of, so the hand's result is only half
+            // the story — the running total and the target are the part players care about.
+            // Renders nothing when the host didn't enable series scoring.
+            <UnoSeriesScoreboard
+              game={bootstrap.game}
+              players={bootstrap.players}
+              highlightPlayerId={bootstrap.myPlayerId}
+            />
+          }
         />
       </GameShell>
     )

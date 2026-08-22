@@ -32,6 +32,7 @@
 
 import type { MonopolyBotView, MonopolyBotTradeContext, MonopolyBotTradeProperty } from '@/lib/monopoly-bot-adapter'
 import { MONOPOLY_JAIL_FINE, spacesInGroup } from '@/lib/monopoly-board'
+import { minLoanAmountForSize } from '@/lib/monopoly-loan'
 import type { MonopolyTradeDeclineReason } from '@/types'
 
 export type MonopolyBotAction =
@@ -52,6 +53,8 @@ export type MonopolyBotAction =
   | { type: 'auction_pass' }
   | { type: 'trade_accept' }
   | { type: 'trade_decline'; reason: MonopolyTradeDeclineReason }
+  | { type: 'borrow_loan'; amount: number }
+  | { type: 'repay_loan'; amount: number }
 
 // ── Tunables (all ratios / small integers, no absolute-dollar figures) ────
 
@@ -205,6 +208,17 @@ export function pickBotAction(view: MonopolyBotView): MonopolyBotAction | null {
 // ── Roll phase: build first if it makes sense, otherwise roll ─────────────
 
 function pickRollPhaseAction(view: MonopolyBotView): MonopolyBotAction {
+  // If we hold an active loan and have surplus cash (or deadline is urgent), repay it
+  if (view.activeLoan) {
+    const due = view.activeLoan.balanceRemaining
+    if (view.activeLoan.roundsRemaining <= 1 && view.me.cash >= due) {
+      return { type: 'repay_loan', amount: due }
+    }
+    if (view.me.cash >= due + 200) {
+      return { type: 'repay_loan', amount: due }
+    }
+  }
+
   const build = pickBuildAction(view)
   return build ?? { type: 'roll' }
 }
@@ -286,6 +300,18 @@ function pickRaiseFundsAction(view: MonopolyBotView): MonopolyBotAction {
     })
   if (mortgageable.length > 0) {
     return { type: 'mortgage', spaceIndex: mortgageable[0]!.spaceIndex }
+  }
+
+  // Only worth borrowing when one loan clears the whole debt: a partial loan pays
+  // nothing off, blocks a second loan, and adds interest to an estate that forfeits
+  // on the next tick anyway.
+  const creditLimit = view.creditLimit ?? 0
+  if (view.loansEnabled && !view.activeLoan) {
+    const minLoan = minLoanAmountForSize(view.boardSize)
+    const needed = debt.amount - view.me.cash
+    if (creditLimit >= Math.max(minLoan, needed)) {
+      return { type: 'borrow_loan', amount: Math.max(minLoan, needed) }
+    }
   }
 
   // Nothing left to raise. Forfeit — the engine handles the bankruptcy tree.

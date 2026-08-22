@@ -54,6 +54,11 @@ const unsubscribeSchema = z.object({
 const minutesField = z.number().int().min(0).max(1439).nullable().optional()
 const quietHoursSchema = z.object({
   tokenKey: z.string().min(1).max(1000),
+  // Callers that may be editing quiet hours BEFORE ever toggling a game (no
+  // device row yet) send `channel` so we can create the row on first patch.
+  // Legacy callers omit it → we fall back to a plain UPDATE.
+  channel: CHANNEL.optional(),
+  webKeys: webKeysSchema.optional(),
   mode: z.enum(['off', 'quiet', 'available']).optional(),
   // The 'quiet' and 'available' windows are independent — patch each separately.
   quietStartMinutes: minutesField,
@@ -205,8 +210,17 @@ export async function PATCH(req: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
   }
-  const { tokenKey, mode, quietStartMinutes, quietEndMinutes, availableStartMinutes, availableEndMinutes, timezone } =
-    parsed.data
+  const {
+    tokenKey,
+    channel,
+    webKeys,
+    mode,
+    quietStartMinutes,
+    quietEndMinutes,
+    availableStartMinutes,
+    availableEndMinutes,
+    timezone,
+  } = parsed.data
   const update: Record<string, unknown> = { updated_at: new Date().toISOString() }
   if (mode !== undefined) update.quiet_mode = mode
   if (quietStartMinutes !== undefined) update.quiet_start_minutes = quietStartMinutes
@@ -221,7 +235,23 @@ export async function PATCH(req: NextRequest) {
   const subscriberUserId = await getProfileFromRequest(req)
   if (subscriberUserId) update.user_id = subscriberUserId
   const admin = getSupabaseAdmin()
-  const { error } = await admin.from('notification_subscriber_devices').update(update).eq('token_key', tokenKey)
+  // When `channel` is provided, upsert so a quiet-hours edit made BEFORE any
+  // game toggle still creates the device row (otherwise a plain UPDATE would
+  // match zero rows, return 200 OK, and the setting would vanish on reload).
+  const { error } = channel
+    ? await admin.from('notification_subscriber_devices').upsert(
+        {
+          token_key: tokenKey,
+          channel,
+          // Only carry web keys on the web channel — never clear a mobile row's
+          // (already-null) columns explicitly, and never wipe existing web keys
+          // just because the caller sent none this time.
+          ...(channel === 'web' && webKeys ? { web_p256dh: webKeys.p256dh, web_auth: webKeys.auth } : {}),
+          ...update,
+        },
+        { onConflict: 'token_key' }
+      )
+    : await admin.from('notification_subscriber_devices').update(update).eq('token_key', tokenKey)
   if (error) return NextResponse.json({ error: internalErrorMessage('notifications', error) }, { status: 500 })
   return NextResponse.json({ ok: true })
 }

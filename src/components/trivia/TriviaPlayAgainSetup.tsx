@@ -5,6 +5,7 @@ import type { Game, QuestionSource, TriviaCategory, TriviaQuestion } from '@/typ
 import { Modal } from '@/components/ui/Modal'
 import { Field, Chip } from '@/components/ui/PageShell'
 import { ChipGrid, SegmentedControl } from '@/components/ui/CreateWizard'
+import { CustomSelect } from '@/components/ui/CustomSelect'
 import { TriviaTimerPicker } from '@/components/trivia/TriviaTimerPicker'
 import { LibraryPackBrowser } from '@/components/LibraryPackPicker'
 import {
@@ -19,7 +20,7 @@ import {
   questionUploadHint,
   questionSourceOptions,
 } from '@/lib/custom-questions'
-import { TRIVIA_QUESTION_COUNT } from '@/lib/trivia-questions'
+import { TRIVIA_CATEGORY_OPTIONS, TRIVIA_QUESTION_COUNT } from '@/lib/trivia-questions'
 import {
   TRIVIA_MAX_ROUNDS,
   TRIVIA_MIN_ROUNDS,
@@ -257,13 +258,14 @@ export function TriviaPlayAgainSetup({
 
         {questionSource === 'platform' && (
           <Field label="Category">
-            <SegmentedControl
+            {/* Every category the create page offers. It used to be a Tech/General segmented
+              control, so re-opening the settings of a Maths room showed "General" selected —
+              and one stray tap would have written that back over the host's real choice. */}
+            <CustomSelect
               value={triviaCategory}
               onChange={(v) => setTriviaCategory(v as TriviaCategory)}
-              options={[
-                { value: 'tech', label: 'Tech', hint: 'Programming, gadgets, internet culture' },
-                { value: 'general', label: 'General', hint: 'Geography, history, pop culture & more' },
-              ]}
+              searchable
+              options={[...TRIVIA_CATEGORY_OPTIONS]}
             />
           </Field>
         )}

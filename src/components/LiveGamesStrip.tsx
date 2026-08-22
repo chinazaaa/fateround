@@ -14,6 +14,7 @@ import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { gameTypeConfig, parseGameType } from '@/lib/game-types'
 import { getPlayerSession } from '@/lib/utils'
+import { useActiveGames } from '@/lib/active-games'
 import type { PublicGame } from '@/lib/game-browse'
 
 const PREVIEW_LIMIT = 5
@@ -25,6 +26,11 @@ export function LiveGamesStrip() {
   // Uppercased set of game codes this browser has a player session for, so we
   // can flip the CTA to "Continue" on games the viewer has already joined.
   const [joinedSet, setJoinedSet] = useState<Set<string>>(() => new Set())
+  // Profile-level, so it also covers a game you're in from ANOTHER device and a host with no
+  // player seat — both of which `joinedSet` (this browser's sessions) missed. Used to turn a
+  // "Join" card into a "Continue" one, never to hide the game: closing a tab by accident is
+  // the common way to lose a game you're running, and a list that omits it leaves no way back.
+  const { byCode: myActiveGames } = useActiveGames()
   const inFlight = useRef(false)
 
   const load = useCallback(async () => {
@@ -108,7 +114,13 @@ export function LiveGamesStrip() {
             const isActive = game.status === 'active'
             const isFull = game.max_players != null && game.playerCount >= game.max_players
             const lateJoinable = isActive && game.allow_late_players === true && !isFull
-            const alreadyJoined = joinedSet.has(game.id.toUpperCase())
+            // Profile first (covers another device, and a host with no seat), then this
+            // browser's own session as a fallback for a guest with no profile.
+            const myRole = myActiveGames.get(game.id.toUpperCase())
+            const alreadyJoined = !!myRole || joinedSet.has(game.id.toUpperCase())
+            // Resume where the role actually lives: /host reclaims the host token, /game
+            // continues the seat. Sending a host to /game would seat them as a player.
+            const resumeHref = myRole === 'host' ? `/host/${game.id}` : `/game/${game.id}`
             const stateLine = isLobby
               ? isFull
                 ? 'Lobby full'
@@ -118,7 +130,15 @@ export function LiveGamesStrip() {
                 : isFull
                   ? 'Started · full'
                   : 'Started · watch'
-            const cta = alreadyJoined ? 'Continue' : isLobby && !isFull ? 'Join' : lateJoinable ? 'Join' : 'Watch'
+            const cta = alreadyJoined
+              ? myRole === 'host'
+                ? 'Continue hosting'
+                : 'Continue'
+              : isLobby && !isFull
+                ? 'Join'
+                : lateJoinable
+                  ? 'Join'
+                  : 'Watch'
             const ctaClass = alreadyJoined || (isLobby && !isFull) || lateJoinable ? 'btn-primary' : 'btn-secondary'
             return (
               <div
@@ -141,7 +161,7 @@ export function LiveGamesStrip() {
                   </div>
                 </div>
                 <Link
-                  href={`/game/${game.id}`}
+                  href={alreadyJoined ? resumeHref : `/game/${game.id}`}
                   className={`${ctaClass} btn-fit px-3 py-1.5 text-xs`}
                   target="_blank"
                   rel="noopener noreferrer"
