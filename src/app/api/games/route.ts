@@ -1292,12 +1292,8 @@ export async function POST(req: NextRequest) {
           ...(rawMonopolyLoansEnabled !== undefined
             ? { monopoly_loans_enabled: rawMonopolyLoansEnabled !== false }
             : {}),
-          ...(rawMonopolyLoanInterest !== undefined
-            ? { monopoly_loan_interest: rawMonopolyLoanInterest }
-            : {}),
-          ...(rawMonopolyLoanTermRounds !== undefined
-            ? { monopoly_loan_term_rounds: rawMonopolyLoanTermRounds }
-            : {}),
+          ...(rawMonopolyLoanInterest !== undefined ? { monopoly_loan_interest: rawMonopolyLoanInterest } : {}),
+          ...(rawMonopolyLoanTermRounds !== undefined ? { monopoly_loan_term_rounds: rawMonopolyLoanTermRounds } : {}),
         }
       : {}),
     ...(isBingoGame(game_type)
