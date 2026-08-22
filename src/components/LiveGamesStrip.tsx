@@ -130,15 +130,7 @@ export function LiveGamesStrip() {
                 : isFull
                   ? 'Started · full'
                   : 'Started · watch'
-            const cta = alreadyJoined
-              ? myRole === 'host'
-                ? 'Continue hosting'
-                : 'Continue'
-              : isLobby && !isFull
-                ? 'Join'
-                : lateJoinable
-                  ? 'Join'
-                  : 'Watch'
+            const cta = alreadyJoined ? 'Continue' : isLobby && !isFull ? 'Join' : lateJoinable ? 'Join' : 'Watch'
             const ctaClass = alreadyJoined || (isLobby && !isFull) || lateJoinable ? 'btn-primary' : 'btn-secondary'
             return (
               <div
@@ -153,10 +145,10 @@ export function LiveGamesStrip() {
                   {cfg.card.emoji}
                 </span>
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-bold" style={{ color: 'var(--text)' }}>
+                  <div className="line-clamp-2 text-sm font-bold break-words" style={{ color: 'var(--text)' }}>
                     {cfg.label}
                   </div>
-                  <div className="truncate text-xs" style={{ color: 'var(--text-muted)' }}>
+                  <div className="line-clamp-2 text-xs break-words" style={{ color: 'var(--text-muted)' }}>
                     {stateLine} · {count} player{game.playerCount === 1 ? '' : 's'}
                   </div>
                 </div>
