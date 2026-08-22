@@ -355,7 +355,7 @@ export function TwoTruthsHostView({ gameCode, hostToken }: { gameCode: string; h
           onJoin={() => void hostJoinGame()}
           joining={hostJoining}
           onEditName={renameHost}
-          spectatorHint="Watch the game from the Watch tab"
+          spectatorHint="Watch the game"
           playingNote={
             <p className="text-sm text-muted">
               Playing as <strong className="text-body">{hostPlayerName}</strong> — submit your statements below before

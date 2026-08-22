@@ -547,7 +547,7 @@ export function CrosswordHostView({ gameCode, hostToken }: { gameCode: string; h
             onJoinNameChange={setHostJoinName}
             onJoin={() => void hostJoinGame()}
             joining={hostJoining}
-            spectatorHint="Watch the puzzle from the Watch tab"
+            spectatorHint="Watch the puzzle"
           />
         ) : undefined
       }

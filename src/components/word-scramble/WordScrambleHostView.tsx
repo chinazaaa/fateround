@@ -434,7 +434,7 @@ export function WordScrambleHostView({ gameCode, hostToken }: { gameCode: string
             onJoinNameChange={setHostJoinName}
             onJoin={() => void hostJoinGame()}
             joining={hostJoining}
-            spectatorHint="Watch the race from the Watch tab"
+            spectatorHint="Watch the race"
           />
         ) : undefined
       }

@@ -540,7 +540,7 @@ export function BingoHostView({ gameCode, hostToken }: { gameCode: string; hostT
           onJoinNameChange={setHostJoinName}
           onJoin={() => void hostJoinGame()}
           joining={hostJoining}
-          spectatorHint="Watch the game from the Watch tab"
+          spectatorHint="Watch the game"
           playingNote={
             <p className="text-sm text-muted">
               Playing as <strong className="text-body">{hostPlayerName}</strong> — you&apos;ll get a card when the game

@@ -505,7 +505,7 @@ export function WhotHostView({ gameCode, hostToken }: { gameCode: string; hostTo
             onJoin={() => void hostJoinGame()}
             joining={hostJoining}
             onEditName={renameHost}
-            spectatorHint="Spectate from the Watch tab"
+            spectatorHint="Spectate"
           />
         ) : undefined
       }
