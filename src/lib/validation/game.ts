@@ -403,6 +403,9 @@ export const boardGameLobbySettingsSchema = z.object({
   monopoly_auction_timer_seconds: z.number().int().min(5).max(60).nullable().optional(),
   monopoly_no_rent_in_jail: z.boolean().optional(),
   monopoly_estate_dividend: z.boolean().optional(),
+  monopoly_loans_enabled: z.boolean().optional(),
+  monopoly_loan_interest: z.coerce.number().int().min(0).max(100).optional(),
+  monopoly_loan_term_rounds: z.coerce.number().int().min(1).max(20).optional(),
   monopoly_board_size: z.coerce
     .number()
     .int()

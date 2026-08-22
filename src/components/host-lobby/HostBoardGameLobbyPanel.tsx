@@ -63,6 +63,9 @@ export function HostBoardGameLobbyPanel({
   const [monopolyAuctionTimerSeconds, setMonopolyAuctionTimerSeconds] = useState(10)
   const [monopolyNoRentInJail, setMonopolyNoRentInJail] = useState(false)
   const [monopolyEstateDividend, setMonopolyEstateDividend] = useState(false)
+  const [monopolyLoansEnabled, setMonopolyLoansEnabled] = useState(true)
+  const [monopolyLoanInterest, setMonopolyLoanInterest] = useState(15)
+  const [monopolyLoanTermRounds, setMonopolyLoanTermRounds] = useState(4)
   const [monopolyBoardSize, setMonopolyBoardSize] = useState<40 | 48>(40)
   const [whotPick3Enabled, setWhotPick3Enabled] = useState(true)
   const [whotPick2Stacking, setWhotPick2Stacking] = useState(true)
@@ -112,6 +115,9 @@ export function HostBoardGameLobbyPanel({
       setMonopolyAuctionTimerSeconds(game.monopoly_auction_timer_seconds ?? 10)
       setMonopolyNoRentInJail(game.monopoly_no_rent_in_jail === true)
       setMonopolyEstateDividend(game.monopoly_estate_dividend === true)
+      setMonopolyLoansEnabled(game.monopoly_loans_enabled !== false)
+      setMonopolyLoanInterest(game.monopoly_loan_interest ?? 15)
+      setMonopolyLoanTermRounds(game.monopoly_loan_term_rounds ?? 4)
       setMonopolyBoardSize(game.monopoly_board_size === 48 ? 48 : 40)
     }
     if (boardGameType === 'whot') {
@@ -389,6 +395,53 @@ export function HostBoardGameLobbyPanel({
                   void patchSettings({ monopoly_estate_dividend: v })
                 }}
               />
+              <Toggle
+                label="Bank Loans"
+                description="Allow players to borrow emergency funds from the Bank with flat interest and a foreclosure term limit."
+                value={monopolyLoansEnabled}
+                onChange={(v: boolean) => {
+                  setMonopolyLoansEnabled(v)
+                  void patchSettings({ monopoly_loans_enabled: v })
+                }}
+              />
+              {monopolyLoansEnabled && (
+                <div className="pl-3 border-l-2 border-[var(--border)] space-y-3 pt-1">
+                  <div>
+                    <div className="mb-1.5 text-xs font-medium text-muted">Loan interest rate</div>
+                    <HostLobbyOptionChips
+                      value={monopolyLoanInterest}
+                      options={[
+                        { value: 10, label: '10%' },
+                        { value: 15, label: '15% (Default)' },
+                        { value: 20, label: '20%' },
+                        { value: 25, label: '25%' },
+                      ]}
+                      onChange={(value) => {
+                        const nextInterest = Number(value)
+                        setMonopolyLoanInterest(nextInterest)
+                        void patchSettings({ monopoly_loan_interest: nextInterest })
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <div className="mb-1.5 text-xs font-medium text-muted">Loan term (rounds to repay)</div>
+                    <HostLobbyOptionChips
+                      value={monopolyLoanTermRounds}
+                      options={[
+                        { value: 2, label: '2 rounds' },
+                        { value: 3, label: '3 rounds' },
+                        { value: 4, label: '4 rounds (Default)' },
+                        { value: 5, label: '5 rounds' },
+                      ]}
+                      onChange={(value) => {
+                        const nextTerm = Number(value)
+                        setMonopolyLoanTermRounds(nextTerm)
+                        void patchSettings({ monopoly_loan_term_rounds: nextTerm })
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           </HostLobbySettingBlock>
         )}

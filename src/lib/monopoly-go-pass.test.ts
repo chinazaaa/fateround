@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { applyGoPass, movePosition, planMultiPlayerCashDeltas } from './monopoly'
+import { cardDef, cardMessageForSize, goSalaryForCard } from './monopoly-cards'
 import type { MonopolyPlayerState } from '@/types'
 
 describe('monopoly GO pass & cash accumulation', () => {
@@ -50,5 +51,25 @@ describe('monopoly GO pass & cash accumulation', () => {
     expect(nonWrapMove.passedGo).toBe(false)
     const nonWrapPlan = planMultiPlayerCashDeltas(states, 'player-1', -50, {}, states[0]!.cash)
     expect(nonWrapPlan.drawerCash).toBe(1450) // 1500 - 50 (card, no GO salary)
+  })
+
+  it('awards the expanded PAYDAY salary on the 48-space board', () => {
+    const goPass = applyGoPass(6000, false, false, false, 48)
+    expect(goPass.cash).toBe(6800)
+    expect(goPass.collected).toBe(800)
+  })
+
+  it('doubles the board-specific salary for an exact PAYDAY landing under the double-GO rule', () => {
+    expect(applyGoPass(1500, false, true, true).collected).toBe(400)
+    expect(applyGoPass(6000, false, true, true, 48).collected).toBe(1600)
+  })
+
+  it('pays and quotes the board-specific salary on advance-to-PAYDAY cards', () => {
+    const advanceToPayday = cardDef('chance', 0)
+    expect(goSalaryForCard(advanceToPayday, false)).toBe(200)
+    expect(goSalaryForCard(advanceToPayday, false, 48)).toBe(800)
+
+    expect(cardMessageForSize(advanceToPayday.message)).toContain('£200')
+    expect(cardMessageForSize(advanceToPayday.message, 48)).toContain('£800')
   })
 })
