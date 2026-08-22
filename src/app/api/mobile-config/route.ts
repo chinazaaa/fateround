@@ -45,6 +45,8 @@ const BATCH_11_GAMES: GameType[] = ['word_scramble', 'landmine', 'checkers_inter
 
 const BATCH_12_GAMES: GameType[] = ['wordle_room']
 
+const BATCH_13_GAMES: GameType[] = ['troll_run']
+
 /**
  * Server-driven mobile feature flags. Flip `mobileSupportedGames` when a native
  * screen is ready — no app store review required.
@@ -77,6 +79,7 @@ export async function GET() {
       ...BATCH_10_GAMES,
       ...BATCH_11_GAMES,
       ...BATCH_12_GAMES,
+      ...BATCH_13_GAMES,
     ],
     maintenanceMessage: null,
     forceWebFallbackFor: [] as GameType[],

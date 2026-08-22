@@ -111,6 +111,17 @@ import {
   type WordleRoomLobbyState,
 } from '@/components/host/lobby-settings/WordleRoomLobbySection'
 import {
+  TrollRunLobbySection,
+  isTrollRunLobbyGame,
+  type TrollRunLobbyState,
+} from '@/components/host/lobby-settings/TrollRunLobbySection'
+import { clampTrollRunRounds, clampTrollRunTimeLimit, isTrollRunWorldId } from '@fateround/shared/create-party-games'
+import {
+  TROLL_RUN_DEFAULT_ROUNDS,
+  TROLL_RUN_DEFAULT_TIME_LIMIT,
+  TROLL_RUN_DEFAULT_WORLD,
+} from '@fateround/shared/troll-run-types'
+import {
   WORDLE_ROOM_DEFAULT_TIMER,
   WORDLE_ROOM_DEFAULT_WORD_COUNT,
   clampWordleRoomCategory,
@@ -271,6 +282,7 @@ export function HostLobbySettingsSheet({
   const isCheckers = isCheckersLobbyGame(gameType)
   const isTrivia = isTriviaLobbyGame(gameType)
   const isWordleRoom = isWordleRoomLobbyGame(gameType)
+  const isTrollRun = isTrollRunLobbyGame(gameType)
   const isWordGrouping = isWordGroupingLobbyGame(gameType)
   const ownsTimer =
     isCardGame ||
@@ -286,7 +298,8 @@ export function HostLobbySettingsSheet({
     isTeamRound ||
     isQuickDraw ||
     isCodewords ||
-    isWordleRoom
+    isWordleRoom ||
+    isTrollRun
   const roundOptions = partyRoundOptions(gameType)
   // Rounds apply only to multi-round party games — never single-round ones
   // (codewords, bingo, two truths, word hunt, sudoku, i-call-on, mafia) or board
@@ -296,6 +309,7 @@ export function HostLobbySettingsSheet({
     !ROUNDLESS_GAMES.has(gameType) &&
     !isTeamRound &&
     !isQuickDraw &&
+    !isTrollRun &&
     roundOptions.length > 1 &&
     game.rounds_count != null
   // The universal "time per round" only applies to round-timed party games that
@@ -431,6 +445,11 @@ export function HostLobbySettingsSheet({
   const [checkers, setCheckers] = useState<CheckersLobbyState>(() => ({
     timerSeconds: game.timer_seconds ?? 0,
     checkersNigeriaStreetRules: game.checkers_nigeria_street_rules === true,
+  }))
+  const [trollRun, setTrollRun] = useState<TrollRunLobbyState>(() => ({
+    world: isTrollRunWorldId(game.troll_run_world) ? game.troll_run_world : TROLL_RUN_DEFAULT_WORLD,
+    rounds: clampTrollRunRounds(game.troll_run_rounds ?? TROLL_RUN_DEFAULT_ROUNDS),
+    timeLimit: clampTrollRunTimeLimit(game.troll_run_time_limit ?? TROLL_RUN_DEFAULT_TIME_LIMIT),
   }))
   const [wordle, setWordle] = useState<WordleRoomLobbyState>(() => {
     const rawCustom = (game as unknown as { wordle_room_custom_words?: unknown }).wordle_room_custom_words
@@ -616,6 +635,16 @@ export function HostLobbySettingsSheet({
       if (checkers.timerSeconds !== game.timer_seconds) board.timer_seconds = checkers.timerSeconds
       if (gameType === 'checkers_nigeria' && checkers.checkersNigeriaStreetRules !== game.checkers_nigeria_street_rules)
         board.checkers_nigeria_street_rules = checkers.checkersNigeriaStreetRules
+    }
+    if (isTrollRun) {
+      if (trollRun.world !== game.troll_run_world) board.troll_run_world = trollRun.world
+      if (trollRun.timeLimit !== game.troll_run_time_limit) board.troll_run_time_limit = trollRun.timeLimit
+      if (trollRun.rounds !== game.troll_run_rounds) {
+        board.troll_run_rounds = trollRun.rounds
+        // The lobby chips and the finish screen read `rounds_count`; create sends both for the
+        // same reason, so an edit that moved one and not the other would disagree with itself.
+        patch.rounds_count = trollRun.rounds
+      }
     }
     if (isWordleRoom) {
       if (wordle.category !== game.wordle_room_category) board.wordle_room_category = wordle.category
@@ -1054,6 +1083,9 @@ export function HostLobbySettingsSheet({
                 />
               ) : null}
 
+              {isTrollRun ? (
+                <TrollRunLobbySection value={trollRun} onChange={(p) => setTrollRun((prev) => ({ ...prev, ...p }))} />
+              ) : null}
               {isWordleRoom ? (
                 <WordleRoomLobbySection value={wordle} onChange={(p) => setWordle((prev) => ({ ...prev, ...p }))} />
               ) : null}

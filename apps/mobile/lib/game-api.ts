@@ -1295,6 +1295,12 @@ export type BoardLobbyPatch = {
   wordle_room_word_count?: number
   /** Wordle Room — optional library-pack pool ({word, hint?}[]); clears when empty. */
   wordle_room_words?: { word: string; hint?: string }[] | null
+  /** Troll Run — which level catalogue the server draws each round's order from. */
+  troll_run_world?: string
+  /** Troll Run — races in the championship (server clamps to 1–20). */
+  troll_run_rounds?: number
+  /** Troll Run — seconds on the round clock (server clamps to 30–600). */
+  troll_run_time_limit?: number
 }
 
 export function postLobbySettings(gameCode: string, hostToken: string, patch: BoardLobbyPatch) {
@@ -1697,4 +1703,91 @@ export function postWordleRoomRevealHint(gameId: string, resumeToken: string, wo
       wordIndex,
     }
   )
+}
+
+// ---------------------------------------------------------------------------
+// Troll Run
+// ---------------------------------------------------------------------------
+
+/**
+ * One in-race report. Progress is server-authoritative, so a report that never lands strands the
+ * runner on that level for the rest of the round — worth exactly one retry on a network blip or a
+ * server fault. A 4xx is a decision the server already made (round over, level already cleared)
+ * and repeating the request would only get the same answer. Mirrors the web client's `postRaceReport`.
+ */
+async function postTrollRunReport(path: string, body: Record<string, unknown>): Promise<boolean> {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const res = await fetch(apiUrl(path), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+        body: JSON.stringify(body),
+      })
+      if (res.ok) return true
+      if (res.status < 500) return false
+    } catch {
+      // Network blip — worth exactly one more try.
+    }
+  }
+  return false
+}
+
+export function postTrollRunDeath(gameId: string, resumeToken: string, levelId: string, levelName: string) {
+  return postTrollRunReport('/api/troll-run/report-death', {
+    gameId: gameId.toUpperCase(),
+    resumeToken,
+    levelId,
+    levelName,
+  })
+}
+
+export function postTrollRunClear(
+  gameId: string,
+  resumeToken: string,
+  levelId: string,
+  levelName: string,
+  timeMs: number
+) {
+  return postTrollRunReport('/api/troll-run/report-clear', {
+    gameId: gameId.toUpperCase(),
+    resumeToken,
+    levelId,
+    levelName,
+    timeMs: Math.max(0, Math.round(timeMs)),
+  })
+}
+
+/**
+ * Claims the round as finished. Nothing about the result is sent: the server accepts the claim
+ * only if its own progress row shows every level cleared, and reads the finishing time off the
+ * shared round clock.
+ */
+export function postTrollRunRoundFinish(gameId: string, resumeToken: string) {
+  return postTrollRunReport('/api/troll-run/report-round-finish', {
+    gameId: gameId.toUpperCase(),
+    resumeToken,
+  })
+}
+
+/**
+ * Pokes the deadline-driven phase machine (countdown → racing → scoreboard). Tokenless and
+ * idempotent: it can only apply a transition the clock has already earned, never skip a round.
+ */
+export function postTrollRunSync(gameId: string) {
+  return postJson<{ success?: boolean; skipped?: boolean; phase?: string }>('/api/troll-run/sync', {
+    gameId: gameId.toUpperCase(),
+  })
+}
+
+/**
+ * Leaves the between-rounds scoreboard for the next round. Host-only, because unlike every other
+ * Troll Run transition this one is a decision rather than a deadline — the server rejects
+ * `forceNextRound` without the host token.
+ */
+export function postTrollRunNextRound(gameId: string, hostToken: string) {
+  return postJson<{ ok?: boolean; code?: string; phase?: string }>('/api/troll-run/advance', {
+    gameId: gameId.toUpperCase(),
+    hostToken,
+    forceNextRound: true,
+  })
 }

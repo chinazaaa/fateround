@@ -6,13 +6,13 @@ per-game registry, then diffed web routes/features against mobile routes/feature
 
 Baseline health, for context — all green:
 
-| Check | Result |
-|---|---|
-| `vitest run` | 161 files passed, 1 skipped · 1926 tests passed, 16 skipped |
-| `tsc --noEmit` (web) | clean |
-| `eslint .` | 0 errors, 756 warnings (unused vars / `any` in tests) |
-| `game-type-coverage.test.ts` | passing — landing slug, content, rules, validation, options all cover 49/49 |
-| `game-view-registry.test.tsx` | passing — player + host views cover 49/49 |
+| Check                         | Result                                                                      |
+| ----------------------------- | --------------------------------------------------------------------------- |
+| `vitest run`                  | 161 files passed, 1 skipped · 1926 tests passed, 16 skipped                 |
+| `tsc --noEmit` (web)          | clean                                                                       |
+| `eslint .`                    | 0 errors, 756 warnings (unused vars / `any` in tests)                       |
+| `game-type-coverage.test.ts`  | passing — landing slug, content, rules, validation, options all cover 49/49 |
+| `game-view-registry.test.tsx` | passing — player + host views cover 49/49                                   |
 
 The CI guards do their job: nothing is half-wired on the surfaces they cover. Everything
 below is a surface **no guard watches**.
@@ -23,8 +23,8 @@ below is a surface **no guard watches**.
 
 ### 1.1 🔴 The server-side turn ticker skips 7 turn-based games
 
-`src/lib/game-tick.ts` is the always-on backstop whose own docstring says: *"if every
-participant backgrounds their tab, a round/turn can sit expired for minutes."* It pokes
+`src/lib/game-tick.ts` is the always-on backstop whose own docstring says: _"if every
+participant backgrounds their tab, a round/turn can sit expired for minutes."_ It pokes
 `/api/<slug>/expire-turn` for every active timed game.
 
 18 games ship an `expire-turn` route. `TURN_EXPIRE_SLUG` lists 9 of them.
@@ -32,15 +32,15 @@ participant backgrounds their tab, a round/turn can sit expired for minutes."* I
 Missing, all of which have a **tokenless, deadline-gated** `expire-turn` route (i.e. exactly
 what the ticker is designed to poke — no auth work needed):
 
-| Game | Route |
-|---|---|
-| `ludo` | `src/app/api/ludo/expire-turn/route.ts` |
-| `scrabble` | `src/app/api/scrabble/expire-turn/route.ts` |
-| `uno` | `src/app/api/uno/expire-turn/route.ts` |
-| `ayo` | `src/app/api/ayo/expire-turn/route.ts` |
-| `mahjong` | `src/app/api/mahjong/expire-turn/route.ts` |
+| Game                     | Route                                                     |
+| ------------------------ | --------------------------------------------------------- |
+| `ludo`                   | `src/app/api/ludo/expire-turn/route.ts`                   |
+| `scrabble`               | `src/app/api/scrabble/expire-turn/route.ts`               |
+| `uno`                    | `src/app/api/uno/expire-turn/route.ts`                    |
+| `ayo`                    | `src/app/api/ayo/expire-turn/route.ts`                    |
+| `mahjong`                | `src/app/api/mahjong/expire-turn/route.ts`                |
 | `checkers_international` | `src/app/api/checkers-international/expire-turn/route.ts` |
-| `checkers_nigeria` | `src/app/api/checkers-nigeria/expire-turn/route.ts` |
+| `checkers_nigeria`       | `src/app/api/checkers-nigeria/expire-turn/route.ts`       |
 
 Effect: in those 7 games the turn clock only advances while some browser tab has the view
 open and foregrounded. On mobile (app suspended) or with everyone backgrounded, a turn
@@ -53,8 +53,8 @@ opt-out, as bingo and troll-run have for auth reasons).
 
 ### 1.2 🟠 `troll_run` has no server-side round driver either
 
-`/api/troll-run/advance` exists and its docstring says *"Every client in the room polls this
-so the round still ends if the host's tab is asleep"* — but it requires a host or player
+`/api/troll-run/advance` exists and its docstring says _"Every client in the room polls this
+so the round still ends if the host's tab is asleep"_ — but it requires a host or player
 token, so like bingo the ticker can't drive it, and `troll_run` is absent from
 `ROUND_ADVANCE_SLUG` and `HANDLED_GAME_TYPES`. Same stall class as 1.1, needs a tokenless
 system path (bingo solved this with a separate `sync` route).
@@ -93,11 +93,26 @@ registry the footer already uses. Second copy, no test. Import the registry.
 
 ## 2. Missing on mobile (web has it, app does not)
 
-### 2.1 🔴 Troll Run — the #1 pinned game — does not exist on mobile
+### 2.1 ✅ Troll Run — the #1 pinned game — does not exist on mobile
 
-`troll_run` is first in `PINNED_GAME_TYPES` (top of the web picker and `/games` grid) and is
-the only one of the 49 game types with **no mobile player view and no entry in
-`/api/mobile-config`**. Mobile covers 48/49.
+**Shipped.** Mobile now covers 49/49.
+
+`troll_run` was first in `PINNED_GAME_TYPES` (top of the web picker and `/games` grid) and the
+only one of the 49 game types with no mobile player view and no entry in `/api/mobile-config`.
+
+The blocker was the engine: ~7,000 lines of physics, traps and level generation written against
+a 2D canvas. Rather than port or fork it, the platform-neutral half moved to
+`packages/shared/src/troll-run-engine/` behind two adapters — `TrollRunRenderTarget` and
+`TrollRunAudioSink` — leaving only `renderer.ts` (canvas) and `audio.ts` (WebAudio) on the web
+side, which `WebTrollRunEngine` wires back together so no web call site changed. Mobile supplies
+its own render target in `TrollRunStage.tsx`: the level is one `react-native-svg` tree
+re-rendered only when the geometry changes, and the actors are pooled Reanimated views.
+
+This matters beyond deduplication. Levels are never sent over the wire — each client rebuilds
+the round from `session.level_order` — and the server scores against the sequence it drew, so a
+phone and a laptop in the same race have to agree on the geometry exactly.
+`src/lib/mobile-troll-run.test.ts` guards that there is one copy of the engine, one set of
+palettes, and that the host-only `forceNextRound` never leaks into the tokenless nudge.
 
 ### 2.2 🔴 Tournaments are entirely absent from the app
 
@@ -149,17 +164,17 @@ everything: **Display name** (edit + save), **Preferences** (Voice chat default,
 **Account** (signed-in state + Sign out / Switch account).
 
 Mobile has no Settings tab on `/profile` at all — that screen is trophy case + per-game stats,
-and its own header comment says so: *"Identity management (sign in, edit handle, sign out) lives
-in the ProfileChip sheet on Home."* What exists is scattered and incomplete:
+and its own header comment says so: _"Identity management (sign in, edit handle, sign out) lives
+in the ProfileChip sheet on Home."_ What exists is scattered and incomplete:
 
-| Web `/profile` → Settings | Mobile |
-|---|---|
-| Display name (edit + save) | **Missing.** `updateProfile({ handle })` exists but is only reachable from `DailyNamePrompt`, and only when your name is auto-generated |
-| Voice chat default (`default_voice_on`) | **Missing entirely** — zero references anywhere in `apps/mobile` |
-| Dark mode | ✅ `SettingsSheet` (⚙ gear) |
-| Sound effects | ✅ `SettingsSheet` — web has this in the in-game gear instead |
-| Notifications | ✅ `SettingsSheet` |
-| Sign out / Switch account | Present but **hidden and mislabelled** — `signOutIdentity()` behind *"Not you? Switch"* in the Home `ProfileChip` sheet, not in settings |
+| Web `/profile` → Settings               | Mobile                                                                                                                                   |
+| --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Display name (edit + save)              | **Missing.** `updateProfile({ handle })` exists but is only reachable from `DailyNamePrompt`, and only when your name is auto-generated  |
+| Voice chat default (`default_voice_on`) | **Missing entirely** — zero references anywhere in `apps/mobile`                                                                         |
+| Dark mode                               | ✅ `SettingsSheet` (⚙ gear)                                                                                                              |
+| Sound effects                           | ✅ `SettingsSheet` — web has this in the in-game gear instead                                                                            |
+| Notifications                           | ✅ `SettingsSheet`                                                                                                                       |
+| Sign out / Switch account               | Present but **hidden and mislabelled** — `signOutIdentity()` behind _"Not you? Switch"_ in the Home `ProfileChip` sheet, not in settings |
 
 So a mobile player cannot change their display name outside one narrow daily-challenge prompt,
 cannot set the voice-chat default at all, and has to find sign-out on a Home-screen chip.
@@ -178,8 +193,8 @@ how web splits account state from per-install state.
 
 **And a bug it uncovered:** `updateProfile` read `data.profile` from `/api/profile/me` PATCH,
 which answers `{ handle }`. It therefore returned `null` on every SUCCESSFUL rename, so the one
-place mobile let you change your name (`DailyNamePrompt`) popped *"Could not save name — please
-try again"* after a rename that had actually gone through. Replaced with `updateProfileHandle`,
+place mobile let you change your name (`DailyNamePrompt`) popped _"Could not save name — please
+try again"_ after a rename that had actually gone through. Replaced with `updateProfileHandle`,
 which reads the real response shape and returns the saved handle or an error message.
 
 ### 2.9 🟠 Mobile profile numbers only refreshed after a force-quit — ✅ **fixed**
@@ -248,12 +263,12 @@ it was skipped for these.
 `docs/feature-backlog.md` says "there is no streak UI on web or mobile yet". **That is stale** —
 checked against the code, the display exists on both:
 
-| Surface | Web | Mobile |
-|---|---|---|
-| Profile chip | 🔥 N | 🔥 N |
-| `/profile` | "Day streak" tile + "Best N" | Current / Best streak tiles |
-| Trophy leaderboard | `· Nd streak` on each row | same |
-| Public profile + OG image | ✅ | — (no `/u/[username]` on mobile, see §2.8) |
+| Surface                   | Web                          | Mobile                                     |
+| ------------------------- | ---------------------------- | ------------------------------------------ |
+| Profile chip              | 🔥 N                         | 🔥 N                                       |
+| `/profile`                | "Day streak" tile + "Best N" | Current / Best streak tiles                |
+| Trophy leaderboard        | `· Nd streak` on each row    | same                                       |
+| Public profile + OG image | ✅                           | — (no `/u/[username]` on mobile, see §2.8) |
 
 The engine is solid too: `src/lib/trophies/streak.ts` computes against a fixed WAT calendar
 (so a timezone change can't farm a streak and a flight can't break one), is idempotent per day,
@@ -287,14 +302,14 @@ So this is smaller and better-scoped than "build the streak UI": a freeze rule i
 the 24 marketing landings and blog posts. It omits these, all crawlable (not in
 `ROBOTS_DISALLOW`) and all carrying real metadata:
 
-| Route | Status |
-|---|---|
-| `/tournament` | footer-linked, not in sitemap |
-| `/rooms` | footer-linked, full metadata, not in sitemap |
-| `/leaderboard` (+ `/daily`, `/trophies`, `/community`) | footer-linked, canonical + OG set, not in sitemap |
-| `/library` | footer-linked, not in sitemap |
-| `/browse` | full metadata, not in sitemap, not in footer |
-| `/collections` + `/collections/[slug]` | breadcrumb JSON-LD, `force-dynamic`, not in sitemap **or** footer |
+| Route                                                  | Status                                                            |
+| ------------------------------------------------------ | ----------------------------------------------------------------- |
+| `/tournament`                                          | footer-linked, not in sitemap                                     |
+| `/rooms`                                               | footer-linked, full metadata, not in sitemap                      |
+| `/leaderboard` (+ `/daily`, `/trophies`, `/community`) | footer-linked, canonical + OG set, not in sitemap                 |
+| `/library`                                             | footer-linked, not in sitemap                                     |
+| `/browse`                                              | full metadata, not in sitemap, not in footer                      |
+| `/collections` + `/collections/[slug]`                 | breadcrumb JSON-LD, `force-dynamic`, not in sitemap **or** footer |
 
 `scripts/submit-indexnow.mjs` derives its URL list from the live sitemap, so these are never
 submitted to IndexNow either. `/collections/[slug]` is the biggest loss — admin-managed
@@ -324,19 +339,20 @@ via one un-sitemapped hub.
 Everything except the four items below was fixed in the two commits that followed this audit;
 each fix ships with a CI guard, since every one of these was a surface no test watched.
 
-| Fixed | Where |
-|---|---|
-| 1.1 turn ticker (7 games) | `TURN_EXPIRE_SLUG` + `expire-turn-coverage.test.ts` |
-| 1.2 Troll Run round driver | new tokenless `/api/troll-run/sync` |
-| 1.3 OG art | rekeyed to `estate-kings`; Troll Run / Wordle / Daily Wordle cards rendered; `seo-og.test.ts` |
-| 1.4 mahjong `parseJsonBody` | `src/app/api/mahjong/expire-turn/route.ts` |
-| 1.5 sitemap solo list | now reads `SOLO_PLAY_INDEX` |
-| 2.4 mobile solo hub | `apps/mobile/app/play-solo/index.tsx` + home entry |
-| 2.6 mobile-config drift | `mobile-config.test.ts` |
-| 3.2 Quick Draw trophies | facts builder + 17 system trophies (Troll Run still open) |
-| 3.3 community boards | `20261026120100_community_games_backfill.sql` + `community-games-coverage.test.ts` |
-| 4.1 sitemap sections | `src/app/sitemap.ts` + `sitemap.test.ts` |
-| 5.1 README | rewritten against the real 49-game surface |
+| Fixed                       | Where                                                                                                                                   |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| 1.1 turn ticker (7 games)   | `TURN_EXPIRE_SLUG` + `expire-turn-coverage.test.ts`                                                                                     |
+| 1.2 Troll Run round driver  | new tokenless `/api/troll-run/sync`                                                                                                     |
+| 2.1 Troll Run on mobile     | engine extracted to `packages/shared/src/troll-run-engine/`; `TrollRunStage.tsx` + `TrollRunPlayerView.tsx`; `mobile-troll-run.test.ts` |
+| 1.3 OG art                  | rekeyed to `estate-kings`; Troll Run / Wordle / Daily Wordle cards rendered; `seo-og.test.ts`                                           |
+| 1.4 mahjong `parseJsonBody` | `src/app/api/mahjong/expire-turn/route.ts`                                                                                              |
+| 1.5 sitemap solo list       | now reads `SOLO_PLAY_INDEX`                                                                                                             |
+| 2.4 mobile solo hub         | `apps/mobile/app/play-solo/index.tsx` + home entry                                                                                      |
+| 2.6 mobile-config drift     | `mobile-config.test.ts`                                                                                                                 |
+| 3.2 Quick Draw trophies     | facts builder + 17 system trophies (Troll Run still open)                                                                               |
+| 3.3 community boards        | `20261026120100_community_games_backfill.sql` + `community-games-coverage.test.ts`                                                      |
+| 4.1 sitemap sections        | `src/app/sitemap.ts` + `sitemap.test.ts`                                                                                                |
+| 5.1 README                  | rewritten against the real 49-game surface                                                                                              |
 
 Also found and fixed while doing the above — none of it visible from the audit's own checks:
 
