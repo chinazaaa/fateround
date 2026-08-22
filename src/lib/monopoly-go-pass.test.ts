@@ -53,6 +53,28 @@ describe('monopoly GO pass & cash accumulation', () => {
     expect(nonWrapPlan.drawerCash).toBe(1450) // 1500 - 50 (card, no GO salary)
   })
 
+  it('credits a bank-source card collection to the drawer', () => {
+    const states = [
+      {
+        game_id: 'game-1',
+        player_id: 'player-1',
+        cash: 1500,
+        position: 2,
+        in_jail: false,
+        jail_turns: 0,
+        get_out_of_jail_free: 0,
+        passed_go_once: true,
+        bankrupt: false,
+      } as unknown as MonopolyPlayerState,
+    ]
+
+    // Esusu Fund / Kitty card: "collect £50" from the bank (no per-player transfers).
+    const plan = planMultiPlayerCashDeltas(states, 'player-1', 50, {}, states[0]!.cash)
+    expect(plan.drawerCash).toBe(1550)
+    expect(plan.otherWrites).toEqual([])
+    expect(plan.failedDebts).toEqual([])
+  })
+
   it('awards the expanded PAYDAY salary on the 48-space board', () => {
     const goPass = applyGoPass(6000, false, false, false, 48)
     expect(goPass.cash).toBe(6800)
