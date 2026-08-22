@@ -313,10 +313,21 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
   // Change name · Leave game for players/spectators live behind the main chrome's ⚙
   // gear (top header). Registered while the game is active; the shared settings sheet
   // renders it. Purely additive — the in-page PlayerSessionControls stays as-is.
+  //
+  // Also renders a "Rules in play" chip summary so a player can recall the house rules
+  // mid-game (bank loans on/off, forced auctions, Robin Hood, etc.) without going back
+  // to the lobby. Same content the host sees in their settings sheet, same chips as at
+  // join.
   const playerSettingsNode = useMemo(() => {
     if (!myPlayerId) return null
     return (
       <div className="space-y-3">
+        {game ? (
+          <div className="space-y-2">
+            <p className="label-caps">Rules in play</p>
+            <GameInfoChips game={game} />
+          </div>
+        ) : null}
         <EditNameInline
           gameCode={gameCode}
           playerId={myPlayerId}
@@ -335,7 +346,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
         />
       </div>
     )
-  }, [myPlayerId, game?.status, gameCode, me?.name, meSpectating, load, router])
+  }, [myPlayerId, game, gameCode, me?.name, meSpectating, load, router])
   useRegisterGameSettings(playerSettingsNode)
 
   useMonopolyNotifications({

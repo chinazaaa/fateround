@@ -356,6 +356,7 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
           gameCode={gameCode}
           hostToken={hostToken}
           gameType="monopoly"
+          game={game}
           onEnded={load}
           endGameLabel="End game early"
           endGameConfirmTitle="End this game early?"
