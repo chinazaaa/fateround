@@ -71,7 +71,7 @@ type Props = {
 }
 
 export function BrowseGamesList({ previewLimit, onSeeAll, tab = 'live' }: Props) {
-  const { codes: myActiveCodes } = useActiveGames()
+  const { byCode: myActiveGames } = useActiveGames()
   const router = useRouter()
   const theme = useTheme()
   const styles = useThemedStyles(makeStyles)
@@ -229,14 +229,19 @@ export function BrowseGamesList({ previewLimit, onSeeAll, tab = 'live' }: Props)
   }, [games])
 
   const visible = useMemo(() => {
-    const byType = filter === ALL ? games : games.filter((g) => g.game_type === filter)
-    // Games you're already in are shown by ContinuePlayingStrip above the HOME preview (or by
-    // Recent, on the device you're playing on). Leaving them here too would offer a "Join" card
-    // for a game you're currently hosting. The full /browse page keeps them: there you came to
-    // look at what's live, and your own game disappearing from the list would read as a bug.
-    const mine = previewLimit ? byType.filter((g) => !myActiveCodes.has(g.id.toUpperCase())) : byType
-    return previewLimit ? mine.slice(0, previewLimit) : mine
-  }, [games, filter, previewLimit, myActiveCodes])
+    const filtered = filter === ALL ? games : games.filter((g) => g.game_type === filter)
+    return previewLimit ? filtered.slice(0, previewLimit) : filtered
+  }, [games, filter, previewLimit])
+
+  /**
+   * Your own games stay in the list, with the CTA swapped to Continue.
+   *
+   * Hiding them was the wrong call: closing the app on a game you're running is the common way
+   * to lose it, and a list that quietly omits it leaves no way back except remembering the
+   * code. `myActiveGames` is profile-level, so unlike `joinedSet` (this device's recents) it
+   * also covers a game you're in from ANOTHER device and a host holding no player seat.
+   */
+  const roleFor = useCallback((id: string) => myActiveGames.get(id.toUpperCase()), [myActiveGames])
 
   if (previewLimit) {
     // Home preview: strip only, no chrome — auto-hides when empty so a fresh
@@ -257,8 +262,11 @@ export function BrowseGamesList({ previewLimit, onSeeAll, tab = 'live' }: Props)
             <GameCard
               key={g.id}
               game={g}
-              iAmPlayer={joinedSet.has(g.id.toUpperCase())}
-              onJoin={() => router.push(`/game/${g.id}` as never)}
+              iAmHost={roleFor(g.id) === 'host'}
+              iAmPlayer={roleFor(g.id) === 'player' || joinedSet.has(g.id.toUpperCase())}
+              // Resume where the role lives: /host reclaims the host token, /game continues
+              // the seat. Sending a host to /game would seat them as an ordinary player.
+              onJoin={() => router.push((roleFor(g.id) === 'host' ? `/host/${g.id}` : `/game/${g.id}`) as never)}
             />
           ))}
         </View>
@@ -310,8 +318,10 @@ export function BrowseGamesList({ previewLimit, onSeeAll, tab = 'live' }: Props)
       ) : (
         <View style={styles.list}>
           {visible.map((g) => {
-            const iAmHost = g.status === 'scheduled' && hostedSet.has(g.id)
-            const iAmPlayer = joinedSet.has(g.id.toUpperCase())
+            // `hostedSet` only knows scheduled games this device created; the profile role
+            // covers a live game you host, from any device.
+            const iAmHost = roleFor(g.id) === 'host' || (g.status === 'scheduled' && hostedSet.has(g.id))
+            const iAmPlayer = roleFor(g.id) === 'player' || joinedSet.has(g.id.toUpperCase())
             return (
               <GameCard
                 key={g.id}

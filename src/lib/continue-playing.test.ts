@@ -107,8 +107,9 @@ describe('continue strip vs the discovery feed', () => {
 
   it.each(HOOKS)('%s hook separates "elsewhere" from "all"', (_p, rel) => {
     const src = code(rel)
-    // `games` = other devices only (the strip). `codes` = everything (discovery exclusion).
-    expect(src).toMatch(/codes: new Set\(/)
+    // `games` = other devices only (the strip). `byCode` = everything, with the role, so the
+    // public feeds can relabel their own CTA.
+    expect(src).toMatch(/byCode: new Map\(/)
     expect(src, 'must filter the strip by what this device holds').toMatch(/heldOnThisDevice/)
   })
 
@@ -128,18 +129,35 @@ describe('continue strip vs the discovery feed', () => {
     }
   })
 
-  it('the web live-games strip excludes games you are in', () => {
+  /**
+   * The feeds must KEEP your own games, relabelled — not hide them.
+   *
+   * Hiding was the first attempt and it was wrong: closing a tab or the app on a game you're
+   * running is the common way to lose it, and a list that quietly omits it leaves no way back
+   * except remembering the code. A "Continue" card is the recovery path.
+   */
+  it('the web live-games strip relabels rather than hides', () => {
     const src = code('src/components/LiveGamesStrip.tsx')
-    expect(src).toMatch(/myActiveCodes\.has\(g\.id\.toUpperCase\(\)\)/)
-    // Checked AFTER the filter: when every live game is one of yours the section must hide,
-    // not render an empty grid under a "Live games" heading.
-    expect(src.search(/const shown =/)).toBeLessThan(src.search(/shown\.length === 0\) return null/))
+    expect(src, 'must not filter your own games out').not.toMatch(/games\.filter\(\(g\) => !myActive/)
+    expect(src).toMatch(/const myRole = myActiveGames\.get\(game\.id\.toUpperCase\(\)\)/)
+    expect(src, 'a host resumes into the host surface, still hosting').toMatch(
+      /myRole === 'host' \? `\/host\/\$\{game\.id\}` : `\/game\/\$\{game\.id\}`/
+    )
+    expect(src).toMatch(/'Continue hosting'/)
   })
 
-  it('the mobile home preview excludes them, but the full browse page does not', () => {
+  it('the mobile feeds relabel rather than hide, on both the preview and /browse', () => {
     const src = code('apps/mobile/components/browse/BrowseGamesList.tsx')
-    expect(src).toMatch(/previewLimit \? byType\.filter\(\(g\) => !myActiveCodes\.has/)
-    // On /browse you came to look at what's live; your own game vanishing would read as a bug.
-    expect(src).toMatch(/: byType/)
+    expect(src, 'must not filter your own games out').not.toMatch(/filter\(\(g\) => !myActive/)
+    expect(src).toMatch(/roleFor\(g\.id\) === 'host'/)
+    expect(src, 'a host resumes into the host surface').toMatch(/\? `\/host\/\$\{g\.id\}` : `\/game\/\$\{g\.id\}`/)
+  })
+
+  it("the profile role beats this device's local guess", () => {
+    // `joinedSet`/`hostedSet` only know THIS device. A host with no player seat, or a game you
+    // joined on your phone, was invisible to them.
+    const src = code('apps/mobile/components/browse/BrowseGamesList.tsx')
+    expect(src).toMatch(/roleFor\(g\.id\) === 'player' \|\| joinedSet\.has/)
+    expect(src).toMatch(/roleFor\(g\.id\) === 'host' \|\| \(g\.status === 'scheduled'/)
   })
 })

@@ -8,15 +8,18 @@ import { readHostToken } from '@/lib/host-session'
 /**
  * The games this profile is currently in, shared by every surface that cares.
  *
- * TWO CONSUMERS, ONE ANSWER. `ContinuePlayingStrip` renders these; the public "Live games"
- * feed EXCLUDES them. Without a single source they fight: a public game you host appears in
- * both — once as "Continue playing · hosting" and again as a discovery card inviting you to
- * join a game you are already running. The division only reads cleanly if it is exact, so both
- * sides have to be looking at the same list.
+ * TWO CONSUMERS, ONE ANSWER. `ContinuePlayingStrip` renders the ones you're in ELSEWHERE; the
+ * public feeds keep showing yours but swap "Join" for "Continue". Both need the same list, and
+ * the feeds also need the ROLE — a host resuming must land on the host surface and still be
+ * hosting, a player must land back in the seat they already hold.
  *
- * `LiveGamesStrip` already flipped its CTA to "Continue" for games this BROWSER had a session
- * for, which covered the player case on one device and missed the host-only case entirely.
- * This replaces that guesswork with the profile-level truth.
+ * The feeds deliberately do NOT hide your own games. Closing a tab by accident is the common
+ * way to lose a game you're running, and a list that quietly omits it leaves you with no way
+ * back except remembering the code. A "Continue" card is the recovery path.
+ *
+ * `LiveGamesStrip` already flipped its CTA for games this BROWSER had a session for, which
+ * covered the player case on one device and missed the host-only case entirely. This replaces
+ * that guesswork with the profile-level truth.
  *
  * ── THIS DEVICE vs ELSEWHERE ─────────────────────────────────────────────────
  * The strip is a HANDOFF: it is for the game you left running on your phone, seen from your
@@ -79,8 +82,11 @@ function heldOnThisDevice(code: string): boolean {
 export function useActiveGames(): {
   /** Games you're in on ANOTHER device — what the continue strip renders. */
   games: ActiveGame[]
-  /** Every active game's code, this device included — what discovery feeds exclude. */
-  codes: Set<string>
+  /**
+   * Role per UPPERCASED code, this device included — what the public feeds use to turn a
+   * "Join" card into a "Continue" one that resumes correctly.
+   */
+  byCode: Map<string, 'host' | 'player'>
   refresh: () => void
 } {
   const [games, setGames] = useState<ActiveGame[]>(() => cache?.games ?? [])
@@ -100,7 +106,7 @@ export function useActiveGames(): {
   const refresh = useCallback(() => void load(true), [])
   return {
     games: games.filter((g) => !heldOnThisDevice(g.code)),
-    codes: new Set(games.map((g) => g.code.toUpperCase())),
+    byCode: new Map(games.map((g) => [g.code.toUpperCase(), g.role])),
     refresh,
   }
 }

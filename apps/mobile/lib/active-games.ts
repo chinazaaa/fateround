@@ -7,10 +7,14 @@ import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus'
 /**
  * The games this profile is currently in — mobile mirror of `src/lib/active-games.ts`.
  *
- * TWO CONSUMERS, ONE ANSWER. `ContinuePlayingStrip` renders these; the public browse preview
- * EXCLUDES them. Without a single source they fight: a public game you host appears in both —
- * once as "Continue playing · hosting" and again as a discovery card inviting you to join a
- * game you are already running.
+ * TWO CONSUMERS, ONE ANSWER. `ContinuePlayingStrip` renders the ones you're in ELSEWHERE; the
+ * public feeds keep showing yours but swap "Join" for "Continue". Both need the same list, and
+ * the feeds also need the ROLE — a host resuming must land on the host surface and still be
+ * hosting, a player must land back in the seat they already hold.
+ *
+ * The feeds deliberately do NOT hide your own games. Closing the app on a game you're running
+ * is the common way to lose it, and a list that quietly omits it leaves no way back except
+ * remembering the code.
  *
  * ── THIS DEVICE vs ELSEWHERE ─────────────────────────────────────────────────
  * The strip is a HANDOFF: it is for the game you left running on your phone, seen from your
@@ -39,8 +43,11 @@ async function heldOnThisDevice(code: string): Promise<boolean> {
 export function useActiveGames(): {
   /** Games you're in on ANOTHER device — what the continue strip renders. */
   games: ActiveGame[]
-  /** Every active game's code, this device included — what discovery feeds exclude. */
-  codes: Set<string>
+  /**
+   * Role per UPPERCASED code, this device included — what the public feeds use to turn a
+   * "Join" card into a "Continue" one that resumes correctly.
+   */
+  byCode: Map<string, 'host' | 'player'>
 } {
   const [all, setAll] = useState<ActiveGame[]>([])
   const [elsewhere, setElsewhere] = useState<ActiveGame[]>([])
@@ -69,5 +76,5 @@ export function useActiveGames(): {
     // Nothing else to do on mount — useRefreshOnFocus fires on first focus too.
   }, [])
 
-  return { games: elsewhere, codes: new Set(all.map((g) => g.code.toUpperCase())) }
+  return { games: elsewhere, byCode: new Map(all.map((g) => [g.code.toUpperCase(), g.role])) }
 }
