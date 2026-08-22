@@ -12,6 +12,7 @@ import {
   type WordleRoomStandingRow,
 } from '@fateround/shared/wordle-room'
 import { wordleKeyBestStates } from '@/lib/daily-wordle'
+import { WordleRoomSpectatorBoard } from '@/components/games/wordle/WordleRoomSpectatorBoard'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameInfoChips } from '@/components/GameInfoChips'
@@ -529,21 +530,34 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
             </View>
           ) : null}
         </View>
-        <View style={styles.legend}>
-          <View style={styles.legendItem}>
-            <View style={[styles.legendSwatch, { backgroundColor: '#538d4e' }]} />
-            <Text style={styles.legendText}>right letter, right spot</Text>
+        {/* Legend and board are both meaningless to a viewer: the legend explains tiles they
+            will never see fill in, and their own board is empty and unusable. Give them the
+            race instead — see WordleRoomSpectatorBoard for what can honestly be shown. */}
+        {isViewer ? null : (
+          <View style={styles.legend}>
+            <View style={styles.legendItem}>
+              <View style={[styles.legendSwatch, { backgroundColor: '#538d4e' }]} />
+              <Text style={styles.legendText}>right letter, right spot</Text>
+            </View>
+            <View style={styles.legendItem}>
+              <View style={[styles.legendSwatch, { backgroundColor: '#b59f3b' }]} />
+              <Text style={styles.legendText}>in the word, wrong spot</Text>
+            </View>
+            <View style={styles.legendItem}>
+              <View style={[styles.legendSwatch, { backgroundColor: '#3a3a3c' }]} />
+              <Text style={styles.legendText}>not in the word</Text>
+            </View>
           </View>
-          <View style={styles.legendItem}>
-            <View style={[styles.legendSwatch, { backgroundColor: '#b59f3b' }]} />
-            <Text style={styles.legendText}>in the word, wrong spot</Text>
-          </View>
-          <View style={styles.legendItem}>
-            <View style={[styles.legendSwatch, { backgroundColor: '#3a3a3c' }]} />
-            <Text style={styles.legendText}>not in the word</Text>
-          </View>
-        </View>
-        {currentWord && <View style={styles.board}>{rows}</View>}
+        )}
+        {isViewer ? (
+          <WordleRoomSpectatorBoard
+            standings={standings}
+            progressRows={progressRows}
+            wordCount={wordCount}
+            maxAttempts={maxAttempts}
+          />
+        ) : null}
+        {!isViewer && currentWord && <View style={styles.board}>{rows}</View>}
         {message && <Text style={styles.message}>{message}</Text>}
         {currentWord &&
           !myFinished &&
