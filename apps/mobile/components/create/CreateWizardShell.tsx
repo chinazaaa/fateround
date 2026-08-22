@@ -426,6 +426,7 @@ export function CreateWizardShell() {
                         gameType={state.gameType}
                         custom={state.custom}
                         roundsCount={state.party.roundsCount}
+                        triviaCategory={state.party.triviaCategory}
                         onChange={(customPatch) => {
                           const patch: Partial<CreateWizardState> = { custom: { ...state.custom, ...customPatch } }
                           // Auto-fill the category from the picked library pack name, unless the host typed their own.

@@ -50,3 +50,19 @@ export function addMonths(dateStr: string, months: number): string {
   const d = toUtcDate(dateStr)
   return fmt(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + months, 1)))
 }
+
+/**
+ * "Tuesday, 30 June" — mirror of `formatDayLabel` in `src/lib/community-dates.ts`.
+ *
+ * The daily-challenge screens imported this before it existed here, which broke the mobile
+ * typecheck (not a CI gate at the time, so it went unnoticed) and would have thrown at
+ * runtime on the "Daily Challenge starts …" and per-day leaderboard labels.
+ */
+export function formatDayLabel(dateStr: string): string {
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'UTC',
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+  }).format(toUtcDate(dateStr))
+}

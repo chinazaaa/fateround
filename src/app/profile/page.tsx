@@ -9,6 +9,7 @@ import { StatsTab } from '@/components/profile/StatsTab'
 import { SettingsTab } from '@/components/profile/SettingsTab'
 import { GAME_CATEGORIES, parseGameType } from '@/lib/game-types'
 import { authHeaders } from '@/lib/identity'
+import { StreakStatusBanner } from '@/components/profile/StreakStatusBanner'
 import { Skeleton } from '@/components/Skeleton'
 import { Glyph } from '@/components/icons/Glyph'
 import { ChampionIcon, CrownIcon, FireIcon } from '@hugeicons/core-free-icons'
@@ -192,12 +193,20 @@ export default function ProfilePage() {
         </button>
       </div>
 
+      <StreakStatusBanner profile={profile} />
+
       <div className="grid grid-cols-3 gap-3">
         <Stat
           icon={FireIcon}
           value={`${profile?.current_streak ?? 0}`}
           label="Day streak"
-          sub={`Best ${profile?.longest_streak ?? 0}`}
+          // Freezes were invisible everywhere despite being stored per profile — a player had
+          // no way to know forgiveness existed, which is most of its retention value.
+          sub={
+            profile && profile.streak_freezes > 0
+              ? `Best ${profile.longest_streak} · ${profile.streak_freezes} ❄`
+              : `Best ${profile?.longest_streak ?? 0}`
+          }
         />
         <Stat
           icon={ChampionIcon}

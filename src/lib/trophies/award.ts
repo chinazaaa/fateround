@@ -292,7 +292,7 @@ export async function awardForFinishedGame(
     // ── Streak ────────────────────────────────────────────────────────────────────────────
     const { data: profile } = await supabase
       .from('profiles')
-      .select('current_streak, longest_streak, last_active_date, trophy_points')
+      .select('current_streak, longest_streak, last_active_date, streak_freezes, trophy_points')
       .eq('id', profileId)
       .maybeSingle()
 
@@ -301,6 +301,7 @@ export async function awardForFinishedGame(
         current_streak: Number(profile?.current_streak) || 0,
         longest_streak: Number(profile?.longest_streak) || 0,
         last_active_date: (profile?.last_active_date as string) ?? null,
+        streak_freezes: Number(profile?.streak_freezes) || 0,
       } satisfies StreakState,
       watDate(finishedAt)
     )
@@ -333,6 +334,9 @@ export async function awardForFinishedGame(
         current_streak: streak.current_streak,
         longest_streak: streak.longest_streak,
         last_active_date: streak.last_active_date,
+        // Freezes are earned and spent by advanceStreak. Persisting them is what makes the
+        // forgiveness real — the column existed from the first migration but nothing wrote it.
+        streak_freezes: streak.streak_freezes,
       })
       .eq('id', profileId)
 
@@ -409,7 +413,7 @@ export async function awardForSoloFinish(
 
     const { data: profile } = await supabase
       .from('profiles')
-      .select('current_streak, longest_streak, last_active_date, trophy_points')
+      .select('current_streak, longest_streak, last_active_date, streak_freezes, trophy_points')
       .eq('id', profileId)
       .maybeSingle()
 
@@ -418,6 +422,7 @@ export async function awardForSoloFinish(
         current_streak: Number(profile?.current_streak) || 0,
         longest_streak: Number(profile?.longest_streak) || 0,
         last_active_date: (profile?.last_active_date as string) ?? null,
+        streak_freezes: Number(profile?.streak_freezes) || 0,
       } satisfies StreakState,
       watDate(finishedAt)
     )
@@ -441,6 +446,9 @@ export async function awardForSoloFinish(
         current_streak: streak.current_streak,
         longest_streak: streak.longest_streak,
         last_active_date: streak.last_active_date,
+        // Freezes are earned and spent by advanceStreak. Persisting them is what makes the
+        // forgiveness real — the column existed from the first migration but nothing wrote it.
+        streak_freezes: streak.streak_freezes,
       })
       .eq('id', profileId)
 

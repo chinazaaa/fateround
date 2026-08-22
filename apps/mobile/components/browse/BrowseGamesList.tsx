@@ -10,6 +10,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View, ActivityIndicator } from 'react-native'
+import { useActiveGames } from '@/lib/active-games'
 import { useFocusEffect, useRouter } from 'expo-router'
 import type { GameType } from '@fateround/shared'
 import { AppButton } from '@/components/ui/AppButton'
@@ -70,6 +71,7 @@ type Props = {
 }
 
 export function BrowseGamesList({ previewLimit, onSeeAll, tab = 'live' }: Props) {
+  const { byCode: myActiveGames } = useActiveGames()
   const router = useRouter()
   const theme = useTheme()
   const styles = useThemedStyles(makeStyles)
@@ -231,6 +233,16 @@ export function BrowseGamesList({ previewLimit, onSeeAll, tab = 'live' }: Props)
     return previewLimit ? filtered.slice(0, previewLimit) : filtered
   }, [games, filter, previewLimit])
 
+  /**
+   * Your own games stay in the list, with the CTA swapped to Continue.
+   *
+   * Hiding them was the wrong call: closing the app on a game you're running is the common way
+   * to lose it, and a list that quietly omits it leaves no way back except remembering the
+   * code. `myActiveGames` is profile-level, so unlike `joinedSet` (this device's recents) it
+   * also covers a game you're in from ANOTHER device and a host holding no player seat.
+   */
+  const roleFor = useCallback((id: string) => myActiveGames.get(id.toUpperCase()), [myActiveGames])
+
   if (previewLimit) {
     // Home preview: strip only, no chrome — auto-hides when empty so a fresh
     // install doesn't show an empty box.
@@ -250,8 +262,11 @@ export function BrowseGamesList({ previewLimit, onSeeAll, tab = 'live' }: Props)
             <GameCard
               key={g.id}
               game={g}
-              iAmPlayer={joinedSet.has(g.id.toUpperCase())}
-              onJoin={() => router.push(`/game/${g.id}` as never)}
+              iAmHost={roleFor(g.id) === 'host'}
+              iAmPlayer={roleFor(g.id) === 'player' || joinedSet.has(g.id.toUpperCase())}
+              // Resume where the role lives: /host reclaims the host token, /game continues
+              // the seat. Sending a host to /game would seat them as an ordinary player.
+              onJoin={() => router.push((roleFor(g.id) === 'host' ? `/host/${g.id}` : `/game/${g.id}`) as never)}
             />
           ))}
         </View>
@@ -303,8 +318,10 @@ export function BrowseGamesList({ previewLimit, onSeeAll, tab = 'live' }: Props)
       ) : (
         <View style={styles.list}>
           {visible.map((g) => {
-            const iAmHost = g.status === 'scheduled' && hostedSet.has(g.id)
-            const iAmPlayer = joinedSet.has(g.id.toUpperCase())
+            // `hostedSet` only knows scheduled games this device created; the profile role
+            // covers a live game you host, from any device.
+            const iAmHost = roleFor(g.id) === 'host' || (g.status === 'scheduled' && hostedSet.has(g.id))
+            const iAmPlayer = roleFor(g.id) === 'player' || joinedSet.has(g.id.toUpperCase())
             return (
               <GameCard
                 key={g.id}

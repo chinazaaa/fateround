@@ -3,6 +3,7 @@ import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-nati
 import { useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import type { Game, Player } from '@fateround/shared'
+import { playerIsViewer } from '@fateround/shared/viewers'
 import { gameLabel } from '@/lib/mobile-registry'
 import { removePlayerAsHost } from '@/lib/game-api'
 import { publishHostPlayerId } from '@/lib/api'
@@ -13,6 +14,7 @@ import { RosterDrawer } from '@/components/session/RosterDrawer'
 import { RosterButton } from '@/components/session/RosterButton'
 import { TransferHostSheet } from '@/components/host/TransferHostSheet'
 import { HostControlsSheet } from '@/components/host/HostControlsSheet'
+import { PostJoinSubscribeNudge } from '@/components/notifications/PostJoinSubscribeNudge'
 import { HostViewProvider } from '@/components/host/HostViewContext'
 import { GameRouter, hasMobilePlayerView } from '@/components/games/GameRouter'
 import { HeaderAction } from '@/components/ui/HeaderAction'
@@ -35,11 +37,25 @@ type Props = {
    * ⚙ Host button. Requires `players` + `onReload`.
    */
   playFirst?: boolean
+  /**
+   * Play-first ONLY once the host has taken a seat. For a host-run game that drives itself, so
+   * a host who joined as a player gets the game rather than a read-only console. See below.
+   */
+  playFirstWhenSeated?: boolean
   players?: Player[]
   onReload?: () => void
 }
 
-export function HostChrome({ gameCode, hostToken, game, children, playFirst, players, onReload }: Props) {
+export function HostChrome({
+  gameCode,
+  hostToken,
+  game,
+  children,
+  playFirst,
+  playFirstWhenSeated,
+  players,
+  onReload,
+}: Props) {
   const router = useRouter()
   const theme = useTheme()
   const styles = useThemedStyles(makeStyles)
@@ -68,15 +84,50 @@ export function HostChrome({ gameCode, hostToken, game, children, playFirst, pla
   }, [gameCode, hostToken, hostPlayerId])
 
   const canPlay = hasMobilePlayerView(game.game_type)
-  // Play-along games (playFirst) render the game board inline. Host-run games
-  // (bingo/trivia/…) render their control console — the `children` — as the main
-  // screen: no Play/Manage tab, so the drive controls (call number, advance
-  // phase, next round) are always in reach. When the game is over, a seated host
-  // sees the shared finished screen (winner + standings + inline host actions);
-  // a host-only host falls back to the console's own finished controls.
   const finished = game.status === 'finished'
   const seated = !!hostPlayerId
-  const showPlayView = canPlay && (playFirst || (finished && seated))
+  /**
+   * Seated AND still playing — not merely holding a row.
+   *
+   * The ⚙ sheet offers "Leave game (keep hosting)", which drops the host out of play but keeps
+   * them in the roster as a VIEWER so they can watch and still run the game. Keying play-first
+   * on `seated` alone would leave them on a read-only player view afterwards, with the console
+   * — and Force advance, which the ⚙ sheet does not carry — unreachable. Someone who just chose
+   * to stop playing is running the game, so give them the console back.
+   */
+  const hostRow = hostPlayerId ? (players ?? []).find((p) => p.id === hostPlayerId) : null
+  const hostIsPlaying = !!hostRow && !playerIsViewer(hostRow, game)
+
+  /**
+   * Two host shapes, and no tab between them.
+   *
+   * `playFirst` games (Ayo, Whot, chess, …) render the board and put host controls behind the
+   * ⚙ button. Host-run games (bingo, mafia, quick draw, …) render their control console as the
+   * main screen, because the drive controls — call a number, advance the phase — ARE the
+   * hosting job and must stay one tap away.
+   *
+   * `playFirstWhenSeated` is for the game that is neither: one whose host can take a seat and
+   * then genuinely just play, because the game drives itself. Trivia is the case — rounds
+   * auto-advance when everyone answers or the clock runs out, and the server ticker backs that
+   * up, so a seated trivia host has nothing to drive. They tapped "Play along" and typed a
+   * name; they should get the game, with the console behind ⚙ like every other game they play.
+   *
+   * NOT A TAB. An earlier version of this fix added a Play/Manage toggle here, which is exactly
+   * what the comment this replaces ruled out — "no Play/Manage tab, so the drive controls are
+   * always in reach". Reintroducing it made every host-run game carry a control the app doesn't
+   * use anywhere else, to solve a problem only trivia had. One prop, one game, no new UI.
+   */
+  const playFirstNow = playFirst || (playFirstWhenSeated && hostIsPlaying)
+  // A seated host still sees the shared finished screen at the end (winner + standings +
+  // inline host actions); a host-only host falls back to the console's own finished controls.
+  const showPlayView = canPlay && (playFirstNow || (finished && seated))
+  // Keyed off showPlayView, NOT playFirstNow — these were an if/else before the play-first
+  // change split them into two conditionals, and independent conditions let both be true at
+  // once: a FINISHED game with a seated host on a console screen (bingo in manual mode, or
+  // trivia after "Leave game (keep hosting)") rendered the player finish panel AND the console
+  // stacked, with two Play again buttons.
+  const showConsole = !showPlayView && !!children
+
   // The ⚙ Host controls sheet (settings, end game, play again) and the roster
   // drawer's Remove are available to any host screen that hands us the roster.
   const showHostControls = !!players && !!onReload
@@ -172,11 +223,18 @@ export function HostChrome({ gameCode, hostToken, game, children, playFirst, pla
               <GameRouter gameCode={gameCode} gameType={game.game_type} />
             </View>
           </HostViewProvider>
-        ) : (
+        ) : null}
+        {showConsole ? (
           <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
             {children}
+            {/* The "want a ping when new <game> games open?" nudge web shows on every finished
+              game. Mobile only had it inside `GameFinishPanel`, which is the PLAYER finish
+              screen — a host watching their own game end never got the prompt. Gated on
+              !showPlayView because the play view renders GameFinishPanel, which brings its own. */}
+            {finished && !showPlayView ? <PostJoinSubscribeNudge gameType={game.game_type} /> : null}
           </ScrollView>
-        )}
+        ) : null}
+
         {/* Floats over the screen — mounted at the shell root (not in the scroll
           body, where it would scroll away). */}
         <VoiceRail gameCode={gameCode} mode="host" hostToken={hostToken} />

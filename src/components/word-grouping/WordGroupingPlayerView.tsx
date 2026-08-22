@@ -14,6 +14,7 @@ import { useGameRosterPoll } from '@/hooks/useGameRosterPoll'
 import { useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { useRoomMemberAutoJoin, useRoomMemberJoin, useRoomMemberNamePrefill } from '@/hooks/useRoomMemberJoin'
 import { allowLatePlayers, playerIsViewer, preJoinScreen } from '@/lib/viewers'
+import { ViewerModeBanner } from '@/components/ViewerModeBanner'
 import { LateJoinChoice } from '@/components/LateJoinChoice'
 import { EditNameInline } from '@/components/ui/EditNameInline'
 import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
@@ -735,6 +736,13 @@ export function WordGroupingPlayerView({ gameCode, embedded = false }: { gameCod
         .wg-shake { animation: wg-shake 0.4s ease-in-out; }
         .wg-one-away { animation: wg-one-away 1.5s ease-in-out forwards; }
       `}</style>
+
+      {/* Word Grouping allows late players (`gameAllowsLatePlayerJoin`), so a spectator here
+          CAN be promoted — but nothing offered it, leaving them watching with no way in. Every
+          other promotable game's player view carries this. */}
+      {isViewer && (
+        <ViewerModeBanner gameCode={gameCode} playerId={myPlayerId} game={game} player={me} onPromoted={load} />
+      )}
 
       {/* Mistakes · score · timer bar. Three-column grid so the score sits between the
           mistake dots and the countdown, mirroring the way the finished screen presents

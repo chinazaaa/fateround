@@ -8,6 +8,7 @@ import {
   POLL_ROUND_TIMER_OPTIONS,
   TRIVIA_MAX_ROUNDS,
   TRIVIA_MIN_ROUNDS,
+  clampTriviaCategory,
   codewordsTeamAssignmentFlags,
   codewordsTeamAssignmentFromFlags,
   formatPollRoundTimer,
@@ -479,7 +480,9 @@ export function HostLobbySettingsSheet({
     ),
   }))
   const [trivia, setTrivia] = useState<TriviaLobbyState>(() => ({
-    category: game.trivia_category === 'tech' ? 'tech' : 'general',
+    // clampTriviaCategory, not a tech/general coin-flip: coercing here made the sheet open
+    // on "General" for a Maths room, and a tap on any other setting could have saved that back.
+    category: clampTriviaCategory(game.trivia_category),
     custom: customContentStateFromGame(game),
   }))
   const triviaPoolCount =
@@ -855,7 +858,7 @@ export function HostLobbySettingsSheet({
       } = {}
       const nextSource = usesCustomPool ? 'custom' : 'platform'
       if (nextSource !== (game.question_source ?? 'platform')) tp.question_source = nextSource
-      const currentCategory = game.trivia_category === 'tech' ? 'tech' : 'general'
+      const currentCategory = clampTriviaCategory(game.trivia_category)
       if (trivia.category !== currentCategory) tp.trivia_category = trivia.category
       if (usesCustomPool) {
         const built = customContentPayload('trivia', trivia.custom)

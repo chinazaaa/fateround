@@ -775,6 +775,10 @@ export interface CrazyEightsSession {
   winner_player_id: string | null
   finish_order: string[]
   turn_deadline_at: string | null
+  created_at: string
+  /** Bumped on every write. The realtime delta fast-path orders rows by it, so a row that
+   *  arrives out of order can be dropped instead of regressing the board. */
+  updated_at: string
 }
 
 export interface CrazyEightsPlayerHand {
@@ -812,6 +816,10 @@ export interface WhotSession {
   finish_order: string[]
   reshuffle_count: number
   turn_deadline_at: string | null
+  created_at: string
+  /** Bumped on every write. The realtime delta fast-path orders rows by it, so a row that
+   *  arrives out of order can be dropped instead of regressing the board. */
+  updated_at: string
 }
 
 export interface WhotPlayerHand {

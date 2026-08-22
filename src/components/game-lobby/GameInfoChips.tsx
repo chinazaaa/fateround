@@ -6,6 +6,7 @@ import { wordScrambleThemeOptions } from '@/lib/word-scramble-puzzles'
 import { THEME_MAP } from '@/lib/themes'
 import { parseUnoRules } from '@/lib/uno'
 import { clampWordleRoomCategory, wordleRoomCategoryLabel } from '@/lib/wordle-room'
+import { triviaCategoryLabel } from '@/lib/trivia-questions'
 import { Glyph } from '@/components/icons/Glyph'
 import {
   UserMultipleIcon,
@@ -285,7 +286,8 @@ export function gameInfoItems(game: GameMeta | null | undefined): string[] {
       items.push(puzzleThemeChip(wordScrambleThemeOptions(), game.word_scramble_theme))
     if (game.word_scramble_difficulty) items.push(capitalize(game.word_scramble_difficulty))
   } else if (gt === 'trivia') {
-    if (game.trivia_category) items.push(game.trivia_category === 'tech' ? 'Tech' : 'General knowledge')
+    // All 17 categories, not a tech/general binary: a Maths room used to chip "General knowledge".
+    if (game.trivia_category) items.push(triviaCategoryLabel(game.trivia_category))
   } else if (gt === 'who_said_this') {
     if (game.wst_quote_source) {
       const labels: Record<string, string> = {

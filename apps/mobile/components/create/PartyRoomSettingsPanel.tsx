@@ -31,6 +31,7 @@ import {
 import { isPairGame } from '@fateround/shared/poll-games'
 import { QUICK_DRAW_GUESS_TEAM_OPTIONS, clampQuickDrawPlayMode } from '@fateround/shared/quick-draw-guess'
 import { QUIPLASH_SUBMIT_TIMER_OPTIONS, QUIPLASH_VOTE_TIMER_OPTIONS } from '@fateround/shared/quiplash'
+import { TRIVIA_CATEGORY_OPTIONS } from '@fateround/shared/trivia'
 import { TTL_TIMER_OPTIONS } from '@fateround/shared/two-truths'
 import { WORD_RUSH_ROUND_OPTIONS, WORD_RUSH_TURN_OPTIONS, formatWordRushTurnTimer } from '@fateround/shared/word-rush'
 import { WORD_HUNT_TIMER_OPTIONS } from '@fateround/shared/word-hunt'
@@ -180,25 +181,7 @@ export function PartyRoomSettingsPanel({ gameType, party, onChange, contentSourc
               <SelectField
                 title="Category"
                 value={party.triviaCategory}
-                options={[
-                  { value: 'general', label: 'General (All Categories)' },
-                  { value: 'tech', label: 'Tech' },
-                  { value: 'art', label: 'Art' },
-                  { value: 'food', label: 'Food' },
-                  { value: 'geography', label: 'Geography' },
-                  { value: 'history', label: 'History' },
-                  { value: 'language', label: 'Language' },
-                  { value: 'literature', label: 'Literature' },
-                  { value: 'math', label: 'Math' },
-                  { value: 'movies', label: 'Movies' },
-                  { value: 'music', label: 'Music' },
-                  { value: 'nature', label: 'Nature' },
-                  { value: 'pop_culture', label: 'Pop Culture' },
-                  { value: 'science', label: 'Science' },
-                  { value: 'sports', label: 'Sports' },
-                  { value: 'technology', label: 'Technology' },
-                  { value: 'world_culture', label: 'World Culture' },
-                ]}
+                options={[...TRIVIA_CATEGORY_OPTIONS]}
                 searchable
                 onChange={(value) => onChange({ triviaCategory: value as PartyRoomSettings['triviaCategory'] })}
               />
