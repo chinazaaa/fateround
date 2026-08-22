@@ -436,10 +436,10 @@ function GameCard({
           <Text style={styles.badgeEmoji}>{meta.emoji}</Text>
         </View>
         <View style={styles.cardBody}>
-          <Text style={styles.cardTitle} numberOfLines={1}>
+          <Text style={styles.cardTitle} numberOfLines={2}>
             {label}
           </Text>
-          <Text style={styles.cardSub} numberOfLines={1}>
+          <Text style={styles.cardSub} numberOfLines={2}>
             {statusLine}
           </Text>
         </View>

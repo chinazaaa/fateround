@@ -1004,6 +1004,10 @@ export function planMultiPlayerCashDeltas(
       }
     }
   } else {
+    // Anything the drawer is owed beyond the sum of per-player transfers comes
+    // from the bank (e.g. a plain "collect £50" card) and is always credited.
+    const othersOwed = Object.values(others).reduce((sum, delta) => sum + Math.abs(delta), 0)
+    safeDrawerDelta = drawerDelta - othersOwed
     for (const [id, delta] of Object.entries(others)) {
       const target = states.find((s) => s.player_id === id)
       if (!target) continue
