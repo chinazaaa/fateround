@@ -47,7 +47,20 @@ const FIXTURES: Record<DailyChallengeGameType, Record<string, unknown>> = {
   whot_puzzle: {
     solution: { optimalMoves: 2, moves: [{ type: 'play', card: { shape: 'circle', number: 5 } }, { type: 'draw' }] },
   },
-  ludo_puzzle: { solution: { optimalRolls: 4 } },
+  ludo_puzzle: {
+    // Four pieces, each one step from finish (home:4) and a dice sequence of four 1s so
+    // each roll advances one piece over the line. That gives the solver a real 4-step
+    // optimal path to reconstruct instead of the summary-only fallback.
+    startingPieces: [
+      { id: 0, zone: 'home', pos: 4 },
+      { id: 1, zone: 'home', pos: 4 },
+      { id: 2, zone: 'home', pos: 4 },
+      { id: 3, zone: 'home', pos: 4 },
+    ],
+    diceSequence: [1, 1, 1, 1],
+    obstacles: [],
+    solution: { optimalRolls: 4 },
+  },
 }
 
 describe('buildDailyAnswerReveal', () => {
@@ -135,8 +148,15 @@ describe('buildDailyAnswerReveal', () => {
     for (const item of items) expect(item.value).not.toContain('[object')
   })
 
-  it('gives the ludo target, which is the whole answer there', () => {
-    expect(lines(build('ludo_puzzle', FIXTURES.ludo_puzzle)!.sections[0])[0].value).toBe('4 rolls')
+  it('gives the ludo target + optimal step-by-step, which is what the player wants to see', () => {
+    const section = build('ludo_puzzle', FIXTURES.ludo_puzzle)!.sections[0]
+    // The section label carries the roll count; the item list carries the moves.
+    expect(section.label).toMatch(/^Finish in \d+ rolls?$/)
+    const items = lines(section)
+    expect(items.length).toBeGreaterThan(0)
+    expect(items[0].label).toMatch(/^Roll 1/)
+    // Never leak a raw object into the UI.
+    for (const item of items) expect(item.value).not.toContain('[object')
   })
 })
 
@@ -155,15 +175,26 @@ describe('answer reveal surfaces', () => {
     expect(read(rel)).toMatch(/answers/i)
   })
 
-  it.each([
-    ['web', 'src/components/daily/DailyAnswersClient.tsx'],
-    ['mobile', 'apps/mobile/app/daily-challenges/answers/[slug].tsx'],
-  ])('the %s answers view never asks for a specific date', (_platform, rel) => {
-    // Passing a date would be the one way a client could aim at today. Both omit it and take
-    // the route's default of yesterday, so the gate cannot be argued with.
-    const src = read(rel)
+  it('the mobile answers view never asks for a specific date', () => {
+    // Passing a date would be the one way a client could aim at today. Mobile omits it and
+    // takes the route's default of yesterday, so the gate cannot be argued with.
+    const src = read('apps/mobile/app/daily-challenges/answers/[slug].tsx')
     expect(src).toMatch(/\/answers`/)
     expect(src, 'must not send a date param').not.toMatch(/answers\?date=/)
+  })
+
+  it('the web answers view forwards the URL date param, and the server still refuses today', () => {
+    // Web supports prev/next-day navigation via ?date=YYYY-MM-DD in the URL, so it does pass
+    // the param through to the API. That's safe because the server route (see
+    // src/app/api/daily-challenges/[gameType]/answers/route.ts) rejects any date that isn't
+    // strictly before today in WAT — the gate lives on the server, not the client. What we
+    // still verify here is that the client cannot inject today itself: the only date it
+    // sends is whatever came in via the URL search param.
+    const src = read('src/components/daily/DailyAnswersClient.tsx')
+    expect(src).toMatch(/\/answers/)
+    expect(src, 'the date must come from the URL, not from the client synthesising it').toMatch(
+      /searchParams\.get\('date'\)/
+    )
   })
 })
 

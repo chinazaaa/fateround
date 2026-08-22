@@ -153,8 +153,87 @@ export function DailyAnswersClient({ gameType, slug }: { gameType: DailyChalleng
 /** Sudoku sections use 9×9 grids — render with 3×3 block dividers rather than a flat mesh. */
 const SUDOKU_SIZE = 9
 
+/** Cycling colour palette for the word-search word-path highlights — CSS custom-props keyed on
+ *  --idx so cells can compose their own background from the palette. Palette scales cleanly in
+ *  both themes because it's a mix into the tile surface, not a hardcoded backdrop. */
+const WORD_SEARCH_HIGHLIGHT_COLORS = [
+  '#f43f5e',
+  '#06b6d4',
+  '#22c55e',
+  '#f59e0b',
+  '#a855f7',
+  '#3b82f6',
+  '#ec4899',
+  '#14b8a6',
+]
+
 function Section({ section }: { section: DailyAnswerSection }) {
   const columnCount = useMemo(() => (section.kind === 'lines' ? section.items.length : 0), [section])
+
+  if (section.kind === 'wordSearch') {
+    const cols = section.grid[0]?.length ?? 1
+    // For each cell, remember every placement whose path passes through — so a cell shared by
+    // two crossing words shows both colours (as vertical/horizontal stripes) instead of the
+    // last-write-wins problem you get from a plain override.
+    const cellOwners = new Map<string, number[]>()
+    section.placements.forEach((placement, pIdx) => {
+      placement.cells.forEach((c) => {
+        const key = `${c.row}-${c.col}`
+        const list = cellOwners.get(key)
+        if (list) list.push(pIdx)
+        else cellOwners.set(key, [pIdx])
+      })
+    })
+
+    return (
+      <div className="glass-card p-4 space-y-3">
+        {section.label ? <p className="label-caps">{section.label}</p> : null}
+        <div className="overflow-x-auto">
+          <div
+            className="inline-grid gap-px bg-[var(--border-strong)]"
+            style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
+          >
+            {section.grid.flatMap((row, r) =>
+              row.map((cell, c) => {
+                const owners = cellOwners.get(`${r}-${c}`) ?? []
+                const color =
+                  owners.length > 0
+                    ? WORD_SEARCH_HIGHLIGHT_COLORS[owners[0] % WORD_SEARCH_HIGHLIGHT_COLORS.length]
+                    : null
+                return (
+                  <span
+                    key={`${r}-${c}`}
+                    className="surface-inset flex h-7 w-7 items-center justify-center text-xs font-bold tabular-nums sm:h-8 sm:w-8 sm:text-sm"
+                    style={
+                      color
+                        ? {
+                            background: `color-mix(in srgb, ${color} 28%, transparent)`,
+                            color: 'var(--text)',
+                          }
+                        : undefined
+                    }
+                  >
+                    {cell}
+                  </span>
+                )
+              })
+            )}
+          </div>
+        </div>
+        <ul className="flex flex-wrap gap-x-3 gap-y-1 text-xs">
+          {section.placements.map((placement, i) => {
+            const color = WORD_SEARCH_HIGHLIGHT_COLORS[i % WORD_SEARCH_HIGHLIGHT_COLORS.length]
+            return (
+              <li key={i} className="text-body inline-flex items-center gap-1.5 font-semibold">
+                <span className="inline-block h-2 w-2 rounded-full" style={{ background: color }} aria-hidden />
+                {placement.word}
+              </li>
+            )
+          })}
+        </ul>
+      </div>
+    )
+  }
 
   if (section.kind === 'grid') {
     const cols = section.rows[0]?.length ?? 1
