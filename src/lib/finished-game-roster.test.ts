@@ -30,9 +30,10 @@ const deleteHandler = (() => {
 
 describe('removal from a finished game', () => {
   it('is a no-op rather than a delete', () => {
-    expect(deleteHandler).toMatch(
-      /if \(\(game as \{ status\?: string \}\)\.status === 'finished'\) \{\s*\n\s*return NextResponse\.json\(\{ success: true, retained: true \}\)/
-    )
+    // The guard, and the fact it returns the retained shape — not that they are adjacent.
+    // There is an unsubscribe step between them (see below).
+    expect(deleteHandler).toMatch(/if \(\(game as \{ status\?: string \}\)\.status === 'finished'\) \{/)
+    expect(deleteHandler).toMatch(/return NextResponse\.json\(\{ success: true, retained: true \}\)/)
   })
 
   it('answers 200, because the client navigates away either way', () => {
@@ -44,9 +45,7 @@ describe('removal from a finished game', () => {
   it('runs BEFORE the per-game removal branches', () => {
     // The load-bearing property. Every `isXGame(gameType)` branch calls its own removal helper
     // and returns, so a guard below even one of them silently misses that game.
-    const guardAt = deleteHandler.search(
-      /status === 'finished'\)\s*\{\s*\n\s*return NextResponse\.json\(\{ success: true, retained: true \}\)/
-    )
+    const guardAt = deleteHandler.search(/status === 'finished'\) \{/)
     expect(guardAt).toBeGreaterThan(-1)
 
     const branches = [...deleteHandler.matchAll(/\bif \(is[A-Z]\w*Game\(gameType\)\)/g)]
@@ -60,6 +59,19 @@ describe('removal from a finished game', () => {
     const guardAt = deleteHandler.search(/status === 'finished'/)
     const genericDelete = deleteHandler.search(/from\('players'\)\s*\.delete\(\)/)
     expect(genericDelete).toBeGreaterThan(guardAt)
+  })
+
+  it("unsubscribes the leaver from this game's pushes", () => {
+    // Both push tables key on `players(id) ON DELETE CASCADE`, so before the guard existed a
+    // leave unsubscribed the device as a side effect of the delete. Retaining the row retains
+    // those too — which would leave someone who deliberately left a finished game still
+    // getting "Play again? 🔁" when the host reopened the lobby. The score tables hang off the
+    // player row, not these, so dropping them costs the standings nothing.
+    expect(deleteHandler).toMatch(/from\('push_subscriptions'\)\.delete\(\)/)
+    expect(deleteHandler).toMatch(/from\('mobile_push_tokens'\)\.delete\(\)/)
+    const unsub = deleteHandler.search(/push_subscriptions'\)\.delete/)
+    const retained = deleteHandler.search(/retained: true/)
+    expect(unsub, 'must run before the early return').toBeLessThan(retained)
   })
 
   it('still deletes mid-game — a player who walks out forfeits rather than places', () => {
