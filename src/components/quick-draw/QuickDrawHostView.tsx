@@ -383,7 +383,7 @@ function QuickDrawLieHostView({ gameCode, hostToken }: { gameCode: string; hostT
           onJoin={() => void hostJoinGame()}
           joining={hostJoining}
           onEditName={renameHost}
-          spectatorHint="Watch drawings from the Watch tab"
+          spectatorHint="Watch drawings"
           playingNote={
             <p className="text-sm text-muted">
               Playing as <strong className="text-body">{hostPlayerName}</strong> — draw and vote once you start.

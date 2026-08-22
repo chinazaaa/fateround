@@ -336,7 +336,7 @@ export function QuiplashHostView({ gameCode, hostToken }: { gameCode: string; ho
           onJoin={() => void hostJoinGame()}
           joining={hostJoining}
           onEditName={renameHost}
-          spectatorHint="Watch battles from the Watch tab"
+          spectatorHint="Watch battles"
           playingNote={
             <p className="text-sm text-muted">
               Playing as <strong className="text-body">{hostPlayerName}</strong> — write answers and vote once you

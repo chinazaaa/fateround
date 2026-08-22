@@ -439,7 +439,7 @@ export function SudokuHostView({ gameCode, hostToken }: { gameCode: string; host
             onJoinNameChange={setHostJoinName}
             onJoin={() => void hostJoinGame()}
             joining={hostJoining}
-            spectatorHint="Watch the puzzle from the Watch tab"
+            spectatorHint="Watch the puzzle"
           />
         ) : undefined
       }

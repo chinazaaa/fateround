@@ -460,7 +460,7 @@ export function WordleRoomHostView({ gameCode, hostToken }: { gameCode: string; 
           onJoinNameChange={setHostJoinName}
           onJoin={() => void hostJoinGame()}
           joining={hostJoining}
-          spectatorHint="Watch the game from the Watch tab"
+          spectatorHint="Watch the game"
           playingNote={
             <p className="text-sm text-muted">
               Playing as <strong className="text-body">{hostPlayerName}</strong> — play once you start.

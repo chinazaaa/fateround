@@ -483,7 +483,7 @@ export function CrazyEightsHostView({ gameCode, hostToken }: { gameCode: string;
             onJoin={() => void hostJoinGame()}
             joining={hostJoining}
             onEditName={renameHost}
-            spectatorHint="Spectate from the Watch tab"
+            spectatorHint="Spectate"
           />
         ) : undefined
       }

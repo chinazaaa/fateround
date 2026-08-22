@@ -537,7 +537,7 @@ export function WordSearchHostView({ gameCode, hostToken }: { gameCode: string; 
             onJoinNameChange={setHostJoinName}
             onJoin={() => void hostJoinGame()}
             joining={hostJoining}
-            spectatorHint="Watch the hunt from the Watch tab"
+            spectatorHint="Watch the hunt"
           />
         ) : undefined
       }

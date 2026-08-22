@@ -353,7 +353,7 @@ export function QuickDrawGuessHostView({ gameCode, hostToken }: { gameCode: stri
           onJoin={() => void hostJoinGame()}
           joining={hostJoining}
           onEditName={renameHost}
-          spectatorHint="Watch drawings from the Watch tab"
+          spectatorHint="Watch drawings"
           playingNote={
             hostPlayerName ? (
               <p className="text-sm text-muted">

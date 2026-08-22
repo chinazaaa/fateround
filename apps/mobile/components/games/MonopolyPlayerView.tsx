@@ -1182,7 +1182,7 @@ function MonopolyLoanBanner({
     >
       <View style={styles.loanBannerBody}>
         <Text style={styles.loanBannerTitle}>🏦 Bank Loan</Text>
-        <Text style={styles.loanBannerSubtitle} numberOfLines={1}>
+        <Text style={styles.loanBannerSubtitle}>
           {hasLoan
             ? `Balance ${formatThemedMoney(balance as number, themeId)} · ${roundsRemaining === 1 ? 'Due this round' : `${roundsRemaining} rounds left`}`
             : 'Borrow liquidity against your portfolio'}
