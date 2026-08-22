@@ -171,6 +171,17 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
         game_type: 'mafia',
         host_token: hostToken,
         max_players: mafiaState.maxPlayers ?? 10,
+        // Fields the "Rules in play" chips read from — kept in sync with the fuller
+        // gameObj built below for HostGameLayout, so the ⚙ sheet during active play
+        // shows the same house-rules summary that the join screen carries.
+        timer_seconds: mafiaState.timerSeconds ?? 60,
+        mafia_day_seconds: mafiaState.daySeconds ?? 90,
+        mafia_voting_seconds: mafiaState.votingSeconds ?? 45,
+        mafia_advanced_mode: mafiaState.advancedMode ?? false,
+        mafia_doctor_enabled: mafiaState.doctorEnabled ?? true,
+        mafia_detective_enabled: mafiaState.detectiveEnabled ?? true,
+        mafia_aura_seer_enabled: mafiaState.auraSeerEnabled ?? true,
+        mafia_anonymous_votes: mafiaState.anonymousVotes ?? false,
       } as unknown as Game)
     : null
 
@@ -224,6 +235,7 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
     () =>
       mafiaState?.status === 'active' ? (
         <HostActiveSettings
+          game={gameObjForSeat}
           gameCode={gameCode}
           hostToken={hostToken}
           gameType="mafia"

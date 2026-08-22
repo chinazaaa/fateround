@@ -323,6 +323,7 @@ export function Draughts10HostView({ gameCode, hostToken }: { gameCode: string; 
     () =>
       game?.status === 'active' && !gameFinished ? (
         <HostActiveSettings
+          game={game}
           gameCode={gameCode}
           hostToken={hostToken}
           gameType={resolvedGameType}

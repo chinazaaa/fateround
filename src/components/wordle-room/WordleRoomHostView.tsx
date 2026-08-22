@@ -343,6 +343,7 @@ export function WordleRoomHostView({ gameCode, hostToken }: { gameCode: string; 
     () =>
       game?.status === 'active' ? (
         <HostActiveSettings
+          game={game}
           gameCode={gameCode}
           hostToken={hostToken}
           gameType="wordle_room"

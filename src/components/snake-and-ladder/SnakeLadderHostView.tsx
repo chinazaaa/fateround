@@ -343,6 +343,7 @@ export function SnakeLadderHostView({ gameCode, hostToken }: { gameCode: string;
     () =>
       game?.status === 'active' ? (
         <HostActiveSettings
+          game={game}
           gameCode={gameCode}
           hostToken={hostToken}
           gameType="snake_and_ladder"

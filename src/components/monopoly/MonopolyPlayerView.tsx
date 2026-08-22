@@ -11,6 +11,7 @@ import { MONOPOLY_COLOR_CLASSES } from '@/lib/monopoly'
 import type { MonopolyColorGroup } from '@/lib/monopoly'
 import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
 import { GameInfoChips } from '@/components/game-lobby/GameInfoChips'
+import { RulesInPlaySection } from '@/components/game-lobby/RulesInPlaySection'
 import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
 import { LeaderboardJoinNote } from '@/components/game-lobby/LeaderboardJoinNote'
 import { MonopolyPageHeader } from '@/components/monopoly/MonopolyChrome'
@@ -322,12 +323,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
     if (!myPlayerId) return null
     return (
       <div className="space-y-3">
-        {game ? (
-          <div className="space-y-2">
-            <p className="label-caps">Rules in play</p>
-            <GameInfoChips game={game} />
-          </div>
-        ) : null}
+        <RulesInPlaySection game={game} />
         <EditNameInline
           gameCode={gameCode}
           playerId={myPlayerId}

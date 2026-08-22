@@ -333,6 +333,7 @@ export function WordHuntHostView({ gameCode, hostToken }: { gameCode: string; ho
     () =>
       game?.status === 'active' ? (
         <HostActiveSettings
+          game={game}
           gameCode={gameCode}
           hostToken={hostToken}
           gameType="word_hunt"

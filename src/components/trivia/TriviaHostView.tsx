@@ -252,7 +252,7 @@ export function TriviaHostView({ gameCode, hostToken }: { gameCode: string; host
   const hostSettingsNode = useMemo(
     () =>
       game?.status === 'active' ? (
-        <HostActiveSettings gameCode={gameCode} hostToken={hostToken} gameType="trivia" onEnded={load}>
+        <HostActiveSettings game={game} gameCode={gameCode} hostToken={hostToken} gameType="trivia" onEnded={load}>
           <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
           {roundAutomation.activeRound && (
             <button

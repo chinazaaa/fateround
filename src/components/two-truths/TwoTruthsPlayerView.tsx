@@ -32,6 +32,7 @@ import { EliminationBanner } from '@/components/EliminationBanner'
 import { EditNameInline } from '@/components/ui/EditNameInline'
 import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
 import { useRegisterGameSettings } from '@/components/GameSettingsContext'
+import { RulesInPlaySection } from '@/components/game-lobby/RulesInPlaySection'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 
 type Screen =
@@ -177,6 +178,7 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
     if (!myPlayerId) return null
     return (
       <div className="space-y-3">
+        <RulesInPlaySection game={game} />
         <EditNameInline
           gameCode={gameCode}
           playerId={myPlayerId}

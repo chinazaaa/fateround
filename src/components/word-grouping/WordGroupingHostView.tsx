@@ -172,6 +172,7 @@ export function WordGroupingHostView({ gameCode, hostToken }: { gameCode: string
     () =>
       game && game.status === 'active' ? (
         <HostActiveSettings
+          game={game}
           gameCode={gameCode}
           hostToken={hostToken}
           gameType="word_grouping"

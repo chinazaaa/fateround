@@ -336,6 +336,7 @@ export function SudokuHostView({ gameCode, hostToken }: { gameCode: string; host
     () =>
       game?.status === 'active' ? (
         <HostActiveSettings
+          game={game}
           gameCode={gameCode}
           hostToken={hostToken}
           gameType="sudoku"

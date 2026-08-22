@@ -157,6 +157,7 @@ export function TrollRunHostView({ gameCode, hostToken }: TrollRunHostViewProps)
     () =>
       game?.status === 'active' ? (
         <HostActiveSettings
+          game={game}
           gameCode={gameCode}
           hostToken={hostToken}
           gameType="troll_run"

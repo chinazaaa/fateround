@@ -19,6 +19,7 @@ import { LateJoinChoice } from '@/components/LateJoinChoice'
 import { EditNameInline } from '@/components/ui/EditNameInline'
 import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
 import { useRegisterGameSettings } from '@/components/GameSettingsContext'
+import { RulesInPlaySection } from '@/components/game-lobby/RulesInPlaySection'
 import { useToast } from '@/components/ui/Toast'
 import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
 import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
@@ -327,6 +328,7 @@ export function WordGroupingPlayerView({ gameCode, embedded = false }: { gameCod
     if (!myPlayerId) return null
     return (
       <div className="space-y-3">
+        <RulesInPlaySection game={game} />
         <EditNameInline
           gameCode={gameCode}
           playerId={myPlayerId}

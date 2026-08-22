@@ -290,6 +290,7 @@ export function CheckersHostView({ gameCode, hostToken }: { gameCode: string; ho
     () =>
       game?.status === 'active' && !gameFinished ? (
         <HostActiveSettings
+          game={game}
           gameCode={gameCode}
           hostToken={hostToken}
           gameType="checkers"

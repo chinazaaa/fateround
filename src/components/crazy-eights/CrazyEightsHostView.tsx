@@ -6,6 +6,7 @@ import { HostGameLayout } from '@/components/host/HostGameLayout'
 import { HostLobby } from '@/components/host/HostLobby'
 import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
 import { GameInfoChips } from '@/components/game-lobby/GameInfoChips'
+import { RulesInPlaySection } from '@/components/game-lobby/RulesInPlaySection'
 import { HostManageSection } from '@/components/host/HostManageSection'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
 import { HostBoardGameLobbyPanel } from '@/components/host-lobby/HostBoardGameLobbyPanel'
@@ -364,6 +365,7 @@ export function CrazyEightsHostView({ gameCode, hostToken }: { gameCode: string;
     if (game?.status !== 'active') return null
     return (
       <div className="space-y-4">
+        <RulesInPlaySection game={game} />
         <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
         {hostMode === 'player' && !!hostPlayerId && (
           <HostLeaveSeatButton
