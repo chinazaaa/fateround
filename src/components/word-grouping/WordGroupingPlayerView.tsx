@@ -347,7 +347,7 @@ export function WordGroupingPlayerView({ gameCode, embedded = false }: { gameCod
         />
       </div>
     )
-  }, [myPlayerId, gameCode, me?.name, isViewer, load, router])
+  }, [game, myPlayerId, gameCode, me?.name, isViewer, load, router])
   // Skip the registration when embedded by the host view. The host chrome already renders
   // its own `EditNameInline` for the host's seat, plus the host-scoped `HostActiveSettings`
   // (late-joiner + end-game + leave-seat), so re-registering the player-side rename+leave

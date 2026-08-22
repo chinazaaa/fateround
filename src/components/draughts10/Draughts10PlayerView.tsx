@@ -332,7 +332,7 @@ export function Draughts10PlayerView({ gameCode }: { gameCode: string }) {
         />
       </div>
     )
-  }, [myPlayerId, game?.status, gameCode, myName, isViewer, load, router])
+  }, [game, myPlayerId, game?.status, gameCode, myName, isViewer, load, router])
   useRegisterGameSettings(playerSettingsNode)
 
   if (screen === 'loading') return <Draughts10LoadingScreen gameType={resolvedGameType} />

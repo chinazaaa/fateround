@@ -549,7 +549,7 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
         />
       </div>
     )
-  }, [myPlayerId, game?.status, gameCode, activePlayer?.name, isViewer, load, router])
+  }, [game, myPlayerId, game?.status, gameCode, activePlayer?.name, isViewer, load, router])
   // Embedded inside MafiaHostView (the host is seated/spectating), the host view registers
   // its OWN settings node (rename + leave-seat + End game) — registering this one too would
   // just race it for the single settings-sheet slot, sometimes winning and hiding the host's

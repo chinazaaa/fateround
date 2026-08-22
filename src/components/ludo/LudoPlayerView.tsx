@@ -307,7 +307,7 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
         />
       </div>
     )
-  }, [myPlayerId, game?.status, gameCode, activePlayer?.name, isViewer, load, router])
+  }, [game, myPlayerId, game?.status, gameCode, activePlayer?.name, isViewer, load, router])
   useRegisterGameSettings(playerSettingsNode)
 
   if (screen === 'loading') return <LudoLoadingScreen />

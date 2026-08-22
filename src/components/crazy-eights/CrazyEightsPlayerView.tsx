@@ -334,7 +334,7 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
         />
       </div>
     )
-  }, [myPlayerId, game?.status, gameCode, activePlayer?.name, isWatching, load, router])
+  }, [game, myPlayerId, game?.status, gameCode, activePlayer?.name, isWatching, load, router])
   useRegisterGameSettings(playerSettingsNode)
 
   if (screen === 'loading') return <CrazyEightsLoadingScreen />

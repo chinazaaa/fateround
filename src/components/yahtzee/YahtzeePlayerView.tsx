@@ -382,7 +382,7 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
         />
       </div>
     )
-  }, [myPlayerId, game?.status, gameCode, meRow?.name, meSpectating, load, router])
+  }, [game, myPlayerId, game?.status, gameCode, meRow?.name, meSpectating, load, router])
   useRegisterGameSettings(playerSettingsNode)
 
   if (screen === 'loading') return <YahtzeeLoadingScreen />

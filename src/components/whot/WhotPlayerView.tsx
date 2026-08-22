@@ -384,7 +384,7 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
         />
       </div>
     )
-  }, [myPlayerId, game?.status, gameCode, activePlayer?.name, roomDisplayName, isWatching, load, router])
+  }, [game, myPlayerId, game?.status, gameCode, activePlayer?.name, roomDisplayName, isWatching, load, router])
   useRegisterGameSettings(playerSettingsNode)
 
   if (screen === 'loading') return <WhotLoadingScreen />

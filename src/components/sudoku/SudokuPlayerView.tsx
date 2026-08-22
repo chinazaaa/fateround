@@ -456,7 +456,7 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
         />
       </div>
     )
-  }, [myPlayerId, game?.status, gameCode, me?.name, isViewer, load, router])
+  }, [game, myPlayerId, game?.status, gameCode, me?.name, isViewer, load, router])
   useRegisterGameSettings(playerSettingsNode)
   const myRank = leaderboard.findIndex((r) => r.player_id === myPlayerId) + 1
   const myCompletion = puzzle && myPlayerId ? playerCompletionPercent(puzzle, submissions, myPlayerId) : 0

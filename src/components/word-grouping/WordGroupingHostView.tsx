@@ -207,7 +207,7 @@ export function WordGroupingHostView({ gameCode, hostToken }: { gameCode: string
     return () => {
       void supabase.removeChannel(ch)
     }
-  }, [gameCode, load])
+  }, [game, gameCode, load])
 
   useEffect(() => {
     if (!roundId) return

@@ -257,7 +257,7 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
         />
       </div>
     )
-  }, [myPlayerId, game?.status, gameCode, me?.name, isViewer, load, router])
+  }, [game, myPlayerId, game?.status, gameCode, me?.name, isViewer, load, router])
   useRegisterGameSettings(playerSettingsNode)
 
   const { context: lateJoinContext, loading: lateJoinContextLoading } = useLateJoinContext(

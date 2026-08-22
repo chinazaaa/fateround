@@ -301,7 +301,7 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
     } catch {
       // Ignore
     }
-  }, [gameCode, hostToken, load])
+  }, [gameObjForSeat, gameCode, hostToken, load])
 
   const startGame = async () => {
     if (starting) return

@@ -316,7 +316,7 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
         />
       </div>
     )
-  }, [myPlayerId, screen, gameCode, myPlayerName, router])
+  }, [game, myPlayerId, screen, gameCode, myPlayerName, router])
   useRegisterGameSettings(playerSettingsNode)
 
   if (screen === 'loading') {

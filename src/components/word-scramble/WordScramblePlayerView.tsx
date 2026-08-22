@@ -403,7 +403,7 @@ export function WordScramblePlayerView({ gameCode }: { gameCode: string }) {
         />
       </div>
     )
-  }, [myPlayerId, game?.status, gameCode, me?.name, isViewer, load, router])
+  }, [game, myPlayerId, game?.status, gameCode, me?.name, isViewer, load, router])
   useRegisterGameSettings(playerSettingsNode)
 
   // Memoized: without it, tallyWordScrambleScores re-ran on every `setGuess` keystroke (and

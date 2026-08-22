@@ -347,7 +347,7 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
         />
       </div>
     )
-  }, [myPlayerId, gameCode, activePlayer?.name, isWatching, load, router])
+  }, [game, myPlayerId, gameCode, activePlayer?.name, isWatching, load, router])
   useRegisterGameSettings(playerSettingsNode)
 
   if (screen === 'loading') return <UnoLoadingScreen />

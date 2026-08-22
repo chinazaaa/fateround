@@ -460,7 +460,7 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
         />
       </div>
     )
-  }, [myPlayerId, game?.status, gameCode, me?.name, myPlayerName, isViewer, load, router])
+  }, [game, myPlayerId, game?.status, gameCode, me?.name, myPlayerName, isViewer, load, router])
   useRegisterGameSettings(playerSettingsNode)
 
   const { context: viewerPromoteContext } = useLateJoinContext(gameCode, game, isViewer && screen === 'active')
