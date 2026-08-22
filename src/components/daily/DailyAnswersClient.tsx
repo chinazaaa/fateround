@@ -1,7 +1,8 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import type { DailyAnswerReveal, DailyAnswerSection } from '@/lib/daily-answer-reveal'
 import {
   DAILY_CHALLENGE_GAME_TYPES,
@@ -13,7 +14,7 @@ import { dailyChallengeIcon } from '@/lib/game-glyphs'
 import { Glyph } from '@/components/icons/Glyph'
 
 /**
- * Yesterday's answers for one daily game.
+ * Yesterday's (and previous days') answers for one daily game.
  *
  * A separate page rather than a panel on the results screen, for one reason that decides it:
  * the answers a player wants are for the puzzle they JUST played, and those are not available
@@ -21,19 +22,26 @@ import { Glyph } from '@/components/icons/Glyph'
  * titled with the date it belongs to can't be misread, is linkable, and reads the same on both
  * platforms.
  *
+ * URL-driven date: `?date=YYYY-MM-DD` picks a specific past day; omitted defaults to yesterday.
  * The server refuses any date that isn't strictly in the past, so this component cannot be
- * coaxed into showing a live puzzle no matter what it asks for.
+ * coaxed into showing a live puzzle no matter what it asks for — the prev/next controls just
+ * change the URL and let the server rule stand.
  */
 export function DailyAnswersClient({ gameType, slug }: { gameType: DailyChallengeGameType; slug: string }) {
+  const searchParams = useSearchParams()
+  const dateParam = searchParams.get('date')
   const [reveal, setReveal] = useState<DailyAnswerReveal | null>(null)
   const [state, setState] = useState<'loading' | 'ready' | 'empty'>('loading')
 
   useEffect(() => {
     let cancelled = false
+    setState('loading')
+    setReveal(null)
     void (async () => {
       try {
-        // No date: the route defaults to yesterday, which is the only one worth linking to.
-        const res = await fetch(`/api/daily-challenges/${gameType}/answers`, { cache: 'no-store' })
+        // Explicit ?date=… wins; otherwise the route defaults to yesterday.
+        const url = `/api/daily-challenges/${gameType}/answers${dateParam ? `?date=${dateParam}` : ''}`
+        const res = await fetch(url, { cache: 'no-store' })
         if (!res.ok) {
           if (!cancelled) setState('empty')
           return
@@ -49,17 +57,52 @@ export function DailyAnswersClient({ gameType, slug }: { gameType: DailyChalleng
     return () => {
       cancelled = true
     }
-  }, [gameType])
+  }, [gameType, dateParam])
 
   const label = DAILY_GAME_LABELS[gameType]
+
+  // Current viewing date — from URL when set, otherwise the date the server returned. Falls
+  // back to yesterday if we don't know yet, so the prev/next arrows still work while loading.
+  const viewingDate = dateParam ?? reveal?.challengeDate ?? yesterdayWatSlug()
+  const prevDateSlug = shiftDay(viewingDate, -1)
+  const nextDateSlug = shiftDay(viewingDate, +1)
+  // Next-day is only linkable if the target is still strictly before today (the server
+  // enforces this too, but hiding the button saves the user a click into a 403).
+  const canGoNext = nextDateSlug < todayWatSlug()
+
+  // Page title: "Yesterday's …" only when we're actually on yesterday; otherwise show the
+  // date so a linked-in day never lies about which puzzle these belong to.
+  const heading = viewingDate === yesterdayWatSlug() ? `Yesterday's ${label} answers` : `${label} answers`
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-8">
       <div className="mb-6 text-center">
-        <h1 className="text-2xl font-black sm:text-3xl">Yesterday&apos;s {label} answers</h1>
-        <p className="text-muted mt-1 text-sm">
-          {reveal ? formatDate(reveal.challengeDate) : 'Published a day after each puzzle closes.'}
-        </p>
+        <h1 className="text-2xl font-black sm:text-3xl">{heading}</h1>
+        <div className="mt-2 flex items-center justify-center gap-2">
+          <Link
+            href={`/daily-challenges/${slug}/answers?date=${prevDateSlug}`}
+            className="fr-btn fr-btn--ghost fr-btn--sm px-2"
+            aria-label={`Previous day (${prevDateSlug})`}
+          >
+            ‹
+          </Link>
+          <p className="text-muted min-w-[10rem] text-sm">
+            {reveal ? formatDate(reveal.challengeDate) : formatDate(viewingDate)}
+          </p>
+          {canGoNext ? (
+            <Link
+              href={`/daily-challenges/${slug}/answers?date=${nextDateSlug}`}
+              className="fr-btn fr-btn--ghost fr-btn--sm px-2"
+              aria-label={`Next day (${nextDateSlug})`}
+            >
+              ›
+            </Link>
+          ) : (
+            <span className="fr-btn fr-btn--ghost fr-btn--sm text-faint px-2 opacity-40" aria-hidden>
+              ›
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Chips for every daily game, mirroring the leaderboard page. Without them, arriving here
@@ -69,7 +112,7 @@ export function DailyAnswersClient({ gameType, slug }: { gameType: DailyChalleng
         {DAILY_CHALLENGE_GAME_TYPES.map((option) => (
           <Link
             key={option}
-            href={`/daily-challenges/${DAILY_GAME_TYPE_TO_SLUG[option]}/answers`}
+            href={`/daily-challenges/${DAILY_GAME_TYPE_TO_SLUG[option]}/answers${dateParam ? `?date=${dateParam}` : ''}`}
             className={`shrink-0 fr-btn fr-btn--sm ${option === gameType ? 'fr-btn--primary' : 'fr-btn--ghost'}`}
             style={{ fontSize: 'var(--text-2xs)' }}
           >
@@ -82,7 +125,7 @@ export function DailyAnswersClient({ gameType, slug }: { gameType: DailyChalleng
         <p className="text-faint py-12 text-center text-sm">Loading…</p>
       ) : state === 'empty' || !reveal ? (
         <div className="glass-card p-6 text-center">
-          <p className="text-body text-sm">No answers to show yet.</p>
+          <p className="text-body text-sm">No answers to show for this date.</p>
           <p className="text-faint mt-1 text-xs">
             Answers go up the day after a puzzle closes, so today&apos;s stay secret until tomorrow.
           </p>
@@ -107,26 +150,63 @@ export function DailyAnswersClient({ gameType, slug }: { gameType: DailyChalleng
   )
 }
 
+/** Sudoku sections use 9×9 grids — render with 3×3 block dividers rather than a flat mesh. */
+const SUDOKU_SIZE = 9
+
 function Section({ section }: { section: DailyAnswerSection }) {
+  const columnCount = useMemo(() => (section.kind === 'lines' ? section.items.length : 0), [section])
+
   if (section.kind === 'grid') {
+    const cols = section.rows[0]?.length ?? 1
+    const isSudoku = cols === SUDOKU_SIZE && section.rows.length === SUDOKU_SIZE
     return (
       <div className="glass-card p-4">
         {section.label ? <p className="label-caps mb-2">{section.label}</p> : null}
-        {/* Scrolls inside its own box — a 9×9 grid must never widen the page on a phone. */}
         <div className="overflow-x-auto">
           <div
-            className="inline-grid gap-px"
-            style={{ gridTemplateColumns: `repeat(${section.rows[0]?.length ?? 1}, minmax(0, 1fr))` }}
+            className={
+              isSudoku
+                ? 'inline-block border-2 border-[var(--border-strong)] bg-[var(--border-strong)]'
+                : 'inline-grid gap-px'
+            }
+            style={
+              isSudoku
+                ? undefined
+                : { display: 'inline-grid', gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`, gap: 1 }
+            }
           >
-            {section.rows.flatMap((row, r) =>
-              row.map((cell, c) => (
-                <span
-                  key={`${r}-${c}`}
-                  className="surface-inset flex h-8 w-8 items-center justify-center text-sm font-bold tabular-nums"
-                >
-                  {cell}
-                </span>
-              ))
+            {isSudoku ? (
+              <div
+                className="grid gap-px bg-[var(--border-strong)]"
+                style={{ gridTemplateColumns: `repeat(${SUDOKU_SIZE}, minmax(0, 1fr))` }}
+              >
+                {section.rows.flatMap((row, r) =>
+                  row.map((cell, c) => (
+                    <span
+                      key={`${r}-${c}`}
+                      className="surface-inset flex h-9 w-9 items-center justify-center text-base font-bold tabular-nums sm:h-10 sm:w-10"
+                      style={{
+                        // Thicker rule every 3 cells to draw the 3×3 blocks.
+                        marginTop: r > 0 && r % 3 === 0 ? 2 : 0,
+                        marginLeft: c > 0 && c % 3 === 0 ? 2 : 0,
+                      }}
+                    >
+                      {cell}
+                    </span>
+                  ))
+                )}
+              </div>
+            ) : (
+              section.rows.flatMap((row, r) =>
+                row.map((cell, c) => (
+                  <span
+                    key={`${r}-${c}`}
+                    className="surface-inset flex h-8 w-8 items-center justify-center text-sm font-bold tabular-nums"
+                  >
+                    {cell}
+                  </span>
+                ))
+              )
             )}
           </div>
         </div>
@@ -134,17 +214,35 @@ function Section({ section }: { section: DailyAnswerSection }) {
     )
   }
 
+  // Multi-column layout kicks in for long word lists so a 162-word list doesn't stretch a
+  // mile down the page. CSS multi-column keeps it responsive (1 col on phones, up to 3 on
+  // wide screens) without any pagination state.
+  const useColumns = columnCount > 20 && section.items.every((item) => !item.label)
+
   return (
     <div className="glass-card p-4">
       {section.label ? <p className="label-caps mb-2">{section.label}</p> : null}
-      <ul className="space-y-1.5">
-        {section.items.map((item, i) => (
-          <li key={i} className="flex flex-wrap items-baseline gap-x-2 text-sm">
-            {item.label ? <span className="text-muted min-w-0 flex-1">{item.label}</span> : null}
-            <span className="text-body font-bold">{item.value}</span>
-          </li>
-        ))}
-      </ul>
+      {useColumns ? (
+        <ul
+          className="text-body text-sm font-bold [column-fill:_balance]"
+          style={{ columnCount: 3 as unknown as string, columnGap: '1.25rem' }}
+        >
+          {section.items.map((item, i) => (
+            <li key={i} className="break-inside-avoid py-0.5" style={{ breakInside: 'avoid' }}>
+              {item.value}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <ul className="space-y-1.5">
+          {section.items.map((item, i) => (
+            <li key={i} className="flex flex-wrap items-baseline gap-x-2 text-sm">
+              {item.label ? <span className="text-muted min-w-0 flex-1">{item.label}</span> : null}
+              <span className="text-body font-bold">{item.value}</span>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   )
 }
@@ -159,4 +257,22 @@ function formatDate(date: string): string {
     month: 'long',
     timeZone: 'UTC',
   })
+}
+
+/** YYYY-MM-DD for today in WAT. */
+function todayWatSlug(): string {
+  // WAT is UTC+1 with no DST — shift the current instant an hour forward and take the date.
+  const nowMs = Date.now() + 60 * 60 * 1000
+  return new Date(nowMs).toISOString().slice(0, 10)
+}
+
+/** YYYY-MM-DD for yesterday in WAT. */
+function yesterdayWatSlug(): string {
+  return shiftDay(todayWatSlug(), -1)
+}
+
+/** Shift a WAT YYYY-MM-DD string by N days (positive or negative). */
+function shiftDay(date: string, delta: number): string {
+  const ms = Date.parse(`${date}T00:00:00Z`) + delta * 86_400_000
+  return new Date(ms).toISOString().slice(0, 10)
 }

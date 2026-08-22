@@ -391,7 +391,7 @@ export async function GET(req: NextRequest) {
   const hasMore = (games ?? []).length > limit
   // Player counts are best-effort: if the count query fails, still return the list
   // (with 0s) rather than failing the whole browse page — but log it, don't hide it.
-  let counts: Record<string, number> = {}
+  let counts: Awaited<ReturnType<typeof countPlayersByGame>> = {}
   try {
     counts = await countPlayersByGame(
       supabase,
@@ -402,7 +402,10 @@ export async function GET(req: NextRequest) {
   }
 
   return NextResponse.json({
-    games: page.map((game) => ({ ...game, playerCount: counts[game.id] ?? 0 })),
+    games: page.map((game) => {
+      const entry = counts[game.id] ?? { playerCount: 0, viewerCount: 0 }
+      return { ...game, playerCount: entry.playerCount, viewerCount: entry.viewerCount }
+    }),
     hasMore,
     nextCursor: hasMore ? (page[page.length - 1]?.created_at ?? null) : null,
   })
