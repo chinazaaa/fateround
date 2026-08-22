@@ -840,6 +840,32 @@ export function postMafiaVigilanteAction(
   })
 }
 
+// Board reads go through the route, not `from('codewords_boards')`: `key` is not
+// anon-selectable since migration 20260803170000 (audit finding H2), so a direct
+// SELECT that names `key` errors and the row never arrives. The route hands the
+// real key to a spymaster (resolved from their resume token) or a finished game,
+// and a masked copy to everyone else.
+export async function fetchCodewordsBoard(
+  gameCode: string,
+  auth?: { resumeToken?: string | null }
+): Promise<import('@fateround/shared').CodewordsBoard | null> {
+  try {
+    const res = await fetch(apiUrl('/api/codewords/board'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+      body: JSON.stringify({
+        gameCode: gameCode.toUpperCase(),
+        resumeToken: auth?.resumeToken ?? undefined,
+      }),
+    })
+    if (!res.ok) return null
+    const data = (await res.json()) as { board?: import('@fateround/shared').CodewordsBoard | null }
+    return data.board ?? null
+  } catch {
+    return null
+  }
+}
+
 export function postCodewordsRole(
   gameId: string,
   resumeToken: string,
