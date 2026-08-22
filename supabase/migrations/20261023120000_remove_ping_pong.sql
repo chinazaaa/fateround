@@ -30,6 +30,17 @@ do $$ begin
     delete from system_trophies where category = 'ping_pong' or game_type = 'ping_pong';
   end if;
 end $$;
+-- community_results.game_id used to CASCADE on delete but was changed to RESTRICT in
+-- 20260630180000, so any recorded ping-pong winner still keeps the community_games row
+-- alive and blocks the DELETE below. Drop the referencing history first so the parent
+-- row can go — for a game we are removing entirely, the winner history is no longer
+-- meaningful. Match on both game_type and slug so a legacy row keyed only by slug is
+-- still cleared.
+DELETE FROM community_results
+ WHERE game_id IN (
+   SELECT id FROM community_games WHERE game_type = 'ping_pong' OR slug = 'ping-pong'
+ );
+
 DELETE FROM community_games WHERE game_type = 'ping_pong' OR slug = 'ping-pong';
 
 -- 4. Game-type CHECK constraints
