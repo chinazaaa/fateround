@@ -68,8 +68,21 @@ describe('bingo depends on how it is being called', () => {
 })
 
 describe('HostChrome', () => {
-  it('only flips to play-first once the host actually holds a seat', () => {
-    expect(CHROME).toMatch(/const playFirstNow = playFirst \|\| \(playFirstWhenSeated && seated\)/)
+  it('flips to play-first only while the host is actually PLAYING', () => {
+    // Not merely "holds a row". The ⚙ sheet offers "Leave game (keep hosting)", which keeps the
+    // host in the roster as a VIEWER so they can watch and still run the game. Keying on a bare
+    // seat would strand them on a read-only player view afterwards, with the console — and
+    // Force advance, which the ⚙ sheet does not carry — unreachable.
+    expect(CHROME).toMatch(/const playFirstNow = playFirst \|\| \(playFirstWhenSeated && hostIsPlaying\)/)
+    expect(CHROME).toMatch(/const hostIsPlaying = !!hostRow && !playerIsViewer\(hostRow, game\)/)
+  })
+
+  it('hands the console back to a host who stopped playing', () => {
+    // The other half of the same rule: viewer row → not playing → console.
+    expect(CHROME).toMatch(/showConsole = !playFirstNow/)
+    expect(read('components/host/HostControlsSheet.tsx'), 'the control that creates that state').toMatch(
+      /Leave game \(keep hosting\)/
+    )
   })
 
   it('leaves an unseated host their console', () => {

@@ -3,6 +3,7 @@ import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-nati
 import { useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import type { Game, Player } from '@fateround/shared'
+import { playerIsViewer } from '@fateround/shared/viewers'
 import { gameLabel } from '@/lib/mobile-registry'
 import { removePlayerAsHost } from '@/lib/game-api'
 import { publishHostPlayerId } from '@/lib/api'
@@ -85,6 +86,17 @@ export function HostChrome({
   const canPlay = hasMobilePlayerView(game.game_type)
   const finished = game.status === 'finished'
   const seated = !!hostPlayerId
+  /**
+   * Seated AND still playing — not merely holding a row.
+   *
+   * The ⚙ sheet offers "Leave game (keep hosting)", which drops the host out of play but keeps
+   * them in the roster as a VIEWER so they can watch and still run the game. Keying play-first
+   * on `seated` alone would leave them on a read-only player view afterwards, with the console
+   * — and Force advance, which the ⚙ sheet does not carry — unreachable. Someone who just chose
+   * to stop playing is running the game, so give them the console back.
+   */
+  const hostRow = hostPlayerId ? (players ?? []).find((p) => p.id === hostPlayerId) : null
+  const hostIsPlaying = !!hostRow && !playerIsViewer(hostRow, game)
 
   /**
    * Two host shapes, and no tab between them.
@@ -105,7 +117,7 @@ export function HostChrome({
    * always in reach". Reintroducing it made every host-run game carry a control the app doesn't
    * use anywhere else, to solve a problem only trivia had. One prop, one game, no new UI.
    */
-  const playFirstNow = playFirst || (playFirstWhenSeated && seated)
+  const playFirstNow = playFirst || (playFirstWhenSeated && hostIsPlaying)
   // A seated host still sees the shared finished screen at the end (winner + standings +
   // inline host actions); a host-only host falls back to the console's own finished controls.
   const showPlayView = canPlay && (playFirstNow || (finished && seated))
