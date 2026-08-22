@@ -24,11 +24,15 @@
  * - **Trade responses only.** Bot NEVER initiates a trade. It only accepts
  *   or declines proposals humans push to it, and rejects anything that isn't
  *   clearly positive-sum (net-gain, with a big penalty for breaking one of
- *   its own monopolies).
+ *   its own monopolies). Nothing is refused outright: a card that would arm an
+ *   opponent is PRICED (steeply), never vetoed, so a rich player can still buy
+ *   their way into a monopoly. Every decline carries a `reason` so the
+ *   proposer knows whether more cash would help.
  */
 
 import type { MonopolyBotView, MonopolyBotTradeContext, MonopolyBotTradeProperty } from '@/lib/monopoly-bot-adapter'
 import { MONOPOLY_JAIL_FINE, spacesInGroup } from '@/lib/monopoly-board'
+import type { MonopolyTradeDeclineReason } from '@/types'
 
 export type MonopolyBotAction =
   | { type: 'roll' }
@@ -47,7 +51,7 @@ export type MonopolyBotAction =
   | { type: 'auction_bid'; amount: number }
   | { type: 'auction_pass' }
   | { type: 'trade_accept' }
-  | { type: 'trade_decline' }
+  | { type: 'trade_decline'; reason: MonopolyTradeDeclineReason }
   | { type: 'borrow_loan'; amount: number }
   | { type: 'repay_loan'; amount: number }
 
@@ -107,6 +111,23 @@ const TRADE_ACCEPT_MARGIN = 1.1
  * loses monopolies; keep the aggressive side.
  */
 const TRADE_BREAK_MONOPOLY_RENT_FACTOR = 2
+
+/**
+ * Premium, as a MULTIPLE of the group's hotel-rent sum, for handing the
+ * PROPOSER the card that completes one of THEIR sets.
+ *
+ * This replaces a flat veto. The veto was strategically correct and made the
+ * game unplayable: the one trade a human most wants to make — buying the last
+ * card of a set — could never happen at any price, so trading with a bot felt
+ * pointless. Pricing it keeps the bot from being farmed while leaving the door
+ * open: a player who is genuinely cash-rich can buy their monopoly, and pays
+ * through the nose for it.
+ *
+ * Set above TRADE_BREAK_MONOPOLY_RENT_FACTOR (2) on purpose — arming a live
+ * opponent is worse than merely losing a set of my own, because I pay that
+ * rent every lap.
+ */
+const TRADE_GIVE_OPPONENT_MONOPOLY_RENT_FACTOR = 2.5
 
 /**
  * Complete-set bonus as a MULTIPLE of the group's hotel-rent sum. Completing
@@ -352,7 +373,7 @@ function tradeValue(
   }
 ): number {
   let total = cash * cashScarcity + jailCards * MONOPOLY_JAIL_FINE
-  for (const { space, mortgaged } of properties) {
+  for (const { space, mortgaged, completesProposerSet } of properties) {
     const price = space.price ?? 0
     // Mortgage discount applies FIRST — a mortgaged property is worth less
     // on either side than its face price implies, before we layer set-relevance
@@ -383,7 +404,13 @@ function tradeValue(
       // purpose; over-declining is safe, under-declining loses monopolies).
       const breaksMonopoly = ctx.iOwnGroup(color)
       const breakPenalty = breaksMonopoly ? hotelRentSum * TRADE_BREAK_MONOPOLY_RENT_FACTOR : 0
-      total += base + breakPenalty
+      // Handing the proposer their last card arms a rent engine pointed at me.
+      // Priced, not vetoed — see TRADE_GIVE_OPPONENT_MONOPOLY_RENT_FACTOR.
+      // Note this reads the group's rent sum even for a group I hold only one
+      // card in, which is exactly the case that matters here.
+      const armsOpponent = Boolean(completesProposerSet)
+      const opponentMonopolyPremium = armsOpponent ? hotelRentSum * TRADE_GIVE_OPPONENT_MONOPOLY_RENT_FACTOR : 0
+      total += base + breakPenalty + opponentMonopolyPremium
     }
   }
   return total
@@ -403,18 +430,16 @@ function cashScarcityMultiplier(cash: number): number {
 function pickTradeResponse(view: MonopolyBotView): MonopolyBotAction {
   const trade = view.pendingTradeToMe as MonopolyBotTradeContext
 
-  // Opponent-aware early reject: never hand a live opponent a completed
-  // monopoly, regardless of what they offer. Precomputed by the adapter.
-  if (trade.wouldGiveOpponentMonopoly) return { type: 'trade_decline' }
-
   // Belt-and-braces: reject a trade we couldn't fulfil. The engine already
   // checks this on Respond but declining early spares the human a confusing
   // "you don't have that" bounce back from the engine.
-  if (trade.requestCash > view.me.cash) return { type: 'trade_decline' }
-  if (trade.requestGetOutCards > view.me.get_out_of_jail_free) return { type: 'trade_decline' }
+  if (trade.requestCash > view.me.cash) return { type: 'trade_decline', reason: 'cannot_fulfil' }
+  if (trade.requestGetOutCards > view.me.get_out_of_jail_free) {
+    return { type: 'trade_decline', reason: 'cannot_fulfil' }
+  }
   const myPropertyIndexes = new Set(view.myProperties.map((p) => p.spaceIndex))
   for (const p of trade.requestProperties) {
-    if (!myPropertyIndexes.has(p.space.index)) return { type: 'trade_decline' }
+    if (!myPropertyIndexes.has(p.space.index)) return { type: 'trade_decline', reason: 'cannot_fulfil' }
   }
 
   // Look up color-set state for the multiplier ctx.
@@ -448,7 +473,14 @@ function pickTradeResponse(view: MonopolyBotView): MonopolyBotAction {
     isReceiving: false,
   })
 
-  return gainValue >= giveValue * TRADE_ACCEPT_MARGIN ? { type: 'trade_accept' } : { type: 'trade_decline' }
+  if (gainValue >= giveValue * TRADE_ACCEPT_MARGIN) return { type: 'trade_accept' }
+
+  // Every "no" is now a price, so name the surcharge that drove it. Both of
+  // these are still buyable — the message tells the player the bar is high,
+  // not that the door is shut.
+  if (trade.wouldGiveOpponentMonopoly) return { type: 'trade_decline', reason: 'completes_your_set' }
+  const asksForCardFromMyMonopoly = trade.requestProperties.some((p) => ctxBase.iOwnGroup(p.space.color))
+  return { type: 'trade_decline', reason: asksForCardFromMyMonopoly ? 'protects_my_monopoly' : 'offer_too_low' }
 }
 
 // ── Auction: bid up to 60% of face, in ~10%-of-face steps ─────────────────

@@ -118,6 +118,13 @@ export interface MonopolyBotAuctionContext {
 export interface MonopolyBotTradeProperty {
   space: MonopolySpace
   mortgaged: boolean
+  /**
+   * Request side only: true when handing THIS card over would complete a
+   * colour set for the proposer. Not a veto — the bot prices it at a heavy
+   * premium instead, so a genuinely rich player can still buy their way into
+   * a monopoly. Always false on the offer side.
+   */
+  completesProposerSet?: boolean
 }
 
 /**
@@ -144,10 +151,13 @@ export interface MonopolyBotTradeContext {
   requestGetOutCards: number
   /**
    * True iff accepting this trade would complete a monopoly for the human
-   * proposer. Precomputed here (adapter knows the full board state) so the
-   * bot can outright reject without walking property ownership itself.
-   * This is the "opponent-aware" gate — never hand a monopoly to a live
-   * opponent regardless of what they offer.
+   * proposer. Precomputed here (the adapter knows the full board state).
+   *
+   * This used to be an absolute veto — no offer could buy a set-completing
+   * card — which players rightly read as the bot refusing to play Monopoly.
+   * It is now only a *summary* flag, used to phrase the decline message; the
+   * actual decision comes from the per-property `completesProposerSet`
+   * premium in the valuation.
    */
   wouldGiveOpponentMonopoly: boolean
 }
@@ -410,25 +420,38 @@ export function adaptMonopolyForBot(
         .filter((space): space is MonopolySpace => Boolean(space))
         .map((space) => ({ space, mortgaged: Boolean(mortgaged[String(space.index)]) }))
     const requestProps = resolveProperties(t.request_properties as number[] | null | undefined)
-    // Opponent-aware check: if handing over ANY of my request_properties would
-    // put the recipient at total_in_group for that group, they complete a
-    // monopoly. Bot outright rejects such trades — no cash offer can compensate
-    // for the strategic loss of an active human suddenly having a rent engine.
+    // Opponent-aware check: if handing over the request_properties would put
+    // the recipient at total_in_group for a group, they complete a monopoly.
     // Handles multi-card-in-same-group trades correctly (counts increment).
+    //
+    // The bot no longer refuses these outright — it charges for them (see
+    // TRADE_GIVE_OPPONENT_MONOPOLY_RENT_FACTOR). Flagging per-property, not
+    // just per-trade, keeps the premium on the card that actually does the
+    // damage: a bundle of one set-completer plus two junk cards should cost
+    // the premium once, not three times.
     const cardsBotWouldSendPerGroup = new Map<MonopolyColorGroup, number>()
     for (const { space } of requestProps) {
       if (space.color) {
         cardsBotWouldSendPerGroup.set(space.color, (cardsBotWouldSendPerGroup.get(space.color) ?? 0) + 1)
       }
     }
-    let wouldGiveOpponentMonopoly = false
+    const groupsThisTradeWouldComplete = new Set<MonopolyColorGroup>()
     for (const [group, sendingCount] of cardsBotWouldSendPerGroup) {
       const recipientOwnedBefore = countOwnedInGroup(owners, t.from_player_id, group, boardSize)
       const totalInGroupCount = spacesInGroup(group, boardSize).length
       if (recipientOwnedBefore + sendingCount >= totalInGroupCount && recipientOwnedBefore < totalInGroupCount) {
-        wouldGiveOpponentMonopoly = true
-        break
+        groupsThisTradeWouldComplete.add(group)
       }
+    }
+    const wouldGiveOpponentMonopoly = groupsThisTradeWouldComplete.size > 0
+    // Charge the premium once per completed group — on the first card of that
+    // group in the request — so bundling extra cards can't multiply it.
+    const premiumChargedForGroup = new Set<MonopolyColorGroup>()
+    for (const prop of requestProps) {
+      const group = prop.space.color
+      if (!group || !groupsThisTradeWouldComplete.has(group) || premiumChargedForGroup.has(group)) continue
+      premiumChargedForGroup.add(group)
+      prop.completesProposerSet = true
     }
     pendingTradeToMe = {
       fromPlayerId: t.from_player_id,

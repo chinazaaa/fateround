@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Exchange01Icon } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
 import {
@@ -9,6 +9,7 @@ import {
   MonopolySecondaryButton,
   MonopolyJailCardInventory,
 } from '@/components/monopoly/MonopolyChrome'
+import { useMonopolyDeadlineTimer } from '@/hooks/useMonopolyModalTimer'
 import { canAddHotel, canAddHouse, canRemoveHotel, canRemoveHouse } from '@/lib/monopoly-build'
 import { buildingLevel, computeRent, parseBuildings, parseMortgaged } from '@/lib/monopoly-rent'
 import {
@@ -551,6 +552,21 @@ export function MonopolyManagePanel({
     void postAction('/api/monopoly/trade', { repair: true })
   }, [stalePendingTrade, pendingTradeKey, myPlayerId, postAction])
 
+  // Trade response window. The board holds one pending trade at a time, so an
+  // unanswered offer blocks trading for the whole table — when the clock runs
+  // out any client still watching pokes the repair endpoint, which lapses it
+  // server-side (the same route the stale-player repair above uses).
+  const tradeExpiresAt = pendingTrade?.expires_at ?? null
+  const handleTradeExpiry = useCallback(() => {
+    if (!myPlayerId) return
+    void postAction('/api/monopoly/trade', { repair: true })
+  }, [myPlayerId, postAction])
+  const tradeSecondsLeft = useMonopolyDeadlineTimer(
+    tradeExpiresAt,
+    Boolean(tradeExpiresAt) && !stalePendingTrade,
+    handleTradeExpiry
+  )
+
   if (!board || !myPlayerId || !myState || myState.bankrupt) {
     return (
       <div className="glass-card p-5 text-center space-y-2">
@@ -632,7 +648,8 @@ export function MonopolyManagePanel({
             <strong className="text-[var(--foreground)]">
               {players.find((p) => p.id === activePendingTrade.to_player_id)?.name ?? 'player'}
             </strong>{' '}
-            to accept or decline:
+            to accept or decline
+            {tradeExpiresAt ? <> — expires in {tradeSecondsLeft}s</> : null}:
           </p>
           <TradeExchangeReview
             compact
@@ -663,7 +680,8 @@ export function MonopolyManagePanel({
             <strong className="text-[var(--foreground)]">
               {players.find((p) => p.id === activePendingTrade.from_player_id)?.name ?? 'player'}
             </strong>{' '}
-            — review all items in the popup before accepting:
+            — review all items in the popup before accepting
+            {tradeExpiresAt ? <> ({tradeSecondsLeft}s left to respond)</> : null}:
           </p>
           <TradeExchangeReview
             compact
@@ -691,7 +709,8 @@ export function MonopolyManagePanel({
           <strong className="text-body">
             {players.find((p) => p.id === activePendingTrade.to_player_id)?.name ?? 'player'}
           </strong>{' '}
-          is in progress — new offers are paused until it finishes.
+          is in progress — new offers are paused until it finishes
+          {tradeExpiresAt ? <> (expires in {tradeSecondsLeft}s)</> : null}.
         </p>
       )}
 

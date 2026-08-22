@@ -206,7 +206,7 @@ async function applyMonopolyBotAction(
     case 'trade_accept':
       return processMonopolyTradeRespond(admin, gameCode, botPlayerId, true)
     case 'trade_decline':
-      return processMonopolyTradeRespond(admin, gameCode, botPlayerId, false)
+      return processMonopolyTradeRespond(admin, gameCode, botPlayerId, false, action.reason)
     case 'borrow_loan':
       return processMonopolyBorrowLoan(admin, gameCode, botPlayerId, action.amount)
     case 'repay_loan':

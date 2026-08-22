@@ -17,6 +17,7 @@ import { LIBRARY_GAME_TYPE_MAP } from './constants'
 import { parsePuzzleThemeCsv } from '@/lib/puzzle-themes'
 import { trackEvent, GA_EVENTS } from '@/lib/analytics'
 import { authHeaders } from '@/lib/auth-headers'
+import { ensureServerIdentity } from '@/lib/identity'
 import { GenderBadge } from './components/GenderBadge'
 import { Avatar } from './components/Avatar'
 import { TemplateQuickStart } from './components/TemplateQuickStart'
@@ -2604,6 +2605,16 @@ function CreateGameInner() {
     } else if (isJoinersMode ? !canCreateJoiners : !canCreateImport) return
     setLoading(true)
     try {
+      // Ensure this host has a server identity BEFORE the create request. The identity plan
+      // (`docs/accounts-and-identity-plan.md` §2.2) creates identities lazily at game finish
+      // to avoid the per-IP anonymous-signin rate limit blowing up 40-student classrooms —
+      // but a host creating a game is one person doing one deliberate action, not a room of
+      // joiners, so the rate-limit concern doesn't bite here. We do this so `host_user_id`
+      // gets written on the games row, which is what lets `useHostToken` reclaim the token
+      // by profile if this host later opens the game on a new device or from cleared storage.
+      // Guests (offline / rate-limited / signin disabled) still create games normally — the
+      // ensure returns null, `authHeaders()` returns empty, and host_user_id is left NULL.
+      await ensureServerIdentity()
       const res = await fetch('/api/games', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },

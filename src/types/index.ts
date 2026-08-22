@@ -590,6 +590,13 @@ export interface MonopolyAuctionState {
 
 export interface MonopolyPendingTrade {
   from_player_id: string
+  /**
+   * ISO deadline for the recipient to answer. The board holds ONE pending
+   * trade at a time, so an unanswered offer blocks trading for the whole
+   * table — this bounds that. Optional: trades proposed before this field
+   * existed simply never expire, same as the old behaviour.
+   */
+  expires_at?: string | null
   to_player_id: string
   offer_cash: number
   offer_properties: number[]
@@ -626,11 +633,28 @@ export interface MonopolyLastCashEvent {
   bankrupt?: boolean
 }
 
+/**
+ * Why a trade was declined. Only ever set by the BOT — humans decline with a
+ * single tap and are never asked to justify it, so `decline_reason` stays null
+ * for human declines and the UI falls back to the plain "X declined" line.
+ */
+export type MonopolyTradeDeclineReason =
+  /** Handing the card over would complete a colour set for the proposer. */
+  | 'completes_your_set'
+  /** The card is part of a monopoly the bot has already completed. */
+  | 'protects_my_monopoly'
+  /** The bot doesn't hold the cash/cards/property the proposer asked for. */
+  | 'cannot_fulfil'
+  /** Valued the offer below its own side plus the accept margin. */
+  | 'offer_too_low'
+
 export interface MonopolyLastTradeEvent {
   seq: number
   from_player_id: string
   to_player_id: string
-  outcome: 'proposed' | 'declined' | 'accepted' | 'cancelled'
+  outcome: 'proposed' | 'declined' | 'accepted' | 'cancelled' | 'expired'
+  /** Bot-only explanation for a decline. Null/absent for human declines. */
+  decline_reason?: MonopolyTradeDeclineReason | null
 }
 
 export interface MonopolyLoan {

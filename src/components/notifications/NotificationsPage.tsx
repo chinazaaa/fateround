@@ -240,7 +240,8 @@ export function NotificationsPage({ preselectGameType }: { preselectGameType?: s
       const next = { ...quiet, ...patch }
       setSnapshot((s) => (s ? { ...s, quietHours: next } : s))
       let effectiveToken = tokenKey
-      if (!effectiveToken) {
+      let effectiveKeys = webKeys
+      if (!effectiveToken || !effectiveKeys) {
         const authed = await ensureToken()
         if (!authed) {
           // The user declined notification permission; keep the local UI
@@ -249,14 +250,25 @@ export function NotificationsPage({ preselectGameType }: { preselectGameType?: s
           return
         }
         effectiveToken = authed.endpoint
+        effectiveKeys = authed.keys
       }
       await fetch('/api/notifications', {
         method: 'PATCH',
+        // `channel: 'web'` + webKeys lets the server upsert the device row on
+        // first quiet-hours edit (a plain UPDATE would silently match zero
+        // rows for a visitor who hasn't toggled a game on yet, and the
+        // setting would vanish on the next reload).
         headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
-        body: JSON.stringify({ tokenKey: effectiveToken, ...patch, timezone: deviceTimezone() }),
+        body: JSON.stringify({
+          channel: 'web',
+          tokenKey: effectiveToken,
+          webKeys: effectiveKeys,
+          ...patch,
+          timezone: deviceTimezone(),
+        }),
       }).catch(() => {})
     },
-    [quiet, tokenKey, ensureToken]
+    [quiet, tokenKey, webKeys, ensureToken]
   )
 
   return (
