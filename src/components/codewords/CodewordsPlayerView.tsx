@@ -761,13 +761,17 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
           <div className="glass-card p-4 space-y-4">
             <p className="label-caps text-center">Full board</p>
             <CodewordsBoardGrid board={board} showKey cellAttribution={cellAttribution} />
-            <CodewordsScoreboard board={board} players={allPlayers} roles={allRoles} highlightPlayerId={myPlayerId} />
+            {/* CodewordsFinalResultsShareBlock above already carries the winner hero, the
+                MVP cards, and the operative leaderboard, and the board reveal makes the
+                per-team progress obvious — so drop the live Scoreboard here and render
+                only the spymaster list from CodewordsEndGameStats. */}
             <CodewordsEndGameStats
               guesses={guesses}
               roles={allRoles}
               players={allPlayers}
               highlightPlayerId={myPlayerId}
               winner={board.winner}
+              variant="spymasters"
             />
           </div>
           <CodewordsAchievementPosts

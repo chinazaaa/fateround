@@ -1,5 +1,6 @@
 import { postReclaimHost } from '@/lib/game-api'
-import { setHostToken } from '@/lib/secure-session'
+import { setHostToken, setPlayerSession } from '@/lib/secure-session'
+import type { PlayerGender } from '@fateround/shared'
 
 /**
  * Move hosting to the device you are on — mobile mirror of `src/lib/take-over-hosting.ts`.
@@ -25,9 +26,19 @@ import { setHostToken } from '@/lib/secure-session'
  */
 export async function takeOverHosting(gameCode: string): Promise<string | null> {
   try {
-    const { hostToken } = await postReclaimHost(gameCode)
+    const { hostToken, player } = await postReclaimHost(gameCode)
     if (!hostToken) return null
     await setHostToken(gameCode, hostToken)
+    // The caller was host + player on the other device: carry that player seat over to
+    // this one so the host lobby still shows them holding their own seat, not demoted to
+    // host-only. The server rotated the resume token, so the other device's stored
+    // credential is already dead.
+    if (player && player.playerId && player.resumeToken) {
+      const gender = (player.playerGender === 'male' || player.playerGender === 'female'
+        ? player.playerGender
+        : 'both') as PlayerGender
+      await setPlayerSession(gameCode, player.playerId, player.playerName ?? '', gender, player.resumeToken)
+    }
     return hostToken
   } catch {
     return null

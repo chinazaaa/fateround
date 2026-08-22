@@ -1,5 +1,8 @@
 import { authHeaders } from '@/lib/identity'
 import { rememberHostToken } from '@/lib/host-session'
+import { setPlayerSession } from '@/lib/utils'
+import type { PlayerGender } from '@/types'
+import { parsePlayerGenderFromDb } from '@/lib/participants'
 
 /**
  * Move hosting to the device you are on.
@@ -36,11 +39,30 @@ export async function takeOverHosting(code: string): Promise<string | null> {
     })
     if (!res.ok) return null
 
-    const data = (await res.json().catch(() => null)) as { hostToken?: unknown } | null
+    const data = (await res.json().catch(() => null)) as {
+      hostToken?: unknown
+      player?: {
+        playerId?: unknown
+        playerName?: unknown
+        playerGender?: unknown
+        resumeToken?: unknown
+      } | null
+    } | null
     const token = typeof data?.hostToken === 'string' ? data.hostToken : ''
     if (!token) return null
 
     rememberHostToken(code, token)
+
+    // The caller was host + player on the other device: carry that player seat over
+    // to this one so they land on /host/[code] still holding their own seat, not
+    // demoted to host-only. The server rotated the resume token, so the old device's
+    // stored credential is already dead.
+    const p = data?.player
+    if (p && typeof p.playerId === 'string' && typeof p.resumeToken === 'string') {
+      const gender: PlayerGender = parsePlayerGenderFromDb(p.playerGender) ?? 'both'
+      const name = typeof p.playerName === 'string' ? p.playerName : ''
+      setPlayerSession(code, p.playerId, name, gender, p.resumeToken)
+    }
     return token
   } catch {
     return null

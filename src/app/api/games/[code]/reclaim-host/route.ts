@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { getProfileFromRequest } from '@/lib/identity-server'
 import { enforceRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
+import { generateResumeToken } from '@/lib/utils'
+import { parsePlayerGenderFromDb } from '@/lib/participants'
 
 /**
  * Hand back the host_token to the profile that owns it.
@@ -45,5 +47,48 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const hostToken = (game as { host_token?: string | null }).host_token ?? null
   if (!hostToken) return NextResponse.json({ error: 'Host token unavailable' }, { status: 404 })
 
-  return NextResponse.json({ hostToken }, { status: 200 })
+  // If the same profile also holds a player seat in this game (host + play), move
+  // that seat to this device too — rotating the resume token so the old device's
+  // stored credential stops authenticating. Without this the take-over prompt
+  // ("Take over hosting on this device?") makes the caller HOST-ONLY here even
+  // though they were host + player: on the destination device, useHostSeat has no
+  // player session to seed from, so hostPlayerId stays null and the roster row
+  // for their own seat is unreachable from here. Best-effort: a missing row, a
+  // rotate failure, or a signed-out player all fall back to host-token-only.
+  let player: {
+    playerId: string
+    playerName: string
+    playerGender: string
+    resumeToken: string
+  } | null = null
+  try {
+    const { data: existingPlayer } = await getSupabaseAdmin()
+      .from('players')
+      .select('id, name, gender, resume_token')
+      .eq('game_id', gameId)
+      .eq('user_id', profileId)
+      .maybeSingle()
+    if (existingPlayer) {
+      const rotatedResumeToken = generateResumeToken()
+      const { data: rotated, error: rotateError } = await getSupabaseAdmin()
+        .from('players')
+        .update({ resume_token: rotatedResumeToken })
+        .eq('id', (existingPlayer as { id: string }).id)
+        .select('id, name, gender, resume_token')
+        .single()
+      if (!rotateError && rotated) {
+        const gender = parsePlayerGenderFromDb((rotated as { gender?: unknown }).gender) ?? 'both'
+        player = {
+          playerId: (rotated as { id: string }).id,
+          playerName: (rotated as { name?: string | null }).name ?? '',
+          playerGender: gender,
+          resumeToken: (rotated as { resume_token: string }).resume_token,
+        }
+      }
+    }
+  } catch {
+    // Player-seat handoff is best-effort — a failure here still returns the host token.
+  }
+
+  return NextResponse.json({ hostToken, player }, { status: 200 })
 }
