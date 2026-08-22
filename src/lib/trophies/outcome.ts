@@ -279,11 +279,7 @@ const CUSTOM_WINNER_RESOLVERS: Partial<
 
 async function resolveCodewordsWinners(supabase: SupabaseClient, gameId: string): Promise<string[] | null> {
   try {
-    const { data: board } = await supabase
-      .from('codewords_boards')
-      .select('winner')
-      .eq('game_id', gameId)
-      .maybeSingle()
+    const { data: board } = await supabase.from('codewords_boards').select('winner').eq('game_id', gameId).maybeSingle()
     const winningTeam = (board as { winner?: string | null } | null)?.winner ?? null
     // No winner yet (or the board row hasn't landed) → withhold the verdict rather than
     // record a loss for everyone. `null` means "cannot determine".
