@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect } from 'react'
 import { ServerErrorPage } from '@/components/ServerErrorPage'
 
 /**
@@ -16,33 +16,53 @@ import { ServerErrorPage } from '@/components/ServerErrorPage'
  * browser reports online; only if THAT retry also errors does the user see
  * the "Can't reach server" screen.
  *
- * The auto-retry only fires once per boundary instance — if the user hits a
- * genuine error, they still see it and can Try again themselves.
+ * Dedup is MODULE-scoped, not component-scoped: `reset()` unmounts and
+ * remounts this component, so a component-scoped ref would forget the
+ * retry across mounts. If the retry itself errors, the fresh boundary
+ * would retry again — a tight reset/error/reset loop that Safari can't
+ * unwind, showing as a frozen tab (reported by the user). Module scope
+ * means: at most one auto-retry per unique error in this page lifetime.
+ *
+ * The retry is also deferred a beat so it doesn't run synchronously
+ * inside the render that reported the error — that gives React a chance
+ * to unmount the old tree cleanly before we ask it to try again.
  */
-export default function GlobalErrorPage({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
-  const autoResetTriedRef = useRef(false)
 
+// Digests of errors we've already auto-retried. Cleared only by a hard reload.
+const retriedDigests = new Set<string>()
+
+export default function GlobalErrorPage({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
   useEffect(() => {
     console.error('Global Error Boundary caught:', error)
   }, [error])
 
   useEffect(() => {
-    if (autoResetTriedRef.current) return
     if (typeof window === 'undefined' || typeof document === 'undefined') return
 
+    // Prefer digest (stable across mounts); fall back to message so an error without
+    // a Next.js digest still gets a stable identity.
+    const key = error.digest || error.message || 'unknown-error'
+    if (retriedDigests.has(key)) return
+
+    let timeoutId: number | null = null
+
     const tryAutoReset = () => {
-      if (autoResetTriedRef.current) return
+      if (retriedDigests.has(key)) return
       // Only retry if the tab is actually visible (a hidden tab reset would
-      // just re-fire and burn the one retry we allow) AND the browser thinks
-      // the network is up. navigator.onLine is best-effort but reliable
-      // enough to gate a single opportunistic retry.
+      // just re-fire) AND the browser thinks the network is up.
       if (document.visibilityState !== 'visible') return
       if (typeof navigator !== 'undefined' && navigator.onLine === false) return
-      autoResetTriedRef.current = true
-      reset()
+      // Mark BEFORE calling reset(): if reset() re-throws the same error, the
+      // fresh mount checks retriedDigests first and sees it's been used.
+      retriedDigests.add(key)
+      // Defer past this render/microtask so the error boundary can unmount its
+      // subtree cleanly before Next attempts to remount it. Without this the
+      // retry runs inside the same tick as the error and Safari can pin the
+      // main thread on a reset loop when the retry immediately re-throws.
+      timeoutId = window.setTimeout(reset, 200)
     }
 
-    // If we mount while already visible + online, retry immediately.
+    // If we mount while already visible + online, retry (deferred).
     tryAutoReset()
 
     document.addEventListener('visibilitychange', tryAutoReset)
@@ -50,8 +70,9 @@ export default function GlobalErrorPage({ error, reset }: { error: Error & { dig
     return () => {
       document.removeEventListener('visibilitychange', tryAutoReset)
       window.removeEventListener('online', tryAutoReset)
+      if (timeoutId != null) window.clearTimeout(timeoutId)
     }
-  }, [reset])
+  }, [error, reset])
 
   return <ServerErrorPage error={error} reset={reset} />
 }
