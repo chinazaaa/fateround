@@ -29,7 +29,10 @@ import { Glyph } from '@/components/icons/Glyph'
  */
 export function DailyAnswersClient({ gameType, slug }: { gameType: DailyChallengeGameType; slug: string }) {
   const searchParams = useSearchParams()
-  const dateParam = searchParams.get('date')
+  const rawDate = searchParams.get('date')
+  // Only accept a well-formed YYYY-MM-DD; anything else and shiftDay() feeds NaN
+  // into toISOString(), which throws and blanks the screen.
+  const dateParam = rawDate && /^\d{4}-\d{2}-\d{2}$/.test(rawDate) ? rawDate : null
   const [reveal, setReveal] = useState<DailyAnswerReveal | null>(null)
   const [state, setState] = useState<'loading' | 'ready' | 'empty'>('loading')
 

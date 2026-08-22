@@ -64,7 +64,10 @@ const WORD_SEARCH_HIGHLIGHT_COLORS = [
 
 export default function DailyAnswersScreen() {
   const { slug, date } = useLocalSearchParams<{ slug: string; date?: string }>()
-  const dateParam = typeof date === 'string' && date ? date : null
+  // Only accept a well-formed YYYY-MM-DD; anything else and shiftDay() feeds NaN
+  // into toISOString(), which throws and blanks the screen. Malformed → fall
+  // back to the default (yesterday) instead of crashing.
+  const dateParam = typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null
   const router = useRouter()
   const theme = useTheme()
   const styles = useThemedStyles(makeStyles)
