@@ -352,6 +352,11 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
       await bootstrap.load()
     } catch (err) {
       setJoinError(err instanceof Error ? err.message : 'Failed to join')
+      // Refresh the roster so the token picker reflects any newly-claimed token
+      // rather than continuing to show it as available. Mirrors the fix in
+      // useGameViewBootstrap; this path bypasses that hook so it needs its own
+      // reload after a rejected join.
+      void bootstrap.load()
     } finally {
       setJoiningToken(false)
     }

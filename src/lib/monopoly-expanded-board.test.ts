@@ -26,8 +26,8 @@ import { buildColorGroupStatuses } from '@/lib/monopoly-color-portfolio'
 import { formatTradeSideText, tradeSideHasValue } from '@/lib/monopoly-trade-messages'
 
 describe('Estate Kings expanded board', () => {
-  it('supports eight players while preserving the classic board', () => {
-    expect(MONOPOLY_MAX_PLAYERS).toBe(8)
+  it('supports nine players while preserving the classic board', () => {
+    expect(MONOPOLY_MAX_PLAYERS).toBe(9)
     expect(MONOPOLY_BOARD).toHaveLength(40)
     expect(spaceAt(10).type).toBe('jail')
   })

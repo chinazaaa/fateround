@@ -357,9 +357,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     gameUpdate.theme = theme
   }
 
-  // Single source of truth for capacity rules (board-size gate + reset).
-  const effectiveMaxPlayers =
-    max_players !== undefined ? clampLobbyMaxPlayers(limitKey, max_players, lobbyLimits) : Number(game.max_players ?? 6)
+  // Single source of truth for capacity rules (board-size gate + reset). Enabling
+  // uno_team_mode forces the room to UNO_TEAM_PLAYERS (see the uno block below),
+  // so that transition also lowers the effective cap even when max_players is not
+  // supplied — fold it in here so the seated-count gate covers it.
+  const unoTeamForcesCap = boardLobbyType === 'uno' && uno_team_mode === true
+  const effectiveMaxPlayers = unoTeamForcesCap
+    ? UNO_TEAM_PLAYERS
+    : max_players !== undefined
+      ? clampLobbyMaxPlayers(limitKey, max_players, lobbyLimits)
+      : Number(game.max_players ?? 6)
 
   // Public + max_players < 2 is a contradiction (nobody to fill the seat) — the
   // /browse feed excludes those rows, so silently accepting the flag would
@@ -375,7 +382,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     gameUpdate.content_label = trimmed ? trimmed.slice(0, 40) : null
   }
 
-  if (max_players !== undefined) {
+  // Seated-count gate — runs for any update that could lower the effective cap,
+  // not just an explicit max_players change. Enabling uno_team_mode forces the
+  // room to UNO_TEAM_PLAYERS (see the uno block below), which can drop the cap
+  // below the current seated count even when max_players wasn't in the request.
+  if (max_players !== undefined || unoTeamForcesCap) {
     const nextMax = effectiveMaxPlayers
     // Count only ready (non-spectator) players against the new cap. Not-ready players
     // are `spectator: true` (see /api/players/ready — readiness maps directly onto the
@@ -383,19 +394,31 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     // against the cap forced the host to remove people who weren't taking a seat in the
     // first place, which is what the user hit trying to reduce max from 8 to 6 while
     // three not-ready players were watching.
-    const { count: seatedCount } = await supabase
+    const { count: seatedCount, error: countError } = await supabase
       .from('players')
       .select('id', { count: 'exact', head: true })
       .eq('game_id', gameCode)
       .not('spectator', 'is', true)
-    if ((seatedCount ?? 0) > nextMax) {
+    // A failed count query would silently pass through as 0 and let the write land
+    // with no bound on seated size — treat it as a hard failure so callers see it.
+    if (countError || seatedCount === null) {
+      return NextResponse.json(
+        {
+          error: internalErrorMessage('games/code/lobby-settings', countError ?? new Error('seated count unavailable')),
+        },
+        { status: 500 }
+      )
+    }
+    if (seatedCount > nextMax) {
       return NextResponse.json(
         { error: `Already have ${seatedCount} seated players — remove someone or pick at least ${seatedCount}` },
         { status: 400 }
       )
     }
-    gameUpdate.max_players = nextMax
-    if (boardLobbyType === 'monopoly' && nextMax < 6) gameUpdate.monopoly_board_size = 40
+    if (max_players !== undefined) {
+      gameUpdate.max_players = nextMax
+      if (boardLobbyType === 'monopoly' && nextMax < 6) gameUpdate.monopoly_board_size = 40
+    }
   }
 
   if (timer_seconds !== undefined) {

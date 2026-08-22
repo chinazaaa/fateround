@@ -1,4 +1,4 @@
-/** Classic Monopoly-style player tokens (pick one at join; max 6 players per game). */
+/** Classic Monopoly-style player tokens (pick one at join). */
 export const MONOPOLY_PLAYER_TOKENS = [
   { id: 'car', emoji: '🚗', label: 'Car' },
   { id: 'hat', emoji: '🎩', label: 'Top hat' },

@@ -190,6 +190,10 @@ describe('answer reveal surfaces', () => {
       const src = read(rel)
       expect(src).toMatch(/\/answers/)
       expect(src, 'the date must come from the URL, not from the client synthesising it').toMatch(hookRe)
+      // And it must actually reach the request URL, not just sit in a variable. A view that
+      // reads `date` but doesn't append it would pass the hook check above while silently
+      // always fetching yesterday — the visible symptom of the arrows doing nothing.
+      expect(src, 'the URL-derived date must be appended to the /answers request').toMatch(/\/answers\$\{[^}]*date/)
     }
   )
 })
