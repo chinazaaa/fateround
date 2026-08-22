@@ -1,12 +1,9 @@
-import { useCallback, useState } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { ListRow } from '@/components/ui/ListRow'
 import { SurfaceCard } from '@/components/ui/SurfaceCard'
-import { apiUrl } from '@/lib/config'
-import { authHeaders } from '@/lib/identity'
+import { useActiveGames } from '@/lib/active-games'
 import { gameLabel } from '@/lib/mobile-registry'
-import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus'
 import type { GameType } from '@fateround/shared'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
@@ -28,35 +25,10 @@ import { useThemedStyles } from '@/constants/theme-context'
  * worse than no heading.
  */
 
-type ActiveGame = {
-  code: string
-  gameType: string
-  title: string | null
-  status: string
-  role: 'host' | 'player'
-}
-
 export function ContinuePlayingStrip() {
   const styles = useThemedStyles(makeStyles)
   const router = useRouter()
-  const [games, setGames] = useState<ActiveGame[]>([])
-
-  const load = useCallback(async () => {
-    try {
-      const res = await fetch(apiUrl('/api/profile/active-games'), {
-        headers: (await authHeaders()) ?? undefined,
-      })
-      if (!res.ok) return
-      const json = (await res.json()) as { games?: ActiveGame[] }
-      setGames(json.games ?? [])
-    } catch {
-      // Keep whatever is on screen. A failed poll must never blank a list of live games.
-    }
-  }, [])
-
-  // A game can start, end, or be joined on the other device while this screen sits open, so
-  // re-read on focus and on app resume rather than once on mount.
-  useRefreshOnFocus(load)
+  const { games } = useActiveGames()
 
   if (games.length === 0) return null
 

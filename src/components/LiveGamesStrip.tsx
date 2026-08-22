@@ -14,6 +14,7 @@ import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { gameTypeConfig, parseGameType } from '@/lib/game-types'
 import { getPlayerSession } from '@/lib/utils'
+import { useActiveGames } from '@/lib/active-games'
 import type { PublicGame } from '@/lib/game-browse'
 
 const PREVIEW_LIMIT = 5
@@ -25,6 +26,10 @@ export function LiveGamesStrip() {
   // Uppercased set of game codes this browser has a player session for, so we
   // can flip the CTA to "Continue" on games the viewer has already joined.
   const [joinedSet, setJoinedSet] = useState<Set<string>>(() => new Set())
+  // Games you are already in are shown ABOVE this by ContinuePlayingStrip. Leaving them here
+  // too would offer you a "Join" card for a game you are currently hosting. `joinedSet` only
+  // knew about THIS browser's sessions, so it missed a host-only host entirely.
+  const { codes: myActiveCodes } = useActiveGames()
   const inFlight = useRef(false)
 
   const load = useCallback(async () => {
@@ -84,9 +89,14 @@ export function LiveGamesStrip() {
 
   // Auto-hide: never render an empty strip. On first load we wait for the fetch
   // so we don't briefly render then disappear.
-  if (!loaded || games.length === 0) return null
+  // Games you're already in are handled above by ContinuePlayingStrip (or, on the device
+  // you're playing on, by Recent). Offering a "Join" card for a game you're hosting is the
+  // fight this avoids.
+  const shown = games.filter((g) => !myActiveCodes.has(g.id.toUpperCase())).slice(0, PREVIEW_LIMIT)
 
-  const shown = games.slice(0, PREVIEW_LIMIT)
+  // Checked AFTER the filter: when every live game is one of yours, the section must hide
+  // rather than render an empty grid under a "Live games" heading.
+  if (!loaded || shown.length === 0) return null
 
   return (
     <section className="fr-band fr-band--tight">

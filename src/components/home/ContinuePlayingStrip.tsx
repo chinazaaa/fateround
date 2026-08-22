@@ -1,8 +1,7 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
-import { authHeaders } from '@/lib/identity'
+import { useActiveGames } from '@/lib/active-games'
 import { GAME_TYPE_CONFIG } from '@/lib/game-types'
 import type { GameType } from '@/types'
 
@@ -23,39 +22,8 @@ import type { GameType } from '@/types'
  * playing" heading is worse than no heading, and this sits above the fold.
  */
 
-type ActiveGame = {
-  code: string
-  gameType: string
-  title: string | null
-  status: string
-  role: 'host' | 'player'
-}
-
 export function ContinuePlayingStrip() {
-  const [games, setGames] = useState<ActiveGame[]>([])
-
-  const load = useCallback(async () => {
-    try {
-      const auth = await authHeaders()
-      // No bearer means no cross-device identity to look up; the local recent list is already
-      // the right answer for a guest.
-      if (!auth?.Authorization) return
-      const res = await fetch('/api/profile/active-games', { headers: auth, cache: 'no-store' })
-      if (!res.ok) return
-      const json = (await res.json()) as { games?: ActiveGame[] }
-      setGames(json.games ?? [])
-    } catch {
-      // Keep whatever is on screen — a failed poll must never blank a list of live games.
-    }
-  }, [])
-
-  useEffect(() => {
-    void load()
-    // A game can start or end on the other device while this tab sits open.
-    const onFocus = () => void load()
-    window.addEventListener('focus', onFocus)
-    return () => window.removeEventListener('focus', onFocus)
-  }, [load])
+  const { games } = useActiveGames()
 
   if (games.length === 0) return null
 

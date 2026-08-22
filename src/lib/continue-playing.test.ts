@@ -57,9 +57,11 @@ describe('the strip on both platforms', () => {
   const MOBILE = 'apps/mobile/components/home/ContinuePlayingStrip.tsx'
 
   it.each([
-    ['web', WEB],
-    ['mobile', MOBILE],
+    ['web', 'src/lib/active-games.ts'],
+    ['mobile', 'apps/mobile/lib/active-games.ts'],
   ])('%s reads the shared endpoint', (_p, rel) => {
+    // The hook owns the fetch, not the strips — see the "must not fight" block below, which
+    // is the reason there is exactly one caller per platform.
     expect(code(rel)).toMatch(/\/api\/profile\/active-games/)
   })
 
@@ -85,5 +87,59 @@ describe('the strip on both platforms', () => {
     const home = code('apps/mobile/app/index.tsx')
     // The section HEADING, not the `recent` state variable that is declared far above it.
     expect(home.search(/<ContinuePlayingStrip/)).toBeLessThan(home.search(/sectionTitle}>Recent</))
+  })
+})
+
+/**
+ * The continue strip and the public "live games" feed must not fight.
+ *
+ * A public game you HOST appears in both by default — once as "Continue playing · hosting" and
+ * again as a discovery card inviting you to join a game you are already running. And on the
+ * device you are actually playing on, the strip is noise: you are already there, and the local
+ * Recent list covers it. Both rules are enforced through one shared source, because a division
+ * this precise only reads cleanly if the two sides are looking at the same list.
+ */
+describe('continue strip vs the discovery feed', () => {
+  const HOOKS = [
+    ['web', 'src/lib/active-games.ts'],
+    ['mobile', 'apps/mobile/lib/active-games.ts'],
+  ] as const
+
+  it.each(HOOKS)('%s hook separates "elsewhere" from "all"', (_p, rel) => {
+    const src = code(rel)
+    // `games` = other devices only (the strip). `codes` = everything (discovery exclusion).
+    expect(src).toMatch(/codes: new Set\(/)
+    expect(src, 'must filter the strip by what this device holds').toMatch(/heldOnThisDevice/)
+  })
+
+  it.each(HOOKS)('%s decides "this device" from local credentials, not a guess', (_p, rel) => {
+    const src = code(rel)
+    expect(src, 'a player resume token').toMatch(/getPlayerSession/)
+    expect(src, 'or the host token — a host-only host has no player session').toMatch(/(readHostToken|getHostToken)/)
+  })
+
+  it('both strips render from the shared hook rather than fetching their own', () => {
+    for (const rel of [
+      'src/components/home/ContinuePlayingStrip.tsx',
+      'apps/mobile/components/home/ContinuePlayingStrip.tsx',
+    ]) {
+      expect(code(rel)).toMatch(/useActiveGames\(\)/)
+      expect(code(rel), 'no second fetch to drift from the exclusion list').not.toMatch(/fetch\(/)
+    }
+  })
+
+  it('the web live-games strip excludes games you are in', () => {
+    const src = code('src/components/LiveGamesStrip.tsx')
+    expect(src).toMatch(/myActiveCodes\.has\(g\.id\.toUpperCase\(\)\)/)
+    // Checked AFTER the filter: when every live game is one of yours the section must hide,
+    // not render an empty grid under a "Live games" heading.
+    expect(src.search(/const shown =/)).toBeLessThan(src.search(/shown\.length === 0\) return null/))
+  })
+
+  it('the mobile home preview excludes them, but the full browse page does not', () => {
+    const src = code('apps/mobile/components/browse/BrowseGamesList.tsx')
+    expect(src).toMatch(/previewLimit \? byType\.filter\(\(g\) => !myActiveCodes\.has/)
+    // On /browse you came to look at what's live; your own game vanishing would read as a bug.
+    expect(src).toMatch(/: byType/)
   })
 })

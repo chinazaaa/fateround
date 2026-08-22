@@ -10,6 +10,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View, ActivityIndicator } from 'react-native'
+import { useActiveGames } from '@/lib/active-games'
 import { useFocusEffect, useRouter } from 'expo-router'
 import type { GameType } from '@fateround/shared'
 import { AppButton } from '@/components/ui/AppButton'
@@ -70,6 +71,7 @@ type Props = {
 }
 
 export function BrowseGamesList({ previewLimit, onSeeAll, tab = 'live' }: Props) {
+  const { codes: myActiveCodes } = useActiveGames()
   const router = useRouter()
   const theme = useTheme()
   const styles = useThemedStyles(makeStyles)
@@ -227,9 +229,14 @@ export function BrowseGamesList({ previewLimit, onSeeAll, tab = 'live' }: Props)
   }, [games])
 
   const visible = useMemo(() => {
-    const filtered = filter === ALL ? games : games.filter((g) => g.game_type === filter)
-    return previewLimit ? filtered.slice(0, previewLimit) : filtered
-  }, [games, filter, previewLimit])
+    const byType = filter === ALL ? games : games.filter((g) => g.game_type === filter)
+    // Games you're already in are shown by ContinuePlayingStrip above the HOME preview (or by
+    // Recent, on the device you're playing on). Leaving them here too would offer a "Join" card
+    // for a game you're currently hosting. The full /browse page keeps them: there you came to
+    // look at what's live, and your own game disappearing from the list would read as a bug.
+    const mine = previewLimit ? byType.filter((g) => !myActiveCodes.has(g.id.toUpperCase())) : byType
+    return previewLimit ? mine.slice(0, previewLimit) : mine
+  }, [games, filter, previewLimit, myActiveCodes])
 
   if (previewLimit) {
     // Home preview: strip only, no chrome — auto-hides when empty so a fresh
