@@ -121,7 +121,12 @@ export function HostChrome({
   // A seated host still sees the shared finished screen at the end (winner + standings +
   // inline host actions); a host-only host falls back to the console's own finished controls.
   const showPlayView = canPlay && (playFirstNow || (finished && seated))
-  const showConsole = !playFirstNow && !!children
+  // Keyed off showPlayView, NOT playFirstNow — these were an if/else before the play-first
+  // change split them into two conditionals, and independent conditions let both be true at
+  // once: a FINISHED game with a seated host on a console screen (bingo in manual mode, or
+  // trivia after "Leave game (keep hosting)") rendered the player finish panel AND the console
+  // stacked, with two Play again buttons.
+  const showConsole = !showPlayView && !!children
 
   // The ⚙ Host controls sheet (settings, end game, play again) and the roster
   // drawer's Remove are available to any host screen that hands us the roster.

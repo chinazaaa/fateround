@@ -257,12 +257,16 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
               window.confirm('You’re hosting this game on another device. Take over hosting on this device?')
             if (!takeOver) return
             const token = await takeOverHosting(gameCode)
-            // Null means guest, not-the-host, or a failed request — all of which mean "just
-            // carry on with the normal join" rather than an error to show.
             if (token) {
               window.location.href = hostHref(gameCode)
               return
             }
+            // Handoff unavailable (a failed request, or the profile no longer owns this game).
+            // STOP here rather than falling through: the next branch says "you're already a
+            // player on another device", which is false for a host, and confirming it would
+            // seat them as an ordinary player in the game they are running.
+            onJoinError?.('Could not take over hosting on this device. Try again.')
+            return
           }
           const message = `You’re already a player in this game on another device${
             data.existingPlayerName ? ` (as ${data.existingPlayerName})` : ''

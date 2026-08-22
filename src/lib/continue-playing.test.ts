@@ -47,6 +47,13 @@ describe('active-games endpoint', () => {
     expect(hostPass).toBeGreaterThan(seatPass)
   })
 
+  it('counts only real seats, not spectator rows', () => {
+    // A game you WATCHED on another device is not a seat to resume: without this it appeared
+    // in "Continue playing" and flipped its browse card to "Continue", implying a seat that
+    // isn't there. Caught in review.
+    expect(src).toMatch(/\.neq\('spectator', true\)/)
+  })
+
   it('answers a guest with an empty list rather than an error', () => {
     expect(src).toMatch(/if \(!profileId\) return NextResponse\.json\(\{ games: \[\] \}\)/)
   })

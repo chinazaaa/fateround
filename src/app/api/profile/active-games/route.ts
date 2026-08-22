@@ -48,6 +48,10 @@ export async function GET(req: NextRequest) {
         .from('players')
         .select(`game_id, games!inner(${select})`)
         .eq('user_id', profileId)
+        // A spectator row is not a seat to resume. Without this, a game you only WATCHED on
+        // another device showed up in "Continue playing" and flipped its browse card to
+        // "Continue", implying a seat that isn't there.
+        .neq('spectator', true)
         .in('games.status', LIVE_STATUSES),
     ])
 

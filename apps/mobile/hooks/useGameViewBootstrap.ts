@@ -224,14 +224,19 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
                 return
               }
               const hostToken = await takeOverHosting(gameCode)
-              // Null means guest, non-host, or a failed request — fall through to the normal
-              // join rather than surfacing an error.
               if (hostToken) {
                 setError(null)
                 setJoining(false)
                 router.replace(`/host/${gameCode.toUpperCase()}` as never)
                 return
               }
+              // Handoff unavailable (a failed request, or the profile no longer owns this
+              // game). STOP here rather than falling through: the next prompt says "you're
+              // already a player on another device", which is false for a host, and confirming
+              // it would seat them as an ordinary player in the game they are running.
+              setError('Could not take over hosting on this device. Try again.')
+              setJoining(false)
+              return
             }
             const proceed = await new Promise<boolean>((resolve) => {
               Alert.alert(

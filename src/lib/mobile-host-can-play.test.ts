@@ -79,7 +79,7 @@ describe('HostChrome', () => {
 
   it('hands the console back to a host who stopped playing', () => {
     // The other half of the same rule: viewer row → not playing → console.
-    expect(CHROME).toMatch(/showConsole = !playFirstNow/)
+    expect(CHROME).toMatch(/showConsole = !showPlayView/)
     expect(read('components/host/HostControlsSheet.tsx'), 'the control that creates that state').toMatch(
       /Leave game \(keep hosting\)/
     )
@@ -87,7 +87,16 @@ describe('HostChrome', () => {
 
   it('leaves an unseated host their console', () => {
     // They are running the game rather than playing it — Force advance and End game are the point.
-    expect(CHROME).toMatch(/const showConsole = !playFirstNow && !!children/)
+    expect(CHROME).toMatch(/const showConsole = !showPlayView && !!children/)
+  })
+
+  it('never renders the play view and the console at once', () => {
+    // These were an if/else before play-first split them into two conditionals, and two
+    // independent conditions let both be true: a FINISHED game with a seated host on a console
+    // screen stacked the player finish panel ON the console, with two Play again buttons.
+    // Keying the console off showPlayView (not playFirstNow) restores the exclusivity.
+    expect(CHROME).toMatch(/const showConsole = !showPlayView/)
+    expect(CHROME, 'must not key the console off playFirstNow').not.toMatch(/showConsole = !playFirstNow/)
   })
 
   it('reintroduces no Play/Manage tab', () => {

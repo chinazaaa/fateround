@@ -42,9 +42,15 @@ describe.each(JOIN_PATHS)('$platform $file', ({ file }) => {
     expect(handoff, 'the handoff must come first').toBeLessThan(retry)
   })
 
-  it('falls through rather than erroring when the handoff is not available', () => {
-    // A guest, or someone who is not this game's host, must still get the normal join.
-    expect(src).toMatch(/if \((?:host)?[Tt]oken\) \{/)
+  it('STOPS when the handoff is unavailable instead of falling through', () => {
+    // Falling through reaches the "you're already a player on another device" prompt, which is
+    // false for a host — and confirming it seats them as an ordinary player in the game they
+    // are running. Caught in review; the first version fell through deliberately.
+    expect(src).toMatch(/Could not take over hosting/)
+    const stop = src.search(/Could not take over hosting/)
+    const playerPrompt = src.search(/already a player in this game on another device/)
+    expect(playerPrompt).toBeGreaterThan(-1)
+    expect(stop, 'the bail-out must precede the player prompt').toBeLessThan(playerPrompt)
   })
 })
 
