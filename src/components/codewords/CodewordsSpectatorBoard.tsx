@@ -6,8 +6,13 @@ import { guessAttributionMap, waitingTurnMessage } from '@/lib/codewords'
 import type { CodewordsBoard, CodewordsGuess, CodewordsPlayerRole, Player } from '@/types'
 
 /**
- * Read-only live board for a host-only (spectator) host. Lives in the Watch tab — the
- * Manage tab never renders a board.
+ * Read-only live board for a host-only (spectator) host, or a host + play host who is not
+ * on a team yet. Lives in the Watch tab — the Manage tab never renders a board.
+ *
+ * The key card is NOT revealed here: a spectating host should watch the game like anyone
+ * else, not see the secret assignment. A spymaster sees the key through CodewordsActiveRound
+ * instead (their role gates it there). Everyone learns the whole key on the finish screen,
+ * which is a different code path.
  */
 export function CodewordsSpectatorBoard({
   board,
@@ -34,7 +39,7 @@ export function CodewordsSpectatorBoard({
             Clue: <strong>{board.current_clue_word}</strong> {board.current_clue_number}
           </p>
         )}
-        <CodewordsBoardGrid board={board} showKey cellAttribution={cellAttribution} />
+        <CodewordsBoardGrid board={board} cellAttribution={cellAttribution} />
       </div>
       <aside className="space-y-3">
         <CodewordsScoreboard board={board} players={players} roles={roles} />

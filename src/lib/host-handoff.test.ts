@@ -66,12 +66,30 @@ describe('the handoff helpers', () => {
   })
 
   it('do NOT rotate the host token', () => {
-    // The player equivalent rotates its resume token so continuing MOVES the seat. Hosting is
-    // the opposite case: both devices are the same account, and killing the other device's
-    // token would strand it mid-game with a dead credential and no path back.
+    // Both devices are the same account, and killing the other device's host token would
+    // strand it mid-game with a dead credential and no path back. The player seat that rides
+    // along with a host + play handoff is different — that resume token IS rotated so the
+    // player seat truly moves rather than being cloned.
     const route = read('src/app/api/games/[code]/reclaim-host/route.ts')
-    expect(route, 'reclaim must hand back the existing token').toMatch(/return NextResponse\.json\(\{ hostToken \}/)
+    expect(route, 'reclaim must hand back the existing host token').toMatch(
+      /return NextResponse\.json\(\{ hostToken(,|\s)/
+    )
     expect(route).not.toMatch(/generateHostToken|update\(\{[^}]*host_token/)
+  })
+
+  it('also carries the host+player seat to the new device', () => {
+    // Without this, take-over left the host as HOST-ONLY here even when they were host + play on
+    // the other device: on the destination device, useHostSeat has no player session to seed
+    // from and their own roster row is unreachable. So reclaim-host must ALSO look up the
+    // profile's player row, rotate its resume token, and return it — and both clients must
+    // stash it as their local player session before landing on /host/[code].
+    const route = read('src/app/api/games/[code]/reclaim-host/route.ts')
+    expect(route).toMatch(/from\('players'\)[\s\S]*eq\('user_id', profileId\)/)
+    expect(route, 'the returning player must get a fresh resume token').toMatch(/generateResumeToken\(\)/)
+    expect(route).toMatch(/hostToken, player/)
+
+    expect(read('src/lib/take-over-hosting.ts')).toMatch(/setPlayerSession\(/)
+    expect(read('apps/mobile/lib/take-over-hosting.ts')).toMatch(/setPlayerSession\(/)
   })
 
   it('swallow failures — a handoff that cannot happen is not an error', () => {
