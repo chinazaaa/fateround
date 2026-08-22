@@ -157,6 +157,7 @@ export function TrollRunHostView({ gameCode, hostToken }: TrollRunHostViewProps)
     () =>
       game?.status === 'active' ? (
         <HostActiveSettings
+          game={game}
           gameCode={gameCode}
           hostToken={hostToken}
           gameType="troll_run"
@@ -201,7 +202,7 @@ export function TrollRunHostView({ gameCode, hostToken }: TrollRunHostViewProps)
       setHostJoinName('')
       setPlayers((prev) => prev.filter((player) => player.id !== playerId))
     },
-    [onHostSeatRemoved, setHostJoinName]
+    [game, onHostSeatRemoved, setHostJoinName]
   )
 
   const { removingPlayerId, removePlayer } = useHostRemovePlayer(gameCode, hostToken, handlePlayerRemoved)

@@ -304,6 +304,7 @@ export function LudoHostView({ gameCode, hostToken }: { gameCode: string; hostTo
     () =>
       game?.status === 'active' ? (
         <HostActiveSettings
+          game={game}
           gameCode={gameCode}
           hostToken={hostToken}
           gameType="ludo"

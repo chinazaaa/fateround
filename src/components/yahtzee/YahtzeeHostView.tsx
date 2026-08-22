@@ -353,6 +353,7 @@ export function YahtzeeHostView({ gameCode, hostToken }: { gameCode: string; hos
     () =>
       game?.status === 'active' ? (
         <HostActiveSettings
+          game={game}
           gameCode={gameCode}
           hostToken={hostToken}
           gameType="yahtzee"

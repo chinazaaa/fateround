@@ -258,6 +258,7 @@ export function TicTacToeHostView({ gameCode, hostToken }: { gameCode: string; h
     () =>
       game?.status === 'active' && !gameFinished ? (
         <HostActiveSettings
+          game={game}
           gameCode={gameCode}
           hostToken={hostToken}
           gameType="tic_tac_toe"

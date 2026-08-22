@@ -333,6 +333,7 @@ export function ChessHostView({ gameCode, hostToken }: { gameCode: string; hostT
     () =>
       game?.status === 'active' && !gameFinished ? (
         <HostActiveSettings
+          game={game}
           gameCode={gameCode}
           hostToken={hostToken}
           gameType="chess"

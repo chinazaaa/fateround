@@ -351,6 +351,7 @@ export function WordScrambleHostView({ gameCode, hostToken }: { gameCode: string
     () =>
       game?.status === 'active' ? (
         <HostActiveSettings
+          game={game}
           gameCode={gameCode}
           hostToken={hostToken}
           gameType="word_scramble"

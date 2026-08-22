@@ -73,10 +73,10 @@ import {
   computeRent,
   getMonopolyBuildActionCount,
   normalizePendingTrade,
-  type MonopolyPendingTrade,
   parseBuildings,
   parseMortgaged,
   parsePropertyOwners,
+  type MonopolyPendingTrade,
 } from '@/components/games/monopoly/manage-logic'
 import { MonopolyPropertyModal } from '@/components/games/monopoly/MonopolyPropertyModal'
 import { MonopolyLoanModal } from '@/components/games/monopoly/MonopolyLoanModal'

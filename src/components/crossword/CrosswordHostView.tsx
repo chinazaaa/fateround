@@ -432,6 +432,7 @@ export function CrosswordHostView({ gameCode, hostToken }: { gameCode: string; h
     () =>
       game?.status === 'active' ? (
         <HostActiveSettings
+          game={game}
           gameCode={gameCode}
           hostToken={hostToken}
           gameType="crossword"
