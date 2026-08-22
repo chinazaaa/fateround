@@ -5,46 +5,64 @@ import { join } from 'node:path'
 /**
  * Guard for "the host can watch their own game but not play it".
  *
- * A mobile host who taps "Play along" in the lobby and types a name holds a real seat — they
- * are a `players` row like anyone else. But for HOST-RUN games (trivia, bingo, mafia, quick
- * draw, …) `HostChrome` rendered only the control console once the game started, and that
- * console is read-only: it printed the trivia question and its four choices as plain `Text`
- * with nothing to tap. Reported as "I can't play on mobile — it's only showing the questions".
+ * A mobile host who taps "Play along" in the lobby and types a name holds a real seat — a
+ * `players` row like anyone else. But `HostChrome` renders host-run games (trivia, bingo,
+ * mafia, quick draw, …) as their control console, and that console is READ-ONLY: trivia's
+ * printed the question and its four choices as plain `Text` with nothing to tap. Reported as
+ * "I can't play on mobile — it's only showing the questions".
  *
- * The fix is a Play/Manage toggle. Two properties keep it correct, and both are pinned here:
- *   1. A seated host on a host-run game can reach the play view at all.
- *   2. The console stays MOUNTED while they play — several games drive themselves from hooks
- *      that live in it (bingo's caller, trivia's auto-advance), so unmounting the console
- *      would stop the game the host is playing.
+ * ── WHY NOT A TAB ────────────────────────────────────────────────────────────
+ * The first attempt at this fix added a Play/Manage toggle, which is precisely what the
+ * comment it replaced ruled out: "no Play/Manage tab, so the drive controls are always in
+ * reach". It also made every host-run game carry a control the app uses nowhere else, to solve
+ * a problem only trivia had. The rule the app actually follows is simpler and already existed:
+ * you play the game, and hosting tools live behind the ⚙ button.
+ *
+ * So the fix is one prop on one game. `playFirstWhenSeated` is only correct for a host-run game
+ * that DRIVES ITSELF — trivia's rounds auto-advance when everyone answers or the clock expires,
+ * with the server ticker behind that, so a seated trivia host has nothing to drive. Bingo's
+ * manual caller and Mafia's phase advance are the hosting job, so those stay console-first.
  */
 
-const CHROME = readFileSync(join(process.cwd(), 'apps', 'mobile', 'components', 'host', 'HostChrome.tsx'), 'utf8')
+const MOBILE = join(process.cwd(), 'apps', 'mobile')
+const read = (rel: string) => readFileSync(join(MOBILE, rel), 'utf8')
+const CHROME = read('components/host/HostChrome.tsx')
 
-describe('mobile host of a host-run game can play along', () => {
-  it('offers the toggle exactly when the host holds a seat on a host-run game', () => {
-    // Not `playFirst` (those already show the board), seated, and there is a console to
-    // switch back to. Drop any one of these and the toggle is either useless or misleading.
-    expect(CHROME).toMatch(/const canToggleSurface =[^\n]*canPlay[^\n]*!playFirst[^\n]*seated[^\n]*children/)
+describe('a seated mobile host can play a self-driving game', () => {
+  it('trivia opts in, because trivia auto-advances', () => {
+    expect(read('components/host/trivia/TriviaHostScreen.tsx')).toMatch(/playFirstWhenSeated/)
   })
 
-  it('the play view is reachable from the toggle, not only when the game is finished', () => {
-    const line = /const showPlayView = [^\n]+/.exec(CHROME)?.[0] ?? ''
-    expect(line, 'showPlayView must honour the toggle').toMatch(/canToggleSurface && surface === 'play'/)
-    // The pre-toggle behaviours both survive: play-along games, and a seated host at the end.
-    expect(line).toMatch(/playFirst/)
-    expect(line).toMatch(/finished && seated/)
+  it('the flag only takes effect once the host holds a seat', () => {
+    // Without `seated` a host-only host would lose the console they came for.
+    expect(CHROME).toMatch(/const playFirstNow = playFirst \|\| \(playFirstWhenSeated && seated\)/)
   })
 
-  it('hides the console with display:none rather than unmounting it', () => {
-    // The whole point: bingo's caller and trivia's auto-advance live in the console subtree.
-    expect(CHROME, 'needs a style that hides without unmounting').toMatch(/hidden:\s*\{\s*display:\s*'none'\s*\}/)
-    expect(CHROME, 'the console ScrollView must switch style, not render conditionally').toMatch(
-      /style=\{showManageView \? styles\.manageBody : styles\.hidden\}/
-    )
+  it('a seated host of an opted-in game gets the play view', () => {
+    expect(CHROME).toMatch(/const showPlayView = canPlay && \(playFirstNow \|\| \(finished && seated\)\)/)
   })
 
-  it('both tabs are labelled and reachable', () => {
-    expect(CHROME).toMatch(/'play', 'manage'/)
-    expect(CHROME).toMatch(/setSurface\(key\)/)
+  it('an unseated host still gets the console', () => {
+    expect(CHROME).toMatch(/const showConsole = !playFirstNow && !!children/)
+  })
+
+  it('games that must be driven by hand do NOT opt in', () => {
+    // Bingo's caller and Mafia's phase advance ARE the hosting job — burying them behind the
+    // gear would break the loop those games are played through.
+    for (const rel of [
+      'components/host/bingo/BingoHostScreen.tsx',
+      'components/host/mafia/MafiaHostScreen.tsx',
+      'components/host/quick-draw/QuickDrawHostScreen.tsx',
+    ]) {
+      expect(read(rel), `${rel} must stay console-first`).not.toMatch(/playFirstWhenSeated/)
+    }
+  })
+
+  it('reintroduces no Play/Manage tab', () => {
+    // The thing this fix is not. Kept as an assertion because it was already ruled out once and
+    // still got added back.
+    for (const marker of [/canToggleSurface/, /surfaceTab/, /'play', 'manage'/, /Play' : 'Manage'/]) {
+      expect(CHROME, `Play/Manage tab reintroduced (${marker})`).not.toMatch(marker)
+    }
   })
 })
