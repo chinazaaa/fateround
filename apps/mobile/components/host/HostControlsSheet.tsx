@@ -25,6 +25,7 @@ import { SettingToggle } from '@/components/create/SettingToggle'
 import { LateJoinPolicyPicker } from '@/components/create/LateJoinPolicyPicker'
 import { WordRushHostRoundControl } from '@/components/games/WordRushHostRoundControl'
 import { QuickDrawHostAdvanceControl } from '@/components/games/QuickDrawHostAdvanceControl'
+import { CodewordsHostLobby } from '@/components/host/lobby/CodewordsHostLobby'
 import { AddGameTimeControl } from '@/components/host/AddGameTimeControl'
 import { RotatePlayerCodeRow } from '@/components/session/RotatePlayerCodeRow'
 import type { Theme } from '@/constants/theme'
@@ -333,6 +334,15 @@ export function HostControlsSheet({
 
             {active && game.game_type === 'quick_draw' ? (
               <QuickDrawHostAdvanceControl gameCode={gameCode} hostToken={hostToken} game={game} onReload={onReload} />
+            ) : null}
+
+            {/* Mid-game team management for Codewords — the lobby's team panel
+                reopened during play so the host can promote an operative to
+                spymaster (AFK spymaster, mid-round swap) without ending the
+                round. The `/api/codewords/host-role` route allows changes in
+                both lobby and active, so this only needed a surface. */}
+            {active && game.game_type === 'codewords' ? (
+              <CodewordsHostLobby gameCode={gameCode} hostToken={hostToken} game={game} players={players} />
             ) : null}
 
             <AddGameTimeControl gameCode={gameCode} hostToken={hostToken} game={game} onExtended={onReload} />
