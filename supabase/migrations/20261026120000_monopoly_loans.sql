@@ -28,7 +28,12 @@ BEGIN
   END LOOP;
 END $$;
 
--- 4. Update monopoly_claim_and_apply to whitelist and persist `loans`
+-- 4. Column-level select on the new monopoly_boards column, mirroring the
+-- `grant select (board_size)` in 20260930120000_monopoly_expanded_board.sql. Additive
+-- only — it revokes nothing and is a no-op wherever table-level select still holds.
+GRANT SELECT (loans) ON public.monopoly_boards TO anon, authenticated;
+
+-- 5. Update monopoly_claim_and_apply to whitelist and persist `loans`
 CREATE OR REPLACE FUNCTION monopoly_claim_and_apply(
   p_game_id text,
   p_expected_updated_at timestamptz,
@@ -138,6 +143,6 @@ $$;
 
 REVOKE EXECUTE ON FUNCTION monopoly_claim_and_apply(text, timestamptz, jsonb, jsonb) FROM PUBLIC, anon, authenticated;
 
--- 5. Ensure full replica identity for realtime push delta delivery without TOAST null omission
+-- 6. Ensure full replica identity for realtime push delta delivery without TOAST null omission
 ALTER TABLE public.monopoly_boards REPLICA IDENTITY FULL;
 ALTER TABLE public.monopoly_player_state REPLICA IDENTITY FULL;
