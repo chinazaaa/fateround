@@ -137,17 +137,19 @@ export async function driveMonopolyBotsOnce(gameCode: string): Promise<DriveResu
   if (!actionableBotId) return { kind: 'idle' }
 
   // A bot can actually act this tick — now it's worth paying for the full
-  // board + player states (needed for the adapter).
-  const [boardRes, statesRes] = await Promise.all([
+  // board + player states (needed for the adapter). The loan-enable flag lives on
+  // the game row, so it rides along in the same round trip.
+  const [boardRes, statesRes, gameRes] = await Promise.all([
     admin.from('monopoly_boards').select('*').eq('game_id', code).maybeSingle(),
     admin.from('monopoly_player_state').select('*').eq('game_id', code).order('player_order'),
+    admin.from('games').select('monopoly_loans_enabled').eq('id', code).maybeSingle(),
   ])
   const board = boardRes.data as MonopolyBoard | null
   const states = (statesRes.data ?? []) as MonopolyPlayerState[]
   // Re-check phase — it could have flipped to 'finished' between the two reads.
   if (!board || board.phase === 'finished') return { kind: 'idle' }
 
-  const view = adaptMonopolyForBot(board, states, actionableBotId)
+  const view = adaptMonopolyForBot(board, states, actionableBotId, gameRes.data?.monopoly_loans_enabled !== false)
   if (!view) return { kind: 'idle' }
 
   const action = pickBotAction(view)

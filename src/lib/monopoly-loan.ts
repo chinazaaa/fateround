@@ -542,7 +542,9 @@ export function executeBankForeclosure(
     last_cash_event: {
       seq: (board.last_cash_event?.seq ?? 0) + 1,
       player_id: playerId,
-      change: -seizedCash,
+      // Net, not the gross seizure: an overshoot is refunded above, so `-seizedCash`
+      // would not reconcile with `balance_after`.
+      change: updatedPlayerState.cash - playerState.cash,
       balance_after: updatedPlayerState.cash,
       label: `Bank foreclosure seizure for defaulted loan`,
       bankrupt: isBankrupt,

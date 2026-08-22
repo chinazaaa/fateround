@@ -28,6 +28,7 @@ import {
   monopolyBoardForSize,
   mortgageValue,
   spacesInGroup,
+  type MonopolyBoardSize,
   type MonopolyColorGroup,
   type MonopolySpace,
 } from '@/lib/monopoly-board'
@@ -165,6 +166,8 @@ export interface MonopolyBotTradeContext {
 export interface MonopolyBotView {
   botPlayerId: string
   phase: MonopolyPhase
+  /** 40 or 48 spaces. Loan minimums and caps scale with it, so the heuristic needs it. */
+  boardSize: MonopolyBoardSize
   /**
    * True when the bot holds the current turn AND the phase is one that the
    * turn holder must act on (roll/buy/jail/pay_rent/raise_funds). Auction is
@@ -197,6 +200,8 @@ export interface MonopolyBotView {
    * regardless of whose turn it is.
    */
   pendingTradeToMe?: MonopolyBotTradeContext
+  /** Whether the host left loan facilities on. When off the engine rejects every borrow. */
+  loansEnabled: boolean
   /** Active loan state if the bot currently holds a bank loan. */
   activeLoan?: {
     principal: number
@@ -237,6 +242,9 @@ function hotelRentSumForGroup(group: MonopolyColorGroup, groupSpaces: MonopolySp
 /**
  * Build a MonopolyBotView from a live DB snapshot.
  *
+ * `loansEnabled` comes from the game row rather than the board, so the caller
+ * passes it in; it defaults to on.
+ *
  * Returns `null` when the bot isn't in this game or the game is finished —
  * the caller (driver) should skip in that case, exactly the same contract
  * `adaptForBot` uses for Whot.
@@ -244,7 +252,8 @@ function hotelRentSumForGroup(group: MonopolyColorGroup, groupSpaces: MonopolySp
 export function adaptMonopolyForBot(
   board: MonopolyBoard,
   states: MonopolyPlayerState[],
-  botPlayerId: string
+  botPlayerId: string,
+  loansEnabled = true
 ): MonopolyBotView | null {
   if (board.phase === 'finished') return null
 
@@ -493,6 +502,7 @@ export function adaptMonopolyForBot(
   return {
     botPlayerId,
     phase: board.phase,
+    boardSize,
     isMyTurn,
     me: {
       playerId: meState.player_id,
@@ -509,6 +519,7 @@ export function adaptMonopolyForBot(
     pendingDebt,
     auction,
     pendingTradeToMe,
+    loansEnabled,
     activeLoan,
     creditLimit,
     ownedPropertyFraction,

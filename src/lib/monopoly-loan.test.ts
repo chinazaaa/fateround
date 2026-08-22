@@ -412,6 +412,32 @@ describe('Monopoly Loan Facilities', () => {
       const check = isTradeBlockedByLoan(500, [200, 200], 0, [200], activeLoan)
       expect(check.blocked).toBe(false)
     })
+
+    it('ignores mortgaged deeds on both sides of the post-trade estate', () => {
+      const activeLoan: MonopolyLoan = {
+        id: 'loan_1',
+        player_id: 'p1',
+        principal: 400,
+        interest_rate: 0.15,
+        total_due: 460,
+        amount_repaid: 0,
+        balance_remaining: 460,
+        term_rounds: 4,
+        rounds_remaining: 2,
+        created_at: new Date().toISOString(),
+        status: 'active',
+      }
+
+      // Two deeds worth 200 each, both already mortgaged, so neither counts as
+      // collateral and cash alone has to cover the balance.
+      const mortgagedEstate = isTradeBlockedByLoan(300, [], 0, [], activeLoan)
+      expect(mortgagedEstate.blocked).toBe(true)
+
+      // Trading a mortgaged deed away strips nothing, so it must not be deducted
+      // from a total that never included it.
+      const givingMortgagedDeed = isTradeBlockedByLoan(300, [200], 0, [], activeLoan)
+      expect(givingMortgagedDeed.blocked).toBe(false)
+    })
   })
 
   describe('Bank Foreclosure & Asset Seizure', () => {
@@ -512,6 +538,11 @@ describe('Monopoly Loan Facilities', () => {
       expect(res.board.property_buildings['8']).toBe(5)
       // Excess refund: ₦125 raised - ₦10 remaining debt = ₦115 refunded back to cash
       expect(res.playerState.cash).toBe(115)
+      // The personal cash banner reconstructs the opening balance from
+      // `balance_after - change`, so the event has to report the net −450 rather
+      // than the gross ₦565 seizure.
+      expect(res.board.last_cash_event?.change).toBe(-450)
+      expect(res.board.last_cash_event?.balance_after).toBe(115)
       expect(res.bankrupt).toBe(false)
     })
 

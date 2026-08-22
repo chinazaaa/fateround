@@ -32,6 +32,7 @@
 
 import type { MonopolyBotView, MonopolyBotTradeContext, MonopolyBotTradeProperty } from '@/lib/monopoly-bot-adapter'
 import { MONOPOLY_JAIL_FINE, spacesInGroup } from '@/lib/monopoly-board'
+import { minLoanAmountForSize } from '@/lib/monopoly-loan'
 import type { MonopolyTradeDeclineReason } from '@/types'
 
 export type MonopolyBotAction =
@@ -301,12 +302,16 @@ function pickRaiseFundsAction(view: MonopolyBotView): MonopolyBotAction {
     return { type: 'mortgage', spaceIndex: mortgageable[0]!.spaceIndex }
   }
 
-  // If about to forfeit, try borrowing a loan first if eligible and credit limit allows
+  // Only worth borrowing when one loan clears the whole debt: a partial loan pays
+  // nothing off, blocks a second loan, and adds interest to an estate that forfeits
+  // on the next tick anyway.
   const creditLimit = view.creditLimit ?? 0
-  if (!view.activeLoan && debt.amount > view.me.cash && creditLimit >= 100) {
+  if (view.loansEnabled && !view.activeLoan) {
+    const minLoan = minLoanAmountForSize(view.boardSize)
     const needed = debt.amount - view.me.cash
-    const borrowAmount = Math.max(100, Math.min(creditLimit, needed))
-    return { type: 'borrow_loan', amount: borrowAmount }
+    if (creditLimit >= Math.max(minLoan, needed)) {
+      return { type: 'borrow_loan', amount: Math.max(minLoan, needed) }
+    }
   }
 
   // Nothing left to raise. Forfeit — the engine handles the bankruptcy tree.

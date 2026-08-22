@@ -49,6 +49,7 @@ export function MonopolyActiveLayout({
     | 'session_started_at'
     | 'game_duration_seconds'
     | 'monopoly_forced_auctions'
+    | 'monopoly_loans_enabled'
     | 'monopoly_loan_interest'
     | 'monopoly_loan_term_rounds'
   > | null
@@ -67,6 +68,10 @@ export function MonopolyActiveLayout({
   const [panel, setPanel] = useState<SidePanel>(spectator ? 'players' : 'build')
   const [loanModalOpen, setLoanModalOpen] = useState(false)
   const myActiveLoan = myPlayerId ? getActiveMonopolyLoan(board.loans, myPlayerId) : undefined
+  // Withhold the openers when the host locked loans off in the lobby — the engine
+  // rejects every loan action, so the form could only bounce.
+  const loansEnabled = game?.monopoly_loans_enabled !== false
+  const openLoans = loansEnabled ? () => setLoanModalOpen(true) : undefined
 
   const incomingTrade =
     board.pending_trade && board.pending_trade.to_player_id === myPlayerId ? board.pending_trade : null
@@ -262,7 +267,7 @@ export function MonopolyActiveLayout({
               label="Cash"
               bankrupt={myState.bankrupt}
               loan={myActiveLoan}
-              onOpenLoans={() => setLoanModalOpen(true)}
+              onOpenLoans={openLoans}
               themeId={themeId}
             />
           ) : !spectator ? (
@@ -367,7 +372,7 @@ export function MonopolyActiveLayout({
                   acting={acting}
                   postAction={postAction}
                   themeId={themeId}
-                  onOpenLoans={() => setLoanModalOpen(true)}
+                  onOpenLoans={openLoans}
                 />
               ) : (
                 <div className="glass-card p-4">
@@ -400,17 +405,22 @@ export function MonopolyActiveLayout({
             colorBarClass={colorBarClass}
             themeId={themeId}
           />
-          <MonopolyLoanModal
-            open={loanModalOpen}
-            onClose={() => setLoanModalOpen(false)}
-            board={board}
-            myState={myState}
-            themeId={themeId}
-            postAction={postAction}
-            acting={acting}
-            interestRate={game?.monopoly_loan_interest ?? 15}
-            termRounds={game?.monopoly_loan_term_rounds ?? 4}
-          />
+          {loansEnabled && loanModalOpen && (
+            <MonopolyLoanModal
+              // Remounting on close, and whenever a loan is taken or settled, drops the
+              // manual amounts and tab choice that only made sense for the previous state.
+              key={myActiveLoan?.id ?? 'no-loan'}
+              open={loanModalOpen}
+              onClose={() => setLoanModalOpen(false)}
+              board={board}
+              myState={myState}
+              themeId={themeId}
+              postAction={postAction}
+              acting={acting}
+              interestRate={game?.monopoly_loan_interest ?? 15}
+              termRounds={game?.monopoly_loan_term_rounds ?? 4}
+            />
+          )}
         </>
       )}
     </>

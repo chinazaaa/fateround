@@ -2440,6 +2440,40 @@ function validateTradeAssets(
   return null
 }
 
+/**
+ * Collateral a loan's solvency check measures a post-trade estate against. Mortgaged
+ * deeds count for nothing — the player already drew that cash — matching how
+ * `borrowMonopolyLoan` sizes a credit limit.
+ */
+function unmortgagedCollateralValues(
+  owners: Record<string, string>,
+  mortgaged: Record<string, boolean>,
+  playerId: string,
+  boardSize: MonopolyBoardSize
+): number[] {
+  const values: number[] = []
+  for (const [spaceIndexString, ownerId] of Object.entries(owners)) {
+    if (ownerId !== playerId) continue
+    if (mortgaged[spaceIndexString]) continue
+    const space = spaceAt(Number(spaceIndexString), boardSize)
+    if (space) values.push(mortgageValue(space))
+  }
+  return values
+}
+
+/** Collateral leaving the estate in a trade — same mortgage filter, so the two totals subtract cleanly. */
+function outgoingCollateralValues(
+  spaceIndexes: number[],
+  mortgaged: Record<string, boolean>,
+  boardSize: MonopolyBoardSize
+): number[] {
+  return spaceIndexes.map((spaceIndex) => {
+    if (mortgaged[String(spaceIndex)]) return 0
+    const space = spaceAt(spaceIndex, boardSize)
+    return space ? mortgageValue(space) : 0
+  })
+}
+
 export async function processMonopolyTradePropose(
   supabase: SupabaseClient,
   gameId: string,
@@ -2455,6 +2489,7 @@ export async function processMonopolyTradePropose(
 
   const owners = parsePropertyOwners(board.property_owners)
   const buildings = parseBuildings(board.property_buildings)
+  const mortgaged = parseMortgaged(board.mortgaged_properties)
 
   const { data: fromState } = await supabase
     .from('monopoly_player_state')
@@ -2488,17 +2523,13 @@ export async function processMonopolyTradePropose(
   const boardSize = board.board_size ?? 40
   const fromLoan = getActiveMonopolyLoan(board.loans, fromPlayerId)
   if (fromLoan) {
-    const fromOwnedMortgages = Object.entries(owners)
-      .filter(([_, owner]) => owner === fromPlayerId)
-      .map(([spaceIndexString]) => {
-        const space = spaceAt(Number(spaceIndexString), boardSize)
-        return space ? mortgageValue(space) : 0
-      })
-    const outgoingMortgages = offerProperties.map((spaceIndex) => {
-      const space = spaceAt(spaceIndex, boardSize)
-      return space ? mortgageValue(space) : 0
-    })
-    const blockCheck = isTradeBlockedByLoan(fromState.cash, fromOwnedMortgages, offer.cash, outgoingMortgages, fromLoan)
+    const blockCheck = isTradeBlockedByLoan(
+      fromState.cash,
+      unmortgagedCollateralValues(owners, mortgaged, fromPlayerId, boardSize),
+      offer.cash,
+      outgoingCollateralValues(offerProperties, mortgaged, boardSize),
+      fromLoan
+    )
     if (blockCheck.blocked) {
       return { error: blockCheck.reason }
     }
@@ -2518,17 +2549,13 @@ export async function processMonopolyTradePropose(
   if (toErr) return { error: `Counterparty: ${toErr}` }
   const toLoan = getActiveMonopolyLoan(board.loans, toPlayerId)
   if (toLoan) {
-    const toOwnedMortgages = Object.entries(owners)
-      .filter(([_, owner]) => owner === toPlayerId)
-      .map(([spaceIndexString]) => {
-        const space = spaceAt(Number(spaceIndexString), boardSize)
-        return space ? mortgageValue(space) : 0
-      })
-    const outgoingMortgages = requestProperties.map((spaceIndex) => {
-      const space = spaceAt(spaceIndex, boardSize)
-      return space ? mortgageValue(space) : 0
-    })
-    const blockCheck = isTradeBlockedByLoan(toState.cash, toOwnedMortgages, request.cash, outgoingMortgages, toLoan)
+    const blockCheck = isTradeBlockedByLoan(
+      toState.cash,
+      unmortgagedCollateralValues(owners, mortgaged, toPlayerId, boardSize),
+      request.cash,
+      outgoingCollateralValues(requestProperties, mortgaged, boardSize),
+      toLoan
+    )
     if (blockCheck.blocked) {
       return { error: `Counterparty: ${blockCheck.reason}` }
     }
@@ -2607,15 +2634,19 @@ export async function processMonopolyTradeRespond(
     return {}
   }
 
+  // Ownership, buildings, mortgage state and loans are all re-read here: the
+  // proposal may have sat pending for several turns.
   const { data: freshBoardRaw, error: freshBoardError } = await supabase
     .from('monopoly_boards')
-    .select('property_owners, property_buildings')
+    .select('property_owners, property_buildings, mortgaged_properties, loans')
     .eq('game_id', gameId)
     .maybeSingle()
   if (freshBoardError || !freshBoardRaw) return { error: 'Board not found' }
 
   const owners = parsePropertyOwners(freshBoardRaw.property_owners)
   const buildings = parseBuildings(freshBoardRaw.property_buildings)
+  const mortgaged = parseMortgaged(freshBoardRaw.mortgaged_properties)
+  const freshLoans = (freshBoardRaw.loans ?? []) as MonopolyBoard['loans']
 
   const { data: fromState } = await supabase
     .from('monopoly_player_state')
@@ -2644,23 +2675,13 @@ export async function processMonopolyTradeRespond(
   )
   if (fromErr) return { error: fromErr }
   const boardSize = board.board_size ?? 40
-  const fromLoan = getActiveMonopolyLoan(board.loans, trade.from_player_id)
+  const fromLoan = getActiveMonopolyLoan(freshLoans, trade.from_player_id)
   if (fromLoan) {
-    const fromOwnedMortgages = Object.entries(owners)
-      .filter(([_, owner]) => owner === trade.from_player_id)
-      .map(([spaceIndexString]) => {
-        const space = spaceAt(Number(spaceIndexString), boardSize)
-        return space ? mortgageValue(space) : 0
-      })
-    const outgoingMortgages = trade.offer_properties.map((spaceIndex) => {
-      const space = spaceAt(spaceIndex, boardSize)
-      return space ? mortgageValue(space) : 0
-    })
     const blockCheck = isTradeBlockedByLoan(
       fromState.cash,
-      fromOwnedMortgages,
+      unmortgagedCollateralValues(owners, mortgaged, trade.from_player_id, boardSize),
       trade.offer_cash,
-      outgoingMortgages,
+      outgoingCollateralValues(trade.offer_properties, mortgaged, boardSize),
       fromLoan
     )
     if (blockCheck.blocked) {
@@ -2680,23 +2701,13 @@ export async function processMonopolyTradeRespond(
     boardSize
   )
   if (toErr) return { error: toErr }
-  const toLoan = getActiveMonopolyLoan(board.loans, trade.to_player_id)
+  const toLoan = getActiveMonopolyLoan(freshLoans, trade.to_player_id)
   if (toLoan) {
-    const toOwnedMortgages = Object.entries(owners)
-      .filter(([_, owner]) => owner === trade.to_player_id)
-      .map(([spaceIndexString]) => {
-        const space = spaceAt(Number(spaceIndexString), boardSize)
-        return space ? mortgageValue(space) : 0
-      })
-    const outgoingMortgages = trade.request_properties.map((spaceIndex) => {
-      const space = spaceAt(spaceIndex, boardSize)
-      return space ? mortgageValue(space) : 0
-    })
     const blockCheck = isTradeBlockedByLoan(
       toState.cash,
-      toOwnedMortgages,
+      unmortgagedCollateralValues(owners, mortgaged, trade.to_player_id, boardSize),
       trade.request_cash,
-      outgoingMortgages,
+      outgoingCollateralValues(trade.request_properties, mortgaged, boardSize),
       toLoan
     )
     if (blockCheck.blocked) {
