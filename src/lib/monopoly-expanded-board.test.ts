@@ -3,6 +3,7 @@ import {
   MONOPOLY_BOARD,
   MONOPOLY_EXPANDED_BOARD,
   MONOPOLY_MAX_PLAYERS,
+  goSalaryForSize,
   housesInBankForSize,
   hotelsInBankForSize,
   monopolyGoToJailPosition,
@@ -234,5 +235,10 @@ describe('Estate Kings expanded board', () => {
   it('quadruples starting capital per player for 48-space board (6000 vs 1500)', () => {
     expect(startingCashForSize(40)).toBe(1500)
     expect(startingCashForSize(48)).toBe(6000)
+  })
+
+  it('quadruples the PAYDAY salary for 48-space board (800 vs 200)', () => {
+    expect(goSalaryForSize(40)).toBe(200)
+    expect(goSalaryForSize(48)).toBe(800)
   })
 })

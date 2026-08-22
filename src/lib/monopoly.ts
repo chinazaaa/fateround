@@ -17,17 +17,13 @@ import type {
   Game,
 } from '@/types'
 import {
-  MONOPOLY_GO_SALARY,
-  MONOPOLY_HOUSES_IN_BANK,
   MONOPOLY_HOUSES_UNDER_HOTEL,
-  MONOPOLY_HOTELS_IN_BANK,
   MONOPOLY_HOTEL_LEVEL,
   MONOPOLY_MAX_HOUSES_PER_PROPERTY,
   MONOPOLY_JAIL_FINE,
   MONOPOLY_JAIL_POSITION,
-  MONOPOLY_STARTING_CASH,
-  MONOPOLY_EXPANDED_STARTING_CASH,
   formatMonopolyMoney,
+  goSalaryForSize,
   housesInBankForSize,
   hotelsInBankForSize,
   jailPositionForSize,
@@ -41,7 +37,14 @@ import {
   type MonopolySpace,
 } from '@/lib/monopoly-board'
 import { MONOPOLY_AUCTION_TIMER_SECONDS, MONOPOLY_DEFAULT_TURN_TIMER } from '@/lib/supabase-selects'
-import { applyCardEffect, createShuffledDeck, drawCard, goSalaryForCard, type CardKind } from '@/lib/monopoly-cards'
+import {
+  applyCardEffect,
+  cardMessageForSize,
+  createShuffledDeck,
+  drawCard,
+  goSalaryForCard,
+  type CardKind,
+} from '@/lib/monopoly-cards'
 import { canAddHotel, canAddHouse, canRemoveHouse, groupHasBuildings, hotelRemovalBlocker } from '@/lib/monopoly-build'
 import { buildingLevel, computeRent, parseBuildings, parseJsonRecord, parseMortgaged } from '@/lib/monopoly-rent'
 import { normalizePendingTrade, normalizeTradePropertyList } from '@/lib/monopoly-trade-messages'
@@ -212,9 +215,11 @@ export function applyGoPass(
   cash: number,
   _passedGoOnce: boolean,
   exactGo?: boolean,
-  doubleGoRule?: boolean
+  doubleGoRule?: boolean,
+  boardSize: MonopolyBoardSize = 40
 ): { cash: number; passedGoOnce: boolean; collected: number } {
-  const amount = exactGo && doubleGoRule ? MONOPOLY_GO_SALARY * 2 : MONOPOLY_GO_SALARY
+  const salary = goSalaryForSize(boardSize)
+  const amount = exactGo && doubleGoRule ? salary * 2 : salary
   return {
     cash: cash + amount,
     passedGoOnce: true,
@@ -222,8 +227,8 @@ export function applyGoPass(
   }
 }
 
-function goPassStatusSuffix(collected: number, exactGo?: boolean): string {
-  if (exactGo && collected > MONOPOLY_GO_SALARY) {
+function goPassStatusSuffix(collected: number, exactGo?: boolean, boardSize: MonopolyBoardSize = 40): string {
+  if (exactGo && collected > goSalaryForSize(boardSize)) {
     return ` Landed on PAYDAY! Collected ${formatMonopolyMoney(collected)}.`
   }
   return ` Passed PAYDAY — collected ${formatMonopolyMoney(collected)}.`
@@ -1434,10 +1439,10 @@ export async function processMonopolyRoll(
       position = move.to
       if (move.passedGo) {
         const exactGo = move.to === 0
-        const goPass = applyGoPass(cash, passedGoOnce, exactGo, settings.doubleGo)
+        const goPass = applyGoPass(cash, passedGoOnce, exactGo, settings.doubleGo, board.board_size ?? 40)
         cash = goPass.cash
         passedGoOnce = goPass.passedGoOnce
-        statusMessage += goPassStatusSuffix(goPass.collected, exactGo)
+        statusMessage += goPassStatusSuffix(goPass.collected, exactGo, board.board_size ?? 40)
       }
     } else if (jailTurns >= 3) {
       if (cash < MONOPOLY_JAIL_FINE) {
@@ -1492,10 +1497,10 @@ export async function processMonopolyRoll(
       position = move.to
       if (move.passedGo) {
         const exactGo = move.to === 0
-        const goPass = applyGoPass(cash, passedGoOnce, exactGo, settings.doubleGo)
+        const goPass = applyGoPass(cash, passedGoOnce, exactGo, settings.doubleGo, board.board_size ?? 40)
         cash = goPass.cash
         passedGoOnce = goPass.passedGoOnce
-        statusMessage += goPassStatusSuffix(goPass.collected, exactGo)
+        statusMessage += goPassStatusSuffix(goPass.collected, exactGo, board.board_size ?? 40)
       }
     } else {
       const turnIndex = nextTurnIndex(board, states)
@@ -1559,10 +1564,10 @@ export async function processMonopolyRoll(
     position = move.to
     if (move.passedGo) {
       const exactGo = move.to === 0
-      const goPass = applyGoPass(cash, passedGoOnce, exactGo, settings.doubleGo)
+      const goPass = applyGoPass(cash, passedGoOnce, exactGo, settings.doubleGo, board.board_size ?? 40)
       cash = goPass.cash
       passedGoOnce = goPass.passedGoOnce
-      statusMessage = goPassStatusSuffix(goPass.collected, exactGo)
+      statusMessage = goPassStatusSuffix(goPass.collected, exactGo, board.board_size ?? 40)
     }
   }
 
@@ -1607,12 +1612,13 @@ export async function processMonopolyRoll(
       }
 
       const card = drawn.card
+      const cardMessage = cardMessageForSize(card.message, board.board_size ?? 40)
       const otherCount = activePlayers(states).filter((s) => s.player_id !== playerId).length
       lastCardEvent = {
         seq: (board.last_card_event?.seq ?? 0) + 1,
         kind,
         drawn_by_player_id: playerId,
-        card_message: card.message,
+        card_message: cardMessage,
         effect: card.effect,
         amount: card.amount,
         other_player_count: otherCount,
@@ -1647,7 +1653,7 @@ export async function processMonopolyRoll(
             player_id: fd.playerId,
             creditor_player_id: fd.creditorId,
             amount: fd.amount,
-            reason: card.message,
+            reason: cardMessage,
             debt_type: 'card',
             space_index: position,
           }))
@@ -1692,7 +1698,7 @@ export async function processMonopolyRoll(
         if (effect.moveTo !== undefined) {
           position = effect.moveTo
           if (effect.passedGo) passedGoOnce = true
-          const salary = goSalaryForCard(card, effect.passedGo ?? false)
+          const salary = goSalaryForCard(card, effect.passedGo ?? false, board.board_size ?? 40)
           if (salary > 0) {
             cash += salary
             statusMessage += ` Collected ${formatMonopolyMoney(salary)}.`
@@ -3523,15 +3529,41 @@ export function countOwnedInGroup(
   return monopolyBoardForSize(boardSize).filter((s) => s.color === group && owners[String(s.index)] === ownerId).length
 }
 
+/** The `games` columns the loan engine reads. */
+type MonopolyLoanSettings = Pick<
+  Game,
+  'monopoly_loans_enabled' | 'monopoly_loan_interest' | 'monopoly_loan_term_rounds'
+>
+
+/**
+ * Loan terms live on the `games` row. Callers that already hold it — the API routes,
+ * which read it to authorize the request — pass it straight through. The bot driver
+ * deliberately never reads `games`, so it falls back to a three-column fetch.
+ */
+async function resolveMonopolyLoanSettings(
+  supabase: SupabaseClient,
+  gameId: string,
+  provided?: MonopolyLoanSettings
+): Promise<MonopolyLoanSettings | null> {
+  if (provided) return provided
+  const { data } = await supabase
+    .from('games')
+    .select('monopoly_loans_enabled, monopoly_loan_interest, monopoly_loan_term_rounds')
+    .eq('id', gameId)
+    .maybeSingle()
+  return (data as MonopolyLoanSettings | null) ?? null
+}
+
 export async function processMonopolyBorrowLoan(
   supabase: SupabaseClient,
   gameId: string,
   playerId: string,
-  amount: number
+  amount: number,
+  loanSettings?: MonopolyLoanSettings
 ): Promise<{ error?: string }> {
-  const { data: game } = await supabase.from('games').select('*').eq('id', gameId).maybeSingle()
-  if (!game) return { error: 'Game not found' }
-  if (game.monopoly_loans_enabled === false) {
+  const settings = await resolveMonopolyLoanSettings(supabase, gameId, loanSettings)
+  if (!settings) return { error: 'Game not found' }
+  if (settings.monopoly_loans_enabled === false) {
     return { error: 'Loan facilities are disabled for this game.' }
   }
 
@@ -3557,8 +3589,8 @@ export async function processMonopolyBorrowLoan(
   if (!playerStateRaw) return { error: 'Player state not found' }
   const playerState = playerStateRaw as MonopolyPlayerState
 
-  const interestRate = (game.monopoly_loan_interest ?? 15) / 100
-  const termRounds = game.monopoly_loan_term_rounds ?? 4
+  const interestRate = (settings.monopoly_loan_interest ?? 15) / 100
+  const termRounds = settings.monopoly_loan_term_rounds ?? 4
 
   const res = borrowMonopolyLoan(board, playerState, amount, {
     interestRate,
@@ -3591,14 +3623,15 @@ export async function processMonopolyRepayLoan(
   supabase: SupabaseClient,
   gameId: string,
   playerId: string,
-  amount: number
+  amount: number,
+  loanSettings?: MonopolyLoanSettings
 ): Promise<{ error?: string }> {
   if (amount <= 0 || !Number.isFinite(amount)) {
-    return { error: 'Repayment amount must be greater than ₦0.' }
+    return { error: 'Repayment amount must be greater than £0.' }
   }
 
-  const { data: game } = await supabase.from('games').select('monopoly_loans_enabled').eq('id', gameId).maybeSingle()
-  if (game?.monopoly_loans_enabled === false) {
+  const settings = await resolveMonopolyLoanSettings(supabase, gameId, loanSettings)
+  if (settings?.monopoly_loans_enabled === false) {
     return { error: 'Loan facilities are disabled for this game.' }
   }
 
@@ -3622,16 +3655,22 @@ export async function processMonopolyRepayLoan(
     return { error: res.error ?? 'Failed to repay loan' }
   }
 
+  // Settling your own debt with your own cash needs no turn, the same way mortgaging
+  // does not. But `status_message` narrates whoever's turn it is, so an off-turn
+  // repayment writes only its own player-scoped cash event and leaves that line alone.
+  const isActor = currentPlayerId(board) === playerId || board.pending_debt?.player_id === playerId
+  const boardPatch: Partial<MonopolyBoard> = {
+    loans: res.board.loans,
+    last_cash_event: res.board.last_cash_event,
+  }
+  if (isActor) boardPatch.status_message = res.board.status_message
+
   const won = await updatePlayerAndBoard(
     supabase,
     gameId,
     playerId,
     { cash: res.playerState.cash },
-    {
-      loans: res.board.loans,
-      last_cash_event: res.board.last_cash_event,
-      status_message: res.board.status_message,
-    },
+    boardPatch,
     board.updated_at
   )
   if (!won) return { error: 'Action could not be completed, please try again.' }

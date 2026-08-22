@@ -6,8 +6,8 @@ import {
   calculateMonopolyCreditLimit,
   calculateMonopolyLoanTotalDue,
   getActiveMonopolyLoan,
-  MONOPOLY_LOAN_PRESET_TIERS,
-  MONOPOLY_MIN_LOAN_AMOUNT,
+  loanPresetTiersForSize,
+  minLoanAmountForSize,
 } from '@/lib/monopoly-loan'
 import { formatThemedMoney } from '@/components/monopoly/monopoly-themes'
 import { mortgageValue, spaceAt, parsePropertyOwners } from '@/lib/monopoly'
@@ -38,6 +38,9 @@ export function MonopolyLoanModal({
   termRounds?: number
 }) {
   const playerId = myState?.player_id ?? ''
+  const boardSize = board.board_size ?? 40
+  const minLoanAmount = minLoanAmountForSize(boardSize)
+  const presetTiers = loanPresetTiersForSize(boardSize)
   const activeLoan = getActiveMonopolyLoan(board.loans, playerId)
   const defaultTab: LoanTab = activeLoan ? 'repay' : 'borrow'
   const [selectedTab, setSelectedTab] = useState<LoanTab | null>(null)
@@ -47,7 +50,6 @@ export function MonopolyLoanModal({
   // Calculate unencumbered mortgage values for credit limit
   const unencumberedMortgages = useMemo(() => {
     if (!myState) return []
-    const boardSize = board.board_size ?? 40
     const owners = parsePropertyOwners(board.property_owners)
     const mortgagedMap = parseMortgaged(board.mortgaged_properties)
     const values: number[] = []
@@ -62,18 +64,21 @@ export function MonopolyLoanModal({
       }
     }
     return values
-  }, [board.board_size, board.property_owners, board.mortgaged_properties, playerId, myState])
+  }, [boardSize, board.property_owners, board.mortgaged_properties, playerId, myState])
 
   const creditLimit = useMemo(() => {
-    return calculateMonopolyCreditLimit(myState?.cash ?? 0, unencumberedMortgages)
-  }, [myState?.cash, unencumberedMortgages])
+    return calculateMonopolyCreditLimit(myState?.cash ?? 0, unencumberedMortgages, boardSize)
+  }, [myState?.cash, unencumberedMortgages, boardSize])
 
   const [customBorrowAmount, setCustomBorrowAmount] = useState<number | null>(null)
   const [customRepayAmount, setCustomRepayAmount] = useState<number | null>(null)
 
+  // Default suggestion is the board's middle preset (₦500 on 40 spaces, ₦1,500 on 48) so the
+  // opening amount stays proportionate to the credit ceiling instead of a flat ₦500.
+  const defaultBorrowSuggestion = presetTiers[1] ?? minLoanAmount
   const borrowAmount = Math.min(
     creditLimit,
-    Math.max(MONOPOLY_MIN_LOAN_AMOUNT, customBorrowAmount ?? Math.min(500, creditLimit))
+    Math.max(minLoanAmount, customBorrowAmount ?? Math.min(defaultBorrowSuggestion, creditLimit))
   )
 
   const maxRepay = activeLoan && myState ? Math.min(myState.cash, activeLoan.balance_remaining) : 0
@@ -83,7 +88,7 @@ export function MonopolyLoanModal({
   if (!open || !myState) return null
 
   const handleBorrow = async () => {
-    if (borrowAmount < MONOPOLY_MIN_LOAN_AMOUNT || borrowAmount > creditLimit || submitting || acting) return
+    if (borrowAmount < minLoanAmount || borrowAmount > creditLimit || submitting || acting) return
     setSubmitting(true)
     try {
       await postAction('/api/monopoly/loan/borrow', { amount: borrowAmount })
@@ -165,7 +170,7 @@ export function MonopolyLoanModal({
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-muted block">Choose Amount</label>
               <div className="grid grid-cols-4 gap-2">
-                {MONOPOLY_LOAN_PRESET_TIERS.map((tier: number) => (
+                {presetTiers.map((tier: number) => (
                   <button
                     key={tier}
                     type="button"
@@ -207,8 +212,8 @@ export function MonopolyLoanModal({
               </div>
               <input
                 type="range"
-                min={MONOPOLY_MIN_LOAN_AMOUNT}
-                max={Math.max(MONOPOLY_MIN_LOAN_AMOUNT, creditLimit)}
+                min={minLoanAmount}
+                max={Math.max(minLoanAmount, creditLimit)}
                 step={50}
                 value={borrowAmount}
                 onChange={(event) => setCustomBorrowAmount(Number(event.target.value))}
@@ -243,7 +248,7 @@ export function MonopolyLoanModal({
 
             <MonopolyPrimaryButton
               onClick={handleBorrow}
-              disabled={submitting || acting || borrowAmount < MONOPOLY_MIN_LOAN_AMOUNT || borrowAmount > creditLimit}
+              disabled={submitting || acting || borrowAmount < minLoanAmount || borrowAmount > creditLimit}
             >
               {submitting ? 'Processing...' : `Borrow ${formatThemedMoney(borrowAmount, themeId)}`}
             </MonopolyPrimaryButton>

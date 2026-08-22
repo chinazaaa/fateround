@@ -10,6 +10,11 @@ export function startingCashForSize(boardSize: MonopolyBoardSize = 40): number {
   return boardSize === 48 ? MONOPOLY_EXPANDED_STARTING_CASH : MONOPOLY_STARTING_CASH
 }
 export const MONOPOLY_GO_SALARY = 200
+export const MONOPOLY_EXPANDED_GO_SALARY = 800
+
+export function goSalaryForSize(boardSize: MonopolyBoardSize = 40): number {
+  return boardSize === 48 ? MONOPOLY_EXPANDED_GO_SALARY : MONOPOLY_GO_SALARY
+}
 export const MONOPOLY_JAIL_FINE = 50
 export const MONOPOLY_JAIL_POSITION = 10
 export const MONOPOLY_GO_TO_JAIL_POSITION = 30

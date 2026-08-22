@@ -6,6 +6,9 @@ import {
   checkAndAdvanceMonopolyLoanRound,
   executeBankForeclosure,
   isTradeBlockedByLoan,
+  loanPresetTiersForSize,
+  maxLoanCapForSize,
+  minLoanAmountForSize,
   repayMonopolyLoan,
 } from './monopoly-loan'
 import { computeMonopolyNetWorth } from './monopoly'
@@ -258,6 +261,55 @@ describe('Monopoly Loan Facilities', () => {
       const res = repayMonopolyLoan(board, player, 200)
       expect(res.success).toBe(false)
       expect(res.error).toMatch(/Insufficient cash/)
+    })
+
+    it('settles a near-final balance from an over-sized request instead of rejecting it', () => {
+      // Cash covers the £50 balance but not the £100 asked for. The excess is trimmed,
+      // so the settlement must go through rather than fail the cash check.
+      const activeLoan: MonopolyLoan = {
+        id: 'loan_1',
+        player_id: 'p1',
+        principal: 500,
+        interest_rate: 0.15,
+        total_due: 575,
+        amount_repaid: 525,
+        balance_remaining: 50,
+        term_rounds: 4,
+        rounds_remaining: 2,
+        created_at: new Date().toISOString(),
+        status: 'active',
+      }
+      const board = makeMockBoard({ loans: [activeLoan] })
+      const player = makeMockPlayerState({ cash: 60 })
+
+      const res = repayMonopolyLoan(board, player, 100)
+      expect(res.success).toBe(true)
+      expect(res.fullyRepaid).toBe(true)
+      expect(res.playerState.cash).toBe(10)
+      expect(res.loan?.balance_remaining).toBe(0)
+      expect(res.loan?.status).toBe('repaid')
+    })
+
+    it('still rejects an over-sized request when cash cannot cover the trimmed balance', () => {
+      const activeLoan: MonopolyLoan = {
+        id: 'loan_1',
+        player_id: 'p1',
+        principal: 500,
+        interest_rate: 0.15,
+        total_due: 575,
+        amount_repaid: 525,
+        balance_remaining: 50,
+        term_rounds: 4,
+        rounds_remaining: 2,
+        created_at: new Date().toISOString(),
+        status: 'active',
+      }
+      const board = makeMockBoard({ loans: [activeLoan] })
+      const player = makeMockPlayerState({ cash: 30 })
+
+      const res = repayMonopolyLoan(board, player, 100)
+      expect(res.success).toBe(false)
+      expect(res.error).toBe('Insufficient cash (£30) for repayment of £50.')
     })
   })
 
@@ -553,6 +605,94 @@ describe('Monopoly Loan Facilities', () => {
 
       const netWorth = computeMonopolyNetWorth(player, owners, buildings, mortgaged, 40, [loan])
       expect(netWorth).toBe(185)
+    })
+  })
+
+  describe('48-Space Board Scaling', () => {
+    function makeExpandedBoard(partial?: Partial<MonopolyBoard>): MonopolyBoard {
+      return makeMockBoard({ board_size: 48, houses_in_bank: 48, hotels_in_bank: 18, ...partial })
+    }
+
+    it('triples the loan floor, ceiling, and preset tiers for the 48-space board', () => {
+      expect(minLoanAmountForSize(40)).toBe(100)
+      expect(minLoanAmountForSize(48)).toBe(300)
+      expect(maxLoanCapForSize(40)).toBe(1500)
+      expect(maxLoanCapForSize(48)).toBe(4500)
+      expect(loanPresetTiersForSize(40)).toEqual([250, 500, 1000])
+      expect(loanPresetTiersForSize(48)).toEqual([750, 1500, 3000])
+    })
+
+    it('caps 48-space credit at ₦4500 where the 40-space board caps at ₦1500', () => {
+      // ₦6000 is the 48-space opening bank, so cash alone clears both ceilings
+      expect(calculateMonopolyCreditLimit(6000, [], 48)).toBe(4500)
+      expect(calculateMonopolyCreditLimit(6000, [], 40)).toBe(1500)
+    })
+
+    it('keeps collateral meaningful below the 48-space ceiling', () => {
+      // Cash 2000 + 50% of mortgages [200, 180] = 2190, still under the ₦4500 cap
+      expect(calculateMonopolyCreditLimit(2000, [200, 180], 48)).toBe(2190)
+    })
+
+    it('withholds 48-space credit until collateral reaches the ₦300 floor', () => {
+      expect(calculateMonopolyCreditLimit(200, [], 48)).toBe(0)
+      expect(calculateMonopolyCreditLimit(200, [], 40)).toBe(200)
+      expect(calculateMonopolyCreditLimit(300, [], 48)).toBe(300)
+    })
+
+    it('quotes the scaled minimum when rejecting an undersized 48-space loan', () => {
+      const res = borrowMonopolyLoan(makeExpandedBoard(), makeMockPlayerState({ cash: 6000 }), 200)
+      expect(res.success).toBe(false)
+      expect(res.error).toBe('Minimum loan amount is £300.')
+    })
+
+    it('issues up to the 48-space ceiling and refuses anything above it', () => {
+      const board = makeExpandedBoard()
+      const player = makeMockPlayerState({ cash: 6000 })
+
+      const atCap = borrowMonopolyLoan(board, player, 4500)
+      expect(atCap.success).toBe(true)
+      expect(atCap.playerState.cash).toBe(10500)
+      expect(atCap.loan?.total_due).toBe(5175) // 4500 + 15% flat interest
+
+      const overCap = borrowMonopolyLoan(board, player, 4600)
+      expect(overCap.success).toBe(false)
+      expect(overCap.error).toMatch(/exceeds your credit limit of £4,500/)
+    })
+
+    it('forecloses a 48-space default using expanded-board building costs', () => {
+      // A ₦3000 loan owes ₦3450; ₦3000 cash leaves ₦450 residual debt.
+      // Mayfair Mews (index 47, house cost ₦200) carries a hotel: 5 × ₦100 = ₦500 raised,
+      // which clears the residual and refunds the ₦50 excess without foreclosing the deed.
+      const loan: MonopolyLoan = {
+        id: 'loan_1',
+        player_id: 'p1',
+        principal: 3000,
+        interest_rate: 0.15,
+        total_due: 3450,
+        amount_repaid: 0,
+        balance_remaining: 3450,
+        term_rounds: 4,
+        rounds_remaining: 0,
+        created_at: new Date().toISOString(),
+        status: 'defaulted',
+      }
+      const board = makeExpandedBoard({
+        loans: [loan],
+        property_owners: { '47': 'p1' },
+        property_buildings: { '47': 5 },
+        hotels_in_bank: 17,
+      })
+      const player = makeMockPlayerState({ cash: 3000 })
+
+      const res = executeBankForeclosure(board, player, loan, 48)
+      expect(res.seizedCash).toBe(3000)
+      expect(res.seizedBuildingsRefund).toBe(500)
+      expect(res.playerState.cash).toBe(50)
+      expect(res.board.hotels_in_bank).toBe(18)
+      expect(res.board.houses_in_bank).toBe(48)
+      expect(res.board.property_buildings['47']).toBeUndefined()
+      expect(res.seizedPropertyIndices).toEqual([])
+      expect(res.bankrupt).toBe(false)
     })
   })
 })

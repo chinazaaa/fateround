@@ -20,13 +20,8 @@ import { Glyph } from '@/components/icons/Glyph'
 import { MonopolyFinalResultsShareBlock } from '@/components/monopoly/MonopolyFinalResultsShareBlock'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
-import {
-  buildMonopolyStandings,
-  MONOPOLY_MIN_PLAYERS,
-  MONOPOLY_STARTING_CASH,
-  startingCashForSize,
-} from '@/lib/monopoly'
-import { formatThemedMoney } from '@/components/monopoly/monopoly-themes'
+import { buildMonopolyStandings, MONOPOLY_MIN_PLAYERS, startingCashForSize } from '@/lib/monopoly'
+import { formatThemedMoney, formatThemedText } from '@/components/monopoly/monopoly-themes'
 import { supabase } from '@/lib/supabase'
 import { MONOPOLY_BOARD_SELECT, MONOPOLY_PLAYER_STATE_SELECT, isCompleteMonopolyBoardRow } from '@/lib/supabase-selects'
 import { clearPlayerSession, isFetchNetworkError, messageFromFetchActionError } from '@/lib/utils'
@@ -292,7 +287,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
       if (!res.ok) throw new Error(data.error ?? 'Action failed')
       await load()
     } catch (err) {
-      toastError(messageFromFetchActionError(err))
+      toastError(formatThemedText(messageFromFetchActionError(err), game?.theme))
       if (isFetchNetworkError(err)) await load()
     } finally {
       actingRef.current = false

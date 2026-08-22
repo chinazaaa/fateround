@@ -246,7 +246,7 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
       if (!res.ok) throw new Error(data.error ?? 'Action failed')
       await load()
     } catch (err) {
-      toastError(messageFromFetchActionError(err))
+      toastError(formatThemedText(messageFromFetchActionError(err), game?.theme))
       if (isFetchNetworkError(err)) await load()
     } finally {
       hostActingRef.current = false

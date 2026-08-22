@@ -59,13 +59,13 @@ export const monopolyTradeRepairSchema = monopolyActionSchema.extend({
   repair: z.literal(true).optional(),
 })
 
-export const monopolyBorrowLoanSchema = monopolyActionSchema.extend({
+// Borrow and repay take the same shape: an action plus a positive whole-money amount.
+const monopolyLoanAmountSchema = monopolyActionSchema.extend({
   amount: z.number().int().min(1),
 })
 
-export const monopolyRepayLoanSchema = monopolyActionSchema.extend({
-  amount: z.number().int().min(1),
-})
+export const monopolyBorrowLoanSchema = monopolyLoanAmountSchema
+export const monopolyRepayLoanSchema = monopolyLoanAmountSchema
 
 export type MonopolyActionInput = z.infer<typeof monopolyActionSchema>
 export type MonopolyBuyInput = z.infer<typeof monopolyBuySchema>

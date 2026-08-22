@@ -459,7 +459,7 @@ export function adaptMonopolyForBot(
       unencumberedMortgages.push(mortgageValue(property.space))
     }
   }
-  const creditLimit = calculateMonopolyCreditLimit(meState.cash, unencumberedMortgages)
+  const creditLimit = calculateMonopolyCreditLimit(meState.cash, unencumberedMortgages, boardSize)
 
   const ownedCount = buyableSpaces.reduce(
     (ownedSpaceCount, space) => (owners[String(space.index)] ? ownedSpaceCount + 1 : ownedSpaceCount),

@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
   const auth = await assertPlayer(supabase, code, resumeToken)
   if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
 
-  const { error } = await processMonopolyRepayLoan(supabase, code, auth.player.id, amount)
+  const { error } = await processMonopolyRepayLoan(supabase, code, auth.player.id, amount, game)
   if (error) return NextResponse.json({ error }, { status: 400 })
 
   return NextResponse.json({ success: true })

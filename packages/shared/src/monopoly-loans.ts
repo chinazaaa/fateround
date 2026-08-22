@@ -3,6 +3,7 @@
  */
 
 import type { MonopolyLoan } from './types'
+import { formatMonopolyMoney, type MonopolyBoardSize } from './monopoly-board'
 
 export const MONOPOLY_DEFAULT_LOAN_INTEREST_RATE = 0.15 // 15% flat interest
 export const MONOPOLY_DEFAULT_LOAN_TERM_ROUNDS = 4 // 4 full round rotations
@@ -11,19 +12,44 @@ export const MONOPOLY_MAX_LOAN_CAP = 1500
 export const MONOPOLY_LOAN_PRESET_TIERS = [250, 500, 1000] as const
 
 /**
+ * 48-space equivalents, scaled 3× off the 40-space figures.
+ *
+ * The multiplier tracks rent rather than starting cash: the expanded board's top hotel rent is
+ * ₦6,000 against ₦2,000, so a ₦4,500 ceiling preserves the 40-space board's 75% worst-rent
+ * coverage — the loan can still clear the debt it is usually taken against. Scaling by starting
+ * cash instead (4×, ₦6,000) would leave the cap at or above every player's opening bank, which
+ * pins `calculateMonopolyCreditLimit` to its ceiling and makes the collateral term dead weight.
+ */
+export const MONOPOLY_EXPANDED_MIN_LOAN_AMOUNT = 300
+export const MONOPOLY_EXPANDED_MAX_LOAN_CAP = 4500
+export const MONOPOLY_EXPANDED_LOAN_PRESET_TIERS = [750, 1500, 3000] as const
+
+export function minLoanAmountForSize(boardSize: MonopolyBoardSize = 40): number {
+  return boardSize === 48 ? MONOPOLY_EXPANDED_MIN_LOAN_AMOUNT : MONOPOLY_MIN_LOAN_AMOUNT
+}
+
+export function maxLoanCapForSize(boardSize: MonopolyBoardSize = 40): number {
+  return boardSize === 48 ? MONOPOLY_EXPANDED_MAX_LOAN_CAP : MONOPOLY_MAX_LOAN_CAP
+}
+
+export function loanPresetTiersForSize(boardSize: MonopolyBoardSize = 40): readonly number[] {
+  return boardSize === 48 ? MONOPOLY_EXPANDED_LOAN_PRESET_TIERS : MONOPOLY_LOAN_PRESET_TIERS
+}
+
+/**
  * Calculates the maximum credit limit a player can borrow.
- * Formula: min(CAP, cash + 0.5 * totalUnencumberedMortgageValue)
- * If collateral base is below the minimum loan threshold (₦100), credit limit is 0.
+ * Formula: min(capForSize, cash + 0.5 * totalUnencumberedMortgageValue)
+ * If the collateral base is below the board's minimum loan threshold, credit limit is 0.
  */
 export function calculateMonopolyCreditLimit(
   cash: number,
   unencumberedMortgageValues: number[],
-  maxCap: number = MONOPOLY_MAX_LOAN_CAP
+  boardSize: MonopolyBoardSize = 40
 ): number {
   const mortgageSum = unencumberedMortgageValues.reduce((sum, val) => sum + Math.max(0, val), 0)
   const collateralBase = Math.max(0, cash) + Math.round(0.5 * mortgageSum)
-  if (collateralBase < MONOPOLY_MIN_LOAN_AMOUNT) return 0
-  return Math.min(maxCap, collateralBase)
+  if (collateralBase < minLoanAmountForSize(boardSize)) return 0
+  return Math.min(maxLoanCapForSize(boardSize), collateralBase)
 }
 
 /**
@@ -83,7 +109,7 @@ export function isTradeBlockedByLoan(
   if (postTradeLiquidValue < remainingBalance) {
     return {
       blocked: true,
-      reason: `Trade blocked: your remaining assets (₦${Math.max(0, postTradeLiquidValue)}) would be less than your active loan balance (₦${remainingBalance}).`,
+      reason: `Trade blocked: your remaining assets (${formatMonopolyMoney(Math.max(0, postTradeLiquidValue))}) would be less than your active loan balance (${formatMonopolyMoney(remainingBalance)}).`,
     }
   }
 

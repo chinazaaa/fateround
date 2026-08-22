@@ -11,25 +11,52 @@ import {
   calculateMonopolyLoanTotalDue,
   getActiveMonopolyLoan,
   hasDefaultedMonopolyLoan,
+  minLoanAmountForSize,
   MONOPOLY_DEFAULT_LOAN_INTEREST_RATE,
   MONOPOLY_DEFAULT_LOAN_TERM_ROUNDS,
-  MONOPOLY_MIN_LOAN_AMOUNT,
 } from '../../packages/shared/src/monopoly-loans'
-import { mortgageValue, spaceAt, type MonopolyBoardSize, type MonopolySpace } from './monopoly-board'
+import {
+  formatMonopolyMoney,
+  hotelsInBankForSize,
+  housesInBankForSize,
+  mortgageValue,
+  spaceAt,
+  type MonopolyBoardSize,
+  type MonopolySpace,
+} from './monopoly-board'
 import { parseBuildings, parseMortgaged, parsePropertyOwners } from './monopoly-rent'
 
 export {
   calculateMonopolyCreditLimit,
   calculateMonopolyLoanTotalDue,
   getActiveMonopolyLoan,
-  hasDefaultedMonopolyLoan,
   isTradeBlockedByLoan,
-  MONOPOLY_DEFAULT_LOAN_INTEREST_RATE,
-  MONOPOLY_DEFAULT_LOAN_TERM_ROUNDS,
-  MONOPOLY_MIN_LOAN_AMOUNT,
-  MONOPOLY_MAX_LOAN_CAP,
-  MONOPOLY_LOAN_PRESET_TIERS,
+  loanPresetTiersForSize,
+  maxLoanCapForSize,
+  minLoanAmountForSize,
 } from '../../packages/shared/src/monopoly-loans'
+
+/** Ledger size past which settled loan records start being dropped. */
+const MONOPOLY_LOAN_HISTORY_LIMIT = 20
+/** How many settled records survive a prune. */
+const MONOPOLY_LOAN_HISTORY_KEEP_SETTLED = 5
+
+/**
+ * Keeps the loan ledger bounded. Every unsettled loan is retained — an active loan
+ * and an unpaid default both still gate borrowing and trading — while settled records
+ * exist only for history and are trimmed to the most recent few.
+ */
+function pruneSettledLoans(loans: MonopolyLoan[]): MonopolyLoan[] {
+  if (loans.length <= MONOPOLY_LOAN_HISTORY_LIMIT) return loans
+
+  const unsettled = loans.filter(
+    (item) => item.status === 'active' || (item.status === 'defaulted' && item.balance_remaining > 0)
+  )
+  const settled = loans.filter(
+    (item) => item.status === 'repaid' || (item.status === 'defaulted' && item.balance_remaining === 0)
+  )
+  return unsettled.concat(settled.slice(-MONOPOLY_LOAN_HISTORY_KEEP_SETTLED))
+}
 
 /**
  * Validates and issues a new bank loan to a player.
@@ -60,7 +87,7 @@ export function borrowMonopolyLoan(
       success: false,
       board,
       playerState,
-      error: `You already have an active bank loan with ₦${existingActiveLoan.balance_remaining} remaining.`,
+      error: `You already have an active bank loan with ${formatMonopolyMoney(existingActiveLoan.balance_remaining)} remaining.`,
     }
   }
 
@@ -102,10 +129,11 @@ export function borrowMonopolyLoan(
     }
   }
 
-  const creditLimit = calculateMonopolyCreditLimit(playerState.cash, unencumberedMortgageValues)
+  const creditLimit = calculateMonopolyCreditLimit(playerState.cash, unencumberedMortgageValues, boardSize)
   const amount = Math.floor(requestedAmount)
+  const minLoanAmount = minLoanAmountForSize(boardSize)
 
-  if (creditLimit < MONOPOLY_MIN_LOAN_AMOUNT) {
+  if (creditLimit < minLoanAmount) {
     return {
       success: false,
       board,
@@ -114,12 +142,12 @@ export function borrowMonopolyLoan(
     }
   }
 
-  if (amount < MONOPOLY_MIN_LOAN_AMOUNT) {
+  if (amount < minLoanAmount) {
     return {
       success: false,
       board,
       playerState,
-      error: `Minimum loan amount is ₦${MONOPOLY_MIN_LOAN_AMOUNT}.`,
+      error: `Minimum loan amount is ${formatMonopolyMoney(minLoanAmount)}.`,
     }
   }
 
@@ -128,7 +156,7 @@ export function borrowMonopolyLoan(
       success: false,
       board,
       playerState,
-      error: `Requested amount (₦${amount}) exceeds your credit limit of ₦${creditLimit}.`,
+      error: `Requested amount (${formatMonopolyMoney(amount)}) exceeds your credit limit of ${formatMonopolyMoney(creditLimit)}.`,
     }
   }
 
@@ -159,15 +187,15 @@ export function borrowMonopolyLoan(
 
   const updatedBoard: MonopolyBoard = {
     ...board,
-    loans,
+    loans: pruneSettledLoans(loans),
     last_cash_event: {
       seq: (board.last_cash_event?.seq ?? 0) + 1,
       player_id: playerId,
       change: amount,
       balance_after: updatedPlayerState.cash,
-      label: `Took bank loan of ₦${amount} (₦${totalDue} due in ${termRounds} rounds)`,
+      label: `Took bank loan of ${formatMonopolyMoney(amount)} (${formatMonopolyMoney(totalDue)} due in ${termRounds} rounds)`,
     },
-    status_message: `Player received ₦${amount} bank loan (Repay ₦${totalDue} in ${termRounds} rounds).`,
+    status_message: `Player received ${formatMonopolyMoney(amount)} bank loan (Repay ${formatMonopolyMoney(totalDue)} in ${termRounds} rounds).`,
   }
 
   return {
@@ -218,22 +246,23 @@ export function repayMonopolyLoan(
       board,
       playerState,
       fullyRepaid: false,
-      error: 'Repayment amount must be greater than ₦0.',
+      error: 'Repayment amount must be greater than £0.',
     }
   }
 
-  if (playerState.cash < amount) {
+  // Pay at most the remaining balance, so an overpayment is trimmed rather than rejected
+  const effectivePayment = Math.min(amount, loan.balance_remaining)
+
+  if (playerState.cash < effectivePayment) {
     return {
       success: false,
       board,
       playerState,
       fullyRepaid: false,
-      error: `Insufficient cash (₦${playerState.cash}) for repayment of ₦${amount}.`,
+      error: `Insufficient cash (${formatMonopolyMoney(playerState.cash)}) for repayment of ${formatMonopolyMoney(effectivePayment)}.`,
     }
   }
 
-  // Pay at most the remaining balance
-  const effectivePayment = Math.min(amount, loan.balance_remaining)
   const newAmountRepaid = loan.amount_repaid + effectivePayment
   const newBalanceRemaining = Math.max(0, loan.total_due - newAmountRepaid)
   const fullyRepaid = newBalanceRemaining === 0
@@ -247,20 +276,6 @@ export function repayMonopolyLoan(
 
   loans[loanIndex] = updatedLoan
 
-  // Prune old resolved loans if history exceeds 20 entries
-  const prunedLoans =
-    loans.length > 20
-      ? loans
-          .filter((item) => item.status === 'active' || (item.status === 'defaulted' && item.balance_remaining > 0))
-          .concat(
-            loans
-              .filter(
-                (item) => item.status === 'repaid' || (item.status === 'defaulted' && item.balance_remaining === 0)
-              )
-              .slice(-5)
-          )
-      : loans
-
   const updatedPlayerState: MonopolyPlayerState = {
     ...playerState,
     cash: playerState.cash - effectivePayment,
@@ -268,19 +283,19 @@ export function repayMonopolyLoan(
 
   const updatedBoard: MonopolyBoard = {
     ...board,
-    loans: prunedLoans,
+    loans: pruneSettledLoans(loans),
     last_cash_event: {
       seq: (board.last_cash_event?.seq ?? 0) + 1,
       player_id: playerId,
       change: -effectivePayment,
       balance_after: updatedPlayerState.cash,
       label: fullyRepaid
-        ? `Fully repaid bank loan (₦${effectivePayment})`
-        : `Paid ₦${effectivePayment} towards bank loan (₦${newBalanceRemaining} remaining)`,
+        ? `Fully repaid bank loan (${formatMonopolyMoney(effectivePayment)})`
+        : `Paid ${formatMonopolyMoney(effectivePayment)} towards bank loan (${formatMonopolyMoney(newBalanceRemaining)} remaining)`,
     },
     status_message: fullyRepaid
       ? 'Bank loan has been fully settled!'
-      : `Repaid ₦${effectivePayment} towards loan. ₦${newBalanceRemaining} remaining.`,
+      : `Repaid ${formatMonopolyMoney(effectivePayment)} towards loan. ${formatMonopolyMoney(newBalanceRemaining)} remaining.`,
   }
 
   return {
@@ -374,8 +389,8 @@ export function executeBankForeclosure(
   let seizedBuildingsRefund = 0
   const buildingsMap = { ...parseBuildings(board.property_buildings) }
   const owners = parsePropertyOwners(board.property_owners)
-  let housesInBank = board.houses_in_bank ?? 32
-  let hotelsInBank = board.hotels_in_bank ?? 12
+  let housesInBank = board.houses_in_bank ?? housesInBankForSize(boardSize)
+  let hotelsInBank = board.hotels_in_bank ?? hotelsInBankForSize(boardSize)
 
   if (remainingDebt > 0) {
     const playerBuildingSpaces: { index: number; space: MonopolySpace; buildingCost: number }[] = []
@@ -505,10 +520,10 @@ export function executeBankForeclosure(
 
   const summaryParts: string[] = ['Bank Foreclosure! Defaulted on loan.']
   if (seizedCash > 0) {
-    summaryParts.push(`Seized ₦${seizedCash} cash.`)
+    summaryParts.push(`Seized ${formatMonopolyMoney(seizedCash)} cash.`)
   }
   if (seizedBuildingsRefund > 0) {
-    summaryParts.push(`Liquidated ₦${seizedBuildingsRefund} of buildings.`)
+    summaryParts.push(`Liquidated ${formatMonopolyMoney(seizedBuildingsRefund)} of buildings.`)
   }
   if (seizedPropertyIndices.length > 0) {
     summaryParts.push(`Foreclosed properties: ${propertyNames}.`)
@@ -517,7 +532,7 @@ export function executeBankForeclosure(
 
   const updatedBoard: MonopolyBoard = {
     ...board,
-    loans,
+    loans: pruneSettledLoans(loans),
     property_owners: propertyOwners,
     property_buildings: buildingsMap,
     mortgaged_properties: mortgagedMap,
