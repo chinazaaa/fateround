@@ -41,7 +41,9 @@ import { useStickyTimer } from '@/components/session/StickyTimerContext'
 import { useGameTurnAlerts } from '@/hooks/useGameTurnAlerts'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { useGameExpiryTimer } from '@/hooks/useGameExpiryTimer'
-import { joinGame } from '@/lib/api'
+import { useRouter } from 'expo-router'
+import { joinGame, JoinError } from '@/lib/api'
+import { takeOverHosting } from '@/lib/take-over-hosting'
 import {
   postMonopolyAuction,
   postMonopolyBuild,
@@ -139,7 +141,14 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
   // Tap-to-inspect — the space whose title deed is showing in the property modal.
   const [inspectedSpace, setInspectedSpace] = useState<number | null>(null)
   const [loanModalOpen, setLoanModalOpen] = useState(false)
+  // Minimize / restore state for an incoming trade offer. Mirrors the web pattern:
+  // the receiver can tuck the modal away and keep looking at the board, then tap a
+  // floating pill to bring it back. Reset every time a new trade arrives so the
+  // next one always surfaces the full modal (see effect below).
+  const [tradeMinimized, setTradeMinimized] = useState(false)
+  const previousTradeRef = useRef<string | null>(null)
   const [joinError, setJoinError] = useState<string | null>(null)
+  const router = useRouter()
   const [joiningToken, setJoiningToken] = useState(false)
   const [editingToken, setEditingToken] = useState(false)
   const [savingToken, setSavingToken] = useState(false)
@@ -232,6 +241,24 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
     return () => clearInterval(id)
   }, [])
 
+  // Reset the minimized-trade state whenever a new incoming trade arrives, so a
+  // fresh offer always surfaces the full modal (mirrors web). MUST run before the
+  // conditional returns below — placing it later fires only once bootstrap.screen
+  // reaches 'playing', which changes the hook count across renders and trips the
+  // Rules of Hooks. Signature is derived from board?.pending_trade + myPlayerId
+  // directly so it works before `board` is proven non-null.
+  const incomingTradeForMe =
+    board?.pending_trade && board.pending_trade.to_player_id === bootstrap.myPlayerId ? board.pending_trade : null
+  const tradeSig = incomingTradeForMe ? JSON.stringify(incomingTradeForMe) : null
+  useEffect(() => {
+    if (tradeSig && tradeSig !== previousTradeRef.current) {
+      setTradeMinimized(false)
+      previousTradeRef.current = tradeSig
+    } else if (!tradeSig) {
+      previousTradeRef.current = null
+    }
+  }, [tradeSig])
+
   // Seed a default token, but never clobber the player's own pick. This effect
   // re-runs on every realtime `players` update (heartbeats, other joins), so it
   // must preserve `selectedToken` as long as it's still free — only fall back to
@@ -267,16 +294,72 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
     }
     setJoiningToken(true)
     setJoinError(null)
-    try {
-      const code = normalizeGameCode(gameCode)
+    const code = normalizeGameCode(gameCode)
+    const attempt = async (continueOnThisDevice: boolean) => {
       const existing = await getPlayerSession(code)
-      const data = await joinGame({
+      return joinGame({
         gameCode: code,
         playerName,
         resumeToken: existing?.resumeToken ?? undefined,
         joinAsViewer: joiningAsViewer ? true : undefined,
         monopolyToken: joiningAsViewer ? undefined : selectedToken,
+        continueOnThisDevice: continueOnThisDevice ? true : undefined,
       })
+    }
+    try {
+      let data
+      try {
+        data = await attempt(false)
+      } catch (err) {
+        // Cross-device continuation prompt: same profile already hosting or seated from
+        // another device. Mirrors the flow in apps/mobile/hooks/useGameViewBootstrap.ts
+        // — MonopolyPlayerView owns its own join path (custom token picker), so the
+        // hook's handler doesn't fire and we have to offer the same "Take over here" /
+        // "Continue here" alerts inline here or the user sees a raw server error and
+        // gets stuck on "You're already hosting this game on another device."
+        if (err instanceof JoinError && (err.reason === 'already_hosting' || err.reason === 'already_joined')) {
+          if (err.reason === 'already_hosting') {
+            const takeOver = await new Promise<boolean>((resolve) => {
+              Alert.alert(
+                'Hosting on another device',
+                'You’re hosting this game on another device. Take over hosting on this device?',
+                [
+                  { text: 'Keep other device', style: 'cancel', onPress: () => resolve(false) },
+                  { text: 'Take over here', style: 'default', onPress: () => resolve(true) },
+                ],
+                { cancelable: false }
+              )
+            })
+            if (!takeOver) return
+            const hostToken = await takeOverHosting(code)
+            if (hostToken) {
+              router.replace(`/host/${code.toUpperCase()}` as never)
+              return
+            }
+            // Handoff unavailable — stop rather than fall through into the player-continue
+            // prompt, which would seat the host as an ordinary player in their own game.
+            setJoinError('Could not take over hosting on this device. Try again.')
+            return
+          }
+          const proceed = await new Promise<boolean>((resolve) => {
+            Alert.alert(
+              'Already in this game elsewhere',
+              `You’re already a player in this game on another device${
+                err.existingPlayerName ? ` (as ${err.existingPlayerName})` : ''
+              }. Continue on this device, or keep it on the other one?`,
+              [
+                { text: 'Keep other device', style: 'cancel', onPress: () => resolve(false) },
+                { text: 'Continue here', style: 'default', onPress: () => resolve(true) },
+              ],
+              { cancelable: false }
+            )
+          })
+          if (!proceed) return
+          data = await attempt(true)
+        } else {
+          throw err
+        }
+      }
       await setPlayerSession(
         code,
         data.playerId,
@@ -287,6 +370,11 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
       await bootstrap.load()
     } catch (err) {
       setJoinError(err instanceof Error ? err.message : 'Failed to join')
+      // Refresh the roster so the token picker reflects any newly-claimed token
+      // rather than continuing to show it as available. Mirrors the fix in
+      // useGameViewBootstrap; this path bypasses that hook so it needs its own
+      // reload after a rejected join.
+      void bootstrap.load()
     } finally {
       setJoiningToken(false)
     }
@@ -708,6 +796,10 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
     bootstrap.players.some((p) => p.id === pendingTrade.to_player_id)
       ? pendingTrade
       : null
+
+  const incomingTradeFromName = incomingTrade
+    ? (bootstrap.players.find((p) => p.id === incomingTrade.from_player_id)?.name ?? 'a player')
+    : null
 
   const bannerPhaseOwnsMessaging =
     board.phase === 'buy' || board.phase === 'pay_rent' || board.phase === 'auction' || board.phase === 'raise_funds'
@@ -1157,7 +1249,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
         </View>
       </ScrollView>
 
-      {incomingTrade ? (
+      {incomingTrade && !tradeMinimized ? (
         <MonopolyTradeModal
           trade={incomingTrade}
           players={bootstrap.players}
@@ -1165,7 +1257,20 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
           themeId={themeId}
           boardSize={boardSize}
           onRespond={onRespondTrade}
+          onMinimize={() => setTradeMinimized(true)}
         />
+      ) : null}
+
+      {incomingTrade && tradeMinimized ? (
+        <Pressable
+          style={styles.tradeMinimizedPill}
+          onPress={() => setTradeMinimized(false)}
+          accessibilityRole="button"
+          accessibilityLabel={`Restore trade offer from ${incomingTradeFromName ?? 'a player'}`}
+        >
+          <Text style={styles.tradeMinimizedIcon}>🔀</Text>
+          <Text style={styles.tradeMinimizedText}>Incoming trade</Text>
+        </Pressable>
       ) : null}
 
       {bootstrap.game?.monopoly_loans_enabled !== false && loanModalOpen && myState ? (
@@ -1204,13 +1309,7 @@ function MonopolyLoanBanner({
   const urgent = hasLoan && (roundsRemaining as number) <= 1
   const warn = hasLoan && (roundsRemaining as number) === 2
   return (
-    <View
-      style={[
-        styles.loanBanner,
-        urgent && styles.loanBannerDanger,
-        warn && styles.loanBannerWarn,
-      ]}
-    >
+    <View style={[styles.loanBanner, urgent && styles.loanBannerDanger, warn && styles.loanBannerWarn]}>
       <View style={styles.loanBannerBody}>
         <Text style={styles.loanBannerTitle}>🏦 Bank Loan</Text>
         <Text style={styles.loanBannerSubtitle}>
@@ -1568,4 +1667,24 @@ const makeStyles = (theme: Theme) =>
       borderRadius: 10,
     },
     loanBannerBtnLabel: { color: '#fff', fontWeight: '800', fontSize: 12 },
+    tradeMinimizedPill: {
+      position: 'absolute',
+      right: 16,
+      bottom: 96,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      paddingVertical: 10,
+      paddingHorizontal: 14,
+      borderRadius: 999,
+      backgroundColor: theme.primary,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.25,
+      shadowRadius: 10,
+      elevation: 6,
+      zIndex: 9999,
+    },
+    tradeMinimizedIcon: { fontSize: 16 },
+    tradeMinimizedText: { color: '#fff', fontWeight: '800', fontSize: 13 },
   })

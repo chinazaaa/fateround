@@ -29,7 +29,12 @@ import { Glyph } from '@/components/icons/Glyph'
  */
 export function DailyAnswersClient({ gameType, slug }: { gameType: DailyChallengeGameType; slug: string }) {
   const searchParams = useSearchParams()
-  const dateParam = searchParams.get('date')
+  const rawDate = searchParams.get('date')
+  // Only accept a real YYYY-MM-DD; anything else — shape mismatch, or a value
+  // like 2024-02-30 that Date.parse silently normalises — and shiftDay() feeds
+  // NaN into toISOString(), which throws and blanks the screen. Round-trip
+  // through Date to reject impossible calendar days.
+  const dateParam = rawDate && isDateSlug(rawDate) ? rawDate : null
   const [reveal, setReveal] = useState<DailyAnswerReveal | null>(null)
   const [state, setState] = useState<'loading' | 'ready' | 'empty'>('loading')
 
@@ -348,6 +353,15 @@ function todayWatSlug(): string {
 /** YYYY-MM-DD for yesterday in WAT. */
 function yesterdayWatSlug(): string {
   return shiftDay(todayWatSlug(), -1)
+}
+
+/** Strict YYYY-MM-DD validator: shape check + a round-trip through Date so a value like
+ *  2024-02-30 (silently normalised to 2024-03-01) or 2024-13-01 (rejected by Date, but
+ *  passes the regex) is refused rather than crashing shiftDay downstream. */
+function isDateSlug(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
+  const parsed = new Date(`${value}T00:00:00Z`)
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value
 }
 
 /** Shift a WAT YYYY-MM-DD string by N days (positive or negative). */

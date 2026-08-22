@@ -1249,8 +1249,8 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     heroSubtitle:
       'A classic Monopoly-style property game on your phones. Join a room, roll the dice, buy properties, and be the last player standing.',
     bodyParagraph:
-      'Estate Kings on FateRound is a Monopoly-style property trading game with customizable themed editions — including classic London streets and Naija Edition — with full Fate and Kitty card decks, property auctions, houses, hotels, mortgages, bank loan facilities, and player trading. Join 2–8 players and play turn-by-turn in real time.',
-    highlights: ['40 or 48-space board', 'Bank loan facilities', '2–8 players', 'Real-time turns'],
+      'Estate Kings on FateRound is a Monopoly-style property trading game with customizable themed editions — including classic London streets and Naija Edition — with full Fate and Kitty card decks, property auctions, houses, hotels, mortgages, bank loan facilities, and player trading. Join 2–9 players and play turn-by-turn in real time.',
+    highlights: ['40 or 48-space board', 'Bank loan facilities', '2–9 players', 'Real-time turns'],
     features: [
       {
         title: 'Classic board',

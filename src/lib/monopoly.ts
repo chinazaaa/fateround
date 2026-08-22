@@ -70,7 +70,7 @@ export type { MonopolyColorGroup, MonopolySpace, MonopolySpaceType, BuildingLeve
 export { computeRent } from '@/lib/monopoly-rent'
 
 export const MONOPOLY_MIN_PLAYERS = 2
-export const MONOPOLY_MAX_PLAYERS = 8
+export const MONOPOLY_MAX_PLAYERS = 9
 export const MONOPOLY_DEFAULT_MAX_PLAYERS = 6
 
 /** Per-turn timer options (seconds). 0 = off. */
