@@ -446,6 +446,14 @@ export async function POST(req: NextRequest) {
     player_questions_order: rawPlayerQuestionsOrder,
     max_players: rawMaxPlayers,
     monopoly_board_size: rawMonopolyBoardSize,
+    monopoly_double_go_salary: rawMonopolyDoubleGoSalary,
+    monopoly_forced_auctions: rawMonopolyForcedAuctions,
+    monopoly_auction_timer_seconds: rawMonopolyAuctionTimerSeconds,
+    monopoly_no_rent_in_jail: rawMonopolyNoRentInJail,
+    monopoly_estate_dividend: rawMonopolyEstateDividend,
+    monopoly_loans_enabled: rawMonopolyLoansEnabled,
+    monopoly_loan_interest: rawMonopolyLoanInterest,
+    monopoly_loan_term_rounds: rawMonopolyLoanTermRounds,
     codewords_player_picks: rawCodewordsPlayerPicks,
     codewords_late_join: rawCodewordsLateJoin,
     codewords_randomize_teams: rawCodewordsRandomizeTeams,
@@ -1264,7 +1272,33 @@ export async function POST(req: NextRequest) {
           : 'players_first',
     ...(maxPlayers != null ? { max_players: maxPlayers } : {}),
     ...(isMonopolyGame(game_type)
-      ? { monopoly_board_size: (maxPlayers ?? 6) >= 6 && rawMonopolyBoardSize === 48 ? 48 : 40 }
+      ? {
+          monopoly_board_size: (maxPlayers ?? 6) >= 6 && rawMonopolyBoardSize === 48 ? 48 : 40,
+          ...(rawMonopolyDoubleGoSalary !== undefined
+            ? { monopoly_double_go_salary: rawMonopolyDoubleGoSalary === true }
+            : {}),
+          ...(rawMonopolyForcedAuctions !== undefined
+            ? { monopoly_forced_auctions: rawMonopolyForcedAuctions === true }
+            : {}),
+          ...(rawMonopolyAuctionTimerSeconds !== undefined
+            ? { monopoly_auction_timer_seconds: rawMonopolyAuctionTimerSeconds }
+            : {}),
+          ...(rawMonopolyNoRentInJail !== undefined
+            ? { monopoly_no_rent_in_jail: rawMonopolyNoRentInJail === true }
+            : {}),
+          ...(rawMonopolyEstateDividend !== undefined
+            ? { monopoly_estate_dividend: rawMonopolyEstateDividend === true }
+            : {}),
+          ...(rawMonopolyLoansEnabled !== undefined
+            ? { monopoly_loans_enabled: rawMonopolyLoansEnabled !== false }
+            : {}),
+          ...(rawMonopolyLoanInterest !== undefined
+            ? { monopoly_loan_interest: rawMonopolyLoanInterest }
+            : {}),
+          ...(rawMonopolyLoanTermRounds !== undefined
+            ? { monopoly_loan_term_rounds: rawMonopolyLoanTermRounds }
+            : {}),
+        }
       : {}),
     ...(isBingoGame(game_type)
       ? {

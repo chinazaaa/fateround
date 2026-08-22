@@ -500,6 +500,17 @@ function CreateGameInner() {
   const [monopolyMaxPlayers, setMonopolyMaxPlayers] = useState(MONOPOLY_DEFAULT_MAX_PLAYERS)
   const [monopolyBoardSize, setMonopolyBoardSize] = useState<40 | 48>(40)
   const [monopolyGameDuration, setMonopolyGameDuration] = useState(0)
+  // House rules — mirror the host-lobby toggles. Defaults match the DB defaults
+  // (loans enabled, 15% flat interest, 4-round term) so what a host sets here
+  // travels through to the lobby untouched.
+  const [monopolyDoubleGoSalary, setMonopolyDoubleGoSalary] = useState(false)
+  const [monopolyForcedAuctions, setMonopolyForcedAuctions] = useState(false)
+  const [monopolyAuctionTimerSeconds, setMonopolyAuctionTimerSeconds] = useState(10)
+  const [monopolyNoRentInJail, setMonopolyNoRentInJail] = useState(false)
+  const [monopolyEstateDividend, setMonopolyEstateDividend] = useState(false)
+  const [monopolyLoansEnabled, setMonopolyLoansEnabled] = useState(true)
+  const [monopolyLoanInterest, setMonopolyLoanInterest] = useState(15)
+  const [monopolyLoanTermRounds, setMonopolyLoanTermRounds] = useState(4)
   const [scrabbleGameDuration, setScrabbleGameDuration] = useState(0)
   const [scrabbleDictionary, setScrabbleDictionary] = useState<ScrabbleDictionaryId>(SCRABBLE_DEFAULT_DICTIONARY)
   const [scrabbleClockMode, setScrabbleClockMode] = useState<ScrabbleClockMode>('standard')
@@ -2829,6 +2840,14 @@ function CreateGameInner() {
                                                               effectiveLimits.matching_pairs.max)
                                                             : undefined,
           monopoly_board_size: isMonopoly ? monopolyBoardSize : undefined,
+          monopoly_double_go_salary: isMonopoly ? monopolyDoubleGoSalary : undefined,
+          monopoly_forced_auctions: isMonopoly ? monopolyForcedAuctions : undefined,
+          monopoly_auction_timer_seconds: isMonopoly ? monopolyAuctionTimerSeconds : undefined,
+          monopoly_no_rent_in_jail: isMonopoly ? monopolyNoRentInJail : undefined,
+          monopoly_estate_dividend: isMonopoly ? monopolyEstateDividend : undefined,
+          monopoly_loans_enabled: isMonopoly ? monopolyLoansEnabled : undefined,
+          monopoly_loan_interest: isMonopoly ? monopolyLoanInterest : undefined,
+          monopoly_loan_term_rounds: isMonopoly ? monopolyLoanTermRounds : undefined,
           operative_timer_seconds: isCodewords
             ? codewordsOperativeTimer
             : isNpat
@@ -3707,6 +3726,95 @@ function CreateGameInner() {
                   />
                 </Field>
                 <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="monopoly" />
+                <details className="group space-y-3">
+                  <summary className="cursor-pointer list-none flex items-center justify-between gap-3 py-1">
+                    <div>
+                      <p className="font-semibold text-sm">Advanced house rules</p>
+                      <p className="text-faint text-xs mt-0.5">
+                        Optional toggles — you can also change these in the host lobby.
+                      </p>
+                    </div>
+                    <svg
+                      viewBox="0 0 20 20"
+                      className="w-4 h-4 text-faint transition-transform group-open:rotate-90 shrink-0"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                    >
+                      <polyline points="7 4 13 10 7 16" />
+                    </svg>
+                  </summary>
+                  <div className="pt-3 space-y-3">
+                  <Toggle
+                    label="Double GO Salary"
+                    description="Collect £400 (instead of £200) when landing exactly on PAYDAY."
+                    value={monopolyDoubleGoSalary}
+                    onChange={setMonopolyDoubleGoSalary}
+                  />
+                  <Toggle
+                    label="Forced Auctions"
+                    description="If a player declines to buy an unowned property, it must go to auction."
+                    value={monopolyForcedAuctions}
+                    onChange={setMonopolyForcedAuctions}
+                  />
+                  <Field label="Auction timer">
+                    <CustomSelect
+                      value={monopolyAuctionTimerSeconds}
+                      onChange={setMonopolyAuctionTimerSeconds}
+                      options={[5, 10, 15, 20, 30, 45, 60].map((s) => ({ value: s, label: `${s} seconds` }))}
+                    />
+                  </Field>
+                  <Toggle
+                    label="No Rent in NICKED"
+                    description="Prevent players in NICKED from collecting rent on their properties."
+                    value={monopolyNoRentInJail}
+                    onChange={setMonopolyNoRentInJail}
+                  />
+                  <Toggle
+                    label="Robin Hood Estate Dividend"
+                    description="When a player leaves mid-game, their estate is liquidated and split equally among remaining players."
+                    value={monopolyEstateDividend}
+                    onChange={setMonopolyEstateDividend}
+                  />
+                  <Toggle
+                    label="Bank Loans"
+                    description="Allow players to borrow emergency funds from the Bank with flat interest and a foreclosure term limit."
+                    value={monopolyLoansEnabled}
+                    onChange={setMonopolyLoansEnabled}
+                  />
+                  {monopolyLoansEnabled && (
+                    <>
+                      <Field label="Loan interest rate">
+                        <CustomSelect
+                          value={monopolyLoanInterest}
+                          onChange={setMonopolyLoanInterest}
+                          options={[
+                            { value: 10, label: '10%' },
+                            { value: 15, label: '15% (Default)' },
+                            { value: 20, label: '20%' },
+                            { value: 25, label: '25%' },
+                          ]}
+                        />
+                      </Field>
+                      <Field label="Loan term (rounds to repay)">
+                        <CustomSelect
+                          value={monopolyLoanTermRounds}
+                          onChange={setMonopolyLoanTermRounds}
+                          options={[
+                            { value: 2, label: '2 rounds' },
+                            { value: 3, label: '3 rounds' },
+                            { value: 4, label: '4 rounds (Default)' },
+                            { value: 5, label: '5 rounds' },
+                          ]}
+                        />
+                      </Field>
+                    </>
+                  )}
+                  </div>
+                </details>
                 <p className="text-faint text-sm leading-relaxed">
                   {formatThemedText(
                     'Players join with their name and start on PAYDAY with £1,500. Take turns rolling dice, buying properties, paying rent, and drawing cards. Last player standing wins! If someone stalls, their turn auto-resolves. Set a game length to end automatically — the richest player wins when time runs out.',

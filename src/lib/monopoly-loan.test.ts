@@ -438,6 +438,52 @@ describe('Monopoly Loan Facilities', () => {
       const givingMortgagedDeed = isTradeBlockedByLoan(300, [200], 0, [], activeLoan)
       expect(givingMortgagedDeed.blocked).toBe(false)
     })
+
+    it('nets the incoming side of a trade instead of only its outgoing side', () => {
+      const activeLoan: MonopolyLoan = {
+        id: 'loan_1',
+        player_id: 'p1',
+        principal: 500,
+        interest_rate: 0.15,
+        total_due: 575,
+        amount_repaid: 0,
+        balance_remaining: 575,
+        term_rounds: 4,
+        rounds_remaining: 2,
+        created_at: new Date().toISOString(),
+        status: 'active',
+      }
+
+      // Pre-trade: cash 100 + one deed worth 200 (mortgage value) = 300, below the
+      // 575 balance. Handing that 200 deed to the counter-party would be blocked
+      // if we only measured what left the borrower — but they get 100 cash and a
+      // deed worth 500 in return, bringing post-trade assets to 600. Blocking
+      // this trade would strand a borrower who is trying to strengthen their book.
+      const check = isTradeBlockedByLoan(100, [200], 0, [200], activeLoan, 100, [500])
+      expect(check.blocked).toBe(false)
+    })
+
+    it('still blocks a trade whose incoming side does not cover what leaves', () => {
+      const activeLoan: MonopolyLoan = {
+        id: 'loan_1',
+        player_id: 'p1',
+        principal: 500,
+        interest_rate: 0.15,
+        total_due: 575,
+        amount_repaid: 0,
+        balance_remaining: 575,
+        term_rounds: 4,
+        rounds_remaining: 2,
+        created_at: new Date().toISOString(),
+        status: 'active',
+      }
+
+      // Pre-trade: 800 cash + deed worth 200 = 1000 (>= 575, borrower is solvent).
+      // They offer the deed and 500 cash for only 10 cash back → post-trade
+      // assets = 310 < 575. The gate must still fire in this direction.
+      const check = isTradeBlockedByLoan(800, [200], 500, [200], activeLoan, 10, [])
+      expect(check.blocked).toBe(true)
+    })
   })
 
   describe('Bank Foreclosure & Asset Seizure', () => {

@@ -84,26 +84,33 @@ export function hasDefaultedMonopolyLoan(loans: MonopolyLoan[] | undefined | nul
 }
 
 /**
- * Checks if a proposed outgoing trade would strip player assets below their remaining loan balance.
- * Anti-exploit protection against fraudulent asset transfer before default.
+ * Checks whether a proposed trade would leave a borrower's post-trade assets
+ * below their outstanding loan balance. Both sides of the swap are netted so a
+ * trade that raises the borrower's collateral (e.g. handing over a low-value
+ * deed for a higher-value one plus cash) is not blocked — only trades that
+ * genuinely strip collateral below the debt are stopped.
  */
 export function isTradeBlockedByLoan(
   currentCash: number,
   ownedPropertyMortgageValues: number[],
   outgoingCash: number,
   outgoingPropertyMortgageValues: number[],
-  activeLoan: MonopolyLoan | undefined
+  activeLoan: MonopolyLoan | undefined,
+  incomingCash: number = 0,
+  incomingPropertyMortgageValues: number[] = []
 ): { blocked: boolean; reason?: string } {
   if (!activeLoan || activeLoan.status !== 'active') {
     return { blocked: false }
   }
 
   const remainingBalance = activeLoan.balance_remaining
-  const totalCurrentMortgage = ownedPropertyMortgageValues.reduce((sum, val) => sum + Math.max(0, val), 0)
-  const totalOutgoingMortgage = outgoingPropertyMortgageValues.reduce((sum, val) => sum + Math.max(0, val), 0)
+  const sumNonNegative = (values: number[]) => values.reduce((sum, val) => sum + Math.max(0, val), 0)
+  const totalCurrentMortgage = sumNonNegative(ownedPropertyMortgageValues)
+  const totalOutgoingMortgage = sumNonNegative(outgoingPropertyMortgageValues)
+  const totalIncomingMortgage = sumNonNegative(incomingPropertyMortgageValues)
 
-  const postTradeCash = currentCash - outgoingCash
-  const postTradeMortgageValue = totalCurrentMortgage - totalOutgoingMortgage
+  const postTradeCash = currentCash - outgoingCash + incomingCash
+  const postTradeMortgageValue = totalCurrentMortgage - totalOutgoingMortgage + totalIncomingMortgage
   const postTradeLiquidValue = postTradeCash + postTradeMortgageValue
 
   if (postTradeLiquidValue < remainingBalance) {

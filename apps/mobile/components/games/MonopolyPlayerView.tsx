@@ -54,6 +54,8 @@ import {
   postMonopolyRoll,
   postMonopolySettleDebt,
   postMonopolyTrade,
+  postMonopolyLoanBorrow,
+  postMonopolyLoanRepay,
   patchPlayerMonopolyToken,
 } from '@/lib/game-api'
 import { useTurnExpiryTimer } from '@/hooks/useTurnExpiryTimer'
@@ -73,6 +75,8 @@ import {
   parsePropertyOwners,
 } from '@/components/games/monopoly/manage-logic'
 import { MonopolyPropertyModal } from '@/components/games/monopoly/MonopolyPropertyModal'
+import { MonopolyLoanModal } from '@/components/games/monopoly/MonopolyLoanModal'
+import { getActiveMonopolyLoan } from '@fateround/shared/monopoly-loans'
 import { getPlayerSession, setPlayerSession } from '@/lib/secure-session'
 import { getSupabase } from '@/lib/supabase'
 import { MONOPOLY_BOARD_SELECT, MONOPOLY_PLAYER_STATE_SELECT } from '@/lib/supabase-selects'
@@ -133,6 +137,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
   const [selectedToken, setSelectedToken] = useState<MonopolyTokenId | null>(null)
   // Tap-to-inspect — the space whose title deed is showing in the property modal.
   const [inspectedSpace, setInspectedSpace] = useState<number | null>(null)
+  const [loanModalOpen, setLoanModalOpen] = useState(false)
   const [joinError, setJoinError] = useState<string | null>(null)
   const [joiningToken, setJoiningToken] = useState(false)
   const [editingToken, setEditingToken] = useState(false)
@@ -474,6 +479,29 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
     void runManage(() => postMonopolyTrade(bootstrap.code, bootstrap.myResumeToken!, { repair: true }))
   const onRespondTrade = (accept: boolean) =>
     void runManage(() => postMonopolyTrade(bootstrap.code, bootstrap.myResumeToken!, { accept }))
+  // Loan borrow/repay bypass runManage so the modal can surface the server's
+  // error inline instead of the modal closing on a swallowed failure — the
+  // action still reloads the board on success and, on error, sets the
+  // shared manageError banner too so nothing about the failure is silent.
+  const onLoanAction = async (fn: () => Promise<unknown>) => {
+    if (!bootstrap.myResumeToken || acting) throw new Error('Please wait for the previous action to finish.')
+    setActing(true)
+    setManageError(null)
+    try {
+      await fn()
+      await bootstrap.load()
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Action failed'
+      setManageError(message)
+      throw err instanceof Error ? err : new Error(message)
+    } finally {
+      setActing(false)
+    }
+  }
+  const onLoanBorrow = (amount: number) =>
+    onLoanAction(() => postMonopolyLoanBorrow(bootstrap.code, bootstrap.myResumeToken!, amount))
+  const onLoanRepay = (amount: number) =>
+    onLoanAction(() => postMonopolyLoanRepay(bootstrap.code, bootstrap.myResumeToken!, amount))
 
   const tokenOwners = useMemo(() => monopolyTokenOwners(bootstrap.players), [bootstrap.players])
 
@@ -1037,6 +1065,16 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
 
         {manageError ? <Text style={styles.errorText}>{manageError}</Text> : null}
 
+        {!isViewer && bootstrap.game?.monopoly_loans_enabled !== false && myState ? (
+          <MonopolyLoanBanner
+            styles={styles}
+            themeId={themeId}
+            balance={getActiveMonopolyLoan(board.loans, bootstrap.myPlayerId ?? '')?.balance_remaining ?? null}
+            roundsRemaining={getActiveMonopolyLoan(board.loans, bootstrap.myPlayerId ?? '')?.rounds_remaining ?? null}
+            onOpen={() => setLoanModalOpen(true)}
+          />
+        ) : null}
+
         {/* Tabbed bottom panel — Build & trade / Players (mirrors web). */}
         <View style={styles.panelWrap} onLayout={(e) => (managePanelYRef.current = e.nativeEvent.layout.y)}>
           {isViewer ? (
@@ -1098,7 +1136,62 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
           onRespond={onRespondTrade}
         />
       ) : null}
+
+      {bootstrap.game?.monopoly_loans_enabled !== false && loanModalOpen && myState ? (
+        <MonopolyLoanModal
+          key={getActiveMonopolyLoan(board.loans, bootstrap.myPlayerId ?? '')?.id ?? 'no-loan'}
+          open={loanModalOpen}
+          onClose={() => setLoanModalOpen(false)}
+          board={board}
+          myState={myState}
+          themeId={themeId}
+          acting={acting}
+          interestRate={bootstrap.game?.monopoly_loan_interest ?? 15}
+          termRounds={bootstrap.game?.monopoly_loan_term_rounds ?? 4}
+          onBorrow={onLoanBorrow}
+          onRepay={onLoanRepay}
+        />
+      ) : null}
     </GameShell>
+  )
+}
+
+function MonopolyLoanBanner({
+  styles,
+  themeId,
+  balance,
+  roundsRemaining,
+  onOpen,
+}: {
+  styles: ReturnType<typeof makeStyles>
+  themeId?: string | null
+  balance: number | null
+  roundsRemaining: number | null
+  onOpen: () => void
+}) {
+  const hasLoan = balance !== null && roundsRemaining !== null
+  const urgent = hasLoan && (roundsRemaining as number) <= 1
+  const warn = hasLoan && (roundsRemaining as number) === 2
+  return (
+    <View
+      style={[
+        styles.loanBanner,
+        urgent && styles.loanBannerDanger,
+        warn && styles.loanBannerWarn,
+      ]}
+    >
+      <View style={styles.loanBannerBody}>
+        <Text style={styles.loanBannerTitle}>🏦 Bank Loan</Text>
+        <Text style={styles.loanBannerSubtitle} numberOfLines={1}>
+          {hasLoan
+            ? `Balance ${formatThemedMoney(balance as number, themeId)} · ${roundsRemaining === 1 ? 'Due this round' : `${roundsRemaining} rounds left`}`
+            : 'Borrow liquidity against your portfolio'}
+        </Text>
+      </View>
+      <Pressable style={styles.loanBannerBtn} onPress={onOpen}>
+        <Text style={styles.loanBannerBtnLabel}>{hasLoan ? 'Manage' : 'Borrow'}</Text>
+      </Pressable>
+    </View>
   )
 }
 
@@ -1411,4 +1504,28 @@ const makeStyles = (theme: Theme) =>
       paddingVertical: 10,
       textAlign: 'center',
     },
+    loanBanner: {
+      marginHorizontal: 16,
+      marginTop: 8,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: theme.border,
+      backgroundColor: theme.surface,
+      padding: 12,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+    },
+    loanBannerWarn: { borderColor: '#f59e0b66', backgroundColor: '#f59e0b14' },
+    loanBannerDanger: { borderColor: '#ef444466', backgroundColor: '#ef444414' },
+    loanBannerBody: { flex: 1, gap: 2 },
+    loanBannerTitle: { color: theme.text, fontWeight: '800', fontSize: 13 },
+    loanBannerSubtitle: { color: theme.textMuted, fontSize: 12 },
+    loanBannerBtn: {
+      backgroundColor: theme.primary,
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+      borderRadius: 10,
+    },
+    loanBannerBtnLabel: { color: '#fff', fontWeight: '800', fontSize: 12 },
   })

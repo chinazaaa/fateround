@@ -30,6 +30,7 @@ export {
   calculateMonopolyCreditLimit,
   calculateMonopolyLoanTotalDue,
   getActiveMonopolyLoan,
+  hasDefaultedMonopolyLoan,
   isTradeBlockedByLoan,
   loanPresetTiersForSize,
   maxLoanCapForSize,
