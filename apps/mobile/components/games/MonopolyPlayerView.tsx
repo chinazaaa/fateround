@@ -73,6 +73,7 @@ import {
   computeRent,
   getMonopolyBuildActionCount,
   normalizePendingTrade,
+  type MonopolyPendingTrade,
   parseBuildings,
   parseMortgaged,
   parsePropertyOwners,

@@ -401,6 +401,7 @@ export function WordGroupingHostView({ gameCode, hostToken }: { gameCode: string
         hostToken={hostToken}
         game={game}
         playerCount={players.length}
+        seatedCount={players.filter((p) => !p.spectator).length}
         onGameUpdate={setGame}
         durationChoices={WORD_GROUPING_GAME_DURATION_OPTIONS}
         puzzleSettings={

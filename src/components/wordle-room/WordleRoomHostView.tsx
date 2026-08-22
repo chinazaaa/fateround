@@ -492,6 +492,7 @@ export function WordleRoomHostView({ gameCode, hostToken }: { gameCode: string; 
             hostToken={hostToken}
             game={game}
             playerCount={players.length}
+            seatedCount={players.filter((p) => !p.spectator).length}
             onGameUpdate={setGame}
           />
           <HostLobbyWaitingFooter
@@ -637,6 +638,7 @@ export function WordleRoomHostView({ gameCode, hostToken }: { gameCode: string; 
         hostToken={hostToken}
         game={game}
         playerCount={players.length}
+        seatedCount={players.filter((p) => !p.spectator).length}
         onGameUpdate={setGame}
       />
       <TransferHostControl triggerClassName="btn-secondary w-full flex items-center justify-center gap-2" />

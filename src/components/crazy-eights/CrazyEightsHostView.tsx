@@ -498,6 +498,7 @@ export function CrazyEightsHostView({ gameCode, hostToken }: { gameCode: string;
               game={game}
               boardGameType="crazy_eights"
               playerCount={players.length}
+              seatedCount={players.filter((p) => !p.spectator).length}
               onGameUpdate={setGame}
             />
           )}
@@ -658,6 +659,7 @@ export function CrazyEightsHostView({ gameCode, hostToken }: { gameCode: string;
               game={game}
               boardGameType="crazy_eights"
               playerCount={players.length}
+              seatedCount={players.filter((p) => !p.spectator).length}
               onGameUpdate={setGame}
             />
             <TransferHostControl triggerClassName="btn-secondary w-full flex items-center justify-center gap-2" />

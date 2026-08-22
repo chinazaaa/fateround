@@ -398,6 +398,7 @@ function QuickDrawLieHostView({ gameCode, hostToken }: { gameCode: string; hostT
           hostToken={hostToken}
           game={game}
           playerCount={players.length}
+          seatedCount={players.filter((p) => !p.spectator).length}
           onGameUpdate={setGame}
         />
       )}
@@ -540,6 +541,7 @@ function QuickDrawLieHostView({ gameCode, hostToken }: { gameCode: string; hostT
         hostToken={hostToken}
         game={game}
         playerCount={players.length}
+        seatedCount={players.filter((p) => !p.spectator).length}
         onGameUpdate={setGame}
       />
       <TransferHostControl triggerClassName="btn-secondary w-full flex items-center justify-center gap-2" />
