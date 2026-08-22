@@ -141,6 +141,12 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
   // Tap-to-inspect — the space whose title deed is showing in the property modal.
   const [inspectedSpace, setInspectedSpace] = useState<number | null>(null)
   const [loanModalOpen, setLoanModalOpen] = useState(false)
+  // Minimize / restore state for an incoming trade offer. Mirrors the web pattern:
+  // the receiver can tuck the modal away and keep looking at the board, then tap a
+  // floating pill to bring it back. Reset every time a new trade arrives so the
+  // next one always surfaces the full modal (see effect below).
+  const [tradeMinimized, setTradeMinimized] = useState(false)
+  const previousTradeRef = useRef<string | null>(null)
   const [joinError, setJoinError] = useState<string | null>(null)
   const router = useRouter()
   const [joiningToken, setJoiningToken] = useState(false)
@@ -768,6 +774,22 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
       ? pendingTrade
       : null
 
+  const tradeSig = incomingTrade ? JSON.stringify(incomingTrade) : null
+  useEffect(() => {
+    // A new incoming trade always surfaces the full modal, even if the receiver had
+    // minimized the previous one — mirrors the web behaviour so a fresh offer is
+    // never accidentally dismissed.
+    if (tradeSig && tradeSig !== previousTradeRef.current) {
+      setTradeMinimized(false)
+      previousTradeRef.current = tradeSig
+    } else if (!tradeSig) {
+      previousTradeRef.current = null
+    }
+  }, [tradeSig])
+  const incomingTradeFromName = incomingTrade
+    ? (bootstrap.players.find((p) => p.id === incomingTrade.from_player_id)?.name ?? 'a player')
+    : null
+
   const bannerPhaseOwnsMessaging =
     board.phase === 'buy' || board.phase === 'pay_rent' || board.phase === 'auction' || board.phase === 'raise_funds'
   // Show the freshly-fired event (cash/rent/trade) as a transient banner; when
@@ -1216,7 +1238,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
         </View>
       </ScrollView>
 
-      {incomingTrade ? (
+      {incomingTrade && !tradeMinimized ? (
         <MonopolyTradeModal
           trade={incomingTrade}
           players={bootstrap.players}
@@ -1224,7 +1246,20 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
           themeId={themeId}
           boardSize={boardSize}
           onRespond={onRespondTrade}
+          onMinimize={() => setTradeMinimized(true)}
         />
+      ) : null}
+
+      {incomingTrade && tradeMinimized ? (
+        <Pressable
+          style={styles.tradeMinimizedPill}
+          onPress={() => setTradeMinimized(false)}
+          accessibilityRole="button"
+          accessibilityLabel={`Restore trade offer from ${incomingTradeFromName ?? 'a player'}`}
+        >
+          <Text style={styles.tradeMinimizedIcon}>🔀</Text>
+          <Text style={styles.tradeMinimizedText}>Incoming trade</Text>
+        </Pressable>
       ) : null}
 
       {bootstrap.game?.monopoly_loans_enabled !== false && loanModalOpen && myState ? (
@@ -1621,4 +1656,24 @@ const makeStyles = (theme: Theme) =>
       borderRadius: 10,
     },
     loanBannerBtnLabel: { color: '#fff', fontWeight: '800', fontSize: 12 },
+    tradeMinimizedPill: {
+      position: 'absolute',
+      right: 16,
+      bottom: 96,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      paddingVertical: 10,
+      paddingHorizontal: 14,
+      borderRadius: 999,
+      backgroundColor: theme.primary,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.25,
+      shadowRadius: 10,
+      elevation: 6,
+      zIndex: 9999,
+    },
+    tradeMinimizedIcon: { fontSize: 16 },
+    tradeMinimizedText: { color: '#fff', fontWeight: '800', fontSize: 13 },
   })
