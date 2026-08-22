@@ -377,13 +377,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   if (max_players !== undefined) {
     const nextMax = effectiveMaxPlayers
-    const { count: playerCount } = await supabase
+    // Count only ready (non-spectator) players against the new cap. Not-ready players
+    // are `spectator: true` (see /api/players/ready — readiness maps directly onto the
+    // spectator flag), and a spectator does not consume a player seat. Counting them
+    // against the cap forced the host to remove people who weren't taking a seat in the
+    // first place, which is what the user hit trying to reduce max from 8 to 6 while
+    // three not-ready players were watching.
+    const { count: seatedCount } = await supabase
       .from('players')
       .select('id', { count: 'exact', head: true })
       .eq('game_id', gameCode)
-    if ((playerCount ?? 0) > nextMax) {
+      .not('spectator', 'is', true)
+    if ((seatedCount ?? 0) > nextMax) {
       return NextResponse.json(
-        { error: `Already have ${playerCount} players — remove someone or pick at least ${playerCount}` },
+        { error: `Already have ${seatedCount} seated players — remove someone or pick at least ${seatedCount}` },
         { status: 400 }
       )
     }

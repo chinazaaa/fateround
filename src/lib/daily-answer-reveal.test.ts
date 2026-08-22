@@ -178,17 +178,20 @@ describe('answer reveal surfaces', () => {
   it.each([
     ['web', 'src/components/daily/DailyAnswersClient.tsx', /searchParams\.get\('date'\)/],
     ['mobile', 'apps/mobile/app/daily-challenges/answers/[slug].tsx', /useLocalSearchParams<\{[^}]*date/],
-  ])('the %s answers view forwards the URL date param, and the server still refuses today', (_platform, rel, hookRe) => {
-    // Both platforms now support prev/next-day navigation via ?date=YYYY-MM-DD in the URL,
-    // so they pass the param through to the API. That's safe because the server route
-    // (src/app/api/daily-challenges/[gameType]/answers/route.ts) rejects any date that
-    // isn't strictly before today in WAT — the gate lives on the server, not the client.
-    // What we still verify here is that the client cannot inject today itself: the only
-    // date it sends is whatever came in via the platform's URL-param hook.
-    const src = read(rel)
-    expect(src).toMatch(/\/answers/)
-    expect(src, 'the date must come from the URL, not from the client synthesising it').toMatch(hookRe)
-  })
+  ])(
+    'the %s answers view forwards the URL date param, and the server still refuses today',
+    (_platform, rel, hookRe) => {
+      // Both platforms now support prev/next-day navigation via ?date=YYYY-MM-DD in the URL,
+      // so they pass the param through to the API. That's safe because the server route
+      // (src/app/api/daily-challenges/[gameType]/answers/route.ts) rejects any date that
+      // isn't strictly before today in WAT — the gate lives on the server, not the client.
+      // What we still verify here is that the client cannot inject today itself: the only
+      // date it sends is whatever came in via the platform's URL-param hook.
+      const src = read(rel)
+      expect(src).toMatch(/\/answers/)
+      expect(src, 'the date must come from the URL, not from the client synthesising it').toMatch(hookRe)
+    }
+  )
 })
 
 /**

@@ -85,9 +85,7 @@ export default function DailyAnswersScreen() {
       try {
         // Explicit ?date=… wins; otherwise the route defaults to yesterday. The server still
         // refuses any date that isn't strictly in the past, so passing one through is safe.
-        const url = apiUrl(
-          `/api/daily-challenges/${gameType}/answers${dateParam ? `?date=${dateParam}` : ''}`
-        )
+        const url = apiUrl(`/api/daily-challenges/${gameType}/answers${dateParam ? `?date=${dateParam}` : ''}`)
         const res = await fetch(url, { cache: 'no-store' })
         if (!res.ok) {
           if (!cancelled) setState('empty')
@@ -134,9 +132,7 @@ export default function DailyAnswersScreen() {
             >
               <Text style={styles.dateArrowText}>‹</Text>
             </Pressable>
-            <Text style={styles.sub}>
-              {reveal ? formatDate(reveal.challengeDate) : formatDate(viewingDate)}
-            </Text>
+            <Text style={styles.sub}>{reveal ? formatDate(reveal.challengeDate) : formatDate(viewingDate)}</Text>
             <Pressable
               style={[styles.dateArrow, !canGoNext && styles.dateArrowDisabled]}
               disabled={!canGoNext || !gameType}
@@ -242,10 +238,7 @@ function SectionCard({ section }: { section: Section }) {
                   const color =
                     owner != null ? WORD_SEARCH_HIGHLIGHT_COLORS[owner % WORD_SEARCH_HIGHLIGHT_COLORS.length] : null
                   return (
-                    <View
-                      key={c}
-                      style={[styles.cell, color ? { backgroundColor: withAlpha(color, 0.32) } : null]}
-                    >
+                    <View key={c} style={[styles.cell, color ? { backgroundColor: withAlpha(color, 0.32) } : null]}>
                       <Text style={styles.cellText}>{cell}</Text>
                     </View>
                   )
@@ -280,10 +273,7 @@ function SectionCard({ section }: { section: Section }) {
             {section.rows.map((row, r) => (
               <View key={r} style={[styles.gridRow, isSudoku && r > 0 && r % 3 === 0 && styles.sudokuThickRow]}>
                 {row.map((cell, c) => (
-                  <View
-                    key={c}
-                    style={[styles.cell, isSudoku && c > 0 && c % 3 === 0 && styles.sudokuThickCol]}
-                  >
+                  <View key={c} style={[styles.cell, isSudoku && c > 0 && c % 3 === 0 && styles.sudokuThickCol]}>
                     <Text style={styles.cellText}>{cell}</Text>
                   </View>
                 ))}

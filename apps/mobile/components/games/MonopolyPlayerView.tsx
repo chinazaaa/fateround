@@ -1263,13 +1263,7 @@ function MonopolyLoanBanner({
   const urgent = hasLoan && (roundsRemaining as number) <= 1
   const warn = hasLoan && (roundsRemaining as number) === 2
   return (
-    <View
-      style={[
-        styles.loanBanner,
-        urgent && styles.loanBannerDanger,
-        warn && styles.loanBannerWarn,
-      ]}
-    >
+    <View style={[styles.loanBanner, urgent && styles.loanBannerDanger, warn && styles.loanBannerWarn]}>
       <View style={styles.loanBannerBody}>
         <Text style={styles.loanBannerTitle}>🏦 Bank Loan</Text>
         <Text style={styles.loanBannerSubtitle}>
