@@ -248,13 +248,21 @@ function SaveToProfileSheet({
                     <Text style={styles.hint}>
                       Signed in as {handle || 'you'}. Your streak and trophies follow this account onto any device.
                     </Text>
+                    {/* Points at /settings rather than signing out here. "Not you? Switch" WAS
+                        sign-out under a different name — a third door to settings, next to the
+                        ⚙ in the same top bar. The "this isn't me" entry point is worth keeping,
+                        so it survives as a link to the one place that control now lives.
+                        See docs/mobile-ia-audit-2026-08.md. */}
                     <Pressable
                       style={styles.secondaryBtn}
-                      onPress={() => void switchUser()}
+                      onPress={() => {
+                        onClose()
+                        router.push('/settings' as never)
+                      }}
                       accessibilityRole="button"
-                      accessibilityLabel="Not you? Switch account"
+                      accessibilityLabel="Open settings to switch account or sign out"
                     >
-                      <Text style={styles.secondaryBtnText}>Not you? Switch</Text>
+                      <Text style={styles.secondaryBtnText}>Not you? Settings</Text>
                     </Pressable>
                   </>
                 ) : step === 'email' ? (

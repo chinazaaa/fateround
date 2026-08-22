@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { useRouter, useFocusEffect } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
+import { AppButton } from '@/components/ui/AppButton'
 import { ListRow } from '@/components/ui/ListRow'
 import { SurfaceCard } from '@/components/ui/SurfaceCard'
 import { StreakStatusCard } from '@/components/profile/StreakStatusCard'
@@ -9,7 +10,6 @@ import { centeredContent } from '@/constants/layout'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
 import { fetchProfileGames, type ProfileGameRow, type ProfileMe } from '@/lib/profile-api'
-import { AccountSettingsSection } from '@/components/profile/AccountSettingsSection'
 
 /**
  * Profile screen — trophy case + per-game stats surface.
@@ -172,7 +172,10 @@ export default function ProfileScreen() {
 
         {/* Account settings — the mobile half of web's /profile → Settings tab. Device
             preferences (appearance / sound / notifications) stay in the ⚙ sheet. */}
-        <AccountSettingsSection profile={profile} onChanged={() => void load()} />
+        {/* Account settings moved to /settings, which now carries device preferences too.
+            They used to sit here, below the per-game list — so the more games a player had, the
+            further sign-out drifted down the screen. See docs/mobile-ia-audit-2026-08.md. */}
+        <AppButton label="Settings" tone="secondary" fullWidth onPress={() => router.push('/settings' as never)} />
       </ScrollView>
     </SafeAreaView>
   )

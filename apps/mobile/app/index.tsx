@@ -78,7 +78,7 @@ export default function HomeScreen() {
         }
       >
         <View style={styles.topBar}>
-          <SettingsButton />
+          <SettingsButton variant="screen" />
           <ProfileChip />
         </View>
 
