@@ -175,26 +175,19 @@ describe('answer reveal surfaces', () => {
     expect(read(rel)).toMatch(/answers/i)
   })
 
-  it('the mobile answers view never asks for a specific date', () => {
-    // Passing a date would be the one way a client could aim at today. Mobile omits it and
-    // takes the route's default of yesterday, so the gate cannot be argued with.
-    const src = read('apps/mobile/app/daily-challenges/answers/[slug].tsx')
-    expect(src).toMatch(/\/answers`/)
-    expect(src, 'must not send a date param').not.toMatch(/answers\?date=/)
-  })
-
-  it('the web answers view forwards the URL date param, and the server still refuses today', () => {
-    // Web supports prev/next-day navigation via ?date=YYYY-MM-DD in the URL, so it does pass
-    // the param through to the API. That's safe because the server route (see
-    // src/app/api/daily-challenges/[gameType]/answers/route.ts) rejects any date that isn't
-    // strictly before today in WAT — the gate lives on the server, not the client. What we
-    // still verify here is that the client cannot inject today itself: the only date it
-    // sends is whatever came in via the URL search param.
-    const src = read('src/components/daily/DailyAnswersClient.tsx')
+  it.each([
+    ['web', 'src/components/daily/DailyAnswersClient.tsx', /searchParams\.get\('date'\)/],
+    ['mobile', 'apps/mobile/app/daily-challenges/answers/[slug].tsx', /useLocalSearchParams<\{[^}]*date/],
+  ])('the %s answers view forwards the URL date param, and the server still refuses today', (_platform, rel, hookRe) => {
+    // Both platforms now support prev/next-day navigation via ?date=YYYY-MM-DD in the URL,
+    // so they pass the param through to the API. That's safe because the server route
+    // (src/app/api/daily-challenges/[gameType]/answers/route.ts) rejects any date that
+    // isn't strictly before today in WAT — the gate lives on the server, not the client.
+    // What we still verify here is that the client cannot inject today itself: the only
+    // date it sends is whatever came in via the platform's URL-param hook.
+    const src = read(rel)
     expect(src).toMatch(/\/answers/)
-    expect(src, 'the date must come from the URL, not from the client synthesising it').toMatch(
-      /searchParams\.get\('date'\)/
-    )
+    expect(src, 'the date must come from the URL, not from the client synthesising it').toMatch(hookRe)
   })
 })
 
