@@ -343,7 +343,7 @@ export function TicTacToeHostView({ gameCode, hostToken }: { gameCode: string; h
             onJoin={() => void hostJoinGame()}
             joining={hostJoining}
             onEditName={renameHost}
-            spectatorHint="Spectate from the Watch tab"
+            spectatorHint="Spectate"
           />
         ) : undefined
       }

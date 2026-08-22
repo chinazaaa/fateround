@@ -402,7 +402,7 @@ export function AyoHostView({ gameCode, hostToken }: { gameCode: string; hostTok
             onJoin={() => void hostJoinGame()}
             joining={hostJoining}
             onEditName={renameHost}
-            spectatorHint="Spectate from the Watch tab"
+            spectatorHint="Spectate"
           />
         ) : undefined
       }

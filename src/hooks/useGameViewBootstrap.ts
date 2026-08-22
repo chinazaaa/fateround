@@ -281,6 +281,11 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
         if (!res.ok) {
           setLobbyFull(data?.full === true)
           onJoinError?.(data.error ?? 'Failed to join')
+          // Refresh the room snapshot so the picker sees whatever changed between the
+          // caller's last render and this rejection — e.g. a not-ready player claiming the
+          // same monopoly token in the seconds before we hit submit. Without this reload
+          // the client keeps offering the token as free and the user retries the same click.
+          void load()
           return
         }
         setLobbyFull(false)

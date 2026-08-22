@@ -51,6 +51,8 @@ import {
   formatWordScrambleGameDuration,
 } from '@fateround/shared/word-scramble'
 import { RoundCountPicker } from '@/components/create/RoundCountPicker'
+import { TROLL_RUN_ROUND_OPTIONS, TROLL_RUN_TIME_LIMIT_OPTIONS } from '@fateround/shared/create-party-games'
+import { TROLL_RUN_WORLD_OPTIONS } from '@/lib/troll-run-worlds'
 import { SegmentedControl } from '@/components/create/SegmentedControl'
 import { SelectField } from '@/components/create/SelectField'
 import { usePuzzleThemes, puzzleThemeIdFromValue } from '@/lib/puzzle-themes'
@@ -186,6 +188,32 @@ export function PartyRoomSettingsPanel({ gameType, party, onChange, contentSourc
                 onChange={(value) => onChange({ triviaCategory: value as PartyRoomSettings['triviaCategory'] })}
               />
             </View>
+          </>
+        ) : null}
+
+        {gameType === 'troll_run' ? (
+          <>
+            <View style={styles.field}>
+              <Text style={styles.label}>World</Text>
+              <SegmentedControl
+                value={party.trollRunWorld}
+                options={TROLL_RUN_WORLD_OPTIONS}
+                onChange={(value) => onChange({ trollRunWorld: value as PartyRoomSettings['trollRunWorld'] })}
+              />
+            </View>
+            <RoundCountPicker
+              label="Rounds"
+              value={party.trollRunRounds}
+              options={[...TROLL_RUN_ROUND_OPTIONS]}
+              onChange={(trollRunRounds) => onChange({ trollRunRounds })}
+            />
+            <TimerPicker
+              label="Time per round"
+              value={party.trollRunTimeLimit}
+              options={[...TROLL_RUN_TIME_LIMIT_OPTIONS]}
+              format={formatPollRoundTimer}
+              onChange={(trollRunTimeLimit) => onChange({ trollRunTimeLimit })}
+            />
           </>
         ) : null}
 

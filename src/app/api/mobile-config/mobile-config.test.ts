@@ -18,6 +18,7 @@ import { BATCH_8_GAMES } from '../../../../packages/shared/src/batch-8-games'
 import { BATCH_9_GAMES } from '../../../../packages/shared/src/batch-9-games'
 import { BATCH_10_GAMES } from '../../../../packages/shared/src/batch-10-games'
 import { BATCH_12_GAMES } from '../../../../packages/shared/src/batch-12-games'
+import { BATCH_13_GAMES } from '../../../../packages/shared/src/batch-13-games'
 
 /**
  * Guard for the "server enables a game the app cannot render" gap.
@@ -72,6 +73,7 @@ const APP_SUPPORTED = new Set<string>([
   ...BATCH_9_GAMES,
   ...BATCH_10_GAMES,
   ...BATCH_12_GAMES,
+  ...BATCH_13_GAMES,
 ])
 
 async function config() {

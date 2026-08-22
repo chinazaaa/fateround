@@ -28,35 +28,39 @@ export function ContinuePlayingStrip() {
   if (games.length === 0) return null
 
   return (
-    <section className="space-y-2">
-      <h2 className="label-caps text-xs">Continue playing</h2>
-      <ul className="glass-card divide-y divide-[var(--border)] !p-0">
-        {games.map((game) => {
-          const cfg = GAME_TYPE_CONFIG[game.gameType as GameType]
-          return (
-            <li key={game.code}>
-              <Link
-                href={game.role === 'host' ? `/host/${game.code}` : `/game/${game.code}`}
-                className="flex items-center gap-3 px-4 py-3 no-underline"
-              >
-                <span className="text-xl" aria-hidden>
-                  {cfg?.card?.emoji ?? '🎮'}
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="text-body block truncate text-sm font-bold">{game.title?.trim() || game.code}</span>
-                  <span className="text-muted block truncate text-xs">
-                    {cfg?.label ?? game.gameType} · {game.status === 'waiting' ? 'In the lobby' : 'In progress'}
-                    {game.role === 'host' ? ' · hosting' : ''}
+    <section className="fr-band fr-band--tight">
+      <div className="mk-wrap space-y-2">
+        <h2 className="label-caps text-xs">Continue playing</h2>
+        <ul className="glass-card divide-y divide-[var(--border)] !p-0">
+          {games.map((game) => {
+            const cfg = GAME_TYPE_CONFIG[game.gameType as GameType]
+            return (
+              <li key={game.code}>
+                <Link
+                  href={game.role === 'host' ? `/host/${game.code}` : `/game/${game.code}`}
+                  className="flex items-center gap-3 px-4 py-3 no-underline"
+                >
+                  <span className="text-xl" aria-hidden>
+                    {cfg?.card?.emoji ?? '🎮'}
                   </span>
-                </span>
-                <span className="text-faint shrink-0" aria-hidden>
-                  ›
-                </span>
-              </Link>
-            </li>
-          )
-        })}
-      </ul>
+                  <span className="min-w-0 flex-1">
+                    <span className="text-body block truncate text-sm font-bold">
+                      {game.title?.trim() || game.code}
+                    </span>
+                    <span className="text-muted block truncate text-xs">
+                      {cfg?.label ?? game.gameType} · {game.status === 'waiting' ? 'In the lobby' : 'In progress'}
+                      {game.role === 'host' ? ' · hosting' : ''}
+                    </span>
+                  </span>
+                  <span className="text-faint shrink-0" aria-hidden>
+                    ›
+                  </span>
+                </Link>
+              </li>
+            )
+          })}
+        </ul>
+      </div>
     </section>
   )
 }

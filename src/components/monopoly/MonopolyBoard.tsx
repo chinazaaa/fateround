@@ -479,19 +479,20 @@ function BoardSpaceCell({
         <div
           className={[
             'flex sm:hidden flex-col items-center justify-center gap-0.5 min-w-0 max-w-full max-h-full px-1 py-1 text-center overflow-hidden',
-            edge === 'top' || edge === 'bottom' ? '[writing-mode:vertical-rl] rotate-180' : '',
+            // Every non-corner side gets vertical writing on mobile — narrow tiles can't
+            // fit horizontal text, and truncating each line to a few chars ("TR… EK…")
+            // makes the name unreadable. Rotation puts the top of each letter toward
+            // the board's inner edge, so the label reads correctly when you tilt your
+            // head the natural way for that side.
+            edge === 'top' || edge === 'bottom' || edge === 'left'
+              ? '[writing-mode:vertical-rl] rotate-180'
+              : edge === 'right'
+                ? '[writing-mode:vertical-rl]'
+                : '',
           ].join(' ')}
         >
           {mobileLines.map((line, i) => (
-            <span
-              key={i}
-              className={[
-                lineClass,
-                edge === 'top' || edge === 'bottom'
-                  ? 'max-h-full tracking-tighter'
-                  : 'max-w-full truncate tracking-tighter',
-              ].join(' ')}
-            >
+            <span key={i} className={[lineClass, 'max-h-full tracking-tighter'].join(' ')}>
               {line}
             </span>
           ))}

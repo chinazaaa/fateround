@@ -517,7 +517,7 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
       {game.status === 'active' && !gameFinished && session && (
         <>
           {/* Host-player gets the scoreboard here (Play tab has the full game). Spectator
-              hosts watch from the Watch tab — Manage only carries controls. */}
+              hosts watch — Manage only carries controls. */}
           {hostPlays &&
             (isIndividual ? (
               <DescribeItPlayerScoreboard

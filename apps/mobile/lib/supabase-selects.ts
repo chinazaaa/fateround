@@ -194,3 +194,11 @@ export const ANONYMOUS_MESSAGE_SELECT =
   'id,game_id,player_id,text,created_at,reply_to_id,reply_to_text,message_type,media_url'
 
 export const ANONYMOUS_ROOM_BAN_SELECT = 'id,game_id,player_id,banned_until,created_at'
+
+export const TROLL_RUN_SESSION_SELECT =
+  'id,game_id,phase,current_round,total_rounds,current_world,levels_per_round,round_time_limit,round_started_at,turn_deadline_at,level_order,created_at,updated_at'
+
+export const TROLL_RUN_PLAYER_STATE_SELECT =
+  'id,game_id,player_id,current_round,current_level_index,deaths,levels_cleared,total_time_ms,round_score,total_score,finish_position,round_finished,created_at,updated_at'
+
+export const TROLL_RUN_EVENT_SELECT = 'id,game_id,player_id,round,level_id,level_name,event_type,time_ms,created_at'

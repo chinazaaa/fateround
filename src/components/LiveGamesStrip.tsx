@@ -109,7 +109,11 @@ export function LiveGamesStrip() {
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {shown.map((game) => {
             const cfg = gameTypeConfig(parseGameType(game.game_type))
-            const count = game.max_players != null ? `${game.playerCount}/${game.max_players}` : `${game.playerCount}`
+            const playerLabel =
+              game.max_players != null ? `${game.playerCount}/${game.max_players}` : `${game.playerCount}`
+            const attendance =
+              `${playerLabel} player${game.playerCount === 1 ? '' : 's'}` +
+              (game.viewerCount > 0 ? ` · ${game.viewerCount} watching` : '')
             const isLobby = game.status === 'waiting'
             const isActive = game.status === 'active'
             const isFull = game.max_players != null && game.playerCount >= game.max_players
@@ -130,15 +134,7 @@ export function LiveGamesStrip() {
                 : isFull
                   ? 'Started · full'
                   : 'Started · watch'
-            const cta = alreadyJoined
-              ? myRole === 'host'
-                ? 'Continue hosting'
-                : 'Continue'
-              : isLobby && !isFull
-                ? 'Join'
-                : lateJoinable
-                  ? 'Join'
-                  : 'Watch'
+            const cta = alreadyJoined ? 'Continue' : isLobby && !isFull ? 'Join' : lateJoinable ? 'Join' : 'Watch'
             const ctaClass = alreadyJoined || (isLobby && !isFull) || lateJoinable ? 'btn-primary' : 'btn-secondary'
             return (
               <div
@@ -153,11 +149,11 @@ export function LiveGamesStrip() {
                   {cfg.card.emoji}
                 </span>
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-bold" style={{ color: 'var(--text)' }}>
+                  <div className="line-clamp-2 text-sm font-bold break-words" style={{ color: 'var(--text)' }}>
                     {cfg.label}
                   </div>
-                  <div className="truncate text-xs" style={{ color: 'var(--text-muted)' }}>
-                    {stateLine} · {count} player{game.playerCount === 1 ? '' : 's'}
+                  <div className="line-clamp-2 text-xs break-words" style={{ color: 'var(--text-muted)' }}>
+                    {stateLine} · {attendance}
                   </div>
                 </div>
                 <Link

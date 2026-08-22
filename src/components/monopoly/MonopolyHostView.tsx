@@ -356,6 +356,7 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
           gameCode={gameCode}
           hostToken={hostToken}
           gameType="monopoly"
+          game={game}
           onEnded={load}
           endGameLabel="End game early"
           endGameConfirmTitle="End this game early?"
@@ -514,11 +515,12 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
             onJoin={() => void hostJoinGame()}
             joining={hostJoining}
             onEditName={renameHost}
-            spectatorHint="Spectate from the Watch tab"
+            spectatorHint="Spectate"
             playingNote={
               <div className="space-y-3">
                 <p className="text-sm text-muted">
-                  Playing as <strong className="text-body">{hostPlayerName}</strong> — switch to Play after you start.
+                  Playing as <strong className="text-body">{hostPlayerName}</strong> — the game board takes over once
+                  you start.
                 </p>
                 {hostPlayerId && (
                   <MonopolyChangeTokenControl
@@ -651,7 +653,8 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
             playingNote={
               <div className="space-y-3">
                 <p className="text-sm text-muted">
-                  Playing as <strong className="text-body">{hostPlayerName}</strong> — switch to Play after you start.
+                  Playing as <strong className="text-body">{hostPlayerName}</strong> — the game board takes over once
+                  you start.
                 </p>
                 {hostPlayerId && (
                   <MonopolyChangeTokenControl

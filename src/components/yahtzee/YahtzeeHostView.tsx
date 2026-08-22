@@ -464,7 +464,7 @@ export function YahtzeeHostView({ gameCode, hostToken }: { gameCode: string; hos
             onJoin={() => void hostJoinGame()}
             joining={hostJoining}
             onEditName={renameHost}
-            spectatorHint="Spectate from the Watch tab"
+            spectatorHint="Spectate"
           />
         ) : undefined
       }

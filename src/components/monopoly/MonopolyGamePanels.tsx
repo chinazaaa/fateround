@@ -1075,7 +1075,7 @@ export function MonopolyManagePanel({
                 </span>
               )}
             </div>
-            <p className="text-xs text-muted truncate">
+            <p className="text-xs text-muted leading-snug">
               {myActiveLoan
                 ? `Balance: ${formatThemedMoney(myActiveLoan.balance_remaining, themeId)}`
                 : 'Borrow liquidity against your portfolio'}

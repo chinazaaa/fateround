@@ -484,7 +484,7 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
     {
       title: 'Setup',
       points: [
-        '2–8 players join a room and pick a board token (car, hat, dog, etc.). Each player starts on PAYDAY with £1,500.',
+        '2–9 players join a room and pick a board token (car, hat, dog, etc.). Each player starts on PAYDAY with £1,500.',
         'The Bank holds all Title Deeds until purchased. The host starts when everyone is ready; turn order is set at game start.',
       ],
     },

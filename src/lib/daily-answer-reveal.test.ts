@@ -47,7 +47,20 @@ const FIXTURES: Record<DailyChallengeGameType, Record<string, unknown>> = {
   whot_puzzle: {
     solution: { optimalMoves: 2, moves: [{ type: 'play', card: { shape: 'circle', number: 5 } }, { type: 'draw' }] },
   },
-  ludo_puzzle: { solution: { optimalRolls: 4 } },
+  ludo_puzzle: {
+    // Four pieces, each one step from finish (home:4) and a dice sequence of four 1s so
+    // each roll advances one piece over the line. That gives the solver a real 4-step
+    // optimal path to reconstruct instead of the summary-only fallback.
+    startingPieces: [
+      { id: 0, zone: 'home', pos: 4 },
+      { id: 1, zone: 'home', pos: 4 },
+      { id: 2, zone: 'home', pos: 4 },
+      { id: 3, zone: 'home', pos: 4 },
+    ],
+    diceSequence: [1, 1, 1, 1],
+    obstacles: [],
+    solution: { optimalRolls: 4 },
+  },
 }
 
 describe('buildDailyAnswerReveal', () => {
@@ -135,8 +148,15 @@ describe('buildDailyAnswerReveal', () => {
     for (const item of items) expect(item.value).not.toContain('[object')
   })
 
-  it('gives the ludo target, which is the whole answer there', () => {
-    expect(lines(build('ludo_puzzle', FIXTURES.ludo_puzzle)!.sections[0])[0].value).toBe('4 rolls')
+  it('gives the ludo target + optimal step-by-step, which is what the player wants to see', () => {
+    const section = build('ludo_puzzle', FIXTURES.ludo_puzzle)!.sections[0]
+    // The section label carries the roll count; the item list carries the moves.
+    expect(section.label).toMatch(/^Finish in \d+ rolls?$/)
+    const items = lines(section)
+    expect(items.length).toBeGreaterThan(0)
+    expect(items[0].label).toMatch(/^Roll 1/)
+    // Never leak a raw object into the UI.
+    for (const item of items) expect(item.value).not.toContain('[object')
   })
 })
 
@@ -156,15 +176,33 @@ describe('answer reveal surfaces', () => {
   })
 
   it.each([
-    ['web', 'src/components/daily/DailyAnswersClient.tsx'],
-    ['mobile', 'apps/mobile/app/daily-challenges/answers/[slug].tsx'],
-  ])('the %s answers view never asks for a specific date', (_platform, rel) => {
-    // Passing a date would be the one way a client could aim at today. Both omit it and take
-    // the route's default of yesterday, so the gate cannot be argued with.
-    const src = read(rel)
-    expect(src).toMatch(/\/answers`/)
-    expect(src, 'must not send a date param').not.toMatch(/answers\?date=/)
-  })
+    ['web', 'src/components/daily/DailyAnswersClient.tsx', /searchParams\.get\('date'\)/],
+    ['mobile', 'apps/mobile/app/daily-challenges/answers/[slug].tsx', /useLocalSearchParams<\{[^}]*date/],
+  ])(
+    'the %s answers view forwards the URL date param, and the server still refuses today',
+    (_platform, rel, hookRe) => {
+      // Both platforms now support prev/next-day navigation via ?date=YYYY-MM-DD in the URL,
+      // so they pass the param through to the API. That's safe because the server route
+      // (src/app/api/daily-challenges/[gameType]/answers/route.ts) rejects any date that
+      // isn't strictly before today in WAT — the gate lives on the server, not the client.
+      // What we still verify here is that the client cannot inject today itself: the only
+      // date it sends is whatever came in via the platform's URL-param hook.
+      const src = read(rel)
+      expect(src).toMatch(/\/answers/)
+      expect(src, 'the date must come from the URL, not from the client synthesising it').toMatch(hookRe)
+      // And it must actually reach the request URL, not just sit in a variable. A view that
+      // reads `date` but doesn't append it would pass the hook check above while silently
+      // always fetching yesterday — the visible symptom of the arrows doing nothing.
+      expect(src, 'the URL-derived date must be appended to the /answers request').toMatch(/\/answers\$\{[^}]*date/)
+      // A shape-only check (/^\d{4}-\d{2}-\d{2}$/) accepts values like 2024-02-30 or
+      // 2024-13-01 that Date.parse normalises or refuses, and shiftDay() then throws
+      // during navigation and blanks the screen. Both clients must round-trip the
+      // parsed date to reject impossible calendar days before using it.
+      expect(src, 'the date param must be validated as a real calendar day, not just YYYY-MM-DD').toMatch(
+        /isDateSlug\s*\(/
+      )
+    }
+  )
 })
 
 /**

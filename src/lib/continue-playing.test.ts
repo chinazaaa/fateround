@@ -150,7 +150,9 @@ describe('continue strip vs the discovery feed', () => {
     expect(src, 'a host resumes into the host surface, still hosting').toMatch(
       /myRole === 'host' \? `\/host\/\$\{game\.id\}` : `\/game\/\$\{game\.id\}`/
     )
-    expect(src).toMatch(/'Continue hosting'/)
+    // Host + player joined states both surface the same "Continue" CTA (the resumeHref
+    // already routes hosts to /host vs. players to /game — see the two assertions above).
+    expect(src).toMatch(/alreadyJoined \? 'Continue'/)
   })
 
   it('the mobile feeds relabel rather than hide, on both the preview and /browse', () => {
