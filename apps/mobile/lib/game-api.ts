@@ -950,6 +950,14 @@ export function postMonopolyTrade(
   return postJson<{ success: boolean }>('/api/monopoly/trade', { gameId, resumeToken, ...payload })
 }
 
+export function postMonopolyLoanBorrow(gameId: string, resumeToken: string, amount: number) {
+  return postJson<{ success: boolean }>('/api/monopoly/loan/borrow', { gameId, resumeToken, amount })
+}
+
+export function postMonopolyLoanRepay(gameId: string, resumeToken: string, amount: number) {
+  return postJson<{ success: boolean }>('/api/monopoly/loan/repay', { gameId, resumeToken, amount })
+}
+
 /** Host adds time to a timed Monopoly game (extensionSeconds ∈ {600,900,1800}). */
 export function postExtendMonopolyTime(gameCode: string, hostToken: string, extensionSeconds: number) {
   return postJson<{ ok?: boolean; success?: boolean }>(`/api/games/${gameCode.toUpperCase()}/extend-monopoly-time`, {
@@ -1262,6 +1270,9 @@ export type BoardLobbyPatch = {
   monopoly_estate_dividend?: boolean
   /** 40 (classic) or 48 (expanded). 48 requires max_players >= 6 (server enforces). */
   monopoly_board_size?: 40 | 48
+  monopoly_loans_enabled?: boolean
+  monopoly_loan_interest?: number
+  monopoly_loan_term_rounds?: number
   operative_timer_seconds?: number
   quick_draw_variant?: 'lie' | 'guess'
   quick_draw_play_mode?: 'team' | 'individual'

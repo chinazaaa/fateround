@@ -2528,7 +2528,9 @@ export async function processMonopolyTradePropose(
       unmortgagedCollateralValues(owners, mortgaged, fromPlayerId, boardSize),
       offer.cash,
       outgoingCollateralValues(offerProperties, mortgaged, boardSize),
-      fromLoan
+      fromLoan,
+      request.cash,
+      outgoingCollateralValues(requestProperties, mortgaged, boardSize)
     )
     if (blockCheck.blocked) {
       return { error: blockCheck.reason }
@@ -2554,7 +2556,9 @@ export async function processMonopolyTradePropose(
       unmortgagedCollateralValues(owners, mortgaged, toPlayerId, boardSize),
       request.cash,
       outgoingCollateralValues(requestProperties, mortgaged, boardSize),
-      toLoan
+      toLoan,
+      offer.cash,
+      outgoingCollateralValues(offerProperties, mortgaged, boardSize)
     )
     if (blockCheck.blocked) {
       return { error: `Counterparty: ${blockCheck.reason}` }
@@ -2682,7 +2686,9 @@ export async function processMonopolyTradeRespond(
       unmortgagedCollateralValues(owners, mortgaged, trade.from_player_id, boardSize),
       trade.offer_cash,
       outgoingCollateralValues(trade.offer_properties, mortgaged, boardSize),
-      fromLoan
+      fromLoan,
+      trade.request_cash,
+      outgoingCollateralValues(trade.request_properties, mortgaged, boardSize)
     )
     if (blockCheck.blocked) {
       return { error: blockCheck.reason }
@@ -2708,7 +2714,9 @@ export async function processMonopolyTradeRespond(
       unmortgagedCollateralValues(owners, mortgaged, trade.to_player_id, boardSize),
       trade.request_cash,
       outgoingCollateralValues(trade.request_properties, mortgaged, boardSize),
-      toLoan
+      toLoan,
+      trade.offer_cash,
+      outgoingCollateralValues(trade.offer_properties, mortgaged, boardSize)
     )
     if (blockCheck.blocked) {
       return { error: `Counterparty: ${blockCheck.reason}` }

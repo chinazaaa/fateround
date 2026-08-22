@@ -398,6 +398,10 @@ export function HostLobbySettingsSheet({
     auctionTimerSeconds: game.monopoly_auction_timer_seconds ?? 10,
     noRentInJail: game.monopoly_no_rent_in_jail === true,
     boardSize: game.monopoly_board_size === 48 ? 48 : 40,
+    estateDividend: game.monopoly_estate_dividend === true,
+    loansEnabled: game.monopoly_loans_enabled !== false,
+    loanInterest: game.monopoly_loan_interest ?? 15,
+    loanTermRounds: game.monopoly_loan_term_rounds ?? 4,
   }))
   const [icallon, setIcallon] = useState<ICallOnLobbyState>(() => ({
     gameDurationSeconds: game.game_duration_seconds ?? 0,
@@ -707,6 +711,14 @@ export function HostLobbySettingsSheet({
         board.monopoly_no_rent_in_jail = monopoly.noRentInJail
       const currentBoardSize = game.monopoly_board_size === 48 ? 48 : 40
       if (monopoly.boardSize !== currentBoardSize) board.monopoly_board_size = monopoly.boardSize
+      if (monopoly.estateDividend !== (game.monopoly_estate_dividend === true))
+        board.monopoly_estate_dividend = monopoly.estateDividend
+      const currentLoansEnabled = game.monopoly_loans_enabled !== false
+      if (monopoly.loansEnabled !== currentLoansEnabled) board.monopoly_loans_enabled = monopoly.loansEnabled
+      const currentLoanInterest = game.monopoly_loan_interest ?? 15
+      if (monopoly.loanInterest !== currentLoanInterest) board.monopoly_loan_interest = monopoly.loanInterest
+      const currentLoanTerm = game.monopoly_loan_term_rounds ?? 4
+      if (monopoly.loanTermRounds !== currentLoanTerm) board.monopoly_loan_term_rounds = monopoly.loanTermRounds
     }
     if (isDuration) {
       if (
