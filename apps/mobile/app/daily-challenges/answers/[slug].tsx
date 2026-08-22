@@ -14,14 +14,21 @@
  */
 
 import { useEffect, useState } from 'react'
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { AmbientBackground } from '@/components/ui/AmbientBackground'
 import { AppButton } from '@/components/ui/AppButton'
 import { SurfaceCard } from '@/components/ui/SurfaceCard'
 import { apiUrl } from '@/lib/config'
-import { DAILY_GAME_LABELS, DAILY_GAME_SLUG_TO_TYPE, type DailyChallengeGameType } from '@/lib/daily-challenge'
+import {
+  DAILY_CHALLENGE_GAME_TYPES,
+  DAILY_GAME_EMOJIS,
+  DAILY_GAME_LABELS,
+  DAILY_GAME_SLUG_TO_TYPE,
+  DAILY_GAME_TYPE_TO_SLUG,
+  type DailyChallengeGameType,
+} from '@/lib/daily-challenge'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
 
@@ -80,6 +87,34 @@ export default function DailyAnswersScreen() {
             {reveal ? formatDate(reveal.challengeDate) : 'Published a day after each puzzle closes.'}
           </Text>
         </View>
+
+        {/* Game chips, mirroring the leaderboard screen. Without them, arriving from the hub
+          would strand you on whichever game the link happened to name. */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipsRow}>
+          {DAILY_CHALLENGE_GAME_TYPES.map((gt) => {
+            const active = gt === gameType
+            return (
+              <Pressable
+                key={gt}
+                onPress={() => {
+                  if (active) return
+                  router.replace(`/daily-challenges/answers/${DAILY_GAME_TYPE_TO_SLUG[gt]}` as never)
+                }}
+                style={[
+                  styles.chip,
+                  {
+                    backgroundColor: active ? theme.primary : theme.surface,
+                    borderColor: active ? theme.primary : theme.border,
+                  },
+                ]}
+              >
+                <Text style={[styles.chipText, { color: active ? '#fff' : theme.text }]}>
+                  {DAILY_GAME_EMOJIS[gt]} {DAILY_GAME_LABELS[gt]}
+                </Text>
+              </Pressable>
+            )
+          })}
+        </ScrollView>
 
         {state === 'loading' ? (
           <ActivityIndicator color={theme.primary} style={styles.loading} />
@@ -175,6 +210,10 @@ const makeStyles = (theme: Theme) =>
     title: { color: theme.text, fontSize: 22, fontWeight: '900', textAlign: 'center' },
     sub: { color: theme.textMuted, fontSize: theme.type.caption.size, textAlign: 'center' },
     loading: { marginVertical: theme.space.xl },
+    chipsRow: { gap: 6, paddingVertical: 2 },
+    chip: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, borderWidth: 1 },
+    // White on the solid rose chip — intentional, correct in both schemes.
+    chipText: { fontSize: 12, fontWeight: '700' },
     emptyTitle: { color: theme.text, fontSize: theme.type.body.size, fontWeight: '700', textAlign: 'center' },
     emptyBody: {
       color: theme.textFaint,

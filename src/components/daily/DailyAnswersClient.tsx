@@ -3,7 +3,14 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import type { DailyAnswerReveal, DailyAnswerSection } from '@/lib/daily-answer-reveal'
-import { DAILY_GAME_LABELS, type DailyChallengeGameType } from '@/lib/daily-challenge'
+import {
+  DAILY_CHALLENGE_GAME_TYPES,
+  DAILY_GAME_LABELS,
+  DAILY_GAME_TYPE_TO_SLUG,
+  type DailyChallengeGameType,
+} from '@/lib/daily-challenge'
+import { dailyChallengeIcon } from '@/lib/game-glyphs'
+import { Glyph } from '@/components/icons/Glyph'
 
 /**
  * Yesterday's answers for one daily game.
@@ -53,6 +60,22 @@ export function DailyAnswersClient({ gameType, slug }: { gameType: DailyChalleng
         <p className="text-muted mt-1 text-sm">
           {reveal ? formatDate(reveal.challengeDate) : 'Published a day after each puzzle closes.'}
         </p>
+      </div>
+
+      {/* Chips for every daily game, mirroring the leaderboard page. Without them, arriving here
+        from the hub would strand you on whichever game the link happened to name — which is the
+        same trap the hub's old hardcoded `sudoku` leaderboard link fell into. */}
+      <div className="scrollbar-hide mb-4 flex flex-wrap justify-center gap-1.5 overflow-x-auto pb-2">
+        {DAILY_CHALLENGE_GAME_TYPES.map((option) => (
+          <Link
+            key={option}
+            href={`/daily-challenges/${DAILY_GAME_TYPE_TO_SLUG[option]}/answers`}
+            className={`shrink-0 fr-btn fr-btn--sm ${option === gameType ? 'fr-btn--primary' : 'fr-btn--ghost'}`}
+            style={{ fontSize: 'var(--text-2xs)' }}
+          >
+            <Glyph icon={dailyChallengeIcon(option)} size={12} className="shrink-0" /> {DAILY_GAME_LABELS[option]}
+          </Link>
+        ))}
       </div>
 
       {state === 'loading' ? (

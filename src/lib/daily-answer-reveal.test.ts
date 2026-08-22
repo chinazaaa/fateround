@@ -166,3 +166,43 @@ describe('answer reveal surfaces', () => {
     expect(src, 'must not send a date param').not.toMatch(/answers\?date=/)
   })
 })
+
+/**
+ * Entry points must name a game from the canonical list, never a hardcoded slug.
+ *
+ * The hub used to link "View Leaderboards" at `/daily-challenges/sudoku/leaderboard`, which
+ * sent everyone to Sudoku whether they play it or not — and would have 404'd the day Sudoku
+ * left the daily lineup. Both destinations carry chips for all thirteen games, so the landing
+ * game is a starting tab rather than a dead end; it should still be one the player cares about.
+ */
+describe('daily hub entry points', () => {
+  const read = (rel: string) => readFileSync(join(process.cwd(), rel), 'utf8')
+  const HUB = read('src/components/daily/DailyHubClient.tsx')
+  // Comments stripped: the note explaining what the hardcoded link USED to be would otherwise
+  // fail the very test that documents its removal.
+  const HUB_CODE = HUB.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+
+  it('names no game in a hardcoded URL', () => {
+    const hardcoded = [...HUB_CODE.matchAll(/\/daily-challenges\/([a-z-]+)\/(leaderboard|answers)/g)].map((m) => m[1])
+    expect(hardcoded, 'derive the slug from DAILY_CHALLENGE_GAME_TYPES instead').toEqual([])
+  })
+
+  it('derives the landing game from a game the player actually played', () => {
+    expect(HUB).toMatch(/const entrySlug = useMemo\(/)
+    expect(HUB).toMatch(/DAILY_CHALLENGE_GAME_TYPES\.find\(\(type\) => games\.some/)
+    // Falls back to the canonical list's first entry, so removing a game can't strand the link.
+    expect(HUB).toMatch(/DAILY_GAME_TYPE_TO_SLUG\[played \?\? DAILY_CHALLENGE_GAME_TYPES\[0\]\]/)
+  })
+
+  it('offers both destinations from the hub', () => {
+    expect(HUB).toMatch(/\$\{entrySlug\}\/leaderboard/)
+    expect(HUB).toMatch(/\$\{entrySlug\}\/answers/)
+  })
+
+  it.each([
+    ['web', 'src/components/daily/DailyAnswersClient.tsx'],
+    ['mobile', 'apps/mobile/app/daily-challenges/answers/[slug].tsx'],
+  ])('the %s answers view can switch game, so a link is never a dead end', (_platform, rel) => {
+    expect(read(rel)).toMatch(/DAILY_CHALLENGE_GAME_TYPES\.map/)
+  })
+})
