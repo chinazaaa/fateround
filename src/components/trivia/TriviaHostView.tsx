@@ -411,6 +411,7 @@ export function TriviaHostView({ gameCode, hostToken }: { gameCode: string; host
         game={game}
         limitType="trivia"
         playerCount={players.length}
+        seatedCount={players.filter((p) => !p.spectator).length}
         onGameUpdate={setGame}
       />
       <button type="button" onClick={() => setSettingsModal('lobby')} className="btn-secondary w-full">

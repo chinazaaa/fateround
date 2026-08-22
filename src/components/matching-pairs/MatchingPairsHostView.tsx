@@ -651,6 +651,7 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
             hostToken={hostToken}
             game={game}
             playerCount={activePlayers.length}
+            seatedCount={activePlayers.filter((p) => !p.spectator).length}
             onGameUpdate={setGame}
           />
         ) : (
@@ -738,6 +739,7 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
         hostToken={hostToken}
         game={game}
         playerCount={activePlayers.length}
+        seatedCount={activePlayers.filter((p) => !p.spectator).length}
         onGameUpdate={setGame}
       />
       <TransferHostControl triggerClassName="btn-secondary w-full flex items-center justify-center gap-2" />

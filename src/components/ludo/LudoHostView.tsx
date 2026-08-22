@@ -405,6 +405,7 @@ export function LudoHostView({ gameCode, hostToken }: { gameCode: string; hostTo
               game={game}
               boardGameType="ludo"
               playerCount={players.length}
+              seatedCount={players.filter((p) => !p.spectator).length}
               onGameUpdate={setGame}
             />
           )}
@@ -509,6 +510,7 @@ export function LudoHostView({ gameCode, hostToken }: { gameCode: string; hostTo
               game={game}
               boardGameType="ludo"
               playerCount={players.length}
+              seatedCount={players.filter((p) => !p.spectator).length}
               onGameUpdate={setGame}
             />
             <TransferHostControl triggerClassName="btn-secondary w-full flex items-center justify-center gap-2" />

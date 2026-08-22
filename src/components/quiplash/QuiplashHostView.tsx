@@ -352,6 +352,7 @@ export function QuiplashHostView({ gameCode, hostToken }: { gameCode: string; ho
           hostToken={hostToken}
           game={game}
           playerCount={players.length}
+          seatedCount={players.filter((p) => !p.spectator).length}
           onGameUpdate={setGame}
         />
       )}
@@ -494,6 +495,7 @@ export function QuiplashHostView({ gameCode, hostToken }: { gameCode: string; ho
         hostToken={hostToken}
         game={game}
         playerCount={players.length}
+        seatedCount={players.filter((p) => !p.spectator).length}
         onGameUpdate={setGame}
       />
       <TransferHostControl triggerClassName="btn-secondary w-full flex items-center justify-center gap-2" />
