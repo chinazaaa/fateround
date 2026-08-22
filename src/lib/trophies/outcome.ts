@@ -258,6 +258,36 @@ const CUSTOM_WINNER_RESOLVERS: Partial<
   mahjong: resolveMahjongWinners,
   describe_it: resolveDescribeItWinners,
   troll_run: resolveTrollRunWinners,
+  // Codewords standings put the whole roster in a "winners then losers" list — that shape
+  // exists so the room-points leaderboard can rank both sides. Reading it as "winners" for
+  // the trophy pass credited a win to the LOSING team as well: every seated player was in
+  // the standings, TEAM_STANDINGS_GAMES flattened the leading block to the whole list, and
+  // `awardForFinishedGame` treated everyone in `winners.includes(me.id)` as a winner. So a
+  // losing operative watched `games_won` (and every /wins-based trophy) tick up on their
+  // profile after every match. Read the board's own `winner` team and return only the
+  // player ids of that team.
+  codewords: resolveCodewordsWinners,
+}
+
+async function resolveCodewordsWinners(supabase: SupabaseClient, gameId: string): Promise<string[] | null> {
+  try {
+    const { data: board } = await supabase
+      .from('codewords_boards')
+      .select('winner')
+      .eq('game_id', gameId)
+      .maybeSingle()
+    const winningTeam = (board as { winner?: string | null } | null)?.winner ?? null
+    // No winner yet (or the board row hasn't landed) → withhold the verdict rather than
+    // record a loss for everyone. `null` means "cannot determine".
+    if (!winningTeam) return null
+    const { data: roles } = await supabase
+      .from('codewords_player_roles')
+      .select('player_id, team')
+      .eq('game_id', gameId)
+    return (roles ?? []).filter((r) => r.team === winningTeam).map((r) => r.player_id as string)
+  } catch {
+    return null
+  }
 }
 
 async function resolveTrollRunWinners(supabase: SupabaseClient, gameId: string): Promise<string[] | null> {
