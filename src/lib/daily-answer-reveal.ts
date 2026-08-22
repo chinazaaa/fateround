@@ -1,4 +1,5 @@
 import type { DailyChallengeGameType } from '@/lib/daily-challenge'
+import { solveLudoPuzzleSteps, type LudoPuzzlePieceZone } from '@/lib/ludo-puzzle-solver'
 
 /**
  * Yesterday's answers, in a shape any client can render.
@@ -28,6 +29,13 @@ import type { DailyChallengeGameType } from '@/lib/daily-challenge'
 export type DailyAnswerSection =
   | { kind: 'lines'; label?: string; items: { label?: string; value: string }[] }
   | { kind: 'grid'; label?: string; rows: string[][] }
+  | {
+      kind: 'wordSearch'
+      label?: string
+      grid: string[][]
+      /** Each placement carries the word and the cell coordinates it occupies (in order). */
+      placements: { word: string; cells: { row: number; col: number }[] }[]
+    }
 
 export type DailyAnswerReveal = {
   gameType: DailyChallengeGameType
@@ -39,6 +47,31 @@ type Data = Record<string, unknown>
 
 const asArray = <T>(value: unknown): T[] => (Array.isArray(value) ? (value as T[]) : [])
 const asRecord = (value: unknown): Data => (value && typeof value === 'object' ? (value as Data) : {})
+
+/** Row/col deltas for a WordSearchDirection code. Duplicated locally so this module doesn't
+ *  reach into word-search.ts (which lives in a different bundle graph). */
+const WORD_SEARCH_DELTAS: Record<string, [number, number] | undefined> = {
+  E: [0, 1],
+  W: [0, -1],
+  S: [1, 0],
+  N: [-1, 0],
+  SE: [1, 1],
+  SW: [1, -1],
+  NE: [-1, 1],
+  NW: [-1, -1],
+}
+
+/** Walk `length` cells from (row,col) in the given direction; returns the cell coordinates
+ *  along the way, or [] when the direction is unrecognised. Skips bounds checks — callers
+ *  are trusted placements built by the puzzle generator that already fit the grid. */
+function wordSearchCells(row: number, col: number, direction: string, length: number): { row: number; col: number }[] {
+  const delta = WORD_SEARCH_DELTAS[direction]
+  if (!delta) return []
+  const [dr, dc] = delta
+  const cells: { row: number; col: number }[] = []
+  for (let i = 0; i < length; i++) cells.push({ row: row + dr * i, col: col + dc * i })
+  return cells
+}
 
 /** Pull the across/down answer for one clue out of the solution grid. */
 function crosswordAnswer(solution: string[][], clue: { row: number; col: number; length: number; direction: string }) {
@@ -94,14 +127,34 @@ function buildSections(gameType: DailyChallengeGameType, data: Data): DailyAnswe
     }
 
     case 'word_search': {
-      const words = asArray<{ word?: string }>(asRecord(data.metadata).words)
+      // Puzzle carries { metadata: { grid, words, size }, solution: WordSearchPlacement[] }
+      // where each placement has { word, row, col, direction }. When we have the grid AND
+      // the placements we render the actual board with each word highlighted along its
+      // path — the value the player wants to see, not just a bare list. Fall back to a
+      // plain word list for legacy rows that lack the metadata.
+      const meta = asRecord(data.metadata)
+      const grid = asArray<string[]>(meta.grid).filter((row) => Array.isArray(row) && row.length > 0)
+      const placements = asArray<{ word?: string; row?: number; col?: number; direction?: string }>(data.solution)
+        .map((p) => ({
+          word: typeof p?.word === 'string' ? p.word : '',
+          row: typeof p?.row === 'number' ? p.row : -1,
+          col: typeof p?.col === 'number' ? p.col : -1,
+          direction: typeof p?.direction === 'string' ? p.direction : '',
+        }))
+        .filter((p) => p.word && p.row >= 0 && p.col >= 0 && p.direction)
+
+      if (grid.length && placements.length) {
+        const withCells = placements
+          .map((p) => ({ word: p.word, cells: wordSearchCells(p.row, p.col, p.direction, p.word.length) }))
+          .filter((p) => p.cells.length > 0)
+        if (withCells.length) return [{ kind: 'wordSearch', grid, placements: withCells }]
+      }
+
+      const words = asArray<{ word?: string }>(meta.words)
         .map((w) => (typeof w === 'string' ? w : w?.word))
         .filter((w): w is string => !!w)
-      const placed = asArray<{ word?: string }>(data.solution)
-        .map((p) => p?.word)
-        .filter((w): w is string => !!w)
-      const all = words.length ? words : placed
-      return all.length ? [{ kind: 'lines', items: all.map((value) => ({ value })) }] : []
+      const fallback = words.length ? words : placements.map((p) => p.word)
+      return fallback.length ? [{ kind: 'lines', items: fallback.map((value) => ({ value })) }] : []
     }
 
     case 'word_scramble': {
@@ -225,10 +278,66 @@ function buildSections(gameType: DailyChallengeGameType, data: Data): DailyAnswe
     }
 
     case 'ludo_puzzle': {
-      const rolls = asRecord(data.solution).optimalRolls
-      // The "answer" here is a target, not a sequence — the puzzle asks you to finish in as few
-      // rolls as possible, so the number IS the thing worth knowing.
-      return typeof rolls === 'number' ? [{ kind: 'lines', items: [{ value: `${rolls} rolls` }] }] : []
+      // Run the same BFS the batch generator uses, but keep parent pointers so we can rebuild
+      // the winning MOVE SEQUENCE — which piece moved on which roll. "9 rolls" as a target is
+      // not helpful the day after; the step-by-step is what the player wants to see.
+      const startingPieces = asArray<{ id?: number; zone?: string; pos?: number }>(data.startingPieces)
+        .filter((p) => typeof p?.zone === 'string' && typeof p?.pos === 'number')
+        .map((p, i) => ({
+          zone: p.zone as LudoPuzzlePieceZone,
+          pos: p.pos as number,
+          id: typeof p.id === 'number' ? p.id : i,
+        }))
+      const diceSequence = asArray<number>(data.diceSequence).filter((n) => typeof n === 'number')
+      const obstacles = asArray<{ trackPos?: number }>(data.obstacles)
+        .map((o) => ({ trackPos: typeof o?.trackPos === 'number' ? o.trackPos : -1 }))
+        .filter((o) => o.trackPos >= 0)
+
+      const optimalRolls = asRecord(data.solution).optimalRolls
+      const summary =
+        typeof optimalRolls === 'number' ? `Finish in ${optimalRolls} roll${optimalRolls === 1 ? '' : 's'}` : null
+
+      if (!startingPieces.length || !diceSequence.length) {
+        // Only the roll count is available — attach it as the label so the section header
+        // reads "Finish in 4 rolls" even without a step-by-step, and put the same line in
+        // items so the card still has a body.
+        return summary ? [{ kind: 'lines', label: summary, items: [{ value: summary }] }] : []
+      }
+
+      const steps = solveLudoPuzzleSteps(
+        startingPieces.map(({ zone, pos }) => ({ zone, pos })),
+        diceSequence,
+        obstacles
+      )
+      if (!steps || !steps.length) {
+        // Only the roll count is available — attach it as the label so the section header
+        // reads "Finish in 4 rolls" even without a step-by-step, and put the same line in
+        // items so the card still has a body.
+        return summary ? [{ kind: 'lines', label: summary, items: [{ value: summary }] }] : []
+      }
+
+      const pieceLabel = (index: number | null) => {
+        if (index == null) return '—'
+        const id = startingPieces[index]?.id
+        return `Piece ${typeof id === 'number' ? String.fromCharCode(65 + id) : String.fromCharCode(65 + index)}`
+      }
+      const positionLabel = (state: { zone: LudoPuzzlePieceZone; pos: number } | null): string => {
+        if (!state) return '—'
+        if (state.zone === 'finished') return 'finished'
+        if (state.zone === 'base') return 'base'
+        if (state.zone === 'home') return `home:${state.pos}`
+        return `track:${state.pos}`
+      }
+
+      const items = steps.map((step) => {
+        const label = `Roll ${step.rollNumber} · rolled ${step.roll}`
+        if (step.pieceIndex == null) return { label, value: 'Skip — no legal move' }
+        const from = positionLabel(step.before)
+        const to = positionLabel(step.after)
+        return { label, value: `${pieceLabel(step.pieceIndex)} · ${from} → ${to}` }
+      })
+
+      return [{ kind: 'lines', label: summary ?? 'Optimal solution', items }]
     }
   }
 }
