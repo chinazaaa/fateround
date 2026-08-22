@@ -334,7 +334,7 @@ each fix ships with a CI guard, since every one of these was a surface no test w
 | 2.4 mobile solo hub | `apps/mobile/app/play-solo/index.tsx` + home entry |
 | 2.6 mobile-config drift | `mobile-config.test.ts` |
 | 3.2 Quick Draw trophies | facts builder + 17 system trophies (Troll Run still open) |
-| 3.3 community boards | `20261026120000_community_games_backfill.sql` + `community-games-coverage.test.ts` |
+| 3.3 community boards | `20261026120100_community_games_backfill.sql` + `community-games-coverage.test.ts` |
 | 4.1 sitemap sections | `src/app/sitemap.ts` + `sitemap.test.ts` |
 | 5.1 README | rewritten against the real 49-game surface |
 

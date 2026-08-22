@@ -11,7 +11,7 @@ import type { GameType } from '@/types'
  * `community_games` holds a row for that game type — otherwise `postWinFromGame` returns
  * `not_on_leaderboard` and the button is live with nothing behind it. Eighteen games shipped
  * in that state because `docs/new-game-checklist.md` §7 (seed the board in a migration) was
- * skipped; `20261026120000_community_games_backfill.sql` filled them in.
+ * skipped; `20261026120100_community_games_backfill.sql` filled them in.
  *
  * The migrations are the only source of schema truth (boards can also be created by hand at
  * /admin/community, but a fresh `supabase db push` must stand on its own), so this test reads
@@ -136,7 +136,7 @@ describe('community leaderboard board coverage', () => {
   })
 
   it('the backfill migration exists and sorts after every migration it depends on', () => {
-    const backfill = '20261026120000_community_games_backfill.sql'
+    const backfill = '20261026120100_community_games_backfill.sql'
     expect(existsSync(join(MIGRATIONS_DIR, backfill)), backfill).toBe(true)
     // `game_type` is added to community_games by 20260701121000_community_self_post.sql.
     expect(backfill > '20260701121000_community_self_post.sql').toBe(true)
