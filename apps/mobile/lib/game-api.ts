@@ -1168,7 +1168,15 @@ export function postTransferHost(gameCode: string, hostToken: string, playerId: 
  * and the existing host_token flow keeps working; this never gates gameplay.
  */
 export function postReclaimHost(gameCode: string) {
-  return postJson<{ hostToken: string }>(`/api/games/${gameCode.toUpperCase()}/reclaim-host`, {})
+  return postJson<{
+    hostToken: string
+    player?: {
+      playerId: string
+      playerName: string
+      playerGender: string
+      resumeToken: string
+    } | null
+  }>(`/api/games/${gameCode.toUpperCase()}/reclaim-host`, {})
 }
 
 /** Nominee accepts — mints & returns a fresh host token. Auth: nominee's resume token. */
