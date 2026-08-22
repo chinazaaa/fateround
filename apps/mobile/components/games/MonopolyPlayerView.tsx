@@ -68,6 +68,7 @@ import {
 import { MonopolyPlayerList } from '@/components/games/monopoly/MonopolyPlayerList'
 import { MonopolyTradeModal } from '@/components/games/monopoly/MonopolyTradeModal'
 import {
+  computeRent,
   getMonopolyBuildActionCount,
   normalizePendingTrade,
   parseBuildings,
@@ -375,6 +376,31 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
   const showRoll = !!(isMyTurn && board?.phase === 'roll' && !myState?.in_jail)
   const showBuy = !!(isMyTurn && board?.phase === 'buy' && pendingSpace)
   const showRent = !!(isMyTurn && board?.phase === 'pay_rent' && pendingSpace)
+
+  // Rent amount + landlord name for the rent action panel. Mirrors what
+  // MonopolyBoardCenter does on web: prefer the pending_debt.amount the
+  // engine already resolved (handles rent doubling, mortgages, etc.);
+  // fall back to computeRent on the current dice roll for the transition
+  // frames where the debt hasn't landed yet.
+  const rentOwnerId =
+    board?.phase === 'pay_rent' && board.pending_space != null
+      ? (parsePropertyOwners(board.property_owners)[String(board.pending_space)] ?? null)
+      : null
+  const rentOwnerName = rentOwnerId ? (bootstrap.players.find((p) => p.id === rentOwnerId)?.name ?? null) : null
+  const rentAmount =
+    board?.pending_debt?.debt_type === 'rent' && board.pending_debt.amount != null
+      ? board.pending_debt.amount
+      : pendingSpace && rentOwnerId && board
+        ? computeRent(
+            pendingSpace,
+            parsePropertyOwners(board.property_owners),
+            rentOwnerId,
+            board.last_dice?.total ?? 2,
+            parseBuildings(board.property_buildings),
+            parseMortgaged(board.mortgaged_properties),
+            boardSize
+          )
+        : 0
   const showJail = !!(isMyTurn && board?.phase === 'jail' && myState?.in_jail)
   const showAuction = !!(board?.phase === 'auction' && auction && isMyAuctionTurn)
   const showRaiseFunds = !!(isMyDebt && board?.phase === 'raise_funds' && debt)
@@ -821,8 +847,13 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
 
       {showRent && pendingSpace ? (
         <View style={styles.centerPanel}>
+          <Text style={styles.centerLabel}>Rent Due</Text>
           <Text style={styles.centerTitle} numberOfLines={1}>
-            Rent · {themedSpaceName(pendingSpace.name, pendingSpace.index, themeId, boardSize)}
+            {themedSpaceName(pendingSpace.name, pendingSpace.index, themeId, boardSize)}
+          </Text>
+          <Text style={styles.centerAmount}>{formatThemedMoney(rentAmount, themeId)}</Text>
+          <Text style={styles.centerSub} numberOfLines={1}>
+            Owner: {rentOwnerName ?? 'Someone'}
           </Text>
           <Pressable
             style={[styles.centerPrimary, acting && styles.btnDisabled]}
@@ -1182,7 +1213,7 @@ function MonopolyLoanBanner({
     >
       <View style={styles.loanBannerBody}>
         <Text style={styles.loanBannerTitle}>🏦 Bank Loan</Text>
-        <Text style={styles.loanBannerSubtitle} numberOfLines={1}>
+        <Text style={styles.loanBannerSubtitle}>
           {hasLoan
             ? `Balance ${formatThemedMoney(balance as number, themeId)} · ${roundsRemaining === 1 ? 'Due this round' : `${roundsRemaining} rounds left`}`
             : 'Borrow liquidity against your portfolio'}
@@ -1443,7 +1474,16 @@ const makeStyles = (theme: Theme) =>
     },
     centerTimerText: { color: '#ffffff', fontSize: 11, fontWeight: '800' },
     centerPanel: { alignItems: 'center', gap: 4, marginTop: 4, alignSelf: 'stretch' },
+    centerLabel: {
+      color: 'rgba(255,255,255,0.65)',
+      fontSize: 9,
+      fontWeight: '800',
+      textTransform: 'uppercase',
+      letterSpacing: 0.6,
+      textAlign: 'center',
+    },
     centerTitle: { color: '#ffffff', fontSize: 12, fontWeight: '800', textAlign: 'center' },
+    centerAmount: { color: '#ffffff', fontSize: 20, fontWeight: '900', textAlign: 'center', lineHeight: 22 },
     centerSub: { color: 'rgba(255,255,255,0.8)', fontSize: 10, textAlign: 'center' },
     centerRow: { flexDirection: 'row', gap: 6, marginTop: 4, alignSelf: 'stretch' },
     centerFlex: { flex: 1 },
