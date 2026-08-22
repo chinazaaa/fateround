@@ -2,10 +2,11 @@ import { useCallback, useEffect, useState } from 'react'
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { useRouter, useFocusEffect } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { AppButton } from '@/components/ui/AppButton'
 import { ListRow } from '@/components/ui/ListRow'
 import { SurfaceCard } from '@/components/ui/SurfaceCard'
 import { StreakStatusCard } from '@/components/profile/StreakStatusCard'
+import { ProfileStatsTab } from '@/components/profile/ProfileStatsTab'
+import { SettingsButton } from '@/components/ui/SettingsSheet'
 import { centeredContent } from '@/constants/layout'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
@@ -37,6 +38,7 @@ export default function ProfileScreen() {
   const [games, setGames] = useState<ProfileGameRow[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
+  const [tab, setTab] = useState<'trophies' | 'stats'>('trophies')
 
   const load = useCallback(async () => {
     const { profile, games } = await fetchProfileGames()
@@ -91,7 +93,9 @@ export default function ProfileScreen() {
           <Text style={styles.backGlyph}>‹</Text>
         </Pressable>
         <Text style={styles.pageTitle}>Profile</Text>
-        <View style={styles.topBarSpacer} />
+        {/* Settings is reachable from every tab, rather than being a tab that navigates away —
+            tabs switch content, destinations don't belong in them. Matches Home's gear. */}
+        <SettingsButton variant="screen" />
       </View>
 
       <ScrollView
@@ -140,42 +144,55 @@ export default function ProfileScreen() {
         {/* Only renders when the streak is actually in danger — see StreakStatusCard. */}
         <StreakStatusCard profile={profile} />
 
-        {/* Per-game section — rows built from ListRow, dividers between,
-            wrapped in a SurfaceCard so the section reads as one grouped list.
-            Row tap opens that game's trophy grid (Phase 1 follow-up route). */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Your games</Text>
-          {loading ? (
-            <Text style={styles.empty}>Loading…</Text>
-          ) : games.length === 0 ? (
-            <Text style={styles.empty}>Finish a game to see it here.</Text>
-          ) : (
-            <SurfaceCard padding={0} gap={0}>
-              {games.map((row, i) => (
-                <ListRow
-                  key={row.gameType}
-                  onPress={() => router.push(`/profile/trophies/${row.gameType}` as never)}
-                  divider={i < games.length - 1}
-                  left={
-                    <View style={styles.gameEmoji}>
-                      <Text style={styles.gameEmojiText}>{row.emoji}</Text>
-                    </View>
-                  }
-                  title={row.label}
-                  subtitle={`${row.gamesWon} won · ${row.gamesPlayed} played · ${row.earned}/${row.total} trophies`}
-                  right={<Text style={styles.chevron}>›</Text>}
-                />
-              ))}
-            </SurfaceCard>
-          )}
+        {/* Trophies | Stats. Web has a third tab for Settings; here that is the ⚙ in the top
+            bar instead — a tab that teleports out of the tab set is a worse trade than an
+            always-visible destination. See docs/mobile-ia-audit-2026-08.md. */}
+        <View style={styles.tabs}>
+          {(['trophies', 'stats'] as const).map((key) => (
+            <Pressable
+              key={key}
+              style={[styles.tab, tab === key && styles.tabActive]}
+              onPress={() => setTab(key)}
+              accessibilityRole="button"
+              accessibilityState={{ selected: tab === key }}
+            >
+              <Text style={[styles.tabText, tab === key && styles.tabTextActive]}>
+                {key === 'trophies' ? 'Trophies' : 'Stats'}
+              </Text>
+            </Pressable>
+          ))}
         </View>
 
-        {/* Account settings — the mobile half of web's /profile → Settings tab. Device
-            preferences (appearance / sound / notifications) stay in the ⚙ sheet. */}
-        {/* Account settings moved to /settings, which now carries device preferences too.
-            They used to sit here, below the per-game list — so the more games a player had, the
-            further sign-out drifted down the screen. See docs/mobile-ia-audit-2026-08.md. */}
-        <AppButton label="Settings" tone="secondary" fullWidth onPress={() => router.push('/settings' as never)} />
+        {tab === 'stats' ? <ProfileStatsTab games={games} /> : null}
+
+        {tab === 'trophies' ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Your games</Text>
+            {loading ? (
+              <Text style={styles.empty}>Loading…</Text>
+            ) : games.length === 0 ? (
+              <Text style={styles.empty}>Finish a game to see it here.</Text>
+            ) : (
+              <SurfaceCard padding={0} gap={0}>
+                {games.map((row, i) => (
+                  <ListRow
+                    key={row.gameType}
+                    onPress={() => router.push(`/profile/trophies/${row.gameType}` as never)}
+                    divider={i < games.length - 1}
+                    left={
+                      <View style={styles.gameEmoji}>
+                        <Text style={styles.gameEmojiText}>{row.emoji}</Text>
+                      </View>
+                    }
+                    title={row.label}
+                    subtitle={`${row.gamesWon} won · ${row.gamesPlayed} played · ${row.earned}/${row.total} trophies`}
+                    right={<Text style={styles.chevron}>›</Text>}
+                  />
+                ))}
+              </SurfaceCard>
+            )}
+          </View>
+        ) : null}
       </ScrollView>
     </SafeAreaView>
   )
@@ -201,7 +218,6 @@ const makeStyles = (theme: Theme) =>
       paddingHorizontal: theme.space.md,
       paddingVertical: theme.space.sm,
     },
-    topBarSpacer: { width: 44 },
     pageTitle: {
       color: theme.text,
       fontSize: theme.type.section.size,
@@ -243,6 +259,18 @@ const makeStyles = (theme: Theme) =>
       letterSpacing: theme.type.display.letterSpacing,
     },
     tileLabel: { color: theme.textMuted, fontSize: theme.type.caption.size, marginTop: 2 },
+    tabs: {
+      flexDirection: 'row',
+      gap: 4,
+      padding: 4,
+      borderRadius: 12,
+      backgroundColor: theme.surfaceHover,
+    },
+    tab: { flex: 1, paddingVertical: 9, alignItems: 'center', borderRadius: 9 },
+    tabActive: { backgroundColor: theme.primary },
+    tabText: { color: theme.textSecondary, fontSize: theme.type.body.size, fontWeight: '700' },
+    // White on the solid rose tab — intentional, correct in both schemes.
+    tabTextActive: { color: '#fff', fontWeight: '800' },
     section: { gap: theme.space.sm },
     sectionTitle: {
       color: theme.text,

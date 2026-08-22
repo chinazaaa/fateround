@@ -42,15 +42,68 @@ describe('mobile settings has one destination', () => {
     expect(code('components/ui/SettingsSheet.tsx')).toMatch(/<DevicePreferencesSection \/>/)
   })
 
-  it('/profile no longer carries account settings inline', () => {
+  it('/profile no longer carries account settings inline, but still reaches them', () => {
     const profile = code('app/profile.tsx')
     expect(profile, 'must link out instead of embedding').not.toMatch(/<AccountSettingsSection/)
-    expect(profile).toMatch(/\/settings/)
+    // A gear in the top bar rather than an inline row: reachable from every tab, and it can't
+    // be pushed off-screen by a long per-game list the way the old inline section was.
+    expect(profile).toMatch(/<SettingsButton variant="screen"/)
+  })
+
+  it('/profile splits its content into tabs instead of one long scroll', () => {
+    const profile = code('app/profile.tsx')
+    expect(profile).toMatch(/\['trophies', 'stats'\] as const/)
+    expect(profile, 'the Stats surface mobile never had').toMatch(/<ProfileStatsTab/)
+  })
+
+  it('the Stats tab reads the same history endpoint as web', () => {
+    // Two platforms disagreeing about what someone played would be worse than not shipping it.
+    expect(code('components/profile/ProfileStatsTab.tsx')).toMatch(/\/api\/profile\/history/)
+    expect(readFileSync(join(process.cwd(), 'src', 'components', 'profile', 'StatsTab.tsx'), 'utf8')).toMatch(
+      /\/api\/profile\/history/
+    )
   })
 
   it('the ProfileChip sheet no longer signs you out under another name', () => {
     const chip = code('components/profile/ProfileChip.tsx')
     expect(chip, '"Not you? Switch" was a third door to the same control').not.toMatch(/Not you\? Switch</)
     expect(chip).toMatch(/\/settings/)
+  })
+})
+
+/**
+ * Home is ordered around intent, not around what was added when.
+ *
+ * A returning player's own games used to sit BELOW a five-item browse preview — the
+ * highest-intent block on the screen, last. And the four primary actions were full-width
+ * stacked rows, putting a screen height between the join card and anything personalised.
+ */
+describe('mobile home ordering', () => {
+  const HOME = code('app/index.tsx')
+  const at = (needle: string | RegExp) => HOME.search(needle instanceof RegExp ? needle : new RegExp(needle))
+
+  it('puts the join card first — it is the front door', () => {
+    expect(at('Join a game')).toBeGreaterThan(-1)
+    expect(at('Join a game')).toBeLessThan(at('<YourUpcomingGamesStrip'))
+  })
+
+  it('puts personalised blocks above discovery', () => {
+    const upcoming = at('<YourUpcomingGamesStrip')
+    const recent = at('Recent')
+    const browse = at('<BrowseGamesList')
+    for (const [name, pos] of [
+      ['upcoming', upcoming],
+      ['recent', recent],
+    ] as const) {
+      expect(pos, `${name} must come before the browse preview`).toBeGreaterThan(-1)
+      expect(pos).toBeLessThan(browse)
+    }
+  })
+
+  it('uses a grid for the secondary actions, not full-width rows', () => {
+    expect(HOME).toMatch(/actionGrid/)
+    expect(HOME, 'Create stays full-width — it is the only one that makes something').toMatch(
+      /label="Create a game"[\s\S]{0,120}?fullWidth/
+    )
   })
 })
