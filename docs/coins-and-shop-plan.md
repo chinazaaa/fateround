@@ -174,10 +174,10 @@ packs — a dense, buyable lineup — and ship the **first paid edition as a
 month-2 drop**. That gives the edition its own launch beat ("first paid
 edition just dropped") instead of being buried among ten launch items.
 
-**First paid edition: Estate Kings — America.** US-themed properties
-(Fifth Avenue, Times Square, Golden Gate, Hollywood Blvd, Wall Street,
-French Quarter, etc.), US currency and card flavor. Ships as a month-2
-drop with its own launch beat.
+**First paid edition: Estate Kings — America.** Full property list,
+color groups, station/utility names, and card flavor rewrites are in
+[`docs/estate-kings-america-edition.md`](./estate-kings-america-edition.md).
+Ships as a month-2 drop with its own launch beat.
 
 **Trademark note.** Do not use classic Monopoly property names
 (Boardwalk, Park Place, Marvin Gardens, etc.) — those are Hasbro
