@@ -18,6 +18,7 @@ export type Profile = {
   streak_freezes: number
   default_voice_on: boolean | null
   preferred_theme: string | null
+  coins?: number | null
 }
 
 /**

@@ -3,6 +3,7 @@ import { gameTypeConfig, parseGameType } from '@/lib/game-types'
 import { ContentLabelChip } from '@/components/game-lobby/ContentLabelChip'
 import { Glyph } from '@/components/icons/Glyph'
 import { ChampionIcon, Flag02Icon, HeartHandshakeIcon } from '@hugeicons/core-free-icons'
+import { CoinAwardPanel } from '@/components/coins/CoinAwardPanel'
 import type { Game } from '@/types'
 
 export interface WinnerStat {
@@ -32,10 +33,15 @@ export function FinishedWinnerHero({
   stats,
   emoji = '🏆',
   headline,
+  gameCode,
 }: {
   /** Name of the first-place player. When absent, falls back to a neutral "Game over!". */
   winnerName?: string | null
-  game: Pick<Game, 'title' | 'game_type' | 'content_label'>
+  // `id` is optional on the pick so the ~50 existing callers that already
+  // pass `game={game}` (where Game.id IS the room code) get scoped events
+  // for free — no per-callsite change needed. Callers with a narrower
+  // game object can still pass `gameCode` explicitly.
+  game: Pick<Game, 'title' | 'game_type' | 'content_label'> & { id?: string }
   /** Overrides the game-label subtitle line (defaults to the game type's label). */
   subtitle?: ReactNode
   /** Optional stat strip; omit for games that don't have generic stats to show. */
@@ -47,6 +53,12 @@ export function FinishedWinnerHero({
    * "{winnerName} wins!" (name in the accent) or "Game over!" if there's no winner.
    */
   headline?: ReactNode
+  /**
+   * The game code — passed through to the CoinAwardPanel so it only reacts
+   * to coin events fired for THIS game (a second game finishing later in the
+   * same tab must not re-render the first game's award panel).
+   */
+  gameCode?: string | null
 }) {
   const cfg = gameTypeConfig(parseGameType(game.game_type))
 
@@ -84,6 +96,22 @@ export function FinishedWinnerHero({
           ))}
         </div>
       )}
+
+      {/* Coin panel renders itself when the attribute call reports a credit.
+          Kept inside the hero so every game's finished screen inherits it
+          without ~40 share-block components each wiring it up. Only mounts
+          when a `gameCode` is supplied — an unscoped panel would react to
+          any coin event and could show credits from a different game in a
+          multi-game tab. Call sites that haven't been updated yet render
+          silently; when they pass `gameCode` the panel lights up. */}
+      {(() => {
+        const effectiveCode = gameCode ?? game.id ?? null
+        return effectiveCode ? (
+          <div className="pt-2 text-left">
+            <CoinAwardPanel gameCode={effectiveCode} />
+          </div>
+        ) : null
+      })()}
     </div>
   )
 }

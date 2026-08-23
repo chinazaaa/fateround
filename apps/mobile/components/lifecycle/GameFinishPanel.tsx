@@ -7,6 +7,7 @@ import { PlayAgainFooter } from '@/components/lifecycle/PlayAgainFooter'
 import { HostFinishedActions } from '@/components/lifecycle/HostFinishedActions'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { PostJoinSubscribeNudge } from '@/components/notifications/PostJoinSubscribeNudge'
+import { CoinAwardPanel } from '@/components/coins/CoinAwardPanel'
 import { useHostView } from '@/components/host/HostViewContext'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
@@ -85,6 +86,7 @@ export function GameFinishPanel({
         />
       )}
       {notice}
+      <CoinAwardPanel gameCode={bootstrap.code} />
       <PostJoinSubscribeNudge gameType={game.game_type} />
       {iWon && winner ? (
         <PostWinToCommunity
