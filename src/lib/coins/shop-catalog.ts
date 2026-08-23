@@ -229,3 +229,38 @@ export function findCardTemplate(slug: string | null | undefined): CardTemplateS
   if (!slug) return null
   return CARD_TEMPLATES.find((t) => t.slug === slug) ?? null
 }
+
+/**
+ * Server-authoritative price lookup for the code-side kinds
+ * (frame, name_color, animation, card_template, streak_freeze). Returns
+ * null for an unknown kind/slug so the caller can 400 rather than pass
+ * a bogus price to the purchase RPC.
+ *
+ * Reviewer flagged that the /api/shop/purchase route used to trust the
+ * client-supplied price for these kinds — a malicious client could POST
+ * price:1 and walk out with any cosmetic. This helper is the "server is
+ * the source of truth" fix: the route always overrides body.price with
+ * whatever this returns.
+ *
+ * The RPC still trusts the price it receives (up to a 10k ceiling); the
+ * ONLY caller is the shop route, which is SECURITY DEFINER-locked and now
+ * resolves price here. DB-backed kinds (theme, edition, library_pack) are
+ * re-checked inside the RPC against their catalog table, so they don't
+ * need a lookup here.
+ */
+export function codeSidePrice(kind: ShopKind, slug: string): number | null {
+  switch (kind) {
+    case 'frame':
+      return findFrame(slug)?.price ?? null
+    case 'name_color':
+      return findNameColor(slug)?.price ?? null
+    case 'animation':
+      return findAnimation(slug)?.price ?? null
+    case 'card_template':
+      return findCardTemplate(slug)?.price ?? null
+    case 'streak_freeze':
+      return slug === STREAK_FREEZE.slug ? STREAK_FREEZE.price : null
+    default:
+      return null
+  }
+}

@@ -29,16 +29,14 @@ export function PlayerName({
   const spec = findNameColor(colorSlug)
   if (!spec) return <span className={className}>{name}</span>
 
+  // Only custom properties on the inline style — actual color / background-
+  // image is applied by the `.fr-name-solid` / `.fr-name-gradient` class in
+  // globals.css, which reads --pname-*-light on `:root` and swaps to
+  // --pname-*-dark under [data-theme='dark']. An inline `color:` /
+  // `background-image:` here would beat the class rule on specificity and
+  // pin the light literal in dark mode (reviewer finding #2).
   if (spec.gradient) {
-    // A CSS-var flip toggles the gradient between light / dark modes so the
-    // component is theme-aware without prop drilling. The @media selector
-    // lives in globals.css alongside the other theme-aware tokens.
     const style: React.CSSProperties = {
-      backgroundImage: `var(--pname-gradient, ${spec.gradient.light})`,
-      WebkitBackgroundClip: 'text',
-      backgroundClip: 'text',
-      color: 'transparent',
-      // Custom properties are typed as unknown in React.CSSProperties.
       ['--pname-gradient-light' as never]: spec.gradient.light,
       ['--pname-gradient-dark' as never]: spec.gradient.dark,
     }
@@ -50,7 +48,6 @@ export function PlayerName({
   }
 
   const style: React.CSSProperties = {
-    color: `var(--pname-solid, ${spec.light})`,
     ['--pname-solid-light' as never]: spec.light,
     ['--pname-solid-dark' as never]: spec.dark,
   }

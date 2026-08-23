@@ -133,11 +133,22 @@ export function ShopClient() {
     if (!canEquip(item.kind)) return
     try {
       const headers = { 'Content-Type': 'application/json', ...(await authHeaders()) }
-      await fetch('/api/shop/equip', {
+      const res = await fetch('/api/shop/equip', {
         method: 'POST',
         headers,
         body: JSON.stringify({ slot: item.kind, slug: item.slug }),
       })
+      // Server can 403 "Not owned" when the catalog is stale (grandfathered
+      // demo profile, retired item, an item whose owned-row was cleaned).
+      // Reviewer flagged that firing shopItemEquipped + toasting "Equipped"
+      // in that case is a false-positive both on-screen and in analytics —
+      // gate both on res.ok.
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string }
+        setToast(data.error ?? 'Could not equip — try again')
+        await load()
+        return
+      }
       trackEvent(GA_EVENTS.shopItemEquipped, { item_kind: item.kind, item_slug: item.slug })
       setToast(`Equipped ${item.name}`)
       await load()
@@ -155,7 +166,9 @@ export function ShopClient() {
       const res = await fetch('/api/shop/purchase', {
         method: 'POST',
         headers,
-        body: JSON.stringify({ kind: pending.kind, slug: pending.slug, price: pending.price }),
+        // Price deliberately NOT sent — the server resolves it from its own
+        // catalog. Kept as the tile's display price only.
+        body: JSON.stringify({ kind: pending.kind, slug: pending.slug }),
       })
       const data = (await res.json().catch(() => ({}))) as { outcome?: string; new_balance?: number; error?: string }
 

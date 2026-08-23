@@ -227,9 +227,22 @@ begin
 
   -- Priced durable: spend first (row-locks the profile), then insert the
   -- owned-row. The partial unique index on (profile_id, ref_id) makes a
-  -- concurrent second purchase 23505 — swallow it and refund the coins we
-  -- just spent so the caller sees a clean 'already_owned'.
-  v_new_balance := spend_coins(p_profile_id, p_price_coins, 'shop_purchase', v_ref_id);
+  -- concurrent second purchase 23505 INSIDE spend_coins() — hence the outer
+  -- begin/exception around the spend, not just around the owned-row insert.
+  -- Missing that outer block was the "unreachable already_owned" review
+  -- finding: the ledger-side unique_violation propagated out of purchase_item
+  -- as a raw server error, and the client saw `server_error` instead of
+  -- `already_owned` for a benign race.
+  begin
+    v_new_balance := spend_coins(p_profile_id, p_price_coins, 'shop_purchase', v_ref_id);
+  exception when unique_violation then
+    -- Ledger row for (profile_id, ref_id) already exists — the shop_purchase
+    -- durable partial unique index caught the second racer. Its subtxn is
+    -- rolled back automatically, so no coins moved. Report clean.
+    select coins into v_new_balance from profiles where id = p_profile_id;
+    return jsonb_build_object('outcome', 'already_owned', 'new_balance', v_new_balance, 'ref_id', v_ref_id);
+  end;
+
   if v_new_balance is null then
     return jsonb_build_object('outcome', 'insufficient_funds', 'new_balance', null, 'ref_id', null);
   end if;
@@ -272,6 +285,121 @@ $$;
 revoke all on function purchase_item(uuid, text, text, bigint) from public;
 
 -- ---------------------------------------------------------------------------
+-- add_extra_bot(game_id, profile_id, name, monopoly_token, expected_price)
+-- ---------------------------------------------------------------------------
+-- Atomic count + insert + charge for the room-lobby "add bot" coin gate
+-- (plan §"Inline (contextual)"). Reviewer flagged a TOCTOU in the old API
+-- handler: two host tabs POSTing simultaneously both read currentBots=0,
+-- both computed price=0, both inserted a free bot. This RPC serializes
+-- them on a per-game advisory lock so the count and the insert land under
+-- one critical section — the second caller sees the first bot and pays.
+--
+-- Returns a jsonb envelope:
+--   { "outcome": "ok" | "price_mismatch" | "insufficient_funds",
+--     "player_id":  uuid | null,
+--     "charged":    bigint,
+--     "new_balance": bigint | null,
+--     "price":      bigint }     -- server-decided price; echoed back so
+--                                --  a client showing "50 coins" that raced
+--                                --  a "0 coins" tab can re-render at the
+--                                --  correct price.
+--
+-- Seat cap + game-supports-bots checks stay in the API handler (they need
+-- the game-limits map). This RPC ONLY owns the pricing race and the spend.
+create or replace function add_extra_bot(
+  p_game_id         text,
+  p_profile_id      uuid,       -- nullable — free-first bot has no payer
+  p_name            text,
+  p_monopoly_token  text,       -- nullable
+  p_expected_price  bigint,
+  p_extra_bot_cost  bigint default 50
+) returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_bot_count    bigint;
+  v_price        bigint;
+  v_player_id    uuid;
+  v_new_balance  bigint;
+begin
+  if p_game_id is null or length(trim(p_game_id)) = 0 then
+    raise exception 'add_extra_bot: game_id is required';
+  end if;
+
+  -- Per-game advisory lock. Two host tabs on the same game serialize;
+  -- different games never contend. Transaction-scoped so it releases on
+  -- commit/rollback without any explicit unlock.
+  perform pg_advisory_xact_lock(hashtext('add_extra_bot:' || p_game_id));
+
+  select count(*) into v_bot_count
+    from players
+   where game_id = p_game_id and is_bot = true;
+
+  v_price := case when v_bot_count >= 1 then p_extra_bot_cost else 0 end;
+
+  if v_price <> coalesce(p_expected_price, 0) then
+    return jsonb_build_object(
+      'outcome',    'price_mismatch',
+      'player_id',  null,
+      'charged',    0,
+      'new_balance', null,
+      'price',      v_price
+    );
+  end if;
+
+  -- Insert the bot. Nulls match the API-side insert shape one-to-one so
+  -- downstream reads of players (roster, seat rendering, engine) see an
+  -- identical row.
+  insert into players (
+    game_id, country, name, gender, identity_gender,
+    participant_id, spectator, is_bot, monopoly_token
+  ) values (
+    p_game_id, null, p_name, 'both', null,
+    null, false, true, p_monopoly_token
+  ) returning id into v_player_id;
+
+  if v_price > 0 then
+    if p_profile_id is null then
+      -- Paid bot but no payer — roll back the insert via the raise; the
+      -- API handler would have caught this pre-RPC, but a defense in depth
+      -- catch here means a stale caller never gets a "free" paid bot.
+      raise exception 'add_extra_bot: paid bot requires a signed-in profile';
+    end if;
+    v_new_balance := spend_coins(p_profile_id, v_price, 'shop_purchase', 'extra_bot:' || v_player_id::text);
+    if v_new_balance is null then
+      -- Insufficient funds. Roll back the insert so a soft "not enough
+      -- coins" error doesn't leave a phantom bot in the lobby.
+      raise exception using errcode = 'P0001',
+        message = 'insufficient_funds:' || v_price::text;
+    end if;
+  end if;
+
+  return jsonb_build_object(
+    'outcome',     'ok',
+    'player_id',   v_player_id,
+    'charged',     v_price,
+    'new_balance', v_new_balance,
+    'price',       v_price
+  );
+exception when raise_exception then
+  if sqlerrm like 'insufficient_funds:%' then
+    return jsonb_build_object(
+      'outcome',     'insufficient_funds',
+      'player_id',   null,
+      'charged',     0,
+      'new_balance', null,
+      'price',       v_price
+    );
+  end if;
+  raise;
+end;
+$$;
+
+revoke all on function add_extra_bot(text, uuid, text, text, bigint, bigint) from public;
+
+-- ---------------------------------------------------------------------------
 -- Seed the six [LAUNCH] game themes.
 -- ---------------------------------------------------------------------------
 -- Prices per docs/coins-and-shop-plan.md § "Proposed price bands" (400 coins
@@ -292,6 +420,7 @@ on conflict (game_type, slug) do nothing;
 --   delete from game_themes where slug in (
 --     'whot-neon','whot-naija','ludo-wooden','ludo-naija',
 --     'sudoku-minimalist','sudoku-newsprint');
+--   drop function if exists add_extra_bot(text, uuid, text, text, bigint, bigint);
 --   drop function if exists purchase_item(uuid, text, text, bigint);
 --   drop index if exists uq_coin_ledger_shop_purchase_durable;
 -- ----------------------------------------------------------------------------
