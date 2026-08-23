@@ -50,6 +50,10 @@ export function ShopClient() {
   const [catalog, setCatalog] = useState<Catalog | null>(null)
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<ShopKind | 'all'>('all')
+  // Independent from category — a player scanning "what have I bought?" wants
+  // a quick answer without scrolling every category. `owned` cross-cuts the
+  // kind filter, so both apply together.
+  const [ownedOnly, setOwnedOnly] = useState(false)
   const [pending, setPending] = useState<ShopItem | null>(null)
   const [busy, setBusy] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
@@ -84,8 +88,10 @@ export function ShopClient() {
   }, [load])
 
   const items = catalog?.items ?? []
-  const visible = filter === 'all' ? items : items.filter((i) => i.kind === filter)
+  const kindFiltered = filter === 'all' ? items : items.filter((i) => i.kind === filter)
+  const visible = ownedOnly ? kindFiltered.filter((i) => i.owned) : kindFiltered
   const availableKinds = useMemo(() => new Set(items.map((i) => i.kind)), [items])
+  const ownedCount = useMemo(() => items.filter((i) => i.owned).length, [items])
 
   const balance = catalog?.profile?.coins ?? Number(profile?.coins ?? 0)
   const isGuest = !profile || profile.is_anonymous
@@ -295,6 +301,11 @@ export function ShopClient() {
             {c.label}
           </FilterChip>
         ))}
+        {ownedCount > 0 && (
+          <FilterChip active={ownedOnly} onClick={() => setOwnedOnly((v) => !v)}>
+            Owned ({ownedCount})
+          </FilterChip>
+        )}
       </div>
 
       {visible.length === 0 ? (
