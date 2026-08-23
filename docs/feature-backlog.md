@@ -31,6 +31,17 @@ streaks** drive account signup and are earned, never sold, on every tier. Paymen
 [account-tiers.md](./account-tiers.md) · [trophies-and-streaks.md](./trophies-and-streaks.md) ·
 [pricing-implementation-plan.md](./pricing-implementation-plan.md).
 
+## Follow-ups deferred from other PRs
+
+### Reclaim-host resume-token rotation isn't transactional
+Surfaced during the code review of the coins Phase 1 PR. In
+`src/app/api/games/[code]/reclaim-host/route.ts`, `.update({ resume_token })`
+commits before the response is built; if the follow-up `.select()` or
+serialisation fails, the old device's token is dead and the new device
+never gets the rotated one — the player's seat becomes unreachable.
+Move the read + rotate into a single RPC or wrap it in a transaction.
+Own PR.
+
 ## Shipped
 
 Previously backlogged, now delivered:
