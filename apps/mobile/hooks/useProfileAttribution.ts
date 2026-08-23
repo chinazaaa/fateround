@@ -2,6 +2,8 @@ import { useEffect, useRef } from 'react'
 import { apiUrl } from '@/lib/config'
 import { authHeaders, ensureServerIdentity } from '@/lib/identity'
 import { getPlayerSession } from '@/lib/secure-session'
+import { getDeviceId } from '@/lib/coins/device-id'
+import { emitCoinsAwarded, emitGuestCoinsPending } from '@/lib/coins/earn-events'
 
 type Options = {
   gameCode: string
@@ -66,9 +68,27 @@ export function useProfileAttribution({ gameCode, status, resumeToken }: Options
         attemptedRef.current = gameCode
 
         const profileId = await ensureServerIdentity()
-        // Null most likely means the per-IP rate limit, or anonymous sign-in isn't enabled
-        // yet. Release so the next finished screen retries.
+        const deviceId = await getDeviceId()
+
+        // Guest earning path — no identity, but still POST so the server can
+        // hold this game's pending coins keyed on device id.
         if (!profileId) {
+          try {
+            const guestRes = await fetch(apiUrl('/api/profile/attribute'), {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ gameCode, resumeToken: token, deviceId: deviceId ?? undefined }),
+            })
+            if (guestRes.ok) {
+              const guestBody = (await guestRes.json().catch(() => null)) as
+                | { guestCoins?: { total: number; lines: unknown[] } }
+                | null
+              if (guestBody?.guestCoins) emitGuestCoinsPending(guestBody.guestCoins, gameCode)
+            }
+          } catch {
+            // silent
+          }
+          // Release so a later ensureServerIdentity() (post-rate-limit) still tries.
           attemptedRef.current = null
           return
         }
@@ -82,12 +102,19 @@ export function useProfileAttribution({ gameCode, status, resumeToken }: Options
         const res = await fetch(apiUrl('/api/profile/attribute'), {
           method: 'POST',
           headers,
-          body: JSON.stringify({ gameCode, resumeToken: token }),
+          body: JSON.stringify({ gameCode, resumeToken: token, deviceId: deviceId ?? undefined }),
         })
         // The route answers 200 with `attributed: false` for the benign cases (guest, stale
         // token, already claimed) — those are settled, not worth retrying. A transport-level
         // failure is, so only a non-OK response releases the claim.
-        if (!res.ok) attemptedRef.current = null
+        if (!res.ok) {
+          attemptedRef.current = null
+        } else {
+          const body = (await res.json().catch(() => null)) as
+            | { coins?: { total: number; lines: unknown[] }; gameType?: string }
+            | null
+          if (body?.coins) emitCoinsAwarded(body.coins, gameCode, body.gameType)
+        }
       } catch {
         // Offline or unavailable. Retry on the next finished screen.
         attemptedRef.current = null

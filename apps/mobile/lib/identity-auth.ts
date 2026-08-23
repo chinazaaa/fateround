@@ -56,7 +56,11 @@ export async function requestEmailCode(email: string): Promise<RequestCodeResult
       if (!error) {
         const applied = updated.user?.email?.toLowerCase() === address && !updated.user?.new_email
         if (applied) {
-          await postWithSession('/api/profile/anon')
+          {
+      const { getDeviceId } = await import('@/lib/coins/device-id')
+      const deviceId = await getDeviceId()
+      await postWithSession('/api/profile/anon', deviceId ? { deviceId } : undefined)
+    }
           return { ok: true, flow: 'upgrade', complete: true }
         }
         return { ok: true, flow: 'upgrade' }
@@ -97,7 +101,11 @@ export async function verifyEmailCode(email: string, code: string, flow: EmailCo
     const userId = data.user?.id ?? null
     if (!userId) return { ok: false, error: GENERIC_ERROR }
 
-    await postWithSession('/api/profile/anon')
+    {
+      const { getDeviceId } = await import('@/lib/coins/device-id')
+      const deviceId = await getDeviceId()
+      await postWithSession('/api/profile/anon', deviceId ? { deviceId } : undefined)
+    }
 
     // Case B: a different auth.uid() than we started with, so the anonymous identity is left
     // behind. Log it; the real data merge ships with trophies.

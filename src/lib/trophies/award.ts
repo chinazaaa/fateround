@@ -30,6 +30,14 @@ import { unlockedThisRound } from './instant-unlock'
 import { buildGameFacts } from './game-facts'
 import { resolveFinishers, resolveWinners } from './outcome'
 import { advanceStreak, watDate, watHour, type StreakState } from './streak'
+import {
+  awardCoinsForFinishedGame,
+  countUniqueHumans,
+  recordGuestFinishedGameGrants,
+  type CoinAwardResult,
+  type GuestPendingResult,
+} from '@/lib/coins/award-service'
+import { COIN_AMOUNTS } from '@/lib/coins/reasons'
 
 /** Trophy points needed for each level. Deliberately shallow early so level 2 is reachable. */
 const LEVEL_THRESHOLDS = [0, 50, 150, 350, 700, 1200, 2000, 3200, 5000, 8000]
@@ -49,6 +57,8 @@ export type AwardedTrophy = { id: string; title: string; tier: string; points: n
 export type AwardResult = {
   /** Trophies earned by THIS pass — what the post-win prompt should celebrate. */
   earned: AwardedTrophy[]
+  /** Coin awards for this game — itemized so the results panel can render them. */
+  coins?: CoinAwardResult
   /** False when the pass was a no-op: already awarded, unknown game, or nothing to do. */
   applied: boolean
   reason?: 'already_awarded' | 'game_not_found' | 'never_started' | 'not_a_player' | 'error'
@@ -278,6 +288,17 @@ export async function awardForFinishedGame(
     // numeric counters, so pull them from `extras` before it reaches `bump_player_stats`.
     const distinctMembers = extractDistinctMembers(extras)
 
+    // First-time-mode detection — read BEFORE bumpStats so the count still
+    // reflects the pre-game state. Any row for this scope means the player has
+    // finished this mode before (may have zero wins but they played).
+    const { data: modeStatsBefore } = await supabase
+      .from('player_stats')
+      .select('games_played')
+      .eq('profile_id', profileId)
+      .eq('game_type', gameType)
+      .maybeSingle()
+    const isFirstTimeForMode = !modeStatsBefore || (Number(modeStatsBefore.games_played) || 0) === 0
+
     // Per-game-type and global scopes both move, so a rule can ask "10 wins" or "10 Whot wins".
     await bumpStats(supabase, profileId, gameType, { played: 1, won: won ? 1 : 0, counters: extras })
     await bumpStats(supabase, profileId, GLOBAL_SCOPE, { played: 1, won: won ? 1 : 0, counters: extras })
@@ -344,7 +365,40 @@ export async function awardForFinishedGame(
     // concurrent passes reach the same total instead of one overwriting the other.
     await supabase.rpc('recompute_profile_points', { p_profile_id: profileId })
 
-    return { earned, applied: true }
+    // ── Coin awards (plan §"Earning") ───────────────────────────────────
+    // Best-effort: runs after the trophy pass. A failed coin credit MUST NOT
+    // turn a finished game into an error, and the RPC itself is idempotent-
+    // adjacent (guarded by the `awarded_sessions` claim above).
+    let coins: CoinAwardResult | undefined
+    try {
+      const uniqueHumans = countUniqueHumans(
+        seated.map((p) => ({ id: p.id as string, profile_id: (p as { profile_id?: string | null }).profile_id ?? null, is_bot: false }))
+      )
+      // `seated` already excludes bots for the win check, but the coin path
+      // needs BOTH counts (`uniqueHumans` for the anti-farm gate; `seatedHumans`
+      // for the full-lobby bonus threshold). Read is_bot fresh so a mixed room
+      // gets the right seat count.
+      const { data: allPlayers } = await supabase
+        .from('players')
+        .select('is_bot')
+        .eq('game_id', sessionId)
+      const seatedHumans = (allPlayers ?? []).filter((p) => !p.is_bot).length
+      const hostBounty = false // Deferred: needs round-count tracking. Wire in Phase 3 backlog.
+      coins = await awardCoinsForFinishedGame(supabase, {
+        profileId,
+        gameId: sessionId,
+        won,
+        seatedHumans,
+        uniqueHumans,
+        isFirstTimeForMode,
+        hostBounty,
+        streakDays: streak.current_streak,
+      })
+    } catch {
+      coins = undefined
+    }
+
+    return { earned, coins, applied: true }
   } catch {
     // Release the claim so a later attempt can retry. Leaving it would silently cost the
     // player everything this game should have earned, with no error anywhere.
@@ -352,6 +406,79 @@ export async function awardForFinishedGame(
     return NOOP('error')
   }
 }
+
+/**
+ * Guest earning path — write per-reason rows to `guest_pending_grants` so the
+ * "Sign up to claim X coins" CTA on the results screen quotes a real number.
+ * No profile is attached; the rows are materialised into coin_ledger at
+ * signup by `migrate_guest_grants()`.
+ *
+ * Returns the same shape as `awardCoinsForFinishedGame` (minus profile fields)
+ * so the finish screen renders one panel for both cases.
+ */
+export async function recordGuestFinishForDevice(
+  supabase: SupabaseClient,
+  input: {
+    gameId: string
+    deviceId: string
+    sessionId: string | null
+    winnerPlayerId?: string | null
+    myPlayerId: string
+  }
+): Promise<GuestPendingResult> {
+  const gameId = input.gameId.toUpperCase()
+  try {
+    const { data: game } = await supabase
+      .from('games')
+      .select('id, game_type, status')
+      .eq('id', gameId)
+      .maybeSingle()
+    if (!game || game.status !== 'finished') return { lines: [], total: 0 }
+
+    const gameType = game.game_type as GameType
+    const { data: players } = await supabase
+      .from('players')
+      .select('id, profile_id, is_bot, spectator')
+      .eq('game_id', gameId)
+
+    const me = (players ?? []).find((p) => p.id === input.myPlayerId)
+    if (!me) return { lines: [], total: 0 }
+
+    const seated = (players ?? []).filter((p) => !p.spectator)
+    const winners = await resolveWinners(supabase, gameId, gameType)
+    const won =
+      seated.length >= MIN_PLAYERS_FOR_A_WIN && winners !== null && winners.includes(me.id as string)
+
+    const humans = seated.filter((p) => !p.is_bot)
+    const seatedHumans = humans.length
+    const uniqueHumans = countUniqueHumans(
+      humans.map((p) => ({
+        id: p.id as string,
+        profile_id: (p as { profile_id?: string | null }).profile_id ?? null,
+        is_bot: false,
+      }))
+    )
+    // First-mode-for-device isn't cheap to compute for a guest (no profile
+    // stats). Guests are the discovery cohort by definition, so credit the
+    // bonus optimistically; the 500-coin migration cap absorbs the excess.
+    const isFirstTimeForMode = true
+
+    return recordGuestFinishedGameGrants(supabase, {
+      deviceId: input.deviceId,
+      sessionId: input.sessionId,
+      gameId,
+      won,
+      seatedHumans,
+      uniqueHumans,
+      isFirstTimeForMode,
+    })
+  } catch {
+    return { lines: [], total: 0 }
+  }
+}
+
+// Re-export so callers pull one thing from `trophies/award`.
+export { COIN_AMOUNTS }
 
 /**
  * Award for one profile and one finished SOLO (vs bot) game. Idempotent per

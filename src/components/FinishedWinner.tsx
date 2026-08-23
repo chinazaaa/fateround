@@ -3,6 +3,7 @@ import { gameTypeConfig, parseGameType } from '@/lib/game-types'
 import { ContentLabelChip } from '@/components/game-lobby/ContentLabelChip'
 import { Glyph } from '@/components/icons/Glyph'
 import { ChampionIcon, Flag02Icon, HeartHandshakeIcon } from '@hugeicons/core-free-icons'
+import { CoinAwardPanel } from '@/components/coins/CoinAwardPanel'
 import type { Game } from '@/types'
 
 export interface WinnerStat {
@@ -32,6 +33,7 @@ export function FinishedWinnerHero({
   stats,
   emoji = '🏆',
   headline,
+  gameCode,
 }: {
   /** Name of the first-place player. When absent, falls back to a neutral "Game over!". */
   winnerName?: string | null
@@ -47,6 +49,12 @@ export function FinishedWinnerHero({
    * "{winnerName} wins!" (name in the accent) or "Game over!" if there's no winner.
    */
   headline?: ReactNode
+  /**
+   * The game code — passed through to the CoinAwardPanel so it only reacts
+   * to coin events fired for THIS game (a second game finishing later in the
+   * same tab must not re-render the first game's award panel).
+   */
+  gameCode?: string | null
 }) {
   const cfg = gameTypeConfig(parseGameType(game.game_type))
 
@@ -84,6 +92,13 @@ export function FinishedWinnerHero({
           ))}
         </div>
       )}
+
+      {/* Coin panel renders itself when the attribute call reports a credit.
+          Kept inside the hero so every game's finished screen inherits it
+          without ~40 share-block components each wiring it up. */}
+      <div className="pt-2 text-left">
+        <CoinAwardPanel gameCode={gameCode ?? null} />
+      </div>
     </div>
   )
 }

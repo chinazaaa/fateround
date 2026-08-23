@@ -7,6 +7,7 @@ import { FateRoundLogo } from '@/components/FateRoundLogo'
 import { Glyph } from '@/components/icons/Glyph'
 import { UI_ICONS } from '@/lib/game-glyphs'
 import { ProfileChip } from '@/components/profile/ProfileChip'
+import { CoinChip } from '@/components/coins/CoinChip'
 import { useTheme } from '@/components/ThemeProvider'
 import type { IconSvgElement } from '@hugeicons/react'
 
@@ -133,11 +134,13 @@ export function MarketingHeader({ hideBack = false }: { hideBack?: boolean } = {
               {item.label}
             </Link>
           ))}
+          <CoinChip />
           <ProfileChip />
           <ThemeButton />
         </nav>
 
         <div className="fr-mobile-actions">
+          <CoinChip />
           <ProfileChip />
           <ThemeButton />
           <button type="button" className="fr-burger" aria-label="Open menu" onClick={() => setMenu(true)}>

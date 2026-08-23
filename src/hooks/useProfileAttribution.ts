@@ -4,6 +4,8 @@ import { useEffect, useRef } from 'react'
 import { authHeaders, ensureServerIdentity } from '@/lib/identity'
 import { emitTrophiesEarned } from '@/lib/trophies/earned-events'
 import { getPlayerSession } from '@/lib/utils'
+import { getDeviceId } from '@/lib/coins/device-id'
+import { emitCoinsAwarded, emitGuestCoinsPending } from '@/lib/coins/earn-events'
 
 type Options = {
   gameCode: string
@@ -48,9 +50,27 @@ export function useProfileAttribution({ gameCode, status, resumeToken }: Options
     void (async () => {
       try {
         const profileId = await ensureServerIdentity()
-        // Null means anonymous sign-in didn't happen — most likely the per-IP rate limit, or
-        // the feature isn't enabled yet. Try again after their next finished game.
-        if (!profileId || cancelled) return
+        const deviceId = getDeviceId()
+
+        // Even without an identity, run the attribute call so the SERVER can
+        // write the guest earning rows (deviceId keyed). The response `guestCoins`
+        // is what the "Sign up to claim X coins" CTA quotes.
+        if (!profileId) {
+          try {
+            const guestRes = await fetch('/api/profile/attribute', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ gameCode, resumeToken: token, deviceId: deviceId ?? undefined }),
+            })
+            const guestBody = (await guestRes.json().catch(() => null)) as
+              | { guestCoins?: { total: number; lines: unknown[] } }
+              | null
+            if (guestBody?.guestCoins) emitGuestCoinsPending(guestBody.guestCoins, gameCode)
+          } catch {
+            // silent
+          }
+          return
+        }
 
         const headers = await authHeaders()
         if (!headers || cancelled) return
@@ -58,15 +78,22 @@ export function useProfileAttribution({ gameCode, status, resumeToken }: Options
         const res = await fetch('/api/profile/attribute', {
           method: 'POST',
           headers,
-          body: JSON.stringify({ gameCode, resumeToken: token }),
+          body: JSON.stringify({ gameCode, resumeToken: token, deviceId: deviceId ?? undefined }),
         })
 
         // The award pass runs server-side inside this call and reports what it granted. Emit it
         // so the always-mounted prompt can celebrate without every game view knowing about
         // trophies. `earned` only ever lists trophies from THIS pass, so a replay is silent.
         if (cancelled) return
-        const body = (await res.json().catch(() => null)) as { earned?: unknown; gameType?: string } | null
+        const body = (await res.json().catch(() => null)) as
+          | {
+              earned?: unknown
+              gameType?: string
+              coins?: { total: number; lines: unknown[] }
+            }
+          | null
         if (Array.isArray(body?.earned)) emitTrophiesEarned(body.earned, body?.gameType)
+        if (body?.coins) emitCoinsAwarded(body.coins, gameCode, body?.gameType)
       } catch {
         // Offline, rate-limited, or the endpoint is unavailable. Nothing to tell the player.
       }

@@ -15,6 +15,7 @@ import { ListRow } from '@/components/ui/ListRow'
 import { SurfaceCard } from '@/components/ui/SurfaceCard'
 import { SettingsButton } from '@/components/ui/SettingsSheet'
 import { ProfileChip } from '@/components/profile/ProfileChip'
+import { CoinChip } from '@/components/coins/CoinChip'
 import { centeredContent } from '@/constants/layout'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
@@ -80,6 +81,7 @@ export default function HomeScreen() {
       >
         <View style={styles.topBar}>
           <SettingsButton variant="screen" />
+          <CoinChip />
           <ProfileChip />
         </View>
 
