@@ -504,7 +504,15 @@ function ConfirmDialog({
         {item.kind === 'streak_freeze' && (
           <p className="text-xs text-muted">One-shot. Consumed the next time you miss a daily challenge.</p>
         )}
-        {insufficient && <p className="text-red-500 text-sm">Not enough coins — {item.price - balance} more needed.</p>}
+        {insufficient && (
+          <p className="text-red-500 text-sm">
+            Not enough coins — {item.price - balance} more needed.{' '}
+            <Link href="/browse" className="underline hover:no-underline">
+              Play a game to earn more
+            </Link>
+            .
+          </p>
+        )}
         <div className="flex justify-end gap-2">
           <button type="button" onClick={onCancel} disabled={busy} className="fr-btn--nav">
             Cancel
