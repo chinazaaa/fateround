@@ -55,16 +55,27 @@ export function WelcomeGrantModal() {
   const openedAtRef = useRef<number | null>(null)
 
   useEffect(() => {
+    // Reset per profile: a shared browser can switch accounts, and a
+    // dangling `dismissed=true` from the previous profile must not
+    // suppress THIS profile's welcome screen. Also ignore a late response
+    // for the previous profile.
+    setPayload(null)
+    setDismissed(false)
+    openedAtRef.current = null
     if (!profile || profile.is_anonymous) return
+    let cancelled = false
     void (async () => {
       const headers = await authHeaders()
-      if (!headers) return
+      if (!headers || cancelled) return
       const res = await fetch('/api/profile/coins/welcome', { headers })
-      if (!res.ok) return
+      if (!res.ok || cancelled) return
       const body = (await res.json()) as Payload
-      setPayload(body)
+      if (!cancelled) setPayload(body)
     })()
-  }, [profile])
+    return () => {
+      cancelled = true
+    }
+  }, [profile?.id, profile?.is_anonymous])
 
   const kind: 'launch' | 'welcome' | null = useMemo(() => {
     if (!payload) return null
@@ -220,9 +231,7 @@ function WelcomeBreakdown({ payload }: { payload: Payload }) {
           <span className="tabular-nums font-black text-body">+{total.toLocaleString()}</span>
         </li>
       </ul>
-      <p className="text-xs text-muted">
-        Coins are for cosmetics and unlocks — never advantages inside a game.
-      </p>
+      <p className="text-xs text-muted">Coins are for cosmetics and unlocks — never advantages inside a game.</p>
     </>
   )
 }

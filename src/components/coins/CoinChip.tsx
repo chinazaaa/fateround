@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useProfile } from '@/hooks/useProfile'
 import { onCoinsAwarded } from '@/lib/coins/earn-events'
@@ -22,15 +22,35 @@ type Props = {
 export function CoinChip({ tone = 'site' }: Props) {
   const { profile, refresh } = useProfile()
   const [pulse, setPulse] = useState(false)
+  // The inner function returned by an `onCoinsAwarded` handler is DISCARDED
+  // (the emitter API takes no cleanup callback). A ref-tracked timeout is
+  // the only way to clear the previous pulse before starting the next one —
+  // and to clear on unmount so `setState` never fires after the chip is
+  // torn down (two credits within 1.2s + a fast route away → warning
+  // otherwise).
+  const pulseTimerRef = useRef<number | null>(null)
+  const mountedRef = useRef(true)
 
-  // Refetch the profile whenever a coin credit lands — the ticker feels alive.
   useEffect(() => {
-    return onCoinsAwarded(() => {
+    mountedRef.current = true
+    const off = onCoinsAwarded(() => {
+      if (!mountedRef.current) return
       setPulse(true)
       refresh()
-      const t = window.setTimeout(() => setPulse(false), 1200)
-      return () => window.clearTimeout(t)
+      if (pulseTimerRef.current != null) window.clearTimeout(pulseTimerRef.current)
+      pulseTimerRef.current = window.setTimeout(() => {
+        if (mountedRef.current) setPulse(false)
+        pulseTimerRef.current = null
+      }, 1200)
     })
+    return () => {
+      mountedRef.current = false
+      if (pulseTimerRef.current != null) {
+        window.clearTimeout(pulseTimerRef.current)
+        pulseTimerRef.current = null
+      }
+      off()
+    }
   }, [refresh])
 
   // Hide for guests and for callers with no session yet.

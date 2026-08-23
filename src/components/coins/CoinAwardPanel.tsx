@@ -29,6 +29,13 @@ export function CoinAwardPanel({ gameCode }: Props) {
   const [ctaSeen, setCtaSeen] = useState(false)
 
   useEffect(() => {
+    // Reset when the panel is re-scoped to a new game (play-again mid-tab,
+    // navigating between rooms). Without this the previous game's total
+    // stays on screen until a new matching event lands, and `ctaSeen` would
+    // suppress the impression event for the next guest CTA.
+    setCoins(null)
+    setGuestCoins(null)
+    setCtaSeen(false)
     const offCoins = onCoinsAwarded((payload, code) => {
       if (!gameCode || !code || code === gameCode) setCoins(payload)
     })
@@ -71,10 +78,7 @@ export function CoinAwardPanel({ gameCode }: Props) {
       {lines.length > 0 ? (
         <ul className="space-y-1 text-sm">
           {lines.map((line, i) => (
-            <li
-              key={`${line.reason}-${i}`}
-              className="flex items-center justify-between text-muted"
-            >
+            <li key={`${line.reason}-${i}`} className="flex items-center justify-between text-muted">
               <span>{line.label}</span>
               <span className="tabular-nums font-semibold text-body">
                 {line.credited > 0 ? `+${line.credited}` : line.requested > line.credited ? '—' : `+${line.requested}`}
@@ -85,25 +89,15 @@ export function CoinAwardPanel({ gameCode }: Props) {
       ) : (
         <p className="text-sm text-muted">Needs 2 human players to earn coins.</p>
       )}
-      {isGuest && anyCredit && (
-        <GuestSignupCta pendingAmount={shown.total} gameCode={gameCode} />
-      )}
+      {isGuest && anyCredit && <GuestSignupCta pendingAmount={shown.total} gameCode={gameCode} />}
     </div>
   )
 }
 
-function GuestSignupCta({
-  pendingAmount,
-  gameCode,
-}: {
-  pendingAmount: number
-  gameCode: string | null | undefined
-}) {
+function GuestSignupCta({ pendingAmount, gameCode }: { pendingAmount: number; gameCode: string | null | undefined }) {
   return (
     <div className="mt-2 flex items-center justify-between rounded-xl border border-[var(--primary)] bg-[color-mix(in_srgb,var(--primary)_8%,var(--surface))] px-3 py-2.5">
-      <p className="text-sm font-semibold text-body">
-        Sign up to claim {pendingAmount.toLocaleString()} coins
-      </p>
+      <p className="text-sm font-semibold text-body">Sign up to claim {pendingAmount.toLocaleString()} coins</p>
       <Link
         href="/profile?signup=1"
         prefetch={false}

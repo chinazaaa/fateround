@@ -1,11 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { useRouter } from 'expo-router'
-import {
-  onCoinsAwarded,
-  onGuestCoinsPending,
-  type CoinAwardWire,
-} from '@/lib/coins/earn-events'
+import { onCoinsAwarded, onGuestCoinsPending, type CoinAwardWire } from '@/lib/coins/earn-events'
+import { COIN_EVENTS, trackCoinEvent } from '@/lib/coins/analytics'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
 
@@ -24,8 +21,13 @@ export function CoinAwardPanel({ gameCode }: Props) {
   const router = useRouter()
   const [coins, setCoins] = useState<CoinAwardWire | null>(null)
   const [guest, setGuest] = useState<CoinAwardWire | null>(null)
+  const [ctaSeen, setCtaSeen] = useState(false)
 
   useEffect(() => {
+    // Reset on re-scope — see the web CoinAwardPanel comment.
+    setCoins(null)
+    setGuest(null)
+    setCtaSeen(false)
     const off1 = onCoinsAwarded((payload, code) => {
       if (!gameCode || !code || code === gameCode) setCoins(payload)
     })
@@ -40,6 +42,17 @@ export function CoinAwardPanel({ gameCode }: Props) {
 
   const shown = coins ?? guest
   const isGuest = !coins && Boolean(guest)
+
+  useEffect(() => {
+    if (isGuest && shown && !ctaSeen) {
+      trackCoinEvent(COIN_EVENTS.signupCoinCtaShown, {
+        pending_amount: shown.total,
+        game_id: gameCode ?? null,
+      })
+      setCtaSeen(true)
+    }
+  }, [isGuest, shown, ctaSeen, gameCode])
+
   if (!shown) return null
 
   const anyCredit = shown.total > 0
@@ -56,11 +69,7 @@ export function CoinAwardPanel({ gameCode }: Props) {
           <View key={`${line.reason}-${i}`} style={styles.row}>
             <Text style={styles.label}>{line.label}</Text>
             <Text style={styles.amount}>
-              {line.credited > 0
-                ? `+${line.credited}`
-                : line.requested > line.credited
-                ? '—'
-                : `+${line.requested}`}
+              {line.credited > 0 ? `+${line.credited}` : line.requested > line.credited ? '—' : `+${line.requested}`}
             </Text>
           </View>
         ))
@@ -70,7 +79,13 @@ export function CoinAwardPanel({ gameCode }: Props) {
       {isGuest && anyCredit && (
         <Pressable
           style={styles.cta}
-          onPress={() => router.push('/profile')}
+          onPress={() => {
+            trackCoinEvent(COIN_EVENTS.signupCoinCtaClicked, {
+              pending_amount: shown.total,
+              game_id: gameCode ?? null,
+            })
+            router.push('/profile')
+          }}
           accessibilityRole="button"
           accessibilityLabel={`Sign up to claim ${shown.total} coins`}
         >

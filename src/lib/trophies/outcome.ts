@@ -288,7 +288,17 @@ async function resolveCodewordsWinners(supabase: SupabaseClient, gameId: string)
       .from('codewords_player_roles')
       .select('player_id, team')
       .eq('game_id', gameId)
-    return (roles ?? []).filter((r) => r.team === winningTeam).map((r) => r.player_id as string)
+    const winners = (roles ?? []).filter((r) => r.team === winningTeam).map((r) => r.player_id as string)
+    // A definite `winningTeam` with an EMPTY winner set is not a resolved
+    // "nobody won" — it's the role rows missing (migration lag, case mismatch,
+    // historical enum). Callers treat [] as "resolved: no winner" and bump
+    // games_played for every player + no games_won for anyone + no win-coin
+    // credit. Return null instead so the whole pass withholds.
+    if (winners.length === 0) {
+      console.warn('[trophies/outcome] codewords: winner set but no matching roles', { gameId, winningTeam })
+      return null
+    }
+    return winners
   } catch {
     return null
   }

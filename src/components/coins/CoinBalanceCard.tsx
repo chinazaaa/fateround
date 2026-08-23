@@ -2,7 +2,6 @@
 
 import { useProfile } from '@/hooks/useProfile'
 import Link from 'next/link'
-import { trackEvent, GA_EVENTS } from '@/lib/analytics'
 
 /**
  * Prominent coin balance card at the top of the profile page (plan §"UI surfaces"
@@ -29,11 +28,12 @@ export function CoinBalanceCard({ onViewHistory }: { onViewHistory?: () => void 
       </div>
       <div className="flex flex-wrap gap-2">
         <Link
-          href="/profile?tab=coins"
-          onClick={() => {
-            onViewHistory?.()
-            trackEvent(GA_EVENTS.coinHistoryViewed, { entry_point: 'profile_card' })
-          }}
+          // ?entry=profile_card lets CoinHistoryTab attribute the view
+          // correctly; the tab is the single place that emits
+          // `coin_history_viewed`, so this Link no longer fires its own
+          // event (used to double-count clicks from the card).
+          href="/profile?tab=coins&entry=profile_card"
+          onClick={() => onViewHistory?.()}
           prefetch={false}
           className="fr-btn--nav"
         >

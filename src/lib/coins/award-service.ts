@@ -62,11 +62,21 @@ export function countUniqueHumans(
  * ONLY through the trophy claim-first pattern in the caller (`awarded_sessions`
  * gates the whole pass), so this function trusts that upstream lock.
  */
+/** ref_id we write for a first-mode bonus — encodes the game type so the
+ *  idempotency guard is a single-row check. Deliberately NOT the gameId:
+ *  the bonus is "your first game of Whot ever", not "your first bonus for
+ *  round ABC" — the latter would re-credit on every mode's first round. */
+export function firstModeBonusRefId(gameType: string): string {
+  return `first_mode:${gameType}`
+}
+
 export async function awardCoinsForFinishedGame(
   admin: SupabaseClient,
   input: {
     profileId: string
     gameId: string
+    /** Game type — needed to scope the first-mode idempotency check. */
+    gameType: string
     won: boolean
     seatedHumans: number
     uniqueHumans: number
@@ -75,7 +85,7 @@ export async function awardCoinsForFinishedGame(
     streakDays: number
   }
 ): Promise<CoinAwardResult> {
-  const { profileId, gameId, won, seatedHumans, uniqueHumans, isFirstTimeForMode, hostBounty } = input
+  const { profileId, gameId, gameType, won, seatedHumans, uniqueHumans, isFirstTimeForMode, hostBounty } = input
 
   const lines: CoinAwardLine[] = []
   let total = 0
@@ -105,14 +115,60 @@ export async function awardCoinsForFinishedGame(
     // dedicated reason enum for it). Room-size logic lives on the caller
     // side; the RPC still applies the anti-farm gate to the combined amount.
     const winAmount =
-      COIN_AMOUNTS.winBase +
-      (seatedHumans >= COIN_AMOUNTS.fullLobbyThreshold ? COIN_AMOUNTS.fullLobbyBonus : 0)
+      COIN_AMOUNTS.winBase + (seatedHumans >= COIN_AMOUNTS.fullLobbyThreshold ? COIN_AMOUNTS.fullLobbyBonus : 0)
     const label = seatedHumans >= COIN_AMOUNTS.fullLobbyThreshold ? 'Won (full lobby)' : 'Won'
     await call(COIN_REASONS.win, winAmount, label)
   }
 
   if (isFirstTimeForMode) {
-    await call(COIN_REASONS.firstModeBonus, COIN_AMOUNTS.firstModeBonus, 'First time on this mode')
+    // Per-MODE idempotency, not per-game. The `awarded_sessions` claim in
+    // the trophy pass gates per (profile, round) — it can't prevent a
+    // future round from re-triggering this branch when a prior partial
+    // failure left player_stats bumped but the bonus uncredited. Guard
+    // with a direct ledger check keyed on a per-mode ref_id.
+    const modeRefId = firstModeBonusRefId(gameType)
+    const { data: prior, error: priorErr } = await admin
+      .from('coin_ledger')
+      .select('id')
+      .eq('profile_id', profileId)
+      .eq('reason', COIN_REASONS.firstModeBonus)
+      .eq('ref_id', modeRefId)
+      .limit(1)
+      .maybeSingle()
+    if (priorErr) {
+      // Read failure — fail closed on the bonus to avoid a double-credit
+      // in the (unlikely) case the read is what's broken. A retry after the
+      // transient failure recovers the bonus.
+      lines.push({
+        reason: COIN_REASONS.firstModeBonus,
+        requested: COIN_AMOUNTS.firstModeBonus,
+        credited: 0,
+        label: 'First time on this mode',
+      })
+    } else if (!prior) {
+      // Bypass the shared `call()` above to override the ref_id.
+      let credited = 0
+      try {
+        const { data, error } = await admin.rpc('award_coins', {
+          p_profile_id: profileId,
+          p_delta: COIN_AMOUNTS.firstModeBonus,
+          p_reason: COIN_REASONS.firstModeBonus,
+          p_ref_id: modeRefId,
+          p_unique_humans: uniqueHumans,
+          p_exempt_from_floor: false,
+        })
+        if (!error) credited = Number(data) || 0
+      } catch {
+        credited = 0
+      }
+      lines.push({
+        reason: COIN_REASONS.firstModeBonus,
+        requested: COIN_AMOUNTS.firstModeBonus,
+        credited,
+        label: 'First time on this mode',
+      })
+      total += credited
+    }
   }
 
   if (hostBounty) {
@@ -254,6 +310,11 @@ export async function recordGuestPendingGrant(
 ): Promise<{ ok: boolean; delta: number }> {
   if (!input.deviceId || input.delta <= 0) return { ok: false, delta: 0 }
   try {
+    // Unique index `uq_guest_pending_grants_device_game_reason` on
+    // (device_id, game_id, reason) enforces idempotency — a double-fire
+    // from React StrictMode / a finish-screen refresh / a resume re-hit
+    // must not inflate the pending balance. Postgres error code 23505 is
+    // the unique-violation; every other error propagates as `ok:false`.
     const { error } = await admin.from('guest_pending_grants').insert({
       device_id: input.deviceId,
       session_id: input.sessionId,
@@ -261,7 +322,32 @@ export async function recordGuestPendingGrant(
       delta: input.delta,
       reason: input.reason,
     })
-    if (error) return { ok: false, delta: 0 }
+    if (error) {
+      if ((error as { code?: string }).code === '23505') {
+        // Already recorded this (device, game, reason) on a prior fire.
+        // Read the ORIGINAL row's delta so the CTA still quotes the correct
+        // pending amount for this game — returning 0 would render "Sign up
+        // to claim 0 coins" on a page refresh even though the coins are
+        // safely banked. Duplicate coin_ledger rows are still prevented.
+        // Match the (device_id, game_id, session_id, reason) unique key so
+        // play-again on the same code — which sets a new session_id — reads
+        // the CORRECT round's original row, not the previous round's.
+        let existingQuery = admin
+          .from('guest_pending_grants')
+          .select('delta')
+          .eq('device_id', input.deviceId)
+          .eq('game_id', input.gameId)
+          .eq('reason', input.reason)
+        existingQuery =
+          input.sessionId == null
+            ? existingQuery.is('session_id', null)
+            : existingQuery.eq('session_id', input.sessionId)
+        const { data: existing } = await existingQuery.maybeSingle()
+        const existingDelta = Number(existing?.delta) || 0
+        return { ok: true, delta: existingDelta }
+      }
+      return { ok: false, delta: 0 }
+    }
     return { ok: true, delta: input.delta }
   } catch {
     return { ok: false, delta: 0 }
@@ -311,23 +397,26 @@ export async function recordGuestFinishedGameGrants(
       lines.push({ reason, requested: amount, credited: 0, label })
       return
     }
-    const { ok } = await recordGuestPendingGrant(admin, {
+    const result = await recordGuestPendingGrant(admin, {
       deviceId: input.deviceId,
       sessionId: input.sessionId,
       gameId: input.gameId,
       reason,
       delta: credited,
     })
-    lines.push({ reason, requested: amount, credited: ok ? credited : 0, label })
-    if (ok) total += credited
+    // `result.delta` is the AUTHORITATIVE pending amount for this
+    // (device, game, reason) — the fresh insert on first fire, or the
+    // pre-existing row's value on a duplicate re-fire. The CTA quotes it
+    // so a page refresh doesn't render "Sign up to claim 0 coins".
+    const shown = result.ok ? result.delta : 0
+    lines.push({ reason, requested: amount, credited: shown, label })
+    total += shown
   }
 
   if (input.won) {
     const winAmount =
-      COIN_AMOUNTS.winBase +
-      (input.seatedHumans >= COIN_AMOUNTS.fullLobbyThreshold ? COIN_AMOUNTS.fullLobbyBonus : 0)
-    const label =
-      input.seatedHumans >= COIN_AMOUNTS.fullLobbyThreshold ? 'Won (full lobby)' : 'Won'
+      COIN_AMOUNTS.winBase + (input.seatedHumans >= COIN_AMOUNTS.fullLobbyThreshold ? COIN_AMOUNTS.fullLobbyBonus : 0)
+    const label = input.seatedHumans >= COIN_AMOUNTS.fullLobbyThreshold ? 'Won (full lobby)' : 'Won'
     await stage(COIN_REASONS.win, winAmount, label)
   }
 

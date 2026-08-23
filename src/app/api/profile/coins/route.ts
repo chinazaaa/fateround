@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { getProfileFromRequest } from '@/lib/identity-server'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
-import { reasonInFilter, type CoinHistoryFilter } from '@/lib/coins/reasons'
+import { reasonsInFilter, type CoinHistoryFilter } from '@/lib/coins/reasons'
 
 /**
  * The caller's own coin balance + a page of their ledger history.
@@ -42,29 +42,35 @@ export async function GET(req: NextRequest) {
     const filter = parseFilter(url.searchParams.get('filter'))
 
     const admin = getSupabaseAdmin()
+    const bucketReasons = reasonsInFilter(filter)
+
+    // Filter MUST run in the DB, not on the fetched page — a sparse filter
+    // ("show me my one refund among 500 rows") would otherwise return an
+    // empty page 1 and force the user to "Load more" six times before the
+    // refund appeared. `.in('reason', ...)` is the whole partition; the
+    // `.range()` slices AFTER that.
+    let ledgerQuery = admin
+      .from('coin_ledger')
+      .select('id, delta, balance_after, reason, ref_id, admin_category, admin_note, metadata, created_at')
+      .eq('profile_id', profileId)
+    if (bucketReasons) {
+      ledgerQuery = ledgerQuery.in('reason', bucketReasons as string[])
+    }
+    ledgerQuery = ledgerQuery.order('created_at', { ascending: false }).range(offset, offset + limit - 1)
 
     const [{ data: profile, error: profileErr }, { data: ledger, error: ledgerErr }] = await Promise.all([
       admin.from('profiles').select('id, handle, coins').eq('id', profileId).maybeSingle(),
-      admin
-        .from('coin_ledger')
-        .select('id, delta, balance_after, reason, ref_id, admin_category, admin_note, metadata, created_at')
-        .eq('profile_id', profileId)
-        .order('created_at', { ascending: false })
-        .range(offset, offset + limit - 1),
+      ledgerQuery,
     ])
 
-    if (profileErr) return NextResponse.json({ error: internalErrorMessage('profile/coins', profileErr) }, { status: 500 })
-    if (ledgerErr) return NextResponse.json({ error: internalErrorMessage('profile/coins', ledgerErr) }, { status: 500 })
-
-    // Apply the filter server-side against the reason bucket. Filter is on
-    // the RAW row, before pagination re-slicing: a "spent-only" view of a
-    // 200-row ledger should return every spent row, not just the ones that
-    // happened to fall in the current page.
-    const filtered = (ledger ?? []).filter((r) => reasonInFilter(r.reason as string, filter))
+    if (profileErr)
+      return NextResponse.json({ error: internalErrorMessage('profile/coins', profileErr) }, { status: 500 })
+    if (ledgerErr)
+      return NextResponse.json({ error: internalErrorMessage('profile/coins', ledgerErr) }, { status: 500 })
 
     return NextResponse.json({
       profile: profile ?? null,
-      ledger: filtered,
+      ledger: ledger ?? [],
       hasMore: (ledger ?? []).length === limit,
       filter,
       offset,

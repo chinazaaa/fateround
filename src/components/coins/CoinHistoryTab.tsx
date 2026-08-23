@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { authHeaders } from '@/lib/identity'
 import { COIN_HISTORY_FILTERS, COIN_REASON_LABEL, type CoinHistoryFilter } from '@/lib/coins/reasons'
 import { trackEvent, GA_EVENTS } from '@/lib/analytics'
@@ -47,44 +47,59 @@ export function CoinHistoryTab() {
   const [hasMore, setHasMore] = useState(false)
   const [loading, setLoading] = useState(false)
   const [signedOut, setSignedOut] = useState(false)
+  // Monotonic request id — a filter change or a fast double-tap on
+  // "Load more" can start a second request before the first returns; only
+  // the LATEST request may write to state, or a stale response could
+  // replace fresher data (or, for loadMore, re-append the same page).
+  const requestSeqRef = useRef(0)
 
-  const fetchPage = useCallback(
-    async (nextFilter: CoinHistoryFilter, nextOffset: number, append: boolean) => {
-      setLoading(true)
-      try {
-        const headers = await authHeaders()
-        if (!headers) {
-          setSignedOut(true)
-          setRows([])
-          return
-        }
-        const res = await fetch(
-          `/api/profile/coins?filter=${encodeURIComponent(nextFilter)}&offset=${nextOffset}&limit=${PAGE_SIZE}`,
-          { headers }
-        )
-        if (!res.ok) return
-        const json = (await res.json()) as {
-          profile?: { id: string } | null
-          ledger?: LedgerRow[]
-          hasMore?: boolean
-        }
-        if (!json.profile) {
-          setSignedOut(true)
-          setRows([])
-          return
-        }
-        setSignedOut(false)
-        setRows((prev) => (append ? [...prev, ...(json.ledger ?? [])] : json.ledger ?? []))
-        setHasMore(Boolean(json.hasMore))
-      } finally {
-        setLoading(false)
+  const fetchPage = useCallback(async (nextFilter: CoinHistoryFilter, nextOffset: number, append: boolean) => {
+    const mySeq = ++requestSeqRef.current
+    setLoading(true)
+    try {
+      const headers = await authHeaders()
+      if (mySeq !== requestSeqRef.current) return
+      if (!headers) {
+        setSignedOut(true)
+        setRows([])
+        return
       }
-    },
-    []
-  )
+      const res = await fetch(
+        `/api/profile/coins?filter=${encodeURIComponent(nextFilter)}&offset=${nextOffset}&limit=${PAGE_SIZE}`,
+        { headers }
+      )
+      if (mySeq !== requestSeqRef.current) return
+      if (!res.ok) return
+      const json = (await res.json()) as {
+        profile?: { id: string } | null
+        ledger?: LedgerRow[]
+        hasMore?: boolean
+      }
+      if (mySeq !== requestSeqRef.current) return
+      if (!json.profile) {
+        setSignedOut(true)
+        setRows([])
+        return
+      }
+      setSignedOut(false)
+      setRows((prev) => (append ? [...prev, ...(json.ledger ?? [])] : (json.ledger ?? [])))
+      setHasMore(Boolean(json.hasMore))
+    } finally {
+      if (mySeq === requestSeqRef.current) setLoading(false)
+    }
+  }, [])
 
   useEffect(() => {
-    trackEvent(GA_EVENTS.coinHistoryViewed, { entry_point: 'profile_card' })
+    // Single emitter for `coin_history_viewed` — the balance-card Link
+    // stopped firing its own event to avoid double-counting. Read the
+    // entry point from ?entry= (`profile_card` when arrived from the card,
+    // `deep_link` for a shared URL, `tab_bar` for direct in-page selection).
+    let entryPoint: 'profile_card' | 'chip_longpress' | 'deep_link' = 'deep_link'
+    if (typeof window !== 'undefined') {
+      const q = new URLSearchParams(window.location.search).get('entry')
+      if (q === 'profile_card' || q === 'chip_longpress') entryPoint = q
+    }
+    trackEvent(GA_EVENTS.coinHistoryViewed, { entry_point: entryPoint })
     void fetchPage('all', 0, false)
   }, [fetchPage])
 
@@ -113,9 +128,7 @@ export function CoinHistoryTab() {
             type="button"
             onClick={() => changeFilter(key)}
             className={
-              key === filter
-                ? 'fr-btn--nav bg-[var(--primary)] text-[var(--on-primary,white)]'
-                : 'fr-btn--nav'
+              key === filter ? 'fr-btn--nav bg-[var(--primary)] text-[var(--on-primary,white)]' : 'fr-btn--nav'
             }
           >
             {COIN_HISTORY_FILTERS[key]}

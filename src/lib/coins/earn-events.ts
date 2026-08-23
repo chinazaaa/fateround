@@ -75,14 +75,10 @@ export function emitGuestCoinsPending(payload: unknown, gameCode?: string): void
   }
 }
 
-export function onGuestCoinsPending(
-  handler: (guest: CoinAwardWire, gameCode?: string) => void
-): () => void {
+export function onGuestCoinsPending(handler: (guest: CoinAwardWire, gameCode?: string) => void): () => void {
   if (typeof window === 'undefined') return () => {}
   const listener = (event: Event) => {
-    const detail = (event as CustomEvent).detail as
-      | { guest?: CoinAwardWire; gameCode?: string }
-      | undefined
+    const detail = (event as CustomEvent).detail as { guest?: CoinAwardWire; gameCode?: string } | undefined
     if (detail?.guest) handler(detail.guest, detail.gameCode)
   }
   window.addEventListener(GUEST_COINS_EVENT, listener)

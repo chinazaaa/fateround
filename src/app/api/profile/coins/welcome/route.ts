@@ -28,7 +28,8 @@ export async function GET(req: NextRequest) {
       .in('reason', ['launch_grant_v1', 'welcome_v1', 'guest_migration'])
       .order('created_at', { ascending: true })
 
-    if (error) return NextResponse.json({ error: internalErrorMessage('profile/coins/welcome', error) }, { status: 500 })
+    if (error)
+      return NextResponse.json({ error: internalErrorMessage('profile/coins/welcome', error) }, { status: 500 })
 
     const launch = (data ?? []).find((r) => r.reason === 'launch_grant_v1') ?? null
     const welcome = (data ?? []).find((r) => r.reason === 'welcome_v1') ?? null

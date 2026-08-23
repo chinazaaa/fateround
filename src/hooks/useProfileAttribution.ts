@@ -62,9 +62,9 @@ export function useProfileAttribution({ gameCode, status, resumeToken }: Options
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ gameCode, resumeToken: token, deviceId: deviceId ?? undefined }),
             })
-            const guestBody = (await guestRes.json().catch(() => null)) as
-              | { guestCoins?: { total: number; lines: unknown[] } }
-              | null
+            const guestBody = (await guestRes.json().catch(() => null)) as {
+              guestCoins?: { total: number; lines: unknown[] }
+            } | null
             if (guestBody?.guestCoins) emitGuestCoinsPending(guestBody.guestCoins, gameCode)
           } catch {
             // silent
@@ -85,13 +85,11 @@ export function useProfileAttribution({ gameCode, status, resumeToken }: Options
         // so the always-mounted prompt can celebrate without every game view knowing about
         // trophies. `earned` only ever lists trophies from THIS pass, so a replay is silent.
         if (cancelled) return
-        const body = (await res.json().catch(() => null)) as
-          | {
-              earned?: unknown
-              gameType?: string
-              coins?: { total: number; lines: unknown[] }
-            }
-          | null
+        const body = (await res.json().catch(() => null)) as {
+          earned?: unknown
+          gameType?: string
+          coins?: { total: number; lines: unknown[] }
+        } | null
         if (Array.isArray(body?.earned)) emitTrophiesEarned(body.earned, body?.gameType)
         if (body?.coins) emitCoinsAwarded(body.coins, gameCode, body?.gameType)
       } catch {

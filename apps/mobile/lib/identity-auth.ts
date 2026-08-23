@@ -57,10 +57,10 @@ export async function requestEmailCode(email: string): Promise<RequestCodeResult
         const applied = updated.user?.email?.toLowerCase() === address && !updated.user?.new_email
         if (applied) {
           {
-      const { getDeviceId } = await import('@/lib/coins/device-id')
-      const deviceId = await getDeviceId()
-      await postWithSession('/api/profile/anon', deviceId ? { deviceId } : undefined)
-    }
+            const { getDeviceId } = await import('@/lib/coins/device-id')
+            const deviceId = await getDeviceId()
+            await postWithSession('/api/profile/anon', deviceId ? { deviceId } : undefined)
+          }
           return { ok: true, flow: 'upgrade', complete: true }
         }
         return { ok: true, flow: 'upgrade' }

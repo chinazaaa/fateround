@@ -37,7 +37,11 @@ export function FinishedWinnerHero({
 }: {
   /** Name of the first-place player. When absent, falls back to a neutral "Game over!". */
   winnerName?: string | null
-  game: Pick<Game, 'title' | 'game_type' | 'content_label'>
+  // `id` is optional on the pick so the ~50 existing callers that already
+  // pass `game={game}` (where Game.id IS the room code) get scoped events
+  // for free — no per-callsite change needed. Callers with a narrower
+  // game object can still pass `gameCode` explicitly.
+  game: Pick<Game, 'title' | 'game_type' | 'content_label'> & { id?: string }
   /** Overrides the game-label subtitle line (defaults to the game type's label). */
   subtitle?: ReactNode
   /** Optional stat strip; omit for games that don't have generic stats to show. */
@@ -95,10 +99,19 @@ export function FinishedWinnerHero({
 
       {/* Coin panel renders itself when the attribute call reports a credit.
           Kept inside the hero so every game's finished screen inherits it
-          without ~40 share-block components each wiring it up. */}
-      <div className="pt-2 text-left">
-        <CoinAwardPanel gameCode={gameCode ?? null} />
-      </div>
+          without ~40 share-block components each wiring it up. Only mounts
+          when a `gameCode` is supplied — an unscoped panel would react to
+          any coin event and could show credits from a different game in a
+          multi-game tab. Call sites that haven't been updated yet render
+          silently; when they pass `gameCode` the panel lights up. */}
+      {(() => {
+        const effectiveCode = gameCode ?? game.id ?? null
+        return effectiveCode ? (
+          <div className="pt-2 text-left">
+            <CoinAwardPanel gameCode={effectiveCode} />
+          </div>
+        ) : null
+      })()}
     </div>
   )
 }

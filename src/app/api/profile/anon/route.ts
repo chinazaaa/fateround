@@ -37,15 +37,15 @@ export async function POST(req: NextRequest) {
     // and must carry on playing normally.
     if (!identity) return NextResponse.json({ profileId: null }, { status: 200 })
 
-    // Body is optional — every legacy caller sends nothing.
+    // Body is optional — every legacy caller sends nothing. `content-length`
+    // is NOT reliable proof of a body (chunked transfers omit it, and RN's
+    // fetch sometimes doesn't set it) — always attempt the parse and let
+    // the safeParse fallback absorb an empty/malformed body.
     let deviceId: string | undefined
     try {
-      const contentLength = req.headers.get('content-length')
-      if (contentLength && Number(contentLength) > 0) {
-        const raw = await req.json().catch(() => null)
-        const parsed = bodySchema.safeParse(raw)
-        if (parsed.success) deviceId = parsed.data.deviceId
-      }
+      const raw = await req.json().catch(() => null)
+      const parsed = bodySchema.safeParse(raw)
+      if (parsed.success) deviceId = parsed.data.deviceId
     } catch {
       // Best-effort parse; fall through with no deviceId.
     }
@@ -78,22 +78,45 @@ export async function POST(req: NextRequest) {
     // guests"). Both RPCs are idempotent — safe to call every time.
     let welcomeGrant: number | null = null
     let migrationGrant: number | null = null
+    // supabase.rpc() does NOT throw for a Postgres error — it returns
+    // { data:null, error }. Silently discarding `error` would mean an RLS
+    // denial, a missing function after a bad deploy, or a PostgREST 5xx all
+    // read as "already granted" — and the player never gets their coins.
+    // Both RPCs are idempotent, so ensureServerIdentity() will retry on the
+    // next session hydration; logging the failure is what makes that recovery
+    // observable in server logs.
     if (!identity.isAnonymous) {
       try {
-        const { data: welcomeData } = await admin.rpc('grant_welcome', { p_profile_id: identity.profileId })
-        welcomeGrant = welcomeData == null ? null : Number(welcomeData)
-      } catch {
-        welcomeGrant = null
+        const { data: welcomeData, error: welcomeError } = await admin.rpc('grant_welcome', {
+          p_profile_id: identity.profileId,
+        })
+        if (welcomeError) {
+          console.error('[profile/anon] grant_welcome failed', {
+            profileId: identity.profileId,
+            error: welcomeError,
+          })
+        } else {
+          welcomeGrant = welcomeData == null ? null : Number(welcomeData)
+        }
+      } catch (err) {
+        console.error('[profile/anon] grant_welcome threw', { profileId: identity.profileId, err })
       }
       if (deviceId) {
         try {
-          const { data: migrateData } = await admin.rpc('migrate_guest_grants', {
+          const { data: migrateData, error: migrateError } = await admin.rpc('migrate_guest_grants', {
             p_profile_id: identity.profileId,
             p_device_id: deviceId,
           })
-          migrationGrant = migrateData == null ? null : Number(migrateData)
-        } catch {
-          migrationGrant = null
+          if (migrateError) {
+            console.error('[profile/anon] migrate_guest_grants failed', {
+              profileId: identity.profileId,
+              error: migrateError,
+            })
+          } else {
+            migrationGrant = migrateData == null ? null : Number(migrateData)
+          }
+        } catch (err) {
+          console.error('[profile/anon] migrate_guest_grants threw', { profileId: identity.profileId, err })
         }
       }
     }

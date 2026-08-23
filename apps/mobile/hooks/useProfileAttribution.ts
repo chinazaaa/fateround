@@ -80,9 +80,9 @@ export function useProfileAttribution({ gameCode, status, resumeToken }: Options
               body: JSON.stringify({ gameCode, resumeToken: token, deviceId: deviceId ?? undefined }),
             })
             if (guestRes.ok) {
-              const guestBody = (await guestRes.json().catch(() => null)) as
-                | { guestCoins?: { total: number; lines: unknown[] } }
-                | null
+              const guestBody = (await guestRes.json().catch(() => null)) as {
+                guestCoins?: { total: number; lines: unknown[] }
+              } | null
               if (guestBody?.guestCoins) emitGuestCoinsPending(guestBody.guestCoins, gameCode)
             }
           } catch {
@@ -110,9 +110,10 @@ export function useProfileAttribution({ gameCode, status, resumeToken }: Options
         if (!res.ok) {
           attemptedRef.current = null
         } else {
-          const body = (await res.json().catch(() => null)) as
-            | { coins?: { total: number; lines: unknown[] }; gameType?: string }
-            | null
+          const body = (await res.json().catch(() => null)) as {
+            coins?: { total: number; lines: unknown[] }
+            gameType?: string
+          } | null
           if (body?.coins) emitCoinsAwarded(body.coins, gameCode, body.gameType)
         }
       } catch {

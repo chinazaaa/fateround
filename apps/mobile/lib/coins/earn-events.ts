@@ -39,9 +39,7 @@ export function emitGuestCoinsPending(payload: unknown, gameCode?: string): void
   DeviceEventEmitter.emit(GUEST_EVENT, { guest: payload as CoinAwardWire, gameCode })
 }
 
-export function onGuestCoinsPending(
-  handler: (guest: CoinAwardWire, gameCode?: string) => void
-): () => void {
+export function onGuestCoinsPending(handler: (guest: CoinAwardWire, gameCode?: string) => void): () => void {
   const sub = DeviceEventEmitter.addListener(GUEST_EVENT, (detail) => {
     if (detail?.guest) handler(detail.guest as CoinAwardWire, detail.gameCode)
   })

@@ -221,7 +221,7 @@ export async function awardForFinishedGame(
     const gameType = game.game_type as GameType
     const { data: players } = await supabase
       .from('players')
-      .select('id, profile_id, spectator')
+      .select('id, profile_id, spectator, is_bot')
       .eq('game_id', sessionId)
     // The shed-your-hand card games flag a player who WENT OUT as a spectator, winner included.
     // Those players played; only a true watcher never did. `finish_order` is who actually
@@ -371,22 +371,26 @@ export async function awardForFinishedGame(
     // adjacent (guarded by the `awarded_sessions` claim above).
     let coins: CoinAwardResult | undefined
     try {
+      // CRITICAL: the anti-farm gate compares `unique_humans` to 2 and applies
+      // a 0.5× multiplier at exactly 2 humans (see award_coins RPC). Passing
+      // bot seats here as humans would let a solo player + two bots earn full
+      // rate — which is the entire farming vector the plan's floor exists to
+      // stop. Filter bots BEFORE counting; the fresh `is_bot` on the main
+      // players read above is the source.
+      const humanSeats = seated.filter((p) => !(p as { is_bot?: boolean | null }).is_bot)
+      const seatedHumans = humanSeats.length
       const uniqueHumans = countUniqueHumans(
-        seated.map((p) => ({ id: p.id as string, profile_id: (p as { profile_id?: string | null }).profile_id ?? null, is_bot: false }))
+        humanSeats.map((p) => ({
+          id: p.id as string,
+          profile_id: (p as { profile_id?: string | null }).profile_id ?? null,
+          is_bot: false,
+        }))
       )
-      // `seated` already excludes bots for the win check, but the coin path
-      // needs BOTH counts (`uniqueHumans` for the anti-farm gate; `seatedHumans`
-      // for the full-lobby bonus threshold). Read is_bot fresh so a mixed room
-      // gets the right seat count.
-      const { data: allPlayers } = await supabase
-        .from('players')
-        .select('is_bot')
-        .eq('game_id', sessionId)
-      const seatedHumans = (allPlayers ?? []).filter((p) => !p.is_bot).length
       const hostBounty = false // Deferred: needs round-count tracking. Wire in Phase 3 backlog.
       coins = await awardCoinsForFinishedGame(supabase, {
         profileId,
         gameId: sessionId,
+        gameType,
         won,
         seatedHumans,
         uniqueHumans,
@@ -430,10 +434,16 @@ export async function recordGuestFinishForDevice(
   try {
     const { data: game } = await supabase
       .from('games')
-      .select('id, game_type, status')
+      .select('id, game_type, status, finished_at')
       .eq('id', gameId)
       .maybeSingle()
     if (!game || game.status !== 'finished') return { lines: [], total: 0 }
+    // Play-again reuses the same `games` row and rewrites `finished_at`.
+    // Guest grants MUST be idempotent per round, not per game code, or the
+    // unique constraint would block round 2 or (worse, without one) a retry
+    // would silently double-credit round 1. `finished_at` separates rounds
+    // — same rule the trophy pass uses in `roundKey()`.
+    const roundSessionId = ((game as { finished_at?: string | null }).finished_at as string | null) ?? gameId
 
     const gameType = game.game_type as GameType
     const { data: players } = await supabase
@@ -441,13 +451,22 @@ export async function recordGuestFinishForDevice(
       .select('id, profile_id, is_bot, spectator')
       .eq('game_id', gameId)
 
-    const me = (players ?? []).find((p) => p.id === input.myPlayerId)
-    if (!me) return { lines: [], total: 0 }
+    // Match `awardForFinishedGame`'s participant rule so a shed-your-hand
+    // card game's winner (who is flagged spectator once they go out) still
+    // counts as a participant. Filtering only on `!p.spectator` would drop
+    // that player and — in a duo — take `seated.length` below the
+    // MIN_PLAYERS_FOR_A_WIN floor, marking a real win as `won=false`.
+    const finishersG = new Set(await resolveFinishers(supabase, gameId, gameType))
+    const isParticipant = (p: { id: string; spectator?: boolean | null }) => !p.spectator || finishersG.has(p.id)
 
-    const seated = (players ?? []).filter((p) => !p.spectator)
+    const me = (players ?? []).find((p) => p.id === input.myPlayerId)
+    if (!me || !isParticipant({ id: me.id as string, spectator: me.spectator })) {
+      return { lines: [], total: 0 }
+    }
+
+    const seated = (players ?? []).filter((p) => isParticipant({ id: p.id as string, spectator: p.spectator }))
     const winners = await resolveWinners(supabase, gameId, gameType)
-    const won =
-      seated.length >= MIN_PLAYERS_FOR_A_WIN && winners !== null && winners.includes(me.id as string)
+    const won = seated.length >= MIN_PLAYERS_FOR_A_WIN && winners !== null && winners.includes(me.id as string)
 
     const humans = seated.filter((p) => !p.is_bot)
     const seatedHumans = humans.length
@@ -465,7 +484,9 @@ export async function recordGuestFinishForDevice(
 
     return recordGuestFinishedGameGrants(supabase, {
       deviceId: input.deviceId,
-      sessionId: input.sessionId,
+      // Round-scoped, not caller-supplied — a client passing null here
+      // would reopen the play-again dup path.
+      sessionId: roundSessionId,
       gameId,
       won,
       seatedHumans,

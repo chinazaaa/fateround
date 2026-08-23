@@ -84,7 +84,44 @@ export function reasonInFilter(reason: string, filter: CoinHistoryFilter): boole
   if (filter === 'admin') return reason === 'admin_adjustment'
   if (filter === 'spent') return reason === 'shop_purchase'
   // 'earned' — anything that credited that isn't a refund/admin/spend.
-  return (
-    reason !== 'shop_purchase' && reason !== 'admin_adjustment' && reason !== 'refund'
-  )
+  return reason !== 'shop_purchase' && reason !== 'admin_adjustment' && reason !== 'refund'
+}
+
+/**
+ * The full reason enum in coin_ledger, mirrored from the CHECK constraint in
+ * `20261101120000_coins_foundation.sql`. Kept here so the "earned" bucket
+ * can be pushed into SQL as a positive `.in()` list — a negative filter would
+ * miss any reason added to the schema without being re-added here, but
+ * missing an EARNED credit from the "earned" bucket is a bug worth catching
+ * loudly; whereas missing it from a page is silent data loss.
+ */
+const ALL_REASONS = [
+  'win',
+  'daily_challenge',
+  'streak_multiplier',
+  'tournament_placement',
+  'host_bounty',
+  'first_mode_bonus',
+  'launch_grant_v1',
+  'welcome_v1',
+  'guest_migration',
+  'shop_purchase',
+  'refund',
+  'admin_adjustment',
+] as const
+
+/**
+ * The set of `reason` values that belong in a given filter bucket. Callers
+ * pass the returned list to a `.in('reason', reasons)` query so the filter
+ * runs in the DB, not in JS after the page slice — a sparse filter (one
+ * refund among 500 rows) must return that refund on page 1, not on page 7.
+ * `null` means "all reasons" — the caller must skip the `.in()` filter.
+ */
+export function reasonsInFilter(filter: CoinHistoryFilter): readonly string[] | null {
+  if (filter === 'all') return null
+  if (filter === 'refund') return ['refund']
+  if (filter === 'admin') return ['admin_adjustment']
+  if (filter === 'spent') return ['shop_purchase']
+  // 'earned'
+  return ALL_REASONS.filter((r) => r !== 'shop_purchase' && r !== 'admin_adjustment' && r !== 'refund')
 }

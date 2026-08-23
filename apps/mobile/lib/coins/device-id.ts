@@ -11,6 +11,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 const KEY = 'fateround_device_id'
 
 let cached: string | null = null
+// Memoized in-flight read/create so two concurrent first-launch callers can't
+// each read null, each generate a UUID, and each write — leaving the losing
+// UUID cached in memory while storage holds the winning one. Guest grants
+// would then split across the two ids and one set would never migrate at
+// signup.
+let inflight: Promise<string | null> | null = null
 
 function makeId(): string {
   const g = globalThis as { crypto?: { randomUUID?: () => string } }
@@ -21,17 +27,23 @@ function makeId(): string {
 
 export async function getDeviceId(): Promise<string | null> {
   if (cached) return cached
-  try {
-    const existing = await AsyncStorage.getItem(KEY)
-    if (existing) {
-      cached = existing
-      return existing
+  if (inflight) return inflight
+  inflight = (async () => {
+    try {
+      const existing = await AsyncStorage.getItem(KEY)
+      if (existing) {
+        cached = existing
+        return existing
+      }
+      const fresh = makeId()
+      await AsyncStorage.setItem(KEY, fresh)
+      cached = fresh
+      return fresh
+    } catch {
+      return null
+    } finally {
+      inflight = null
     }
-    const fresh = makeId()
-    await AsyncStorage.setItem(KEY, fresh)
-    cached = fresh
-    return fresh
-  } catch {
-    return null
-  }
+  })()
+  return inflight
 }

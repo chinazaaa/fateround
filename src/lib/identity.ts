@@ -71,9 +71,11 @@ async function ensureProfileRow(): Promise<EnsureProfileRowResult> {
       body: JSON.stringify(deviceId ? { deviceId } : {}),
     })
     if (!res.ok) return { welcomeGrant: null, migrationGrant: null, isAnonymous: null }
-    const data = (await res.json().catch(() => null)) as
-      | { welcomeGrant?: number | null; migrationGrant?: number | null; isAnonymous?: boolean }
-      | null
+    const data = (await res.json().catch(() => null)) as {
+      welcomeGrant?: number | null
+      migrationGrant?: number | null
+      isAnonymous?: boolean
+    } | null
     return {
       welcomeGrant: data?.welcomeGrant ?? null,
       migrationGrant: data?.migrationGrant ?? null,
