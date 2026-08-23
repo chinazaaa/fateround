@@ -467,6 +467,10 @@ function ShopTile({
 
       <TilePreview item={item} handle={handle} photoUrl={photoUrl} />
 
+      {tileHint(item.kind) && (
+        <p className="text-[11px] text-faint leading-snug">{tileHint(item.kind)}</p>
+      )}
+
       <div className="flex items-center justify-between">
         <span className="text-sm font-bold text-body">
           <span aria-hidden>🪙 </span>
@@ -498,6 +502,25 @@ function ShopTile({
 
 function isEquippable(kind: ShopKind): boolean {
   return kind === 'frame' || kind === 'name_color' || kind === 'animation' || kind === 'card_template'
+}
+
+/** Short one-line hint that tells the buyer WHERE the cosmetic shows up so
+ *  they know what they're getting. Not every kind needs one — themes /
+ *  editions are self-explanatory ("this is the board"), and streak_freeze /
+ *  library_pack are gameplay items, not visual reskins. */
+function tileHint(kind: ShopKind): string | null {
+  switch (kind) {
+    case 'frame':
+      return 'Shown around your avatar in every lobby, game, and leaderboard.'
+    case 'name_color':
+      return 'Colors your name wherever it appears to other players.'
+    case 'animation':
+      return 'Plays for everyone in the room when you win a round.'
+    case 'card_template':
+      return 'Styles the results card you share after a game ends.'
+    default:
+      return null
+  }
 }
 
 /** Resolve a shop item slug to a ThemeConfig for preview purposes. Themes
