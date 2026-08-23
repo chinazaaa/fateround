@@ -87,17 +87,23 @@ shipping yet.
 
 ### Anti-farming rules
 
-Coins are only awarded from rooms with **at least 3 unique human
-players**. This applies to every earning source (win, placement,
-first-mode bonus, host bounty). Rationale: without a floor, a single
-player can spin up a room, fill it with bots (or play alone), "win,"
-and farm coins indefinitely. A 3-human minimum keeps the loop tied to
-genuinely social play, which is also what makes the coins feel
-meaningful.
+**2-human minimum, with a 0.5× multiplier for 2-player rooms.** No
+coins in a room with fewer than 2 unique humans. In a room with
+exactly 2 humans, every earned amount is halved. Rooms with 3+
+humans earn at the normal rate. This applies to every earning source
+(win, placement, first-mode bonus, host bounty).
 
-Tournament coins are exempt from the 3-human floor (tournaments already
-have their own minimum bracket size). Daily challenges are exempt
-(inherently solo).
+Rationale: a hard 3-human floor would penalize real 2-player friend
+duos ("me and my sister"), which is a legitimate use case worth
+supporting. The 0.5× multiplier keeps that use case earning something
+while making farming with one alt account uneconomical vs playing with
+real humans — the alt-account operator would earn half rate and would
+need to sustain both accounts, which is worse than just playing with
+actual friends.
+
+Tournament coins are exempt from the floor and the multiplier —
+tournaments already have their own minimum bracket size. Daily
+challenges are exempt (inherently solo).
 
 ### Shop page (main-nav item)
 
@@ -610,10 +616,11 @@ Run these in parallel — none block each other, all block Phase 1.
   station icons, corner motifs).
 - Design brief for Christmas edition art (parked until closer to
   December).
-- Content-generation owner decided (see the "Content-generation
-  ownership" section) — who writes card flavor text and briefs art.
-- Anti-farming 3-human-floor confirmed with whoever owns fair-play
-  policy.
+- ✅ Content-generation owner decided: AI + founder polish across all
+  asset categories. See the "Content-generation ownership" section.
+- ✅ Anti-farming rule confirmed: 2-human minimum, 0.5× multiplier for
+  2-player rooms, normal rate at 3+. See the "Anti-farming rules"
+  section.
 
 ### Phase 1 — Foundation (nothing player-visible yet)
 
@@ -753,21 +760,31 @@ Small but worth teeing up now, not later:
   purchases yet). Required for Phase 6 (coin packs) — flag as a
   dependency then.
 
-## Content-generation ownership (TBD)
+## Content-generation ownership
 
-Every edition needs property names, card flavor text, corner labels,
-and art. The America and Christmas edition docs cover copy in full;
-someone still needs to own the art briefs (card back, board palette,
-corner motifs, station icons). Options:
+**AI-generated art with founder polish, across every asset category.**
+Card flavor text, property names, and copy already live in the
+edition docs; art (frames, name colors, winner animations, card
+templates, game themes, edition boards) is generated with AI tools
+and finished by hand.
 
-- **In-house designer** on staff — fastest cycle
-- **Freelance illustrator per edition** — clean scoping, ~$500–1500
-  per edition depending on style
-- **AI-generated art with human polish** — cheapest, works well for
-  patterns and card backs, less good for characters
+Implication for scope:
 
-Whichever path, decide before Phase 4. The engine is ready without art;
-the art is the thing that makes the shop tile clickable.
+- Editions (USA, Christmas) work at this quality bar because their
+  visual identity is mostly board layout, patterns, and iconography —
+  AI handles those cleanly. Avoid figurative characters where AI
+  results are weakest (e.g. do not put a hand-drawn Santa on the
+  Christmas edition; use motif art — snowflakes, sleigh silhouettes,
+  ornament patterns — instead).
+- Winner animations sourced from Lottie library first; only commission
+  the gold-shower signature if a suitable free one doesn't exist.
+- Cost profile: ~$0–20/month in AI credits, no per-edition freelance
+  spend. Freed budget can go to a freelance illustrator later if the
+  shop demands it (e.g. a licensed brand edition — not on the current
+  roadmap).
+
+Founder owns polish and final QA against the per-asset acceptance
+checklist in `docs/coins-art-briefs.md`.
 
 ## Ship checklist
 
