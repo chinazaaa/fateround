@@ -344,10 +344,10 @@ begin
     end if;
 
     insert into coin_ledger
-      (profile_id, delta, balance_after, reason, ref_id, admin_note)
+      (profile_id, delta, balance_after, reason, ref_id, metadata)
     values
       (p_profile_id, v_grant, v_new_balance, 'launch_grant_v1',
-       'launch_grant_v1', v_itemization::text);
+       'launch_grant_v1', v_itemization);
   exception when unique_violation then
     -- Already granted. The subtransaction is rolled back automatically —
     -- the +v_grant update above is reverted along with the failed insert.
@@ -380,13 +380,15 @@ security definer
 set search_path = public
 as $$
 declare
-  v_cap         constant bigint := 500;
+  v_total_cap   constant bigint := 500;
   v_window      constant interval := interval '7 days';
   v_raw         bigint;
   v_granted     bigint;
   v_new_balance bigint;
   v_itemization jsonb;
   v_ids         uuid[];
+  v_prev_total  bigint;
+  v_remaining   bigint;
 begin
   if p_device_id is null or length(trim(p_device_id)) = 0 then
     return 0;
@@ -425,10 +427,34 @@ begin
     ) t;
 
   if v_raw is null or v_raw <= 0 then
+    -- Nothing to credit, but sweep the snapshotted rows so they don't
+    -- linger (they were selected under FOR UPDATE — the lock is ours).
+    delete from guest_pending_grants where id = any(v_ids);
     return 0;
   end if;
 
-  v_granted := least(v_raw, v_cap);
+  -- Cap the TOTAL coins a profile can receive from guest migrations
+  -- (across every device that ever earned as a guest for them) at
+  -- v_total_cap. Sum prior guest_migration ledger rows for this
+  -- profile; the remaining headroom is what this device's migration
+  -- can add. Prevents the multi-device workaround from silently
+  -- multiplying the 500-cap intent.
+  select coalesce(sum(delta), 0)::bigint into v_prev_total
+    from coin_ledger
+   where profile_id = p_profile_id
+     and reason = 'guest_migration';
+
+  v_remaining := greatest(0, v_total_cap - v_prev_total);
+  v_granted   := least(v_raw, v_remaining);
+
+  -- Cap already fully spent by earlier migrations. Skip the ledger row
+  -- (CHECK delta<>0 forbids a zero-delta record) but still consume the
+  -- pending rows below so they don't linger. This is a plan-sanctioned
+  -- outcome — the 500-coin cap is meant to silently absorb excess.
+  if v_granted <= 0 then
+    delete from guest_pending_grants where id = any(v_ids);
+    return 0;
+  end if;
 
   begin
     update profiles set coins = coins + v_granted
@@ -440,18 +466,24 @@ begin
     end if;
 
     insert into coin_ledger
-      (profile_id, delta, balance_after, reason, ref_id, admin_note)
+      (profile_id, delta, balance_after, reason, ref_id, metadata)
     values
       (p_profile_id, v_granted, v_new_balance, 'guest_migration',
        p_device_id,
-       jsonb_build_object('raw_total', v_raw, 'capped_at', v_cap,
-                          'granted', v_granted,
-                          'per_reason', coalesce(v_itemization, '{}'::jsonb))::text);
+       jsonb_build_object(
+         'device_id',   p_device_id,
+         'raw_total',   v_raw,
+         'total_cap',   v_total_cap,
+         'prev_total',  v_prev_total,
+         'granted',     v_granted,
+         'per_reason',  coalesce(v_itemization, '{}'::jsonb)
+       ));
   exception when unique_violation then
-    -- Already migrated once for this profile. The subtransaction is
-    -- rolled back automatically, so the +v_granted update above is
-    -- reverted; leave the pending rows in place — the earlier migration
-    -- already consumed them.
+    -- Already migrated for this (profile, device). The subtransaction
+    -- is rolled back automatically, so the +v_granted update above is
+    -- reverted; sweep the snapshotted pending rows so they don't hang
+    -- around and mislead a later manual audit.
+    delete from guest_pending_grants where id = any(v_ids);
     return 0;
   end;
 

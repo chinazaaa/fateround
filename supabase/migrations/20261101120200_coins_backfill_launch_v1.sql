@@ -70,7 +70,7 @@ applied as (
     s.trophies, s.dailies, s.tournaments, s.games_finished
 )
 insert into coin_ledger
-  (profile_id, delta, balance_after, reason, ref_id, admin_note)
+  (profile_id, delta, balance_after, reason, ref_id, metadata)
 select
   a.profile_id,
   a.grant_coins,
@@ -85,5 +85,5 @@ select
     'welcome_flat', 100,
     'granted', a.grant_coins,
     'capped_at', 2000
-  )::text
+  )
 from applied a;

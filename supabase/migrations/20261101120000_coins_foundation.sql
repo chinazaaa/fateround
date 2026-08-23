@@ -52,11 +52,18 @@ create table if not exists coin_ledger (
   )),
   ref_id          text,
   admin_id        text,        -- email of the admin, when reason = admin_adjustment
-  admin_note      text,
+  admin_note      text,        -- HUMAN-authored prose from an admin adjustment
   admin_category  text check (admin_category in (
     'bug_reimbursement', 'support_goodwill', 'promotion',
     'correction', 'other'
   )),
+  -- MACHINE-authored structured detail for a row (per-reason itemization,
+  -- migration provenance, refund pointers, …). Deliberately separate from
+  -- admin_note so the Coin History UI can render admin_note as prose and
+  -- render this bag as a details expander — keeps automated grants from
+  -- flashing raw JSON at players. Nullable; jsonb so shape can vary per
+  -- reason without a schema change.
+  metadata        jsonb,
   created_at      timestamptz not null default now()
 );
 
@@ -65,11 +72,24 @@ create index if not exists idx_coin_ledger_profile
 create index if not exists idx_coin_ledger_reason
   on coin_ledger (reason, created_at desc);
 
--- One-shot grants are enforced at the DB, not in code — a re-run of the
--- backfill or a double-fire welcome path can't double-credit.
+-- One-shot per-profile grants (launch_grant_v1 and the welcome bonus) are
+-- enforced at the DB so a re-run of the backfill or a double-fire welcome
+-- path can't double-credit.
 create unique index if not exists uq_coin_ledger_one_shot_grant
   on coin_ledger (profile_id, reason)
-  where reason in ('launch_grant_v1', 'welcome_v1', 'guest_migration');
+  where reason in ('launch_grant_v1', 'welcome_v1');
+
+-- guest_migration is one-shot PER DEVICE rather than per profile: a player
+-- who earned as a guest on Device A, signed up on A, then later signed in
+-- on Device B needs Device B's pending grants credited too. A per-profile
+-- unique here would swallow that second migration silently — the reason
+-- this constraint is scoped to (profile_id, ref_id). Total coins the
+-- profile can pull in from any number of guest migrations is capped at
+-- 500 inside migrate_guest_grants(), so the anti-abuse posture is still
+-- what the plan §"Anti-abuse" specifies.
+create unique index if not exists uq_coin_ledger_guest_migration_device
+  on coin_ledger (profile_id, ref_id)
+  where reason = 'guest_migration';
 
 alter table coin_ledger enable row level security;
 -- Players read their own history; nothing else. Writes are service-role only
