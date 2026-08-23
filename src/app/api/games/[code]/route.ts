@@ -12,6 +12,7 @@ import {
   editionEntitlementError,
 } from '@/lib/coins/editions'
 import { parseJsonBody } from '@/lib/parse-body'
+import { getProfileFromRequest } from '@/lib/identity-server'
 import { HOST_GAME_SELECT } from '@/lib/supabase-selects'
 import {
   parseGameType,
@@ -185,7 +186,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
       // newly-seeded edition slug without its theme-map entry also rejects
       // rather than silently downgrading theme to 'default'.
       const editionFromTheme = rawTheme !== undefined ? MONOPOLY_THEME_TO_EDITION[parseThemeId(rawTheme)] : undefined
-      const editionExplicit = typeof rawEditionSlug === 'string' && rawEditionSlug.length > 0 ? rawEditionSlug : undefined
+      const editionExplicit =
+        typeof rawEditionSlug === 'string' && rawEditionSlug.length > 0 ? rawEditionSlug : undefined
       const targetEdition = editionExplicit ?? editionFromTheme
       if (rawTheme !== undefined && !editionFromTheme) {
         return NextResponse.json({ error: 'Theme not valid for Monopoly' }, { status: 400 })
@@ -197,8 +199,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
       if (!mappedTheme) {
         return NextResponse.json({ error: 'Unknown edition' }, { status: 400 })
       }
-      const profileId =
-        (auth.game as { host_user_id?: string | null } | null)?.host_user_id ?? null
+      // Prefer the caller's live bearer-token identity over the stored
+      // host_user_id. A pre-signup game has host_user_id = null; if that
+      // host later signs in and buys USA, the picker shows it (from the
+      // authenticated shop catalog), so PATCH must accept it too. Fall
+      // back to the stored id when the caller isn't authenticated —
+      // legitimate for a free-edition PATCH from an anonymous host.
+      const bearerProfileId = await getProfileFromRequest(req)
+      const storedProfileId = (auth.game as { host_user_id?: string | null } | null)?.host_user_id ?? null
+      const profileId = bearerProfileId ?? storedProfileId
       const entitlement = await checkMonopolyEditionEntitlement(getSupabaseAdmin(), profileId, targetEdition)
       if (!entitlement.ok) {
         const { status, error } = editionEntitlementError(entitlement.reason)

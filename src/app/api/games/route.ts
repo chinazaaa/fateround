@@ -558,8 +558,7 @@ export async function POST(req: NextRequest) {
   // through unconditionally.
   let edition_slug: string | null = null
   if (game_type === 'monopoly') {
-    const explicitSlug =
-      typeof rawEditionSlug === 'string' && rawEditionSlug.length > 0 ? rawEditionSlug : null
+    const explicitSlug = typeof rawEditionSlug === 'string' && rawEditionSlug.length > 0 ? rawEditionSlug : null
     const themeSlug = MONOPOLY_THEME_TO_EDITION[theme] ?? null
     // Edition explicit pick wins; else derive from theme; else default to
     // london. Unknown-theme POST on Monopoly (theme:'dark') falls back to

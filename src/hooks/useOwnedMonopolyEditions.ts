@@ -4,10 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { authHeaders } from '@/lib/identity'
 import { useProfile } from '@/hooks/useProfile'
 import { onCoinsAwarded } from '@/lib/coins/earn-events'
-import {
-  FREE_MONOPOLY_EDITION_SLUGS,
-  MONOPOLY_THEME_TO_EDITION,
-} from '@/lib/coins/editions'
+import { FREE_MONOPOLY_EDITION_SLUGS, MONOPOLY_THEME_TO_EDITION } from '@/lib/coins/editions'
 
 // Re-export for existing callers that already reach into this hook module.
 // The canonical maps live in src/lib/coins/editions.ts (single source of
@@ -121,10 +118,47 @@ export function useOwnedMonopolyEditions(): {
     // mounted consumers on the same (profileId, refreshTick) tuple.
   }, [profileId, refreshTick])
 
-  // Any purchase in this browser (including in another tab, thanks to the
-  // shared window CustomEvent bus) invalidates the cache. Same signal the
-  // top-right CoinChip listens to.
+  // Same-tab invalidation from the shared coins-awarded bus. A purchase in
+  // the shop rides this event, so the picker light-up is immediate on
+  // whichever tab did the buying.
   useEffect(() => onCoinsAwarded(() => refresh()), [refresh])
+
+  // Cross-tab invalidation: onCoinsAwarded is a window CustomEvent and does
+  // not cross document boundaries, so a purchase in tab A leaves tab B's
+  // picker stale. BroadcastChannel where available (all evergreen browsers)
+  // with a localStorage `storage`-event fallback for the last holdouts
+  // (older Safari webviews) — the shared coins bus doesn't do this yet, so
+  // we own the cross-tab hop here rather than modify the shared bus.
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const CHANNEL = 'fateround-coins-cross-tab'
+    let bc: BroadcastChannel | null = null
+    if (typeof BroadcastChannel !== 'undefined') {
+      bc = new BroadcastChannel(CHANNEL)
+      bc.onmessage = () => refresh()
+    }
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === CHANNEL) refresh()
+    }
+    window.addEventListener('storage', onStorage)
+    // Fan the local coins-awarded event out to other tabs so this same
+    // handler picks it up over there. Guarded so we don't rebroadcast a
+    // message that arrived from another tab (that would loop).
+    const stopLocal = onCoinsAwarded(() => {
+      try {
+        bc?.postMessage(Date.now())
+        localStorage.setItem(CHANNEL, String(Date.now()))
+      } catch {
+        // Private-mode storage / disabled BroadcastChannel — the same-tab
+        // refresh above already ran, so the local tab still updates.
+      }
+    })
+    return () => {
+      bc?.close()
+      window.removeEventListener('storage', onStorage)
+      stopLocal()
+    }
+  }, [refresh])
 
   return { available, loading, refresh }
 }

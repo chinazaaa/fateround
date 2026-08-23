@@ -26,12 +26,7 @@ export const MONOPOLY_EDITION_TO_THEME: Record<string, ThemeId> = {
 }
 
 /** Free-forever grandfathered editions (price 0 in `game_editions`). */
-export const FREE_MONOPOLY_EDITION_SLUGS: ReadonlySet<string> = new Set([
-  'london',
-  'naija',
-  'pirate',
-  'arctic',
-])
+export const FREE_MONOPOLY_EDITION_SLUGS: ReadonlySet<string> = new Set(['london', 'naija', 'pirate', 'arctic'])
 
 /**
  * Server-authoritative entitlement checks for `game_editions` selection.

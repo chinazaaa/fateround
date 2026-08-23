@@ -8,6 +8,7 @@ import { ThemePreviewCard, ThemePreviewModal } from '@/components/ThemePreviewMo
 import { HostLobbySettingBlock } from '@/components/host-lobby/HostLobbySettingBlock'
 import { useToast } from '@/components/ui/Toast'
 import { isMonopolyEditionAvailable, useOwnedMonopolyEditions } from '@/hooks/useOwnedMonopolyEditions'
+import { authHeaders } from '@/lib/identity'
 
 type Props = {
   gameCode: string
@@ -46,8 +47,7 @@ export function HostThemePicker({ gameCode, hostToken, game, onGameUpdate }: Pro
       )
     }
     return THEMES.filter(
-      (theme) =>
-        theme.id !== 'pirate' && theme.id !== 'arctic' && theme.id !== 'naija' && theme.id !== 'america'
+      (theme) => theme.id !== 'pirate' && theme.id !== 'arctic' && theme.id !== 'naija' && theme.id !== 'america'
     )
   }, [isMonopoly, ownedEditions, currentTheme])
 
@@ -55,9 +55,15 @@ export function HostThemePicker({ gameCode, hostToken, game, onGameUpdate }: Pro
     if (saving || themeId === currentTheme) return
     setSaving(themeId)
     try {
+      // Send the bearer token alongside hostToken so the server can identify
+      // the signed-in profile for the paid-edition entitlement check. Games
+      // created before sign-in have host_user_id = null, and without a
+      // bearer the server would 401 a legitimate USA pick just because the
+      // stored row still points at nobody.
+      const headers = { 'Content-Type': 'application/json', ...(await authHeaders()) }
       const res = await fetch(`/api/games/${gameCode}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ hostToken, theme: themeId }),
       })
       const data = await res.json()

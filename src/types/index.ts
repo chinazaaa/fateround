@@ -270,17 +270,11 @@ export interface CodewordsMessage {
   created_at: string
   player_name?: string
 }
-export type ThemeId =
-  | 'default'
-  | 'dark'
-  | 'neon'
-  | 'retro'
-  | 'elegant'
-  | 'tropical'
-  | 'pirate'
-  | 'arctic'
-  | 'naija'
-  | 'grass_court'
+// Re-export the canonical union from @/lib/themes rather than duplicating it.
+// The old shadow definition here missed 'america' when Phase 4 added it, so
+// consumers importing `ThemeId` from '@/types' rejected the paid edition even
+// though the rest of the app accepts it. Import once, source of truth = one.
+export type { ThemeId } from '@/lib/themes'
 export type WyrChoice = 'a' | 'b'
 
 export type ParticipantGender = 'male' | 'female'
