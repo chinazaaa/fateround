@@ -344,6 +344,7 @@ export function ShopClient() {
                   ? () => setPreviewItem(item)
                   : undefined
               }
+              stackedOwnedCount={item.kind === 'streak_freeze' ? (catalog?.profile?.streak_freezes ?? 0) : null}
               handle={profile?.handle ?? 'Player'}
               photoUrl={profile?.avatar_url ?? null}
             />
@@ -406,6 +407,7 @@ function ShopTile({
   equipped,
   onClick,
   onPreview,
+  stackedOwnedCount,
   handle,
   photoUrl,
 }: {
@@ -416,6 +418,11 @@ function ShopTile({
    *  the tile shows a "Preview" button that opens PreviewModal instead of
    *  the buy/equip flow. */
   onPreview?: () => void
+  /** Set for stackable consumables (streak_freeze) so the tile can render
+   *  the current owned count — a one-shot doesn't have an equipped state
+   *  to signal "you have this", so this is the only place a buyer sees
+   *  their stockpile before it's spent. `null` means "not stackable". */
+  stackedOwnedCount?: number | null
   handle: string
   photoUrl: string | null
 }) {
@@ -457,10 +464,19 @@ function ShopTile({
               Seasonal
             </span>
           )}
-          {owned && (
+          {typeof stackedOwnedCount === 'number' && stackedOwnedCount > 0 ? (
+            // Stackable consumable — show the current count instead of an
+            // "Owned" pill (which reads as "you have this, hide the buy CTA"
+            // and would confuse re-buying another freeze).
             <span className="rounded-full border border-[var(--border)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted">
-              {equipped ? 'Equipped' : 'Owned'}
+              You own {stackedOwnedCount}
             </span>
+          ) : (
+            owned && (
+              <span className="rounded-full border border-[var(--border)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted">
+                {equipped ? 'Equipped' : 'Owned'}
+              </span>
+            )
           )}
         </div>
       </div>
@@ -518,6 +534,8 @@ function tileHint(kind: ShopKind): string | null {
       return 'Plays for everyone in the room when you win a round.'
     case 'card_template':
       return 'Styles the results card you share after a game ends.'
+    case 'streak_freeze':
+      return 'Automatically covers a missed day so your streak stays alive — nothing to activate.'
     default:
       return null
   }
