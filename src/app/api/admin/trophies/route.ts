@@ -184,24 +184,57 @@ export async function PUT(req: NextRequest) {
 
     if (!missing.length) return NextResponse.json({ seeded: 0, skipped: full.length })
 
-    const { error } = await supabase.from('trophies').insert(
-      missing.map((t) => ({
-        id: t.id,
-        is_system: systemIds.has(t.id),
-        game_type: t.game_type,
-        tier: t.tier,
-        title: t.title,
-        description: t.description,
-        criteria: t.criteria,
-        points: t.points,
-        hidden: t.hidden,
-        sort_order: t.sort_order,
-        is_active: true,
-      }))
-    )
-    if (error) return NextResponse.json({ error: internalErrorMessage('admin/trophies', error) }, { status: 500 })
+    const rows = missing.map((t) => ({
+      id: t.id,
+      is_system: systemIds.has(t.id),
+      game_type: t.game_type,
+      tier: t.tier,
+      title: t.title,
+      description: t.description,
+      criteria: t.criteria,
+      points: t.points,
+      hidden: t.hidden,
+      sort_order: t.sort_order,
+      is_active: true,
+    }))
 
-    return NextResponse.json({ seeded: missing.length, skipped: full.length - missing.length })
+    // Bulk insert first — the common path when the batch is clean.
+    const bulk = await supabase.from('trophies').insert(rows)
+    if (!bulk.error) {
+      return NextResponse.json({ seeded: missing.length, skipped: full.length - missing.length })
+    }
+
+    // Bulk failed: retry one-by-one so a single bad row can't sink the batch,
+    // and so the response can name what actually broke instead of "Something
+    // went wrong". Duplicate-key errors (from a concurrent reseed) count as
+    // already-there and are skipped without failing.
+    console.error('[admin/trophies] bulk seed failed, falling back to per-row', bulk.error)
+    let seeded = 0
+    const failures: { id: string; message: string; code?: string }[] = []
+    for (const row of rows) {
+      const { error: rowErr } = await supabase.from('trophies').insert(row)
+      if (!rowErr) {
+        seeded++
+        continue
+      }
+      if (rowErr.code === '23505') continue // already there
+      failures.push({ id: row.id, message: rowErr.message, code: rowErr.code })
+    }
+
+    if (failures.length) {
+      console.error('[admin/trophies] per-row failures', failures)
+      const preview = failures.slice(0, 3).map((f) => `${f.id}: ${f.message}`).join('; ')
+      return NextResponse.json(
+        {
+          error: `Seeded ${seeded}. ${failures.length} failed — ${preview}${failures.length > 3 ? '…' : ''}`,
+          seeded,
+          failures,
+        },
+        { status: 500 }
+      )
+    }
+
+    return NextResponse.json({ seeded, skipped: full.length - seeded })
   } catch (err) {
     return NextResponse.json({ error: internalErrorMessage('admin/trophies', err) }, { status: 500 })
   }
