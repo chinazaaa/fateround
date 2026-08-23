@@ -71,7 +71,7 @@ export async function GET(req: NextRequest) {
     // Embed active-collection membership so the create picker can offer a client-side collection
     // chip filter without extra round-trips. RLS limits the join/collections to active rows.
     .select(
-      'id, title, game_type, author_name, description, question_count, approved_at, tags, question_pack_collections(content_collections(slug, name))',
+      'id, title, game_type, author_name, description, question_count, approved_at, tags, price_coins, question_pack_collections(content_collections(slug, name))',
       { count: 'exact' }
     )
     .eq('status', 'approved')

@@ -8,6 +8,8 @@ import { fetchGamePlayerLimits, lobbyMaxPlayersFromGame } from '@/lib/game-limit
 import { firstAvailableMonopolyToken } from '@/lib/monopoly-tokens'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { gameSupportsBots } from '@/lib/bots-in-room'
+import { getProfileFromRequest } from '@/lib/identity-server'
+import { EXTRA_BOT_COST } from '@/lib/coins/shop-catalog'
 
 /**
  * Bots-in-room — add/remove a bot seat in an existing game lobby.
@@ -31,7 +33,17 @@ import { gameSupportsBots } from '@/lib/bots-in-room'
  * actually take its turns.
  */
 
-const addSchema = z.object({ hostToken: z.string().min(1) })
+const addSchema = z.object({
+  hostToken: z.string().min(1),
+  /**
+   * Coin cost the client expected to pay. 0 for the free first bot, 50 for
+   * every subsequent bot. If the client's view of the bot count disagrees
+   * with the server's (someone else in another tab just added one), the
+   * server rejects with 409 so the client re-renders the button at the
+   * right price rather than silently over/under-charging.
+   */
+  expectedPriceCoins: z.number().int().nonnegative().max(EXTRA_BOT_COST).optional(),
+})
 
 // The next available "Bot N" name that isn't already taken in this game.
 // Kept dead simple — no anthropomorphic names, no cute puns. The 🤖 avatar
@@ -101,6 +113,26 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   // to null — the engine tolerates it and the UI falls back to an ordinal glyph.
   const monopolyToken = parseGameType(game.game_type) === 'monopoly' ? firstAvailableMonopolyToken(seated ?? []) : null
 
+  // Phase 3 coin gate: first bot in the room is free; every subsequent bot
+  // costs EXTRA_BOT_COST coins per bot per room (plan §"Inline (contextual)"
+  // and §"Decisions" #6). Consumable — no owned-row; ref_id points at the
+  // added-bot player uuid so the ledger row is 1:1 with the insertion and
+  // the shop_purchase durable-uniqueness index (which requires a durable
+  // <kind>:<slug> prefix) does NOT match. Re-purchasable per room by design.
+  const needsPayment = currentBots >= 1
+  const price = needsPayment ? EXTRA_BOT_COST : 0
+  if ((body.expectedPriceCoins ?? 0) !== price) {
+    return NextResponse.json(
+      { error: 'Bot pricing changed while you were adding — try again', expectedPriceCoins: price },
+      { status: 409 }
+    )
+  }
+
+  const profileId = needsPayment ? await getProfileFromRequest(req) : null
+  if (needsPayment && !profileId) {
+    return NextResponse.json({ error: 'Save your profile to buy extra bots' }, { status: 401 })
+  }
+
   const { data: player, error } = await supabase
     .from('players')
     .insert({
@@ -118,7 +150,34 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     .single()
 
   if (error) return NextResponse.json({ error: internalErrorMessage('bots', error) }, { status: 500 })
-  return NextResponse.json({ ok: true, player })
+
+  let charged = 0
+  let newBalance: number | null = null
+  if (needsPayment && profileId) {
+    const { data: spendResult, error: spendErr } = await supabase.rpc('spend_coins', {
+      p_profile_id: profileId,
+      p_delta: price,
+      p_reason: 'shop_purchase',
+      p_ref_id: `extra_bot:${player.id}`,
+    })
+    // If the spend failed for insufficient funds we have to unwind the bot
+    // insert — otherwise the host got a free bot AND a soft error. Same for
+    // a hard RPC error: the seat is nobody's, delete it.
+    if (spendErr || spendResult === null) {
+      await supabase.from('players').delete().eq('id', player.id)
+      if (spendErr) {
+        return NextResponse.json({ error: internalErrorMessage('bots', spendErr) }, { status: 500 })
+      }
+      return NextResponse.json(
+        { error: `Not enough coins — ${price} coins needed to add an extra bot.` },
+        { status: 402 }
+      )
+    }
+    charged = price
+    newBalance = Number(spendResult)
+  }
+
+  return NextResponse.json({ ok: true, player, charged, newBalance })
 }
 
 const removeSchema = z.object({ hostToken: z.string().min(1), playerId: z.string().uuid() })
