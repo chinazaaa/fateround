@@ -8,6 +8,7 @@ import { PollGamePlayerExperience } from '@/components/poll-game/PollGamePlayerE
 import { AudioChat } from '@/components/AudioChat'
 import { IosInstallPushNudge } from '@/components/IosInstallPushNudge'
 import { PublicGameFinishOverlay } from '@/components/notifications/PublicGameFinishOverlay'
+import { HostFinishFloating } from '@/components/host/HostFinishFloating'
 import { ScheduledGameOverlay } from '@/components/notifications/ScheduledGameOverlay'
 import { MatureGameGate } from '@/components/MatureGameGate'
 import { getPlayerSession } from '@/lib/utils'
@@ -229,6 +230,9 @@ export default function GamePage() {
           games only — tournament players already get the "back to hub" banner
           in that same corner. */}
       {!tournamentId && <PublicGameFinishOverlay gameCode={gameCode} />}
+      {/* Safety net for hosts on the player URL — surfaces Play again / Return
+          to lobby at end of round when the viewer still holds a host token. */}
+      {!tournamentId && <HostFinishFloating gameCode={gameCode} />}
       {/* Discovery Phase C — hides itself for immediate games; renders the
           full-screen RSVP takeover for scheduled ones and the "I'm ready"
           floating prompt for RSVPers in the post-open lobby. */}

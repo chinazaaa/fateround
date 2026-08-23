@@ -9,6 +9,7 @@ import { UnoFinalResultsShareBlock } from '@/components/uno/UnoFinalResultsShare
 import { UnoRulePills } from '@/components/uno/UnoRulePills'
 import { GameInfoChips } from '@/components/game-lobby/GameInfoChips'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
+import { HostFinishControlsInline } from '@/components/host/HostFinishControlsInline'
 import { gameTypeConfig } from '@/lib/game-types'
 import {
   currentPlayerId,
@@ -490,6 +491,10 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
             {winner && <p className="text-2xl font-black text-[var(--marry)]">{winner.name}</p>}
           </UnoCard>
         )}
+        {/* Host-only Play again / Return to lobby — renders when the viewer's device
+            still holds a host token (host+play mode, or a host who landed on /game/[code]
+            instead of /host/[code] at end of round). Non-hosts see nothing. */}
+        <HostFinishControlsInline gameCode={gameCode} hostPlayerId={myPlayerId} />
         {myPlayerId &&
           unoPlayerSharesWin(
             session?.turn_order ?? [],
