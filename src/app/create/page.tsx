@@ -3157,14 +3157,12 @@ function CreateGameInner() {
                 className={`grid ${settings.game_type === 'monopoly' ? 'grid-cols-2 max-w-sm sm:max-w-md' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-5'} gap-1.5 sm:gap-2`}
               >
                 {(settings.game_type === 'monopoly'
-                  ? THEMES.filter(
-                      (theme) =>
-                        MONOPOLY_EDITIONS.some((e) => e.themeId === theme.id) &&
-                        // Paid editions (e.g. USA) require ownership; free grandfathered
-                        // editions always show. Keep the currently-selected theme visible
-                        // so switching game types back to Monopoly doesn't clear the pick.
-                        (theme.id === settings.theme || isMonopolyEditionAvailable(theme.id, ownedMonopolyEditions))
-                    )
+                  ? // On Monopoly we now show EVERY known edition — owned ones as
+                    // normal tiles, unowned paid ones as locked-tile "Unlock in
+                    // Shop" cards. Discoverability > cleanliness: hosts learn
+                    // USA, Christmas, and future editions exist without needing
+                    // to open /shop first.
+                    THEMES.filter((theme) => MONOPOLY_EDITIONS.some((e) => e.themeId === theme.id))
                   : THEMES.filter(
                       (theme) =>
                         theme.id !== 'pirate' &&
@@ -3180,12 +3178,22 @@ function CreateGameInner() {
                   const displayTheme = monopolyEdition
                     ? { ...theme, label: monopolyEdition.editionName, emoji: monopolyEdition.editionEmoji }
                     : theme
+                  // Locked = paid Monopoly edition the host doesn't own AND isn't the
+                  // current pick (never lock a theme the host already selected — that
+                  // would strand a room whose entitlement was later revoked).
+                  const locked =
+                    settings.game_type === 'monopoly' &&
+                    theme.id !== settings.theme &&
+                    !isMonopolyEditionAvailable(theme.id, ownedMonopolyEditions)
                   return (
                     <ThemePreviewCard
                       key={theme.id}
                       theme={displayTheme}
                       selected={settings.theme === theme.id}
-                      onClick={() => setSettings({ ...settings, theme: theme.id })}
+                      locked={locked}
+                      onClick={
+                        locked ? () => router.push('/shop') : () => setSettings({ ...settings, theme: theme.id })
+                      }
                       onPreview={() => setPreviewTheme(displayTheme)}
                     />
                   )
