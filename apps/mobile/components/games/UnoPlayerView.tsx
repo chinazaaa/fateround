@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import {
   type Game,
@@ -795,34 +795,44 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
                 </Pressable>
               </View>
             ) : (
-              <>
-                {rouletteDrawing ? (
+              // Web parity: Draw / Keep / Play multiple sit in a single row beside
+              // the hand instead of stacking as full-width buttons.
+              (() => {
+                const actions: ReactNode[] = []
+                if (rouletteDrawing) {
                   // Colour Roulette reveal — one card per tap until the target hits
                   // their chosen colour. Server routes phase='color_roulette' draws
                   // to processUnoColorRouletteReveal.
-                  <Pressable style={styles.drawBtn} disabled={acting} onPress={() => void drawCard()}>
-                    <Text style={styles.drawText}>Draw a card</Text>
-                  </Pressable>
-                ) : null}
-
-                {canDraw ? (
-                  <Pressable style={styles.drawBtn} disabled={acting} onPress={() => void drawCard()}>
-                    <Text style={styles.drawText}>{drawLabel}</Text>
-                  </Pressable>
-                ) : null}
-
-                {canPass ? (
-                  <Pressable style={styles.drawBtn} disabled={acting} onPress={() => void passTurn()}>
-                    <Text style={styles.drawText}>Keep the card</Text>
-                  </Pressable>
-                ) : null}
-
-                {multiEnabled ? (
-                  <Pressable style={styles.drawBtn} disabled={acting} onPress={enterMultiMode}>
-                    <Text style={styles.drawText}>➕ Play multiple</Text>
-                  </Pressable>
-                ) : null}
-              </>
+                  actions.push(
+                    <Pressable key="roulette" style={styles.handAction} disabled={acting} onPress={() => void drawCard()}>
+                      <Text style={styles.handActionText}>Draw a card</Text>
+                    </Pressable>
+                  )
+                }
+                if (canDraw) {
+                  actions.push(
+                    <Pressable key="draw" style={styles.handAction} disabled={acting} onPress={() => void drawCard()}>
+                      <Text style={styles.handActionText}>{drawLabel}</Text>
+                    </Pressable>
+                  )
+                }
+                if (canPass) {
+                  actions.push(
+                    <Pressable key="pass" style={styles.handAction} disabled={acting} onPress={() => void passTurn()}>
+                      <Text style={styles.handActionText}>Keep the card</Text>
+                    </Pressable>
+                  )
+                }
+                if (multiEnabled) {
+                  actions.push(
+                    <Pressable key="multi" style={styles.handAction} disabled={acting} onPress={enterMultiMode}>
+                      <Text style={styles.handActionText}>➕ Play multiple</Text>
+                    </Pressable>
+                  )
+                }
+                if (actions.length === 0) return null
+                return <View style={styles.handActionsRow}>{actions}</View>
+              })()
             )}
           </>
         )}
@@ -922,6 +932,20 @@ const makeStyles = (theme: Theme) =>
       borderColor: theme.border,
     },
     drawText: { color: theme.text, fontSize: 16, fontWeight: '600' },
+    handActionsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
+    handAction: {
+      flexGrow: 1,
+      flexBasis: 0,
+      minWidth: 120,
+      backgroundColor: theme.surface,
+      borderRadius: 10,
+      paddingHorizontal: 12,
+      paddingVertical: 12,
+      alignItems: 'center',
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
+    handActionText: { color: theme.text, fontSize: 14, fontWeight: '700' },
     handSyncCard: {
       backgroundColor: theme.surface,
       borderRadius: 12,
