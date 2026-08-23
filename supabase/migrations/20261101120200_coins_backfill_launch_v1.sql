@@ -11,13 +11,10 @@
 -- truth" invariant. Migrations run serially, nothing else is racing;
 -- the partial unique index on the ledger remains a hard safety net.
 --
--- Formula per plan §"Backfill methodology":
---   raw = 5*trophies
---       + 3*min(daily_challenges, 100)
---       + 25*tournaments_placed  -- handle-matched, blank handles excluded
---       + 1*min(games_finished, 500)
---       + 100 flat welcome
---   capped at 2000
+-- Formula lives in `_launch_grant_v1_amount()` — same function
+-- grant_launch_v1() calls, so both paths always agree on the numbers.
+-- Any tuning tweak is one code-side edit; no arithmetic to keep in sync
+-- across the RPC and this migration.
 --
 -- Anyone who signs up AFTER this migration ran gets only the 100-coin
 -- welcome grant via grant_welcome() — the plan's timing rule (no gaming
@@ -29,23 +26,25 @@ with pending as (
     -- Per-profile aggregates via correlated subqueries. Each one is a
     -- single index lookup; the planner won't multiply row counts.
     (select count(*)::bigint from player_trophies t where t.profile_id = p.id)                          as trophies,
-    least((select count(*)::bigint from daily_scores d where d.profile_id = p.id), 100)                 as dailies,
+    (select count(*)::bigint from daily_scores d where d.profile_id = p.id)                             as dailies,
     -- Tournaments key on player_name, not profile_id, so this is a handle
     -- match. Blank-handle profiles are excluded to keep them from
     -- picking up every unnamed placement (see grant_launch_v1 for the
-    -- same guard on the per-profile path).
+    -- same guard on the per-profile path). `not coalesce(is_eliminated,
+    -- false)` matches grant_launch_v1's predicate so the two paths agree
+    -- on the tournament count even if the column ever relaxes to NULL.
     coalesce((
       select count(*)::bigint
         from tournament_players tp
        where coalesce(p.handle, '') <> ''
          and lower(tp.player_name) = lower(p.handle)
-         and not tp.is_eliminated
+         and not coalesce(tp.is_eliminated, false)
     ), 0)                                                                                                as tournaments,
-    least(coalesce((
+    coalesce((
       select ps.games_played
         from player_stats ps
        where ps.profile_id = p.id and ps.game_type = '__global__'
-    ), 0), 500)                                                                                          as games_finished
+    ), 0)::bigint                                                                                        as games_finished
   from profiles p
   where not exists (
     select 1 from coin_ledger cl
@@ -55,11 +54,8 @@ with pending as (
 scored as (
   select
     profile_id,
-    least(
-      5 * trophies + 3 * dailies + 25 * tournaments + 1 * games_finished + 100,
-      2000
-    )::bigint as grant_coins,
-    trophies, dailies, tournaments, games_finished
+    trophies, dailies, tournaments, games_finished,
+    _launch_grant_v1_amount(trophies, dailies, tournaments, games_finished) as grant_coins
   from pending
 ),
 applied as (
@@ -67,7 +63,6 @@ applied as (
      set coins = p.coins + s.grant_coins
     from scored s
    where p.id = s.profile_id
-     and s.grant_coins > 0
   returning
     p.id            as profile_id,
     p.coins         as balance_after,

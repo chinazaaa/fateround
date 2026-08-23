@@ -207,9 +207,16 @@ begin
   exception when unique_violation then
     -- Already granted. The subtransaction the BEGIN block creates is
     -- rolled back automatically when this handler runs, so the +v_amount
-    -- update above is already reverted; just re-read the balance to
-    -- return the caller the current value.
+    -- update above is already reverted; re-read the balance to return
+    -- the current value. If the profile was deleted between the failed
+    -- insert and this read (auth cascade), raise rather than returning
+    -- NULL — the function contract says "returns the balance" and a
+    -- NULL that reaches a caller expecting bigint would fail loudly at
+    -- the wrong spot.
     select coins into v_new_balance from profiles where id = p_profile_id;
+    if v_new_balance is null then
+      raise exception 'grant_welcome: no such profile %', p_profile_id;
+    end if;
   end;
 
   return v_new_balance;
@@ -217,6 +224,39 @@ end;
 $$;
 
 revoke all on function grant_welcome(uuid) from public;
+
+-- ---------------------------------------------------------------------------
+-- _launch_grant_v1_amount(trophies, dailies, tournaments, games)
+--
+-- The launch-grant formula, factored out so grant_launch_v1() and the
+-- one-shot backfill migration share ONE arithmetic definition. A tuning
+-- tweak edited in one place only would silently drift the two grants and
+-- give late-signup peers a different total than launch-day peers with
+-- identical history. Immutable so the planner can inline it inside the
+-- backfill CTE.
+--
+-- Inputs are RAW counts; the daily-challenge and games-finished caps
+-- (100 and 500) are applied here alongside the overall 2000 cap. That
+-- keeps every constant in this one function.
+-- ---------------------------------------------------------------------------
+create or replace function _launch_grant_v1_amount(
+  p_trophies    bigint,
+  p_dailies     bigint,
+  p_tournaments bigint,
+  p_games       bigint
+) returns bigint
+language sql
+immutable
+as $$
+  select least(
+      5  * coalesce(p_trophies, 0)
+    + 3  * least(coalesce(p_dailies, 0), 100)
+    + 25 * coalesce(p_tournaments, 0)
+    + 1  * least(coalesce(p_games, 0), 500)
+    + 100,
+    2000
+  )::bigint;
+$$;
 
 -- ---------------------------------------------------------------------------
 -- grant_launch_v1(profile_id) — one-shot retro backfill for existing
@@ -240,12 +280,10 @@ security definer
 set search_path = public
 as $$
 declare
-  v_cap             constant bigint := 2000;
   v_trophies        bigint;
   v_dailies         bigint;
   v_tournaments     bigint;
   v_games           bigint;
-  v_raw             bigint;
   v_grant           bigint;
   v_new_balance     bigint;
   v_itemization     jsonb;
@@ -255,7 +293,6 @@ begin
 
   select coalesce(count(*), 0)::bigint into v_dailies
     from daily_scores where profile_id = p_profile_id;
-  v_dailies := least(v_dailies, 100);
 
   -- Tournaments still key on player_name (not profile_id), so this is a
   -- handle-match. The `coalesce(p.handle,'') <> ''` guard is load-bearing:
@@ -264,24 +301,24 @@ begin
   -- (25 coins each). Treated as advisory even with the guard; the 2000
   -- cap absorbs any remaining slop from handle collisions between two
   -- profiles that happen to share a name.
-  select coalesce(sum(case when is_eliminated then 0 else 1 end), 0)::bigint
+  --
+  -- `not coalesce(is_eliminated, false)` matches the backfill migration's
+  -- predicate. Today the column is NOT NULL, but nothing here should
+  -- silently drift if that ever relaxes.
+  select coalesce(count(*), 0)::bigint
     into v_tournaments
     from tournament_players tp
     join profiles p on p.id = p_profile_id
    where coalesce(p.handle, '') <> ''
-     and lower(tp.player_name) = lower(p.handle);
+     and lower(tp.player_name) = lower(p.handle)
+     and not coalesce(tp.is_eliminated, false);
 
   select coalesce(games_played, 0)::bigint into v_games
     from player_stats
    where profile_id = p_profile_id and game_type = '__global__';
-  v_games := least(coalesce(v_games, 0), 500);
+  v_games := coalesce(v_games, 0);
 
-  v_raw := 5 * v_trophies
-         + 3 * v_dailies
-         + 25 * v_tournaments
-         + 1 * v_games
-         + 100;
-  v_grant := least(v_raw, v_cap);
+  v_grant := _launch_grant_v1_amount(v_trophies, v_dailies, v_tournaments, v_games);
 
   if v_grant <= 0 then
     return null;
@@ -293,8 +330,7 @@ begin
     'tournaments_placed', v_tournaments,
     'games_finished', v_games,
     'welcome_flat', 100,
-    'raw_total', v_raw,
-    'capped_at', v_cap,
+    'capped_at', 2000,
     'granted', v_grant
   );
 
@@ -606,6 +642,7 @@ revoke all on function admin_spent_today(text) from public;
 --   drop function if exists admin_adjust_coins(uuid, bigint, text, text, text, bigint);
 --   drop function if exists migrate_guest_grants(uuid, text);
 --   drop function if exists grant_launch_v1(uuid);
+--   drop function if exists _launch_grant_v1_amount(bigint, bigint, bigint, bigint);
 --   drop function if exists grant_welcome(uuid);
 --   drop function if exists spend_coins(uuid, bigint, text, text);
 --   drop function if exists award_coins(uuid, bigint, text, text, integer, boolean);

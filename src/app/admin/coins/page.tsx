@@ -74,6 +74,11 @@ export default function AdminCoinsPage() {
   // slower manual reload could land after a fresher debounced fetch and
   // show a stale profile under a new UUID.
   const loadCtl = useRef<AbortController | null>(null)
+  // Ref mirror of the currently rendered profile id, so `load` (a stable
+  // useCallback) can decide same-id-refresh without depending on profile
+  // in its deps (which would recreate it every render and thrash the
+  // debounce effect).
+  const currentProfileId = useRef<string | null>(null)
 
   const load = useCallback(async (id: string) => {
     loadCtl.current?.abort()
@@ -82,8 +87,17 @@ export default function AdminCoinsPage() {
     const signal = ctl.signal
     setLoading(true)
     setError('')
-    setProfile(null)
-    setLedger([])
+    // Only clear the panel when the id being loaded differs from what's
+    // on screen. On a same-id refresh (post-submit reload) leaving the
+    // profile mounted keeps the success flash visible — it lives inside
+    // {profile && ...} — and avoids a flicker to "Loading…" between
+    // "Adjusted +50" and the fresh balance.
+    const sameId = currentProfileId.current === id
+    if (!sameId) {
+      setProfile(null)
+      setLedger([])
+      setFlash('')
+    }
     try {
       const res = await fetch(`/api/admin/coins?profileId=${encodeURIComponent(id)}`, { signal })
       const json = await res.json().catch(() => ({}))
@@ -93,6 +107,7 @@ export default function AdminCoinsPage() {
         return
       }
       setProfile(json.profile)
+      currentProfileId.current = json.profile?.id ?? null
       setLedger(json.ledger ?? [])
       setCap(json.cap ?? ADMIN_DAILY_CAP_COINS)
       setSpentToday(json.spentToday ?? null)
