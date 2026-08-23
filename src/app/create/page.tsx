@@ -2304,6 +2304,17 @@ function CreateGameInner() {
         settings.theme === 'christmas')
         ? { theme: 'default' as const }
         : {}),
+      // Per-game reskins (Neon Whot, Wooden Ludo, …) only belong to
+      // their seeded game type. Switching to a different game type
+      // otherwise leaves settings.theme pointing at a slug the POST
+      // route rejects with 400 "Theme not valid for this game type"
+      // — the picker's preservation guard keeps the tile highlighted
+      // under the wrong game (or hides it entirely on Monopoly/other
+      // non-scoped types) with no visible reason for the failure.
+      ...(isGameThemeSlug(settings.theme) &&
+      !GAME_THEMES_BY_GAME[type as keyof typeof GAME_THEMES_BY_GAME]?.includes(settings.theme)
+        ? { theme: 'default' as const }
+        : {}),
     })
   }
 
