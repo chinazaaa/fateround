@@ -80,6 +80,15 @@ import { UNO_QUICK_MESSAGES, unoQuickMessage } from '@/lib/uno-quick-messages'
  * the partner-only quick-chat emote channel.
  */
 
+function ordinal(n: number): string {
+  const j = n % 10
+  const k = n % 100
+  if (j === 1 && k !== 11) return `${n}st`
+  if (j === 2 && k !== 12) return `${n}nd`
+  if (j === 3 && k !== 13) return `${n}rd`
+  return `${n}th`
+}
+
 type Screen =
   | 'loading'
   | 'join'
@@ -191,8 +200,20 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
 
   const me = bootstrap.myPlayerId ? (bootstrap.players.find((p) => p.id === bootstrap.myPlayerId) ?? null) : null
   const isViewer = !!(me && bootstrap.game && playerIsViewer(me, bootstrap.game))
-  const isOut = !!myHand && myHand.cards.length === 0 && bootstrap.game?.status === 'active'
+  const emptiedHand = !!myHand && myHand.cards.length === 0 && bootstrap.game?.status === 'active'
+  const knockedOut =
+    !!bootstrap.myPlayerId &&
+    (session?.eliminated_player_ids ?? []).includes(bootstrap.myPlayerId) &&
+    bootstrap.game?.status === 'active'
+  const isOut = emptiedHand || knockedOut
   const isWatching = isViewer || isOut
+  // Finish position among players who've emptied their hand — 1st = round winner.
+  const finishPosition = (() => {
+    if (!emptiedHand || !bootstrap.myPlayerId) return null
+    const order = session?.finish_order ?? []
+    const idx = order.indexOf(bootstrap.myPlayerId)
+    return idx >= 0 ? idx + 1 : null
+  })()
 
   // Desync guard (mirrors Whot/Crazy Eights — see docs memory "card-hand-desync"): the
   // hands table loaded (other players' rows are present) but none of them is ours —
@@ -550,8 +571,23 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
 
         {isOut ? (
           <View style={styles.watchBanner}>
-            <Text style={styles.watchTitle}>You&apos;re out</Text>
-            <Text style={styles.watchSub}>You played all your cards — follow the rest of the game and chat.</Text>
+            {emptiedHand ? (
+              <>
+                <Text style={styles.watchTitle}>
+                  {finishPosition === 1
+                    ? '🏆 You won the round!'
+                    : finishPosition
+                      ? `🎉 You finished ${ordinal(finishPosition)}`
+                      : '🎉 You finished!'}
+                </Text>
+                <Text style={styles.watchSub}>Waiting for the others to finish — follow along and chat.</Text>
+              </>
+            ) : (
+              <>
+                <Text style={styles.watchTitle}>You&apos;re out</Text>
+                <Text style={styles.watchSub}>Knocked out — follow the rest of the game and chat.</Text>
+              </>
+            )}
           </View>
         ) : null}
 
