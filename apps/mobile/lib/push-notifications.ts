@@ -1,16 +1,26 @@
-import { Platform } from 'react-native'
+import { AppState, Platform } from 'react-native'
 import Constants from 'expo-constants'
 import * as Device from 'expo-device'
 import * as Notifications from 'expo-notifications'
 import { apiUrl } from '@/lib/config'
 
+// A push is only useful when the app ISN'T already in front of the user. This
+// handler runs ONLY for pushes that arrive while the app is foregrounded (when
+// the app is backgrounded or closed the OS presents the push itself and never
+// calls this). In the foreground the in-app UI already shows whatever the push
+// would say — e.g. that it's your turn — so a banner + sound + notification-
+// centre entry is just noise. Suppress the presentation while active; show it
+// normally otherwise.
 Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowBanner: true,
-    shouldShowList: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-  }),
+  handleNotification: async () => {
+    const inForeground = AppState.currentState === 'active'
+    return {
+      shouldShowBanner: !inForeground,
+      shouldShowList: !inForeground,
+      shouldPlaySound: !inForeground,
+      shouldSetBadge: false,
+    }
+  },
 })
 
 export type PushPlatform = 'ios' | 'android' | 'unknown'

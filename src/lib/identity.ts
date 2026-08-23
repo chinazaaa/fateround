@@ -13,6 +13,7 @@
  */
 import { supabase } from '@/lib/supabase'
 import { clearLocalIdentity } from '@/lib/identity-local'
+import { getDeviceId } from '@/lib/coins/device-id'
 
 /**
  * Ensure this device has an anonymous (or already-signed-in) identity, and that a matching
@@ -46,15 +47,48 @@ export async function ensureServerIdentity(): Promise<string | null> {
   }
 }
 
-/** Idempotent upsert of the `profiles` row for the current session. Best-effort. */
-async function ensureProfileRow(): Promise<void> {
+/**
+ * Idempotent upsert of the `profiles` row for the current session. Best-effort.
+ *
+ * Carries the local device id so `/api/profile/anon` can — for signed-up
+ * accounts only — run `migrate_guest_grants()` and fold pending guest earnings
+ * into the profile ledger. Anonymous callers keep sending an empty body.
+ */
+export type EnsureProfileRowResult = {
+  welcomeGrant: number | null
+  migrationGrant: number | null
+  isAnonymous: boolean | null
+}
+
+async function ensureProfileRow(): Promise<EnsureProfileRowResult> {
   const headers = await authHeaders()
-  if (!headers) return
+  if (!headers) return { welcomeGrant: null, migrationGrant: null, isAnonymous: null }
   try {
-    await fetch('/api/profile/anon', { method: 'POST', headers })
+    const deviceId = getDeviceId()
+    const res = await fetch('/api/profile/anon', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(deviceId ? { deviceId } : {}),
+    })
+    if (!res.ok) return { welcomeGrant: null, migrationGrant: null, isAnonymous: null }
+    const data = (await res.json().catch(() => null)) as {
+      welcomeGrant?: number | null
+      migrationGrant?: number | null
+      isAnonymous?: boolean
+    } | null
+    return {
+      welcomeGrant: data?.welcomeGrant ?? null,
+      migrationGrant: data?.migrationGrant ?? null,
+      isAnonymous: data?.isAnonymous ?? null,
+    }
   } catch {
-    // Offline or transient — the next ensureServerIdentity() retries.
+    return { welcomeGrant: null, migrationGrant: null, isAnonymous: null }
   }
+}
+
+/** Force a re-sync — used right after an email-upgrade so grant_welcome + guest migration fire. */
+export async function refreshProfileRow(): Promise<EnsureProfileRowResult> {
+  return ensureProfileRow()
 }
 
 /** The current access token, or null when signed out. */

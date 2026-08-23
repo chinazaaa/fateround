@@ -12,6 +12,7 @@ function completeRow(): Record<string, unknown> {
     chance_discard: [],
     community_discard: [],
     turn_order: ['p1', 'p2'],
+    loans: [],
     phase: 'buy',
     pending_space: 1,
     auction_state: null, // legitimately null — nullable column

@@ -2,6 +2,7 @@ import type { AyoSession, AyoSide, Participant, Player, Vote } from '@fateround/
 import type { LudoStanding } from '@fateround/shared/ludo'
 import type { SnakeLadderStanding } from '@fateround/shared/snake-and-ladder'
 import { formatMonopolyMoney } from '@fateround/shared/monopoly-board'
+import type { TrollRunChampionshipStanding } from '@fateround/shared/troll-run-standings'
 import type { FinishedLeaderboardRow } from '@/components/game/GameChrome'
 import type { AyoVariant } from '@/lib/ayo-sow'
 import type { MonopolyStanding } from '@/lib/monopoly-standings'
@@ -144,10 +145,7 @@ export function ayoLeaderboard(
 }
 
 /** Ludo finish standings: pieces home out of 4, per color, winner first. */
-export function ludoLeaderboard(
-  standings: LudoStanding[],
-  myPlayerId?: string | null
-): FinishedLeaderboardRow[] {
+export function ludoLeaderboard(standings: LudoStanding[], myPlayerId?: string | null): FinishedLeaderboardRow[] {
   return standings.map((row) => ({
     name: row.name,
     score: `${row.finishedCount}/4`,
@@ -247,4 +245,24 @@ export function mltVoteLeaderboard(votes: Vote[], participants: Participant[]): 
     .map((p) => ({ name: p.name, score: counts.get(p.id) ?? 0 }))
     .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name))
   return toLeaderboardRows(rows, rows[0]?.score !== 0)
+}
+
+/**
+ * Troll Run championship standings.
+ *
+ * The ordering itself (score, then fewest deaths, then fastest) is the shared builder both
+ * platforms score with — this only shapes its output into finish-screen rows.
+ */
+export function trollRunLeaderboard(
+  standings: TrollRunChampionshipStanding[],
+  myPlayerId?: string | null
+): FinishedLeaderboardRow[] {
+  return standings.map((standing) => ({
+    name: standing.name,
+    score: standing.totalScore,
+    scoreSuffix: 'pts',
+    detail: `${standing.totalLevelsCleared} levels · ${standing.totalDeaths} deaths`,
+    highlight: standing.rank === 1,
+    you: !!myPlayerId && standing.playerId === myPlayerId,
+  }))
 }

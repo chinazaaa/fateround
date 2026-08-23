@@ -3104,56 +3104,6 @@ export const COUNTERS: readonly CounterDef[] = [
     phrase: 'won capturing on every move at least {n} time{s}',
   },
 
-  // ── Ping Pong ──────────────────────────────────────────────────────────
-  {
-    key: 'ping_pong_match_to_3',
-    label: 'Ping Pong — match to 3',
-    description: 'Matches played to 3 points.',
-    scope: 'per-game',
-    availability: 'partial',
-    phrase: 'played at least {n} match{s} to 3 points',
-  },
-  {
-    key: 'ping_pong_match_to_21',
-    label: 'Ping Pong — match to 21',
-    description: 'Matches played to 21 points.',
-    scope: 'per-game',
-    availability: 'partial',
-    phrase: 'played at least {n} match{s} to 21 points',
-  },
-  {
-    key: 'ping_pong_shutout_wins',
-    label: 'Ping Pong — shutout wins',
-    description: 'Wins where the opponent scored zero points.',
-    scope: 'per-game',
-    availability: 'partial',
-    phrase: 'won a shutout at least {n} time{s}',
-  },
-  {
-    key: 'ping_pong_deuce_wins',
-    label: 'Ping Pong — deuce wins',
-    description: 'Wins in matches that went to deuce.',
-    scope: 'per-game',
-    availability: 'partial',
-    phrase: 'won from deuce at least {n} time{s}',
-  },
-  {
-    key: 'ping_pong_comeback_wins',
-    label: 'Ping Pong — comeback wins',
-    description: 'Wins after trailing during the match.',
-    scope: 'per-game',
-    availability: 'partial',
-    phrase: 'came back to win at least {n} time{s}',
-  },
-  {
-    key: 'ping_pong_match_wins',
-    label: 'Ping Pong — matches won',
-    description: 'Total matches won.',
-    scope: 'per-game',
-    availability: 'partial',
-    phrase: 'won at least {n} match{s}',
-  },
-
   // ── Tic Tac Toe (Ultimate) ─────────────────────────────────────────────
   {
     key: 'ttt_sub_boards_won',
@@ -4729,6 +4679,209 @@ export const COUNTERS: readonly CounterDef[] = [
     availability: 'partial',
     phrase: 'won in 20 rolls or fewer at least {n} time{s}',
   },
+
+  // ── Quick Draw ─────────────────────────────────────────────────────────
+  // One game type, two rule sets. The `lie` counters (drawings, fools, reads) and the
+  // `guess` counters (words guessed, drawer turns, words landed) come from disjoint tables,
+  // so a player who only plays one variant never moves the other's. See
+  // ../trophies/game-facts/quick-draw.ts.
+  {
+    key: 'quick_draw_drawings_submitted',
+    label: 'Quick Draw — drawings submitted',
+    description: 'Drawings submitted across all games.',
+    scope: 'per-game',
+    availability: 'partial',
+    phrase: 'submitted at least {n} drawing{s}',
+  },
+  {
+    key: 'quick_draw_fools',
+    label: 'Quick Draw — people fooled',
+    description: 'Voters caught by your fake titles, across all games.',
+    scope: 'per-game',
+    availability: 'partial',
+    phrase: 'fooled at least {n} player{s} with a fake title',
+  },
+  {
+    key: 'quick_draw_correct_reads',
+    label: 'Quick Draw — real titles found',
+    description: 'Times you voted for the real title, across all games.',
+    scope: 'per-game',
+    availability: 'partial',
+    phrase: 'found the real title at least {n} time{s}',
+  },
+  {
+    key: 'quick_draw_triple_fool_games',
+    label: 'Quick Draw — 3+ fooled in a game',
+    description: 'Games where your fake titles caught 3 or more voters in total.',
+    scope: 'per-game',
+    availability: 'partial',
+    phrase: 'fooled 3+ players in at least {n} game{s}',
+  },
+  {
+    key: 'quick_draw_mass_fool_games',
+    label: 'Quick Draw — one title fooled 3',
+    description: 'Games where a single fake title caught 3 or more voters.',
+    scope: 'per-game',
+    availability: 'partial',
+    phrase: 'caught 3+ voters with one title in at least {n} game{s}',
+  },
+  {
+    key: 'quick_draw_unmistakable_games',
+    label: 'Quick Draw — nobody fooled by your drawing',
+    description: 'Games where every voter on one of your drawings found the real title.',
+    scope: 'per-game',
+    availability: 'partial',
+    phrase: 'drew an unmistakable picture in at least {n} game{s}',
+  },
+  {
+    key: 'quick_draw_perfect_voter_games',
+    label: 'Quick Draw — perfect voting',
+    description: 'Games voting on 3+ drawings and reading every one correctly.',
+    scope: 'per-game',
+    availability: 'partial',
+    phrase: 'read every drawing correctly in at least {n} game{s}',
+  },
+  {
+    key: 'quick_draw_words_guessed',
+    label: 'Quick Draw — words guessed',
+    description: 'Words you were first to guess, across all games (guess mode).',
+    scope: 'per-game',
+    availability: 'partial',
+    phrase: 'guessed at least {n} word{s}',
+  },
+  {
+    key: 'quick_draw_five_guess_games',
+    label: 'Quick Draw — 5+ words in a game',
+    description: 'Games guessing 5 or more words (guess mode).',
+    scope: 'per-game',
+    availability: 'partial',
+    phrase: 'guessed 5+ words in at least {n} game{s}',
+  },
+  {
+    key: 'quick_draw_drawer_turns',
+    label: 'Quick Draw — drawing turns taken',
+    description: 'Turns spent as the drawer, across all games (guess mode).',
+    scope: 'per-game',
+    availability: 'partial',
+    phrase: 'took at least {n} drawing turn{s}',
+  },
+  {
+    key: 'quick_draw_words_landed',
+    label: 'Quick Draw — words you drew that landed',
+    description: 'Words guessed off your drawings, across all games (guess mode).',
+    scope: 'per-game',
+    availability: 'partial',
+    phrase: 'had at least {n} of your drawn word{s} guessed',
+  },
+  {
+    key: 'quick_draw_flawless_turn_games',
+    label: 'Quick Draw — flawless drawing turn',
+    description: 'Games with a drawer turn of 3+ words where every word was guessed.',
+    scope: 'per-game',
+    availability: 'partial',
+    phrase: 'drew a flawless turn in at least {n} game{s}',
+  },
+  {
+    key: 'quick_draw_twenty_guess_games',
+    label: 'Quick Draw — 20 guesses in a game',
+    description: 'Games typing 20 or more guesses (guess mode).',
+    scope: 'per-game',
+    availability: 'partial',
+    phrase: 'typed 20+ guesses in at least {n} game{s}',
+  },
+  {
+    key: 'quick_draw_full_lobby_games',
+    label: 'Quick Draw — full table',
+    description: 'Games played with 6 or more players.',
+    scope: 'per-game',
+    availability: 'partial',
+    phrase: 'played at least {n} game{s} with 6+ players',
+  },
+
+  // ── Troll Run ──────────────────────────────────────────────────────────
+  // A round is ten levels of one world against a shared clock. `finish_position` (not
+  // `round_finished`, which is set for DNFs too) decides who actually got out — see
+  // ../trophies/game-facts/troll-run.ts.
+  {
+    key: 'troll_run_levels_cleared',
+    label: 'Troll Run — levels cleared',
+    description: 'Levels cleared across all rounds and games.',
+    scope: 'per-game',
+    availability: 'partial',
+    phrase: 'cleared at least {n} level{s}',
+  },
+  {
+    key: 'troll_run_rounds_finished',
+    label: 'Troll Run — rounds finished',
+    description: 'Rounds where you cleared every level before the clock ran out.',
+    scope: 'per-game',
+    availability: 'partial',
+    phrase: 'finished at least {n} round{s}',
+  },
+  {
+    key: 'troll_run_round_wins',
+    label: 'Troll Run — rounds won',
+    description: 'Rounds you finished in first place.',
+    scope: 'per-game',
+    availability: 'partial',
+    phrase: 'won at least {n} round{s}',
+  },
+  {
+    key: 'troll_run_deaths',
+    label: 'Troll Run — deaths',
+    description: 'Total deaths across all games. The badge nobody asks for.',
+    scope: 'per-game',
+    availability: 'partial',
+    phrase: 'died at least {n} time{s}',
+  },
+  {
+    key: 'troll_run_deathless_rounds',
+    label: 'Troll Run — deathless rounds',
+    description: 'Rounds finished without dying once.',
+    scope: 'per-game',
+    availability: 'partial',
+    phrase: 'finished at least {n} round{s} without dying',
+  },
+  {
+    key: 'troll_run_par_rounds',
+    label: 'Troll Run — rounds under par',
+    description: 'Rounds finished inside the combined par time, earning the speed bonus.',
+    scope: 'per-game',
+    availability: 'partial',
+    phrase: 'finished at least {n} round{s} under par',
+  },
+  {
+    key: 'troll_run_first_try_clears',
+    label: 'Troll Run — first-try clears',
+    description: 'Levels cleared without dying on them once.',
+    scope: 'per-game',
+    availability: 'partial',
+    phrase: 'cleared at least {n} level{s} first try',
+  },
+  {
+    key: 'troll_run_flawless_games',
+    label: 'Troll Run — flawless games',
+    description: 'Games where you finished every round without dying once.',
+    scope: 'per-game',
+    availability: 'partial',
+    phrase: 'played at least {n} game{s} without dying',
+  },
+  {
+    key: 'troll_run_clean_sweep_games',
+    label: 'Troll Run — clean sweeps',
+    description: 'Games where you won every single round.',
+    scope: 'per-game',
+    availability: 'partial',
+    phrase: 'swept every round in at least {n} game{s}',
+  },
+  {
+    key: 'troll_run_full_lobby_games',
+    label: 'Troll Run — full-lobby games',
+    description: 'Games finished in a full six-runner lobby.',
+    scope: 'per-game',
+    availability: 'partial',
+    phrase: 'finished at least {n} full-lobby game{s}',
+  },
 ] as const
 
 /**
@@ -4770,6 +4923,16 @@ export const DISTINCT_SETS: readonly DistinctDef[] = [
     description: 'Distinct player counts (2–6) this profile has won a Whot game at.',
     availability: 'partial',
     phrase: 'won a Whot game at least {n} different player count{s}',
+  },
+  {
+    // Emitted by trollRunFacts as `distinct:troll_run_worlds:<world>`, folded into
+    // `player_distinct` by the award pass. Four worlds ship (`TROLL_RUN_WORLD_IDS`), each with
+    // its own hazard vocabulary, so "ran all four" is a breadth measure no sum can express.
+    key: 'troll_run_worlds',
+    label: 'Troll Run — worlds run',
+    description: 'Distinct Troll Run worlds this profile has finished a game in.',
+    availability: 'partial',
+    phrase: 'finished a run in at least {n} different world{s}',
   },
   {
     key: 'rooms',

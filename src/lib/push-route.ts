@@ -22,7 +22,10 @@ export function withGameNotification(event: PushEvent, handler: Handler): Handle
       const { code } = await ctx.params
       after(async () => {
         try {
-          await notifyGameEvent(code.toUpperCase(), event)
+          // excludeHost: every event this wrapper sends is something the host just did —
+          // they tapped Start, Play again, or End game. Pushing it back at them notifies
+          // them of their own action, on the screen already showing the result.
+          await notifyGameEvent(code.toUpperCase(), event, { excludeHost: true })
         } catch (err) {
           console.error(`push notify (${event}) failed for ${code}`, err)
         }

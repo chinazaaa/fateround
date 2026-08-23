@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { ContinuePlayingStrip } from '@/components/home/ContinuePlayingStrip'
 import { GAME_TYPE_OPTIONS, HOMEPAGE_FEATURED_GAMES, gameTypeConfig } from '@/lib/game-types'
 import { gameLandingSlug } from '@/lib/game-landing'
 import { gameIcon } from '@/lib/game-glyphs'
@@ -44,6 +45,10 @@ export function HomePage() {
           <HomePageJoinPanel />
         </div>
       </section>
+
+      {/* Cross-device and live, so it sits above everything else personalised: a game you left
+        running on your phone beats one this browser happens to remember. */}
+      <ContinuePlayingStrip />
 
       <SubscribeHomeBanner />
 

@@ -68,6 +68,23 @@ export function DailyHubClient() {
 
   const completedCount = games.filter((g) => g.played).length
 
+  /**
+   * Which game the hub's leaderboard / answers links land on.
+   *
+   * Both destinations carry chips for all thirteen games, so arriving on one is a starting tab
+   * rather than a dead end — but the tab should still be one the player cares about. This picks
+   * a game they've actually played today, falling back to the first in the canonical list.
+   *
+   * It replaces a hardcoded `/daily-challenges/sudoku/leaderboard`, which sent everyone to
+   * Sudoku whether or not they play it, and would have quietly 404'd the day Sudoku left the
+   * daily lineup. Deriving from `DAILY_CHALLENGE_GAME_TYPES` means the list stays the one
+   * source of truth.
+   */
+  const entrySlug = useMemo(() => {
+    const played = DAILY_CHALLENGE_GAME_TYPES.find((type) => games.some((g) => g.gameType === type && g.played))
+    return DAILY_GAME_TYPE_TO_SLUG[played ?? DAILY_CHALLENGE_GAME_TYPES[0]]
+  }, [games])
+
   // Compute expiry deadlines for all in-progress challenges so the card
   // state auto-updates when a timer runs out.
   const deadlines = useMemo(() => {
@@ -207,10 +224,13 @@ export function DailyHubClient() {
         })}
       </div>
 
-      {/* Footer link */}
-      <div className="text-center mt-8">
-        <Link href="/daily-challenges/sudoku/leaderboard" className="fr-btn fr-btn--secondary fr-btn--sm">
+      {/* Footer links */}
+      <div className="mt-8 flex flex-wrap items-center justify-center gap-2">
+        <Link href={`/daily-challenges/${entrySlug}/leaderboard`} className="fr-btn fr-btn--secondary fr-btn--sm">
           View Leaderboards
+        </Link>
+        <Link href={`/daily-challenges/${entrySlug}/answers`} className="fr-btn fr-btn--ghost fr-btn--sm">
+          Yesterday&apos;s answers
         </Link>
       </div>
 

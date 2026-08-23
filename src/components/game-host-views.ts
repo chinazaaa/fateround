@@ -16,7 +16,6 @@ import { LudoHostView } from '@/components/ludo/LudoHostView'
 import { MahjongHostView } from '@/components/mahjong/MahjongHostView'
 import { SnakeLadderHostView } from '@/components/snake-and-ladder/SnakeLadderHostView'
 import { TicTacToeHostView } from '@/components/tic-tac-toe/TicTacToeHostView'
-import { PingPongHostView } from '@/components/ping-pong/PingPongHostView'
 import { ChessHostView } from '@/components/chess/ChessHostView'
 import { CheckersHostView } from '@/components/checkers/CheckersHostView'
 import { Draughts10HostView } from '@/components/draughts10/Draughts10HostView'
@@ -37,6 +36,7 @@ import { WordSearchHostView } from '@/components/word-search/WordSearchHostView'
 import { WordScrambleHostView } from '@/components/word-scramble/WordScrambleHostView'
 import { WordGroupingHostView } from '@/components/word-grouping/WordGroupingHostView'
 import { WordleRoomHostView } from '@/components/wordle-room/WordleRoomHostView'
+import { TrollRunHostView } from '@/components/troll-run/TrollRunHostView'
 
 export type GameHostView = ComponentType<{ gameCode: string; hostToken: string }>
 
@@ -64,7 +64,6 @@ export const HOST_VIEW_REGISTRY: Partial<Record<GameType, GameHostView>> = {
   mahjong: MahjongHostView,
   snake_and_ladder: SnakeLadderHostView,
   tic_tac_toe: TicTacToeHostView,
-  ping_pong: PingPongHostView,
   chess: ChessHostView,
   checkers: CheckersHostView,
   checkers_international: Draughts10HostView,
@@ -85,4 +84,5 @@ export const HOST_VIEW_REGISTRY: Partial<Record<GameType, GameHostView>> = {
   word_scramble: WordScrambleHostView,
   word_grouping: WordGroupingHostView,
   wordle_room: WordleRoomHostView,
+  troll_run: TrollRunHostView,
 }

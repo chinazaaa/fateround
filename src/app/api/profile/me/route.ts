@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
     const { data, error } = await getSupabaseAdmin()
       .from('profiles')
       .select(
-        'id, handle, avatar_url, is_anonymous, trophy_points, trophy_level, current_streak, longest_streak, last_active_date, streak_freezes, default_voice_on, preferred_theme'
+        'id, handle, avatar_url, is_anonymous, trophy_points, trophy_level, current_streak, longest_streak, last_active_date, streak_freezes, default_voice_on, preferred_theme, coins, equipped_frame, equipped_name_color, equipped_animation, equipped_card_template'
       )
       .eq('id', profileId)
       .maybeSingle()

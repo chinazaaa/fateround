@@ -4,7 +4,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router'
 import { normalizeGameCode } from '@fateround/shared'
 import { HostGameScreen } from '@/components/host/HostGameScreen'
 import { getHostToken, setHostToken, getPlayerSession, setPlayerSession } from '@/lib/secure-session'
-import { verifyHost } from '@/lib/game-api'
+import { verifyHost, postReclaimHost } from '@/lib/game-api'
 import { autoJoinGame } from '@/lib/api'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
@@ -71,11 +71,22 @@ export default function HostScreen() {
         // Drop the tokens from the URL so they aren't left in navigation history.
         router.setParams({ hostToken: undefined, token: undefined, player: undefined })
       }
-      const stored = await getHostToken(gameCode)
+      let stored = await getHostToken(gameCode)
       if (cancelled) return
       if (!stored) {
-        setPhase('denied')
-        return
+        // Recovery: this device has no token but the signed-in profile may still own the
+        // game. Ask the server; on success persist so future loads skip the round-trip.
+        // A guest, non-host, or network failure just falls through to the existing
+        // "denied" UI — the reclaim endpoint never gates gameplay.
+        const reclaimed = await postReclaimHost(gameCode).catch(() => null)
+        if (cancelled) return
+        if (reclaimed?.hostToken) {
+          await setHostToken(gameCode, reclaimed.hostToken)
+          stored = reclaimed.hostToken
+        } else {
+          setPhase('denied')
+          return
+        }
       }
       const result = await verifyHost(gameCode, stored).catch(() => ({ ok: false, notFound: false }))
       if (cancelled) return

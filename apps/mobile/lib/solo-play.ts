@@ -32,6 +32,43 @@ export function hasSoloPlay(gameType: GameType): boolean {
 }
 
 /**
+ * Display-ordered index of every `/play-solo/<slug>` screen, for surfaces that list them
+ * rather than resolve one by game type — the solo hub and the home-screen entry.
+ *
+ * Mirrors `SOLO_PLAY_INDEX` in `src/lib/solo-play.ts`, same order, plus the blurb and emoji
+ * the hub renders. Until this existed, the six solo screens were reachable ONLY by starting
+ * the create wizard and picking one of those game types, so a player who wanted to practise
+ * had no way in from the home screen. Add a game here when its screen lands under
+ * `apps/mobile/app/play-solo/`.
+ */
+export const SOLO_PLAY_INDEX: readonly {
+  slug: string
+  gameType: GameType
+  label: string
+  emoji: string
+  blurb: string
+}[] = [
+  { slug: 'whot', gameType: 'whot', label: 'Whot', emoji: '🃏', blurb: 'Shape-matching card duel against the bot.' },
+  { slug: 'uno', gameType: 'uno', label: 'Match Up', emoji: '🎴', blurb: 'Colour-and-number cards, wilds and all.' },
+  {
+    slug: 'crazy-eights',
+    gameType: 'crazy_eights',
+    label: 'Crazy Eights',
+    emoji: '8️⃣',
+    blurb: 'Classic shedding card game, one on one.',
+  },
+  { slug: 'ludo', gameType: 'ludo', label: 'Ludo', emoji: '🎲', blurb: 'Race four tokens home against the bot.' },
+  { slug: 'ayo', gameType: 'ayo', label: 'Ayo', emoji: '🫘', blurb: 'Nigerian mancala — sow, capture, outthink.' },
+  {
+    slug: 'yahtzee',
+    gameType: 'yahtzee',
+    label: 'Five Dice',
+    emoji: '🎲',
+    blurb: 'Roll, hold and score the perfect card.',
+  },
+] as const
+
+/**
  * Fire-and-forget analytics: log that a fresh solo game was started. Called
  * once per init/restart from each mobile solo screen — never on rehydrate,
  * so a mid-game app-restart doesn't inflate the tally. Errors are swallowed:

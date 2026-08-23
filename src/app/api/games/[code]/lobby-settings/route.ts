@@ -22,7 +22,6 @@ import {
   isWordSearchGame,
   isWordScrambleGame,
   isWordGroupingGame,
-  isPingPongGame,
   isCheckersGame,
   isDraughts10Game,
   isCheckersNigeriaGame,
@@ -69,7 +68,6 @@ import {
   isLobbyLimitGameType,
   type LobbyLimitGameType,
 } from '@/lib/game-limits'
-import { clampPingPongPoints } from '@/lib/ping-pong'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { scheduleNewPublicGameFanout } from '@/lib/notification-subscriptions'
 
@@ -130,6 +128,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const {
     hostToken,
     is_public,
+    theme,
     max_players,
     timer_seconds,
     game_duration_seconds,
@@ -139,6 +138,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     monopoly_auction_timer_seconds,
     monopoly_no_rent_in_jail,
     monopoly_estate_dividend,
+    monopoly_loans_enabled,
+    monopoly_loan_interest,
+    monopoly_loan_term_rounds,
     monopoly_board_size,
     whot_pick3_enabled,
     whot_cards_enabled,
@@ -202,16 +204,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     word_scramble_difficulty,
     puzzle_theme_id,
     puzzle_custom_questions,
-    ping_pong_points_to_win,
     content_label,
     wordle_room_category,
     wordle_room_word_count,
     wordle_room_words,
+    troll_run_rounds,
+    troll_run_time_limit,
+    troll_run_world,
   } = parsed.data
   const gameCode = parsed.data.gameId.toUpperCase()
 
   if (
     content_label === undefined &&
+    theme === undefined &&
     is_public === undefined &&
     max_players === undefined &&
     timer_seconds === undefined &&
@@ -222,6 +227,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     monopoly_auction_timer_seconds === undefined &&
     monopoly_no_rent_in_jail === undefined &&
     monopoly_estate_dividend === undefined &&
+    monopoly_loans_enabled === undefined &&
+    monopoly_loan_interest === undefined &&
+    monopoly_loan_term_rounds === undefined &&
     monopoly_board_size === undefined &&
     whot_pick3_enabled === undefined &&
     whot_cards_enabled === undefined &&
@@ -285,10 +293,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     word_scramble_difficulty === undefined &&
     puzzle_theme_id === undefined &&
     puzzle_custom_questions === undefined &&
-    ping_pong_points_to_win === undefined &&
     wordle_room_category === undefined &&
     wordle_room_word_count === undefined &&
-    wordle_room_words === undefined
+    wordle_room_words === undefined &&
+    troll_run_rounds === undefined &&
+    troll_run_time_limit === undefined &&
+    troll_run_world === undefined
   ) {
     return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
   }
@@ -308,7 +318,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const limitOnlyType = limitOnlyLobbyType(game.game_type)
   const quiplashLobby = isQuiplashGame(parseGameType(game.game_type))
   const quickDrawLobby = isQuickDrawGame(parseGameType(game.game_type))
-  const pingPongLobby = isPingPongGame(parseGameType(game.game_type))
   const ayoLobby = ayoLobbyType(game.game_type)
   const checkersLobby = checkersLobbyType(game.game_type)
   // max_players + is_public are generic to every lobby-limit game; the more
@@ -322,7 +331,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     !limitOnlyType &&
     !quiplashLobby &&
     !quickDrawLobby &&
-    !pingPongLobby &&
     !ayoLobby &&
     !isLobbyLimitGameType(game.game_type)
   ) {
@@ -335,9 +343,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       ? 'quiplash'
       : quickDrawLobby
         ? 'quick_draw'
-        : pingPongLobby
-          ? 'ping_pong'
-          : (timedLobbyType ?? limitOnlyType ?? boardLobbyType ?? parseGameType(game.game_type))
+        : (timedLobbyType ?? limitOnlyType ?? boardLobbyType ?? parseGameType(game.game_type))
   ) as LobbyLimitGameType
   const gameUpdate: Record<string, unknown> = {}
 
@@ -347,9 +353,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     gameUpdate.is_public = is_public
   }
 
-  // Single source of truth for capacity rules (board-size gate + reset).
-  const effectiveMaxPlayers =
-    max_players !== undefined ? clampLobbyMaxPlayers(limitKey, max_players, lobbyLimits) : Number(game.max_players ?? 6)
+  if (theme !== undefined) {
+    gameUpdate.theme = theme
+  }
+
+  // Single source of truth for capacity rules (board-size gate + reset). Team-Up
+  // forces the room to UNO_TEAM_PLAYERS (see the uno block below); derive the
+  // NEXT team-mode state from the request when supplied, else from the game's
+  // current state, so an existing Team-Up room raising max_players still stays
+  // capped at 4 instead of the requested cap silently landing.
+  const nextUnoTeamMode =
+    boardLobbyType === 'uno' && (uno_team_mode === undefined ? game.uno_team_mode === true : uno_team_mode === true)
+  const effectiveMaxPlayers = nextUnoTeamMode
+    ? UNO_TEAM_PLAYERS
+    : max_players !== undefined
+      ? clampLobbyMaxPlayers(limitKey, max_players, lobbyLimits)
+      : Number(game.max_players ?? 6)
 
   // Public + max_players < 2 is a contradiction (nobody to fill the seat) — the
   // /browse feed excludes those rows, so silently accepting the flag would
@@ -365,20 +384,43 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     gameUpdate.content_label = trimmed ? trimmed.slice(0, 40) : null
   }
 
-  if (max_players !== undefined) {
+  // Seated-count gate — runs for any update that could lower the effective cap,
+  // not just an explicit max_players change. Enabling uno_team_mode forces the
+  // room to UNO_TEAM_PLAYERS (see the uno block below), which can drop the cap
+  // below the current seated count even when max_players wasn't in the request.
+  if (max_players !== undefined || uno_team_mode === true) {
     const nextMax = effectiveMaxPlayers
-    const { count: playerCount } = await supabase
+    // Count only ready (non-spectator) players against the new cap. Not-ready players
+    // are `spectator: true` (see /api/players/ready — readiness maps directly onto the
+    // spectator flag), and a spectator does not consume a player seat. Counting them
+    // against the cap forced the host to remove people who weren't taking a seat in the
+    // first place, which is what the user hit trying to reduce max from 8 to 6 while
+    // three not-ready players were watching.
+    const { count: seatedCount, error: countError } = await supabase
       .from('players')
       .select('id', { count: 'exact', head: true })
       .eq('game_id', gameCode)
-    if ((playerCount ?? 0) > nextMax) {
+      .not('spectator', 'is', true)
+    // A failed count query would silently pass through as 0 and let the write land
+    // with no bound on seated size — treat it as a hard failure so callers see it.
+    if (countError || seatedCount === null) {
       return NextResponse.json(
-        { error: `Already have ${playerCount} players — remove someone or pick at least ${playerCount}` },
+        {
+          error: internalErrorMessage('games/code/lobby-settings', countError ?? new Error('seated count unavailable')),
+        },
+        { status: 500 }
+      )
+    }
+    if (seatedCount > nextMax) {
+      return NextResponse.json(
+        { error: `Already have ${seatedCount} seated players — remove someone or pick at least ${seatedCount}` },
         { status: 400 }
       )
     }
-    gameUpdate.max_players = nextMax
-    if (boardLobbyType === 'monopoly' && nextMax < 6) gameUpdate.monopoly_board_size = 40
+    if (max_players !== undefined) {
+      gameUpdate.max_players = nextMax
+      if (boardLobbyType === 'monopoly' && nextMax < 6) gameUpdate.monopoly_board_size = 40
+    }
   }
 
   if (timer_seconds !== undefined) {
@@ -443,6 +485,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     }
   }
 
+  if (troll_run_rounds !== undefined) {
+    gameUpdate.troll_run_rounds = Math.max(1, Math.min(20, Math.round(troll_run_rounds)))
+    gameUpdate.rounds_count = gameUpdate.troll_run_rounds
+  }
+  if (troll_run_time_limit !== undefined) {
+    gameUpdate.troll_run_time_limit = Math.max(30, Math.min(600, Math.round(troll_run_time_limit)))
+  }
+  if (troll_run_world !== undefined) {
+    gameUpdate.troll_run_world = troll_run_world.trim().toLowerCase().slice(0, 50)
+  }
+
   if (limitOnlyType === 'matching_pairs') {
     if (rounds_count !== undefined) {
       gameUpdate.rounds_count = Math.max(1, Math.min(100, Math.round(rounds_count)))
@@ -501,8 +554,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       gameUpdate.game_duration_seconds = clampCrazyEightsGameDuration(game_duration_seconds)
     } else if (boardLobbyType === 'uno') {
       gameUpdate.game_duration_seconds = clampUnoGameDuration(game_duration_seconds)
-    } else if (parseGameType(game.game_type) === 'ping_pong') {
-      gameUpdate.game_duration_seconds = Math.max(0, game_duration_seconds)
     } else {
       return NextResponse.json({ error: 'This game type does not support game length settings' }, { status: 400 })
     }
@@ -618,6 +669,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       gameUpdate.monopoly_auction_timer_seconds = monopoly_auction_timer_seconds
     if (monopoly_no_rent_in_jail !== undefined) gameUpdate.monopoly_no_rent_in_jail = monopoly_no_rent_in_jail
     if (monopoly_estate_dividend !== undefined) gameUpdate.monopoly_estate_dividend = monopoly_estate_dividend
+    if (monopoly_loans_enabled !== undefined) gameUpdate.monopoly_loans_enabled = monopoly_loans_enabled
+    if (monopoly_loan_interest !== undefined) gameUpdate.monopoly_loan_interest = monopoly_loan_interest
+    if (monopoly_loan_term_rounds !== undefined) gameUpdate.monopoly_loan_term_rounds = monopoly_loan_term_rounds
     if (monopoly_board_size !== undefined) {
       const requestedBoardSize = monopoly_board_size === 48 ? 48 : 40
       if (requestedBoardSize === 48 && effectiveMaxPlayers < 6) {
@@ -634,6 +688,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     monopoly_auction_timer_seconds !== undefined ||
     monopoly_no_rent_in_jail !== undefined ||
     monopoly_estate_dividend !== undefined ||
+    monopoly_loans_enabled !== undefined ||
+    monopoly_loan_interest !== undefined ||
+    monopoly_loan_term_rounds !== undefined ||
     monopoly_board_size !== undefined
   ) {
     return NextResponse.json({ error: 'These rules only apply to Estate Kings games' }, { status: 400 })
@@ -808,14 +865,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     quick_draw_num_teams !== undefined
   ) {
     return NextResponse.json({ error: 'Quick Draw settings only apply to Quick Draw games' }, { status: 400 })
-  }
-
-  if (pingPongLobby) {
-    if (ping_pong_points_to_win !== undefined) {
-      gameUpdate.ping_pong_points_to_win = clampPingPongPoints(ping_pong_points_to_win)
-    }
-  } else if (ping_pong_points_to_win !== undefined) {
-    return NextResponse.json({ error: 'Points to win only applies to Ping Pong games' }, { status: 400 })
   }
 
   const { data: updated, error } = await getSupabaseAdmin()

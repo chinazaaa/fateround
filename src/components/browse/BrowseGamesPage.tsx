@@ -158,8 +158,11 @@ export function BrowseGamesPage() {
   // Freshness: Realtime is primary; visibility + slow poll are fallbacks. Any change to a
   // game (new public game, status flip, finish) reloads the first page — cheap and simple.
   useEffect(() => {
+    // Per-mount channel name — supabase-js caches channels by name and
+    // removeChannel is async, so a stale-then-remounted page could otherwise
+    // hit "cannot add postgres_changes callbacks … after subscribe()".
     const channel = supabase
-      .channel('public_games_browse')
+      .channel(`public_games_browse_${Math.random().toString(36).slice(2, 10)}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'games' }, () => {
         void loadGames(null, true)
       })
@@ -288,6 +291,7 @@ export function BrowseGamesPage() {
                           {roomGameStatusLabel(game.status)}
                           {lateJoinable ? ' · join or watch' : isFull ? ' · full' : ''}
                           {` · ${count} player${game.playerCount !== 1 ? 's' : ''}`}
+                          {game.viewerCount > 0 ? ` · ${game.viewerCount} watching` : ''}
                         </>
                       )}
                     </span>

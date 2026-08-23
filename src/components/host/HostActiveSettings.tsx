@@ -5,7 +5,8 @@ import { HostRulesRow } from '@/components/host/HostRulesRow'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
 import { ExitIcon } from '@/components/host/host-icons'
 import { useCloseGameSettings } from '@/components/GameSettingsContext'
-import type { GameType } from '@/types'
+import { RulesInPlaySection } from '@/components/game-lobby/RulesInPlaySection'
+import type { Game, GameType } from '@/types'
 
 /**
  * The body of a host's ⚙ game-settings sheet during ACTIVE play — the shared home for
@@ -27,6 +28,7 @@ export function HostActiveSettings({
   gameCode,
   hostToken,
   gameType,
+  game,
   onEnded,
   endGameLabel = 'End game',
   endGameConfirmTitle = 'End this game?',
@@ -37,6 +39,10 @@ export function HostActiveSettings({
   hostToken: string
   /** Drives the "How to play" row's rules link. */
   gameType: GameType | string
+  /** When passed, renders a "Rules in play" section at the top of the sheet with a
+   *  GameInfoChips summary — so the host can recall the house rules they picked (bank
+   *  loans on/off, forced auctions, etc.) without going back to the lobby. */
+  game?: Game | null
   /** Re-fetch game state after the game ends. */
   onEnded: () => void
   endGameLabel?: string
@@ -48,6 +54,7 @@ export function HostActiveSettings({
   const closeSettings = useCloseGameSettings()
   return (
     <div className="space-y-4">
+      <RulesInPlaySection game={game ?? null} />
       {children}
       <HostRulesRow gameType={gameType} />
       <HostEndGameButton

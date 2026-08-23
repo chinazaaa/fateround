@@ -32,8 +32,12 @@ export type SubscriberDeviceRow = {
   web_auth: string | null
   timezone: string | null
   quiet_mode: 'off' | 'quiet' | 'available'
+  // The 'quiet' window (times to stay silent) and the 'available' window (times
+  // OK to ping) are stored independently — editing one must never move the other.
   quiet_start_minutes: number | null
   quiet_end_minutes: number | null
+  available_start_minutes: number | null
+  available_end_minutes: number | null
   /** auth.users.id of the profile that registered the device (nullable — guests). */
   user_id: string | null
 }
@@ -85,15 +89,16 @@ function localMinutesForDevice(device: SubscriberDeviceRow, now = new Date()): n
  */
 export function isWithinDeliveryWindow(device: SubscriberDeviceRow, now = new Date()): boolean {
   if (device.quiet_mode === 'off') return true
-  if (device.quiet_start_minutes == null || device.quiet_end_minutes == null) return true
+  // Each mode reads its own window: 'quiet' from quiet_*, 'available' from available_*.
+  const start = device.quiet_mode === 'quiet' ? device.quiet_start_minutes : device.available_start_minutes
+  const end = device.quiet_mode === 'quiet' ? device.quiet_end_minutes : device.available_end_minutes
+  if (start == null || end == null) return true
   const local = localMinutesForDevice(device, now)
-  const start = device.quiet_start_minutes
-  const end = device.quiet_end_minutes
   const inWindow = start <= end ? local >= start && local < end : local >= start || local < end
   return device.quiet_mode === 'quiet' ? !inWindow : inWindow
 }
 
-async function sendWebPushOne(device: SubscriberDeviceRow, payload: object): Promise<{ stale: boolean }> {
+export async function sendWebPushOne(device: SubscriberDeviceRow, payload: object): Promise<{ stale: boolean }> {
   if (!configureWebPush() || !device.web_p256dh || !device.web_auth) return { stale: false }
   try {
     await webpush.sendNotification(
@@ -107,7 +112,7 @@ async function sendWebPushOne(device: SubscriberDeviceRow, payload: object): Pro
   }
 }
 
-async function sendExpoPushBatch(
+export async function sendExpoPushBatch(
   devices: SubscriberDeviceRow[],
   payload: { title: string; body: string; data: Record<string, unknown> }
 ): Promise<string[]> {
@@ -143,7 +148,7 @@ export async function notifyGameTypeSubscribersOfNewGame(
   const { data: subs } = await admin
     .from('notification_subscriptions')
     .select(
-      'device:notification_subscriber_devices(id, channel, token_key, web_p256dh, web_auth, timezone, quiet_mode, quiet_start_minutes, quiet_end_minutes, user_id)'
+      'device:notification_subscriber_devices(id, channel, token_key, web_p256dh, web_auth, timezone, quiet_mode, quiet_start_minutes, quiet_end_minutes, available_start_minutes, available_end_minutes, user_id)'
     )
     .eq('game_type', type)
 
@@ -256,7 +261,7 @@ export async function getSubscriptionsForToken(
   const { data: device } = await admin
     .from('notification_subscriber_devices')
     .select(
-      'id, channel, token_key, web_p256dh, web_auth, timezone, quiet_mode, quiet_start_minutes, quiet_end_minutes'
+      'id, channel, token_key, web_p256dh, web_auth, timezone, quiet_mode, quiet_start_minutes, quiet_end_minutes, available_start_minutes, available_end_minutes'
     )
     .eq('token_key', tokenKey)
     .maybeSingle()

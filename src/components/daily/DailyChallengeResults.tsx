@@ -315,6 +315,12 @@ export function DailyChallengeResults({
             </button>
             {/* "Copy Grid" removed — Share Result already embeds the emoji grid image, so an
                 extra CTA just duplicated the same content in text form. */}
+            {/* Peak "but what WAS the answer?" moment. Pointing it at yesterday's puzzle
+                satisfies the itch without ever revealing a live one — today's answers only
+                appear here tomorrow, which is what keeps the leaderboard worth topping. */}
+            <Link href={`/daily-challenges/${slug}/answers`} className="fr-btn fr-btn--ghost fr-btn--sm mx-auto">
+              Yesterday&apos;s answers
+            </Link>
             <Link href="/daily-challenges" className="fr-btn fr-btn--ghost fr-btn--sm mx-auto">
               Back to Daily Challenges
             </Link>

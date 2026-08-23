@@ -9,8 +9,12 @@ import { pushPlatform } from '@/lib/push-notifications'
 
 export type QuietHoursState = {
   mode: 'off' | 'quiet' | 'available'
-  startMinutes: number | null
-  endMinutes: number | null
+  // 'quiet' and 'available' keep independent windows — editing one never
+  // touches the other.
+  quietStartMinutes: number | null
+  quietEndMinutes: number | null
+  availableStartMinutes: number | null
+  availableEndMinutes: number | null
   timezone: string | null
 }
 
@@ -55,9 +59,17 @@ export async function unsubscribeGameType(tokenKey: string, gameType?: string): 
 }
 
 export async function patchQuietHours(tokenKey: string, patch: Partial<QuietHoursState>): Promise<void> {
-  await fetch(apiUrl('/api/notifications'), {
+  const res = await fetch(apiUrl('/api/notifications'), {
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ tokenKey, ...patch }),
+    // `channel: 'mobile'` lets the server upsert the device row on first
+    // quiet-hours edit — without it a plain UPDATE would silently match zero
+    // rows for a device that hasn't toggled a game yet, and the setting would
+    // vanish on the next screen open.
+    headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+    body: JSON.stringify({ channel: 'mobile', tokenKey, ...patch }),
   })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw new Error(body.error || 'Failed to save quiet hours')
+  }
 }

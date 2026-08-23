@@ -20,7 +20,11 @@ export class JoinError extends Error {
   /** Set when the server returned a cross-device 409 (already_hosting / already_joined). */
   reason?: 'already_hosting' | 'already_joined'
   existingPlayerName?: string | null
-  constructor(message: string, full: boolean, extras?: { reason?: JoinError['reason']; existingPlayerName?: string | null }) {
+  constructor(
+    message: string,
+    full: boolean,
+    extras?: { reason?: JoinError['reason']; existingPlayerName?: string | null }
+  ) {
     super(message)
     this.name = 'JoinError'
     this.full = full
@@ -101,6 +105,9 @@ export async function joinGame(input: {
   pollGender?: ParticipantGender
   /** Set true to bypass the server's cross-device 409 and take the seat here. */
   continueOnThisDevice?: boolean
+  /** Host device's own host_token — proves the caller is the host, not another
+   *  device on the same profile. Skips the cross-device host-conflict check. */
+  hostToken?: string | null
 }): Promise<JoinPlayerResponse> {
   const res = await fetch(apiUrl('/api/players'), {
     method: 'POST',
@@ -116,6 +123,7 @@ export async function joinGame(input: {
       identityGender: input.identityGender ?? undefined,
       pollGender: input.pollGender ?? undefined,
       continueOnThisDevice: input.continueOnThisDevice === true ? true : undefined,
+      hostToken: input.hostToken ?? undefined,
     }),
   })
   const data = (await res.json()) as JoinPlayerResponse & {

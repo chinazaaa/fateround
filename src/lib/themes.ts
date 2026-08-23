@@ -4,6 +4,9 @@ import {
   Diamond01Icon,
   DiceIcon,
   Idea01Icon,
+  Moon02Icon,
+  SparklesIcon,
+  StarIcon,
   TennisBallIcon,
   TreePalmIcon,
   Tv01Icon,
@@ -12,6 +15,7 @@ import { NAIJA_ICON, PIRATE_ICON } from '@/lib/theme-icon-art'
 
 export type ThemeId =
   | 'default'
+  | 'dark'
   | 'neon'
   | 'retro'
   | 'elegant'
@@ -19,7 +23,20 @@ export type ThemeId =
   | 'pirate'
   | 'arctic'
   | 'naija'
+  | 'america'
+  | 'christmas'
   | 'grass_court'
+  // Per-game visual reskins from game_themes (Phase 3 shop). Purchasing
+  // any of these adds it to profile_owned_themes; the host picker then
+  // exposes the id and the game view applies the palette via
+  // useApplyGameTheme (data-game-theme attribute; CSS delivered with the
+  // art PR — until then boards render the default palette).
+  | 'whot-neon'
+  | 'whot-naija'
+  | 'ludo-wooden'
+  | 'ludo-naija'
+  | 'sudoku-minimalist'
+  | 'sudoku-newsprint'
 
 export interface ThemeConfig {
   id: ThemeId
@@ -45,6 +62,14 @@ export const THEMES: ThemeConfig[] = [
     emoji: '🎲',
     icon: DiceIcon,
     preview: { bg: '#08080f', accent: '#f43f5e', text: '#f2f2f8' },
+    cssVars: {},
+  },
+  {
+    id: 'dark',
+    label: 'Dark Slate',
+    emoji: '🌑',
+    icon: Moon02Icon,
+    preview: { bg: '#090d16', accent: '#38bdf8', text: '#f1f5f9' },
     cssVars: {},
   },
   {
@@ -109,11 +134,86 @@ export const THEMES: ThemeConfig[] = [
     cssVars: {},
   },
   {
+    id: 'america',
+    label: 'USA',
+    emoji: '⭐',
+    icon: StarIcon,
+    preview: { bg: '#0a1a3a', accent: '#c9a44c', text: '#f4ecd8' },
+    cssVars: {},
+  },
+  {
+    id: 'christmas',
+    label: 'Christmas',
+    // Seasonal edition (docs/estate-kings-christmas-edition.md). Uses a
+    // snowflake glyph as the picker icon — motif-based per the spec's art
+    // brief (no owned characters, no branded Santa likeness).
+    emoji: '❄️',
+    icon: SparklesIcon,
+    preview: { bg: '#0f2a1a', accent: '#c8102e', text: '#f6efd7' },
+    cssVars: {},
+  },
+  {
     id: 'grass_court',
     label: 'Grass Court',
     emoji: '🎾',
     icon: TennisBallIcon,
     preview: { bg: '#16a34a', accent: '#eab308', text: '#ffffff' },
+    cssVars: {},
+  },
+  // Per-game visual reskins seeded by the Phase 3 shop. Preview swatches
+  // approximate the target art (docs/game-themes-catalog.md); the real
+  // palette lands with the art delivery PRs, at which point globals.css
+  // grows a `[data-game-theme='<slug>']` block just like the app-wide
+  // themes above. Until then the picker still renders a legible tile
+  // and the board falls back to the default palette.
+  {
+    id: 'whot-neon',
+    label: 'Neon Whot',
+    emoji: '💡',
+    icon: Idea01Icon,
+    preview: { bg: '#0a0a14', accent: '#00e5ff', text: '#e0ffe0' },
+    cssVars: {},
+  },
+  {
+    id: 'whot-naija',
+    label: 'Naija Whot',
+    emoji: '🇳🇬',
+    icon: NAIJA_ICON,
+    iconFilled: true,
+    preview: { bg: '#008751', accent: '#EDE3D3', text: '#008751' },
+    cssVars: {},
+  },
+  {
+    id: 'ludo-wooden',
+    label: 'Wooden Ludo',
+    emoji: '🪵',
+    icon: TreePalmIcon,
+    preview: { bg: '#3d2b1f', accent: '#d97706', text: '#faf3e6' },
+    cssVars: {},
+  },
+  {
+    id: 'ludo-naija',
+    label: 'Naija Ludo',
+    emoji: '🇳🇬',
+    icon: NAIJA_ICON,
+    iconFilled: true,
+    preview: { bg: '#008751', accent: '#EDE3D3', text: '#008751' },
+    cssVars: {},
+  },
+  {
+    id: 'sudoku-minimalist',
+    label: 'Minimalist Sudoku',
+    emoji: '⬜',
+    icon: Diamond01Icon,
+    preview: { bg: '#ffffff', accent: '#0a0a0a', text: '#3d3d3d' },
+    cssVars: {},
+  },
+  {
+    id: 'sudoku-newsprint',
+    label: 'Newsprint Sudoku',
+    emoji: '📰',
+    icon: Tv01Icon,
+    preview: { bg: '#f4ecd8', accent: '#2b2b2b', text: '#1a1a1a' },
     cssVars: {},
   },
 ]

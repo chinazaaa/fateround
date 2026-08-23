@@ -63,13 +63,29 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     return NextResponse.json({ error: 'The new host must have RSVP’d.' }, { status: 400 })
   }
 
+  // Look up the new host's profile via their device (RSVPs key by device_id). Any signed-in
+  // owner attached to the device becomes the game's host_user_id, so the /reclaim-host route
+  // hands back the new token to them and NOT to the previous host. Null for a pure-guest
+  // device just leaves host_user_id null, which is a fully supported state.
+  const { data: deviceRow } = await admin
+    .from('notification_subscriber_devices')
+    .select('user_id')
+    .eq('id', parsed.data.newHostDeviceId)
+    .maybeSingle()
+  const newHostUserId = (deviceRow as { user_id?: string | null } | null)?.user_id ?? null
+
   const newHostToken = generateHostToken()
   // Atomic guard: two racing transfers would both pass the auth read; the
   // predicate on the current host_token means only one row is updated, and
   // the loser sees a 409 instead of a silent stomp on the winner's token.
   const { data: updated, error } = await admin
     .from('games')
-    .update({ host_token: newHostToken, host_player_id: null, last_activity_at: new Date().toISOString() })
+    .update({
+      host_token: newHostToken,
+      host_player_id: null,
+      host_user_id: newHostUserId,
+      last_activity_at: new Date().toISOString(),
+    })
     .eq('id', gameCode)
     .eq('status', 'scheduled')
     .eq('host_token', parsed.data.hostToken)
