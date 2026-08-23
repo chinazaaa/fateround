@@ -485,16 +485,32 @@ retconning free features.
 - [ ] Anti-abuse: server-authoritative spend, rate limits on shop
       purchases, unique constraint on launch grant ledger row
 
-## Open questions worth deciding before code
+## Decisions (previously open questions)
 
-1. **Tournament coin awards** — per game + finish, or finish only? (Doc
-   recommends both; small per-game plus bonus.)
-2. **Refund window on purchases** — 24h if unused? (Nice trust builder;
-   deferrable if it adds too much complexity to ledger.)
-3. **Gifting** — probably not v1. Later.
-4. **AI-remix on library packs** — deferred with host AI generation.
-5. **Edition experience for non-owners** — everyone at the table plays the
-   host's edition; only the host needs to own it. (Doc recommends this;
-   confirm before implementation.)
-6. **Bot pricing across future games** — flat 50 coins per bot, regardless
-   of game. (Doc recommends flat; confirm.)
+1. **Tournament coin awards** — **both.** Small per-game award (5 coins)
+   inside the tournament so every match feels like it counts, plus a
+   placement bonus at tournament finish (100 / 50 / 25 for top 3). Two
+   awards, same results-screen surface, no new UI concept.
+2. **Refund window on purchases** — **yes, 24h if unused.** Cheap trust
+   builder. "Unused" is verifiable from the ledger + owned-items tables:
+   an edition is unused if no `games` row exists with that
+   `edition_slug` and the buyer's `host_player_id` since the purchase;
+   a frame is unused if `equipped_frame` was never set to it. Refund
+   writes a reversing ledger row (`reason: 'refund'`) and drops the
+   `profile_owned_*` row.
+3. **Gifting** — **not in v1.** Adds ownership-transfer complexity for
+   little demonstrated demand, and there's a natural workaround (host
+   plays the edition in a room the giftee joins). Revisit if people ask
+   for it.
+4. **AI-remix on library packs** — **deferred**, same wave as host AI
+   generation (turned on when real-money monetization ships).
+5. **Edition experience for non-owners** — **everyone at the table plays
+   the host's edition; only the host needs to own it.** Host is
+   "hosting the edition" for that session. Guests seeing it is the
+   marketing loop that sells the next copy. Consistent with party-game
+   feel — the host sets the vibe for the room.
+6. **Bot pricing across future games** — **flat 50 coins per bot per
+   room, first bot free, applies to every game that supports bots
+   today or in future.** Bots are consumable per-room, not durable
+   unlocks. Doesn't matter if it's Estate Kings, Whot, Ludo, or a game
+   we haven't built yet — same price.
