@@ -215,10 +215,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
       }
       updatePayload.edition_slug = targetEdition
       updatePayload.theme = mappedTheme
-    } else if (rawTheme !== undefined) {
-      // Non-Monopoly game: theme is a plain cosmetic pick, edition_slug is
-      // ignored (no other game type uses editions yet).
-      updatePayload.theme = parseThemeId(rawTheme)
+    } else {
+      // Non-Monopoly game: no other game type uses editions yet. A caller
+      // that sends edition_slug here is confused about the API shape —
+      // reject loud rather than silently drop the field (matches the
+      // Monopoly-theme-not-valid pattern above).
+      if (rawEditionSlug !== undefined) {
+        return NextResponse.json({ error: 'edition_slug not valid for this game type' }, { status: 400 })
+      }
+      if (rawTheme !== undefined) {
+        updatePayload.theme = parseThemeId(rawTheme)
+      }
     }
   }
 

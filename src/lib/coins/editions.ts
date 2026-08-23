@@ -82,21 +82,28 @@ export async function checkMonopolyEditionEntitlement(
   // are effectively permanent, so the DB toggle isn't the right lever.
   if (FREE_MONOPOLY_EDITION_SLUGS.has(editionSlug)) return { ok: true }
 
-  // Catalog lookup — price is the source of truth. is_active=false hides
-  // a retired edition from new selections without deleting existing
-  // profile_owned_editions rows.
+  // Catalog lookup — price is the source of truth. Deliberately does NOT
+  // filter is_active: a sunset paid edition (is_active=false) should still
+  // be playable by profiles that already own it (existing rooms keep
+  // hosting, host picker keeps its owned-badge). is_active only gates NEW
+  // selection for non-owners, which we enforce below.
   const { data: catalog, error: catalogErr } = await admin
     .from('game_editions')
-    .select('price_coins')
+    .select('price_coins, is_active')
     .eq('game_type', 'monopoly')
     .eq('slug', editionSlug)
-    .eq('is_active', true)
     .maybeSingle()
   if (catalogErr) throw catalogErr
   if (!catalog) return { ok: false, reason: 'unknown_edition' }
 
   const price = Number(catalog.price_coins ?? 0)
-  if (price === 0) return { ok: true }
+  const active = catalog.is_active !== false
+  if (price === 0) {
+    // Free edition: only visible if active. A retired free edition
+    // shouldn't be a valid host pick for anybody (grandfathered slugs
+    // short-circuited above still bypass this).
+    return active ? { ok: true } : { ok: false, reason: 'unknown_edition' }
+  }
 
   if (!profileId) return { ok: false, reason: 'needs_profile' }
 
@@ -107,9 +114,11 @@ export async function checkMonopolyEditionEntitlement(
     .eq('edition_slug', editionSlug)
     .maybeSingle()
   if (ownedErr) throw ownedErr
-  if (!owned) return { ok: false, reason: 'not_owned' }
-
-  return { ok: true }
+  if (owned) return { ok: true }
+  // No ownership row → sunset paid editions are dead to non-owners
+  // (matches the shop tile disappearing), active ones tell the caller
+  // they need to buy it.
+  return active ? { ok: false, reason: 'not_owned' } : { ok: false, reason: 'unknown_edition' }
 }
 
 /**
