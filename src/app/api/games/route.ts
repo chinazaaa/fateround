@@ -441,6 +441,7 @@ export async function POST(req: NextRequest) {
     custom_questions: rawCustomQuestions,
     game_type: rawGameType,
     theme: rawTheme,
+    edition_slug: rawEditionSlug,
     participants: rawParticipants,
     participant_filter,
     custom_slots,
@@ -540,6 +541,24 @@ export async function POST(req: NextRequest) {
     : false
   const participantOpts = { genderBased: gender_based, customSlots: custom_slots ?? null }
   const theme = parseThemeId(rawTheme)
+  // Estate Kings edition slug. See docs/estate-kings-america-edition.md +
+  // supabase/migrations/20261101120700_estate_kings_america_edition.sql. For
+  // Monopoly, we accept the client-supplied slug from the room-creation
+  // picker; for every other game it's ignored (no other game uses editions
+  // yet). Free grandfathered editions are always allowed; paid editions
+  // (currently 'america', 800 coins) require an owned-row — but the
+  // authoritative gate is the shop's purchase_item RPC, so we don't
+  // re-check ownership here; a client that fibs sees an edition it doesn't
+  // own but the DB never charged for, which is a display artifact, not a
+  // paid-content bypass (the picker itself hides it, see the useOwned
+  // hook).
+  const KNOWN_MONOPOLY_EDITIONS = new Set(['london', 'naija', 'pirate', 'arctic', 'america'])
+  const edition_slug =
+    game_type === 'monopoly'
+      ? typeof rawEditionSlug === 'string' && KNOWN_MONOPOLY_EDITIONS.has(rawEditionSlug)
+        ? rawEditionSlug
+        : 'london'
+      : null
   const question_source = parseQuestionSource(rawQuestionSource, game_type)
   let custom_questions: unknown[] | null = null
 
@@ -1237,6 +1256,7 @@ export async function POST(req: NextRequest) {
     trivia_category: isTriviaGame(game_type) ? triviaCategoryEnum.catch('general').parse(rawTriviaCategory) : null,
     game_type,
     theme,
+    ...(edition_slug ? { edition_slug } : {}),
     // Discovery Phase C — a scheduled game starts in 'scheduled' state and
     // flips to 'waiting' at T-0 via open_scheduled_games_due(). Requires
     // isPublic=true (a private schedule has no RSVP audience) and a future

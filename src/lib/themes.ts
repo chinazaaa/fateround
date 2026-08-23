@@ -5,6 +5,7 @@ import {
   DiceIcon,
   Idea01Icon,
   Moon02Icon,
+  StarIcon,
   TennisBallIcon,
   TreePalmIcon,
   Tv01Icon,
@@ -21,6 +22,7 @@ export type ThemeId =
   | 'pirate'
   | 'arctic'
   | 'naija'
+  | 'america'
   | 'grass_court'
 
 export interface ThemeConfig {
@@ -116,6 +118,14 @@ export const THEMES: ThemeConfig[] = [
     icon: NAIJA_ICON,
     iconFilled: true,
     preview: { bg: '#008751', accent: '#EDE3D3', text: '#008751' },
+    cssVars: {},
+  },
+  {
+    id: 'america',
+    label: 'USA',
+    emoji: '⭐',
+    icon: StarIcon,
+    preview: { bg: '#0a1a3a', accent: '#c9a44c', text: '#f4ecd8' },
     cssVars: {},
   },
   {

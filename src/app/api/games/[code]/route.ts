@@ -162,7 +162,21 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
   // gated to waiting/finished by the assertHostGameSettings path above. Validated
   // to a known theme id, matching how create handles it.
   if (rawTheme !== undefined) {
-    updatePayload.theme = parseThemeId(rawTheme)
+    const parsed = parseThemeId(rawTheme)
+    updatePayload.theme = parsed
+    // Keep edition_slug (Phase 4 addition) in lockstep with the theme pick
+    // for Monopoly, so the engine has one source of truth after any lobby
+    // edit. See docs/estate-kings-america-edition.md.
+    if (gameType === 'monopoly') {
+      const themeToSlug: Record<string, string> = {
+        default: 'london',
+        naija: 'naija',
+        pirate: 'pirate',
+        arctic: 'arctic',
+        america: 'america',
+      }
+      updatePayload.edition_slug = themeToSlug[parsed] ?? 'london'
+    }
   }
 
   // Who Said This quote source (player / anime / both). Consumed at start to pick which

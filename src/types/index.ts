@@ -408,6 +408,13 @@ export interface Game {
   player_questions_order?: PlayerQuestionsOrder
   game_type: GameType
   theme?: ThemeId
+  /**
+   * Estate Kings edition slug picked by the host (docs/estate-kings-america-edition.md).
+   * Mirrors `theme` for Monopoly — 'london' | 'naija' | 'pirate' | 'arctic' | 'america'
+   * — and is null for every other game type. See Phase 4 migration
+   * `20261101120700_estate_kings_america_edition.sql`.
+   */
+  edition_slug?: string | null
   status: GameStatus
   /** When true, the game is listed in /browse (discoverable). Default false = code-only. */
   is_public?: boolean
