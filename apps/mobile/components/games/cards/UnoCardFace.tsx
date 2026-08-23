@@ -156,9 +156,19 @@ const styles = StyleSheet.create({
   },
   cardCompact: { width: 48, height: 68, borderRadius: 7 },
   cardBig: { width: 66, height: 94, borderRadius: 10 },
-  cardPlayable: { borderColor: '#fcd34d', borderWidth: 2 },
+  // Web parity: playable cards get a bright green ring (matches --success on the web).
+  cardPlayable: {
+    borderColor: '#22c55e',
+    borderWidth: 2,
+    shadowColor: '#22c55e',
+    shadowOpacity: 0.6,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 4,
+  },
   cardSelected: { borderColor: '#22d3ee', borderWidth: 3 },
-  cardDim: { opacity: 0.4 },
+  // Non-playable cards fade + desaturate so a full hand isn't misread as "all playable".
+  cardDim: { opacity: 0.45 },
   oval: {
     alignItems: 'center',
     justifyContent: 'center',

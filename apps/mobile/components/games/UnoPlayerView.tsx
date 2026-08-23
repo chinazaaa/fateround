@@ -759,17 +759,18 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
                 // match plays out of turn instead.
                 const useNormalPlay = !normalDisabled
                 const disabled = useNormalPlay ? false : jumpable ? acting : true
+                // Web parity: any card the player can't act on right now fades — otherwise a
+                // full-brightness hand reads as "all playable" when only some are (and none are,
+                // when it isn't even your turn).
+                const showPlayable = (playable && isMyTurn && !normalDisabled) || jumpable
+                const showDim = !showPlayable
                 return (
                   <Pressable
                     key={card.id}
                     disabled={disabled}
                     onPress={() => void (useNormalPlay ? playCard(card.id) : jumpIn(card.id))}
                   >
-                    <UnoCardFace
-                      card={card}
-                      playable={(playable && isMyTurn && !normalDisabled) || jumpable}
-                      dim={canJumpIn && !jumpable}
-                    />
+                    <UnoCardFace card={card} playable={showPlayable} dim={showDim} />
                   </Pressable>
                 )
               })}
