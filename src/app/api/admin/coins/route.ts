@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
   }
 
   const supabase = getSupabaseAdmin()
-  const adminEmail = session.email.toLowerCase()
+  const adminEmail = session.email.trim().toLowerCase()
 
   try {
     // Cap enforcement lives INSIDE the RPC under an advisory transaction
@@ -164,7 +164,7 @@ export async function GET(req: NextRequest) {
   if (!profileId) return NextResponse.json({ error: 'profileId is required.' }, { status: 400 })
 
   const supabase = getSupabaseAdmin()
-  const adminEmail = session.email.toLowerCase()
+  const adminEmail = session.email.trim().toLowerCase()
 
   try {
     const [{ data: profile, error: pErr }, { data: ledger, error: lErr }, spentToday] = await Promise.all([

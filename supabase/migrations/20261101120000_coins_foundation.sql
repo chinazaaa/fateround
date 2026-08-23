@@ -185,9 +185,17 @@ create policy "owned_card_templates_self_select" on profile_owned_card_templates
   for select to authenticated using (profile_id = auth.uid());
 
 -- Packs use uuid, not slug — question_packs.id is the natural key.
+-- FK with ON DELETE CASCADE mirrors question_pack_collections: a pack
+-- deleted by an admin is gone from ownership too. This differs from the
+-- editions/themes tables above (which use text slugs and no FK — a
+-- retired cosmetic falls back to the default render), because a pack
+-- has no "default": if the row is gone the questions are gone, and
+-- keeping the ownership row would strand shop/inventory queries at an
+-- unresolvable id. Same cascade pattern the existing content-collections
+-- join table uses.
 create table if not exists profile_owned_packs (
   profile_id  uuid not null references profiles(id) on delete cascade,
-  pack_id     uuid not null,
+  pack_id     uuid not null references question_packs(id) on delete cascade,
   acquired_at timestamptz not null default now(),
   primary key (profile_id, pack_id)
 );

@@ -60,14 +60,19 @@ export default function AdminCoinsPage() {
   const [submitting, setSubmitting] = useState(false)
   const [flash, setFlash] = useState('')
 
-  const load = useCallback(async (id: string) => {
+  // AbortController drops responses from stale requests: admin pastes
+  // UUID-A, retypes to UUID-B before A resolves, A eventually lands last
+  // — without cancellation setProfile(A) would win and the panel would
+  // show A's data next to B's UUID in the input.
+  const load = useCallback(async (id: string, signal: AbortSignal) => {
     setLoading(true)
     setError('')
     setProfile(null)
     setLedger([])
     try {
-      const res = await fetch(`/api/admin/coins?profileId=${encodeURIComponent(id)}`)
+      const res = await fetch(`/api/admin/coins?profileId=${encodeURIComponent(id)}`, { signal })
       const json = await res.json().catch(() => ({}))
+      if (signal.aborted) return
       if (!res.ok) {
         setError(json.error ?? 'Could not load profile.')
         return
@@ -76,15 +81,22 @@ export default function AdminCoinsPage() {
       setLedger(json.ledger ?? [])
       setCap(json.cap ?? 5000)
       setSpentToday(json.spentToday ?? null)
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return
+      setError('Could not load profile.')
     } finally {
-      setLoading(false)
+      if (!signal.aborted) setLoading(false)
     }
   }, [])
 
   useEffect(() => {
     if (!profileId.trim()) return
-    const t = setTimeout(() => void load(profileId.trim()), 300)
-    return () => clearTimeout(t)
+    const ctl = new AbortController()
+    const t = setTimeout(() => void load(profileId.trim(), ctl.signal), 300)
+    return () => {
+      clearTimeout(t)
+      ctl.abort()
+    }
   }, [profileId, load])
 
   const submit = async () => {
@@ -121,7 +133,7 @@ export default function AdminCoinsPage() {
       )
       setDelta('')
       setNote('')
-      await load(profileId.trim())
+      await load(profileId.trim(), new AbortController().signal)
     } finally {
       setSubmitting(false)
     }

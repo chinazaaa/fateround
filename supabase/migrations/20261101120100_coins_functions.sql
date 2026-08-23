@@ -350,8 +350,31 @@ declare
   v_granted     bigint;
   v_new_balance bigint;
   v_itemization jsonb;
+  v_ids         uuid[];
 begin
   if p_device_id is null or length(trim(p_device_id)) = 0 then
+    return 0;
+  end if;
+
+  -- Snapshot the exact rows we're crediting for. A later DELETE by
+  -- (device_id, created_at) would race the guest earning path: a row
+  -- committed between this SELECT and the DELETE would be visible to
+  -- the DELETE but never summed into v_raw, silently losing the guest's
+  -- coins with no ledger record. Capture ids here, DELETE by id below.
+  --
+  -- FOR UPDATE takes a row lock so a concurrent migration for the same
+  -- device (only possible under a device-id collision) can't sum the
+  -- same rows twice.
+  select array_agg(id) into v_ids
+    from (
+      select id
+        from guest_pending_grants
+       where device_id = p_device_id
+         and created_at >= now() - v_window
+       for update
+    ) locked;
+
+  if v_ids is null or array_length(v_ids, 1) is null then
     return 0;
   end if;
 
@@ -361,8 +384,7 @@ begin
     from (
       select reason, sum(delta)::bigint as per_reason
         from guest_pending_grants
-       where device_id = p_device_id
-         and created_at >= now() - v_window
+       where id = any(v_ids)
        group by reason
     ) t;
 
@@ -397,13 +419,14 @@ begin
     return 0;
   end;
 
-  -- Consume ONLY the rows that fed into the grant. Rows older than the
-  -- 7-day window weren't summed in — deleting them here would silently
-  -- lose the audit trail of what the guest saw ("Sign up to claim X")
-  -- earlier. Housekeeping of expired rows is a separate cron concern.
-  delete from guest_pending_grants
-   where device_id = p_device_id
-     and created_at >= now() - v_window;
+  -- Delete BY ID from the same snapshot we summed. A window-based
+  -- DELETE would delete rows the guest earning path committed after
+  -- our SELECT but before this DELETE — those wouldn't be in v_raw and
+  -- their coins would silently vanish. Anything committed after the
+  -- SELECT stays around for the next migration or the housekeeping
+  -- cron to sweep. Rows outside the 7-day window are likewise left
+  -- alone (separate cron concern).
+  delete from guest_pending_grants where id = any(v_ids);
 
   return v_granted;
 end;
