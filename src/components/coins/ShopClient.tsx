@@ -54,16 +54,17 @@ export function ShopClient() {
   const [busy, setBusy] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
 
-  const load = useCallback(async () => {
-    setLoading(true)
+  const load = useCallback(async (opts?: { background?: boolean }) => {
+    // Foreground load flips loading=true so the first-render Skeleton
+    // shows. A background refresh (called after a purchase / equip) keeps
+    // the current grid visible — otherwise the just-set success toast is
+    // hidden behind the Skeleton until the fetch settles (reviewer round
+    // 4 finding #3). Toast lives outside the loading gate too, below.
+    const background = opts?.background === true
+    if (!background) setLoading(true)
     try {
       const headers = (await authHeaders()) ?? {}
       const res = await fetch('/api/shop/catalog', { headers })
-      // A 500 (owned-table read failure, RLS drift, transient DB error)
-      // parses fine but arrives as {error: …} — coerced to Catalog with
-      // items=undefined it would render as "Nothing in this category yet"
-      // and silently mask a real server error (reviewer round 3 finding
-      // #2). Toast + leave prior catalog visible so a retry is possible.
       if (!res.ok) {
         setToast('Could not load the shop — try again')
         return
@@ -73,7 +74,7 @@ export function ShopClient() {
     } catch {
       setToast('Could not load the shop — try again')
     } finally {
-      setLoading(false)
+      if (!background) setLoading(false)
     }
   }, [])
 
@@ -145,12 +146,12 @@ export function ShopClient() {
       if (!res.ok) {
         const data = (await res.json().catch(() => ({}))) as { error?: string }
         setToast(data.error ?? 'Could not equip — try again')
-        await load()
+        await load({ background: true })
         return
       }
       trackEvent(GA_EVENTS.shopItemEquipped, { item_kind: item.kind, item_slug: item.slug })
       setToast(`Equipped ${item.name}`)
-      await load()
+      await load({ background: true })
       refresh()
     } catch {
       setToast('Could not equip — try again')
@@ -217,7 +218,7 @@ export function ShopClient() {
         emitCoinsAwarded({ lines: [], total: 0 } satisfies CoinAwardWire)
       }
       setPending(null)
-      await load()
+      await load({ background: true })
       refresh()
     } catch {
       trackEvent(GA_EVENTS.shopItemPurchaseFailed, {
@@ -232,31 +233,41 @@ export function ShopClient() {
     }
   }
 
+  // Toast belongs OUTSIDE the loading / guest early-returns so a message
+  // set right before an early-return branch still surfaces (reviewer
+  // round 4 finding #3 — a success toast set before a background reload
+  // would flash then vanish behind the skeleton).
   if (loading) {
     return (
-      <div className="space-y-3" aria-busy="true">
-        <Skeleton className="h-10 w-full" />
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <Skeleton key={i} className="h-32 w-full" />
-          ))}
+      <>
+        <div className="space-y-3" aria-busy="true">
+          <Skeleton className="h-10 w-full" />
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <Skeleton key={i} className="h-32 w-full" />
+            ))}
+          </div>
         </div>
-      </div>
+        {toast && <Toast text={toast} onClose={() => setToast(null)} />}
+      </>
     )
   }
 
   if (isGuest) {
     return (
-      <div className="glass-card p-5">
-        <p className="text-body">
-          Save your profile to earn coins and unlock cosmetics that follow you across every game.
-        </p>
-        <div className="mt-4">
-          <Link href="/profile" className="btn-primary btn-fit px-4 py-2 text-sm">
-            Get started
-          </Link>
+      <>
+        <div className="glass-card p-5">
+          <p className="text-body">
+            Save your profile to earn coins and unlock cosmetics that follow you across every game.
+          </p>
+          <div className="mt-4">
+            <Link href="/profile" className="btn-primary btn-fit px-4 py-2 text-sm">
+              Get started
+            </Link>
+          </div>
         </div>
-      </div>
+        {toast && <Toast text={toast} onClose={() => setToast(null)} />}
+      </>
     )
   }
 

@@ -103,12 +103,15 @@ export function AddBotButton({ gameCode, hostToken, seatedCount, botCount, maxPl
         return
       }
       if ((data.charged ?? 0) > 0) {
+        // Only record balance_after when we actually know it — a `?? 0`
+        // fallback would misreport the buyer as broke and pollute the
+        // conversion funnel (reviewer round 4 finding #5).
         trackEvent(GA_EVENTS.inlinePurchaseConfirmed, {
           context: 'room_lobby_extra_bot',
           item_kind: 'extra_bot',
           item_slug: 'extra_bot',
           item_price: data.charged,
-          balance_after: data.newBalance ?? 0,
+          ...(typeof data.newBalance === 'number' ? { balance_after: data.newBalance } : {}),
         })
         refresh()
       }

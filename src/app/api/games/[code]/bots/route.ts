@@ -136,6 +136,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     p_name: botName,
     p_monopoly_token: monopolyToken,
     p_expected_price: body.expectedPriceCoins ?? 0,
+    p_max_players: maxPlayers,
     p_extra_bot_cost: EXTRA_BOT_COST,
   })
   if (rpcErr) return NextResponse.json({ error: internalErrorMessage('bots', rpcErr) }, { status: 500 })
@@ -154,6 +155,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       { error: 'Bot pricing changed while you were adding — try again', expectedPriceCoins: outcome.price ?? 0 },
       { status: 409 }
     )
+  }
+  if (outcome.outcome === 'seat_cap') {
+    return NextResponse.json({ error: 'Room is already full — remove a player first' }, { status: 400 })
+  }
+  if (outcome.outcome === 'bot_cap') {
+    return NextResponse.json({ error: 'At least one seat must be reserved for a human' }, { status: 400 })
   }
   if (outcome.outcome === 'insufficient_funds') {
     return NextResponse.json(

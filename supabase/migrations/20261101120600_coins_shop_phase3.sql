@@ -202,24 +202,38 @@ begin
 
   -- Free grandfathered durable (price 0). Insert owned-row directly, no
   -- ledger write (spend_coins would raise on delta=0). Idempotent via PK.
+  -- Two racing free purchases would BOTH miss the pre-check above and BOTH
+  -- reach this insert; without the rows_affected check they'd BOTH return
+  -- ok and the client toasts "Purchased X" twice (reviewer round 4 finding
+  -- #4). GET DIAGNOSTICS after each insert detects the ON CONFLICT no-op
+  -- so the racer gets a clean already_owned.
   if p_price_coins = 0 then
-    if p_kind = 'edition' then
-      insert into profile_owned_editions (profile_id, edition_slug) values (p_profile_id, p_slug) on conflict do nothing;
-    elsif p_kind = 'theme' then
-      insert into profile_owned_themes (profile_id, theme_slug) values (p_profile_id, p_slug) on conflict do nothing;
-    elsif p_kind = 'frame' then
-      insert into profile_owned_frames (profile_id, frame_slug) values (p_profile_id, p_slug) on conflict do nothing;
-    elsif p_kind = 'name_color' then
-      insert into profile_owned_name_colors (profile_id, color_slug) values (p_profile_id, p_slug) on conflict do nothing;
-    elsif p_kind = 'animation' then
-      insert into profile_owned_animations (profile_id, animation_slug) values (p_profile_id, p_slug) on conflict do nothing;
-    elsif p_kind = 'card_template' then
-      insert into profile_owned_card_templates (profile_id, template_slug) values (p_profile_id, p_slug) on conflict do nothing;
-    elsif p_kind = 'library_pack' then
-      insert into profile_owned_packs (profile_id, pack_id) values (p_profile_id, v_pack_uuid) on conflict do nothing;
-    end if;
-    select coins into v_new_balance from profiles where id = p_profile_id;
-    return jsonb_build_object('outcome', 'ok', 'new_balance', v_new_balance, 'ref_id', v_ref_id);
+    declare
+      v_inserted integer := 0;
+    begin
+      if p_kind = 'edition' then
+        insert into profile_owned_editions (profile_id, edition_slug) values (p_profile_id, p_slug) on conflict do nothing;
+      elsif p_kind = 'theme' then
+        insert into profile_owned_themes (profile_id, theme_slug) values (p_profile_id, p_slug) on conflict do nothing;
+      elsif p_kind = 'frame' then
+        insert into profile_owned_frames (profile_id, frame_slug) values (p_profile_id, p_slug) on conflict do nothing;
+      elsif p_kind = 'name_color' then
+        insert into profile_owned_name_colors (profile_id, color_slug) values (p_profile_id, p_slug) on conflict do nothing;
+      elsif p_kind = 'animation' then
+        insert into profile_owned_animations (profile_id, animation_slug) values (p_profile_id, p_slug) on conflict do nothing;
+      elsif p_kind = 'card_template' then
+        insert into profile_owned_card_templates (profile_id, template_slug) values (p_profile_id, p_slug) on conflict do nothing;
+      elsif p_kind = 'library_pack' then
+        insert into profile_owned_packs (profile_id, pack_id) values (p_profile_id, v_pack_uuid) on conflict do nothing;
+      end if;
+      get diagnostics v_inserted = row_count;
+      select coins into v_new_balance from profiles where id = p_profile_id;
+      return jsonb_build_object(
+        'outcome', case when v_inserted > 0 then 'ok' else 'already_owned' end,
+        'new_balance', v_new_balance,
+        'ref_id', v_ref_id
+      );
+    end;
   end if;
 
   -- Priced durable: spend first (row-locks the profile), then insert the
@@ -318,6 +332,7 @@ create or replace function add_extra_bot(
   p_name            text,
   p_monopoly_token  text,       -- nullable
   p_expected_price  bigint,
+  p_max_players     integer,    -- effective seat cap the API computed
   p_extra_bot_cost  bigint default 50
 ) returns jsonb
 language plpgsql
@@ -326,12 +341,16 @@ set search_path = public
 as $$
 declare
   v_bot_count    bigint;
+  v_seat_count   bigint;
   v_price        bigint;
   v_player_id    uuid;
   v_new_balance  bigint;
 begin
   if p_game_id is null or length(trim(p_game_id)) = 0 then
     raise exception 'add_extra_bot: game_id is required';
+  end if;
+  if p_max_players is null or p_max_players < 2 then
+    raise exception 'add_extra_bot: max_players must be >= 2 (got %)', p_max_players;
   end if;
 
   -- Per-game advisory lock. Two host tabs on the same game serialize;
@@ -342,6 +361,33 @@ begin
   select count(*) into v_bot_count
     from players
    where game_id = p_game_id and is_bot = true;
+
+  -- Re-check the seat / bot cap under the lock. Reviewer round 4 finding
+  -- #2: the API's pre-check reads outside the lock, so two racing tabs
+  -- against a game at (cap - 1) bots both pass and both insert, leaving
+  -- zero human seats. The cap check has to run under the same lock as the
+  -- insert to be authoritative.
+  select count(*) into v_seat_count
+    from players
+   where game_id = p_game_id and spectator = false;
+  if v_seat_count >= p_max_players then
+    return jsonb_build_object(
+      'outcome',    'seat_cap',
+      'player_id',  null,
+      'charged',    0,
+      'new_balance', null,
+      'price',      0
+    );
+  end if;
+  if v_bot_count >= p_max_players - 1 then
+    return jsonb_build_object(
+      'outcome',    'bot_cap',
+      'player_id',  null,
+      'charged',    0,
+      'new_balance', null,
+      'price',      0
+    );
+  end if;
 
   v_price := case when v_bot_count >= 1 then p_extra_bot_cost else 0 end;
 
@@ -403,7 +449,10 @@ exception when raise_exception then
 end;
 $$;
 
-revoke all on function add_extra_bot(text, uuid, text, text, bigint, bigint) from public;
+revoke all on function add_extra_bot(text, uuid, text, text, bigint, integer, bigint) from public;
+-- Drop the previous signature (max_players added). Safe because this
+-- migration owns the function and nothing external binds it.
+drop function if exists add_extra_bot(text, uuid, text, text, bigint, bigint);
 
 -- ---------------------------------------------------------------------------
 -- Seed the six [LAUNCH] game themes.
@@ -426,7 +475,7 @@ on conflict (game_type, slug) do nothing;
 --   delete from game_themes where slug in (
 --     'whot-neon','whot-naija','ludo-wooden','ludo-naija',
 --     'sudoku-minimalist','sudoku-newsprint');
---   drop function if exists add_extra_bot(text, uuid, text, text, bigint, bigint);
+--   drop function if exists add_extra_bot(text, uuid, text, text, bigint, integer, bigint);
 --   drop function if exists purchase_item(uuid, text, text, bigint);
 --   drop index if exists uq_coin_ledger_shop_purchase_durable;
 -- ----------------------------------------------------------------------------
