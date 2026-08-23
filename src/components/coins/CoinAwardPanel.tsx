@@ -96,6 +96,16 @@ export function CoinAwardPanel({ gameCode }: Props) {
         <p className="text-sm text-muted">Needs 2 human players to earn coins.</p>
       )}
       {isGuest && anyCredit && <GuestSignupCta pendingAmount={shown.total} gameCode={gameCode} />}
+      {!isGuest && anyCredit && (
+        <p className="text-xs text-faint pt-1">
+          Spend coins in the{' '}
+          <Link href="/shop" prefetch={false} className="underline hover:no-underline text-body">
+            Shop
+          </Link>
+          {' — '}
+          frames, name colors, winner animations, and more.
+        </p>
+      )}
     </div>
   )
 }
