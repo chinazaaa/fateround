@@ -4,7 +4,8 @@ import { getSupabaseAnon } from '@/lib/supabase-anon'
 import { assertHostGameSettings, assertHostLateJoinSettings } from '@/lib/game-admin'
 import { questionPoolCap } from '@/lib/custom-questions'
 import { parseTimerSeconds, updateGameSchema } from '@/lib/validation'
-import { parseThemeId } from '@/lib/themes'
+import { parseThemeId, type ThemeId } from '@/lib/themes'
+import { checkMonopolyEditionEntitlement, editionEntitlementError } from '@/lib/coins/editions'
 import { parseJsonBody } from '@/lib/parse-body'
 import { HOST_GAME_SELECT } from '@/lib/supabase-selects'
 import {
@@ -70,6 +71,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
     is_public: rawIsPublic,
     content_label: rawContentLabel,
     theme: rawTheme,
+    edition_slug: rawEditionSlug,
     rounds_count: rawRoundsCount,
     timer_seconds: rawTimerSeconds,
     operative_timer_seconds: rawOperativeTimerSeconds,
@@ -159,23 +161,60 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
   }
 
   // Theme / Monopoly edition. Safe pre-start (board isn't generated until start),
-  // gated to waiting/finished by the assertHostGameSettings path above. Validated
-  // to a known theme id, matching how create handles it.
-  if (rawTheme !== undefined) {
-    const parsed = parseThemeId(rawTheme)
-    updatePayload.theme = parsed
-    // Keep edition_slug (Phase 4 addition) in lockstep with the theme pick
-    // for Monopoly, so the engine has one source of truth after any lobby
-    // edit. See docs/estate-kings-america-edition.md.
+  // gated to waiting/finished by the assertHostGameSettings path above. For
+  // Monopoly the theme and edition_slug fields are the same pick expressed
+  // two ways — the engine reads `theme` for its rendering and `edition_slug`
+  // as the durable pointer (Phase 4). Keeping them in lockstep here avoids
+  // the split-brain "board renders as London but rules say USA" state
+  // reviewer flagged.
+  //
+  // Ownership is server-authoritative: a host can't PATCH their room to a
+  // paid edition they don't own, matching the shop's purchase_item pattern.
+  // Free grandfathered editions (price 0 in game_editions) pass through
+  // unconditionally.
+  const MONOPOLY_THEME_TO_EDITION: Record<string, string> = {
+    default: 'london',
+    naija: 'naija',
+    pirate: 'pirate',
+    arctic: 'arctic',
+    america: 'america',
+  }
+  const MONOPOLY_EDITION_TO_THEME: Record<string, ThemeId> = {
+    london: 'default',
+    naija: 'naija',
+    pirate: 'pirate',
+    arctic: 'arctic',
+    america: 'america',
+  }
+  if (rawTheme !== undefined || rawEditionSlug !== undefined) {
     if (gameType === 'monopoly') {
-      const themeToSlug: Record<string, string> = {
-        default: 'london',
-        naija: 'naija',
-        pirate: 'pirate',
-        arctic: 'arctic',
-        america: 'america',
+      // Reconcile the two fields. If only theme was supplied, derive
+      // edition; if only edition_slug, derive theme; if both, edition_slug
+      // wins as the more specific pointer. Unknown-theme PATCHes (e.g.
+      // theme:'dark' on a Monopoly game) never map to a bogus edition_slug
+      // — we reject rather than silently downgrade.
+      const editionFromTheme = rawTheme !== undefined ? MONOPOLY_THEME_TO_EDITION[parseThemeId(rawTheme)] : undefined
+      const editionExplicit = typeof rawEditionSlug === 'string' && rawEditionSlug.length > 0 ? rawEditionSlug : undefined
+      const targetEdition = editionExplicit ?? editionFromTheme
+      if (rawTheme !== undefined && !editionFromTheme) {
+        return NextResponse.json({ error: 'Theme not valid for Monopoly' }, { status: 400 })
       }
-      updatePayload.edition_slug = themeToSlug[parsed] ?? 'london'
+      if (!targetEdition) {
+        return NextResponse.json({ error: 'Unknown edition' }, { status: 400 })
+      }
+      const profileId =
+        (auth.game as { host_user_id?: string | null } | null)?.host_user_id ?? null
+      const entitlement = await checkMonopolyEditionEntitlement(getSupabaseAdmin(), profileId, targetEdition)
+      if (!entitlement.ok) {
+        const { status, error } = editionEntitlementError(entitlement.reason)
+        return NextResponse.json({ error }, { status })
+      }
+      updatePayload.edition_slug = targetEdition
+      updatePayload.theme = MONOPOLY_EDITION_TO_THEME[targetEdition] ?? 'default'
+    } else if (rawTheme !== undefined) {
+      // Non-Monopoly game: theme is a plain cosmetic pick, edition_slug is
+      // ignored (no other game type uses editions yet).
+      updatePayload.theme = parseThemeId(rawTheme)
     }
   }
 

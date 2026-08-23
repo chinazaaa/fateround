@@ -100,7 +100,8 @@ import { createGameSchema, stripHtml } from '@/lib/validation'
 import { triviaCategoryEnum } from '@/lib/validation/shared'
 import { supportsGenderToggle, defaultGenderBasedForType } from '@/lib/gender-based'
 import { parseParticipantMode, usesHostParticipantList } from '@/lib/participant-mode'
-import { parseThemeId } from '@/lib/themes'
+import { parseThemeId, type ThemeId } from '@/lib/themes'
+import { checkMonopolyEditionEntitlement, editionEntitlementError } from '@/lib/coins/editions'
 import { parsePlayerQuestionsEnabled, parsePlayerQuestionsOrder } from '@/lib/player-question-pool'
 import { isPeoplePollGame, supportsPlayerNameSubmissions } from '@/lib/player-participant-pool'
 import { parseBingoCallMode, clampBingoCallInterval } from '@/lib/bingo'
@@ -540,25 +541,48 @@ export async function POST(req: NextRequest) {
       (isCustomGame(game_type) ? custom_slots?.gender_based === true : defaultGenderBasedForType(game_type)))
     : false
   const participantOpts = { genderBased: gender_based, customSlots: custom_slots ?? null }
-  const theme = parseThemeId(rawTheme)
+  let theme = parseThemeId(rawTheme)
   // Estate Kings edition slug. See docs/estate-kings-america-edition.md +
   // supabase/migrations/20261101120700_estate_kings_america_edition.sql. For
-  // Monopoly, we accept the client-supplied slug from the room-creation
-  // picker; for every other game it's ignored (no other game uses editions
-  // yet). Free grandfathered editions are always allowed; paid editions
-  // (currently 'america', 800 coins) require an owned-row — but the
-  // authoritative gate is the shop's purchase_item RPC, so we don't
-  // re-check ownership here; a client that fibs sees an edition it doesn't
-  // own but the DB never charged for, which is a display artifact, not a
-  // paid-content bypass (the picker itself hides it, see the useOwned
-  // hook).
-  const KNOWN_MONOPOLY_EDITIONS = new Set(['london', 'naija', 'pirate', 'arctic', 'america'])
-  const edition_slug =
-    game_type === 'monopoly'
-      ? typeof rawEditionSlug === 'string' && KNOWN_MONOPOLY_EDITIONS.has(rawEditionSlug)
-        ? rawEditionSlug
-        : 'london'
-      : null
+  // Monopoly, the edition is resolved from either the explicit edition_slug
+  // payload (preferred) or the theme picker; for every other game type it
+  // stays null. Ownership is server-authoritative — a client that POSTs
+  // theme:'america' without owning the USA edition is rejected here rather
+  // than silently downgraded, so a fibbing client can't play paid content
+  // for free. Free grandfathered editions (price 0 in game_editions) pass
+  // through unconditionally.
+  let edition_slug: string | null = null
+  if (game_type === 'monopoly') {
+    const themeToSlug: Record<string, string> = {
+      default: 'london',
+      naija: 'naija',
+      pirate: 'pirate',
+      arctic: 'arctic',
+      america: 'america',
+    }
+    const slugToTheme: Record<string, ThemeId> = {
+      london: 'default',
+      naija: 'naija',
+      pirate: 'pirate',
+      arctic: 'arctic',
+      america: 'america',
+    }
+    const explicitSlug =
+      typeof rawEditionSlug === 'string' && rawEditionSlug.length > 0 ? rawEditionSlug : null
+    const themeSlug = themeToSlug[theme] ?? null
+    // Edition explicit pick wins; else derive from theme; else default to
+    // london. An unknown-theme POST on Monopoly (e.g. theme:'dark') falls
+    // back to the london default AND has `theme` normalised to 'default',
+    // so the two columns can never drift.
+    const requested = explicitSlug ?? themeSlug ?? 'london'
+    const entitlement = await checkMonopolyEditionEntitlement(getSupabaseAdmin(), hostProfileId, requested)
+    if (!entitlement.ok) {
+      const { status, error } = editionEntitlementError(entitlement.reason)
+      return NextResponse.json({ error }, { status })
+    }
+    edition_slug = requested
+    theme = slugToTheme[edition_slug] ?? 'default'
+  }
   const question_source = parseQuestionSource(rawQuestionSource, game_type)
   let custom_questions: unknown[] | null = null
 

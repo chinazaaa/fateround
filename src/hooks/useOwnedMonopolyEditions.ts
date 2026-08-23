@@ -1,7 +1,9 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { authHeaders } from '@/lib/identity'
+import { useProfile } from '@/hooks/useProfile'
+import { onCoinsAwarded } from '@/lib/coins/earn-events'
 
 /**
  * Which Monopoly editions the current profile can host. Free editions
@@ -13,17 +15,30 @@ import { authHeaders } from '@/lib/identity'
  * truth — the server-authoritative `game_editions` catalog and
  * `profile_owned_editions` ownership — and lets a future paid edition
  * (Christmas, Lagos, …) light up automatically once its row lands.
+ *
+ * Refreshes on sign-in/out (profile id change) and whenever the shared
+ * `coins_awarded` bus fires — the shop's purchase flow emits that event
+ * after `purchase_item` returns ok, so a fresh USA purchase in the shop
+ * tab lights up the picker on the create page without a hard reload.
  */
 export function useOwnedMonopolyEditions(): {
   /** Edition slugs the host may pick (owned + free). Empty until loaded. */
   available: Set<string>
   loading: boolean
+  /** Manual refresh — surfaces for tests and any future post-purchase flow. */
+  refresh: () => void
 } {
+  const { profile } = useProfile()
+  const profileId = profile?.id ?? null
   const [available, setAvailable] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
+  const [refreshTick, setRefreshTick] = useState(0)
+
+  const refresh = useCallback(() => setRefreshTick((n) => n + 1), [])
 
   useEffect(() => {
     let cancelled = false
+    setLoading(true)
     ;(async () => {
       try {
         const headers = (await authHeaders()) ?? {}
@@ -43,8 +58,8 @@ export function useOwnedMonopolyEditions(): {
       } catch {
         // Fall back to "no paid editions unlocked" so a broken catalog fetch
         // never shows a paid edition the host cannot actually use. The free
-        // grandfathered editions will still appear because the picker treats
-        // them as always-available (see hostPickerEditionThemeIds below).
+        // grandfathered editions still appear because the picker treats them
+        // as always-available.
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -52,9 +67,17 @@ export function useOwnedMonopolyEditions(): {
     return () => {
       cancelled = true
     }
-  }, [])
+    // profileId changes when the user signs in/out; refreshTick fires on
+    // post-purchase re-fetch. Both are the signals that ownership may have
+    // shifted since the last load.
+  }, [profileId, refreshTick])
 
-  return { available, loading }
+  // Any purchase in this browser (including in another tab, thanks to the
+  // shared window CustomEvent bus) invalidates the cache. Same signal the
+  // top-right CoinChip listens to.
+  useEffect(() => onCoinsAwarded(() => refresh()), [refresh])
+
+  return { available, loading, refresh }
 }
 
 /**
