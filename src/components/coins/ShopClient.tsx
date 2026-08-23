@@ -12,6 +12,9 @@ import { findAnimation, findCardTemplate, type ShopKind } from '@/lib/coins/shop
 import { Avatar } from '@/components/Avatar'
 import { PlayerName } from '@/components/PlayerName'
 import { Skeleton } from '@/components/Skeleton'
+import { THEMES, type ThemeConfig } from '@/lib/themes'
+import { ThemePreviewModal } from '@/components/ThemePreviewModal'
+import { MONOPOLY_EDITION_TO_THEME } from '@/lib/coins/editions'
 
 type ShopItem = {
   kind: ShopKind
@@ -335,7 +338,9 @@ export function ShopClient() {
               equipped={equippedFor(item)}
               onClick={() => openConfirm(item)}
               onPreview={
-                item.kind === 'animation' || item.kind === 'card_template'
+                item.kind === 'animation' ||
+                item.kind === 'card_template' ||
+                ((item.kind === 'theme' || item.kind === 'edition') && themeConfigForItem(item) !== null)
                   ? () => setPreviewItem(item)
                   : undefined
               }
@@ -355,7 +360,17 @@ export function ShopClient() {
           onConfirm={confirmPurchase}
         />
       )}
-      {previewItem && <PreviewModal item={previewItem} onClose={() => setPreviewItem(null)} />}
+      {previewItem &&
+        (previewItem.kind === 'theme' || previewItem.kind === 'edition' ? (
+          <ThemePreviewModal
+            open
+            theme={themeConfigForItem(previewItem)}
+            onClose={() => setPreviewItem(null)}
+            gameType={previewItem.gameType}
+          />
+        ) : (
+          <PreviewModal item={previewItem} onClose={() => setPreviewItem(null)} />
+        ))}
       {toast && <Toast text={toast} onClose={() => setToast(null)} />}
     </>
   )
@@ -485,7 +500,37 @@ function isEquippable(kind: ShopKind): boolean {
   return kind === 'frame' || kind === 'name_color' || kind === 'animation' || kind === 'card_template'
 }
 
+/** Resolve a shop item slug to a ThemeConfig for preview purposes. Themes
+ *  map by slug directly; Monopoly editions map through
+ *  MONOPOLY_EDITION_TO_THEME to their painted board id. Returns null if the
+ *  slug doesn't correspond to a THEMES entry (which case there's nothing
+ *  to preview visually — the buy tile still stands). */
+function themeConfigForItem(item: ShopItem): ThemeConfig | null {
+  const targetId = item.kind === 'edition' ? MONOPOLY_EDITION_TO_THEME[item.slug] : item.slug
+  if (!targetId) return null
+  return THEMES.find((t) => t.id === targetId) ?? null
+}
+
 function TilePreview({ item, handle, photoUrl }: { item: ShopItem; handle: string; photoUrl: string | null }) {
+  if (item.kind === 'theme' || item.kind === 'edition') {
+    const theme = themeConfigForItem(item)
+    if (!theme) return null
+    // Three-swatch strip matching ThemePreviewCard on the create page —
+    // gives shop viewers the same at-a-glance palette hint the picker
+    // shows, without needing to open the full ThemePreviewModal first.
+    return (
+      <div className="flex h-16 items-center justify-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface-inset-bg)]">
+        {[theme.preview.bg, theme.preview.accent, theme.preview.text].map((color, i) => (
+          <span
+            key={i}
+            className="h-8 w-8 rounded-full border border-black/10 shadow-inner"
+            style={{ background: color }}
+            aria-hidden
+          />
+        ))}
+      </div>
+    )
+  }
   if (item.kind === 'frame') {
     return (
       <div className="flex justify-center py-2">
@@ -501,15 +546,22 @@ function TilePreview({ item, handle, photoUrl }: { item: ShopItem; handle: strin
     )
   }
   if (item.kind === 'animation') {
-    const anim = findAnimation(item.slug)
-    // Static swatch on the tile — the real animation plays in PreviewModal
-    // (see "Preview" button on ShopTile). Rendering the CSS one-shot inline
-    // burnt through on first paint and left the tile blank forever after.
+    // Do NOT apply the animation cssClass here — these are one-shot CSS
+    // keyframes that burn through on first paint. Worse, some effects
+    // (Fireworks) set `background: transparent` mid-keyframe and, with
+    // `animation-fill-mode: forwards`, that transparent bg sticks —
+    // clobbering the tile's own bg-[var(--surface-inset-bg)] and leaving
+    // the tile visibly empty (user report, 2026-08-23). The real
+    // animation plays inside PreviewModal instead, on a fresh mount each
+    // Replay click via a bumped React key.
     return (
       <div
-        className={`relative h-16 overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface-inset-bg)] ${anim?.cssClass ?? ''}`}
-        aria-hidden
-      />
+        className="relative flex h-16 items-center justify-center overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface-inset-bg)]"
+      >
+        <span aria-hidden className="text-2xl opacity-70">
+          ✨
+        </span>
+      </div>
     )
   }
   if (item.kind === 'card_template') {
