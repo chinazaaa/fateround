@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { Chip } from '@/components/ui/PageShell'
+import { MAX_PRICE_COINS } from '@/lib/coins/pricing'
 
 interface QuestionPack {
   id: string
@@ -243,9 +244,13 @@ function PackCard({
     try {
       const nextQuestions = parsedQuestions.value
       const parsedPrice = priceCoins === '' ? 0 : Number(priceCoins)
-      if (!Number.isFinite(parsedPrice) || !Number.isInteger(parsedPrice) || parsedPrice < 0) {
-        setSaveError('Price must be a non-negative integer (0 for free).')
-        setSaving(false)
+      if (
+        !Number.isFinite(parsedPrice) ||
+        !Number.isInteger(parsedPrice) ||
+        parsedPrice < 0 ||
+        parsedPrice > MAX_PRICE_COINS
+      ) {
+        setSaveError(`Price must be an integer between 0 and ${MAX_PRICE_COINS} (0 for free).`)
         return
       }
       const res = await fetch(`/api/admin/library/${pack.id}`, {

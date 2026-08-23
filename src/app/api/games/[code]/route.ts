@@ -11,6 +11,12 @@ import {
   checkMonopolyEditionEntitlement,
   editionEntitlementError,
 } from '@/lib/coins/editions'
+import {
+  GAME_THEME_TO_GAME_TYPE,
+  checkGameThemeEntitlement,
+  gameThemeEntitlementError,
+  isGameThemeSlug,
+} from '@/lib/coins/game-themes'
 import { parseJsonBody } from '@/lib/parse-body'
 import { getProfileFromRequest } from '@/lib/identity-server'
 import { HOST_GAME_SELECT } from '@/lib/supabase-selects'
@@ -224,7 +230,30 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
         return NextResponse.json({ error: 'edition_slug not valid for this game type' }, { status: 400 })
       }
       if (rawTheme !== undefined) {
-        updatePayload.theme = parseThemeId(rawTheme)
+        const themeId = parseThemeId(rawTheme)
+        // Per-game visual reskins from game_themes (Neon Whot, Wooden Ludo,
+        // …) are paid in Phase 3. Gate the write server-side so a client
+        // that fabricates the slug can't play paid content for free.
+        // Free grandfathered themes and the every-game 'default' fall
+        // through unconditionally. Scope-check the slug against the
+        // room's game_type — a Ludo host must not be able to PATCH
+        // 'whot-neon' onto their room even if they own it (the picker
+        // wouldn't offer it either).
+        if (isGameThemeSlug(themeId)) {
+          const themeGame = GAME_THEME_TO_GAME_TYPE[themeId]
+          if (themeGame !== gameType) {
+            return NextResponse.json({ error: 'Theme not valid for this game type' }, { status: 400 })
+          }
+          const bearerProfileId = await getProfileFromRequest(req)
+          const storedProfileId = (auth.game as { host_user_id?: string | null } | null)?.host_user_id ?? null
+          const profileId = bearerProfileId ?? storedProfileId
+          const entitlement = await checkGameThemeEntitlement(getSupabaseAdmin(), profileId, gameType, themeId)
+          if (!entitlement.ok) {
+            const { status, error } = gameThemeEntitlementError(entitlement.reason)
+            return NextResponse.json({ error }, { status })
+          }
+        }
+        updatePayload.theme = themeId
       }
     }
   }

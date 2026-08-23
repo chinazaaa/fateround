@@ -45,6 +45,7 @@ import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
 import { useHostSeat } from '@/hooks/useHostSeat'
 import { useTurnNotifications } from '@/hooks/useTurnNotifications'
+import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
 import { useToast } from '@/components/ui/Toast'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { FinishedWinnerHero } from '@/components/FinishedWinner'
@@ -79,6 +80,11 @@ export function SudokuHostView({ gameCode, hostToken }: { gameCode: string; host
   }, [game?.status])
 
   useTurnNotifications({ status: game?.status })
+  // Apply the room's per-game theme slug (Minimalist / Newsprint) as
+  // data-game-theme on <html>; CSS in globals.css resolves the palette
+  // (art delivery PR ships those blocks). Mirrors WhotHostView /
+  // LudoHostView.
+  useApplyGameTheme(game?.theme)
 
   const load = useCallback(async () => {
     const [{ data: gameData }, { data: playersData }] = await Promise.all([

@@ -4,6 +4,7 @@ import { internalErrorMessage } from '@/lib/api-errors'
 import { parseJsonBody } from '@/lib/parse-body'
 import { assertAdminRequest } from '@/lib/admin-api'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { MAX_PRICE_COINS } from '@/lib/coins/pricing'
 
 // Permissive shape: fields the handler runtime-checks stay `unknown` so its
 // typeof/Array.isArray guards remain live (identical messages); game_type/status are
@@ -20,10 +21,6 @@ const libraryPatchSchema = z.object({
   questions: z.unknown().optional(),
   price_coins: z.unknown().optional(),
 })
-
-// Shop-tile prices are bounded so a stray typo can't publish a 10-million-coin
-// pack. Same ceiling as `purchase_item` uses server-side.
-const MAX_PRICE_COINS = 10_000
 
 const VALID_GAME_TYPES = [
   'trivia',

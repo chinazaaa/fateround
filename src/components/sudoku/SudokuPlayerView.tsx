@@ -41,6 +41,7 @@ import { formatMinutesSeconds } from '@/lib/timer-format'
 import { useGameRosterPoll } from '@/hooks/useGameRosterPoll'
 import { useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { useTurnNotifications } from '@/hooks/useTurnNotifications'
+import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
 import { useRoomMemberAutoJoin, useRoomMemberJoin, useRoomMemberNamePrefill } from '@/hooks/useRoomMemberJoin'
 import { useLateJoinContext } from '@/hooks/useLateJoinContext'
 import { allowLatePlayers, playerIsViewer, preJoinScreen } from '@/lib/viewers'
@@ -247,6 +248,12 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
   useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
 
   useTurnNotifications({ status: game?.status })
+  // Apply the room's per-game theme slug (Minimalist / Newsprint) as
+  // data-game-theme on <html>; palette resolution happens in globals.css
+  // (art delivery PR ships those blocks). Reverts to the default palette
+  // on the finished screen so the winner hero and share card render
+  // outside the puzzle skin.
+  useApplyGameTheme(view === 'finished' ? 'default' : game?.theme)
 
   useEffect(() => {
     if (view === 'playing') {
