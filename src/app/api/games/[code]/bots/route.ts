@@ -116,17 +116,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   // Phase 3 coin gate: first bot free, every subsequent bot costs
   // EXTRA_BOT_COST per bot per room (plan §"Inline (contextual)" and
   // §"Decisions" #6). The count+pricing+spend is delegated to the
-  // add_extra_bot() RPC so it happens under one advisory lock — the
-  // pre-RPC currentBots read here is ADVISORY only, used to decide
-  // whether to look up a profile_id up front. Two host tabs racing
-  // would both read currentBots=0 pre-RPC, but the RPC serializes on
-  // the game id and only the first one seats a free bot; the second
-  // sees the first's insert and demands 50 coins (reviewer finding #3).
-  const advisoryNeedsPayment = currentBots >= 1
-  const profileId = advisoryNeedsPayment
-    ? await getProfileFromRequest(req)
-    : await getProfileFromRequest(req).catch(() => null)
-  if (advisoryNeedsPayment && !profileId) {
+  // add_extra_bot() RPC so it happens under one advisory lock; the
+  // pre-RPC currentBots read is advisory only.
+  //
+  // Always resolve profileId when a session exists — the old
+  // advisoryNeedsPayment optimization skipped the lookup when
+  // currentBots=0, and a racing tab that committed its bot in between
+  // then made the RPC RAISE (paid bot with no payer) which the outer
+  // handler didn't catch and turned into a 500 (reviewer round 5
+  // finding #1). Resolving up-front costs one cheap read and lets the
+  // RPC decide the outcome cleanly. Guests still surface 401 — but
+  // only when the RPC actually needs a payer.
+  const profileId = await getProfileFromRequest(req).catch(() => null)
+  if (currentBots >= 1 && !profileId) {
     return NextResponse.json({ error: 'Save your profile to buy extra bots' }, { status: 401 })
   }
 
@@ -150,6 +152,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       price?: number
     } | null) ?? {}
 
+  if (outcome.outcome === 'needs_profile') {
+    return NextResponse.json({ error: 'Save your profile to buy extra bots' }, { status: 401 })
+  }
   if (outcome.outcome === 'price_mismatch') {
     return NextResponse.json(
       { error: 'Bot pricing changed while you were adding — try again', expectedPriceCoins: outcome.price ?? 0 },

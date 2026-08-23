@@ -275,10 +275,17 @@ begin
       insert into profile_owned_packs (profile_id, pack_id) values (p_profile_id, v_pack_uuid);
     end if;
   exception when unique_violation then
-    -- Owned-row already exists (race with a concurrent purchase or a
-    -- stale support-tooling delete). The loser's spend committed above
-    -- because spend_coins() returned; a compensating refund keeps the
-    -- balance whole and the audit trail intact.
+    -- Reachable only for a future durable kind that DOESN'T match the
+    -- uq_coin_ledger_shop_purchase_durable partial index (its regex
+    -- lists edition|theme|frame|name_color|animation|card_template|
+    -- library_pack) — for every current priced durable, the ledger-side
+    -- unique_violation fires INSIDE spend_coins() and is converted to
+    -- already_owned by the outer handler above before we ever reach the
+    -- owned-row insert. Kept as belt-and-suspenders (reviewer round 5
+    -- finding #3) so adding a new durable kind can't silently regress
+    -- into a double-charge if the durable index list isn't extended.
+    -- The compensating refund keeps balance + audit trail intact if
+    -- this ever DOES run.
     --
     -- Wrap the refund itself in a sub-begin so a second unique_violation
     -- (the refund path has its own partial unique index on
@@ -414,10 +421,15 @@ begin
 
   if v_price > 0 then
     if p_profile_id is null then
-      -- Paid bot but no payer — roll back the insert via the raise; the
-      -- API handler would have caught this pre-RPC, but a defense in depth
-      -- catch here means a stale caller never gets a "free" paid bot.
-      raise exception 'add_extra_bot: paid bot requires a signed-in profile';
+      -- Paid bot but no payer — a guest host whose lobby race with a
+      -- second tab flipped the price from 0 to v_price after the API's
+      -- pre-lock check. We must RAISE (not return) so the bot insert
+      -- above rolls back; a return here would leak a free extra bot.
+      -- The exception handler at the bottom turns this into a soft
+      -- 'needs_profile' outcome so the API can 401 cleanly instead of
+      -- 500 (reviewer round 5 finding #1).
+      raise exception using errcode = 'P0001',
+        message = 'needs_profile:' || v_price::text;
     end if;
     v_new_balance := spend_coins(p_profile_id, v_price, 'shop_purchase', 'extra_bot:' || v_player_id::text);
     if v_new_balance is null then
@@ -439,6 +451,15 @@ exception when raise_exception then
   if sqlerrm like 'insufficient_funds:%' then
     return jsonb_build_object(
       'outcome',     'insufficient_funds',
+      'player_id',   null,
+      'charged',     0,
+      'new_balance', null,
+      'price',       v_price
+    );
+  end if;
+  if sqlerrm like 'needs_profile:%' then
+    return jsonb_build_object(
+      'outcome',     'needs_profile',
       'player_id',   null,
       'charged',     0,
       'new_balance', null,
