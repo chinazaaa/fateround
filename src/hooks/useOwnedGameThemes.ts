@@ -21,15 +21,20 @@ import { useOwnedShopCatalog } from '@/hooks/useOwnedShopCatalog'
  * across every mounted ownership hook.
  */
 
-// Stable empty set so the identity check in downstream `useMemo` deps
+// Stable empty set / map so identity in downstream `useMemo` deps
 // doesn't invalidate on every render for gameTypes with no owned
 // items yet. A fresh `new Set()` per call would re-render everything
 // that depends on `available`.
 const EMPTY_SET: Set<string> = new Set()
+const EMPTY_PRICE_MAP: Map<string, number> = new Map()
 
 export function useOwnedGameThemes(gameType: string | null | undefined): {
   /** Theme slugs (from game_themes) the host may pick for this game type. */
   available: Set<string>
+  /** Slug → price_coins for every catalog row scoped to this game type
+   *  (owned or not). Locked tiles read this so they can show
+   *  "Unlock — 400" instead of a generic "Unlock in Shop". */
+  prices: Map<string, number>
   loading: boolean
   refresh: () => void
 } {
@@ -37,18 +42,21 @@ export function useOwnedGameThemes(gameType: string | null | undefined): {
   const profileId = profile?.id ?? null
   const { items, loading, refresh } = useOwnedShopCatalog(profileId)
 
-  const available = useMemo(() => {
-    if (!gameType) return EMPTY_SET
-    let set: Set<string> | null = null
+  const { available, prices } = useMemo(() => {
+    if (!gameType) return { available: EMPTY_SET, prices: EMPTY_PRICE_MAP }
+    let ownedSet: Set<string> | null = null
+    let priceMap: Map<string, number> | null = null
     for (const item of items) {
       if (item.kind !== 'theme') continue
       if (item.gameType !== gameType) continue
+      if (!priceMap) priceMap = new Map<string, number>()
+      priceMap.set(item.slug, item.price)
       if (!item.owned && item.price !== 0) continue
-      if (!set) set = new Set<string>()
-      set.add(item.slug)
+      if (!ownedSet) ownedSet = new Set<string>()
+      ownedSet.add(item.slug)
     }
-    return set ?? EMPTY_SET
+    return { available: ownedSet ?? EMPTY_SET, prices: priceMap ?? EMPTY_PRICE_MAP }
   }, [items, gameType])
 
-  return { available, loading, refresh }
+  return { available, prices, loading, refresh }
 }

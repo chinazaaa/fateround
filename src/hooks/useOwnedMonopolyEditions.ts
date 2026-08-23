@@ -11,11 +11,12 @@ import { FREE_MONOPOLY_EDITION_SLUGS, MONOPOLY_THEME_TO_EDITION } from '@/lib/co
 export { MONOPOLY_THEME_TO_EDITION, FREE_MONOPOLY_EDITION_SLUGS }
 export { MONOPOLY_THEME_TO_EDITION as MONOPOLY_THEME_TO_EDITION_SLUG }
 
-// Stable empty set so downstream `useMemo` deps don't invalidate when
-// this hook happens to have no owned rows to report (guest, first
+// Stable empty set / map so downstream `useMemo` deps don't invalidate
+// when this hook happens to have no owned rows to report (guest, first
 // paint before the catalog fetch resolves). See useOwnedGameThemes for
 // the same pattern.
 const EMPTY_SET: Set<string> = new Set()
+const EMPTY_PRICE_MAP: Map<string, number> = new Map()
 
 /**
  * Which Monopoly editions the current profile can host. Free editions
@@ -40,6 +41,10 @@ const EMPTY_SET: Set<string> = new Set()
 export function useOwnedMonopolyEditions(): {
   /** Edition slugs the host may pick (owned + free). Empty until loaded. */
   available: Set<string>
+  /** Slug → price_coins for every Monopoly edition in the catalog
+   *  (owned or not). Locked tiles read this so they can show
+   *  "Unlock — 800" instead of a generic "Unlock in Shop". */
+  prices: Map<string, number>
   loading: boolean
   /** Manual refresh — surfaces for tests and any future post-purchase flow. */
   refresh: () => void
@@ -48,19 +53,22 @@ export function useOwnedMonopolyEditions(): {
   const profileId = profile?.id ?? null
   const { items, loading, refresh } = useOwnedShopCatalog(profileId)
 
-  const available = useMemo(() => {
-    let set: Set<string> | null = null
+  const { available, prices } = useMemo(() => {
+    let ownedSet: Set<string> | null = null
+    let priceMap: Map<string, number> | null = null
     for (const item of items) {
       if (item.kind !== 'edition') continue
       if (item.gameType !== 'monopoly') continue
+      if (!priceMap) priceMap = new Map<string, number>()
+      priceMap.set(item.slug, item.price)
       if (!item.owned && item.price !== 0) continue
-      if (!set) set = new Set<string>()
-      set.add(item.slug)
+      if (!ownedSet) ownedSet = new Set<string>()
+      ownedSet.add(item.slug)
     }
-    return set ?? EMPTY_SET
+    return { available: ownedSet ?? EMPTY_SET, prices: priceMap ?? EMPTY_PRICE_MAP }
   }, [items])
 
-  return { available, loading, refresh }
+  return { available, prices, loading, refresh }
 }
 
 /**

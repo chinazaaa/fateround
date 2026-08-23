@@ -10,6 +10,7 @@ import { HostLobbySettingBlock } from '@/components/host-lobby/HostLobbySettingB
 import { useToast } from '@/components/ui/Toast'
 import { isMonopolyEditionAvailable, useOwnedMonopolyEditions } from '@/hooks/useOwnedMonopolyEditions'
 import { useOwnedGameThemes } from '@/hooks/useOwnedGameThemes'
+import { MONOPOLY_THEME_TO_EDITION } from '@/lib/coins/editions'
 import { GAME_THEMES_BY_GAME, isGameThemeSlug } from '@/lib/coins/game-themes'
 import { authHeaders } from '@/lib/identity'
 
@@ -39,8 +40,10 @@ export function HostThemePicker({ gameCode, hostToken, game, onGameUpdate }: Pro
   const hasGameThemes = GAME_THEME_TYPES.has(game.game_type)
   const [saving, setSaving] = useState<ThemeId | null>(null)
   const [previewTheme, setPreviewTheme] = useState<(typeof THEMES)[number] | null>(null)
-  const { available: ownedEditions } = useOwnedMonopolyEditions()
-  const { available: ownedGameThemes } = useOwnedGameThemes(hasGameThemes ? game.game_type : null)
+  const { available: ownedEditions, prices: editionPrices } = useOwnedMonopolyEditions()
+  const { available: ownedGameThemes, prices: gameThemePrices } = useOwnedGameThemes(
+    hasGameThemes ? game.game_type : null
+  )
 
   const currentTheme = (game.theme as ThemeId | null | undefined) ?? 'default'
 
@@ -137,12 +140,22 @@ export function HostThemePicker({ gameCode, hostToken, game, onGameUpdate }: Pro
             theme.id !== currentTheme &&
             ((isMonopoly && !isMonopolyEditionAvailable(theme.id, ownedEditions)) ||
               (hasGameThemes && theme.id !== 'default' && !ownedGameThemes.has(theme.id)))
+          // Price surfaced on the locked "Unlock — N" bar. Monopoly
+          // themes carry a separate edition_slug (theme:'america' →
+          // 'america'); per-game reskin slugs (whot-neon, …) are their
+          // own catalog key.
+          const priceCoins = locked
+            ? isMonopoly
+              ? editionPrices.get(MONOPOLY_THEME_TO_EDITION[theme.id] ?? theme.id)
+              : gameThemePrices.get(theme.id)
+            : undefined
           return (
             <ThemePreviewCard
               key={theme.id}
               theme={displayTheme}
               selected={currentTheme === theme.id}
               locked={locked}
+              priceCoins={priceCoins}
               onClick={locked ? () => router.push('/shop') : () => void selectTheme(theme.id)}
               onPreview={() => setPreviewTheme(theme)}
             />

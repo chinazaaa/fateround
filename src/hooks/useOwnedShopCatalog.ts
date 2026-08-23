@@ -126,6 +126,45 @@ function subscribeCrossTab(listener: () => void): () => void {
   }
 }
 
+// Same-tab coins-awarded bus. Same shared-subscription pattern as
+// cross-tab above: one module-level listener fans events out to every
+// mounted consumer. Round-1 had one onCoinsAwarded per consumer; N
+// mounted hooks meant N setRefreshTick renders on every purchase
+// (module dedup collapsed the fetch itself, but React still re-rendered
+// each consumer once per subscriber).
+let sameTabSubscribers = 0
+let sameTabStopBus: (() => void) | null = null
+const sameTabListeners = new Set<() => void>()
+
+function ensureSameTabSubscription(): () => void {
+  sameTabSubscribers += 1
+  if (sameTabSubscribers === 1) {
+    sameTabStopBus = onCoinsAwarded((coins) => {
+      // Purchase events carry a 0-line coins-awarded payload; earn
+      // events carry ≥1 line. Refresh only on purchases so a run of
+      // per-round earn events doesn't slam the endpoint.
+      if ((coins?.lines?.length ?? 0) !== 0) return
+      for (const fn of sameTabListeners) fn()
+    })
+  }
+  return () => {
+    sameTabSubscribers -= 1
+    if (sameTabSubscribers === 0) {
+      sameTabStopBus?.()
+      sameTabStopBus = null
+    }
+  }
+}
+
+function subscribeSameTab(listener: () => void): () => void {
+  sameTabListeners.add(listener)
+  const stop = ensureSameTabSubscription()
+  return () => {
+    sameTabListeners.delete(listener)
+    stop()
+  }
+}
+
 /**
  * Fetch the shop catalog once and expose it to every mounted consumer.
  * The returned `items` array reference is stable across renders for the
@@ -161,18 +200,11 @@ export function useOwnedShopCatalog(profileId: string | null): {
     }
   }, [profileId, refreshTick])
 
-  // Same-tab bus: purchase events carry a 0-line coins-awarded payload;
-  // earn events carry ≥1 line. Refresh only on purchases so a run of
-  // per-round earn events doesn't slam the endpoint.
-  useEffect(
-    () =>
-      onCoinsAwarded((coins) => {
-        if ((coins?.lines?.length ?? 0) === 0) refresh()
-      }),
-    [refresh]
-  )
-
-  // Cross-tab bus: shared subscription across every mounted consumer.
+  // Same-tab + cross-tab busses: both hoisted to module level so N
+  // mounted consumers share one onCoinsAwarded listener and one
+  // BroadcastChannel/storage subscription instead of installing their
+  // own each.
+  useEffect(() => subscribeSameTab(refresh), [refresh])
   useEffect(() => subscribeCrossTab(refresh), [refresh])
 
   return { items, loading, refresh }

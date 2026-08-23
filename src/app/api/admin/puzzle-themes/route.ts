@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { assertAdminRequest } from '@/lib/admin-api'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { MAX_PRICE_COINS } from '@/lib/coins/pricing'
 import {
   isPuzzleThemeGameType,
   isPuzzleThemeDifficulty,
@@ -79,9 +80,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Coerce/validate shop price. 0 stays free; > 0 makes the theme premium.
-  // Bounded so a typo can't publish an absurd price. Same ceiling as
-  // purchase_item and the library edit route.
-  const MAX_PRICE_COINS = 10_000
+  // Ceiling shared with purchase_item + every other admin price-write path.
   let priceCoins = 0
   if (price_coins !== undefined && price_coins !== null && price_coins !== '') {
     const n = typeof price_coins === 'string' ? Number(price_coins) : (price_coins as number)

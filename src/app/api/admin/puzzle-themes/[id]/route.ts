@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { assertAdminRequest } from '@/lib/admin-api'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { MAX_PRICE_COINS } from '@/lib/coins/pricing'
 import {
   isPuzzleThemeDifficulty,
   parsePuzzleThemeCsv,
@@ -80,7 +81,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (price_coins !== undefined) {
     // Same coerce + bounds check as the create route. 0 is allowed to flip a
     // paid theme back to free without needing a dedicated "unpublish" call.
-    const MAX_PRICE_COINS = 10_000
     const n = typeof price_coins === 'string' ? Number(price_coins) : (price_coins as number)
     if (!Number.isFinite(n) || !Number.isInteger(n) || n < 0 || n > MAX_PRICE_COINS) {
       return NextResponse.json(

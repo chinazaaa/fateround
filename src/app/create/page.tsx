@@ -504,11 +504,11 @@ function CreateGameInner() {
   const [quickDrawTitleTimer, setQuickDrawTitleTimer] = useState(QUICK_DRAW_DEFAULT_TITLE_TIMER)
   const [quickDrawVoteTimer, setQuickDrawVoteTimer] = useState(QUICK_DRAW_DEFAULT_VOTE_TIMER)
   const [ttlMaxPlayers, setTtlMaxPlayers] = useState(TTL_DEFAULT_MAX_PLAYERS)
-  const { available: ownedMonopolyEditions } = useOwnedMonopolyEditions()
+  const { available: ownedMonopolyEditions, prices: monopolyEditionPrices } = useOwnedMonopolyEditions()
   // Per-game reskin ownership (Whot / Ludo / Sudoku). Passing null for
   // any other game type keeps the shop-catalog fetch cached but returns
   // an empty set, so the theme filter below stays a plain lookup.
-  const { available: ownedGameThemes } = useOwnedGameThemes(
+  const { available: ownedGameThemes, prices: ownedGameThemePrices } = useOwnedGameThemes(
     (Object.keys(GAME_THEMES_BY_GAME) as string[]).includes(settings.game_type) ? settings.game_type : null
   )
   const [monopolyMaxPlayers, setMonopolyMaxPlayers] = useState(MONOPOLY_DEFAULT_MAX_PLAYERS)
@@ -3227,6 +3227,13 @@ function CreateGameInner() {
                       theme={displayTheme}
                       selected={settings.theme === theme.id}
                       locked={locked}
+                      priceCoins={
+                        locked
+                          ? settings.game_type === 'monopoly'
+                            ? monopolyEditionPrices.get(MONOPOLY_THEME_TO_EDITION_SLUG[theme.id] ?? theme.id)
+                            : ownedGameThemePrices.get(theme.id)
+                          : undefined
+                      }
                       onClick={
                         locked ? () => router.push('/shop') : () => setSettings({ ...settings, theme: theme.id })
                       }
