@@ -223,7 +223,10 @@ export async function PUT(req: NextRequest) {
 
     if (failures.length) {
       console.error('[admin/trophies] per-row failures', failures)
-      const preview = failures.slice(0, 3).map((f) => `${f.id}: ${f.message}`).join('; ')
+      const preview = failures
+        .slice(0, 3)
+        .map((f) => `${f.id}: ${f.message}`)
+        .join('; ')
       return NextResponse.json(
         {
           error: `Seeded ${seeded}. ${failures.length} failed — ${preview}${failures.length > 3 ? '…' : ''}`,
