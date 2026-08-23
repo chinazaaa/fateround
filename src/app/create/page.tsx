@@ -2292,7 +2292,8 @@ function CreateGameInner() {
       (settings.theme === 'pirate' ||
         settings.theme === 'arctic' ||
         settings.theme === 'naija' ||
-        settings.theme === 'america')
+        settings.theme === 'america' ||
+        settings.theme === 'christmas')
         ? { theme: 'default' as const }
         : {}),
     })
@@ -3170,6 +3171,7 @@ function CreateGameInner() {
                         theme.id !== 'arctic' &&
                         theme.id !== 'naija' &&
                         theme.id !== 'america' &&
+                        theme.id !== 'christmas' &&
                         theme.id !== 'grass_court'
                     )
                 ).map((theme) => {
