@@ -33,6 +33,8 @@ import {
   isMonopolyEditionAvailable,
   useOwnedMonopolyEditions,
 } from '@/hooks/useOwnedMonopolyEditions'
+import { useOwnedGameThemes } from '@/hooks/useOwnedGameThemes'
+import { GAME_THEMES_BY_GAME, isGameThemeSlug } from '@/lib/coins/game-themes'
 import {
   type ParticipantInput,
   parseParticipantsForGame,
@@ -503,6 +505,12 @@ function CreateGameInner() {
   const [quickDrawVoteTimer, setQuickDrawVoteTimer] = useState(QUICK_DRAW_DEFAULT_VOTE_TIMER)
   const [ttlMaxPlayers, setTtlMaxPlayers] = useState(TTL_DEFAULT_MAX_PLAYERS)
   const { available: ownedMonopolyEditions } = useOwnedMonopolyEditions()
+  // Per-game reskin ownership (Whot / Ludo / Sudoku). Passing null for
+  // any other game type keeps the shop-catalog fetch cached but returns
+  // an empty set, so the theme filter below stays a plain lookup.
+  const { available: ownedGameThemes } = useOwnedGameThemes(
+    (Object.keys(GAME_THEMES_BY_GAME) as string[]).includes(settings.game_type) ? settings.game_type : null
+  )
   const [monopolyMaxPlayers, setMonopolyMaxPlayers] = useState(MONOPOLY_DEFAULT_MAX_PLAYERS)
   const [monopolyBoardSize, setMonopolyBoardSize] = useState<40 | 48>(40)
   const [monopolyGameDuration, setMonopolyGameDuration] = useState(0)
@@ -3164,14 +3172,31 @@ function CreateGameInner() {
                         // so switching game types back to Monopoly doesn't clear the pick.
                         (theme.id === settings.theme || isMonopolyEditionAvailable(theme.id, ownedMonopolyEditions))
                     )
-                  : THEMES.filter(
-                      (theme) =>
-                        theme.id !== 'pirate' &&
-                        theme.id !== 'arctic' &&
-                        theme.id !== 'naija' &&
-                        theme.id !== 'america' &&
-                        theme.id !== 'grass_court'
-                    )
+                  : GAME_THEMES_BY_GAME[settings.game_type as keyof typeof GAME_THEMES_BY_GAME]
+                    ? THEMES.filter(
+                        // Whot / Ludo / Sudoku: free default + only the
+                        // per-game reskins the host owns. A slug from
+                        // another game (whot-neon on a Ludo picker)
+                        // never shows; the currently-picked theme
+                        // survives a revoked purchase so an existing
+                        // room's chip doesn't drop.
+                        (theme) => {
+                          if (theme.id === 'default') return true
+                          const scoped = GAME_THEMES_BY_GAME[settings.game_type as keyof typeof GAME_THEMES_BY_GAME]
+                          if (!scoped?.includes(theme.id)) return false
+                          return theme.id === settings.theme || ownedGameThemes.has(theme.id)
+                        }
+                      )
+                    : THEMES.filter(
+                        (theme) =>
+                          theme.id !== 'pirate' &&
+                          theme.id !== 'arctic' &&
+                          theme.id !== 'naija' &&
+                          theme.id !== 'america' &&
+                          theme.id !== 'grass_court' &&
+                          // Per-game reskins never surface on non-owning games.
+                          !isGameThemeSlug(theme.id)
+                      )
                 ).map((theme) => {
                   const monopolyEdition =
                     settings.game_type === 'monopoly' ? MONOPOLY_EDITIONS.find((e) => e.themeId === theme.id) : null
@@ -3189,6 +3214,21 @@ function CreateGameInner() {
                   )
                 })}
               </div>
+              {(() => {
+                const scoped = GAME_THEMES_BY_GAME[settings.game_type as keyof typeof GAME_THEMES_BY_GAME]
+                if (!scoped) return null
+                const hasUnowned = scoped.some((slug) => slug !== settings.theme && !ownedGameThemes.has(slug))
+                if (!hasUnowned) return null
+                return (
+                  <p className="text-xs text-faint">
+                    More themes in the{' '}
+                    <a href="/shop" className="underline hover:no-underline text-body">
+                      Shop
+                    </a>
+                    {' →'}
+                  </p>
+                )
+              })()}
             </div>
           )}
 

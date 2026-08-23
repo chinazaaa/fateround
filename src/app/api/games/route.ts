@@ -107,6 +107,12 @@ import {
   checkMonopolyEditionEntitlement,
   editionEntitlementError,
 } from '@/lib/coins/editions'
+import {
+  GAME_THEME_TO_GAME_TYPE,
+  checkGameThemeEntitlement,
+  gameThemeEntitlementError,
+  isGameThemeSlug,
+} from '@/lib/coins/game-themes'
 import { parsePlayerQuestionsEnabled, parsePlayerQuestionsOrder } from '@/lib/player-question-pool'
 import { isPeoplePollGame, supportsPlayerNameSubmissions } from '@/lib/player-participant-pool'
 import { parseBingoCallMode, clampBingoCallInterval } from '@/lib/bingo'
@@ -583,6 +589,21 @@ export async function POST(req: NextRequest) {
     }
     edition_slug = requested
     theme = mappedTheme
+  } else if (isGameThemeSlug(theme)) {
+    // Per-game visual reskin (Neon Whot, Wooden Ludo, …) picked at
+    // create time. Mirror the PATCH-side entitlement check so a client
+    // that fabricates the slug can't skip paying. Also scope-check the
+    // slug to the room's game_type — a Ludo POST can't ship 'whot-neon'
+    // even if the caller owns it (the picker wouldn't offer it either).
+    const themeGame = GAME_THEME_TO_GAME_TYPE[theme]
+    if (themeGame !== game_type) {
+      return NextResponse.json({ error: 'Theme not valid for this game type' }, { status: 400 })
+    }
+    const entitlement = await checkGameThemeEntitlement(getSupabaseAdmin(), hostProfileId, game_type, theme)
+    if (!entitlement.ok) {
+      const { status, error } = gameThemeEntitlementError(entitlement.reason)
+      return NextResponse.json({ error }, { status })
+    }
   }
   const question_source = parseQuestionSource(rawQuestionSource, game_type)
   let custom_questions: unknown[] | null = null
