@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native'
+import { Platform, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native'
 import * as Clipboard from 'expo-clipboard'
 import { AppButton } from '@/components/ui/AppButton'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
@@ -64,10 +64,14 @@ export function ShareGameInviteContent({ gameCode, hostToken, resumeToken: resum
 
   const onShare = async () => {
     try {
-      await Share.share({
-        message: `${active.shareMessage}\n${active.url}`,
-        url: active.url,
-      })
+      // iOS treats `url` as its own attachment and renders it alongside the
+      // message — including the URL inside `message` too duplicates it.
+      // Android ignores `url`, so the URL has to live in the message there.
+      if (Platform.OS === 'ios') {
+        await Share.share({ message: active.shareMessage, url: active.url })
+      } else {
+        await Share.share({ message: `${active.shareMessage}\n${active.url}` })
+      }
     } catch {
       // dismissed
     }

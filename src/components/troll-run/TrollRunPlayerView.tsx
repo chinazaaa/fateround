@@ -34,6 +34,7 @@ import { preJoinScreen } from '@/lib/viewers'
 import { gameTypeConfig } from '@/lib/game-types'
 import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
 import { useRegisterGameSettings } from '@/components/GameSettingsContext'
+import { RulesInPlaySection } from '@/components/game-lobby/RulesInPlaySection'
 import { EditNameInline } from '@/components/ui/EditNameInline'
 import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
@@ -291,6 +292,7 @@ export function TrollRunPlayerView({
     if (!effectiveMyPlayerId || hostToken) return null
     return (
       <div className="space-y-3">
+        <RulesInPlaySection game={effectiveGame} />
         <EditNameInline
           gameCode={gameCode}
           playerId={effectiveMyPlayerId}
@@ -309,7 +311,7 @@ export function TrollRunPlayerView({
         />
       </div>
     )
-  }, [effectiveMyPlayerId, hostToken, gameCode, me?.name, isViewer, load, router])
+  }, [effectiveGame, effectiveMyPlayerId, hostToken, gameCode, me?.name, isViewer, load, router])
   // Skip registration when embedded by host view (the host chrome already renders EditNameInline for the host's seat)
   useRegisterGameSettings(playerSettingsNode, !hostToken)
 

@@ -1,6 +1,7 @@
 'use client'
 
 import type { ReactNode } from 'react'
+import type { MonopolyLoan } from '@/types'
 import { useTimerTickSound } from '@/hooks/useTimerTickSound'
 import { GameTypeBadge } from '@/components/GameTypeBadge'
 import { gameTypeConfig } from '@/lib/game-types'
@@ -157,6 +158,8 @@ export function MonopolyCashBadge({
   compact = false,
   className = '',
   bankrupt = false,
+  loan,
+  onOpenLoans,
   themeId,
 }: {
   amount: number
@@ -164,20 +167,27 @@ export function MonopolyCashBadge({
   compact?: boolean
   className?: string
   bankrupt?: boolean
+  loan?: MonopolyLoan | null
+  onOpenLoans?: () => void
   themeId?: string | null
 }) {
+  const hasActiveLoan = loan && loan.status === 'active'
   const displayLabel = bankrupt ? 'Bankrupt' : label
   const amountClass = bankrupt ? 'text-red-500' : 'text-[var(--primary)]'
   const barClass = bankrupt
     ? 'bg-gradient-to-r from-red-500 to-red-400'
-    : 'bg-gradient-to-r from-[var(--primary)] to-[var(--primary-strong)]'
+    : hasActiveLoan
+      ? loan.rounds_remaining <= 1
+        ? 'bg-gradient-to-r from-red-500 to-amber-500 animate-pulse'
+        : 'bg-gradient-to-r from-amber-500 to-[var(--primary)]'
+      : 'bg-gradient-to-r from-[var(--primary)] to-[var(--primary-strong)]'
 
   if (compact) {
     return (
       <div
         className={[
           'overflow-hidden rounded-2xl border bg-[var(--card-strong)] shadow-[var(--card-shadow)] min-w-0 h-full flex flex-col',
-          bankrupt ? 'border-red-500/35' : 'border-[var(--border-strong)]',
+          bankrupt ? 'border-red-500/35' : hasActiveLoan ? 'border-amber-500/35' : 'border-[var(--border-strong)]',
           className,
         ].join(' ')}
       >
@@ -195,7 +205,29 @@ export function MonopolyCashBadge({
             {getMonopolyEdition(themeId).currencySymbol}
           </span>
           <div className="min-w-0 flex-1">
-            <p className="text-[9px] font-semibold uppercase tracking-widest text-muted leading-none">{displayLabel}</p>
+            <div className="flex items-center justify-between gap-1">
+              <p className="text-[9px] font-semibold uppercase tracking-widest text-muted leading-none">
+                {displayLabel}
+              </p>
+              {hasActiveLoan && onOpenLoans && (
+                <button
+                  type="button"
+                  onClick={onOpenLoans}
+                  className={[
+                    'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-bold tracking-tight transition-transform active:scale-95 cursor-pointer',
+                    loan.rounds_remaining <= 1
+                      ? 'bg-red-500/20 text-red-500 animate-pulse'
+                      : loan.rounds_remaining === 2
+                        ? 'bg-amber-500/20 text-amber-500'
+                        : 'bg-emerald-500/15 text-emerald-500',
+                  ].join(' ')}
+                  title="Active bank loan. Click to repay."
+                >
+                  <span>Loan: {formatThemedMoney(loan.balance_remaining, themeId)}</span>
+                  <span className="opacity-75 font-normal">· {loan.rounds_remaining}r</span>
+                </button>
+              )}
+            </div>
             <p
               className={[
                 'text-sm sm:text-base font-black tabular-nums truncate leading-tight mt-0.5',

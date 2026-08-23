@@ -685,7 +685,84 @@ const GAMES = {
       </div>
     </div>`
 },
-'monopoly': {
+'troll-run': {
+  accent:'#f59e0b', soft:'rgba(245,158,11,.14)', eyebrow:'Troll Platformer',
+  title:'Troll Run', titleSize:104,
+  desc:'A live race through trick levels. Floors vanish, spikes appear, the door runs away.',
+  pills:['2\u20136 players','Surprise traps','No sign-up'],
+  panel:`
+    <div class="rhead" style="background:rgba(245,158,11,.10)">
+      <span class="tag" style="background:rgba(245,158,11,.18);color:#fcd34d">Level 3</span>
+      <span class="mid">4 runners live</span>
+      <span class="tag" style="background:rgba(239,68,68,.16);color:#fca5a5">\u23F1 0:12</span>
+    </div>
+    <div class="rbody">
+      <div style="background:linear-gradient(180deg,#161008,#0d0a06);border:1px solid rgba(245,158,11,.32);border-radius:14px;padding:16px;position:relative;height:196px;overflow:hidden">
+        <span style="position:absolute;left:26px;bottom:64px;font-size:30px">\uD83C\uDFC3</span>
+        <span style="position:absolute;left:150px;bottom:64px;font-size:26px;opacity:.55">\uD83C\uDFC3</span>
+        <div style="position:absolute;left:16px;bottom:52px;width:210px;height:11px;background:linear-gradient(180deg,#f59e0b,#b45309);border-radius:3px"></div>
+        <div style="position:absolute;left:238px;bottom:52px;width:58px;height:11px;background:rgba(245,158,11,.28);border:1px dashed rgba(245,158,11,.6);border-radius:3px"></div>
+        <div style="position:absolute;left:306px;bottom:52px;width:126px;height:11px;background:linear-gradient(180deg,#f59e0b,#b45309);border-radius:3px"></div>
+        <span style="position:absolute;left:250px;bottom:63px;font-size:11px;color:#fca5a5;font-weight:800;letter-spacing:.5px">FALLING</span>
+        <div style="position:absolute;left:306px;bottom:63px;display:flex;gap:3px">
+          <span style="color:#f87171;font-size:15px">\u25B2</span><span style="color:#f87171;font-size:15px">\u25B2</span><span style="color:#f87171;font-size:15px">\u25B2</span>
+        </div>
+        <span style="position:absolute;right:22px;bottom:74px;font-size:34px">\uD83D\uDEAA</span>
+        <span style="position:absolute;right:16px;bottom:120px;font-size:12px;color:#fcd34d;font-weight:800">it moved again \u2192</span>
+      </div>
+      <div style="margin-top:14px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:12px 16px">
+        <div class="muted" style="font-size:12px;letter-spacing:1.5px;font-weight:600;margin-bottom:8px">RACE STANDINGS</div>
+        <div style="display:flex;flex-direction:column;gap:6px;font-size:15px">
+          <div style="display:flex;justify-content:space-between"><span style="color:#fcd34d;font-weight:800">1 \u00B7 Naza</span><span style="color:#fcd34d;font-weight:700">3 clears</span></div>
+          <div style="display:flex;justify-content:space-between"><span>2 \u00B7 Tobi</span><span style="color:#cbd5e1;font-weight:700">2 clears</span></div>
+          <div style="display:flex;justify-content:space-between"><span>3 \u00B7 Ada</span><span style="color:#cbd5e1;font-weight:700">2 clears</span></div>
+        </div>
+      </div>
+    </div>`
+},
+'wordle': {
+  accent:'#16a34a', soft:'rgba(22,163,74,.14)', eyebrow:'Word Race',
+  title:'Wordle', titleSize:110,
+  desc:'Everyone races through the same set of words. Most solved in the fewest guesses takes the room.',
+  pills:['1\u201320 players','Same words for all','No sign-up'],
+  panel:`
+    <div class="rhead" style="background:rgba(22,163,74,.10)">
+      <span class="tag" style="background:rgba(22,163,74,.20);color:#86efac">Word 3 of 5</span>
+      <span class="mid">Guess 3 / 6</span>
+      <span class="tag" style="background:rgba(245,158,11,.16);color:#fcd34d">2nd place</span>
+    </div>
+    <div class="rbody">
+      ${wordleGrid(3)}
+      <div style="margin-top:14px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:12px 16px">
+        <div class="muted" style="font-size:12px;letter-spacing:1.5px;font-weight:600;margin-bottom:8px">ROOM</div>
+        <div style="display:flex;flex-direction:column;gap:6px;font-size:15px">
+          <div style="display:flex;justify-content:space-between"><span style="color:#86efac;font-weight:800">Naza</span><span style="color:#86efac;font-weight:700">3 solved</span></div>
+          <div style="display:flex;justify-content:space-between"><span>You</span><span style="color:#cbd5e1;font-weight:700">2 solved</span></div>
+          <div style="display:flex;justify-content:space-between"><span>Ada</span><span style="color:#cbd5e1;font-weight:700">2 solved</span></div>
+        </div>
+      </div>
+    </div>`
+},
+'daily-wordle': {
+  accent:'#16a34a', soft:'rgba(22,163,74,.14)', eyebrow:'Daily Challenge',
+  title:'Daily Wordle', titleSize:64,
+  url:'fateround.com/daily-challenges/wordle',
+  desc:'One word a day, the same for everyone. Six guesses, one attempt \u2014 then compare on the daily leaderboard.',
+  pills:['Six guesses','New every day','Daily leaderboard'],
+  panel:`
+    <div class="rhead" style="background:rgba(22,163,74,.10)">
+      <span class="tag" style="background:rgba(22,163,74,.20);color:#86efac">TODAY'S WORD</span>
+      <span class="mid">Same for everyone</span>
+      <span class="tag" style="background:rgba(245,158,11,.16);color:#fcd34d">1 attempt</span>
+    </div>
+    <div class="rbody">
+      ${wordleGrid()}
+      <div style="margin-top:16px;background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.4);border-radius:10px;padding:11px 14px;text-align:center;color:#86efac;font-weight:700;font-size:15px">
+        Solved in 3 \u2014 better than 68% of players today
+      </div>
+    </div>`
+},
+'estate-kings': {
   accent:'#22c55e', soft:'rgba(34,197,94,.14)', eyebrow:'Board Game Night',
   title:'Estate Kings', titleSize:90,
   desc:'A Monopoly-style board on your phones. Buy properties, collect rent, and bankrupt your rivals.',
@@ -1154,6 +1231,32 @@ function wgGrid(){
     cells+=`<div style="background:${bg};border:1px solid ${bd};border-radius:10px;padding:10px 0;text-align:center;font-size:15px;font-weight:700;color:${col}">${w}</div>`;
   });
   return `<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">${cells}</div>`;
+}
+
+function wordleGrid(rowCount){
+  const rows=[
+    [['C','a'],['R','a'],['A','p'],['N','x'],['E','x']],
+    [['S','x'],['T','x'],['O','p'],['R','p'],['M','x']],
+    [['P','c'],['R','c'],['O','c'],['U','x'],['D','x']],
+    [['','e'],['','e'],['','e'],['','e'],['','e']],
+  ].slice(0, rowCount || 4);
+  const skin={
+    c:{bg:'#16a34a',bd:'#16a34a',col:'#fff'},
+    p:{bg:'#ca8a04',bd:'#ca8a04',col:'#fff'},
+    x:{bg:'rgba(255,255,255,.06)',bd:'rgba(255,255,255,.12)',col:'#8b93a1'},
+    a:{bg:'rgba(255,255,255,.06)',bd:'rgba(255,255,255,.12)',col:'#8b93a1'},
+    e:{bg:'transparent',bd:'rgba(255,255,255,.14)',col:'transparent'},
+  };
+  let out='';
+  rows.forEach(r=>{
+    let cells='';
+    r.forEach(([ch,st])=>{
+      const k=skin[st];
+      cells+=`<div style="width:62px;height:62px;background:${k.bg};border:2px solid ${k.bd};border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:30px;font-weight:800;color:${k.col}">${ch}</div>`;
+    });
+    out+=`<div style="display:flex;gap:8px;justify-content:center">${cells}</div>`;
+  });
+  return `<div style="display:flex;flex-direction:column;gap:8px">${out}</div>`;
 }
 
 function chessBoard(){

@@ -14,16 +14,16 @@ import {
   type GhostRunner,
   type PlayerState,
   type TrollMovingEntity,
+  type TrollRunAudioSink,
   type TrollRunHudState,
   type TrollRunLevel,
+  type TrollRunRenderTarget,
 } from './types'
 import { createInitialPlayerState, updatePlayerPhysics } from './physics'
 import { InputManager } from './input'
 import { TweenManager } from './tweens'
 import { ParticleManager } from './particles'
 import { TriggerManager, type TrollRunFrameEvent } from './triggers'
-import { CanvasRenderer } from './renderer'
-import { AudioManager } from './audio'
 
 // Pause on the cleared level so the door sparkles are visible before the next one loads.
 const LEVEL_CLEAR_DELAY_MS = 450
@@ -32,16 +32,20 @@ const LEVEL_CLEAR_DELAY_MS = 450
 // sparkles that mark the entry land while the level is still on screen.
 const DOOR_ENTRY_SECONDS = 0.28
 
+/**
+ * The simulation. Deliberately free of any DOM, canvas or Web Audio reference: the two things it
+ * cannot do itself — draw a frame and make a noise — are injected as adapters, which is what lets
+ * the same physics, traps and level geometry run under React Native.
+ */
 export class TrollRunEngine {
-  private canvas: HTMLCanvasElement | null = null
-  private ctx: CanvasRenderingContext2D | null = null
+  private renderTarget: TrollRunRenderTarget | null = null
+  private theme: 'dark' | 'retro' | 'neon' = 'dark'
 
   private input = new InputManager()
   private tweens = new TweenManager()
   private particles = new ParticleManager()
   private triggers = new TriggerManager()
-  private renderer = new CanvasRenderer()
-  private audio = new AudioManager()
+  private audio: TrollRunAudioSink = {}
 
   private levels: TrollRunLevel[] = []
   private currentLevelIndex = 0
@@ -139,10 +143,19 @@ export class TrollRunEngine {
     this.ghosts.clear()
   }
 
-  public attachCanvas(canvas: HTMLCanvasElement): void {
-    this.canvas = canvas
-    this.ctx = canvas.getContext('2d')
-    this.input.attachKeyboard()
+  /** Hands the engine somewhere to draw. Passing `null` runs it headless (used by tests). */
+  public setRenderTarget(target: TrollRunRenderTarget | null): void {
+    this.renderTarget = target
+    target?.setTheme?.(this.theme)
+  }
+
+  public setAudioSink(sink: TrollRunAudioSink | null): void {
+    this.audio = sink ?? {}
+  }
+
+  /** Exposed so a platform wrapper can wire keyboard/gamepad input of its own. */
+  public getInput(): InputManager {
+    return this.input
   }
 
   public setLevels(levels: TrollRunLevel[]): void {
@@ -232,11 +245,12 @@ export class TrollRunEngine {
   }
 
   public setTheme(themeName: 'dark' | 'retro' | 'neon'): void {
-    this.renderer.setTheme(themeName)
+    this.theme = themeName
+    this.renderTarget?.setTheme?.(themeName)
   }
 
   public setMuted(muted: boolean): void {
-    this.audio.setMuted(muted)
+    this.audio.setMuted?.(muted)
   }
 
   public setVirtualInput(control: 'left' | 'right' | 'jump', active: boolean): void {
@@ -312,7 +326,7 @@ export class TrollRunEngine {
     this.levelDeaths++
     this.totalDeaths++
 
-    this.audio.playDeath()
+    this.audio.playDeath?.()
     this.particles.emitDeathPoof(
       this.player.x + this.player.width / 2,
       this.player.y + this.player.height / 2,
@@ -335,7 +349,7 @@ export class TrollRunEngine {
     if (!this.player.alive || this.levelCleared) return
 
     this.levelCleared = true
-    this.audio.playClear()
+    this.audio.playClear?.()
     const clearTimeMs = performance.now() - this.levelStartTime
     this.totalTimeElapsed += clearTimeMs
 
@@ -433,12 +447,12 @@ export class TrollRunEngine {
 
     // Jump actually executed this frame (covers coyote-time and buffered jumps)
     if (collision.jumped) {
-      this.audio.playJump()
+      this.audio.playJump?.()
     }
 
     // Coin collected
     if (collision.collectedCoin) {
-      this.audio.playCoin()
+      this.audio.playCoin?.()
     }
 
     // Fake floors give way the moment the player puts weight on them
@@ -448,7 +462,7 @@ export class TrollRunEngine {
           this.activeTiles[row][col] = TrollRunTileType.EMPTY
         }
       }
-      this.audio.playTrap()
+      this.audio.playTrap?.()
       this.particles.emitLandingDust(this.player.x + this.player.width / 2, this.player.y + this.player.height)
     }
 
@@ -488,7 +502,7 @@ export class TrollRunEngine {
           movingEntities: this.activeEntities,
           tweens: this.tweens,
           onSound: (sound) => {
-            if (sound === 'trap') this.audio.playTrap()
+            if (sound === 'trap') this.audio.playTrap?.()
           },
         },
         frameEvents
@@ -497,7 +511,8 @@ export class TrollRunEngine {
   }
 
   private render(): void {
-    if (!this.ctx || !this.activeLevel) return
+    const target = this.renderTarget
+    if (!target || !this.activeLevel) return
 
     const renderLevel: TrollRunLevel = {
       ...this.activeLevel,
@@ -510,15 +525,14 @@ export class TrollRunEngine {
       (ghost) => ghost.levelIndex === this.currentLevelIndex
     )
 
-    this.renderer.render(
-      this.ctx,
-      renderLevel,
-      this.player,
-      this.particles,
-      this.activeEntities,
-      currentGhosts,
-      performance.now()
-    )
+    target.render({
+      level: renderLevel,
+      player: this.player,
+      particles: this.particles.getParticles(),
+      entities: this.activeEntities,
+      ghosts: currentGhosts,
+      now: performance.now(),
+    })
   }
 
   /**

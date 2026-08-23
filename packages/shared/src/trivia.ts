@@ -1,4 +1,77 @@
-export function parseTriviaMetadata(raw: unknown): import('./types').TriviaMetadata | null {
+import type { TriviaCategory, TriviaMetadata } from './types'
+
+/**
+ * Canonical trivia categories, in the order the create + lobby pickers show them.
+ *
+ * WHY THIS LIVES HERE. The list used to be copy-pasted into four pickers and, worse,
+ * several READ sites collapsed it to a binary `=== 'tech' ? 'Tech' : 'General knowledge'`.
+ * A host who picked Maths therefore saw "General knowledge" on the lobby chip and a
+ * "General" pill preselected in the edit sheet — the stored value was right, every
+ * display of it was wrong. One list, one label map, no second opinion.
+ */
+export const TRIVIA_CATEGORIES = [
+  'general',
+  'tech',
+  'art',
+  'food',
+  'geography',
+  'history',
+  'language',
+  'literature',
+  'math',
+  'movies',
+  'music',
+  'nature',
+  'pop_culture',
+  'science',
+  'sports',
+  'technology',
+  'world_culture',
+] as const satisfies readonly TriviaCategory[]
+
+/** Short label for chips and pills. `general` is the everything bucket, not a topic. */
+export const TRIVIA_CATEGORY_LABELS: Record<TriviaCategory, string> = {
+  general: 'General knowledge',
+  tech: 'Tech',
+  art: 'Art',
+  food: 'Food',
+  geography: 'Geography',
+  history: 'History',
+  language: 'Language',
+  literature: 'Literature',
+  math: 'Math',
+  movies: 'Movies',
+  music: 'Music',
+  nature: 'Nature',
+  pop_culture: 'Pop Culture',
+  science: 'Science',
+  sports: 'Sports',
+  technology: 'Technology',
+  world_culture: 'World Culture',
+}
+
+/** Options for a category picker, in display order. */
+export const TRIVIA_CATEGORY_OPTIONS: readonly { value: TriviaCategory; label: string }[] = TRIVIA_CATEGORIES.map(
+  (value) => ({
+    // The picker spells out what "general" draws from; chips use the short label.
+    label: value === 'general' ? 'General (All Categories)' : TRIVIA_CATEGORY_LABELS[value],
+    value,
+  })
+)
+
+const VALID_TRIVIA_CATS: ReadonlySet<string> = new Set<string>(TRIVIA_CATEGORIES)
+
+/** Whether this string is a category we know how to draw questions for. */
+export function isTriviaCategory(value: unknown): value is TriviaCategory {
+  return typeof value === 'string' && VALID_TRIVIA_CATS.has(value)
+}
+
+/** Display label for a stored category. Never returns the raw enum value. */
+export function triviaCategoryLabel(category: string | null | undefined): string {
+  return isTriviaCategory(category) ? TRIVIA_CATEGORY_LABELS[category] : TRIVIA_CATEGORY_LABELS.general
+}
+
+export function parseTriviaMetadata(raw: unknown): TriviaMetadata | null {
   if (!raw || typeof raw !== 'object') return null
   const m = raw as Record<string, unknown>
   if (typeof m.question !== 'string' || !Array.isArray(m.choices) || typeof m.correct_index !== 'number') {
@@ -8,7 +81,9 @@ export function parseTriviaMetadata(raw: unknown): import('./types').TriviaMetad
   if (choices.length < 2 || choices.length > 4) return null
   const correctIndex = m.correct_index
   if (correctIndex < 0 || correctIndex >= choices.length) return null
-  const category = m.category === 'tech' || m.category === 'general' ? m.category : 'general'
+  // Any of the 17 categories, not just tech/general: a Maths round used to come back
+  // tagged 'general' and any UI reading metadata.category then mislabelled it.
+  const category: TriviaCategory = isTriviaCategory(m.category) ? m.category : 'general'
   return { question: m.question, choices, correct_index: correctIndex, category }
 }
 

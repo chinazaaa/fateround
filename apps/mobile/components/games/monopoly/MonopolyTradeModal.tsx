@@ -13,6 +13,7 @@ export function MonopolyTradeModal({
   themeId,
   boardSize = MONOPOLY_BOARD_SIZE,
   onRespond,
+  onMinimize,
 }: {
   trade: MonopolyPendingTrade
   players: Player[]
@@ -20,6 +21,9 @@ export function MonopolyTradeModal({
   themeId?: string | null
   boardSize?: MonopolyBoardSize
   onRespond: (accept: boolean) => void
+  /** When set, renders a Hide button that lets the receiver tuck the modal away and
+   *  keep looking at the board. Parent owns the minimized state + the restore pill. */
+  onMinimize?: () => void
 }) {
   const styles = useThemedStyles(makeStyles)
   const fromName = players.find((p) => p.id === trade.from_player_id)?.name ?? 'player'
@@ -40,8 +44,22 @@ export function MonopolyTradeModal({
     <Modal visible transparent animationType="fade">
       <View style={styles.backdrop}>
         <View style={styles.card}>
-          <Text style={styles.title}>Trade from {fromName}</Text>
-          <Text style={styles.subtitle}>Review every item before you accept</Text>
+          <View style={styles.header}>
+            <View style={styles.headerText}>
+              <Text style={styles.title}>Trade from {fromName}</Text>
+              <Text style={styles.subtitle}>Review every item before you accept</Text>
+            </View>
+            {onMinimize ? (
+              <Pressable
+                style={styles.hideBtn}
+                onPress={onMinimize}
+                accessibilityRole="button"
+                accessibilityLabel="Hide trade offer"
+              >
+                <Text style={styles.hideBtnText}>Hide</Text>
+              </Pressable>
+            ) : null}
+          </View>
           <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent}>
             <Text style={styles.note}>
               If you accept, everything listed below happens immediately. Decline if the count or items look wrong.
@@ -103,8 +121,19 @@ const makeStyles = (theme: Theme) =>
       gap: 10,
       maxHeight: '85%',
     },
+    header: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+    headerText: { flex: 1, minWidth: 0 },
     title: { color: theme.text, fontSize: 18, fontWeight: '800' },
     subtitle: { color: theme.textMuted, fontSize: 13 },
+    hideBtn: {
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: theme.border,
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      backgroundColor: theme.surfaceHover,
+    },
+    hideBtnText: { color: theme.text, fontSize: 12, fontWeight: '700' },
     body: { maxHeight: 360 },
     bodyContent: { gap: 10 },
     note: { color: theme.textMuted, fontSize: 13, lineHeight: 18 },

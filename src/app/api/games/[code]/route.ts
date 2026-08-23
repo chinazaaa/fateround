@@ -5,7 +5,20 @@ import { assertHostGameSettings, assertHostLateJoinSettings } from '@/lib/game-a
 import { questionPoolCap } from '@/lib/custom-questions'
 import { parseTimerSeconds, updateGameSchema } from '@/lib/validation'
 import { parseThemeId } from '@/lib/themes'
+import {
+  MONOPOLY_EDITION_TO_THEME,
+  MONOPOLY_THEME_TO_EDITION,
+  checkMonopolyEditionEntitlement,
+  editionEntitlementError,
+} from '@/lib/coins/editions'
+import {
+  GAME_THEME_TO_GAME_TYPE,
+  checkGameThemeEntitlement,
+  gameThemeEntitlementError,
+  isGameThemeSlug,
+} from '@/lib/coins/game-themes'
 import { parseJsonBody } from '@/lib/parse-body'
+import { getProfileFromRequest } from '@/lib/identity-server'
 import { HOST_GAME_SELECT } from '@/lib/supabase-selects'
 import {
   parseGameType,
@@ -70,6 +83,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
     is_public: rawIsPublic,
     content_label: rawContentLabel,
     theme: rawTheme,
+    edition_slug: rawEditionSlug,
     rounds_count: rawRoundsCount,
     timer_seconds: rawTimerSeconds,
     operative_timer_seconds: rawOperativeTimerSeconds,
@@ -159,10 +173,89 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
   }
 
   // Theme / Monopoly edition. Safe pre-start (board isn't generated until start),
-  // gated to waiting/finished by the assertHostGameSettings path above. Validated
-  // to a known theme id, matching how create handles it.
-  if (rawTheme !== undefined) {
-    updatePayload.theme = parseThemeId(rawTheme)
+  // gated to waiting/finished by the assertHostGameSettings path above. For
+  // Monopoly the theme and edition_slug fields are the same pick expressed
+  // two ways — the engine reads `theme` for its rendering and `edition_slug`
+  // as the durable pointer (Phase 4). Keeping them in lockstep here avoids
+  // the split-brain "board renders as London but rules say USA" state
+  // reviewer flagged.
+  //
+  // Ownership is server-authoritative: a host can't PATCH their room to a
+  // paid edition they don't own, matching the shop's purchase_item pattern.
+  // Free grandfathered editions (price 0 in game_editions) pass through
+  // unconditionally.
+  if (rawTheme !== undefined || rawEditionSlug !== undefined) {
+    if (gameType === 'monopoly') {
+      // Reconcile theme + edition_slug. If both provided, edition_slug wins
+      // as the more specific pointer. Unknown-for-Monopoly themes (e.g.
+      // theme:'dark') never map to a bogus edition_slug — we reject; a
+      // newly-seeded edition slug without its theme-map entry also rejects
+      // rather than silently downgrading theme to 'default'.
+      const editionFromTheme = rawTheme !== undefined ? MONOPOLY_THEME_TO_EDITION[parseThemeId(rawTheme)] : undefined
+      const editionExplicit =
+        typeof rawEditionSlug === 'string' && rawEditionSlug.length > 0 ? rawEditionSlug : undefined
+      const targetEdition = editionExplicit ?? editionFromTheme
+      if (rawTheme !== undefined && !editionFromTheme) {
+        return NextResponse.json({ error: 'Theme not valid for Monopoly' }, { status: 400 })
+      }
+      if (!targetEdition) {
+        return NextResponse.json({ error: 'Unknown edition' }, { status: 400 })
+      }
+      const mappedTheme = MONOPOLY_EDITION_TO_THEME[targetEdition]
+      if (!mappedTheme) {
+        return NextResponse.json({ error: 'Unknown edition' }, { status: 400 })
+      }
+      // Prefer the caller's live bearer-token identity over the stored
+      // host_user_id. A pre-signup game has host_user_id = null; if that
+      // host later signs in and buys USA, the picker shows it (from the
+      // authenticated shop catalog), so PATCH must accept it too. Fall
+      // back to the stored id when the caller isn't authenticated —
+      // legitimate for a free-edition PATCH from an anonymous host.
+      const bearerProfileId = await getProfileFromRequest(req)
+      const storedProfileId = (auth.game as { host_user_id?: string | null } | null)?.host_user_id ?? null
+      const profileId = bearerProfileId ?? storedProfileId
+      const entitlement = await checkMonopolyEditionEntitlement(getSupabaseAdmin(), profileId, targetEdition)
+      if (!entitlement.ok) {
+        const { status, error } = editionEntitlementError(entitlement.reason)
+        return NextResponse.json({ error }, { status })
+      }
+      updatePayload.edition_slug = targetEdition
+      updatePayload.theme = mappedTheme
+    } else {
+      // Non-Monopoly game: no other game type uses editions yet. A caller
+      // that sends edition_slug here is confused about the API shape —
+      // reject loud rather than silently drop the field (matches the
+      // Monopoly-theme-not-valid pattern above).
+      if (rawEditionSlug !== undefined) {
+        return NextResponse.json({ error: 'edition_slug not valid for this game type' }, { status: 400 })
+      }
+      if (rawTheme !== undefined) {
+        const themeId = parseThemeId(rawTheme)
+        // Per-game visual reskins from game_themes (Neon Whot, Wooden Ludo,
+        // …) are paid in Phase 3. Gate the write server-side so a client
+        // that fabricates the slug can't play paid content for free.
+        // Free grandfathered themes and the every-game 'default' fall
+        // through unconditionally. Scope-check the slug against the
+        // room's game_type — a Ludo host must not be able to PATCH
+        // 'whot-neon' onto their room even if they own it (the picker
+        // wouldn't offer it either).
+        if (isGameThemeSlug(themeId)) {
+          const themeGame = GAME_THEME_TO_GAME_TYPE[themeId]
+          if (themeGame !== gameType) {
+            return NextResponse.json({ error: 'Theme not valid for this game type' }, { status: 400 })
+          }
+          const bearerProfileId = await getProfileFromRequest(req)
+          const storedProfileId = (auth.game as { host_user_id?: string | null } | null)?.host_user_id ?? null
+          const profileId = bearerProfileId ?? storedProfileId
+          const entitlement = await checkGameThemeEntitlement(getSupabaseAdmin(), profileId, gameType, themeId)
+          if (!entitlement.ok) {
+            const { status, error } = gameThemeEntitlementError(entitlement.reason)
+            return NextResponse.json({ error }, { status })
+          }
+        }
+        updatePayload.theme = themeId
+      }
+    }
   }
 
   // Who Said This quote source (player / anime / both). Consumed at start to pick which

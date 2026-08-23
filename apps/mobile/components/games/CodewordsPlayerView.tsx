@@ -48,6 +48,7 @@ import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { useLateJoinContext } from '@/hooks/useLateJoinContext'
 import {
+  fetchCodewordsBoard,
   postCodewordsChat,
   postCodewordsClue,
   postCodewordsEndTurn,
@@ -57,11 +58,11 @@ import {
 } from '@/lib/game-api'
 import { getSupabase } from '@/lib/supabase'
 import {
-  CODEWORDS_BOARD_SELECT,
   CODEWORDS_GUESS_SELECT,
   CODEWORDS_MESSAGE_SELECT,
   CODEWORDS_PLAYER_ROLE_SELECT,
 } from '@/lib/supabase-selects'
+import { getPlayerSession } from '@/lib/secure-session'
 import { usePlayerSessionActions } from '@/lib/player-session'
 import { useToast } from '@/components/ui/Toast'
 import type { Theme } from '@/constants/theme'
@@ -118,8 +119,15 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
   const loadGameState = useCallback(
     async (_game: Game, _players: Player[]): Promise<{ state: CodewordsState; ok: boolean }> => {
       const code = gameCode.toUpperCase()
-      const [boardRes, rolesRes, guessesRes, messagesRes] = await Promise.all([
-        getSupabase().from('codewords_boards').select(CODEWORDS_BOARD_SELECT).eq('game_id', code).maybeSingle(),
+      // The board goes through /api/codewords/board rather than a direct SELECT.
+      // `codewords_boards.key` is not anon-selectable since migration
+      // 20260803170000 (audit finding H2), so a client `select('key,…')` errors
+      // and the board never arrives — the seated player would sit forever on
+      // GameLoading because computeScreen returns 'playing' but `board` stays
+      // null. The route masks the key for non-spymasters.
+      const session = await getPlayerSession(code)
+      const [boardData, rolesRes, guessesRes, messagesRes] = await Promise.all([
+        fetchCodewordsBoard(code, { resumeToken: session?.resumeToken ?? undefined }),
         getSupabase().from('codewords_player_roles').select(CODEWORDS_PLAYER_ROLE_SELECT).eq('game_id', code),
         getSupabase().from('codewords_guesses').select(CODEWORDS_GUESS_SELECT).eq('game_id', code).order('created_at'),
         getSupabase()
@@ -128,15 +136,15 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
           .eq('game_id', code)
           .order('created_at'),
       ])
-      // Board + roles drive screen routing, so a failure there is a hard miss.
+      // Roles drive screen routing, so a failure there is a hard miss.
       // Guesses and messages only enrich the view — if one of those errors
       // (a transient RLS hiccup), degrade it to empty rather than nulling the
       // board, which would bounce a seated player back to the lobby.
-      if (boardRes.error || rolesRes.error) {
+      if (rolesRes.error) {
         return { state: { board: null, roles: [], guesses: [], messages: [] }, ok: false }
       }
       const state: CodewordsState = {
-        board: (boardRes.data as CodewordsBoard | null) ?? null,
+        board: boardData,
         roles: (rolesRes.data as CodewordsPlayerRole[]) ?? [],
         guesses: guessesRes.error ? [] : ((guessesRes.data as CodewordsGuess[]) ?? []),
         messages: messagesRes.error ? [] : ((messagesRes.data as CodewordsMessage[]) ?? []),
@@ -490,18 +498,16 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
                   roundKey={board.id ?? null}
                 />
               ) : null}
+              {/* Skip the live-game Scoreboard here (team progress bars + rosters):
+                  the winner banner already tells the outcome and the board reveal
+                  colours every cell, so the extra panel just repeats what's on
+                  screen. MVP cards + spymaster list + board reveal cover the story. */}
               <CodewordsEndGameStats
                 guesses={guesses}
                 roles={roles}
                 players={players}
                 highlightPlayerId={bootstrap.myPlayerId}
                 winner={board.winner}
-              />
-              <CodewordsScoreboard
-                board={board}
-                roles={roles}
-                playerNameById={playerNameById}
-                highlightPlayerId={bootstrap.myPlayerId}
               />
               <CodewordsBoardReveal board={board} cellAttribution={finishAttribution} />
             </View>

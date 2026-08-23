@@ -7,11 +7,12 @@
  * No auth required — the endpoint is a public read.
  */
 
-import { useEffect, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { Stack } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { AmbientBackground } from '@/components/ui/AmbientBackground'
+import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus'
 import { SurfaceCard } from '@/components/ui/SurfaceCard'
 import { apiUrl } from '@/lib/config'
 import type { Theme } from '@/constants/theme'
@@ -36,29 +37,26 @@ export default function TrophyLeaderboard() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    let cancelled = false
-    async function load() {
-      try {
-        const res = await fetch(apiUrl('/api/leaderboard/trophies'))
-        const data = (await res.json()) as { entries?: TrophyEntry[]; error?: string }
-        if (cancelled) return
-        if (!res.ok) {
-          setError(data.error ?? 'Failed to load')
-          return
-        }
-        setEntries(data.entries ?? [])
-      } catch {
-        if (!cancelled) setError('Failed to load')
-      } finally {
-        if (!cancelled) setLoading(false)
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch(apiUrl('/api/leaderboard/trophies'))
+      const data = (await res.json()) as { entries?: TrophyEntry[]; error?: string }
+      if (!res.ok) {
+        setError(data.error ?? 'Failed to load')
+        return
       }
-    }
-    void load()
-    return () => {
-      cancelled = true
+      setError(null)
+      setEntries(data.entries ?? [])
+    } catch {
+      setError('Failed to load')
+    } finally {
+      setLoading(false)
     }
   }, [])
+
+  // A shared board that moves as other people play — refetch on focus and on app resume
+  // rather than showing whatever was true when the screen first mounted.
+  useRefreshOnFocus(load)
 
   return (
     <SafeAreaView style={styles.safe} edges={['bottom']}>
@@ -78,9 +76,7 @@ export default function TrophyLeaderboard() {
           </SurfaceCard>
         ) : entries.length === 0 ? (
           <SurfaceCard padding={20}>
-            <Text style={styles.emptyText}>
-              No trophy holders yet. Play games and earn trophies to appear here.
-            </Text>
+            <Text style={styles.emptyText}>No trophy holders yet. Play games and earn trophies to appear here.</Text>
           </SurfaceCard>
         ) : (
           <>
@@ -91,10 +87,7 @@ export default function TrophyLeaderboard() {
                 return (
                   <View
                     key={e.rank}
-                    style={[
-                      styles.podiumCard,
-                      { borderColor: tint + '55', backgroundColor: theme.surface },
-                    ]}
+                    style={[styles.podiumCard, { borderColor: tint + '55', backgroundColor: theme.surface }]}
                   >
                     <View style={[styles.podiumBadge, { backgroundColor: tint + '2a' }]}>
                       <Text style={[styles.podiumRank, { color: tint }]}>{e.rank}</Text>
@@ -120,7 +113,10 @@ export default function TrophyLeaderboard() {
                     key={e.rank}
                     style={[
                       styles.row,
-                      { borderColor: theme.border, borderBottomWidth: i < entries.length - 4 ? StyleSheet.hairlineWidth : 0 },
+                      {
+                        borderColor: theme.border,
+                        borderBottomWidth: i < entries.length - 4 ? StyleSheet.hairlineWidth : 0,
+                      },
                     ]}
                   >
                     <Text style={[styles.rowRank, { color: theme.textFaint }]}>{e.rank}</Text>

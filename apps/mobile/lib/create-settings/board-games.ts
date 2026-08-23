@@ -63,6 +63,14 @@ export type GameRoomSettings = {
   checkersNigeriaStreetRules: boolean
   /** Estate Kings board size — 40 (classic) or 48 (expanded, requires max_players >= 6). */
   monopolyBoardSize: 40 | 48
+  monopolyDoubleGoSalary: boolean
+  monopolyForcedAuctions: boolean
+  monopolyAuctionTimerSeconds: number
+  monopolyNoRentInJail: boolean
+  monopolyEstateDividend: boolean
+  monopolyLoansEnabled: boolean
+  monopolyLoanInterest: number
+  monopolyLoanTermRounds: number
 }
 
 export function defaultGameRoomSettings(gameType: GameType): GameRoomSettings {
@@ -98,6 +106,14 @@ export function defaultGameRoomSettings(gameType: GameType): GameRoomSettings {
     mahjongRuleset: DEFAULT_MAHJONG_RULESET,
     checkersNigeriaStreetRules: false,
     monopolyBoardSize: 40,
+    monopolyDoubleGoSalary: false,
+    monopolyForcedAuctions: false,
+    monopolyAuctionTimerSeconds: 10,
+    monopolyNoRentInJail: false,
+    monopolyEstateDividend: false,
+    monopolyLoansEnabled: true,
+    monopolyLoanInterest: 15,
+    monopolyLoanTermRounds: 4,
   }
 }
 
@@ -229,6 +245,14 @@ export function gameRoomSettingsPayload(gameType: GameType, room: GameRoomSettin
     // 48-space board requires >=6 seats; server clamps to 40 when max_players < 6
     // (see /api/games/[code]/lobby-settings and the web create flow).
     payload.monopoly_board_size = room.monopolyBoardSize === 48 ? 48 : 40
+    payload.monopoly_double_go_salary = room.monopolyDoubleGoSalary
+    payload.monopoly_forced_auctions = room.monopolyForcedAuctions
+    payload.monopoly_auction_timer_seconds = room.monopolyAuctionTimerSeconds
+    payload.monopoly_no_rent_in_jail = room.monopolyNoRentInJail
+    payload.monopoly_estate_dividend = room.monopolyEstateDividend
+    payload.monopoly_loans_enabled = room.monopolyLoansEnabled
+    payload.monopoly_loan_interest = room.monopolyLoanInterest
+    payload.monopoly_loan_term_rounds = room.monopolyLoanTermRounds
     return payload
   }
 

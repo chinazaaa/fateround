@@ -1,12 +1,14 @@
 import { useState } from 'react'
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
-import type { GameType } from '@fateround/shared'
+import type { GameType, TriviaCategory } from '@fateround/shared'
 import { SegmentedControl } from '@/components/create/SegmentedControl'
+import { SelectField } from '@/components/create/SelectField'
 import { LibraryPackPicker } from '@/components/create/LibraryPackPicker'
 import { SurfaceCard } from '@/components/ui/SurfaceCard'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
 import { isWordSearchGame } from '@fateround/shared/game-type-checks'
+import { TRIVIA_CATEGORY_OPTIONS } from '@fateround/shared/trivia'
 import {
   parseListCsv,
   parsePuzzleCsv,
@@ -39,12 +41,20 @@ type Props = {
   custom: CustomContentState
   roundsCount: number
   onChange: (patch: Partial<CustomContentState>) => void
+  /**
+   * Trivia only — the game's chosen category, stamped onto imported questions so a Maths room
+   * doesn't end up with a pool tagged General. Defaults to 'general' for non-trivia callers.
+   */
+  triviaCategory?: TriviaCategory
 }
 
-export function CustomContentPanel({ gameType, custom, roundsCount, onChange }: Props) {
+export function CustomContentPanel({ gameType, custom, roundsCount, onChange, triviaCategory }: Props) {
+  const theme = useTheme()
   const styles = useThemedStyles(makeStyles)
   const [importError, setImportError] = useState<string | null>(null)
   const [importing, setImporting] = useState(false)
+  const [showPaste, setShowPaste] = useState(false)
+  const [pasteText, setPasteText] = useState('')
 
   if (!supportsCustomContent(gameType)) return null
 
@@ -77,6 +87,47 @@ export function CustomContentPanel({ gameType, custom, roundsCount, onChange }: 
     onChange(source === 'library' ? { source } : { source, libraryPackTitle: null })
   }
 
+  // Shared by the file picker and the paste box — both hand raw CSV text to the same parsers, so
+  // hints/clues (the optional second column) come through identically either way. `source` tailors
+  // the "nothing recognised" copy to the input the user used. Returns true on a real import.
+  const importParsedText = (text: string, source: string): boolean => {
+    if (kind === 'binary') {
+      const rows = parseWyrCsv(text)
+      if (rows.length === 0) {
+        setImportError(`No option_a / option_b rows found in ${source}`)
+        return false
+      }
+      const existing = custom.pairs.filter((p) => p.optionA.trim() && p.optionB.trim())
+      onChange({ pairs: [...existing, ...rows] })
+    } else if (kind === 'trivia') {
+      const rows = parseTriviaCsv(text, triviaCategory ?? 'general')
+      if (rows.length === 0) {
+        setImportError(`No question rows found in ${source} (question, answers, correct)`)
+        return false
+      }
+      const existing = custom.trivia.filter((t) => t.question.trim() && t.choices.filter(Boolean).length >= 2)
+      onChange({ trivia: [...existing, ...rows] })
+    } else if (kind === 'puzzle') {
+      const rows = parsePuzzleCsv(text)
+      if (rows.length === 0) {
+        setImportError(`No words found in ${source}`)
+        return false
+      }
+      const existing = custom.puzzle.filter((p) => p.word.trim())
+      onChange({ puzzle: [...existing, ...rows] })
+    } else {
+      const rows = parseListCsv(gameType, text)
+      if (rows.length === 0) {
+        setImportError(`No rows found in ${source}`)
+        return false
+      }
+      const existing = custom.prompts.map((p) => p.trim()).filter(Boolean)
+      onChange({ prompts: [...existing, ...rows] })
+    }
+    setImportError(null)
+    return true
+  }
+
   const onImportFile = async () => {
     if (importing) return
     setImporting(true)
@@ -84,31 +135,19 @@ export function CustomContentPanel({ gameType, custom, roundsCount, onChange }: 
     try {
       const picked = await pickCsvText()
       if (!picked) return
-      if (kind === 'binary') {
-        const rows = parseWyrCsv(picked.text)
-        if (rows.length === 0) return setImportError('No option_a / option_b rows found')
-        const existing = custom.pairs.filter((p) => p.optionA.trim() && p.optionB.trim())
-        onChange({ pairs: [...existing, ...rows] })
-      } else if (kind === 'trivia') {
-        const rows = parseTriviaCsv(picked.text)
-        if (rows.length === 0) return setImportError('No question rows found (question, answers, correct)')
-        const existing = custom.trivia.filter((t) => t.question.trim() && t.choices.filter(Boolean).length >= 2)
-        onChange({ trivia: [...existing, ...rows] })
-      } else if (kind === 'puzzle') {
-        const rows = parsePuzzleCsv(picked.text)
-        if (rows.length === 0) return setImportError('No word rows found in that file')
-        const existing = custom.puzzle.filter((p) => p.word.trim())
-        onChange({ puzzle: [...existing, ...rows] })
-      } else {
-        const rows = parseListCsv(gameType, picked.text)
-        if (rows.length === 0) return setImportError('No rows found in that file')
-        const existing = custom.prompts.map((p) => p.trim()).filter(Boolean)
-        onChange({ prompts: [...existing, ...rows] })
-      }
+      importParsedText(picked.text, 'that file')
     } catch (err) {
       setImportError(err instanceof Error ? err.message : 'Could not read that file')
     } finally {
       setImporting(false)
+    }
+  }
+
+  const onImportPaste = () => {
+    if (!pasteText.trim()) return
+    if (importParsedText(pasteText, 'the pasted text')) {
+      setPasteText('')
+      setShowPaste(false)
     }
   }
 
@@ -153,6 +192,15 @@ export function CustomContentPanel({ gameType, custom, roundsCount, onChange }: 
               <Pressable style={styles.importButton} onPress={() => void onImportFile()} disabled={importing}>
                 <Text style={styles.importButtonText}>{importing ? 'Reading…' : '⭱ Import CSV'}</Text>
               </Pressable>
+              <Pressable
+                style={styles.importButton}
+                onPress={() => {
+                  setShowPaste((v) => !v)
+                  setImportError(null)
+                }}
+              >
+                <Text style={styles.importButtonText}>{showPaste ? '✕ Cancel paste' : '⧉ Paste'}</Text>
+              </Pressable>
               {(() => {
                 const sample = sampleCsvForGameType(gameType)
                 if (!sample) return null
@@ -167,6 +215,28 @@ export function CustomContentPanel({ gameType, custom, roundsCount, onChange }: 
               })()}
             </View>
 
+            {showPaste ? (
+              <View style={styles.pasteWrap}>
+                <TextInput
+                  style={styles.pasteInput}
+                  value={pasteText}
+                  onChangeText={setPasteText}
+                  placeholder={pastePlaceholder(gameType, kind)}
+                  placeholderTextColor={theme.textFaint}
+                  multiline
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+                <Pressable
+                  style={[styles.addButton, !pasteText.trim() && styles.addButtonDisabled]}
+                  onPress={onImportPaste}
+                  disabled={!pasteText.trim()}
+                >
+                  <Text style={styles.addButtonText}>Import pasted {noun}</Text>
+                </Pressable>
+              </View>
+            ) : null}
+
             {importError ? <Text style={styles.importError}>{importError}</Text> : null}
 
             <Text style={[styles.count, enough ? styles.countOk : styles.countLow]}>
@@ -180,11 +250,61 @@ export function CustomContentPanel({ gameType, custom, roundsCount, onChange }: 
   )
 }
 
+/** Per-game hint for the paste box — mirrors the web placeholders so hints/clues are discoverable. */
+function pastePlaceholder(gameType: GameType, kind: ReturnType<typeof customContentKind>): string {
+  if (kind === 'puzzle') {
+    if (gameType === 'crossword') return 'Paste answer,clue per line (e.g. PLANET,Found in space)'
+    if (gameType === 'word_scramble') {
+      return 'Paste one word per line, optional hint after a comma (e.g. PLANET,Found in space)'
+    }
+    return 'Paste one word per line (e.g. PLANET)'
+  }
+  if (kind === 'binary') return 'Paste option_a,option_b per line (e.g. Coffee,Tea)'
+  if (kind === 'trivia') return 'Paste question,option_a,option_b,option_c,option_d,correct per line'
+  return 'Paste one prompt per line'
+}
+
 function addItem(kind: ReturnType<typeof customContentKind>, custom: CustomContentState, onChange: Props['onChange']) {
   if (kind === 'binary') onChange({ pairs: [...custom.pairs, { optionA: '', optionB: '' }] })
   else if (kind === 'trivia') onChange({ trivia: [...custom.trivia, emptyTriviaDraft()] })
   else if (kind === 'puzzle') onChange({ puzzle: [...custom.puzzle, { word: '', hint: '' }] })
   else onChange({ prompts: [...custom.prompts, ''] })
+}
+
+/**
+ * "N items · Clear all" header shared by every custom-content editor.
+ *
+ * WHY SHARED. Importing a CSV APPENDS to whatever is already in the list, so "start over with
+ * my own file" needs a way to empty it first. Two of the four editors had this header and two
+ * did not, which left trivia hosts removing questions one card at a time — and unable to
+ * remove the last one, because the per-row delete is hidden when only one row remains.
+ *
+ * Shown as soon as anything is worth clearing, not just past the second row: a single leftover
+ * question is exactly the case that had no way out.
+ */
+function ListHeader({
+  filled,
+  total,
+  noun,
+  onClear,
+}: {
+  filled: number
+  total: number
+  noun: string
+  onClear: () => void
+}) {
+  const styles = useThemedStyles(makeStyles)
+  if (filled === 0 && total <= 1) return null
+  return (
+    <View style={styles.listHeader}>
+      <Text style={styles.listCount}>
+        {filled} {filled === 1 ? noun : `${noun}s`}
+      </Text>
+      <Pressable onPress={onClear} hitSlop={8} accessibilityRole="button" accessibilityLabel={`Clear all ${noun}s`}>
+        <Text style={styles.clearAll}>Clear all</Text>
+      </Pressable>
+    </View>
+  )
 }
 
 function PuzzleEditor({
@@ -218,14 +338,12 @@ function PuzzleEditor({
 
   return (
     <View style={styles.list}>
-      {custom.puzzle.length > 1 ? (
-        <View style={styles.listHeader}>
-          <Text style={styles.listCount}>{custom.puzzle.filter((e) => e.word.trim()).length} words</Text>
-          <Pressable onPress={() => onChange({ puzzle: [] })} hitSlop={8}>
-            <Text style={styles.clearAll}>Clear all</Text>
-          </Pressable>
-        </View>
-      ) : null}
+      <ListHeader
+        filled={custom.puzzle.filter((e) => e.word.trim()).length}
+        total={custom.puzzle.length}
+        noun="word"
+        onClear={() => onChange({ puzzle: [] })}
+      />
       {entries.map((entry, idx) => (
         <View key={idx} style={styles.row}>
           <TextInput
@@ -273,16 +391,12 @@ function ListEditor({
 
   return (
     <View style={styles.list}>
-      {custom.prompts.length > 1 ? (
-        <View style={styles.listHeader}>
-          <Text style={styles.listCount}>
-            {filledCount} {filledCount === 1 ? 'word' : 'words'}
-          </Text>
-          <Pressable onPress={() => onChange({ prompts: [''] })} hitSlop={8}>
-            <Text style={styles.clearAll}>Clear all</Text>
-          </Pressable>
-        </View>
-      ) : null}
+      <ListHeader
+        filled={filledCount}
+        total={custom.prompts.length}
+        noun="word"
+        onClear={() => onChange({ prompts: [''] })}
+      />
       {custom.prompts.map((value, idx) => (
         <View key={idx} style={styles.row}>
           <TextInput
@@ -310,6 +424,12 @@ function PairEditor({ custom, onChange }: { custom: CustomContentState; onChange
 
   return (
     <View style={styles.list}>
+      <ListHeader
+        filled={custom.pairs.filter((p) => p.optionA.trim() && p.optionB.trim()).length}
+        total={custom.pairs.length}
+        noun="prompt"
+        onClear={() => onChange({ pairs: [{ optionA: '', optionB: '' }] })}
+      />
       {custom.pairs.map((pair, idx) => (
         <View key={idx} style={styles.itemCard}>
           <View style={styles.itemHeader}>
@@ -366,6 +486,14 @@ function TriviaEditor({ custom, onChange }: { custom: CustomContentState; onChan
 
   return (
     <View style={styles.list}>
+      <ListHeader
+        filled={custom.trivia.filter((q) => q.question.trim()).length}
+        total={custom.trivia.length}
+        noun="question"
+        // Back to one blank card rather than an empty list — the editor has no "add first
+        // question" affordance of its own, so an empty array would leave nothing to type into.
+        onClear={() => onChange({ trivia: [emptyTriviaDraft()] })}
+      />
       {custom.trivia.map((q, qIdx) => (
         <View key={qIdx} style={styles.itemCard}>
           <View style={styles.itemHeader}>
@@ -410,12 +538,13 @@ function TriviaEditor({ custom, onChange }: { custom: CustomContentState; onChan
               <Text style={styles.addChoiceText}>＋ Add answer</Text>
             </Pressable>
           ) : null}
-          <SegmentedControl
+          {/* All seventeen categories, like every other trivia category picker. This was a
+            General/Tech pair, so a question tagged Maths on import redisplayed as General. */}
+          <SelectField
+            title="Category"
             value={q.category}
-            options={[
-              { value: 'general', label: 'General' },
-              { value: 'tech', label: 'Tech' },
-            ]}
+            options={[...TRIVIA_CATEGORY_OPTIONS]}
+            searchable
             onChange={(category) => setQ(qIdx, { category: category as TriviaDraft['category'] })}
           />
         </View>
@@ -543,6 +672,20 @@ const makeStyles = (theme: Theme) =>
       color: theme.primaryMuted,
       fontSize: theme.type.label.size,
       fontWeight: '800',
+    },
+    addButtonDisabled: { opacity: 0.5 },
+    pasteWrap: { gap: theme.space.sm },
+    pasteInput: {
+      backgroundColor: theme.bgElevated,
+      borderColor: theme.border,
+      borderWidth: 1,
+      borderRadius: theme.radius.md,
+      color: theme.text,
+      fontSize: 15,
+      minHeight: 120,
+      paddingHorizontal: theme.space.md,
+      paddingVertical: 12,
+      textAlignVertical: 'top',
     },
     importButton: {
       paddingVertical: theme.space.sm,

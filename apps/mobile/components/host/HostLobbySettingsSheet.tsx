@@ -8,6 +8,7 @@ import {
   POLL_ROUND_TIMER_OPTIONS,
   TRIVIA_MAX_ROUNDS,
   TRIVIA_MIN_ROUNDS,
+  clampTriviaCategory,
   codewordsTeamAssignmentFlags,
   codewordsTeamAssignmentFromFlags,
   formatPollRoundTimer,
@@ -109,6 +110,17 @@ import {
   isWordleRoomLobbyGame,
   type WordleRoomLobbyState,
 } from '@/components/host/lobby-settings/WordleRoomLobbySection'
+import {
+  TrollRunLobbySection,
+  isTrollRunLobbyGame,
+  type TrollRunLobbyState,
+} from '@/components/host/lobby-settings/TrollRunLobbySection'
+import { clampTrollRunRounds, clampTrollRunTimeLimit, isTrollRunWorldId } from '@fateround/shared/create-party-games'
+import {
+  TROLL_RUN_DEFAULT_ROUNDS,
+  TROLL_RUN_DEFAULT_TIME_LIMIT,
+  TROLL_RUN_DEFAULT_WORLD,
+} from '@fateround/shared/troll-run-types'
 import {
   WORDLE_ROOM_DEFAULT_TIMER,
   WORDLE_ROOM_DEFAULT_WORD_COUNT,
@@ -270,6 +282,7 @@ export function HostLobbySettingsSheet({
   const isCheckers = isCheckersLobbyGame(gameType)
   const isTrivia = isTriviaLobbyGame(gameType)
   const isWordleRoom = isWordleRoomLobbyGame(gameType)
+  const isTrollRun = isTrollRunLobbyGame(gameType)
   const isWordGrouping = isWordGroupingLobbyGame(gameType)
   const ownsTimer =
     isCardGame ||
@@ -285,7 +298,8 @@ export function HostLobbySettingsSheet({
     isTeamRound ||
     isQuickDraw ||
     isCodewords ||
-    isWordleRoom
+    isWordleRoom ||
+    isTrollRun
   const roundOptions = partyRoundOptions(gameType)
   // Rounds apply only to multi-round party games — never single-round ones
   // (codewords, bingo, two truths, word hunt, sudoku, i-call-on, mafia) or board
@@ -295,6 +309,7 @@ export function HostLobbySettingsSheet({
     !ROUNDLESS_GAMES.has(gameType) &&
     !isTeamRound &&
     !isQuickDraw &&
+    !isTrollRun &&
     roundOptions.length > 1 &&
     game.rounds_count != null
   // The universal "time per round" only applies to round-timed party games that
@@ -397,6 +412,10 @@ export function HostLobbySettingsSheet({
     auctionTimerSeconds: game.monopoly_auction_timer_seconds ?? 10,
     noRentInJail: game.monopoly_no_rent_in_jail === true,
     boardSize: game.monopoly_board_size === 48 ? 48 : 40,
+    estateDividend: game.monopoly_estate_dividend === true,
+    loansEnabled: game.monopoly_loans_enabled !== false,
+    loanInterest: game.monopoly_loan_interest ?? 15,
+    loanTermRounds: game.monopoly_loan_term_rounds ?? 4,
   }))
   const [icallon, setIcallon] = useState<ICallOnLobbyState>(() => ({
     gameDurationSeconds: game.game_duration_seconds ?? 0,
@@ -426,6 +445,11 @@ export function HostLobbySettingsSheet({
   const [checkers, setCheckers] = useState<CheckersLobbyState>(() => ({
     timerSeconds: game.timer_seconds ?? 0,
     checkersNigeriaStreetRules: game.checkers_nigeria_street_rules === true,
+  }))
+  const [trollRun, setTrollRun] = useState<TrollRunLobbyState>(() => ({
+    world: isTrollRunWorldId(game.troll_run_world) ? game.troll_run_world : TROLL_RUN_DEFAULT_WORLD,
+    rounds: clampTrollRunRounds(game.troll_run_rounds ?? TROLL_RUN_DEFAULT_ROUNDS),
+    timeLimit: clampTrollRunTimeLimit(game.troll_run_time_limit ?? TROLL_RUN_DEFAULT_TIME_LIMIT),
   }))
   const [wordle, setWordle] = useState<WordleRoomLobbyState>(() => {
     const rawCustom = (game as unknown as { wordle_room_custom_words?: unknown }).wordle_room_custom_words
@@ -475,7 +499,9 @@ export function HostLobbySettingsSheet({
     ),
   }))
   const [trivia, setTrivia] = useState<TriviaLobbyState>(() => ({
-    category: game.trivia_category === 'tech' ? 'tech' : 'general',
+    // clampTriviaCategory, not a tech/general coin-flip: coercing here made the sheet open
+    // on "General" for a Maths room, and a tap on any other setting could have saved that back.
+    category: clampTriviaCategory(game.trivia_category),
     custom: customContentStateFromGame(game),
   }))
   const triviaPoolCount =
@@ -610,6 +636,16 @@ export function HostLobbySettingsSheet({
       if (gameType === 'checkers_nigeria' && checkers.checkersNigeriaStreetRules !== game.checkers_nigeria_street_rules)
         board.checkers_nigeria_street_rules = checkers.checkersNigeriaStreetRules
     }
+    if (isTrollRun) {
+      if (trollRun.world !== game.troll_run_world) board.troll_run_world = trollRun.world
+      if (trollRun.timeLimit !== game.troll_run_time_limit) board.troll_run_time_limit = trollRun.timeLimit
+      if (trollRun.rounds !== game.troll_run_rounds) {
+        board.troll_run_rounds = trollRun.rounds
+        // The lobby chips and the finish screen read `rounds_count`; create sends both for the
+        // same reason, so an edit that moved one and not the other would disagree with itself.
+        patch.rounds_count = trollRun.rounds
+      }
+    }
     if (isWordleRoom) {
       if (wordle.category !== game.wordle_room_category) board.wordle_room_category = wordle.category
       if (wordle.wordCount !== game.wordle_room_word_count) board.wordle_room_word_count = wordle.wordCount
@@ -704,6 +740,14 @@ export function HostLobbySettingsSheet({
         board.monopoly_no_rent_in_jail = monopoly.noRentInJail
       const currentBoardSize = game.monopoly_board_size === 48 ? 48 : 40
       if (monopoly.boardSize !== currentBoardSize) board.monopoly_board_size = monopoly.boardSize
+      if (monopoly.estateDividend !== (game.monopoly_estate_dividend === true))
+        board.monopoly_estate_dividend = monopoly.estateDividend
+      const currentLoansEnabled = game.monopoly_loans_enabled !== false
+      if (monopoly.loansEnabled !== currentLoansEnabled) board.monopoly_loans_enabled = monopoly.loansEnabled
+      const currentLoanInterest = game.monopoly_loan_interest ?? 15
+      if (monopoly.loanInterest !== currentLoanInterest) board.monopoly_loan_interest = monopoly.loanInterest
+      const currentLoanTerm = game.monopoly_loan_term_rounds ?? 4
+      if (monopoly.loanTermRounds !== currentLoanTerm) board.monopoly_loan_term_rounds = monopoly.loanTermRounds
     }
     if (isDuration) {
       if (
@@ -843,7 +887,7 @@ export function HostLobbySettingsSheet({
       } = {}
       const nextSource = usesCustomPool ? 'custom' : 'platform'
       if (nextSource !== (game.question_source ?? 'platform')) tp.question_source = nextSource
-      const currentCategory = game.trivia_category === 'tech' ? 'tech' : 'general'
+      const currentCategory = clampTriviaCategory(game.trivia_category)
       if (trivia.category !== currentCategory) tp.trivia_category = trivia.category
       if (usesCustomPool) {
         const built = customContentPayload('trivia', trivia.custom)
@@ -1039,6 +1083,9 @@ export function HostLobbySettingsSheet({
                 />
               ) : null}
 
+              {isTrollRun ? (
+                <TrollRunLobbySection value={trollRun} onChange={(p) => setTrollRun((prev) => ({ ...prev, ...p }))} />
+              ) : null}
               {isWordleRoom ? (
                 <WordleRoomLobbySection value={wordle} onChange={(p) => setWordle((prev) => ({ ...prev, ...p }))} />
               ) : null}

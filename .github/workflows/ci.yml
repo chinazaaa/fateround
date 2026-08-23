@@ -78,6 +78,28 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
 
+  mobile-typecheck:
+    name: Type Check (mobile)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # The Expo app has its OWN package.json + package-lock.json and is not part of the
+      # pnpm workspace install, so this job installs it with npm rather than reusing the
+      # web job's node_modules. It reaches back into packages/shared via a file: dep.
+      #
+      # Added because apps/mobile had drifted to 13 type errors while nothing checked it:
+      # `lib/game-rules.ts` was missing Wordle and Troll Run (a broken in-lobby Rules link
+      # for two shipped games), `formatDayLabel` was imported but never defined, and the
+      # Whot / Crazy Eights session types had lost the `updated_at` their realtime
+      # delta fast-path orders on. All invisible without this gate.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: apps/mobile/package-lock.json
+      - run: npm ci --prefix apps/mobile
+      - run: npm --prefix apps/mobile run typecheck
+
   test:
     name: Test
     permissions:

@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { EditNameInline } from '@/components/ui/EditNameInline'
 import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
 import { useRegisterGameSettings } from '@/components/GameSettingsContext'
+import { RulesInPlaySection } from '@/components/game-lobby/RulesInPlaySection'
 import { SudokuBoard } from '@/components/sudoku/SudokuBoard'
 import { SudokuGameTimerBar } from '@/components/sudoku/SudokuGameTimerBar'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
@@ -40,6 +41,7 @@ import { formatMinutesSeconds } from '@/lib/timer-format'
 import { useGameRosterPoll } from '@/hooks/useGameRosterPoll'
 import { useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { useTurnNotifications } from '@/hooks/useTurnNotifications'
+import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
 import { useRoomMemberAutoJoin, useRoomMemberJoin, useRoomMemberNamePrefill } from '@/hooks/useRoomMemberJoin'
 import { useLateJoinContext } from '@/hooks/useLateJoinContext'
 import { allowLatePlayers, playerIsViewer, preJoinScreen } from '@/lib/viewers'
@@ -246,6 +248,12 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
   useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
 
   useTurnNotifications({ status: game?.status })
+  // Apply the room's per-game theme slug (Minimalist / Newsprint) as
+  // data-game-theme on <html>; palette resolution happens in globals.css
+  // (art delivery PR ships those blocks). Reverts to the default palette
+  // on the finished screen so the winner hero and share card render
+  // outside the puzzle skin.
+  useApplyGameTheme(view === 'finished' ? 'default' : game?.theme)
 
   useEffect(() => {
     if (view === 'playing') {
@@ -436,6 +444,7 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
     if (!myPlayerId) return null
     return (
       <div className="space-y-3">
+        <RulesInPlaySection game={game} />
         <EditNameInline
           gameCode={gameCode}
           playerId={myPlayerId}
@@ -454,7 +463,7 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
         />
       </div>
     )
-  }, [myPlayerId, game?.status, gameCode, me?.name, isViewer, load, router])
+  }, [game, myPlayerId, game?.status, gameCode, me?.name, isViewer, load, router])
   useRegisterGameSettings(playerSettingsNode)
   const myRank = leaderboard.findIndex((r) => r.player_id === myPlayerId) + 1
   const myCompletion = puzzle && myPlayerId ? playerCompletionPercent(puzzle, submissions, myPlayerId) : 0
