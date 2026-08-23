@@ -28,11 +28,14 @@ for(const [type,api,table,holderCol,extra] of [
     const revealed=got&&got!=='null'&&got.replace(/"/g,'')===word
     console.log(`  · P${i+1}${isHolder?' (HOLDER)':'         '} -> ${r.status} word=${got.slice(0,40)}`)
     if(isHolder&&!revealed) fail.push(`${type}: holder did NOT get the word (BREAK)`)
-    if(!isHolder&&revealed) fail.push(`${type}: NON-holder P${i+1} received the word (LEAK)`)
+    // ANY non-null word to a non-holder is a leak, not just the current one — returning a
+    // different real word would otherwise slip through.
+    if(!isHolder&&got&&got!=='null') fail.push(`${type}: NON-holder P${i+1} received a word ${got} (LEAK)`)
   }
   const noTok=await post(`${APP}/api/${api}/my-word`,{gameCode:code})
   const nt=JSON.stringify(noTok.d?.word??null)
   console.log(`  · no-token -> ${noTok.status} word=${nt.slice(0,40)}`)
-  if(nt.replace(/"/g,'')===word) fail.push(`${type}: unauthenticated caller got the word (LEAK)`)
+  if(nt&&nt!=='null') fail.push(`${type}: unauthenticated caller got a word ${nt} (LEAK)`)
 }
 console.log(fail.length?`\nFAIL:\n  ✗ `+fail.join('\n  ✗ '):'\nPASS — word served only to its holder')
+process.exit(fail.length?1:0)

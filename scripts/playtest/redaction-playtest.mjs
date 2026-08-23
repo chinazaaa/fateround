@@ -64,14 +64,21 @@ async function run(g){
   const sel=g.secrets.join(',')
   const sr=await fetch(`${REST}/${g.table}?${col}=eq.${code}&select=${sel}`,{headers:h(SRV)}).then(r=>r.json())
   const rows=Array.isArray(sr)?sr:[]
-  log.push(`${g.table} rows(service)=${rows.length}`)
+  // Non-vacuity: a row whose secret columns are ALL null proves nothing about redaction — the
+  // anon denials below would pass against empty state. Require the game to have generated
+  // hidden state before asserting anyone is denied it.
+  const populated=rows.some(r=>g.secrets.some(k=>r[k]!==null&&r[k]!==undefined))
+  log.push(`${g.table} rows(service)=${rows.length} populated=${populated}`)
   if(rows.length===0) fail.push(`no ${g.table} row created`)
+  else if(!populated) fail.push(`${g.table} row exists but every secret column is null — the anon assertions below would be vacuous`)
 
   // anon MUST be denied each secret column
   for(const secret of g.secrets){
     const r=await fetch(`${REST}/${g.table}?${col}=eq.${code}&select=${secret}`,{headers:h(ANON)})
     const body=await r.json().catch(()=>null)
-    if(r.status!==403&&body?.code!=='42501'){fail.push(`LEAK ${g.table}.${secret} anon got ${r.status} ${JSON.stringify(body).slice(0,120)}`)}
+    // Denial is any non-2xx: locally PostgREST answers a column revoke with 401, not 403 (see
+    // README). Only a SUCCESSFUL read is a leak — treating 401 as one produced false alarms.
+    if(r.ok) fail.push(`LEAK ${g.table}.${secret} anon read it (${r.status}) ${JSON.stringify(body).slice(0,120)}`)
   }
   // anon MUST still read the table's non-secret columns (not broken)
   const okr=await fetch(`${REST}/${g.table}?${col}=eq.${code}&select=game_id`,{headers:h(ANON)})

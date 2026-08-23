@@ -21,11 +21,19 @@ NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321 \
 NEXT_PUBLIC_SUPABASE_ANON_KEY=<local anon key> \
 SUPABASE_SERVICE_ROLE_KEY=<local service key> \
 npm run dev
+```
+
+`npm run dev` runs in the FOREGROUND. Leave it running and use a **second terminal** for the
+playtests — chaining them after it would only run once the server exits:
+
+```sh
 node scripts/playtest/redaction-playtest.mjs      # all 7 games: create → join → start → assert
 node scripts/playtest/word-holder-playtest.mjs    # describe_it / quick_draw: word only to its holder
 node scripts/playtest/two-truths-playtest.mjs     # submit → start → guess → reveal
 node scripts/playtest/codewords-playtest.mjs      # roles → start → key only to spymasters
 ```
+
+Each script exits non-zero if any assertion fails, so they can be chained with `&&` or used in CI.
 
 Get the local keys from `supabase status`.
 

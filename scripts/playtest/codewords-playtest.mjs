@@ -50,6 +50,10 @@ const op=await post(`${APP}/api/codewords/board`,{gameId:code,gameCode:code,resu
 const hasKey=o=>Array.isArray(o?.board?.key)&&o.board.key.some(v=>v!==null)
 log.push(`board(spymaster) -> ${sm.status} key=${hasKey(sm.d)}`)
 log.push(`board(operative) -> ${op.status} key=${hasKey(op.d)}`)
+// Authorized roles must be SERVED, not merely not-leaked: a route that denies both would
+// otherwise report PASS.
+if(sm.status!==200) fail.push(`BREAK: spymaster board request failed (${sm.status})`)
+if(op.status!==200) fail.push(`BREAK: operative board request failed (${op.status})`)
 if(sm.status===200&&!hasKey(sm.d)) fail.push('BREAK: spymaster did NOT receive the key')
 if(op.status===200&&hasKey(op.d)) fail.push('LEAK: operative received the board key')
 const anonB=await post(`${APP}/api/codewords/board`,{gameId:code,gameCode:code})
@@ -59,3 +63,4 @@ if(anonB.status===200&&hasKey(anonB.d)) fail.push('LEAK: unauthenticated caller 
 console.log('===== CODEWORDS =====')
 log.forEach(l=>console.log('  · '+l)); fail.forEach(f=>console.log('  ✗ '+f))
 console.log(fail.length?`\nFAIL (${fail.length})`:'\nPASS')
+process.exit(fail.length?1:0)

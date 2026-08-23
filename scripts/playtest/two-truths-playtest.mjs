@@ -45,6 +45,10 @@ if(okc.status!==200) fail.push(`BREAK: anon cannot read non-secret ttl_statement
 const mine=await post(`${APP}/api/two-truths/my-statement`,{gameCode:code,resumeToken:ps[0].resumeToken})
 log.push(`my-statement P1 -> ${mine.status} lieIndex=${JSON.stringify(mine.d?.lieIndex ?? mine.d?.statement?.lie_index ?? mine.d)}`.slice(0,160))
 if(mine.status!==200) fail.push(`my-statement failed ${mine.status}`)
+// A 200 alone is not enough: an empty or redacted payload would pass while the owner cannot
+// actually retrieve their own lie. Assert the value we submitted comes back.
+const mineLieIndex=mine.d?.lieIndex ?? mine.d?.statement?.lie_index ?? null
+if(mine.status===200&&mineLieIndex!==2) fail.push(`my-statement returned lieIndex=${JSON.stringify(mineLieIndex)}, expected 2 (owner cannot read their own lie)`)
 
 // IDOR: P2's token must not yield P1's lie
 const other=await post(`${APP}/api/two-truths/my-statement`,{gameCode:code,resumeToken:ps[1].resumeToken})
@@ -62,7 +66,7 @@ if(adv1.status!==200) fail.push(`advance(activate) failed ${adv1.status}: ${JSON
 const rr=await get(`${REST}/rounds?game_id=eq.${code}&select=id,submitter_player_id,status&status=eq.active&limit=1`,SRV)
 const round=rr.d?.[0], roundId=round?.id, subject=round?.submitter_player_id
 log.push(`active round=${roundId} subject=${subject}`)
-if(!roundId) fail.push('no active round after advance')
+if(!roundId) fail.push('no active round after advance — the guess and reveal below cannot run')
 
 // everyone except the round's subject guesses; each must be accepted
 let accepted=0
@@ -103,3 +107,4 @@ console.log('===== TWO TRUTHS =====')
 log.forEach(l=>console.log('  · '+l))
 fail.forEach(f=>console.log('  ✗ '+f))
 console.log(fail.length?`\nFAIL (${fail.length})`:'\nPASS')
+process.exit(fail.length?1:0)
