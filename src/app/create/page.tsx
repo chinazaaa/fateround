@@ -2851,9 +2851,7 @@ function CreateGameInner() {
           // Estate Kings edition — mirror the theme pick into the dedicated
           // edition_slug column the engine reads (docs/estate-kings-america-edition.md
           // + coins-and-shop-plan.md § "Launch sequencing" → Phase 4).
-          edition_slug: isMonopoly
-            ? (MONOPOLY_THEME_TO_EDITION_SLUG[settings.theme] ?? 'london')
-            : undefined,
+          edition_slug: isMonopoly ? (MONOPOLY_THEME_TO_EDITION_SLUG[settings.theme] ?? 'london') : undefined,
           monopoly_board_size: isMonopoly ? monopolyBoardSize : undefined,
           monopoly_double_go_salary: isMonopoly ? monopolyDoubleGoSalary : undefined,
           monopoly_forced_auctions: isMonopoly ? monopolyForcedAuctions : undefined,
@@ -3164,8 +3162,7 @@ function CreateGameInner() {
                         // Paid editions (e.g. USA) require ownership; free grandfathered
                         // editions always show. Keep the currently-selected theme visible
                         // so switching game types back to Monopoly doesn't clear the pick.
-                        (theme.id === settings.theme ||
-                          isMonopolyEditionAvailable(theme.id, ownedMonopolyEditions))
+                        (theme.id === settings.theme || isMonopolyEditionAvailable(theme.id, ownedMonopolyEditions))
                     )
                   : THEMES.filter(
                       (theme) =>

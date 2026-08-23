@@ -4,7 +4,7 @@ import { SiteChrome } from '@/components/SiteChrome'
 import { SITE_NAME } from '@/lib/seo'
 
 const CONTACT_EMAIL = 'privacy@fateround.com'
-const LAST_UPDATED = 'August 6, 2026'
+const LAST_UPDATED = 'August 23, 2026'
 
 export const metadata: Metadata = {
   title: 'Privacy Policy',
@@ -58,6 +58,13 @@ export default function PrivacyPolicyPage() {
               is used — for example pages viewed, general device and browser type, and approximate region. We also keep
               standard server logs. We use cookies and local storage to keep you in your game session and to remember
               your preferences (theme, sound, notifications).
+            </p>
+            <p>
+              <strong>Guest gameplay identifiers.</strong> When you play {SITE_NAME} without an account, we generate a
+              temporary device identifier and per-session identifier that we use to track any Coins you earn during
+              those games. This lets us grant those Coins to your account if you later sign up on the same device. These
+              identifiers are stored for up to <strong>7 days</strong> after the game session, then automatically
+              deleted. If you never sign up, the identifiers and the associated Coin totals expire and are removed.
             </p>
           </Section>
 

@@ -273,8 +273,12 @@ export interface CodewordsMessage {
 // Re-export the canonical union from @/lib/themes rather than duplicating it.
 // The old shadow definition here missed 'america' when Phase 4 added it, so
 // consumers importing `ThemeId` from '@/types' rejected the paid edition even
-// though the rest of the app accepts it. Import once, source of truth = one.
-export type { ThemeId } from '@/lib/themes'
+// though the rest of the app accepts it. Import once, source of truth = one —
+// and bring `ThemeId` into local scope so the `theme?: ThemeId` field below
+// type-checks (a bare `export type ... from ...` re-exports without creating
+// a local binding, which is what broke CI type-check on the Phase 4 merge).
+import type { ThemeId } from '@/lib/themes'
+export type { ThemeId }
 export type WyrChoice = 'a' | 'b'
 
 export type ParticipantGender = 'male' | 'female'
