@@ -36,6 +36,13 @@
 -- ---------------------------------------------------------------------------
 alter table games add column if not exists edition_slug text;
 
+-- Column-level SELECT so anon + authenticated clients (web GAME_SELECT and
+-- mobile GAME_SELECT — see src/lib/supabase-selects.ts +
+-- apps/mobile/lib/supabase-selects.ts) can hydrate `Game.edition_slug`. An
+-- omitted grant would cause every explicit SELECT that names the column
+-- to error under the anon key (migration 0122 revoked table-wide SELECT).
+grant select (edition_slug) on public.games to anon, authenticated;
+
 -- ---------------------------------------------------------------------------
 -- games_theme_check — allow 'america' as a theme value too, so the theme
 -- field stays a valid mirror of the picker's edition choice.

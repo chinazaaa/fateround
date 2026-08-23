@@ -101,7 +101,12 @@ import { triviaCategoryEnum } from '@/lib/validation/shared'
 import { supportsGenderToggle, defaultGenderBasedForType } from '@/lib/gender-based'
 import { parseParticipantMode, usesHostParticipantList } from '@/lib/participant-mode'
 import { parseThemeId, type ThemeId } from '@/lib/themes'
-import { checkMonopolyEditionEntitlement, editionEntitlementError } from '@/lib/coins/editions'
+import {
+  MONOPOLY_EDITION_TO_THEME,
+  MONOPOLY_THEME_TO_EDITION,
+  checkMonopolyEditionEntitlement,
+  editionEntitlementError,
+} from '@/lib/coins/editions'
 import { parsePlayerQuestionsEnabled, parsePlayerQuestionsOrder } from '@/lib/player-question-pool'
 import { isPeoplePollGame, supportsPlayerNameSubmissions } from '@/lib/player-participant-pool'
 import { parseBingoCallMode, clampBingoCallInterval } from '@/lib/bingo'
@@ -553,35 +558,26 @@ export async function POST(req: NextRequest) {
   // through unconditionally.
   let edition_slug: string | null = null
   if (game_type === 'monopoly') {
-    const themeToSlug: Record<string, string> = {
-      default: 'london',
-      naija: 'naija',
-      pirate: 'pirate',
-      arctic: 'arctic',
-      america: 'america',
-    }
-    const slugToTheme: Record<string, ThemeId> = {
-      london: 'default',
-      naija: 'naija',
-      pirate: 'pirate',
-      arctic: 'arctic',
-      america: 'america',
-    }
     const explicitSlug =
       typeof rawEditionSlug === 'string' && rawEditionSlug.length > 0 ? rawEditionSlug : null
-    const themeSlug = themeToSlug[theme] ?? null
+    const themeSlug = MONOPOLY_THEME_TO_EDITION[theme] ?? null
     // Edition explicit pick wins; else derive from theme; else default to
-    // london. An unknown-theme POST on Monopoly (e.g. theme:'dark') falls
-    // back to the london default AND has `theme` normalised to 'default',
-    // so the two columns can never drift.
+    // london. Unknown-theme POST on Monopoly (theme:'dark') falls back to
+    // london AND has `theme` normalised, so the two columns can never drift.
     const requested = explicitSlug ?? themeSlug ?? 'london'
+    const mappedTheme = MONOPOLY_EDITION_TO_THEME[requested]
+    if (!mappedTheme) {
+      // A newly-seeded edition without its theme-map entry — fail loud
+      // rather than silently downgrade theme to 'default'.
+      return NextResponse.json({ error: 'Unknown edition' }, { status: 400 })
+    }
     const entitlement = await checkMonopolyEditionEntitlement(getSupabaseAdmin(), hostProfileId, requested)
     if (!entitlement.ok) {
       const { status, error } = editionEntitlementError(entitlement.reason)
       return NextResponse.json({ error }, { status })
     }
     edition_slug = requested
-    theme = slugToTheme[edition_slug] ?? 'default'
+    theme = mappedTheme
   }
   const question_source = parseQuestionSource(rawQuestionSource, game_type)
   let custom_questions: unknown[] | null = null

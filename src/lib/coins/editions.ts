@@ -1,4 +1,37 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import type { ThemeId } from '@/lib/themes'
+
+/**
+ * Single source of truth for the Monopoly theme ↔ edition slug bridge.
+ * Everything that maps between the legacy `game.theme` id and the Phase 4
+ * `game.edition_slug` catalog key imports from here — POST /api/games,
+ * PATCH /api/games/[code], and the client-side picker hook. Adding a new
+ * edition (Christmas, Lagos, …) means touching one file, not three, so
+ * a partial update can't silently drift the two columns.
+ */
+export const MONOPOLY_THEME_TO_EDITION: Record<string, string> = {
+  default: 'london',
+  naija: 'naija',
+  pirate: 'pirate',
+  arctic: 'arctic',
+  america: 'america',
+}
+
+export const MONOPOLY_EDITION_TO_THEME: Record<string, ThemeId> = {
+  london: 'default',
+  naija: 'naija',
+  pirate: 'pirate',
+  arctic: 'arctic',
+  america: 'america',
+}
+
+/** Free-forever grandfathered editions (price 0 in `game_editions`). */
+export const FREE_MONOPOLY_EDITION_SLUGS: ReadonlySet<string> = new Set([
+  'london',
+  'naija',
+  'pirate',
+  'arctic',
+])
 
 /**
  * Server-authoritative entitlement checks for `game_editions` selection.
@@ -43,6 +76,14 @@ export async function checkMonopolyEditionEntitlement(
   profileId: string | null,
   editionSlug: string
 ): Promise<EditionEntitlement> {
+  // Cheap short-circuit: the four grandfathered slugs are FREE forever and
+  // do not need a round-trip to the catalog. >95% of Monopoly rooms use
+  // one of these, so skipping the two SELECTs keeps the create-game hot
+  // path snappy. A retired grandfathered edition would still be readable
+  // as free — deliberate, matches "never take away what was free" and
+  // beats a spurious 403 on the create button.
+  if (FREE_MONOPOLY_EDITION_SLUGS.has(editionSlug)) return { ok: true }
+
   // Catalog lookup — price is the source of truth. is_active=false hides
   // a retired edition from new selections without deleting existing
   // profile_owned_editions rows.

@@ -4,8 +4,13 @@ import { getSupabaseAnon } from '@/lib/supabase-anon'
 import { assertHostGameSettings, assertHostLateJoinSettings } from '@/lib/game-admin'
 import { questionPoolCap } from '@/lib/custom-questions'
 import { parseTimerSeconds, updateGameSchema } from '@/lib/validation'
-import { parseThemeId, type ThemeId } from '@/lib/themes'
-import { checkMonopolyEditionEntitlement, editionEntitlementError } from '@/lib/coins/editions'
+import { parseThemeId } from '@/lib/themes'
+import {
+  MONOPOLY_EDITION_TO_THEME,
+  MONOPOLY_THEME_TO_EDITION,
+  checkMonopolyEditionEntitlement,
+  editionEntitlementError,
+} from '@/lib/coins/editions'
 import { parseJsonBody } from '@/lib/parse-body'
 import { HOST_GAME_SELECT } from '@/lib/supabase-selects'
 import {
@@ -172,27 +177,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
   // paid edition they don't own, matching the shop's purchase_item pattern.
   // Free grandfathered editions (price 0 in game_editions) pass through
   // unconditionally.
-  const MONOPOLY_THEME_TO_EDITION: Record<string, string> = {
-    default: 'london',
-    naija: 'naija',
-    pirate: 'pirate',
-    arctic: 'arctic',
-    america: 'america',
-  }
-  const MONOPOLY_EDITION_TO_THEME: Record<string, ThemeId> = {
-    london: 'default',
-    naija: 'naija',
-    pirate: 'pirate',
-    arctic: 'arctic',
-    america: 'america',
-  }
   if (rawTheme !== undefined || rawEditionSlug !== undefined) {
     if (gameType === 'monopoly') {
-      // Reconcile the two fields. If only theme was supplied, derive
-      // edition; if only edition_slug, derive theme; if both, edition_slug
-      // wins as the more specific pointer. Unknown-theme PATCHes (e.g.
-      // theme:'dark' on a Monopoly game) never map to a bogus edition_slug
-      // — we reject rather than silently downgrade.
+      // Reconcile theme + edition_slug. If both provided, edition_slug wins
+      // as the more specific pointer. Unknown-for-Monopoly themes (e.g.
+      // theme:'dark') never map to a bogus edition_slug — we reject; a
+      // newly-seeded edition slug without its theme-map entry also rejects
+      // rather than silently downgrading theme to 'default'.
       const editionFromTheme = rawTheme !== undefined ? MONOPOLY_THEME_TO_EDITION[parseThemeId(rawTheme)] : undefined
       const editionExplicit = typeof rawEditionSlug === 'string' && rawEditionSlug.length > 0 ? rawEditionSlug : undefined
       const targetEdition = editionExplicit ?? editionFromTheme
@@ -200,6 +191,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
         return NextResponse.json({ error: 'Theme not valid for Monopoly' }, { status: 400 })
       }
       if (!targetEdition) {
+        return NextResponse.json({ error: 'Unknown edition' }, { status: 400 })
+      }
+      const mappedTheme = MONOPOLY_EDITION_TO_THEME[targetEdition]
+      if (!mappedTheme) {
         return NextResponse.json({ error: 'Unknown edition' }, { status: 400 })
       }
       const profileId =
@@ -210,7 +205,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
         return NextResponse.json({ error }, { status })
       }
       updatePayload.edition_slug = targetEdition
-      updatePayload.theme = MONOPOLY_EDITION_TO_THEME[targetEdition] ?? 'default'
+      updatePayload.theme = mappedTheme
     } else if (rawTheme !== undefined) {
       // Non-Monopoly game: theme is a plain cosmetic pick, edition_slug is
       // ignored (no other game type uses editions yet).
