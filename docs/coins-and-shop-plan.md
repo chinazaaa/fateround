@@ -6,9 +6,11 @@ shipping yet.
 
 ## Core principles (the rules the whole design comes back to)
 
-1. **No profile, no coins.** Guests can play everything they play today. The
-   moment they earn coins, they see "Sign up to claim X coins" — with the
-   real number, not "save your progress." Coins are the sign-up flywheel.
+1. **No profile, no visible balance.** Guests can play everything they play
+   today. Their earnings are tracked invisibly (see the guest-migration
+   section below) and materialize at signup. Guests never see a running
+   balance — nothing to "lose," and the signup CTA is stronger because it
+   quotes an itemized real number.
 2. **Coins live in the meta layer, never in the game.** They buy cosmetics,
    unlocks, and things around gameplay — never advantages inside a live
    round. This keeps competitive integrity intact and keeps us clear of
@@ -46,11 +48,15 @@ shipping yet.
 ### Foundation
 
 - `profiles.coins bigint not null default 0`
-- `coin_ledger (id, profile_id, delta, balance_after, reason, ref_id, created_at)`
-  — every credit/debit is a row. Reasons: `win`, `daily_challenge`,
-  `streak_multiplier`, `tournament_placement`, `host_bounty`,
-  `first_mode_bonus`, `launch_grant_v1`, `shop_purchase`,
-  `refund`.
+- `coin_ledger (id, profile_id, delta, balance_after, reason, ref_id,
+  admin_id, admin_note, admin_category, created_at)` — every credit/debit
+  is a row. Reasons: `win`, `daily_challenge`, `streak_multiplier`,
+  `tournament_placement`, `host_bounty`, `first_mode_bonus`,
+  `launch_grant_v1`, `welcome_v1`, `guest_migration`, `shop_purchase`,
+  `refund`, `admin_adjustment`.
+- `guest_pending_grants (id, device_id, session_id, game_id, delta, reason,
+  created_at)` — guest earnings held server-side until signup materializes
+  them into `coin_ledger`.
 - Owned-items tables per category:
   `profile_owned_editions (profile_id, edition_slug)`
   `profile_owned_themes (profile_id, theme_slug)`
@@ -74,8 +80,10 @@ shipping yet.
   work)
 - **First-time-playing-a-mode bonus** (discovery lever — nudges people into
   the long tail of 49 modes)
-- Guest sees "Sign up to claim X coins" with the number, not a generic
-  message.
+- Guest sees "Sign up to claim X coins" on the results screen with the
+  number *from this game only* (not a running total — no history hint).
+- The shop is invisible to guests entirely (no "browse signed out" mode).
+  Preserves the wow at signup and forecloses guest-only exploits.
 
 ### Shop page (main-nav item)
 
@@ -286,6 +294,102 @@ play. That means the $1.99 pack (later) needs to close a gap of one or two
 weeks' worth of grind on a specific desirable item — feels earnable, but
 paying is a real shortcut.
 
+## Guest earnings & migration to signed-up profiles
+
+Guests never see a coin balance, but their earnings are still tracked
+server-side so signup delivers real coins, not a promise.
+
+### Data
+
+- `guest_pending_grants (id, device_id, session_id, game_id, delta, reason,
+  created_at)` — one row per earning event.
+- Keyed on `(device_id, session_id)` — device id is whatever anonymous id
+  we already put on guest players; session id lets us scope migration to
+  the same physical device across a short window without pulling in an
+  ex-roommate's play history.
+- No index into `coin_ledger` yet — nothing is real until signup.
+
+### At earn time (guest)
+
+- Write to `guest_pending_grants`, not `coin_ledger`.
+- Results screen shows the amount **for this game only**: "Sign up to
+  claim 40 coins." Never a running total (that would leak history and
+  create "I had more than that" complaints).
+
+### At signup time
+
+- Sum `guest_pending_grants` for the new profile's device id, over the
+  last 7 days.
+- Cap the summed grant at **500 coins** — prevents a friend-group signup
+  farm (five people signing up on one shared device each claiming full
+  history).
+- Write one row to `coin_ledger` with `reason: 'guest_migration'`,
+  itemized in `admin_note`.
+- Delete the consumed `guest_pending_grants` rows.
+- Signup success screen: "Welcome — here's your 100 coin welcome bonus
+  plus 340 coins from the games you played as a guest. Total: 440."
+
+### Anti-abuse
+
+- 7-day window means old orphaned grants expire.
+- 500-coin cap prevents farming.
+- One migration per profile (unique constraint on profile_id + reason for
+  `guest_migration`, or check-and-skip).
+- Device id fingerprint is not perfect — that's fine; the cap absorbs the
+  slop.
+
+### Not shown to guests
+
+- No coin badge in the UI as a guest.
+- No shop access as a guest.
+- No ledger view.
+- The only surface is the results-screen "sign up to claim X" nudge.
+
+## Default coins for new profiles
+
+Every brand-new signup starts with:
+
+- **100 coin welcome grant** — always. Reason `welcome_v1`. Big enough
+  to immediately buy one small item (a solid name color or a cheap
+  frame), which is what makes the economy feel real on day one.
+- **Plus any guest migration** (capped 500, see above) if they played as
+  a guest first.
+
+100 is deliberately small. Bigger welcome grants train players that coins
+are cheap; small ones make earning feel meaningful.
+
+## Admin coin adjustment
+
+Support / ops need a way to grant coins for bug reimbursements, goodwill,
+or promotional events.
+
+### UI
+
+- Admin panel: search a profile → see balance and recent ledger → "Adjust
+  coins" button.
+- Required fields: **amount** (positive or negative), **category** (dropdown:
+  `bug_reimbursement`, `support_goodwill`, `promotion`, `correction`,
+  `other`), **note** (free text, min 10 chars — forces a real reason).
+
+### Backing
+
+- Ledger row with `reason: 'admin_adjustment'`, plus columns `admin_id`,
+  `admin_note`, `admin_category`. Audited forever.
+- Shows in the player's ledger with a distinct label ("Adjustment by
+  support") so they can see where the coins came from.
+
+### Guardrails
+
+- Cap per admin per day (e.g. 5 000 coins). Protects against a compromised
+  admin account. Rare corrective grants are 100–500 coins; anything huge
+  should require a second admin's approval or a code-side migration.
+- **Admins can only adjust the coin balance itself**, never directly grant
+  a specific edition/theme/frame. The player uses their new coins to buy
+  what they want. Keeps the audit clean and the shop the single source of
+  ownership truth.
+- Negative adjustments (clawbacks) allowed but require category
+  `correction` and are logged with high visibility.
+
 ## Backfill methodology (retro grant for existing players)
 
 Existing players should not launch at zero — that punishes exactly the
@@ -374,6 +478,10 @@ retconning free features.
 - [ ] `price_coins` on library packs + coin badge in library row
 - [ ] Ledger / history view on profile
 - [ ] Backfill migration + itemized welcome screen
+- [ ] `guest_pending_grants` table + guest-earning write path
+- [ ] Guest → profile migration at signup (with 500-coin cap)
+- [ ] 100-coin welcome grant for every new signup
+- [ ] Admin coin adjustment UI + per-admin daily cap + ledger integration
 - [ ] Anti-abuse: server-authoritative spend, rate limits on shop
       purchases, unique constraint on launch grant ledger row
 
