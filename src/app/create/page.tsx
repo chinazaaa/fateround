@@ -33,6 +33,8 @@ import {
   isMonopolyEditionAvailable,
   useOwnedMonopolyEditions,
 } from '@/hooks/useOwnedMonopolyEditions'
+import { useOwnedGameThemes } from '@/hooks/useOwnedGameThemes'
+import { GAME_THEMES_BY_GAME, isGameThemeSlug } from '@/lib/coins/game-themes'
 import {
   type ParticipantInput,
   parseParticipantsForGame,
@@ -502,7 +504,13 @@ function CreateGameInner() {
   const [quickDrawTitleTimer, setQuickDrawTitleTimer] = useState(QUICK_DRAW_DEFAULT_TITLE_TIMER)
   const [quickDrawVoteTimer, setQuickDrawVoteTimer] = useState(QUICK_DRAW_DEFAULT_VOTE_TIMER)
   const [ttlMaxPlayers, setTtlMaxPlayers] = useState(TTL_DEFAULT_MAX_PLAYERS)
-  const { available: ownedMonopolyEditions } = useOwnedMonopolyEditions()
+  const { available: ownedMonopolyEditions, prices: monopolyEditionPrices } = useOwnedMonopolyEditions()
+  // Per-game reskin ownership (Whot / Ludo / Sudoku). Passing null for
+  // any other game type keeps the shop-catalog fetch cached but returns
+  // an empty set, so the theme filter below stays a plain lookup.
+  const { available: ownedGameThemes, prices: ownedGameThemePrices } = useOwnedGameThemes(
+    (Object.keys(GAME_THEMES_BY_GAME) as string[]).includes(settings.game_type) ? settings.game_type : null
+  )
   const [monopolyMaxPlayers, setMonopolyMaxPlayers] = useState(MONOPOLY_DEFAULT_MAX_PLAYERS)
   const [monopolyBoardSize, setMonopolyBoardSize] = useState<40 | 48>(40)
   const [monopolyGameDuration, setMonopolyGameDuration] = useState(0)
@@ -2296,6 +2304,17 @@ function CreateGameInner() {
         settings.theme === 'christmas')
         ? { theme: 'default' as const }
         : {}),
+      // Per-game reskins (Neon Whot, Wooden Ludo, …) only belong to
+      // their seeded game type. Switching to a different game type
+      // otherwise leaves settings.theme pointing at a slug the POST
+      // route rejects with 400 "Theme not valid for this game type"
+      // — the picker's preservation guard keeps the tile highlighted
+      // under the wrong game (or hides it entirely on Monopoly/other
+      // non-scoped types) with no visible reason for the failure.
+      ...(isGameThemeSlug(settings.theme) &&
+      !GAME_THEMES_BY_GAME[type as keyof typeof GAME_THEMES_BY_GAME]?.includes(settings.theme)
+        ? { theme: 'default' as const }
+        : {}),
     })
   }
 
@@ -3163,34 +3182,77 @@ function CreateGameInner() {
                     // USA, Christmas, and future editions exist without needing
                     // to open /shop first.
                     THEMES.filter((theme) => MONOPOLY_EDITIONS.some((e) => e.themeId === theme.id))
-                  : THEMES.filter(
-                      (theme) =>
-                        theme.id !== 'pirate' &&
-                        theme.id !== 'arctic' &&
-                        theme.id !== 'naija' &&
-                        theme.id !== 'america' &&
-                        theme.id !== 'christmas' &&
-                        theme.id !== 'grass_court'
-                    )
+                  : GAME_THEMES_BY_GAME[settings.game_type as keyof typeof GAME_THEMES_BY_GAME]
+                    ? // Whot / Ludo / Sudoku: free default + EVERY per-game
+                      // reskin scoped to this game type. Unowned tiles render
+                      // locked below and route to /shop on click — same
+                      // discoverability shape as Monopoly. Slugs from other
+                      // games (whot-neon on a Ludo picker) stay hidden. The
+                      // currently-picked theme is preserved unconditionally
+                      // so switching game types (e.g. Monopoly → Whot with
+                      // theme carrying over as 'london') keeps the tile
+                      // visible instead of stranding settings.theme at a
+                      // value the POST route would 400 on.
+                      THEMES.filter((theme) => {
+                        if (theme.id === settings.theme) return true
+                        if (theme.id === 'default') return true
+                        const scoped = GAME_THEMES_BY_GAME[settings.game_type as keyof typeof GAME_THEMES_BY_GAME]
+                        return scoped?.includes(theme.id) ?? false
+                      })
+                    : THEMES.filter(
+                        (theme) =>
+                          // Always preserve the currently-picked theme so
+                          // switching game_type (e.g. Whot → Trivia with
+                          // theme carried over as 'whot-neon') keeps the
+                          // tile highlighted instead of stranding
+                          // settings.theme at a value the POST route would
+                          // 400 on. Same guard the Monopoly + hasGameThemes
+                          // branches use above.
+                          theme.id === settings.theme ||
+                          (theme.id !== 'pirate' &&
+                            theme.id !== 'arctic' &&
+                            theme.id !== 'naija' &&
+                            theme.id !== 'america' &&
+                            theme.id !== 'christmas' &&
+                            theme.id !== 'grass_court' &&
+                            // Per-game reskins never surface on non-owning games.
+                            !isGameThemeSlug(theme.id))
+                      )
                 ).map((theme) => {
                   const monopolyEdition =
                     settings.game_type === 'monopoly' ? MONOPOLY_EDITIONS.find((e) => e.themeId === theme.id) : null
                   const displayTheme = monopolyEdition
                     ? { ...theme, label: monopolyEdition.editionName, emoji: monopolyEdition.editionEmoji }
                     : theme
-                  // Locked = paid Monopoly edition the host doesn't own AND isn't the
-                  // current pick (never lock a theme the host already selected — that
-                  // would strand a room whose entitlement was later revoked).
+                  // Locked = a paid item the host doesn't own AND isn't the
+                  // current pick (never lock a theme the host already selected
+                  // — that would strand a room whose entitlement was later
+                  // revoked). Covers paid Monopoly editions and unowned
+                  // per-game reskins (Neon Whot, Wooden Ludo, …); the
+                  // always-free 'default' never locks.
+                  const scopedGameThemes =
+                    GAME_THEMES_BY_GAME[settings.game_type as keyof typeof GAME_THEMES_BY_GAME] ?? null
                   const locked =
-                    settings.game_type === 'monopoly' &&
                     theme.id !== settings.theme &&
-                    !isMonopolyEditionAvailable(theme.id, ownedMonopolyEditions)
+                    ((settings.game_type === 'monopoly' &&
+                      !isMonopolyEditionAvailable(theme.id, ownedMonopolyEditions)) ||
+                      (!!scopedGameThemes &&
+                        theme.id !== 'default' &&
+                        scopedGameThemes.includes(theme.id) &&
+                        !ownedGameThemes.has(theme.id)))
                   return (
                     <ThemePreviewCard
                       key={theme.id}
                       theme={displayTheme}
                       selected={settings.theme === theme.id}
                       locked={locked}
+                      priceCoins={
+                        locked
+                          ? settings.game_type === 'monopoly'
+                            ? monopolyEditionPrices.get(MONOPOLY_THEME_TO_EDITION_SLUG[theme.id] ?? theme.id)
+                            : ownedGameThemePrices.get(theme.id)
+                          : undefined
+                      }
                       onClick={
                         locked ? () => router.push('/shop') : () => setSettings({ ...settings, theme: theme.id })
                       }

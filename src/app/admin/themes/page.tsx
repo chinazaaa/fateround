@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { puzzleThemeEntriesToCsv } from '@/lib/puzzle-themes'
+import { MAX_PRICE_COINS } from '@/lib/coins/pricing'
 
 type GameTypeId = 'crossword' | 'word_search' | 'word_scramble' | 'wordle_room'
 
@@ -183,9 +184,13 @@ function CreateThemeForm({ gameType, onCreated }: { gameType: GameTypeId; onCrea
     setOkMsg(null)
     try {
       const parsedPrice = priceCoins === '' ? 0 : Number(priceCoins)
-      if (!Number.isFinite(parsedPrice) || !Number.isInteger(parsedPrice) || parsedPrice < 0) {
-        setError('Price must be a non-negative integer (0 for free).')
-        setBusy(false)
+      if (
+        !Number.isFinite(parsedPrice) ||
+        !Number.isInteger(parsedPrice) ||
+        parsedPrice < 0 ||
+        parsedPrice > MAX_PRICE_COINS
+      ) {
+        setError(`Price must be an integer between 0 and ${MAX_PRICE_COINS} (0 for free).`)
         return
       }
       const res = await fetch('/api/admin/puzzle-themes', {
