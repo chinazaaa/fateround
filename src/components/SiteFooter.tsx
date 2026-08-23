@@ -37,6 +37,7 @@ export const PRIMARY_LINKS: FooterLink[] = [
   { href: '/rooms', label: 'Rooms' },
   { href: '/leaderboard', label: 'Leaderboard' },
   { href: '/daily-challenges', label: 'Daily Challenges' },
+  { href: '/shop', label: 'Shop' },
   { href: '/library', label: 'Question Library' },
   { href: '/collections', label: 'Collections' },
   { href: '/blog', label: 'Blog' },
