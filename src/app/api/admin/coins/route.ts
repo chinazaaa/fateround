@@ -69,39 +69,17 @@ export async function POST(req: NextRequest) {
   const adminEmail = session.email.toLowerCase()
 
   try {
-    // Per-admin daily cap. Sum of |delta| over the last 24h across every
-    // admin_adjustment ledger row this admin authored — combined with the
-    // pending adjustment it must not exceed the cap. Cap is a POLICY the
-    // API owns; the DB function only guards against underflow.
-    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
-    const { data: recent, error: recentErr } = await supabase
-      .from('coin_ledger')
-      .select('delta')
-      .eq('reason', 'admin_adjustment')
-      .eq('admin_id', adminEmail)
-      .gte('created_at', since)
-    if (recentErr) {
-      return NextResponse.json(
-        { error: internalErrorMessage('admin/coins', recentErr) },
-        { status: 500 }
-      )
-    }
-    const spentToday = (recent ?? []).reduce((sum, r) => sum + Math.abs(Number(r.delta) || 0), 0)
-    if (spentToday + Math.abs(delta) > DAILY_CAP_COINS) {
-      return NextResponse.json(
-        {
-          error: `Per-admin daily cap reached (${spentToday.toLocaleString()} of ${DAILY_CAP_COINS.toLocaleString()} coins used in the last 24h). Wait for the window to roll, or use a code-side migration for a larger grant.`,
-        },
-        { status: 429 }
-      )
-    }
-
+    // Cap enforcement lives INSIDE the RPC under an advisory transaction
+    // lock keyed on the admin — so two concurrent adjustments from the
+    // same admin can't both see spentToday=0 and both post. The API layer
+    // owns the policy value (5 000 coins over 24h) and hands it in.
     const { data: newBalance, error: rpcErr } = await supabase.rpc('admin_adjust_coins', {
       p_profile_id: profileId,
       p_delta: delta,
       p_admin_email: adminEmail,
       p_category: category,
       p_note: note,
+      p_daily_cap_coins: DAILY_CAP_COINS,
     })
     if (rpcErr) {
       // The stored proc raises for "no such profile" and for programmer
@@ -115,18 +93,47 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: internalErrorMessage('admin/coins', rpcErr) }, { status: 500 })
     }
     if (newBalance === null) {
+      // The RPC returns NULL for either "would underflow" or "would
+      // breach the daily cap" — both are soft failures. Re-read the
+      // recent spend so the client sees a live "spent so far" number
+      // in either case.
+      const spentToday = await readSpentToday(supabase, adminEmail)
+      const remaining = Math.max(0, DAILY_CAP_COINS - spentToday)
+      if (Math.abs(delta) > remaining) {
+        return NextResponse.json(
+          {
+            error: `Per-admin daily cap reached (${spentToday.toLocaleString()} of ${DAILY_CAP_COINS.toLocaleString()} coins used in the last 24h). Wait for the window to roll, or use a code-side migration for a larger grant.`,
+          },
+          { status: 429 }
+        )
+      }
       return NextResponse.json({ error: 'Adjustment would take balance below zero.' }, { status: 409 })
     }
 
+    const spentToday = await readSpentToday(supabase, adminEmail)
     return NextResponse.json({
       balance: Number(newBalance),
       delta,
-      spentToday: spentToday + Math.abs(delta),
+      spentToday,
       cap: DAILY_CAP_COINS,
     })
   } catch (err) {
     return NextResponse.json({ error: internalErrorMessage('admin/coins', err) }, { status: 500 })
   }
+}
+
+async function readSpentToday(
+  supabase: ReturnType<typeof getSupabaseAdmin>,
+  adminEmail: string
+): Promise<number> {
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+  const { data } = await supabase
+    .from('coin_ledger')
+    .select('delta')
+    .eq('reason', 'admin_adjustment')
+    .eq('admin_id', adminEmail)
+    .gte('created_at', since)
+  return (data ?? []).reduce((sum, r) => sum + Math.abs(Number(r.delta) || 0), 0)
 }
 
 /**
@@ -144,31 +151,21 @@ export async function GET(req: NextRequest) {
 
   const supabase = getSupabaseAdmin()
   const adminEmail = session.email.toLowerCase()
-  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
 
   try {
-    const [{ data: profile, error: pErr }, { data: ledger, error: lErr }, { data: recent, error: rErr }] =
-      await Promise.all([
-        supabase.from('profiles').select('id, handle, coins').eq('id', profileId).maybeSingle(),
-        supabase
-          .from('coin_ledger')
-          .select('id, delta, balance_after, reason, admin_id, admin_category, admin_note, created_at')
-          .eq('profile_id', profileId)
-          .order('created_at', { ascending: false })
-          .limit(20),
-        supabase
-          .from('coin_ledger')
-          .select('delta')
-          .eq('reason', 'admin_adjustment')
-          .eq('admin_id', adminEmail)
-          .gte('created_at', since),
-      ])
+    const [{ data: profile, error: pErr }, { data: ledger, error: lErr }, spentToday] = await Promise.all([
+      supabase.from('profiles').select('id, handle, coins').eq('id', profileId).maybeSingle(),
+      supabase
+        .from('coin_ledger')
+        .select('id, delta, balance_after, reason, admin_id, admin_category, admin_note, created_at')
+        .eq('profile_id', profileId)
+        .order('created_at', { ascending: false })
+        .limit(20),
+      readSpentToday(supabase, adminEmail),
+    ])
     if (pErr) return NextResponse.json({ error: internalErrorMessage('admin/coins', pErr) }, { status: 500 })
     if (lErr) return NextResponse.json({ error: internalErrorMessage('admin/coins', lErr) }, { status: 500 })
-    if (rErr) return NextResponse.json({ error: internalErrorMessage('admin/coins', rErr) }, { status: 500 })
     if (!profile) return NextResponse.json({ error: 'No such profile.' }, { status: 404 })
-
-    const spentToday = (recent ?? []).reduce((sum, r) => sum + Math.abs(Number(r.delta) || 0), 0)
 
     return NextResponse.json({
       profile: { id: profile.id, handle: profile.handle, coins: Number(profile.coins) || 0 },

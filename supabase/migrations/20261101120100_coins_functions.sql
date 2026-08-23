@@ -57,7 +57,13 @@ begin
 
   if p_reason not in (
     'win', 'daily_challenge', 'streak_multiplier',
-    'tournament_placement', 'host_bounty', 'first_mode_bonus'
+    'tournament_placement', 'host_bounty', 'first_mode_bonus',
+    -- `refund` is a credit path — used by future support tooling that
+    -- reverses a shop_purchase. Deliberately routed through award_coins
+    -- (not spend_coins) because it MOVES COINS BACK to the player, and
+    -- naming the credit path "spend" would be a footgun. Exempted from
+    -- the 2-human floor: a refund is admin-driven, not gameplay.
+    'refund'
   ) then
     raise exception 'award_coins: reason % is not an earn reason', p_reason;
   end if;
@@ -65,7 +71,7 @@ begin
   -- Tournament and daily-challenge earnings are exempt from the 2-human
   -- floor and the 2-human multiplier (plan §"Anti-farming rules").
   v_is_exempt := coalesce(p_exempt_from_floor, false)
-              or p_reason in ('daily_challenge', 'tournament_placement');
+              or p_reason in ('daily_challenge', 'tournament_placement', 'refund');
 
   v_credited := p_delta;
 
@@ -128,7 +134,10 @@ begin
   if p_delta is null or p_delta <= 0 then
     raise exception 'spend_coins: delta must be positive (got %)', p_delta;
   end if;
-  if p_reason not in ('shop_purchase', 'refund') then
+  -- `refund` deliberately isn't accepted here — a refund is a CREDIT and
+  -- goes through award_coins. Routing it here would double-debit the
+  -- player (this function subtracts, then the ledger row says "refund").
+  if p_reason <> 'shop_purchase' then
     raise exception 'spend_coins: reason % is not a spend reason', p_reason;
   end if;
 
@@ -142,8 +151,14 @@ begin
   returning coins into v_new_balance;
 
   if v_new_balance is null then
-    -- Either no such profile or insufficient funds. Callers can tell them
-    -- apart by pre-checking existence; the ledger stays clean on failure.
+    -- Distinguish "no such profile" (programmer error — callers should
+    -- never spend against a stranger) from "insufficient funds" (a soft
+    -- failure the shop UI turns into "not enough coins"). Mirrors what
+    -- admin_adjust_coins does for the same reason.
+    perform 1 from profiles where id = p_profile_id;
+    if not found then
+      raise exception 'spend_coins: no such profile %', p_profile_id;
+    end if;
     return null;
   end if;
 
@@ -238,13 +253,19 @@ begin
     from daily_scores where profile_id = p_profile_id;
   v_dailies := least(v_dailies, 100);
 
+  -- Tournaments still key on player_name (not profile_id), so this is a
+  -- handle-match. The `coalesce(p.handle,'') <> ''` guard is load-bearing:
+  -- without it, every profile with a null/blank handle would join every
+  -- unnamed / '' tournament row and pick up someone else's placements
+  -- (25 coins each). Treated as advisory even with the guard; the 2000
+  -- cap absorbs any remaining slop from handle collisions between two
+  -- profiles that happen to share a name.
   select coalesce(sum(case when is_eliminated then 0 else 1 end), 0)::bigint
     into v_tournaments
     from tournament_players tp
     join profiles p on p.id = p_profile_id
-   where lower(tp.player_name) = lower(coalesce(p.handle, ''));
-  -- Handle-matched (tournaments still key on player_name, not profile_id).
-  -- Treated as advisory; the 2000 cap absorbs slop.
+   where coalesce(p.handle, '') <> ''
+     and lower(tp.player_name) = lower(p.handle);
 
   select coalesce(games_played, 0)::bigint into v_games
     from player_stats
@@ -372,11 +393,13 @@ begin
     return 0;
   end;
 
-  -- Consume every pending row for this device — anything inside the
-  -- 7-day window contributed to the grant, and anything outside it is
-  -- stale (past the migration window) so keeping it around would only
-  -- confuse a later manual audit.
-  delete from guest_pending_grants where device_id = p_device_id;
+  -- Consume ONLY the rows that fed into the grant. Rows older than the
+  -- 7-day window weren't summed in — deleting them here would silently
+  -- lose the audit trail of what the guest saw ("Sign up to claim X")
+  -- earlier. Housekeeping of expired rows is a separate cron concern.
+  delete from guest_pending_grants
+   where device_id = p_device_id
+     and created_at >= now() - v_window;
 
   return v_granted;
 end;
@@ -385,35 +408,43 @@ $$;
 revoke all on function migrate_guest_grants(uuid, text) from public;
 
 -- ---------------------------------------------------------------------------
--- admin_adjust_coins(profile_id, delta, admin_email, category, note)
+-- admin_adjust_coins(profile_id, delta, admin_email, category, note,
+--                    daily_cap_coins)
 --
 -- Atomic balance move + ledger insert for the admin adjustment path. Kept
 -- separate from award_coins / spend_coins because the ledger row carries
 -- admin_id / admin_category / admin_note fields the earn/spend paths
 -- deliberately don't take.
 --
--- Returns the new balance, or NULL if a negative adjustment would take
--- the balance below zero. Raises for a missing profile or an invalid
--- category — those are programmer errors the caller should surface as 4xx.
+-- Returns the new balance, or NULL for an outcome the caller can recover
+-- from: a negative adjustment that would take the balance below zero, or
+-- a positive/negative adjustment that would breach the per-admin
+-- 24-hour cap. Raises for a missing profile or an invalid category —
+-- those are programmer errors the caller should surface as 4xx.
 --
--- The per-admin daily cap is checked in the API layer, not here, because
--- the "same 24 hours" window is a policy the API owns; the DB function
--- deliberately only refuses the underflow case. Callers must not skip
--- the cap check.
+-- CAP ENFORCEMENT IS IN-DB, UNDER AN ADVISORY TRANSACTION LOCK keyed on
+-- the admin email — so two concurrent adjustments from the same admin
+-- serialize and can't both see spentToday=0 and both post. An earlier
+-- draft did the cap check in the API layer and had exactly that TOCTOU.
+-- Passing the cap as a parameter (rather than baking 5000 into the DB)
+-- keeps the policy value with the API code that owns "same 24 hours."
 -- ---------------------------------------------------------------------------
 create or replace function admin_adjust_coins(
-  p_profile_id  uuid,
-  p_delta       bigint,
-  p_admin_email text,
-  p_category    text,
-  p_note        text
+  p_profile_id     uuid,
+  p_delta          bigint,
+  p_admin_email    text,
+  p_category       text,
+  p_note           text,
+  p_daily_cap_coins bigint default 5000
 ) returns bigint
 language plpgsql
 security definer
 set search_path = public
 as $$
 declare
-  v_new_balance bigint;
+  v_new_balance    bigint;
+  v_admin_key      text;
+  v_spent_today    bigint;
 begin
   if p_delta is null or p_delta = 0 then
     raise exception 'admin_adjust_coins: delta must be non-zero';
@@ -428,6 +459,31 @@ begin
   end if;
   if p_note is null or length(trim(p_note)) < 10 then
     raise exception 'admin_adjust_coins: note must be at least 10 characters';
+  end if;
+  if p_admin_email is null or length(trim(p_admin_email)) = 0 then
+    raise exception 'admin_adjust_coins: admin_email is required';
+  end if;
+
+  v_admin_key := lower(trim(p_admin_email));
+
+  -- Serialize concurrent calls from the same admin so the cap check + the
+  -- insert-that-would-breach-it run as one critical section. The lock is
+  -- released at commit; keyed on hashtext so different admin emails never
+  -- contend, and same admin from two tabs / two rooms queue behind each
+  -- other. Not a bottleneck — admin adjustments are rare.
+  perform pg_advisory_xact_lock(hashtext('admin_adjust_coins:' || v_admin_key));
+
+  select coalesce(sum(abs(delta)), 0)::bigint
+    into v_spent_today
+    from coin_ledger
+   where reason = 'admin_adjustment'
+     and admin_id = v_admin_key
+     and created_at >= now() - interval '24 hours';
+
+  if v_spent_today + abs(p_delta) > p_daily_cap_coins then
+    -- Soft failure — the API layer turns this into a 429 with the remaining
+    -- headroom. Never let the cap-breach path itself write to the ledger.
+    return null;
   end if;
 
   update profiles
@@ -450,17 +506,17 @@ begin
     (profile_id, delta, balance_after, reason, admin_id, admin_category, admin_note)
   values
     (p_profile_id, p_delta, v_new_balance, 'admin_adjustment',
-     lower(p_admin_email), p_category, p_note);
+     v_admin_key, p_category, p_note);
 
   return v_new_balance;
 end;
 $$;
 
-revoke all on function admin_adjust_coins(uuid, bigint, text, text, text) from public;
+revoke all on function admin_adjust_coins(uuid, bigint, text, text, text, bigint) from public;
 
 -- ----------------------------------------------------------------------------
 -- ROLLBACK (drafted). Apply as a NEW forward migration; do NOT edit this file.
---   drop function if exists admin_adjust_coins(uuid, bigint, text, text, text);
+--   drop function if exists admin_adjust_coins(uuid, bigint, text, text, text, bigint);
 --   drop function if exists migrate_guest_grants(uuid, text);
 --   drop function if exists grant_launch_v1(uuid);
 --   drop function if exists grant_welcome(uuid);
