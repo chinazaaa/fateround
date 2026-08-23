@@ -8,6 +8,8 @@ import { fetchGamePlayerLimits, lobbyMaxPlayersFromGame } from '@/lib/game-limit
 import { firstAvailableMonopolyToken } from '@/lib/monopoly-tokens'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { gameSupportsBots } from '@/lib/bots-in-room'
+import { getProfileFromRequest } from '@/lib/identity-server'
+import { EXTRA_BOT_COST } from '@/lib/coins/shop-catalog'
 
 /**
  * Bots-in-room — add/remove a bot seat in an existing game lobby.
@@ -31,7 +33,17 @@ import { gameSupportsBots } from '@/lib/bots-in-room'
  * actually take its turns.
  */
 
-const addSchema = z.object({ hostToken: z.string().min(1) })
+const addSchema = z.object({
+  hostToken: z.string().min(1),
+  /**
+   * Coin cost the client expected to pay. 0 for the free first bot, 50 for
+   * every subsequent bot. If the client's view of the bot count disagrees
+   * with the server's (someone else in another tab just added one), the
+   * server rejects with 409 so the client re-renders the button at the
+   * right price rather than silently over/under-charging.
+   */
+  expectedPriceCoins: z.number().int().nonnegative().max(EXTRA_BOT_COST).optional(),
+})
 
 // The next available "Bot N" name that isn't already taken in this game.
 // Kept dead simple — no anthropomorphic names, no cute puns. The 🤖 avatar
@@ -101,24 +113,76 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   // to null — the engine tolerates it and the UI falls back to an ordinal glyph.
   const monopolyToken = parseGameType(game.game_type) === 'monopoly' ? firstAvailableMonopolyToken(seated ?? []) : null
 
-  const { data: player, error } = await supabase
-    .from('players')
-    .insert({
-      game_id: code,
-      country: null,
-      name: botName,
-      gender: 'both',
-      identity_gender: null,
-      participant_id: null,
-      spectator: false,
-      is_bot: true,
-      monopoly_token: monopolyToken,
-    })
-    .select('id, name, is_bot')
-    .single()
+  // Phase 3 coin gate: first bot free, every subsequent bot costs
+  // EXTRA_BOT_COST per bot per room (plan §"Inline (contextual)" and
+  // §"Decisions" #6). The count+pricing+spend is delegated to the
+  // add_extra_bot() RPC so it happens under one advisory lock; the
+  // pre-RPC currentBots read is advisory only.
+  //
+  // Always resolve profileId when a session exists — the old
+  // advisoryNeedsPayment optimization skipped the lookup when
+  // currentBots=0, and a racing tab that committed its bot in between
+  // then made the RPC RAISE (paid bot with no payer) which the outer
+  // handler didn't catch and turned into a 500 (reviewer round 5
+  // finding #1). Resolving up-front costs one cheap read and lets the
+  // RPC decide the outcome cleanly. Guests still surface 401 — but
+  // only when the RPC actually needs a payer.
+  const profileId = await getProfileFromRequest(req).catch(() => null)
+  if (currentBots >= 1 && !profileId) {
+    return NextResponse.json({ error: 'Save your profile to buy extra bots' }, { status: 401 })
+  }
 
-  if (error) return NextResponse.json({ error: internalErrorMessage('bots', error) }, { status: 500 })
-  return NextResponse.json({ ok: true, player })
+  const { data: rpcResult, error: rpcErr } = await supabase.rpc('add_extra_bot', {
+    p_game_id: code,
+    p_profile_id: profileId,
+    p_name: botName,
+    p_monopoly_token: monopolyToken,
+    p_expected_price: body.expectedPriceCoins ?? 0,
+    p_max_players: maxPlayers,
+    p_extra_bot_cost: EXTRA_BOT_COST,
+  })
+  if (rpcErr) return NextResponse.json({ error: internalErrorMessage('bots', rpcErr) }, { status: 500 })
+
+  const outcome =
+    (rpcResult as {
+      outcome?: string
+      player_id?: string
+      charged?: number
+      new_balance?: number
+      price?: number
+    } | null) ?? {}
+
+  if (outcome.outcome === 'needs_profile') {
+    return NextResponse.json({ error: 'Save your profile to buy extra bots' }, { status: 401 })
+  }
+  if (outcome.outcome === 'price_mismatch') {
+    return NextResponse.json(
+      { error: 'Bot pricing changed while you were adding — try again', expectedPriceCoins: outcome.price ?? 0 },
+      { status: 409 }
+    )
+  }
+  if (outcome.outcome === 'seat_cap') {
+    return NextResponse.json({ error: 'Room is already full — remove a player first' }, { status: 400 })
+  }
+  if (outcome.outcome === 'bot_cap') {
+    return NextResponse.json({ error: 'At least one seat must be reserved for a human' }, { status: 400 })
+  }
+  if (outcome.outcome === 'insufficient_funds') {
+    return NextResponse.json(
+      { error: `Not enough coins — ${outcome.price ?? EXTRA_BOT_COST} coins needed to add an extra bot.` },
+      { status: 402 }
+    )
+  }
+  if (outcome.outcome !== 'ok' || !outcome.player_id) {
+    return NextResponse.json({ error: 'Could not add a bot' }, { status: 500 })
+  }
+
+  return NextResponse.json({
+    ok: true,
+    player: { id: outcome.player_id, name: botName, is_bot: true },
+    charged: outcome.charged ?? 0,
+    newBalance: outcome.new_balance ?? null,
+  })
 }
 
 const removeSchema = z.object({ hostToken: z.string().min(1), playerId: z.string().uuid() })

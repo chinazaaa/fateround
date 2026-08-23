@@ -270,17 +270,11 @@ export interface CodewordsMessage {
   created_at: string
   player_name?: string
 }
-export type ThemeId =
-  | 'default'
-  | 'dark'
-  | 'neon'
-  | 'retro'
-  | 'elegant'
-  | 'tropical'
-  | 'pirate'
-  | 'arctic'
-  | 'naija'
-  | 'grass_court'
+// Re-export the canonical union from @/lib/themes rather than duplicating it.
+// The old shadow definition here missed 'america' when Phase 4 added it, so
+// consumers importing `ThemeId` from '@/types' rejected the paid edition even
+// though the rest of the app accepts it. Import once, source of truth = one.
+export type { ThemeId } from '@/lib/themes'
 export type WyrChoice = 'a' | 'b'
 
 export type ParticipantGender = 'male' | 'female'
@@ -408,6 +402,13 @@ export interface Game {
   player_questions_order?: PlayerQuestionsOrder
   game_type: GameType
   theme?: ThemeId
+  /**
+   * Estate Kings edition slug picked by the host (docs/estate-kings-america-edition.md).
+   * Mirrors `theme` for Monopoly — 'london' | 'naija' | 'pirate' | 'arctic' | 'america'
+   * — and is null for every other game type. See Phase 4 migration
+   * `20261101120700_estate_kings_america_edition.sql`.
+   */
+  edition_slug?: string | null
   status: GameStatus
   /** When true, the game is listed in /browse (discoverable). Default false = code-only. */
   is_public?: boolean

@@ -19,6 +19,10 @@ export type Profile = {
   default_voice_on: boolean | null
   preferred_theme: string | null
   coins?: number | null
+  equipped_frame?: string | null
+  equipped_name_color?: string | null
+  equipped_animation?: string | null
+  equipped_card_template?: string | null
 }
 
 /**

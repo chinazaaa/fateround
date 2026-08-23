@@ -7,6 +7,8 @@ import { MONOPOLY_EDITIONS } from '@/components/monopoly/monopoly-themes'
 import { ThemePreviewCard, ThemePreviewModal } from '@/components/ThemePreviewModal'
 import { HostLobbySettingBlock } from '@/components/host-lobby/HostLobbySettingBlock'
 import { useToast } from '@/components/ui/Toast'
+import { isMonopolyEditionAvailable, useOwnedMonopolyEditions } from '@/hooks/useOwnedMonopolyEditions'
+import { authHeaders } from '@/lib/identity'
 
 type Props = {
   gameCode: string
@@ -27,21 +29,41 @@ export function HostThemePicker({ gameCode, hostToken, game, onGameUpdate }: Pro
   const isMonopoly = game.game_type === 'monopoly'
   const [saving, setSaving] = useState<ThemeId | null>(null)
   const [previewTheme, setPreviewTheme] = useState<(typeof THEMES)[number] | null>(null)
+  const { available: ownedEditions } = useOwnedMonopolyEditions()
 
   const currentTheme = (game.theme as ThemeId | null | undefined) ?? 'default'
 
   const options = useMemo(() => {
-    if (isMonopoly) return THEMES.filter((theme) => MONOPOLY_EDITIONS.some((e) => e.themeId === theme.id))
-    return THEMES.filter((theme) => theme.id !== 'pirate' && theme.id !== 'arctic' && theme.id !== 'naija')
-  }, [isMonopoly])
+    if (isMonopoly) {
+      // Ownership gate: paid editions (e.g. USA, 800 coins) only show once the
+      // host has purchased them; free grandfathered editions always show. The
+      // current theme is never hidden, so a host who created the room before
+      // an edition was revoked from their catalog can still see what they
+      // picked without an unresolved chip.
+      return THEMES.filter(
+        (theme) =>
+          MONOPOLY_EDITIONS.some((e) => e.themeId === theme.id) &&
+          (theme.id === currentTheme || isMonopolyEditionAvailable(theme.id, ownedEditions))
+      )
+    }
+    return THEMES.filter(
+      (theme) => theme.id !== 'pirate' && theme.id !== 'arctic' && theme.id !== 'naija' && theme.id !== 'america'
+    )
+  }, [isMonopoly, ownedEditions, currentTheme])
 
   const selectTheme = async (themeId: ThemeId) => {
     if (saving || themeId === currentTheme) return
     setSaving(themeId)
     try {
+      // Send the bearer token alongside hostToken so the server can identify
+      // the signed-in profile for the paid-edition entitlement check. Games
+      // created before sign-in have host_user_id = null, and without a
+      // bearer the server would 401 a legitimate USA pick just because the
+      // stored row still points at nobody.
+      const headers = { 'Content-Type': 'application/json', ...(await authHeaders()) }
       const res = await fetch(`/api/games/${gameCode}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ hostToken, theme: themeId }),
       })
       const data = await res.json()

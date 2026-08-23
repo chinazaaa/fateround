@@ -39,14 +39,9 @@ export function CoinBalanceCard({ onViewHistory }: { onViewHistory?: () => void 
         >
           View history
         </Link>
-        <button
-          type="button"
-          disabled
-          className="fr-btn--nav opacity-60 cursor-not-allowed"
-          title="Shop opens next (Phase 3)"
-        >
+        <Link href="/shop" prefetch={false} className="fr-btn--nav">
           View shop
-        </button>
+        </Link>
       </div>
     </div>
   )
