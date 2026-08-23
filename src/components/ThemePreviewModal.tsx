@@ -202,21 +202,46 @@ export function ThemePreviewCard({
   selected,
   onClick,
   onPreview,
+  locked = false,
+  priceCoins,
 }: {
   theme: ThemeConfig
   selected: boolean
   onClick: () => void
   onPreview: () => void
+  /**
+   * Renders the card as a "you don't own this yet" tile: dimmed, 🔒 badge,
+   * bottom bar becomes an "Unlock in Shop" link that routes to /shop.
+   * Tap on the tile body also routes to /shop (via onClick — the caller is
+   * responsible for wiring that navigation). Selection styling is skipped
+   * while locked because locked items cannot be selected.
+   */
+  locked?: boolean
+  /** Price shown alongside the lock icon (e.g. 800). Omit for editions
+   *  whose price isn't yet known client-side. */
+  priceCoins?: number
 }) {
+  const borderClass = locked
+    ? 'border-[var(--border)] opacity-70 hover:opacity-100 hover:border-[var(--border-strong)]'
+    : selected
+      ? 'border-[var(--primary)] shadow-[0_0_0_1px_var(--primary)]'
+      : 'border-[var(--border)] hover:border-[var(--border-strong)]'
   return (
-    <div
-      className={`flex min-w-0 flex-col overflow-hidden rounded-xl border transition-all ${
-        selected
-          ? 'border-[var(--primary)] shadow-[0_0_0_1px_var(--primary)]'
-          : 'border-[var(--border)] hover:border-[var(--border-strong)]'
-      }`}
-    >
-      <button type="button" onClick={onClick} className="flex w-full flex-col items-center gap-1 px-1.5 pt-2 pb-1.5">
+    <div className={`flex min-w-0 flex-col overflow-hidden rounded-xl border transition-all ${borderClass}`}>
+      <button
+        type="button"
+        onClick={onClick}
+        className="relative flex w-full flex-col items-center gap-1 px-1.5 pt-2 pb-1.5"
+        aria-label={locked ? `${theme.label} — unlock in shop` : theme.label}
+      >
+        {locked && (
+          <span
+            aria-hidden
+            className="absolute right-1.5 top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-[var(--surface-inset-bg)] text-[9px] leading-none"
+          >
+            🔒
+          </span>
+        )}
         <div className="flex gap-0.5">
           <span
             className="block h-3.5 w-3.5 rounded-full border border-black/10"
@@ -236,15 +261,26 @@ export function ThemePreviewCard({
           <span className="truncate">{theme.label}</span>
         </span>
       </button>
-      <button
-        type="button"
-        onClick={onPreview}
-        className="flex w-full items-center justify-center gap-0.5 border-t border-[var(--border)] bg-[var(--surface-inset-bg)] py-1 text-[10px] font-semibold text-body transition-colors hover:bg-[var(--card-hover)]"
-        aria-label={`Preview ${theme.label} theme`}
-      >
-        <EyeIcon className="h-3 w-3 shrink-0 opacity-80" />
-        Preview
-      </button>
+      {locked ? (
+        <button
+          type="button"
+          onClick={onClick}
+          className="flex w-full items-center justify-center gap-1 border-t border-[var(--border)] bg-[var(--surface-inset-bg)] py-1 text-[10px] font-semibold text-[var(--primary)] transition-colors hover:bg-[var(--card-hover)]"
+          aria-label={`Unlock ${theme.label} in the Shop`}
+        >
+          🪙 {priceCoins !== undefined ? `Unlock — ${priceCoins}` : 'Unlock in Shop'}
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={onPreview}
+          className="flex w-full items-center justify-center gap-0.5 border-t border-[var(--border)] bg-[var(--surface-inset-bg)] py-1 text-[10px] font-semibold text-body transition-colors hover:bg-[var(--card-hover)]"
+          aria-label={`Preview ${theme.label} theme`}
+        >
+          <EyeIcon className="h-3 w-3 shrink-0 opacity-80" />
+          Preview
+        </button>
+      )}
     </div>
   )
 }
