@@ -65,9 +65,11 @@ export async function POST(req: NextRequest) {
   try {
     // Cap enforcement lives INSIDE the RPC under an advisory transaction
     // lock keyed on the admin — so two concurrent adjustments from the
-    // same admin can't both see spentToday=0 and both post. The API layer
-    // owns the policy value (5 000 coins over 24h) and hands it in.
-    const { data: newBalance, error: rpcErr } = await supabase.rpc('admin_adjust_coins', {
+    // same admin can't both see spentToday=0 and both post. The RPC
+    // returns a jsonb envelope with outcome + spent_today + cap so we
+    // don't need a second query (which would race the RPC's own snapshot
+    // of the rolling 24h window).
+    const { data, error: rpcErr } = await supabase.rpc('admin_adjust_coins', {
       p_profile_id: profileId,
       p_delta: delta,
       p_admin_email: adminEmail,
@@ -86,44 +88,65 @@ export async function POST(req: NextRequest) {
       }
       return NextResponse.json({ error: internalErrorMessage('admin/coins', rpcErr) }, { status: 500 })
     }
-    if (newBalance === null) {
-      // The RPC returns NULL for either "would underflow" or "would
-      // breach the daily cap" — both are soft failures. Re-read the
-      // recent spend so the client sees a live "spent so far" number
-      // in either case.
-      const spentToday = await readSpentToday(supabase, adminEmail)
-      const remaining = Math.max(0, DAILY_CAP_COINS - spentToday)
-      if (Math.abs(delta) > remaining) {
-        return NextResponse.json(
-          {
-            error: `Per-admin daily cap reached (${spentToday.toLocaleString()} of ${DAILY_CAP_COINS.toLocaleString()} coins used in the last 24h). Wait for the window to roll, or use a code-side migration for a larger grant.`,
-          },
-          { status: 429 }
-        )
-      }
+
+    const envelope = data as {
+      outcome: 'ok' | 'cap_breach' | 'underflow'
+      new_balance: number | null
+      spent_today: number
+      cap: number
+    } | null
+    if (!envelope) {
+      return NextResponse.json(
+        { error: internalErrorMessage('admin/coins', new Error('empty rpc envelope')) },
+        { status: 500 }
+      )
+    }
+
+    if (envelope.outcome === 'cap_breach') {
+      return NextResponse.json(
+        {
+          error: `Per-admin daily cap reached (${envelope.spent_today.toLocaleString()} of ${envelope.cap.toLocaleString()} coins used in the last 24h). Wait for the window to roll, or use a code-side migration for a larger grant.`,
+          spentToday: envelope.spent_today,
+          cap: envelope.cap,
+        },
+        { status: 429 }
+      )
+    }
+    if (envelope.outcome === 'underflow') {
       return NextResponse.json({ error: 'Adjustment would take balance below zero.' }, { status: 409 })
     }
 
-    const spentToday = await readSpentToday(supabase, adminEmail)
     return NextResponse.json({
-      balance: Number(newBalance),
+      balance: Number(envelope.new_balance),
       delta,
-      spentToday,
-      cap: DAILY_CAP_COINS,
+      spentToday: envelope.spent_today,
+      cap: envelope.cap,
     })
   } catch (err) {
     return NextResponse.json({ error: internalErrorMessage('admin/coins', err) }, { status: 500 })
   }
 }
 
-async function readSpentToday(supabase: ReturnType<typeof getSupabaseAdmin>, adminEmail: string): Promise<number> {
+/**
+ * Best-effort "spent so far today" for the GET (display) path. Returns
+ * null on a query error so callers can render "unknown" instead of
+ * silently showing 0 — which would tell the admin they had a full
+ * 5 000-coin allowance when the check failed. The POST path never uses
+ * this: the RPC returns the authoritative value under the same lock as
+ * the write.
+ */
+async function readSpentToday(
+  supabase: ReturnType<typeof getSupabaseAdmin>,
+  adminEmail: string
+): Promise<number | null> {
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('coin_ledger')
     .select('delta')
     .eq('reason', 'admin_adjustment')
     .eq('admin_id', adminEmail)
     .gte('created_at', since)
+  if (error) return null
   return (data ?? []).reduce((sum, r) => sum + Math.abs(Number(r.delta) || 0), 0)
 }
 

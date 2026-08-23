@@ -134,11 +134,15 @@ begin
   if p_delta is null or p_delta <= 0 then
     raise exception 'spend_coins: delta must be positive (got %)', p_delta;
   end if;
-  -- `refund` deliberately isn't accepted here — a refund is a CREDIT and
-  -- goes through award_coins. Routing it here would double-debit the
+  -- DB-API SURFACE CHANGE (this PR): `refund` used to be an accepted
+  -- reason here and is now rejected. A refund is a CREDIT and belongs on
+  -- award_coins() — routing it through spend would double-debit the
   -- player (this function subtracts, then the ledger row says "refund").
+  -- No in-tree caller passed 'refund' before, but if any external DBA
+  -- script, dashboard SQL, or older client did, this raises loudly on
+  -- the first call — no silent behavior change.
   if p_reason <> 'shop_purchase' then
-    raise exception 'spend_coins: reason % is not a spend reason', p_reason;
+    raise exception 'spend_coins: reason % is not a spend reason (refund goes through award_coins)', p_reason;
   end if;
 
   -- Row-locking update; the CHECK (coins >= 0) constraint on profiles
@@ -416,11 +420,18 @@ revoke all on function migrate_guest_grants(uuid, text) from public;
 -- admin_id / admin_category / admin_note fields the earn/spend paths
 -- deliberately don't take.
 --
--- Returns the new balance, or NULL for an outcome the caller can recover
--- from: a negative adjustment that would take the balance below zero, or
--- a positive/negative adjustment that would breach the per-admin
--- 24-hour cap. Raises for a missing profile or an invalid category —
--- those are programmer errors the caller should surface as 4xx.
+-- Returns a jsonb envelope so the API can render an accurate response
+-- from a single round-trip and doesn't have to re-sum the 24h window
+-- (which would race the RPC's own view — a ledger row can fall out of
+-- the window between the RPC and the recount):
+--
+--   { "outcome": "ok" | "cap_breach" | "underflow",
+--     "new_balance": bigint | null,   -- present only for outcome=ok
+--     "spent_today": bigint,          -- always the value the lock saw
+--     "cap":         bigint }         -- echoed back for the response
+--
+-- Raises for a missing profile or an invalid category — those are
+-- programmer errors the caller should surface as 4xx.
 --
 -- CAP ENFORCEMENT IS IN-DB, UNDER AN ADVISORY TRANSACTION LOCK keyed on
 -- the admin email — so two concurrent adjustments from the same admin
@@ -429,6 +440,11 @@ revoke all on function migrate_guest_grants(uuid, text) from public;
 -- Passing the cap as a parameter (rather than baking 5000 into the DB)
 -- keeps the policy value with the API code that owns "same 24 hours."
 -- ---------------------------------------------------------------------------
+
+-- Drop the previous signature (returned bare bigint) — jsonb return is a
+-- signature change Postgres won't do with CREATE OR REPLACE.
+drop function if exists admin_adjust_coins(uuid, bigint, text, text, text, bigint);
+
 create or replace function admin_adjust_coins(
   p_profile_id     uuid,
   p_delta          bigint,
@@ -436,7 +452,7 @@ create or replace function admin_adjust_coins(
   p_category       text,
   p_note           text,
   p_daily_cap_coins bigint default 5000
-) returns bigint
+) returns jsonb
 language plpgsql
 security definer
 set search_path = public
@@ -445,6 +461,7 @@ declare
   v_new_balance    bigint;
   v_admin_key      text;
   v_spent_today    bigint;
+  v_spent_after    bigint;
 begin
   if p_delta is null or p_delta = 0 then
     raise exception 'admin_adjust_coins: delta must be non-zero';
@@ -481,9 +498,12 @@ begin
      and created_at >= now() - interval '24 hours';
 
   if v_spent_today + abs(p_delta) > p_daily_cap_coins then
-    -- Soft failure — the API layer turns this into a 429 with the remaining
-    -- headroom. Never let the cap-breach path itself write to the ledger.
-    return null;
+    return jsonb_build_object(
+      'outcome',     'cap_breach',
+      'new_balance', null,
+      'spent_today', v_spent_today,
+      'cap',         p_daily_cap_coins
+    );
   end if;
 
   update profiles
@@ -499,7 +519,12 @@ begin
     if not found then
       raise exception 'admin_adjust_coins: no such profile %', p_profile_id;
     end if;
-    return null;
+    return jsonb_build_object(
+      'outcome',     'underflow',
+      'new_balance', null,
+      'spent_today', v_spent_today,
+      'cap',         p_daily_cap_coins
+    );
   end if;
 
   insert into coin_ledger
@@ -508,7 +533,14 @@ begin
     (p_profile_id, p_delta, v_new_balance, 'admin_adjustment',
      v_admin_key, p_category, p_note);
 
-  return v_new_balance;
+  v_spent_after := v_spent_today + abs(p_delta);
+
+  return jsonb_build_object(
+    'outcome',     'ok',
+    'new_balance', v_new_balance,
+    'spent_today', v_spent_after,
+    'cap',         p_daily_cap_coins
+  );
 end;
 $$;
 

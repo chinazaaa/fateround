@@ -47,7 +47,10 @@ export default function AdminCoinsPage() {
   const [profile, setProfile] = useState<Profile | null>(null)
   const [ledger, setLedger] = useState<LedgerRow[]>([])
   const [cap, setCap] = useState(5000)
-  const [spentToday, setSpentToday] = useState(0)
+  // Null means "we couldn't read it" (query error); render as "?" rather
+  // than "0" so an admin doesn't think they have their full allowance
+  // available.
+  const [spentToday, setSpentToday] = useState<number | null>(0)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -72,7 +75,7 @@ export default function AdminCoinsPage() {
       setProfile(json.profile)
       setLedger(json.ledger ?? [])
       setCap(json.cap ?? 5000)
-      setSpentToday(json.spentToday ?? 0)
+      setSpentToday(json.spentToday ?? null)
     } finally {
       setLoading(false)
     }
@@ -124,7 +127,9 @@ export default function AdminCoinsPage() {
     }
   }
 
-  const remaining = Math.max(0, cap - spentToday)
+  const remaining = spentToday === null ? null : Math.max(0, cap - spentToday)
+  const remainingLabel =
+    remaining === null ? `? / ${cap.toLocaleString()}` : `${remaining.toLocaleString()} / ${cap.toLocaleString()}`
 
   return (
     <div className="space-y-6">
@@ -153,7 +158,7 @@ export default function AdminCoinsPage() {
             <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
               <Stat label="Handle" value={profile.handle ?? '—'} />
               <Stat label="Balance" value={profile.coins.toLocaleString()} />
-              <Stat label={`Daily cap remaining`} value={`${remaining.toLocaleString()} / ${cap.toLocaleString()}`} />
+              <Stat label={`Daily cap remaining`} value={remainingLabel} />
             </div>
 
             <div className="mt-6 grid gap-3 sm:grid-cols-[120px_1fr_1fr]">
