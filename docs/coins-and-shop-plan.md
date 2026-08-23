@@ -174,9 +174,20 @@ packs — a dense, buyable lineup — and ship the **first paid edition as a
 month-2 drop**. That gives the edition its own launch beat ("first paid
 edition just dropped") instead of being buried among ten launch items.
 
-Candidates for the first paid edition: Arctic, Christmas, Lagos, Tokyo,
-Campus/School Championship. Pick the one with the strongest art bandwidth
-and the widest audience appeal.
+**First paid edition: Estate Kings — America.** US-themed properties
+(Fifth Avenue, Times Square, Golden Gate, Hollywood Blvd, Wall Street,
+French Quarter, etc.), US currency and card flavor. Ships as a month-2
+drop with its own launch beat.
+
+**Trademark note.** Do not use classic Monopoly property names
+(Boardwalk, Park Place, Marvin Gardens, etc.) — those are Hasbro
+trademarks. Use original US-themed street/landmark names instead. Same
+rule applies to card flavor text ("Advance to Fifth Avenue," not
+"Advance to Boardwalk"). This keeps the edition clearly "the American
+edition" to every player without inviting a takedown letter.
+
+Future edition candidates (month 3+): Arctic, Christmas, Lagos, Tokyo,
+London, Campus/School Championship.
 
 ## Games that can have EDITIONS vs THEMES
 
