@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useMemo, useState } from 'react'
 import type { Game } from '@/types'
 import { THEMES, type ThemeId } from '@/lib/themes'
@@ -56,6 +57,23 @@ export function HostThemePicker({ gameCode, hostToken, game, onGameUpdate }: Pro
     )
   }, [isMonopoly, ownedEditions, currentTheme])
 
+  // Paid Monopoly editions the host doesn't own (and isn't currently using).
+  // Drives the "More editions in the Shop" nudge below the picker so hosts
+  // learn USA (and future editions) exist even when they've never opened
+  // /shop directly. Free grandfathered editions never count — everyone
+  // already has them.
+  const hasUnownedPaidEditions = useMemo(() => {
+    if (!isMonopoly) return false
+    return MONOPOLY_EDITIONS.some(
+      (e) =>
+        e.themeId !== currentTheme &&
+        !isMonopolyEditionAvailable(e.themeId as ThemeId, ownedEditions) &&
+        // isMonopolyEditionAvailable returns true for free editions too;
+        // this branch is only reached for paid ones the host lacks.
+        true
+    )
+  }, [isMonopoly, ownedEditions, currentTheme])
+
   const selectTheme = async (themeId: ThemeId) => {
     if (saving || themeId === currentTheme) return
     setSaving(themeId)
@@ -107,6 +125,16 @@ export function HostThemePicker({ gameCode, hostToken, game, onGameUpdate }: Pro
           )
         })}
       </div>
+      {isMonopoly && hasUnownedPaidEditions && (
+        <p className="mt-2 text-xs text-faint">
+          More editions in the{' '}
+          <Link href="/shop" prefetch={false} className="underline hover:no-underline text-body">
+            Shop
+          </Link>
+          {' — '}
+          USA and more.
+        </p>
+      )}
       <ThemePreviewModal
         open={previewTheme !== null}
         theme={previewTheme}

@@ -80,6 +80,15 @@ function miniGlyph(card: UnoCard): string {
   }
 }
 
+function ordinal(n: number): string {
+  const j = n % 10
+  const k = n % 100
+  if (j === 1 && k !== 11) return `${n}st`
+  if (j === 2 && k !== 12) return `${n}nd`
+  if (j === 3 && k !== 13) return `${n}rd`
+  return `${n}th`
+}
+
 type Player = { id: string; name: string; spectator?: boolean | null }
 
 export type UnoPlaySurfaceProps = {
@@ -366,6 +375,17 @@ export function UnoPlaySurface({
 
   const drawLabel = drawDepleted ? 'Pass turn' : drawPenalty > 0 ? `Draw ${drawPenalty}` : 'Draw a card'
 
+  // "Why am I spectating?" — a player who's finished (emptied their hand, so a WIN in UNO)
+  // or been knocked out by Mercy needs to be told which of the two it is, otherwise the
+  // sudden switch to a read-only view reads as an unexplained kick.
+  const emptiedHand = !!myPlayerId && watching && myHand.length === 0 && !eliminatedIds.has(myPlayerId)
+  const knockedOut = !!myPlayerId && watching && eliminatedIds.has(myPlayerId)
+  const finishPosition = (() => {
+    if (!emptiedHand || !myPlayerId) return null
+    const idx = (session.finish_order ?? []).indexOf(myPlayerId)
+    return idx >= 0 ? idx + 1 : null
+  })()
+
   const gamePct =
     gameTimer && gameTimer.durationSeconds > 0
       ? Math.max(0, Math.min(100, (gameTimer.secondsLeft / gameTimer.durationSeconds) * 100))
@@ -375,6 +395,28 @@ export function UnoPlaySurface({
     <CardTableSurface variant="uno">
       {gameTimer?.active && <GameTimerBar label={gameTimer.label} pct={gamePct} low={gameTimer.secondsLeft <= 60} />}
       <TurnRail seats={seats} />
+
+      {(emptiedHand || knockedOut) && (
+        <div className="uno-out-banner" role="status">
+          {emptiedHand ? (
+            <>
+              <div className="uno-out-banner__title">
+                {finishPosition === 1
+                  ? '🏆 You won the round!'
+                  : finishPosition
+                    ? `🎉 You finished ${ordinal(finishPosition)}`
+                    : '🎉 You finished!'}
+              </div>
+              <div className="uno-out-banner__sub">Waiting for the others to finish — follow along and chat.</div>
+            </>
+          ) : (
+            <>
+              <div className="uno-out-banner__title">You&apos;re out</div>
+              <div className="uno-out-banner__sub">Knocked out — follow the rest of the game and chat.</div>
+            </>
+          )}
+        </div>
+      )}
 
       <Table>
         <Piles
