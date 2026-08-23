@@ -197,17 +197,57 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
     sessionRef.current = merged
     return prev != null
   }, [])
-  const applyHandRow = useCallback((row: Record<string, unknown>): boolean => {
-    const next = row as unknown as UnoPlayerHand
-    setHands((prev) => {
-      const i = prev.findIndex((h) => h.id === next.id)
-      if (i === -1) return [...prev, next].sort((a, b) => a.player_order - b.player_order)
-      const copy = [...prev]
-      copy[i] = next
-      return copy
-    })
-    return true
-  }, [])
+  const applyHandRow = useCallback(
+    (row: Record<string, unknown>): boolean => {
+      const next = row as unknown as UnoPlayerHand
+      const myPlayerId = bootstrap.myPlayerId
+      // Once `cards` is revoked from anon, realtime payloads carry no cards at all. Applying one
+      // verbatim to OUR OWN row would blank the hand — and because the out-check is derived from
+      // an empty hand, it would read as "you are out" mid-game. In Team-Up the same is true of the
+      // teammate's row: we're authorized to see their cards, but a redacted payload would blank
+      // the partner panel until the next full load. For either, re-fetch through the authorized
+      // route instead of applying the payload. Mirrors the web view.
+      // `bootstrap.game?.uno_team_mode`, not `rules.teamMode`: `rules` is declared further down
+      // the component, so referencing it here would be a use-before-declaration. Same source the
+      // web view reads.
+      const teammateId =
+        bootstrap.game?.uno_team_mode === true && myPlayerId
+          ? unoTeammateId(sessionRef.current?.turn_order ?? [], myPlayerId)
+          : null
+      const isSelfOrTeammate = next.player_id === myPlayerId || next.player_id === teammateId
+      if (isSelfOrTeammate && myPlayerId && !Array.isArray(next.cards)) {
+        void postUnoHands(gameCode.toUpperCase(), {
+          resumeToken: myResumeTokenRef.current ?? undefined,
+        })
+          .then((res) => {
+            if (res) setHands(res.hands ?? [])
+          })
+          .catch(() => {})
+        return true
+      }
+      // Can the new count be derived from this payload? A redacted opponent row carries neither
+      // `cards` nor `card_count` (the latter is computed by the route, not a column).
+      const countable = Array.isArray(next.cards) || typeof next.card_count === 'number'
+      setHands((prev) => {
+        const i = prev.findIndex((h) => h.id === next.id)
+        const merged: UnoPlayerHand = {
+          ...next,
+          // Carry a known count forward when the payload omits it, so an opponent never
+          // momentarily renders as holding zero cards while the reload is in flight.
+          card_count: next.card_count ?? (Array.isArray(next.cards) ? next.cards.length : prev[i]?.card_count),
+        }
+        if (i === -1) return [...prev, merged].sort((a, b) => a.player_order - b.player_order)
+        const copy = [...prev]
+        copy[i] = merged
+        return copy
+      })
+      // Returning true for an uncountable row would skip useGameTableSync's reconciling reload —
+      // the only path that can learn the new count — freezing every opponent's count for the rest
+      // of the game, so "UNO!" would never show.
+      return countable
+    },
+    [gameCode, bootstrap.myPlayerId, bootstrap.game?.uno_team_mode]
+  )
 
   useGameTableSync(
     gameCode,

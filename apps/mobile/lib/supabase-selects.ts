@@ -97,13 +97,11 @@ export const UNO_PLAYER_HANDS_SELECT = 'id,game_id,player_id,cards,player_order,
 // grow, an update that touches only e.g. current_turn_index delivers those piles as null.
 // Applying that would wipe the board and every card would look unplayable. Callers check
 // isCompleteUnoSessionRow before merging; a false result falls back to the reload path.
-export const UNO_SESSION_NOT_NULL_KEYS = [
-  'turn_order',
-  'draw_pile',
-  'discard_pile',
-  'left_player_ids',
-  'eliminated_player_ids',
-] as const
+// draw_pile/discard_pile are deliberately absent: anon no longer holds SELECT on them, so a
+// realtime payload never carries them and requiring them here would make isCompleteUnoSessionRow
+// return false for EVERY row — rejecting every delta and forcing a full reload each time.
+// Mirrors src/lib/supabase-selects.ts.
+export const UNO_SESSION_NOT_NULL_KEYS = ['turn_order', 'left_player_ids', 'eliminated_player_ids'] as const
 
 export function isCompleteUnoSessionRow(row: Record<string, unknown>): boolean {
   return UNO_SESSION_NOT_NULL_KEYS.every((key) => row[key] != null)
