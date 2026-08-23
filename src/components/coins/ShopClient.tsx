@@ -396,11 +396,22 @@ function ShopTile({
             {item.gameType ? ` · ${item.gameType}` : ''}
           </p>
         </div>
-        {owned && (
-          <span className="rounded-full border border-[var(--border)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted">
-            {equipped ? 'Equipped' : 'Owned'}
-          </span>
-        )}
+        <div className="flex flex-col items-end gap-1">
+          {/* Seasonal badge (Phase 5 — Christmas edition through mid-January). The
+              catalog route surfaces content.seasonal on the item.preview payload;
+              anything with that flag gets the badge. Sits above the owned pill
+              so a seasonal edition that's already owned still shows both. */}
+          {(item.preview as { seasonal?: boolean } | undefined)?.seasonal && (
+            <span className="rounded-full border border-[#C8102E]/60 bg-[#C8102E]/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#C8102E]">
+              Seasonal
+            </span>
+          )}
+          {owned && (
+            <span className="rounded-full border border-[var(--border)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted">
+              {equipped ? 'Equipped' : 'Owned'}
+            </span>
+          )}
+        </div>
       </div>
 
       <TilePreview item={item} handle={handle} photoUrl={photoUrl} />

@@ -1,6 +1,6 @@
 'use client'
 
-import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useMemo, useState } from 'react'
 import type { Game } from '@/types'
 import { THEMES, type ThemeId } from '@/lib/themes'
@@ -34,6 +34,7 @@ const GAME_THEME_TYPES = new Set(Object.keys(GAME_THEMES_BY_GAME))
  */
 export function HostThemePicker({ gameCode, hostToken, game, onGameUpdate }: Props) {
   const { error: toastError } = useToast()
+  const router = useRouter()
   const isMonopoly = game.game_type === 'monopoly'
   const hasGameThemes = GAME_THEME_TYPES.has(game.game_type)
   const [saving, setSaving] = useState<ThemeId | null>(null)
@@ -45,24 +46,23 @@ export function HostThemePicker({ gameCode, hostToken, game, onGameUpdate }: Pro
 
   const options = useMemo(() => {
     if (isMonopoly) {
-      return THEMES.filter(
-        (theme) =>
-          MONOPOLY_EDITIONS.some((e) => e.themeId === theme.id) &&
-          (theme.id === currentTheme || isMonopolyEditionAvailable(theme.id, ownedEditions))
-      )
+      // Show EVERY known Monopoly edition — owned ones as normal tiles, paid
+      // ones the host doesn't own as locked "Unlock in Shop" tiles. This is
+      // strictly better for discoverability than filtering unowned editions
+      // out (which hid USA / Christmas from anyone who had never opened the
+      // shop). The `locked` flag below decides which is which; server-side
+      // entitlement still gates the actual PATCH.
+      return THEMES.filter((theme) => MONOPOLY_EDITIONS.some((e) => e.themeId === theme.id))
     }
     if (hasGameThemes) {
-      // Free default + owned game_themes slugs for this game type. Any
-      // slug not in GAME_THEMES_BY_GAME[game_type] belongs to a
-      // different game (whot-neon on a Ludo picker, etc.) and is
-      // hidden. The currently-selected theme is never hidden so a
-      // room created before a revoked purchase still shows its pick.
+      // Free default + EVERY per-game reskin scoped to this game type
+      // (Neon Whot, Wooden Ludo, …). Unowned tiles render locked below
+      // and route to /shop on click — same discoverability shape as the
+      // Monopoly edition picker. Any slug not in
+      // GAME_THEMES_BY_GAME[game_type] belongs to a different game
+      // (whot-neon on a Ludo picker, etc.) and stays hidden.
       const scoped = new Set<string>(GAME_THEMES_BY_GAME[game.game_type] ?? [])
-      return THEMES.filter(
-        (theme) =>
-          theme.id === 'default' ||
-          (scoped.has(theme.id) && (theme.id === currentTheme || ownedGameThemes.has(theme.id)))
-      )
+      return THEMES.filter((theme) => theme.id === 'default' || scoped.has(theme.id))
     }
     return THEMES.filter(
       (theme) =>
@@ -70,35 +70,13 @@ export function HostThemePicker({ gameCode, hostToken, game, onGameUpdate }: Pro
         theme.id !== 'arctic' &&
         theme.id !== 'naija' &&
         theme.id !== 'america' &&
-        theme.id !== 'grass_court' &&
+        theme.id !== 'christmas' &&
         // Per-game reskins from game_themes never surface on other
         // games' pickers — those show up only under the owning game's
         // hasGameThemes branch above.
         !isGameThemeSlug(theme.id)
     )
-  }, [isMonopoly, hasGameThemes, game.game_type, ownedEditions, ownedGameThemes, currentTheme])
-
-  // Paid Monopoly editions the host doesn't own (and isn't currently using).
-  // Drives the "More editions in the Shop" nudge below the picker so hosts
-  // learn USA (and future editions) exist even when they've never opened
-  // /shop directly. Free grandfathered editions never count — everyone
-  // already has them.
-  const hasUnownedPaidEditions = useMemo(() => {
-    if (!isMonopoly) return false
-    return MONOPOLY_EDITIONS.some(
-      (e) => e.themeId !== currentTheme && !isMonopolyEditionAvailable(e.themeId as ThemeId, ownedEditions)
-    )
-  }, [isMonopoly, ownedEditions, currentTheme])
-
-  // Same idea for the per-game reskin lineup: nudge Whot / Ludo / Sudoku
-  // hosts toward the shop when there are paid themes they haven't
-  // bought yet. Free themes (price 0 — none today, future drops maybe)
-  // don't count.
-  const hasUnownedGameThemes = useMemo(() => {
-    if (!hasGameThemes) return false
-    const scoped = GAME_THEMES_BY_GAME[game.game_type] ?? []
-    return scoped.some((slug) => slug !== currentTheme && !ownedGameThemes.has(slug))
-  }, [hasGameThemes, game.game_type, currentTheme, ownedGameThemes])
+  }, [isMonopoly, hasGameThemes, game.game_type])
 
   const selectTheme = async (themeId: ThemeId) => {
     if (saving || themeId === currentTheme) return
@@ -143,36 +121,26 @@ export function HostThemePicker({ gameCode, hostToken, game, onGameUpdate }: Pro
         {options.map((theme) => {
           const edition = isMonopoly ? MONOPOLY_EDITIONS.find((e) => e.themeId === theme.id) : null
           const displayTheme = edition ? { ...theme, label: edition.editionName, emoji: edition.editionEmoji } : theme
+          // Lock unowned paid Monopoly editions and unowned paid per-game
+          // themes; never lock the current pick (a room whose entitlement
+          // was later revoked stays usable) and never lock the always-free
+          // 'default' theme.
+          const locked =
+            theme.id !== currentTheme &&
+            ((isMonopoly && !isMonopolyEditionAvailable(theme.id, ownedEditions)) ||
+              (hasGameThemes && theme.id !== 'default' && !ownedGameThemes.has(theme.id)))
           return (
             <ThemePreviewCard
               key={theme.id}
               theme={displayTheme}
               selected={currentTheme === theme.id}
-              onClick={() => void selectTheme(theme.id)}
+              locked={locked}
+              onClick={locked ? () => router.push('/shop') : () => void selectTheme(theme.id)}
               onPreview={() => setPreviewTheme(theme)}
             />
           )
         })}
       </div>
-      {isMonopoly && hasUnownedPaidEditions && (
-        <p className="mt-2 text-xs text-faint">
-          More editions in the{' '}
-          <Link href="/shop" prefetch={false} className="underline hover:no-underline text-body">
-            Shop
-          </Link>
-          {' — '}
-          USA and more.
-        </p>
-      )}
-      {hasGameThemes && hasUnownedGameThemes && (
-        <p className="mt-2 text-xs text-faint">
-          More themes in the{' '}
-          <Link href="/shop" prefetch={false} className="underline hover:no-underline text-body">
-            Shop
-          </Link>
-          {' →'}
-        </p>
-      )}
       <ThemePreviewModal
         open={previewTheme !== null}
         theme={previewTheme}

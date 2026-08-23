@@ -158,6 +158,7 @@ export const themeEnum = z.enum([
   'arctic',
   'naija',
   'america',
+  'christmas',
   'grass_court',
   // Per-game visual reskins seeded in game_themes (Phase 3 shop). Ownership
   // is gated server-side in the create/PATCH routes via

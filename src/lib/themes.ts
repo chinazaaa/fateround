@@ -5,6 +5,7 @@ import {
   DiceIcon,
   Idea01Icon,
   Moon02Icon,
+  SparklesIcon,
   StarIcon,
   TennisBallIcon,
   TreePalmIcon,
@@ -23,6 +24,7 @@ export type ThemeId =
   | 'arctic'
   | 'naija'
   | 'america'
+  | 'christmas'
   | 'grass_court'
   // Per-game visual reskins from game_themes (Phase 3 shop). Purchasing
   // any of these adds it to profile_owned_themes; the host picker then
@@ -137,6 +139,17 @@ export const THEMES: ThemeConfig[] = [
     emoji: '⭐',
     icon: StarIcon,
     preview: { bg: '#0a1a3a', accent: '#c9a44c', text: '#f4ecd8' },
+    cssVars: {},
+  },
+  {
+    id: 'christmas',
+    label: 'Christmas',
+    // Seasonal edition (docs/estate-kings-christmas-edition.md). Uses a
+    // snowflake glyph as the picker icon — motif-based per the spec's art
+    // brief (no owned characters, no branded Santa likeness).
+    emoji: '❄️',
+    icon: SparklesIcon,
+    preview: { bg: '#0f2a1a', accent: '#c8102e', text: '#f6efd7' },
     cssVars: {},
   },
   {

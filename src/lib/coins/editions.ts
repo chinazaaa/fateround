@@ -15,6 +15,7 @@ export const MONOPOLY_THEME_TO_EDITION: Record<string, string> = {
   pirate: 'pirate',
   arctic: 'arctic',
   america: 'america',
+  christmas: 'christmas',
 }
 
 export const MONOPOLY_EDITION_TO_THEME: Record<string, ThemeId> = {
@@ -23,6 +24,7 @@ export const MONOPOLY_EDITION_TO_THEME: Record<string, ThemeId> = {
   pirate: 'pirate',
   arctic: 'arctic',
   america: 'america',
+  christmas: 'christmas',
 }
 
 /** Free-forever grandfathered editions (price 0 in `game_editions`). */
