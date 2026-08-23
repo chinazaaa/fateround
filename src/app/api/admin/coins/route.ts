@@ -53,16 +53,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unknown category.' }, { status: 400 })
   }
   if (note.length < MIN_NOTE_LENGTH) {
-    return NextResponse.json(
-      { error: `Note must be at least ${MIN_NOTE_LENGTH} characters.` },
-      { status: 400 }
-    )
+    return NextResponse.json({ error: `Note must be at least ${MIN_NOTE_LENGTH} characters.` }, { status: 400 })
   }
   if (delta < 0 && category !== 'correction') {
-    return NextResponse.json(
-      { error: 'Negative adjustments must use category "correction".' },
-      { status: 400 }
-    )
+    return NextResponse.json({ error: 'Negative adjustments must use category "correction".' }, { status: 400 })
   }
 
   const supabase = getSupabaseAdmin()
@@ -122,10 +116,7 @@ export async function POST(req: NextRequest) {
   }
 }
 
-async function readSpentToday(
-  supabase: ReturnType<typeof getSupabaseAdmin>,
-  adminEmail: string
-): Promise<number> {
+async function readSpentToday(supabase: ReturnType<typeof getSupabaseAdmin>, adminEmail: string): Promise<number> {
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
   const { data } = await supabase
     .from('coin_ledger')

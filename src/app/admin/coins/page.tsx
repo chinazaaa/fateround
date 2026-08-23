@@ -186,8 +186,8 @@ export default function AdminCoinsPage() {
 
             <div className="mt-3 flex items-center justify-between">
               <p className="text-xs text-[var(--muted)]">
-                Positive = grant. Negative = clawback (category must be Correction). Both go to the player&rsquo;s
-                coin history with your email attached.
+                Positive = grant. Negative = clawback (category must be Correction). Both go to the player&rsquo;s coin
+                history with your email attached.
               </p>
               <button
                 type="button"
