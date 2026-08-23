@@ -186,8 +186,14 @@ rule applies to card flavor text ("Advance to Fifth Avenue," not
 "Advance to Boardwalk"). This keeps the edition clearly "the American
 edition" to every player without inviting a takedown letter.
 
-Future edition candidates (month 3+): Arctic, Christmas, Lagos, Tokyo,
-London, Campus/School Championship.
+**Second paid edition: Estate Kings — Christmas.** Full property list,
+color groups, and card flavor in
+[`docs/estate-kings-christmas-edition.md`](./estate-kings-christmas-edition.md).
+Ships early December — timed for the season, with a `seasonal` badge on
+the shop tile through mid-January to drive urgency.
+
+Further edition candidates (month 4+): Arctic, Lagos, Tokyo, London
+Premium, Campus/School Championship.
 
 ## Games that can have EDITIONS vs THEMES
 
