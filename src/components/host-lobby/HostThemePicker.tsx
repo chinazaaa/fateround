@@ -61,8 +61,16 @@ export function HostThemePicker({ gameCode, hostToken, game, onGameUpdate }: Pro
       // Monopoly edition picker. Any slug not in
       // GAME_THEMES_BY_GAME[game_type] belongs to a different game
       // (whot-neon on a Ludo picker, etc.) and stays hidden.
+      //
+      // The currently-selected theme is ALWAYS kept — a room created
+      // before this narrowing (e.g. a Whot lobby whose stored theme is
+      // 'dark' or 'grass_court', which used to be pickable here) would
+      // otherwise be filtered out, the tile count could fall to one,
+      // and the whole picker's `options.length <= 1` guard below would
+      // hide the UI entirely, leaving the host with no way to change
+      // theme at all.
       const scoped = new Set<string>(GAME_THEMES_BY_GAME[game.game_type] ?? [])
-      return THEMES.filter((theme) => theme.id === 'default' || scoped.has(theme.id))
+      return THEMES.filter((theme) => theme.id === currentTheme || theme.id === 'default' || scoped.has(theme.id))
     }
     return THEMES.filter(
       (theme) =>
@@ -76,7 +84,7 @@ export function HostThemePicker({ gameCode, hostToken, game, onGameUpdate }: Pro
         // hasGameThemes branch above.
         !isGameThemeSlug(theme.id)
     )
-  }, [isMonopoly, hasGameThemes, game.game_type])
+  }, [isMonopoly, hasGameThemes, game.game_type, currentTheme])
 
   const selectTheme = async (themeId: ThemeId) => {
     if (saving || themeId === currentTheme) return

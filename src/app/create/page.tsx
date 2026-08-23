@@ -3176,8 +3176,14 @@ function CreateGameInner() {
                       // reskin scoped to this game type. Unowned tiles render
                       // locked below and route to /shop on click — same
                       // discoverability shape as Monopoly. Slugs from other
-                      // games (whot-neon on a Ludo picker) stay hidden.
+                      // games (whot-neon on a Ludo picker) stay hidden. The
+                      // currently-picked theme is preserved unconditionally
+                      // so switching game types (e.g. Monopoly → Whot with
+                      // theme carrying over as 'london') keeps the tile
+                      // visible instead of stranding settings.theme at a
+                      // value the POST route would 400 on.
                       THEMES.filter((theme) => {
+                        if (theme.id === settings.theme) return true
                         if (theme.id === 'default') return true
                         const scoped = GAME_THEMES_BY_GAME[settings.game_type as keyof typeof GAME_THEMES_BY_GAME]
                         return scoped?.includes(theme.id) ?? false
