@@ -22,10 +22,33 @@ export async function GET(req: NextRequest) {
 
     const admin = getSupabaseAdmin()
 
+    // Step 1: my player rows → game_ids I've participated in. Two-step avoids
+    // PostgREST parent-row ordering pitfalls when the sort key lives on a
+    // joined table.
+    const { data: myPlayerRows, error: playerErr } = await admin
+      .from('players')
+      .select('id, game_id')
+      .eq('profile_id', profileId)
+
+    if (playerErr) {
+      return NextResponse.json({ error: internalErrorMessage('profile/history', playerErr) }, { status: 500 })
+    }
+
+    const myGameIds = (myPlayerRows ?? []).map((r) => r.game_id as string)
+    if (myGameIds.length === 0) {
+      return NextResponse.json({ games: [], nextCursor: null, nextCursorId: null })
+    }
+
+    const playerIdByGameId: Record<string, string> = {}
+    for (const r of myPlayerRows ?? []) {
+      playerIdByGameId[r.game_id as string] = r.id as string
+    }
+
+    // Step 2: fetch the finished games in reverse-chronological order, paginated.
     let query = admin
       .from('games')
-      .select('id, game_type, finished_at, created_at, sessions_played, players!inner(id, profile_id)')
-      .eq('players.profile_id', profileId)
+      .select('id, game_type, finished_at, created_at, sessions_played')
+      .in('id', myGameIds)
       .eq('status', 'finished')
       .not('finished_at', 'is', null)
       .order('finished_at', { ascending: false })
@@ -50,7 +73,6 @@ export async function GET(req: NextRequest) {
       finished_at: string
       created_at: string
       sessions_played: number | null
-      players: Array<{ id: string; profile_id: string }>
     }>
 
     const hasMore = rows.length > limit
@@ -112,7 +134,7 @@ export async function GET(req: NextRequest) {
 
     const games = page.map((r, i) => {
       const winners = winnerResults[i]
-      const myPlayerId = r.players[0]?.id ?? null
+      const myPlayerId = playerIdByGameId[r.id] ?? null
       const sessionsPlayed = r.sessions_played ?? 1
 
       // Current session winner
