@@ -148,6 +148,10 @@ export type LibraryPackSummary = {
   description: string | null
   question_count: number
   tags?: string[]
+  /** Phase 3 shop — a paid pack's price in coins. Absent or 0 for free packs. */
+  price_coins?: number
+  /** True when the caller's profile has already purchased this pack. */
+  owned?: boolean
 }
 
 export type LibraryPack = LibraryPackSummary & { questions: unknown[] }
