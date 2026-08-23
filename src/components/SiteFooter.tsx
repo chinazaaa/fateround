@@ -29,14 +29,17 @@ const SOCIAL_LINKS: SocialLink[] = [
   },
 ]
 
-const PRIMARY_LINKS: FooterLink[] = [
+export const PRIMARY_LINKS: FooterLink[] = [
   { href: '/games', label: 'All games' },
   { href: '/create', label: 'Create a game' },
+  { href: '/browse', label: 'Public games' },
   { href: '/tournament', label: 'Tournaments' },
   { href: '/rooms', label: 'Rooms' },
   { href: '/leaderboard', label: 'Leaderboard' },
   { href: '/daily-challenges', label: 'Daily Challenges' },
+  { href: '/shop', label: 'Shop' },
   { href: '/library', label: 'Question Library' },
+  { href: '/collections', label: 'Collections' },
   { href: '/blog', label: 'Blog' },
   { href: '/faq', label: 'FAQ & help' },
   { href: '/feedback', label: 'Feedback' },

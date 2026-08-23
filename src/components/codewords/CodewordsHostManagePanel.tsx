@@ -6,7 +6,6 @@ import { CodewordsAchievementPosts } from '@/components/codewords/CodewordsAchie
 import { CodewordsFinalResultsShareBlock } from '@/components/codewords/CodewordsFinalResultsShareBlock'
 import { CodewordsBoardGrid } from '@/components/codewords/CodewordsBoardGrid'
 import { CodewordsLobbyRoster } from '@/components/codewords/CodewordsLobbyRoster'
-import { CodewordsScoreboard } from '@/components/codewords/CodewordsScoreboard'
 import { HostLobbyStartButton } from '@/components/host-lobby/HostLobbyStartButton'
 import { HostVisibilityToggle } from '@/components/host-lobby/HostVisibilityToggle'
 import { HostContentLabelField } from '@/components/host-lobby/HostContentLabelField'
@@ -251,7 +250,14 @@ export function CodewordsHostManagePanel({
           <div className="glass-card p-4 space-y-4">
             <p className="label-caps text-center">Final board</p>
             <CodewordsBoardGrid board={board} showKey cellAttribution={cellAttribution} />
-            <CodewordsEndGameStats guesses={guesses} roles={roles} players={players} winner={board.winner} />
+            {/* Share block above already carries winner + MVP cards + operative leaderboard. */}
+            <CodewordsEndGameStats
+              guesses={guesses}
+              roles={roles}
+              players={players}
+              winner={board.winner}
+              variant="spymasters"
+            />
           </div>
           {hostPlays && hostPlayerId && (
             <CodewordsAchievementPosts
@@ -279,11 +285,10 @@ export function CodewordsHostManagePanel({
             playAgainButton={playAgainButton}
           />
           <div className="glass-card p-4 space-y-4">
-            <div className="grid grid-cols-1 lg:grid-cols-[1fr_260px] gap-4 items-start">
-              <CodewordsBoardGrid board={board} showKey cellAttribution={cellAttribution} />
-              <CodewordsScoreboard board={board} players={players} roles={roles} />
-            </div>
-            <CodewordsEndGameStats guesses={guesses} roles={roles} players={players} />
+            <CodewordsBoardGrid board={board} showKey cellAttribution={cellAttribution} />
+            {/* Share block above already carries the MVP cards + operative leaderboard;
+                the live per-team Scoreboard is redundant on a finished session too. */}
+            <CodewordsEndGameStats guesses={guesses} roles={roles} players={players} variant="spymasters" />
           </div>
         </div>
       )}

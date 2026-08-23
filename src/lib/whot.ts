@@ -1538,10 +1538,21 @@ export async function removeWhotPlayer(
       updated_at: new Date().toISOString(),
     }
 
-    const finishing = turnOrder.length < 2
+    // Players who already emptied their hand stay in turn_order (they're skipped on
+    // their turn) but are tracked in finish_order — they are NOT still in play. The
+    // game can only continue while at least two players still hold cards, so count
+    // active (non-finished) seats, not raw turn_order length. Otherwise a finished
+    // winner left sitting in turn_order masks a lone survivor, and the game keeps
+    // dealing turns to a player playing alone until they run out of cards.
+    const finishOrder = session.finish_order ?? []
+    const finishedSet = new Set(finishOrder)
+    const activeRemaining = turnOrder.filter((id) => !finishedSet.has(id))
+
+    const finishing = activeRemaining.length < 2
     if (finishing) {
-      // Not enough players to keep going — the lone remaining player wins.
-      const winnerPlayerId = turnOrder[0] ?? null
+      // Not enough players still in play. First to empty wins (finish_order[0]);
+      // if nobody finished, the lone survivor wins.
+      const winnerPlayerId = finishOrder[0] ?? activeRemaining[0] ?? turnOrder[0] ?? null
       const winnerName = winnerPlayerId ? (names.get(winnerPlayerId) ?? 'Winner') : null
       update.phase = 'finished'
       update.winner_player_id = winnerPlayerId

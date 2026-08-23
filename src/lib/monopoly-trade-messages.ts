@@ -1,6 +1,6 @@
 import { formatMonopolyMoney, spaceAt, type MonopolyBoardSize } from '@/lib/monopoly-board'
 import { formatThemedMoney, formatThemedText, themedSpaceName } from '@/components/monopoly/monopoly-themes'
-import type { MonopolyLastTradeEvent, MonopolyPendingTrade } from '@/types'
+import type { MonopolyLastTradeEvent, MonopolyPendingTrade, MonopolyTradeDeclineReason } from '@/types'
 
 export type TradeSideItem =
   | { kind: 'cash'; amount: number }
@@ -36,6 +36,17 @@ export function normalizeTradePropertyList(raw: unknown, maxIndex = 48): number[
   }
 
   return normalized
+}
+
+/**
+ * True when a pending trade's response window has passed. Trades stored before
+ * `expires_at` existed have no deadline and never expire — matching the old
+ * behaviour rather than lapsing every in-flight offer on deploy.
+ */
+export function isMonopolyTradeExpired(trade: Pick<MonopolyPendingTrade, 'expires_at'>, now = Date.now()): boolean {
+  if (!trade.expires_at) return false
+  const deadline = Date.parse(trade.expires_at)
+  return Number.isFinite(deadline) && deadline <= now
 }
 
 export function normalizePendingTrade(trade: MonopolyPendingTrade, maxIndex = 48): MonopolyPendingTrade {
@@ -152,6 +163,28 @@ export function formatIncomingTradeAlert(
   return formatThemedText(message, themeId, boardSize)
 }
 
+/**
+ * The bot's explanation for a decline, as a sentence that reads naturally
+ * after "… declined your trade offer."
+ *
+ * Written in the SECOND person because the only reader who needs it is the
+ * proposer. Every reason now points at something the player can act on — the
+ * bot prices set-completing cards rather than vetoing them, so the two
+ * expensive cases say "steep", not "never".
+ */
+export function monopolyDeclineReasonClause(reason: MonopolyTradeDeclineReason): string {
+  switch (reason) {
+    case 'completes_your_set':
+      return 'That card would complete a set for you, so it carries a steep premium — it takes a much bigger offer.'
+    case 'protects_my_monopoly':
+      return 'That card is part of a completed monopoly, so it carries a steep premium — it takes a much bigger offer.'
+    case 'cannot_fulfil':
+      return "The bot doesn't have everything the offer asked for."
+    case 'offer_too_low':
+      return 'The offer was worth less than what it asked for — try offering more.'
+  }
+}
+
 export function formatTradeMessageForPlayer(
   event: MonopolyLastTradeEvent,
   myPlayerId: string | null | undefined,
@@ -169,6 +202,19 @@ export function formatTradeMessageForPlayer(
       msg = `You declined ${from}'s trade offer.`
     } else {
       msg = `${to} declined ${from}'s trade offer.`
+    }
+    // Only the proposer needs the reason — everyone else is just watching, and
+    // the decliner (a bot) obviously knows why. Absent for human declines.
+    if (event.decline_reason && myPlayerId === event.from_player_id) {
+      msg += ` ${monopolyDeclineReasonClause(event.decline_reason)}`
+    }
+  } else if (event.outcome === 'expired') {
+    if (myPlayerId === event.from_player_id) {
+      msg = `Your trade offer to ${to} expired — no response in time.`
+    } else if (myPlayerId === event.to_player_id) {
+      msg = `${from}'s trade offer expired before you responded.`
+    } else {
+      msg = `${from}'s trade offer to ${to} expired.`
     }
   } else if (event.outcome === 'cancelled') {
     if (myPlayerId === event.from_player_id) {

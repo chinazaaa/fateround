@@ -47,7 +47,13 @@ async function ensureProfileRow(): Promise<void> {
   const headers = await authHeaders()
   if (!headers) return
   try {
-    await fetch(apiUrl('/api/profile/anon'), { method: 'POST', headers })
+    const { getDeviceId } = await import('@/lib/coins/device-id')
+    const deviceId = await getDeviceId()
+    await fetch(apiUrl('/api/profile/anon'), {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(deviceId ? { deviceId } : {}),
+    })
   } catch {
     // Offline or transient — the next ensureServerIdentity() retries.
   }

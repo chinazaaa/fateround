@@ -6,6 +6,7 @@ import { WORD_SEARCH_THEME_OPTIONS } from '@fateround/shared/word-search'
 import { WORD_SCRAMBLE_THEME_OPTIONS } from '@fateround/shared/word-scramble'
 import { parseUnoRules } from '@fateround/shared/uno'
 import { WORDLE_ROOM_CATEGORY_LABELS } from '@fateround/shared/wordle-room'
+import { triviaCategoryLabel } from '@fateround/shared/trivia'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
 
@@ -174,7 +175,8 @@ export function gameInfoItems(game: Game | null | undefined): string[] {
     }
     if (game.word_scramble_difficulty) items.push(capitalize(String(game.word_scramble_difficulty)))
   } else if (gt === 'trivia') {
-    if (game.trivia_category) items.push(game.trivia_category === 'tech' ? 'Tech' : 'General knowledge')
+    // All 17 categories, not a tech/general binary: a Maths room used to chip "General knowledge".
+    if (game.trivia_category) items.push(triviaCategoryLabel(game.trivia_category))
   } else if (gt === 'who_said_this') {
     if (game.wst_quote_source) {
       const labels: Record<string, string> = {

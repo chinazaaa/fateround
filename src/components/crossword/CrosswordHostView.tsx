@@ -432,6 +432,7 @@ export function CrosswordHostView({ gameCode, hostToken }: { gameCode: string; h
     () =>
       game?.status === 'active' ? (
         <HostActiveSettings
+          game={game}
           gameCode={gameCode}
           hostToken={hostToken}
           gameType="crossword"
@@ -547,7 +548,7 @@ export function CrosswordHostView({ gameCode, hostToken }: { gameCode: string; h
             onJoinNameChange={setHostJoinName}
             onJoin={() => void hostJoinGame()}
             joining={hostJoining}
-            spectatorHint="Watch the puzzle from the Watch tab"
+            spectatorHint="Watch the puzzle"
           />
         ) : undefined
       }
@@ -558,6 +559,7 @@ export function CrosswordHostView({ gameCode, hostToken }: { gameCode: string; h
             hostToken={hostToken}
             game={game}
             playerCount={players.length}
+            seatedCount={players.filter((p) => !p.spectator).length}
             onGameUpdate={setGame}
             durationChoices={CROSSWORD_GAME_DURATION_OPTIONS}
             puzzleSettings={
@@ -663,6 +665,7 @@ export function CrosswordHostView({ gameCode, hostToken }: { gameCode: string; h
         hostToken={hostToken}
         game={game}
         playerCount={players.length}
+        seatedCount={players.filter((p) => !p.spectator).length}
         onGameUpdate={setGame}
         durationChoices={CROSSWORD_GAME_DURATION_OPTIONS}
         puzzleSettings={

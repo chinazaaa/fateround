@@ -6,6 +6,10 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { parseJsonBody } from '@/lib/parse-body'
 import { scheduleTurnNotification } from '@/lib/push'
 
+// System/timer route: any client (and the server-side ticker in src/lib/game-tick.ts) may
+// poke it, but it only acts once the turn deadline has genuinely passed (enforced in
+// processAyoExpireTurn), so there's no per-player token to authorize. Writes go through the
+// service role.
 export async function POST(req: NextRequest) {
   const { data: body, error: bodyError } = await parseJsonBody(req, ayoExpireSchema)
   if (bodyError) return bodyError

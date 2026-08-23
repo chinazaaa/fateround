@@ -17,6 +17,7 @@ import { RosterButton } from '@/components/session/RosterButton'
 import { HostNominationBanner } from '@/components/session/HostNominationBanner'
 import { ShareGameSheet } from '@/components/session/ShareGameSheet'
 import { HeaderAction } from '@/components/ui/HeaderAction'
+import { RulesInPlayButton } from '@/components/game/RulesInPlayButton'
 import { SettingsButton } from '@/components/ui/SettingsSheet'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { centeredContent } from '@/constants/layout'
@@ -25,7 +26,10 @@ import { useTheme, useThemedStyles } from '@/constants/theme-context'
 
 type Props = {
   gameCode: string
-  game?: Pick<Game, 'title' | 'game_type' | 'status' | 'content_label'> | null
+  // Widened from a small Pick to the full Game so the "Rules in play" pill can read the
+  // rule columns (uno_*, monopoly_*, mafia_*, …). Callers already pass the full row from
+  // bootstrap.game, so this is source-compatible.
+  game?: Game | null
   children: ReactNode
 }
 
@@ -135,6 +139,7 @@ export function PlayerSessionShell({ gameCode, game, children }: Props) {
                   </View>
 
                   <View style={styles.toolbarActions}>
+                    <RulesInPlayButton game={game ?? null} />
                     <SettingsButton />
                     <HeaderAction label="Share" onPress={() => void onShare()} />
                     {hasHostToken ? <HeaderAction label="Host" accent onPress={() => void openHost()} /> : null}

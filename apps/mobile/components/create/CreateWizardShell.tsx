@@ -42,6 +42,7 @@ import {
   type CreateWizardStep,
 } from '@/lib/create-settings'
 import { createGame } from '@/lib/game-api'
+import { ensureServerIdentity } from '@/lib/identity'
 import { setSoloAutoStart } from '@/lib/solo-auto-start'
 import { WEB_BASE_URL } from '@/lib/config'
 import { getTemplates, saveTemplate, deleteTemplate, type GameTemplate, type TemplateSlots } from '@/lib/game-templates'
@@ -189,6 +190,13 @@ export function CreateWizardShell() {
     setCreating(true)
     setError(null)
     try {
+      // Ensure this host has a server identity BEFORE the create request so `host_user_id`
+      // gets written on the games row — that's what lets the host reclaim their token by
+      // profile after a SecureStore wipe or on a new device. See the parallel web change.
+      // Rate-limited anon sign-in only bites classrooms of joiners; a host creating a game
+      // is one deliberate action by one person. Guests still create normally (this returns
+      // null, authHeaders is empty, host_user_id stays NULL).
+      await ensureServerIdentity()
       const payload = buildCreatePayload(state, limits)
       const { gameCode, hostToken } = await createGame(payload)
       await setHostToken(gameCode, hostToken)
@@ -418,6 +426,7 @@ export function CreateWizardShell() {
                         gameType={state.gameType}
                         custom={state.custom}
                         roundsCount={state.party.roundsCount}
+                        triviaCategory={state.party.triviaCategory}
                         onChange={(customPatch) => {
                           const patch: Partial<CreateWizardState> = { custom: { ...state.custom, ...customPatch } }
                           // Auto-fill the category from the picked library pack name, unless the host typed their own.
