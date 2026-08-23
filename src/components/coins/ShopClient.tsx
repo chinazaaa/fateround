@@ -535,7 +535,7 @@ function tileHint(kind: ShopKind): string | null {
     case 'card_template':
       return 'Styles the results card you share after a game ends.'
     case 'streak_freeze':
-      return 'Automatically covers a missed day so your streak stays alive — nothing to activate.'
+      return 'Auto-covers a missed day so your streak lives. Buy in advance, or after a miss before you play next.'
     default:
       return null
   }
@@ -742,7 +742,10 @@ function ConfirmDialog({
           </div>
         </div>
         {item.kind === 'streak_freeze' && (
-          <p className="text-xs text-muted">One-shot. Consumed the next time you miss a daily challenge.</p>
+          <p className="text-xs text-muted">
+            One-shot. Auto-spent the next time you finish a game after missing a day. You can still buy one AFTER a
+            miss — as long as you haven&rsquo;t played yet, it saves the streak.
+          </p>
         )}
         {insufficient && (
           <p className="text-red-500 text-sm">
