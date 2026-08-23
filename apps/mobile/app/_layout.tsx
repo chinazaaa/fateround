@@ -97,6 +97,7 @@ function ThemedStack() {
       >
         <Stack.Screen name="index" options={{ title: 'FateRound' }} />
         <Stack.Screen name="create" options={{ title: 'Create game' }} />
+        <Stack.Screen name="shop" options={{ title: 'Shop' }} />
         <Stack.Screen name="game/[code]" options={{ title: 'Game' }} />
         <Stack.Screen name="host/[code]" options={{ title: 'Host' }} />
         <Stack.Screen name="play-solo/index" options={{ title: 'Practice vs bot' }} />
