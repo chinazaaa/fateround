@@ -115,7 +115,13 @@ export default function AdminCoinsPage() {
       if (err instanceof DOMException && err.name === 'AbortError') return
       setError('Could not load profile.')
     } finally {
-      if (!signal.aborted) setLoading(false)
+      // Gate the reset on ownership of the shared controller — not on
+      // signal.aborted. A superseded request (loadCtl replaced by a
+      // newer ctl) skips the reset so the newer load's own true→false
+      // wins. An aborted-and-not-superseded request (admin cleared the
+      // input, no newer load ran) still runs the reset — otherwise the
+      // spinner stays on with no request in flight.
+      if (loadCtl.current === ctl) setLoading(false)
     }
   }, [])
 
