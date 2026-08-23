@@ -33,6 +33,13 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
 // Cap + categories + note-length live in src/lib/coins.ts so the UI, the
 // API and the DB CHECK constraint all read from one place.
 
+// The admin page fires GET on every keystroke of a debounced UUID field,
+// so partial input WILL reach both handlers. Reject non-UUID values here
+// with 400 rather than letting Postgres raise 22P02 (invalid_text_repr)
+// and the handler surface 500 — otherwise a normal typing session spams
+// error logs and 500 responses.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 export async function POST(req: NextRequest) {
   const session = await assertAdminRequest(req)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -50,6 +57,9 @@ export async function POST(req: NextRequest) {
   const note = typeof body.note === 'string' ? body.note.trim() : ''
 
   if (!profileId) return NextResponse.json({ error: 'profileId is required.' }, { status: 400 })
+  if (!UUID_RE.test(profileId)) {
+    return NextResponse.json({ error: 'profileId must be a UUID.' }, { status: 400 })
+  }
   if (!Number.isFinite(delta) || !Number.isInteger(delta) || delta === 0) {
     return NextResponse.json({ error: 'Delta must be a non-zero integer.' }, { status: 400 })
   }
@@ -166,6 +176,9 @@ export async function GET(req: NextRequest) {
   const url = new URL(req.url)
   const profileId = (url.searchParams.get('profileId') ?? '').trim()
   if (!profileId) return NextResponse.json({ error: 'profileId is required.' }, { status: 400 })
+  if (!UUID_RE.test(profileId)) {
+    return NextResponse.json({ error: 'profileId must be a UUID.' }, { status: 400 })
+  }
 
   const supabase = getSupabaseAdmin()
   const adminEmail = session.email.trim().toLowerCase()
