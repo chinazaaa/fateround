@@ -136,14 +136,50 @@ so it gets its own launch beat.
    packs stay free; only new admin-authored packs marked
    `price_coins > 0` show the badge.
 
-### UI
+### UI surfaces
 
-- Coin balance visible on profile page and shop, **not in-game**
-- End-of-game coin award panel on the results screen (itemized: "Won: +30 ·
-  Full lobby: +10 · Streak x2: +20 · Total: +60")
-- Signup CTA showing the actual coin amount at claim moments
-- Ledger / history view on profile
-- "Owned" badge and greyed-out state for owned shop items
+**Coin balance chip** — the primary balance surface everywhere except
+in-game.
+
+- Web: top-right of `MarketingHeader`, next to the profile icon.
+  Format: `🪙 340` (icon + number). Tap → shop. Icon area → ledger
+  (or an overflow menu — pick one; consistency more important than
+  which).
+- Web mobile: same chip in the mobile header, visible whenever
+  `SiteChrome` wraps the page (home, browse, tournament, leaderboard,
+  daily challenges, updates, profile).
+- Mobile app: coin chip in the header on all non-game screens (home,
+  browse, community, create, daily-challenges, profile).
+- **In-game: no chip, no balance, ever.** Reinforces the "coins live
+  in the meta layer" rule and prevents crowding next to the score.
+- Guests: chip hidden entirely (see the guest-earnings section).
+
+**Shop entry point** — `MarketingHeader` nav item, "Shop," alongside
+Games / Tournaments / Daily Challenges / Leaderboard / What's New.
+Never in the footer. Mobile-web: automatically in the hamburger drawer
+because it mirrors the nav list. Mobile app: drawer entry + tap-chip
+route to the same page.
+
+**Ledger / Coin History** — under the profile page as a sub-tab or
+expandable section called **"Coin History."** Not a top-level nav
+item; it is a low-frequency destination. Columns: **date · description
+· amount (+/−) · balance after**. Filterable by reason type (earned,
+spent, refund, admin). Paginated at 50 rows. Same layout on mobile —
+reachable from the coin chip's long-press or from a "View history"
+link on the profile balance card.
+
+**Profile balance card** — prominent card at the top of the profile
+page showing the current balance with two buttons: "View shop" and
+"View history." This is where players who click their own name land.
+
+**End-of-game coin award panel** on the results screen, itemized:
+"Won: +30 · Full lobby: +10 · Streak x2: +20 · Total: +60."
+
+**Signup CTA** showing the actual coin amount at claim moments (see
+the guest section).
+
+**"Owned" badge** and a greyed-out state for owned shop items so
+players don't accidentally re-purchase.
 
 ## Explicitly not in scope this month
 
@@ -584,8 +620,9 @@ Run these in parallel — none block each other, all block Phase 1.
 - Schema: `profiles.coins`, `coin_ledger`, `profile_owned_*`,
   `equipped_*`, `game_editions`, `game_themes`,
   `guest_pending_grants`
-- Server functions: `award_coins()`, `spend_coins()`, `refund()`,
+- Server functions: `award_coins()`, `spend_coins()`,
   `grant_welcome()`, `grant_launch_v1()`, `migrate_guest_grants()`
+  (no `refund()` in v1 — support flows through `admin_adjustment`)
 - Admin coin-adjustment UI + per-admin daily cap
 - Grandfathering flag on existing content (`price_coins = 0` on every
   current edition/theme/pack)
@@ -610,7 +647,7 @@ balances tick up" builds pent-up demand for Phase 3.
 ### Phase 3 — Shop (spending goes live)
 
 - Shop page in main nav + category filters + owned badges + preview
-- Refund flow (24h window, per-item "unused" check)
+- (No refund flow in v1 — admin adjustment covers support cases)
 - **Cosmetic items shipping now:**
   - Avatar frames — extend `Avatar.tsx` to render `equipped_frame`;
     ship 4 frames
@@ -660,8 +697,11 @@ Instrument these before Phase 2 ships so day-one data is captured.
   >> minted, prices are too low or earn rates too high.
 - **Top-selling shop items** by unit and by coin volume. Shows what
   people actually want vs what we thought they'd want.
-- **Refund rate per item.** > 10 % on any item is a signal the item is
-  misrepresented or overpriced.
+- **Support-ticket refund requests per item.** With no self-serve
+  refunds in v1, watch ticket volume — sustained requests for the
+  same item mean it's misrepresented or overpriced, and elevated
+  volume across the shop is the signal to build self-serve refunds
+  in v2.
 - **Guest → signup conversion rate at the coin-CTA moment.** Baseline
   vs pre-coins signup conversion. If it doesn't lift, the CTA copy
   isn't landing.
@@ -764,22 +804,16 @@ the art is the thing that makes the shop tile clickable.
    inside the tournament so every match feels like it counts, plus a
    placement bonus at tournament finish (100 / 50 / 25 for top 3). Two
    awards, same results-screen surface, no new UI concept.
-2. **Refund window on purchases** — **yes, 24h if unused, applies to
-   every durable item.** Refund writes a reversing ledger row
-   (`reason: 'refund'`) and drops the corresponding `profile_owned_*`
-   row (or increments `streak_freeze` count back down). Per-item rules:
-
-   | Item | Refundable | "Unused" check |
-   |---|---|---|
-   | Edition | Yes | No `games` row with this `edition_slug` and buyer's `host_player_id` since purchase |
-   | Theme | Yes | Same as edition, keyed on theme slug |
-   | Frame | Yes | Never set as `equipped_frame` |
-   | Name color | Yes | Never set as `equipped_name_color` |
-   | Winner animation | Yes | Never set as `equipped_animation` (equipped = used, even without a win yet — keeps the rule simple) |
-   | Card template | Yes | Never set as `equipped_card_template` |
-   | Premium library pack | Yes | No rounds/games reference the pack since purchase |
-   | Streak freeze | Yes | Not yet consumed (still in inventory) |
-   | **Extra bot** | **No** | Consumed at add-time — the button press is the use, no take-backs |
+2. **Refund window on purchases** — **no self-serve refunds in v1.**
+   Two forces against them at launch: (a) the 24h window doesn't map
+   to how people actually buy — someone might buy a Christmas theme
+   in November for December, gift-plan an edition, or forget to try
+   it in 24h, all of which turn refund friction into support tickets;
+   (b) per-item "unused" checks and ledger-reversal logic are real
+   build complexity that we don't need for the first shop. **Admin
+   coin adjustment covers legitimate cases** — accidental purchase,
+   crash mid-purchase, support goodwill — via a support ticket. If
+   ticket volume warrants it, revisit self-serve refunds in v2.
 3. **Gifting** — **not in v1.** Adds ownership-transfer complexity for
    little demonstrated demand, and there's a natural workaround (host
    plays the edition in a room the giftee joins). Revisit if people ask
