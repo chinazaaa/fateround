@@ -132,14 +132,23 @@ export async function GET(req: NextRequest) {
         owned: themeSet.has(t.slug as string),
         preview: (t.art as Record<string, unknown>) ?? {},
       })),
-      ...(editions.data ?? []).map((e) => ({
-        kind: 'edition' as const,
-        slug: e.slug as string,
-        name: e.name as string,
-        price: Number(e.price_coins ?? 0),
-        gameType: e.game_type as string,
-        owned: editionSet.has(e.slug as string),
-      })),
+      ...(editions.data ?? []).map((e) => {
+        // The Phase 5 Christmas edition flags itself with content.seasonal=true
+        // so the shop tile can render a "Seasonal" badge to drive December
+        // urgency (docs/coins-and-shop-plan.md § "Grandfathering existing
+        // content" → Phase 5). Any future dated edition sets the same flag.
+        const content = (e.content ?? {}) as Record<string, unknown>
+        const seasonal = content.seasonal === true
+        return {
+          kind: 'edition' as const,
+          slug: e.slug as string,
+          name: e.name as string,
+          price: Number(e.price_coins ?? 0),
+          gameType: e.game_type as string,
+          owned: editionSet.has(e.slug as string),
+          ...(seasonal ? { preview: { seasonal: true } } : {}),
+        }
+      }),
       ...FRAMES.map((f) => ({ kind: f.kind, slug: f.slug, name: f.name, price: f.price, owned: frameSet.has(f.slug) })),
       ...NAME_COLORS.map((c) => ({
         kind: c.kind,

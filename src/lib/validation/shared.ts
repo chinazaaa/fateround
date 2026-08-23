@@ -158,6 +158,7 @@ export const themeEnum = z.enum([
   'arctic',
   'naija',
   'america',
+  'christmas',
   'grass_court',
 ])
 export const participantFilterEnum = z.enum(['all', 'joined'])

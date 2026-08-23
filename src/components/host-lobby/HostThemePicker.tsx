@@ -47,7 +47,12 @@ export function HostThemePicker({ gameCode, hostToken, game, onGameUpdate }: Pro
       )
     }
     return THEMES.filter(
-      (theme) => theme.id !== 'pirate' && theme.id !== 'arctic' && theme.id !== 'naija' && theme.id !== 'america'
+      (theme) =>
+        theme.id !== 'pirate' &&
+        theme.id !== 'arctic' &&
+        theme.id !== 'naija' &&
+        theme.id !== 'america' &&
+        theme.id !== 'christmas'
     )
   }, [isMonopoly, ownedEditions, currentTheme])
 
