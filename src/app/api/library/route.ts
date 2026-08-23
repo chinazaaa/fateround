@@ -108,11 +108,18 @@ export async function GET(req: NextRequest) {
     const profileId = await getProfileFromRequest(req).catch(() => null)
     if (profileId) {
       const admin = getSupabaseAdmin()
-      const { data: owned } = await admin
+      const { data: owned, error: ownedErr } = await admin
         .from('profile_owned_packs')
         .select('pack_id')
         .eq('profile_id', profileId)
         .in('pack_id', paidPackIds)
+      // Failing the ownership lookup silently would leave every paid
+      // pack showing "🪙 X" for a caller who owns some of them, nudging
+      // a duplicate purchase (reviewer round 6 finding #9). Surface a
+      // 500 so on-call sees the RLS/query failure and the picker's
+      // catch-all error handler shows a retry.
+      if (ownedErr)
+        return NextResponse.json({ error: internalErrorMessage('library:owned', ownedErr) }, { status: 500 })
       ownedSet = new Set((owned ?? []).map((r) => r.pack_id as string))
     }
   }

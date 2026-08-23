@@ -71,12 +71,12 @@ describe('PlayerName palette contrast', () => {
       const dark = spec.gradient.dark.match(/#[0-9a-fA-F]{3,8}/g) ?? []
       for (const stop of light) {
         it(`${spec.slug} — gradient light stop ${stop} meets AA large on white`, () => {
-          expect(contrast(stop, LIGHT_BG)).toBeGreaterThanOrEqual(AA_LARGE)
+          expect(contrast(stop, LIGHT_BG)).toBeGreaterThanOrEqual(AA_NORMAL)
         })
       }
       for (const stop of dark) {
         it(`${spec.slug} — gradient dark stop ${stop} meets AA large on near-black`, () => {
-          expect(contrast(stop, DARK_BG)).toBeGreaterThanOrEqual(AA_LARGE)
+          expect(contrast(stop, DARK_BG)).toBeGreaterThanOrEqual(AA_NORMAL)
         })
       }
     }

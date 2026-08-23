@@ -55,34 +55,45 @@ export async function POST(req: NextRequest) {
     ) {
       serverPrice = codeSidePrice(body.kind, body.slug)
     } else {
+      // DB lookups: distinguish "unknown item" (row not found → 404) from
+      // "catalog read blew up" (transient DB error → 500). The old
+      // shorthand collapsed both into 404, hiding real infra failures
+      // behind a user-facing "Unknown item" and starving on-call of the
+      // signal (reviewer round 6 finding #10).
       const admin = getSupabaseAdmin()
+      let lookupErr: unknown = null
       if (body.kind === 'theme') {
-        const { data } = await admin
+        const { data, error } = await admin
           .from('game_themes')
           .select('price_coins')
           .eq('slug', body.slug)
           .eq('is_active', true)
           .maybeSingle()
+        lookupErr = error
         serverPrice = data ? Number(data.price_coins) : null
       } else if (body.kind === 'edition') {
-        const { data } = await admin
+        const { data, error } = await admin
           .from('game_editions')
           .select('price_coins')
           .eq('slug', body.slug)
           .eq('is_active', true)
           .maybeSingle()
+        lookupErr = error
         serverPrice = data ? Number(data.price_coins) : null
       } else if (body.kind === 'library_pack') {
         const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(body.slug)
         if (!isUuid) return NextResponse.json({ error: 'Invalid pack id' }, { status: 400 })
-        const { data } = await admin
+        const { data, error } = await admin
           .from('question_packs')
           .select('price_coins')
           .eq('id', body.slug)
           .eq('status', 'approved')
           .maybeSingle()
+        lookupErr = error
         serverPrice = data ? Number(data.price_coins) : null
       }
+      if (lookupErr)
+        return NextResponse.json({ error: internalErrorMessage('shop/purchase:lookup', lookupErr) }, { status: 500 })
     }
 
     if (serverPrice === null) return NextResponse.json({ error: 'Unknown item' }, { status: 404 })

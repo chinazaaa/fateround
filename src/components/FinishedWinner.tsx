@@ -72,7 +72,7 @@ export function FinishedWinnerHero({
   const cfg = gameTypeConfig(parseGameType(game.game_type))
 
   return (
-    <div className="relative text-center space-y-2">
+    <div className="relative isolate text-center space-y-2">
       {winnerAnimationSlug ? <WinnerAnimationOverlay slug={winnerAnimationSlug} /> : null}
       <div className="flex justify-center pb-1">
         <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[color-mix(in_srgb,var(--primary)_15%,transparent)] text-[var(--primary)] border border-[color-mix(in_srgb,var(--primary)_30%,transparent)] shadow-[0_8px_24px_-4px_color-mix(in_srgb,var(--primary)_35%,transparent)]">

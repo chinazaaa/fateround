@@ -2236,3 +2236,17 @@ select option {
     linear-gradient(180deg, transparent 40%, rgba(212,160,23,0.35) 60%, transparent 100%);
   animation: fr-anim-gold-shower-fall 2.6s ease-in 1 forwards;
 }
+
+/* Honor the viewer's reduced-motion preference for the winner-animation
+   overlays (reviewer round 6 finding #11). The one-shot celebratory
+   animations are pure decoration; suppress them entirely for anyone
+   who has asked their OS to reduce motion. */
+@media (prefers-reduced-motion: reduce) {
+  .fr-anim-confetti::before,
+  .fr-anim-confetti::after,
+  .fr-anim-fireworks::before,
+  .fr-anim-gold-shower::before {
+    animation: none;
+    opacity: 0;
+  }
+}
