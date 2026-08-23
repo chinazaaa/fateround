@@ -100,7 +100,13 @@ import { createGameSchema, stripHtml } from '@/lib/validation'
 import { triviaCategoryEnum } from '@/lib/validation/shared'
 import { supportsGenderToggle, defaultGenderBasedForType } from '@/lib/gender-based'
 import { parseParticipantMode, usesHostParticipantList } from '@/lib/participant-mode'
-import { parseThemeId } from '@/lib/themes'
+import { parseThemeId, type ThemeId } from '@/lib/themes'
+import {
+  MONOPOLY_EDITION_TO_THEME,
+  MONOPOLY_THEME_TO_EDITION,
+  checkMonopolyEditionEntitlement,
+  editionEntitlementError,
+} from '@/lib/coins/editions'
 import { parsePlayerQuestionsEnabled, parsePlayerQuestionsOrder } from '@/lib/player-question-pool'
 import { isPeoplePollGame, supportsPlayerNameSubmissions } from '@/lib/player-participant-pool'
 import { parseBingoCallMode, clampBingoCallInterval } from '@/lib/bingo'
@@ -441,6 +447,7 @@ export async function POST(req: NextRequest) {
     custom_questions: rawCustomQuestions,
     game_type: rawGameType,
     theme: rawTheme,
+    edition_slug: rawEditionSlug,
     participants: rawParticipants,
     participant_filter,
     custom_slots,
@@ -539,7 +546,44 @@ export async function POST(req: NextRequest) {
       (isCustomGame(game_type) ? custom_slots?.gender_based === true : defaultGenderBasedForType(game_type)))
     : false
   const participantOpts = { genderBased: gender_based, customSlots: custom_slots ?? null }
-  const theme = parseThemeId(rawTheme)
+  let theme = parseThemeId(rawTheme)
+  // Estate Kings edition slug. See docs/estate-kings-america-edition.md +
+  // supabase/migrations/20261101120700_estate_kings_america_edition.sql. For
+  // Monopoly, the edition is resolved from either the explicit edition_slug
+  // payload (preferred) or the theme picker; for every other game type it
+  // stays null. Ownership is server-authoritative — a client that POSTs
+  // theme:'america' without owning the USA edition is rejected here rather
+  // than silently downgraded, so a fibbing client can't play paid content
+  // for free. Free grandfathered editions (price 0 in game_editions) pass
+  // through unconditionally.
+  let edition_slug: string | null = null
+  if (game_type === 'monopoly') {
+    const explicitSlug = typeof rawEditionSlug === 'string' && rawEditionSlug.length > 0 ? rawEditionSlug : null
+    const themeProvided = rawTheme !== undefined && rawTheme !== null
+    const themeSlug = MONOPOLY_THEME_TO_EDITION[theme] ?? null
+    // Mirror the PATCH handler: an explicit Monopoly theme that doesn't
+    // map to an edition (theme:'dark' on a Monopoly game) is rejected
+    // loud, not silently normalised to london. Only the "no theme
+    // provided" case falls through to the london default.
+    if (themeProvided && !themeSlug && !explicitSlug) {
+      return NextResponse.json({ error: 'Theme not valid for Monopoly' }, { status: 400 })
+    }
+    // Edition explicit pick wins; else derive from theme; else default to london.
+    const requested = explicitSlug ?? themeSlug ?? 'london'
+    const mappedTheme = MONOPOLY_EDITION_TO_THEME[requested]
+    if (!mappedTheme) {
+      // A newly-seeded edition without its theme-map entry — fail loud
+      // rather than silently downgrade theme to 'default'.
+      return NextResponse.json({ error: 'Unknown edition' }, { status: 400 })
+    }
+    const entitlement = await checkMonopolyEditionEntitlement(getSupabaseAdmin(), hostProfileId, requested)
+    if (!entitlement.ok) {
+      const { status, error } = editionEntitlementError(entitlement.reason)
+      return NextResponse.json({ error }, { status })
+    }
+    edition_slug = requested
+    theme = mappedTheme
+  }
   const question_source = parseQuestionSource(rawQuestionSource, game_type)
   let custom_questions: unknown[] | null = null
 
@@ -1237,6 +1281,7 @@ export async function POST(req: NextRequest) {
     trivia_category: isTriviaGame(game_type) ? triviaCategoryEnum.catch('general').parse(rawTriviaCategory) : null,
     game_type,
     theme,
+    ...(edition_slug ? { edition_slug } : {}),
     // Discovery Phase C — a scheduled game starts in 'scheduled' state and
     // flips to 'waiting' at T-0 via open_scheduled_games_due(). Requires
     // isPublic=true (a private schedule has no RSVP audience) and a future

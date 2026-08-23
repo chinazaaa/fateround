@@ -29,6 +29,11 @@ import { THEMES } from '@/lib/themes'
 import { ThemePreviewCard, ThemePreviewModal } from '@/components/ThemePreviewModal'
 import { MONOPOLY_EDITIONS, formatThemedText } from '@/components/monopoly/monopoly-themes'
 import {
+  MONOPOLY_THEME_TO_EDITION_SLUG,
+  isMonopolyEditionAvailable,
+  useOwnedMonopolyEditions,
+} from '@/hooks/useOwnedMonopolyEditions'
+import {
   type ParticipantInput,
   parseParticipantsForGame,
   parseExcelParticipants,
@@ -497,6 +502,7 @@ function CreateGameInner() {
   const [quickDrawTitleTimer, setQuickDrawTitleTimer] = useState(QUICK_DRAW_DEFAULT_TITLE_TIMER)
   const [quickDrawVoteTimer, setQuickDrawVoteTimer] = useState(QUICK_DRAW_DEFAULT_VOTE_TIMER)
   const [ttlMaxPlayers, setTtlMaxPlayers] = useState(TTL_DEFAULT_MAX_PLAYERS)
+  const { available: ownedMonopolyEditions } = useOwnedMonopolyEditions()
   const [monopolyMaxPlayers, setMonopolyMaxPlayers] = useState(MONOPOLY_DEFAULT_MAX_PLAYERS)
   const [monopolyBoardSize, setMonopolyBoardSize] = useState<40 | 48>(40)
   const [monopolyGameDuration, setMonopolyGameDuration] = useState(0)
@@ -2283,7 +2289,10 @@ function CreateGameInner() {
         : {}),
       ...(supportsGenderToggle(type) && !isCustomGame(type) ? { gender_based: defaultGenderBasedForType(type) } : {}),
       ...(type !== 'monopoly' &&
-      (settings.theme === 'pirate' || settings.theme === 'arctic' || settings.theme === 'naija')
+      (settings.theme === 'pirate' ||
+        settings.theme === 'arctic' ||
+        settings.theme === 'naija' ||
+        settings.theme === 'america')
         ? { theme: 'default' as const }
         : {}),
     })
@@ -2839,6 +2848,12 @@ function CreateGameInner() {
                                                             ? (settings.max_players ??
                                                               effectiveLimits.matching_pairs.max)
                                                             : undefined,
+          // Estate Kings edition — mirror the theme pick into the dedicated
+          // edition_slug column the engine reads (docs/estate-kings-america-edition.md
+          // + coins-and-shop-plan.md § "Launch sequencing" → Phase 4).
+          edition_slug: isMonopoly
+            ? (MONOPOLY_THEME_TO_EDITION_SLUG[settings.theme] ?? 'london')
+            : undefined,
           monopoly_board_size: isMonopoly ? monopolyBoardSize : undefined,
           monopoly_double_go_salary: isMonopoly ? monopolyDoubleGoSalary : undefined,
           monopoly_forced_auctions: isMonopoly ? monopolyForcedAuctions : undefined,
@@ -3143,12 +3158,21 @@ function CreateGameInner() {
                 className={`grid ${settings.game_type === 'monopoly' ? 'grid-cols-2 max-w-sm sm:max-w-md' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-5'} gap-1.5 sm:gap-2`}
               >
                 {(settings.game_type === 'monopoly'
-                  ? THEMES.filter((theme) => MONOPOLY_EDITIONS.some((e) => e.themeId === theme.id))
+                  ? THEMES.filter(
+                      (theme) =>
+                        MONOPOLY_EDITIONS.some((e) => e.themeId === theme.id) &&
+                        // Paid editions (e.g. USA) require ownership; free grandfathered
+                        // editions always show. Keep the currently-selected theme visible
+                        // so switching game types back to Monopoly doesn't clear the pick.
+                        (theme.id === settings.theme ||
+                          isMonopolyEditionAvailable(theme.id, ownedMonopolyEditions))
+                    )
                   : THEMES.filter(
                       (theme) =>
                         theme.id !== 'pirate' &&
                         theme.id !== 'arctic' &&
                         theme.id !== 'naija' &&
+                        theme.id !== 'america' &&
                         theme.id !== 'grass_court'
                     )
                 ).map((theme) => {

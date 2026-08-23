@@ -85,6 +85,7 @@ export const createGameSchema = z.object({
   player_questions_order: playerQuestionsOrderEnum.optional(),
   game_type: gameTypeEnum.optional(),
   theme: themeEnum.optional(),
+  edition_slug: z.string().min(1).max(64).optional(),
   wst_quote_source: wstQuoteSourceEnum.optional(),
   participant_filter: participantFilterEnum.optional(),
   gender_based: z.boolean().optional(),
@@ -279,6 +280,7 @@ export const updateGameSchema = z.object({
   // Player-facing content label ("Maths", "Bible trivia"). Empty string clears it.
   content_label: z.string().max(40).optional(),
   theme: themeEnum.optional(),
+  edition_slug: z.string().min(1).max(64).optional(),
   rounds_count: z.coerce.number().int().min(1, 'rounds_count is required').optional(),
   timer_seconds: z.coerce.number().optional(),
   operative_timer_seconds: z.coerce.number().optional(),
@@ -399,6 +401,7 @@ export const boardGameLobbySettingsSchema = z.object({
   hostToken: hostTokenString(),
   is_public: z.boolean().optional(),
   theme: themeEnum.optional(),
+  edition_slug: z.string().min(1).max(64).optional(),
   checkers_nigeria_street_rules: z.boolean().optional(),
   // Player-facing content label ("Maths", "Bible trivia"). Empty string clears it.
   content_label: z.string().max(40).optional(),
