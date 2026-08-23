@@ -1,6 +1,14 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+
+import {
+  ADMIN_DAILY_CAP_COINS,
+  ADMIN_NOTE_MIN_LENGTH,
+  COIN_ADMIN_CATEGORIES,
+  COIN_ADMIN_CATEGORY_LABELS,
+  type CoinAdminCategory,
+} from '@/lib/coins'
 
 /**
  * Admin: coin adjustment.
@@ -30,13 +38,13 @@ type LedgerRow = {
 
 type Profile = { id: string; handle: string | null; coins: number }
 
-const CATEGORIES = [
-  { value: 'support_goodwill', label: 'Support goodwill' },
-  { value: 'bug_reimbursement', label: 'Bug reimbursement' },
-  { value: 'promotion', label: 'Promotion' },
-  { value: 'correction', label: 'Correction / clawback' },
-  { value: 'other', label: 'Other' },
-] as const
+const CATEGORY_ORDER: readonly CoinAdminCategory[] = [
+  'support_goodwill',
+  'bug_reimbursement',
+  'promotion',
+  'correction',
+  'other',
+]
 
 function shortDate(value: string): string {
   return new Date(value).toLocaleString()
@@ -46,7 +54,7 @@ export default function AdminCoinsPage() {
   const [profileId, setProfileId] = useState('')
   const [profile, setProfile] = useState<Profile | null>(null)
   const [ledger, setLedger] = useState<LedgerRow[]>([])
-  const [cap, setCap] = useState(5000)
+  const [cap, setCap] = useState<number>(ADMIN_DAILY_CAP_COINS)
   // Null means "we couldn't read it" (query error); render as "?" rather
   // than "0" so an admin doesn't think they have their full allowance
   // available.
@@ -55,16 +63,23 @@ export default function AdminCoinsPage() {
   const [error, setError] = useState('')
 
   const [delta, setDelta] = useState('')
-  const [category, setCategory] = useState<string>('support_goodwill')
+  const [category, setCategory] = useState<CoinAdminCategory>('support_goodwill')
   const [note, setNote] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [flash, setFlash] = useState('')
 
-  // AbortController drops responses from stale requests: admin pastes
-  // UUID-A, retypes to UUID-B before A resolves, A eventually lands last
-  // — without cancellation setProfile(A) would win and the panel would
-  // show A's data next to B's UUID in the input.
-  const load = useCallback(async (id: string, signal: AbortSignal) => {
+  // One controller ref that BOTH the debounced-load path and the
+  // post-submit reload share. Aborting on any new request (typing, form
+  // submit, unmount) cancels whatever's still in flight — otherwise a
+  // slower manual reload could land after a fresher debounced fetch and
+  // show a stale profile under a new UUID.
+  const loadCtl = useRef<AbortController | null>(null)
+
+  const load = useCallback(async (id: string) => {
+    loadCtl.current?.abort()
+    const ctl = new AbortController()
+    loadCtl.current = ctl
+    const signal = ctl.signal
     setLoading(true)
     setError('')
     setProfile(null)
@@ -79,7 +94,7 @@ export default function AdminCoinsPage() {
       }
       setProfile(json.profile)
       setLedger(json.ledger ?? [])
-      setCap(json.cap ?? 5000)
+      setCap(json.cap ?? ADMIN_DAILY_CAP_COINS)
       setSpentToday(json.spentToday ?? null)
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return
@@ -91,11 +106,10 @@ export default function AdminCoinsPage() {
 
   useEffect(() => {
     if (!profileId.trim()) return
-    const ctl = new AbortController()
-    const t = setTimeout(() => void load(profileId.trim(), ctl.signal), 300)
+    const t = setTimeout(() => void load(profileId.trim()), 300)
     return () => {
       clearTimeout(t)
-      ctl.abort()
+      loadCtl.current?.abort()
     }
   }, [profileId, load])
 
@@ -107,8 +121,8 @@ export default function AdminCoinsPage() {
       setError('Delta must be a non-zero integer.')
       return
     }
-    if (note.trim().length < 10) {
-      setError('Note must be at least 10 characters.')
+    if (note.trim().length < ADMIN_NOTE_MIN_LENGTH) {
+      setError(`Note must be at least ${ADMIN_NOTE_MIN_LENGTH} characters.`)
       return
     }
     if (n < 0 && category !== 'correction') {
@@ -117,11 +131,22 @@ export default function AdminCoinsPage() {
     }
     setSubmitting(true)
     try {
-      const res = await fetch('/api/admin/coins', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ profileId: profileId.trim(), delta: n, category, note: note.trim() }),
-      })
+      let res: Response
+      try {
+        res = await fetch('/api/admin/coins', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ profileId: profileId.trim(), delta: n, category, note: note.trim() }),
+        })
+      } catch {
+        // Network drop, DNS failure, CORS. Show something so the admin
+        // doesn't re-click and accidentally double-post if the first
+        // request went through server-side. The RPC's advisory lock +
+        // audit trail also protects against that, but the UI should
+        // still tell them the outcome is unknown.
+        setError('Network error — try again once the connection is back.')
+        return
+      }
       const json = await res.json().catch(() => ({}))
       if (!res.ok) {
         setError(json.error ?? 'Adjustment failed.')
@@ -133,7 +158,9 @@ export default function AdminCoinsPage() {
       )
       setDelta('')
       setNote('')
-      await load(profileId.trim(), new AbortController().signal)
+      // load() aborts anything already in flight and re-uses the shared
+      // controller so a slower reload can't overwrite a fresher one.
+      await load(profileId.trim())
     } finally {
       setSubmitting(false)
     }
@@ -185,17 +212,17 @@ export default function AdminCoinsPage() {
               <select
                 className="input-field !py-2 text-sm"
                 value={category}
-                onChange={(e) => setCategory(e.target.value)}
+                onChange={(e) => setCategory(e.target.value as CoinAdminCategory)}
               >
-                {CATEGORIES.map((c) => (
-                  <option key={c.value} value={c.value}>
-                    {c.label}
+                {CATEGORY_ORDER.map((value) => (
+                  <option key={value} value={value}>
+                    {COIN_ADMIN_CATEGORY_LABELS[value]}
                   </option>
                 ))}
               </select>
               <input
                 className="input-field !py-2 text-sm"
-                placeholder="Note (min 10 chars — for the audit log)"
+                placeholder={`Note (min ${ADMIN_NOTE_MIN_LENGTH} chars — for the audit log)`}
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
               />

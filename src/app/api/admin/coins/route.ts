@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { assertAdminRequest } from '@/lib/admin-api'
 import { internalErrorMessage } from '@/lib/api-errors'
+import {
+  ADMIN_DAILY_CAP_COINS,
+  ADMIN_NOTE_MIN_LENGTH,
+  COIN_ADMIN_CATEGORIES,
+  type CoinAdminCategory,
+} from '@/lib/coins'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
 /**
@@ -24,10 +30,8 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
  * failure between them silently break the "ledger is truth" invariant.
  */
 
-const DAILY_CAP_COINS = 5_000
-const MIN_NOTE_LENGTH = 10
-const CATEGORIES = ['bug_reimbursement', 'support_goodwill', 'promotion', 'correction', 'other'] as const
-type Category = (typeof CATEGORIES)[number]
+// Cap + categories + note-length live in src/lib/coins.ts so the UI, the
+// API and the DB CHECK constraint all read from one place.
 
 export async function POST(req: NextRequest) {
   const session = await assertAdminRequest(req)
@@ -42,18 +46,18 @@ export async function POST(req: NextRequest) {
 
   const profileId = typeof body.profileId === 'string' ? body.profileId.trim() : ''
   const delta = Number(body.delta)
-  const category = String(body.category ?? '') as Category
+  const category = String(body.category ?? '') as CoinAdminCategory
   const note = typeof body.note === 'string' ? body.note.trim() : ''
 
   if (!profileId) return NextResponse.json({ error: 'profileId is required.' }, { status: 400 })
   if (!Number.isFinite(delta) || !Number.isInteger(delta) || delta === 0) {
     return NextResponse.json({ error: 'Delta must be a non-zero integer.' }, { status: 400 })
   }
-  if (!CATEGORIES.includes(category)) {
+  if (!COIN_ADMIN_CATEGORIES.includes(category)) {
     return NextResponse.json({ error: 'Unknown category.' }, { status: 400 })
   }
-  if (note.length < MIN_NOTE_LENGTH) {
-    return NextResponse.json({ error: `Note must be at least ${MIN_NOTE_LENGTH} characters.` }, { status: 400 })
+  if (note.length < ADMIN_NOTE_MIN_LENGTH) {
+    return NextResponse.json({ error: `Note must be at least ${ADMIN_NOTE_MIN_LENGTH} characters.` }, { status: 400 })
   }
   if (delta < 0 && category !== 'correction') {
     return NextResponse.json({ error: 'Negative adjustments must use category "correction".' }, { status: 400 })
@@ -75,7 +79,7 @@ export async function POST(req: NextRequest) {
       p_admin_email: adminEmail,
       p_category: category,
       p_note: note,
-      p_daily_cap_coins: DAILY_CAP_COINS,
+      p_daily_cap_coins: ADMIN_DAILY_CAP_COINS,
     })
     if (rpcErr) {
       // The stored proc raises for "no such profile" and for programmer
@@ -128,10 +132,16 @@ export async function POST(req: NextRequest) {
 }
 
 /**
- * Best-effort "spent so far today" for the GET (display) path. Returns
- * null on a query error so callers can render "unknown" instead of
- * silently showing 0 — which would tell the admin they had a full
- * 5 000-coin allowance when the check failed. The POST path never uses
+ * Best-effort "spent so far today" for the GET (display) path.
+ *
+ * Calls the `admin_spent_today` RPC, which does the SUM server-side.
+ * PostgREST caps unaggregated selects at 1000 rows, so the old JS-side
+ * reduce would undercount an admin with many small adjustments and the
+ * header would misreport more headroom than actually exists.
+ *
+ * Returns null on error so callers can render "unknown" ("?") instead
+ * of silently showing 0 — which would tell the admin they had a full
+ * daily allowance when the check failed. The POST path doesn't use
  * this: the RPC returns the authoritative value under the same lock as
  * the write.
  */
@@ -139,15 +149,9 @@ async function readSpentToday(
   supabase: ReturnType<typeof getSupabaseAdmin>,
   adminEmail: string
 ): Promise<number | null> {
-  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
-  const { data, error } = await supabase
-    .from('coin_ledger')
-    .select('delta')
-    .eq('reason', 'admin_adjustment')
-    .eq('admin_id', adminEmail)
-    .gte('created_at', since)
+  const { data, error } = await supabase.rpc('admin_spent_today', { p_admin_email: adminEmail })
   if (error) return null
-  return (data ?? []).reduce((sum, r) => sum + Math.abs(Number(r.delta) || 0), 0)
+  return Number(data ?? 0)
 }
 
 /**
@@ -184,7 +188,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       profile: { id: profile.id, handle: profile.handle, coins: Number(profile.coins) || 0 },
       ledger: ledger ?? [],
-      cap: DAILY_CAP_COINS,
+      cap: ADMIN_DAILY_CAP_COINS,
       spentToday,
     })
   } catch (err) {
