@@ -8,6 +8,7 @@ import 'react-native-reanimated'
 import { ToastProvider } from '@/components/ui/Toast'
 import { ThemeProvider, useTheme, useThemeMode } from '@/constants/theme-context'
 import { PreferencesProvider } from '@/constants/preferences-context'
+import { recoverPendingAttributions } from '@/lib/attribution-recovery'
 
 type NotificationData = {
   event?: string
@@ -137,6 +138,12 @@ export default function RootLayout() {
 
     const subscription = Notifications.addNotificationResponseReceivedListener(handleNotificationResponse)
     return () => subscription.remove()
+  }, [])
+
+  // Catch up any trophy attributions the player missed by leaving a game before its finished
+  // screen mounted. Idempotent, best-effort, and self-throttled per app run.
+  useEffect(() => {
+    void recoverPendingAttributions()
   }, [])
 
   return (
