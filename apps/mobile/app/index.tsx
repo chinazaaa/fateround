@@ -6,6 +6,7 @@ import { normalizeGameCode } from '@fateround/shared'
 import { FateRoundLogo } from '@/components/FateRoundLogo'
 import { BrowseGamesList } from '@/components/browse/BrowseGamesList'
 import { SubscribeHomeBanner } from '@/components/notifications/SubscribeHomeBanner'
+import { ContinuePlayingStrip } from '@/components/home/ContinuePlayingStrip'
 import { YourUpcomingGamesStrip } from '@/components/notifications/YourUpcomingGamesStrip'
 import { AmbientBackground } from '@/components/ui/AmbientBackground'
 import { AppButton } from '@/components/ui/AppButton'
@@ -14,6 +15,7 @@ import { ListRow } from '@/components/ui/ListRow'
 import { SurfaceCard } from '@/components/ui/SurfaceCard'
 import { SettingsButton } from '@/components/ui/SettingsSheet'
 import { ProfileChip } from '@/components/profile/ProfileChip'
+import { CoinChip } from '@/components/coins/CoinChip'
 import { centeredContent } from '@/constants/layout'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
@@ -78,7 +80,8 @@ export default function HomeScreen() {
         }
       >
         <View style={styles.topBar}>
-          <SettingsButton />
+          <SettingsButton variant="screen" />
+          <CoinChip />
           <ProfileChip />
         </View>
 
@@ -105,36 +108,42 @@ export default function HomeScreen() {
           <AppButton label="Join game" onPress={onJoin} disabled={!canJoin} size="lg" fullWidth haptic="medium" />
         </SurfaceCard>
 
-        <View style={styles.actions}>
-          <AppButton
-            label="Create a game"
-            tone="secondary"
-            size="lg"
-            fullWidth
-            onPress={() => router.push('/create')}
-          />
-          <AppButton
-            label="🗓️ Daily Challenges"
-            tone="ghost"
-            // Cast: expo-router's typed href doesn't know about the
-            // /daily-challenges route registered in _layout.tsx.
-            onPress={() => router.push('/daily-challenges' as never)}
-          />
-          <AppButton
-            label="🏆 Leaderboards"
-            tone="ghost"
-            // Cast: expo-router's typed href doesn't know about the
-            // /leaderboard route registered in _layout.tsx. Hub screen has
-            // three cards — daily, trophies, community — matching web.
-            onPress={() => router.push('/leaderboard' as never)}
-          />
+        {/* Create stays full-width — it is the second-loudest thing on the screen after Join,
+            and the only one of the four that makes something. */}
+        <AppButton label="Create a game" tone="secondary" size="lg" fullWidth onPress={() => router.push('/create')} />
+
+        {/* The other three were full-width stacked rows, which put a screen height between the
+            join card and anything personalised. A grid says "pick one of these" in a third of
+            the space. See docs/mobile-ia-audit-2026-08.md. */}
+        <View style={styles.actionGrid}>
+          {[
+            // Casts: expo-router's typed href doesn't know these routes; they are registered
+            // in _layout.tsx.
+            { label: '🗓️', title: 'Daily', href: '/daily-challenges' },
+            { label: '🏆', title: 'Leaderboards', href: '/leaderboard' },
+            { label: '🤖', title: 'Vs bot', href: '/play-solo' },
+            { label: '🎲', title: 'Browse', href: '/browse' },
+          ].map((tile) => (
+            <Pressable
+              key={tile.href}
+              style={({ pressed }) => [styles.actionTile, pressed && styles.actionTilePressed]}
+              onPress={() => router.push(tile.href as never)}
+              accessibilityRole="button"
+              accessibilityLabel={tile.title}
+            >
+              <Text style={styles.actionTileEmoji}>{tile.label}</Text>
+              <Text style={styles.actionTileText}>{tile.title}</Text>
+            </Pressable>
+          ))}
         </View>
 
-        <SubscribeHomeBanner />
+        {/* Personalised blocks BEFORE discovery. A returning player's own games were below a
+            five-item browse preview, which put the highest-intent block on the screen last.
+            Continue-playing sits above Recent because it is CROSS-DEVICE and live: a game you
+            left running on another device beats one this phone happens to remember. */}
+        <ContinuePlayingStrip />
 
         <YourUpcomingGamesStrip />
-
-        <BrowseGamesList previewLimit={5} onSeeAll={() => router.push('/browse' as never)} />
 
         {recent.length === 0 ? (
           <View style={styles.recentBlock}>
@@ -182,6 +191,12 @@ export default function HomeScreen() {
             ) : null}
           </View>
         ) : null}
+
+        {/* Discovery last: it matters most to someone with no games of their own, and they
+            reach it in a single scroll from an empty Recent. */}
+        <BrowseGamesList previewLimit={5} onSeeAll={() => router.push('/browse' as never)} />
+
+        <SubscribeHomeBanner />
       </KeyboardFormScreen>
     </SafeAreaView>
   )
@@ -239,10 +254,22 @@ const makeStyles = (theme: Theme) =>
       paddingVertical: 18,
       paddingHorizontal: theme.space.md,
     },
-    actions: {
-      gap: theme.space.xs,
-      alignItems: 'stretch',
+    actionGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space.sm },
+    actionTile: {
+      // Two per row: half the width minus half the gap.
+      flexBasis: '47%',
+      flexGrow: 1,
+      alignItems: 'center',
+      gap: 4,
+      paddingVertical: theme.space.md,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: theme.border,
+      backgroundColor: theme.surface,
     },
+    actionTilePressed: { opacity: 0.7 },
+    actionTileEmoji: { fontSize: 22 },
+    actionTileText: { color: theme.text, fontSize: theme.type.caption.size, fontWeight: '700' },
     recentBlock: { gap: theme.space.sm },
     sectionTitle: {
       color: theme.text,

@@ -73,15 +73,12 @@ export class ParticleManager {
     }
   }
 
-  public render(ctx: CanvasRenderingContext2D): void {
-    for (const p of this.particles) {
-      const alpha = Math.max(0, p.life / p.maxLife)
-      ctx.save()
-      ctx.globalAlpha = alpha
-      ctx.fillStyle = p.color
-      ctx.fillRect(Math.round(p.x - p.size / 2), Math.round(p.y - p.size / 2), p.size, p.size)
-      ctx.restore()
-    }
+  /**
+   * The live particle list. Returned by reference and mutated in place every `update()`, so a
+   * renderer may read it during the frame it was handed but must never hold on to it.
+   */
+  public getParticles(): readonly Particle[] {
+    return this.particles
   }
 
   public clear(): void {

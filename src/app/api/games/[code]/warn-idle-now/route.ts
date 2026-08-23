@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod/v4'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
-import { notifyGameEvent } from '@/lib/push'
+import { notifyHostIdleWarning } from '@/lib/push'
 
 /**
  * Client-side fallback for the T-13 idle-warning push.
@@ -59,7 +59,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   if (!stamped || stamped.length === 0) return NextResponse.json({ ok: true, warned: false })
 
   try {
-    await notifyGameEvent(gameCode, 'host_idle_warning')
+    await notifyHostIdleWarning(gameCode)
   } catch {
     // Non-fatal — the stamp stays so a next tick doesn't retry+spam.
   }

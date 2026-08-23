@@ -47,6 +47,7 @@ import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { EditNameInline } from '@/components/ui/EditNameInline'
 import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
 import { useRegisterGameSettings } from '@/components/GameSettingsContext'
+import { RulesInPlaySection } from '@/components/game-lobby/RulesInPlaySection'
 import {
   DescribeItCard,
   DescribeItLoadingScreen,
@@ -271,6 +272,7 @@ export function QuickDrawGuessPlayerView({ gameCode }: { gameCode: string }) {
     if (!myPlayerId) return null
     return (
       <div className="space-y-3">
+        <RulesInPlaySection game={game} />
         <EditNameInline
           gameCode={gameCode}
           playerId={myPlayerId}
@@ -289,7 +291,7 @@ export function QuickDrawGuessPlayerView({ gameCode }: { gameCode: string }) {
         />
       </div>
     )
-  }, [myPlayerId, game?.status, gameCode, activePlayer?.name, isViewer, load, router])
+  }, [game, myPlayerId, game?.status, gameCode, activePlayer?.name, isViewer, load, router])
   useRegisterGameSettings(playerSettingsNode)
 
   if (screen === 'loading') return <DescribeItLoadingScreen />

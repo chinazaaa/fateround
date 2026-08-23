@@ -21,6 +21,9 @@ type Props = {
   limitType: LobbyLimitGameType
   /** Current joined-player count — the floor the cap can't drop below. */
   playerCount: number
+  /** Ready (non-spectator) players — the count that actually consumes a cap seat.
+   *  Defaults to `playerCount` for callers that haven't opted in. */
+  seatedCount?: number
   onGameUpdate: (game: Game) => void
 }
 
@@ -31,7 +34,15 @@ type SaveState = 'idle' | 'saving' | 'saved'
  * the player cap (Trivia, NPAT, Two Truths, Anonymous Messages). Saves via
  * POST /api/games/[code]/lobby-settings (which accepts max_players for any lobby-limit game).
  */
-export function HostMaxPlayersLobbyPanel({ gameCode, hostToken, game, limitType, playerCount, onGameUpdate }: Props) {
+export function HostMaxPlayersLobbyPanel({
+  gameCode,
+  hostToken,
+  game,
+  limitType,
+  playerCount,
+  seatedCount,
+  onGameUpdate,
+}: Props) {
   const { error: toastError } = useToast()
   const [limits, setLimits] = useState<GamePlayerLimitsMap | null>(null)
   const [maxPlayers, setMaxPlayers] = useState(game.max_players ?? 20)
@@ -70,8 +81,14 @@ export function HostMaxPlayersLobbyPanel({ gameCode, hostToken, game, limitType,
 
   const onMaxPlayersChange = (next: number) => {
     if (saveState === 'saving' || next === maxPlayers) return
-    if (next < playerCount) {
-      toastError(`Already have ${playerCount} players — remove someone first`)
+    // Only ready (non-spectator) players count against the cap — matches the server. Not-ready
+    // players are `spectator: true`, so counting them here would refuse a valid lower-cap change
+    // while they watch. seatedCount defaults to playerCount for callers that haven't opted in.
+    const effectiveSeated = seatedCount ?? playerCount
+    if (next < effectiveSeated) {
+      toastError(
+        `Already have ${effectiveSeated} seated player${effectiveSeated === 1 ? '' : 's'} — remove someone or pick at least ${effectiveSeated}`
+      )
       return
     }
     const previous = maxPlayers

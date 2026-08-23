@@ -333,6 +333,7 @@ export function ChessHostView({ gameCode, hostToken }: { gameCode: string; hostT
     () =>
       game?.status === 'active' && !gameFinished ? (
         <HostActiveSettings
+          game={game}
           gameCode={gameCode}
           hostToken={hostToken}
           gameType="chess"
@@ -425,7 +426,7 @@ export function ChessHostView({ gameCode, hostToken }: { gameCode: string; hostT
             onJoin={() => void hostJoinGame()}
             onEditName={renameHost}
             joining={hostJoining}
-            spectatorHint="Spectate from the Watch tab"
+            spectatorHint="Spectate"
           />
         ) : undefined
       }

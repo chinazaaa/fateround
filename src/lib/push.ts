@@ -38,7 +38,6 @@ export type PushEvent =
   | 'lobby_reopened'
   | 'game_ended'
   | 'your_turn'
-  | 'round_started'
   | 'host_player_joined'
   | 'host_idle_warning'
 
@@ -63,7 +62,6 @@ const PAYLOADS: Record<PushEvent, { title: string; body: string }> = {
   lobby_reopened: { title: 'Play again? 🔁', body: 'The lobby reopened for another round — come back in!' },
   game_ended: { title: 'Game over 🏁', body: 'The game just ended — see how it played out.' },
   your_turn: { title: 'Your turn!', body: 'Jump back in and make your move.' },
-  round_started: { title: 'New round 🔔', body: 'A new round just started — get back in!' },
   // Discovery Phase A: host-targeted pings. Copy for these is passed in as a
   // bodyOverride (name + game + count vary per push) — the fallback strings
   // here only fire if the caller forgets an override.
@@ -147,18 +145,58 @@ async function sendExpoPush(tokens: { id: string; expo_push_token: string }[], p
 
 /**
  * Send a lifecycle notification to every device subscribed to this game. Best-effort.
+ *
+ * `excludeHost` drops the host's own device from the fan-out. Every lifecycle event is
+ * something the HOST just did — they tapped Start, or Play again, or End game — so pushing it
+ * back at them notifies them of their own action, on the screen that already shows the result.
+ * Reported as "if I'm the host and I reopen lobby I shouldn't get a notification".
+ *
+ * It is opt-in rather than automatic because `host_idle_warning` is addressed TO the host;
+ * excluding them there would send the warning to everyone except the one person who can act
+ * on it. Callers say who the message is for.
  */
-export async function notifyGameEvent(gameCode: string, event: PushEvent, bodyOverride?: string): Promise<void> {
+export async function notifyGameEvent(
+  gameCode: string,
+  event: PushEvent,
+  opts: { bodyOverride?: string; excludeHost?: boolean } = {}
+): Promise<void> {
   const admin = getSupabaseAdmin()
   const code = gameCode.toUpperCase()
-  const payload = buildPayload(event, code, bodyOverride)
+  const payload = buildPayload(event, code, opts.bodyOverride)
 
+  // Only a host who took a seat has a push row at all (both tables key on a NOT NULL
+  // player_id), so a host-only host needs no exclusion — there is nothing of theirs to skip.
+  let excludeId: string | null = null
+  if (opts.excludeHost) {
+    const { data: game } = await admin.from('games').select('host_player_id').eq('id', code).maybeSingle()
+    excludeId = game?.host_player_id ?? null
+  }
+
+  const webQuery = admin.from('push_subscriptions').select('id, endpoint, p256dh, auth').eq('game_id', code)
+  const expoQuery = admin.from('mobile_push_tokens').select('id, expo_push_token').eq('game_id', code)
   const [{ data: webSubs }, { data: expoTokens }] = await Promise.all([
-    admin.from('push_subscriptions').select('id, endpoint, p256dh, auth').eq('game_id', code),
-    admin.from('mobile_push_tokens').select('id, expo_push_token').eq('game_id', code),
+    excludeId ? webQuery.neq('player_id', excludeId) : webQuery,
+    excludeId ? expoQuery.neq('player_id', excludeId) : expoQuery,
   ])
 
   await Promise.all([sendWebPush(webSubs ?? [], payload), sendExpoPush(expoTokens ?? [], payload)])
+}
+
+/**
+ * "⏳ Your lobby closes in 2 min" — to the host, and only the host.
+ *
+ * This used to go out through `notifyGameEvent`, which fans out to everyone subscribed to the
+ * game. So a message addressed to the host ("YOUR lobby closes") reached every seated player,
+ * none of whom can keep the lobby open. Nobody loses a warning by narrowing it: both push
+ * tables key on a NOT NULL player_id, so a host who never took a seat had no device row and
+ * was never reachable either way.
+ */
+export async function notifyHostIdleWarning(gameCode: string): Promise<void> {
+  const admin = getSupabaseAdmin()
+  const code = gameCode.toUpperCase()
+  const { data: game } = await admin.from('games').select('host_player_id').eq('id', code).maybeSingle()
+  if (!game?.host_player_id) return
+  await notifyPlayerEvent(code, game.host_player_id, 'host_idle_warning')
 }
 
 /**
@@ -349,14 +387,13 @@ export function scheduleTurnNotification(gameCode: string): void {
   })
 }
 
-/** Notify the whole room that a new round started (e.g. trivia). */
-export function scheduleRoundStartedNotification(gameCode: string, roundNumber?: number): void {
-  after(async () => {
-    try {
-      const body = typeof roundNumber === 'number' ? `Round ${roundNumber} is live — jump back in!` : undefined
-      await notifyGameEvent(gameCode, 'round_started', body)
-    } catch (err) {
-      console.error(`push notify (round_started) failed for ${gameCode}`, err)
-    }
-  })
-}
+/**
+ * REMOVED: a per-round "New round 🔔" push.
+ *
+ * It fired once per question, so a 10-round trivia game sent ten notifications in about two
+ * minutes — and often twice per round, because every connected client polls `/trivia/advance`
+ * and whichever call won the race scheduled its own push. Room-wide pushes are worth it at the
+ * edges of a game (it started, the lobby reopened, it ended); mid-game they are just noise to
+ * players who are already looking at the screen. `your_turn` stays: it is per-player and
+ * actionable. Don't reintroduce a per-round broadcast without per-recipient rate limiting.
+ */

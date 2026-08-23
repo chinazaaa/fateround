@@ -289,12 +289,14 @@ export function CodewordsActiveRound({
             />
           )}
           {gameOver && (
+            // Share block above already carries winner + MVP cards + operative leaderboard.
             <CodewordsEndGameStats
               guesses={guesses}
               roles={roles}
               players={players}
               highlightPlayerId={myPlayerId}
               winner={board.winner}
+              variant="spymasters"
             />
           )}
           {!gameOver && (

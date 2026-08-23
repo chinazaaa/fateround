@@ -1,12 +1,14 @@
 import { useState } from 'react'
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
-import type { GameType } from '@fateround/shared'
+import type { GameType, TriviaCategory } from '@fateround/shared'
 import { SegmentedControl } from '@/components/create/SegmentedControl'
+import { SelectField } from '@/components/create/SelectField'
 import { LibraryPackPicker } from '@/components/create/LibraryPackPicker'
 import { SurfaceCard } from '@/components/ui/SurfaceCard'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
 import { isWordSearchGame } from '@fateround/shared/game-type-checks'
+import { TRIVIA_CATEGORY_OPTIONS } from '@fateround/shared/trivia'
 import {
   parseListCsv,
   parsePuzzleCsv,
@@ -39,9 +41,14 @@ type Props = {
   custom: CustomContentState
   roundsCount: number
   onChange: (patch: Partial<CustomContentState>) => void
+  /**
+   * Trivia only — the game's chosen category, stamped onto imported questions so a Maths room
+   * doesn't end up with a pool tagged General. Defaults to 'general' for non-trivia callers.
+   */
+  triviaCategory?: TriviaCategory
 }
 
-export function CustomContentPanel({ gameType, custom, roundsCount, onChange }: Props) {
+export function CustomContentPanel({ gameType, custom, roundsCount, onChange, triviaCategory }: Props) {
   const theme = useTheme()
   const styles = useThemedStyles(makeStyles)
   const [importError, setImportError] = useState<string | null>(null)
@@ -93,7 +100,7 @@ export function CustomContentPanel({ gameType, custom, roundsCount, onChange }: 
       const existing = custom.pairs.filter((p) => p.optionA.trim() && p.optionB.trim())
       onChange({ pairs: [...existing, ...rows] })
     } else if (kind === 'trivia') {
-      const rows = parseTriviaCsv(text)
+      const rows = parseTriviaCsv(text, triviaCategory ?? 'general')
       if (rows.length === 0) {
         setImportError(`No question rows found in ${source} (question, answers, correct)`)
         return false
@@ -264,6 +271,42 @@ function addItem(kind: ReturnType<typeof customContentKind>, custom: CustomConte
   else onChange({ prompts: [...custom.prompts, ''] })
 }
 
+/**
+ * "N items · Clear all" header shared by every custom-content editor.
+ *
+ * WHY SHARED. Importing a CSV APPENDS to whatever is already in the list, so "start over with
+ * my own file" needs a way to empty it first. Two of the four editors had this header and two
+ * did not, which left trivia hosts removing questions one card at a time — and unable to
+ * remove the last one, because the per-row delete is hidden when only one row remains.
+ *
+ * Shown as soon as anything is worth clearing, not just past the second row: a single leftover
+ * question is exactly the case that had no way out.
+ */
+function ListHeader({
+  filled,
+  total,
+  noun,
+  onClear,
+}: {
+  filled: number
+  total: number
+  noun: string
+  onClear: () => void
+}) {
+  const styles = useThemedStyles(makeStyles)
+  if (filled === 0 && total <= 1) return null
+  return (
+    <View style={styles.listHeader}>
+      <Text style={styles.listCount}>
+        {filled} {filled === 1 ? noun : `${noun}s`}
+      </Text>
+      <Pressable onPress={onClear} hitSlop={8} accessibilityRole="button" accessibilityLabel={`Clear all ${noun}s`}>
+        <Text style={styles.clearAll}>Clear all</Text>
+      </Pressable>
+    </View>
+  )
+}
+
 function PuzzleEditor({
   gameType,
   custom,
@@ -295,14 +338,12 @@ function PuzzleEditor({
 
   return (
     <View style={styles.list}>
-      {custom.puzzle.length > 1 ? (
-        <View style={styles.listHeader}>
-          <Text style={styles.listCount}>{custom.puzzle.filter((e) => e.word.trim()).length} words</Text>
-          <Pressable onPress={() => onChange({ puzzle: [] })} hitSlop={8}>
-            <Text style={styles.clearAll}>Clear all</Text>
-          </Pressable>
-        </View>
-      ) : null}
+      <ListHeader
+        filled={custom.puzzle.filter((e) => e.word.trim()).length}
+        total={custom.puzzle.length}
+        noun="word"
+        onClear={() => onChange({ puzzle: [] })}
+      />
       {entries.map((entry, idx) => (
         <View key={idx} style={styles.row}>
           <TextInput
@@ -350,16 +391,12 @@ function ListEditor({
 
   return (
     <View style={styles.list}>
-      {custom.prompts.length > 1 ? (
-        <View style={styles.listHeader}>
-          <Text style={styles.listCount}>
-            {filledCount} {filledCount === 1 ? 'word' : 'words'}
-          </Text>
-          <Pressable onPress={() => onChange({ prompts: [''] })} hitSlop={8}>
-            <Text style={styles.clearAll}>Clear all</Text>
-          </Pressable>
-        </View>
-      ) : null}
+      <ListHeader
+        filled={filledCount}
+        total={custom.prompts.length}
+        noun="word"
+        onClear={() => onChange({ prompts: [''] })}
+      />
       {custom.prompts.map((value, idx) => (
         <View key={idx} style={styles.row}>
           <TextInput
@@ -387,6 +424,12 @@ function PairEditor({ custom, onChange }: { custom: CustomContentState; onChange
 
   return (
     <View style={styles.list}>
+      <ListHeader
+        filled={custom.pairs.filter((p) => p.optionA.trim() && p.optionB.trim()).length}
+        total={custom.pairs.length}
+        noun="prompt"
+        onClear={() => onChange({ pairs: [{ optionA: '', optionB: '' }] })}
+      />
       {custom.pairs.map((pair, idx) => (
         <View key={idx} style={styles.itemCard}>
           <View style={styles.itemHeader}>
@@ -443,6 +486,14 @@ function TriviaEditor({ custom, onChange }: { custom: CustomContentState; onChan
 
   return (
     <View style={styles.list}>
+      <ListHeader
+        filled={custom.trivia.filter((q) => q.question.trim()).length}
+        total={custom.trivia.length}
+        noun="question"
+        // Back to one blank card rather than an empty list — the editor has no "add first
+        // question" affordance of its own, so an empty array would leave nothing to type into.
+        onClear={() => onChange({ trivia: [emptyTriviaDraft()] })}
+      />
       {custom.trivia.map((q, qIdx) => (
         <View key={qIdx} style={styles.itemCard}>
           <View style={styles.itemHeader}>
@@ -487,12 +538,13 @@ function TriviaEditor({ custom, onChange }: { custom: CustomContentState; onChan
               <Text style={styles.addChoiceText}>＋ Add answer</Text>
             </Pressable>
           ) : null}
-          <SegmentedControl
+          {/* All seventeen categories, like every other trivia category picker. This was a
+            General/Tech pair, so a question tagged Maths on import redisplayed as General. */}
+          <SelectField
+            title="Category"
             value={q.category}
-            options={[
-              { value: 'general', label: 'General' },
-              { value: 'tech', label: 'Tech' },
-            ]}
+            options={[...TRIVIA_CATEGORY_OPTIONS]}
+            searchable
             onChange={(category) => setQ(qIdx, { category: category as TriviaDraft['category'] })}
           />
         </View>

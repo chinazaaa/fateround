@@ -18,6 +18,7 @@ import { NameJoinForm } from '@/components/game-lobby/NameJoinForm'
 import { EditNameInline } from '@/components/ui/EditNameInline'
 import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
 import { useRegisterGameSettings } from '@/components/GameSettingsContext'
+import { RulesInPlaySection } from '@/components/game-lobby/RulesInPlaySection'
 import { useLobbyOpenNotification } from '@/hooks/useLobbyOpenNotification'
 import { useRoomMemberJoin, useRoomMemberNamePrefill, useRoomMemberAutoJoin } from '@/hooks/useRoomMemberJoin'
 import { preJoinScreen, playerIsViewer } from '@/lib/viewers'
@@ -529,6 +530,7 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
     if (!myPlayerId) return null
     return (
       <div className="space-y-3">
+        <RulesInPlaySection game={game} />
         <EditNameInline
           gameCode={gameCode}
           playerId={myPlayerId}
@@ -547,7 +549,7 @@ export function MafiaPlayerView({ gameCode, embedded = false }: { gameCode: stri
         />
       </div>
     )
-  }, [myPlayerId, game?.status, gameCode, activePlayer?.name, isViewer, load, router])
+  }, [game, myPlayerId, game?.status, gameCode, activePlayer?.name, isViewer, load, router])
   // Embedded inside MafiaHostView (the host is seated/spectating), the host view registers
   // its OWN settings node (rename + leave-seat + End game) — registering this one too would
   // just race it for the single settings-sheet slot, sometimes winning and hiding the host's

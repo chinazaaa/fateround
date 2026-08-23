@@ -316,6 +316,33 @@ Role-based games (Codewords): achievement keys via `src/lib/community-achievemen
 
 ---
 
+## 7b. Trophies
+
+A game with no trophies still records `games_played` and nothing else — Quick Draw shipped in
+that state and stayed there. Two halves, both required:
+
+- [ ] **Facts builder** — `src/lib/trophies/game-facts/<game>.ts`, registered in that folder's
+  `index.ts`. One function per game type, called ONCE per finished round, returning
+  lifetime-summable integers per player. It must be total (a throw would lose the round's
+  `games_played` too) and read only persisted state. Emit per-game achievements as 0/1 flags,
+  not in-round values — counters accumulate for life.
+- [ ] **Counter vocabulary** — every key the builder emits must be registered in
+  `src/lib/trophies/counters.ts`, or the rule can't be saved and reads as zero forever.
+  `game-facts/vocabulary.test.ts` fails CI on an unregistered key.
+- [ ] **System trophies** — `src/lib/trophies/system-trophies/<game>.ts`, registered in
+  `system-catalog.ts`'s `BY_GAME`.
+- [ ] **Seed migration** — regenerate the seed from `buildSystemCatalog()` into a NEW migration.
+  The migrations are the only source of schema truth, so a trophy that exists only in code can
+  never be awarded by a database built from them. `system-trophy-seed-parity.test.ts` fails CI
+  when the specs and the seeded rows diverge — including a spec edit that leaves the old row
+  behind, which is how the Wordle set's sort orders drifted.
+- [ ] **Winner resolution** — add the game to `src/lib/trophies/outcome.ts` if the server can
+  determine a winner, or the generic `games_won` / first-win track silently never fires.
+
+Don't invent a trophy the data can't support. If a "under 5 seconds" award would need a turn
+start time nobody persists, omit it and say so in the file's header comment — every existing
+builder documents its omissions that way.
+
 ## 8. API routes & advance logic
 
 ### Typical layout

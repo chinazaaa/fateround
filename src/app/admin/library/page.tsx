@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { Chip } from '@/components/ui/PageShell'
+import { MAX_PRICE_COINS } from '@/lib/coins/pricing'
 
 interface QuestionPack {
   id: string
@@ -15,6 +16,7 @@ interface QuestionPack {
   created_at: string
   approved_at: string | null
   tags: string[]
+  price_coins: number
 }
 
 const GAME_TYPE_META: Record<string, { label: string; color: string }> = {
@@ -196,6 +198,9 @@ function PackCard({
   const [tags, setTags] = useState<string[]>(pack.tags ?? [])
   const [status, setStatus] = useState(pack.status)
   const [questionsJson, setQuestionsJson] = useState(() => JSON.stringify(pack.questions ?? [], null, 2))
+  // Shop price. 0 = free (default / grandfathered). > 0 = premium; the shop
+  // catalog surfaces it and players pay coins to unlock.
+  const [priceCoins, setPriceCoins] = useState<string>(String(pack.price_coins ?? 0))
 
   // Collection membership (loaded when the editor opens). null = not yet loaded.
   const [allCollections, setAllCollections] = useState<{ id: string; name: string; is_active: boolean }[] | null>(null)
@@ -238,6 +243,16 @@ function PackCard({
     setSaveError(null)
     try {
       const nextQuestions = parsedQuestions.value
+      const parsedPrice = priceCoins === '' ? 0 : Number(priceCoins)
+      if (
+        !Number.isFinite(parsedPrice) ||
+        !Number.isInteger(parsedPrice) ||
+        parsedPrice < 0 ||
+        parsedPrice > MAX_PRICE_COINS
+      ) {
+        setSaveError(`Price must be an integer between 0 and ${MAX_PRICE_COINS} (0 for free).`)
+        return
+      }
       const res = await fetch(`/api/admin/library/${pack.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -249,6 +264,7 @@ function PackCard({
           tags,
           status,
           questions: nextQuestions,
+          price_coins: parsedPrice,
         }),
       })
       const data = await res.json()
@@ -275,6 +291,7 @@ function PackCard({
         status,
         questions: nextQuestions,
         question_count: nextQuestions.length,
+        price_coins: parsedPrice,
       })
       setEditing(false)
     } catch (err) {
@@ -292,6 +309,7 @@ function PackCard({
     setTags(pack.tags ?? [])
     setStatus(pack.status)
     setQuestionsJson(JSON.stringify(pack.questions ?? [], null, 2))
+    setPriceCoins(String(pack.price_coins ?? 0))
     // Drop loaded collection state so re-opening re-fetches the current membership.
     setAllCollections(null)
     setCollectionIds([])
@@ -310,6 +328,11 @@ function PackCard({
           <p className="text-muted text-sm">by {pack.author_name}</p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
+          {pack.price_coins > 0 && (
+            <span className="label-caps rounded-full border border-[var(--primary)]/40 bg-[var(--primary)]/10 px-2.5 py-1 text-[10px] font-semibold text-[var(--primary)]">
+              🪙 {pack.price_coins}
+            </span>
+          )}
           <span className={`label-caps rounded-full border px-2.5 py-1 text-[10px] ${meta?.color ?? 'chip'}`}>
             {meta?.label ?? pack.game_type}
           </span>
@@ -479,6 +502,22 @@ function PackCard({
                 </button>
               ))}
             </div>
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-muted">Shop price (coins)</label>
+            <input
+              type="number"
+              min={0}
+              step={1}
+              value={priceCoins}
+              onChange={(e) => setPriceCoins(e.target.value)}
+              className="input-field w-40"
+              placeholder="0"
+            />
+            <p className="text-faint text-[10px]">
+              0 = free (grandfathered / default). Above 0 lists this pack in the coin shop; players pay to unlock.
+            </p>
           </div>
 
           <div className="space-y-1">

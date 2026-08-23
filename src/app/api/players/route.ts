@@ -1890,6 +1890,49 @@ export async function DELETE(req: NextRequest) {
 
   if (!player) return NextResponse.json({ error: 'Player not found' }, { status: 404 })
 
+  /**
+   * A finished game is a RESULT, and a result does not change because someone closed the tab.
+   *
+   * Leaving hard-DELETEs the players row, and the per-game score tables cascade off it
+   * (`trivia_answers.player_id references players(id) on delete cascade`, and the same shape
+   * everywhere else). Every finished screen ranks the rows that are still there and highlights
+   * the top one — so when the players above you left the results screen, their scores were
+   * ERASED and you were promoted into first. Reported as "I was 5th, the top four left, and the
+   * finished screen made me the winner".
+   *
+   * It was never only cosmetic. `GameFinishPanel` derives `winnerPlayerId` the same way and
+   * `PostWinToCommunity` fires on it, so a phantom win was posted to the community leaderboard;
+   * the award pass takes its winners from the same place.
+   *
+   * So: once a game is over, removal is a no-op. There is nothing left to leave — the client
+   * clears its local session and navigates away either way, which is why this answers 200
+   * rather than an error. Mid-game departures still delete, and that stays correct: a player
+   * who walks out before the end forfeits rather than placing.
+   *
+   * Placed BEFORE the per-game branches deliberately: each of those runs its own removal and
+   * returns early, so a guard any lower would miss most of the games.
+   */
+  if ((game as { status?: string }).status === 'finished') {
+    /**
+     * Keep the row, but honour the leave in the one way that still has meaning: stop pushing
+     * to them about this game.
+     *
+     * Both push tables key on `players(id) ON DELETE CASCADE`, so before this guard existed a
+     * leave unsubscribed the device as a side effect of the delete. Retaining the row retains
+     * those rows too — which would have left someone who deliberately left a finished game
+     * still receiving "Play again? 🔁" when the host reopened the lobby. Unsubscribing here
+     * costs the standings nothing: the score tables hang off the player row, not these.
+     *
+     * Best-effort: a failure to unsubscribe must not turn a successful leave into an error.
+     */
+    await Promise.all([
+      getSupabaseAdmin().from('push_subscriptions').delete().eq('game_id', id).eq('player_id', playerId),
+      getSupabaseAdmin().from('mobile_push_tokens').delete().eq('game_id', id).eq('player_id', playerId),
+    ]).catch(() => {})
+
+    return NextResponse.json({ success: true, retained: true })
+  }
+
   const gameType = parseGameType((game as { game_type?: string }).game_type)
 
   if (isCodewordsGame(gameType)) {
