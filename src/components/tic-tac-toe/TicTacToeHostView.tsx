@@ -258,6 +258,7 @@ export function TicTacToeHostView({ gameCode, hostToken }: { gameCode: string; h
     () =>
       game?.status === 'active' && !gameFinished ? (
         <HostActiveSettings
+          game={game}
           gameCode={gameCode}
           hostToken={hostToken}
           gameType="tic_tac_toe"
@@ -343,7 +344,7 @@ export function TicTacToeHostView({ gameCode, hostToken }: { gameCode: string; h
             onJoin={() => void hostJoinGame()}
             joining={hostJoining}
             onEditName={renameHost}
-            spectatorHint="Spectate from the Watch tab"
+            spectatorHint="Spectate"
           />
         ) : undefined
       }

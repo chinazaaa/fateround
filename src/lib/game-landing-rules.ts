@@ -484,7 +484,7 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
     {
       title: 'Setup',
       points: [
-        '2–8 players join a room and pick a board token (car, hat, dog, etc.). Each player starts on PAYDAY with £1,500.',
+        '2–9 players join a room and pick a board token (car, hat, dog, etc.). Each player starts on PAYDAY with £1,500.',
         'The Bank holds all Title Deeds until purchased. The host starts when everyone is ready; turn order is set at game start.',
       ],
     },
@@ -552,6 +552,29 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
       points: [
         'Propose trades with other players at any time — cash, properties, and skip-the-queue cards.',
         'The other player must accept or decline. You cannot trade properties that still have buildings on the colour-group.',
+        'If you carry an outstanding bank loan, a trade is blocked when it would leave your liquid assets below your loan balance.',
+      ],
+    },
+    {
+      title: 'House rules (optional)',
+      points: [
+        'Board size: choose the classic 40-space board or the expanded 48-space edition. The expanded board rescales PAYDAY salary, loan limits, house/hotel supply, and card payouts to keep rents and cash balanced.',
+        'Double GO Salary: pay ₦400 (instead of ₦200) when a player lands exactly on PAYDAY. Passing over PAYDAY still pays the regular ₦200.',
+        'Forced Auctions: if a player declines to buy an unowned property they land on, it must go to auction — the “pass and hold” option is removed.',
+        'No Rent in NICKED: players sent to NICKED stop collecting rent on their unmortgaged properties until they get out.',
+        'Robin Hood Estate Dividend: when a player leaves mid-game, their remaining estate is liquidated and the proceeds split equally among the players still in the game — instead of going to the bank or the creditor.',
+        'Bank Loans: allow players to borrow emergency funds from the bank with flat interest and a foreclosure term limit (see below).',
+      ],
+    },
+    {
+      title: 'Bank loans (optional)',
+      points: [
+        'When the host enables loans, borrow from the bank up to a credit limit set by your cash plus half the mortgage value of your unencumbered properties, capped at a per-edition maximum.',
+        'Interest is flat and added up-front; the host picks the interest rate (10%, 15%, 20%, or 25%) and repayment term (2–5 full rounds) in the lobby.',
+        'Repay in full or partially at any time — overpayments are automatically trimmed to the outstanding balance.',
+        'If the loan is not fully repaid within the term, the bank forecloses: it seizes your cash, liquidates buildings at half price, and transfers any unpaid properties.',
+        'A trade is blocked if it would leave your liquid assets below your outstanding loan balance — so you can trade to raise repayment cash, but you can’t offload collateral and skip the debt.',
+        'Bots use the same facility humans do when they need to raise funds.',
       ],
     },
     {

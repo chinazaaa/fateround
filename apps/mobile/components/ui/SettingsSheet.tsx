@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { Modal, Pressable, StyleSheet, Switch, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
+import { useRouter } from 'expo-router'
 import Svg, { Circle, Path } from 'react-native-svg'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles, useThemeMode, type ThemeMode } from '@/constants/theme-context'
-import { usePreferences } from '@/constants/preferences-context'
+import { DevicePreferencesSection } from '@/components/settings/DevicePreferencesSection'
 
 const APPEARANCE_OPTIONS: { value: ThemeMode; label: string }[] = [
   { value: 'system', label: 'System' },
@@ -28,15 +29,14 @@ export function GearIcon({ color }: { color: string }) {
 }
 
 /**
- * Consolidated settings bottom sheet: Appearance (System/Light/Dark),
- * Sound effects, and Notifications. Appearance is driven by the existing theme
- * context; the two switches are driven by the preferences context.
+ * Device preferences as a bottom sheet, for use IN GAME.
+ *
+ * Kept as a sheet rather than folded into the `/settings` screen because navigating away from a
+ * live round to change the volume is the wrong trade. Everywhere else — Home included — the ⚙
+ * goes to `/settings`, which carries these same controls plus the account ones.
  */
 export function SettingsSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
-  const theme = useTheme()
   const styles = useThemedStyles(makeStyles)
-  const { mode, setMode } = useThemeMode()
-  const { soundEnabled, setSoundEnabled, notificationsEnabled, setNotificationsEnabled } = usePreferences()
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
@@ -52,53 +52,8 @@ export function SettingsSheet({ visible, onClose }: { visible: boolean; onClose:
               </Pressable>
             </View>
 
-            <View style={styles.body}>
-              <View style={styles.section}>
-                <Text style={styles.rowLabel}>Appearance</Text>
-                <View style={styles.segment}>
-                  {APPEARANCE_OPTIONS.map((opt) => {
-                    const active = mode === opt.value
-                    return (
-                      <Pressable
-                        key={opt.value}
-                        style={[styles.segmentBtn, active && styles.segmentBtnActive]}
-                        onPress={() => setMode(opt.value)}
-                        accessibilityRole="button"
-                        accessibilityState={{ selected: active }}
-                      >
-                        <Text style={[styles.segmentText, active && styles.segmentTextActive]}>{opt.label}</Text>
-                      </Pressable>
-                    )
-                  })}
-                </View>
-              </View>
-
-              <View style={styles.switchRow}>
-                <View style={styles.switchCopy}>
-                  <Text style={styles.rowLabel}>Sound effects</Text>
-                  <Text style={styles.rowHint}>Plays taps, dice and turn cues in games.</Text>
-                </View>
-                <Switch
-                  value={soundEnabled}
-                  onValueChange={setSoundEnabled}
-                  trackColor={{ false: theme.border, true: theme.primarySoft }}
-                  thumbColor={soundEnabled ? theme.primary : theme.textMuted}
-                />
-              </View>
-
-              <View style={styles.switchRow}>
-                <View style={styles.switchCopy}>
-                  <Text style={styles.rowLabel}>Notifications</Text>
-                  <Text style={styles.rowHint}>Get a nudge when it&apos;s your turn.</Text>
-                </View>
-                <Switch
-                  value={notificationsEnabled}
-                  onValueChange={setNotificationsEnabled}
-                  trackColor={{ false: theme.border, true: theme.primarySoft }}
-                  thumbColor={notificationsEnabled ? theme.primary : theme.textMuted}
-                />
-              </View>
-            </View>
+            {/* Same controls as the /settings screen — see DevicePreferencesSection. */}
+            <DevicePreferencesSection />
           </SafeAreaView>
         </Pressable>
       </Pressable>
@@ -107,19 +62,23 @@ export function SettingsSheet({ visible, onClose }: { visible: boolean; onClose:
 }
 
 /**
- * The ⚙ gear button. Styled like `HeaderAction`/`ThemeModeButton` (40x40 pill)
- * and opens the consolidated {@link SettingsSheet}. Drop-in replacement for the
- * standalone theme toggle; usable on the home screen and in-game headers.
+ * The ⚙ gear button (40x40 pill, styled like `HeaderAction`).
+ *
+ * `variant='screen'` navigates to `/settings`, which holds device preferences AND account
+ * settings — that is what the gear should mean everywhere a player isn't mid-round.
+ * `variant='sheet'` (the default, used in-game) opens the bottom sheet instead, because
+ * navigating out of a live round to change the volume is the wrong trade.
  */
-export function SettingsButton() {
+export function SettingsButton({ variant = 'sheet' }: { variant?: 'sheet' | 'screen' } = {}) {
   const styles = useThemedStyles(makeStyles)
   const theme = useTheme()
+  const router = useRouter()
   const [open, setOpen] = useState(false)
 
   return (
     <>
       <Pressable
-        onPress={() => setOpen(true)}
+        onPress={() => (variant === 'screen' ? router.push('/settings' as never) : setOpen(true))}
         style={({ pressed }) => [styles.btn, pressed && styles.pressed]}
         hitSlop={10}
         accessibilityRole="button"

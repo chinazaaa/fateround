@@ -44,7 +44,13 @@ describe('useProfileAttribution', () => {
     await waitFor(() => expect(fetch).toHaveBeenCalled())
     const [url, init] = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0]
     expect(url).toBe('/api/profile/attribute')
-    expect(JSON.parse((init as { body: string }).body)).toEqual({ gameCode: GAME, resumeToken: 'TOK123' })
+    const body = JSON.parse((init as { body: string }).body)
+    expect(body.gameCode).toBe(GAME)
+    expect(body.resumeToken).toBe('TOK123')
+    // Phase 2 also carries the device id so `migrate_guest_grants` can fire
+    // when this profile later signs up — its exact value is a per-browser
+    // uuid, so we just assert it's present.
+    expect(typeof body.deviceId).toBe('string')
   })
 
   it('does nothing while the game is still active', async () => {
@@ -84,13 +90,21 @@ describe('useProfileAttribution', () => {
     expect(fetch).toHaveBeenCalledTimes(1)
   })
 
-  it('stays silent when no identity could be established', async () => {
-    // Rate-limited or anonymous sign-in not enabled. The player still has a finished game.
+  it('runs the guest-earning path when no identity could be established', async () => {
+    // Rate-limited or anonymous sign-in not enabled — the player still has a finished game,
+    // and Phase 2 writes their pending guest coins keyed on the local device id.
     h.ensureServerIdentity.mockResolvedValue(null)
     setup({ status: 'finished', resumeToken: 'TOK123' })
 
     await waitFor(() => expect(h.ensureServerIdentity).toHaveBeenCalled())
-    expect(fetch).not.toHaveBeenCalled()
+    await waitFor(() => expect(fetch).toHaveBeenCalled())
+    const [url, init] = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0]
+    expect(url).toBe('/api/profile/attribute')
+    // No auth header — this is the guest path — but a device id must ride along.
+    expect((init as { headers: Record<string, string> }).headers.Authorization).toBeUndefined()
+    const body = JSON.parse((init as { body: string }).body)
+    expect(body.gameCode).toBe(GAME)
+    expect(typeof body.deviceId).toBe('string')
   })
 
   it('swallows a failing request', async () => {

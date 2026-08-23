@@ -28,6 +28,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   if (auth.error || !auth.player) return NextResponse.json({ error: auth.error }, { status: auth.status })
   const gameId = auth.id
   const playerId = auth.player.id
+  // Also move `host_user_id` to whichever profile owns the new host's player row (or NULL
+  // when the claimant is a guest). Without this, the previous host could still reclaim by
+  // profile via /reclaim-host after being transferred out. `player.user_id` is null-safe:
+  // a null claimant just leaves host_user_id null and the reclaim path finds no owner.
+  const newHostUserId = (auth.player as { user_id?: string | null }).user_id ?? null
 
   const newHostToken = generateToken()
 
@@ -36,7 +41,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const { data: updated, error: updateError } = await supabase
     .from('games')
     // Repoint the roster HOST badge to the new host's player row (they claim as a player).
-    .update({ host_token: newHostToken, pending_host_player_id: null, host_player_id: playerId })
+    .update({
+      host_token: newHostToken,
+      pending_host_player_id: null,
+      host_player_id: playerId,
+      host_user_id: newHostUserId,
+    })
     .eq('id', gameId)
     .eq('pending_host_player_id', playerId)
     .select('id')

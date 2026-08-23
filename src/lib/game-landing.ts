@@ -1249,8 +1249,8 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     heroSubtitle:
       'A classic Monopoly-style property game on your phones. Join a room, roll the dice, buy properties, and be the last player standing.',
     bodyParagraph:
-      'Estate Kings on FateRound is a Monopoly-style property trading game with customizable themed editions — including classic London streets and Naija Edition — with full Fate and Kitty card decks, property auctions, houses, hotels, mortgages, and player trading. Join 2–8 players and play turn-by-turn in real time.',
-    highlights: ['40 or 48-space board', '2–8 players', 'Real-time turns'],
+      'Estate Kings on FateRound is a Monopoly-style property trading game with customizable themed editions — including classic London streets and Naija Edition — with full Fate and Kitty card decks, property auctions, houses, hotels, mortgages, bank loan facilities, and player trading. Join 2–9 players and play turn-by-turn in real time.',
+    highlights: ['40 or 48-space board', 'Bank loan facilities', '2–9 players', 'Real-time turns'],
     features: [
       {
         title: 'Classic board',
@@ -1264,8 +1264,13 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
           'Roll dice, buy or pass on properties, pay rent, draw cards, and manage NICKED — core Monopoly-style rules on your phones.',
         emoji: '🎲',
       },
+      {
+        title: 'Bank loans',
+        description:
+          'Borrow against your portfolio at a flat interest rate over a fixed term. Miss the deadline and the bank forecloses — cash seized, buildings liquidated, properties transferred.',
+        emoji: '🏦',
+      },
       SHARED_FEATURES.realtime,
-      SHARED_FEATURES.noSignup,
     ],
     steps: [
       {
@@ -1307,6 +1312,16 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         question: 'Can I set how long a Monopoly-style game lasts?',
         answer:
           'Yes. In Estate Kings the host can set an optional game duration so a session doesn’t run forever — when time’s up, the richest player (cash plus property) wins. Leave it off for a classic last-player-standing game.',
+      },
+      {
+        question: 'How do bank loans work in Estate Kings?',
+        answer:
+          'When the host enables loans, any player can borrow from the bank up to a credit limit set by their cash plus half the mortgage value of their unencumbered properties. Interest is flat and the term is a fixed number of rounds — both configurable in the lobby. You can repay in full or partially at any time; overpayments are trimmed to the outstanding balance. Miss the deadline and the bank forecloses: it seizes your cash, liquidates buildings at half price, and transfers any remaining unpaid properties.',
+      },
+      {
+        question: 'Can I trade properties while I have an outstanding loan?',
+        answer:
+          'Only if the trade leaves you solvent. A proposed trade is blocked when it would leave your liquid assets below the loan balance — so you can trade to raise cash for repayment, but you can’t offload collateral and skip the debt.',
       },
     ],
   }),

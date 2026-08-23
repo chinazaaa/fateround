@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Exchange01Icon } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
 import {
@@ -9,6 +9,7 @@ import {
   MonopolySecondaryButton,
   MonopolyJailCardInventory,
 } from '@/components/monopoly/MonopolyChrome'
+import { useMonopolyDeadlineTimer } from '@/hooks/useMonopolyModalTimer'
 import { canAddHotel, canAddHouse, canRemoveHotel, canRemoveHouse } from '@/lib/monopoly-build'
 import { buildingLevel, computeRent, parseBuildings, parseMortgaged } from '@/lib/monopoly-rent'
 import {
@@ -31,6 +32,7 @@ import {
   type MonopolyColorGroup,
   type MonopolyBoardSize,
 } from '@/lib/monopoly'
+import { getActiveMonopolyLoan } from '@/lib/monopoly-loan'
 import { monopolyTokenEmoji } from '@/lib/monopoly-tokens'
 import {
   canonicalToDisplayMoney,
@@ -513,6 +515,7 @@ export function MonopolyManagePanel({
   acting,
   postAction,
   themeId,
+  onOpenLoans,
 }: {
   board: MonopolyBoard | null
   myPlayerId: string | null
@@ -522,6 +525,7 @@ export function MonopolyManagePanel({
   acting: boolean
   postAction: PostAction
   themeId?: string | null
+  onOpenLoans?: () => void
 }) {
   const [tradeTarget, setTradeTarget] = useState('')
   const [offerCash, setOfferCash] = useState('')
@@ -547,6 +551,21 @@ export function MonopolyManagePanel({
     repairedTradeKeyRef.current = pendingTradeKey
     void postAction('/api/monopoly/trade', { repair: true })
   }, [stalePendingTrade, pendingTradeKey, myPlayerId, postAction])
+
+  // Trade response window. The board holds one pending trade at a time, so an
+  // unanswered offer blocks trading for the whole table — when the clock runs
+  // out any client still watching pokes the repair endpoint, which lapses it
+  // server-side (the same route the stale-player repair above uses).
+  const tradeExpiresAt = pendingTrade?.expires_at ?? null
+  const handleTradeExpiry = useCallback(() => {
+    if (!myPlayerId) return
+    void postAction('/api/monopoly/trade', { repair: true })
+  }, [myPlayerId, postAction])
+  const tradeSecondsLeft = useMonopolyDeadlineTimer(
+    tradeExpiresAt,
+    Boolean(tradeExpiresAt) && !stalePendingTrade,
+    handleTradeExpiry
+  )
 
   if (!board || !myPlayerId || !myState || myState.bankrupt) {
     return (
@@ -629,7 +648,8 @@ export function MonopolyManagePanel({
             <strong className="text-[var(--foreground)]">
               {players.find((p) => p.id === activePendingTrade.to_player_id)?.name ?? 'player'}
             </strong>{' '}
-            to accept or decline:
+            to accept or decline
+            {tradeExpiresAt ? <> — expires in {tradeSecondsLeft}s</> : null}:
           </p>
           <TradeExchangeReview
             compact
@@ -660,7 +680,8 @@ export function MonopolyManagePanel({
             <strong className="text-[var(--foreground)]">
               {players.find((p) => p.id === activePendingTrade.from_player_id)?.name ?? 'player'}
             </strong>{' '}
-            — review all items in the popup before accepting:
+            — review all items in the popup before accepting
+            {tradeExpiresAt ? <> ({tradeSecondsLeft}s left to respond)</> : null}:
           </p>
           <TradeExchangeReview
             compact
@@ -688,7 +709,8 @@ export function MonopolyManagePanel({
           <strong className="text-body">
             {players.find((p) => p.id === activePendingTrade.to_player_id)?.name ?? 'player'}
           </strong>{' '}
-          is in progress — new offers are paused until it finishes.
+          is in progress — new offers are paused until it finishes
+          {tradeExpiresAt ? <> (expires in {tradeSecondsLeft}s)</> : null}.
         </p>
       )}
 
@@ -1009,12 +1031,61 @@ export function MonopolyManagePanel({
     )
   }
 
+  const myActiveLoan = myPlayerId ? getActiveMonopolyLoan(board.loans, myPlayerId) : undefined
+
   return (
     <div className="glass-card p-4 space-y-4">
       <div className="space-y-2">
         <p className="label-caps">Inventory</p>
         <MonopolyJailCardInventory count={myJailCards} showEmpty themeId={themeId} />
       </div>
+
+      {onOpenLoans && (
+        <div
+          className={[
+            'rounded-xl border p-3 flex items-center justify-between gap-3 transition-all',
+            myActiveLoan
+              ? myActiveLoan.rounds_remaining <= 1
+                ? 'border-red-500/30 bg-red-500/5'
+                : 'border-amber-500/25 bg-amber-500/5'
+              : 'border-[var(--border-strong)] bg-[var(--surface-inset-bg)]',
+          ].join(' ')}
+        >
+          <div className="space-y-0.5 min-w-0">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-xs font-bold text-[var(--foreground)]">🏦 Bank Loan</span>
+              {myActiveLoan && (
+                <span
+                  className={[
+                    'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold',
+                    myActiveLoan.rounds_remaining <= 1
+                      ? 'bg-red-500/15 text-red-500 font-bold animate-pulse'
+                      : 'bg-amber-500/15 text-amber-500',
+                  ].join(' ')}
+                >
+                  <span
+                    className={[
+                      'h-1.5 w-1.5 rounded-full',
+                      myActiveLoan.rounds_remaining <= 1 ? 'bg-red-500' : 'bg-amber-500',
+                    ].join(' ')}
+                  />
+                  {myActiveLoan.rounds_remaining === 1
+                    ? 'Due this round'
+                    : `${myActiveLoan.rounds_remaining} rounds left`}
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-muted leading-snug">
+              {myActiveLoan
+                ? `Balance: ${formatThemedMoney(myActiveLoan.balance_remaining, themeId)}`
+                : 'Borrow liquidity against your portfolio'}
+            </p>
+          </div>
+          <button type="button" onClick={onOpenLoans} className="btn-primary btn-fit px-3 py-1.5 text-xs shrink-0">
+            {myActiveLoan ? 'Manage' : 'Borrow'}
+          </button>
+        </div>
+      )}
 
       <MonopolyColorPortfolio
         propertyOwners={owners}

@@ -3,6 +3,7 @@ import { internalErrorMessage } from '@/lib/api-errors'
 import { getSupabaseAnon } from '@/lib/supabase-anon'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { enforceRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
+import { getProfileFromRequest } from '@/lib/identity-server'
 
 /**
  * PostgREST `.or()` takes a comma-separated filter EXPRESSION, so raw user input spliced into
@@ -71,7 +72,7 @@ export async function GET(req: NextRequest) {
     // Embed active-collection membership so the create picker can offer a client-side collection
     // chip filter without extra round-trips. RLS limits the join/collections to active rows.
     .select(
-      'id, title, game_type, author_name, description, question_count, approved_at, tags, question_pack_collections(content_collections(slug, name))',
+      'id, title, game_type, author_name, description, question_count, approved_at, tags, price_coins, question_pack_collections(content_collections(slug, name))',
       { count: 'exact' }
     )
     .eq('status', 'approved')
@@ -94,8 +95,38 @@ export async function GET(req: NextRequest) {
     return { ...rest, collections }
   })
 
+  // Owned lookup for paid packs so the picker's coin badge shows "Owned"
+  // instead of nudging a repeat purchase (reviewer round 5 finding #2).
+  // Signed-out callers get owned:false on every row. Only paid packs need
+  // the flag; grandfathered free packs (price_coins=0) always show
+  // without a badge anyway, so the query stays tight.
+  const paidPackIds = packs
+    .filter((p) => Number((p as { price_coins?: number }).price_coins ?? 0) > 0)
+    .map((p) => (p as unknown as { id: string }).id)
+  let ownedSet = new Set<string>()
+  if (paidPackIds.length > 0) {
+    const profileId = await getProfileFromRequest(req).catch(() => null)
+    if (profileId) {
+      const admin = getSupabaseAdmin()
+      const { data: owned, error: ownedErr } = await admin
+        .from('profile_owned_packs')
+        .select('pack_id')
+        .eq('profile_id', profileId)
+        .in('pack_id', paidPackIds)
+      // Failing the ownership lookup silently would leave every paid
+      // pack showing "🪙 X" for a caller who owns some of them, nudging
+      // a duplicate purchase (reviewer round 6 finding #9). Surface a
+      // 500 so on-call sees the RLS/query failure and the picker's
+      // catch-all error handler shows a retry.
+      if (ownedErr)
+        return NextResponse.json({ error: internalErrorMessage('library:owned', ownedErr) }, { status: 500 })
+      ownedSet = new Set((owned ?? []).map((r) => r.pack_id as string))
+    }
+  }
+  const packsWithOwned = packs.map((p) => ({ ...p, owned: ownedSet.has((p as unknown as { id: string }).id) }))
+
   return NextResponse.json({
-    packs,
+    packs: packsWithOwned,
     total: count ?? 0,
     page,
     pages: Math.max(1, Math.ceil((count ?? 0) / pageSize)),

@@ -4,6 +4,7 @@ import { internalErrorMessage } from '@/lib/api-errors'
 import { parseJsonBody } from '@/lib/parse-body'
 import { assertAdminRequest } from '@/lib/admin-api'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { MAX_PRICE_COINS } from '@/lib/coins/pricing'
 
 // Permissive shape: fields the handler runtime-checks stay `unknown` so its
 // typeof/Array.isArray guards remain live (identical messages); game_type/status are
@@ -18,6 +19,7 @@ const libraryPatchSchema = z.object({
   tags: z.unknown().optional(),
   status: z.string().optional(),
   questions: z.unknown().optional(),
+  price_coins: z.unknown().optional(),
 })
 
 const VALID_GAME_TYPES = [
@@ -42,7 +44,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const { id } = await params
   const { data: body, error: bodyError } = await parseJsonBody(req, libraryPatchSchema)
   if (bodyError) return bodyError
-  const { action, title, game_type, author_name, description, tags, status, questions } = body
+  const { action, title, game_type, author_name, description, tags, status, questions, price_coins } = body
 
   const supabase = getSupabaseAdmin()
   const updates: Record<string, unknown> = {}
@@ -91,6 +93,20 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       if (questions.length > 500) return NextResponse.json({ error: 'Too many questions (max 500)' }, { status: 400 })
       updates.questions = questions
       updates.question_count = questions.length
+    }
+    if (price_coins !== undefined) {
+      // Coerce number-like inputs (the admin form ships strings from a number
+      // input) but reject anything that isn't a non-negative integer within
+      // the shop's pricing bounds. 0 is allowed — it flips a paid pack back
+      // to free without needing a separate "unpublish price" endpoint.
+      const n = typeof price_coins === 'string' ? Number(price_coins) : (price_coins as number)
+      if (!Number.isFinite(n) || !Number.isInteger(n) || n < 0 || n > MAX_PRICE_COINS) {
+        return NextResponse.json(
+          { error: `price_coins must be an integer between 0 and ${MAX_PRICE_COINS}` },
+          { status: 400 }
+        )
+      }
+      updates.price_coins = n
     }
   }
 

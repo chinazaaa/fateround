@@ -211,3 +211,35 @@ EOF
 
 systemctl daemon-reload
 systemctl enable --now fateround-tick.timer
+
+# Streak come-back nudge — once a day, in the evening WAT. Late enough that anyone who was
+# going to play today already has (so we don't ping people who need no ping), early enough to
+# still act on it. 18:00 UTC is 19:00 WAT. Per-device quiet hours are honoured inside the
+# route, and it self-limits to one push per device per 20h, so an extra run is harmless.
+cat > /etc/systemd/system/fateround-streak-reminders.service <<EOF
+[Unit]
+Description=FateRound streak come-back reminders
+After=docker.service
+
+[Service]
+Type=oneshot
+TimeoutStartSec=120
+ExecStart=/usr/bin/curl -fsS --max-time 90 -X POST -H "Authorization: Bearer $CRON_SECRET" $TICK_URL/api/cron/streak-reminders
+EOF
+chmod 600 /etc/systemd/system/fateround-streak-reminders.service
+
+cat > /etc/systemd/system/fateround-streak-reminders.timer <<'EOF'
+[Unit]
+Description=FateRound streak come-back reminder timer
+
+[Timer]
+OnCalendar=*-*-* 18:00:00 UTC
+# A box that was down at 18:00 still sends today's batch when it comes back.
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF
+
+systemctl daemon-reload
+systemctl enable --now fateround-streak-reminders.timer

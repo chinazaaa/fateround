@@ -252,7 +252,7 @@ export function TriviaHostView({ gameCode, hostToken }: { gameCode: string; host
   const hostSettingsNode = useMemo(
     () =>
       game?.status === 'active' ? (
-        <HostActiveSettings gameCode={gameCode} hostToken={hostToken} gameType="trivia" onEnded={load}>
+        <HostActiveSettings game={game} gameCode={gameCode} hostToken={hostToken} gameType="trivia" onEnded={load}>
           <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
           {roundAutomation.activeRound && (
             <button
@@ -359,7 +359,7 @@ export function TriviaHostView({ gameCode, hostToken }: { gameCode: string; host
             onJoin={() => void hostJoinGame()}
             joining={hostJoining}
             onEditName={renameHost}
-            spectatorHint="Watch the game from the Watch tab"
+            spectatorHint="Watch the game"
             playingNote={
               <p className="text-sm text-muted">
                 Playing as <strong className="text-body">{hostPlayerName}</strong> — answer once you start.
@@ -411,6 +411,7 @@ export function TriviaHostView({ gameCode, hostToken }: { gameCode: string; host
         game={game}
         limitType="trivia"
         playerCount={players.length}
+        seatedCount={players.filter((p) => !p.spectator).length}
         onGameUpdate={setGame}
       />
       <button type="button" onClick={() => setSettingsModal('lobby')} className="btn-secondary w-full">

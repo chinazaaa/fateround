@@ -1,7 +1,7 @@
 /** London Edition board — property names, title-deed rents, and building costs. */
 
 export const MONOPOLY_MIN_PLAYERS = 2
-export const MONOPOLY_MAX_PLAYERS = 8
+export const MONOPOLY_MAX_PLAYERS = 9
 export const MONOPOLY_DEFAULT_MAX_PLAYERS = 6
 export const MONOPOLY_STARTING_CASH = 1500
 export const MONOPOLY_EXPANDED_STARTING_CASH = 6000
