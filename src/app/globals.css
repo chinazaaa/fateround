@@ -2118,14 +2118,28 @@ select.input-field option,
 
 /* ── Custom Utilities ───────────────────────────────────────────── */
 @theme {
-  --animate-intermittent-shake: intermittent-shake 5s cubic-bezier(.36,.07,.19,.97) infinite;
+  --animate-intermittent-shake: intermittent-shake 5s cubic-bezier(0.36, 0.07, 0.19, 0.97) infinite;
   @keyframes intermittent-shake {
-    0%, 80% { transform: translateX(0); }
-    82% { transform: translateX(-4px) rotate(-3deg); }
-    84% { transform: translateX(4px) rotate(3deg); }
-    86% { transform: translateX(-4px) rotate(-3deg); }
-    88% { transform: translateX(4px) rotate(3deg); }
-    90%, 100% { transform: translateX(0); }
+    0%,
+    80% {
+      transform: translateX(0);
+    }
+    82% {
+      transform: translateX(-4px) rotate(-3deg);
+    }
+    84% {
+      transform: translateX(4px) rotate(3deg);
+    }
+    86% {
+      transform: translateX(-4px) rotate(-3deg);
+    }
+    88% {
+      transform: translateX(4px) rotate(3deg);
+    }
+    90%,
+    100% {
+      transform: translateX(0);
+    }
   }
 }
 
@@ -2134,18 +2148,23 @@ select option {
   color: var(--foreground) !important;
 }
 
-
 /* ── Phase 3 coin-shop cosmetics ────────────────────────────────── */
 /* Name color CSS-var flip so PlayerName is theme-aware without prop drilling. */
-.fr-name-solid { color: var(--pname-solid-light); }
-[data-theme='dark'] .fr-name-solid { color: var(--pname-solid-dark); }
+.fr-name-solid {
+  color: var(--pname-solid-light);
+}
+[data-theme='dark'] .fr-name-solid {
+  color: var(--pname-solid-dark);
+}
 .fr-name-gradient {
   background-image: var(--pname-gradient-light);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
 }
-[data-theme='dark'] .fr-name-gradient { background-image: var(--pname-gradient-dark); }
+[data-theme='dark'] .fr-name-gradient {
+  background-image: var(--pname-gradient-dark);
+}
 
 /* Avatar frame decorations layered over the ring set inline in Avatar.tsx.
    Kept as ::before pseudo-elements so no wrapper markup is required — the
@@ -2155,8 +2174,15 @@ select option {
   position: absolute;
   inset: -6px;
   border-radius: 9999px;
-  background:
-    conic-gradient(from 200deg, transparent 0deg, rgba(183,141,63,0.45) 20deg, transparent 60deg, transparent 300deg, rgba(183,141,63,0.45) 320deg, transparent 360deg);
+  background: conic-gradient(
+    from 200deg,
+    transparent 0deg,
+    rgba(183, 141, 63, 0.45) 20deg,
+    transparent 60deg,
+    transparent 300deg,
+    rgba(183, 141, 63, 0.45) 320deg,
+    transparent 360deg
+  );
   pointer-events: none;
 }
 .fr-frame-stars::before {
@@ -2165,10 +2191,10 @@ select option {
   inset: -4px;
   border-radius: 9999px;
   background:
-    radial-gradient(1px 1px at 20% 30%, rgba(255,255,255,0.85), transparent 60%),
-    radial-gradient(1px 1px at 75% 20%, rgba(255,255,255,0.85), transparent 60%),
-    radial-gradient(1px 1px at 80% 70%, rgba(255,255,255,0.85), transparent 60%),
-    radial-gradient(1px 1px at 25% 78%, rgba(255,255,255,0.85), transparent 60%);
+    radial-gradient(1px 1px at 20% 30%, rgba(255, 255, 255, 0.85), transparent 60%),
+    radial-gradient(1px 1px at 75% 20%, rgba(255, 255, 255, 0.85), transparent 60%),
+    radial-gradient(1px 1px at 80% 70%, rgba(255, 255, 255, 0.85), transparent 60%),
+    radial-gradient(1px 1px at 25% 78%, rgba(255, 255, 255, 0.85), transparent 60%);
   pointer-events: none;
 }
 
@@ -2180,61 +2206,292 @@ select option {
   color: #f5e7bf;
   box-shadow: inset 0 0 0 1px #d4a017;
 }
-.fr-card-gold-luxe .gradient-title { background-image: linear-gradient(90deg, #f5e7bf, #d4a017); }
+.fr-card-gold-luxe .gradient-title {
+  background-image: linear-gradient(90deg, #f5e7bf, #d4a017);
+}
 .fr-card-neon {
   padding: 1rem;
   border-radius: 1rem;
   background: linear-gradient(160deg, #0b0f1e 0%, #05060b 100%);
   color: #e5e7eb;
-  box-shadow: inset 0 0 0 1px #22d3ee, 0 0 20px rgba(34,211,238,0.25);
+  box-shadow:
+    inset 0 0 0 1px #22d3ee,
+    0 0 20px rgba(34, 211, 238, 0.25);
 }
-.fr-card-neon .gradient-title { background-image: linear-gradient(90deg, #22d3ee, #d946ef); }
+.fr-card-neon .gradient-title {
+  background-image: linear-gradient(90deg, #22d3ee, #d946ef);
+}
 
-/* Winner animations — CSS placeholders until the Lottie assets ship
-   (docs/coins-art-briefs.md § "Winner animations"). Same class names as
-   the eventual Lottie mount points, so the swap is a one-file change. */
-@keyframes fr-anim-confetti-drift {
-  0%   { transform: translateY(0)   rotate(0deg);   opacity: 0; }
-  20%  { opacity: 1; }
-  100% { transform: translateY(-40px) rotate(90deg); opacity: 0; }
+/* Winner animations — pure-CSS particle effects using the box-shadow
+   many-particle trick. A single 6px element casts 30+ colored shadows,
+   each a distinct particle. Cheap to render (one DOM node per layer,
+   GPU-composited transform + opacity animation) and self-contained so
+   the Lottie swap later is still a one-file change. Class names and
+   .cssClass mapping in src/lib/coins/shop-catalog.ts are unchanged. */
+
+/* --- Confetti: 30 pieces drifting up and out with rotation and fade --- */
+@keyframes fr-anim-confetti-rise {
+  0% {
+    transform: translate3d(0, 20%, 0) rotate(0deg);
+    opacity: 0;
+  }
+  15% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate3d(0, -120%, 0) rotate(540deg);
+    opacity: 0;
+  }
+}
+.fr-anim-confetti {
+  position: relative;
 }
 .fr-anim-confetti::before,
 .fr-anim-confetti::after {
   content: '';
   position: absolute;
-  inset: 0;
-  background:
-    radial-gradient(4px 4px at 20% 90%, #f472b6 100%, transparent),
-    radial-gradient(4px 4px at 40% 92%, #22d3ee 100%, transparent),
-    radial-gradient(4px 4px at 60% 88%, #fcd34d 100%, transparent),
-    radial-gradient(4px 4px at 80% 92%, #a78bfa 100%, transparent);
-  animation: fr-anim-confetti-drift 2.4s ease-out 1 forwards;
+  left: 50%;
+  top: 100%;
+  width: 6px;
+  height: 10px;
+  border-radius: 1px;
+  background: transparent;
+  animation: fr-anim-confetti-rise 2.6s ease-out 1 forwards;
+  /* 30 particles per pseudo (60 total). Each shadow: x-offset y-offset
+     blur=0 spread=0 color. Positions span the viewport horizontally,
+     staggered slightly in y so the rise reads as a burst-and-drift. */
+  box-shadow:
+    -46vw 2vh 0 0 #f472b6,
+    -42vw -1vh 0 0 #22d3ee,
+    -38vw 3vh 0 0 #fcd34d,
+    -34vw 0 0 0 #a78bfa,
+    -30vw 4vh 0 0 #4ade80,
+    -26vw 1vh 0 0 #f472b6,
+    -22vw -2vh 0 0 #fb923c,
+    -18vw 2vh 0 0 #22d3ee,
+    -14vw 4vh 0 0 #fcd34d,
+    -10vw 0 0 0 #a78bfa,
+    -6vw 3vh 0 0 #4ade80,
+    -2vw 1vh 0 0 #f472b6,
+    2vw 4vh 0 0 #fb923c,
+    6vw -1vh 0 0 #22d3ee,
+    10vw 2vh 0 0 #fcd34d,
+    14vw 0 0 0 #a78bfa,
+    18vw 3vh 0 0 #4ade80,
+    22vw 1vh 0 0 #f472b6,
+    26vw 4vh 0 0 #fb923c,
+    30vw -2vh 0 0 #22d3ee,
+    34vw 2vh 0 0 #fcd34d,
+    38vw 0 0 0 #a78bfa,
+    42vw 4vh 0 0 #4ade80,
+    46vw 1vh 0 0 #f472b6,
+    -20vw 6vh 0 0 #22d3ee,
+    20vw 6vh 0 0 #fb923c,
+    -8vw 5vh 0 0 #4ade80,
+    8vw 5vh 0 0 #fcd34d,
+    -14vw 7vh 0 0 #a78bfa,
+    14vw 7vh 0 0 #f472b6;
 }
+.fr-anim-confetti::after {
+  /* Second wave, larger particles + slight delay for depth. */
+  width: 8px;
+  height: 12px;
+  animation-delay: 0.15s;
+  animation-duration: 3s;
+  box-shadow:
+    -44vw 4vh 0 0 #fcd34d,
+    -36vw -3vh 0 0 #22d3ee,
+    -28vw 5vh 0 0 #f472b6,
+    -20vw 1vh 0 0 #a78bfa,
+    -12vw 6vh 0 0 #fb923c,
+    -4vw -1vh 0 0 #4ade80,
+    4vw 6vh 0 0 #22d3ee,
+    12vw 1vh 0 0 #fcd34d,
+    20vw 5vh 0 0 #f472b6,
+    28vw -3vh 0 0 #a78bfa,
+    36vw 4vh 0 0 #fb923c,
+    44vw 0 0 0 #4ade80,
+    -40vw 8vh 0 0 #f472b6,
+    -24vw 8vh 0 0 #fb923c,
+    -8vw 9vh 0 0 #22d3ee,
+    8vw 9vh 0 0 #fcd34d,
+    24vw 8vh 0 0 #a78bfa,
+    40vw 8vh 0 0 #4ade80;
+}
+
+/* --- Fireworks: 3 staggered bursts, each an expanding ring --- */
 @keyframes fr-anim-fireworks-burst {
-  0%   { transform: scale(0.2); opacity: 0; }
-  40%  { opacity: 1; }
-  100% { transform: scale(1.6); opacity: 0; }
+  0% {
+    transform: scale(0.1);
+    opacity: 0;
+  }
+  20% {
+    opacity: 1;
+  }
+  70% {
+    opacity: 0.9;
+  }
+  100% {
+    transform: scale(3.2);
+    opacity: 0;
+  }
 }
-.fr-anim-fireworks::before {
+.fr-anim-fireworks {
+  position: relative;
+}
+.fr-anim-fireworks::before,
+.fr-anim-fireworks::after {
   content: '';
   position: absolute;
-  inset: 20%;
+  width: 4px;
+  height: 4px;
   border-radius: 9999px;
-  background: radial-gradient(circle, #fcd34d 0%, #f97316 40%, transparent 60%);
-  animation: fr-anim-fireworks-burst 2.2s ease-out 1 forwards;
+  background: transparent;
+  animation: fr-anim-fireworks-burst 1.5s ease-out 1 forwards;
 }
+/* First burst — top-left, gold. 12 sparks radiating from center. */
+.fr-anim-fireworks::before {
+  left: 28%;
+  top: 30%;
+  box-shadow:
+    0 -18px 0 0 #fcd34d,
+    12px -14px 0 0 #fcd34d,
+    18px 0 0 0 #fcd34d,
+    14px 12px 0 0 #fcd34d,
+    0 18px 0 0 #fcd34d,
+    -12px 14px 0 0 #fcd34d,
+    -18px 0 0 0 #fcd34d,
+    -14px -12px 0 0 #fcd34d,
+    0 -10px 0 0 #fef3c7,
+    10px 0 0 0 #fef3c7,
+    0 10px 0 0 #fef3c7,
+    -10px 0 0 0 #fef3c7;
+}
+/* Second burst — right, magenta. Delayed. */
+.fr-anim-fireworks::after {
+  left: 68%;
+  top: 45%;
+  animation-delay: 0.4s;
+  box-shadow:
+    0 -18px 0 0 #f472b6,
+    12px -14px 0 0 #f472b6,
+    18px 0 0 0 #f472b6,
+    14px 12px 0 0 #f472b6,
+    0 18px 0 0 #f472b6,
+    -12px 14px 0 0 #f472b6,
+    -18px 0 0 0 #f472b6,
+    -14px -12px 0 0 #f472b6,
+    0 -10px 0 0 #fce7f3,
+    10px 0 0 0 #fce7f3,
+    0 10px 0 0 #fce7f3,
+    -10px 0 0 0 #fce7f3;
+}
+/* Third burst — bottom-center, cyan. Adds a wrapper element via a child
+   div isn't possible here, so we layer via ::before of a nested element.
+   The overlay component only renders one element, so we simulate the
+   third burst by using a large radial-gradient painted on the wrapper. */
+.fr-anim-fireworks {
+  background: radial-gradient(circle 3px at 50% 78%, transparent 0, transparent 100%);
+  animation: fr-anim-fireworks-third 1.8s ease-out 0.75s 1 forwards;
+}
+@keyframes fr-anim-fireworks-third {
+  0% {
+    background:
+      radial-gradient(circle 2px at 50% 78%, #22d3ee 0%, transparent 3px),
+      radial-gradient(circle 2px at 45% 74%, #22d3ee 0%, transparent 3px),
+      radial-gradient(circle 2px at 55% 74%, #22d3ee 0%, transparent 3px),
+      radial-gradient(circle 2px at 43% 80%, #22d3ee 0%, transparent 3px),
+      radial-gradient(circle 2px at 57% 80%, #22d3ee 0%, transparent 3px),
+      radial-gradient(circle 2px at 50% 70%, #cffafe 0%, transparent 3px),
+      radial-gradient(circle 2px at 50% 86%, #cffafe 0%, transparent 3px);
+    opacity: 0;
+  }
+  20% {
+    opacity: 1;
+  }
+  100% {
+    background:
+      radial-gradient(circle 3px at 50% 60%, transparent 0%, transparent 100%),
+      radial-gradient(circle 3px at 30% 58%, transparent 0%, transparent 100%),
+      radial-gradient(circle 3px at 70% 58%, transparent 0%, transparent 100%),
+      radial-gradient(circle 3px at 24% 74%, transparent 0%, transparent 100%),
+      radial-gradient(circle 3px at 76% 74%, transparent 0%, transparent 100%),
+      radial-gradient(circle 3px at 50% 52%, transparent 0%, transparent 100%),
+      radial-gradient(circle 3px at 50% 94%, transparent 0%, transparent 100%);
+    opacity: 0;
+  }
+}
+
+/* --- Gold shower: 24 coin-shaped particles falling with staggered
+   timing, with a soft trailing glow behind them --- */
 @keyframes fr-anim-gold-shower-fall {
-  0%   { transform: translateY(-100%); opacity: 0; }
-  10%  { opacity: 1; }
-  100% { transform: translateY(120%);  opacity: 0; }
+  0% {
+    transform: translate3d(0, -120%, 0);
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  90% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate3d(0, 120%, 0);
+    opacity: 0;
+  }
 }
-.fr-anim-gold-shower::before {
+.fr-anim-gold-shower {
+  position: relative;
+  overflow: hidden;
+}
+.fr-anim-gold-shower::before,
+.fr-anim-gold-shower::after {
   content: '';
   position: absolute;
-  inset: 0;
-  background:
-    linear-gradient(180deg, transparent 40%, rgba(212,160,23,0.35) 60%, transparent 100%);
-  animation: fr-anim-gold-shower-fall 2.6s ease-in 1 forwards;
+  left: 50%;
+  top: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  background: transparent;
+  animation: fr-anim-gold-shower-fall 2.4s ease-in 1 forwards;
+  /* Gold coin particles — radial gradient makes each shadow read as a
+     round coin with a highlight. 12 per pseudo (24 total), spread across
+     the viewport horizontally, staggered vertically so the fall looks
+     continuous instead of layered. */
+  box-shadow:
+    -45vw -10vh 0 0 #f6c453,
+    -37vw -20vh 0 0 #d4a017,
+    -29vw -5vh 0 0 #fcd34d,
+    -21vw -25vh 0 0 #f6c453,
+    -13vw -15vh 0 0 #d4a017,
+    -5vw -30vh 0 0 #fcd34d,
+    5vw -8vh 0 0 #f6c453,
+    13vw -22vh 0 0 #d4a017,
+    21vw -12vh 0 0 #fcd34d,
+    29vw -28vh 0 0 #f6c453,
+    37vw -6vh 0 0 #d4a017,
+    45vw -18vh 0 0 #fcd34d;
+}
+.fr-anim-gold-shower::after {
+  /* Second wave, offset in time + position, smaller particles for depth. */
+  width: 6px;
+  height: 6px;
+  animation-delay: 0.4s;
+  animation-duration: 2.6s;
+  box-shadow:
+    -41vw -40vh 0 0 #fcd34d,
+    -33vw -32vh 0 0 #d4a017,
+    -25vw -45vh 0 0 #f6c453,
+    -17vw -35vh 0 0 #fcd34d,
+    -9vw -48vh 0 0 #d4a017,
+    -1vw -38vh 0 0 #f6c453,
+    7vw -44vh 0 0 #fcd34d,
+    15vw -34vh 0 0 #d4a017,
+    23vw -46vh 0 0 #f6c453,
+    31vw -36vh 0 0 #fcd34d,
+    39vw -42vh 0 0 #d4a017,
+    47vw -34vh 0 0 #f6c453;
 }
 
 /* Honor the viewer's reduced-motion preference for the winner-animation
@@ -2242,10 +2499,15 @@ select option {
    animations are pure decoration; suppress them entirely for anyone
    who has asked their OS to reduce motion. */
 @media (prefers-reduced-motion: reduce) {
+  .fr-anim-confetti,
   .fr-anim-confetti::before,
   .fr-anim-confetti::after,
+  .fr-anim-fireworks,
   .fr-anim-fireworks::before,
-  .fr-anim-gold-shower::before {
+  .fr-anim-fireworks::after,
+  .fr-anim-gold-shower,
+  .fr-anim-gold-shower::before,
+  .fr-anim-gold-shower::after {
     animation: none;
     opacity: 0;
   }
