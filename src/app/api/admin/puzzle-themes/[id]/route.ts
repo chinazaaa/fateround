@@ -20,7 +20,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const supabase = getSupabaseAdmin()
   const { data, error } = await supabase
     .from('puzzle_themes')
-    .select('id, game_type, name, difficulty, entries, entry_count, is_builtin, created_at, updated_at')
+    .select('id, game_type, name, difficulty, entries, entry_count, is_builtin, created_at, updated_at, price_coins')
     .eq('id', id)
     .maybeSingle()
 
@@ -42,7 +42,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   } catch {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
-  const { name, difficulty, csv } = (body ?? {}) as Record<string, unknown>
+  const { name, difficulty, csv, price_coins } = (body ?? {}) as Record<string, unknown>
 
   const supabase = getSupabaseAdmin()
   // Need the game_type to parse a replacement CSV against the right item shape.
@@ -75,6 +75,20 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return NextResponse.json({ error: 'difficulty must be easy, medium, hard, or empty' }, { status: 400 })
     }
     update.difficulty = diff
+  }
+
+  if (price_coins !== undefined) {
+    // Same coerce + bounds check as the create route. 0 is allowed to flip a
+    // paid theme back to free without needing a dedicated "unpublish" call.
+    const MAX_PRICE_COINS = 10_000
+    const n = typeof price_coins === 'string' ? Number(price_coins) : (price_coins as number)
+    if (!Number.isFinite(n) || !Number.isInteger(n) || n < 0 || n > MAX_PRICE_COINS) {
+      return NextResponse.json(
+        { error: `price_coins must be an integer between 0 and ${MAX_PRICE_COINS}` },
+        { status: 400 }
+      )
+    }
+    update.price_coins = n
   }
 
   let stats: ReturnType<typeof parsePuzzleThemeCsv> | null = null

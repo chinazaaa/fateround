@@ -12,38 +12,64 @@ import { ServerErrorPage } from '@/components/ServerErrorPage'
  * navigation prefetch that was in flight can reject with a NetworkError,
  * bubbling into this boundary. That's not a real "the server is down"
  * situation — it's a resume hiccup and the very next fetch usually
- * succeeds. So we auto-retry once when the tab is actually visible AND the
- * browser reports online; only if THAT retry also errors does the user see
- * the "Can't reach server" screen.
+ * succeeds. So we auto-retry once per resume event when the tab is
+ * actually visible AND the browser reports online; only if THAT retry
+ * also errors does the user see the "Can't reach server" screen.
  *
  * Dedup is MODULE-scoped, not component-scoped: `reset()` unmounts and
  * remounts this component, so a component-scoped ref would forget the
- * retry across mounts. If the retry itself errors, the fresh boundary
- * would retry again — a tight reset/error/reset loop that Safari can't
- * unwind, showing as a frozen tab (reported by the user). Module scope
- * means: at most one auto-retry per unique error in this page lifetime.
+ * retry across mounts. But dedup is scoped per RESUME EPOCH, not per
+ * page lifetime — a monotonically increasing counter bumps on every
+ * visibility→visible or online transition. That way a user who
+ * app-switches back into the page many times (playing Monopoly while
+ * flipping to WhatsApp, etc.) gets a fresh silent retry on each return
+ * instead of hitting the "Can't reach server" screen from the second
+ * switch onward. A retry that itself re-throws stays on the same epoch,
+ * so it can't retry again until a new resume — that's the guard against
+ * the tight reset/error/reset loop Safari can't unwind.
  *
  * The retry is also deferred a beat so it doesn't run synchronously
  * inside the render that reported the error — that gives React a chance
  * to unmount the old tree cleanly before we ask it to try again.
  */
 
-// Digests of errors we've already auto-retried. Cleared only by a hard reload.
-const retriedDigests = new Set<string>()
+// Resume epoch: bumped every time the tab becomes visible or the network
+// comes back online. Starts at 1 so the first mount (no resume yet) can
+// still auto-retry once.
+let resumeEpoch = 1
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') resumeEpoch++
+  })
+}
+if (typeof window !== 'undefined') {
+  window.addEventListener('online', () => {
+    resumeEpoch++
+  })
+}
+
+// For each error digest, the resume epoch at which we last auto-retried it.
+// If the current epoch is greater, we're allowed to retry again.
+const retriedAtEpoch = new Map<string, number>()
 
 export default function GlobalErrorPage({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
   // Prefer digest (stable across mounts); fall back to message so an error without
   // a Next.js digest still gets a stable identity.
   const key = error.digest || error.message || 'unknown-error'
 
-  // Whether the auto-retry has already been used for THIS error. If so, the retry
-  // clearly did not fix it — fall through and show the full "Can't reach server"
-  // screen. Otherwise render a silent placeholder while the retry runs, so a
-  // one-off resume-hiccup doesn't flash the error page for a couple of hundred
-  // milliseconds before the retry succeeds (reported by a user on a daily
-  // challenge page). Read as initial state so the first render already picks the
+  const canRetry = () => {
+    const last = retriedAtEpoch.get(key)
+    return last === undefined || last < resumeEpoch
+  }
+
+  // Whether the auto-retry has already been used for THIS error at the current
+  // resume epoch. If so, the retry clearly did not fix it — fall through and
+  // show the full "Can't reach server" screen. Otherwise render a silent
+  // placeholder while the retry runs, so a one-off resume-hiccup doesn't flash
+  // the error page for a couple of hundred milliseconds before the retry
+  // succeeds. Read as initial state so the first render already picks the
   // right branch — a setState after mount would still render the wrong UI once.
-  const [retryExhausted, setRetryExhausted] = useState<boolean>(() => retriedDigests.has(key))
+  const [retryExhausted, setRetryExhausted] = useState<boolean>(() => !canRetry())
 
   useEffect(() => {
     console.error('Global Error Boundary caught:', error)
@@ -51,8 +77,8 @@ export default function GlobalErrorPage({ error, reset }: { error: Error & { dig
 
   useEffect(() => {
     if (typeof window === 'undefined' || typeof document === 'undefined') return
-    if (retriedDigests.has(key)) {
-      // Already retried in a prior mount — the placeholder branch below would
+    if (!canRetry()) {
+      // Already retried at this epoch — the placeholder branch below would
       // wait forever for a retry that isn't coming. Show the error screen.
       setRetryExhausted(true)
       return
@@ -65,14 +91,15 @@ export default function GlobalErrorPage({ error, reset }: { error: Error & { dig
     const grace = window.setTimeout(() => setRetryExhausted(true), 4000)
 
     const tryAutoReset = () => {
-      if (retriedDigests.has(key)) return
+      if (!canRetry()) return
       // Only retry if the tab is actually visible (a hidden tab reset would
       // just re-fire) AND the browser thinks the network is up.
       if (document.visibilityState !== 'visible') return
       if (typeof navigator !== 'undefined' && navigator.onLine === false) return
       // Mark BEFORE calling reset(): if reset() re-throws the same error, the
-      // fresh mount checks retriedDigests first and sees it's been used.
-      retriedDigests.add(key)
+      // fresh mount sees this epoch is already used and won't retry again
+      // until a new resume bumps the epoch.
+      retriedAtEpoch.set(key, resumeEpoch)
       window.clearTimeout(grace)
       // Defer past this render/microtask so the error boundary can unmount its
       // subtree cleanly before Next attempts to remount it. Without this the

@@ -7,6 +7,9 @@ import { SaveToProfileModal } from '@/components/profile/SaveToProfileModal'
 import { ShareProfileModal } from '@/components/profile/ShareProfileModal'
 import { StatsTab } from '@/components/profile/StatsTab'
 import { SettingsTab } from '@/components/profile/SettingsTab'
+import { CoinBalanceCard } from '@/components/coins/CoinBalanceCard'
+import { CoinHistoryTab } from '@/components/coins/CoinHistoryTab'
+import { WelcomeGrantModal } from '@/components/coins/WelcomeGrantModal'
 import { GAME_CATEGORIES, parseGameType } from '@/lib/game-types'
 import { authHeaders } from '@/lib/identity'
 import { StreakStatusBanner } from '@/components/profile/StreakStatusBanner'
@@ -49,13 +52,14 @@ type ProfileSummary = {
 const TABS = [
   { key: 'trophies', label: 'Trophies' },
   { key: 'stats', label: 'Stats & History' },
+  { key: 'coins', label: 'Coin History' },
   { key: 'settings', label: 'Settings' },
 ] as const
 
 type TabKey = (typeof TABS)[number]['key']
 
 function isValidTab(v: string | null): v is TabKey {
-  return v === 'trophies' || v === 'stats' || v === 'settings'
+  return v === 'trophies' || v === 'stats' || v === 'coins' || v === 'settings'
 }
 
 function plural(count: number, word: string): string {
@@ -195,6 +199,9 @@ export default function ProfilePage() {
 
       <StreakStatusBanner profile={profile} />
 
+      <CoinBalanceCard onViewHistory={() => switchTab('coins')} />
+      <WelcomeGrantModal />
+
       <div className="grid grid-cols-3 gap-3">
         <Stat
           icon={FireIcon}
@@ -289,6 +296,8 @@ export default function ProfilePage() {
       )}
 
       {tab === 'stats' && <StatsTab games={games} myName={profile?.handle ?? null} />}
+
+      {tab === 'coins' && <CoinHistoryTab />}
 
       {tab === 'settings' && <SettingsTab profile={profile} onChanged={() => void load()} />}
 

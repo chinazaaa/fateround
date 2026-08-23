@@ -37,6 +37,7 @@ const STATIC_INDEXABLE_ROUTES: {
   { path: '/leaderboard/community', changeFrequency: 'daily', priority: 0.7 },
   { path: '/collections', changeFrequency: 'weekly', priority: 0.75 },
   { path: '/library', changeFrequency: 'weekly', priority: 0.7 },
+  { path: '/shop', changeFrequency: 'weekly', priority: 0.7 },
   { path: '/updates', changeFrequency: 'weekly', priority: 0.75 },
   { path: '/blog', changeFrequency: 'weekly', priority: 0.75 },
   { path: '/faq', changeFrequency: 'monthly', priority: 0.7 },

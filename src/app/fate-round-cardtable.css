@@ -1074,6 +1074,27 @@
   0%, 100% { transform: scale(1); }
   50% { transform: scale(1.03); }
 }
+/* "Why am I spectating?" banner — a player who's finished (emptied their hand = round win)
+   or been knocked out by Mercy gets an explicit callout instead of a silent switch to
+   spectator view. */
+.fr-room .uno-out-banner {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-2, var(--surface));
+  padding: 12px 16px;
+  text-align: center;
+  margin: 8px 0 4px;
+}
+.fr-room .uno-out-banner__title {
+  font: 800 16px var(--font-display);
+  color: var(--text);
+}
+.fr-room .uno-out-banner__sub {
+  font-size: 12px;
+  color: var(--text-muted, var(--text));
+  margin-top: 2px;
+}
+
 /* Multi-Play reveal — the full set just laid, so cards covered by the top one (e.g. a Draw Two
    under a Skip) stay visible. Reuses the .uno-mini chip look; the on-top card is ringed. */
 .fr-room .uno-lastplay {

@@ -5,6 +5,8 @@ import {
   DiceIcon,
   Idea01Icon,
   Moon02Icon,
+  SparklesIcon,
+  StarIcon,
   TennisBallIcon,
   TreePalmIcon,
   Tv01Icon,
@@ -21,6 +23,8 @@ export type ThemeId =
   | 'pirate'
   | 'arctic'
   | 'naija'
+  | 'america'
+  | 'christmas'
   | 'grass_court'
 
 export interface ThemeConfig {
@@ -116,6 +120,25 @@ export const THEMES: ThemeConfig[] = [
     icon: NAIJA_ICON,
     iconFilled: true,
     preview: { bg: '#008751', accent: '#EDE3D3', text: '#008751' },
+    cssVars: {},
+  },
+  {
+    id: 'america',
+    label: 'USA',
+    emoji: '⭐',
+    icon: StarIcon,
+    preview: { bg: '#0a1a3a', accent: '#c9a44c', text: '#f4ecd8' },
+    cssVars: {},
+  },
+  {
+    id: 'christmas',
+    label: 'Christmas',
+    // Seasonal edition (docs/estate-kings-christmas-edition.md). Uses a
+    // snowflake glyph as the picker icon — motif-based per the spec's art
+    // brief (no owned characters, no branded Santa likeness).
+    emoji: '❄️',
+    icon: SparklesIcon,
+    preview: { bg: '#0f2a1a', accent: '#c8102e', text: '#f6efd7' },
     cssVars: {},
   },
   {

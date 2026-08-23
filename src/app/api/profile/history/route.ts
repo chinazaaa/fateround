@@ -23,21 +23,19 @@ export async function GET(req: NextRequest) {
     const admin = getSupabaseAdmin()
 
     let query = admin
-      .from('players')
-      .select('id, game_id, games!players_game_id_fkey!inner(id, game_type, finished_at, created_at, sessions_played)')
-      .eq('profile_id', profileId)
-      .eq('games.status', 'finished')
-      .not('games.finished_at', 'is', null)
-      .order('finished_at', { referencedTable: 'games', ascending: false })
-      .order('id', { referencedTable: 'games', ascending: false })
+      .from('games')
+      .select('id, game_type, finished_at, created_at, sessions_played, players!inner(id, profile_id)')
+      .eq('players.profile_id', profileId)
+      .eq('status', 'finished')
+      .not('finished_at', 'is', null)
+      .order('finished_at', { ascending: false })
+      .order('id', { ascending: false })
       .limit(limit + 1)
 
     if (cursor) {
       query = cursorId
-        ? query.or(`finished_at.lt.${cursor},and(finished_at.eq.${cursor},id.lt.${cursorId})`, {
-            referencedTable: 'games',
-          })
-        : query.lt('games.finished_at', cursor)
+        ? query.or(`finished_at.lt.${cursor},and(finished_at.eq.${cursor},id.lt.${cursorId})`)
+        : query.lt('finished_at', cursor)
     }
 
     const { data, error } = await query
@@ -48,15 +46,18 @@ export async function GET(req: NextRequest) {
 
     const rows = (data ?? []) as unknown as Array<{
       id: string
-      game_id: string
-      games: { id: string; game_type: string; finished_at: string; created_at: string; sessions_played: number | null }
+      game_type: string
+      finished_at: string
+      created_at: string
+      sessions_played: number | null
+      players: Array<{ id: string; profile_id: string }>
     }>
 
     const hasMore = rows.length > limit
     const page = hasMore ? rows.slice(0, limit) : rows
 
     // Batch-fetch player counts for the games on this page.
-    const gameIds = page.map((r) => r.games.id)
+    const gameIds = page.map((r) => r.id)
     const playerCounts: Record<string, number> = {}
     if (gameIds.length > 0) {
       const { data: countData } = await admin.from('players').select('game_id').in('game_id', gameIds)
@@ -70,7 +71,7 @@ export async function GET(req: NextRequest) {
 
     // Resolve the CURRENT session's winner for each game.
     const winnerResults = await Promise.all(
-      page.map((r) => resolveWinners(admin, r.games.id, r.games.game_type as GameType).catch(() => null))
+      page.map((r) => resolveWinners(admin, r.id, r.game_type as GameType).catch(() => null))
     )
 
     // Map player id → name for the current session's winner.
@@ -90,7 +91,7 @@ export async function GET(req: NextRequest) {
     }
 
     // For multi-session games, fetch per-session winner names from snapshots.
-    const multiSessionIds = page.filter((r) => (r.games.sessions_played ?? 1) > 1).map((r) => r.games.id)
+    const multiSessionIds = page.filter((r) => (r.sessions_played ?? 1) > 1).map((r) => r.id)
     const snapshotWinners: Record<string, string[][]> = {}
     if (multiSessionIds.length > 0) {
       const { data: snapData } = await admin
@@ -111,43 +112,51 @@ export async function GET(req: NextRequest) {
 
     const games = page.map((r, i) => {
       const winners = winnerResults[i]
-      const myPlayerId = r.id
-      const sessionsPlayed = r.games.sessions_played ?? 1
+      const myPlayerId = r.players[0]?.id ?? null
+      const sessionsPlayed = r.sessions_played ?? 1
 
       // Current session winner
       let won: boolean | null = null
       let currentWinnerName: string | null = null
       if (winners !== null) {
-        won = winners.includes(myPlayerId)
+        won = myPlayerId !== null && winners.includes(myPlayerId)
         if (winners.length > 0) {
           currentWinnerName = winnerIdToName[winners[0]] ?? null
         }
       }
 
-      // Collect all winner names across sessions (snapshots + current).
-      const allWinnerNames: string[] = []
-      const pastSessions = snapshotWinners[r.games.id] ?? []
-      for (const sessionNames of pastSessions) {
-        for (const name of sessionNames) allWinnerNames.push(name)
-      }
-      if (currentWinnerName) allWinnerNames.push(currentWinnerName)
+      // Per-session winners come from snapshots; finish-game writes one per session
+      // (including the last one), so trust snapshots when we have them. Fall back to
+      // the current winner for legacy games with no snapshot history.
+      const sessionSnapshots = snapshotWinners[r.id] ?? []
+      const snapshotNames = sessionSnapshots.flat()
+      const allWinnerNames =
+        sessionsPlayed > 1
+          ? snapshotNames.length > 0
+            ? snapshotNames
+            : currentWinnerName
+              ? [currentWinnerName]
+              : []
+          : currentWinnerName
+            ? [currentWinnerName]
+            : []
 
       return {
-        id: r.games.id,
-        gameType: r.games.game_type,
-        finishedAt: r.games.finished_at,
-        createdAt: r.games.created_at,
-        playerCount: playerCounts[r.games.id] ?? 1,
+        id: r.id,
+        gameType: r.game_type,
+        finishedAt: r.finished_at,
+        createdAt: r.created_at,
+        playerCount: playerCounts[r.id] ?? 1,
         sessionsPlayed,
         won,
         winnerName: currentWinnerName,
-        allWinnerNames: sessionsPlayed > 1 ? allWinnerNames : currentWinnerName ? [currentWinnerName] : [],
+        allWinnerNames,
       }
     })
 
     const lastRow = hasMore ? page[page.length - 1] : null
-    const nextCursor = lastRow?.games.finished_at ?? null
-    const nextCursorId = lastRow?.games.id ?? null
+    const nextCursor = lastRow?.finished_at ?? null
+    const nextCursorId = lastRow?.id ?? null
 
     return NextResponse.json({ games, nextCursor, nextCursorId })
   } catch (err) {

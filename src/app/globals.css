@@ -2134,3 +2134,119 @@ select option {
   color: var(--foreground) !important;
 }
 
+
+/* ── Phase 3 coin-shop cosmetics ────────────────────────────────── */
+/* Name color CSS-var flip so PlayerName is theme-aware without prop drilling. */
+.fr-name-solid { color: var(--pname-solid-light); }
+[data-theme='dark'] .fr-name-solid { color: var(--pname-solid-dark); }
+.fr-name-gradient {
+  background-image: var(--pname-gradient-light);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+[data-theme='dark'] .fr-name-gradient { background-image: var(--pname-gradient-dark); }
+
+/* Avatar frame decorations layered over the ring set inline in Avatar.tsx.
+   Kept as ::before pseudo-elements so no wrapper markup is required — the
+   ring itself carries the shadow, these add texture on top. */
+.fr-frame-laurel::before {
+  content: '';
+  position: absolute;
+  inset: -6px;
+  border-radius: 9999px;
+  background:
+    conic-gradient(from 200deg, transparent 0deg, rgba(183,141,63,0.45) 20deg, transparent 60deg, transparent 300deg, rgba(183,141,63,0.45) 320deg, transparent 360deg);
+  pointer-events: none;
+}
+.fr-frame-stars::before {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 9999px;
+  background:
+    radial-gradient(1px 1px at 20% 30%, rgba(255,255,255,0.85), transparent 60%),
+    radial-gradient(1px 1px at 75% 20%, rgba(255,255,255,0.85), transparent 60%),
+    radial-gradient(1px 1px at 80% 70%, rgba(255,255,255,0.85), transparent 60%),
+    radial-gradient(1px 1px at 25% 78%, rgba(255,255,255,0.85), transparent 60%);
+  pointer-events: none;
+}
+
+/* Card templates — wrapper styling on the results-share capture container. */
+.fr-card-gold-luxe {
+  padding: 1rem;
+  border-radius: 1rem;
+  background: linear-gradient(160deg, #1a1208 0%, #0f0a03 100%);
+  color: #f5e7bf;
+  box-shadow: inset 0 0 0 1px #d4a017;
+}
+.fr-card-gold-luxe .gradient-title { background-image: linear-gradient(90deg, #f5e7bf, #d4a017); }
+.fr-card-neon {
+  padding: 1rem;
+  border-radius: 1rem;
+  background: linear-gradient(160deg, #0b0f1e 0%, #05060b 100%);
+  color: #e5e7eb;
+  box-shadow: inset 0 0 0 1px #22d3ee, 0 0 20px rgba(34,211,238,0.25);
+}
+.fr-card-neon .gradient-title { background-image: linear-gradient(90deg, #22d3ee, #d946ef); }
+
+/* Winner animations — CSS placeholders until the Lottie assets ship
+   (docs/coins-art-briefs.md § "Winner animations"). Same class names as
+   the eventual Lottie mount points, so the swap is a one-file change. */
+@keyframes fr-anim-confetti-drift {
+  0%   { transform: translateY(0)   rotate(0deg);   opacity: 0; }
+  20%  { opacity: 1; }
+  100% { transform: translateY(-40px) rotate(90deg); opacity: 0; }
+}
+.fr-anim-confetti::before,
+.fr-anim-confetti::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(4px 4px at 20% 90%, #f472b6 100%, transparent),
+    radial-gradient(4px 4px at 40% 92%, #22d3ee 100%, transparent),
+    radial-gradient(4px 4px at 60% 88%, #fcd34d 100%, transparent),
+    radial-gradient(4px 4px at 80% 92%, #a78bfa 100%, transparent);
+  animation: fr-anim-confetti-drift 2.4s ease-out 1 forwards;
+}
+@keyframes fr-anim-fireworks-burst {
+  0%   { transform: scale(0.2); opacity: 0; }
+  40%  { opacity: 1; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+.fr-anim-fireworks::before {
+  content: '';
+  position: absolute;
+  inset: 20%;
+  border-radius: 9999px;
+  background: radial-gradient(circle, #fcd34d 0%, #f97316 40%, transparent 60%);
+  animation: fr-anim-fireworks-burst 2.2s ease-out 1 forwards;
+}
+@keyframes fr-anim-gold-shower-fall {
+  0%   { transform: translateY(-100%); opacity: 0; }
+  10%  { opacity: 1; }
+  100% { transform: translateY(120%);  opacity: 0; }
+}
+.fr-anim-gold-shower::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, transparent 40%, rgba(212,160,23,0.35) 60%, transparent 100%);
+  animation: fr-anim-gold-shower-fall 2.6s ease-in 1 forwards;
+}
+
+/* Honor the viewer's reduced-motion preference for the winner-animation
+   overlays (reviewer round 6 finding #11). The one-shot celebratory
+   animations are pure decoration; suppress them entirely for anyone
+   who has asked their OS to reduce motion. */
+@media (prefers-reduced-motion: reduce) {
+  .fr-anim-confetti::before,
+  .fr-anim-confetti::after,
+  .fr-anim-fireworks::before,
+  .fr-anim-gold-shower::before {
+    animation: none;
+    opacity: 0;
+  }
+}

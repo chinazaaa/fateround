@@ -38,6 +38,7 @@ type Theme = {
   is_builtin: boolean
   created_at: string
   updated_at: string
+  price_coins: number
 }
 
 type ImportStats = { totalRows: number; skippedRows: number; duplicateRows: number } | null
@@ -161,6 +162,7 @@ function CreateThemeForm({ gameType, onCreated }: { gameType: GameTypeId; onCrea
   const meta = gameTypeMeta(gameType)
   const [name, setName] = useState('')
   const [difficulty, setDifficulty] = useState('')
+  const [priceCoins, setPriceCoins] = useState('0')
   const [csv, setCsv] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -180,10 +182,16 @@ function CreateThemeForm({ gameType, onCreated }: { gameType: GameTypeId; onCrea
     setError(null)
     setOkMsg(null)
     try {
+      const parsedPrice = priceCoins === '' ? 0 : Number(priceCoins)
+      if (!Number.isFinite(parsedPrice) || !Number.isInteger(parsedPrice) || parsedPrice < 0) {
+        setError('Price must be a non-negative integer (0 for free).')
+        setBusy(false)
+        return
+      }
       const res = await fetch('/api/admin/puzzle-themes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ game_type: gameType, name, difficulty, csv }),
+        body: JSON.stringify({ game_type: gameType, name, difficulty, csv, price_coins: parsedPrice }),
       })
       const json = await res.json()
       if (!res.ok) {
@@ -193,6 +201,7 @@ function CreateThemeForm({ gameType, onCreated }: { gameType: GameTypeId; onCrea
       setOkMsg(`Created “${json.theme.name}” — ${statsLine(json.theme.entry_count, json.stats ?? null)}`)
       setName('')
       setDifficulty('')
+      setPriceCoins('0')
       setCsv('')
       setFileName(null)
       if (fileRef.current) fileRef.current.value = ''
@@ -234,6 +243,24 @@ function CreateThemeForm({ gameType, onCreated }: { gameType: GameTypeId; onCrea
             ))}
           </select>
         </label>
+      </div>
+
+      <div className="mt-3 text-sm">
+        <label className="block">
+          <span className="mb-1 block font-semibold">Shop price (coins)</span>
+          <input
+            type="number"
+            min={0}
+            step={1}
+            value={priceCoins}
+            onChange={(e) => setPriceCoins(e.target.value)}
+            className="w-40 rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2"
+            placeholder="0"
+          />
+        </label>
+        <p className="mt-1 text-xs text-[var(--muted)]">
+          0 = free (default). Above 0 lists this theme in the coin shop; players pay to unlock.
+        </p>
       </div>
 
       <div className="mt-3 text-sm">
@@ -363,6 +390,11 @@ function ThemeRow({ theme, onChanged }: { theme: Theme; onChanged: () => void })
             </span>
           )}
           <span className="ml-2 text-xs text-[var(--muted)]">{theme.entry_count} words</span>
+          {theme.price_coins > 0 && (
+            <span className="ml-2 rounded-full border border-[var(--primary)]/40 bg-[var(--primary)]/10 px-2 py-0.5 text-xs font-semibold text-[var(--primary)]">
+              🪙 {theme.price_coins}
+            </span>
+          )}
           {theme.difficulty ? (
             <span className="ml-2 rounded-full bg-[var(--primary)]/15 px-2 py-0.5 text-xs font-semibold capitalize text-[var(--primary)]">
               {theme.difficulty} · locked
