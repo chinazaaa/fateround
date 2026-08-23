@@ -3254,7 +3254,12 @@ function CreateGameInner() {
                           : undefined
                       }
                       onClick={
-                        locked ? () => router.push('/shop') : () => setSettings({ ...settings, theme: theme.id })
+                        locked
+                          ? () =>
+                              router.push(
+                                `/shop?category=${settings.game_type === 'monopoly' ? 'edition' : 'theme'}`
+                              )
+                          : () => setSettings({ ...settings, theme: theme.id })
                       }
                       onPreview={() => setPreviewTheme(displayTheme)}
                     />

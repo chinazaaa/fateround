@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { authHeaders } from '@/lib/identity'
 import { COIN_HISTORY_FILTERS, COIN_REASON_LABEL, type CoinHistoryFilter } from '@/lib/coins/reasons'
+import { GAME_TYPE_CONFIG } from '@/lib/game-types'
+import type { GameType } from '@/types'
 import { trackEvent, GA_EVENTS } from '@/lib/analytics'
 
 type LedgerRow = {
@@ -19,8 +21,26 @@ type LedgerRow = {
 
 const PAGE_SIZE = 50
 
+/** Pretty game name from a first-mode bonus ref_id (format `first_mode:{gameType}`).
+ *  Falls back to the raw slug (title-cased) if the game type isn't in the
+ *  catalog, so a retired game still reads sensibly. */
+function firstModeBonusGameLabel(refId: string | null): string | null {
+  if (!refId?.startsWith('first_mode:')) return null
+  const slug = refId.slice('first_mode:'.length)
+  const config = GAME_TYPE_CONFIG[slug as GameType]
+  if (config?.label) return config.label
+  return slug ? slug.replace(/[_-]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : null
+}
+
 function describeRow(row: LedgerRow): string {
   if (row.reason === 'admin_adjustment') return 'Adjustment by support'
+  if (row.reason === 'first_mode_bonus') {
+    // Attach the game name so a history full of "First-time mode bonus"
+    // rows reads as "First-time bonus · Whot / Ludo / Sudoku / …" and
+    // the player can tell which mode each credit came from.
+    const game = firstModeBonusGameLabel(row.ref_id)
+    return game ? `First-time bonus · ${game}` : (COIN_REASON_LABEL[row.reason] ?? row.reason)
+  }
   return COIN_REASON_LABEL[row.reason] ?? row.reason
 }
 

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import { authHeaders } from '@/lib/identity'
 import { trackEvent, GA_EVENTS } from '@/lib/analytics'
 import { useProfile } from '@/hooks/useProfile'
@@ -45,11 +46,24 @@ const CATEGORIES: { key: ShopKind; label: string }[] = [
   { key: 'edition', label: 'Editions' },
 ]
 
+const VALID_KINDS = new Set<ShopKind>(CATEGORIES.map((c) => c.key))
+
 export function ShopClient() {
   const { profile, refresh } = useProfile()
+  const searchParams = useSearchParams()
+  // Deep-link filter: /shop?category=edition (Monopoly USA/Christmas locked
+  // tiles) or /shop?category=theme (Whot/Ludo/Sudoku per-game reskins). Any
+  // other value is ignored — falls back to "All" so a stale link never
+  // strands the shop on an empty category.
+  const initialCategory = ((): ShopKind | 'all' => {
+    const raw = searchParams?.get('category')
+    if (raw && VALID_KINDS.has(raw as ShopKind)) return raw as ShopKind
+    return 'all'
+  })()
   const [catalog, setCatalog] = useState<Catalog | null>(null)
   const [loading, setLoading] = useState(true)
-  const [filter, setFilter] = useState<ShopKind | 'all'>('all')
+  const [filter, setFilter] = useState<ShopKind | 'all'>(initialCategory)
+  const [previewItem, setPreviewItem] = useState<ShopItem | null>(null)
   // Independent from category — a player scanning "what have I bought?" wants
   // a quick answer without scrolling every category. `owned` cross-cuts the
   // kind filter, so both apply together.
@@ -320,6 +334,11 @@ export function ShopClient() {
               item={item}
               equipped={equippedFor(item)}
               onClick={() => openConfirm(item)}
+              onPreview={
+                item.kind === 'animation' || item.kind === 'card_template'
+                  ? () => setPreviewItem(item)
+                  : undefined
+              }
               handle={profile?.handle ?? 'Player'}
               photoUrl={profile?.avatar_url ?? null}
             />
@@ -336,6 +355,7 @@ export function ShopClient() {
           onConfirm={confirmPurchase}
         />
       )}
+      {previewItem && <PreviewModal item={previewItem} onClose={() => setPreviewItem(null)} />}
       {toast && <Toast text={toast} onClose={() => setToast(null)} />}
     </>
   )
@@ -370,22 +390,38 @@ function ShopTile({
   item,
   equipped,
   onClick,
+  onPreview,
   handle,
   photoUrl,
 }: {
   item: ShopItem
   equipped: boolean
   onClick: () => void
+  /** Optional preview handler — set for animation / card_template kinds so
+   *  the tile shows a "Preview" button that opens PreviewModal instead of
+   *  the buy/equip flow. */
+  onPreview?: () => void
   handle: string
   photoUrl: string | null
 }) {
   const owned = item.owned || equipped
   const dimmed = owned && !isEquippable(item.kind)
+  const primaryLabel = !owned ? 'Buy' : isEquippable(item.kind) && !equipped ? 'Equip' : null
   return (
-    <button
-      type="button"
+    // Outer is a div — a nested Preview button (below) would be invalid
+    // HTML inside a <button>. We keep keyboard + a11y equivalence with
+    // role=button / tabIndex / Enter+Space handling.
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onClick}
-      className={`glass-card-interactive text-left p-4 space-y-3 ${dimmed ? 'opacity-70' : ''}`}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onClick()
+        }
+      }}
+      className={`glass-card-interactive text-left p-4 space-y-3 cursor-pointer ${dimmed ? 'opacity-70' : ''}`}
       aria-label={`${item.name}, ${item.price} coins${owned ? ' (owned)' : ''}`}
     >
       <div className="flex items-start justify-between gap-2">
@@ -421,12 +457,27 @@ function ShopTile({
           <span aria-hidden>🪙 </span>
           {item.price.toLocaleString()}
         </span>
-        {!owned && <span className="text-[var(--primary)] text-xs font-semibold">Buy</span>}
-        {owned && isEquippable(item.kind) && !equipped && (
-          <span className="text-[var(--primary)] text-xs font-semibold">Equip</span>
-        )}
+        <div className="flex items-center gap-3">
+          {onPreview && (
+            <button
+              type="button"
+              onClick={(e) => {
+                // Preview must NOT bubble to the outer buy/equip handler,
+                // otherwise tapping Preview would open the purchase modal
+                // (the bug this whole prop exists to fix).
+                e.stopPropagation()
+                onPreview()
+              }}
+              className="text-xs font-semibold text-muted underline-offset-2 hover:text-body hover:underline"
+              aria-label={`Preview ${item.name}`}
+            >
+              Preview
+            </button>
+          )}
+          {primaryLabel && <span className="text-[var(--primary)] text-xs font-semibold">{primaryLabel}</span>}
+        </div>
       </div>
-    </button>
+    </div>
   )
 }
 
@@ -451,12 +502,14 @@ function TilePreview({ item, handle, photoUrl }: { item: ShopItem; handle: strin
   }
   if (item.kind === 'animation') {
     const anim = findAnimation(item.slug)
+    // Static swatch on the tile — the real animation plays in PreviewModal
+    // (see "Preview" button on ShopTile). Rendering the CSS one-shot inline
+    // burnt through on first paint and left the tile blank forever after.
     return (
       <div
         className={`relative h-16 overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface-inset-bg)] ${anim?.cssClass ?? ''}`}
-      >
-        <span className="absolute inset-0 flex items-center justify-center text-xs text-muted">Preview</span>
-      </div>
+        aria-hidden
+      />
     )
   }
   if (item.kind === 'card_template') {
@@ -470,6 +523,89 @@ function TilePreview({ item, handle, photoUrl }: { item: ShopItem; handle: strin
     )
   }
   return null
+}
+
+/**
+ * Full-screen preview for winner animations and results-card templates —
+ * the "Preview" button on the shop tile opens this so tapping to preview
+ * no longer opens the purchase confirm dialog. Animations re-play on a
+ * Replay button (a bumped React `key` restarts the one-shot CSS keyframes);
+ * card templates render a bigger sample with the actual results copy so
+ * hosts can see what the shared card will look like.
+ */
+function PreviewModal({ item, onClose }: { item: ShopItem; onClose: () => void }) {
+  const [replayKey, setReplayKey] = useState(0)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+  const anim = item.kind === 'animation' ? findAnimation(item.slug) : null
+  const tpl = item.kind === 'card_template' ? findCardTemplate(item.slug) : null
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-label={`${item.name} preview`}
+      onClick={onClose}
+    >
+      <div
+        className="glass-card-strong w-full max-w-md space-y-4 p-5"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-faint">
+              {CATEGORIES.find((c) => c.key === item.kind)?.label ?? item.kind} preview
+            </p>
+            <h2 className="text-xl font-black text-body">{item.name}</h2>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close preview"
+            className="text-2xl leading-none text-muted hover:text-body"
+          >
+            ×
+          </button>
+        </div>
+
+        {anim && (
+          <div
+            key={replayKey}
+            className={`relative h-64 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-inset-bg)] ${anim.cssClass}`}
+            aria-hidden
+          />
+        )}
+        {tpl && (
+          <div className={`rounded-xl border border-[var(--border)] p-6 ${tpl.cssClass}`}>
+            <p className="gradient-title text-xs font-bold uppercase tracking-[0.2em]">Winner</p>
+            <p className="mt-1 text-3xl font-black">Sample Player</p>
+            <p className="mt-3 text-sm opacity-80">Final score · 2,480</p>
+            <p className="mt-4 text-xs opacity-60">Fate Round · Whot · shared to friends</p>
+          </div>
+        )}
+
+        <div className="flex items-center justify-end gap-2">
+          {anim && (
+            <button
+              type="button"
+              onClick={() => setReplayKey((n) => n + 1)}
+              className="fr-btn--nav text-xs"
+            >
+              Replay
+            </button>
+          )}
+          <button type="button" onClick={onClose} className="fr-btn--nav text-xs">
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 function ConfirmDialog({
