@@ -18,6 +18,12 @@ this mirrors.
   (card backs, corner motifs, ornaments) rather than the currency
   symbol. Keeps the engine simple; no per-edition currency-symbol swap
   needed.
+- **Starting cash:** $1,500 (40-space) / $6,000 (48-space) — matches
+  the USA edition and the London Edition's scale; large-denomination
+  currency, no scaling multiplier needed. (Naija's 1,500,000 reflects
+  naira being a small-denomination currency; that scaling doesn't apply
+  here.)
+- **GO / PAYDAY salary:** $200 (40-space) / $800 (48-space)
 
 ## IP posture
 

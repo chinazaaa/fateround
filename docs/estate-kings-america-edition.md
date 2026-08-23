@@ -13,6 +13,10 @@ First paid edition. See `docs/coins-and-shop-plan.md` for the shop wiring.
   its month-2 launch.
 - **Board sizes supported:** 40-space (base) and 48-space (expanded).
 - **Currency symbol shown in play:** `$`
+- **Starting cash:** $1,500 (40-space) / $6,000 (48-space) — matches
+  London Edition's £ scale; USD is a large-denomination currency so no
+  scaling multiplier needed.
+- **GO / PAYDAY salary:** $200 (40-space) / $800 (48-space)
 
 Mirrors the London Edition's 40-space board structure and price tiers.
 Each color group represents an iconic American city or region, with the
