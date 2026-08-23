@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
-import { notifyGameEvent } from '@/lib/push'
+import { notifyHostIdleWarning } from '@/lib/push'
 
 /**
  * Cron tick — send the T-13min "your lobby closes in 2 min" push to the
@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
       .select('id')
     if (!stamped || stamped.length === 0) continue
     try {
-      await notifyGameEvent(row.id, 'host_idle_warning')
+      await notifyHostIdleWarning(row.id)
       warned += 1
     } catch {
       // Fan-out failure is non-fatal — the DB flag stays set so we don't

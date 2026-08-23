@@ -6,12 +6,14 @@ import { HostGameLayout } from '@/components/host/HostGameLayout'
 import { HostLobby } from '@/components/host/HostLobby'
 import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
 import { GameInfoChips } from '@/components/game-lobby/GameInfoChips'
+import { RulesInPlaySection } from '@/components/game-lobby/RulesInPlaySection'
 import { HostManageSection } from '@/components/host/HostManageSection'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
 import { HostBoardGameLobbyPanel } from '@/components/host-lobby/HostBoardGameLobbyPanel'
 import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaitingFooter'
 import { TransferHostControl } from '@/components/TransferHostControl'
 import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
+import { AddBotButton } from '@/components/host-lobby/AddBotButton'
 import { gameTypeConfig } from '@/lib/game-types'
 import {
   currentPlayerId,
@@ -20,6 +22,7 @@ import {
   isDrawPileDepleted,
   parseCrazyEightsRules,
   CRAZY8_MIN_PLAYERS,
+  CRAZY8_MAX_PLAYERS,
 } from '@/lib/crazy-eights'
 import { supabase } from '@/lib/supabase'
 import { fetchCrazyEightsHands } from '@/lib/hands-client'
@@ -411,6 +414,7 @@ export function CrazyEightsHostView({ gameCode, hostToken }: { gameCode: string;
     if (game?.status !== 'active') return null
     return (
       <div className="space-y-4">
+        <RulesInPlaySection game={game} />
         <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
         {hostMode === 'player' && !!hostPlayerId && (
           <HostLeaveSeatButton
@@ -530,7 +534,7 @@ export function CrazyEightsHostView({ gameCode, hostToken }: { gameCode: string;
             onJoin={() => void hostJoinGame()}
             joining={hostJoining}
             onEditName={renameHost}
-            spectatorHint="Spectate from the Watch tab"
+            spectatorHint="Spectate"
           />
         ) : undefined
       }
@@ -543,6 +547,7 @@ export function CrazyEightsHostView({ gameCode, hostToken }: { gameCode: string;
               game={game}
               boardGameType="crazy_eights"
               playerCount={players.length}
+              seatedCount={players.filter((p) => !p.spectator).length}
               onGameUpdate={setGame}
             />
           )}
@@ -703,6 +708,7 @@ export function CrazyEightsHostView({ gameCode, hostToken }: { gameCode: string;
               game={game}
               boardGameType="crazy_eights"
               playerCount={players.length}
+              seatedCount={players.filter((p) => !p.spectator).length}
               onGameUpdate={setGame}
             />
             <TransferHostControl triggerClassName="btn-secondary w-full flex items-center justify-center gap-2" />
@@ -721,7 +727,24 @@ export function CrazyEightsHostView({ gameCode, hostToken }: { gameCode: string;
         removingPlayerId={removingPlayerId}
         highlightPlayerId={hostPlayerId}
         onEnded={load}
-      />
+      >
+        {/*
+          Bots-in-room "+ Add bot" (Phase 3) — passed as children so it lands between the
+          play card and the roster, matching Whot and Estate Kings. Renders only while a
+          seat is open AND the humans-outnumber-bots invariant holds; onAdded triggers the
+          same load() the join realtime does, so the bot shows up in the roster within a
+          tick. The Crazy Eights bot honours the room's action-cards / jokers /
+          pick-2-stacking toggles, so there's no setting that has to hide this.
+        */}
+        <AddBotButton
+          gameCode={gameCode}
+          hostToken={hostToken}
+          seatedCount={players.filter((p) => p.spectator !== true).length}
+          botCount={players.filter((p) => p.spectator !== true && p.is_bot === true).length}
+          maxPlayers={lobbyMaxPlayersFromGameClient('crazy_eights', game) ?? game.max_players ?? CRAZY8_MAX_PLAYERS}
+          onAdded={load}
+        />
+      </HostLobby>
     )
   }
 

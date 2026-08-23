@@ -28,12 +28,19 @@ export function CodewordsEndGameStats({
   players,
   highlightPlayerId,
   winner,
+  // 'full' shows the winner recap, MVP cards, operative leaderboard, and the
+  // spymaster list. 'spymasters' shows only the spymaster list — for finish
+  // screens that already render CodewordsFinalResultsShareBlock above, which
+  // carries the winner hero, MVP cards, and operative leaderboard itself.
+  // Without this the same three blocks were on screen twice.
+  variant = 'full',
 }: {
   guesses: CodewordsGuess[]
   roles: CodewordsPlayerRole[]
   players: Player[]
   highlightPlayerId?: string | null
   winner?: 'red' | 'blue' | null
+  variant?: 'full' | 'spymasters'
 }) {
   const operativeStats = useMemo(() => tallyCodewordsOperativeStats(guesses, roles, players), [guesses, roles, players])
   const spymasterStats = useMemo(() => tallyCodewordsSpymasterStats(guesses, roles, players), [guesses, roles, players])
@@ -45,16 +52,20 @@ export function CodewordsEndGameStats({
   if (!hasGuesses && operativeStats.length === 0 && spymasterStats.length === 0) {
     return null
   }
+  // Spymasters-only variant renders nothing if there aren't any spymasters to list.
+  if (variant === 'spymasters' && spymasterStats.length === 0) return null
+
+  const showFull = variant === 'full'
 
   return (
     <div className="space-y-4">
-      {winner && (
+      {showFull && winner && (
         <p className="text-center text-sm text-muted">
           {teamLabel(winner)} team wins — here&apos;s how everyone played
         </p>
       )}
 
-      {(bestOperative || bestSpymaster) && (
+      {showFull && (bestOperative || bestSpymaster) && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {bestOperative && (
             <MvpCard
@@ -75,7 +86,7 @@ export function CodewordsEndGameStats({
         </div>
       )}
 
-      {operativeStats.length > 0 && (
+      {showFull && operativeStats.length > 0 && (
         <PaginatedLeaderboard
           title="Operative leaderboard"
           rows={operativeStats.map((row, i) => ({

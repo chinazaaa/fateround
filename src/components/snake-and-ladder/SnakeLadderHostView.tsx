@@ -343,6 +343,7 @@ export function SnakeLadderHostView({ gameCode, hostToken }: { gameCode: string;
     () =>
       game?.status === 'active' ? (
         <HostActiveSettings
+          game={game}
           gameCode={gameCode}
           hostToken={hostToken}
           gameType="snake_and_ladder"
@@ -438,7 +439,7 @@ export function SnakeLadderHostView({ gameCode, hostToken }: { gameCode: string;
             onJoin={() => void hostJoinGame()}
             joining={hostJoining}
             onEditName={renameHost}
-            spectatorHint="Spectate from the Watch tab"
+            spectatorHint="Spectate"
           />
         ) : undefined
       }
@@ -451,6 +452,7 @@ export function SnakeLadderHostView({ gameCode, hostToken }: { gameCode: string;
               game={game}
               boardGameType="snake_and_ladder"
               playerCount={players.length}
+              seatedCount={players.filter((p) => !p.spectator).length}
               onGameUpdate={setGame}
             />
           )}
@@ -555,6 +557,7 @@ export function SnakeLadderHostView({ gameCode, hostToken }: { gameCode: string;
               game={game}
               boardGameType="snake_and_ladder"
               playerCount={players.length}
+              seatedCount={players.filter((p) => !p.spectator).length}
               onGameUpdate={setGame}
             />
             <TransferHostControl triggerClassName="btn-secondary w-full flex items-center justify-center gap-2" />

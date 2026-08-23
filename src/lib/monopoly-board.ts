@@ -1,7 +1,7 @@
 /** London Edition board — property names, title-deed rents, and building costs. */
 
 export const MONOPOLY_MIN_PLAYERS = 2
-export const MONOPOLY_MAX_PLAYERS = 8
+export const MONOPOLY_MAX_PLAYERS = 9
 export const MONOPOLY_DEFAULT_MAX_PLAYERS = 6
 export const MONOPOLY_STARTING_CASH = 1500
 export const MONOPOLY_EXPANDED_STARTING_CASH = 6000
@@ -10,6 +10,11 @@ export function startingCashForSize(boardSize: MonopolyBoardSize = 40): number {
   return boardSize === 48 ? MONOPOLY_EXPANDED_STARTING_CASH : MONOPOLY_STARTING_CASH
 }
 export const MONOPOLY_GO_SALARY = 200
+export const MONOPOLY_EXPANDED_GO_SALARY = 800
+
+export function goSalaryForSize(boardSize: MonopolyBoardSize = 40): number {
+  return boardSize === 48 ? MONOPOLY_EXPANDED_GO_SALARY : MONOPOLY_GO_SALARY
+}
 export const MONOPOLY_JAIL_FINE = 50
 export const MONOPOLY_JAIL_POSITION = 10
 export const MONOPOLY_GO_TO_JAIL_POSITION = 30

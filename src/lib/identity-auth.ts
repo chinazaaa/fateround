@@ -147,9 +147,15 @@ async function ensureProfile(): Promise<void> {
     const { data } = await supabase.auth.getSession()
     const accessToken = data.session?.access_token
     if (!accessToken) return
+    // Carry the device id so /api/profile/anon can run `migrate_guest_grants`
+    // for a fresh signup (Phase 2 — coins). Anonymous callers get the same
+    // request shape; the RPC just doesn't fire for them.
+    const { getDeviceId } = await import('@/lib/coins/device-id')
+    const deviceId = getDeviceId()
     await fetch('/api/profile/anon', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+      body: JSON.stringify(deviceId ? { deviceId } : {}),
     })
   } catch {
     // Best-effort; ensureServerIdentity() retries on the next finished game.

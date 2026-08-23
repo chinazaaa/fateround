@@ -13,7 +13,7 @@ import {
 } from 'react-native'
 import type { Game, Player, ScrabblePlacedTile, ScrabblePlayerState, ScrabbleSession } from '@fateround/shared'
 import { batch6GameLabel } from '@fateround/shared/batch-6-games'
-import { SCRABBLE_BOARD_SIZE, scrabblePremiumAt } from '@fateround/shared/scrabble-constants'
+import { SCRABBLE_BOARD_SIZE, SCRABBLE_CENTER, scrabblePremiumAt } from '@fateround/shared/scrabble-constants'
 import { currentTurnPlayerId, scorePlacement, withPlacedTiles } from '@fateround/shared/scrabble-board'
 import { tileSetForDictionary } from '@fateround/shared/scrabble-rulesets'
 import { playerIsViewer, preJoinScreen } from '@fateround/shared/viewers'
@@ -503,6 +503,9 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
                       onPress={() => onCellPress(row, col)}
                     >
                       {!cell && prem ? <Text style={styles.premLabel}>{prem}</Text> : null}
+                      {!cell && !prem && row === SCRABBLE_CENTER.row && col === SCRABBLE_CENTER.col ? (
+                        <Text style={styles.centerStar}>★</Text>
+                      ) : null}
                       {letter ? (
                         <ScrabbleTile
                           letter={letter}
@@ -552,6 +555,13 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
                 // Reorder mode is always tappable (cosmetic); play/exchange taps
                 // stay gated on the active turn.
                 const disabled = reorderMode ? false : !isMyTurn || acting || (used && !exchangeMode)
+                // Placed-on-board tile: reserve the rack slot but blank it out so it's clear
+                // the tile has moved, matching the web behaviour (RackTile placeholder). The
+                // tile only really returns to the rack if the play is recalled or committed —
+                // showing it in both places at once implies it's still available to place.
+                if (used && !exchangeMode) {
+                  return <View key={index} style={styles.rackTilePlaceholder} />
+                }
                 return (
                   <Pressable key={index} disabled={disabled} onPress={() => handleRackTilePress(slot, index, letter)}>
                     <ScrabbleTile letter={letter} points={points} size={40} selected={selected} pending={exchanging} />
@@ -720,7 +730,21 @@ const makeStyles = (theme: Theme) =>
     dl: { backgroundColor: '#fda4af' },
     lastCell: { backgroundColor: '#fde68a' },
     premLabel: { fontSize: 7, fontWeight: '800', color: 'rgba(255,255,255,0.85)' },
+    // Mirror web (ScrabbleBoard.tsx:191): a rose star marks the compulsory first-word cell.
+    centerStar: { fontSize: 12, color: '#fb7185', lineHeight: 12 },
     rack: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, justifyContent: 'center', marginVertical: 8 },
+    // Empty slot for a tile that's currently placed on the board — same footprint as
+    // ScrabbleTile size=40 so the rack doesn't shift when tiles are placed/recalled.
+    rackTilePlaceholder: {
+      width: 40,
+      height: 40,
+      borderRadius: 6,
+      borderWidth: 2,
+      borderColor: theme.border,
+      borderStyle: 'dashed',
+      backgroundColor: 'transparent',
+      opacity: 0.4,
+    },
     actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center' },
     actionBtn: {
       paddingHorizontal: 12,
