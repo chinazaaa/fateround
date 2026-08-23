@@ -11,6 +11,27 @@ import { hasWinnerSource, isWinnerlessByDesign } from '@/lib/trophies/outcome'
 import type { GameType } from '@/types'
 import { liveCounters, liveDistinctSets } from '@/lib/trophies/counters'
 import { parseCriteria } from '@/lib/trophies/criteria'
+import type { SupabaseClient } from '@supabase/supabase-js'
+
+/**
+ * Read every trophy id, past Supabase's default 1000-row page cap. Reading only the first page
+ * would silently under-count `have`, so the seeder would treat already-present ids as missing
+ * and every re-insert would 23505 — which is exactly the "Seeded 0, left N untouched" symptom
+ * this replaced.
+ */
+async function readAllTrophyIds(supabase: SupabaseClient): Promise<{ ids: string[]; error: unknown }> {
+  const pageSize = 1000
+  const ids: string[] = []
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await supabase
+      .from('trophies')
+      .select('id')
+      .range(from, from + pageSize - 1)
+    if (error) return { ids, error }
+    for (const row of data ?? []) ids.push(row.id as string)
+    if (!data || data.length < pageSize) return { ids, error: null }
+  }
+}
 
 /**
  * Trophy catalog CRUD (`docs/trophies-and-streaks.md` §6A).
@@ -65,19 +86,28 @@ export async function GET(req: NextRequest) {
   const session = await assertAdminRequest(req)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { data, error } = await getSupabaseAdmin()
-    .from('trophies')
-    .select('id, game_type, tier, title, description, criteria, points, hidden, sort_order, is_active, is_system')
-    .order('sort_order', { ascending: true })
-    .order('id', { ascending: true })
-
-  if (error) return NextResponse.json({ error: internalErrorMessage('admin/trophies', error) }, { status: 500 })
+  // Paginated: the table is past Supabase's default 1000-row cap, so a single-page read would
+  // truncate the admin list AND under-count `have` (see readAllTrophyIds).
+  const admin = getSupabaseAdmin()
+  const pageSize = 1000
+  const rows: Array<Record<string, unknown>> = []
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await admin
+      .from('trophies')
+      .select('id, game_type, tier, title, description, criteria, points, hidden, sort_order, is_active, is_system')
+      .order('sort_order', { ascending: true })
+      .order('id', { ascending: true })
+      .range(from, from + pageSize - 1)
+    if (error) return NextResponse.json({ error: internalErrorMessage('admin/trophies', error) }, { status: 500 })
+    for (const row of data ?? []) rows.push(row as Record<string, unknown>)
+    if (!data || data.length < pageSize) break
+  }
 
   // What seeding would ADD right now. The button is not a one-time launch action — it is how
   // the catalog catches up after a new game type is registered — but "Seed launch trophies"
   // reads as something you do once, so it looked redundant the moment the catalog was full.
   // Reporting the number makes it obvious when it has work to do and when it is a no-op.
-  const have = new Set((data ?? []).map((t) => t.id as string))
+  const have = new Set(rows.map((r) => r.id as string))
   const missingCount = [
     ...(Object.keys(GAME_TYPE_CONFIG) as GameType[]).flatMap((g) =>
       buildCatalogForGame(g, gameTypeLabel(g) ?? g, hasWinnerSource(g))
@@ -86,7 +116,7 @@ export async function GET(req: NextRequest) {
   ].filter((t) => !have.has(t.id)).length
 
   return NextResponse.json({
-    trophies: data ?? [],
+    trophies: rows,
     missingCount,
     // The vocabulary travels with the list so the editor can render pickers instead of a bare
     // JSON box. Without it "admin-editable" means "editable if you remember the counter names".
@@ -159,14 +189,14 @@ export async function PUT(req: NextRequest) {
 
   try {
     const supabase = getSupabaseAdmin()
-    const { data: existing, error: existingError } = await supabase.from('trophies').select('id')
-    // Without this check a failed read looks like an empty catalog, so "seed what's missing"
-    // becomes "insert everything" — contradicting the safe-to-re-run guarantee and hiding the
-    // real failure behind a duplicate-key error.
-    if (existingError) {
-      return NextResponse.json({ error: internalErrorMessage('admin/trophies', existingError) }, { status: 500 })
+    // Paginated so a table with more than 1000 rows can't under-count `have` — a short read
+    // would look like "seed what's missing" but every insert would 23505 on rows we already
+    // hold, producing "Seeded 0" while the button still claimed there was work to do.
+    const idsResult = await readAllTrophyIds(supabase)
+    if (idsResult.error) {
+      return NextResponse.json({ error: internalErrorMessage('admin/trophies', idsResult.error) }, { status: 500 })
     }
-    const have = new Set((existing ?? []).map((r) => r.id as string))
+    const have = new Set(idsResult.ids)
 
     // Every game gets its own list. Win trophies are skipped where the server can't resolve a
     // winner, so no game is seeded with something nobody could ever earn.

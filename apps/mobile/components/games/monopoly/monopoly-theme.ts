@@ -1297,7 +1297,10 @@ export function formatThemedText(
       return `${edition.currencySymbol}${(num * edition.moneyScale).toLocaleString('en-GB')}`
     })
   } else {
-    formatted = formatted.replace(/£(\d+(?:,\d+)*(?:\.\d+)?)/g, `${edition.currencySymbol}$1`)
+    // Function replacer — a string replacement of `${'$'}$1` = "$$1" is
+    // parsed by String.replace as an escaped `$` + literal `1`, dropping
+    // the captured amount. Same fix as web `formatThemedText`.
+    formatted = formatted.replace(/£(\d+(?:,\d+)*(?:\.\d+)?)/g, (_, num: string) => `${edition.currencySymbol}${num}`)
   }
   formatted = formatted.replace(/£/g, edition.currencySymbol)
   if (edition.currencyWord !== 'pounds') {
