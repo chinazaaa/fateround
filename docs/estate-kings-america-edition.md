@@ -5,9 +5,9 @@ First paid edition. See `docs/coins-and-shop-plan.md` for the shop wiring.
 ## Meta
 
 - **Internal slug:** `america`
-- **User-facing label (proposed):** `USA` — matches the terse, place-name
-  pattern already used by Naija (short, no "Edition" suffix, reads well
-  in a picker row). Confirm before wiring.
+- **User-facing label:** `USA` — matches the terse, place-name pattern
+  already used by Naija (short, no "Edition" suffix, reads well in a
+  picker row).
 - **Price:** **800 coins** (edition tier from the pricing table in
   `coins-and-shop-plan.md`). Positioned as the headline shop item at
   its month-2 launch.

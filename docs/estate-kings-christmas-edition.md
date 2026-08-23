@@ -14,8 +14,10 @@ this mirrors.
   shop early December, remains permanently owned by anyone who buys it.
   A `seasonal` badge on the shop tile through mid-January drives urgency.
 - **Board sizes supported:** 40-space (base) and 48-space (expanded).
-- **Currency symbol shown in play:** ★ (gold star) as a festive stand-in,
-  or `$` if the engine can't easily swap symbols per edition — confirm.
+- **Currency symbol shown in play:** `$` — the star goes into the art
+  (card backs, corner motifs, ornaments) rather than the currency
+  symbol. Keeps the engine simple; no per-edition currency-symbol swap
+  needed.
 
 ## IP posture
 
@@ -126,21 +128,12 @@ Between green and dark blue. The luxe pre-crown tier.
 ## Stations (200 each)
 
 Sleigh routes replace rail terminals thematically — mechanically
-identical.
-
-- Sleigh Route North
-- Sleigh Route East
-- Sleigh Route South
-- Sleigh Route West
-
-Or, if plainer reads better:
+identical. Locked-in names:
 
 - Northern Sleigh Depot
 - Frostwind Junction
 - Silverbell Terminal
 - Winterhaven Depot
-
-Pick one set — I'd lean toward the second, more evocative one.
 
 ## Utilities (150 each)
 

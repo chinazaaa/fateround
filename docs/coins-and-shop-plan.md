@@ -85,12 +85,38 @@ shipping yet.
 - The shop is invisible to guests entirely (no "browse signed out" mode).
   Preserves the wow at signup and forecloses guest-only exploits.
 
+### Anti-farming rules
+
+Coins are only awarded from rooms with **at least 3 unique human
+players**. This applies to every earning source (win, placement,
+first-mode bonus, host bounty). Rationale: without a floor, a single
+player can spin up a room, fill it with bots (or play alone), "win,"
+and farm coins indefinitely. A 3-human minimum keeps the loop tied to
+genuinely social play, which is also what makes the coins feel
+meaningful.
+
+Tournament coins are exempt from the 3-human floor (tournaments already
+have their own minimum bracket size). Daily challenges are exempt
+(inherently solo).
+
 ### Shop page (main-nav item)
 
 Browseable, category-filtered, "owned" badge on things already unlocked.
 
-1. **Game themes** — 2–3 at launch (Whot, Ludo, Sudoku picks)
-2. **Winner animations** — 2–3 (confetti, fireworks, one signature)
+1. **Game themes** — 2 per game at launch, three games covered:
+   - **Whot:** Neon Whot + Naija Whot (opposite aesthetics — futuristic
+     vs cultural resonance)
+   - **Ludo:** Wooden Ludo + Naija Ludo
+   - **Sudoku:** Minimalist Sudoku + Newsprint Sudoku (the two natural
+     Sudoku aesthetics — modern-clean vs old-newspaper)
+   - If art bandwidth allows, add Wooden Whot as a third Whot option
+   - Full pipeline of theme candidates for every themable game (with
+     LAUNCH tags on the six above and everything else queued for
+     future monthly drops) is in
+     [`docs/game-themes-catalog.md`](./game-themes-catalog.md).
+2. **Winner animations** — 3 at launch: confetti burst, fireworks, and
+   gold shower (the signature). Sourced from a Lottie library; art can
+   be swapped later without engine changes.
 3. **Card templates** — 2 premium (default stays free)
 4. **Avatar frames** — 4–6
 5. **Name colors** — 6 solids + 3 gradients
@@ -521,6 +547,162 @@ players reach for.
 
 The economy today is designed so all of the above bolt on cleanly without
 retconning free features.
+
+## Launch sequencing (build order)
+
+Do these in order — each step unblocks the next. Cosmetic art can be
+sourced in parallel with wallet plumbing, but shop UI needs schema
+first.
+
+### Wave 1 — Foundation (nothing player-visible yet)
+
+- Schema: `profiles.coins`, `coin_ledger`, `profile_owned_*`,
+  `equipped_*`, `game_editions`, `game_themes`,
+  `guest_pending_grants`
+- Server functions: `award_coins()`, `spend_coins()`, `refund()`,
+  `grant_welcome()`, `grant_launch_v1()`, `migrate_guest_grants()`
+- Admin coin-adjustment UI + per-admin daily cap
+- Grandfathering flag on existing content (`price_coins = 0` on every
+  current edition/theme/pack)
+- Anti-farming: server-side 3-human floor in the coin-award path
+
+### Wave 2 — Earning (player-visible: coin awards start landing)
+
+- End-of-game coin-award panel in `FinishedWinner` /
+  `FinalResultsShareBlock`
+- Signup CTA showing actual coin amount at claim moments
+- Guest earning writes to `guest_pending_grants`
+- Guest → profile migration at signup (with 500-coin cap) + welcome
+  100-coin grant
+- Backfill migration + itemized welcome screen for existing players
+- Coin balance on profile page + ledger/history view
+
+At the end of Wave 2 the economy is running: players earn, guests
+convert, existing players see their backfilled coins. Shop is not yet
+open — nothing to spend on. That is fine; a week or two of "watch the
+balances tick up" builds pent-up demand for Wave 3.
+
+### Wave 3 — Shop (spending goes live)
+
+- Shop page in main nav + category filters + owned badges + preview
+- Refund flow (24h window, per-item "unused" check)
+- **Cosmetic items shipping now:**
+  - Avatar frames — extend `Avatar.tsx` to render `equipped_frame`;
+    ship 4 frames
+  - Name colors — new `PlayerName` treatment reading
+    `equipped_name_color`; ship 6 solids + 3 gradients
+  - Winner animations (3) — layer in `FinishedWinner`
+  - Card templates (2 premium) — variants in
+    `FinalResultsShareBlock` / `ShareResultsCaptureHeader`
+  - Streak freeze — meta item in profile settings
+- **Game themes shipping now:**
+  - Whot: Neon + Naija
+  - Ludo: Wooden + Naija
+  - Sudoku: Minimalist + Newsprint
+- **Inline gates shipping now:**
+  - Extra-bot coin gate in room lobby (50 coins after the first free)
+  - `price_coins` on library packs + coin badge on library rows
+
+### Wave 4 — First edition (headline drop, ~month 2)
+
+- America edition (`america` slug, "USA" label) — 800 coins
+- Room-creation edition picker (host chooses edition, everyone at the
+  table plays it)
+- Engine reads `game.edition_slug` and merges `game_editions.content`
+  over the base
+
+### Wave 5 — Christmas edition (early December)
+
+- Christmas edition (`christmas` slug, "Christmas" label) — 800 coins,
+  `seasonal` badge in shop through mid-January
+- Same engine wiring as America; only content differs
+
+### Wave 6 — Monetization (month 6+, out of scope of this launch)
+
+- Coin packs, subscriptions, battle pass, host AI generation, and
+  everything else in the "Monetization staging" section.
+
+## Live-tuning playbook
+
+Instrument these before Wave 2 ships so day-one data is captured.
+
+### Metrics to track
+
+- **Median coins earned per active player per week.** Target 200–400.
+  The single most important dial.
+- **Earn / spend ratio.** Total coins minted vs total coins spent per
+  week. If minted >> spent, sinks are missing or overpriced. If spent
+  >> minted, prices are too low or earn rates too high.
+- **Top-selling shop items** by unit and by coin volume. Shows what
+  people actually want vs what we thought they'd want.
+- **Refund rate per item.** > 10 % on any item is a signal the item is
+  misrepresented or overpriced.
+- **Guest → signup conversion rate at the coin-CTA moment.** Baseline
+  vs pre-coins signup conversion. If it doesn't lift, the CTA copy
+  isn't landing.
+- **Retro-backfill actual distribution** (mean, median, p90, capped
+  count). Confirms the 2000-coin cap was tuned right.
+- **Wallet distribution** by percentile every week — median, p90, p99.
+  Watch p99 for whale behavior once coin packs launch.
+- **Purchase count in the first 24h after retro backfill lands.** If
+  the top 1% buys out the entire shop day one, prices were too low.
+
+### Knobs to turn
+
+1. **Win-coin value (15)** — first lever. Doubling or halving it moves
+   the whole economy. Change this before touching individual item
+   prices.
+2. **Edition price (800)** — if nobody buys after a month, too high; if
+   everyone owns it in two weeks, too low.
+3. **Streak multiplier ceiling (2.0 over 30 days)** — dampens or
+   strengthens the daily-return loop.
+4. **Retro-backfill cap (2000)** — retune upward or downward for the
+   next cohort backfill if the current one felt too generous or too
+   stingy.
+
+### Review cadence
+
+- **Week 1 post-launch:** daily glance at earn/spend ratio and any
+  purchase-volume anomalies.
+- **Week 2:** first tuning pass if any metric is >50% off target.
+- **Monthly thereafter:** review dashboard, adjust one dial at a time
+  (never more than one — you'll never know which change did what).
+
+## Legal & policy follow-ups
+
+Small but worth teeing up now, not later:
+
+- **Terms of Service tweak** — add a clause covering the virtual
+  currency: no cash value, no ownership rights beyond the account,
+  admin discretion to adjust for abuse or error, coins cannot be
+  transferred between accounts (with the exception of the
+  guest-migration flow). One paragraph, standard boilerplate; write
+  before Wave 2 goes live so the first coin a player earns is covered.
+- **Privacy policy check** — the `guest_pending_grants` table stores
+  `device_id` and `session_id` for up to 7 days. If the privacy policy
+  doesn't already cover device identifiers for gameplay purposes, add
+  a line.
+- **Age policy** — no changes needed at v1. Revisit if / when
+  wagering, real-money packs, or gifting ships.
+- **App store descriptions** — no changes for v1 (no real-money
+  purchases yet). Required for Wave 6 (coin packs) — flag as a
+  dependency then.
+
+## Content-generation ownership (TBD)
+
+Every edition needs property names, card flavor text, corner labels,
+and art. The America and Christmas edition docs cover copy in full;
+someone still needs to own the art briefs (card back, board palette,
+corner motifs, station icons). Options:
+
+- **In-house designer** on staff — fastest cycle
+- **Freelance illustrator per edition** — clean scoping, ~$500–1500
+  per edition depending on style
+- **AI-generated art with human polish** — cheapest, works well for
+  patterns and card backs, less good for characters
+
+Whichever path, decide before Wave 4. The engine is ready without art;
+the art is the thing that makes the shop tile clickable.
 
 ## Ship checklist
 
