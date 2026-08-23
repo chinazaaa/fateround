@@ -483,9 +483,7 @@ function ShopTile({
 
       <TilePreview item={item} handle={handle} photoUrl={photoUrl} />
 
-      {tileHint(item.kind) && (
-        <p className="text-[11px] text-faint leading-snug">{tileHint(item.kind)}</p>
-      )}
+      {tileHint(item.kind) && <p className="text-[11px] text-faint leading-snug">{tileHint(item.kind)}</p>}
 
       <div className="flex items-center justify-between">
         <span className="text-sm font-bold text-body">
@@ -596,9 +594,7 @@ function TilePreview({ item, handle, photoUrl }: { item: ShopItem; handle: strin
     // animation plays inside PreviewModal instead, on a fresh mount each
     // Replay click via a bumped React key.
     return (
-      <div
-        className="relative flex h-16 items-center justify-center overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface-inset-bg)]"
-      >
+      <div className="relative flex h-16 items-center justify-center overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface-inset-bg)]">
         <span aria-hidden className="text-2xl opacity-70">
           ✨
         </span>
@@ -645,10 +641,7 @@ function PreviewModal({ item, onClose }: { item: ShopItem; onClose: () => void }
       aria-label={`${item.name} preview`}
       onClick={onClose}
     >
-      <div
-        className="glass-card-strong w-full max-w-md space-y-4 p-5"
-        onClick={(e) => e.stopPropagation()}
-      >
+      <div className="glass-card-strong w-full max-w-md space-y-4 p-5" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-faint">
@@ -684,11 +677,7 @@ function PreviewModal({ item, onClose }: { item: ShopItem; onClose: () => void }
 
         <div className="flex items-center justify-end gap-2">
           {anim && (
-            <button
-              type="button"
-              onClick={() => setReplayKey((n) => n + 1)}
-              className="fr-btn--nav text-xs"
-            >
+            <button type="button" onClick={() => setReplayKey((n) => n + 1)} className="fr-btn--nav text-xs">
               Replay
             </button>
           )}
@@ -742,7 +731,9 @@ function ConfirmDialog({
           </div>
         </div>
         {item.kind === 'streak_freeze' && (
-          <p className="text-xs text-muted">One-shot. Auto-covers a missed day — buy before or after, as long as you haven&rsquo;t played yet.</p>
+          <p className="text-xs text-muted">
+            One-shot. Auto-covers a missed day — buy before or after, as long as you haven&rsquo;t played yet.
+          </p>
         )}
         {insufficient && (
           <p className="text-red-500 text-sm">

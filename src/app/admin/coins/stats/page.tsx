@@ -120,9 +120,7 @@ export default function CoinStatsPage() {
   const earned7d = stats.window7d
     .filter((r) => r.reason !== 'shop_purchase' && r.reason !== 'admin_adjustment' && r.reason !== 'refund')
     .reduce((sum, r) => sum + r.sum_credited, 0)
-  const spent7d = stats.window7d
-    .filter((r) => r.reason === 'shop_purchase')
-    .reduce((sum, r) => sum + r.sum_debited, 0)
+  const spent7d = stats.window7d.filter((r) => r.reason === 'shop_purchase').reduce((sum, r) => sum + r.sum_debited, 0)
   const earned30d = stats.window30d
     .filter((r) => r.reason !== 'shop_purchase' && r.reason !== 'admin_adjustment' && r.reason !== 'refund')
     .reduce((sum, r) => sum + r.sum_credited, 0)
