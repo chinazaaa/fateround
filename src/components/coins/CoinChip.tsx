@@ -11,8 +11,9 @@ import { onCoinsAwarded } from '@/lib/coins/earn-events'
  * Rendered on non-in-game screens only. Hidden for guests entirely — guests
  * never see a balance (plan §"No profile, no visible balance").
  *
- * Phase 2: taps route to the profile balance card. Phase 3 will re-route to
- * the shop and rewire the icon/long-press to the ledger.
+ * Phase 3: taps route to the shop (the primary spend surface). The Coin
+ * History destination stays reachable from the profile balance card's
+ * "View history" button.
  */
 type Props = {
   /** Which design-system scope (matches ProfileChip). */
@@ -65,9 +66,9 @@ export function CoinChip({ tone = 'site' }: Props) {
 
   return (
     <Link
-      href="/profile?tab=coins"
+      href="/shop"
       className={`${base} ${pulse ? 'ring-2 ring-[var(--primary)]' : ''}`}
-      aria-label={`${coins} coins`}
+      aria-label={`${coins} coins — open shop`}
       title={`${coins} coins`}
       prefetch={false}
     >

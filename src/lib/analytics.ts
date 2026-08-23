@@ -57,4 +57,20 @@ export const GA_EVENTS = {
   launchBackfillWelcomeDismissed: 'launch_backfill_welcome_dismissed',
   /** The Coin History surface opened. */
   coinHistoryViewed: 'coin_history_viewed',
+  /** Shop page loaded (`docs/coins-analytics-events.md` §"Spending"). */
+  shopViewed: 'shop_viewed',
+  /** A shop tile scrolled into view or was opened. */
+  shopItemViewed: 'shop_item_viewed',
+  /** Buy button tapped; confirm dialog now visible. */
+  shopItemPurchaseStarted: 'shop_item_purchase_started',
+  /** Purchase confirmed and ledger written. */
+  shopItemPurchased: 'shop_item_purchased',
+  /** Purchase attempt failed. */
+  shopItemPurchaseFailed: 'shop_item_purchase_failed',
+  /** Owned cosmetic equipped. */
+  shopItemEquipped: 'shop_item_equipped',
+  /** Inline coin gate rendered (e.g. "Add bot — 50 coins" button visible). */
+  inlinePurchaseOffered: 'inline_purchase_offered',
+  /** Inline coin gate purchase completed. */
+  inlinePurchaseConfirmed: 'inline_purchase_confirmed',
 } as const

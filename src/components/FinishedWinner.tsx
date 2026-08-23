@@ -4,6 +4,7 @@ import { ContentLabelChip } from '@/components/game-lobby/ContentLabelChip'
 import { Glyph } from '@/components/icons/Glyph'
 import { ChampionIcon, Flag02Icon, HeartHandshakeIcon } from '@hugeicons/core-free-icons'
 import { CoinAwardPanel } from '@/components/coins/CoinAwardPanel'
+import { WinnerAnimationOverlay } from '@/components/coins/WinnerAnimationOverlay'
 import type { Game } from '@/types'
 
 export interface WinnerStat {
@@ -34,6 +35,7 @@ export function FinishedWinnerHero({
   emoji = '🏆',
   headline,
   gameCode,
+  winnerAnimationSlug,
 }: {
   /** Name of the first-place player. When absent, falls back to a neutral "Game over!". */
   winnerName?: string | null
@@ -59,11 +61,19 @@ export function FinishedWinnerHero({
    * same tab must not re-render the first game's award panel).
    */
   gameCode?: string | null
+  /**
+   * Equipped winner-animation slug read from the winner's profile. When
+   * present, an overlay plays once behind the hero at result-render time
+   * (`docs/coins-and-shop-plan.md` §"Where cosmetics render" → "Winner
+   * animation"). Falls back to no overlay if the slug is unknown.
+   */
+  winnerAnimationSlug?: string | null
 }) {
   const cfg = gameTypeConfig(parseGameType(game.game_type))
 
   return (
-    <div className="text-center space-y-2">
+    <div className="relative isolate text-center space-y-2">
+      {winnerAnimationSlug ? <WinnerAnimationOverlay slug={winnerAnimationSlug} /> : null}
       <div className="flex justify-center pb-1">
         <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[color-mix(in_srgb,var(--primary)_15%,transparent)] text-[var(--primary)] border border-[color-mix(in_srgb,var(--primary)_30%,transparent)] shadow-[0_8px_24px_-4px_color-mix(in_srgb,var(--primary)_35%,transparent)]">
           <HeroIcon emoji={emoji} />
