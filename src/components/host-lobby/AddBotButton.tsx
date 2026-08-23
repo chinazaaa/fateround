@@ -36,10 +36,18 @@ export function AddBotButton({ gameCode, hostToken, seatedCount, botCount, maxPl
   const seatsAvailable = seatedCount < maxPlayers
   const botsUnderCap = botCount < maxPlayers - 1
   const isPaid = botCount >= 1
+  const balance = Number(profile?.coins ?? 0)
+  const canAfford = !isPaid || balance >= EXTRA_BOT_COST
+  const guest = !profile || profile.is_anonymous
+  // Match the button's own disabled predicate so an "offered" event only
+  // fires when the user could actually click the button. Guests and
+  // insufficient-funds hosts see the disabled button + a "why" caption;
+  // firing inline_purchase_offered for them inflates the offered→confirmed
+  // conversion metric with impressions no one can act on.
+  const offerable = seatsAvailable && botsUnderCap && isPaid && !guest && canAfford
 
   useEffect(() => {
-    if (!seatsAvailable || !botsUnderCap) return
-    if (!isPaid) return
+    if (!offerable) return
     trackEvent(GA_EVENTS.inlinePurchaseOffered, {
       context: 'room_lobby_extra_bot',
       item_kind: 'extra_bot',
@@ -47,8 +55,8 @@ export function AddBotButton({ gameCode, hostToken, seatedCount, botCount, maxPl
       item_price: EXTRA_BOT_COST,
       owned: false,
     })
-    // Only fire once per (gameCode, botCount) transition — no dep on `profile`.
-  }, [gameCode, botCount, isPaid, seatsAvailable, botsUnderCap])
+    // Fires once per (gameCode, botCount, offerable-state) transition.
+  }, [gameCode, botCount, offerable])
 
   const handleClick = useCallback(async () => {
     if (busy) return
@@ -86,10 +94,6 @@ export function AddBotButton({ gameCode, hostToken, seatedCount, botCount, maxPl
 
   if (!seatsAvailable) return null
   if (!botsUnderCap) return null
-
-  const balance = Number(profile?.coins ?? 0)
-  const canAfford = !isPaid || balance >= EXTRA_BOT_COST
-  const guest = !profile || profile.is_anonymous
 
   return (
     <div className="space-y-1.5">

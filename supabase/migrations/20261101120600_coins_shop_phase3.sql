@@ -140,18 +140,13 @@ begin
       raise exception 'purchase_item: price mismatch for pack % (client=%, catalog=%)',
         p_slug, p_price_coins, v_catalog_price;
     end if;
-    if v_catalog_price = 0 then
-      -- Grandfathered free pack. No spend; still land an owned row for a
-      -- clean "in my library" render. Idempotent via PK.
-      insert into profile_owned_packs (profile_id, pack_id)
-      values (p_profile_id, v_pack_uuid)
-      on conflict do nothing;
-      select coins into v_new_balance from profiles where id = p_profile_id;
-      return jsonb_build_object(
-        'outcome', 'ok', 'new_balance', v_new_balance,
-        'ref_id', 'library_pack:' || p_slug
-      );
-    end if;
+    -- Grandfathered / free packs used to shortcut through a dedicated
+    -- fast-path here that ran BEFORE the owned-row pre-check below, so
+    -- re-tapping an already-owned pack still returned outcome='ok' and
+    -- the client toasted "Purchased X" every time. Removed — the flow
+    -- now falls through to the pre-check + generic price=0 handler so
+    -- library_pack behaves the same as every other durable kind: repeat
+    -- taps return 'already_owned' cleanly.
   elsif p_kind in ('frame', 'name_color', 'animation', 'card_template', 'streak_freeze') then
     -- Catalog lives in code; trust the client price up to a sane ceiling.
     if p_price_coins > 10000 then
@@ -220,6 +215,8 @@ begin
       insert into profile_owned_animations (profile_id, animation_slug) values (p_profile_id, p_slug) on conflict do nothing;
     elsif p_kind = 'card_template' then
       insert into profile_owned_card_templates (profile_id, template_slug) values (p_profile_id, p_slug) on conflict do nothing;
+    elsif p_kind = 'library_pack' then
+      insert into profile_owned_packs (profile_id, pack_id) values (p_profile_id, v_pack_uuid) on conflict do nothing;
     end if;
     select coins into v_new_balance from profiles where id = p_profile_id;
     return jsonb_build_object('outcome', 'ok', 'new_balance', v_new_balance, 'ref_id', v_ref_id);

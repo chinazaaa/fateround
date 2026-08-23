@@ -172,15 +172,13 @@ export function ShopClient() {
       })
       const data = (await res.json().catch(() => ({}))) as { outcome?: string; new_balance?: number; error?: string }
 
-      if (!res.ok || data.outcome === 'server_error') {
-        trackEvent(GA_EVENTS.shopItemPurchaseFailed, {
-          item_kind: pending.kind,
-          item_slug: pending.slug,
-          item_price: pending.price,
-          reason: 'server_error',
-        })
-        setToast(data.error ?? 'Purchase failed — try again')
-      } else if (data.outcome === 'insufficient_funds') {
+      // Outcome-first routing. The prior version checked `!res.ok` first,
+      // but the 402 fix (round 1, finding #6) made res.ok=false for a
+      // clean insufficient_funds — the check then fell into the
+      // server_error branch and mis-toasted "Purchase failed" instead of
+      // "Not enough coins — X more needed". Read the RPC envelope first;
+      // only fall through to server_error if there IS no envelope outcome.
+      if (data.outcome === 'insufficient_funds') {
         trackEvent(GA_EVENTS.shopItemPurchaseFailed, {
           item_kind: pending.kind,
           item_slug: pending.slug,
@@ -197,6 +195,14 @@ export function ShopClient() {
           reason: 'already_owned',
         })
         setToast('Already owned.')
+      } else if (!res.ok || !data.outcome || data.outcome === 'server_error') {
+        trackEvent(GA_EVENTS.shopItemPurchaseFailed, {
+          item_kind: pending.kind,
+          item_slug: pending.slug,
+          item_price: pending.price,
+          reason: 'server_error',
+        })
+        setToast(data.error ?? 'Purchase failed — try again')
       } else {
         trackEvent(GA_EVENTS.shopItemPurchased, {
           item_kind: pending.kind,
