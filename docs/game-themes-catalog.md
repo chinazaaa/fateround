@@ -265,7 +265,7 @@ Games where theming isn't worth the art bill:
 
 ## Cadence
 
-- **Launch (Wave 3):** the 6 [LAUNCH]-tagged themes above (2 each for
+- **Launch (Phase 3):** the 6 [LAUNCH]-tagged themes above (2 each for
   Whot, Ludo, Sudoku).
 - **Post-launch monthly drops:** pick one game per drop, ship 1–2 new
   themes for it. Rotate through the catalog. Add a "New in shop"

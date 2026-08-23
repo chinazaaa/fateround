@@ -554,7 +554,32 @@ Do these in order — each step unblocks the next. Cosmetic art can be
 sourced in parallel with wallet plumbing, but shop UI needs schema
 first.
 
-### Wave 1 — Foundation (nothing player-visible yet)
+### Phase 0 — Pre-build prep (no code yet)
+
+Everything that has to be true before an engineer opens their editor.
+Run these in parallel — none block each other, all block Phase 1.
+
+- ToS clause added covering virtual currency (no cash value, no
+  transfer rights, admin discretion) — legal team or off-the-shelf
+  boilerplate; one paragraph.
+- Privacy policy line added covering the `device_id` retained for
+  `guest_pending_grants` (7-day retention window noted).
+- Analytics events defined (see the Live-tuning playbook below) so
+  they can land in Phase 1 alongside the schema.
+- Art briefs kicked off for the six launch themes (Neon/Naija Whot,
+  Wooden/Naija Ludo, Minimalist/Newsprint Sudoku), 4–6 avatar
+  frames, 2 premium card templates, and 3 winner animations
+  (confetti / fireworks / gold shower — Lottie library search).
+- Design brief for the USA edition art (card back, board palette,
+  station icons, corner motifs).
+- Design brief for Christmas edition art (parked until closer to
+  December).
+- Content-generation owner decided (see the "Content-generation
+  ownership" section) — who writes card flavor text and briefs art.
+- Anti-farming 3-human-floor confirmed with whoever owns fair-play
+  policy.
+
+### Phase 1 — Foundation (nothing player-visible yet)
 
 - Schema: `profiles.coins`, `coin_ledger`, `profile_owned_*`,
   `equipped_*`, `game_editions`, `game_themes`,
@@ -566,7 +591,7 @@ first.
   current edition/theme/pack)
 - Anti-farming: server-side 3-human floor in the coin-award path
 
-### Wave 2 — Earning (player-visible: coin awards start landing)
+### Phase 2 — Earning (player-visible: coin awards start landing)
 
 - End-of-game coin-award panel in `FinishedWinner` /
   `FinalResultsShareBlock`
@@ -577,12 +602,12 @@ first.
 - Backfill migration + itemized welcome screen for existing players
 - Coin balance on profile page + ledger/history view
 
-At the end of Wave 2 the economy is running: players earn, guests
+At the end of Phase 2 the economy is running: players earn, guests
 convert, existing players see their backfilled coins. Shop is not yet
 open — nothing to spend on. That is fine; a week or two of "watch the
-balances tick up" builds pent-up demand for Wave 3.
+balances tick up" builds pent-up demand for Phase 3.
 
-### Wave 3 — Shop (spending goes live)
+### Phase 3 — Shop (spending goes live)
 
 - Shop page in main nav + category filters + owned badges + preview
 - Refund flow (24h window, per-item "unused" check)
@@ -603,7 +628,7 @@ balances tick up" builds pent-up demand for Wave 3.
   - Extra-bot coin gate in room lobby (50 coins after the first free)
   - `price_coins` on library packs + coin badge on library rows
 
-### Wave 4 — First edition (headline drop, ~month 2)
+### Phase 4 — First edition (headline drop, ~month 2)
 
 - America edition (`america` slug, "USA" label) — 800 coins
 - Room-creation edition picker (host chooses edition, everyone at the
@@ -611,20 +636,20 @@ balances tick up" builds pent-up demand for Wave 3.
 - Engine reads `game.edition_slug` and merges `game_editions.content`
   over the base
 
-### Wave 5 — Christmas edition (early December)
+### Phase 5 — Christmas edition (early December)
 
 - Christmas edition (`christmas` slug, "Christmas" label) — 800 coins,
   `seasonal` badge in shop through mid-January
 - Same engine wiring as America; only content differs
 
-### Wave 6 — Monetization (month 6+, out of scope of this launch)
+### Phase 6 — Monetization (month 6+, out of scope of this launch)
 
 - Coin packs, subscriptions, battle pass, host AI generation, and
   everything else in the "Monetization staging" section.
 
 ## Live-tuning playbook
 
-Instrument these before Wave 2 ships so day-one data is captured.
+Instrument these before Phase 2 ships so day-one data is captured.
 
 ### Metrics to track
 
@@ -677,7 +702,7 @@ Small but worth teeing up now, not later:
   admin discretion to adjust for abuse or error, coins cannot be
   transferred between accounts (with the exception of the
   guest-migration flow). One paragraph, standard boilerplate; write
-  before Wave 2 goes live so the first coin a player earns is covered.
+  before Phase 2 goes live so the first coin a player earns is covered.
 - **Privacy policy check** — the `guest_pending_grants` table stores
   `device_id` and `session_id` for up to 7 days. If the privacy policy
   doesn't already cover device identifiers for gameplay purposes, add
@@ -685,7 +710,7 @@ Small but worth teeing up now, not later:
 - **Age policy** — no changes needed at v1. Revisit if / when
   wagering, real-money packs, or gifting ships.
 - **App store descriptions** — no changes for v1 (no real-money
-  purchases yet). Required for Wave 6 (coin packs) — flag as a
+  purchases yet). Required for Phase 6 (coin packs) — flag as a
   dependency then.
 
 ## Content-generation ownership (TBD)
@@ -701,7 +726,7 @@ corner motifs, station icons). Options:
 - **AI-generated art with human polish** — cheapest, works well for
   patterns and card backs, less good for characters
 
-Whichever path, decide before Wave 4. The engine is ready without art;
+Whichever path, decide before Phase 4. The engine is ready without art;
 the art is the thing that makes the shop tile clickable.
 
 ## Ship checklist
