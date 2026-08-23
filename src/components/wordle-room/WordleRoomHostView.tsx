@@ -343,6 +343,7 @@ export function WordleRoomHostView({ gameCode, hostToken }: { gameCode: string; 
     () =>
       game?.status === 'active' ? (
         <HostActiveSettings
+          game={game}
           gameCode={gameCode}
           hostToken={hostToken}
           gameType="wordle_room"
@@ -460,7 +461,7 @@ export function WordleRoomHostView({ gameCode, hostToken }: { gameCode: string; 
           onJoinNameChange={setHostJoinName}
           onJoin={() => void hostJoinGame()}
           joining={hostJoining}
-          spectatorHint="Watch the game from the Watch tab"
+          spectatorHint="Watch the game"
           playingNote={
             <p className="text-sm text-muted">
               Playing as <strong className="text-body">{hostPlayerName}</strong> — play once you start.
@@ -491,6 +492,7 @@ export function WordleRoomHostView({ gameCode, hostToken }: { gameCode: string; 
             hostToken={hostToken}
             game={game}
             playerCount={players.length}
+            seatedCount={players.filter((p) => !p.spectator).length}
             onGameUpdate={setGame}
           />
           <HostLobbyWaitingFooter
@@ -636,6 +638,7 @@ export function WordleRoomHostView({ gameCode, hostToken }: { gameCode: string; 
         hostToken={hostToken}
         game={game}
         playerCount={players.length}
+        seatedCount={players.filter((p) => !p.spectator).length}
         onGameUpdate={setGame}
       />
       <TransferHostControl triggerClassName="btn-secondary w-full flex items-center justify-center gap-2" />

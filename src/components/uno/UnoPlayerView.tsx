@@ -9,6 +9,7 @@ import { UnoFinalResultsShareBlock } from '@/components/uno/UnoFinalResultsShare
 import { UnoRulePills } from '@/components/uno/UnoRulePills'
 import { GameInfoChips } from '@/components/game-lobby/GameInfoChips'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
+import { HostFinishControlsInline } from '@/components/host/HostFinishControlsInline'
 import { gameTypeConfig } from '@/lib/game-types'
 import {
   currentPlayerId,
@@ -41,6 +42,7 @@ import { NameJoinForm } from '@/components/game-lobby/NameJoinForm'
 import { EditNameInline } from '@/components/ui/EditNameInline'
 import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
 import { useRegisterGameSettings } from '@/components/GameSettingsContext'
+import { RulesInPlaySection } from '@/components/game-lobby/RulesInPlaySection'
 import { useLobbyOpenNotification } from '@/hooks/useLobbyOpenNotification'
 import { useRoomMemberAutoJoin, useRoomMemberJoin, useRoomMemberNamePrefill } from '@/hooks/useRoomMemberJoin'
 import { preJoinScreen, playerIsViewer } from '@/lib/viewers'
@@ -390,6 +392,7 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
     if (!myPlayerId) return null
     return (
       <div className="space-y-3">
+        <RulesInPlaySection game={game} />
         <EditNameInline
           gameCode={gameCode}
           playerId={myPlayerId}
@@ -408,7 +411,7 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
         />
       </div>
     )
-  }, [myPlayerId, gameCode, activePlayer?.name, isWatching, load, router])
+  }, [game, myPlayerId, gameCode, activePlayer?.name, isWatching, load, router])
   useRegisterGameSettings(playerSettingsNode)
 
   if (screen === 'loading') return <UnoLoadingScreen />
@@ -551,6 +554,10 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
             {winner && <p className="text-2xl font-black text-[var(--marry)]">{winner.name}</p>}
           </UnoCard>
         )}
+        {/* Host-only Play again / Return to lobby — renders when the viewer's device
+            still holds a host token (host+play mode, or a host who landed on /game/[code]
+            instead of /host/[code] at end of round). Non-hosts see nothing. */}
+        <HostFinishControlsInline gameCode={gameCode} hostPlayerId={myPlayerId} />
         {myPlayerId &&
           unoPlayerSharesWin(
             session?.turn_order ?? [],

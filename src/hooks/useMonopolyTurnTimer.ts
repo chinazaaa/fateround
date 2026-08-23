@@ -15,7 +15,7 @@ export function useMonopolyTurnTimer(gameCode: string, board: MonopolyBoard | nu
     deadlineAt,
     hasTimer: !!deadlineAt && timed,
     enabled,
-    resetKey: phase,
+    resetKey: `${phase}:${board?.current_turn_index}:${board?.auction_state?.current_bidder_id ?? ''}`,
     urgentThreshold: 15,
   })
 }

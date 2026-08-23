@@ -159,7 +159,7 @@ export function WordRushHostView({ gameCode, hostToken }: { gameCode: string; ho
   const hostSettingsNode = useMemo(
     () =>
       game && game.status === 'active' ? (
-        <HostActiveSettings gameCode={gameCode} hostToken={hostToken} gameType="word_rush" onEnded={load}>
+        <HostActiveSettings game={game} gameCode={gameCode} hostToken={hostToken} gameType="word_rush" onEnded={load}>
           <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
           {hostMode === 'player' && !!hostPlayerId && (
             <HostLeaveSeatButton onLeave={leaveSeatKeepHosting} className="btn-secondary w-full py-3 text-base" />

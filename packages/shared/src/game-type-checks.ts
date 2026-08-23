@@ -116,6 +116,18 @@ export function isWordScrambleGame(gameType: GameType | string | undefined): boo
   return eq(gameType, 'word_scramble')
 }
 
+export function isMafiaGame(gameType: GameType | string | undefined): boolean {
+  return eq(gameType, 'mafia')
+}
+
+export function isDraughts10Game(gameType: GameType | string | undefined): boolean {
+  return eq(gameType, 'checkers_international') || eq(gameType, 'checkers_nigeria')
+}
+
+export function isTrollRunGame(gameType: GameType | string | undefined): boolean {
+  return eq(gameType, 'troll_run')
+}
+
 export function isLandmineGame(gameType: GameType | string | undefined): boolean {
   return eq(gameType, 'landmine')
 }

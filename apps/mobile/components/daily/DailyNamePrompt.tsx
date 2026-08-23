@@ -16,7 +16,7 @@ import { useEffect, useState } from 'react'
 import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
 import { AppButton } from '@/components/ui/AppButton'
 import { rememberName } from '@/lib/identity-local'
-import { fetchProfileGames, updateProfile, type ProfileMe } from '@/lib/profile-api'
+import { fetchProfileGames, updateProfileHandle, type ProfileMe } from '@/lib/profile-api'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
 
@@ -61,13 +61,15 @@ export function DailyNamePrompt() {
     }
     setBusy(true)
     try {
-      const updated = await updateProfile({ handle: next })
-      if (!updated) {
-        Alert.alert('Could not save name', 'Please try again.')
+      const result = await updateProfileHandle(next)
+      if ('error' in result) {
+        Alert.alert('Could not save name', result.error)
         return
       }
-      await rememberName(next)
-      setProfile(updated)
+      await rememberName(result.handle)
+      // The route answers with the saved handle, not a whole profile — merge it into the
+      // one we already hold rather than dropping the rest of the fields.
+      setProfile((prev) => (prev ? { ...prev, handle: result.handle } : prev))
       setEditing(false)
     } finally {
       setBusy(false)
@@ -128,7 +130,13 @@ export function DailyNamePrompt() {
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
     editWrap: { padding: 12, borderRadius: 12, borderWidth: 1, gap: 8 },
-    input: { paddingHorizontal: 12, paddingVertical: 10, borderRadius: 10, borderWidth: 1, fontSize: theme.type.body.size },
+    input: {
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      borderRadius: 10,
+      borderWidth: 1,
+      fontSize: theme.type.body.size,
+    },
     editActions: { flexDirection: 'row', gap: 8 },
     subtleLine: { color: theme.textMuted, fontSize: theme.type.caption.size, textAlign: 'center' },
     nudgeWrap: { padding: 14, borderRadius: 12, borderWidth: 1, alignItems: 'center', gap: 8 },

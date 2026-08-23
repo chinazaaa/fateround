@@ -85,6 +85,7 @@ export const createGameSchema = z.object({
   player_questions_order: playerQuestionsOrderEnum.optional(),
   game_type: gameTypeEnum.optional(),
   theme: themeEnum.optional(),
+  edition_slug: z.string().min(1).max(64).optional(),
   wst_quote_source: wstQuoteSourceEnum.optional(),
   participant_filter: participantFilterEnum.optional(),
   gender_based: z.boolean().optional(),
@@ -99,6 +100,14 @@ export const createGameSchema = z.object({
     .int()
     .refine((value) => value === 40 || value === 48)
     .optional(),
+  monopoly_double_go_salary: z.boolean().optional(),
+  monopoly_forced_auctions: z.boolean().optional(),
+  monopoly_auction_timer_seconds: z.coerce.number().int().min(5).max(60).optional(),
+  monopoly_no_rent_in_jail: z.boolean().optional(),
+  monopoly_estate_dividend: z.boolean().optional(),
+  monopoly_loans_enabled: z.boolean().optional(),
+  monopoly_loan_interest: z.coerce.number().int().min(0).max(100).optional(),
+  monopoly_loan_term_rounds: z.coerce.number().int().min(1).max(20).optional(),
   codewords_player_picks: z.boolean().optional(),
   codewords_late_join: z.boolean().optional(),
   describe_it_num_teams: z.coerce.number().int().min(2).max(4).optional(),
@@ -271,6 +280,7 @@ export const updateGameSchema = z.object({
   // Player-facing content label ("Maths", "Bible trivia"). Empty string clears it.
   content_label: z.string().max(40).optional(),
   theme: themeEnum.optional(),
+  edition_slug: z.string().min(1).max(64).optional(),
   rounds_count: z.coerce.number().int().min(1, 'rounds_count is required').optional(),
   timer_seconds: z.coerce.number().optional(),
   operative_timer_seconds: z.coerce.number().optional(),
@@ -391,6 +401,7 @@ export const boardGameLobbySettingsSchema = z.object({
   hostToken: hostTokenString(),
   is_public: z.boolean().optional(),
   theme: themeEnum.optional(),
+  edition_slug: z.string().min(1).max(64).optional(),
   checkers_nigeria_street_rules: z.boolean().optional(),
   // Player-facing content label ("Maths", "Bible trivia"). Empty string clears it.
   content_label: z.string().max(40).optional(),
@@ -403,6 +414,9 @@ export const boardGameLobbySettingsSchema = z.object({
   monopoly_auction_timer_seconds: z.number().int().min(5).max(60).nullable().optional(),
   monopoly_no_rent_in_jail: z.boolean().optional(),
   monopoly_estate_dividend: z.boolean().optional(),
+  monopoly_loans_enabled: z.boolean().optional(),
+  monopoly_loan_interest: z.coerce.number().int().min(0).max(100).optional(),
+  monopoly_loan_term_rounds: z.coerce.number().int().min(1).max(20).optional(),
   monopoly_board_size: z.coerce
     .number()
     .int()

@@ -150,7 +150,18 @@ export function BingoHostScreen({ gameCode, hostToken, game, players, onReload }
   const activePlayers = players.filter((p) => !p.spectator)
 
   return (
-    <HostChrome gameCode={gameCode} hostToken={hostToken} game={game} players={players} onReload={onReload}>
+    <HostChrome
+      gameCode={gameCode}
+      hostToken={hostToken}
+      game={game}
+      players={players}
+      onReload={onReload}
+      // Auto-call only. With the server calling numbers on its interval (the ticker pokes
+      // `/api/bingo/sync`), a seated host has nothing to drive and should get their card like
+      // any other player. In MANUAL mode calling the next number IS the hosting job, so the
+      // console stays — burying that button behind the ⚙ would break the game's whole loop.
+      playFirstWhenSeated={game.bingo_call_mode === 'auto'}
+    >
       <View style={styles.statsRow}>
         <Text style={styles.stat}>Players: {activePlayers.length}</Text>
         <Text style={styles.stat}>Called: {calledNumbers.length}/75</Text>

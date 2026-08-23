@@ -12,6 +12,7 @@ import { GameLobbyWaitingPanel } from '@/components/game-lobby/GameLobbyWaitingP
 import { NameJoinForm } from '@/components/game-lobby/NameJoinForm'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { LiveLeaderboardLayout } from '@/components/LiveLeaderboardLayout'
+import { WordleRoomSpectatorBoard } from '@/components/wordle-room/WordleRoomSpectatorBoard'
 import { WordleRoomBoard, type WordleRoomGradedGuess } from '@/components/wordle-room/WordleRoomBoard'
 import { WordleRoomResults } from '@/components/wordle-room/WordleRoomResults'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
@@ -21,6 +22,7 @@ import { ViewerModeBanner } from '@/components/ViewerModeBanner'
 import { EditNameInline } from '@/components/ui/EditNameInline'
 import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
 import { useRegisterGameSettings } from '@/components/GameSettingsContext'
+import { RulesInPlaySection } from '@/components/game-lobby/RulesInPlaySection'
 import { gameTypeConfig } from '@/lib/game-types'
 import {
   tallyWordleRoomScores,
@@ -418,6 +420,7 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
     if (!myPlayerId) return null
     return (
       <div className="space-y-3">
+        <RulesInPlaySection game={game} />
         <EditNameInline
           gameCode={gameCode}
           playerId={myPlayerId}
@@ -436,7 +439,7 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
         />
       </div>
     )
-  }, [myPlayerId, game?.status, gameCode, me?.name, isViewer, load, router])
+  }, [game, myPlayerId, game?.status, gameCode, me?.name, isViewer, load, router])
   useRegisterGameSettings(playerSettingsNode)
 
   const { context: lateJoinContext, loading: lateJoinContextLoading } = useLateJoinContext(
@@ -896,8 +899,13 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
 
           {/* Colours are hardcoded (not `var(--wl-…)`) because the board's <style> block that
             defines those vars only mounts when currentWord is set — the legend needs to
-            render even before the first fetchStatus lands. */}
-          <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11px] text-muted">
+            render even before the first fetchStatus lands.
+            Hidden from viewers: it explains tiles they will never see fill in. */}
+          <div
+            className={`flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11px] text-muted ${
+              isViewer ? 'hidden' : ''
+            }`}
+          >
             <span className="inline-flex items-center gap-1">
               <span className="inline-block h-3 w-3 rounded-sm" style={{ background: '#6aaa64' }} />
               right letter, right spot
@@ -912,7 +920,20 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
             </span>
           </div>
 
-          {currentWord && (
+          {/* A viewer's own board is empty and permanently disabled (`boardDisabled` includes
+            `isViewer`), so it was a dead grid taking the main column while the only real
+            content sat in a sidebar that stacks below the fold on a phone. Give them the race
+            instead — see WordleRoomSpectatorBoard for what can honestly be shown. */}
+          {isViewer ? (
+            <WordleRoomSpectatorBoard
+              standings={standings}
+              progressRows={progressRows}
+              wordCount={wordCount}
+              maxAttempts={maxAttempts}
+            />
+          ) : null}
+
+          {!isViewer && currentWord && (
             <WordleRoomBoard
               word={currentWord}
               guesses={guesses}

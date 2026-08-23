@@ -5,6 +5,7 @@ import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout } from '@/components/host/HostGameLayout'
 import { HostLobby } from '@/components/host/HostLobby'
 import { GameInfoChips } from '@/components/game-lobby/GameInfoChips'
+import { RulesInPlaySection } from '@/components/game-lobby/RulesInPlaySection'
 import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
 import { HostManageSection } from '@/components/host/HostManageSection'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
@@ -391,6 +392,7 @@ export function UnoHostView({ gameCode, hostToken }: { gameCode: string; hostTok
     if (game?.status !== 'active') return null
     return (
       <div className="space-y-4">
+        <RulesInPlaySection game={game} />
         <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
         {hostMode === 'player' && !!hostPlayerId && (
           <HostLeaveSeatButton
@@ -443,7 +445,7 @@ export function UnoHostView({ gameCode, hostToken }: { gameCode: string; hostTok
             onJoin={() => void hostJoinGame()}
             joining={hostJoining}
             onEditName={renameHost}
-            spectatorHint="Spectate from the Watch tab"
+            spectatorHint="Spectate"
           />
         ) : undefined
       }
@@ -456,6 +458,7 @@ export function UnoHostView({ gameCode, hostToken }: { gameCode: string; hostTok
               game={game}
               boardGameType="uno"
               playerCount={players.length}
+              seatedCount={players.filter((p) => !p.spectator).length}
               onGameUpdate={setGame}
             />
           )}
@@ -613,6 +616,7 @@ export function UnoHostView({ gameCode, hostToken }: { gameCode: string; hostTok
               game={game}
               boardGameType="uno"
               playerCount={players.length}
+              seatedCount={players.filter((p) => !p.spectator).length}
               onGameUpdate={setGame}
             />
             <TransferHostControl triggerClassName="btn-secondary w-full flex items-center justify-center gap-2" />
