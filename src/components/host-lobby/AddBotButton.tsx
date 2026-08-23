@@ -13,7 +13,7 @@
  * server is source of truth on both the bot count AND the spend.
  */
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { authHeaders } from '@/lib/identity'
 import { useProfile } from '@/hooks/useProfile'
 import { trackEvent, GA_EVENTS } from '@/lib/analytics'
@@ -46,8 +46,20 @@ export function AddBotButton({ gameCode, hostToken, seatedCount, botCount, maxPl
   // conversion metric with impressions no one can act on.
   const offerable = seatsAvailable && botsUnderCap && isPaid && !guest && canAfford
 
+  // Dedupe inline_purchase_offered across botCount transitions in the same
+  // lobby. Reviewer round 3 finding #6: successful "add bot" refetches the
+  // roster, botCount ticks up, offerable stays true, effect re-runs and
+  // inflates the offered→confirmed conversion metric by one per add. Fire
+  // exactly once per (gameCode) while offerable is true; reset when the
+  // gate closes so a reopen after a full room clears it out.
+  const offeredKeyRef = useRef<string | null>(null)
   useEffect(() => {
-    if (!offerable) return
+    if (!offerable) {
+      offeredKeyRef.current = null
+      return
+    }
+    if (offeredKeyRef.current === gameCode) return
+    offeredKeyRef.current = gameCode
     trackEvent(GA_EVENTS.inlinePurchaseOffered, {
       context: 'room_lobby_extra_bot',
       item_kind: 'extra_bot',
@@ -55,8 +67,7 @@ export function AddBotButton({ gameCode, hostToken, seatedCount, botCount, maxPl
       item_price: EXTRA_BOT_COST,
       owned: false,
     })
-    // Fires once per (gameCode, botCount, offerable-state) transition.
-  }, [gameCode, botCount, offerable])
+  }, [gameCode, offerable])
 
   const handleClick = useCallback(async () => {
     if (busy) return
@@ -69,8 +80,25 @@ export function AddBotButton({ gameCode, hostToken, seatedCount, botCount, maxPl
         headers,
         body: JSON.stringify({ hostToken, expectedPriceCoins: isPaid ? EXTRA_BOT_COST : 0 }),
       })
-      const data = (await res.json().catch(() => ({}))) as { error?: string; charged?: number; newBalance?: number }
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string
+        charged?: number
+        newBalance?: number
+        expectedPriceCoins?: number
+      }
       if (!res.ok) {
+        // 409 price_mismatch carries the server's authoritative price so
+        // the client can re-render with the right expectation. Trigger a
+        // roster refetch (which will bump botCount to the correct value
+        // and flip isPaid in the next render) so the next click sends
+        // the correct expectedPriceCoins. Reviewer round 3 finding #1:
+        // without this, a losing racer stayed stuck on "pricing changed"
+        // with no way out short of a page refresh.
+        if (res.status === 409 && typeof data.expectedPriceCoins === 'number') {
+          setError('Bot pricing changed — refreshing…')
+          onAdded()
+          return
+        }
         setError(data.error ?? 'Could not add a bot')
         return
       }

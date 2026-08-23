@@ -7,17 +7,7 @@ import { trackEvent, GA_EVENTS } from '@/lib/analytics'
 import { useProfile } from '@/hooks/useProfile'
 import { emitCoinsAwarded } from '@/lib/coins/earn-events'
 import type { CoinAwardWire } from '@/lib/coins/earn-events'
-import {
-  ANIMATIONS,
-  CARD_TEMPLATES,
-  FRAMES,
-  NAME_COLORS,
-  findAnimation,
-  findCardTemplate,
-  findFrame,
-  findNameColor,
-  type ShopKind,
-} from '@/lib/coins/shop-catalog'
+import { findAnimation, findCardTemplate, type ShopKind } from '@/lib/coins/shop-catalog'
 import { Avatar } from '@/components/Avatar'
 import { PlayerName } from '@/components/PlayerName'
 import { Skeleton } from '@/components/Skeleton'
@@ -69,10 +59,19 @@ export function ShopClient() {
     try {
       const headers = (await authHeaders()) ?? {}
       const res = await fetch('/api/shop/catalog', { headers })
+      // A 500 (owned-table read failure, RLS drift, transient DB error)
+      // parses fine but arrives as {error: …} — coerced to Catalog with
+      // items=undefined it would render as "Nothing in this category yet"
+      // and silently mask a real server error (reviewer round 3 finding
+      // #2). Toast + leave prior catalog visible so a retry is possible.
+      if (!res.ok) {
+        setToast('Could not load the shop — try again')
+        return
+      }
       const data = (await res.json()) as Catalog
       setCatalog(data)
     } catch {
-      setCatalog(null)
+      setToast('Could not load the shop — try again')
     } finally {
       setLoading(false)
     }
@@ -513,12 +512,3 @@ function Toast({ text, onClose }: { text: string; onClose: () => void }) {
     </div>
   )
 }
-
-// Re-export lint-friendly noop referencers so a future refactor can't accidentally
-// tree-shake the catalog: the tiles use the palettes at render time.
-void FRAMES
-void NAME_COLORS
-void ANIMATIONS
-void CARD_TEMPLATES
-void findFrame
-void findNameColor

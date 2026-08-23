@@ -261,16 +261,25 @@ begin
       insert into profile_owned_packs (profile_id, pack_id) values (p_profile_id, v_pack_uuid);
     end if;
   exception when unique_violation then
-    -- Owned-row already exists (race with a concurrent purchase). The
-    -- shop_purchase partial unique index on the ledger row will ALSO
-    -- have raised 23505 — one of the two concurrent spends is the
-    -- "loser". Return already_owned. Note: the loser's spend has
-    -- already committed at this point because spend_coins() returned;
-    -- we can't undo it here without leaving the ledger inconsistent,
-    -- so we refund via a compensating award. The refund flows through
-    -- award_coins with reason='refund' so it lands as its own ledger
-    -- row and admin audit stays clean.
-    perform award_coins(p_profile_id, p_price_coins, 'refund', v_ref_id, null, true);
+    -- Owned-row already exists (race with a concurrent purchase or a
+    -- stale support-tooling delete). The loser's spend committed above
+    -- because spend_coins() returned; a compensating refund keeps the
+    -- balance whole and the audit trail intact.
+    --
+    -- Wrap the refund itself in a sub-begin so a second unique_violation
+    -- (the refund path has its own partial unique index on
+    -- (profile_id, ref_id) where reason='refund' — see
+    -- 20261101120300_coins_refund_unique_index.sql) can't escape and
+    -- turn a benign already_owned into a server_error. Reviewer round
+    -- 3 finding #3: two racers of the same (profile_id, ref_id) both
+    -- reaching this handler would collide on that index.
+    begin
+      perform award_coins(p_profile_id, p_price_coins, 'refund', v_ref_id, null, true);
+    exception when unique_violation then
+      -- Refund already recorded (an earlier already_owned handler credited
+      -- it). Nothing more to do; the balance is already restored.
+      null;
+    end;
     select coins into v_new_balance from profiles where id = p_profile_id;
     return jsonb_build_object('outcome', 'already_owned', 'new_balance', v_new_balance, 'ref_id', v_ref_id);
   end;
