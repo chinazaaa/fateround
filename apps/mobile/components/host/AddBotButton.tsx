@@ -39,15 +39,23 @@ export function AddBotButton({ gameCode, hostToken, seatedCount, botCount, maxPl
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [balance, setBalance] = useState<number>(0)
-  const [guest, setGuest] = useState<boolean>(true)
+  // `null` until the first /api/profile/me resolves — treat unknown as
+  // still-loading rather than defaulting to guest=true, which would
+  // otherwise flash a signed-in host the guest gate ("Save your profile
+  // to buy extra bots") and disable the button until the round-trip
+  // completes. Under the unknown state the paid caption reads a neutral
+  // "Checking your balance…" and the button is disabled — a spurious
+  // enable on a stale-guest fetch is worse than a brief wait.
+  const [guest, setGuest] = useState<boolean | null>(null)
 
   const seatsAvailable = seatedCount < maxPlayers
   const botsUnderCap = botCount < maxPlayers - 1
   const visible = seatsAvailable && botsUnderCap
   const isPaid = botCount >= 1
   const canAfford = !isPaid || balance >= EXTRA_BOT_COST
-  const offerable = visible && isPaid && !guest && canAfford
-  const disabled = busy || (isPaid && (!canAfford || guest))
+  const identityKnown = guest !== null
+  const offerable = visible && isPaid && guest === false && canAfford
+  const disabled = busy || (isPaid && (!identityKnown || !canAfford || guest === true))
 
   // Load profile so the caption knows guest / balance without waiting for a
   // failed POST. Mobile has no shared useProfile hook — inline this cheap
@@ -152,11 +160,13 @@ export function AddBotButton({ gameCode, hostToken, seatedCount, botCount, maxPl
   if (!visible) return null
 
   const caption = isPaid
-    ? guest
-      ? 'Save your profile to buy extra bots.'
-      : canAfford
-        ? 'Consumable per-room. Ceded to any human who joins later.'
-        : `Not enough coins — ${EXTRA_BOT_COST - balance} more needed.`
+    ? !identityKnown
+      ? 'Checking your balance…'
+      : guest
+        ? 'Save your profile to buy extra bots.'
+        : canAfford
+          ? 'Consumable per-room. Ceded to any human who joins later.'
+          : `Not enough coins — ${EXTRA_BOT_COST - balance} more needed.`
     : 'A computer opponent takes an empty seat. Ceded to any human who joins later.'
 
   return (

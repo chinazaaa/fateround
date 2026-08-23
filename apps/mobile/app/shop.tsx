@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { useFocusEffect, useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
@@ -6,6 +6,8 @@ import { useToast } from '@/components/ui/Toast'
 import { centeredContent } from '@/constants/layout'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles, useThemeMode } from '@/constants/theme-context'
+import { apiUrl } from '@/lib/config'
+import { authHeaders } from '@/lib/identity'
 import {
   fetchShopCatalog,
   postEquip,
@@ -64,24 +66,50 @@ export default function ShopScreen() {
   const [ownedOnly, setOwnedOnly] = useState(false)
   const [pending, setPending] = useState<ShopItem | null>(null)
   const [busy, setBusy] = useState(false)
+  // Anonymous flag is NOT in the /api/shop/catalog profile payload, so an
+  // ensureServerIdentity() Supabase anon session would otherwise slip past
+  // the `profile == null` check and see the buy tiles (which then reject
+  // server-side with an ugly error). Fetch /api/profile/me alongside for
+  // the flag — matches web's `!profile || profile.is_anonymous` gate.
+  const [isAnonymous, setIsAnonymous] = useState<boolean>(false)
 
   const load = useCallback(
     async (opts?: { background?: boolean }) => {
       const background = opts?.background === true
       if (!background) setLoading(true)
       try {
-        const data = await fetchShopCatalog()
+        const [data, meRes] = await Promise.all([
+          fetchShopCatalog(),
+          (async () => {
+            const headers = await authHeaders()
+            if (!headers) return null
+            try {
+              const r = await fetch(apiUrl('/api/profile/me'), { headers })
+              if (!r.ok) return null
+              return (await r.json()) as { profile?: { is_anonymous?: boolean } | null }
+            } catch {
+              return null
+            }
+          })(),
+        ])
         if (!data) {
           toast.error('Could not load the shop — try again')
           return
         }
         setCatalog(data)
+        setIsAnonymous(Boolean(meRes?.profile?.is_anonymous))
       } finally {
         if (!background) setLoading(false)
       }
     },
     [toast]
   )
+
+  // First-focus dedupe: useEffect fires load() on mount AND useFocusEffect
+  // fires again on first focus. Skip the first focus tick so mount only
+  // fetches the catalog once; subsequent focus events (returning from
+  // /browse or a game) still trigger a background refresh.
+  const focusPrimedRef = useRef(false)
 
   useEffect(() => {
     void load()
@@ -92,6 +120,10 @@ export default function ShopScreen() {
   // just-played game) shows up when the shop tab comes back to front.
   useFocusEffect(
     useCallback(() => {
+      if (!focusPrimedRef.current) {
+        focusPrimedRef.current = true
+        return
+      }
       void load({ background: true })
     }, [load])
   )
@@ -104,7 +136,9 @@ export default function ShopScreen() {
 
   const profile = catalog?.profile ?? null
   const balance = profile?.coins ?? 0
-  const isGuest = profile == null
+  // Guests: no server-side profile row, OR the Supabase session is
+  // anonymous. Matches web ShopClient's `!profile || profile.is_anonymous`.
+  const isGuest = profile == null || isAnonymous
 
   const equippedFor = useCallback(
     (item: ShopItem): boolean => {
@@ -210,6 +244,14 @@ export default function ShopScreen() {
         // Never emit non-empty lines here (would double-fire coins_earned).
         emitCoinsAwarded({ lines: [], total: 0 })
       }
+      // Only close the dialog once the server has actually answered —
+      // any outcome the RPC returned (ok / insufficient / already_owned /
+      // server_error) is a definitive answer worth clearing on. A network
+      // exception below leaves `pending` set so the user can retry the
+      // same purchase in place (matches web ShopClient — it only clears
+      // pending inside the try block, not in finally).
+      setPending(null)
+      await load({ background: true })
     } catch {
       trackCoinEvent(COIN_EVENTS.shopItemPurchaseFailed, {
         item_kind: item.kind,
@@ -220,8 +262,6 @@ export default function ShopScreen() {
       toast.error('Network error — try again')
     } finally {
       setBusy(false)
-      setPending(null)
-      await load({ background: true })
     }
   }, [balance, busy, load, pending, toast])
 
