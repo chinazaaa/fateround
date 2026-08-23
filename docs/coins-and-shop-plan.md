@@ -89,20 +89,26 @@ shipping yet.
 
 Browseable, category-filtered, "owned" badge on things already unlocked.
 
-1. **Game edition** — Estate Kings: Naija (1 at launch)
-2. **Game themes** — 2–3 at launch (Whot, Ludo, Sudoku picks)
-3. **Winner animations** — 2–3 (confetti, fireworks, one signature)
-4. **Card templates** — 2 premium (default stays free)
-5. **Avatar frames** — 4–6
-6. **Name colors** — 6 solids + 3 gradients
-7. **Streak freeze**
+1. **Game themes** — 2–3 at launch (Whot, Ludo, Sudoku picks)
+2. **Winner animations** — 2–3 (confetti, fireworks, one signature)
+3. **Card templates** — 2 premium (default stays free)
+4. **Avatar frames** — 4–6
+5. **Name colors** — 6 solids + 3 gradients
+6. **Streak freeze**
+
+Editions are deliberately not in the launch shop — see "Grandfathering
+existing content" below. The first paid edition ships as a month-2 drop
+so it gets its own launch beat.
 
 ### Inline (contextual, at moment of use)
 
-8. **Extra bot seats** — button in the room lobby shows "50 coins" after the
-   first free one. Flat cost across all games. Consumable per-bot, per-room.
-9. **Premium library packs** — coin badge on library rows. Tap to preview
-   1–2 items, tap again to unlock. Owned forever after purchase.
+7. **Extra bot seats** — button in the room lobby shows "50 coins" after
+   the first free one. Flat cost across all games. Consumable per-bot,
+   per-room.
+8. **Premium library packs** — coin badge on library rows. Tap to preview
+   1–2 items, tap again to unlock. Owned forever after purchase. Existing
+   packs stay free; only new admin-authored packs marked
+   `price_coins > 0` show the badge.
 
 ### UI
 
@@ -130,6 +136,47 @@ Browseable, category-filtered, "owned" badge on things already unlocked.
 - **Free color picker for names** — curated palette only
 - **Ads** — do not need them yet, and they'd tank the party vibe
 - **Loot boxes / gacha** — regulatory risk and audience-age mismatch
+
+## Grandfathering existing content
+
+Everything already shipped stays free. This applies to editions, themes,
+and library packs alike. Paywalling something players already had is
+"never take away what was free" — a rule we do not bend.
+
+### Editions
+
+- Estate Kings: Naija (and any other edition that exists today) —
+  `price_coins = 0`, marked as grandfathered/default. Free forever,
+  playable by any host, no `profile_owned_editions` row needed to use.
+- Every game keeps at least one free edition so a host with zero
+  purchases can create rooms in every mode.
+- **New editions ship with `price_coins > 0` from day one** — they were
+  never free, so no expectation is violated.
+
+### Themes
+
+- Any theme already available in the app (chess piece sets, board
+  themes, etc. as of launch day) — free.
+- New themes ship priced.
+
+### Library packs
+
+- Every pack that exists today — free.
+- New admin-authored packs can be marked paid or free at creation time.
+
+### Implication for the launch shop
+
+Editions are deliberately **not** in the launch shop, because the only
+edition we have (Naija) is grandfathered and shipping a new one requires
+real art/content work. Better sequencing: launch the shop with themes,
+frames, colors, animations, card templates, streak freeze, and premium
+packs — a dense, buyable lineup — and ship the **first paid edition as a
+month-2 drop**. That gives the edition its own launch beat ("first paid
+edition just dropped") instead of being buried among ten launch items.
+
+Candidates for the first paid edition: Arctic, Christmas, Lagos, Tokyo,
+Campus/School Championship. Pick the one with the strongest art bandwidth
+and the widest audience appeal.
 
 ## Games that can have EDITIONS vs THEMES
 
@@ -477,6 +524,8 @@ retconning free features.
 - [ ] Extra-bot coin gate in room lobby
 - [ ] `price_coins` on library packs + coin badge in library row
 - [ ] Ledger / history view on profile
+- [ ] Grandfathering flag on existing editions/themes/packs (all set to
+      `price_coins = 0` at launch)
 - [ ] Backfill migration + itemized welcome screen
 - [ ] `guest_pending_grants` table + guest-earning write path
 - [ ] Guest → profile migration at signup (with 500-coin cap)
@@ -491,13 +540,22 @@ retconning free features.
    inside the tournament so every match feels like it counts, plus a
    placement bonus at tournament finish (100 / 50 / 25 for top 3). Two
    awards, same results-screen surface, no new UI concept.
-2. **Refund window on purchases** — **yes, 24h if unused.** Cheap trust
-   builder. "Unused" is verifiable from the ledger + owned-items tables:
-   an edition is unused if no `games` row exists with that
-   `edition_slug` and the buyer's `host_player_id` since the purchase;
-   a frame is unused if `equipped_frame` was never set to it. Refund
-   writes a reversing ledger row (`reason: 'refund'`) and drops the
-   `profile_owned_*` row.
+2. **Refund window on purchases** — **yes, 24h if unused, applies to
+   every durable item.** Refund writes a reversing ledger row
+   (`reason: 'refund'`) and drops the corresponding `profile_owned_*`
+   row (or increments `streak_freeze` count back down). Per-item rules:
+
+   | Item | Refundable | "Unused" check |
+   |---|---|---|
+   | Edition | Yes | No `games` row with this `edition_slug` and buyer's `host_player_id` since purchase |
+   | Theme | Yes | Same as edition, keyed on theme slug |
+   | Frame | Yes | Never set as `equipped_frame` |
+   | Name color | Yes | Never set as `equipped_name_color` |
+   | Winner animation | Yes | Never set as `equipped_animation` (equipped = used, even without a win yet — keeps the rule simple) |
+   | Card template | Yes | Never set as `equipped_card_template` |
+   | Premium library pack | Yes | No rounds/games reference the pack since purchase |
+   | Streak freeze | Yes | Not yet consumed (still in inventory) |
+   | **Extra bot** | **No** | Consumed at add-time — the button press is the use, no take-backs |
 3. **Gifting** — **not in v1.** Adds ownership-transfer complexity for
    little demonstrated demand, and there's a natural workaround (host
    plays the edition in a room the giftee joins). Revisit if people ask
