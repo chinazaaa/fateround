@@ -74,9 +74,12 @@ export async function checkMonopolyEditionEntitlement(
   // Cheap short-circuit: the four grandfathered slugs are FREE forever and
   // do not need a round-trip to the catalog. >95% of Monopoly rooms use
   // one of these, so skipping the two SELECTs keeps the create-game hot
-  // path snappy. A retired grandfathered edition would still be readable
-  // as free — deliberate, matches "never take away what was free" and
-  // beats a spurious 403 on the create button.
+  // path snappy. Trade-off: `game_editions.is_active = false` is IGNORED
+  // for slugs in this set — ops cannot sunset a grandfathered edition by
+  // flipping the DB flag alone; they also have to remove the slug from
+  // FREE_MONOPOLY_EDITION_SLUGS in a code deploy. Deliberate: "never take
+  // away what was free" (docs/coins-and-shop-plan.md) means the free four
+  // are effectively permanent, so the DB toggle isn't the right lever.
   if (FREE_MONOPOLY_EDITION_SLUGS.has(editionSlug)) return { ok: true }
 
   // Catalog lookup — price is the source of truth. is_active=false hides

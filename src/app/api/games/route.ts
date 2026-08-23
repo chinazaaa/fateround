@@ -559,10 +559,16 @@ export async function POST(req: NextRequest) {
   let edition_slug: string | null = null
   if (game_type === 'monopoly') {
     const explicitSlug = typeof rawEditionSlug === 'string' && rawEditionSlug.length > 0 ? rawEditionSlug : null
+    const themeProvided = rawTheme !== undefined && rawTheme !== null
     const themeSlug = MONOPOLY_THEME_TO_EDITION[theme] ?? null
-    // Edition explicit pick wins; else derive from theme; else default to
-    // london. Unknown-theme POST on Monopoly (theme:'dark') falls back to
-    // london AND has `theme` normalised, so the two columns can never drift.
+    // Mirror the PATCH handler: an explicit Monopoly theme that doesn't
+    // map to an edition (theme:'dark' on a Monopoly game) is rejected
+    // loud, not silently normalised to london. Only the "no theme
+    // provided" case falls through to the london default.
+    if (themeProvided && !themeSlug && !explicitSlug) {
+      return NextResponse.json({ error: 'Theme not valid for Monopoly' }, { status: 400 })
+    }
+    // Edition explicit pick wins; else derive from theme; else default to london.
     const requested = explicitSlug ?? themeSlug ?? 'london'
     const mappedTheme = MONOPOLY_EDITION_TO_THEME[requested]
     if (!mappedTheme) {

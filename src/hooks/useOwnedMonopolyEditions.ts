@@ -118,10 +118,19 @@ export function useOwnedMonopolyEditions(): {
     // mounted consumers on the same (profileId, refreshTick) tuple.
   }, [profileId, refreshTick])
 
-  // Same-tab invalidation from the shared coins-awarded bus. A purchase in
-  // the shop rides this event, so the picker light-up is immediate on
-  // whichever tab did the buying.
-  useEffect(() => onCoinsAwarded(() => refresh()), [refresh])
+  // Same-tab invalidation from the shared coins-awarded bus. Ownership can
+  // only change on a shop purchase, not on a coin earn (win / streak / admin
+  // grant), so filter noise out: the shop emits an EMPTY-lines payload
+  // (see ShopClient.confirmPurchase — `{ lines: [], total: 0 }`) as its
+  // "purchase happened" signal, while every earn event carries at least
+  // one line. Refresh only on the empty-lines shape.
+  useEffect(
+    () =>
+      onCoinsAwarded((coins) => {
+        if ((coins?.lines?.length ?? 0) === 0) refresh()
+      }),
+    [refresh]
+  )
 
   // Cross-tab invalidation: onCoinsAwarded is a window CustomEvent and does
   // not cross document boundaries, so a purchase in tab A leaves tab B's
@@ -141,10 +150,11 @@ export function useOwnedMonopolyEditions(): {
       if (e.key === CHANNEL) refresh()
     }
     window.addEventListener('storage', onStorage)
-    // Fan the local coins-awarded event out to other tabs so this same
-    // handler picks it up over there. Guarded so we don't rebroadcast a
-    // message that arrived from another tab (that would loop).
-    const stopLocal = onCoinsAwarded(() => {
+    // Fan the local purchase signal (empty-lines coins-awarded) out to
+    // other tabs so this same handler picks it up over there. Only
+    // fan-out purchases, not earns — matches the same-tab filter above.
+    const stopLocal = onCoinsAwarded((coins) => {
+      if ((coins?.lines?.length ?? 0) !== 0) return
       try {
         bc?.postMessage(Date.now())
         localStorage.setItem(CHANNEL, String(Date.now()))

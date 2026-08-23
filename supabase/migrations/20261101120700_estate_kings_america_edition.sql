@@ -60,6 +60,13 @@ alter table games add constraint games_theme_check check (theme = any (array[
   'naija'::text,
   'america'::text,
   'grass_court'::text,
+  -- 'ping_pong' is retained from the pre-Phase-4 constraint even though the
+  -- ping_pong game type was retired in 20261023120000_remove_ping_pong.sql.
+  -- The theme column is orthogonal to game_type, so pre-retirement rows may
+  -- still carry theme='ping_pong'; a CHECK rejection here would fail every
+  -- future UPDATE that touches any column on such rows. The app never writes
+  -- this value (not in themeEnum / ThemeId), so it's a dead-but-tolerated
+  -- value — drop it in a later cleanup migration that also scrubs the rows.
   'ping_pong'::text
 ])) not valid;
 
