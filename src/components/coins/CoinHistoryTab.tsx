@@ -32,14 +32,43 @@ function firstModeBonusGameLabel(refId: string | null): string | null {
   return slug ? slug.replace(/[_-]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : null
 }
 
+const PURCHASE_KIND_LABELS: Record<string, string> = {
+  frame: 'Avatar frame',
+  name_color: 'Name color',
+  animation: 'Winner animation',
+  card_template: 'Card template',
+  streak_freeze: 'Streak freeze',
+  theme: 'Game theme',
+  edition: 'Edition',
+  library_pack: 'Library pack',
+  extra_bot: 'Extra bot',
+}
+
+/** Human-readable purchase description from a shop_purchase ref_id
+ *  (format `<kind>:<slug>`, e.g. `animation:winner-anim-confetti`). */
+function shopPurchaseLabel(refId: string | null): string | null {
+  if (!refId) return null
+  const colon = refId.indexOf(':')
+  if (colon <= 0) return null
+  const kind = refId.slice(0, colon)
+  const slug = refId.slice(colon + 1)
+  if (!slug) return null
+  const kindLabel = PURCHASE_KIND_LABELS[kind] ?? kind
+  return `${kindLabel} · ${slug}`
+}
+
 function describeRow(row: LedgerRow): string {
   if (row.reason === 'admin_adjustment') return 'Adjustment by support'
   if (row.reason === 'first_mode_bonus') {
-    // Attach the game name so a history full of "First-time mode bonus"
-    // rows reads as "First-time bonus · Whot / Ludo / Sudoku / …" and
-    // the player can tell which mode each credit came from.
     const game = firstModeBonusGameLabel(row.ref_id)
     return game ? `First-time bonus · ${game}` : (COIN_REASON_LABEL[row.reason] ?? row.reason)
+  }
+  if (row.reason === 'shop_purchase') {
+    // Attach what was bought so a wall of "Shop purchase" rows becomes
+    // "Winner animation · confetti", "Edition · america", etc. — the
+    // player can eyeball spend without cross-referencing the shop.
+    const purchase = shopPurchaseLabel(row.ref_id)
+    return purchase ? `Shop · ${purchase}` : (COIN_REASON_LABEL[row.reason] ?? row.reason)
   }
   return COIN_REASON_LABEL[row.reason] ?? row.reason
 }
