@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { authHeaders } from '@/lib/identity'
 import { onCoinsAwarded } from '@/lib/coins/earn-events'
 
@@ -179,6 +179,14 @@ export function useOwnedShopCatalog(profileId: string | null): {
   const [items, setItems] = useState<CatalogItem[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshTick, setRefreshTick] = useState(0)
+  // Track whether the initial catalog fetch has resolved for this
+  // (profileId) pairing so subsequent refreshes stay silent — a
+  // cross-tab BC + storage-event doubling on every purchase would
+  // otherwise flip `loading` twice and briefly flash the picker's
+  // initial-load spinner while cached items are still perfectly valid.
+  // Reset on profileId change (sign-in/out) since the visible items
+  // set may genuinely differ.
+  const initialisedForProfileRef = useRef<string | null>(null)
 
   const refresh = useCallback(() => {
     invalidateSharedCatalogCache()
@@ -187,13 +195,19 @@ export function useOwnedShopCatalog(profileId: string | null): {
 
   useEffect(() => {
     let cancelled = false
-    setLoading(true)
+    const profileKey = profileId ?? ''
+    const isFirstLoad = initialisedForProfileRef.current !== profileKey
+    if (isFirstLoad) setLoading(true)
     fetchSharedCatalog(profileId, refreshTick)
       .then((next) => {
         if (!cancelled) setItems(next)
       })
       .finally(() => {
-        if (!cancelled) setLoading(false)
+        if (cancelled) return
+        if (isFirstLoad) {
+          setLoading(false)
+          initialisedForProfileRef.current = profileKey
+        }
       })
     return () => {
       cancelled = true

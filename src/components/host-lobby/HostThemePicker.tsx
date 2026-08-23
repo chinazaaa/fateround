@@ -133,9 +133,16 @@ export function HostThemePicker({ gameCode, hostToken, game, onGameUpdate }: Pro
           const edition = isMonopoly ? MONOPOLY_EDITIONS.find((e) => e.themeId === theme.id) : null
           const displayTheme = edition ? { ...theme, label: edition.editionName, emoji: edition.editionEmoji } : theme
           // Lock unowned paid Monopoly editions and unowned paid per-game
-          // themes; never lock the current pick (a room whose entitlement
-          // was later revoked stays usable) and never lock the always-free
-          // 'default' theme.
+          // themes. Two invariants encoded here:
+          //  - `theme.id !== currentTheme` — a room whose entitlement was
+          //    later revoked keeps its currently-picked tile usable.
+          //  - `theme.id !== 'default'` inside the hasGameThemes clause —
+          //    the always-free default tile is a game_themes non-row, so
+          //    ownedGameThemes.has('default') is always false; without this
+          //    guard the default would render as locked whenever the host's
+          //    current pick is something else (e.g. a Whot host on
+          //    'whot-neon' viewing the default tile). Not implied by the
+          //    outer conjunct.
           const locked =
             theme.id !== currentTheme &&
             ((isMonopoly && !isMonopolyEditionAvailable(theme.id, ownedEditions)) ||

@@ -3190,14 +3190,22 @@ function CreateGameInner() {
                       })
                     : THEMES.filter(
                         (theme) =>
-                          theme.id !== 'pirate' &&
-                          theme.id !== 'arctic' &&
-                          theme.id !== 'naija' &&
-                          theme.id !== 'america' &&
-                          theme.id !== 'christmas' &&
-                          theme.id !== 'grass_court' &&
-                          // Per-game reskins never surface on non-owning games.
-                          !isGameThemeSlug(theme.id)
+                          // Always preserve the currently-picked theme so
+                          // switching game_type (e.g. Whot → Trivia with
+                          // theme carried over as 'whot-neon') keeps the
+                          // tile highlighted instead of stranding
+                          // settings.theme at a value the POST route would
+                          // 400 on. Same guard the Monopoly + hasGameThemes
+                          // branches use above.
+                          theme.id === settings.theme ||
+                          (theme.id !== 'pirate' &&
+                            theme.id !== 'arctic' &&
+                            theme.id !== 'naija' &&
+                            theme.id !== 'america' &&
+                            theme.id !== 'christmas' &&
+                            theme.id !== 'grass_court' &&
+                            // Per-game reskins never surface on non-owning games.
+                            !isGameThemeSlug(theme.id))
                       )
                 ).map((theme) => {
                   const monopolyEdition =
