@@ -80,12 +80,21 @@ export async function awardCoinsForFinishedGame(
     won: boolean
     seatedHumans: number
     uniqueHumans: number
-    isFirstTimeForMode: boolean
+    /**
+     * @deprecated Superseded by the DB-side unique index
+     * `uq_coin_ledger_first_mode_bonus` on
+     * (profile_id, ref_id) where reason='first_mode_bonus'. The award-service
+     * now ALWAYS attempts the credit and swallows the constraint violation
+     * from `award_coins()` as "already granted" — no more TOCTOU between a
+     * caller-side check and the RPC. Kept in the input for API compatibility
+     * with in-flight callers, but ignored.
+     */
+    isFirstTimeForMode?: boolean
     hostBounty: boolean
     streakDays: number
   }
 ): Promise<CoinAwardResult> {
-  const { profileId, gameId, gameType, won, seatedHumans, uniqueHumans, isFirstTimeForMode, hostBounty } = input
+  const { profileId, gameId, gameType, won, seatedHumans, uniqueHumans, hostBounty } = input
 
   const lines: CoinAwardLine[] = []
   let total = 0
@@ -120,47 +129,38 @@ export async function awardCoinsForFinishedGame(
     await call(COIN_REASONS.win, winAmount, label)
   }
 
-  if (isFirstTimeForMode) {
-    // Per-MODE idempotency, not per-game. The `awarded_sessions` claim in
-    // the trophy pass gates per (profile, round) — it can't prevent a
-    // future round from re-triggering this branch when a prior partial
-    // failure left player_stats bumped but the bonus uncredited. Guard
-    // with a direct ledger check keyed on a per-mode ref_id.
+  // Per-MODE first-time bonus. ALWAYS attempt; the DB unique index
+  // `uq_coin_ledger_first_mode_bonus` on (profile_id, ref_id) rejects the
+  // second insert with a unique_violation, which award_coins' underlying
+  // insert surfaces via PostgREST error code `23505` — the caller-side
+  // check that used to gate this is a TOCTOU trap (two concurrent finishes
+  // can both pass a SELECT and both credit). Do NOT trust
+  // `isFirstTimeForMode` from the caller — it reads player_stats and a
+  // partial failure on a previous pass would silently forfeit the bonus.
+  {
     const modeRefId = firstModeBonusRefId(gameType)
-    const { data: prior, error: priorErr } = await admin
-      .from('coin_ledger')
-      .select('id')
-      .eq('profile_id', profileId)
-      .eq('reason', COIN_REASONS.firstModeBonus)
-      .eq('ref_id', modeRefId)
-      .limit(1)
-      .maybeSingle()
-    if (priorErr) {
-      // Read failure — fail closed on the bonus to avoid a double-credit
-      // in the (unlikely) case the read is what's broken. A retry after the
-      // transient failure recovers the bonus.
-      lines.push({
-        reason: COIN_REASONS.firstModeBonus,
-        requested: COIN_AMOUNTS.firstModeBonus,
-        credited: 0,
-        label: 'First time on this mode',
+    let credited = 0
+    let alreadyGranted = false
+    try {
+      const { data, error } = await admin.rpc('award_coins', {
+        p_profile_id: profileId,
+        p_delta: COIN_AMOUNTS.firstModeBonus,
+        p_reason: COIN_REASONS.firstModeBonus,
+        p_ref_id: modeRefId,
+        p_unique_humans: uniqueHumans,
+        p_exempt_from_floor: false,
       })
-    } else if (!prior) {
-      // Bypass the shared `call()` above to override the ref_id.
-      let credited = 0
-      try {
-        const { data, error } = await admin.rpc('award_coins', {
-          p_profile_id: profileId,
-          p_delta: COIN_AMOUNTS.firstModeBonus,
-          p_reason: COIN_REASONS.firstModeBonus,
-          p_ref_id: modeRefId,
-          p_unique_humans: uniqueHumans,
-          p_exempt_from_floor: false,
-        })
-        if (!error) credited = Number(data) || 0
-      } catch {
-        credited = 0
+      if (error) {
+        if ((error as { code?: string }).code === '23505') {
+          alreadyGranted = true
+        }
+      } else {
+        credited = Number(data) || 0
       }
+    } catch {
+      credited = 0
+    }
+    if (!alreadyGranted) {
       lines.push({
         reason: COIN_REASONS.firstModeBonus,
         requested: COIN_AMOUNTS.firstModeBonus,
@@ -197,6 +197,7 @@ export async function awardCoinsForDailyChallenge(
   let total = 0
 
   const base = COIN_AMOUNTS.dailyChallenge
+  let baseCredited = 0
   try {
     const { data, error } = await admin.rpc('award_coins', {
       p_profile_id: input.profileId,
@@ -207,9 +208,14 @@ export async function awardCoinsForDailyChallenge(
       p_exempt_from_floor: true,
     })
     if (!error) {
-      const credited = Number(data) || 0
-      lines.push({ reason: COIN_REASONS.dailyChallenge, requested: base, credited, label: 'Daily challenge' })
-      total += credited
+      baseCredited = Number(data) || 0
+      lines.push({
+        reason: COIN_REASONS.dailyChallenge,
+        requested: base,
+        credited: baseCredited,
+        label: 'Daily challenge',
+      })
+      total += baseCredited
     }
   } catch {
     // best effort
@@ -217,7 +223,10 @@ export async function awardCoinsForDailyChallenge(
 
   const multiplier = streakMultiplier(input.streakDays)
   const extra = Math.floor(base * multiplier) - base
-  if (extra > 0) {
+  // Gate the streak-multiplier post on the base having actually landed:
+  // if the base credit errored, `streak_multiplier` alone in the ledger is
+  // nonsensical — a bonus multiplier on nothing.
+  if (extra > 0 && baseCredited > 0) {
     try {
       const { data, error } = await admin.rpc('award_coins', {
         p_profile_id: input.profileId,

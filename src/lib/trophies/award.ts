@@ -288,16 +288,12 @@ export async function awardForFinishedGame(
     // numeric counters, so pull them from `extras` before it reaches `bump_player_stats`.
     const distinctMembers = extractDistinctMembers(extras)
 
-    // First-time-mode detection — read BEFORE bumpStats so the count still
-    // reflects the pre-game state. Any row for this scope means the player has
-    // finished this mode before (may have zero wins but they played).
-    const { data: modeStatsBefore } = await supabase
-      .from('player_stats')
-      .select('games_played')
-      .eq('profile_id', profileId)
-      .eq('game_type', gameType)
-      .maybeSingle()
-    const isFirstTimeForMode = !modeStatsBefore || (Number(modeStatsBefore.games_played) || 0) === 0
+    // First-time-mode detection is now enforced by a DB unique index on
+    // `coin_ledger (profile_id, ref_id) WHERE reason='first_mode_bonus'` —
+    // the award-service ALWAYS attempts the credit and lets the constraint
+    // reject a duplicate. Reading `player_stats.games_played` here (as a
+    // prior implementation did) was TOCTOU: a partial failure that bumped
+    // stats then errored would forfeit the bonus on retry.
 
     // Per-game-type and global scopes both move, so a rule can ask "10 wins" or "10 Whot wins".
     await bumpStats(supabase, profileId, gameType, { played: 1, won: won ? 1 : 0, counters: extras })
@@ -394,7 +390,9 @@ export async function awardForFinishedGame(
         won,
         seatedHumans,
         uniqueHumans,
-        isFirstTimeForMode,
+        // `isFirstTimeForMode` is now DB-enforced; the field on the input
+        // is deprecated. Left unset so a future reader isn't tempted to
+        // resurrect the stats-based check.
         hostBounty,
         streakDays: streak.current_streak,
       })

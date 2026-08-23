@@ -62,9 +62,15 @@ export function useProfileAttribution({ gameCode, status, resumeToken }: Options
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ gameCode, resumeToken: token, deviceId: deviceId ?? undefined }),
             })
+            if (cancelled) return
             const guestBody = (await guestRes.json().catch(() => null)) as {
               guestCoins?: { total: number; lines: unknown[] }
             } | null
+            // Cancelled check mirrors the profiled branch: if the caller
+            // navigated to another finished game while this response was in
+            // flight, emitting here would show the wrong game's CTA in the
+            // new panel.
+            if (cancelled) return
             if (guestBody?.guestCoins) emitGuestCoinsPending(guestBody.guestCoins, gameCode)
           } catch {
             // silent

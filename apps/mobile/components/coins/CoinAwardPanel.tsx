@@ -57,6 +57,8 @@ export function CoinAwardPanel({ gameCode }: Props) {
 
   const anyCredit = shown.total > 0
   const lines = shown.lines ?? []
+  // Mirror of the web panel — see the CoinAwardPanel.tsx comment.
+  const belowFloor = !anyCredit && lines.length > 0 && lines.every((l) => l.credited === 0 && l.requested > 0)
 
   return (
     <View style={styles.card}>
@@ -64,7 +66,9 @@ export function CoinAwardPanel({ gameCode }: Props) {
         <Text style={styles.eyebrow}>Coins earned</Text>
         <Text style={styles.total}>{anyCredit ? `🪙 +${shown.total}` : '🪙 0'}</Text>
       </View>
-      {lines.length > 0 ? (
+      {belowFloor ? (
+        <Text style={styles.muted}>Needs 2 human players to earn coins.</Text>
+      ) : lines.length > 0 ? (
         lines.map((line, i) => (
           <View key={`${line.reason}-${i}`} style={styles.row}>
             <Text style={styles.label}>{line.label}</Text>

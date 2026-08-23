@@ -103,6 +103,12 @@ export function CoinHistoryTab() {
     void fetchPage('all', 0, false)
   }, [fetchPage])
 
+  // Derive the next offset from the RENDERED row count (rather than the
+  // closed-over `offset` state) — a rapid Filter→LoadMore in the same
+  // event tick would otherwise use the previous render's offset (e.g. 50)
+  // even though the filter change reset the list to 0 rows, silently
+  // skipping the first page of the new filter. `rows.length` is the true
+  // "how many rows are on screen right now."
   const changeFilter = (next: CoinHistoryFilter) => {
     setFilter(next)
     setOffset(0)
@@ -110,7 +116,7 @@ export function CoinHistoryTab() {
   }
 
   const loadMore = () => {
-    const next = offset + PAGE_SIZE
+    const next = rows.length
     setOffset(next)
     void fetchPage(filter, next, true)
   }

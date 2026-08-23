@@ -33,7 +33,32 @@ export async function GET(req: NextRequest) {
 
     const launch = (data ?? []).find((r) => r.reason === 'launch_grant_v1') ?? null
     const welcome = (data ?? []).find((r) => r.reason === 'welcome_v1') ?? null
-    const migration = (data ?? []).find((r) => r.reason === 'guest_migration') ?? null
+    // `guest_migration` is one-shot PER DEVICE, not per profile. A player
+    // who earned as a guest on phone AND laptop gets one ledger row per
+    // device. Return the SUM (and expose the individual rows) so the
+    // welcome screen quotes the true "from games you played as a guest"
+    // total. Using `.find()` here silently under-reported the amount by
+    // the amount from every device after the first.
+    const migrationRows = (data ?? []).filter((r) => r.reason === 'guest_migration')
+    const migrationTotal = migrationRows.reduce((acc, r) => acc + Number(r.delta || 0), 0)
+    // The modal reads `migration.delta` — expose a synthetic aggregate row
+    // whose delta is the summed amount and whose metadata holds the per-
+    // device breakdown for future itemization.
+    const migration = migrationRows.length
+      ? {
+          ...migrationRows[0],
+          delta: migrationTotal,
+          metadata: {
+            aggregated_rows: migrationRows.length,
+            per_row: migrationRows.map((r) => ({
+              id: r.id,
+              delta: Number(r.delta || 0),
+              ref_id: r.ref_id,
+              created_at: r.created_at,
+            })),
+          },
+        }
+      : null
 
     return NextResponse.json({
       hasGrant: Boolean(launch || welcome || migration),

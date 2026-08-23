@@ -65,6 +65,10 @@ export function CoinAwardPanel({ gameCode }: Props) {
 
   const anyCredit = shown.total > 0
   const lines = shown.lines ?? []
+  // Below-floor: server sent lines but every credit is zero (a solo/2-bot
+  // room hit the 2-human minimum). Render the "Needs 2 human players"
+  // empty state instead of a zero-total itemization with "—" rows.
+  const belowFloor = !anyCredit && lines.length > 0 && lines.every((l) => l.credited === 0 && l.requested > 0)
 
   return (
     <div className="glass-card p-4 sm:p-5 space-y-3" data-testid="coin-award-panel">
@@ -75,7 +79,9 @@ export function CoinAwardPanel({ gameCode }: Props) {
           {anyCredit ? `+${shown.total.toLocaleString()}` : '0'}
         </div>
       </div>
-      {lines.length > 0 ? (
+      {belowFloor ? (
+        <p className="text-sm text-muted">Needs 2 human players to earn coins.</p>
+      ) : lines.length > 0 ? (
         <ul className="space-y-1 text-sm">
           {lines.map((line, i) => (
             <li key={`${line.reason}-${i}`} className="flex items-center justify-between text-muted">
