@@ -100,6 +100,14 @@ OTEL_EXPORTER_OTLP_ENDPOINT=$(get_param_opt --name "/$PREFIX/OTEL_EXPORTER_OTLP_
 OTEL_EXPORTER_OTLP_HEADERS=$(get_param_opt --with-decryption --name "/$PREFIX/OTEL_EXPORTER_OTLP_HEADERS")
 OTEL_RESOURCE_ATTRIBUTES=$(get_param_opt --name "/$PREFIX/OTEL_RESOURCE_ATTRIBUTES")
 
+# Background workers. Both default to ON in production (the code gates on NODE_ENV), which is
+# right for prod and wrong for dev: a deployed dev build also sets NODE_ENV=production, so
+# dev has been running the same 2.5s game ticker and 5m reaper as prod against a FREE Supabase
+# project — which is what exhausted its egress quota. Optional, empty = unchanged behaviour.
+GAME_TICK_DISABLED=$(get_param_opt --name "/$PREFIX/GAME_TICK_DISABLED")
+GAME_TICK_INTERVAL_MS=$(get_param_opt --name "/$PREFIX/GAME_TICK_INTERVAL_MS")
+IDLE_REAPER_DISABLED=$(get_param_opt --name "/$PREFIX/IDLE_REAPER_DISABLED")
+
 # With Caddy (origin TLS) the app is private behind Caddy on localhost:8080.
 # Without it, the app is published directly on :80.
 if [ "$ENABLE_CADDY" = "true" ]; then PORT_PUBLISH="127.0.0.1:8080:$APP_PORT"; else PORT_PUBLISH="80:$APP_PORT"; fi
@@ -129,6 +137,9 @@ docker run -d --name app --restart always \
   -e OTEL_EXPORTER_OTLP_ENDPOINT="$OTEL_EXPORTER_OTLP_ENDPOINT" \
   -e OTEL_EXPORTER_OTLP_HEADERS="$OTEL_EXPORTER_OTLP_HEADERS" \
   -e OTEL_RESOURCE_ATTRIBUTES="$OTEL_RESOURCE_ATTRIBUTES" \
+  -e GAME_TICK_DISABLED="$GAME_TICK_DISABLED" \
+  -e GAME_TICK_INTERVAL_MS="$GAME_TICK_INTERVAL_MS" \
+  -e IDLE_REAPER_DISABLED="$IDLE_REAPER_DISABLED" \
   "$REPO:$TAG"
 
 # Reclaim disk from previous images. Each deploy pulls "$REPO:<commit-sha>", so old images

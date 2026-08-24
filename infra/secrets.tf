@@ -190,3 +190,26 @@ resource "aws_ssm_parameter" "origin_key" {
     }
   }
 }
+
+# Background-worker controls. Created only when set, so an unset variable leaves no parameter
+# and `get_param_opt` in user-data yields an empty value — i.e. the code's production default.
+resource "aws_ssm_parameter" "game_tick_disabled" {
+  count = var.game_tick_disabled != "" ? 1 : 0
+  name  = "/${var.name_prefix}/GAME_TICK_DISABLED"
+  type  = "String"
+  value = var.game_tick_disabled
+}
+
+resource "aws_ssm_parameter" "game_tick_interval_ms" {
+  count = var.game_tick_interval_ms != "" ? 1 : 0
+  name  = "/${var.name_prefix}/GAME_TICK_INTERVAL_MS"
+  type  = "String"
+  value = var.game_tick_interval_ms
+}
+
+resource "aws_ssm_parameter" "idle_reaper_disabled" {
+  count = var.idle_reaper_disabled != "" ? 1 : 0
+  name  = "/${var.name_prefix}/IDLE_REAPER_DISABLED"
+  type  = "String"
+  value = var.idle_reaper_disabled
+}

@@ -251,3 +251,28 @@ variable "origin_key" {
   default     = ""
   sensitive   = true
 }
+
+# ── Background workers ───────────────────────────────────────────────────────────────────────
+# The in-process game ticker and idle reaper gate on NODE_ENV === "production" in code. A
+# DEPLOYED dev build satisfies that too, so dev ran prod-grade background load against a free
+# Supabase project and exhausted its egress quota (402 exceed_egress_quota, 2026-08-24), taking
+# the RLS Boundaries check offline with it. These let a non-prod stack turn that load down.
+# Leave empty on prod: empty means "not set", and the code keeps its production defaults.
+
+variable "game_tick_disabled" {
+  description = "GAME_TICK_DISABLED — set to \"1\" to stop the in-process game ticker entirely. Empty = enabled."
+  type        = string
+  default     = ""
+}
+
+variable "game_tick_interval_ms" {
+  description = "GAME_TICK_INTERVAL_MS — ticker cadence in ms. Empty = code default (2500). Raise it on dev rather than disabling, to keep timed games advancing."
+  type        = string
+  default     = ""
+}
+
+variable "idle_reaper_disabled" {
+  description = "IDLE_REAPER_DISABLED — set to \"1\" to stop the idle-active-game reaper. Empty = enabled."
+  type        = string
+  default     = ""
+}
