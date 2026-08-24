@@ -1073,8 +1073,7 @@ function MiniGrid({
   return (
     <div
       className="grid shrink-0 w-8 h-8 rounded-sm overflow-hidden border"
-      style={{ borderColor: 'var(--game-board-block)' }}
-      style={{ gridTemplateColumns: 'repeat(9, 1fr)' }}
+      style={{ borderColor: 'var(--game-board-block)', gridTemplateColumns: 'repeat(9, 1fr)' }}
     >
       {Array.from({ length: 81 }, (_, i) => {
         const row = Math.floor(i / 9)
