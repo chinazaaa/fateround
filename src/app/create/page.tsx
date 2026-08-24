@@ -4454,6 +4454,7 @@ function CreateGameInner() {
               </SettingsGroup>
             ) : isCheckers ? (
               <SettingsGroup title="Checkers room">
+                <SoloPracticeCta gameType="checkers" />
                 <p className="text-faint text-sm">Exactly 2 players — the host can join as one of them.</p>
                 <Field label="Time per player">
                   <CustomSelect
@@ -4476,6 +4477,7 @@ function CreateGameInner() {
               </SettingsGroup>
             ) : isDraughts10 ? (
               <SettingsGroup title={isCheckersNigeria ? 'Nigerian Draughts room' : 'International Draughts room'}>
+                <SoloPracticeCta gameType={settings.game_type} />
                 <p className="text-faint text-sm">Exactly 2 players — the host can join as one of them.</p>
                 <Field label="Time per player">
                   <CustomSelect

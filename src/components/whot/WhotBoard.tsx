@@ -54,6 +54,15 @@ export function WhotPlayingCard({
       type="button"
       onClick={onClick}
       disabled={!onClick}
+      // --game-card-* tokens layer a paid-theme identity ON TOP of the
+      // shape gradient/border below: an outer glow (Neon Whot cyan,
+      // Naija Whot green), a tinted wash via the ::before-style overlay
+      // below, and an optional theme-tinted border. Defaults at :root
+      // are `none`/`transparent`, so an unthemed card looks identical
+      // to before — never a regression for default site themes.
+      style={{
+        boxShadow: 'var(--game-card-glow, none)',
+      }}
       className={[
         'relative flex flex-col items-center justify-center gap-0.5 rounded-xl border-2 bg-linear-to-br font-black transition-all overflow-hidden',
         sizeStyles.box,
@@ -66,12 +75,22 @@ export function WhotPlayingCard({
         !onClick ? 'cursor-default' : '',
       ].join(' ')}
     >
-      <WhotShapeIcon shape={card.shape} size={sizeStyles.icon} variant="on-card" />
-      <span className={`font-black leading-none ${sizeStyles.num}`}>{isWhot ? 'WHOT' : card.number}</span>
+      {/* Theme tint overlay — transparent by default; per-theme paints a
+       * soft cyan/green wash so cards feel neon/naija without hiding the
+       * shape identity gradient underneath. */}
+      <span
+        aria-hidden
+        className="pointer-events-none absolute inset-0 rounded-[calc(0.75rem-2px)]"
+        style={{ background: 'var(--game-card-tint, transparent)' }}
+      />
+      <span className="relative">
+        <WhotShapeIcon shape={card.shape} size={sizeStyles.icon} variant="on-card" />
+      </span>
+      <span className={`relative font-black leading-none ${sizeStyles.num}`}>{isWhot ? 'WHOT' : card.number}</span>
       {label && size !== 'sm' && (
         <span
           className={[
-            'mt-0.5 max-w-full truncate rounded px-1 py-0.5 font-bold uppercase tracking-wide leading-tight',
+            'relative mt-0.5 max-w-full truncate rounded px-1 py-0.5 font-bold uppercase tracking-wide leading-tight',
             'text-white/95 bg-black/30',
             sizeStyles.badge,
           ].join(' ')}
