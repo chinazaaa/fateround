@@ -32,6 +32,7 @@ import {
   type MonopolyColorGroup,
   type MonopolyBoardSize,
 } from '@/lib/monopoly'
+import { getActiveMonopolyLoan } from '@/lib/monopoly-loan'
 import { monopolyTokenEmoji } from '@/lib/monopoly-tokens'
 import {
   canonicalToDisplayMoney,
@@ -514,6 +515,7 @@ export function MonopolyManagePanel({
   acting,
   postAction,
   themeId,
+  onOpenLoans,
 }: {
   board: MonopolyBoard | null
   myPlayerId: string | null
@@ -523,6 +525,7 @@ export function MonopolyManagePanel({
   acting: boolean
   postAction: PostAction
   themeId?: string | null
+  onOpenLoans?: () => void
 }) {
   const [tradeTarget, setTradeTarget] = useState('')
   const [offerCash, setOfferCash] = useState('')
@@ -1028,12 +1031,61 @@ export function MonopolyManagePanel({
     )
   }
 
+  const myActiveLoan = myPlayerId ? getActiveMonopolyLoan(board.loans, myPlayerId) : undefined
+
   return (
     <div className="glass-card p-4 space-y-4">
       <div className="space-y-2">
         <p className="label-caps">Inventory</p>
         <MonopolyJailCardInventory count={myJailCards} showEmpty themeId={themeId} />
       </div>
+
+      {onOpenLoans && (
+        <div
+          className={[
+            'rounded-xl border p-3 flex items-center justify-between gap-3 transition-all',
+            myActiveLoan
+              ? myActiveLoan.rounds_remaining <= 1
+                ? 'border-red-500/30 bg-red-500/5'
+                : 'border-amber-500/25 bg-amber-500/5'
+              : 'border-[var(--border-strong)] bg-[var(--surface-inset-bg)]',
+          ].join(' ')}
+        >
+          <div className="space-y-0.5 min-w-0">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-xs font-bold text-[var(--foreground)]">🏦 Bank Loan</span>
+              {myActiveLoan && (
+                <span
+                  className={[
+                    'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold',
+                    myActiveLoan.rounds_remaining <= 1
+                      ? 'bg-red-500/15 text-red-500 font-bold animate-pulse'
+                      : 'bg-amber-500/15 text-amber-500',
+                  ].join(' ')}
+                >
+                  <span
+                    className={[
+                      'h-1.5 w-1.5 rounded-full',
+                      myActiveLoan.rounds_remaining <= 1 ? 'bg-red-500' : 'bg-amber-500',
+                    ].join(' ')}
+                  />
+                  {myActiveLoan.rounds_remaining === 1
+                    ? 'Due this round'
+                    : `${myActiveLoan.rounds_remaining} rounds left`}
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-muted leading-snug">
+              {myActiveLoan
+                ? `Balance: ${formatThemedMoney(myActiveLoan.balance_remaining, themeId)}`
+                : 'Borrow liquidity against your portfolio'}
+            </p>
+          </div>
+          <button type="button" onClick={onOpenLoans} className="btn-primary btn-fit px-3 py-1.5 text-xs shrink-0">
+            {myActiveLoan ? 'Manage' : 'Borrow'}
+          </button>
+        </div>
+      )}
 
       <MonopolyColorPortfolio
         propertyOwners={owners}

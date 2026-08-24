@@ -8,6 +8,7 @@ import 'react-native-reanimated'
 import { ToastProvider } from '@/components/ui/Toast'
 import { ThemeProvider, useTheme, useThemeMode } from '@/constants/theme-context'
 import { PreferencesProvider } from '@/constants/preferences-context'
+import { recoverPendingAttributions } from '@/lib/attribution-recovery'
 
 type NotificationData = {
   event?: string
@@ -96,8 +97,10 @@ function ThemedStack() {
       >
         <Stack.Screen name="index" options={{ title: 'FateRound' }} />
         <Stack.Screen name="create" options={{ title: 'Create game' }} />
+        <Stack.Screen name="shop" options={{ title: 'Shop' }} />
         <Stack.Screen name="game/[code]" options={{ title: 'Game' }} />
         <Stack.Screen name="host/[code]" options={{ title: 'Host' }} />
+        <Stack.Screen name="play-solo/index" options={{ title: 'Practice vs bot' }} />
         <Stack.Screen name="play-solo/whot" options={{ title: 'Whot — solo' }} />
         <Stack.Screen name="play-solo/ayo" options={{ title: 'Ayo — solo' }} />
         <Stack.Screen name="play-solo/ludo" options={{ title: 'Ludo — solo' }} />
@@ -136,6 +139,12 @@ export default function RootLayout() {
 
     const subscription = Notifications.addNotificationResponseReceivedListener(handleNotificationResponse)
     return () => subscription.remove()
+  }, [])
+
+  // Catch up any trophy attributions the player missed by leaving a game before its finished
+  // screen mounted. Idempotent, best-effort, and self-throttled per app run.
+  useEffect(() => {
+    void recoverPendingAttributions()
   }, [])
 
   return (

@@ -270,17 +270,15 @@ export interface CodewordsMessage {
   created_at: string
   player_name?: string
 }
-export type ThemeId =
-  | 'default'
-  | 'dark'
-  | 'neon'
-  | 'retro'
-  | 'elegant'
-  | 'tropical'
-  | 'pirate'
-  | 'arctic'
-  | 'naija'
-  | 'grass_court'
+// Re-export the canonical union from @/lib/themes rather than duplicating it.
+// The old shadow definition here missed 'america' when Phase 4 added it, so
+// consumers importing `ThemeId` from '@/types' rejected the paid edition even
+// though the rest of the app accepts it. Import once, source of truth = one —
+// and bring `ThemeId` into local scope so the `theme?: ThemeId` field below
+// type-checks (a bare `export type ... from ...` re-exports without creating
+// a local binding, which is what broke CI type-check on the Phase 4 merge).
+import type { ThemeId } from '@/lib/themes'
+export type { ThemeId }
 export type WyrChoice = 'a' | 'b'
 
 export type ParticipantGender = 'male' | 'female'
@@ -388,6 +386,9 @@ export interface Game {
   monopoly_no_rent_in_jail?: boolean
   monopoly_estate_dividend?: boolean
   monopoly_board_size?: 40 | 48
+  monopoly_loans_enabled?: boolean
+  monopoly_loan_interest?: number
+  monopoly_loan_term_rounds?: number
   troll_run_rounds?: number
   troll_run_time_limit?: number
   troll_run_world?: string
@@ -405,6 +406,13 @@ export interface Game {
   player_questions_order?: PlayerQuestionsOrder
   game_type: GameType
   theme?: ThemeId
+  /**
+   * Estate Kings edition slug picked by the host (docs/estate-kings-america-edition.md).
+   * Mirrors `theme` for Monopoly — 'london' | 'naija' | 'pirate' | 'arctic' | 'america'
+   * — and is null for every other game type. See Phase 4 migration
+   * `20261101120700_estate_kings_america_edition.sql`.
+   */
+  edition_slug?: string | null
   status: GameStatus
   /** When true, the game is listed in /browse (discoverable). Default false = code-only. */
   is_public?: boolean
@@ -654,6 +662,20 @@ export interface MonopolyLastTradeEvent {
   decline_reason?: MonopolyTradeDeclineReason | null
 }
 
+export interface MonopolyLoan {
+  id: string
+  player_id: string
+  principal: number
+  interest_rate: number
+  total_due: number
+  amount_repaid: number
+  balance_remaining: number
+  term_rounds: number
+  rounds_remaining: number
+  created_at: string
+  status: 'active' | 'repaid' | 'defaulted'
+}
+
 export interface MonopolyBoard {
   id: string
   game_id: string
@@ -681,6 +703,7 @@ export interface MonopolyBoard {
   last_rent_event: MonopolyLastRentEvent | null
   last_cash_event: MonopolyLastCashEvent | null
   last_trade_event: MonopolyLastTradeEvent | null
+  loans?: MonopolyLoan[]
   turn_deadline_at: string | null
   winner_player_id: string | null
   created_at: string

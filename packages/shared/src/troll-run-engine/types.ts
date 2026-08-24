@@ -2,9 +2,9 @@
  * Troll Run Engine — Internal runtime types.
  */
 
-export * from '@/lib/troll-run-types'
+export * from '../troll-run-types'
 
-import type { TrollMovingEntity, TrollRunDoorState, TrollRunLevel } from '@/lib/troll-run-types'
+import type { TrollMovingEntity, TrollRunDoorState, TrollRunLevel } from '../troll-run-types'
 
 export interface InputState {
   left: boolean
@@ -171,4 +171,43 @@ export interface EngineCallbacks {
   onPlayerPosition?: (pos: GhostPositionPayload) => void
   /** Fired only when a field actually changes, so the DOM overlay does not re-render at 60fps. */
   onHudChange?: (hud: TrollRunHudState) => void
+}
+
+/**
+ * A frame handed to whatever is drawing the stage. The engine owns the simulation and knows
+ * nothing about how it reaches a screen: web paints it into a 320×180 canvas, mobile diffs it
+ * into react-native-svg nodes. Everything here is engine-owned and MUST be treated as read-only —
+ * the same objects are reused every frame, so an adapter that keeps one keeps a moving target.
+ */
+export interface TrollRunFrame {
+  /** The level with its live tile grid and live door position, not the authored originals. */
+  level: TrollRunRenderLevel
+  player: PlayerState
+  particles: readonly Particle[]
+  entities: readonly TrollMovingEntity[]
+  /** Only the ghosts on the same level index as the local runner. */
+  ghosts: readonly GhostRunner[]
+  /** Only the death marks on the same level index as the local runner. */
+  deathMarks: readonly TrollRunDeathMark[]
+  /** `performance.now()` at the top of the frame, for time-based shimmer/pulse effects. */
+  now: number
+}
+
+/** The draw half of the engine. Web supplies the canvas renderer; mobile an SVG one. */
+export interface TrollRunRenderTarget {
+  render(frame: TrollRunFrame): void
+  setTheme?(theme: 'dark' | 'retro' | 'neon'): void
+}
+
+/**
+ * The sound half. Web supplies the WebAudio synth; mobile can supply haptics, silence, or both.
+ * Every method is optional so a partial adapter is still valid.
+ */
+export interface TrollRunAudioSink {
+  playJump?(): void
+  playDeath?(): void
+  playClear?(): void
+  playCoin?(): void
+  playTrap?(): void
+  setMuted?(muted: boolean): void
 }

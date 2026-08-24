@@ -380,6 +380,7 @@ export function MahjongHostView({ gameCode, hostToken }: { gameCode: string; hos
               game={game}
               boardGameType="mahjong"
               playerCount={readyPlayers.length}
+              seatedCount={readyPlayers.filter((p) => !p.spectator).length}
               onGameUpdate={setGame}
             />
             <TransferHostControl triggerClassName="btn-secondary w-full flex items-center justify-center gap-2" />
@@ -602,6 +603,7 @@ export function MahjongHostView({ gameCode, hostToken }: { gameCode: string; hos
               game={game}
               boardGameType="mahjong"
               playerCount={readyPlayers.length}
+              seatedCount={readyPlayers.filter((p) => !p.spectator).length}
               onGameUpdate={setGame}
             />
           )}

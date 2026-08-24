@@ -693,7 +693,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ gam
   try {
     const { data: profile } = await admin
       .from('profiles')
-      .select('current_streak, longest_streak, last_active_date')
+      .select('current_streak, longest_streak, last_active_date, streak_freezes')
       .eq('id', profileId)
       .maybeSingle()
 
@@ -703,6 +703,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ gam
           current_streak: Number(profile.current_streak) || 0,
           longest_streak: Number(profile.longest_streak) || 0,
           last_active_date: (profile.last_active_date as string) ?? null,
+          streak_freezes: Number(profile.streak_freezes) || 0,
         } satisfies StreakState,
         today
       )
@@ -713,6 +714,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ gam
             current_streak: streak.current_streak,
             longest_streak: streak.longest_streak,
             last_active_date: streak.last_active_date,
+            // Safe under the date-changed guard above: advanceStreak only ever earns or spends
+            // a freeze on a day that also moves last_active_date.
+            streak_freezes: streak.streak_freezes,
           })
           .eq('id', profileId)
       }

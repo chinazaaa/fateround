@@ -28,8 +28,17 @@ import type { GameType } from '@/types'
 import { GLOBAL_SCOPE, evaluateRaw, type PlatinumContext, type ProgressSnapshot } from './criteria'
 import { unlockedThisRound } from './instant-unlock'
 import { buildGameFacts } from './game-facts'
+import { playerEngagedInGame } from './engagement'
 import { resolveFinishers, resolveWinners } from './outcome'
 import { advanceStreak, watDate, watHour, type StreakState } from './streak'
+import {
+  awardCoinsForFinishedGame,
+  countUniqueHumans,
+  recordGuestFinishedGameGrants,
+  type CoinAwardResult,
+  type GuestPendingResult,
+} from '@/lib/coins/award-service'
+import { COIN_AMOUNTS } from '@/lib/coins/reasons'
 
 /** Trophy points needed for each level. Deliberately shallow early so level 2 is reachable. */
 const LEVEL_THRESHOLDS = [0, 50, 150, 350, 700, 1200, 2000, 3200, 5000, 8000]
@@ -49,6 +58,8 @@ export type AwardedTrophy = { id: string; title: string; tier: string; points: n
 export type AwardResult = {
   /** Trophies earned by THIS pass — what the post-win prompt should celebrate. */
   earned: AwardedTrophy[]
+  /** Coin awards for this game — itemized so the results panel can render them. */
+  coins?: CoinAwardResult
   /** False when the pass was a no-op: already awarded, unknown game, or nothing to do. */
   applied: boolean
   reason?: 'already_awarded' | 'game_not_found' | 'never_started' | 'not_a_player' | 'error'
@@ -195,7 +206,7 @@ export async function awardForFinishedGame(
       // timer_seconds / question_source are read for the per-game facts builders (Trivia uses
       // both). Cheap to carry here; a second round-trip per finish would not be.
       .select(
-        'id, game_type, status, max_players, finished_at, session_started_at, timer_seconds, question_source, theme'
+        'id, game_type, status, max_players, finished_at, session_started_at, timer_seconds, question_source, theme, result_reason'
       )
       .eq('id', sessionId)
       .maybeSingle()
@@ -208,10 +219,21 @@ export async function awardForFinishedGame(
       return NOOP('never_started')
     }
 
+    // Aborted finishes — host force-end without a winner, admin end, idle-reaper
+    // timeout — set `result_reason` to one of these values. They still land in
+    // `status='finished'` (the finish machinery has to run: rounds close,
+    // room-game points settle, tournament brackets resolve) but they must NOT
+    // count toward "play N games" style trophies, `days_played`, streak, or
+    // first-mode coin bonuses — otherwise a solo host can farm counters by
+    // start-and-end-immediately. A natural finish that just happens to have no
+    // definite winner keeps `result_reason` NULL and still counts.
+    const ABORT_REASONS = new Set(['idle_timeout', 'host_ended', 'admin_ended'])
+    const isAbortedFinish = ABORT_REASONS.has((game.result_reason as string) ?? '')
+
     const gameType = game.game_type as GameType
     const { data: players } = await supabase
       .from('players')
-      .select('id, profile_id, spectator')
+      .select('id, profile_id, spectator, is_bot')
       .eq('game_id', sessionId)
     // The shed-your-hand card games flag a player who WENT OUT as a spectator, winner included.
     // Those players played; only a true watcher never did. `finish_order` is who actually
@@ -228,6 +250,22 @@ export async function awardForFinishedGame(
     }
 
     const seated = (players ?? []).filter(isParticipant)
+
+    // Engagement gate — did this player actually do anything in this game?
+    // A natural finish where the player never voted / answered / submitted is
+    // the two-device farming vector: host on device A, "second player" on
+    // device B, neither engages, timer expires all rounds, game finishes,
+    // credit lands. `playerEngagedInGame` checks the game's per-type action
+    // table (votes, trivia_answers, word_rush_answers, …). Game types with
+    // no such table (chess, ludo, whot, uno, monopoly, …) return true and
+    // fall through to the existing abort / `won` gates. Fail-open: a broken
+    // read must not phantom-strip credit from a real finish.
+    const isEngaged = await playerEngagedInGame(supabase, gameType, sessionId, me.id as string)
+    // Treat "no engagement" the same as an explicit abort — no counter bumps,
+    // no streak advance, no coin credit. Union the two so the rest of the
+    // pass reads one flag instead of a bespoke gate for each case.
+    const isSkippedFinish = isAbortedFinish || !isEngaged
+
     // `null` means the server cannot determine a winner for this game type — which must not be
     // recorded as a loss. Only a definite result moves `games_won`.
     const winners = await resolveWinners(supabase, sessionId, gameType)
@@ -278,35 +316,63 @@ export async function awardForFinishedGame(
     // numeric counters, so pull them from `extras` before it reaches `bump_player_stats`.
     const distinctMembers = extractDistinctMembers(extras)
 
+    // First-time-mode detection is now enforced by a DB unique index on
+    // `coin_ledger (profile_id, ref_id) WHERE reason='first_mode_bonus'` —
+    // the award-service ALWAYS attempts the credit and lets the constraint
+    // reject a duplicate. Reading `player_stats.games_played` here (as a
+    // prior implementation did) was TOCTOU: a partial failure that bumped
+    // stats then errored would forfeit the bonus on retry.
+
     // Per-game-type and global scopes both move, so a rule can ask "10 wins" or "10 Whot wins".
-    await bumpStats(supabase, profileId, gameType, { played: 1, won: won ? 1 : 0, counters: extras })
-    await bumpStats(supabase, profileId, GLOBAL_SCOPE, { played: 1, won: won ? 1 : 0, counters: extras })
+    // On aborted finishes we drop `played` and every counter — a game killed before a winner is
+    // not a game the player played through. `won` is naturally 0 on an abort (no resolvable
+    // winner passes MIN_PLAYERS_FOR_A_WIN + inclusion check), so we still call bumpStats to
+    // keep the awarded_sessions claim tidy but with a no-op payload.
+    const playedBump = isSkippedFinish ? 0 : 1
+    const countersBump = isSkippedFinish ? {} : extras
+    await bumpStats(supabase, profileId, gameType, {
+      played: playedBump,
+      won: won ? 1 : 0,
+      counters: countersBump,
+    })
+    await bumpStats(supabase, profileId, GLOBAL_SCOPE, {
+      played: playedBump,
+      won: won ? 1 : 0,
+      counters: countersBump,
+    })
 
     // Distinct sets: the PK does the deduping, so a repeat insert is a harmless conflict.
+    // On abort, `modes_played` skips too — you didn't finish this mode's game — but a
+    // distinct member earned mid-round (via facts, e.g. "won as N different roles") is
+    // gated on the abort by having no facts in the first place.
     const distinctRows = [
-      { profile_id: profileId, key: 'modes_played', member: gameType },
+      ...(isSkippedFinish ? [] : [{ profile_id: profileId, key: 'modes_played', member: gameType }]),
       ...distinctMembers.map(({ key, member }) => ({ profile_id: profileId, key, member })),
     ]
-    await supabase.from('player_distinct').upsert(distinctRows, { onConflict: 'profile_id,key,member' })
+    if (distinctRows.length > 0) {
+      await supabase.from('player_distinct').upsert(distinctRows, { onConflict: 'profile_id,key,member' })
+    }
 
     // ── Streak ────────────────────────────────────────────────────────────────────────────
     const { data: profile } = await supabase
       .from('profiles')
-      .select('current_streak, longest_streak, last_active_date, trophy_points')
+      .select('current_streak, longest_streak, last_active_date, streak_freezes, trophy_points')
       .eq('id', profileId)
       .maybeSingle()
 
-    const streak = advanceStreak(
-      {
-        current_streak: Number(profile?.current_streak) || 0,
-        longest_streak: Number(profile?.longest_streak) || 0,
-        last_active_date: (profile?.last_active_date as string) ?? null,
-      } satisfies StreakState,
-      watDate(finishedAt)
-    )
+    // Aborted finishes must not advance the streak or bump `days_played` — one abort per
+    // WAT day would otherwise be enough to keep a streak alive forever. Freeze the state
+    // exactly as it was and skip the streak read-through so `days_played` stays put.
+    const priorStreakState: StreakState = {
+      current_streak: Number(profile?.current_streak) || 0,
+      longest_streak: Number(profile?.longest_streak) || 0,
+      last_active_date: (profile?.last_active_date as string) ?? null,
+      streak_freezes: Number(profile?.streak_freezes) || 0,
+    }
+    const streak = isSkippedFinish ? priorStreakState : advanceStreak(priorStreakState, watDate(finishedAt))
     // `days_played` only moves when the calendar day actually changed, so several games in one
     // evening count as one day — the same reason advanceStreak is idempotent per day.
-    if (streak.last_active_date !== (profile?.last_active_date ?? null)) {
+    if (!isSkippedFinish && streak.last_active_date !== (profile?.last_active_date ?? null)) {
       await bumpStats(supabase, profileId, GLOBAL_SCOPE, { counters: { days_played: 1 } })
     }
 
@@ -333,6 +399,9 @@ export async function awardForFinishedGame(
         current_streak: streak.current_streak,
         longest_streak: streak.longest_streak,
         last_active_date: streak.last_active_date,
+        // Freezes are earned and spent by advanceStreak. Persisting them is what makes the
+        // forgiveness real — the column existed from the first migration but nothing wrote it.
+        streak_freezes: streak.streak_freezes,
       })
       .eq('id', profileId)
 
@@ -340,7 +409,55 @@ export async function awardForFinishedGame(
     // concurrent passes reach the same total instead of one overwriting the other.
     await supabase.rpc('recompute_profile_points', { p_profile_id: profileId })
 
-    return { earned, applied: true }
+    // ── Coin awards (plan §"Earning") ───────────────────────────────────
+    // Best-effort: runs after the trophy pass. A failed coin credit MUST NOT
+    // turn a finished game into an error, and the RPC itself is idempotent-
+    // adjacent (guarded by the `awarded_sessions` claim above).
+    //
+    // Aborted finishes skip coin awards entirely. `win` is already `won`-gated
+    // and won't fire, but `first_mode_bonus` would otherwise pay out on the
+    // first abort of each mode — a small but real farming vector (once per
+    // mode via the DB unique index). Better to require an actual played game
+    // to unlock it.
+    let coins: CoinAwardResult | undefined
+    if (isSkippedFinish) {
+      return { earned, coins: undefined, applied: true }
+    }
+    try {
+      // CRITICAL: the anti-farm gate compares `unique_humans` to 2 and applies
+      // a 0.5× multiplier at exactly 2 humans (see award_coins RPC). Passing
+      // bot seats here as humans would let a solo player + two bots earn full
+      // rate — which is the entire farming vector the plan's floor exists to
+      // stop. Filter bots BEFORE counting; the fresh `is_bot` on the main
+      // players read above is the source.
+      const humanSeats = seated.filter((p) => !(p as { is_bot?: boolean | null }).is_bot)
+      const seatedHumans = humanSeats.length
+      const uniqueHumans = countUniqueHumans(
+        humanSeats.map((p) => ({
+          id: p.id as string,
+          profile_id: (p as { profile_id?: string | null }).profile_id ?? null,
+          is_bot: false,
+        }))
+      )
+      const hostBounty = false // Deferred: needs round-count tracking. Wire in Phase 3 backlog.
+      coins = await awardCoinsForFinishedGame(supabase, {
+        profileId,
+        gameId: sessionId,
+        gameType,
+        won,
+        seatedHumans,
+        uniqueHumans,
+        // `isFirstTimeForMode` is now DB-enforced; the field on the input
+        // is deprecated. Left unset so a future reader isn't tempted to
+        // resurrect the stats-based check.
+        hostBounty,
+        streakDays: streak.current_streak,
+      })
+    } catch {
+      coins = undefined
+    }
+
+    return { earned, coins, applied: true }
   } catch {
     // Release the claim so a later attempt can retry. Leaving it would silently cost the
     // player everything this game should have earned, with no error anywhere.
@@ -348,6 +465,112 @@ export async function awardForFinishedGame(
     return NOOP('error')
   }
 }
+
+/**
+ * Guest earning path — write per-reason rows to `guest_pending_grants` so the
+ * "Sign up to claim X coins" CTA on the results screen quotes a real number.
+ * No profile is attached; the rows are materialised into coin_ledger at
+ * signup by `migrate_guest_grants()`.
+ *
+ * Returns the same shape as `awardCoinsForFinishedGame` (minus profile fields)
+ * so the finish screen renders one panel for both cases.
+ */
+export async function recordGuestFinishForDevice(
+  supabase: SupabaseClient,
+  input: {
+    gameId: string
+    deviceId: string
+    sessionId: string | null
+    winnerPlayerId?: string | null
+    myPlayerId: string
+  }
+): Promise<GuestPendingResult> {
+  const gameId = input.gameId.toUpperCase()
+  try {
+    const { data: game } = await supabase
+      .from('games')
+      .select('id, game_type, status, finished_at, result_reason')
+      .eq('id', gameId)
+      .maybeSingle()
+    if (!game || game.status !== 'finished') return { lines: [], total: 0 }
+    // Guests inherit the same abort gate as attributed profiles — a game
+    // ended without a winner via host/admin/idle-reaper doesn't accrue any
+    // pending coin lines, so signup can't claim a stash farmed by
+    // start-and-end.
+    if (['idle_timeout', 'host_ended', 'admin_ended'].includes((game.result_reason as string) ?? '')) {
+      return { lines: [], total: 0 }
+    }
+    // Play-again reuses the same `games` row and rewrites `finished_at`.
+    // Guest grants MUST be idempotent per round, not per game code, or the
+    // unique constraint would block round 2 or (worse, without one) a retry
+    // would silently double-credit round 1. `finished_at` separates rounds
+    // — same rule the trophy pass uses in `roundKey()`.
+    const roundSessionId = ((game as { finished_at?: string | null }).finished_at as string | null) ?? gameId
+
+    const gameType = game.game_type as GameType
+    const { data: players } = await supabase
+      .from('players')
+      .select('id, profile_id, is_bot, spectator')
+      .eq('game_id', gameId)
+
+    // Match `awardForFinishedGame`'s participant rule so a shed-your-hand
+    // card game's winner (who is flagged spectator once they go out) still
+    // counts as a participant. Filtering only on `!p.spectator` would drop
+    // that player and — in a duo — take `seated.length` below the
+    // MIN_PLAYERS_FOR_A_WIN floor, marking a real win as `won=false`.
+    const finishersG = new Set(await resolveFinishers(supabase, gameId, gameType))
+    const isParticipant = (p: { id: string; spectator?: boolean | null }) => !p.spectator || finishersG.has(p.id)
+
+    const me = (players ?? []).find((p) => p.id === input.myPlayerId)
+    if (!me || !isParticipant({ id: me.id as string, spectator: me.spectator })) {
+      return { lines: [], total: 0 }
+    }
+
+    // Same engagement gate as the attributed profile path — if the guest
+    // never voted / answered / submitted anything, no pending coin lines
+    // accrue for them. Two-device farming vector otherwise: a guest device
+    // "playing" alongside the host without ever engaging would still stack
+    // guest_pending_grants and cash them all in at signup.
+    if (!(await playerEngagedInGame(supabase, gameType, gameId, me.id as string))) {
+      return { lines: [], total: 0 }
+    }
+
+    const seated = (players ?? []).filter((p) => isParticipant({ id: p.id as string, spectator: p.spectator }))
+    const winners = await resolveWinners(supabase, gameId, gameType)
+    const won = seated.length >= MIN_PLAYERS_FOR_A_WIN && winners !== null && winners.includes(me.id as string)
+
+    const humans = seated.filter((p) => !p.is_bot)
+    const seatedHumans = humans.length
+    const uniqueHumans = countUniqueHumans(
+      humans.map((p) => ({
+        id: p.id as string,
+        profile_id: (p as { profile_id?: string | null }).profile_id ?? null,
+        is_bot: false,
+      }))
+    )
+    // First-mode-for-device isn't cheap to compute for a guest (no profile
+    // stats). Guests are the discovery cohort by definition, so credit the
+    // bonus optimistically; the 500-coin migration cap absorbs the excess.
+    const isFirstTimeForMode = true
+
+    return recordGuestFinishedGameGrants(supabase, {
+      deviceId: input.deviceId,
+      // Round-scoped, not caller-supplied — a client passing null here
+      // would reopen the play-again dup path.
+      sessionId: roundSessionId,
+      gameId,
+      won,
+      seatedHumans,
+      uniqueHumans,
+      isFirstTimeForMode,
+    })
+  } catch {
+    return { lines: [], total: 0 }
+  }
+}
+
+// Re-export so callers pull one thing from `trophies/award`.
+export { COIN_AMOUNTS }
 
 /**
  * Award for one profile and one finished SOLO (vs bot) game. Idempotent per
@@ -409,7 +632,7 @@ export async function awardForSoloFinish(
 
     const { data: profile } = await supabase
       .from('profiles')
-      .select('current_streak, longest_streak, last_active_date, trophy_points')
+      .select('current_streak, longest_streak, last_active_date, streak_freezes, trophy_points')
       .eq('id', profileId)
       .maybeSingle()
 
@@ -418,6 +641,7 @@ export async function awardForSoloFinish(
         current_streak: Number(profile?.current_streak) || 0,
         longest_streak: Number(profile?.longest_streak) || 0,
         last_active_date: (profile?.last_active_date as string) ?? null,
+        streak_freezes: Number(profile?.streak_freezes) || 0,
       } satisfies StreakState,
       watDate(finishedAt)
     )
@@ -441,6 +665,9 @@ export async function awardForSoloFinish(
         current_streak: streak.current_streak,
         longest_streak: streak.longest_streak,
         last_active_date: streak.last_active_date,
+        // Freezes are earned and spent by advanceStreak. Persisting them is what makes the
+        // forgiveness real — the column existed from the first migration but nothing wrote it.
+        streak_freezes: streak.streak_freezes,
       })
       .eq('id', profileId)
 

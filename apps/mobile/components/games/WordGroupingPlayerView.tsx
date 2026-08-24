@@ -8,6 +8,7 @@ import {
   WORD_GROUPING_MISTAKE_PENALTY,
   WORD_GROUPING_TOTAL_GROUPS,
   tallyWordGroupingScores,
+  wordGroupingFinishSeconds,
 } from '@fateround/shared/word-grouping'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
@@ -19,11 +20,7 @@ import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
 import { pointsLeaderboard } from '@/lib/finish-leaderboards'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
-import {
-  fetchWordGroupingSolution,
-  postExpireWordGrouping,
-  postWordGroupingSubmit,
-} from '@/lib/game-api'
+import { fetchWordGroupingSolution, postExpireWordGrouping, postWordGroupingSubmit } from '@/lib/game-api'
 import { getSupabase } from '@/lib/supabase'
 import { WORD_GROUPING_SUBMISSION_SELECT } from '@/lib/supabase-selects'
 import { usePlayerSessionActions } from '@/lib/player-session'
@@ -50,6 +47,9 @@ interface SolutionGroup {
   difficulty: 1 | 2 | 3 | 4
 }
 
+/** How long the solved board stays up before the standings take over. Matches web. */
+const ANSWER_REVEAL_MS = 2800
+
 const GROUP_COLORS: Record<number, string> = {
   1: '#f9df6d',
   2: '#a0c35a',
@@ -69,6 +69,12 @@ export function WordGroupingPlayerView({ gameCode }: { gameCode: string }) {
   const [submitting, setSubmitting] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
   const [nowMs, setNowMs] = useState<number>(() => Date.now())
+  // Hold the solved board for a beat when the game ends mid-play, so the fourth group is
+  // actually readable before the standings replace it. Mirrors web's ANSWER_REVEAL_MS. Only
+  // the playing → finished transition holds; opening an already-finished game goes straight
+  // to the results.
+  const [revealingAnswers, setRevealingAnswers] = useState(false)
+  const prevScreenRef = useRef<string | null>(null)
 
   const showToast = useCallback((msg: string) => {
     setToast(msg)
@@ -87,8 +93,7 @@ export function WordGroupingPlayerView({ gameCode }: { gameCode: string }) {
         .eq('round_number', 1)
         .maybeSingle()
       if (!roundData) return { state: false, ok: true }
-      const meta = (roundData as { word_grouping_metadata: { words?: string[] } | null })
-        .word_grouping_metadata
+      const meta = (roundData as { word_grouping_metadata: { words?: string[] } | null }).word_grouping_metadata
       if (meta?.words) setWords(meta.words)
       setRoundId((roundData as { id: string }).id)
       return { state: true, ok: true }
@@ -170,6 +175,15 @@ export function WordGroupingPlayerView({ gameCode }: { gameCode: string }) {
     return () => clearInterval(id)
   }, [bootstrap.screen])
 
+  useEffect(() => {
+    const prev = prevScreenRef.current
+    prevScreenRef.current = bootstrap.screen
+    if (bootstrap.screen !== 'finished' || prev !== 'playing') return
+    setRevealingAnswers(true)
+    const t = setTimeout(() => setRevealingAnswers(false), ANSWER_REVEAL_MS)
+    return () => clearTimeout(t)
+  }, [bootstrap.screen])
+
   const me = bootstrap.players.find((p) => p.id === bootstrap.myPlayerId)
   const isViewer = !!(me && bootstrap.game && playerIsViewer(me, bootstrap.game))
 
@@ -179,8 +193,7 @@ export function WordGroupingPlayerView({ gameCode }: { gameCode: string }) {
   )
   const myMistakes = mySubs.filter((s) => !s.is_correct).length
   const myCorrectCount = mySubs.filter((s) => s.is_correct).length
-  const isMyPuzzleDone =
-    myCorrectCount >= WORD_GROUPING_TOTAL_GROUPS || myMistakes >= WORD_GROUPING_MAX_MISTAKES
+  const isMyPuzzleDone = myCorrectCount >= WORD_GROUPING_TOTAL_GROUPS || myMistakes >= WORD_GROUPING_MAX_MISTAKES
   const mistakesRemaining = WORD_GROUPING_MAX_MISTAKES - myMistakes
 
   const myCorrectGroups = useMemo(
@@ -194,10 +207,7 @@ export function WordGroupingPlayerView({ gameCode }: { gameCode: string }) {
         })),
     [mySubs]
   )
-  const revealedWords = useMemo(
-    () => new Set(myCorrectGroups.flatMap((g) => g.words)),
-    [myCorrectGroups]
-  )
+  const revealedWords = useMemo(() => new Set(myCorrectGroups.flatMap((g) => g.words)), [myCorrectGroups])
   const remainingWords = useMemo(() => words.filter((w) => !revealedWords.has(w)), [words, revealedWords])
 
   const standings = useMemo(() => {
@@ -210,10 +220,7 @@ export function WordGroupingPlayerView({ gameCode }: { gameCode: string }) {
     [bootstrap.myPlayerId, standings]
   )
 
-  const rosterScores = useMemo(
-    () => Object.fromEntries(standings.map((r) => [r.id, r.points])),
-    [standings]
-  )
+  const rosterScores = useMemo(() => Object.fromEntries(standings.map((r) => [r.id, r.points])), [standings])
   useGameScores(rosterScores, { suffix: ' pts' })
   const rosterDetails = useMemo(() => {
     const out: Record<string, string> = {}
@@ -275,14 +282,7 @@ export function WordGroupingPlayerView({ gameCode }: { gameCode: string }) {
   }
 
   const handleGuessSubmit = async () => {
-    if (
-      selected.length !== 4 ||
-      submitting ||
-      shaking ||
-      isMyPuzzleDone ||
-      !bootstrap.myResumeToken
-    )
-      return
+    if (selected.length !== 4 || submitting || shaking || isMyPuzzleDone || !bootstrap.myResumeToken) return
     setSubmitting(true)
     try {
       const data = await postWordGroupingSubmit(gameCode, bootstrap.myResumeToken, selected)
@@ -332,7 +332,7 @@ export function WordGroupingPlayerView({ gameCode }: { gameCode: string }) {
   }
   if (!bootstrap.game) return <GameLoading />
 
-  if (bootstrap.screen === 'finished') {
+  if (bootstrap.screen === 'finished' && !revealingAnswers) {
     const entries = bootstrap.players
       .filter((p) => !p.spectator)
       .map((p) => {
@@ -342,21 +342,38 @@ export function WordGroupingPlayerView({ gameCode }: { gameCode: string }) {
           name: p.name,
           points: row?.points ?? 0,
           detail: row
-            ? `${row.groups}/4 · ${row.mistakes} mistake${row.mistakes === 1 ? '' : 's'}`
+            ? (() => {
+                const secs = wordGroupingFinishSeconds(bootstrap.game?.session_started_at, row.lastAt)
+                const base = `${row.groups}/4 · ${row.mistakes} mistake${row.mistakes === 1 ? '' : 's'}`
+                // Finish time is the tiebreak players actually argue about — web shows it on
+                // every row, so mobile should too rather than only in my own header.
+                return secs === null ? base : `${base} · ⏱ ${formatMinutesSeconds(secs)}`
+              })()
             : undefined,
         }
       })
     const leader = standings[0]
     const winnerId = leader && leader.points > 0 && standings.length > 1 ? leader.id : null
-    const answerGroups = solution ?? myCorrectGroups.map((g) => ({
-      category: '',
-      words: g.words,
-      difficulty: g.difficulty as 1 | 2 | 3 | 4,
-    }))
+    const answerGroups =
+      solution ??
+      myCorrectGroups.map((g) => ({
+        category: '',
+        words: g.words,
+        difficulty: g.difficulty as 1 | 2 | 3 | 4,
+      }))
+    const myScoreSummary = myRow ? (
+      <View style={styles.myScoreCard}>
+        <Text style={styles.myScorePoints}>{myRow.points} points</Text>
+        <Text style={styles.myScoreDetail}>
+          {myRow.groups}/4 groups · {myRow.mistakes} mistake{myRow.mistakes === 1 ? '' : 's'}
+        </Text>
+      </View>
+    ) : null
     const answersNotice =
-      answerGroups.length > 0 ? (
+      answerGroups.length > 0 || myScoreSummary ? (
         <View style={styles.answersCard}>
-          <Text style={styles.answersTitle}>Groups</Text>
+          {myScoreSummary}
+          {answerGroups.length > 0 ? <Text style={styles.answersTitle}>Groups</Text> : null}
           {[...answerGroups]
             .sort((a, b) => a.difficulty - b.difficulty)
             .map((group, i) => (
@@ -388,8 +405,11 @@ export function WordGroupingPlayerView({ gameCode }: { gameCode: string }) {
   const timeSecs = bootstrap.game?.session_started_at
     ? Math.max(
         0,
-        Math.floor(((myRow?.lastAt ? new Date(myRow.lastAt).getTime() : nowMs) -
-          new Date(bootstrap.game.session_started_at).getTime()) / 1000)
+        Math.floor(
+          ((myRow?.lastAt ? new Date(myRow.lastAt).getTime() : nowMs) -
+            new Date(bootstrap.game.session_started_at).getTime()) /
+            1000
+        )
       )
     : 0
 
@@ -412,20 +432,12 @@ export function WordGroupingPlayerView({ gameCode }: { gameCode: string }) {
             <Text style={styles.statusLabel}>Mistakes</Text>
             <View style={styles.mistakesDots}>
               {Array.from({ length: WORD_GROUPING_MAX_MISTAKES }).map((_, i) => (
-                <View
-                  key={i}
-                  style={[styles.mistakeDot, i < mistakesRemaining ? styles.mistakeDotFilled : null]}
-                />
+                <View key={i} style={[styles.mistakeDot, i < mistakesRemaining ? styles.mistakeDotFilled : null]} />
               ))}
             </View>
           </View>
           <Text style={styles.pointsBadge}>{myRow?.points ?? 0} pts</Text>
-          <Text
-            style={[
-              styles.timerText,
-              timeRemaining !== null && timeRemaining <= 10 ? styles.timerLow : null,
-            ]}
-          >
+          <Text style={[styles.timerText, timeRemaining !== null && timeRemaining <= 10 ? styles.timerLow : null]}>
             {timeRemaining !== null ? formatMinutesSeconds(timeRemaining) : '—'}
           </Text>
         </View>
@@ -484,10 +496,7 @@ export function WordGroupingPlayerView({ gameCode }: { gameCode: string }) {
               <Text style={styles.btnSecondaryText}>Deselect all</Text>
             </Pressable>
             <Pressable
-              style={[
-                styles.btnPrimary,
-                selected.length !== 4 || submitting || shaking ? styles.btnDisabled : null,
-              ]}
+              style={[styles.btnPrimary, selected.length !== 4 || submitting || shaking ? styles.btnDisabled : null]}
               disabled={selected.length !== 4 || submitting || shaking}
               onPress={() => void handleGuessSubmit()}
             >
@@ -659,6 +668,9 @@ const makeStyles = (theme: Theme) =>
       marginTop: 12,
       gap: 8,
     },
+    myScoreCard: { alignItems: 'center', gap: 2, paddingBottom: theme.space.sm },
+    myScorePoints: { color: theme.text, fontSize: 20, fontWeight: '800' },
+    myScoreDetail: { color: theme.textMuted, fontSize: theme.type.caption.size },
     answersTitle: {
       color: theme.textMuted,
       fontSize: 11,

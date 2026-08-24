@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import {
   type Game,
@@ -45,6 +45,7 @@ import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
 import { useGamePlacements, useGameStats } from '@/components/session/RosterDrawerContext'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
+import { UnoSeriesScoreboard } from '@/components/games/cards/UnoSeriesScoreboard'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
 import { useGameTurnAlerts } from '@/hooks/useGameTurnAlerts'
@@ -78,6 +79,15 @@ import { UNO_QUICK_MESSAGES, unoQuickMessage } from '@/lib/uno-quick-messages'
  * Team-Up 2v2 (partner hand panel, quick-chat, the `team_leave_decision` phase), and
  * the partner-only quick-chat emote channel.
  */
+
+function ordinal(n: number): string {
+  const j = n % 10
+  const k = n % 100
+  if (j === 1 && k !== 11) return `${n}st`
+  if (j === 2 && k !== 12) return `${n}nd`
+  if (j === 3 && k !== 13) return `${n}rd`
+  return `${n}th`
+}
 
 type Screen =
   | 'loading'
@@ -190,8 +200,20 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
 
   const me = bootstrap.myPlayerId ? (bootstrap.players.find((p) => p.id === bootstrap.myPlayerId) ?? null) : null
   const isViewer = !!(me && bootstrap.game && playerIsViewer(me, bootstrap.game))
-  const isOut = !!myHand && myHand.cards.length === 0 && bootstrap.game?.status === 'active'
+  const emptiedHand = !!myHand && myHand.cards.length === 0 && bootstrap.game?.status === 'active'
+  const knockedOut =
+    !!bootstrap.myPlayerId &&
+    (session?.eliminated_player_ids ?? []).includes(bootstrap.myPlayerId) &&
+    bootstrap.game?.status === 'active'
+  const isOut = emptiedHand || knockedOut
   const isWatching = isViewer || isOut
+  // Finish position among players who've emptied their hand — 1st = round winner.
+  const finishPosition = (() => {
+    if (!emptiedHand || !bootstrap.myPlayerId) return null
+    const order = session?.finish_order ?? []
+    const idx = order.indexOf(bootstrap.myPlayerId)
+    return idx >= 0 ? idx + 1 : null
+  })()
 
   // Desync guard (mirrors Whot/Crazy Eights — see docs memory "card-hand-desync"): the
   // hands table loaded (other players' rows are present) but none of them is ours —
@@ -440,6 +462,16 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
           leaderboard={cardHandLeaderboard(standings, session.winner_player_id, bootstrap.myPlayerId)}
           winnerPlayerId={session.winner_player_id}
           roundKey={session.id}
+          notice={
+            // Series scoring turns the room into a best-of, so the hand's result is only half
+            // the story — the running total and the target are the part players care about.
+            // Renders nothing when the host didn't enable series scoring.
+            <UnoSeriesScoreboard
+              game={bootstrap.game}
+              players={bootstrap.players}
+              highlightPlayerId={bootstrap.myPlayerId}
+            />
+          }
         />
       </GameShell>
     )
@@ -539,8 +571,23 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
 
         {isOut ? (
           <View style={styles.watchBanner}>
-            <Text style={styles.watchTitle}>You&apos;re out</Text>
-            <Text style={styles.watchSub}>You played all your cards — follow the rest of the game and chat.</Text>
+            {emptiedHand ? (
+              <>
+                <Text style={styles.watchTitle}>
+                  {finishPosition === 1
+                    ? '🏆 You won the round!'
+                    : finishPosition
+                      ? `🎉 You finished ${ordinal(finishPosition)}`
+                      : '🎉 You finished!'}
+                </Text>
+                <Text style={styles.watchSub}>Waiting for the others to finish — follow along and chat.</Text>
+              </>
+            ) : (
+              <>
+                <Text style={styles.watchTitle}>You&apos;re out</Text>
+                <Text style={styles.watchSub}>Knocked out — follow the rest of the game and chat.</Text>
+              </>
+            )}
           </View>
         ) : null}
 
@@ -748,17 +795,18 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
                 // match plays out of turn instead.
                 const useNormalPlay = !normalDisabled
                 const disabled = useNormalPlay ? false : jumpable ? acting : true
+                // Web parity: any card the player can't act on right now fades — otherwise a
+                // full-brightness hand reads as "all playable" when only some are (and none are,
+                // when it isn't even your turn).
+                const showPlayable = (playable && isMyTurn && !normalDisabled) || jumpable
+                const showDim = !showPlayable
                 return (
                   <Pressable
                     key={card.id}
                     disabled={disabled}
                     onPress={() => void (useNormalPlay ? playCard(card.id) : jumpIn(card.id))}
                   >
-                    <UnoCardFace
-                      card={card}
-                      playable={(playable && isMyTurn && !normalDisabled) || jumpable}
-                      dim={canJumpIn && !jumpable}
-                    />
+                    <UnoCardFace card={card} playable={showPlayable} dim={showDim} />
                   </Pressable>
                 )
               })}
@@ -784,34 +832,49 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
                 </Pressable>
               </View>
             ) : (
-              <>
-                {rouletteDrawing ? (
+              // Web parity: Draw / Keep / Play multiple sit in a single row beside
+              // the hand instead of stacking as full-width buttons.
+              (() => {
+                const actions: ReactNode[] = []
+                if (rouletteDrawing) {
                   // Colour Roulette reveal — one card per tap until the target hits
                   // their chosen colour. Server routes phase='color_roulette' draws
                   // to processUnoColorRouletteReveal.
-                  <Pressable style={styles.drawBtn} disabled={acting} onPress={() => void drawCard()}>
-                    <Text style={styles.drawText}>Draw a card</Text>
-                  </Pressable>
-                ) : null}
-
-                {canDraw ? (
-                  <Pressable style={styles.drawBtn} disabled={acting} onPress={() => void drawCard()}>
-                    <Text style={styles.drawText}>{drawLabel}</Text>
-                  </Pressable>
-                ) : null}
-
-                {canPass ? (
-                  <Pressable style={styles.drawBtn} disabled={acting} onPress={() => void passTurn()}>
-                    <Text style={styles.drawText}>Keep the card</Text>
-                  </Pressable>
-                ) : null}
-
-                {multiEnabled ? (
-                  <Pressable style={styles.drawBtn} disabled={acting} onPress={enterMultiMode}>
-                    <Text style={styles.drawText}>➕ Play multiple</Text>
-                  </Pressable>
-                ) : null}
-              </>
+                  actions.push(
+                    <Pressable
+                      key="roulette"
+                      style={styles.handAction}
+                      disabled={acting}
+                      onPress={() => void drawCard()}
+                    >
+                      <Text style={styles.handActionText}>Draw a card</Text>
+                    </Pressable>
+                  )
+                }
+                if (canDraw) {
+                  actions.push(
+                    <Pressable key="draw" style={styles.handAction} disabled={acting} onPress={() => void drawCard()}>
+                      <Text style={styles.handActionText}>{drawLabel}</Text>
+                    </Pressable>
+                  )
+                }
+                if (canPass) {
+                  actions.push(
+                    <Pressable key="pass" style={styles.handAction} disabled={acting} onPress={() => void passTurn()}>
+                      <Text style={styles.handActionText}>Keep the card</Text>
+                    </Pressable>
+                  )
+                }
+                if (multiEnabled) {
+                  actions.push(
+                    <Pressable key="multi" style={styles.handAction} disabled={acting} onPress={enterMultiMode}>
+                      <Text style={styles.handActionText}>➕ Play multiple</Text>
+                    </Pressable>
+                  )
+                }
+                if (actions.length === 0) return null
+                return <View style={styles.handActionsRow}>{actions}</View>
+              })()
             )}
           </>
         )}
@@ -911,6 +974,20 @@ const makeStyles = (theme: Theme) =>
       borderColor: theme.border,
     },
     drawText: { color: theme.text, fontSize: 16, fontWeight: '600' },
+    handActionsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
+    handAction: {
+      flexGrow: 1,
+      flexBasis: 0,
+      minWidth: 120,
+      backgroundColor: theme.surface,
+      borderRadius: 10,
+      paddingHorizontal: 12,
+      paddingVertical: 12,
+      alignItems: 'center',
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
+    handActionText: { color: theme.text, fontSize: 14, fontWeight: '700' },
     handSyncCard: {
       backgroundColor: theme.surface,
       borderRadius: 12,

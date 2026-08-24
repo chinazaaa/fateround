@@ -70,6 +70,15 @@ export function TournamentTransferHostControl({
         })
         const data = (await res.json().catch(() => ({}))) as { error?: string }
         if (!res.ok) {
+          // 403 "Unauthorized" here means our host token no longer matches — usually
+          // because the nominee just accepted and the tournament's host_token has
+          // rotated. Close silently and reload so the page picks up the new state
+          // instead of showing a scary red error on a completed hand-off.
+          if (res.status === 403 && (data.error ?? '').toLowerCase() === 'unauthorized') {
+            setOpen(false)
+            if (typeof window !== 'undefined') window.location.reload()
+            return
+          }
           setError(data.error ?? 'Something went wrong')
           return
         }

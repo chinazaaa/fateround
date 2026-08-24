@@ -29,6 +29,13 @@ import { THEMES } from '@/lib/themes'
 import { ThemePreviewCard, ThemePreviewModal } from '@/components/ThemePreviewModal'
 import { MONOPOLY_EDITIONS, formatThemedText } from '@/components/monopoly/monopoly-themes'
 import {
+  MONOPOLY_THEME_TO_EDITION_SLUG,
+  isMonopolyEditionAvailable,
+  useOwnedMonopolyEditions,
+} from '@/hooks/useOwnedMonopolyEditions'
+import { useOwnedGameThemes } from '@/hooks/useOwnedGameThemes'
+import { GAME_THEMES_BY_GAME, isGameThemeSlug } from '@/lib/coins/game-themes'
+import {
   type ParticipantInput,
   parseParticipantsForGame,
   parseExcelParticipants,
@@ -368,7 +375,7 @@ import {
 import { parseDescribeItWords, parseExcelDescribeItWords } from '@/lib/describe-it-words'
 import { getCodeDefaultLimits, playerCountOptions, type GamePlayerLimitsMap } from '@/lib/game-limits'
 import { TriviaTimerPicker } from '@/components/trivia/TriviaTimerPicker'
-import { TRIVIA_QUESTION_COUNT } from '@/lib/trivia-questions'
+import { TRIVIA_CATEGORY_OPTIONS, TRIVIA_QUESTION_COUNT } from '@/lib/trivia-questions'
 import { useToast } from '@/components/ui/Toast'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { ELIMINATION_COMPATIBLE_TYPES } from '@/types/elimination'
@@ -498,9 +505,27 @@ function CreateGameInner() {
   const [quickDrawTitleTimer, setQuickDrawTitleTimer] = useState(QUICK_DRAW_DEFAULT_TITLE_TIMER)
   const [quickDrawVoteTimer, setQuickDrawVoteTimer] = useState(QUICK_DRAW_DEFAULT_VOTE_TIMER)
   const [ttlMaxPlayers, setTtlMaxPlayers] = useState(TTL_DEFAULT_MAX_PLAYERS)
+  const { available: ownedMonopolyEditions, prices: monopolyEditionPrices } = useOwnedMonopolyEditions()
+  // Per-game reskin ownership (Whot / Ludo / Sudoku). Passing null for
+  // any other game type keeps the shop-catalog fetch cached but returns
+  // an empty set, so the theme filter below stays a plain lookup.
+  const { available: ownedGameThemes, prices: ownedGameThemePrices } = useOwnedGameThemes(
+    (Object.keys(GAME_THEMES_BY_GAME) as string[]).includes(settings.game_type) ? settings.game_type : null
+  )
   const [monopolyMaxPlayers, setMonopolyMaxPlayers] = useState(MONOPOLY_DEFAULT_MAX_PLAYERS)
   const [monopolyBoardSize, setMonopolyBoardSize] = useState<40 | 48>(40)
   const [monopolyGameDuration, setMonopolyGameDuration] = useState(0)
+  // House rules — mirror the host-lobby toggles. Defaults match the DB defaults
+  // (loans enabled, 15% flat interest, 4-round term) so what a host sets here
+  // travels through to the lobby untouched.
+  const [monopolyDoubleGoSalary, setMonopolyDoubleGoSalary] = useState(false)
+  const [monopolyForcedAuctions, setMonopolyForcedAuctions] = useState(false)
+  const [monopolyAuctionTimerSeconds, setMonopolyAuctionTimerSeconds] = useState(10)
+  const [monopolyNoRentInJail, setMonopolyNoRentInJail] = useState(false)
+  const [monopolyEstateDividend, setMonopolyEstateDividend] = useState(false)
+  const [monopolyLoansEnabled, setMonopolyLoansEnabled] = useState(true)
+  const [monopolyLoanInterest, setMonopolyLoanInterest] = useState(15)
+  const [monopolyLoanTermRounds, setMonopolyLoanTermRounds] = useState(4)
   const [scrabbleGameDuration, setScrabbleGameDuration] = useState(0)
   const [scrabbleDictionary, setScrabbleDictionary] = useState<ScrabbleDictionaryId>(SCRABBLE_DEFAULT_DICTIONARY)
   const [scrabbleClockMode, setScrabbleClockMode] = useState<ScrabbleClockMode>('standard')
@@ -2273,7 +2298,22 @@ function CreateGameInner() {
         : {}),
       ...(supportsGenderToggle(type) && !isCustomGame(type) ? { gender_based: defaultGenderBasedForType(type) } : {}),
       ...(type !== 'monopoly' &&
-      (settings.theme === 'pirate' || settings.theme === 'arctic' || settings.theme === 'naija')
+      (settings.theme === 'pirate' ||
+        settings.theme === 'arctic' ||
+        settings.theme === 'naija' ||
+        settings.theme === 'america' ||
+        settings.theme === 'christmas')
+        ? { theme: 'default' as const }
+        : {}),
+      // Per-game reskins (Neon Whot, Wooden Ludo, …) only belong to
+      // their seeded game type. Switching to a different game type
+      // otherwise leaves settings.theme pointing at a slug the POST
+      // route rejects with 400 "Theme not valid for this game type"
+      // — the picker's preservation guard keeps the tile highlighted
+      // under the wrong game (or hides it entirely on Monopoly/other
+      // non-scoped types) with no visible reason for the failure.
+      ...(isGameThemeSlug(settings.theme) &&
+      !GAME_THEMES_BY_GAME[type as keyof typeof GAME_THEMES_BY_GAME]?.includes(settings.theme)
         ? { theme: 'default' as const }
         : {}),
     })
@@ -2829,7 +2869,19 @@ function CreateGameInner() {
                                                             ? (settings.max_players ??
                                                               effectiveLimits.matching_pairs.max)
                                                             : undefined,
+          // Estate Kings edition — mirror the theme pick into the dedicated
+          // edition_slug column the engine reads (docs/estate-kings-america-edition.md
+          // + coins-and-shop-plan.md § "Launch sequencing" → Phase 4).
+          edition_slug: isMonopoly ? (MONOPOLY_THEME_TO_EDITION_SLUG[settings.theme] ?? 'london') : undefined,
           monopoly_board_size: isMonopoly ? monopolyBoardSize : undefined,
+          monopoly_double_go_salary: isMonopoly ? monopolyDoubleGoSalary : undefined,
+          monopoly_forced_auctions: isMonopoly ? monopolyForcedAuctions : undefined,
+          monopoly_auction_timer_seconds: isMonopoly ? monopolyAuctionTimerSeconds : undefined,
+          monopoly_no_rent_in_jail: isMonopoly ? monopolyNoRentInJail : undefined,
+          monopoly_estate_dividend: isMonopoly ? monopolyEstateDividend : undefined,
+          monopoly_loans_enabled: isMonopoly ? monopolyLoansEnabled : undefined,
+          monopoly_loan_interest: isMonopoly ? monopolyLoanInterest : undefined,
+          monopoly_loan_term_rounds: isMonopoly ? monopolyLoanTermRounds : undefined,
           operative_timer_seconds: isCodewords
             ? codewordsOperativeTimer
             : isNpat
@@ -3125,26 +3177,89 @@ function CreateGameInner() {
                 className={`grid ${settings.game_type === 'monopoly' ? 'grid-cols-2 max-w-sm sm:max-w-md' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-5'} gap-1.5 sm:gap-2`}
               >
                 {(settings.game_type === 'monopoly'
-                  ? THEMES.filter((theme) => MONOPOLY_EDITIONS.some((e) => e.themeId === theme.id))
-                  : THEMES.filter(
-                      (theme) =>
-                        theme.id !== 'pirate' &&
-                        theme.id !== 'arctic' &&
-                        theme.id !== 'naija' &&
-                        theme.id !== 'grass_court'
-                    )
+                  ? // On Monopoly we now show EVERY known edition — owned ones as
+                    // normal tiles, unowned paid ones as locked-tile "Unlock in
+                    // Shop" cards. Discoverability > cleanliness: hosts learn
+                    // USA, Christmas, and future editions exist without needing
+                    // to open /shop first.
+                    THEMES.filter((theme) => MONOPOLY_EDITIONS.some((e) => e.themeId === theme.id))
+                  : GAME_THEMES_BY_GAME[settings.game_type as keyof typeof GAME_THEMES_BY_GAME]
+                    ? // Whot / Ludo / Sudoku: free default + EVERY per-game
+                      // reskin scoped to this game type. Unowned tiles render
+                      // locked below and route to /shop on click — same
+                      // discoverability shape as Monopoly. Slugs from other
+                      // games (whot-neon on a Ludo picker) stay hidden. The
+                      // currently-picked theme is preserved unconditionally
+                      // so switching game types (e.g. Monopoly → Whot with
+                      // theme carrying over as 'london') keeps the tile
+                      // visible instead of stranding settings.theme at a
+                      // value the POST route would 400 on.
+                      THEMES.filter((theme) => {
+                        if (theme.id === settings.theme) return true
+                        if (theme.id === 'default') return true
+                        const scoped = GAME_THEMES_BY_GAME[settings.game_type as keyof typeof GAME_THEMES_BY_GAME]
+                        return scoped?.includes(theme.id) ?? false
+                      })
+                    : THEMES.filter(
+                        (theme) =>
+                          // Always preserve the currently-picked theme so
+                          // switching game_type (e.g. Whot → Trivia with
+                          // theme carried over as 'whot-neon') keeps the
+                          // tile highlighted instead of stranding
+                          // settings.theme at a value the POST route would
+                          // 400 on. Same guard the Monopoly + hasGameThemes
+                          // branches use above.
+                          theme.id === settings.theme ||
+                          (theme.id !== 'pirate' &&
+                            theme.id !== 'arctic' &&
+                            theme.id !== 'naija' &&
+                            theme.id !== 'america' &&
+                            theme.id !== 'christmas' &&
+                            theme.id !== 'grass_court' &&
+                            // Per-game reskins never surface on non-owning games.
+                            !isGameThemeSlug(theme.id))
+                      )
                 ).map((theme) => {
                   const monopolyEdition =
                     settings.game_type === 'monopoly' ? MONOPOLY_EDITIONS.find((e) => e.themeId === theme.id) : null
                   const displayTheme = monopolyEdition
                     ? { ...theme, label: monopolyEdition.editionName, emoji: monopolyEdition.editionEmoji }
                     : theme
+                  // Locked = a paid item the host doesn't own AND isn't the
+                  // current pick (never lock a theme the host already selected
+                  // — that would strand a room whose entitlement was later
+                  // revoked). Covers paid Monopoly editions and unowned
+                  // per-game reskins (Neon Whot, Wooden Ludo, …); the
+                  // always-free 'default' never locks.
+                  const scopedGameThemes =
+                    GAME_THEMES_BY_GAME[settings.game_type as keyof typeof GAME_THEMES_BY_GAME] ?? null
+                  const locked =
+                    theme.id !== settings.theme &&
+                    ((settings.game_type === 'monopoly' &&
+                      !isMonopolyEditionAvailable(theme.id, ownedMonopolyEditions)) ||
+                      (!!scopedGameThemes &&
+                        theme.id !== 'default' &&
+                        scopedGameThemes.includes(theme.id) &&
+                        !ownedGameThemes.has(theme.id)))
                   return (
                     <ThemePreviewCard
                       key={theme.id}
                       theme={displayTheme}
                       selected={settings.theme === theme.id}
-                      onClick={() => setSettings({ ...settings, theme: theme.id })}
+                      locked={locked}
+                      priceCoins={
+                        locked
+                          ? settings.game_type === 'monopoly'
+                            ? monopolyEditionPrices.get(MONOPOLY_THEME_TO_EDITION_SLUG[theme.id] ?? theme.id)
+                            : ownedGameThemePrices.get(theme.id)
+                          : undefined
+                      }
+                      onClick={
+                        locked
+                          ? () =>
+                              router.push(`/shop?category=${settings.game_type === 'monopoly' ? 'edition' : 'theme'}`)
+                          : () => setSettings({ ...settings, theme: theme.id })
+                      }
                       onPreview={() => setPreviewTheme(displayTheme)}
                     />
                   )
@@ -3708,6 +3823,95 @@ function CreateGameInner() {
                   />
                 </Field>
                 <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="monopoly" />
+                <details className="group space-y-3">
+                  <summary className="cursor-pointer list-none flex items-center justify-between gap-3 py-1">
+                    <div>
+                      <p className="font-semibold text-sm">Advanced house rules</p>
+                      <p className="text-faint text-xs mt-0.5">
+                        Optional toggles — you can also change these in the host lobby.
+                      </p>
+                    </div>
+                    <svg
+                      viewBox="0 0 20 20"
+                      className="w-4 h-4 text-faint transition-transform group-open:rotate-90 shrink-0"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                    >
+                      <polyline points="7 4 13 10 7 16" />
+                    </svg>
+                  </summary>
+                  <div className="pt-3 space-y-3">
+                    <Toggle
+                      label="Double GO Salary"
+                      description="Collect £400 (instead of £200) when landing exactly on PAYDAY."
+                      value={monopolyDoubleGoSalary}
+                      onChange={setMonopolyDoubleGoSalary}
+                    />
+                    <Toggle
+                      label="Forced Auctions"
+                      description="If a player declines to buy an unowned property, it must go to auction."
+                      value={monopolyForcedAuctions}
+                      onChange={setMonopolyForcedAuctions}
+                    />
+                    <Field label="Auction timer">
+                      <CustomSelect
+                        value={monopolyAuctionTimerSeconds}
+                        onChange={setMonopolyAuctionTimerSeconds}
+                        options={[5, 10, 15, 20, 30, 45, 60].map((s) => ({ value: s, label: `${s} seconds` }))}
+                      />
+                    </Field>
+                    <Toggle
+                      label="No Rent in NICKED"
+                      description="Prevent players in NICKED from collecting rent on their properties."
+                      value={monopolyNoRentInJail}
+                      onChange={setMonopolyNoRentInJail}
+                    />
+                    <Toggle
+                      label="Robin Hood Estate Dividend"
+                      description="When a player leaves mid-game, their estate is liquidated and split equally among remaining players."
+                      value={monopolyEstateDividend}
+                      onChange={setMonopolyEstateDividend}
+                    />
+                    <Toggle
+                      label="Bank Loans"
+                      description="Allow players to borrow emergency funds from the Bank with flat interest and a foreclosure term limit."
+                      value={monopolyLoansEnabled}
+                      onChange={setMonopolyLoansEnabled}
+                    />
+                    {monopolyLoansEnabled && (
+                      <>
+                        <Field label="Loan interest rate">
+                          <CustomSelect
+                            value={monopolyLoanInterest}
+                            onChange={setMonopolyLoanInterest}
+                            options={[
+                              { value: 10, label: '10%' },
+                              { value: 15, label: '15% (Default)' },
+                              { value: 20, label: '20%' },
+                              { value: 25, label: '25%' },
+                            ]}
+                          />
+                        </Field>
+                        <Field label="Loan term (rounds to repay)">
+                          <CustomSelect
+                            value={monopolyLoanTermRounds}
+                            onChange={setMonopolyLoanTermRounds}
+                            options={[
+                              { value: 2, label: '2 rounds' },
+                              { value: 3, label: '3 rounds' },
+                              { value: 4, label: '4 rounds (Default)' },
+                              { value: 5, label: '5 rounds' },
+                            ]}
+                          />
+                        </Field>
+                      </>
+                    )}
+                  </div>
+                </details>
                 <p className="text-faint text-sm leading-relaxed">
                   {formatThemedText(
                     'Players join with their name and start on PAYDAY with £1,500. Take turns rolling dice, buying properties, paying rent, and drawing cards. Last player standing wins! If someone stalls, their turn auto-resolves. Set a game length to end automatically — the richest player wins when time runs out.',
@@ -6733,25 +6937,7 @@ function CreateGameInner() {
                           value={triviaCategory}
                           onChange={(v) => setTriviaCategory(v as TriviaCategory)}
                           searchable
-                          options={[
-                            { value: 'general', label: 'General (All Categories)' },
-                            { value: 'tech', label: 'Tech' },
-                            { value: 'art', label: 'Art' },
-                            { value: 'food', label: 'Food' },
-                            { value: 'geography', label: 'Geography' },
-                            { value: 'history', label: 'History' },
-                            { value: 'language', label: 'Language' },
-                            { value: 'literature', label: 'Literature' },
-                            { value: 'math', label: 'Math' },
-                            { value: 'movies', label: 'Movies' },
-                            { value: 'music', label: 'Music' },
-                            { value: 'nature', label: 'Nature' },
-                            { value: 'pop_culture', label: 'Pop Culture' },
-                            { value: 'science', label: 'Science' },
-                            { value: 'sports', label: 'Sports' },
-                            { value: 'technology', label: 'Technology' },
-                            { value: 'world_culture', label: 'World Culture' },
-                          ]}
+                          options={[...TRIVIA_CATEGORY_OPTIONS]}
                         />
                       </Field>
                     )}

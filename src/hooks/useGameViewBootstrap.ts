@@ -1,5 +1,6 @@
 'use client'
 
+import { hostHref, takeOverHosting } from '@/lib/take-over-hosting'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { supabasePollOk } from '@/hooks/usePolling'
@@ -247,12 +248,29 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
           // Cross-device continuation prompt: same profile already hosting or
           // seated from another device. Ask the user; on confirm re-issue the
           // join with the override flag.
-          const isHost = data.reason === 'already_hosting'
-          const message = isHost
-            ? 'You’re already hosting this game on another device. Continue on this device, or keep it on the other one?'
-            : `You’re already a player in this game on another device${
-                data.existingPlayerName ? ` (as ${data.existingPlayerName})` : ''
-              }. Continue on this device, or keep it on the other one?`
+          // Hosting is a different offer from continuing a seat. Retrying the join would
+          // seat the host as an ordinary PLAYER and leave hosting on the other device —
+          // which is not what "continue on this device" reads as. Move hosting instead.
+          if (data.reason === 'already_hosting') {
+            const takeOver =
+              typeof window !== 'undefined' &&
+              window.confirm('You’re hosting this game on another device. Take over hosting on this device?')
+            if (!takeOver) return
+            const token = await takeOverHosting(gameCode)
+            if (token) {
+              window.location.href = hostHref(gameCode)
+              return
+            }
+            // Handoff unavailable (a failed request, or the profile no longer owns this game).
+            // STOP here rather than falling through: the next branch says "you're already a
+            // player on another device", which is false for a host, and confirming it would
+            // seat them as an ordinary player in the game they are running.
+            onJoinError?.('Could not take over hosting on this device. Try again.')
+            return
+          }
+          const message = `You’re already a player in this game on another device${
+            data.existingPlayerName ? ` (as ${data.existingPlayerName})` : ''
+          }. Continue on this device, or keep it on the other one?`
           const proceed = typeof window !== 'undefined' && window.confirm(message)
           if (!proceed) {
             return
@@ -263,6 +281,11 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
         if (!res.ok) {
           setLobbyFull(data?.full === true)
           onJoinError?.(data.error ?? 'Failed to join')
+          // Refresh the room snapshot so the picker sees whatever changed between the
+          // caller's last render and this rejection — e.g. a not-ready player claiming the
+          // same monopoly token in the seconds before we hit submit. Without this reload
+          // the client keeps offering the token as free and the user retries the same click.
+          void load()
           return
         }
         setLobbyFull(false)

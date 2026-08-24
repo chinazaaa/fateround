@@ -121,23 +121,55 @@ export async function fetchProfileTrophies(
 }
 
 /**
- * `/api/profile/me` PATCH — update the handle (and other simple fields
- * the server accepts). Returns the updated profile, or null on failure.
- * Callers show a toast for errors.
+ * `/api/profile/me` PATCH — rename the profile. Returns the saved handle, or an error
+ * message the caller can surface.
+ *
+ * NOTE ON THE RESPONSE SHAPE. The route answers `{ handle }`, NOT `{ profile }`. This
+ * client used to read `data.profile` and so returned null on every SUCCESSFUL save, which
+ * made the one place mobile lets you rename (`DailyNamePrompt`) pop "Could not save name —
+ * please try again" after a rename that had in fact gone through. Read what the route
+ * actually returns, and let the caller merge it into the profile it already holds rather
+ * than inventing a `ProfileMe` the server never sent.
  */
-export async function updateProfile(patch: { handle?: string }): Promise<ProfileMe | null> {
+export async function updateProfileHandle(handle: string): Promise<{ handle: string } | { error: string }> {
   const headers = await authHeaders()
-  if (!headers) return null
+  if (!headers) return { error: 'Sign in to change your name' }
   try {
     const res = await fetch(apiUrl('/api/profile/me'), {
       method: 'PATCH',
       headers,
+      body: JSON.stringify({ handle }),
+    })
+    const data = (await res.json().catch(() => ({}))) as { handle?: string; error?: string }
+    if (!res.ok) return { error: data.error ?? 'Could not save your name.' }
+    return { handle: data.handle ?? handle }
+  } catch {
+    return { error: 'Could not save your name.' }
+  }
+}
+
+/**
+ * `/api/profile/settings` PATCH — the account preferences that live on the profile row
+ * rather than on the device: the voice-chat default today, `preferred_theme` if mobile ever
+ * stops keeping theme in SecureStore. Device-local prefs (sound, notifications, appearance)
+ * stay in `constants/preferences-context` — they are per-install, not per-account.
+ */
+export async function updateProfileSettings(patch: {
+  default_voice_on?: boolean
+  preferred_theme?: 'light' | 'dark' | 'system'
+}): Promise<{ ok: true } | { error: string }> {
+  const headers = await authHeaders()
+  if (!headers) return { error: 'Sign in to change this' }
+  try {
+    const res = await fetch(apiUrl('/api/profile/settings'), {
+      method: 'PATCH',
+      headers,
       body: JSON.stringify(patch),
     })
-    if (!res.ok) return null
-    const data = (await res.json()) as { profile: ProfileMe | null }
-    return data.profile ?? null
+    const data = (await res.json().catch(() => ({}))) as { error?: string }
+    if (!res.ok) return { error: data.error ?? 'Could not save that setting.' }
+    return { ok: true }
   } catch {
-    return null
+    return { error: 'Could not save that setting.' }
   }
 }

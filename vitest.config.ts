@@ -8,7 +8,11 @@ export default defineConfig({
   plugins: [tsconfigPaths(), react()],
   test: {
     environment: 'node',
-    include: ['src/**/*.test.{ts,tsx}'],
+    // `packages/shared` is mobile's copy of the game logic, but a few engines (Troll Run's
+    // physics and level generator, the Monopoly board) live there as the single source and are
+    // re-exported into `src/`. Their tests sit next to the code, so they have to be included or
+    // they silently never run.
+    include: ['src/**/*.test.{ts,tsx}', 'packages/shared/src/**/*.test.{ts,tsx}'],
     setupFiles: ['./vitest.setup.ts'],
     // Dummy Supabase env so modules that construct a client at import time (many of our
     // components do) don't throw "supabaseUrl is required" when imported under test.
