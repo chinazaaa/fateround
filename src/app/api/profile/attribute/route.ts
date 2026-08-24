@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { internalErrorMessage } from '@/lib/api-errors'
-import { getProfileFromRequest } from '@/lib/identity-server'
+import { getProfileFromRequest, hasBearerToken } from '@/lib/identity-server'
 import { parseJsonBody } from '@/lib/parse-body'
 import { enforceRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
@@ -55,9 +55,16 @@ export async function POST(req: NextRequest) {
     // No identity: the overwhelmingly common case (every guest, every game). Not an error.
     const profileId = await getProfileFromRequest(req)
     if (!profileId) {
-      // Guest earning path — write pending grants keyed on device_id.
-      // Needs the player's resume_token so we can look up which seat is theirs.
-      if (body.deviceId) {
+      // Distinguish "no bearer token at all" (real guest) from "token present
+      // but Auth couldn't verify right now" (transient — e.g. Supabase Auth
+      // Unhealthy under DB pressure, or a signed-in user whose token just
+      // expired mid-session). Only real guests go to the guest-earning path;
+      // treating a transiently-unverified signed-in user as a guest writes
+      // rows into `guest_pending_grants` keyed on their device, and the next
+      // `migrate_guest_grants` fire (re-auth / profile init) credits phantom
+      // guest coins to their profile up to the 500-coin cap. See the
+      // 2026-08-24 outage notes on hasBearerToken.
+      if (body.deviceId && !hasBearerToken(req)) {
         const admin = getSupabaseAdmin()
         const gameIdG = body.gameCode.toUpperCase()
         const resumeTokenG = normalizeResumeToken(body.resumeToken)
@@ -76,6 +83,13 @@ export async function POST(req: NextRequest) {
           })
           return NextResponse.json({ attributed: false, reason: 'no_identity', guestCoins: guest })
         }
+      }
+      // Signed-in caller whose token didn't verify this pass (likely a
+      // transient Auth timeout). Do NOT record guest grants for them —
+      // return a distinct reason so the client can retry when Auth is
+      // healthy again.
+      if (hasBearerToken(req)) {
+        return NextResponse.json({ attributed: false, reason: 'auth_unavailable' })
       }
       return NextResponse.json({ attributed: false, reason: 'no_identity' })
     }
