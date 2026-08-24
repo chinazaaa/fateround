@@ -117,9 +117,16 @@ describe('resolveHandViewer', () => {
   })
 
   // Deliberate design, not an oversight: running the board never requires seeing anyone's cards.
-  it('gives a host token NOTHING, even a valid one', async () => {
-    const { client } = mockSupabase()
-    await expect(resolveHandViewer(client, 'ABC123', { hostToken: 'host-secret' })).resolves.toBeNull()
+  //
+  // The token here is deliberately a REAL player's resume token. With an arbitrary string like
+  // 'host-secret' the assertion is nearly vacuous: a bug that wrongly fed hostToken into the
+  // player lookup would still resolve nothing, because no player holds that value. Using a token
+  // that WOULD match makes the test fail if the host path ever leaks into the resume-token
+  // lookup, and `queries === 0` pins that the lookup is not attempted at all.
+  it('gives a host token NOTHING, even one that matches a player resume token', async () => {
+    const m = mockSupabase()
+    await expect(resolveHandViewer(m.client, 'ABC123', { hostToken: PLAYERS[0].resume_token })).resolves.toBeNull()
+    expect(m.queries).toBe(0)
   })
 
   it('gives a host token nothing even alongside an unknown resume token', async () => {
