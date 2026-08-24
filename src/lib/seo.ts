@@ -375,7 +375,16 @@ export function gameHowToJsonLd(content: GameLandingContent): string {
   })
 }
 
-/** Static OG art per game landing page (1200×630 PNG in /public/og/). */
+/**
+ * Static OG art per game landing page (1200×630 PNG in /public/og/).
+ *
+ * KEYED BY LANDING SLUG, not game type — `gameLandingOgPath()` is called with the slug
+ * from `GAME_TYPE_TO_SLUG`. A key that looks like a game type but isn't its slug silently
+ * misses and falls back to the generic site card, which is how Estate Kings
+ * (`monopoly` → `estate-kings`) lost its art in the rename. `seo-og.test.ts` guards both
+ * directions: every landing slug's entry must resolve to a file that exists, and no entry
+ * may point at a missing file.
+ */
 export const GAME_LANDING_OG_BY_SLUG: Record<string, string> = {
   'smash-marry-kill': '/og/smash-marry-kill.png',
   'smash-or-pass': '/og/smash-or-pass.png',
@@ -389,7 +398,9 @@ export const GAME_LANDING_OG_BY_SLUG: Record<string, string> = {
   'two-truths-and-a-lie': '/og/two-truths-and-a-lie.png',
   'pick-a-number': '/og/pick-a-number.png',
   'this-or-that': '/og/this-or-that.png',
-  monopoly: '/og/monopoly.png',
+  'estate-kings': '/og/estate-kings.png',
+  'troll-run': '/og/troll-run.png',
+  wordle: '/og/wordle.png',
   yahtzee: '/og/yahtzee.png',
   whot: '/og/whot.png',
   'crazy-eights': '/og/crazy-eights.png',
@@ -423,7 +434,6 @@ export const GAME_LANDING_OG_BY_SLUG: Record<string, string> = {
   'word-scramble': '/og/word-scramble.png',
   'word-grouping': '/og/word-grouping.png',
   landmine: '/og/landmine.png',
-  'ping-pong': '/og/ping-pong.png',
   uno: '/og/uno.png',
   'daily-challenges': '/og/daily-challenges.png',
   'daily-crossword': '/og/daily-crossword.png',
@@ -438,6 +448,7 @@ export const GAME_LANDING_OG_BY_SLUG: Record<string, string> = {
   'daily-codenames-codeword': '/og/daily-codenames-codeword.png',
   'daily-whot-puzzle': '/og/daily-whot-puzzle.png',
   'daily-ludo-puzzle': '/og/daily-ludo-puzzle.png',
+  'daily-wordle': '/og/daily-wordle.png',
 }
 
 export function gameLandingOgPath(slug: string): string {

@@ -67,6 +67,28 @@ describe('pokeTargetFor', () => {
     expect(pokeTargetFor('bingo', 'ABCD')).toEqual({ path: '/api/bingo/sync', body: { gameId: 'ABCD' } })
   })
 
+  it('maps troll_run to its tokenless sync route (advance is token-gated)', () => {
+    expect(pokeTargetFor('troll_run', 'ABCD')).toEqual({ path: '/api/troll-run/sync', body: { gameId: 'ABCD' } })
+  })
+
+  it('maps the turn-based games that had no server-side backstop before', () => {
+    // Regression guard: these seven shipped an `expire-turn` route but were missing from
+    // TURN_EXPIRE_SLUG, so their turn clock only moved while a browser tab was open.
+    expect(pokeTargetFor('ludo', 'ABCD')).toEqual({ path: '/api/ludo/expire-turn', body: { gameId: 'ABCD' } })
+    expect(pokeTargetFor('scrabble', 'ABCD')).toEqual({ path: '/api/scrabble/expire-turn', body: { gameId: 'ABCD' } })
+    expect(pokeTargetFor('uno', 'ABCD')).toEqual({ path: '/api/uno/expire-turn', body: { gameId: 'ABCD' } })
+    expect(pokeTargetFor('ayo', 'ABCD')).toEqual({ path: '/api/ayo/expire-turn', body: { gameId: 'ABCD' } })
+    expect(pokeTargetFor('mahjong', 'ABCD')).toEqual({ path: '/api/mahjong/expire-turn', body: { gameId: 'ABCD' } })
+    expect(pokeTargetFor('checkers_international', 'ABCD')).toEqual({
+      path: '/api/checkers-international/expire-turn',
+      body: { gameId: 'ABCD' },
+    })
+    expect(pokeTargetFor('checkers_nigeria', 'ABCD')).toEqual({
+      path: '/api/checkers-nigeria/expire-turn',
+      body: { gameId: 'ABCD' },
+    })
+  })
+
   it('returns null for games with no server-driveable timer', () => {
     expect(pokeTargetFor('anonymous_messages', 'ABCD')).toBeNull()
     expect(pokeTargetFor('most_likely_to', 'ABCD')).toBeNull()

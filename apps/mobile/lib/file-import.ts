@@ -1,7 +1,7 @@
 import * as DocumentPicker from 'expo-document-picker'
 import * as Sharing from 'expo-sharing'
 import { File, Paths } from 'expo-file-system'
-import type { GameType } from '@fateround/shared'
+import type { GameType, TriviaCategory } from '@fateround/shared'
 import { isCodewordsGame } from '@fateround/shared/game-type-checks'
 import {
   MAX_TRIVIA_CHOICES,
@@ -177,7 +177,14 @@ export function parsePuzzleCsv(text: string): PuzzleEntryDraft[] {
 }
 
 /** question, option_a–option_d, correct (A–D or 1–4). */
-export function parseTriviaCsv(text: string): TriviaDraft[] {
+/**
+ * Trivia rows: question, up to four answers, correct (A–D or 1–4).
+ *
+ * `category` tags every imported row. It used to be hardcoded to 'general', so a host who
+ * picked Maths and imported their own questions got a pool tagged General — web has always
+ * passed the game's category through (`parseTriviaQuestionImport(text, triviaCategory)`).
+ */
+export function parseTriviaCsv(text: string, category: TriviaCategory = 'general'): TriviaDraft[] {
   const rows: TriviaDraft[] = []
   const letterIndex = (raw: string): number => {
     const key = raw.trim().toLowerCase()
@@ -200,7 +207,7 @@ export function parseTriviaCsv(text: string): TriviaDraft[] {
     const correctIndex = letterIndex(correctRaw)
     if (!question || choices.length < 2) continue
     if (correctIndex < 0 || correctIndex >= choices.length) continue
-    rows.push({ question, choices, correctIndex, category: 'general' })
+    rows.push({ question, choices, correctIndex, category })
   }
   return rows
 }

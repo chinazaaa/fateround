@@ -152,6 +152,7 @@ export const UI_ICONS = {
   dailyChallenges: Calendar01Icon,
   whatsNew: SparklesIcon,
   browse: GlobeIcon,
+  shop: Coins01Icon,
 } satisfies Record<string, IconSvgElement>
 
 /**

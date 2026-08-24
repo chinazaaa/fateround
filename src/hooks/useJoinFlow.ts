@@ -1,5 +1,6 @@
 'use client'
 
+import { hostHref, takeOverHosting } from '@/lib/take-over-hosting'
 import { useState, useRef, useMemo, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { getPlayerSession, setPlayerSession, clearPlayerSession } from '@/lib/utils'
@@ -287,12 +288,28 @@ export function useJoinFlow(deps: JoinFlowDeps) {
         res.status === 409 &&
         (data?.reason === 'already_hosting' || data?.reason === 'already_joined')
       ) {
-        const isHost = data.reason === 'already_hosting'
-        const message = isHost
-          ? 'You’re already hosting this game on another device. Continue on this device, or keep it on the other one?'
-          : `You’re already a player in this game on another device${
-              data.existingPlayerName ? ` (as ${data.existingPlayerName})` : ''
-            }. Continue on this device, or keep it on the other one?`
+        // Hosting is a different offer from continuing a seat: retrying the join would seat
+        // the host as an ordinary PLAYER and leave hosting on the other device. Move it.
+        if (data.reason === 'already_hosting') {
+          const takeOver =
+            typeof window !== 'undefined' &&
+            window.confirm('You’re hosting this game on another device. Take over hosting on this device?')
+          if (!takeOver) return
+          const token = await takeOverHosting(gameCode)
+          if (token) {
+            window.location.href = hostHref(gameCode)
+            return
+          }
+          // Handoff unavailable (a failed request, or the profile no longer owns this game).
+          // STOP here rather than falling through: the next branch says "you're already a
+          // player on another device", which is false for a host, and confirming it would
+          // seat them as an ordinary player in the game they are running.
+          toast.error('Could not take over hosting on this device — try again')
+          return
+        }
+        const message = `You’re already a player in this game on another device${
+          data.existingPlayerName ? ` (as ${data.existingPlayerName})` : ''
+        }. Continue on this device, or keep it on the other one?`
         const proceed = typeof window !== 'undefined' && window.confirm(message)
         if (!proceed) return
         res = await doJoin(true)

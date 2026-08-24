@@ -15,7 +15,7 @@
  */
 
 import { useCallback, useEffect, useState } from 'react'
-import { readHostToken, rememberHostToken } from '@/lib/host-session'
+import { clearHostToken, readHostToken } from '@/lib/host-session'
 
 type Rsvper = { deviceId: string; name: string; confirmed: boolean }
 
@@ -140,7 +140,10 @@ export function ScheduledHostActionsPanel({ gameCode, currentScheduledAt, onDone
           // No-op on this device — recipient gets the token via push metadata
           // in a follow-up. Clearing the local one is the right move.
         }
-        rememberHostToken(gameCode, '')
+        // `rememberHostToken` guards on empty strings (host-session.ts), so the previous
+        // `rememberHostToken(gameCode, '')` here was a silent no-op — the old host token
+        // stayed in localStorage. Use `clearHostToken` so this device really drops it.
+        clearHostToken(gameCode)
         setTransferOpen(false)
         onDone?.()
       } catch (e) {

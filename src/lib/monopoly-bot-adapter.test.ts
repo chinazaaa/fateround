@@ -341,6 +341,32 @@ describe('adaptMonopolyForBot — pendingTradeToMe', () => {
     )!
     expect(v.pendingTradeToMe).toBeDefined()
     expect(v.pendingTradeToMe!.wouldGiveOpponentMonopoly).toBe(true)
+    // The per-card flag is what actually drives the price premium.
+    expect(v.pendingTradeToMe!.requestProperties.map((p) => p.completesProposerSet)).toEqual([true])
+  })
+
+  it('flags completesProposerSet on only ONE card per completed group', () => {
+    // Bot holds both browns (1 and 3); the human needs both to monopolize.
+    // Charging the premium per card would double-bill a single monopoly.
+    const v = adaptMonopolyForBot(
+      board({
+        property_owners: { '1': BOT, '3': BOT },
+        pending_trade: {
+          from_player_id: HUMAN,
+          to_player_id: BOT,
+          offer_cash: 0,
+          offer_properties: [],
+          offer_get_out_cards: 0,
+          request_cash: 0,
+          request_properties: [1, 3],
+          request_get_out_cards: 0,
+        },
+      }),
+      [pState(HUMAN), pState(BOT)],
+      BOT
+    )!
+    const flags = v.pendingTradeToMe!.requestProperties.map((p) => Boolean(p.completesProposerSet))
+    expect(flags.filter(Boolean)).toHaveLength(1)
   })
 
   it('does NOT flag wouldGiveOpponentMonopoly when the recipient still needs more cards', () => {
@@ -363,6 +389,7 @@ describe('adaptMonopolyForBot — pendingTradeToMe', () => {
       BOT
     )!
     expect(v.pendingTradeToMe!.wouldGiveOpponentMonopoly).toBe(false)
+    expect(v.pendingTradeToMe!.requestProperties.every((p) => !p.completesProposerSet)).toBe(true)
   })
 
   it('surfaces hotelRentSum on colorSetProgress — 700 for brown', () => {

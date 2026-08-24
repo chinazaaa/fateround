@@ -7,6 +7,7 @@ import { FateRoundLogo } from '@/components/FateRoundLogo'
 import { Glyph } from '@/components/icons/Glyph'
 import { UI_ICONS } from '@/lib/game-glyphs'
 import { ProfileChip } from '@/components/profile/ProfileChip'
+import { CoinChip } from '@/components/coins/CoinChip'
 import { useTheme } from '@/components/ThemeProvider'
 import type { IconSvgElement } from '@hugeicons/react'
 
@@ -101,6 +102,7 @@ const NAV: NavItem[] = [
   { href: '/tournament', label: 'Tournaments', icon: UI_ICONS.tournament },
   { href: '/daily-challenges', label: 'Daily Challenges', icon: UI_ICONS.dailyChallenges },
   { href: '/leaderboard', label: 'Leaderboard', icon: UI_ICONS.leaderboard },
+  { href: '/shop', label: 'Shop', icon: UI_ICONS.shop },
   { href: '/updates', label: "What's new", icon: UI_ICONS.whatsNew },
 ]
 
@@ -133,11 +135,13 @@ export function MarketingHeader({ hideBack = false }: { hideBack?: boolean } = {
               {item.label}
             </Link>
           ))}
+          <CoinChip />
           <ProfileChip />
           <ThemeButton />
         </nav>
 
         <div className="fr-mobile-actions">
+          <CoinChip />
           <ProfileChip />
           <ThemeButton />
           <button type="button" className="fr-burger" aria-label="Open menu" onClick={() => setMenu(true)}>
