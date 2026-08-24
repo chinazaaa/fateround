@@ -50,7 +50,7 @@ async function loadRsvpDevices(
   let q = admin
     .from('game_rsvps')
     .select(
-      'id, device_id, reminder_sent_at, device:notification_subscriber_devices(id, channel, token_key, web_p256dh, web_auth, timezone, quiet_mode, quiet_start_minutes, quiet_end_minutes)'
+      'id, device_id, reminder_sent_at, device:notification_subscriber_devices(id, channel, token_key, web_p256dh, web_auth, timezone, quiet_mode, quiet_start_minutes, quiet_end_minutes, available_start_minutes, available_end_minutes)'
     )
     .eq('game_id', gameCode)
   if (onlyUnreminded) q = q.is('reminder_sent_at', null)

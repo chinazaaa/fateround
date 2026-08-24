@@ -15,11 +15,6 @@ import { parseMultiPlayMode, type UnoMultiPlayMode } from '@fateround/shared/uno
 import { DEFAULT_MAHJONG_RULESET, DEFAULT_MAHJONG_RULE_OPTIONS } from '@fateround/shared/mahjong-rulesets'
 import type { ScrabbleDictionaryId } from '@fateround/shared/scrabble-dictionary-meta'
 import { SCRABBLE_DEFAULT_DICTIONARY, parseScrabbleDictionaryId } from '@fateround/shared/scrabble-dictionary-meta'
-import {
-  PING_PONG_DEFAULT_POINTS,
-  PING_PONG_DEFAULT_GAME_DURATION,
-  clampPingPongPoints,
-} from '@fateround/shared/ping-pong'
 
 export const BATCH_19_BOARD_GAMES: GameType[] = [
   'ludo',
@@ -37,7 +32,6 @@ export const BATCH_19_BOARD_GAMES: GameType[] = [
   'scrabble',
   'mahjong',
   'monopoly',
-  'ping_pong',
 ]
 
 export type GameRoomSettings = {
@@ -67,9 +61,16 @@ export type GameRoomSettings = {
   mahjongRuleset: MahjongRuleset
   /** Nigerian Draughts only — opt-in "Street Rules" (huffing) house rule. Off by default. */
   checkersNigeriaStreetRules: boolean
-  pingPongPointsToWin: number
   /** Estate Kings board size — 40 (classic) or 48 (expanded, requires max_players >= 6). */
   monopolyBoardSize: 40 | 48
+  monopolyDoubleGoSalary: boolean
+  monopolyForcedAuctions: boolean
+  monopolyAuctionTimerSeconds: number
+  monopolyNoRentInJail: boolean
+  monopolyEstateDividend: boolean
+  monopolyLoansEnabled: boolean
+  monopolyLoanInterest: number
+  monopolyLoanTermRounds: number
 }
 
 export function defaultGameRoomSettings(gameType: GameType): GameRoomSettings {
@@ -104,8 +105,15 @@ export function defaultGameRoomSettings(gameType: GameType): GameRoomSettings {
     scrabbleClockSeconds: 600,
     mahjongRuleset: DEFAULT_MAHJONG_RULESET,
     checkersNigeriaStreetRules: false,
-    pingPongPointsToWin: PING_PONG_DEFAULT_POINTS,
     monopolyBoardSize: 40,
+    monopolyDoubleGoSalary: false,
+    monopolyForcedAuctions: false,
+    monopolyAuctionTimerSeconds: 10,
+    monopolyNoRentInJail: false,
+    monopolyEstateDividend: false,
+    monopolyLoansEnabled: true,
+    monopolyLoanInterest: 15,
+    monopolyLoanTermRounds: 4,
   }
 }
 
@@ -237,17 +245,19 @@ export function gameRoomSettingsPayload(gameType: GameType, room: GameRoomSettin
     // 48-space board requires >=6 seats; server clamps to 40 when max_players < 6
     // (see /api/games/[code]/lobby-settings and the web create flow).
     payload.monopoly_board_size = room.monopolyBoardSize === 48 ? 48 : 40
+    payload.monopoly_double_go_salary = room.monopolyDoubleGoSalary
+    payload.monopoly_forced_auctions = room.monopolyForcedAuctions
+    payload.monopoly_auction_timer_seconds = room.monopolyAuctionTimerSeconds
+    payload.monopoly_no_rent_in_jail = room.monopolyNoRentInJail
+    payload.monopoly_estate_dividend = room.monopolyEstateDividend
+    payload.monopoly_loans_enabled = room.monopolyLoansEnabled
+    payload.monopoly_loan_interest = room.monopolyLoanInterest
+    payload.monopoly_loan_term_rounds = room.monopolyLoanTermRounds
     return payload
   }
 
   if (gameType === 'snake_and_ladder' || gameType === 'yahtzee' || gameType === 'tic_tac_toe') {
     payload.timer_seconds = room.timerSeconds
-    return payload
-  }
-
-  if (gameType === 'ping_pong') {
-    payload.ping_pong_points_to_win = clampPingPongPoints(room.pingPongPointsToWin)
-    payload.game_duration_seconds = Math.max(0, room.gameDurationSeconds)
     return payload
   }
 

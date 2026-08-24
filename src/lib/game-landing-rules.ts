@@ -484,7 +484,7 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
     {
       title: 'Setup',
       points: [
-        '2–8 players join a room and pick a board token (car, hat, dog, etc.). Each player starts on PAYDAY with £1,500.',
+        '2–9 players join a room and pick a board token (car, hat, dog, etc.). Each player starts on PAYDAY with £1,500.',
         'The Bank holds all Title Deeds until purchased. The host starts when everyone is ready; turn order is set at game start.',
       ],
     },
@@ -552,6 +552,29 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
       points: [
         'Propose trades with other players at any time — cash, properties, and skip-the-queue cards.',
         'The other player must accept or decline. You cannot trade properties that still have buildings on the colour-group.',
+        'If you carry an outstanding bank loan, a trade is blocked when it would leave your liquid assets below your loan balance.',
+      ],
+    },
+    {
+      title: 'House rules (optional)',
+      points: [
+        'Board size: choose the classic 40-space board or the expanded 48-space edition. The expanded board rescales PAYDAY salary, loan limits, house/hotel supply, and card payouts to keep rents and cash balanced.',
+        'Double GO Salary: pay ₦400 (instead of ₦200) when a player lands exactly on PAYDAY. Passing over PAYDAY still pays the regular ₦200.',
+        'Forced Auctions: if a player declines to buy an unowned property they land on, it must go to auction — the “pass and hold” option is removed.',
+        'No Rent in NICKED: players sent to NICKED stop collecting rent on their unmortgaged properties until they get out.',
+        'Robin Hood Estate Dividend: when a player leaves mid-game, their remaining estate is liquidated and the proceeds split equally among the players still in the game — instead of going to the bank or the creditor.',
+        'Bank Loans: allow players to borrow emergency funds from the bank with flat interest and a foreclosure term limit (see below).',
+      ],
+    },
+    {
+      title: 'Bank loans (optional)',
+      points: [
+        'When the host enables loans, borrow from the bank up to a credit limit set by your cash plus half the mortgage value of your unencumbered properties, capped at a per-edition maximum.',
+        'Interest is flat and added up-front; the host picks the interest rate (10%, 15%, 20%, or 25%) and repayment term (2–5 full rounds) in the lobby.',
+        'Repay in full or partially at any time — overpayments are automatically trimmed to the outstanding balance.',
+        'If the loan is not fully repaid within the term, the bank forecloses: it seizes your cash, liquidates buildings at half price, and transfers any unpaid properties.',
+        'A trade is blocked if it would leave your liquid assets below your outstanding loan balance — so you can trade to raise repayment cash, but you can’t offload collateral and skip the debt.',
+        'Bots use the same facility humans do when they need to raise funds.',
       ],
     },
     {
@@ -1069,31 +1092,6 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
         'Get three small boards in a row, column, or diagonal to win the game immediately.',
         'A small board that fills with no winner counts as a draw and helps neither player.',
         'Play again resets every board for a fresh rematch — marks stay the same.',
-      ],
-    },
-  ],
-
-  ping_pong: [
-    {
-      title: 'Objective',
-      points: [
-        "Hit the ball back and forth. Don't miss.",
-        'Score when your opponent whiffs it or hits it out of bounds.',
-        'First to the target score wins — but you have to win by two.',
-      ],
-    },
-    {
-      title: 'Setup',
-      points: [
-        'Two players join. The host picks the winning score (3 to 21).',
-        'One player takes the top paddle, the other takes the bottom.',
-      ],
-    },
-    {
-      title: 'How to play',
-      points: [
-        'Drag your paddle to block and return the ball.',
-        'If you tie at match point (like 6-6 in a game to 7), you enter overtime. Play continues until someone takes a 2-point lead.',
       ],
     },
   ],
@@ -1910,6 +1908,42 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
         'The most obvious answer is the most likely mine — a slightly less common but still valid answer is the safe play.',
         'Nobody else giving your answer earns a bonus, so avoid the crowd where you safely can.',
         'When marking, judge only whether the answer fits the category — you won’t know the mine yet.',
+      ],
+    },
+  ],
+  troll_run: [
+    {
+      title: 'Objective',
+      points: [
+        'Race simultaneously with friends through deceptive pixel-art platformer levels.',
+        'Beware of hidden traps: collapsing floors, runaway exit doors, pop-up spikes, and gravity flips.',
+        'Clear all levels as fast as possible with the fewest deaths to score maximum points and win the tournament.',
+      ],
+    },
+    {
+      title: 'Multiplayer Race Mechanics',
+      points: [
+        '2 to 6 players join by room code on mobile or desktop.',
+        'Everyone starts each round at the exact same moment on a 3-2-1 countdown.',
+        'All players race through identical level layouts with the same troll triggers.',
+        'A live ticker alerts everyone whenever a rival dies or clears a checkpoint.',
+      ],
+    },
+    {
+      title: 'Scoring & Placements',
+      points: [
+        'Finish 1st: 500 pts, 2nd: 350 pts, 3rd: 250 pts, 4th+: 100 pts.',
+        'Speed Bonus: +50 pts if you beat the round par time.',
+        'Death Penalty: -5 pts deducted for every death in the round.',
+        'DNF (Did Not Finish): Earn points for each level cleared before time expires.',
+      ],
+    },
+    {
+      title: 'Controls & Physics',
+      points: [
+        'Desktop: Arrow keys or A/D to run, Space/Up/W to jump.',
+        'Mobile: On-screen touch buttons for Left, Right, and Jump.',
+        'Responsive platforming with coyote time (80ms) and jump buffering (100ms) for snappy jumps.',
       ],
     },
   ],

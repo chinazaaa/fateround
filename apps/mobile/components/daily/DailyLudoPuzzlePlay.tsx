@@ -19,21 +19,15 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, StyleSheet, Text, View } from 'react-native'
-import type {
-  LudoMoveOption,
-  LudoPiece,
-  LudoPlayerState,
-  Player,
-} from '@fateround/shared'
+import type { LudoPiece, LudoPlayerState, Player } from '@fateround/shared'
+// `LudoMoveOption` lives in the ludo engine module, not the package root — the root index
+// only re-exports `types`/`tokens`/`troll-run`. Every other Ludo screen already imports it
+// from the subpath; this one didn't, which broke the mobile typecheck.
+import type { LudoMoveOption } from '@fateround/shared/ludo'
 import { LudoBoard } from '@/components/games/ludo/LudoBoard'
 import { LudoDie } from '@/components/games/ludo/LudoDice'
 import { useDailyChallengeTimer } from '@/hooks/useDailyChallengeTimer'
-import {
-  clearDailyProgress,
-  getOrCreateStartedAt,
-  loadDailyAnswers,
-  saveDailyAnswers,
-} from '@/lib/daily-progress'
+import { clearDailyProgress, getOrCreateStartedAt, loadDailyAnswers, saveDailyAnswers } from '@/lib/daily-progress'
 import { AppButton } from '@/components/ui/AppButton'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
@@ -308,8 +302,8 @@ export function DailyLudoPuzzlePlay({ challengeId, puzzle, timer: maxSeconds, on
         <View style={[styles.howto, { backgroundColor: theme.surface, borderColor: theme.border }]}>
           <Text style={styles.howtoTitle}>How to play</Text>
           <Text style={styles.howtoBody}>
-            Get all 4 green tokens around the board and into the home lane. Roll 6 to leave base. Tap a highlighted piece
-            to move it.
+            Get all 4 green tokens around the board and into the home lane. Roll 6 to leave base. Tap a highlighted
+            piece to move it.
             {state.obstacles.length > 0 ? ' Land on red obstacles to capture them (+50 pts).' : ''} Fewer rolls = higher
             score. Par: {optimalRolls} rolls.
           </Text>

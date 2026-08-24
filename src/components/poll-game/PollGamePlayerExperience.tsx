@@ -191,11 +191,12 @@ export function PollGamePlayerExperience({
   initialName?: string
   autoJoinAsViewer?: boolean
 }) {
-  const params = useParams<{ code: string }>()
+  const params = useParams<{ code?: string | string[] }>()
   const router = useRouter()
   const toast = useToast()
   const { confirm } = useConfirm()
-  const gameCode = (gameCodeProp ?? (Array.isArray(params.code) ? params.code[0] : params.code)).toUpperCase()
+  const rawCode = gameCodeProp ?? (params?.code ? (Array.isArray(params.code) ? params.code[0] : params.code) : '')
+  const gameCode = (typeof rawCode === 'string' ? rawCode : '').toUpperCase()
 
   // ── 1. State containers (no deps on session) ──────────────────────────────
   const {

@@ -290,6 +290,7 @@ export function CheckersHostView({ gameCode, hostToken }: { gameCode: string; ho
     () =>
       game?.status === 'active' && !gameFinished ? (
         <HostActiveSettings
+          game={game}
           gameCode={gameCode}
           hostToken={hostToken}
           gameType="checkers"
@@ -376,7 +377,7 @@ export function CheckersHostView({ gameCode, hostToken }: { gameCode: string; ho
             onJoin={() => void hostJoinGame()}
             joining={hostJoining}
             onEditName={renameHost}
-            spectatorHint="Spectate from the Watch tab"
+            spectatorHint="Spectate"
           />
         ) : undefined
       }

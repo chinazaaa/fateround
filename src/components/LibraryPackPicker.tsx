@@ -12,6 +12,15 @@ export type LibraryPackLite = {
   question_count: number
   /** Active collections this pack belongs to (for the collection chip filter). */
   collections?: { slug: string; name: string }[]
+  /**
+   * Coin price for this pack (`docs/coins-and-shop-plan.md` §"Inline"). 0
+   * for grandfathered / free packs (the default). >0 packs show a coin
+   * badge on the row; the host must own the pack (or purchase it) before
+   * the picker can hand it to the game.
+   */
+  price_coins?: number
+  /** Owned-by-current-profile hint (set by the caller). */
+  owned?: boolean
 }
 
 /** Presentational community-library pack browser — caller owns the pack list and selection state. */
@@ -175,6 +184,12 @@ function LibraryPackList({
                 </p>
                 <p className="text-faint text-xs mt-0.5">
                   by {pack.author_name} · {pack.question_count} {noun}
+                  {(pack.price_coins ?? 0) > 0 && (
+                    <>
+                      {' · '}
+                      <span className="text-body font-semibold">{pack.owned ? 'Owned' : `🪙 ${pack.price_coins}`}</span>
+                    </>
+                  )}
                 </p>
               </div>
               {selectedPackId === pack.id && (

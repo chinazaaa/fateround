@@ -21,7 +21,7 @@ const foundSchema = z.object({
   startCol: z.number().int().min(0).max(30),
   endRow: z.number().int().min(0).max(30),
   endCol: z.number().int().min(0).max(30),
-  // A hint reveals (and locks in) one still-unfound word for a −2 point penalty.
+  // A hint reveals (and locks in) one still-unfound word, applying WORD_SEARCH_HINT_PENALTY.
   hint: z.boolean().optional(),
 })
 

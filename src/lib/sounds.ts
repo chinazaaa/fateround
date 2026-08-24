@@ -396,9 +396,9 @@ export async function playDiceRollSound() {
 }
 
 /** Short clock tick/tock for countdown urgency (last few seconds). */
-export async function playTickTockSound(secondsRemaining: number) {
+export async function playTickTockSound(secondsRemaining: number, threshold = TIMER_TICK_THRESHOLD) {
   if (typeof window === 'undefined' || isSoundMuted()) return
-  if (secondsRemaining <= 0 || secondsRemaining > TIMER_TICK_THRESHOLD) return
+  if (secondsRemaining <= 0 || secondsRemaining > threshold) return
 
   try {
     if (!(await ensureContext()) || !audioCtx) return

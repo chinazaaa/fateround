@@ -186,7 +186,7 @@ export function useHostSeat(options: UseHostSeatOptions): UseHostSeatResult {
         const res = await fetch('/api/players', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ gameCode, playerName: name, ...(buildJoinBodyRef.current?.(name) ?? {}) }),
+          body: JSON.stringify({ gameCode, playerName: name, hostToken, ...(buildJoinBodyRef.current?.(name) ?? {}) }),
         })
         const data = await res.json()
         if (!res.ok) throw new Error(data.error ?? 'Failed to join')
@@ -223,6 +223,7 @@ export function useHostSeat(options: UseHostSeatOptions): UseHostSeatResult {
             gameCode,
             playerName: name,
             joinAsViewer: true,
+            hostToken,
             ...(buildJoinBodyRef.current?.(name) ?? {}),
           }),
         })
@@ -349,6 +350,7 @@ export function useHostSeat(options: UseHostSeatOptions): UseHostSeatResult {
             gameCode,
             playerName: watchName,
             joinAsViewer: true,
+            hostToken,
             ...(buildJoinBodyRef.current?.(watchName) ?? {}),
           }),
         })

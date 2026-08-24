@@ -145,7 +145,22 @@ export function TriviaHostScreen({ gameCode, hostToken, game, players, onReload 
   }
 
   return (
-    <HostChrome gameCode={gameCode} hostToken={hostToken} game={game} players={players} onReload={onReload}>
+    <HostChrome
+      gameCode={gameCode}
+      hostToken={hostToken}
+      game={game}
+      players={players}
+      onReload={onReload}
+      // A host who tapped "Play along" in the lobby gets the GAME, not this console. Trivia
+      // drives itself — rounds auto-advance when everyone answers or the clock expires, and
+      // the server ticker backs that up — so a seated host has nothing here they need. They
+      // used to get the question and its four choices rendered as plain text with nothing to
+      // tap, which is how "I can't play, it's only showing the questions" happened.
+      //
+      // A host who did NOT take a seat still lands on this console: they are running the game
+      // rather than playing it, and Force advance / End game are exactly what they came for.
+      playFirstWhenSeated
+    >
       <View style={styles.statsRow}>
         <Text style={styles.stat}>Players: {activePlayers.length}</Text>
         <Text style={styles.stat}>

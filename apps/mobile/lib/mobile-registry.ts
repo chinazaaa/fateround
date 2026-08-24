@@ -39,7 +39,7 @@ export const GAME_LABELS: Partial<Record<GameType, string>> = {
   anonymous_messages: 'Anonymous Room',
   secret_message: 'Secret Message',
   landmine: 'Landmine',
-  ping_pong: 'Ping Pong',
+  troll_run: 'Troll Run',
   wordle_room: 'Wordle',
   word_grouping: 'Word Grouping',
 }

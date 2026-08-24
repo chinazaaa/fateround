@@ -8,6 +8,7 @@ import { PlayerRoomShell } from '@/components/rooms/PlayerRoomShell'
 import { EditNameInline } from '@/components/ui/EditNameInline'
 import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
 import { useRegisterGameSettings } from '@/components/GameSettingsContext'
+import { RulesInPlaySection } from '@/components/game-lobby/RulesInPlaySection'
 import { WhotFinalResultsShareBlock } from '@/components/whot/WhotFinalResultsShareBlock'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
@@ -364,6 +365,7 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
     if (!myPlayerId) return null
     return (
       <div className="space-y-3">
+        <RulesInPlaySection game={game} />
         <EditNameInline
           gameCode={gameCode}
           playerId={myPlayerId}
@@ -382,7 +384,7 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
         />
       </div>
     )
-  }, [myPlayerId, game?.status, gameCode, activePlayer?.name, roomDisplayName, isWatching, load, router])
+  }, [game, myPlayerId, game?.status, gameCode, activePlayer?.name, roomDisplayName, isWatching, load, router])
   useRegisterGameSettings(playerSettingsNode)
 
   if (screen === 'loading') return <WhotLoadingScreen />

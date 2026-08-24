@@ -691,18 +691,16 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
                   roundKey={board.id ?? null}
                 />
               ) : null}
+              {/* Skip the live-game Scoreboard here (team progress bars + rosters):
+                  the winner banner already tells the outcome and the board reveal
+                  colours every cell, so the extra panel just repeats what's on
+                  screen. MVP cards + spymaster list + board reveal cover the story. */}
               <CodewordsEndGameStats
                 guesses={guesses}
                 roles={roles}
                 players={players}
                 highlightPlayerId={bootstrap.myPlayerId}
                 winner={board.winner}
-              />
-              <CodewordsScoreboard
-                board={board}
-                roles={roles}
-                playerNameById={playerNameById}
-                highlightPlayerId={bootstrap.myPlayerId}
               />
               <CodewordsBoardReveal board={board} cellAttribution={finishAttribution} />
             </View>

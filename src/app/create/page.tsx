@@ -17,6 +17,7 @@ import { LIBRARY_GAME_TYPE_MAP } from './constants'
 import { parsePuzzleThemeCsv } from '@/lib/puzzle-themes'
 import { trackEvent, GA_EVENTS } from '@/lib/analytics'
 import { authHeaders } from '@/lib/auth-headers'
+import { ensureServerIdentity } from '@/lib/identity'
 import { GenderBadge } from './components/GenderBadge'
 import { Avatar } from './components/Avatar'
 import { TemplateQuickStart } from './components/TemplateQuickStart'
@@ -27,6 +28,13 @@ import { rememberHostToken } from '@/lib/host-session'
 import { THEMES } from '@/lib/themes'
 import { ThemePreviewCard, ThemePreviewModal } from '@/components/ThemePreviewModal'
 import { MONOPOLY_EDITIONS, formatThemedText } from '@/components/monopoly/monopoly-themes'
+import {
+  MONOPOLY_THEME_TO_EDITION_SLUG,
+  isMonopolyEditionAvailable,
+  useOwnedMonopolyEditions,
+} from '@/hooks/useOwnedMonopolyEditions'
+import { useOwnedGameThemes } from '@/hooks/useOwnedGameThemes'
+import { GAME_THEMES_BY_GAME, isGameThemeSlug } from '@/lib/coins/game-themes'
 import {
   type ParticipantInput,
   parseParticipantsForGame,
@@ -71,7 +79,6 @@ import {
   isLudoGame,
   isSnakeAndLadderGame,
   isTicTacToeGame,
-  isPingPongGame,
   isChessGame,
   isCheckersGame,
   isDraughts10Game,
@@ -89,6 +96,7 @@ import {
   isWordGroupingGame,
   isWordHuntGame,
   isWordleRoomGame,
+  isTrollRunGame,
   isMafiaGame,
   isMatchingPairsGame,
   isMahjongGame,
@@ -96,12 +104,27 @@ import {
   isQuickDrawGame,
   templatableGame,
 } from '@/lib/game-types'
+import {
+  TROLL_RUN_DEFAULT_MAX_PLAYERS,
+  TROLL_RUN_DEFAULT_ROUNDS,
+  TROLL_RUN_DEFAULT_TIME_LIMIT,
+} from '@/lib/troll-run-types'
 import { DEFAULT_MAHJONG_RULESET, MAHJONG_RULESETS, MAHJONG_RULESET_CONFIG } from '@/lib/mahjong-rulesets'
 import type { MahjongRuleset } from '@/types'
 import { BOARD_THEMES, PIECE_SETS, useChessAppearance } from '@/lib/chess-appearance'
 import { ChessPieceGlyph } from '@/components/chess/ChessPieceDetailed'
 import { Glyph } from '@/components/icons/Glyph'
-import { GlobeIcon, LockIcon, TableTennisBatIcon } from '@hugeicons/core-free-icons'
+import {
+  ArrowUpDownIcon,
+  BlackHoleIcon,
+  CrownIcon,
+  DoorOpenIcon,
+  FlashIcon,
+  GlobeIcon,
+  LockIcon,
+  Moon02Icon,
+  Tv01Icon,
+} from '@hugeicons/core-free-icons'
 import { showsMaxOnePublicHint, showsPartyPublicHint } from '@/lib/public-hints'
 import { ScheduleForLaterField } from '@/components/create/ScheduleForLaterField'
 import { WYR_QUESTION_COUNT } from '@/lib/would-you-rather-questions'
@@ -351,7 +374,7 @@ import {
 import { parseDescribeItWords, parseExcelDescribeItWords } from '@/lib/describe-it-words'
 import { getCodeDefaultLimits, playerCountOptions, type GamePlayerLimitsMap } from '@/lib/game-limits'
 import { TriviaTimerPicker } from '@/components/trivia/TriviaTimerPicker'
-import { TRIVIA_QUESTION_COUNT } from '@/lib/trivia-questions'
+import { TRIVIA_CATEGORY_OPTIONS, TRIVIA_QUESTION_COUNT } from '@/lib/trivia-questions'
 import { useToast } from '@/components/ui/Toast'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { ELIMINATION_COMPATIBLE_TYPES } from '@/types/elimination'
@@ -415,6 +438,7 @@ function CreateGameInner() {
   const crosswordFileRef = useRef<HTMLInputElement>(null)
   const wordSearchFileRef = useRef<HTMLInputElement>(null)
   const wordScrambleFileRef = useRef<HTMLInputElement>(null)
+  const wordGroupingFileRef = useRef<HTMLInputElement>(null)
   const [participants, setParticipants] = useState<ParticipantInput[]>([])
   const [nameInput, setNameInput] = useState('')
   const [defaultGender, setDefaultGender] = useState<ParticipantGender>('female')
@@ -480,9 +504,27 @@ function CreateGameInner() {
   const [quickDrawTitleTimer, setQuickDrawTitleTimer] = useState(QUICK_DRAW_DEFAULT_TITLE_TIMER)
   const [quickDrawVoteTimer, setQuickDrawVoteTimer] = useState(QUICK_DRAW_DEFAULT_VOTE_TIMER)
   const [ttlMaxPlayers, setTtlMaxPlayers] = useState(TTL_DEFAULT_MAX_PLAYERS)
+  const { available: ownedMonopolyEditions, prices: monopolyEditionPrices } = useOwnedMonopolyEditions()
+  // Per-game reskin ownership (Whot / Ludo / Sudoku). Passing null for
+  // any other game type keeps the shop-catalog fetch cached but returns
+  // an empty set, so the theme filter below stays a plain lookup.
+  const { available: ownedGameThemes, prices: ownedGameThemePrices } = useOwnedGameThemes(
+    (Object.keys(GAME_THEMES_BY_GAME) as string[]).includes(settings.game_type) ? settings.game_type : null
+  )
   const [monopolyMaxPlayers, setMonopolyMaxPlayers] = useState(MONOPOLY_DEFAULT_MAX_PLAYERS)
   const [monopolyBoardSize, setMonopolyBoardSize] = useState<40 | 48>(40)
   const [monopolyGameDuration, setMonopolyGameDuration] = useState(0)
+  // House rules — mirror the host-lobby toggles. Defaults match the DB defaults
+  // (loans enabled, 15% flat interest, 4-round term) so what a host sets here
+  // travels through to the lobby untouched.
+  const [monopolyDoubleGoSalary, setMonopolyDoubleGoSalary] = useState(false)
+  const [monopolyForcedAuctions, setMonopolyForcedAuctions] = useState(false)
+  const [monopolyAuctionTimerSeconds, setMonopolyAuctionTimerSeconds] = useState(10)
+  const [monopolyNoRentInJail, setMonopolyNoRentInJail] = useState(false)
+  const [monopolyEstateDividend, setMonopolyEstateDividend] = useState(false)
+  const [monopolyLoansEnabled, setMonopolyLoansEnabled] = useState(true)
+  const [monopolyLoanInterest, setMonopolyLoanInterest] = useState(15)
+  const [monopolyLoanTermRounds, setMonopolyLoanTermRounds] = useState(4)
   const [scrabbleGameDuration, setScrabbleGameDuration] = useState(0)
   const [scrabbleDictionary, setScrabbleDictionary] = useState<ScrabbleDictionaryId>(SCRABBLE_DEFAULT_DICTIONARY)
   const [scrabbleClockMode, setScrabbleClockMode] = useState<ScrabbleClockMode>('standard')
@@ -560,6 +602,10 @@ function CreateGameInner() {
   const [wordleRoomCategory, setWordleRoomCategory] = useState<WordleCategoryId>('general_english')
   const [wordleRoomWordCount, setWordleRoomWordCount] = useState<WordleRoomWordCount>(WORDLE_ROOM_DEFAULT_WORD_COUNT)
   const [wordleRoomTimer, setWordleRoomTimer] = useState(WORDLE_ROOM_DEFAULT_TIMER)
+  const [trollRunWorld, setTrollRunWorld] = useState('pits')
+  const [trollRunRounds, setTrollRunRounds] = useState(TROLL_RUN_DEFAULT_ROUNDS)
+  const [trollRunTimeLimit, setTrollRunTimeLimit] = useState(TROLL_RUN_DEFAULT_TIME_LIMIT)
+  const [trollRunMaxPlayers, setTrollRunMaxPlayers] = useState(TROLL_RUN_DEFAULT_MAX_PLAYERS)
   const [npatGameDuration, setNpatGameDuration] = useState(NPAT_DEFAULT_GAME_DURATION)
   const [npatMarkingTimer, setNpatMarkingTimer] = useState(NPAT_DEFAULT_MARKING_TIMER)
   const [landmineMode, setLandmineMode] = useState<'zero_points' | 'elimination'>('zero_points')
@@ -828,15 +874,6 @@ function CreateGameInner() {
               rounds_count: 1,
             }
           : {}),
-        ...(isPingPongGame(type)
-          ? {
-              participant_mode: 'joiners' as const,
-              anonymous: true,
-              rounds_count: 1,
-              ping_pong_points_to_win: 7,
-              game_duration_seconds: 0,
-            }
-          : {}),
         ...(isChessGame(type)
           ? {
               participant_mode: 'joiners' as const,
@@ -919,6 +956,14 @@ function CreateGameInner() {
               anonymous: true,
               rounds_count: 1,
               timer_seconds: 30,
+            }
+          : {}),
+        ...(isTrollRunGame(type)
+          ? {
+              participant_mode: 'joiners' as const,
+              anonymous: true,
+              rounds_count: 5,
+              timer_seconds: 120,
             }
           : {}),
         ...(isWhoSaidThis(type)
@@ -1009,7 +1054,6 @@ function CreateGameInner() {
   const isLudo = isLudoGame(settings.game_type)
   const isSnakeLadder = isSnakeAndLadderGame(settings.game_type)
   const isTicTacToe = isTicTacToeGame(settings.game_type)
-  const isPingPong = isPingPongGame(settings.game_type)
   const isChess = isChessGame(settings.game_type)
   const isCheckers = isCheckersGame(settings.game_type)
   const isDraughts10 = isDraughts10Game(settings.game_type)
@@ -1034,6 +1078,7 @@ function CreateGameInner() {
   const wordScrambleDiffLock = questionSource === 'platform' ? lockedPuzzleDifficulty(wordScrambleTheme) : null
   const isWordHunt = isWordHuntGame(settings.game_type)
   const isWordleRoom = isWordleRoomGame(settings.game_type)
+  const isTrollRun = isTrollRunGame(settings.game_type)
   const isMatchingPairs = isMatchingPairsGame(settings.game_type)
   const isMahjong = isMahjongGame(settings.game_type)
   const showViewerToggle = gameSupportsViewerSetting(settings.game_type)
@@ -1707,17 +1752,6 @@ function CreateGameInner() {
       set: (v) => setYahtzeeMaxPlayers(v as number),
       appliesTo: isYahtzeeGame,
     },
-    // Ping Pong
-    ping_pong_points_to_win: {
-      get: () => settings.ping_pong_points_to_win,
-      set: (v) => setSettings((s) => ({ ...s, ping_pong_points_to_win: v as number })),
-      appliesTo: isPingPongGame,
-    },
-    ping_pong_game_duration: {
-      get: () => settings.game_duration_seconds,
-      set: (v) => setSettings((s) => ({ ...s, game_duration_seconds: v as number })),
-      appliesTo: isPingPongGame,
-    },
   }
   const captureTemplateValues = (): Record<string, unknown> => {
     const out: Record<string, unknown> = {}
@@ -1936,7 +1970,6 @@ function CreateGameInner() {
     isLudo ||
     isSnakeLadder ||
     isTicTacToe ||
-    isPingPong ||
     isChess ||
     isScrabble ||
     isDescribeIt ||
@@ -1951,7 +1984,8 @@ function CreateGameInner() {
     isWordGrouping ||
     isWordHunt ||
     isMatchingPairs ||
-    isWordleRoom
+    isWordleRoom ||
+    isTrollRun
   const isTriviaQuickCreate = isTrivia
   const needsParticipantStep =
     !isQuickLobby && !isTriviaQuickCreate && !isBinaryLobby && !(isMlt && isJoinersMode) && !isJoinersMode
@@ -2006,6 +2040,12 @@ function CreateGameInner() {
       setWordleRoomWordCount(WORDLE_ROOM_DEFAULT_WORD_COUNT)
       setWordleRoomTimer(WORDLE_ROOM_DEFAULT_TIMER)
       setCustomWordleRoomWords([])
+    }
+    if (isTrollRunGame(type)) {
+      setTrollRunWorld('pits')
+      setTrollRunRounds(TROLL_RUN_DEFAULT_ROUNDS)
+      setTrollRunTimeLimit(TROLL_RUN_DEFAULT_TIME_LIMIT)
+      setTrollRunMaxPlayers(TROLL_RUN_DEFAULT_MAX_PLAYERS)
     }
     setSettings({
       ...settings,
@@ -2198,6 +2238,14 @@ function CreateGameInner() {
             rounds_count: 1,
           }
         : {}),
+      ...(isTrollRunGame(type)
+        ? {
+            participant_mode: 'joiners' as const,
+            anonymous: true,
+            rounds_count: TROLL_RUN_DEFAULT_ROUNDS,
+            timer_seconds: TROLL_RUN_DEFAULT_TIME_LIMIT,
+          }
+        : {}),
       ...(isMahjongGame(type)
         ? {
             participant_mode: 'joiners' as const,
@@ -2249,7 +2297,22 @@ function CreateGameInner() {
         : {}),
       ...(supportsGenderToggle(type) && !isCustomGame(type) ? { gender_based: defaultGenderBasedForType(type) } : {}),
       ...(type !== 'monopoly' &&
-      (settings.theme === 'pirate' || settings.theme === 'arctic' || settings.theme === 'naija')
+      (settings.theme === 'pirate' ||
+        settings.theme === 'arctic' ||
+        settings.theme === 'naija' ||
+        settings.theme === 'america' ||
+        settings.theme === 'christmas')
+        ? { theme: 'default' as const }
+        : {}),
+      // Per-game reskins (Neon Whot, Wooden Ludo, …) only belong to
+      // their seeded game type. Switching to a different game type
+      // otherwise leaves settings.theme pointing at a slug the POST
+      // route rejects with 400 "Theme not valid for this game type"
+      // — the picker's preservation guard keeps the tile highlighted
+      // under the wrong game (or hides it entirely on Monopoly/other
+      // non-scoped types) with no visible reason for the failure.
+      ...(isGameThemeSlug(settings.theme) &&
+      !GAME_THEMES_BY_GAME[type as keyof typeof GAME_THEMES_BY_GAME]?.includes(settings.theme)
         ? { theme: 'default' as const }
         : {}),
     })
@@ -2582,6 +2645,16 @@ function CreateGameInner() {
     } else if (isJoinersMode ? !canCreateJoiners : !canCreateImport) return
     setLoading(true)
     try {
+      // Ensure this host has a server identity BEFORE the create request. The identity plan
+      // (`docs/accounts-and-identity-plan.md` §2.2) creates identities lazily at game finish
+      // to avoid the per-IP anonymous-signin rate limit blowing up 40-student classrooms —
+      // but a host creating a game is one person doing one deliberate action, not a room of
+      // joiners, so the rate-limit concern doesn't bite here. We do this so `host_user_id`
+      // gets written on the games row, which is what lets `useHostToken` reclaim the token
+      // by profile if this host later opens the game on a new device or from cleared storage.
+      // Guests (offline / rate-limited / signin disabled) still create games normally — the
+      // ensure returns null, `authHeaders()` returns empty, and host_user_id is left NULL.
+      await ensureServerIdentity()
       const res = await fetch('/api/games', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
@@ -2609,6 +2682,16 @@ function CreateGameInner() {
                       ...(questionSource === 'library' && selectedPackId ? { library_pack_id: selectedPackId } : {}),
                     }
                   : {}),
+              }
+            : {}),
+          ...(isTrollRun
+            ? {
+                max_players: trollRunMaxPlayers,
+                troll_run_rounds: trollRunRounds,
+                troll_run_time_limit: trollRunTimeLimit,
+                troll_run_world: trollRunWorld,
+                rounds_count: trollRunRounds,
+                timer_seconds: trollRunTimeLimit,
               }
             : {}),
           rounds_count: isWst
@@ -2785,7 +2868,19 @@ function CreateGameInner() {
                                                             ? (settings.max_players ??
                                                               effectiveLimits.matching_pairs.max)
                                                             : undefined,
+          // Estate Kings edition — mirror the theme pick into the dedicated
+          // edition_slug column the engine reads (docs/estate-kings-america-edition.md
+          // + coins-and-shop-plan.md § "Launch sequencing" → Phase 4).
+          edition_slug: isMonopoly ? (MONOPOLY_THEME_TO_EDITION_SLUG[settings.theme] ?? 'london') : undefined,
           monopoly_board_size: isMonopoly ? monopolyBoardSize : undefined,
+          monopoly_double_go_salary: isMonopoly ? monopolyDoubleGoSalary : undefined,
+          monopoly_forced_auctions: isMonopoly ? monopolyForcedAuctions : undefined,
+          monopoly_auction_timer_seconds: isMonopoly ? monopolyAuctionTimerSeconds : undefined,
+          monopoly_no_rent_in_jail: isMonopoly ? monopolyNoRentInJail : undefined,
+          monopoly_estate_dividend: isMonopoly ? monopolyEstateDividend : undefined,
+          monopoly_loans_enabled: isMonopoly ? monopolyLoansEnabled : undefined,
+          monopoly_loan_interest: isMonopoly ? monopolyLoanInterest : undefined,
+          monopoly_loan_term_rounds: isMonopoly ? monopolyLoanTermRounds : undefined,
           operative_timer_seconds: isCodewords
             ? codewordsOperativeTimer
             : isNpat
@@ -3074,48 +3169,103 @@ function CreateGameInner() {
           />
 
           {/* Theme */}
-          <div className="glass-card p-5 space-y-3">
-            <p className="label-caps">Theme{settings.game_type === 'monopoly' ? ' · Edition' : ''}</p>
-            <div
-              className={`grid ${settings.game_type === 'monopoly' ? 'grid-cols-2 max-w-sm sm:max-w-md' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-5'} gap-1.5 sm:gap-2`}
-            >
-              {(settings.game_type === 'monopoly'
-                ? THEMES.filter((theme) => MONOPOLY_EDITIONS.some((e) => e.themeId === theme.id))
-                : settings.game_type === 'ping_pong'
-                  ? THEMES.filter((theme) => theme.id === 'default' || theme.id === 'grass_court')
-                  : THEMES.filter(
-                      (theme) =>
-                        theme.id !== 'pirate' &&
-                        theme.id !== 'arctic' &&
-                        theme.id !== 'naija' &&
-                        theme.id !== 'grass_court'
-                    )
-              ).map((theme) => {
-                const monopolyEdition =
-                  settings.game_type === 'monopoly' ? MONOPOLY_EDITIONS.find((e) => e.themeId === theme.id) : null
-                const displayTheme = monopolyEdition
-                  ? { ...theme, label: monopolyEdition.editionName, emoji: monopolyEdition.editionEmoji }
-                  : settings.game_type === 'ping_pong' && theme.id === 'default'
-                    ? {
-                        ...theme,
-                        label: 'Table Tennis',
-                        emoji: '🏓',
-                        icon: TableTennisBatIcon,
-                        preview: { bg: '#064e3b', accent: '#f43f5e', text: '#ecfdf5' },
-                      }
+          {!isTrollRun && (
+            <div className="glass-card p-5 space-y-3">
+              <p className="label-caps">Theme{settings.game_type === 'monopoly' ? ' · Edition' : ''}</p>
+              <div
+                className={`grid ${settings.game_type === 'monopoly' ? 'grid-cols-2 max-w-sm sm:max-w-md' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-5'} gap-1.5 sm:gap-2`}
+              >
+                {(settings.game_type === 'monopoly'
+                  ? // On Monopoly we now show EVERY known edition — owned ones as
+                    // normal tiles, unowned paid ones as locked-tile "Unlock in
+                    // Shop" cards. Discoverability > cleanliness: hosts learn
+                    // USA, Christmas, and future editions exist without needing
+                    // to open /shop first.
+                    THEMES.filter((theme) => MONOPOLY_EDITIONS.some((e) => e.themeId === theme.id))
+                  : GAME_THEMES_BY_GAME[settings.game_type as keyof typeof GAME_THEMES_BY_GAME]
+                    ? // Whot / Ludo / Sudoku: free default + EVERY per-game
+                      // reskin scoped to this game type. Unowned tiles render
+                      // locked below and route to /shop on click — same
+                      // discoverability shape as Monopoly. Slugs from other
+                      // games (whot-neon on a Ludo picker) stay hidden. The
+                      // currently-picked theme is preserved unconditionally
+                      // so switching game types (e.g. Monopoly → Whot with
+                      // theme carrying over as 'london') keeps the tile
+                      // visible instead of stranding settings.theme at a
+                      // value the POST route would 400 on.
+                      THEMES.filter((theme) => {
+                        if (theme.id === settings.theme) return true
+                        if (theme.id === 'default') return true
+                        const scoped = GAME_THEMES_BY_GAME[settings.game_type as keyof typeof GAME_THEMES_BY_GAME]
+                        return scoped?.includes(theme.id) ?? false
+                      })
+                    : THEMES.filter(
+                        (theme) =>
+                          // Always preserve the currently-picked theme so
+                          // switching game_type (e.g. Whot → Trivia with
+                          // theme carried over as 'whot-neon') keeps the
+                          // tile highlighted instead of stranding
+                          // settings.theme at a value the POST route would
+                          // 400 on. Same guard the Monopoly + hasGameThemes
+                          // branches use above.
+                          theme.id === settings.theme ||
+                          (theme.id !== 'pirate' &&
+                            theme.id !== 'arctic' &&
+                            theme.id !== 'naija' &&
+                            theme.id !== 'america' &&
+                            theme.id !== 'christmas' &&
+                            theme.id !== 'grass_court' &&
+                            // Per-game reskins never surface on non-owning games.
+                            !isGameThemeSlug(theme.id))
+                      )
+                ).map((theme) => {
+                  const monopolyEdition =
+                    settings.game_type === 'monopoly' ? MONOPOLY_EDITIONS.find((e) => e.themeId === theme.id) : null
+                  const displayTheme = monopolyEdition
+                    ? { ...theme, label: monopolyEdition.editionName, emoji: monopolyEdition.editionEmoji }
                     : theme
-                return (
-                  <ThemePreviewCard
-                    key={theme.id}
-                    theme={displayTheme}
-                    selected={settings.theme === theme.id}
-                    onClick={() => setSettings({ ...settings, theme: theme.id })}
-                    onPreview={() => setPreviewTheme(displayTheme)}
-                  />
-                )
-              })}
+                  // Locked = a paid item the host doesn't own AND isn't the
+                  // current pick (never lock a theme the host already selected
+                  // — that would strand a room whose entitlement was later
+                  // revoked). Covers paid Monopoly editions and unowned
+                  // per-game reskins (Neon Whot, Wooden Ludo, …); the
+                  // always-free 'default' never locks.
+                  const scopedGameThemes =
+                    GAME_THEMES_BY_GAME[settings.game_type as keyof typeof GAME_THEMES_BY_GAME] ?? null
+                  const locked =
+                    theme.id !== settings.theme &&
+                    ((settings.game_type === 'monopoly' &&
+                      !isMonopolyEditionAvailable(theme.id, ownedMonopolyEditions)) ||
+                      (!!scopedGameThemes &&
+                        theme.id !== 'default' &&
+                        scopedGameThemes.includes(theme.id) &&
+                        !ownedGameThemes.has(theme.id)))
+                  return (
+                    <ThemePreviewCard
+                      key={theme.id}
+                      theme={displayTheme}
+                      selected={settings.theme === theme.id}
+                      locked={locked}
+                      priceCoins={
+                        locked
+                          ? settings.game_type === 'monopoly'
+                            ? monopolyEditionPrices.get(MONOPOLY_THEME_TO_EDITION_SLUG[theme.id] ?? theme.id)
+                            : ownedGameThemePrices.get(theme.id)
+                          : undefined
+                      }
+                      onClick={
+                        locked
+                          ? () =>
+                              router.push(`/shop?category=${settings.game_type === 'monopoly' ? 'edition' : 'theme'}`)
+                          : () => setSettings({ ...settings, theme: theme.id })
+                      }
+                      onPreview={() => setPreviewTheme(displayTheme)}
+                    />
+                  )
+                })}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* You — host seat choice, carried into the lobby via host-play intent */}
           {hostPlaySupported && (
@@ -3672,6 +3822,95 @@ function CreateGameInner() {
                   />
                 </Field>
                 <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="monopoly" />
+                <details className="group space-y-3">
+                  <summary className="cursor-pointer list-none flex items-center justify-between gap-3 py-1">
+                    <div>
+                      <p className="font-semibold text-sm">Advanced house rules</p>
+                      <p className="text-faint text-xs mt-0.5">
+                        Optional toggles — you can also change these in the host lobby.
+                      </p>
+                    </div>
+                    <svg
+                      viewBox="0 0 20 20"
+                      className="w-4 h-4 text-faint transition-transform group-open:rotate-90 shrink-0"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                    >
+                      <polyline points="7 4 13 10 7 16" />
+                    </svg>
+                  </summary>
+                  <div className="pt-3 space-y-3">
+                    <Toggle
+                      label="Double GO Salary"
+                      description="Collect £400 (instead of £200) when landing exactly on PAYDAY."
+                      value={monopolyDoubleGoSalary}
+                      onChange={setMonopolyDoubleGoSalary}
+                    />
+                    <Toggle
+                      label="Forced Auctions"
+                      description="If a player declines to buy an unowned property, it must go to auction."
+                      value={monopolyForcedAuctions}
+                      onChange={setMonopolyForcedAuctions}
+                    />
+                    <Field label="Auction timer">
+                      <CustomSelect
+                        value={monopolyAuctionTimerSeconds}
+                        onChange={setMonopolyAuctionTimerSeconds}
+                        options={[5, 10, 15, 20, 30, 45, 60].map((s) => ({ value: s, label: `${s} seconds` }))}
+                      />
+                    </Field>
+                    <Toggle
+                      label="No Rent in NICKED"
+                      description="Prevent players in NICKED from collecting rent on their properties."
+                      value={monopolyNoRentInJail}
+                      onChange={setMonopolyNoRentInJail}
+                    />
+                    <Toggle
+                      label="Robin Hood Estate Dividend"
+                      description="When a player leaves mid-game, their estate is liquidated and split equally among remaining players."
+                      value={monopolyEstateDividend}
+                      onChange={setMonopolyEstateDividend}
+                    />
+                    <Toggle
+                      label="Bank Loans"
+                      description="Allow players to borrow emergency funds from the Bank with flat interest and a foreclosure term limit."
+                      value={monopolyLoansEnabled}
+                      onChange={setMonopolyLoansEnabled}
+                    />
+                    {monopolyLoansEnabled && (
+                      <>
+                        <Field label="Loan interest rate">
+                          <CustomSelect
+                            value={monopolyLoanInterest}
+                            onChange={setMonopolyLoanInterest}
+                            options={[
+                              { value: 10, label: '10%' },
+                              { value: 15, label: '15% (Default)' },
+                              { value: 20, label: '20%' },
+                              { value: 25, label: '25%' },
+                            ]}
+                          />
+                        </Field>
+                        <Field label="Loan term (rounds to repay)">
+                          <CustomSelect
+                            value={monopolyLoanTermRounds}
+                            onChange={setMonopolyLoanTermRounds}
+                            options={[
+                              { value: 2, label: '2 rounds' },
+                              { value: 3, label: '3 rounds' },
+                              { value: 4, label: '4 rounds (Default)' },
+                              { value: 5, label: '5 rounds' },
+                            ]}
+                          />
+                        </Field>
+                      </>
+                    )}
+                  </div>
+                </details>
                 <p className="text-faint text-sm leading-relaxed">
                   {formatThemedText(
                     'Players join with their name and start on PAYDAY with £1,500. Take turns rolling dice, buying properties, paying rent, and drawing cards. Last player standing wins! If someone stalls, their turn auto-resolves. Set a game length to end automatically — the richest player wins when time runs out.',
@@ -4105,44 +4344,6 @@ function CreateGameInner() {
                   Classic Snakes &amp; Ladders — roll one die, climb the ladders, dodge the snakes. Roll a 6 to go
                   again. First to land on 100 exactly wins!
                 </p>
-              </SettingsGroup>
-            ) : isPingPong ? (
-              <SettingsGroup title="Ping Pong room">
-                <p className="text-faint text-sm">Exactly 2 players — 1v1 match where the host can play or watch.</p>
-                <Field label="Points to win">
-                  <CustomSelect
-                    value={settings.ping_pong_points_to_win ?? 7}
-                    onChange={(val) => setSettings({ ...settings, ping_pong_points_to_win: val })}
-                    options={[
-                      { value: 3, label: 'First to 3 points (Lightning)' },
-                      { value: 5, label: 'First to 5 points' },
-                      { value: 7, label: 'First to 7 points (Quick)' },
-                      { value: 11, label: 'First to 11 points (Standard)' },
-                      { value: 15, label: 'First to 15 points' },
-                      { value: 21, label: 'First to 21 points (Long)' },
-                    ]}
-                  />
-                </Field>
-                <Field label="Match Timer">
-                  <CustomSelect
-                    value={settings.game_duration_seconds ?? 0}
-                    onChange={(val) => setSettings({ ...settings, game_duration_seconds: val })}
-                    options={[
-                      { value: 0, label: 'No timer' },
-                      { value: 60, label: '1 minute' },
-                      { value: 120, label: '2 minutes' },
-                      { value: 180, label: '3 minutes' },
-                      { value: 300, label: '5 minutes' },
-                      { value: 600, label: '10 minutes' },
-                    ]}
-                  />
-                </Field>
-                <Field label="Late joiners">
-                  <p className="text-sm font-medium">Viewers only</p>
-                  <p className="text-xs text-faint mt-1">
-                    Once the 2-player match starts, anyone else joining the room will automatically become a viewer.
-                  </p>
-                </Field>
               </SettingsGroup>
             ) : isTicTacToe ? (
               <SettingsGroup title="Tic-Tac-Toe room">
@@ -5314,14 +5515,15 @@ function CreateGameInner() {
                     sample={questionSampleFile('word_search')}
                     hint={questionUploadHint('word_search')}
                     buttonLabel="Choose CSV"
+                    pastePlaceholder="Paste one word per line (e.g. PLANET)"
                     fileRef={wordSearchFileRef}
                     error={puzzleUploadError}
                     summary={puzzleUploadSummary}
-                    onFile={async (file) => {
+                    onText={async (text) => {
                       setPuzzleUploadError(null)
                       setPuzzleUploadSummary(null)
                       try {
-                        const result = parseWordSearchEntryImport(await file.text())
+                        const result = parseWordSearchEntryImport(text)
                         if (result.questions.length < 4) throw new Error('Need at least 4 words')
                         setCustomWordSearchWords(result.questions)
                         const extra = formatEntryImportSummary(result)
@@ -5457,14 +5659,15 @@ function CreateGameInner() {
                     sample={questionSampleFile('word_scramble')}
                     hint={questionUploadHint('word_scramble')}
                     buttonLabel="Choose CSV"
+                    pastePlaceholder="Paste one word per line, optional hint after a comma (e.g. PLANET,Found in space)"
                     fileRef={wordScrambleFileRef}
                     error={puzzleUploadError}
                     summary={puzzleUploadSummary}
-                    onFile={async (file) => {
+                    onText={async (text) => {
                       setPuzzleUploadError(null)
                       setPuzzleUploadSummary(null)
                       try {
-                        const result = parseWordScrambleEntryImport(await file.text())
+                        const result = parseWordScrambleEntryImport(text)
                         if (result.questions.length < 4) throw new Error('Need at least 4 words')
                         setCustomWordScrambleWords(result.questions)
                         const extra = formatEntryImportSummary(result)
@@ -5593,58 +5796,45 @@ function CreateGameInner() {
                   </div>
                 )}
                 {questionSource === 'custom' && (
-                  <div className="space-y-2 pt-1">
-                    <a
-                      href={`data:text/csv;charset=utf-8,${encodeURIComponent(WORD_GROUPING_SAMPLE_CSV)}`}
-                      download="word-grouping-sample.csv"
-                      className="inline-block text-sm text-[var(--primary)] underline"
-                    >
-                      Download sample CSV
-                    </a>
-                    <p className="text-faint text-xs">
-                      CSV columns: <code>puzzle, category, difficulty, word1, word2, word3, word4</code>. Four rows per
-                      puzzle (one per group, difficulties 1–4). Need at least 4 puzzles for the pool.
-                    </p>
-                    <input
-                      type="file"
-                      accept=".csv,.json,.jsonl,.ndjson,.txt,text/csv,application/json,text/plain"
-                      className="input-field"
-                      onChange={async (e) => {
-                        const file = e.target.files?.[0]
-                        if (!file) return
-                        setPuzzleUploadError(null)
-                        setPuzzleUploadSummary(null)
-                        try {
-                          const text = await file.text()
-                          const { entries, totalRows, skippedRows } = parseWordGroupingPoolText(text)
-                          const validated = parseStoredWordGroupingPuzzles(entries)
-                          if (!validated || validated.length < 4) {
-                            setPuzzleUploadError(
-                              validated
-                                ? `Only ${validated.length} valid puzzle${validated.length === 1 ? '' : 's'} — need at least 4.`
-                                : `No valid puzzles found (${totalRows - skippedRows}/${totalRows} rows recognised).`
-                            )
-                            setLibraryPackQuestions([])
-                            return
-                          }
-                          setLibraryPackQuestions(validated as unknown as unknown[])
-                          setPuzzleUploadSummary(
-                            `${validated.length} puzzle${validated.length === 1 ? '' : 's'} loaded${
-                              skippedRows ? ` · ${skippedRows} row${skippedRows === 1 ? '' : 's'} skipped` : ''
-                            }`
+                  <PuzzleUpload
+                    sample={{
+                      href: `data:text/csv;charset=utf-8,${encodeURIComponent(WORD_GROUPING_SAMPLE_CSV)}`,
+                      download: 'word-grouping-sample.csv',
+                    }}
+                    hint="CSV columns: puzzle, category, difficulty, word1, word2, word3, word4. Four rows per puzzle (one per group, difficulties 1–4). Need at least 4 puzzles for the pool."
+                    buttonLabel="Choose CSV or JSON"
+                    accept=".csv,.json,.jsonl,.ndjson,.txt,text/csv,application/json,text/plain"
+                    pasteButtonLabel="Import pasted puzzles"
+                    pastePlaceholder="Paste puzzle,category,difficulty,word1,word2,word3,word4 rows (four rows per puzzle)"
+                    fileRef={wordGroupingFileRef}
+                    error={puzzleUploadError}
+                    summary={puzzleUploadSummary}
+                    onText={async (text) => {
+                      setPuzzleUploadError(null)
+                      setPuzzleUploadSummary(null)
+                      try {
+                        const { entries, totalRows, skippedRows } = parseWordGroupingPoolText(text)
+                        const validated = parseStoredWordGroupingPuzzles(entries)
+                        if (!validated || validated.length < 4) {
+                          setPuzzleUploadError(
+                            validated
+                              ? `Only ${validated.length} valid puzzle${validated.length === 1 ? '' : 's'} — need at least 4.`
+                              : `No valid puzzles found (${totalRows - skippedRows}/${totalRows} rows recognised).`
                           )
-                        } catch (err) {
-                          setPuzzleUploadError(err instanceof Error ? err.message : 'Could not read that file')
+                          setLibraryPackQuestions([])
+                          return
                         }
-                      }}
-                    />
-                    {puzzleUploadSummary && (
-                      <p className="text-emerald-600 dark:text-emerald-400 text-xs font-medium">
-                        {puzzleUploadSummary}
-                      </p>
-                    )}
-                    {puzzleUploadError && <p className="text-red-500 text-xs">{puzzleUploadError}</p>}
-                  </div>
+                        setLibraryPackQuestions(validated as unknown as unknown[])
+                        setPuzzleUploadSummary(
+                          `${validated.length} puzzle${validated.length === 1 ? '' : 's'} loaded${
+                            skippedRows ? ` · ${skippedRows} row${skippedRows === 1 ? '' : 's'} skipped` : ''
+                          }`
+                        )
+                      } catch (err) {
+                        setPuzzleUploadError(err instanceof Error ? err.message : 'Could not read that file')
+                      }
+                    }}
+                  />
                 )}
                 {categoryUploadField}
                 <Field label="Max time limit">
@@ -5719,14 +5909,16 @@ function CreateGameInner() {
                     sample={questionSampleFile('crossword')}
                     hint={questionUploadHint('crossword')}
                     buttonLabel="Choose CSV"
+                    pasteButtonLabel="Import pasted answers"
+                    pastePlaceholder="Paste answer,clue per line (e.g. PLANET,Found in space). Header row optional."
                     fileRef={crosswordFileRef}
                     error={puzzleUploadError}
                     summary={puzzleUploadSummary}
-                    onFile={async (file) => {
+                    onText={async (text) => {
                       setPuzzleUploadError(null)
                       setPuzzleUploadSummary(null)
                       try {
-                        const result = parseCrosswordEntryImport(await file.text())
+                        const result = parseCrosswordEntryImport(text)
                         if (result.questions.length < 4) throw new Error('Need at least 4 answers with clues')
                         setCustomCrosswordEntries(result.questions)
                         const extra = formatEntryImportSummary(result)
@@ -6015,6 +6207,162 @@ function CreateGameInner() {
                 <p className="text-faint text-sm leading-relaxed">
                   Race through a fixed sequence of Wordle puzzles. Everyone solves the same word — most words solved
                   wins, with fewer guesses and faster time as tiebreakers.
+                </p>
+              </SettingsGroup>
+            ) : isTrollRun ? (
+              <SettingsGroup title="Troll Run race settings">
+                <Field
+                  label={`Max players (${effectiveLimits.troll_run?.min ?? 2}–${effectiveLimits.troll_run?.max ?? 6})`}
+                >
+                  <CustomSelect
+                    value={trollRunMaxPlayers}
+                    onChange={setTrollRunMaxPlayers}
+                    options={playerCountOptions(
+                      effectiveLimits.troll_run?.min ?? 2,
+                      effectiveLimits.troll_run?.max ?? 6
+                    ).map((n) => ({
+                      value: n,
+                      label: `${n} players`,
+                    }))}
+                  />
+                </Field>
+
+                <Field label="World Theme">
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      {
+                        id: 'pits',
+                        title: 'World 1: The Pits',
+                        icon: BlackHoleIcon,
+                        desc: 'Collapsing floors & drop-offs',
+                      },
+                      {
+                        id: 'doors',
+                        title: 'World 2: Runaway Doors',
+                        icon: DoorOpenIcon,
+                        desc: 'Evasive doors & moving walls',
+                      },
+                      {
+                        id: 'gravity',
+                        title: 'World 3: Gravity Flip',
+                        icon: ArrowUpDownIcon,
+                        desc: 'Ceiling walks & inverted keys',
+                      },
+                      {
+                        id: 'gauntlet',
+                        title: 'World 4: The Gauntlet',
+                        icon: CrownIcon,
+                        desc: 'Master gauntlet with all traps',
+                      },
+                    ].map((w) => (
+                      <button
+                        key={w.id}
+                        type="button"
+                        onClick={() => setTrollRunWorld(w.id)}
+                        className={[
+                          'rounded-xl border-2 px-3 py-2 text-left transition',
+                          trollRunWorld === w.id
+                            ? 'border-[var(--primary)] bg-[var(--surface-inset-bg)] ring-1 ring-[var(--primary)]'
+                            : 'border-[var(--border-strong)] text-muted hover:border-[var(--border)]',
+                        ].join(' ')}
+                      >
+                        <span className="font-semibold block text-xs flex items-center gap-1.5 text-body">
+                          <Glyph icon={w.icon} size={13} className="shrink-0 text-[var(--primary)]" />
+                          <span>{w.title}</span>
+                        </span>
+                        <span className="text-faint text-[10px] block mt-0.5 leading-snug">{w.desc}</span>
+                      </button>
+                    ))}
+                  </div>
+                </Field>
+
+                <Field label="Visual Palette">
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { id: 'dark', label: 'Dark Slate', icon: Moon02Icon },
+                      { id: 'retro', label: 'Retro 8-Bit', icon: Tv01Icon },
+                      { id: 'neon', label: 'Cyber Neon', icon: FlashIcon },
+                    ].map((t) => (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => setSettings({ ...settings, theme: t.id as any })}
+                        className={[
+                          'rounded-xl border-2 py-2 px-2 text-center transition flex items-center justify-center gap-1.5',
+                          settings.theme === t.id
+                            ? 'border-[var(--primary)] bg-[var(--surface-inset-bg)] ring-1 ring-[var(--primary)] text-body font-semibold'
+                            : 'border-[var(--border-strong)] text-muted hover:border-[var(--border)]',
+                        ].join(' ')}
+                      >
+                        <Glyph icon={t.icon} size={13} className="shrink-0 text-[var(--primary)]" />
+                        <span className="text-xs">{t.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </Field>
+
+                <Field label="Rounds">
+                  <CustomSelect
+                    value={trollRunRounds}
+                    onChange={setTrollRunRounds}
+                    options={[
+                      { value: 3, label: '3 Rounds' },
+                      { value: 5, label: '5 Rounds' },
+                      { value: 7, label: '7 Rounds' },
+                    ]}
+                  />
+                  <p className="text-faint text-xs mt-1">Scores and medals accumulate across all rounds.</p>
+                </Field>
+
+                <Field label="Time limit per round">
+                  <CustomSelect
+                    value={trollRunTimeLimit}
+                    onChange={setTrollRunTimeLimit}
+                    options={[
+                      { value: 60, label: '1 minute' },
+                      { value: 90, label: '1.5 minutes' },
+                      { value: 120, label: '2 minutes' },
+                      { value: 180, label: '3 minutes' },
+                    ]}
+                  />
+                  <p className="text-faint text-xs mt-1">Time allowed before remaining runners receive a DNF.</p>
+                </Field>
+
+                {showViewerToggle && (
+                  <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="troll_run" />
+                )}
+
+                <Field label="Public game">
+                  <div className="flex rounded-xl border border-[var(--border)] overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => setSettings({ ...settings, isPublic: false })}
+                      className={`flex flex-1 items-center justify-center gap-1.5 py-2 text-sm font-semibold transition-colors ${
+                        !settings.isPublic ? 'bg-[var(--primary)] text-white' : 'text-muted hover:text-body'
+                      }`}
+                    >
+                      <Glyph icon={LockIcon} size={15} />
+                      Private
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSettings({ ...settings, isPublic: true })}
+                      className={`flex flex-1 items-center justify-center gap-1.5 py-2 text-sm font-semibold transition-colors ${
+                        settings.isPublic ? 'bg-[var(--primary)] text-white' : 'text-muted hover:text-body'
+                      }`}
+                    >
+                      <Glyph icon={GlobeIcon} size={15} />
+                      Public
+                    </button>
+                  </div>
+                  <p className="text-faint text-xs mt-2">
+                    List in Browse so anyone can find and join. Off keeps it invite-only via the room code.
+                  </p>
+                </Field>
+
+                <p className="text-faint text-sm leading-relaxed">
+                  Multiplayer rage platformer race. Everyone starts at the exact same moment on a 3-2-1 countdown and
+                  races through identical deceptive levels. Fewest deaths and fastest times take the podium.
                 </p>
               </SettingsGroup>
             ) : isMafia ? (
@@ -6582,25 +6930,7 @@ function CreateGameInner() {
                           value={triviaCategory}
                           onChange={(v) => setTriviaCategory(v as TriviaCategory)}
                           searchable
-                          options={[
-                            { value: 'general', label: 'General (All Categories)' },
-                            { value: 'tech', label: 'Tech' },
-                            { value: 'art', label: 'Art' },
-                            { value: 'food', label: 'Food' },
-                            { value: 'geography', label: 'Geography' },
-                            { value: 'history', label: 'History' },
-                            { value: 'language', label: 'Language' },
-                            { value: 'literature', label: 'Literature' },
-                            { value: 'math', label: 'Math' },
-                            { value: 'movies', label: 'Movies' },
-                            { value: 'music', label: 'Music' },
-                            { value: 'nature', label: 'Nature' },
-                            { value: 'pop_culture', label: 'Pop Culture' },
-                            { value: 'science', label: 'Science' },
-                            { value: 'sports', label: 'Sports' },
-                            { value: 'technology', label: 'Technology' },
-                            { value: 'world_culture', label: 'World Culture' },
-                          ]}
+                          options={[...TRIVIA_CATEGORY_OPTIONS]}
                         />
                       </Field>
                     )}

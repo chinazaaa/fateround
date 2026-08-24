@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { SaveToProfileModal } from '@/components/profile/SaveToProfileModal'
 import { useProfile } from '@/hooks/useProfile'
+import { streakIsAtRisk } from '@/components/profile/StreakStatusBanner'
 import { Avatar } from '@/components/Avatar'
 
 /**
@@ -53,6 +54,9 @@ export function ProfileChip({ tone = 'site' }: Props) {
   const label = signedIn ? profile?.handle || 'You' : 'Guest'
 
   const streak = profile?.current_streak ?? 0
+  // Dim the flame on a day the player hasn't played yet. The number alone read identically
+  // whether the streak was safe or hours from lapsing.
+  const atRisk = streakIsAtRisk(profile)
 
   const buttonClass = tone === 'app' ? (signedIn ? APP_CLASS_SIGNEDIN : APP_CLASS_GUEST) : 'fr-nav-btn'
 
@@ -62,11 +66,18 @@ export function ProfileChip({ tone = 'site' }: Props) {
         type="button"
         className={buttonClass}
         onClick={() => setOpen(true)}
-        aria-label={signedIn ? `${label}${streak > 0 ? `, ${streak} day streak` : ''}` : 'Save your progress'}
+        aria-label={
+          signedIn
+            ? `${label}${streak > 0 ? `, ${streak} day streak${atRisk ? ' — play today to keep it' : ''}` : ''}`
+            : 'Save your progress'
+        }
         title={signedIn ? label : undefined}
       >
         {streak > 0 ? (
-          <span className="shrink-0" aria-hidden>
+          <span
+            className={`shrink-0 ${tone === 'app' ? 'hidden sm:inline' : ''} ${atRisk ? 'opacity-50' : ''}`}
+            aria-hidden
+          >
             🔥 {streak}
           </span>
         ) : null}

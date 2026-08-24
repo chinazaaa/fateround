@@ -30,6 +30,11 @@ export const createPlayerSchema = z.object({
   // prompt. Without it Zod would strip the field and the server would keep
   // returning the 409 forever.
   continueOnThisDevice: z.boolean().optional(),
+  // The host's own host_token from this device's SecureStore. Proves the caller
+  // is the host device (not another device on the same profile), so the server
+  // skips the "already hosting elsewhere" 409 — a host playing along in their
+  // own lobby must never be treated as a cross-device conflict.
+  hostToken: z.string().trim().max(100).optional(),
 })
 
 export type CreatePlayerInput = z.infer<typeof createPlayerSchema>

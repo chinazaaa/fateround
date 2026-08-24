@@ -21,7 +21,9 @@ const GAME_TYPE_TO_SLUG: Record<GameType, string> = {
   codewords: 'codewords',
   trivia: 'trivia',
   two_truths: 'two-truths-and-a-lie',
-  monopoly: 'monopoly',
+  // Canonical slug is `estate-kings`; `/games/monopoly` only 301s there (see the alias
+  // redirect in src/app/games/[slug]/page.tsx), so link straight at the real one.
+  monopoly: 'estate-kings',
   yahtzee: 'yahtzee',
   whot: 'whot',
   uno: 'uno',
@@ -35,7 +37,6 @@ const GAME_TYPE_TO_SLUG: Record<GameType, string> = {
   word_scramble: 'word-scramble',
   word_grouping: 'word-grouping',
   tic_tac_toe: 'tic-tac-toe',
-  ping_pong: 'ping-pong',
   word_hunt: 'word-hunt',
   chess: 'chess',
   checkers: 'checkers',
@@ -51,6 +52,8 @@ const GAME_TYPE_TO_SLUG: Record<GameType, string> = {
   quiplash: 'quiplash',
   quick_draw: 'quick-draw',
   landmine: 'landmine',
+  wordle_room: 'wordle',
+  troll_run: 'troll-run',
 }
 
 export function gameRulesUrl(gameType: GameType | string): string | null {

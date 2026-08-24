@@ -54,10 +54,10 @@ export type GameType =
   | 'word_search'
   | 'word_scramble'
   | 'landmine'
-  | 'ping_pong'
   | 'uno'
   | 'word_grouping'
   | 'wordle_room'
+  | 'troll_run'
 
 export type NpatPhase = 'letter_pick' | 'writing' | 'marking' | 'host_review' | 'reveal'
 export type NpatCategory = 'name' | 'animal' | 'place' | 'thing' | 'food'
@@ -270,16 +270,15 @@ export interface CodewordsMessage {
   created_at: string
   player_name?: string
 }
-export type ThemeId =
-  | 'default'
-  | 'neon'
-  | 'retro'
-  | 'elegant'
-  | 'tropical'
-  | 'pirate'
-  | 'arctic'
-  | 'naija'
-  | 'grass_court'
+// Re-export the canonical union from @/lib/themes rather than duplicating it.
+// The old shadow definition here missed 'america' when Phase 4 added it, so
+// consumers importing `ThemeId` from '@/types' rejected the paid edition even
+// though the rest of the app accepts it. Import once, source of truth = one —
+// and bring `ThemeId` into local scope so the `theme?: ThemeId` field below
+// type-checks (a bare `export type ... from ...` re-exports without creating
+// a local binding, which is what broke CI type-check on the Phase 4 merge).
+import type { ThemeId } from '@/lib/themes'
+export type { ThemeId }
 export type WyrChoice = 'a' | 'b'
 
 export type ParticipantGender = 'male' | 'female'
@@ -387,6 +386,12 @@ export interface Game {
   monopoly_no_rent_in_jail?: boolean
   monopoly_estate_dividend?: boolean
   monopoly_board_size?: 40 | 48
+  monopoly_loans_enabled?: boolean
+  monopoly_loan_interest?: number
+  monopoly_loan_term_rounds?: number
+  troll_run_rounds?: number
+  troll_run_time_limit?: number
+  troll_run_world?: string
   anonymous: boolean
   auto_reveal: boolean
   auto_submit_behavior: AutoSubmitBehavior
@@ -401,6 +406,13 @@ export interface Game {
   player_questions_order?: PlayerQuestionsOrder
   game_type: GameType
   theme?: ThemeId
+  /**
+   * Estate Kings edition slug picked by the host (docs/estate-kings-america-edition.md).
+   * Mirrors `theme` for Monopoly — 'london' | 'naija' | 'pirate' | 'arctic' | 'america'
+   * — and is null for every other game type. See Phase 4 migration
+   * `20261101120700_estate_kings_america_edition.sql`.
+   */
+  edition_slug?: string | null
   status: GameStatus
   /** When true, the game is listed in /browse (discoverable). Default false = code-only. */
   is_public?: boolean
@@ -541,8 +553,6 @@ export interface Game {
   landmine_review_seconds?: number | null
   /** Nigerian Draughts — opt-in "Street Rules" (huffing): decline a capture, risk the piece. */
   checkers_nigeria_street_rules?: boolean | null
-  /** Ping Pong — points required to win the match (3, 5, 7, 11, 15, or 21). */
-  ping_pong_points_to_win?: number | null
   /** Wordle Room — which built-in word bank the race draws from. */
   wordle_room_category?:
     | 'general_english'
@@ -585,6 +595,13 @@ export interface MonopolyAuctionState {
 
 export interface MonopolyPendingTrade {
   from_player_id: string
+  /**
+   * ISO deadline for the recipient to answer. The board holds ONE pending
+   * trade at a time, so an unanswered offer blocks trading for the whole
+   * table — this bounds that. Optional: trades proposed before this field
+   * existed simply never expire, same as the old behaviour.
+   */
+  expires_at?: string | null
   to_player_id: string
   offer_cash: number
   offer_properties: number[]
@@ -621,11 +638,42 @@ export interface MonopolyLastCashEvent {
   bankrupt?: boolean
 }
 
+/**
+ * Why a trade was declined. Only ever set by the BOT — humans decline with a
+ * single tap and are never asked to justify it, so `decline_reason` stays null
+ * for human declines and the UI falls back to the plain "X declined" line.
+ */
+export type MonopolyTradeDeclineReason =
+  /** Handing the card over would complete a colour set for the proposer. */
+  | 'completes_your_set'
+  /** The card is part of a monopoly the bot has already completed. */
+  | 'protects_my_monopoly'
+  /** The bot doesn't hold the cash/cards/property the proposer asked for. */
+  | 'cannot_fulfil'
+  /** Valued the offer below its own side plus the accept margin. */
+  | 'offer_too_low'
+
 export interface MonopolyLastTradeEvent {
   seq: number
   from_player_id: string
   to_player_id: string
-  outcome: 'proposed' | 'declined' | 'accepted' | 'cancelled'
+  outcome: 'proposed' | 'declined' | 'accepted' | 'cancelled' | 'expired'
+  /** Bot-only explanation for a decline. Null/absent for human declines. */
+  decline_reason?: MonopolyTradeDeclineReason | null
+}
+
+export interface MonopolyLoan {
+  id: string
+  player_id: string
+  principal: number
+  interest_rate: number
+  total_due: number
+  amount_repaid: number
+  balance_remaining: number
+  term_rounds: number
+  rounds_remaining: number
+  created_at: string
+  status: 'active' | 'repaid' | 'defaulted'
 }
 
 export interface MonopolyBoard {
@@ -655,6 +703,7 @@ export interface MonopolyBoard {
   last_rent_event: MonopolyLastRentEvent | null
   last_cash_event: MonopolyLastCashEvent | null
   last_trade_event: MonopolyLastTradeEvent | null
+  loans?: MonopolyLoan[]
   turn_deadline_at: string | null
   winner_player_id: string | null
   created_at: string
@@ -1181,21 +1230,6 @@ export interface TicTacToeSession {
   is_draw: boolean
   status_message: string | null
   turn_deadline_at: string | null
-  created_at: string
-  updated_at: string
-}
-
-export interface PingPongSession {
-  id: string
-  game_id: string
-  player_x_id: string
-  player_o_id: string
-  score_x: number
-  score_o: number
-  points_to_win: number
-  status: 'active' | 'finished'
-  winner_player_id: string | null
-  status_message: string | null
   created_at: string
   updated_at: string
 }
@@ -2220,4 +2254,52 @@ export interface MafiaMyState {
    *  the roster grid can mark their tiles with a heart without exposing it to anyone else. */
   loverIds?: string[]
   enabledRoles?: MafiaRole[]
+}
+
+export type TrollRunPhase = 'lobby' | 'countdown' | 'racing' | 'scoreboard' | 'finished'
+
+export interface TrollRunSession {
+  id: string
+  game_id: string
+  phase: TrollRunPhase
+  current_round: number
+  total_rounds: number
+  current_world: string
+  levels_per_round: number
+  round_time_limit: number
+  round_started_at: string | null
+  turn_deadline_at: string | null
+  level_order: string[]
+  created_at: string
+  updated_at: string
+}
+
+export interface TrollRunPlayerState {
+  id: string
+  game_id: string
+  player_id: string
+  current_round: number
+  current_level_index: number
+  deaths: number
+  levels_cleared: number
+  total_time_ms: number
+  round_score: number
+  total_score: number
+  finish_position: number | null
+  round_finished: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface TrollRunEvent {
+  id: string
+  game_id: string
+  player_id: string
+  player_name?: string
+  round: number
+  level_id: string
+  level_name?: string
+  event_type: 'death' | 'clear'
+  time_ms?: number | null
+  created_at: string
 }

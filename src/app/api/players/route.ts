@@ -21,7 +21,6 @@ import { removeAyoPlayer } from '@/lib/ayo'
 import { maybeNotifyHostPlayerJoined } from '@/lib/push'
 import { getProfileFromRequest } from '@/lib/identity-server'
 import { removeTicTacToePlayer } from '@/lib/tic-tac-toe'
-import { removePingPongPlayer } from '@/lib/ping-pong'
 import { isMonopolyTokenId } from '@/lib/monopoly-tokens'
 import { generateAnonymousDisplayName } from '@/lib/anonymous-names'
 import { anonymousPlayerCanChat } from '@/lib/anonymous-messages'
@@ -67,7 +66,6 @@ import {
   isQuickDrawGame,
   isSudokuGame,
   isTwoTruthsGame,
-  isPingPongGame,
   isMafiaGame,
 } from '@/lib/game-types'
 import { announceMafiaLateJoin } from '@/lib/mafia'
@@ -295,9 +293,16 @@ export async function POST(req: NextRequest) {
   // they pick up right where they left off instead of starting a new seat.
   const joinerUserId = await getProfileFromRequest(req)
   const continueOnThisDevice = body.continueOnThisDevice === true
+  // A host_token that matches the game's own host_token proves the caller IS
+  // the host device (SecureStore holds it only on that device). Without this
+  // shortcut the host would hit the cross-device 409 when playing along in
+  // their own lobby, because host_user_id is set to their own auth uid.
+  const suppliedHostToken = body.hostToken?.trim() || null
+  const gameHostToken = (gameRow as { host_token?: string | null }).host_token ?? null
+  const callerIsHostDevice = !!suppliedHostToken && !!gameHostToken && suppliedHostToken === gameHostToken
   if (joinerUserId) {
     const hostUserId = (gameRow as { host_user_id?: string | null }).host_user_id ?? null
-    if (hostUserId && hostUserId === joinerUserId && !continueOnThisDevice) {
+    if (hostUserId && hostUserId === joinerUserId && !continueOnThisDevice && !callerIsHostDevice) {
       return NextResponse.json(
         {
           error: 'You’re already hosting this game on another device.',
@@ -883,8 +888,7 @@ export async function POST(req: NextRequest) {
     isChessGame(rowGameType) ||
     isCheckersGame(rowGameType) ||
     isAyoGame(rowGameType) ||
-    isScrabbleGame(rowGameType) ||
-    isPingPongGame(rowGameType)
+    isScrabbleGame(rowGameType)
   ) {
     const joinCheck = canJoinGame(gameRow as Game)
     if (!joinCheck.ok) {
@@ -903,9 +907,7 @@ export async function POST(req: NextRequest) {
           ? 'ayo'
           : isScrabbleGame(rowGameType)
             ? 'scrabble'
-            : isPingPongGame(rowGameType)
-              ? 'ping_pong'
-              : 'tic_tac_toe'
+            : 'tic_tac_toe'
     const maxPlayers = lobbyMaxPlayersFromGame(limitKey, gameRow, lobbyLimits)
     const { count: playerCount } = await supabase
       .from('players')
@@ -1888,6 +1890,49 @@ export async function DELETE(req: NextRequest) {
 
   if (!player) return NextResponse.json({ error: 'Player not found' }, { status: 404 })
 
+  /**
+   * A finished game is a RESULT, and a result does not change because someone closed the tab.
+   *
+   * Leaving hard-DELETEs the players row, and the per-game score tables cascade off it
+   * (`trivia_answers.player_id references players(id) on delete cascade`, and the same shape
+   * everywhere else). Every finished screen ranks the rows that are still there and highlights
+   * the top one — so when the players above you left the results screen, their scores were
+   * ERASED and you were promoted into first. Reported as "I was 5th, the top four left, and the
+   * finished screen made me the winner".
+   *
+   * It was never only cosmetic. `GameFinishPanel` derives `winnerPlayerId` the same way and
+   * `PostWinToCommunity` fires on it, so a phantom win was posted to the community leaderboard;
+   * the award pass takes its winners from the same place.
+   *
+   * So: once a game is over, removal is a no-op. There is nothing left to leave — the client
+   * clears its local session and navigates away either way, which is why this answers 200
+   * rather than an error. Mid-game departures still delete, and that stays correct: a player
+   * who walks out before the end forfeits rather than placing.
+   *
+   * Placed BEFORE the per-game branches deliberately: each of those runs its own removal and
+   * returns early, so a guard any lower would miss most of the games.
+   */
+  if ((game as { status?: string }).status === 'finished') {
+    /**
+     * Keep the row, but honour the leave in the one way that still has meaning: stop pushing
+     * to them about this game.
+     *
+     * Both push tables key on `players(id) ON DELETE CASCADE`, so before this guard existed a
+     * leave unsubscribed the device as a side effect of the delete. Retaining the row retains
+     * those rows too — which would have left someone who deliberately left a finished game
+     * still receiving "Play again? 🔁" when the host reopened the lobby. Unsubscribing here
+     * costs the standings nothing: the score tables hang off the player row, not these.
+     *
+     * Best-effort: a failure to unsubscribe must not turn a successful leave into an error.
+     */
+    await Promise.all([
+      getSupabaseAdmin().from('push_subscriptions').delete().eq('game_id', id).eq('player_id', playerId),
+      getSupabaseAdmin().from('mobile_push_tokens').delete().eq('game_id', id).eq('player_id', playerId),
+    ]).catch(() => {})
+
+    return NextResponse.json({ success: true, retained: true })
+  }
+
   const gameType = parseGameType((game as { game_type?: string }).game_type)
 
   if (isCodewordsGame(gameType)) {
@@ -1998,12 +2043,6 @@ export async function DELETE(req: NextRequest) {
     // Tic-Tac-Toe tables are RLS-locked to anon writes — remove via service role.
     // (Caller authority — host, or the player removing themselves — is enforced above.)
     const { error } = await removeTicTacToePlayer(getSupabaseAdmin(), id, playerId, player.name)
-    if (error) return NextResponse.json({ error }, { status: 500 })
-    return NextResponse.json({ success: true })
-  }
-
-  if (isPingPongGame(gameType)) {
-    const { error } = await removePingPongPlayer(getSupabaseAdmin(), id, playerId, player.name)
     if (error) return NextResponse.json({ error }, { status: 500 })
     return NextResponse.json({ success: true })
   }
