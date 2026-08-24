@@ -24,19 +24,26 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
  * forever after everyone leaves a game, and last_activity_at correctly
  * doesn't tick along with it — so the reaper catches it.
  *
- * Threshold defaults to 24 hours. A game with no human touch, no host
- * edit, and nobody joining or leaving for a full day is abandoned. Env
- * override: IDLE_REAPER_HOURS.
+ * Threshold defaults to 15 minutes. Fate Round games are casual/party
+ * games — none legitimately runs for hours without someone poking it. Env
+ * override: IDLE_REAPER_MINUTES.
+ *
+ * Caveat: `last_activity_at` bumps on UPDATEs to the games row and on
+ * player join/leave, but individual game moves (whot / chess / ludo etc.)
+ * hit sub-tables, not the games row. If a slow game type surfaces where
+ * two humans are actively playing but nothing touches the games row for
+ * 15 minutes, the fix is a per-game-type bump in the turn handler — the
+ * signal here is already right for "everybody stopped touching it".
  */
 
-const DEFAULT_IDLE_HOURS = 24
-const MIN_IDLE_HOURS = 1
-const DEFAULT_INTERVAL_MS = 15 * 60 * 1000 // every 15 minutes
+const DEFAULT_IDLE_MINUTES = 15
+const MIN_IDLE_MINUTES = 1
+const DEFAULT_INTERVAL_MS = 5 * 60 * 1000 // every 5 minutes
 const REAPER_BATCH_LIMIT = 200
 
-function resolveIdleHours(): number {
-  const raw = Number(process.env.IDLE_REAPER_HOURS)
-  if (!Number.isFinite(raw) || raw < MIN_IDLE_HOURS) return DEFAULT_IDLE_HOURS
+function resolveIdleMinutes(): number {
+  const raw = Number(process.env.IDLE_REAPER_MINUTES)
+  if (!Number.isFinite(raw) || raw < MIN_IDLE_MINUTES) return DEFAULT_IDLE_MINUTES
   return Math.floor(raw)
 }
 
@@ -52,9 +59,9 @@ function resolveIdleHours(): number {
  */
 export async function closeIdleActiveGames(
   supabase: SupabaseClient,
-  olderThanHours: number
+  olderThanMinutes: number
 ): Promise<{ closed: number; failed: number; errors: string[] }> {
-  const cutoff = new Date(Date.now() - olderThanHours * 60 * 60 * 1000).toISOString()
+  const cutoff = new Date(Date.now() - olderThanMinutes * 60 * 1000).toISOString()
 
   const { data, error } = await supabase
     .from('games')
@@ -105,11 +112,11 @@ async function tick(): Promise<void> {
   inFlight = true
   try {
     const supabase = getSupabaseAdmin()
-    const hours = resolveIdleHours()
-    const result = await closeIdleActiveGames(supabase, hours)
+    const minutes = resolveIdleMinutes()
+    const result = await closeIdleActiveGames(supabase, minutes)
     if (result.closed > 0 || result.failed > 0) {
       console.log(
-        `[idle-reaper] closed=${result.closed} failed=${result.failed} threshold=${hours}h${
+        `[idle-reaper] closed=${result.closed} failed=${result.failed} threshold=${minutes}m${
           result.errors.length ? ` errors=${result.errors.join('; ')}` : ''
         }`
       )
@@ -131,8 +138,8 @@ async function tick(): Promise<void> {
  *   - Production always on (unless IDLE_REAPER_DISABLED=1)
  *   - Dev / test off unless IDLE_REAPER_ENABLED=1
  *
- * Tune cadence with IDLE_REAPER_INTERVAL_MS (default 15 minutes) and the
- * idle threshold with IDLE_REAPER_HOURS (default 24).
+ * Tune cadence with IDLE_REAPER_INTERVAL_MS (default 5 minutes) and the
+ * idle threshold with IDLE_REAPER_MINUTES (default 15).
  */
 export function startIdleReaper(): void {
   if (started) return
@@ -141,8 +148,8 @@ export function startIdleReaper(): void {
   if (!enabled) return
   started = true
   const intervalMs = Number(process.env.IDLE_REAPER_INTERVAL_MS) || DEFAULT_INTERVAL_MS
-  const hours = resolveIdleHours()
-  console.log(`[idle-reaper] started (interval=${intervalMs}ms threshold=${hours}h)`)
+  const minutes = resolveIdleMinutes()
+  console.log(`[idle-reaper] started (interval=${intervalMs}ms threshold=${minutes}m)`)
   const timer = setInterval(() => {
     void tick()
   }, intervalMs)
