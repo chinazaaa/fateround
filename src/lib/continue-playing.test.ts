@@ -146,7 +146,10 @@ describe('continue strip vs the discovery feed', () => {
   it('the web live-games strip relabels rather than hides', () => {
     const src = code('src/components/LiveGamesStrip.tsx')
     expect(src, 'must not filter your own games out').not.toMatch(/games\.filter\(\(g\) => !myActive/)
-    expect(src).toMatch(/const myRole = myActiveGames\.get\(game\.id\.toUpperCase\(\)\)/)
+    // Role comes from the profile-level active-games map, keyed on the uppercased code.
+    // The variable was renamed apiRole → myRole (after a same-device host-token override)
+    // in a later fix; both must appear so the regex still enforces intent.
+    expect(src).toMatch(/const apiRole = myActiveGames\.get\(game\.id\.toUpperCase\(\)\)/)
     expect(src, 'a host resumes into the host surface, still hosting').toMatch(
       /myRole === 'host' \? `\/host\/\$\{game\.id\}` : `\/game\/\$\{game\.id\}`/
     )
