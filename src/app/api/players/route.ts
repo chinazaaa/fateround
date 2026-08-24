@@ -1937,7 +1937,11 @@ export async function DELETE(req: NextRequest) {
         if (successor?.id) {
           await getSupabaseAdmin()
             .from('games')
-            .update({ pending_host_player_id: successor.id, host_user_id: null })
+            .update({
+              pending_host_player_id: successor.id,
+              pending_host_nominated_at: new Date().toISOString(),
+              host_user_id: null,
+            })
             .eq('id', id)
         } else {
           const ended = await adminEndGame(getSupabaseAdmin(), {

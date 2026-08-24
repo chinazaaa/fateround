@@ -28,22 +28,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   if (auth.error || !auth.player) return NextResponse.json({ error: auth.error }, { status: auth.status })
   const gameId = auth.id
   const playerId = auth.player.id
-  // Also move `host_user_id` to whichever profile owns the new host's player row (or NULL
-  // when the claimant is a guest). Without this, the previous host could still reclaim by
-  // profile via /reclaim-host after being transferred out. `player.user_id` is null-safe:
-  // a null claimant just leaves host_user_id null and the reclaim path finds no owner.
+  const isBot = (auth.player as { is_bot?: boolean }).is_bot === true
+  const isSpectator = (auth.player as { spectator?: boolean }).spectator === true
   const newHostUserId = (auth.player as { user_id?: string | null }).user_id ?? null
 
   const newHostToken = generateToken()
 
-  // Atomic swap: only succeeds while this player is still the pending nominee. If a second
-  // claim races in, or the host cancelled the nomination, no row matches and we 409.
-  const { data: updated, error: updateError } = await supabase
+  // Try the named-nominee swap first. Succeeds while this player is still the pending
+  // nominee — atomic on the row, so a second racing claim of the same shape gets 409.
+  const { data: namedUpdate, error: namedError } = await supabase
     .from('games')
-    // Repoint the roster HOST badge to the new host's player row (they claim as a player).
     .update({
       host_token: newHostToken,
       pending_host_player_id: null,
+      pending_host_nominated_at: null,
       host_player_id: playerId,
       host_user_id: newHostUserId,
     })
@@ -52,13 +50,41 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     .select('id')
     .maybeSingle()
 
-  // A real DB error must not be reported as a stale claim — reserve the 409 for the no-row case.
-  if (updateError) {
+  if (namedError) {
     return NextResponse.json({ error: 'Failed to claim host transfer' }, { status: 500 })
   }
-  if (!updated) {
-    return NextResponse.json({ error: 'No pending host transfer for you' }, { status: 409 })
+  if (namedUpdate) {
+    return NextResponse.json({ ok: true, hostToken: newHostToken }, { status: 200 })
   }
 
+  // Not the named nominee. Fall through to the open-claim path: any remaining
+  // non-bot, non-spectator player may claim if the nomination has been stale
+  // for OPEN_CLAIM_AFTER_SECONDS. Prevents a nominee ignoring the banner from
+  // stalling the game for the idle-reaper window.
+  const OPEN_CLAIM_AFTER_SECONDS = 60
+  if (isBot || isSpectator) {
+    return NextResponse.json({ error: 'No pending host transfer for you' }, { status: 409 })
+  }
+  const cutoff = new Date(Date.now() - OPEN_CLAIM_AFTER_SECONDS * 1000).toISOString()
+  const { data: openUpdate, error: openError } = await supabase
+    .from('games')
+    .update({
+      host_token: newHostToken,
+      pending_host_player_id: null,
+      pending_host_nominated_at: null,
+      host_player_id: playerId,
+      host_user_id: newHostUserId,
+    })
+    .eq('id', gameId)
+    .not('pending_host_player_id', 'is', null)
+    .lt('pending_host_nominated_at', cutoff)
+    .select('id')
+    .maybeSingle()
+  if (openError) {
+    return NextResponse.json({ error: 'Failed to claim host transfer' }, { status: 500 })
+  }
+  if (!openUpdate) {
+    return NextResponse.json({ error: 'No pending host transfer for you' }, { status: 409 })
+  }
   return NextResponse.json({ ok: true, hostToken: newHostToken }, { status: 200 })
 }

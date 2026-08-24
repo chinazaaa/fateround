@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { useToast } from '@/components/ui/Toast'
 import { clearPlayerSession, getPlayerSession } from '@/lib/utils'
-import { clearHostToken } from '@/lib/host-session'
+import { clearHostToken, readHostToken } from '@/lib/host-session'
 
 export const leaveButtonClassName =
   'w-full rounded-[0.875rem] border border-red-500/50 bg-red-500 py-3.5 text-[0.9375rem] font-bold text-white shadow-[0_4px_14px_rgba(239,68,68,0.35)] transition-[background-color,transform,box-shadow] duration-150 hover:bg-red-600 hover:shadow-[0_6px_22px_rgba(239,68,68,0.45)] hover:-translate-y-px active:translate-y-0 active:scale-[0.99] disabled:opacity-35 disabled:cursor-not-allowed'
@@ -36,10 +36,17 @@ export function LeaveGameButton({
 
   const leaveGame = async () => {
     if (leaving) return
+    // On the leaving device, presence of a stored host token proves this caller is the
+    // current host. Server-side, the DELETE handler also auto-nominates a successor when
+    // the host leaves (or ends the game if no eligible successor remains) — surface that
+    // in the confirm copy so hosts don't click Leave expecting to keep hosting.
+    const isHost = typeof window !== 'undefined' && !!readHostToken(gameCode)
     const ok = await confirm({
-      title: confirmTitle,
-      message: confirmMessage,
-      confirmLabel: 'Leave',
+      title: isHost ? 'Leave and hand off hosting?' : confirmTitle,
+      message: isHost
+        ? "You're hosting — leaving hands hosting to another player. You can rejoin later as a player or watcher."
+        : confirmMessage,
+      confirmLabel: isHost ? 'Leave & hand off' : 'Leave',
       destructive: true,
     })
     if (!ok) return
