@@ -5,6 +5,7 @@
 
 import {
   getPlayerGhostColor,
+  TROLL_RUN_DEATH_MARK_SECONDS,
   TROLL_RUN_DOOR_HEIGHT,
   TROLL_RUN_DOOR_WIDTH,
   TROLL_RUN_PHYSICS,
@@ -14,10 +15,13 @@ import {
   type GhostRunner,
   type PlayerState,
   type TrollMovingEntity,
+  type TrollRunDeathMark,
+  type TrollRunDoorState,
   type TrollRunHudState,
   type TrollRunLevel,
+  type TrollRunRenderLevel,
 } from './types'
-import { createInitialPlayerState, updatePlayerPhysics } from './physics'
+import { advanceTrollRunEntities, createInitialPlayerState, updatePlayerPhysics } from './physics'
 import { InputManager } from './input'
 import { TweenManager } from './tweens'
 import { ParticleManager } from './particles'
@@ -49,7 +53,7 @@ export class TrollRunEngine {
 
   // Mutable runtime copies
   private activeTiles: number[][] = []
-  private activeDoor: { x: number; y: number } = { x: 0, y: 0 }
+  private activeDoor: TrollRunDoorState = { x: 0, y: 0 }
   private activeEntities: TrollMovingEntity[] = []
   private player: PlayerState = createInitialPlayerState({ x: 0, y: 0 })
   // Where the runner was standing when they touched the door, so the entry animation has a start.
@@ -57,6 +61,7 @@ export class TrollRunEngine {
 
   // Multiplayer Ghosts
   private ghosts: Map<string, GhostRunner> = new Map()
+  private deathMarks: TrollRunDeathMark[] = []
   private playerId = ''
   private playerName = ''
   private positionEmitTimer = 0
@@ -114,6 +119,11 @@ export class TrollRunEngine {
     } else {
       const levelChanged = existing.levelIndex !== payload.levelIndex
       const distanceSq = (existing.x - payload.x) ** 2 + (existing.y - payload.y) ** 2
+      // The alive→dead edge is the only death signal the broadcast carries, and it is enough: leave
+      // a mark where they fell so everyone else watches the same trap collect them.
+      if (existing.alive && !payload.alive) {
+        this.addDeathMark(payload.x, payload.y, existing.color, payload.levelIndex)
+      }
       // Large displacement (respawn or teleport) or level change -> snap immediately, no backward sliding!
       if (levelChanged || distanceSq > 48 * 48 || !payload.alive) {
         existing.x = payload.x
@@ -137,6 +147,12 @@ export class TrollRunEngine {
 
   public clearGhosts(): void {
     this.ghosts.clear()
+    this.deathMarks = []
+  }
+
+  /** A body on the floor, in the runner's own ghost colour, fading out over a few seconds. */
+  private addDeathMark(x: number, y: number, color: string, levelIndex: number): void {
+    this.deathMarks.push({ x, y, color, levelIndex, age: 0 })
   }
 
   public attachCanvas(canvas: HTMLCanvasElement): void {
@@ -152,6 +168,7 @@ export class TrollRunEngine {
     this.totalTimeElapsed = 0
     this.levelDeaths = 0
     this.levelCleared = false
+    this.deathMarks = []
     // A new round may open on a level with the same index and name, so drop the edge-trigger
     // baseline or the overlay would keep showing the previous round's plate.
     this.lastHudState = null
@@ -318,6 +335,8 @@ export class TrollRunEngine {
       this.player.y + this.player.height / 2,
       '#ffffff'
     )
+    // Your own misses leave a mark too, so a level you keep failing shows you where.
+    this.addDeathMark(this.player.x, this.player.y, getPlayerGhostColor(this.playerId), this.currentLevelIndex)
 
     this.emitPlayerPosition()
 
@@ -381,6 +400,14 @@ export class TrollRunEngine {
     }
   }
 
+  private advanceDeathMarks(dt: number): void {
+    if (this.deathMarks.length === 0) return
+    for (const mark of this.deathMarks) {
+      mark.age += dt
+    }
+    this.deathMarks = this.deathMarks.filter((mark) => mark.age < TROLL_RUN_DEATH_MARK_SECONDS)
+  }
+
   private update(dt: number): void {
     if (!this.activeLevel) return
 
@@ -392,11 +419,13 @@ export class TrollRunEngine {
     // Update Particles
     this.particles.update(dt)
 
-    // Update Moving Entities
-    for (const entity of this.activeEntities) {
-      if (entity.vx) entity.x += entity.vx * dt
-      if (entity.vy) entity.y += entity.vy * dt
+    // A `fake_door` bite expires on its own, so the exit is never permanently lethal.
+    if (this.activeDoor.biteTimer) {
+      this.activeDoor.biteTimer = Math.max(0, this.activeDoor.biteTimer - dt)
     }
+
+    advanceTrollRunEntities(this.activeEntities, this.player, dt)
+    this.advanceDeathMarks(dt)
 
     // Update & Interpolate Ghosts
     const now = Date.now()
@@ -499,7 +528,7 @@ export class TrollRunEngine {
   private render(): void {
     if (!this.ctx || !this.activeLevel) return
 
-    const renderLevel: TrollRunLevel = {
+    const renderLevel: TrollRunRenderLevel = {
       ...this.activeLevel,
       tiles: this.activeTiles,
       door: this.activeDoor,
@@ -509,6 +538,7 @@ export class TrollRunEngine {
     const currentGhosts = Array.from(this.ghosts.values()).filter(
       (ghost) => ghost.levelIndex === this.currentLevelIndex
     )
+    const currentMarks = this.deathMarks.filter((mark) => mark.levelIndex === this.currentLevelIndex)
 
     this.renderer.render(
       this.ctx,
@@ -517,6 +547,7 @@ export class TrollRunEngine {
       this.particles,
       this.activeEntities,
       currentGhosts,
+      currentMarks,
       performance.now()
     )
   }
@@ -537,6 +568,16 @@ export class TrollRunEngine {
     }
 
     const previous = this.lastHudState
+    if (
+      previous &&
+      previous.levelIndex === next.levelIndex &&
+      previous.levelName === next.levelName &&
+      previous.controlsInverted === next.controlsInverted &&
+      previous.gravityInverted === next.gravityInverted
+    ) {
+      return
+    }
+
     this.lastHudState = next
     callback(next)
   }
@@ -576,5 +617,6 @@ export class TrollRunEngine {
     this.particles.clear()
     this.tweens.clear()
     this.ghosts.clear()
+    this.deathMarks = []
   }
 }

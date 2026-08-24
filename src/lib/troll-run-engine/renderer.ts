@@ -13,16 +13,20 @@
  */
 
 import {
+  TROLL_RUN_DEATH_MARK_SECONDS,
   TROLL_RUN_DOOR_HEIGHT,
   TROLL_RUN_DOOR_WIDTH,
   TROLL_RUN_INTERNAL_HEIGHT,
   TROLL_RUN_INTERNAL_WIDTH,
+  TROLL_RUN_PHYSICS,
   TROLL_RUN_TILE_SIZE,
   TrollRunTileType,
+  trollEntityIsActive,
   type GhostRunner,
   type PlayerState,
   type TrollMovingEntity,
-  type TrollRunLevel,
+  type TrollRunDeathMark,
+  type TrollRunRenderLevel,
 } from './types'
 import type { ParticleManager } from './particles'
 
@@ -159,11 +163,12 @@ export class CanvasRenderer {
 
   public render(
     ctx: CanvasRenderingContext2D,
-    level: TrollRunLevel,
+    level: TrollRunRenderLevel,
     player: PlayerState,
     particles: ParticleManager,
     movingEntities: TrollMovingEntity[] = [],
     ghosts: GhostRunner[] = [],
+    deathMarks: TrollRunDeathMark[] = [],
     nowMs = 0
   ): void {
     const tileSize = TROLL_RUN_TILE_SIZE
@@ -215,7 +220,11 @@ export class CanvasRenderer {
       this.renderEnteringPlayer(ctx, player)
     }
 
-    this.renderDoor(ctx, level.door.x, level.door.y, nowMs)
+    this.renderDoor(ctx, level.door.x, level.door.y, nowMs, (level.door.biteTimer ?? 0) > 0)
+
+    for (const mark of deathMarks) {
+      this.renderDeathMark(ctx, mark)
+    }
 
     for (const ghost of ghosts) {
       this.renderGhost(ctx, ghost)
@@ -387,7 +396,13 @@ export class CanvasRenderer {
     drawTriangle(lit, 4)
   }
 
-  private renderDoor(ctx: CanvasRenderingContext2D, doorX: number, doorY: number, nowMs: number): void {
+  private renderDoor(
+    ctx: CanvasRenderingContext2D,
+    doorX: number,
+    doorY: number,
+    nowMs: number,
+    biting: boolean
+  ): void {
     const width = TROLL_RUN_DOOR_WIDTH
     const height = TROLL_RUN_DOOR_HEIGHT
     const left = Math.round(doorX)
@@ -395,6 +410,11 @@ export class CanvasRenderer {
 
     // Three-frame pulse: a stepped animation stays crisp where a smooth fade would band.
     const pulseFrame = Math.floor(nowMs / 190) % 3
+
+    if (biting) {
+      this.renderBitingDoor(ctx, left, top, width, height, nowMs)
+      return
+    }
 
     // Stepped halo instead of a blurred gradient — nearest-neighbour upscaling keeps it clean.
     ctx.save()
@@ -421,7 +441,83 @@ export class CanvasRenderer {
     ctx.fillRect(left + width - 4, top + Math.round(height / 2), 2, 2)
   }
 
+  /**
+   * The exit with teeth. The frame stays put so the runner can still see where the door is — only
+   * the opening changes, snapping shut on a two-frame chomp that reads at 320×180 where a smooth
+   * close would just look like the door sliding.
+   */
+  private renderBitingDoor(
+    ctx: CanvasRenderingContext2D,
+    left: number,
+    top: number,
+    width: number,
+    height: number,
+    nowMs: number
+  ): void {
+    const chompOpen = Math.floor(nowMs / 110) % 2 === 0
+    const toothHeight = chompOpen ? 4 : 6
+
+    ctx.fillStyle = this.theme.hazard.body
+    ctx.fillRect(left, top, width, height)
+
+    ctx.fillStyle = this.theme.spike.socket
+    ctx.fillRect(left + 2, top + 2, width - 4, height - 4)
+
+    // Two rows of teeth biting toward the middle from the top and bottom lips.
+    ctx.fillStyle = this.theme.spike.body
+    const toothWidth = 3
+    for (let toothLeft = left + 2; toothLeft + toothWidth <= left + width - 2; toothLeft += toothWidth + 1) {
+      ctx.beginPath()
+      ctx.moveTo(toothLeft, top + 2)
+      ctx.lineTo(toothLeft + toothWidth, top + 2)
+      ctx.lineTo(toothLeft + toothWidth / 2, top + 2 + toothHeight)
+      ctx.closePath()
+      ctx.fill()
+
+      ctx.beginPath()
+      ctx.moveTo(toothLeft, top + height - 2)
+      ctx.lineTo(toothLeft + toothWidth, top + height - 2)
+      ctx.lineTo(toothLeft + toothWidth / 2, top + height - 2 - toothHeight)
+      ctx.closePath()
+      ctx.fill()
+    }
+
+    ctx.fillStyle = this.theme.hazard.lit
+    ctx.fillRect(left, top, width, 1)
+    ctx.fillRect(left, top + height - 1, width, 1)
+  }
+
+  /**
+   * Where somebody died, in their own ghost colour: a small cross fading out over its lifetime.
+   * Drawn under the ghosts so a live runner standing on the spot is never hidden by it.
+   */
+  private renderDeathMark(ctx: CanvasRenderingContext2D, mark: TrollRunDeathMark): void {
+    const remaining = Math.max(0, 1 - mark.age / TROLL_RUN_DEATH_MARK_SECONDS)
+    if (remaining <= 0) return
+
+    const centerX = Math.round(mark.x + TROLL_RUN_PHYSICS.PLAYER_WIDTH / 2)
+    const centerY = Math.round(mark.y + TROLL_RUN_PHYSICS.PLAYER_HEIGHT / 2)
+
+    ctx.save()
+    // Quantised alpha, like the door-entry dissolve — a smooth fade bands on the upscaled buffer.
+    ctx.globalAlpha = Math.ceil(remaining * 4) / 4
+    ctx.fillStyle = mark.color
+    for (let offset = -3; offset <= 3; offset++) {
+      ctx.fillRect(centerX + offset, centerY + offset, 1, 1)
+      ctx.fillRect(centerX + offset, centerY - offset, 1, 1)
+    }
+    ctx.restore()
+  }
+
   private renderEntity(ctx: CanvasRenderingContext2D, entity: TrollMovingEntity, nowMs: number): void {
+    if (entity.type === 'laser') {
+      this.renderLaser(ctx, entity, nowMs)
+      return
+    }
+
+    // A pulsing hazard in its gap has no hitbox, so drawing it would be a lie about what kills.
+    if (!trollEntityIsActive(entity)) return
+
     if (entity.type === 'buzzsaw') {
       this.renderSaw(ctx, entity, nowMs)
       return
@@ -461,6 +557,45 @@ export class CanvasRenderer {
     ctx.fillRect(left, top + entity.h - 1, entity.w, 1)
     ctx.fillRect(left, top, 1, entity.h)
     ctx.fillRect(left + entity.w - 1, top, 1, entity.h)
+  }
+
+  /**
+   * A laser reads in two phases and the emitters are drawn in both, because a beam that vanished
+   * without leaving a socket behind would look like a level that simply lost a wall. Dormant: dim
+   * caps and a dotted trace of where the beam will return. Live: a hot core inside a wider glow.
+   */
+  private renderLaser(ctx: CanvasRenderingContext2D, entity: TrollMovingEntity, nowMs: number): void {
+    const left = Math.round(entity.x)
+    const top = Math.round(entity.y)
+    const beamWidth = Math.max(1, entity.w)
+    const capHeight = 2
+
+    ctx.fillStyle = this.theme.spike.socket
+    ctx.fillRect(left - 1, top, beamWidth + 2, capHeight)
+    ctx.fillRect(left - 1, top + entity.h - capHeight, beamWidth + 2, capHeight)
+
+    if (!trollEntityIsActive(entity)) {
+      ctx.fillStyle = this.theme.spike.socket
+      for (let offset = top + capHeight + 1; offset < top + entity.h - capHeight; offset += 4) {
+        ctx.fillRect(left, offset, beamWidth, 1)
+      }
+      return
+    }
+
+    const beamTop = top + capHeight
+    const beamHeight = Math.max(1, entity.h - capHeight * 2)
+
+    ctx.fillStyle = this.theme.hazard.body
+    ctx.fillRect(left, beamTop, beamWidth, beamHeight)
+
+    // The core crawls so a live beam never reads as a painted stripe.
+    ctx.fillStyle = this.theme.hazard.lit
+    const coreWidth = Math.max(1, Math.round(beamWidth / 2))
+    ctx.fillRect(left + Math.floor((beamWidth - coreWidth) / 2), beamTop, coreWidth, beamHeight)
+    for (let spark = 0; spark < beamHeight; spark += 6) {
+      const drift = (spark + Math.floor(nowMs / 40)) % beamHeight
+      ctx.fillRect(left, beamTop + drift, beamWidth, 1)
+    }
   }
 
   private renderSaw(ctx: CanvasRenderingContext2D, entity: TrollMovingEntity, nowMs: number): void {
