@@ -121,13 +121,13 @@ export const WORLD_4_LEVELS: TrollRunLevel[] = [
 
   // -------------------------------------------------------------
   // LEVEL 3: "Laser Wall"
-  // Trap: Spikes erupt into a vertical wall directly in front of door.
+  // Trap: Two beams across the only corridor, each blinking to its own count.
   // -------------------------------------------------------------
   (() => {
     const tiles = createEmptyGrid()
     for (let c = 0; c < 20; c++) tiles[9][c] = TrollRunTileType.SOLID
 
-    // Overhead ledge
+    // Overhead ledge — it caps the corridor, so neither beam can be jumped over.
     for (let c = 8; c <= 14; c++) tiles[5][c] = TrollRunTileType.SOLID
 
     return {
@@ -139,25 +139,35 @@ export const WORLD_4_LEVELS: TrollRunLevel[] = [
       spawn: { x: 32, y: 120 },
       door: { x: 272, y: 124 },
       tiles,
-      triggers: [
+      triggers: [],
+      // Periods of 2.3s and 2.8s, so the two gaps drift apart and back together instead of opening in
+      // step — there is no single rhythm to memorise, and roughly every third cycle they line up for a
+      // clean run through both. Each beam starts dormant, which is what makes the solver's parked read
+      // of them honest: waiting is always a way through, and the 44px of clear floor between them is
+      // where the runner does it.
+      movingEntities: [
         {
-          zone: { x: 180, y: 90, w: 40, h: 60 },
-          condition: 'enter',
-          actions: [
-            {
-              type: 'spawn_spikes',
-              positions: [
-                [15, 9],
-                [15, 8],
-                [15, 7],
-                [15, 6],
-              ],
-              direction: 'up',
-            },
-          ],
+          id: 'beam-near',
+          x: 152,
+          y: 96,
+          w: 4,
+          h: 48,
+          type: 'laser',
+          killsOnTouch: true,
+          pulse: { offSeconds: 1, onSeconds: 1.3 },
+        },
+        {
+          id: 'beam-far',
+          x: 200,
+          y: 96,
+          w: 4,
+          h: 48,
+          type: 'laser',
+          killsOnTouch: true,
+          pulse: { offSeconds: 1.2, onSeconds: 1.6, phaseSeconds: 0.6 },
         },
       ],
-      parTime: 5,
+      parTime: 8,
     }
   })(),
 
@@ -187,10 +197,13 @@ export const WORLD_4_LEVELS: TrollRunLevel[] = [
       spawn: { x: 24, y: 120 },
       door: { x: 272, y: 124 },
       tiles,
+      // `land_on`, not `enter`: the zone covers the flight path as well as the platform, so an
+      // entering runner sprang this in mid-air and the landing was gone before they arrived. Waiting
+      // for the landing is what turns it back into a trap you can learn — touch down, jump again.
       triggers: [
         {
           zone: { x: 128, y: 80, w: 48, h: 40 },
-          condition: 'enter',
+          condition: 'land_on',
           actions: [
             {
               type: 'collapse_tiles',
@@ -199,11 +212,12 @@ export const WORLD_4_LEVELS: TrollRunLevel[] = [
                 [9, 7],
                 [10, 7],
               ],
+              delay: 0.35,
             },
           ],
         },
       ],
-      parTime: 5,
+      parTime: 6,
     }
   })(),
 

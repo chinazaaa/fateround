@@ -29,11 +29,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   if (!hostToken) return NextResponse.json({ ok: false }, { status: 200 })
 
   const supabase = getSupabaseAdmin()
-  const { data: game } = await supabase
-    .from('games')
-    .select('host_token, host_user_id')
-    .eq('id', gameId)
-    .maybeSingle()
+  const { data: game } = await supabase.from('games').select('host_token, host_user_id').eq('id', gameId).maybeSingle()
   if (!game) return NextResponse.json({ ok: false, notFound: true }, { status: 200 })
 
   const ok = game.host_token === hostToken

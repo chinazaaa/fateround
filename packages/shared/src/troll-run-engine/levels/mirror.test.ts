@@ -9,6 +9,7 @@ import {
   TROLL_RUN_GRID_ROWS,
   TROLL_RUN_INTERNAL_HEIGHT,
   TROLL_RUN_INTERNAL_WIDTH,
+  TROLL_RUN_SPAWNED_ENTITY_SIZE,
   TrollRunTileType,
   type TrollRunLevel,
 } from '../types'
@@ -140,5 +141,101 @@ describe('mirrorTrollRunLevel', () => {
     ).map((level) => level.id)
 
     expect(lostTheirRoute).toEqual(['doors-09'])
+  })
+
+  // A patrol band that kept its original bounds after reflection would put the machinery somewhere
+  // else entirely — a press sweeping the left wall of a level whose corridor is now on the right.
+  it('reflects horizontal patrol bounds and leaves vertical ones alone', () => {
+    for (const level of ALL_TROLL_RUN_LEVELS) {
+      const mirrored = mirrorTrollRunLevel(level, `${level.id}:m`)
+      const original = level.movingEntities ?? []
+      const reflected = mirrored.movingEntities ?? []
+
+      expect(reflected, `${level.id}: entity count changed`).toHaveLength(original.length)
+
+      original.forEach((entity, entityIndex) => {
+        const copy = reflected[entityIndex]
+        const where = `${level.id} / ${entity.id}`
+
+        expect(copy.x, `${where}: x`).toBe(TROLL_RUN_INTERNAL_WIDTH - entity.x - entity.w)
+        expect(copy.w, `${where}: width`).toBe(entity.w)
+        expect(copy.h, `${where}: height`).toBe(entity.h)
+        if (entity.vx !== undefined) {
+          expect(copy.vx, `${where}: vx flips`).toBe(-entity.vx)
+        }
+        expect(copy.vy, `${where}: vy is unchanged`).toBe(entity.vy)
+
+        if (!entity.patrol) {
+          expect(copy.patrol, `${where}: patrol stays absent`).toBeUndefined()
+          return
+        }
+
+        if (entity.patrol.minX !== undefined) {
+          expect(copy.patrol?.maxX, `${where}: minX becomes maxX`).toBe(
+            TROLL_RUN_INTERNAL_WIDTH - entity.patrol.minX - entity.w
+          )
+        }
+        if (entity.patrol.maxX !== undefined) {
+          expect(copy.patrol?.minX, `${where}: maxX becomes minX`).toBe(
+            TROLL_RUN_INTERNAL_WIDTH - entity.patrol.maxX - entity.w
+          )
+        }
+        expect(copy.patrol?.minY, `${where}: minY is unchanged`).toBe(entity.patrol.minY)
+        expect(copy.patrol?.maxY, `${where}: maxY is unchanged`).toBe(entity.patrol.maxY)
+      })
+    }
+  })
+
+  // A pulse has no handedness, so the mirror keeps its values — but it must hand over a copy.
+  // `mirrorEntity` spreads the entity, and a shared `pulse` would let a mirrored level write into the
+  // authored singleton that every other client is reading.
+  it('copies a pulse through the mirror verbatim rather than sharing it', () => {
+    for (const level of ALL_TROLL_RUN_LEVELS) {
+      const mirrored = mirrorTrollRunLevel(level, `${level.id}:m`)
+      const reflected = mirrored.movingEntities ?? []
+
+      ;(level.movingEntities ?? []).forEach((entity, entityIndex) => {
+        const copy = reflected[entityIndex]
+        const where = `${level.id} / ${entity.id}`
+
+        if (!entity.pulse) {
+          expect(copy.pulse, `${where}: pulse stays absent`).toBeUndefined()
+          return
+        }
+
+        expect(copy.pulse, `${where}: pulse values`).toEqual(entity.pulse)
+        expect(copy.pulse, `${where}: pulse is shared with the authored level`).not.toBe(entity.pulse)
+      })
+    }
+  })
+
+  // The mirror reads the spawn box from the action, so a widened spawn keeps its size through a
+  // reflection rather than snapping back to the 14px default the engine used before `size` existed.
+  it('carries a spawned entity size through the mirror', () => {
+    for (const level of ALL_TROLL_RUN_LEVELS) {
+      const mirrored = mirrorTrollRunLevel(level, `${level.id}:m`)
+
+      level.triggers.forEach((trigger, triggerIndex) => {
+        trigger.actions.forEach((action, actionIndex) => {
+          if (action.type !== 'spawn_entity') return
+          const copy = mirrored.triggers[triggerIndex].actions[actionIndex]
+          expect(copy.type).toBe('spawn_entity')
+          if (copy.type !== 'spawn_entity') return
+
+          const where = `${level.id} / trigger #${triggerIndex}`
+          expect(copy.size, `${where}: spawn size`).toBe(action.size)
+          expect(copy.solid, `${where}: spawn solidity`).toBe(action.solid)
+          expect(copy.entityType, `${where}: spawn type`).toBe(action.entityType)
+
+          const spawnWidth = action.size ?? TROLL_RUN_SPAWNED_ENTITY_SIZE
+          expect(copy.position.x, `${where}: spawn x`).toBe(TROLL_RUN_INTERNAL_WIDTH - action.position.x - spawnWidth)
+          expect(copy.position.y, `${where}: spawn y`).toBe(action.position.y)
+          if (action.velocity) {
+            expect(copy.velocity?.x, `${where}: spawn vx flips`).toBe(-action.velocity.x)
+            expect(copy.velocity?.y, `${where}: spawn vy is unchanged`).toBe(action.velocity.y)
+          }
+        })
+      })
+    }
   })
 })
