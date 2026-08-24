@@ -100,14 +100,32 @@ OTEL_EXPORTER_OTLP_ENDPOINT=$(get_param_opt --name "/$PREFIX/OTEL_EXPORTER_OTLP_
 OTEL_EXPORTER_OTLP_HEADERS=$(get_param_opt --with-decryption --name "/$PREFIX/OTEL_EXPORTER_OTLP_HEADERS")
 OTEL_RESOURCE_ATTRIBUTES=$(get_param_opt --name "/$PREFIX/OTEL_RESOURCE_ATTRIBUTES")
 
-# Background workers. Both default to ON in production (the code gates on NODE_ENV), which is
-# right for prod and wrong for dev: a deployed dev build also sets NODE_ENV=production, so
-# dev has been running the same 2.5s game ticker and 5m reaper as prod against a FREE Supabase
-# project — which is what exhausted its egress quota. Optional, empty = unchanged behaviour.
+# Background workers. The code now gates these on `isProdDeployment()` (src/lib/app-env.ts),
+# which resolves from APP_ENV or the NEXT_PUBLIC_APP_URL host — NOT NODE_ENV, which a deployed
+# dev build also sets to production. So dev turns these off by itself and these three are pure
+# overrides: empty means "no override", not "production default".
 # Which DEPLOYMENT this is (prod|dev). Optional: src/lib/app-env.ts derives it from the host in
 # NEXT_PUBLIC_APP_URL when unset, so a stack cannot inherit prod behaviour by omission. Set it
 # explicitly only to override that (e.g. a preview stack on a prod-looking hostname).
-APP_ENV=$(get_param_opt --name "/$PREFIX/APP_ENV")
+# Read APP_ENV so a LOOKUP FAILURE cannot silently promote a stack to prod behaviour.
+# get_param_opt maps every failure — IAM denial, throttling, a transient SSM blip — to an empty
+# value, which is indistinguishable from "not set". For most parameters that is fine. Here it is
+# not: a non-prod stack that relies on APP_ENV=dev to override a prod-looking NEXT_PUBLIC_APP_URL
+# would fall through to host detection and start the background workers against the shared
+# Supabase project. ParameterNotFound is the only benign miss; anything else pins APP_ENV to dev,
+# the direction that does LESS.
+APP_ENV=$(
+  err_file=$(mktemp)
+  if val=$(aws ssm get-parameter --region "$REGION" --name "/$PREFIX/APP_ENV" --query 'Parameter.Value' --output text 2>"$err_file"); then
+    printf '%s' "$val"
+  elif grep -q "ParameterNotFound" "$err_file"; then
+    printf ''
+  else
+    echo "WARN: APP_ENV lookup failed -- $(tr -d '\n' < "$err_file"); defaulting to dev (safe side)" >&2
+    printf 'dev'
+  fi
+  rm -f "$err_file"
+)
 GAME_TICK_DISABLED=$(get_param_opt --name "/$PREFIX/GAME_TICK_DISABLED")
 GAME_TICK_INTERVAL_MS=$(get_param_opt --name "/$PREFIX/GAME_TICK_INTERVAL_MS")
 IDLE_REAPER_DISABLED=$(get_param_opt --name "/$PREFIX/IDLE_REAPER_DISABLED")

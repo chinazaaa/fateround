@@ -253,11 +253,13 @@ variable "origin_key" {
 }
 
 # ── Background workers ───────────────────────────────────────────────────────────────────────
-# The in-process game ticker and idle reaper gate on NODE_ENV === "production" in code. A
-# DEPLOYED dev build satisfies that too, so dev ran prod-grade background load against a free
-# Supabase project and exhausted its egress quota (402 exceed_egress_quota, 2026-08-24), taking
-# the RLS Boundaries check offline with it. These let a non-prod stack turn that load down.
-# Leave empty on prod: empty means "not set", and the code keeps its production defaults.
+# The background workers gate on `isProdDeployment()` (src/lib/app-env.ts), which resolves from
+# APP_ENV or the NEXT_PUBLIC_APP_URL host — not NODE_ENV, which a deployed dev build also sets to
+# "production". That misuse is what ran prod-grade load against a free Supabase project until it
+# hit 402 exceed_egress_quota (2026-08-24) and took the RLS Boundaries check offline.
+#
+# A non-prod stack therefore needs NO variables here: host detection turns the workers off by
+# itself. These three are explicit overrides only, and empty means "no override".
 
 variable "app_env" {
   description = "APP_ENV — which deployment this is (\"prod\" or \"dev\"). Optional: the app derives it from the NEXT_PUBLIC_APP_URL host when unset, so only set this to override that."
@@ -277,9 +279,16 @@ variable "game_tick_disabled" {
 }
 
 variable "game_tick_interval_ms" {
-  description = "GAME_TICK_INTERVAL_MS — ticker cadence in ms. Empty = code default (2500). Raise it on dev rather than disabling, to keep timed games advancing."
+  description = "GAME_TICK_INTERVAL_MS — ticker cadence in ms, as a positive integer. Empty = code default (2500). Raise it on dev rather than disabling, to keep timed games advancing."
   type        = string
   default     = ""
+
+  # A negative value is the dangerous one: `Number(x) || 2500` keeps it (non-zero is truthy) and
+  # setInterval clamps it to ~1ms, hammering the database — the opposite of the intent here.
+  validation {
+    condition     = var.game_tick_interval_ms == "" || can(regex("^[1-9][0-9]*$", var.game_tick_interval_ms))
+    error_message = "game_tick_interval_ms must be a positive integer (milliseconds), or empty for the code default."
+  }
 }
 
 variable "idle_reaper_disabled" {
