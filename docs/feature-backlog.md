@@ -42,6 +42,14 @@ never gets the rotated one — the player's seat becomes unreachable.
 Move the read + rotate into a single RPC or wrap it in a transaction.
 Own PR.
 
+### Popular games by country in admin stats
+So ads can be targeted per market (e.g. which game to promote to Nigeria vs
+UK). Needs a country signal on plays — either from `profiles.country` if we
+capture that at signup, or Cloudflare/Vercel geo headers snapshotted onto
+`plays` / `games` at create time. Admin stats page grows a "Popularity by
+country" table: country × game_type → plays, distinct players, rooms
+created, DAU. Filter by date range. Own PR.
+
 ## Shipped
 
 Previously backlogged, now delivered:
