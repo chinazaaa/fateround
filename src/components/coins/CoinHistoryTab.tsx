@@ -44,17 +44,43 @@ const PURCHASE_KIND_LABELS: Record<string, string> = {
   extra_bot: 'Extra bot',
 }
 
-/** Human-readable purchase description from a shop_purchase ref_id
- *  (format `<kind>:<slug>`, e.g. `animation:winner-anim-confetti`). */
+/** Human-readable purchase description from a shop_purchase ref_id.
+ *
+ *  Durable purchases: `<kind>:<slug>` (e.g. `animation:winner-anim-confetti`)
+ *    → "Winner animation · winner-anim-confetti".
+ *
+ *  Extra bot (post 20261103120000_extra_bot_ref_id_with_game):
+ *    `extra_bot:<game_type>:<game_code>:<player_uuid>`
+ *    → "Extra bot · Whot TXVHTD".
+ *
+ *  Legacy extra bot (pre-migration rows):
+ *    `extra_bot:<player_uuid>`
+ *    → "Extra bot" (drop the UUID; it wasn't useful and rendered ugly).
+ */
 function shopPurchaseLabel(refId: string | null): string | null {
   if (!refId) return null
   const colon = refId.indexOf(':')
   if (colon <= 0) return null
   const kind = refId.slice(0, colon)
-  const slug = refId.slice(colon + 1)
-  if (!slug) return null
+  const rest = refId.slice(colon + 1)
+  if (!rest) return null
   const kindLabel = PURCHASE_KIND_LABELS[kind] ?? kind
-  return `${kindLabel} · ${slug}`
+
+  if (kind === 'extra_bot') {
+    // New: <game_type>:<game_code>:<player_uuid>. Old: <player_uuid>.
+    const parts = rest.split(':')
+    if (parts.length >= 3) {
+      const gameType = parts[0]
+      const gameCode = parts[1]
+      const gameName = GAME_TYPE_CONFIG[gameType as GameType]?.label ?? gameType
+      return `${kindLabel} · ${gameName} ${gameCode}`
+    }
+    // Old-format row (raw UUID) — hide the UUID; the "when" column is the
+    // primary way to distinguish these anyway.
+    return kindLabel
+  }
+
+  return `${kindLabel} · ${rest}`
 }
 
 function describeRow(row: LedgerRow): string {
