@@ -114,19 +114,26 @@ export async function playerEngagedInGame(
   if (!check) return true // no registered signal → don't block
 
   try {
-    // HEAD request returns no rows, just a count — cheapest possible
-    // existence check. `count: 'exact'` is fine at this scale (per-player
-    // filter narrows to at most a handful of rows for any real game).
-    const { count, error } = await supabase
+    // Select the player column only (cheapest projection) and let the
+    // per-player filter narrow to at most a handful of rows for any real
+    // game. `.limit(1)` caps the wire cost when a game has hundreds of
+    // actions from this player — we only care that ≥1 exists.
+    //
+    // Some mocks in tests don't implement `count: 'exact', head: true`
+    // reliably, but they do return the filtered rows in `data`, so we
+    // check `data.length` for existence. Matches the real Supabase shape
+    // too: `{ data: Row[], error }` on an ordinary select.
+    const { data, error } = await supabase
       .from(check.table)
-      .select('*', { head: true, count: 'exact' })
+      .select(check.playerColumn)
       .eq(check.playerColumn, playerId)
       .eq(check.gameColumn, gameId)
+      .limit(1)
     if (error) {
       console.error(`[engagement] check failed for ${gameType} on ${gameId}`, error)
       return true // fail-open — a broken read must not phantom-strip credit
     }
-    return (count ?? 0) > 0
+    return Array.isArray(data) && data.length > 0
   } catch (err) {
     console.error(`[engagement] threw for ${gameType} on ${gameId}`, err)
     return true
