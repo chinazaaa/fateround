@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import { useTheme } from '@/components/ThemeProvider'
 import type { Theme } from '@/lib/theme-cookie'
-import { themeStyleVars, type ThemeConfig } from '@/lib/themes'
+import { type ThemeConfig } from '@/lib/themes'
 import { Glyph } from '@/components/icons/Glyph'
 
 /** Per-theme description of its two named modes (all themes adapt to light/dark). */
@@ -71,219 +71,6 @@ const GAME_LABELS: Record<string, { title: string; badge: string }> = {
   monopoly: { title: 'Estate Kings', badge: 'MONOPOLY' },
 }
 
-function SudokuScene({ theme }: { theme: ThemeConfig }) {
-  // Compact 4x4 mini-grid, dashed 2x2 sub-boxes, mixture of givens and
-  // blanks — reads as "sudoku" at a glance without pretending to be a
-  // solvable 9x9 puzzle in a preview.
-  const cells: (number | null)[] = [1, null, 3, 4, null, 4, null, 2, 3, null, 4, null, 4, 2, null, 3]
-  return (
-    <div className="glass-card-strong p-4 space-y-3">
-      <p className="text-sm font-semibold text-center text-body">Round 1 — solve the grid</p>
-      <div
-        className="mx-auto grid aspect-square w-40 grid-cols-4 gap-px rounded-lg p-1"
-        style={{ background: theme.preview.text, border: `2px solid ${theme.preview.text}` }}
-      >
-        {cells.map((v, i) => (
-          <div
-            key={i}
-            className="flex items-center justify-center text-sm font-bold"
-            style={{ background: theme.preview.bg, color: theme.preview.text }}
-          >
-            {v ?? ''}
-          </div>
-        ))}
-      </div>
-      <p className="text-[10px] text-center text-muted">2:14 · 3 hints left</p>
-    </div>
-  )
-}
-
-function WhotScene({ theme }: { theme: ThemeConfig }) {
-  // Fan of three Whot-style cards + a face-up top card. Uses theme accent
-  // as the card face so the reskin comes through even without a full
-  // globals.css block for this slug.
-  const hand = [
-    { shape: '●', label: '5' },
-    { shape: '■', label: '10' },
-    { shape: '★', label: '20' },
-  ]
-  return (
-    <div className="glass-card-strong p-4 space-y-3">
-      <p className="text-sm font-semibold text-center text-body">Your turn — play a card</p>
-      <div className="relative mx-auto flex h-24 items-end justify-center">
-        {hand.map((card, i) => (
-          <div
-            key={i}
-            className="absolute flex h-24 w-16 flex-col justify-between rounded-lg border p-1.5 shadow-md"
-            style={{
-              background: theme.preview.bg,
-              borderColor: theme.preview.text,
-              color: theme.preview.accent,
-              transform: `translateX(${(i - 1) * 28}px) rotate(${(i - 1) * 6}deg)`,
-              zIndex: i,
-            }}
-          >
-            <span className="text-[10px] font-bold leading-none">{card.label}</span>
-            <span className="text-center text-2xl leading-none">{card.shape}</span>
-            <span className="rotate-180 text-[10px] font-bold leading-none">{card.label}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-function LudoScene({ theme }: { theme: ThemeConfig }) {
-  // Four home yards + the classic cross of the Ludo track. Colors are
-  // fixed to the traditional palette (red/green/yellow/blue) so it reads
-  // as Ludo regardless of theme; the frame/track use the theme palette.
-  const yards = ['#dc2626', '#16a34a', '#eab308', '#2563eb']
-  return (
-    <div className="glass-card-strong p-4 space-y-3">
-      <p className="text-sm font-semibold text-center text-body">Roll to move · 🎲 4</p>
-      <div
-        className="mx-auto grid aspect-square w-40 grid-cols-3 gap-0.5 rounded-lg p-1"
-        style={{ background: theme.preview.text, border: `2px solid ${theme.preview.text}` }}
-      >
-        {[0, 1, 2, 3].map((idx) => {
-          const positions = [0, 2, 6, 8]
-          const gridPos = positions[idx]
-          return (
-            <div
-              key={`yard-${idx}`}
-              className="flex items-center justify-center rounded"
-              style={{ background: yards[idx], gridArea: `${Math.floor(gridPos / 3) + 1} / ${(gridPos % 3) + 1}` }}
-            >
-              <span className="text-lg">●</span>
-            </div>
-          )
-        })}
-        <div className="flex items-center justify-center" style={{ background: theme.preview.bg, gridArea: '1 / 2' }}>
-          <span className="text-xs" style={{ color: theme.preview.accent }}>
-            ▲
-          </span>
-        </div>
-        <div className="flex items-center justify-center" style={{ background: theme.preview.bg, gridArea: '2 / 1' }}>
-          <span className="text-xs" style={{ color: theme.preview.accent }}>
-            ◀
-          </span>
-        </div>
-        <div
-          className="flex items-center justify-center rounded"
-          style={{ background: theme.preview.accent, gridArea: '2 / 2' }}
-        >
-          <span className="text-sm font-bold" style={{ color: theme.preview.bg }}>
-            ★
-          </span>
-        </div>
-        <div className="flex items-center justify-center" style={{ background: theme.preview.bg, gridArea: '2 / 3' }}>
-          <span className="text-xs" style={{ color: theme.preview.accent }}>
-            ▶
-          </span>
-        </div>
-        <div className="flex items-center justify-center" style={{ background: theme.preview.bg, gridArea: '3 / 2' }}>
-          <span className="text-xs" style={{ color: theme.preview.accent }}>
-            ▼
-          </span>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function MonopolyScene({ theme }: { theme: ThemeConfig }) {
-  // Board corner + a strip of three property tiles with the theme accent
-  // as their color-band — matches how the Monopoly board actually looks
-  // more than a generic KMK card would.
-  const props = [
-    { name: 'Ikoyi', price: '₦300' },
-    { name: 'Lekki', price: '₦320' },
-    { name: 'V.I.', price: '₦350' },
-  ]
-  return (
-    <div className="glass-card-strong p-4 space-y-3">
-      <p className="text-sm font-semibold text-center text-body">Your turn — 🎲 7</p>
-      <div
-        className="mx-auto grid w-full grid-cols-4 gap-0.5 rounded-lg p-1"
-        style={{ background: theme.preview.text, border: `2px solid ${theme.preview.text}` }}
-      >
-        <div
-          className="flex aspect-square flex-col items-center justify-center rounded text-[9px] font-bold"
-          style={{ background: theme.preview.bg, color: theme.preview.text }}
-        >
-          GO
-          <span className="text-base leading-none" style={{ color: theme.preview.accent }}>
-            ⇐
-          </span>
-        </div>
-        {props.map((p) => (
-          <div
-            key={p.name}
-            className="flex aspect-square flex-col overflow-hidden rounded"
-            style={{ background: theme.preview.bg }}
-          >
-            <div className="h-2 w-full" style={{ background: theme.preview.accent }} />
-            <div className="flex flex-1 flex-col items-center justify-center px-0.5 text-center">
-              <span className="text-[8px] font-bold leading-tight" style={{ color: theme.preview.text }}>
-                {p.name}
-              </span>
-              <span className="text-[8px] leading-tight" style={{ color: theme.preview.text }}>
-                {p.price}
-              </span>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-function KissMarryKillScene() {
-  // The original preview scene — used for themes on games that don't have
-  // a dedicated mini-scene above (default/generic app-wide themes shown
-  // on Fate Round-style vote games).
-  return (
-    <div className="glass-card-strong p-4 space-y-3">
-      <p className="text-sm font-semibold text-center text-body">Round 1 — pick your fate</p>
-      <div className="grid grid-cols-3 gap-2">
-        {[
-          { emoji: '💋', label: 'Kiss', color: 'var(--kiss)' },
-          { emoji: '💍', label: 'Marry', color: 'var(--marry)' },
-          { emoji: '💀', label: 'Kill', color: 'var(--kill)' },
-        ].map((slot) => (
-          <div key={slot.label} className="surface-inset rounded-xl px-2 py-2.5 text-center space-y-0.5">
-            <span className="text-base leading-none">{slot.emoji}</span>
-            <p className="text-[10px] font-bold" style={{ color: slot.color }}>
-              {slot.label}
-            </p>
-          </div>
-        ))}
-      </div>
-      <button type="button" className="btn-primary btn-fit mx-auto px-6 py-2 text-sm pointer-events-none">
-        Submit vote
-      </button>
-    </div>
-  )
-}
-
-/** Pick the game-shaped mini-scene for the theme's owning game. Falls back
- *  to the Kiss/Marry/Kill scene for app-wide themes shown on Fate Round
- *  vote games, or when the owning game type has no dedicated preview. */
-function GameScene({ theme, gameType }: { theme: ThemeConfig; gameType?: string }) {
-  switch (gameType) {
-    case 'sudoku':
-      return <SudokuScene theme={theme} />
-    case 'whot':
-      return <WhotScene theme={theme} />
-    case 'ludo':
-      return <LudoScene theme={theme} />
-    case 'monopoly':
-      return <MonopolyScene theme={theme} />
-    default:
-      return <KissMarryKillScene />
-  }
-}
-
 function ThemeSampleRoom({ theme, siteMode, gameType }: { theme: ThemeConfig; siteMode: Theme; gameType?: string }) {
   const hasRoomVars = Object.keys(theme.cssVars || {}).length > 0
   const roomStyle = (theme.cssVars || {}) as unknown as React.CSSProperties
@@ -329,7 +116,181 @@ function ThemeSampleRoom({ theme, siteMode, gameType }: { theme: ThemeConfig; si
           </div>
         </div>
 
-        <GameScene theme={theme} gameType={gameType} />
+        <GameSpecificSample gameType={gameType} themeId={theme.id} />
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Game-appropriate preview surface inside ThemeSampleRoom. The generic
+ * "Kiss Marry Kill" card was misleading for Whot/Sudoku/Ludo/Monopoly theme
+ * shoppers — the whole point of buying a game theme is to see how THAT game
+ * will look, so we render a plausible mini board or card table per
+ * game_type. Every branch inherits the theme CSS vars from the wrapping
+ * ThemeSampleRoom. This replaces the earlier `GameScene` prototype which
+ * hard-read `theme.preview` colors — CSS vars pick up the real palette
+ * defined in globals.css for each theme when it lands.
+ */
+function GameSpecificSample({ gameType, themeId }: { gameType?: string; themeId: string }) {
+  if (gameType === 'whot') return <WhotSample />
+  if (gameType === 'ludo') return <LudoSample />
+  if (gameType === 'sudoku') return <SudokuSample />
+  if (gameType === 'monopoly') return <MonopolySample themeId={themeId} />
+  return <KissMarryKillSample />
+}
+
+function KissMarryKillSample() {
+  return (
+    <div className="glass-card-strong p-4 space-y-3">
+      <p className="text-sm font-semibold text-center text-body">Round 1 — pick your fate</p>
+      <div className="grid grid-cols-3 gap-2">
+        {[
+          { emoji: '💋', label: 'Kiss', color: 'var(--kiss)' },
+          { emoji: '💍', label: 'Marry', color: 'var(--marry)' },
+          { emoji: '💀', label: 'Kill', color: 'var(--kill)' },
+        ].map((slot) => (
+          <div key={slot.label} className="surface-inset rounded-xl px-2 py-2.5 text-center space-y-0.5">
+            <span className="text-base leading-none">{slot.emoji}</span>
+            <p className="text-[10px] font-bold" style={{ color: slot.color }}>
+              {slot.label}
+            </p>
+          </div>
+        ))}
+      </div>
+      <button type="button" className="btn-primary btn-fit mx-auto px-6 py-2 text-sm pointer-events-none">
+        Submit vote
+      </button>
+    </div>
+  )
+}
+
+function WhotSample() {
+  // Face-up call card + a three-card hand. Uses the wrapping theme's
+  // background + primary vars so a Neon or Naija Whot theme actually looks
+  // like Neon or Naija cards, not a generic KMK sample.
+  return (
+    <div className="glass-card-strong p-4 space-y-3">
+      <p className="text-sm font-semibold text-center text-body">Match shape or number</p>
+      <div className="flex justify-center">
+        <div
+          className="flex h-24 w-16 flex-col items-center justify-center rounded-lg border-2 shadow"
+          style={{ background: 'var(--surface)', borderColor: 'var(--primary)', color: 'var(--foreground)' }}
+        >
+          <span className="text-2xl leading-none">⭐</span>
+          <span className="mt-1 text-lg font-black">7</span>
+        </div>
+      </div>
+      <div className="flex justify-center gap-1.5">
+        {[
+          { icon: '⭕', n: '3' },
+          { icon: '⭐', n: '10' },
+          { icon: '△', n: '2' },
+        ].map((c, i) => (
+          <div
+            key={i}
+            className="flex h-20 w-12 flex-col items-center justify-center rounded-md border shadow-sm"
+            style={{ background: 'var(--card)', borderColor: 'var(--border)', color: 'var(--foreground)' }}
+          >
+            <span className="text-lg leading-none">{c.icon}</span>
+            <span className="mt-0.5 text-sm font-bold">{c.n}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function LudoSample() {
+  // Four coloured home bases with a piece each — the classic Ludo shape.
+  const bases = [
+    { color: '#c62828', label: 'Red' },
+    { color: '#1565c0', label: 'Blue' },
+    { color: '#2e7d32', label: 'Green' },
+    { color: '#f9a825', label: 'Yellow' },
+  ]
+  return (
+    <div className="glass-card-strong p-4 space-y-3">
+      <p className="text-sm font-semibold text-center text-body">Race four pieces home</p>
+      <div className="mx-auto grid w-40 grid-cols-2 gap-1.5">
+        {bases.map((b) => (
+          <div
+            key={b.label}
+            className="flex h-16 items-center justify-center rounded-lg border-2"
+            style={{ background: `color-mix(in srgb, ${b.color} 20%, var(--surface))`, borderColor: b.color }}
+          >
+            <span className="h-5 w-5 rounded-full border-2 border-white shadow" style={{ background: b.color }} />
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function SudokuSample() {
+  // 4×4 mini board — enough to hint the grid and number style without a
+  // full 9×9's visual noise at preview size.
+  const cells = [
+    ['3', '', '', '1'],
+    ['', '2', '4', ''],
+    ['', '4', '2', ''],
+    ['1', '', '', '3'],
+  ]
+  return (
+    <div className="glass-card-strong p-4 space-y-3">
+      <p className="text-sm font-semibold text-center text-body">Fill the grid</p>
+      <div className="mx-auto grid w-40 grid-cols-4 gap-px" style={{ background: 'var(--border)' }}>
+        {cells.flatMap((row, r) =>
+          row.map((v, c) => (
+            <div
+              key={`${r}-${c}`}
+              className="flex h-10 items-center justify-center text-sm font-bold"
+              style={{ background: 'var(--surface)', color: v ? 'var(--primary)' : 'var(--foreground)' }}
+            >
+              {v}
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  )
+}
+
+function MonopolySample({ themeId }: { themeId: string }) {
+  // Three deed cards in the accent colour of the Monopoly edition being
+  // previewed. Edition-name label picks up the theme id so USA, Christmas,
+  // Naija editions read as themselves.
+  const editionLabel =
+    themeId === 'america'
+      ? 'USA edition'
+      : themeId === 'christmas'
+        ? 'Christmas edition'
+        : themeId === 'naija'
+          ? 'Naija edition'
+          : themeId === 'pirate'
+            ? 'High Seas edition'
+            : themeId === 'arctic'
+              ? 'Polar edition'
+              : 'London edition'
+  return (
+    <div className="glass-card-strong p-4 space-y-3">
+      <p className="text-sm font-semibold text-center text-body">{editionLabel}</p>
+      <div className="flex justify-center gap-1.5">
+        {['deed', 'deed', 'deed'].map((_, i) => (
+          <div
+            key={i}
+            className="flex h-24 w-16 flex-col overflow-hidden rounded-md border shadow-sm"
+            style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
+          >
+            <div className="h-3" style={{ background: 'var(--primary)' }} />
+            <div className="flex flex-1 flex-col items-center justify-center px-1 text-center">
+              <span className="text-[9px] font-bold uppercase" style={{ color: 'var(--foreground)' }}>
+                Title Deed
+              </span>
+              <span className="mt-0.5 text-[9px] text-muted">$200</span>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   )
