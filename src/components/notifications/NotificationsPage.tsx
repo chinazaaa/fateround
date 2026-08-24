@@ -16,9 +16,22 @@ import { authHeaders } from '@/lib/auth-headers'
 
 type QuietHours = {
   mode: 'off' | 'quiet' | 'available'
-  startMinutes: number | null
-  endMinutes: number | null
+  // 'quiet' and 'available' keep independent windows — editing one never
+  // touches the other.
+  quietStartMinutes: number | null
+  quietEndMinutes: number | null
+  availableStartMinutes: number | null
+  availableEndMinutes: number | null
   timezone: string | null
+}
+
+const EMPTY_QUIET_HOURS: QuietHours = {
+  mode: 'off',
+  quietStartMinutes: null,
+  quietEndMinutes: null,
+  availableStartMinutes: null,
+  availableEndMinutes: null,
+  timezone: null,
 }
 
 type Snapshot = {
@@ -133,7 +146,7 @@ export function NotificationsPage({ preselectGameType }: { preselectGameType?: s
         if (!cancelled)
           setSnapshot({
             subscribedGameTypes: [],
-            quietHours: { mode: 'off', startMinutes: null, endMinutes: null, timezone: null },
+            quietHours: EMPTY_QUIET_HOURS,
             countsByGameType: {},
           })
       } finally {
@@ -147,7 +160,13 @@ export function NotificationsPage({ preselectGameType }: { preselectGameType?: s
 
   const subscribed = useMemo(() => new Set(snapshot?.subscribedGameTypes ?? []), [snapshot])
   const counts = snapshot?.countsByGameType ?? {}
-  const quiet = snapshot?.quietHours ?? { mode: 'off', startMinutes: null, endMinutes: null, timezone: null }
+  const quiet = snapshot?.quietHours ?? EMPTY_QUIET_HOURS
+  // The From/To inputs edit whichever window the active mode owns, so switching
+  // between Quiet and Available shows (and saves) each mode's own times.
+  const activeStart = quiet.mode === 'available' ? quiet.availableStartMinutes : quiet.quietStartMinutes
+  const activeEnd = quiet.mode === 'available' ? quiet.availableEndMinutes : quiet.quietEndMinutes
+  const startField = quiet.mode === 'available' ? 'availableStartMinutes' : 'quietStartMinutes'
+  const endField = quiet.mode === 'available' ? 'availableEndMinutes' : 'quietEndMinutes'
 
   const ensureToken = useCallback(async (): Promise<{
     endpoint: string
@@ -221,7 +240,8 @@ export function NotificationsPage({ preselectGameType }: { preselectGameType?: s
       const next = { ...quiet, ...patch }
       setSnapshot((s) => (s ? { ...s, quietHours: next } : s))
       let effectiveToken = tokenKey
-      if (!effectiveToken) {
+      let effectiveKeys = webKeys
+      if (!effectiveToken || !effectiveKeys) {
         const authed = await ensureToken()
         if (!authed) {
           // The user declined notification permission; keep the local UI
@@ -230,14 +250,25 @@ export function NotificationsPage({ preselectGameType }: { preselectGameType?: s
           return
         }
         effectiveToken = authed.endpoint
+        effectiveKeys = authed.keys
       }
       await fetch('/api/notifications', {
         method: 'PATCH',
+        // `channel: 'web'` + webKeys lets the server upsert the device row on
+        // first quiet-hours edit (a plain UPDATE would silently match zero
+        // rows for a visitor who hasn't toggled a game on yet, and the
+        // setting would vanish on the next reload).
         headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
-        body: JSON.stringify({ tokenKey: effectiveToken, ...patch, timezone: deviceTimezone() }),
+        body: JSON.stringify({
+          channel: 'web',
+          tokenKey: effectiveToken,
+          webKeys: effectiveKeys,
+          ...patch,
+          timezone: deviceTimezone(),
+        }),
       }).catch(() => {})
     },
-    [quiet, tokenKey, ensureToken]
+    [quiet, tokenKey, webKeys, ensureToken]
   )
 
   return (
@@ -285,10 +316,10 @@ export function NotificationsPage({ preselectGameType }: { preselectGameType?: s
               <span className="text-xs uppercase tracking-wide text-muted">From</span>
               <input
                 type="time"
-                value={formatMinutes(quiet.startMinutes)}
+                value={formatMinutes(activeStart)}
                 onChange={(e) => {
                   const m = parseMinutes(e.target.value)
-                  if (m != null) void onQuietChange({ startMinutes: m })
+                  if (m != null) void onQuietChange({ [startField]: m })
                 }}
                 className="input-field w-full"
               />
@@ -297,10 +328,10 @@ export function NotificationsPage({ preselectGameType }: { preselectGameType?: s
               <span className="text-xs uppercase tracking-wide text-muted">To</span>
               <input
                 type="time"
-                value={formatMinutes(quiet.endMinutes)}
+                value={formatMinutes(activeEnd)}
                 onChange={(e) => {
                   const m = parseMinutes(e.target.value)
-                  if (m != null) void onQuietChange({ endMinutes: m })
+                  if (m != null) void onQuietChange({ [endField]: m })
                 }}
                 className="input-field w-full"
               />

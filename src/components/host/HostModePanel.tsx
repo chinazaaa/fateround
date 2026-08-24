@@ -31,7 +31,7 @@ export function HostModePanel({
           ].join(' ')}
         >
           <span className="font-bold block">Host only</span>
-          <span className="text-faint text-xs">Run the game from Manage</span>
+          <span className="text-faint text-xs">Watch without joining</span>
         </button>
         <button
           type="button"
@@ -45,7 +45,7 @@ export function HostModePanel({
           ].join(' ')}
         >
           <span className="font-bold block">Host + play</span>
-          <span className="text-faint text-xs">Play tab + Manage tab</span>
+          <span className="text-faint text-xs">Join in as a player</span>
         </button>
       </div>
       {hostMode === 'player' && joinBlock}

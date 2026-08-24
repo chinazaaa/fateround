@@ -530,7 +530,7 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
   const hostSettingsNode = useMemo(
     () =>
       game && game.status === 'active' ? (
-        <HostActiveSettings gameCode={gameCode} hostToken={hostToken} gameType="codewords" onEnded={load}>
+        <HostActiveSettings game={game} gameCode={gameCode} hostToken={hostToken} gameType="codewords" onEnded={load}>
           <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
           {hostMode === 'player' && !!hostPlayerId && (
             <HostLeaveSeatButton
@@ -588,7 +588,7 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
       joining={hostJoining}
       onEditName={renameHost}
       spectatorHint="Watch once the round starts"
-      playerHint="Join a team below · Play tab opens once the round starts"
+      playerHint="Join a team below · you'll play once the round starts"
       playingNote={
         <p className="text-xs text-muted">
           Playing as <strong>{hostPlayerName}</strong> —{' '}

@@ -8,6 +8,8 @@ import { ThemeInitScript } from '@/components/ThemeInitScript'
 // import { FeedbackButton } from '@/components/FeedbackButton'
 // import { SupportButton } from '@/components/SupportButton'
 import { NetworkIndicator } from '@/components/NetworkIndicator'
+import { AppVersionWatcher } from '@/components/AppVersionWatcher'
+import { AttributionRecovery } from '@/components/AttributionRecovery'
 import { ToastProvider } from '@/components/ui/Toast'
 import { ConfirmProvider } from '@/components/ui/ConfirmDialog'
 import { QueryProvider } from '@/components/QueryProvider'
@@ -81,6 +83,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <QueryProvider>
                 <AppBackground />
                 <NetworkIndicator />
+                <AppVersionWatcher />
+                <AttributionRecovery />
                 <ThemeToggle />
                 {/* Hidden for now:
                 <SupportButton />

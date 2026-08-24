@@ -304,6 +304,7 @@ export function LudoHostView({ gameCode, hostToken }: { gameCode: string; hostTo
     () =>
       game?.status === 'active' ? (
         <HostActiveSettings
+          game={game}
           gameCode={gameCode}
           hostToken={hostToken}
           gameType="ludo"
@@ -392,7 +393,7 @@ export function LudoHostView({ gameCode, hostToken }: { gameCode: string; hostTo
             onJoin={() => void hostJoinGame()}
             joining={hostJoining}
             onEditName={renameHost}
-            spectatorHint="Spectate from the Watch tab"
+            spectatorHint="Spectate"
           />
         ) : undefined
       }
@@ -405,6 +406,7 @@ export function LudoHostView({ gameCode, hostToken }: { gameCode: string; hostTo
               game={game}
               boardGameType="ludo"
               playerCount={players.length}
+              seatedCount={players.filter((p) => !p.spectator).length}
               onGameUpdate={setGame}
             />
           )}
@@ -509,6 +511,7 @@ export function LudoHostView({ gameCode, hostToken }: { gameCode: string; hostTo
               game={game}
               boardGameType="ludo"
               playerCount={players.length}
+              seatedCount={players.filter((p) => !p.spectator).length}
               onGameUpdate={setGame}
             />
             <TransferHostControl triggerClassName="btn-secondary w-full flex items-center justify-center gap-2" />

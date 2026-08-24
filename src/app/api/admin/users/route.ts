@@ -45,7 +45,7 @@ export async function GET(req: NextRequest) {
     let query = supabase
       .from('profiles')
       .select(
-        'id, handle, is_anonymous, trophy_points, trophy_level, current_streak, longest_streak, last_active_date, created_at, country',
+        'id, handle, is_anonymous, trophy_points, trophy_level, current_streak, longest_streak, last_active_date, created_at, country, coins',
         { count: 'exact' }
       )
 
@@ -63,7 +63,7 @@ export async function GET(req: NextRequest) {
       let retryQuery = supabase
         .from('profiles')
         .select(
-          'id, handle, is_anonymous, trophy_points, trophy_level, current_streak, longest_streak, last_active_date, created_at',
+          'id, handle, is_anonymous, trophy_points, trophy_level, current_streak, longest_streak, last_active_date, created_at, coins',
           { count: 'exact' }
         )
       if (search) retryQuery = retryQuery.ilike('handle', `%${search}%`)
@@ -129,6 +129,7 @@ export async function GET(req: NextRequest) {
         gameTypes: roll.gameTypes,
         trophies: trophyCounts.get(p.id as string) ?? 0,
         country: hasCountryColumn ? (p.country as string) || null : null,
+        coins: Number(p.coins) || 0,
       }
     })
 

@@ -30,6 +30,9 @@ import {
   type CrazyEightsRules,
 } from './crazy-eights'
 
+/** Fixed stand-in for the row timestamps a real session carries. See the note at its use. */
+const SOLO_TIMESTAMP = '1970-01-01T00:00:00.000Z'
+
 // ── Types ────────────────────────────────────────────────────────────────────
 
 export type Crazy8SoloOutcome = 0 | 1 | 'draw' | null
@@ -126,8 +129,14 @@ export function initCrazy8Solo(opts: Crazy8SoloInitOptions = {}): Crazy8SoloStat
   drawPile = rest
 
   const session: CrazyEightsSession = {
+    // Solo play has no DB row: the id, game_id and timestamps below are synthetic. The
+    // timestamps exist only to satisfy the shared row type (the multiplayer realtime
+    // delta fast-path orders rows by `updated_at`); nothing in solo reads them, and a
+    // fixed sentinel keeps the engine deterministic — no Date.now() in a pure engine.
     id: 'solo',
     game_id: 'solo',
+    created_at: SOLO_TIMESTAMP,
+    updated_at: SOLO_TIMESTAMP,
     turn_order: [...TURN_ORDER],
     current_turn_index: first,
     direction: 1,

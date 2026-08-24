@@ -79,6 +79,99 @@ Notable deferrals (cosmetic / needs dep or migration): Sudoku correct-placement 
 
 ---
 
+## Second pass — the ten games this audit never covered (2026-08)
+
+The audit above ran on **39 game types**. There are now **49**. Ten games shipped after it:
+`uno` · `checkers_international` · `checkers_nigeria` · `crossword` · `word_search` ·
+`word_scramble` · `landmine` · `word_grouping` · `wordle_room` · `troll_run`.
+
+`troll_run` is excluded — it has **no mobile view at all**, so it is a port, not a comparison
+(tracked in `docs/audit-2026-08-completeness.md` §2.1). The two Checkers variants share one
+mobile view (`Draughts10PlayerView`), so this is eight audit units.
+
+### Headline: they are in far better shape than the 39
+
+The first audit found **353 gaps across 39 games (≈9 each)**. Extrapolating that here would be
+wrong. These ten were built *after* the Phase 0–2 shared shells landed, and they inherit them:
+
+| Shared shell | What every one of the eight gets for free |
+|---|---|
+| `PlayerSessionShell` (mounted in `app/game/[code].tsx`) | in-game header, voice rail, roster drawer, ⚙ button |
+| `PlayerPreJoinGate` (wraps every view in `GameRouter`) | pre-join / late-join gating |
+| `LobbyView` → `PlayerSessionControls` | rename + leave in the lobby |
+| `GameFinishPanel` | winner hero, leaderboard, **`PostWinToCommunity`** (gated on `iWon`), replay ready-up |
+| `GameFinishedActions` | **share results** via `captureRef` + `Sharing.shareAsync` |
+
+All eight pass `winnerPlayerId` and use `LobbyView` + `GameFinishPanel`, so all of the above is
+at parity. **Roughly 1–2 real gaps per game, and most are systemic rather than per-game.**
+
+> **Method note.** Marker greps produced a high false-positive rate against these shells —
+> "no `PostWinToCommunity` in the view" means the view delegates to `GameFinishPanel`, not that
+> the feature is missing. Every finding below was verified by reading both sides. Signals that
+> looked like gaps and were **dismissed on inspection**: post-win-to-community, edit name,
+> leave game, replay ready-up, voice rail, share/capture, UNO's challenge / 0-7 swap / Jump-In /
+> team-leave / multi-play (all eleven mobile UNO API wrappers match the eleven web routes),
+> Landmine's originality bonus and voting, Word Search ownership colouring, Draughts flying kings.
+
+### Systemic — none, after verification
+
+The first cut of this section listed three systemic gaps. **All three were wrong**, and each
+for the same reason: the feature is provided by a shared shell that wraps every game view, so
+grepping the view for it finds nothing. Recorded here rather than quietly deleted, because the
+next person to run a marker sweep will hit exactly this.
+
+| Claimed gap | Reality |
+|---|---|
+| ~~No per-game section in the in-game ⚙ settings~~ | For all eight, web's `useRegisterGameSettings` payload is **only** `EditNameInline` + `LeaveGameButton` — verified in every one of the eight player views. Mobile has both in-game in `PlayerSessionMenu` (the ⋯ button in `PlayerSessionShell`). Different placement, same capability. |
+| ~~No in-lobby rules link on 6 of 8~~ | `PlayerSessionShell` renders `<GameRulesLink gameType={game.game_type}>` for every game on every screen, ungated by status. |
+| ~~No dedicated late-join choice screen on 6 of 8~~ | `PlayerPreJoinGate` wraps every view via `GameRouter` and renders `LateJoinChoiceScreen` / `GameStartedWaitingScreen` / `GameEndedScreen`, branching on the **shared** `preJoinScreen()` — the same function web calls. |
+
+So the systemic surface is at parity, and the real gap count for these eight is **lower still**:
+one 🟠 (UNO series scoring) and a short tail of 🟡/⚪ polish.
+
+### Per-game
+
+#### UNO — _mostly_ (🔴0 🟠1 🟡0 ⚪0) — ✅ **fixed**
+
+Action surface is at full parity: all eleven mobile API wrappers (`postUnoPlay`, `…PlayMulti`,
+`…Challenge`, `…Swap`, `…JumpIn`, `…CallUno`, `…TeamLeaveDecision`, …) match the eleven
+`/api/uno/*` routes, and the view handles `challenge_window` and `swap_target` phases.
+
+- 🟠 ✅ **Series scoring is invisible.** _Fixed: `components/games/cards/UnoSeriesScoreboard.tsx`, rendered as the `notice` on the finished screen._ With series scoring on, web shows a `UnoSeriesScoreboard`
+  on the final results: every player's cumulative points across hands, the target, and the
+  series winner once reached. Mobile **fetches the columns** (`uno_series_scoring`,
+  `uno_series_target`, `uno_series_scores`, `uno_series_winner_id` are in
+  `lib/supabase-selects.ts` and the `game-api.ts` types) but **nothing renders them** — a player
+  in a series game sees only the current hand's result and cannot tell the running score or that
+  the series has been won. `web: src/components/uno/UnoFinalResultsShareBlock.tsx (UnoSeriesScoreboard)`
+
+#### Word Grouping — _mostly_ (🔴0 🟠0 🟡1 ⚪2) — ✅ **all three fixed**
+
+- 🟡 ✅ **No answer-reveal hold.** Web keeps the solved board up for a beat (`revealingAnswers`)
+  before the standings replace it, so you can read the groups you just completed. Mobile jumps
+  straight from the last guess to the finished screen.
+  `web: src/components/word-grouping/WordGroupingPlayerView.tsx (revealingAnswers / ANSWER_REVEAL_MS)`
+- ⚪ ✅ **No per-player finish time in the standings.** Web appends `(⏱️ mm:ss)` to each row via
+  `wordGroupingFinishSeconds`. Mobile shows `groups/4 · N mistakes` only (its own time is in the
+  header). `web: same file, leaderboardRows mapping`
+- ⚪ ✅ **No "my score" summary above the leaderboard** — web prints `N points` and
+  `X/4 groups · Y mistakes` above Final Standings; mobile relies on the highlighted row.
+
+#### Wordle Room — _at parity_ (🔴0 🟠0 🟡0 ⚪1) — ✅ **fixed**
+
+Hints (cost confirm → `reveal-hint`), category label, per-word reveal delay and the
+solve/loss reveal beat all match.
+
+- ⚪ ✅ **Default category label differs** — `'Wordle'` on mobile vs `'General English'` on web
+  before the status fetch resolves.
+
+#### Crossword · Word Search · Word Scramble · Draughts (International / Nigeria) — _at parity_
+
+No game-specific gaps found beyond the systemic three. Board rendering, ownership colouring,
+hints, timer bars, resign and clocks all have mobile counterparts.
+
+---
+
 ## Audit coverage
 
 There are **39 game types** total. This audit covered 27 game-by-game, the 10-game poll family only *generically* (one shared pass), and did not reach 2. Track the gaps below as a follow-up.
@@ -89,6 +182,9 @@ There are **39 game types** total. This audit covered 27 game-by-game, the 10-ga
 **🟨 Audited generically only — NOT individually (10, poll family):**
 All share `PollPlayerView` / the shared poll experience, so they were audited as a single "poll family" entry. Poll-wide gaps (Pick-a-Number turn flow, gender voting, Who-Said-This & Pick-a-Number round results, per-gender leaderboards, hot-takes/confessions) are captured under the **Poll family** entry in the Appendix — but each game below still needs its own pass to catch game-specific gaps:
 `smash_marry_kill` · `red_flag_green_flag` · `smash_or_pass` · `would_you_rather` · `never_have_i_ever` · `pick_a_number` · `this_or_that` · `most_likely_to` · `who_said_this` · `parent_approval`
+
+> **Superseded in part:** the "39 game types" framing below is the FIRST pass. See
+> "Second pass — the ten games this audit never covered" above for the other ten.
 
 **❌ Not audited at all (2):**
 - `hot_seat` — mobile has `HotSeatPlayerView`; no web/mobile comparison was run. Needs a full audit.

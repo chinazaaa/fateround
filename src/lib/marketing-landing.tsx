@@ -2756,7 +2756,7 @@ const ESTATE_KINGS_ROOM_BOTS: MarketingPageContent = {
   highlights: [
     'Add bots to any room',
     'Full property-trading board game',
-    '2 to 6 players (humans + bots)',
+    '2 to 9 players (humans + bots)',
     'Free, no sign-up',
   ],
   featureCards: [
@@ -2829,7 +2829,7 @@ const ESTATE_KINGS_ROOM_BOTS: MarketingPageContent = {
     },
     {
       question: 'How many players can play Estate Kings?',
-      answer: '2 to 8 players in total (up to 8 on the expanded 48-space board) — any mix of humans and bots.',
+      answer: '2 to 9 players in total (up to 9 on the expanded 48-space board) — any mix of humans and bots.',
     },
     {
       question: 'Is it free?',

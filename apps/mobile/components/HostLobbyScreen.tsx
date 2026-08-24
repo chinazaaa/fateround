@@ -39,6 +39,8 @@ import { useGamePlayerLimits } from '@/hooks/useGamePlayerLimits'
 import { isLobbyLimitGameType } from '@fateround/shared/lobby-limits'
 import { resolveLobbyMaxPlayers } from '@fateround/shared/game-limits-lite'
 import { WORD_RUSH_MIN_PLAYERS_INDIVIDUAL } from '@fateround/shared/word-rush'
+import { codewordsRandomizeTeams, lobbyReadyForCodewords } from '@fateround/shared/codewords'
+import { CODEWORDS_PLAYER_ROLE_SELECT } from '@/lib/supabase-selects'
 import { uniqueTopic } from '@/lib/realtime'
 import { centeredContent } from '@/constants/layout'
 import type { Theme } from '@/constants/theme'
@@ -78,6 +80,52 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
   const hostPlayerId = hostSession?.playerId ?? null
   const resumeToken = hostSession?.resumeToken ?? null
   const { limits } = useGamePlayerLimits()
+
+  // Codewords needs a team/role layout before it can start (spymasters picked,
+  // and — outside randomize-teams mode — every seated player on a team). Fetch
+  // the role rows here so the Start button reflects the same gate the server
+  // enforces; otherwise a host could tap Start with a bare roster and the
+  // request would just come back with "Pick exactly one red spymaster".
+  const [codewordsRoles, setCodewordsRoles] = useState<
+    Array<{ player_id: string; team: 'red' | 'blue'; role: 'spymaster' | 'operative' }>
+  >([])
+  const isCodewordsLobby = game?.game_type === 'codewords'
+  useEffect(() => {
+    if (!isCodewordsLobby) {
+      setCodewordsRoles([])
+      return
+    }
+    let cancelled = false
+    const supabase = getSupabase()
+    const load = () =>
+      void supabase
+        .from('codewords_player_roles')
+        .select(CODEWORDS_PLAYER_ROLE_SELECT)
+        .eq('game_id', gameCode)
+        .then((res) => {
+          if (cancelled || res.error) return
+          setCodewordsRoles(
+            (res.data ?? []) as Array<{
+              player_id: string
+              team: 'red' | 'blue'
+              role: 'spymaster' | 'operative'
+            }>
+          )
+        })
+    load()
+    const channel = supabase
+      .channel(uniqueTopic(`host-lobby-cw-roles-${gameCode}`))
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'codewords_player_roles', filter: `game_id=eq.${gameCode}` },
+        () => load()
+      )
+      .subscribe()
+    return () => {
+      cancelled = true
+      void supabase.removeChannel(channel)
+    }
+  }, [gameCode, isCodewordsLobby])
 
   const load = useCallback(async () => {
     const supabase = getSupabase()
@@ -329,7 +377,27 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
   // the higher lobby minimum since it needs enough players to fill the teams.
   const minPlayers =
     gameType === 'word_rush' && game?.word_rush_mode === 'individual' ? WORD_RUSH_MIN_PLAYERS_INDIVIDUAL : lobbyMin
-  const meetsMinimum = activePlayers.length >= minPlayers
+  const meetsPlayerMinimum = activePlayers.length >= minPlayers
+  // Codewords-specific gate: even at 4+ seated players the lobby isn't startable
+  // until each team has exactly one spymaster (and — outside randomize mode —
+  // every seated player has a team). Fall back to the plain minimum for every
+  // other game type.
+  const codewordsGate = isCodewordsLobby
+    ? lobbyReadyForCodewords(
+        codewordsRoles,
+        activePlayers.map((p) => p.id),
+        codewordsRandomizeTeams(game ?? { codewords_randomize_teams: false })
+      )
+    : null
+  const meetsMinimum = meetsPlayerMinimum && (!codewordsGate || codewordsGate.ok)
+  // Sentence shown when the button is dimmed, so the host knows what's still
+  // missing (min players first, then the codewords-specific "pick a spymaster"
+  // reason if the roster is already full).
+  const startBlockedHint = !meetsPlayerMinimum
+    ? `Need at least ${minPlayers} player${minPlayers === 1 ? '' : 's'} to start (${activePlayers.length}/${minPlayers})`
+    : codewordsGate && !codewordsGate.ok
+      ? codewordsGate.error ?? null
+      : null
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
@@ -530,11 +598,8 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
             </Pressable>
           ) : replayLobby ? (
             <>
-              {!meetsMinimum ? (
-                <Text style={styles.minHint}>
-                  Need at least {minPlayers} player{minPlayers === 1 ? '' : 's'} to start ({activePlayers.length}/
-                  {minPlayers})
-                </Text>
+              {!meetsMinimum && startBlockedHint ? (
+                <Text style={styles.minHint}>{startBlockedHint}</Text>
               ) : null}
               <Pressable
                 style={[styles.startButton, (starting || !meetsMinimum) && styles.startButtonDisabled]}
@@ -551,11 +616,8 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
             </>
           ) : (
             <>
-              {!meetsMinimum ? (
-                <Text style={styles.minHint}>
-                  Need at least {minPlayers} player{minPlayers === 1 ? '' : 's'} to start ({activePlayers.length}/
-                  {minPlayers})
-                </Text>
+              {!meetsMinimum && startBlockedHint ? (
+                <Text style={styles.minHint}>{startBlockedHint}</Text>
               ) : null}
               <Pressable
                 style={[styles.startButton, (starting || !meetsMinimum) && styles.startButtonDisabled]}

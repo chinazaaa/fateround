@@ -12,6 +12,20 @@ function formatAuctionTimer(seconds: number): string {
   return `${seconds}s`
 }
 
+const LOAN_INTEREST_OPTIONS = [
+  { value: '10', label: '10%' },
+  { value: '15', label: '15%' },
+  { value: '20', label: '20%' },
+  { value: '25', label: '25%' },
+]
+
+const LOAN_TERM_OPTIONS = [
+  { value: '2', label: '2 rounds' },
+  { value: '3', label: '3 rounds' },
+  { value: '4', label: '4 rounds' },
+  { value: '5', label: '5 rounds' },
+]
+
 /** Editable Monopoly house-rules — routed via lobby-settings. */
 export type MonopolyLobbyState = {
   doubleGoSalary: boolean
@@ -23,6 +37,12 @@ export type MonopolyLobbyState = {
    * least 6 players; the selector hides the 48 option below that threshold.
    */
   boardSize: 40 | 48
+  estateDividend: boolean
+  loansEnabled: boolean
+  /** Flat interest rate as a percentage (10, 15, 20, or 25). */
+  loanInterest: number
+  /** Rounds a borrower has before the bank forecloses (2–5). */
+  loanTermRounds: number
 }
 
 export function isMonopolyLobbyGame(gameType: GameType): boolean {
@@ -82,12 +102,50 @@ export function MonopolyLobbySection({
           onChange={(forcedAuctions) => onChange({ forcedAuctions })}
         />
         <SettingToggle
-          label="No Rent in Jail"
+          label="No Rent in NICKED"
           description="Prevent players in NICKED from collecting rent on their properties."
           value={value.noRentInJail}
           onChange={(noRentInJail) => onChange({ noRentInJail })}
         />
+        <SettingToggle
+          label="Robin Hood Estate Dividend"
+          description="When a player leaves mid-game, their estate is liquidated and split equally among remaining players."
+          value={value.estateDividend}
+          onChange={(estateDividend) => onChange({ estateDividend })}
+        />
+        <SettingToggle
+          label="Bank Loans"
+          description="Allow players to borrow emergency funds from the Bank with flat interest and a foreclosure term limit."
+          value={value.loansEnabled}
+          onChange={(loansEnabled) => onChange({ loansEnabled })}
+        />
       </View>
+      {value.loansEnabled ? (
+        <View style={styles.loanBlock}>
+          <View style={styles.field}>
+            <Text style={styles.subLabel}>Loan interest rate</Text>
+            <SegmentedControl
+              value={String(value.loanInterest)}
+              options={LOAN_INTEREST_OPTIONS}
+              onChange={(v) => {
+                const parsed = Number(v)
+                if (Number.isFinite(parsed)) onChange({ loanInterest: parsed })
+              }}
+            />
+          </View>
+          <View style={styles.field}>
+            <Text style={styles.subLabel}>Loan term (rounds to repay)</Text>
+            <SegmentedControl
+              value={String(value.loanTermRounds)}
+              options={LOAN_TERM_OPTIONS}
+              onChange={(v) => {
+                const parsed = Number(v)
+                if (Number.isFinite(parsed)) onChange({ loanTermRounds: parsed })
+              }}
+            />
+          </View>
+        </View>
+      ) : null}
     </View>
   )
 }
@@ -97,6 +155,13 @@ const makeStyles = (theme: Theme) =>
     wrap: { gap: theme.space.md },
     field: { gap: theme.space.sm },
     label: { color: theme.text, fontSize: 16, fontWeight: '800' },
+    subLabel: { color: theme.textMuted, fontSize: 13, fontWeight: '600' },
     hint: { color: theme.textMuted, fontSize: 12 },
     toggles: { gap: theme.space.sm },
+    loanBlock: {
+      gap: theme.space.md,
+      paddingLeft: theme.space.md,
+      borderLeftWidth: 2,
+      borderLeftColor: theme.border,
+    },
   })

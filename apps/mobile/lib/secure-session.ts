@@ -8,6 +8,13 @@ const hostKey = (gameCode: string) => `game_host_${gameCode.toUpperCase()}`
 // enumerate hosted scheduled games without scanning every SecureStore key
 // (SecureStore has no listKeys API on iOS).
 const HOST_CODES_MANIFEST_KEY = 'game_host_codes_v1'
+// Same idea for player sessions: the attribution-recovery sweep needs to walk
+// every game this device has ever seated a player in, so it can retry any
+// finished game whose trophy pass was skipped because the player left before
+// the finished screen mounted. Capped to the most recent MAX entries so the
+// manifest can't grow without bound.
+const PLAYER_CODES_MANIFEST_KEY = 'game_player_codes_v1'
+const PLAYER_CODES_MANIFEST_MAX = 100
 
 async function readHostCodesManifest(): Promise<string[]> {
   try {
@@ -30,6 +37,30 @@ async function writeHostCodesManifest(codes: string[]): Promise<void> {
 
 export async function getHostedGameCodes(): Promise<string[]> {
   return readHostCodesManifest()
+}
+
+async function readPlayerCodesManifest(): Promise<string[]> {
+  try {
+    const raw = await SecureStore.getItemAsync(PLAYER_CODES_MANIFEST_KEY)
+    if (!raw) return []
+    const parsed = JSON.parse(raw) as unknown
+    return Array.isArray(parsed) ? (parsed.filter((x) => typeof x === 'string') as string[]) : []
+  } catch {
+    return []
+  }
+}
+
+async function writePlayerCodesManifest(codes: string[]): Promise<void> {
+  try {
+    await SecureStore.setItemAsync(PLAYER_CODES_MANIFEST_KEY, JSON.stringify(codes))
+  } catch {
+    // Non-fatal — recovery just won't include this device's games.
+  }
+}
+
+/** Game codes this device has seated a player in, most-recent first. */
+export async function getPlayerGameCodes(): Promise<string[]> {
+  return readPlayerCodesManifest()
 }
 
 export type PlayerSession = {
@@ -63,15 +94,25 @@ export async function setPlayerSession(
   playerGender: PlayerGender,
   resumeToken?: string | null
 ): Promise<void> {
+  const code = gameCode.toUpperCase()
   const token = typeof resumeToken === 'string' && resumeToken.trim() ? resumeToken.trim().toUpperCase() : null
   await SecureStore.setItemAsync(
-    playerKey(gameCode),
+    playerKey(code),
     JSON.stringify({ playerId, playerName, playerGender, resumeToken: token })
   )
+  // Keep the recovery-sweep manifest current: move this code to the front and cap
+  // the manifest so it can't grow without bound over many played games.
+  const codes = await readPlayerCodesManifest()
+  const next = [code, ...codes.filter((c) => c !== code)].slice(0, PLAYER_CODES_MANIFEST_MAX)
+  await writePlayerCodesManifest(next)
 }
 
 export async function clearPlayerSession(gameCode: string): Promise<void> {
-  await SecureStore.deleteItemAsync(playerKey(gameCode))
+  const code = gameCode.toUpperCase()
+  await SecureStore.deleteItemAsync(playerKey(code))
+  const codes = await readPlayerCodesManifest()
+  const next = codes.filter((c) => c !== code)
+  if (next.length !== codes.length) await writePlayerCodesManifest(next)
 }
 
 export async function getHostToken(gameCode: string): Promise<string | null> {

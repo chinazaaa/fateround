@@ -18,6 +18,7 @@ import {
   isWhoSaidThis,
   parsePairVoteMode,
 } from './poll-games'
+import { isTriviaCategory } from './trivia'
 
 export type BingoCallMode = 'manual' | 'auto'
 export const POLL_DEFAULT_ROUNDS = 3
@@ -94,6 +95,7 @@ export const BATCH_20_PARTY_GAMES: GameType[] = [
   'mafia',
   'codewords',
   'word_hunt',
+  'troll_run',
   'sudoku',
   'matching_pairs',
   'i_call_on',
@@ -261,28 +263,8 @@ export function formatSudokuGameDuration(seconds: number): string {
   return `${seconds}s`
 }
 
-const VALID_TRIVIA_CATEGORIES: readonly string[] = [
-  'general',
-  'tech',
-  'art',
-  'food',
-  'geography',
-  'history',
-  'language',
-  'literature',
-  'math',
-  'movies',
-  'music',
-  'nature',
-  'pop_culture',
-  'science',
-  'sports',
-  'technology',
-  'world_culture',
-]
-
 export function clampTriviaCategory(value: unknown): TriviaCategory {
-  return typeof value === 'string' && VALID_TRIVIA_CATEGORIES.includes(value) ? (value as TriviaCategory) : 'general'
+  return isTriviaCategory(value) ? value : 'general'
 }
 
 export function clampBingoCallMode(value: unknown): BingoCallMode {
@@ -295,3 +277,29 @@ export function clampBingoCallInterval(value: unknown): number {
 }
 
 export { parsePairVoteMode }
+
+// ---------------------------------------------------------------------------
+// Troll Run
+// ---------------------------------------------------------------------------
+
+/**
+ * The three room settings a Troll Run host picks. The bounds mirror what
+ * `POST /api/games` clamps to — a client that lets a host pick outside them just gets it
+ * silently corrected, so the pickers and the server agree here rather than drifting.
+ */
+export { TROLL_RUN_WORLD_IDS, isTrollRunWorldId, type TrollRunWorldId } from './troll-run-types'
+
+export const TROLL_RUN_ROUND_OPTIONS = [3, 5, 7, 10] as const
+export const TROLL_RUN_TIME_LIMIT_OPTIONS = [60, 90, 120, 180, 240] as const
+
+export function clampTrollRunRounds(value: unknown): number {
+  const rounds = Math.round(Number(value))
+  if (!Number.isFinite(rounds)) return 5
+  return Math.max(1, Math.min(20, rounds))
+}
+
+export function clampTrollRunTimeLimit(value: unknown): number {
+  const seconds = Math.round(Number(value))
+  if (!Number.isFinite(seconds)) return 120
+  return Math.max(30, Math.min(600, seconds))
+}

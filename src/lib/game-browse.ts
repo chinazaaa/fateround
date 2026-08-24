@@ -16,21 +16,36 @@ export type BrowseGameRow = {
   scheduled_at: string | null
 }
 
-export type PublicGame = BrowseGameRow & { playerCount: number }
+export type PublicGame = BrowseGameRow & { playerCount: number; viewerCount: number }
 
-/** Tally players per game in one query (there is no denormalized count column). */
-export async function countPlayersByGame(supabase: SupabaseClient, gameIds: string[]): Promise<Record<string, number>> {
+export type GameAttendance = { playerCount: number; viewerCount: number }
+
+/**
+ * Tally attendance per game in one query (there is no denormalized count column).
+ *
+ * Splits real players from spectators so the browse/live-games UI can render "6/6 players ·
+ * 3 watching" instead of "9/6 players" — the latter reads as "9 out of 6" (impossible) when
+ * really the extra 3 joined as viewers. Full-lobby checks always use playerCount so a game
+ * isn't marked full because too many people are watching.
+ */
+export async function countPlayersByGame(
+  supabase: SupabaseClient,
+  gameIds: string[]
+): Promise<Record<string, GameAttendance>> {
   if (gameIds.length === 0) return {}
 
-  const { data: players, error } = await supabase.from('players').select('game_id').in('game_id', gameIds)
+  const { data: rows, error } = await supabase.from('players').select('game_id, spectator').in('game_id', gameIds)
   // Don't silently report every game as "0 players" on a query error — surface it so
   // the caller can log/decide, rather than shipping misleading counts.
   if (error) throw error
 
-  const counts: Record<string, number> = {}
-  for (const id of gameIds) counts[id] = 0
-  for (const row of players ?? []) {
-    counts[row.game_id as string] = (counts[row.game_id as string] ?? 0) + 1
+  const counts: Record<string, GameAttendance> = {}
+  for (const id of gameIds) counts[id] = { playerCount: 0, viewerCount: 0 }
+  for (const row of rows ?? []) {
+    const entry = counts[row.game_id as string]
+    if (!entry) continue
+    if ((row as { spectator?: boolean | null }).spectator === true) entry.viewerCount += 1
+    else entry.playerCount += 1
   }
   return counts
 }
