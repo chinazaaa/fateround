@@ -255,11 +255,16 @@ export function SudokuBoard({
                 key={num}
                 type="button"
                 onClick={() => onNumberPress(num)}
+                // Number-pad default state reads --card / --foreground
+                // so Newsprint pad = cream + ink, Neon dark pad =
+                // midnight + cyan-tinted text. 'Complete' emerald state
+                // is a semantic success signal — stays hardcoded so a
+                // theme can't hide the "you solved this number" feedback.
                 className={[
                   'flex-1 py-3 text-xl font-semibold rounded-md transition-colors active:scale-95 cursor-pointer',
                   complete
                     ? 'text-emerald-700 dark:text-emerald-300 bg-emerald-100/80 dark:bg-emerald-900/35 hover:bg-emerald-100 dark:hover:bg-emerald-900/45'
-                    : 'text-slate-700 dark:text-slate-200 bg-slate-100/80 dark:bg-slate-800/50 hover:bg-slate-200/90 dark:hover:bg-slate-700/60',
+                    : 'text-body bg-[var(--card)] hover:bg-[var(--card-hover)]',
                 ].join(' ')}
                 aria-label={complete ? `${num} complete` : `${num}`}
                 title={complete ? `${num} complete` : undefined}
@@ -298,10 +303,13 @@ function ToolbarButton({
       type="button"
       disabled={disabled}
       onClick={onClick}
+      // Toolbar button text/hover reads --muted → --body so a themed
+      // toolbar (Newsprint sepia ink, Neon glowing cyan) reads
+      // consistently with the rest of the game screen.
       className={[
         'flex flex-col items-center gap-0.5 min-w-[3.25rem] py-1 rounded-lg transition-colors',
-        'text-slate-500 dark:text-slate-400',
-        disabled ? 'opacity-50 cursor-default' : 'hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer',
+        'text-muted',
+        disabled ? 'opacity-50 cursor-default' : 'hover:text-body cursor-pointer',
       ].join(' ')}
     >
       <span className="w-6 h-6 flex items-center justify-center">{children}</span>
