@@ -3,7 +3,6 @@ import { awardRoomGamePoints } from '@/lib/room-points'
 import { resolveHeadToHeadMatch } from '@/lib/tournament-h2h'
 import { resolveSchoolMatch } from '@/lib/tournament-school'
 import { resolveKnockoutGroupRoom } from '@/lib/tournament-scoring'
-import { recordRoundFacts } from '@/lib/trophies/round-facts'
 
 export async function markGameFinished(
   supabase: SupabaseClient,
@@ -34,6 +33,7 @@ export async function markGameFinished(
       // time — after the client mounts the finished screen — loses them to whoever replays
       // first. Best-effort: on failure the award pass falls back to deriving live, which is
       // exactly the old behaviour.
+      const { recordRoundFacts } = await import('@/lib/trophies/round-facts')
       await recordRoundFacts(supabase, gameId, finishedAt)
     } catch (err) {
       // Never block game finish for a trophy snapshot — but do NOT swallow the failure silently.
