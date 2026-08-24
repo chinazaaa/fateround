@@ -2519,3 +2519,349 @@ select option {
     opacity: 0;
   }
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Per-game paid theme palettes (Phase 3 shop)
+ *
+ * The per-game reskins (ludo-wooden, ludo-naija, whot-neon, whot-naija,
+ * sudoku-minimalist, sudoku-newsprint) shipped with only preview swatches
+ * in themes.ts — the actual `[data-game-theme='<slug>']` CSS blocks
+ * never landed, so a bought paid theme looked identical to default on
+ * the real game board. That reads as a scam to the buyer, so the blocks
+ * are added here even though full art delivery is a separate PR.
+ *
+ * Each block sets the same variable surface the app-wide themes above
+ * (pirate, arctic, naija, neon, retro, elegant, tropical) already set,
+ * so the whole game screen — background, glass cards, primary buttons,
+ * gradient title, avatar chips — repaints with the theme's palette.
+ * Textures (wood grain / paper speckle / neon glow) live in `--bg-gradient`.
+ *
+ * Selector shape mirrors the app-wide theme blocks: the `:not(...)`
+ * guards keep the light block from applying inside a dark-forced subtree
+ * and vice-versa. All six themes ship both a light and a dark variant
+ * so the site-mode toggle keeps working per user preference.
+ * ────────────────────────────────────────────────────────────────────── */
+
+/* ── Wooden Ludo (Light) ─────────────────────────────────────── */
+:root[data-game-theme='ludo-wooden']:not([data-theme='dark']),
+[data-game-theme='ludo-wooden']:not([data-theme='dark']) {
+  --background: #e8d3b0;
+  --background-soft: #f0dfc0;
+  --foreground: #2a1a0d;
+  --muted: #5a3d24;
+  --faint: #8a6a48;
+  --card: rgba(240, 223, 192, 0.88);
+  --card-strong: rgba(248, 232, 205, 0.96);
+  --card-hover: rgba(252, 240, 215, 0.92);
+  --surface-inset-bg: rgba(42, 26, 13, 0.06);
+  --border: rgba(139, 90, 43, 0.35);
+  --border-strong: rgba(139, 90, 43, 0.55);
+  --card-shadow: 0 1px 3px rgba(42, 26, 13, 0.15), 0 4px 16px rgba(139, 90, 43, 0.12);
+  --card-shadow-strong: 0 8px 32px rgba(42, 26, 13, 0.22), 0 2px 8px rgba(139, 90, 43, 0.15);
+  --card-shadow-glow: 0 0 0 1px rgba(217, 119, 6, 0.35), 0 8px 32px rgba(217, 119, 6, 0.22);
+  --bg-gradient:
+    repeating-linear-gradient(90deg, transparent 0px, transparent 6px, rgba(139, 90, 43, 0.06) 6px, rgba(139, 90, 43, 0.06) 7px),
+    radial-gradient(ellipse 80% 60% at 50% -10%, rgba(217, 119, 6, 0.14) 0%, transparent 60%);
+  --primary: #b45309;
+  --primary-strong: #92400e;
+  --primary-glow: rgba(180, 83, 9, 0.4);
+  --avatar-bg: rgba(180, 83, 9, 0.15);
+  --avatar-border: rgba(180, 83, 9, 0.35);
+  --avatar-color: #92400e;
+  --gradient-title-start: #2a1a0d;
+  --gradient-title-end: #b45309;
+  --modal-backdrop: rgba(42, 26, 13, 0.6);
+}
+
+/* ── Wooden Ludo (Dark) ──────────────────────────────────────── */
+[data-theme='dark'][data-game-theme='ludo-wooden']:not([data-theme='light']),
+:root[data-theme='dark'] [data-game-theme='ludo-wooden']:not([data-theme='light']),
+[data-theme='dark'] [data-game-theme='ludo-wooden']:not([data-theme='light']) {
+  --background: #3d2b1f;
+  --background-soft: #4a3626;
+  --foreground: #faf3e6;
+  --muted: #c9b28e;
+  --faint: #9a8368;
+  --card: rgba(74, 54, 38, 0.85);
+  --card-strong: rgba(90, 66, 46, 0.95);
+  --card-hover: rgba(105, 78, 55, 0.9);
+  --surface-inset-bg: rgba(0, 0, 0, 0.25);
+  --border: rgba(217, 119, 6, 0.35);
+  --border-strong: rgba(217, 119, 6, 0.55);
+  --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.5), 0 4px 20px rgba(0, 0, 0, 0.3);
+  --card-shadow-strong: 0 12px 48px rgba(0, 0, 0, 0.55), 0 0 20px rgba(217, 119, 6, 0.18);
+  --card-shadow-glow: 0 0 0 1px rgba(217, 119, 6, 0.4), 0 8px 40px rgba(217, 119, 6, 0.25);
+  --bg-gradient:
+    repeating-linear-gradient(90deg, transparent 0px, transparent 6px, rgba(255, 220, 170, 0.04) 6px, rgba(255, 220, 170, 0.04) 7px),
+    radial-gradient(ellipse 80% 55% at 50% -10%, rgba(217, 119, 6, 0.18) 0%, transparent 55%);
+  --primary: #f59e0b;
+  --primary-strong: #d97706;
+  --primary-glow: rgba(245, 158, 11, 0.45);
+  --avatar-bg: rgba(245, 158, 11, 0.18);
+  --avatar-border: rgba(245, 158, 11, 0.4);
+  --avatar-color: #f59e0b;
+  --gradient-title-start: #faf3e6;
+  --gradient-title-end: #f59e0b;
+  --modal-backdrop: rgba(20, 12, 6, 0.75);
+}
+
+/* ── Naija Ludo (Light) — shared palette with Naija Whot ─────── */
+:root[data-game-theme='ludo-naija']:not([data-theme='dark']),
+[data-game-theme='ludo-naija']:not([data-theme='dark']),
+:root[data-game-theme='whot-naija']:not([data-theme='dark']),
+[data-game-theme='whot-naija']:not([data-theme='dark']) {
+  --background: #ede3d3;
+  --background-soft: #f5ecdb;
+  --foreground: #002d1a;
+  --muted: #2a5040;
+  --faint: #5c7060;
+  --card: rgba(255, 255, 255, 0.75);
+  --card-strong: rgba(255, 255, 255, 0.92);
+  --card-hover: rgba(250, 246, 235, 0.9);
+  --surface-inset-bg: rgba(0, 45, 26, 0.06);
+  --border: rgba(0, 135, 81, 0.3);
+  --border-strong: rgba(0, 135, 81, 0.5);
+  --card-shadow: 0 1px 3px rgba(0, 45, 26, 0.12), 0 4px 16px rgba(0, 135, 81, 0.1);
+  --card-shadow-strong: 0 8px 32px rgba(0, 45, 26, 0.2), 0 2px 8px rgba(0, 135, 81, 0.15);
+  --card-shadow-glow: 0 0 0 1px rgba(0, 135, 81, 0.35), 0 8px 32px rgba(0, 135, 81, 0.22);
+  --bg-gradient:
+    radial-gradient(ellipse 90% 60% at 50% -20%, rgba(0, 135, 81, 0.18) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 40% at 90% 80%, rgba(200, 16, 46, 0.1) 0%, transparent 50%);
+  --primary: #008751;
+  --primary-strong: #006638;
+  --primary-glow: rgba(0, 135, 81, 0.4);
+  --avatar-bg: rgba(0, 135, 81, 0.15);
+  --avatar-border: rgba(0, 135, 81, 0.35);
+  --avatar-color: #006638;
+  --gradient-title-start: #002d1a;
+  --gradient-title-end: #008751;
+  --modal-backdrop: rgba(0, 30, 18, 0.6);
+}
+
+/* ── Naija Ludo / Naija Whot (Dark) ──────────────────────────── */
+[data-theme='dark'][data-game-theme='ludo-naija']:not([data-theme='light']),
+:root[data-theme='dark'] [data-game-theme='ludo-naija']:not([data-theme='light']),
+[data-theme='dark'] [data-game-theme='ludo-naija']:not([data-theme='light']),
+[data-theme='dark'][data-game-theme='whot-naija']:not([data-theme='light']),
+:root[data-theme='dark'] [data-game-theme='whot-naija']:not([data-theme='light']),
+[data-theme='dark'] [data-game-theme='whot-naija']:not([data-theme='light']) {
+  --background: #002d1a;
+  --background-soft: #003d24;
+  --foreground: #ede3d3;
+  --muted: #a8b8a0;
+  --faint: #6d7d70;
+  --card: rgba(0, 61, 36, 0.85);
+  --card-strong: rgba(0, 77, 45, 0.95);
+  --card-hover: rgba(0, 92, 55, 0.9);
+  --surface-inset-bg: rgba(0, 0, 0, 0.25);
+  --border: rgba(237, 227, 211, 0.25);
+  --border-strong: rgba(237, 227, 211, 0.4);
+  --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.5), 0 4px 20px rgba(0, 0, 0, 0.3);
+  --card-shadow-strong: 0 12px 48px rgba(0, 0, 0, 0.6), 0 0 20px rgba(0, 200, 120, 0.15);
+  --card-shadow-glow: 0 0 0 1px rgba(0, 200, 120, 0.35), 0 8px 40px rgba(0, 200, 120, 0.2);
+  --bg-gradient:
+    radial-gradient(ellipse 90% 55% at 50% -10%, rgba(0, 200, 120, 0.15) 0%, transparent 55%),
+    radial-gradient(ellipse 50% 35% at 85% 90%, rgba(255, 210, 100, 0.1) 0%, transparent 50%);
+  --primary: #10b981;
+  --primary-strong: #059669;
+  --primary-glow: rgba(16, 185, 129, 0.4);
+  --avatar-bg: rgba(16, 185, 129, 0.18);
+  --avatar-border: rgba(16, 185, 129, 0.4);
+  --avatar-color: #10b981;
+  --gradient-title-start: #ede3d3;
+  --gradient-title-end: #10b981;
+  --modal-backdrop: rgba(0, 15, 9, 0.75);
+}
+
+/* ── Neon Whot (Light — Daylight Circuit) ────────────────────── */
+:root[data-game-theme='whot-neon']:not([data-theme='dark']),
+[data-game-theme='whot-neon']:not([data-theme='dark']) {
+  --background: #e8f4ff;
+  --background-soft: #f0f8ff;
+  --foreground: #0a1a2b;
+  --muted: #3d5878;
+  --faint: #6a85a8;
+  --card: rgba(240, 248, 255, 0.9);
+  --card-strong: rgba(250, 253, 255, 0.96);
+  --card-hover: rgba(235, 245, 255, 0.92);
+  --surface-inset-bg: rgba(10, 26, 43, 0.06);
+  --border: rgba(6, 182, 212, 0.35);
+  --border-strong: rgba(6, 182, 212, 0.55);
+  --card-shadow: 0 1px 3px rgba(10, 26, 43, 0.12), 0 4px 16px rgba(6, 182, 212, 0.12);
+  --card-shadow-strong: 0 8px 32px rgba(10, 26, 43, 0.2), 0 2px 8px rgba(6, 182, 212, 0.18);
+  --card-shadow-glow: 0 0 0 1px rgba(6, 182, 212, 0.4), 0 8px 32px rgba(6, 182, 212, 0.28);
+  --bg-gradient:
+    radial-gradient(ellipse 90% 60% at 50% -10%, rgba(6, 182, 212, 0.18) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 40% at 90% 90%, rgba(217, 70, 239, 0.1) 0%, transparent 50%);
+  --primary: #0891b2;
+  --primary-strong: #0e7490;
+  --primary-glow: rgba(8, 145, 178, 0.45);
+  --avatar-bg: rgba(8, 145, 178, 0.15);
+  --avatar-border: rgba(8, 145, 178, 0.35);
+  --avatar-color: #0e7490;
+  --gradient-title-start: #0a1a2b;
+  --gradient-title-end: #0891b2;
+  --modal-backdrop: rgba(10, 26, 43, 0.6);
+}
+
+/* ── Neon Whot (Dark — Midnight Circuit) ─────────────────────── */
+[data-theme='dark'][data-game-theme='whot-neon']:not([data-theme='light']),
+:root[data-theme='dark'] [data-game-theme='whot-neon']:not([data-theme='light']),
+[data-theme='dark'] [data-game-theme='whot-neon']:not([data-theme='light']) {
+  --background: #0a0a14;
+  --background-soft: #12122a;
+  --foreground: #e0ffe0;
+  --muted: #8ab8b0;
+  --faint: #5a7876;
+  --card: rgba(18, 18, 42, 0.85);
+  --card-strong: rgba(26, 26, 60, 0.95);
+  --card-hover: rgba(38, 38, 80, 0.9);
+  --surface-inset-bg: rgba(0, 0, 0, 0.35);
+  --border: rgba(0, 229, 255, 0.4);
+  --border-strong: rgba(0, 229, 255, 0.6);
+  --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.6), 0 4px 20px rgba(0, 229, 255, 0.15);
+  --card-shadow-strong: 0 12px 48px rgba(0, 0, 0, 0.7), 0 0 24px rgba(0, 229, 255, 0.25);
+  --card-shadow-glow: 0 0 0 1px rgba(0, 229, 255, 0.5), 0 8px 40px rgba(0, 229, 255, 0.35);
+  --bg-gradient:
+    radial-gradient(ellipse 90% 55% at 50% -10%, rgba(0, 229, 255, 0.2) 0%, transparent 55%),
+    radial-gradient(ellipse 50% 40% at 20% 100%, rgba(217, 70, 239, 0.15) 0%, transparent 55%),
+    radial-gradient(ellipse 50% 40% at 80% 100%, rgba(255, 100, 200, 0.12) 0%, transparent 55%);
+  --primary: #00e5ff;
+  --primary-strong: #00b8d4;
+  --primary-glow: rgba(0, 229, 255, 0.55);
+  --avatar-bg: rgba(0, 229, 255, 0.2);
+  --avatar-border: rgba(0, 229, 255, 0.5);
+  --avatar-color: #00e5ff;
+  --gradient-title-start: #e0ffe0;
+  --gradient-title-end: #00e5ff;
+  --modal-backdrop: rgba(0, 0, 10, 0.85);
+}
+
+/* ── Minimalist Sudoku (Light) — pure ink on white ───────────── */
+:root[data-game-theme='sudoku-minimalist']:not([data-theme='dark']),
+[data-game-theme='sudoku-minimalist']:not([data-theme='dark']) {
+  --background: #ffffff;
+  --background-soft: #fafafa;
+  --foreground: #0a0a0a;
+  --muted: #525252;
+  --faint: #a3a3a3;
+  --card: rgba(250, 250, 250, 0.92);
+  --card-strong: rgba(255, 255, 255, 0.98);
+  --card-hover: rgba(245, 245, 245, 0.94);
+  --surface-inset-bg: rgba(0, 0, 0, 0.04);
+  --border: rgba(0, 0, 0, 0.12);
+  --border-strong: rgba(0, 0, 0, 0.22);
+  --card-shadow: 0 1px 2px rgba(0, 0, 0, 0.06), 0 2px 8px rgba(0, 0, 0, 0.05);
+  --card-shadow-strong: 0 4px 20px rgba(0, 0, 0, 0.1), 0 1px 4px rgba(0, 0, 0, 0.06);
+  --card-shadow-glow: 0 0 0 1px rgba(0, 0, 0, 0.2), 0 4px 20px rgba(0, 0, 0, 0.1);
+  --bg-gradient: none;
+  --primary: #0a0a0a;
+  --primary-strong: #000000;
+  --primary-glow: rgba(0, 0, 0, 0.2);
+  --avatar-bg: rgba(0, 0, 0, 0.06);
+  --avatar-border: rgba(0, 0, 0, 0.15);
+  --avatar-color: #0a0a0a;
+  --gradient-title-start: #0a0a0a;
+  --gradient-title-end: #525252;
+  --modal-backdrop: rgba(0, 0, 0, 0.5);
+}
+
+/* ── Minimalist Sudoku (Dark) — pure ink on charcoal ─────────── */
+[data-theme='dark'][data-game-theme='sudoku-minimalist']:not([data-theme='light']),
+:root[data-theme='dark'] [data-game-theme='sudoku-minimalist']:not([data-theme='light']),
+[data-theme='dark'] [data-game-theme='sudoku-minimalist']:not([data-theme='light']) {
+  --background: #0a0a0a;
+  --background-soft: #171717;
+  --foreground: #fafafa;
+  --muted: #a3a3a3;
+  --faint: #525252;
+  --card: rgba(23, 23, 23, 0.88);
+  --card-strong: rgba(30, 30, 30, 0.96);
+  --card-hover: rgba(40, 40, 40, 0.92);
+  --surface-inset-bg: rgba(255, 255, 255, 0.04);
+  --border: rgba(255, 255, 255, 0.14);
+  --border-strong: rgba(255, 255, 255, 0.28);
+  --card-shadow: 0 1px 2px rgba(0, 0, 0, 0.6), 0 4px 20px rgba(0, 0, 0, 0.4);
+  --card-shadow-strong: 0 12px 48px rgba(0, 0, 0, 0.7), 0 2px 8px rgba(0, 0, 0, 0.5);
+  --card-shadow-glow: 0 0 0 1px rgba(255, 255, 255, 0.25), 0 4px 20px rgba(255, 255, 255, 0.1);
+  --bg-gradient: none;
+  --primary: #fafafa;
+  --primary-strong: #ffffff;
+  --primary-glow: rgba(255, 255, 255, 0.2);
+  --avatar-bg: rgba(255, 255, 255, 0.08);
+  --avatar-border: rgba(255, 255, 255, 0.2);
+  --avatar-color: #fafafa;
+  --gradient-title-start: #fafafa;
+  --gradient-title-end: #a3a3a3;
+  --modal-backdrop: rgba(0, 0, 0, 0.85);
+}
+
+/* ── Newsprint Sudoku (Light) — cream paper + serif ink ──────── */
+:root[data-game-theme='sudoku-newsprint']:not([data-theme='dark']),
+[data-game-theme='sudoku-newsprint']:not([data-theme='dark']) {
+  --background: #f4ecd8;
+  --background-soft: #fbf5e5;
+  --foreground: #1a1a1a;
+  --muted: #4a4638;
+  --faint: #8a8272;
+  --card: rgba(251, 245, 229, 0.88);
+  --card-strong: rgba(254, 249, 235, 0.96);
+  --card-hover: rgba(248, 240, 220, 0.92);
+  --surface-inset-bg: rgba(26, 26, 26, 0.05);
+  --border: rgba(74, 70, 56, 0.25);
+  --border-strong: rgba(74, 70, 56, 0.42);
+  --card-shadow: 0 1px 3px rgba(26, 26, 26, 0.1), 0 4px 16px rgba(74, 70, 56, 0.1);
+  --card-shadow-strong: 0 8px 32px rgba(26, 26, 26, 0.15), 0 2px 8px rgba(74, 70, 56, 0.12);
+  --card-shadow-glow: 0 0 0 1px rgba(43, 43, 43, 0.3), 0 8px 32px rgba(74, 70, 56, 0.2);
+  --bg-gradient:
+    radial-gradient(circle at 20% 15%, rgba(74, 70, 56, 0.06) 0px, transparent 45%),
+    radial-gradient(circle at 80% 85%, rgba(74, 70, 56, 0.05) 0px, transparent 45%);
+  --primary: #2b2b2b;
+  --primary-strong: #1a1a1a;
+  --primary-glow: rgba(43, 43, 43, 0.25);
+  --avatar-bg: rgba(43, 43, 43, 0.08);
+  --avatar-border: rgba(43, 43, 43, 0.2);
+  --avatar-color: #1a1a1a;
+  --gradient-title-start: #1a1a1a;
+  --gradient-title-end: #4a4638;
+  --modal-backdrop: rgba(26, 20, 10, 0.55);
+}
+
+/* ── Newsprint Sudoku (Dark) — warm-tube type on dark paper ──── */
+[data-theme='dark'][data-game-theme='sudoku-newsprint']:not([data-theme='light']),
+:root[data-theme='dark'] [data-game-theme='sudoku-newsprint']:not([data-theme='light']),
+[data-theme='dark'] [data-game-theme='sudoku-newsprint']:not([data-theme='light']) {
+  --background: #1c1810;
+  --background-soft: #2a241a;
+  --foreground: #f4ecd8;
+  --muted: #b5ab90;
+  --faint: #7a7160;
+  --card: rgba(42, 36, 26, 0.88);
+  --card-strong: rgba(52, 44, 32, 0.96);
+  --card-hover: rgba(62, 52, 38, 0.92);
+  --surface-inset-bg: rgba(0, 0, 0, 0.3);
+  --border: rgba(244, 236, 216, 0.22);
+  --border-strong: rgba(244, 236, 216, 0.38);
+  --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.5), 0 4px 20px rgba(0, 0, 0, 0.3);
+  --card-shadow-strong: 0 12px 48px rgba(0, 0, 0, 0.6), 0 0 20px rgba(244, 236, 216, 0.08);
+  --card-shadow-glow: 0 0 0 1px rgba(244, 236, 216, 0.3), 0 8px 40px rgba(244, 236, 216, 0.12);
+  --bg-gradient:
+    radial-gradient(circle at 20% 15%, rgba(244, 236, 216, 0.05) 0px, transparent 45%),
+    radial-gradient(circle at 80% 85%, rgba(244, 236, 216, 0.04) 0px, transparent 45%);
+  --primary: #f4ecd8;
+  --primary-strong: #e6dcbe;
+  --primary-glow: rgba(244, 236, 216, 0.28);
+  --avatar-bg: rgba(244, 236, 216, 0.12);
+  --avatar-border: rgba(244, 236, 216, 0.3);
+  --avatar-color: #f4ecd8;
+  --gradient-title-start: #f4ecd8;
+  --gradient-title-end: #b5ab90;
+  --modal-backdrop: rgba(10, 8, 4, 0.8);
+}
+
+/* Newsprint Sudoku swaps digits + headings to a serif face so the theme
+   reads as newsprint print, not just cream-coloured. Confined to the
+   game-theme subtree so nothing else on the site catches serif. */
+[data-game-theme='sudoku-newsprint'] {
+  font-family: 'Georgia', 'Times New Roman', serif;
+}
