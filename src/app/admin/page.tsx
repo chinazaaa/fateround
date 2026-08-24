@@ -52,6 +52,7 @@ type StatsResponse = {
   userGrowth: { week: string; cumulative: number; newUsers: number }[]
   dauTrend: { date: string; dau: number }[]
   playersByCountry: Record<string, number>
+  popularGamesByCountry: Record<string, { totalJoins: number; games: Record<string, number> }>
   usersByCountry: Record<string, number>
   uniqueCountries: number
   dailyChallengeStats: {
@@ -325,6 +326,11 @@ export default function AdminDashboardPage() {
           }}
         />
       </div>
+
+      {/* ── Popular games by country ─────────────────────────────────
+          Ad-targeting signal — for each country with ≥3 real joins, the
+          top 5 game types played there. Bot seats are excluded upstream. */}
+      <PopularGamesByCountryCard data={stats.popularGamesByCountry} />
 
       {/* ── Daily challenges ─────────────────────────────────────── */}
       <div className="glass-card-strong p-5 space-y-4">
@@ -904,6 +910,78 @@ function BreakdownCard({
               <span className="font-semibold">{count.toLocaleString()}</span>
             </div>
           ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function PopularGamesByCountryCard({
+  data,
+}: {
+  data: Record<string, { totalJoins: number; games: Record<string, number> }>
+}) {
+  const regionNames = (() => {
+    try {
+      return new Intl.DisplayNames(['en'], { type: 'region' })
+    } catch {
+      return null
+    }
+  })()
+
+  const rows = Object.entries(data)
+    .map(([country, { totalJoins, games }]) => {
+      const top = Object.entries(games)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+      return { country, totalJoins, top }
+    })
+    .sort((a, b) => b.totalJoins - a.totalJoins)
+
+  return (
+    <div className="glass-card-strong p-5 space-y-4">
+      <div className="flex items-baseline justify-between gap-3">
+        <h2 className="font-bold">Popular games by country</h2>
+        <p className="text-xs text-muted">Top 5 per country · bots excluded · min 3 joins</p>
+      </div>
+      {rows.length === 0 ? (
+        <p className="text-sm text-muted">Not enough player-country data yet.</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-xs uppercase tracking-wide text-muted">
+                <th className="py-2 pr-3">Country</th>
+                <th className="py-2 pr-3">Joins</th>
+                <th className="py-2 pr-3">Top games</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map(({ country, totalJoins, top }) => (
+                <tr key={country} className="border-t border-[var(--border)]">
+                  <td className="py-2 pr-3 font-semibold">{regionNames?.of(country) ?? country}</td>
+                  <td className="py-2 pr-3 tabular-nums">{totalJoins.toLocaleString()}</td>
+                  <td className="py-2 pr-3">
+                    <div className="flex flex-wrap gap-1.5">
+                      {top.map(([gameType, count]) => {
+                        const share = totalJoins > 0 ? Math.round((count / totalJoins) * 100) : 0
+                        return (
+                          <span
+                            key={gameType}
+                            className="inline-flex items-center gap-1 rounded-full border border-[var(--border)] bg-[var(--surface-inset-bg)] px-2 py-0.5 text-xs"
+                            title={`${count} joins`}
+                          >
+                            <span className="font-medium">{formatGameType(gameType)}</span>
+                            <span className="text-muted tabular-nums">{share}%</span>
+                          </span>
+                        )
+                      })}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
     </div>

@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import { useTheme } from '@/components/ThemeProvider'
 import type { Theme } from '@/lib/theme-cookie'
-import { themeStyleVars, type ThemeConfig } from '@/lib/themes'
+import { type ThemeConfig } from '@/lib/themes'
 import { Glyph } from '@/components/icons/Glyph'
 
 /** Per-theme description of its two named modes (all themes adapt to light/dark). */
@@ -61,9 +61,20 @@ function PreviewModeToggle({ mode, onChange }: { mode: Theme; onChange: (mode: T
   )
 }
 
+/** Titles/labels the game-specific mini scenes hang under the header. Keeps
+ *  the preview honest — a Sudoku theme reads "Sudoku", a Whot theme reads
+ *  "Whot", so buyers see the game they're skinning. */
+const GAME_LABELS: Record<string, { title: string; badge: string }> = {
+  sudoku: { title: 'Daily Sudoku', badge: 'SUDOKU' },
+  whot: { title: 'Whot Night', badge: 'WHOT' },
+  ludo: { title: 'Family Ludo', badge: 'LUDO' },
+  monopoly: { title: 'Estate Kings', badge: 'MONOPOLY' },
+}
+
 function ThemeSampleRoom({ theme, siteMode, gameType }: { theme: ThemeConfig; siteMode: Theme; gameType?: string }) {
   const hasRoomVars = Object.keys(theme.cssVars || {}).length > 0
   const roomStyle = (theme.cssVars || {}) as unknown as React.CSSProperties
+  const labels = (gameType && GAME_LABELS[gameType]) || { title: 'Friday Night', badge: 'Kiss Marry Kill' }
 
   return (
     <div
@@ -83,9 +94,9 @@ function ThemeSampleRoom({ theme, siteMode, gameType }: { theme: ThemeConfig; si
       >
         <div className="text-center space-y-2">
           <Glyph icon={theme.icon} filled={theme.iconFilled} size={26} className="mx-auto" />
-          <h3 className="text-lg font-black tracking-tight gradient-title">Friday Night</h3>
+          <h3 className="text-lg font-black tracking-tight gradient-title">{labels.title}</h3>
           <span className="inline-flex items-center rounded-full border border-[var(--border)] bg-[var(--surface-inset-bg)] px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted">
-            Kiss Marry Kill
+            {labels.badge}
           </span>
         </div>
 
@@ -114,10 +125,12 @@ function ThemeSampleRoom({ theme, siteMode, gameType }: { theme: ThemeConfig; si
 /**
  * Game-appropriate preview surface inside ThemeSampleRoom. The generic
  * "Kiss Marry Kill" card was misleading for Whot/Sudoku/Ludo/Monopoly theme
- * shoppers (user report, 2026-08-23) — the whole point of buying a game
- * theme is to see how THAT game will look, so we render a plausible mini
- * board or card table per game_type. Every branch inherits the theme
- * CSS vars from the wrapping ThemeSampleRoom.
+ * shoppers — the whole point of buying a game theme is to see how THAT game
+ * will look, so we render a plausible mini board or card table per
+ * game_type. Every branch inherits the theme CSS vars from the wrapping
+ * ThemeSampleRoom. This replaces the earlier `GameScene` prototype which
+ * hard-read `theme.preview` colors — CSS vars pick up the real palette
+ * defined in globals.css for each theme when it lands.
  */
 function GameSpecificSample({ gameType, themeId }: { gameType?: string; themeId: string }) {
   if (gameType === 'whot') return <WhotSample />
