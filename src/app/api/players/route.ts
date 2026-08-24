@@ -1927,22 +1927,45 @@ export async function DELETE(req: NextRequest) {
         // nominee's claim will rotate it.
         await getSupabaseAdmin().from('games').update({ host_user_id: null }).eq('id', id)
       } else {
-        const ended = await adminEndGame(getSupabaseAdmin(), {
-          id,
-          status: gameRow.status,
-          game_type: gameRow.game_type,
-        })
-        if (!ended.error) {
-          // Tag the reason so the trophy/coin award pass skips counter + streak credit —
-          // matches the idle reaper's post-finish tag shape.
+        // No pending nomination — auto-nominate the first remaining non-bot, non-spectator
+        // player so their existing HostNominationBanner fires and they can take over via
+        // the same /claim-host path an explicit transfer uses. Only if literally no one else
+        // is playing does the game end.
+        const { data: successor } = await getSupabaseAdmin()
+          .from('players')
+          .select('id')
+          .eq('game_id', id)
+          .eq('is_bot', false)
+          .eq('spectator', false)
+          .neq('id', playerId)
+          .order('joined_at', { ascending: true })
+          .limit(1)
+          .maybeSingle()
+        if (successor?.id) {
+          // Auto-nominate + drop host_user_id in one write. The nominee's banner sees the
+          // pending value and offers "Accept & host" — same UX as an explicit transfer.
           await getSupabaseAdmin()
             .from('games')
-            .update({ result_reason: 'host_ended' })
+            .update({ pending_host_player_id: successor.id, host_user_id: null })
             .eq('id', id)
-            .is('result_reason', null)
-          // Reload game status so the finished-branch guard below fires and the player
-          // row is retained (leaderboard integrity — see the long comment there).
-          ;(game as { status?: string }).status = 'finished'
+        } else {
+          const ended = await adminEndGame(getSupabaseAdmin(), {
+            id,
+            status: gameRow.status,
+            game_type: gameRow.game_type,
+          })
+          if (!ended.error) {
+            // Tag the reason so the trophy/coin award pass skips counter + streak credit —
+            // matches the idle reaper's post-finish tag shape.
+            await getSupabaseAdmin()
+              .from('games')
+              .update({ result_reason: 'host_ended' })
+              .eq('id', id)
+              .is('result_reason', null)
+            // Reload game status so the finished-branch guard below fires and the player
+            // row is retained (leaderboard integrity — see the long comment there).
+            ;(game as { status?: string }).status = 'finished'
+          }
         }
       }
     }
