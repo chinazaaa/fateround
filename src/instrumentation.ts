@@ -35,6 +35,15 @@ export async function register() {
   const { startTournamentReminderTicker } = await import('@/lib/tournament-reminder-ticker')
   startTournamentReminderTicker()
 
+  // Idle-active-game reaper — auto-ends games left running with no human
+  // activity for IDLE_REAPER_HOURS (default 24). The waiting-lobby cron in
+  // Postgres already closes idle `status='waiting'` rooms; active games
+  // can't take the pure-SQL path because the finish machinery (room
+  // points, round-facts snapshot, tournament resolution) is in TS, so the
+  // reaper lives in-process. See src/lib/idle-reaper.ts.
+  const { startIdleReaper } = await import('@/lib/idle-reaper')
+  startIdleReaper()
+
   // Not configured for this environment → do nothing.
   if (!process.env.OTEL_EXPORTER_OTLP_ENDPOINT) return
 
