@@ -514,7 +514,10 @@ function CreateGameInner() {
   )
   const [monopolyMaxPlayers, setMonopolyMaxPlayers] = useState(MONOPOLY_DEFAULT_MAX_PLAYERS)
   const [monopolyBoardSize, setMonopolyBoardSize] = useState<40 | 48>(40)
-  const [monopolyGameDuration, setMonopolyGameDuration] = useState(0)
+  // Default to 1h so a host that skips the setting doesn't unknowingly
+  // create a marathon session. Users can still pick "No limit" (0) or
+  // any other option from MONOPOLY_GAME_DURATION_OPTIONS.
+  const [monopolyGameDuration, setMonopolyGameDuration] = useState(3600)
   // House rules — mirror the host-lobby toggles. Defaults match the DB defaults
   // (loans enabled, 15% flat interest, 4-round term) so what a host sets here
   // travels through to the lobby untouched.
