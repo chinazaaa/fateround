@@ -26,8 +26,10 @@ type HistoryEntry = {
   gameType: string
   finishedAt: string
   playerCount: number
+  sessionsPlayed: number
   won: boolean | null
   winnerName: string | null
+  allWinnerNames: string[]
 }
 
 function timeAgo(iso: string): string {
@@ -136,10 +138,13 @@ export function ProfileStatsTab({ games }: { games: ProfileGameRow[] }) {
                     <Text style={styles.rowName} numberOfLines={1}>
                       {labelFor(entry.gameType)}
                     </Text>
-                    <Text style={styles.rowMeta} numberOfLines={1}>
+                    <Text style={styles.rowMeta} numberOfLines={2}>
                       {timeAgo(entry.finishedAt)} · {entry.playerCount} player
                       {entry.playerCount === 1 ? '' : 's'}
-                      {entry.winnerName ? ` · ${entry.winnerName} won` : ''}
+                      {entry.sessionsPlayed > 1 ? ` · ${entry.sessionsPlayed} rounds` : ''}
+                      {entry.allWinnerNames.length > 0
+                        ? ` · ${entry.allWinnerNames.join(', ')}`
+                        : ''}
                     </Text>
                   </View>
                   {/* `won` is null when the server could not attribute a winner, which is not

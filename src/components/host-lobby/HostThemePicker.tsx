@@ -163,7 +163,11 @@ export function HostThemePicker({ gameCode, hostToken, game, onGameUpdate }: Pro
               selected={currentTheme === theme.id}
               locked={locked}
               priceCoins={priceCoins}
-              onClick={locked ? () => router.push('/shop') : () => void selectTheme(theme.id)}
+              onClick={
+                locked
+                  ? () => router.push(`/shop?category=${isMonopoly ? 'edition' : 'theme'}`)
+                  : () => void selectTheme(theme.id)
+              }
               onPreview={() => setPreviewTheme(theme)}
             />
           )

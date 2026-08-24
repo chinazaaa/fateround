@@ -2425,8 +2425,15 @@ select option {
 /* --- Gold shower: 24 coin-shaped particles falling with staggered
    timing, with a soft trailing glow behind them --- */
 @keyframes fr-anim-gold-shower-fall {
+  /* Translate uses vh (viewport-scaled) so the fall distance matches the
+     vh-scaled y-offsets on the box-shadow particles below. Percent units
+     were relative to the 8px pseudo-element (~20px total travel) and left
+     the particles stuck at their -10vh…-48vh starting positions, well
+     above any smaller preview container. vh translate carries them
+     through the whole viewport height, so the shower reads correctly
+     both fullscreen (winner overlay) and in the shop preview modal. */
   0% {
-    transform: translate3d(0, -120%, 0);
+    transform: translate3d(0, -60vh, 0);
     opacity: 0;
   }
   10% {
@@ -2436,7 +2443,7 @@ select option {
     opacity: 1;
   }
   100% {
-    transform: translate3d(0, 120%, 0);
+    transform: translate3d(0, 60vh, 0);
     opacity: 0;
   }
 }
