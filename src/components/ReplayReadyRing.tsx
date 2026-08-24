@@ -72,7 +72,10 @@ export function ReplayReadyRing({
   const dashoffset = C * (1 - (total ? readyCount / total : 0))
 
   return (
-    <div className="mx-auto flex w-full max-w-md flex-col items-center px-4 py-8 text-center">
+    // pb-32 leaves room for the sticky action footer below so the last
+    // player row / hint text never hides behind it. sm:pb-8 collapses the
+    // reserve on wide screens where the footer sits inline anyway.
+    <div className="mx-auto flex w-full max-w-md flex-col items-center px-4 pt-8 pb-32 text-center sm:pb-8">
       <span className="text-[11px] font-bold uppercase tracking-[0.16em] text-faint">Play again · same settings</span>
       <h2 className="mt-2 text-2xl font-black tracking-tight text-body sm:text-3xl">
         {canStart ? 'Ready when you are' : 'Waiting for players…'}
@@ -156,7 +159,27 @@ export function ReplayReadyRing({
         })}
       </div>
 
-      <div className="mt-5 w-full">
+      {/* Action footer — the button (or 'game full' notice) pins to the
+       * bottom of the viewport on narrow screens so hosts don't have to
+       * scroll past the player list to hit 'Start game / Play again' and
+       * players don't have to hunt for 'Tap to get ready'. Multiple user
+       * reports on the finished screen: 'why is the ready button so far
+       * down'. The sticky wrapper only kicks in below sm; on tablet+
+       * (`sm:`) it collapses to the ordinary in-flow position because
+       * there's enough vertical room already.
+       *
+       * `-mx-4` breaks out of the parent's px-4 so the backdrop reaches
+       * the screen edges; padding is added back inside. env(safe-area-
+       * inset-bottom) keeps it clear of the iOS home indicator. The
+       * translucent background + blur mirrors the site's other sticky
+       * bars (LobbyStartButton) so the pattern reads as one system. */}
+      <div
+        className={[
+          'mt-5 w-full',
+          'sticky bottom-0 z-30 -mx-4 border-t border-[var(--border)] bg-[color-mix(in_srgb,var(--background)_92%,transparent)] px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur-md',
+          'sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:p-0 sm:backdrop-blur-none',
+        ].join(' ')}
+      >
         {isHost ? (
           <>
             <button
