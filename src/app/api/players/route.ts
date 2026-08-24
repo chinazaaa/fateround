@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAnon } from '@/lib/supabase-anon'
 import { createPlayerSchema, updatePlayerSchema, deletePlayerSchema } from '@/lib/validation'
 import { enforceRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
-import { adminEndGame } from '@/lib/admin-end-game'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { normalizeGender, normalizePlayerGender, type ParticipantGender } from '@/lib/participants'
 import { generateResumeToken, normalizeResumeToken } from '@/lib/utils'
@@ -1890,86 +1889,6 @@ export async function DELETE(req: NextRequest) {
     .maybeSingle()
 
   if (!player) return NextResponse.json({ error: 'Player not found' }, { status: 404 })
-
-  /**
-   * Host self-leave on a live game.
-   *
-   * If the host walks out mid-game (waiting or active), the game is left with a host_token
-   * only the departed device knew, a host_player_id pointing at a row that's about to be
-   * deleted, and everyone else on realtime with no one who can advance turns or end round.
-   * Two flavours:
-   *
-   *   1. A transfer nomination is pending (games.pending_host_player_id set). The nominee
-   *      still has their /claim-host path — accepting rotates host_token and repoints
-   *      host_player_id to them. Leave state alone; just make sure the outgoing host's own
-   *      device stops thinking it's the host (games.host_user_id cleared) so the home-page
-   *      Continue strip doesn't route them back to /host/[code].
-   *
-   *   2. No pending nomination. Nobody can take over — end the game cleanly, same shape as
-   *      the idle reaper's abandoned-game handling. Player-row deletion then falls through
-   *      to the "finished game" branch below (row retained, push subs unsubscribed).
-   *
-   * Only fires on !hostToken (the self-leave branch). A host who's kicking someone else via
-   * hostToken isn't leaving themselves.
-   */
-  if (!hostToken) {
-    const { data: gameRow } = await getSupabaseAdmin()
-      .from('games')
-      .select('status, game_type, host_player_id, pending_host_player_id')
-      .eq('id', id)
-      .maybeSingle()
-    const isHostLeaving = !!gameRow && gameRow.host_player_id === playerId
-    const isLive = gameRow?.status === 'waiting' || gameRow?.status === 'active'
-    if (isHostLeaving && isLive) {
-      if (gameRow.pending_host_player_id) {
-        // Nominee still has claim path — just null out host_user_id so the outgoing host's
-        // cross-device Continue no longer routes them here. host_token is left alone; the
-        // nominee's claim will rotate it.
-        await getSupabaseAdmin().from('games').update({ host_user_id: null }).eq('id', id)
-      } else {
-        // No pending nomination — auto-nominate the first remaining non-bot, non-spectator
-        // player so their existing HostNominationBanner fires and they can take over via
-        // the same /claim-host path an explicit transfer uses. Only if literally no one else
-        // is playing does the game end.
-        const { data: successor } = await getSupabaseAdmin()
-          .from('players')
-          .select('id')
-          .eq('game_id', id)
-          .eq('is_bot', false)
-          .eq('spectator', false)
-          .neq('id', playerId)
-          .order('joined_at', { ascending: true })
-          .limit(1)
-          .maybeSingle()
-        if (successor?.id) {
-          // Auto-nominate + drop host_user_id in one write. The nominee's banner sees the
-          // pending value and offers "Accept & host" — same UX as an explicit transfer.
-          await getSupabaseAdmin()
-            .from('games')
-            .update({ pending_host_player_id: successor.id, host_user_id: null })
-            .eq('id', id)
-        } else {
-          const ended = await adminEndGame(getSupabaseAdmin(), {
-            id,
-            status: gameRow.status,
-            game_type: gameRow.game_type,
-          })
-          if (!ended.error) {
-            // Tag the reason so the trophy/coin award pass skips counter + streak credit —
-            // matches the idle reaper's post-finish tag shape.
-            await getSupabaseAdmin()
-              .from('games')
-              .update({ result_reason: 'host_ended' })
-              .eq('id', id)
-              .is('result_reason', null)
-            // Reload game status so the finished-branch guard below fires and the player
-            // row is retained (leaderboard integrity — see the long comment there).
-            ;(game as { status?: string }).status = 'finished'
-          }
-        }
-      }
-    }
-  }
 
   /**
    * A finished game is a RESULT, and a result does not change because someone closed the tab.
