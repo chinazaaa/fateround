@@ -24,19 +24,17 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
  * forever after everyone leaves a game, and last_activity_at correctly
  * doesn't tick along with it — so the reaper catches it.
  *
- * Threshold defaults to 15 minutes. Fate Round games are casual/party
- * games — none legitimately runs for hours without someone poking it. Env
- * override: IDLE_REAPER_MINUTES.
- *
- * Caveat: `last_activity_at` bumps on UPDATEs to the games row and on
- * player join/leave, but individual game moves (whot / chess / ludo etc.)
- * hit sub-tables, not the games row. If a slow game type surfaces where
- * two humans are actively playing but nothing touches the games row for
- * 15 minutes, the fix is a per-game-type bump in the turn handler — the
- * signal here is already right for "everybody stopped touching it".
+ * Threshold defaults to 30 minutes. Fate Round games are casual/party
+ * games — none legitimately runs for that long without someone poking it,
+ * and 30m leaves enough slack that a slow real-move game type (whot /
+ * chess / ludo — all write to sub-tables not the games row, so their
+ * moves don't currently bump last_activity_at) can't get reaped mid-play
+ * on a long think. If false-positive reaps become real anyway, the fix
+ * is a per-game-type bump in the turn handler. Env override:
+ * IDLE_REAPER_MINUTES.
  */
 
-const DEFAULT_IDLE_MINUTES = 15
+const DEFAULT_IDLE_MINUTES = 30
 const MIN_IDLE_MINUTES = 1
 const DEFAULT_INTERVAL_MS = 5 * 60 * 1000 // every 5 minutes
 const REAPER_BATCH_LIMIT = 200
