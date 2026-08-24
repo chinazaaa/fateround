@@ -33,7 +33,12 @@ interface SudokuBoardProps {
   highlightNumber?: number | null
 }
 
-const BLOCK_BORDER = 'border-slate-400/70'
+/** 3x3 sub-block dividers. Uses inline border-color so a per-game theme
+ *  (Newsprint Sudoku ink-black, Minimalist hairline gray) actually
+ *  repaints the grid — a Tailwind color class would be baked in. */
+const BLOCK_BORDER_STYLE = { borderColor: 'var(--game-board-block)' } as const
+/** Thin intra-cell grid lines — same story. */
+const GRID_LINE_STYLE = { borderColor: 'var(--game-board-grid)' } as const
 
 export function SudokuBoard({
   puzzle,
@@ -64,8 +69,15 @@ export function SudokuBoard({
     <div className="w-full max-w-[min(400px,100%)] mx-auto space-y-4">
       {/* Grid */}
       <div
-        className="grid border-2 border-slate-500/80 rounded-sm overflow-hidden bg-white dark:bg-slate-900"
-        style={{ gridTemplateColumns: 'repeat(9, 1fr)', aspectRatio: '1' }}
+        className="grid border-2 rounded-sm overflow-hidden"
+        style={{
+          gridTemplateColumns: 'repeat(9, 1fr)',
+          aspectRatio: '1',
+          // Board surface + outer border read from --game-* tokens so a
+          // paid theme (Newsprint cream, Minimalist white) repaints them.
+          background: 'var(--game-board-bg)',
+          borderColor: 'var(--game-board-block)',
+        }}
       >
         {Array.from({ length: 9 }, (_, row) =>
           Array.from({ length: 9 }, (_, col) => {
@@ -93,10 +105,14 @@ export function SudokuBoard({
               playerColors,
             })
 
-            const borderRight =
-              (col + 1) % 3 === 0 && col < 8 ? `border-r-2 ${BLOCK_BORDER}` : 'border-r border-slate-300/60'
-            const borderBottom =
-              (row + 1) % 3 === 0 && row < 8 ? `border-b-2 ${BLOCK_BORDER}` : 'border-b border-slate-300/60'
+            const isBlockRight = (col + 1) % 3 === 0 && col < 8
+            const isBlockBottom = (row + 1) % 3 === 0 && row < 8
+            const borderRight = isBlockRight ? 'border-r-2' : 'border-r'
+            const borderBottom = isBlockBottom ? 'border-b-2' : 'border-b'
+            const borderStyle: React.CSSProperties = {
+              borderRightColor: isBlockRight ? BLOCK_BORDER_STYLE.borderColor : GRID_LINE_STYLE.borderColor,
+              borderBottomColor: isBlockBottom ? BLOCK_BORDER_STYLE.borderColor : GRID_LINE_STYLE.borderColor,
+            }
 
             const isWrongDraft = draftWrongCells?.[row]?.[col]
             const isFlashing = isCellInFlashingUnits(row, col, flashUnits)
@@ -111,11 +127,14 @@ export function SudokuBoard({
             const baseBg = displayColor ? { backgroundColor: `${displayColor}${iSolved ? '55' : '35'}` } : undefined
 
             const bgStyle = isSelected
-              ? { backgroundColor: 'rgba(99, 102, 241, 0.35)', transition: 'background-color 0.15s ease-out' }
+              ? { backgroundColor: 'var(--game-selected-bg)', transition: 'background-color 0.15s ease-out' }
               : isFlashing
-                ? { backgroundColor: 'rgba(251, 191, 36, 0.55)', transition: 'background-color 0.5s ease-out' }
+                ? // Wrong-flash amber is a semantic error state — kept
+                  // hardcoded on purpose. Themes that want a monochrome
+                  // flash can override --game-flash-bg in a follow-up.
+                  { backgroundColor: 'rgba(251, 191, 36, 0.55)', transition: 'background-color 0.5s ease-out' }
                 : isNumberHighlighted
-                  ? { backgroundColor: 'rgba(56, 189, 248, 0.30)', transition: 'background-color 0.15s ease-out' }
+                  ? { backgroundColor: 'var(--game-highlight-bg)', transition: 'background-color 0.15s ease-out' }
                   : baseBg
                     ? { ...baseBg, transition: 'background-color 0.5s ease-out' }
                     : undefined
@@ -148,33 +167,47 @@ export function SudokuBoard({
                   'relative flex items-center justify-center select-none transition-colors',
                   borderRight,
                   borderBottom,
-                  cellFullyDisabled || cellUneditable
-                    ? 'cursor-default'
-                    : 'cursor-pointer hover:bg-slate-100/80 dark:hover:bg-slate-800/60',
-                  given ? 'bg-white dark:bg-slate-900' : '',
-                  isSelected ? 'ring-2 ring-indigo-500 ring-inset z-10' : '',
+                  cellFullyDisabled || cellUneditable ? 'cursor-default' : 'cursor-pointer',
+                  isSelected ? 'ring-2 ring-inset z-10' : '',
                 ].join(' ')}
-                style={{ aspectRatio: '1', ...bgStyle }}
+                style={{
+                  aspectRatio: '1',
+                  ...borderStyle,
+                  // Cell surface — given cells use the board bg; empty
+                  // cells inherit. Selected cells add the accent ring
+                  // colour so it matches the paid theme.
+                  ...(given ? { backgroundColor: 'var(--game-board-bg)' } : {}),
+                  ...(isSelected ? { boxShadow: 'inset 0 0 0 2px var(--game-accent)' } : {}),
+                  ...bgStyle,
+                }}
               >
                 <span
                   key={isCorrectPulsing ? `${row}-${col}-${correctPulseId}` : `${row}-${col}`}
                   className={[
                     'inline-block text-lg sm:text-xl font-semibold tabular-nums',
                     isCorrectPulsing ? 'font-extrabold' : '',
-                    given ? 'text-slate-800 dark:text-slate-100' : '',
+                    // Wrong-draft red is a semantic error state — kept as
+                    // Tailwind so themes don't accidentally hide the
+                    // "you got it wrong" signal.
                     isWrongDraft ? 'text-red-500 dark:text-red-400' : '',
-                    !isWrongDraft && hasValue ? 'text-slate-800 dark:text-slate-100' : '',
-                    !isWrongDraft && !hasValue ? 'text-slate-700 dark:text-slate-200' : '',
-                    solution && !given ? 'text-violet-600 dark:text-violet-400' : '',
                   ].join(' ')}
-                  style={
-                    isCorrectPulsing
+                  style={{
+                    // Digit color reads --game-board-fg so a theme's ink
+                    // colour (Newsprint sepia, Minimalist black) paints
+                    // the numbers. Only applies when the cell isn't in a
+                    // wrong-draft error state above.
+                    ...(!isWrongDraft ? { color: 'var(--game-board-fg)' } : {}),
+                    // solution-preview digits stay accent-tinted so a
+                    // reviewer can distinguish player entries from the
+                    // reveal.
+                    ...(solution && !given && !isWrongDraft ? { color: 'var(--game-accent)' } : {}),
+                    ...(isCorrectPulsing
                       ? {
                           animation: 'sudoku-correct-number-pulse 420ms ease-out both',
                           animationDelay: `${(row * 9 + col) * 18}ms`,
                         }
-                      : undefined
-                  }
+                      : {}),
+                  }}
                 >
                   {displayValue}
                 </span>
