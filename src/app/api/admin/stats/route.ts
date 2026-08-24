@@ -309,6 +309,34 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // Popular games by country — feeds ads targeting ("what should we
+  // advertise in Nigeria vs the UK?"). Joins each player-join's country
+  // against the game's type; bot seats are excluded so the counts reflect
+  // real humans in each country. Countries with fewer than 3 real joins
+  // are dropped as noise (single-player samples aren't a signal for ad
+  // decisions). Payload is a country → game_type → joins map so the UI
+  // can render whichever top-N-per-country slice reads best.
+  const gameTypeById = new Map<string, string>()
+  for (const game of games) gameTypeById.set(game.id, game.game_type)
+  const gamesByCountry: Record<string, Record<string, number>> = {}
+  const countryTotals: Record<string, number> = {}
+  for (const row of playerRows) {
+    if (!row.country) continue
+    if (hasBotColumn && row.is_bot) continue
+    const gameType = gameTypeById.get(row.game_id)
+    if (!gameType) continue
+    const bucket = (gamesByCountry[row.country] ??= {})
+    bucket[gameType] = (bucket[gameType] ?? 0) + 1
+    countryTotals[row.country] = (countryTotals[row.country] ?? 0) + 1
+  }
+  const POPULAR_MIN_JOINS = 3
+  const popularGamesByCountry: Record<string, { totalJoins: number; games: Record<string, number> }> = {}
+  for (const [country, byType] of Object.entries(gamesByCountry)) {
+    const total = countryTotals[country] ?? 0
+    if (total < POPULAR_MIN_JOINS) continue
+    popularGamesByCountry[country] = { totalJoins: total, games: byType }
+  }
+
   // Rooms-with-bots stats — a real game room that had at least one bot seat.
   // `is_bot` was added in 20260925120000_players_is_bot; if the field isn't
   // present on the fetched rows (older schema), hasBotColumn stays false and
@@ -611,6 +639,7 @@ export async function GET(req: NextRequest) {
     userGrowth,
     dauTrend,
     playersByCountry,
+    popularGamesByCountry,
     usersByCountry,
     uniqueCountries,
     dailyChallengeStats,
