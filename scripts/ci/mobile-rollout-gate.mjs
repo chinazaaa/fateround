@@ -19,21 +19,55 @@ import { execFileSync } from 'node:child_process'
 const git = (...args) => execFileSync('git', args, { encoding: 'utf8' })
 const ACK = 'MOBILE-ROLLOUT-ACK'
 
-/** Columns a migration takes away, from either shape used in this repo. */
+/**
+ * Columns a migration takes away, PAIRED WITH THE RELATION they belong to.
+ *
+ * The relation matters. An earlier version returned bare column names and matched them against
+ * the whole mobile selects file, so revoking `id` from any table matched the `id` in every
+ * select — and `id`, `game_id`, `player_id` and `status` appear in most of them. That gate
+ * blocked nearly every revoke regardless of table, and a gate that cries wolf gets ignored.
+ */
 function revokedColumns(sql) {
-  const cols = new Set()
+  const pairs = []
   // 1. select public.sec_regrant_except('table', array['a', 'b']);
-  for (const m of sql.matchAll(/sec_regrant_except\(\s*'[^']+'\s*,\s*array\[([^\]]*)\]/gi)) {
-    for (const c of m[1].matchAll(/'([^']+)'/g)) cols.add(c[1])
+  for (const m of sql.matchAll(/sec_regrant_except\(\s*'([^']+)'\s*,\s*array\[([^\]]*)\]/gi)) {
+    const relation = m[1]
+    for (const c of m[2].matchAll(/'([^']+)'/g)) pairs.push({ relation, col: c[1] })
   }
-  // 2. hand-rolled do-block: ... column_name not in ('a', 'b') ... revoke select on public.x
-  if (/revoke\s+select\s+on\s+public\./i.test(sql)) {
+  // 2. hand-rolled do-block: ... column_name not in ('a','b') ... revoke select on public.x
+  //    The relation comes from the revoke statement in the same file.
+  const revoked = [...sql.matchAll(/revoke\s+select\s+on\s+(?:table\s+)?(?:public\.)?"?([a-z0-9_]+)"?/gi)].map(
+    (m) => m[1]
+  )
+  if (revoked.length > 0) {
+    const cols = new Set()
     for (const m of sql.matchAll(/column_name\s+not\s+in\s*\(([^)]*)\)/gi)) {
       for (const c of m[1].matchAll(/'([^']+)'/g)) cols.add(c[1])
     }
     for (const m of sql.matchAll(/column_name\s*<>\s*'([^']+)'/gi)) cols.add(m[1])
+    for (const relation of new Set(revoked)) for (const col of cols) pairs.push({ relation, col })
   }
-  return [...cols]
+  return pairs
+}
+
+/**
+ * The mobile select constants that read a given relation, as `{ name, value }`.
+ *
+ * Mobile names them after the table — `uno_sessions` -> `UNO_SESSION_SELECT`,
+ * `bingo_cards` -> `BINGO_CARD_SELECT` — so match on the table's words, singularising the last
+ * one. Returning the matched constants (rather than the whole file) is what makes the column
+ * check relation-scoped.
+ */
+function selectsForRelation(source, relation) {
+  const words = relation.toLowerCase().split('_').filter(Boolean)
+  const last = words[words.length - 1]
+  const variants = new Set([words.join('_'), [...words.slice(0, -1), last.replace(/s$/, '')].join('_')])
+  const out = []
+  for (const m of source.matchAll(/export const ([A-Z0-9_]+_SELECT)\s*=\s*\n?\s*'([^']*)'/g)) {
+    const norm = m[1].replace(/_SELECT$/, '').toLowerCase()
+    if (variants.has(norm)) out.push({ name: m[1], value: m[2] })
+  }
+  return out
 }
 
 const base = process.env.BASE_SHA
@@ -65,10 +99,28 @@ for (const file of added) {
   } catch {
     continue
   }
-  for (const col of revokedColumns(sql)) {
-    // Word-boundary match so `key` does not match `monkey` / `key_totals`.
-    if (new RegExp(`\\b${col.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(shippedSelects)) {
-      risky.push({ file, col })
+  for (const { relation, col } of revokedColumns(sql)) {
+    const selects = selectsForRelation(shippedSelects, relation)
+    if (selects.length > 0) {
+      // Word-boundary match so `key` does not match `monkey` / `key_totals`.
+      const re = new RegExp(`\\b${col.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`)
+      for (const sel of selects) {
+        if (re.test(sel.value)) risky.push({ file, relation, col, via: sel.name })
+      }
+      continue
+    }
+    // No select constant maps to this relation. If the table name appears nowhere in the shipped
+    // mobile source, installed builds cannot be querying it and the revoke is safe. If it DOES
+    // appear (an inline select, say), we cannot prove which columns are read — fail closed,
+    // because the cost of being wrong is a store release.
+    let mentioned = ''
+    try {
+      mentioned = git('grep', '-l', relation, base, '--', 'apps/mobile')
+    } catch {
+      mentioned = ''
+    }
+    if (mentioned.trim()) {
+      risky.push({ file, relation, col, via: 'mobile source mentions this table (no named select to check)' })
     }
   }
 }
