@@ -686,7 +686,7 @@ const BITING_DOOR: TrapRecipe = {
       // bite counts itself down: waiting it out is always available, sprinting into it is not.
       zone: columnBand(doorCol - 3, 2),
       condition: 'enter',
-      actions: [{ type: 'fake_door' }],
+      actions: [{ type: 'fake_door', duration: 1.5 }],
     })
     return true
   },

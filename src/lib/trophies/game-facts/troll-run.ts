@@ -194,8 +194,8 @@ export async function trollRunFacts(
   }
   for (const [playerId, count] of firstTry) bump(out, playerId, 'troll_run_first_try_clears', count)
 
-  // Variety set. Four worlds ship (`TROLL_RUN_WORLD_IDS`), each with its own hazard vocabulary,
-  // so "played all four" is a real breadth measure no summable counter can express.
+  // Variety set. Every shipped world (`TROLL_RUN_WORLD_IDS`) has its own hazard vocabulary,
+  // so "played them all" is a real breadth measure no summable counter can express.
   const world = normalizeTrollRunWorld((game as { troll_run_world?: string | null } | null)?.troll_run_world)
   for (const playerId of tally.keys()) {
     flag(out, playerId, `distinct:troll_run_worlds:${world}`)

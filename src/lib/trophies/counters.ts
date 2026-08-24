@@ -4926,8 +4926,8 @@ export const DISTINCT_SETS: readonly DistinctDef[] = [
   },
   {
     // Emitted by trollRunFacts as `distinct:troll_run_worlds:<world>`, folded into
-    // `player_distinct` by the award pass. Four worlds ship (`TROLL_RUN_WORLD_IDS`), each with
-    // its own hazard vocabulary, so "ran all four" is a breadth measure no sum can express.
+    // `player_distinct` by the award pass. Every shipped world (`TROLL_RUN_WORLD_IDS`) has its
+    // own hazard vocabulary, so "ran them all" is a breadth measure no sum can express.
     key: 'troll_run_worlds',
     label: 'Troll Run — worlds run',
     description: 'Distinct Troll Run worlds this profile has finished a game in.',

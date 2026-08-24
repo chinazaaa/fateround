@@ -20,6 +20,7 @@ import {
   TrollRunTileType,
   trollEntityIsActive,
 } from './types'
+import { TROLL_RUN_FAKE_DOOR_BITE_SECONDS } from '../troll-run-types'
 
 describe('Troll Run Level Registry & Worlds', () => {
   it('contains exactly 5 worlds and 50 total levels', () => {
@@ -167,8 +168,8 @@ describe('Troll Run Level Registry & Worlds', () => {
       for (const trigger of level.triggers) {
         for (const action of trigger.actions) {
           if (action.type !== 'fake_door') continue
-          if (action.duration === undefined) continue
-          expect(action.duration, `${level.id}: fake_door bite must expire`).toBeGreaterThan(0)
+          const effectiveDuration = action.duration ?? TROLL_RUN_FAKE_DOOR_BITE_SECONDS
+          expect(effectiveDuration, `${level.id}: fake_door bite must expire`).toBeGreaterThan(0)
         }
       }
     }
