@@ -97,7 +97,12 @@ export function isBotTurn(state: Draughts10SoloState): boolean {
 /** Legal hops available to `color` right now (honors majority-capture and any active chain). */
 export function draughts10SoloLegalSteps(state: Draughts10SoloState, color?: CheckersColor): Draughts10Step[] {
   const c = color ?? state.session.current_turn
-  return legalMovesForColor(state.session.board, c, state.session.must_continue_from, state.session.must_continue_remaining)
+  return legalMovesForColor(
+    state.session.board,
+    c,
+    state.session.must_continue_from,
+    state.session.must_continue_remaining
+  )
 }
 
 function reachesFarRank(color: CheckersColor, row: number): boolean {
@@ -147,8 +152,8 @@ export function draughts10SoloMove(
   const kingMove = isKing(mover) && !captured && !crowned
   const moveCount = kingMove ? state.session.move_count + 1 : 0
 
-  let positionCounts: Record<string, number> = {}
   let repetition = 0
+  let positionCounts: Record<string, number>
   if (kingMove && !continues) {
     const key = `${nextBoard}:${nextTurn}`
     repetition = (state.session.position_counts?.[key] ?? 0) + 1

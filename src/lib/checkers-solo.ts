@@ -41,7 +41,6 @@ export const CHECKERS_SOLO_BOT_ID = 'player_bot'
 
 /** Human plays Black (Dark), opens first — same convention as multiplayer. */
 const HUMAN_COLOR: CheckersColor = 'b'
-const BOT_COLOR: CheckersColor = 'r'
 
 // ── Init ────────────────────────────────────────────────────────────────────
 
@@ -52,7 +51,6 @@ export type CheckersSoloInitOptions = {
 
 export function initCheckersSolo(opts: CheckersSoloInitOptions = {}): CheckersSoloState {
   const humanColor = opts.human ?? HUMAN_COLOR
-  const botColor: CheckersColor = humanColor === 'r' ? 'b' : 'r'
 
   const session: CheckersSession = {
     id: 'solo',
@@ -79,7 +77,6 @@ export function initCheckersSolo(opts: CheckersSoloInitOptions = {}): CheckersSo
     updated_at: new Date(0).toISOString(),
   }
 
-  void botColor // colors are derived from ids on read
   return { session, outcome: null }
 }
 
@@ -144,8 +141,8 @@ export function checkersSoloMove(
   const kingMove = kingBefore && !captured && !crowned
   const moveCount = kingMove ? state.session.move_count + 1 : 0
 
-  let positionCounts: Record<string, number> = {}
   let repetition = 0
+  let positionCounts: Record<string, number>
   if (kingMove && !continues) {
     const key = `${nextBoard}:${nextTurn}`
     repetition = (state.session.position_counts?.[key] ?? 0) + 1

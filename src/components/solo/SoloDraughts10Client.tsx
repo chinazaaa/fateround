@@ -25,7 +25,13 @@ import {
 } from '@/lib/draughts10-solo'
 import { pickDraughts10BotMove, type Draughts10BotDifficulty } from '@/lib/draughts10-bot'
 import { logSoloPlayFinished, logSoloPlayStarted, resetSoloSessionId, soloSessionId } from '@/lib/solo-play'
-import { readSoloScoreboard, recordSoloOutcome, resetSoloScoreboard, type SoloScoreboard, type SoloScoreboardKey } from '@/lib/solo-scoreboard'
+import {
+  readSoloScoreboard,
+  recordSoloOutcome,
+  resetSoloScoreboard,
+  type SoloScoreboard,
+  type SoloScoreboardKey,
+} from '@/lib/solo-scoreboard'
 import { SoloScoreboardRow } from '@/components/solo/SoloScoreboardRow'
 import type { Draughts10Variant, GameType, Player } from '@/types'
 

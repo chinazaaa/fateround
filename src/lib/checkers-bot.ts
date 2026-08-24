@@ -26,13 +26,7 @@
  */
 
 import type { CheckersColor } from '@/types'
-import {
-  applyStep,
-  hasPieces,
-  legalMovesForColor,
-  colorOfPiece,
-  type CheckersStep,
-} from '@/lib/checkers'
+import { applyStep, hasPieces, legalMovesForColor, colorOfPiece, type CheckersStep } from '@/lib/checkers'
 import { CHECKERS_SOLO_BOT_ID, botColor, type CheckersSoloState } from '@/lib/checkers-solo'
 
 export type CheckersBotDifficulty = 'easy' | 'normal' | 'hard'
@@ -44,7 +38,6 @@ const DEPTH_BY_DIFFICULTY: Record<CheckersBotDifficulty, number> = {
 }
 
 const WIN_SCORE = 100_000
-const LOSS_SCORE = -100_000
 
 const MAN_VALUE = 100
 const KING_VALUE = 160
@@ -53,8 +46,6 @@ const KING_VALUE = 160
 
 function evaluate(board: string, mover: CheckersColor): number {
   let score = 0
-  let ownMoves = 0
-  let oppMoves = 0
   const opp: CheckersColor = mover === 'r' ? 'b' : 'r'
 
   for (let r = 0; r < 8; r += 1) {
@@ -80,8 +71,8 @@ function evaluate(board: string, mover: CheckersColor): number {
     }
   }
 
-  ownMoves = legalMovesForColor(board, mover).length
-  oppMoves = legalMovesForColor(board, opp).length
+  const ownMoves = legalMovesForColor(board, mover).length
+  const oppMoves = legalMovesForColor(board, opp).length
   score += (ownMoves - oppMoves) * 2
 
   return score
@@ -116,8 +107,7 @@ function search(
   let a = alpha
   for (const step of moves) {
     const { board: next, crowned, captured } = applyStep(board, step)
-    const continues =
-      captured && !crowned && legalMovesForColor(next, side, step.to).length > 0
+    const continues = captured && !crowned && legalMovesForColor(next, side, step.to).length > 0
 
     let score: number
     if (continues) {
@@ -168,8 +158,7 @@ export function pickCheckersBotMove(
 
   for (const step of moves) {
     const { board: next, crowned, captured } = applyStep(state.session.board, step)
-    const continues =
-      captured && !crowned && legalMovesForColor(next, bot, step.to).length > 0
+    const continues = captured && !crowned && legalMovesForColor(next, bot, step.to).length > 0
 
     let score: number
     if (continues) {

@@ -118,7 +118,10 @@ export function pickDraughts10BotMove(
   if (state.outcome != null) return null
   const bot = botColor(state)
   if (state.session.current_turn !== bot) return null
-  if (state.session.player_red_id !== DRAUGHTS10_SOLO_BOT_ID && state.session.player_black_id !== DRAUGHTS10_SOLO_BOT_ID) {
+  if (
+    state.session.player_red_id !== DRAUGHTS10_SOLO_BOT_ID &&
+    state.session.player_black_id !== DRAUGHTS10_SOLO_BOT_ID
+  ) {
     return null
   }
 

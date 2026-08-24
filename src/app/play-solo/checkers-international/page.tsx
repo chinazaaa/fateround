@@ -12,7 +12,12 @@ export const metadata: Metadata = {
     description: 'Practice International Draughts against a computer opponent. Free, no sign-up.',
     url: '/play-solo/checkers-international',
     images: [
-      { url: '/og/checkers-international.png', width: 1200, height: 630, alt: 'Play International Draughts vs bot on FateRound' },
+      {
+        url: '/og/checkers-international.png',
+        width: 1200,
+        height: 630,
+        alt: 'Play International Draughts vs bot on FateRound',
+      },
     ],
   },
   twitter: {
