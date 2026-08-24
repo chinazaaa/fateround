@@ -70,6 +70,24 @@ const SOLO_GAMES: SoloGame[] = [
     blurb: 'Roll dice, fill your scorecard, aim for the big categories. Solo scoreboard tracks your best.',
     og: '/og/yahtzee.png',
   },
+  {
+    href: '/play-solo/checkers',
+    title: 'Checkers (American)',
+    blurb: 'Classic 8×8 draughts. Forced captures, kings, three bot difficulties.',
+    og: '/og/checkers.png',
+  },
+  {
+    href: '/play-solo/checkers-international',
+    title: 'International Draughts',
+    blurb: '10×10 board with flying kings and majority-capture rule. Practice against the computer.',
+    og: '/og/checkers-international.png',
+  },
+  {
+    href: '/play-solo/checkers-nigeria',
+    title: 'Nigerian Draughts',
+    blurb: '10×10 draughts, Naija street rules. Fast, forced captures, jumps only.',
+    og: '/og/checkers-nigeria.png',
+  },
 ]
 
 export default function PlaySoloHubPage() {
