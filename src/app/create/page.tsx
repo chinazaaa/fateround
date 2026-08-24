@@ -113,6 +113,7 @@ import {
   CrownIcon,
   DoorOpenIcon,
   FlashIcon,
+  GearsIcon,
   GlobeIcon,
   LockIcon,
   Moon02Icon,
@@ -6049,6 +6050,12 @@ function CreateGameInner() {
                         title: 'World 4: The Gauntlet',
                         icon: CrownIcon,
                         desc: 'Master gauntlet with all traps',
+                      },
+                      {
+                        id: 'machines',
+                        title: 'World 5: The Machine Room',
+                        icon: GearsIcon,
+                        desc: 'Sweeping presses & moving walkways',
                       },
                     ].map((w) => (
                       <button

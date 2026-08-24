@@ -12,6 +12,7 @@ import { WORLD_1_LEVELS } from './world-1-pits'
 import { WORLD_2_LEVELS } from './world-2-doors'
 import { WORLD_3_LEVELS } from './world-3-gravity'
 import { WORLD_4_LEVELS } from './world-4-gauntlet'
+import { WORLD_5_LEVELS } from './world-5-machines'
 
 export interface TrollRunWorldConfig {
   id: TrollRunWorldId
@@ -50,6 +51,13 @@ export const TROLL_RUN_WORLDS: TrollRunWorldConfig[] = [
     icon: '👑',
     levels: WORLD_4_LEVELS,
   },
+  {
+    id: 'machines',
+    name: 'World 5: The Machine Room',
+    subtitle: 'Sweeping presses & moving walkways',
+    icon: '⚙️',
+    levels: WORLD_5_LEVELS,
+  },
 ]
 
 export const ALL_TROLL_RUN_LEVELS: TrollRunLevel[] = [
@@ -57,6 +65,7 @@ export const ALL_TROLL_RUN_LEVELS: TrollRunLevel[] = [
   ...WORLD_2_LEVELS,
   ...WORLD_3_LEVELS,
   ...WORLD_4_LEVELS,
+  ...WORLD_5_LEVELS,
 ]
 
 const LEVELS_BY_WORLD_ID = new Map<string, TrollRunLevel[]>(TROLL_RUN_WORLDS.map((world) => [world.id, world.levels]))
