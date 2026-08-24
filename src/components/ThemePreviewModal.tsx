@@ -116,28 +116,48 @@ function ThemeSampleRoom({ theme, siteMode, gameType }: { theme: ThemeConfig; si
           </div>
         </div>
 
-        <GameSpecificSample gameType={gameType} themeId={theme.id} />
+        <GameSpecificSample theme={theme} gameType={gameType} />
       </div>
     </div>
   )
 }
 
 /**
- * Game-appropriate preview surface inside ThemeSampleRoom. The generic
- * "Kiss Marry Kill" card was misleading for Whot/Sudoku/Ludo/Monopoly theme
- * shoppers — the whole point of buying a game theme is to see how THAT game
- * will look, so we render a plausible mini board or card table per
- * game_type. Every branch inherits the theme CSS vars from the wrapping
- * ThemeSampleRoom. This replaces the earlier `GameScene` prototype which
- * hard-read `theme.preview` colors — CSS vars pick up the real palette
- * defined in globals.css for each theme when it lands.
+ * Game-appropriate preview surface inside ThemeSampleRoom. Each mini paints
+ * with the theme's OWN palette (`theme.preview.bg/accent/text`) rather than
+ * inheriting `--surface`/`--primary` CSS vars — those only differ per theme
+ * where globals.css has a `[data-game-theme=...]` block, and the per-game
+ * paid themes (whot-neon, ludo-wooden, sudoku-newsprint, …) don't have those
+ * blocks yet. Reading the palette directly is what makes "Wooden Ludo"
+ * actually look brown, "Neon Whot" actually look neon, etc.
+ *
+ * Layouts read as the ACTUAL game at a glance — Ludo shows a cross-shaped
+ * board with home yards, Whot shows a hand with classic shapes (circle,
+ * cross, triangle, star, square), Sudoku shows a real 9×9 grid with 3×3
+ * subgrid dividers, Monopoly shows a board corner with a strip of property
+ * tiles carrying the theme's accent as their color-band.
  */
-function GameSpecificSample({ gameType, themeId }: { gameType?: string; themeId: string }) {
-  if (gameType === 'whot') return <WhotSample />
-  if (gameType === 'ludo') return <LudoSample />
-  if (gameType === 'sudoku') return <SudokuSample />
-  if (gameType === 'monopoly') return <MonopolySample themeId={themeId} />
+function GameSpecificSample({ theme, gameType }: { theme: ThemeConfig; gameType?: string }) {
+  if (gameType === 'whot') return <WhotSample theme={theme} />
+  if (gameType === 'ludo') return <LudoSample theme={theme} />
+  if (gameType === 'sudoku') return <SudokuSample theme={theme} />
+  if (gameType === 'monopoly') return <MonopolySample theme={theme} />
   return <KissMarryKillSample />
+}
+
+/** Wooden themes get a subtle warm-toned grain overlay so "Wooden Ludo"
+ *  actually reads as wooden and not just brown. Everything else no-ops. */
+function themeSurfaceBackground(themeId: string, base: string): string {
+  if (themeId === 'ludo-wooden') {
+    return `repeating-linear-gradient(90deg, ${base} 0px, ${base} 3px, color-mix(in srgb, ${base} 88%, #000) 3px, color-mix(in srgb, ${base} 88%, #000) 5px), ${base}`
+  }
+  if (themeId === 'sudoku-newsprint') {
+    return `radial-gradient(circle at 20% 15%, color-mix(in srgb, ${base} 92%, #000) 0px, transparent 40%), ${base}`
+  }
+  if (themeId === 'whot-neon') {
+    return `radial-gradient(circle at 50% 100%, color-mix(in srgb, #00e5ff 25%, transparent) 0%, transparent 60%), ${base}`
+  }
+  return base
 }
 
 function KissMarryKillSample() {
@@ -165,35 +185,84 @@ function KissMarryKillSample() {
   )
 }
 
-function WhotSample() {
-  // Face-up call card + a three-card hand. Uses the wrapping theme's
-  // background + primary vars so a Neon or Naija Whot theme actually looks
-  // like Neon or Naija cards, not a generic KMK sample.
+/** Classic Whot shape glyphs as inline SVG so the card faces read like the
+ *  real deck (circle, cross, triangle, star, square) rather than generic
+ *  emoji. `color` is the accent from the previewed theme. */
+function WhotShape({ shape, color, size = 24 }: { shape: 'circle' | 'cross' | 'triangle' | 'star' | 'square'; color: string; size?: number }) {
+  const s = size
+  const c = s / 2
+  if (shape === 'circle') return <svg width={s} height={s} viewBox={`0 0 ${s} ${s}`}><circle cx={c} cy={c} r={s * 0.38} fill={color} /></svg>
+  if (shape === 'cross') return (
+    <svg width={s} height={s} viewBox={`0 0 ${s} ${s}`}>
+      <rect x={c - s * 0.08} y={s * 0.15} width={s * 0.16} height={s * 0.7} fill={color} />
+      <rect x={s * 0.15} y={c - s * 0.08} width={s * 0.7} height={s * 0.16} fill={color} />
+    </svg>
+  )
+  if (shape === 'triangle') return (
+    <svg width={s} height={s} viewBox={`0 0 ${s} ${s}`}>
+      <polygon points={`${c},${s * 0.15} ${s * 0.85},${s * 0.82} ${s * 0.15},${s * 0.82}`} fill={color} />
+    </svg>
+  )
+  if (shape === 'star') return (
+    <svg width={s} height={s} viewBox={`0 0 ${s} ${s}`}>
+      <polygon
+        points={Array.from({ length: 10 }, (_, i) => {
+          const a = (Math.PI / 5) * i - Math.PI / 2
+          const r = i % 2 === 0 ? s * 0.42 : s * 0.18
+          return `${c + Math.cos(a) * r},${c + Math.sin(a) * r}`
+        }).join(' ')}
+        fill={color}
+      />
+    </svg>
+  )
+  // square
+  return <svg width={s} height={s} viewBox={`0 0 ${s} ${s}`}><rect x={s * 0.2} y={s * 0.2} width={s * 0.6} height={s * 0.6} fill={color} /></svg>
+}
+
+function WhotSample({ theme }: { theme: ThemeConfig }) {
+  // Face-up call card + a fan of three hand cards, each with a classic Whot
+  // shape. Card faces use the theme's own palette (whot-neon → dark card
+  // with cyan shapes; whot-naija → green card with cream shapes).
+  const cardBg = theme.preview.bg
+  const cardText = theme.preview.text
+  const shapeColor = theme.preview.accent
+  const hand: { shape: 'circle' | 'cross' | 'triangle' | 'star' | 'square'; n: string }[] = [
+    { shape: 'circle', n: '3' },
+    { shape: 'star', n: '10' },
+    { shape: 'triangle', n: '2' },
+  ]
   return (
-    <div className="glass-card-strong p-4 space-y-3">
-      <p className="text-sm font-semibold text-center text-body">Match shape or number</p>
+    <div
+      className="rounded-xl p-4 space-y-3 border"
+      style={{
+        background: themeSurfaceBackground(theme.id, cardBg),
+        borderColor: shapeColor,
+        boxShadow: theme.id === 'whot-neon' ? `0 0 12px color-mix(in srgb, ${shapeColor} 40%, transparent)` : undefined,
+      }}
+    >
+      <p className="text-sm font-semibold text-center" style={{ color: cardText }}>Match shape or number</p>
+      {/* Face-up call card */}
       <div className="flex justify-center">
         <div
-          className="flex h-24 w-16 flex-col items-center justify-center rounded-lg border-2 shadow"
-          style={{ background: 'var(--surface)', borderColor: 'var(--primary)', color: 'var(--foreground)' }}
+          className="flex h-24 w-16 flex-col items-center justify-center rounded-lg border-2 shadow-lg"
+          style={{ background: cardBg, borderColor: shapeColor, color: cardText }}
         >
-          <span className="text-2xl leading-none">⭐</span>
-          <span className="mt-1 text-lg font-black">7</span>
+          <span className="absolute self-start pl-1.5 pt-0.5 text-[10px] font-black" style={{ color: cardText }}>7</span>
+          <WhotShape shape="star" color={shapeColor} size={32} />
+          <span className="absolute self-end pr-1.5 pb-0.5 rotate-180 text-[10px] font-black" style={{ color: cardText }}>7</span>
         </div>
       </div>
+      {/* Hand */}
       <div className="flex justify-center gap-1.5">
-        {[
-          { icon: '⭕', n: '3' },
-          { icon: '⭐', n: '10' },
-          { icon: '△', n: '2' },
-        ].map((c, i) => (
+        {hand.map((c, i) => (
           <div
             key={i}
-            className="flex h-20 w-12 flex-col items-center justify-center rounded-md border shadow-sm"
-            style={{ background: 'var(--card)', borderColor: 'var(--border)', color: 'var(--foreground)' }}
+            className="relative flex h-20 w-12 flex-col items-center justify-center rounded-md border shadow"
+            style={{ background: cardBg, borderColor: shapeColor, color: cardText }}
           >
-            <span className="text-lg leading-none">{c.icon}</span>
-            <span className="mt-0.5 text-sm font-bold">{c.n}</span>
+            <span className="absolute left-1 top-0.5 text-[9px] font-black" style={{ color: cardText }}>{c.n}</span>
+            <WhotShape shape={c.shape} color={shapeColor} size={22} />
+            <span className="absolute right-1 bottom-0.5 rotate-180 text-[9px] font-black" style={{ color: cardText }}>{c.n}</span>
           </div>
         ))}
       </div>
@@ -201,93 +270,218 @@ function WhotSample() {
   )
 }
 
-function LudoSample() {
-  // Four coloured home bases with a piece each — the classic Ludo shape.
-  const bases = [
-    { color: '#c62828', label: 'Red' },
-    { color: '#1565c0', label: 'Blue' },
-    { color: '#2e7d32', label: 'Green' },
-    { color: '#f9a825', label: 'Yellow' },
+function LudoSample({ theme }: { theme: ThemeConfig }) {
+  // 5×5 grid rendering a real Ludo cross: four home yards at the corners
+  // in the traditional Ludo colors, cross-shaped track around the middle,
+  // and a center goal star. The BOARD surface uses the previewed theme's
+  // background — Wooden Ludo gets a warm brown with grain, Naija Ludo
+  // green, etc. Home-yard colors stay traditional so the game is instantly
+  // recognizable regardless of theme.
+  const boardBg = theme.preview.bg
+  const trackFill = theme.preview.text
+  const goal = theme.preview.accent
+  const yards = { r: '#c62828', b: '#1565c0', g: '#2e7d32', y: '#f9a825' }
+  // Simple 5x5 lookup: 'r','b','g','y' = home yard, 't' = track cell,
+  // 'x' = center goal, '.' = empty.
+  const grid = [
+    ['r', 'r', 't', 'b', 'b'],
+    ['r', 'r', 't', 'b', 'b'],
+    ['t', 't', 'x', 't', 't'],
+    ['g', 'g', 't', 'y', 'y'],
+    ['g', 'g', 't', 'y', 'y'],
   ]
+  const cellFor = (v: string) => {
+    if (v === 'r') return yards.r
+    if (v === 'b') return yards.b
+    if (v === 'g') return yards.g
+    if (v === 'y') return yards.y
+    if (v === 't') return trackFill
+    return goal // 'x'
+  }
   return (
-    <div className="glass-card-strong p-4 space-y-3">
-      <p className="text-sm font-semibold text-center text-body">Race four pieces home</p>
-      <div className="mx-auto grid w-40 grid-cols-2 gap-1.5">
-        {bases.map((b) => (
-          <div
-            key={b.label}
-            className="flex h-16 items-center justify-center rounded-lg border-2"
-            style={{ background: `color-mix(in srgb, ${b.color} 20%, var(--surface))`, borderColor: b.color }}
-          >
-            <span className="h-5 w-5 rounded-full border-2 border-white shadow" style={{ background: b.color }} />
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-function SudokuSample() {
-  // 4×4 mini board — enough to hint the grid and number style without a
-  // full 9×9's visual noise at preview size.
-  const cells = [
-    ['3', '', '', '1'],
-    ['', '2', '4', ''],
-    ['', '4', '2', ''],
-    ['1', '', '', '3'],
-  ]
-  return (
-    <div className="glass-card-strong p-4 space-y-3">
-      <p className="text-sm font-semibold text-center text-body">Fill the grid</p>
-      <div className="mx-auto grid w-40 grid-cols-4 gap-px" style={{ background: 'var(--border)' }}>
-        {cells.flatMap((row, r) =>
-          row.map((v, c) => (
-            <div
-              key={`${r}-${c}`}
-              className="flex h-10 items-center justify-center text-sm font-bold"
-              style={{ background: 'var(--surface)', color: v ? 'var(--primary)' : 'var(--foreground)' }}
-            >
-              {v}
-            </div>
-          ))
+    <div
+      className="rounded-xl p-4 space-y-3 border"
+      style={{
+        background: themeSurfaceBackground(theme.id, boardBg),
+        borderColor: `color-mix(in srgb, ${trackFill} 40%, transparent)`,
+        color: theme.preview.text,
+      }}
+    >
+      <p className="text-sm font-semibold text-center" style={{ color: theme.preview.text }}>
+        Race four pieces home · 🎲 4
+      </p>
+      <div
+        className="mx-auto grid aspect-square w-44 grid-cols-5 gap-0.5 rounded-md p-1"
+        style={{ background: `color-mix(in srgb, ${trackFill} 30%, ${boardBg})` }}
+      >
+        {grid.flatMap((row, r) =>
+          row.map((v, c) => {
+            const isYard = v === 'r' || v === 'b' || v === 'g' || v === 'y'
+            const isCenter = v === 'x'
+            return (
+              <div
+                key={`${r}-${c}`}
+                className="flex items-center justify-center rounded-sm"
+                style={{
+                  background: isYard
+                    ? `color-mix(in srgb, ${cellFor(v)} 25%, ${boardBg})`
+                    : isCenter
+                      ? goal
+                      : `color-mix(in srgb, ${trackFill} 15%, ${boardBg})`,
+                  border: isYard ? `1px solid ${cellFor(v)}` : `1px solid color-mix(in srgb, ${trackFill} 25%, transparent)`,
+                }}
+              >
+                {isYard && (r === 0 || r === 3) && (c === 0 || c === 3) && (
+                  <span
+                    className="block h-2.5 w-2.5 rounded-full border border-white/60"
+                    style={{ background: cellFor(v) }}
+                  />
+                )}
+                {isCenter && <span style={{ color: boardBg, fontSize: 12, fontWeight: 900 }}>★</span>}
+              </div>
+            )
+          })
         )}
       </div>
     </div>
   )
 }
 
-function MonopolySample({ themeId }: { themeId: string }) {
-  // Three deed cards in the accent colour of the Monopoly edition being
-  // previewed. Edition-name label picks up the theme id so USA, Christmas,
-  // Naija editions read as themselves.
-  const editionLabel =
-    themeId === 'america'
-      ? 'USA edition'
-      : themeId === 'christmas'
-        ? 'Christmas edition'
-        : themeId === 'naija'
-          ? 'Naija edition'
-          : themeId === 'pirate'
-            ? 'High Seas edition'
-            : themeId === 'arctic'
-              ? 'Polar edition'
-              : 'London edition'
+function SudokuSample({ theme }: { theme: ThemeConfig }) {
+  // A real 9×9 sudoku grid with the standard 3×3 subgrid dividers so it
+  // reads unmistakably as sudoku. Numbers filled in a plausible pattern.
+  // Cell background = theme.bg, digit color = theme.text, thick dividers
+  // = theme.text (so the classic ink-on-paper contrast comes through on
+  // both Minimalist and Newsprint themes).
+  const cellBg = theme.preview.bg
+  const digitColor = theme.preview.text
+  const dividerColor = theme.preview.text
+  const clueColor = theme.preview.accent
+  // 9x9 puzzle with a plausible spread of givens
+  const puzzle: (number | null)[][] = [
+    [5, 3, null, null, 7, null, null, null, null],
+    [6, null, null, 1, 9, 5, null, null, null],
+    [null, 9, 8, null, null, null, null, 6, null],
+    [8, null, null, null, 6, null, null, null, 3],
+    [4, null, null, 8, null, 3, null, null, 1],
+    [7, null, null, null, 2, null, null, null, 6],
+    [null, 6, null, null, null, null, 2, 8, null],
+    [null, null, null, 4, 1, 9, null, null, 5],
+    [null, null, null, null, 8, null, null, 7, 9],
+  ]
   return (
-    <div className="glass-card-strong p-4 space-y-3">
-      <p className="text-sm font-semibold text-center text-body">{editionLabel}</p>
-      <div className="flex justify-center gap-1.5">
-        {['deed', 'deed', 'deed'].map((_, i) => (
+    <div
+      className="rounded-xl p-4 space-y-3 border"
+      style={{
+        background: themeSurfaceBackground(theme.id, cellBg),
+        borderColor: `color-mix(in srgb, ${dividerColor} 30%, transparent)`,
+        color: digitColor,
+      }}
+    >
+      <p className="text-sm font-semibold text-center" style={{ color: digitColor }}>
+        Fill the 9×9 grid
+      </p>
+      <div
+        className="mx-auto aspect-square w-52 rounded-sm"
+        style={{ background: dividerColor, padding: 2, border: `2px solid ${dividerColor}` }}
+      >
+        <div className="grid h-full w-full grid-cols-9 gap-px" style={{ background: dividerColor }}>
+          {puzzle.flatMap((row, r) =>
+            row.map((v, c) => {
+              // Draw thicker borders on every 3rd row/col so the 3×3 blocks pop.
+              const rightThick = c === 2 || c === 5
+              const bottomThick = r === 2 || r === 5
+              return (
+                <div
+                  key={`${r}-${c}`}
+                  className="flex items-center justify-center text-[10px]"
+                  style={{
+                    background: cellBg,
+                    color: v ? clueColor : digitColor,
+                    fontWeight: v ? 700 : 400,
+                    fontFamily: theme.id === 'sudoku-newsprint' ? 'Georgia, serif' : undefined,
+                    borderRight: rightThick ? `2px solid ${dividerColor}` : undefined,
+                    borderBottom: bottomThick ? `2px solid ${dividerColor}` : undefined,
+                  }}
+                >
+                  {v ?? ''}
+                </div>
+              )
+            })
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/** Human-readable label for the currently-previewed Monopoly edition. */
+function monopolyEditionLabel(themeId: string): string {
+  if (themeId === 'america') return 'USA edition'
+  if (themeId === 'christmas') return 'Christmas edition'
+  if (themeId === 'naija') return 'Naija edition'
+  if (themeId === 'pirate') return 'High Seas edition'
+  if (themeId === 'arctic') return 'Polar edition'
+  return 'London edition'
+}
+
+function MonopolySample({ theme }: { theme: ThemeConfig }) {
+  // A row of six property tiles + a GO corner — the classic bottom edge of
+  // a Monopoly board. Each property's color-band uses the previewed edition's
+  // accent so USA reads red-white-blue, Christmas red-green, Naija green, etc.
+  // Property names swap per edition so a shopper reads familiar streets.
+  const boardBg = theme.preview.bg
+  const tileBg = theme.preview.text
+  const band = theme.preview.accent
+  const streets =
+    theme.id === 'america'
+      ? ['Boardwalk', 'Park Ave', '5th Ave', 'Times Sq', 'Wall St', 'Broadway']
+      : theme.id === 'christmas'
+        ? ['Holly Ln', 'North Pole', 'Elf Way', 'Sleigh Rd', 'Reindeer', 'Snowfall']
+        : theme.id === 'naija'
+          ? ['Ikoyi', 'V.I.', 'Lekki', 'Ikeja', 'Yaba', 'Surulere']
+          : theme.id === 'pirate'
+            ? ['Tortuga', 'Cove', 'Kraken Bay', 'Skull Isle', 'The Reef', 'Port Royal']
+            : theme.id === 'arctic'
+              ? ['Aurora', 'Glacier', 'Pole Star', 'Fjord', 'Tundra', 'Iceberg']
+              : ['Mayfair', 'Park Ln', 'Bond St', 'Oxford St', 'Regent', 'Piccadilly']
+  const priceCurrency = theme.id === 'america' ? '$' : theme.id === 'naija' ? '₦' : '£'
+  return (
+    <div
+      className="rounded-xl p-4 space-y-3 border"
+      style={{
+        background: themeSurfaceBackground(theme.id, boardBg),
+        borderColor: `color-mix(in srgb, ${band} 45%, transparent)`,
+        color: theme.preview.text,
+      }}
+    >
+      <p className="text-sm font-semibold text-center" style={{ color: theme.preview.text }}>
+        {monopolyEditionLabel(theme.id)}
+      </p>
+      <div className="mx-auto grid w-full grid-cols-7 gap-0.5">
+        {/* GO corner */}
+        <div
+          className="flex aspect-square flex-col items-center justify-center rounded-sm"
+          style={{ background: tileBg, color: boardBg, border: `1px solid ${band}` }}
+        >
+          <span className="text-[9px] font-black tracking-wide" style={{ color: band }}>GO</span>
+          <span className="text-sm" style={{ color: band, lineHeight: 1 }}>⇐</span>
+        </div>
+        {streets.map((name, i) => (
           <div
             key={i}
-            className="flex h-24 w-16 flex-col overflow-hidden rounded-md border shadow-sm"
-            style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
+            className="flex aspect-square flex-col overflow-hidden rounded-sm"
+            style={{ background: tileBg, border: `1px solid color-mix(in srgb, ${band} 40%, ${tileBg})` }}
           >
-            <div className="h-3" style={{ background: 'var(--primary)' }} />
-            <div className="flex flex-1 flex-col items-center justify-center px-1 text-center">
-              <span className="text-[9px] font-bold uppercase" style={{ color: 'var(--foreground)' }}>
-                Title Deed
+            <div className="h-2 w-full" style={{ background: band }} />
+            <div className="flex flex-1 flex-col items-center justify-center px-0.5 text-center">
+              <span className="text-[7px] font-bold leading-tight" style={{ color: boardBg }}>
+                {name}
               </span>
-              <span className="mt-0.5 text-[9px] text-muted">$200</span>
+              <span className="text-[7px] leading-tight" style={{ color: boardBg, opacity: 0.75 }}>
+                {priceCurrency}
+                {(i + 1) * 50 + 100}
+              </span>
             </div>
           </div>
         ))}
