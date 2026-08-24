@@ -31,10 +31,14 @@ import { LudoTurnBar } from '@/components/ludo/LudoChrome'
 import { LudoBoardCenter } from '@/components/ludo/LudoBoardCenter'
 import { Avatar } from '@/components/Avatar'
 
-/** White board "paper" — track + cross are white, corners are solid colour. */
-const BOARD_BG = '#ffffff'
-/** Dark indigo backdrop the board + player cards sit on (matches reference art). */
-const PAGE_BG = '#454079'
+/** Board "paper" and page backdrop — track + cross paint via these tokens
+ *  so a paid theme (Wooden Ludo brown, Naija Ludo cream) actually repaints
+ *  the board surface, not just the site chrome around it. Corner yard
+ *  colours (COLOR_VIVID below) stay hardcoded — they're the game's rule,
+ *  not a theme choice. */
+const BOARD_BG = 'var(--game-board-bg)'
+const PAGE_BG = 'var(--game-page-bg)'
+const CELL_BORDER = 'var(--game-board-block)'
 
 /** Vivid solid colours used across the board — corners, home lanes,
  *  start/safe squares and the centre pinwheel — to match the classic app board. */
@@ -128,10 +132,10 @@ function CenterTriangles() {
     >
       <svg viewBox="0 0 100 100" className="absolute inset-0 h-full w-full" aria-hidden>
         {/* Each triangle is the colour whose home lane enters from that edge */}
-        <polygon points="50,50 0,0 100,0" fill={COLOR_VIVID.red} stroke="#1e293b" strokeWidth="0.5" />
-        <polygon points="50,50 100,0 100,100" fill={COLOR_VIVID.blue} stroke="#1e293b" strokeWidth="0.5" />
-        <polygon points="50,50 0,100 100,100" fill={COLOR_VIVID.yellow} stroke="#1e293b" strokeWidth="0.5" />
-        <polygon points="50,50 0,0 0,100" fill={COLOR_VIVID.green} stroke="#1e293b" strokeWidth="0.5" />
+        <polygon points="50,50 0,0 100,0" fill={COLOR_VIVID.red} stroke={CELL_BORDER} strokeWidth="0.5" />
+        <polygon points="50,50 100,0 100,100" fill={COLOR_VIVID.blue} stroke={CELL_BORDER} strokeWidth="0.5" />
+        <polygon points="50,50 0,100 100,100" fill={COLOR_VIVID.yellow} stroke={CELL_BORDER} strokeWidth="0.5" />
+        <polygon points="50,50 0,0 0,100" fill={COLOR_VIVID.green} stroke={CELL_BORDER} strokeWidth="0.5" />
       </svg>
     </div>
   )
@@ -153,7 +157,7 @@ function cellStyle(kind: ReturnType<typeof boardCellKind>, row: number, col: num
   if (kind.kind === 'start' && kind.color) {
     return {
       background: COLOR_VIVID[kind.color],
-      borderColor: '#1e293b',
+      borderColor: CELL_BORDER,
     }
   }
 
@@ -161,16 +165,16 @@ function cellStyle(kind: ReturnType<typeof boardCellKind>, row: number, col: num
     // Safe-star squares are white cells carrying a colour-tinted ★ (drawn in the
     // cell body below), matching the classic board — only start squares are solid.
     return {
-      background: '#ffffff',
-      borderColor: '#1e293b',
+      background: BOARD_BG,
+      borderColor: CELL_BORDER,
     }
   }
 
   if (kind.kind === 'home' && kind.color) {
-    return { background: COLOR_VIVID[kind.color], borderColor: '#1e293b' }
+    return { background: COLOR_VIVID[kind.color], borderColor: CELL_BORDER }
   }
 
-  return { background: '#ffffff', borderColor: '#1e293b' }
+  return { background: BOARD_BG, borderColor: CELL_BORDER }
 }
 
 export function LudoBoard({

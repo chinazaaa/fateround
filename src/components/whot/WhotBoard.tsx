@@ -157,13 +157,16 @@ export function WhotTable({
                 patternUnits="userSpaceOnUse"
                 patternTransform="rotate(45)"
               >
-                <line x1="0" y1="0" x2="0" y2="6" stroke="#2a3a5a" strokeWidth="1.5" />
+                <line x1="0" y1="0" x2="0" y2="6" stroke="var(--game-accent)" strokeWidth="1.5" />
               </pattern>
             </defs>
-            <rect width="56" height="80" rx="10" fill="url(#card-back-hatch)" stroke="#2a3a5a" strokeWidth="1" />
-            <rect x="3" y="3" width="50" height="74" rx="8" fill="none" stroke="#2a4a7a" strokeWidth="1.5" />
-            <polygon points="28,24 36,40 28,56 20,40" fill="none" stroke="#3a5a9a" strokeWidth="1.5" />
-            <circle cx="28" cy="40" r="3" fill="#3a5a9a" opacity="0.7" />
+            {/* Card-back art reads from --game-accent so Neon Whot paints
+                a cyan hatched back, Naija Whot paints a Nigerian-green
+                one, and the default site theme keeps its rose-red primary. */}
+            <rect width="56" height="80" rx="10" fill="url(#card-back-hatch)" stroke="var(--game-accent)" strokeWidth="1" />
+            <rect x="3" y="3" width="50" height="74" rx="8" fill="none" stroke="var(--game-accent)" strokeWidth="1.5" opacity="0.7" />
+            <polygon points="28,24 36,40 28,56 20,40" fill="none" stroke="var(--game-accent)" strokeWidth="1.5" />
+            <circle cx="28" cy="40" r="3" fill="var(--game-accent)" opacity="0.7" />
           </svg>
           <p className="text-[10px] text-muted mt-1">{drawCount} left</p>
         </div>

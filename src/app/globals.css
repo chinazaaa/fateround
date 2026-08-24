@@ -84,11 +84,32 @@ body:has(.fr-site) .app-fixed-theme-toggle {
 
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+
+  /* ── Game-surface tokens ────────────────────────────────────────
+   * Read by the actual game boards (whot, ludo, sudoku, monopoly).
+   * Site themes (pirate/arctic/naija/…) inherit these defaults; the
+   * per-game paid themes (ludo-wooden, whot-neon, sudoku-newsprint,
+   * …) override the ones that carry their identity so a bought theme
+   * actually repaints the board, not just the page chrome around it.
+   * NEVER hardcode a board colour in a component — use these tokens
+   * so a future theme can retint without touching every game file. */
+  --game-board-bg: #ffffff;               /* Board "paper" — Ludo track, Sudoku cells, Whot felt */
+  --game-board-fg: var(--foreground);      /* Digits/text on the board */
+  --game-board-grid: rgba(203, 213, 225, 0.6);   /* Thin grid lines (slate-300/60 default) */
+  --game-board-block: rgba(100, 116, 139, 0.7); /* Thick 3x3 / cell block dividers */
+  --game-page-bg: var(--background);        /* Page-level backdrop the board sits on */
+  --game-accent: var(--primary);            /* Deck/card accent, primary game colour */
+  --game-selected-bg: rgba(99, 102, 241, 0.35); /* Selected-cell / active highlight */
+  --game-highlight-bg: rgba(56, 189, 248, 0.30); /* Same-number highlight */
 }
 
 /* ── Dark theme override ────────────────────────────────────────── */
 [data-theme='dark'] {
   color-scheme: dark;
+
+  --game-board-bg: #0f172a;                /* slate-900 — dark board paper */
+  --game-board-grid: rgba(71, 85, 105, 0.6); /* slate-600/60 */
+  --game-board-block: rgba(148, 163, 184, 0.7); /* slate-400/70 */
 
   --background: #08080f;
   --background-soft: #0e0e16;
@@ -2571,6 +2592,15 @@ select option {
   --gradient-title-start: #2a1a0d;
   --gradient-title-end: #b45309;
   --modal-backdrop: rgba(42, 26, 13, 0.6);
+  /* Wooden Ludo — carved-oak feel. Board = warm cream with grain, cell
+   * borders + track = dark walnut, page = deep espresso so the board
+   * pops against a wood-toned backdrop. */
+  --game-board-bg: #f5deb3;
+  --game-board-fg: #2a1a0d;
+  --game-board-grid: rgba(74, 40, 20, 0.45);
+  --game-board-block: rgba(74, 40, 20, 0.7);
+  --game-page-bg: #3d2b1f;
+  --game-accent: #b45309;
 }
 
 /* ── Wooden Ludo (Dark) ──────────────────────────────────────── */
@@ -2603,6 +2633,13 @@ select option {
   --gradient-title-start: #faf3e6;
   --gradient-title-end: #f59e0b;
   --modal-backdrop: rgba(20, 12, 6, 0.75);
+  /* Wooden Ludo dark = deep walnut board, amber accents. */
+  --game-board-bg: #6b4423;
+  --game-board-fg: #faf3e6;
+  --game-board-grid: rgba(250, 243, 230, 0.28);
+  --game-board-block: rgba(250, 243, 230, 0.5);
+  --game-page-bg: #2a1a0d;
+  --game-accent: #f59e0b;
 }
 
 /* ── Naija Ludo (Light) — shared palette with Naija Whot ─────── */
@@ -2636,6 +2673,13 @@ select option {
   --gradient-title-start: #002d1a;
   --gradient-title-end: #008751;
   --modal-backdrop: rgba(0, 30, 18, 0.6);
+  /* Naija (Ludo + Whot) — cream board with Nigerian-green accents. */
+  --game-board-bg: #fbf6e6;
+  --game-board-fg: #002d1a;
+  --game-board-grid: rgba(0, 135, 81, 0.28);
+  --game-board-block: rgba(0, 135, 81, 0.6);
+  --game-page-bg: #008751;
+  --game-accent: #008751;
 }
 
 /* ── Naija Ludo / Naija Whot (Dark) ──────────────────────────── */
@@ -2671,6 +2715,13 @@ select option {
   --gradient-title-start: #ede3d3;
   --gradient-title-end: #10b981;
   --modal-backdrop: rgba(0, 15, 9, 0.75);
+  /* Naija dark = dark forest board, mint accents. */
+  --game-board-bg: #003820;
+  --game-board-fg: #ede3d3;
+  --game-board-grid: rgba(237, 227, 211, 0.22);
+  --game-board-block: rgba(237, 227, 211, 0.4);
+  --game-page-bg: #001a10;
+  --game-accent: #10b981;
 }
 
 /* ── Neon Whot (Light — Daylight Circuit) ────────────────────── */
@@ -2702,6 +2753,13 @@ select option {
   --gradient-title-start: #0a1a2b;
   --gradient-title-end: #0891b2;
   --modal-backdrop: rgba(10, 26, 43, 0.6);
+  /* Neon Whot light = pale-cyan surface, teal accents. */
+  --game-board-bg: #f0faff;
+  --game-board-fg: #0a1a2b;
+  --game-board-grid: rgba(8, 145, 178, 0.3);
+  --game-board-block: rgba(8, 145, 178, 0.55);
+  --game-page-bg: #d0ecfa;
+  --game-accent: #0891b2;
 }
 
 /* ── Neon Whot (Dark — Midnight Circuit) ─────────────────────── */
@@ -2735,6 +2793,13 @@ select option {
   --gradient-title-start: #e0ffe0;
   --gradient-title-end: #00e5ff;
   --modal-backdrop: rgba(0, 0, 10, 0.85);
+  /* Neon Whot dark = deep midnight felt, cyan glow. */
+  --game-board-bg: #0a0a14;
+  --game-board-fg: #e0ffe0;
+  --game-board-grid: rgba(0, 229, 255, 0.28);
+  --game-board-block: rgba(0, 229, 255, 0.5);
+  --game-page-bg: #05050c;
+  --game-accent: #00e5ff;
 }
 
 /* ── Minimalist Sudoku (Light) — pure ink on white ───────────── */
@@ -2764,6 +2829,15 @@ select option {
   --gradient-title-start: #0a0a0a;
   --gradient-title-end: #525252;
   --modal-backdrop: rgba(0, 0, 0, 0.5);
+  /* Minimalist Sudoku light = pure white, hairline gray dividers. */
+  --game-board-bg: #ffffff;
+  --game-board-fg: #0a0a0a;
+  --game-board-grid: rgba(0, 0, 0, 0.12);
+  --game-board-block: rgba(0, 0, 0, 0.55);
+  --game-page-bg: #fafafa;
+  --game-accent: #0a0a0a;
+  --game-selected-bg: rgba(0, 0, 0, 0.08);
+  --game-highlight-bg: rgba(0, 0, 0, 0.05);
 }
 
 /* ── Minimalist Sudoku (Dark) — pure ink on charcoal ─────────── */
@@ -2794,6 +2868,15 @@ select option {
   --gradient-title-start: #fafafa;
   --gradient-title-end: #a3a3a3;
   --modal-backdrop: rgba(0, 0, 0, 0.85);
+  /* Minimalist Sudoku dark = pure charcoal, hairline white dividers. */
+  --game-board-bg: #0a0a0a;
+  --game-board-fg: #fafafa;
+  --game-board-grid: rgba(255, 255, 255, 0.14);
+  --game-board-block: rgba(255, 255, 255, 0.55);
+  --game-page-bg: #171717;
+  --game-accent: #fafafa;
+  --game-selected-bg: rgba(255, 255, 255, 0.1);
+  --game-highlight-bg: rgba(255, 255, 255, 0.06);
 }
 
 /* ── Newsprint Sudoku (Light) — cream paper + serif ink ──────── */
@@ -2825,6 +2908,15 @@ select option {
   --gradient-title-start: #1a1a1a;
   --gradient-title-end: #4a4638;
   --modal-backdrop: rgba(26, 20, 10, 0.55);
+  /* Newsprint Sudoku light = cream paper, ink-black dividers. */
+  --game-board-bg: #f4ecd8;
+  --game-board-fg: #1a1a1a;
+  --game-board-grid: rgba(26, 26, 26, 0.2);
+  --game-board-block: rgba(26, 26, 26, 0.7);
+  --game-page-bg: #ede2c8;
+  --game-accent: #2b2b2b;
+  --game-selected-bg: rgba(26, 26, 26, 0.1);
+  --game-highlight-bg: rgba(26, 26, 26, 0.06);
 }
 
 /* ── Newsprint Sudoku (Dark) — warm-tube type on dark paper ──── */
@@ -2857,6 +2949,15 @@ select option {
   --gradient-title-start: #f4ecd8;
   --gradient-title-end: #b5ab90;
   --modal-backdrop: rgba(10, 8, 4, 0.8);
+  /* Newsprint Sudoku dark = warm-tube paper, sepia-cream dividers. */
+  --game-board-bg: #2a2418;
+  --game-board-fg: #f4ecd8;
+  --game-board-grid: rgba(244, 236, 216, 0.22);
+  --game-board-block: rgba(244, 236, 216, 0.55);
+  --game-page-bg: #1c1810;
+  --game-accent: #f4ecd8;
+  --game-selected-bg: rgba(244, 236, 216, 0.12);
+  --game-highlight-bg: rgba(244, 236, 216, 0.07);
 }
 
 /* Newsprint Sudoku swaps digits + headings to a serif face so the theme
