@@ -41,11 +41,18 @@ export async function GET(req: NextRequest) {
         .from('game_themes')
         .select('game_type, slug, name, price_coins, art, sort_order')
         .eq('is_active', true)
+        // Free grandfathered themes (price 0) belong to every profile already
+        // — surfacing them in /shop as a "Buy 0" tile just clutters the
+        // Editions/Themes categories and confuses hosts (user report). Only
+        // priced content is a shop item; free content stays reachable via
+        // the create-screen picker.
+        .gt('price_coins', 0)
         .order('sort_order'),
       admin
         .from('game_editions')
         .select('game_type, slug, name, price_coins, content, sort_order')
         .eq('is_active', true)
+        .gt('price_coins', 0)
         .order('sort_order'),
       admin
         .from('question_packs')
