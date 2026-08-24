@@ -3,7 +3,8 @@
 import { useState } from 'react'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { useToast } from '@/components/ui/Toast'
-import { getPlayerSession } from '@/lib/utils'
+import { clearPlayerSession, getPlayerSession } from '@/lib/utils'
+import { clearHostToken } from '@/lib/host-session'
 
 export const leaveButtonClassName =
   'w-full rounded-[0.875rem] border border-red-500/50 bg-red-500 py-3.5 text-[0.9375rem] font-bold text-white shadow-[0_4px_14px_rgba(239,68,68,0.35)] transition-[background-color,transform,box-shadow] duration-150 hover:bg-red-600 hover:shadow-[0_6px_22px_rgba(239,68,68,0.45)] hover:-translate-y-px active:translate-y-0 active:scale-[0.99] disabled:opacity-35 disabled:cursor-not-allowed'
@@ -58,6 +59,14 @@ export function LeaveGameButton({
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Failed to leave')
+      // Drop every local credential for this game. Without this: the Live
+      // Games strip on the home page keeps recognising this device as the
+      // host (readHostToken is still non-null), so Continue routes to
+      // /host/[code] and verify-host fails with "invalid or missing host
+      // token"; and refreshing an old /host/[code] tab still paints the
+      // host chrome for a game the caller already walked out of.
+      clearPlayerSession(gameCode)
+      clearHostToken(gameCode)
       onLeft()
     } catch (err) {
       toastError(err instanceof Error ? err.message : 'Failed to leave')
