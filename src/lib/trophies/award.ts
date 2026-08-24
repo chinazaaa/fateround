@@ -28,6 +28,7 @@ import type { GameType } from '@/types'
 import { GLOBAL_SCOPE, evaluateRaw, type PlatinumContext, type ProgressSnapshot } from './criteria'
 import { unlockedThisRound } from './instant-unlock'
 import { buildGameFacts } from './game-facts'
+import { playerEngagedInGame } from './engagement'
 import { resolveFinishers, resolveWinners } from './outcome'
 import { advanceStreak, watDate, watHour, type StreakState } from './streak'
 import {
@@ -249,6 +250,22 @@ export async function awardForFinishedGame(
     }
 
     const seated = (players ?? []).filter(isParticipant)
+
+    // Engagement gate — did this player actually do anything in this game?
+    // A natural finish where the player never voted / answered / submitted is
+    // the two-device farming vector: host on device A, "second player" on
+    // device B, neither engages, timer expires all rounds, game finishes,
+    // credit lands. `playerEngagedInGame` checks the game's per-type action
+    // table (votes, trivia_answers, word_rush_answers, …). Game types with
+    // no such table (chess, ludo, whot, uno, monopoly, …) return true and
+    // fall through to the existing abort / `won` gates. Fail-open: a broken
+    // read must not phantom-strip credit from a real finish.
+    const isEngaged = await playerEngagedInGame(supabase, gameType, sessionId, me.id as string)
+    // Treat "no engagement" the same as an explicit abort — no counter bumps,
+    // no streak advance, no coin credit. Union the two so the rest of the
+    // pass reads one flag instead of a bespoke gate for each case.
+    const isSkippedFinish = isAbortedFinish || !isEngaged
+
     // `null` means the server cannot determine a winner for this game type — which must not be
     // recorded as a loss. Only a definite result moves `games_won`.
     const winners = await resolveWinners(supabase, sessionId, gameType)
@@ -311,8 +328,8 @@ export async function awardForFinishedGame(
     // not a game the player played through. `won` is naturally 0 on an abort (no resolvable
     // winner passes MIN_PLAYERS_FOR_A_WIN + inclusion check), so we still call bumpStats to
     // keep the awarded_sessions claim tidy but with a no-op payload.
-    const playedBump = isAbortedFinish ? 0 : 1
-    const countersBump = isAbortedFinish ? {} : extras
+    const playedBump = isSkippedFinish ? 0 : 1
+    const countersBump = isSkippedFinish ? {} : extras
     await bumpStats(supabase, profileId, gameType, {
       played: playedBump,
       won: won ? 1 : 0,
@@ -329,7 +346,7 @@ export async function awardForFinishedGame(
     // distinct member earned mid-round (via facts, e.g. "won as N different roles") is
     // gated on the abort by having no facts in the first place.
     const distinctRows = [
-      ...(isAbortedFinish ? [] : [{ profile_id: profileId, key: 'modes_played', member: gameType }]),
+      ...(isSkippedFinish ? [] : [{ profile_id: profileId, key: 'modes_played', member: gameType }]),
       ...distinctMembers.map(({ key, member }) => ({ profile_id: profileId, key, member })),
     ]
     if (distinctRows.length > 0) {
@@ -352,10 +369,10 @@ export async function awardForFinishedGame(
       last_active_date: (profile?.last_active_date as string) ?? null,
       streak_freezes: Number(profile?.streak_freezes) || 0,
     }
-    const streak = isAbortedFinish ? priorStreakState : advanceStreak(priorStreakState, watDate(finishedAt))
+    const streak = isSkippedFinish ? priorStreakState : advanceStreak(priorStreakState, watDate(finishedAt))
     // `days_played` only moves when the calendar day actually changed, so several games in one
     // evening count as one day — the same reason advanceStreak is idempotent per day.
-    if (!isAbortedFinish && streak.last_active_date !== (profile?.last_active_date ?? null)) {
+    if (!isSkippedFinish && streak.last_active_date !== (profile?.last_active_date ?? null)) {
       await bumpStats(supabase, profileId, GLOBAL_SCOPE, { counters: { days_played: 1 } })
     }
 
@@ -403,7 +420,7 @@ export async function awardForFinishedGame(
     // mode via the DB unique index). Better to require an actual played game
     // to unlock it.
     let coins: CoinAwardResult | undefined
-    if (isAbortedFinish) {
+    if (isSkippedFinish) {
       return { earned, coins: undefined, applied: true }
     }
     try {
@@ -506,6 +523,15 @@ export async function recordGuestFinishForDevice(
 
     const me = (players ?? []).find((p) => p.id === input.myPlayerId)
     if (!me || !isParticipant({ id: me.id as string, spectator: me.spectator })) {
+      return { lines: [], total: 0 }
+    }
+
+    // Same engagement gate as the attributed profile path — if the guest
+    // never voted / answered / submitted anything, no pending coin lines
+    // accrue for them. Two-device farming vector otherwise: a guest device
+    // "playing" alongside the host without ever engaging would still stack
+    // guest_pending_grants and cash them all in at signup.
+    if (!(await playerEngagedInGame(supabase, gameType, gameId, me.id as string))) {
       return { lines: [], total: 0 }
     }
 
