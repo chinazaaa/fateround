@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { adminEndGame, type AdminGameToEnd } from '@/lib/admin-end-game'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { isProdDeployment } from '@/lib/app-env'
 
 /**
  * Idle-active-game reaper.
@@ -142,7 +143,7 @@ async function tick(): Promise<void> {
 export function startIdleReaper(): void {
   if (started) return
   if (process.env.IDLE_REAPER_DISABLED === '1') return
-  const enabled = process.env.NODE_ENV === 'production' || process.env.IDLE_REAPER_ENABLED === '1'
+  const enabled = isProdDeployment() || process.env.IDLE_REAPER_ENABLED === '1'
   if (!enabled) return
   started = true
   const intervalMs = Number(process.env.IDLE_REAPER_INTERVAL_MS) || DEFAULT_INTERVAL_MS

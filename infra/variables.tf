@@ -259,6 +259,17 @@ variable "origin_key" {
 # the RLS Boundaries check offline with it. These let a non-prod stack turn that load down.
 # Leave empty on prod: empty means "not set", and the code keeps its production defaults.
 
+variable "app_env" {
+  description = "APP_ENV — which deployment this is (\"prod\" or \"dev\"). Optional: the app derives it from the NEXT_PUBLIC_APP_URL host when unset, so only set this to override that."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = contains(["", "prod", "dev"], var.app_env)
+    error_message = "app_env must be \"prod\", \"dev\", or empty to auto-detect from the app URL."
+  }
+}
+
 variable "game_tick_disabled" {
   description = "GAME_TICK_DISABLED — set to \"1\" to stop the in-process game ticker entirely. Empty = enabled."
   type        = string

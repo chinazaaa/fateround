@@ -193,6 +193,13 @@ resource "aws_ssm_parameter" "origin_key" {
 
 # Background-worker controls. Created only when set, so an unset variable leaves no parameter
 # and `get_param_opt` in user-data yields an empty value — i.e. the code's production default.
+resource "aws_ssm_parameter" "app_env" {
+  count = var.app_env != "" ? 1 : 0
+  name  = "/${var.name_prefix}/APP_ENV"
+  type  = "String"
+  value = var.app_env
+}
+
 resource "aws_ssm_parameter" "game_tick_disabled" {
   count = var.game_tick_disabled != "" ? 1 : 0
   name  = "/${var.name_prefix}/GAME_TICK_DISABLED"

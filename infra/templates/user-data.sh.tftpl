@@ -104,6 +104,10 @@ OTEL_RESOURCE_ATTRIBUTES=$(get_param_opt --name "/$PREFIX/OTEL_RESOURCE_ATTRIBUT
 # right for prod and wrong for dev: a deployed dev build also sets NODE_ENV=production, so
 # dev has been running the same 2.5s game ticker and 5m reaper as prod against a FREE Supabase
 # project — which is what exhausted its egress quota. Optional, empty = unchanged behaviour.
+# Which DEPLOYMENT this is (prod|dev). Optional: src/lib/app-env.ts derives it from the host in
+# NEXT_PUBLIC_APP_URL when unset, so a stack cannot inherit prod behaviour by omission. Set it
+# explicitly only to override that (e.g. a preview stack on a prod-looking hostname).
+APP_ENV=$(get_param_opt --name "/$PREFIX/APP_ENV")
 GAME_TICK_DISABLED=$(get_param_opt --name "/$PREFIX/GAME_TICK_DISABLED")
 GAME_TICK_INTERVAL_MS=$(get_param_opt --name "/$PREFIX/GAME_TICK_INTERVAL_MS")
 IDLE_REAPER_DISABLED=$(get_param_opt --name "/$PREFIX/IDLE_REAPER_DISABLED")
@@ -137,6 +141,7 @@ docker run -d --name app --restart always \
   -e OTEL_EXPORTER_OTLP_ENDPOINT="$OTEL_EXPORTER_OTLP_ENDPOINT" \
   -e OTEL_EXPORTER_OTLP_HEADERS="$OTEL_EXPORTER_OTLP_HEADERS" \
   -e OTEL_RESOURCE_ATTRIBUTES="$OTEL_RESOURCE_ATTRIBUTES" \
+  -e APP_ENV="$APP_ENV" \
   -e GAME_TICK_DISABLED="$GAME_TICK_DISABLED" \
   -e GAME_TICK_INTERVAL_MS="$GAME_TICK_INTERVAL_MS" \
   -e IDLE_REAPER_DISABLED="$IDLE_REAPER_DISABLED" \
