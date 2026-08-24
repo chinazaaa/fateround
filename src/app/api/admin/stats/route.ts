@@ -311,18 +311,18 @@ export async function GET(req: NextRequest) {
 
   // Popular games by country — feeds ads targeting ("what should we
   // advertise in Nigeria vs the UK?"). Joins each player-join's country
-  // against the game's type; bot seats are excluded so the counts reflect
-  // real humans in each country. Countries with fewer than 3 real joins
-  // are dropped as noise (single-player samples aren't a signal for ad
-  // decisions). Payload is a country → game_type → joins map so the UI
-  // can render whichever top-N-per-country slice reads best.
-  const gameTypeById = new Map<string, string>()
-  for (const game of games) gameTypeById.set(game.id, game.game_type)
+  // against the game's type (`gameTypeById` already built above from the
+  // main games fetch). Bot seats are excluded so the counts reflect real
+  // humans in each country — `playersAll.hasBotColumn` gates that filter
+  // (used directly so this block doesn't depend on ordering vs the
+  // rooms-with-bots block below which declares its own `hasBotColumn`
+  // binding). Countries with fewer than 3 real joins are dropped as
+  // noise (single-player samples aren't a signal for ad decisions).
   const gamesByCountry: Record<string, Record<string, number>> = {}
   const countryTotals: Record<string, number> = {}
   for (const row of playerRows) {
     if (!row.country) continue
-    if (hasBotColumn && row.is_bot) continue
+    if (playersAll.hasBotColumn && row.is_bot) continue
     const gameType = gameTypeById.get(row.game_id)
     if (!gameType) continue
     const bucket = (gamesByCountry[row.country] ??= {})
