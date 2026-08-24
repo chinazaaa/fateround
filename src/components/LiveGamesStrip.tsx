@@ -13,6 +13,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { gameTypeConfig, parseGameType } from '@/lib/game-types'
+import { getPlayerSession } from '@/lib/utils'
 import type { PublicGame } from '@/lib/game-browse'
 
 const PREVIEW_LIMIT = 5
@@ -21,6 +22,9 @@ const POLL_FALLBACK_MS = 15_000
 export function LiveGamesStrip() {
   const [games, setGames] = useState<PublicGame[]>([])
   const [loaded, setLoaded] = useState(false)
+  // Uppercased set of game codes this browser has a player session for, so we
+  // can flip the CTA to "Continue" on games the viewer has already joined.
+  const [joinedSet, setJoinedSet] = useState<Set<string>>(() => new Set())
   const inFlight = useRef(false)
 
   const load = useCallback(async () => {
@@ -61,6 +65,20 @@ export function LiveGamesStrip() {
     }
   }, [load])
 
+  useEffect(() => {
+    const compute = () => {
+      const joined = new Set<string>()
+      for (const g of games) {
+        if (getPlayerSession(g.id)) joined.add(g.id.toUpperCase())
+      }
+      setJoinedSet(joined)
+    }
+    compute()
+    const handler = () => compute()
+    window.addEventListener('kmk-player-session', handler)
+    return () => window.removeEventListener('kmk-player-session', handler)
+  }, [games])
+
   // Auto-hide: never render an empty strip. On first load we wait for the fetch
   // so we don't briefly render then disappear.
   if (!loaded || games.length === 0) return null
@@ -83,6 +101,22 @@ export function LiveGamesStrip() {
           {shown.map((game) => {
             const cfg = gameTypeConfig(parseGameType(game.game_type))
             const count = game.max_players != null ? `${game.playerCount}/${game.max_players}` : `${game.playerCount}`
+            const isLobby = game.status === 'waiting'
+            const isActive = game.status === 'active'
+            const isFull = game.max_players != null && game.playerCount >= game.max_players
+            const lateJoinable = isActive && game.allow_late_players === true && !isFull
+            const alreadyJoined = joinedSet.has(game.id.toUpperCase())
+            const stateLine = isLobby
+              ? isFull
+                ? 'Lobby full'
+                : 'In lobby'
+              : lateJoinable
+                ? 'Started · join or watch'
+                : isFull
+                  ? 'Started · full'
+                  : 'Started · watch'
+            const cta = alreadyJoined ? 'Continue' : isLobby && !isFull ? 'Join' : lateJoinable ? 'Join' : 'Watch'
+            const ctaClass = alreadyJoined || (isLobby && !isFull) || lateJoinable ? 'btn-primary' : 'btn-secondary'
             return (
               <div
                 key={game.id}
@@ -100,16 +134,16 @@ export function LiveGamesStrip() {
                     {cfg.label}
                   </div>
                   <div className="truncate text-xs" style={{ color: 'var(--text-muted)' }}>
-                    {count} player{game.playerCount === 1 ? '' : 's'}
+                    {stateLine} · {count} player{game.playerCount === 1 ? '' : 's'}
                   </div>
                 </div>
                 <Link
                   href={`/game/${game.id}`}
-                  className="btn-primary btn-fit px-3 py-1.5 text-xs"
+                  className={`${ctaClass} btn-fit px-3 py-1.5 text-xs`}
                   target="_blank"
                   rel="noopener noreferrer"
                 >
-                  Join
+                  {cta}
                 </Link>
               </div>
             )

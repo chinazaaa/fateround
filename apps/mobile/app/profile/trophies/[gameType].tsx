@@ -113,16 +113,27 @@ function TrophyRow({ trophy, divider }: { trophy: TrophyItem; divider: boolean }
   const styles = useThemedStyles(makeStyles)
   const tierGlyph = TIER_GLYPH[trophy.tier] ?? '·'
   const tierColor = TIER_COLOR[trophy.tier] ?? '#888'
+  // Earned trophies use their tier color at full intensity; unearned dim the
+  // background + border so the row scans as "not yet" without needing to read.
+  const earned = trophy.earned
+  const tierBg = earned ? `${tierColor}33` : `${tierColor}11`
+  const tierBorder = earned ? `${tierColor}88` : `${tierColor}33`
+  const earnedDate = formatEarnedDate(trophy.earnedAt)
 
   return (
     <ListRow
       divider={divider}
       left={
-        <View style={[styles.tier, { backgroundColor: `${tierColor}22`, borderColor: `${tierColor}55` }]}>
+        <View style={[styles.tier, { backgroundColor: tierBg, borderColor: tierBorder, opacity: earned ? 1 : 0.55 }]}>
           <Text style={[styles.tierGlyph, { color: tierColor }]}>{tierGlyph}</Text>
+          {earned ? (
+            <View style={[styles.earnedBadge, { borderColor: tierColor }]}>
+              <Text style={[styles.earnedBadgeText, { color: tierColor }]}>✓</Text>
+            </View>
+          ) : null}
         </View>
       }
-      title={<Text style={[styles.trophyTitle, !trophy.earned && styles.trophyTitleLocked]}>{trophy.title}</Text>}
+      title={<Text style={[styles.trophyTitle, !earned && styles.trophyTitleLocked]}>{trophy.title}</Text>}
       subtitle={
         <View style={styles.subtitleRow}>
           <Text style={styles.trophyDesc} numberOfLines={2}>
@@ -130,16 +141,32 @@ function TrophyRow({ trophy, divider }: { trophy: TrophyItem; divider: boolean }
           </Text>
           <View style={styles.metaRow}>
             <Text style={styles.trophyPoints}>{trophy.points} pts</Text>
-            {trophy.earned && trophy.rarityPct != null ? (
-              <Text style={styles.trophyRarity}>{trophy.rarityPct}% of players</Text>
-            ) : !trophy.earned && trophy.progress > 0 ? (
+            {earned ? (
+              <>
+                {earnedDate ? <Text style={styles.trophyEarnedDate}>Earned {earnedDate}</Text> : null}
+                {trophy.rarityPct != null ? (
+                  <Text style={styles.trophyRarity}>{trophy.rarityPct}% of players</Text>
+                ) : null}
+              </>
+            ) : trophy.progress > 0 ? (
               <Text style={styles.trophyProgress}>{Math.round(trophy.progress * 100)}%</Text>
-            ) : null}
+            ) : (
+              <Text style={styles.trophyProgress}>Not yet</Text>
+            )}
           </View>
         </View>
       }
     />
   )
+}
+
+function formatEarnedDate(iso: string | null | undefined): string {
+  if (!iso) return ''
+  try {
+    return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+  } catch {
+    return ''
+  }
 }
 
 const TIER_GLYPH: Record<string, string> = {
@@ -220,12 +247,26 @@ const makeStyles = (theme: Theme) =>
       justifyContent: 'center',
     },
     tierGlyph: { fontSize: 18 },
+    earnedBadge: {
+      position: 'absolute',
+      right: -2,
+      bottom: -2,
+      width: 18,
+      height: 18,
+      borderRadius: 9,
+      backgroundColor: theme.bg,
+      borderWidth: 1.5,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    earnedBadgeText: { fontSize: 10, fontWeight: '800', lineHeight: 12 },
     trophyTitle: { color: theme.text, fontSize: theme.type.section.size, fontWeight: theme.type.section.weight },
     trophyTitleLocked: { color: theme.textMuted },
     subtitleRow: { gap: 4 },
     trophyDesc: { color: theme.textMuted, fontSize: theme.type.caption.size, lineHeight: 16 },
-    metaRow: { flexDirection: 'row', gap: theme.space.sm, marginTop: 2 },
+    metaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space.sm, marginTop: 2 },
     trophyPoints: { color: theme.primaryMuted, fontSize: theme.type.caption.size, fontWeight: '700' },
+    trophyEarnedDate: { color: theme.primary, fontSize: theme.type.caption.size, fontWeight: '700' },
     trophyRarity: { color: theme.textFaint, fontSize: theme.type.caption.size },
     trophyProgress: { color: theme.textFaint, fontSize: theme.type.caption.size },
   })

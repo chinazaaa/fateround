@@ -54,7 +54,7 @@ import {
   saveSoloState,
   wasSoloStateScored,
 } from '@/lib/solo-state-store'
-import { logSoloPlayStarted } from '@/lib/solo-play'
+import { logSoloPlayFinished, logSoloPlayStarted, resetSoloSessionId, soloSessionId } from '@/lib/solo-play'
 
 const BOT_THINK_MS = 700
 const ROLL_ANIM_MS = 500
@@ -112,6 +112,7 @@ export default function SoloLudoScreen() {
       setScoreboard(next)
       void markSoloStateScored('solo-ludo-state-v1')
     })
+    void soloSessionId('ludo').then((sessionId) => logSoloPlayFinished({ gameType: 'ludo', outcome, sessionId }))
   }, [state])
 
   // Bot loop: roll (roll phase) or pick + play a move (move phase). One step
@@ -181,6 +182,7 @@ export default function SoloLudoScreen() {
     setDisplayDice(null)
     setRolling(false)
     void clearSoloState('solo-ludo-state-v1')
+    void resetSoloSessionId('ludo')
     setState(initLudoSolo())
     logSoloPlayStarted('ludo')
   }, [])
@@ -328,7 +330,6 @@ export default function SoloLudoScreen() {
             <View style={styles.scoreRow}>
               <ScoreCell label="You" value={scoreboard.human} />
               <ScoreCell label="Bot" value={scoreboard.bot} />
-              <ScoreCell label="Draws" value={scoreboard.draws} />
             </View>
 
             <View style={styles.finishActions}>

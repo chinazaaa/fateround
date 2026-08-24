@@ -11,6 +11,7 @@ import { GameInfoChips } from '@/components/game-lobby/GameInfoChips'
 import { GameLobbyWaitingPanel } from '@/components/game-lobby/GameLobbyWaitingPanel'
 import { NameJoinForm } from '@/components/game-lobby/NameJoinForm'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
+import { LiveLeaderboardLayout } from '@/components/LiveLeaderboardLayout'
 import { WordleRoomBoard, type WordleRoomGradedGuess } from '@/components/wordle-room/WordleRoomBoard'
 import { WordleRoomResults } from '@/components/wordle-room/WordleRoomResults'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
@@ -54,6 +55,7 @@ interface WordleRoomStatus {
   total_guesses?: number
   categoryLabel?: string
   finished?: boolean
+  sequenceComplete?: boolean
   status?: string
   guesses?: { guess: string; state: ('correct' | 'present' | 'absent')[] }[]
   hintAvailable?: boolean
@@ -100,9 +102,19 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
   const [message, setMessage] = useState<string | null>(null)
   const [shake, setShake] = useState(false)
   const [progressRows, setProgressRows] = useState<WordleRoomProgressRow[]>([])
+  // Flips true once the standings query has returned at least once, so the
+  // playing render can gate on grid + standings both being ready.
+  const [progressLoaded, setProgressLoaded] = useState(false)
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null)
   const submitLockRef = useRef(false)
   const advanceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Absolute deadline (ms since epoch) after which the scheduled advance should have
+  // fired. Realtime subscriptions consult this to skip fetchStatus while the reveal
+  // ("Correct!" / "the word was …") should still be visible.
+  const advanceDeadlineRef = useRef<number>(0)
+  // Track the last (word_index, currentWord) synced so realtime resyncs on the
+  // *same* word don't wipe the letters the user is currently typing.
+  const lastSyncedWordRef = useRef<{ index: number; word: string } | null>(null)
 
   function showToast(msg: string, ok: boolean) {
     setToast({ msg, ok })
@@ -162,38 +174,45 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
     })
     if (!res.ok) return
     const data = (await res.json()) as WordleRoomStatus
-    // Apply completion state BEFORE the currentWord check so that a finished sequence (server
-    // returns finished:true and no currentWord because the player has run out of words)
-    // locks the input immediately instead of leaving the previous word's state editable.
-    if (data.finished === true) setMyFinished(true)
+    // Only lock the board on an unambiguous per-player completion signal — `finished:true`
+    // alone can also mean "game not active yet" or "solutions row missing", neither of
+    // which is a real completion. sequenceComplete is only true when progress.finished is.
+    if (data.sequenceComplete === true) setMyFinished(true)
     if (data.currentWord) {
+      const nextIndex = data.word_index ?? 0
+      const prev = lastSyncedWordRef.current
+      const wordChanged = !prev || prev.index !== nextIndex || prev.word !== data.currentWord
       setCurrentWord(data.currentWord)
       setWordLength(data.wordLength ?? data.currentWord.length)
       setMaxAttempts(data.maxAttempts ?? data.currentWord.length + 1)
-      setWordIndex(data.word_index ?? 0)
+      setWordIndex(nextIndex)
       setWordCount(data.word_count ?? 5)
       setWordsSolved(data.words_solved ?? 0)
       setTotalGuesses(data.total_guesses ?? 0)
       setCategoryLabel(data.categoryLabel ?? 'General English')
-      setMyFinished(data.finished === true)
+      setMyFinished(data.sequenceComplete === true)
       setHintAvailable(data.hintAvailable === true)
       setHintUsed(data.hintUsed === true)
       setHintText(data.hint ?? null)
       setGuesses((data.guesses ?? []).map((g) => ({ word: g.guess, states: g.state })))
-      setCurrent('')
-      setCursorAt(0)
-      setRevealWord('')
-    } else if (data.finished === true) {
-      // Sequence complete — clear per-word state so a stale board can't accept more input.
-      setCurrentWord(null)
-      setGuesses([])
-      setCurrent('')
-      setCursorAt(0)
-      setRevealWord('')
-      setHintAvailable(false)
-      setHintUsed(false)
-      setHintText(null)
+      // Only wipe in-progress typed letters + banner when we've actually
+      // advanced to a new word. Same-word resyncs (another player's progress
+      // row updating) previously blew away whatever the user was typing.
+      if (wordChanged) {
+        setCurrent('')
+        setCursorAt(0)
+        setRevealWord('')
+        // Clear the previous word's transient banner ("Out of attempts — the word was X",
+        // "Correct! +N pts") so it doesn't linger into the next word.
+        setMessage(null)
+      }
+      lastSyncedWordRef.current = { index: nextIndex, word: data.currentWord }
     }
+    // Deliberately DO NOT wipe currentWord/guesses when the server returns finished:true
+    // without a currentWord: the server uses that shape in several non-completion cases
+    // (game not yet active, solutions row missing, transient races) and blanking state
+    // there hides the grid + hint button for a still-playing user. Real completion locks
+    // input via myFinished → boardDisabled below.
     if (data.status === 'finished') void load()
   }, [gameCode, myResumeToken, load])
 
@@ -228,7 +247,9 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
   const scheduleAdvance = useCallback(
     (delayMs: number) => {
       if (advanceTimerRef.current) clearTimeout(advanceTimerRef.current)
+      advanceDeadlineRef.current = Date.now() + delayMs
       advanceTimerRef.current = setTimeout(() => {
+        advanceDeadlineRef.current = 0
         void fetchStatus()
       }, delayMs)
     },
@@ -254,12 +275,17 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
 
   const loadProgress = useCallback(async () => {
     if (!roundId) return
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('wordle_room_progress')
       .select('*')
       .eq('game_id', gameCode)
       .eq('round_id', roundId)
-    if (data) setProgressRows(data as WordleRoomProgressRow[])
+    // Only flip progressLoaded on a successful query. A failed query mustn't
+    // pass the render gate — otherwise the finished screen or the active
+    // board renders with empty/stale standings and the user gets no retry.
+    if (error) return
+    setProgressRows((data ?? []) as WordleRoomProgressRow[])
+    setProgressLoaded(true)
   }, [gameCode, roundId])
 
   useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
@@ -305,7 +331,18 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
           void loadProgress()
           const row = payload.new as Partial<WordleRoomProgressRow>
           if (row && row.player_id === myPlayerId && game?.status === 'active') {
-            void fetchStatus()
+            // Defer the status refetch until any pending reveal delay has elapsed,
+            // otherwise a completed guess's own progress row update would race the
+            // scheduled advance and blow away the "the word was …" banner early.
+            const now = Date.now()
+            if (advanceDeadlineRef.current > now) {
+              const wait = advanceDeadlineRef.current - now
+              window.setTimeout(() => {
+                if (advanceDeadlineRef.current <= Date.now()) void fetchStatus()
+              }, wait + 10)
+            } else {
+              void fetchStatus()
+            }
           }
         }
       )
@@ -524,8 +561,9 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
             setRevealWord(currentWord)
             setMessage(`Out of attempts — the word was ${currentWord.toUpperCase()}`)
           }
-          // Reveal delay then pull the next word from the server.
-          scheduleAdvance(solved ? 1500 : 2200)
+          // Reveal delay then pull the next word from the server. The out-of-attempts
+          // reveal ("the word was …") gets a longer beat so players can actually read it.
+          scheduleAdvance(solved ? 1500 : 5000)
         } else {
           setMessage('Nope — try again')
         }
@@ -712,6 +750,15 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
   }
 
   if (screen === 'finished' && game) {
+    // Same gate as the playing branch — a direct visit to a finished game
+    // otherwise flashes empty standings before the progress query resolves.
+    if (!progressLoaded) {
+      return (
+        <div className="min-h-screen flex items-center justify-center">
+          <p className="text-muted">Loading…</p>
+        </div>
+      )
+    }
     const iWon =
       !!myStanding &&
       standings.length > 1 &&
@@ -741,7 +788,18 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
     )
   }
 
-  const boardDisabled = timeUp || isViewer
+  // Gate the playing render on BOTH the grid data (currentWord) and standings
+  // (progressLoaded) being ready, so the standings panel doesn't flash before
+  // the grid loads in.
+  if (screen === 'playing' && (!currentWord || !progressLoaded)) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <p className="text-muted">Loading…</p>
+      </div>
+    )
+  }
+
+  const boardDisabled = timeUp || isViewer || myFinished
 
   return (
     <div className="min-h-screen flex flex-col bg-[var(--background)]">
@@ -752,7 +810,7 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
           {toast.msg}
         </div>
       )}
-      <main className="pt-16 flex-1 px-3 py-4 max-w-lg mx-auto w-full space-y-4 overscroll-none">
+      <main className="pt-16 flex-1 px-3 py-4 max-w-3xl mx-auto w-full space-y-4 overscroll-none">
         {isViewer && (
           <ViewerModeBanner
             gameCode={gameCode}
@@ -764,97 +822,162 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
           />
         )}
 
-        <div className="flex items-center justify-between gap-3">
-          <span className="wl-cat-badge inline-block" style={{ background: 'var(--wl-correct)', color: '#fff' }}>
-            {categoryLabel}
-          </span>
-          <span className="text-sm font-semibold text-muted">
-            Word {Math.min(wordIndex + 1, wordCount)}/{wordCount}
-          </span>
-          {timeUp ? (
-            <span className="text-sm font-bold text-[var(--kill)]">Time's up</span>
-          ) : game && (game.timer_seconds ?? 0) > 0 ? (
-            <span className={`text-sm font-bold tabular-nums ${secondsLeft <= 10 ? 'text-[var(--marry)]' : ''}`}>
-              {timeLabel}
-            </span>
-          ) : (
-            <span className="text-sm font-semibold text-muted">Untimed</span>
-          )}
-        </div>
-
-        {currentWord && (
-          <WordleRoomBoard
-            word={currentWord}
-            guesses={guesses}
-            current={current}
-            cursorAt={cursorAt}
-            onFocusTile={focusTile}
-            revealWord={revealWord}
-            maxAttempts={maxAttempts}
-            disabled={boardDisabled}
-            message={message}
-            shake={shake}
-            onAddLetter={addLetter}
-            onBackspace={backspace}
-            onSubmit={submitGuess}
-          />
-        )}
-
-        {/* Per-word hint purchase — only surfaces when the current word actually has a hint. */}
-        {currentWord &&
-          !myFinished &&
-          hintAvailable &&
-          (hintUsed && hintText ? (
-            <p className="text-center text-sm text-muted">
-              Hint: {hintText} <span className="text-faint">(−300 pts)</span>
-            </p>
-          ) : !hintUsed ? (
-            <div className="text-center">
-              <button
-                type="button"
-                onClick={() => void revealHint()}
-                disabled={boardDisabled}
-                className="fr-btn fr-btn--secondary fr-btn--sm"
-              >
-                Reveal hint (−300 pts)
-              </button>
+        <LiveLeaderboardLayout
+          sidebar={
+            <div className="glass-card p-3 space-y-3">
+              <p className="label-caps text-xs">Race standings</p>
+              {standings.length === 0 ? (
+                <p className="text-xs text-muted">Waiting for the room to get going…</p>
+              ) : (
+                <ul className="divide-y divide-[var(--border)]">
+                  {standings.map((row, i) => {
+                    const isMe = row.player_id === myPlayerId
+                    return (
+                      <li key={row.player_id} className="py-2 first:pt-0 last:pb-0 space-y-1">
+                        <div className="flex items-baseline justify-between gap-2 text-sm">
+                          <span className={`font-semibold truncate ${isMe ? 'text-[var(--primary)]' : 'text-body'}`}>
+                            {i + 1}. {row.name}
+                            {isMe ? ' (you)' : ''}
+                          </span>
+                          <span className="font-bold tabular-nums whitespace-nowrap text-body">
+                            {row.total_points} pts
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between gap-2 text-[11px] text-muted">
+                          <span className="truncate">
+                            {row.finished ? 'Finished' : `On word ${row.word_index + 1}`}
+                          </span>
+                          <span className="whitespace-nowrap">
+                            {row.words_solved} solved
+                            {row.hints_used_count > 0
+                              ? ` · ${row.hints_used_count} hint${row.hints_used_count > 1 ? 's' : ''}`
+                              : ''}
+                          </span>
+                        </div>
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
             </div>
-          ) : null)}
+          }
+        >
+          <div className="flex items-center justify-between gap-3">
+            <span className="wl-cat-badge inline-block" style={{ background: 'var(--wl-correct)', color: '#fff' }}>
+              {categoryLabel}
+            </span>
+            <span className="text-sm font-semibold text-muted">
+              Word {Math.min(wordIndex + 1, wordCount)}/{wordCount}
+            </span>
+            {timeUp ? (
+              <span className="text-sm font-bold text-[var(--kill)]">Time's up</span>
+            ) : game && (game.timer_seconds ?? 0) > 0 ? (
+              <span className={`text-sm font-bold tabular-nums ${secondsLeft <= 10 ? 'text-[var(--marry)]' : ''}`}>
+                {timeLabel}
+              </span>
+            ) : (
+              <span className="text-sm font-semibold text-muted">Untimed</span>
+            )}
+          </div>
 
-        <div className="glass-card p-3 space-y-2">
-          <p className="label-caps text-xs">Race standings</p>
-          {standings.length === 0 ? (
-            <p className="text-xs text-muted">Waiting for the room to get going…</p>
-          ) : (
-            standings.map((row, i) => {
-              const isMe = row.player_id === myPlayerId
-              return (
-                <div key={row.player_id} className="flex items-center justify-between text-sm">
-                  <span className={`font-medium truncate ${isMe ? 'text-[var(--primary)]' : ''}`}>
-                    {i + 1}. {row.name}
-                    {isMe ? ' (you)' : ''}
-                  </span>
-                  <span className="font-bold tabular-nums text-muted">
-                    {row.total_points} pts · {row.words_solved} solved
-                    {row.hints_used_count > 0
-                      ? ` · ${row.hints_used_count} hint${row.hints_used_count > 1 ? 's' : ''}`
-                      : ''}
-                    {' · '}
-                    {row.finished ? 'Done' : `word ${row.word_index + 1}`}
-                  </span>
-                </div>
-              )
-            })
+          {/* Colours are hardcoded (not `var(--wl-…)`) because the board's <style> block that
+            defines those vars only mounts when currentWord is set — the legend needs to
+            render even before the first fetchStatus lands. */}
+          <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11px] text-muted">
+            <span className="inline-flex items-center gap-1">
+              <span className="inline-block h-3 w-3 rounded-sm" style={{ background: '#6aaa64' }} />
+              right letter, right spot
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <span className="inline-block h-3 w-3 rounded-sm" style={{ background: '#c9b458' }} />
+              in the word, wrong spot
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <span className="inline-block h-3 w-3 rounded-sm" style={{ background: '#787c7e' }} />
+              not in the word
+            </span>
+          </div>
+
+          {currentWord && (
+            <WordleRoomBoard
+              word={currentWord}
+              guesses={guesses}
+              current={current}
+              cursorAt={cursorAt}
+              onFocusTile={focusTile}
+              revealWord={revealWord}
+              maxAttempts={maxAttempts}
+              disabled={boardDisabled}
+              message={message}
+              shake={shake}
+              onAddLetter={addLetter}
+              onBackspace={backspace}
+              onSubmit={submitGuess}
+            />
           )}
-        </div>
 
-        <div className="flex items-center justify-between gap-2 text-xs text-muted px-1">
-          <span>
-            Solved: <strong className="text-body">{wordsSolved}</strong>/{wordCount} · Guesses:{' '}
-            <strong className="text-body">{totalGuesses}</strong>
-          </span>
-          {myFinished && <span className="font-semibold text-[var(--primary)]">You finished — waiting on others!</span>}
-        </div>
+          {/* Per-word hint purchase — only surfaces when the current word actually has a hint. */}
+          {currentWord &&
+            !myFinished &&
+            hintAvailable &&
+            (hintUsed && hintText ? (
+              <p className="text-center text-sm text-muted">
+                Hint: {hintText} <span className="text-faint">(−300 pts)</span>
+              </p>
+            ) : !hintUsed ? (
+              <div className="text-center">
+                <button
+                  type="button"
+                  onClick={() => void revealHint()}
+                  disabled={boardDisabled}
+                  className="fr-btn fr-btn--secondary fr-btn--sm"
+                >
+                  Reveal hint (−300 pts)
+                </button>
+              </div>
+            ) : null)}
+
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted px-1">
+            <span>
+              Solved: <strong className="text-body">{wordsSolved}</strong>/{wordCount}
+            </span>
+            <span>
+              Guesses: <strong className="text-body">{totalGuesses}</strong>
+            </span>
+          </div>
+
+          {myFinished && (
+            <div className="glass-card p-3 text-center space-y-1">
+              <p className="font-semibold text-[var(--primary)]">You finished — waiting on others!</p>
+              <p className="text-xs text-muted">
+                {(() => {
+                  const rank = standings.findIndex((s) => s.player_id === myPlayerId) + 1
+                  const suffix = rank === 1 ? 'st' : rank === 2 ? 'nd' : rank === 3 ? 'rd' : 'th'
+                  const ms = myStanding?.total_time_ms ?? null
+                  const timeText =
+                    ms != null
+                      ? `${Math.floor(ms / 60000)}:${String(Math.floor((ms % 60000) / 1000)).padStart(2, '0')}`
+                      : '—'
+                  return (
+                    <>
+                      {rank > 0 ? (
+                        <>
+                          <strong className="text-body">
+                            {rank}
+                            {suffix}
+                          </strong>{' '}
+                          so far ·{' '}
+                        </>
+                      ) : null}
+                      <strong className="text-body">{myStanding?.total_points ?? 0}</strong> pts · time{' '}
+                      <strong className="text-body">{timeText}</strong>
+                    </>
+                  )
+                })()}
+              </p>
+            </div>
+          )}
+        </LiveLeaderboardLayout>
       </main>
     </div>
   )

@@ -12,7 +12,6 @@ import {
   processMonopolyAuction,
   processMonopolyTradeRespond,
   advanceMonopolyTurnPastBankrupt,
-  isTurnHolderBankrupt,
 } from '@/lib/monopoly'
 import { scheduleTurnNotification } from '@/lib/push'
 import { pickBotAction, type MonopolyBotAction } from '@/lib/monopoly-bot'
@@ -71,31 +70,48 @@ export async function driveMonopolyBotsOnce(gameCode: string): Promise<DriveResu
     .eq('is_bot', true)
   if (!botCount || botCount === 0) return { kind: 'idle' }
 
-  const [boardRes, statesRes] = await Promise.all([
-    admin.from('monopoly_boards').select('*').eq('game_id', code).maybeSingle(),
-    admin.from('monopoly_player_state').select('*').eq('game_id', code).order('player_order'),
-  ])
-  const board = boardRes.data as MonopolyBoard | null
-  const states = (statesRes.data ?? []) as MonopolyPlayerState[]
-  if (!board || board.phase === 'finished') return { kind: 'idle' }
+  // Narrow pre-check: `monopoly_boards` carries several large JSONB columns
+  // (property maps, card decks, event history) and `monopoly_player_state`
+  // is one row per player — both expensive to pull every 2.5s tick. Read
+  // only what's needed to find the actionable slot first, so a bot-
+  // containing game where a HUMAN currently holds the turn/trade/auction
+  // (the common case) costs one small row instead of the full board + all
+  // player states.
+  const { data: slotRow } = await admin
+    .from('monopoly_boards')
+    .select('phase, turn_order, current_turn_index, pending_trade, auction_state')
+    .eq('game_id', code)
+    .maybeSingle()
+  if (!slotRow || slotRow.phase === 'finished') return { kind: 'idle' }
 
-  // If the turn is parked on a bankrupt player (whose bot adapter would return
-  // null and whose human UI is disabled), the game stalls forever. Advance the
-  // turn off them so the next tick sees a live holder. This is defensive —
-  // normal engine paths route through nextTurnIndex which skips bankrupts.
-  if (isTurnHolderBankrupt(board, states)) {
-    const { advanced } = await advanceMonopolyTurnPastBankrupt(admin, code)
-    return advanced ? { kind: 'skipped', reason: 'advanced past bankrupt turn holder' } : { kind: 'idle' }
+  const tradeToId = slotRow.pending_trade?.to_player_id ?? null
+  const auctionBidderId = slotRow.auction_state?.current_bidder_id ?? null
+  const turnHolderId = slotRow.turn_order?.[slotRow.current_turn_index] ?? null
+
+  // Bankrupt-turn-holder recovery runs regardless of whether the stuck
+  // holder is a bot or human — a bankrupt human's UI is disabled too, so
+  // either can stall the game. Check with a single narrow row instead of
+  // pulling every player's full state, mirroring `isTurnHolderBankrupt`'s
+  // logic exactly but without the full-state fetch.
+  const orderLen = slotRow.turn_order?.length ?? 0
+  if (orderLen > 0) {
+    const idx = slotRow.current_turn_index
+    const indexInvalid = !Number.isInteger(idx) || idx < 0 || idx >= orderLen
+    let holderBankrupt = indexInvalid || !turnHolderId
+    if (!holderBankrupt && turnHolderId) {
+      const { data: holderState } = await admin
+        .from('monopoly_player_state')
+        .select('bankrupt')
+        .eq('game_id', code)
+        .eq('player_id', turnHolderId)
+        .maybeSingle()
+      holderBankrupt = !holderState || holderState.bankrupt === true
+    }
+    if (holderBankrupt) {
+      const { advanced } = await advanceMonopolyTurnPastBankrupt(admin, code)
+      return advanced ? { kind: 'skipped', reason: 'advanced past bankrupt turn holder' } : { kind: 'idle' }
+    }
   }
-
-  // Pick the actionable slot. Priority: pending trade addressed at a bot >
-  // auction current-bidder > turn holder. Trades and auctions run outside the
-  // turn order and both block the game until resolved — trades block the
-  // human proposer's turn, auctions block the initiator's — so we resolve
-  // them BEFORE giving another bot its regular turn move.
-  const tradeToId = board.pending_trade?.to_player_id ?? null
-  const auctionBidderId = board.auction_state?.current_bidder_id ?? null
-  const turnHolderId = board.turn_order?.[board.current_turn_index] ?? null
 
   // Confirm each candidate is actually a bot. One `players` read covers all
   // slots (deduplicated ids; a null slot resolves the same way).
@@ -116,6 +132,17 @@ export async function driveMonopolyBotsOnce(gameCode: string): Promise<DriveResu
   else if (turnHolderId && isBotById.get(turnHolderId)) actionableBotId = turnHolderId
 
   if (!actionableBotId) return { kind: 'idle' }
+
+  // A bot can actually act this tick — now it's worth paying for the full
+  // board + player states (needed for the adapter).
+  const [boardRes, statesRes] = await Promise.all([
+    admin.from('monopoly_boards').select('*').eq('game_id', code).maybeSingle(),
+    admin.from('monopoly_player_state').select('*').eq('game_id', code).order('player_order'),
+  ])
+  const board = boardRes.data as MonopolyBoard | null
+  const states = (statesRes.data ?? []) as MonopolyPlayerState[]
+  // Re-check phase — it could have flipped to 'finished' between the two reads.
+  if (!board || board.phase === 'finished') return { kind: 'idle' }
 
   const view = adaptMonopolyForBot(board, states, actionableBotId)
   if (!view) return { kind: 'idle' }

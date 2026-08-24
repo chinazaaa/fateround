@@ -1461,7 +1461,7 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
       accent: '#16a34a',
       accentSoft: 'rgba(22, 163, 74, 0.15)',
       emoji: '🟩',
-      players: '2–20 players',
+      players: '1–20 players',
       vibe: 'Head-to-head Wordle race',
       featured: true,
     },
@@ -2275,7 +2275,6 @@ const GAME_CATEGORY_BY_TYPE: Partial<Record<GameType, GameCategory>> = {
   secret_message: 'party',
   two_truths: 'party',
   i_call_on: 'party',
-  landmine: 'party',
   mafia: 'party',
   custom: 'party',
   // Guessing / word-and-answer
@@ -2314,6 +2313,7 @@ const GAME_CATEGORY_BY_TYPE: Partial<Record<GameType, GameCategory>> = {
   word_hunt: 'puzzle',
   word_rush: 'puzzle',
   wordle_room: 'puzzle',
+  landmine: 'puzzle',
 }
 
 export function gameTypeCategory(gameType: GameType): GameCategory {
