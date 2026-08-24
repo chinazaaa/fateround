@@ -241,11 +241,11 @@ function WhotShape({
 
 function WhotSample({ theme }: { theme: ThemeConfig }) {
   // Face-up call card + a fan of three hand cards, each with a classic Whot
-  // shape. Card faces use the theme's own palette (whot-neon → dark card
-  // with cyan shapes; whot-naija → green card with cream shapes).
-  const cardBg = theme.preview.bg
-  const cardText = theme.preview.text
-  const shapeColor = theme.preview.accent
+  // shape. Reads the same --game-board-* + --game-accent tokens the real
+  // Whot surface uses, so light/dark and every paid variant match the game.
+  const cardBg = 'var(--game-board-bg)'
+  const cardText = 'var(--game-board-fg)'
+  const shapeColor = 'var(--game-accent)'
   const hand: { shape: 'circle' | 'cross' | 'triangle' | 'star' | 'square'; n: string }[] = [
     { shape: 'circle', n: '3' },
     { shape: 'star', n: '10' },
@@ -303,13 +303,11 @@ function WhotSample({ theme }: { theme: ThemeConfig }) {
 function LudoSample({ theme }: { theme: ThemeConfig }) {
   // 5×5 grid rendering a real Ludo cross: four home yards at the corners
   // in the traditional Ludo colors, cross-shaped track around the middle,
-  // and a center goal star. The BOARD surface uses the previewed theme's
-  // background — Wooden Ludo gets a warm brown with grain, Naija Ludo
-  // green, etc. Home-yard colors stay traditional so the game is instantly
-  // recognizable regardless of theme.
-  const boardBg = theme.preview.bg
-  const trackFill = theme.preview.text
-  const goal = theme.preview.accent
+  // and a center goal star. Reads the shared --game-board-* + --game-accent
+  // tokens so light/dark + every paid variant match the real Ludo surface.
+  const boardBg = 'var(--game-board-bg)'
+  const trackFill = 'var(--game-board-fg)'
+  const goal = 'var(--game-accent)'
   const yards = { r: '#c62828', b: '#1565c0', g: '#2e7d32', y: '#f9a825' }
   // Simple 5x5 lookup: 'r','b','g','y' = home yard, 't' = track cell,
   // 'x' = center goal, '.' = empty.
@@ -334,10 +332,10 @@ function LudoSample({ theme }: { theme: ThemeConfig }) {
       style={{
         background: themeSurfaceBackground(theme.id, boardBg),
         borderColor: `color-mix(in srgb, ${trackFill} 40%, transparent)`,
-        color: theme.preview.text,
+        color: trackFill,
       }}
     >
-      <p className="text-sm font-semibold text-center" style={{ color: theme.preview.text }}>
+      <p className="text-sm font-semibold text-center" style={{ color: trackFill }}>
         Race four pieces home · 🎲 4
       </p>
       <div
@@ -382,13 +380,18 @@ function LudoSample({ theme }: { theme: ThemeConfig }) {
 function SudokuSample({ theme }: { theme: ThemeConfig }) {
   // A real 9×9 sudoku grid with the standard 3×3 subgrid dividers so it
   // reads unmistakably as sudoku. Numbers filled in a plausible pattern.
-  // Cell background = theme.bg, digit color = theme.text, thick dividers
-  // = theme.text (so the classic ink-on-paper contrast comes through on
-  // both Minimalist and Newsprint themes).
-  const cellBg = theme.preview.bg
-  const digitColor = theme.preview.text
-  const dividerColor = theme.preview.text
-  const clueColor = theme.preview.accent
+  //
+  // Reads the same --game-board-* CSS tokens as the real SudokuBoard
+  // (src/components/sudoku/SudokuBoard.tsx after the 2026-08-24 theme
+  // repaint refactor), so what the shopper sees here is what they get
+  // in the game — for every theme AND in both light / dark modes. The
+  // ThemeSampleRoom wrapper stamps `data-game-theme` + `data-theme`, so
+  // the cascade resolves to the paid-theme block when one exists and
+  // the :root defaults (which have their own dark override) otherwise.
+  const cellBg = 'var(--game-board-bg)'
+  const digitColor = 'var(--game-board-fg)'
+  const dividerColor = 'var(--game-board-block)'
+  const clueColor = 'var(--game-accent)'
   // 9x9 puzzle with a plausible spread of givens
   const puzzle: (number | null)[][] = [
     [5, 3, null, null, 7, null, null, null, null],
@@ -459,12 +462,14 @@ function monopolyEditionLabel(themeId: string): string {
 
 function MonopolySample({ theme }: { theme: ThemeConfig }) {
   // A row of six property tiles + a GO corner — the classic bottom edge of
-  // a Monopoly board. Each property's color-band uses the previewed edition's
-  // accent so USA reads red-white-blue, Christmas red-green, Naija green, etc.
-  // Property names swap per edition so a shopper reads familiar streets.
-  const boardBg = theme.preview.bg
-  const tileBg = theme.preview.text
-  const band = theme.preview.accent
+  // a Monopoly board. Reads the shared --game-* tokens so the mini adapts
+  // to the site's light/dark mode the same way the real Monopoly surface
+  // does. Property names + currency swap per edition so a shopper reads
+  // familiar streets in the previewed edition.
+  const boardBg = 'var(--game-page-bg)'
+  const tileBg = 'var(--game-board-bg)'
+  const band = 'var(--game-accent)'
+  const boardText = 'var(--game-board-fg)'
   const streets =
     theme.id === 'america'
       ? ['Boardwalk', 'Park Ave', '5th Ave', 'Times Sq', 'Wall St', 'Broadway']
@@ -484,10 +489,10 @@ function MonopolySample({ theme }: { theme: ThemeConfig }) {
       style={{
         background: themeSurfaceBackground(theme.id, boardBg),
         borderColor: `color-mix(in srgb, ${band} 45%, transparent)`,
-        color: theme.preview.text,
+        color: boardText,
       }}
     >
-      <p className="text-sm font-semibold text-center" style={{ color: theme.preview.text }}>
+      <p className="text-sm font-semibold text-center" style={{ color: boardText }}>
         {monopolyEditionLabel(theme.id)}
       </p>
       <div className="mx-auto grid w-full grid-cols-7 gap-0.5">
