@@ -1519,10 +1519,15 @@ export interface MonopolyBoard {
   mortgaged_properties: Record<string, boolean>
   houses_in_bank: number
   hotels_in_bank: number
-  chance_deck: number[]
-  community_deck: number[]
-  chance_discard: number[]
-  community_discard: number[]
+  // Server-only. These are the shuffled Chance / Community Chest decks; knowing their order is
+  // knowing every upcoming card, so they are NOT in MONOPOLY_BOARD_SELECT and never reach a
+  // client. `monopoly.ts` reads them through the service role with `select('*')`. Optional here
+  // because a client-fetched row genuinely lacks them — `parseDeck` already returns [] for a
+  // non-array, so no read site needs changing.
+  chance_deck?: number[]
+  community_deck?: number[]
+  chance_discard?: number[]
+  community_discard?: number[]
   auction_state: MonopolyAuctionState | null
   pending_trade: unknown | null
   pending_debt: MonopolyPendingDebt | null

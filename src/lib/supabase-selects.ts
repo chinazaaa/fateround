@@ -42,7 +42,7 @@ export const VOTE_SELECT =
 export const CONFESSION_SELECT = 'id,game_id,round_id,text,created_at'
 
 export const MONOPOLY_BOARD_SELECT =
-  'id,game_id,board_size,turn_order,current_turn_index,phase,last_dice,consecutive_doubles,property_owners,property_buildings,mortgaged_properties,houses_in_bank,hotels_in_bank,chance_deck,community_deck,chance_discard,community_discard,auction_state,pending_trade,pending_debt,pending_space,status_message,last_card_event,last_rent_event,last_cash_event,last_trade_event,loans,turn_deadline_at,winner_player_id,created_at,updated_at'
+  'id,game_id,board_size,turn_order,current_turn_index,phase,last_dice,consecutive_doubles,property_owners,property_buildings,mortgaged_properties,houses_in_bank,hotels_in_bank,auction_state,pending_trade,pending_debt,pending_space,status_message,last_card_event,last_rent_event,last_cash_event,last_trade_event,loans,turn_deadline_at,winner_player_id,created_at,updated_at'
 
 /**
  * `monopoly_boards` columns that are NOT NULL in the DB.
@@ -54,14 +54,14 @@ export const MONOPOLY_BOARD_SELECT =
  * ownership, buildings and the decks on screen. Callers use {@link isCompleteMonopolyBoardRow}
  * to detect that and fall back to a full reload instead of the delta fast-path.
  */
+// The four card decks are deliberately absent — they are no longer in MONOPOLY_BOARD_SELECT, so
+// a pushed row never carries them and requiring them here would make isCompleteMonopolyBoardRow
+// return false for EVERY payload, rejecting every delta and forcing a full reload each time.
+// (Exactly the bug found in UNO_SESSION_NOT_NULL_KEYS after its piles were revoked.)
 export const MONOPOLY_BOARD_NOT_NULL_KEYS = [
   'property_owners',
   'property_buildings',
   'mortgaged_properties',
-  'chance_deck',
-  'community_deck',
-  'chance_discard',
-  'community_discard',
   'turn_order',
   'loans',
 ] as const
