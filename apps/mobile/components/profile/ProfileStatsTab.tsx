@@ -142,9 +142,7 @@ export function ProfileStatsTab({ games }: { games: ProfileGameRow[] }) {
                       {timeAgo(entry.finishedAt)} · {entry.playerCount} player
                       {entry.playerCount === 1 ? '' : 's'}
                       {entry.sessionsPlayed > 1 ? ` · ${entry.sessionsPlayed} rounds` : ''}
-                      {entry.allWinnerNames.length > 0
-                        ? ` · ${entry.allWinnerNames.join(', ')}`
-                        : ''}
+                      {entry.allWinnerNames.length > 0 ? ` · ${entry.allWinnerNames.join(', ')}` : ''}
                     </Text>
                   </View>
                   {/* `won` is null when the server could not attribute a winner, which is not

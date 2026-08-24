@@ -57,11 +57,7 @@ import {
   postCodewordsRole,
 } from '@/lib/game-api'
 import { getSupabase } from '@/lib/supabase'
-import {
-  CODEWORDS_GUESS_SELECT,
-  CODEWORDS_MESSAGE_SELECT,
-  CODEWORDS_PLAYER_ROLE_SELECT,
-} from '@/lib/supabase-selects'
+import { CODEWORDS_GUESS_SELECT, CODEWORDS_MESSAGE_SELECT, CODEWORDS_PLAYER_ROLE_SELECT } from '@/lib/supabase-selects'
 import { getPlayerSession } from '@/lib/secure-session'
 import { usePlayerSessionActions } from '@/lib/player-session'
 import { useToast } from '@/components/ui/Toast'
