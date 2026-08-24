@@ -129,10 +129,10 @@ export function SudokuBoard({
             const bgStyle = isSelected
               ? { backgroundColor: 'var(--game-selected-bg)', transition: 'background-color 0.15s ease-out' }
               : isFlashing
-                // Wrong-flash amber is a semantic error state — kept
-                // hardcoded on purpose. Themes that want a monochrome
-                // flash can override --game-flash-bg in a follow-up.
-                ? { backgroundColor: 'rgba(251, 191, 36, 0.55)', transition: 'background-color 0.5s ease-out' }
+                ? // Wrong-flash amber is a semantic error state — kept
+                  // hardcoded on purpose. Themes that want a monochrome
+                  // flash can override --game-flash-bg in a follow-up.
+                  { backgroundColor: 'rgba(251, 191, 36, 0.55)', transition: 'background-color 0.5s ease-out' }
                 : isNumberHighlighted
                   ? { backgroundColor: 'var(--game-highlight-bg)', transition: 'background-color 0.15s ease-out' }
                   : baseBg

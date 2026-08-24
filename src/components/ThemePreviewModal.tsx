@@ -188,35 +188,55 @@ function KissMarryKillSample() {
 /** Classic Whot shape glyphs as inline SVG so the card faces read like the
  *  real deck (circle, cross, triangle, star, square) rather than generic
  *  emoji. `color` is the accent from the previewed theme. */
-function WhotShape({ shape, color, size = 24 }: { shape: 'circle' | 'cross' | 'triangle' | 'star' | 'square'; color: string; size?: number }) {
+function WhotShape({
+  shape,
+  color,
+  size = 24,
+}: {
+  shape: 'circle' | 'cross' | 'triangle' | 'star' | 'square'
+  color: string
+  size?: number
+}) {
   const s = size
   const c = s / 2
-  if (shape === 'circle') return <svg width={s} height={s} viewBox={`0 0 ${s} ${s}`}><circle cx={c} cy={c} r={s * 0.38} fill={color} /></svg>
-  if (shape === 'cross') return (
-    <svg width={s} height={s} viewBox={`0 0 ${s} ${s}`}>
-      <rect x={c - s * 0.08} y={s * 0.15} width={s * 0.16} height={s * 0.7} fill={color} />
-      <rect x={s * 0.15} y={c - s * 0.08} width={s * 0.7} height={s * 0.16} fill={color} />
-    </svg>
-  )
-  if (shape === 'triangle') return (
-    <svg width={s} height={s} viewBox={`0 0 ${s} ${s}`}>
-      <polygon points={`${c},${s * 0.15} ${s * 0.85},${s * 0.82} ${s * 0.15},${s * 0.82}`} fill={color} />
-    </svg>
-  )
-  if (shape === 'star') return (
-    <svg width={s} height={s} viewBox={`0 0 ${s} ${s}`}>
-      <polygon
-        points={Array.from({ length: 10 }, (_, i) => {
-          const a = (Math.PI / 5) * i - Math.PI / 2
-          const r = i % 2 === 0 ? s * 0.42 : s * 0.18
-          return `${c + Math.cos(a) * r},${c + Math.sin(a) * r}`
-        }).join(' ')}
-        fill={color}
-      />
-    </svg>
-  )
+  if (shape === 'circle')
+    return (
+      <svg width={s} height={s} viewBox={`0 0 ${s} ${s}`}>
+        <circle cx={c} cy={c} r={s * 0.38} fill={color} />
+      </svg>
+    )
+  if (shape === 'cross')
+    return (
+      <svg width={s} height={s} viewBox={`0 0 ${s} ${s}`}>
+        <rect x={c - s * 0.08} y={s * 0.15} width={s * 0.16} height={s * 0.7} fill={color} />
+        <rect x={s * 0.15} y={c - s * 0.08} width={s * 0.7} height={s * 0.16} fill={color} />
+      </svg>
+    )
+  if (shape === 'triangle')
+    return (
+      <svg width={s} height={s} viewBox={`0 0 ${s} ${s}`}>
+        <polygon points={`${c},${s * 0.15} ${s * 0.85},${s * 0.82} ${s * 0.15},${s * 0.82}`} fill={color} />
+      </svg>
+    )
+  if (shape === 'star')
+    return (
+      <svg width={s} height={s} viewBox={`0 0 ${s} ${s}`}>
+        <polygon
+          points={Array.from({ length: 10 }, (_, i) => {
+            const a = (Math.PI / 5) * i - Math.PI / 2
+            const r = i % 2 === 0 ? s * 0.42 : s * 0.18
+            return `${c + Math.cos(a) * r},${c + Math.sin(a) * r}`
+          }).join(' ')}
+          fill={color}
+        />
+      </svg>
+    )
   // square
-  return <svg width={s} height={s} viewBox={`0 0 ${s} ${s}`}><rect x={s * 0.2} y={s * 0.2} width={s * 0.6} height={s * 0.6} fill={color} /></svg>
+  return (
+    <svg width={s} height={s} viewBox={`0 0 ${s} ${s}`}>
+      <rect x={s * 0.2} y={s * 0.2} width={s * 0.6} height={s * 0.6} fill={color} />
+    </svg>
+  )
 }
 
 function WhotSample({ theme }: { theme: ThemeConfig }) {
@@ -240,16 +260,22 @@ function WhotSample({ theme }: { theme: ThemeConfig }) {
         boxShadow: theme.id === 'whot-neon' ? `0 0 12px color-mix(in srgb, ${shapeColor} 40%, transparent)` : undefined,
       }}
     >
-      <p className="text-sm font-semibold text-center" style={{ color: cardText }}>Match shape or number</p>
+      <p className="text-sm font-semibold text-center" style={{ color: cardText }}>
+        Match shape or number
+      </p>
       {/* Face-up call card */}
       <div className="flex justify-center">
         <div
-          className="flex h-24 w-16 flex-col items-center justify-center rounded-lg border-2 shadow-lg"
+          className="relative flex h-24 w-16 flex-col items-center justify-center rounded-lg border-2 shadow-lg"
           style={{ background: cardBg, borderColor: shapeColor, color: cardText }}
         >
-          <span className="absolute self-start pl-1.5 pt-0.5 text-[10px] font-black" style={{ color: cardText }}>7</span>
+          <span className="absolute left-1.5 top-0.5 text-[10px] font-black" style={{ color: cardText }}>
+            7
+          </span>
           <WhotShape shape="star" color={shapeColor} size={32} />
-          <span className="absolute self-end pr-1.5 pb-0.5 rotate-180 text-[10px] font-black" style={{ color: cardText }}>7</span>
+          <span className="absolute right-1.5 bottom-0.5 rotate-180 text-[10px] font-black" style={{ color: cardText }}>
+            7
+          </span>
         </div>
       </div>
       {/* Hand */}
@@ -260,9 +286,13 @@ function WhotSample({ theme }: { theme: ThemeConfig }) {
             className="relative flex h-20 w-12 flex-col items-center justify-center rounded-md border shadow"
             style={{ background: cardBg, borderColor: shapeColor, color: cardText }}
           >
-            <span className="absolute left-1 top-0.5 text-[9px] font-black" style={{ color: cardText }}>{c.n}</span>
+            <span className="absolute left-1 top-0.5 text-[9px] font-black" style={{ color: cardText }}>
+              {c.n}
+            </span>
             <WhotShape shape={c.shape} color={shapeColor} size={22} />
-            <span className="absolute right-1 bottom-0.5 rotate-180 text-[9px] font-black" style={{ color: cardText }}>{c.n}</span>
+            <span className="absolute right-1 bottom-0.5 rotate-180 text-[9px] font-black" style={{ color: cardText }}>
+              {c.n}
+            </span>
           </div>
         ))}
       </div>
@@ -328,7 +358,9 @@ function LudoSample({ theme }: { theme: ThemeConfig }) {
                     : isCenter
                       ? goal
                       : `color-mix(in srgb, ${trackFill} 15%, ${boardBg})`,
-                  border: isYard ? `1px solid ${cellFor(v)}` : `1px solid color-mix(in srgb, ${trackFill} 25%, transparent)`,
+                  border: isYard
+                    ? `1px solid ${cellFor(v)}`
+                    : `1px solid color-mix(in srgb, ${trackFill} 25%, transparent)`,
                 }}
               >
                 {isYard && (r === 0 || r === 3) && (c === 0 || c === 3) && (
@@ -464,8 +496,12 @@ function MonopolySample({ theme }: { theme: ThemeConfig }) {
           className="flex aspect-square flex-col items-center justify-center rounded-sm"
           style={{ background: tileBg, color: boardBg, border: `1px solid ${band}` }}
         >
-          <span className="text-[9px] font-black tracking-wide" style={{ color: band }}>GO</span>
-          <span className="text-sm" style={{ color: band, lineHeight: 1 }}>⇐</span>
+          <span className="text-[9px] font-black tracking-wide" style={{ color: band }}>
+            GO
+          </span>
+          <span className="text-sm" style={{ color: band, lineHeight: 1 }}>
+            ⇐
+          </span>
         </div>
         {streets.map((name, i) => (
           <div

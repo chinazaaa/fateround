@@ -2964,5 +2964,5 @@ select option {
    reads as newsprint print, not just cream-coloured. Confined to the
    game-theme subtree so nothing else on the site catches serif. */
 [data-game-theme='sudoku-newsprint'] {
-  font-family: 'Georgia', 'Times New Roman', serif;
+  font-family: Georgia, 'Times New Roman', serif;
 }
