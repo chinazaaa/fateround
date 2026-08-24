@@ -93,21 +93,21 @@ body:has(.fr-site) .app-fixed-theme-toggle {
    * actually repaints the board, not just the page chrome around it.
    * NEVER hardcode a board colour in a component — use these tokens
    * so a future theme can retint without touching every game file. */
-  --game-board-bg: #ffffff;               /* Board "paper" — Ludo track, Sudoku cells, Whot felt */
-  --game-board-fg: var(--foreground);      /* Digits/text on the board */
-  --game-board-grid: rgba(203, 213, 225, 0.6);   /* Thin grid lines (slate-300/60 default) */
+  --game-board-bg: #ffffff; /* Board "paper" — Ludo track, Sudoku cells, Whot felt */
+  --game-board-fg: var(--foreground); /* Digits/text on the board */
+  --game-board-grid: rgba(203, 213, 225, 0.6); /* Thin grid lines (slate-300/60 default) */
   --game-board-block: rgba(100, 116, 139, 0.7); /* Thick 3x3 / cell block dividers */
-  --game-page-bg: var(--background);        /* Page-level backdrop the board sits on */
-  --game-accent: var(--primary);            /* Deck/card accent, primary game colour */
+  --game-page-bg: var(--background); /* Page-level backdrop the board sits on */
+  --game-accent: var(--primary); /* Deck/card accent, primary game colour */
   --game-selected-bg: rgba(99, 102, 241, 0.35); /* Selected-cell / active highlight */
-  --game-highlight-bg: rgba(56, 189, 248, 0.30); /* Same-number highlight */
+  --game-highlight-bg: rgba(56, 189, 248, 0.3); /* Same-number highlight */
 }
 
 /* ── Dark theme override ────────────────────────────────────────── */
 [data-theme='dark'] {
   color-scheme: dark;
 
-  --game-board-bg: #0f172a;                /* slate-900 — dark board paper */
+  --game-board-bg: #0f172a; /* slate-900 — dark board paper */
   --game-board-grid: rgba(71, 85, 105, 0.6); /* slate-600/60 */
   --game-board-block: rgba(148, 163, 184, 0.7); /* slate-400/70 */
 
@@ -2621,7 +2621,13 @@ select option {
   --card-shadow-strong: 0 8px 32px rgba(42, 26, 13, 0.22), 0 2px 8px rgba(139, 90, 43, 0.15);
   --card-shadow-glow: 0 0 0 1px rgba(217, 119, 6, 0.35), 0 8px 32px rgba(217, 119, 6, 0.22);
   --bg-gradient:
-    repeating-linear-gradient(90deg, transparent 0px, transparent 6px, rgba(139, 90, 43, 0.06) 6px, rgba(139, 90, 43, 0.06) 7px),
+    repeating-linear-gradient(
+      90deg,
+      transparent 0px,
+      transparent 6px,
+      rgba(139, 90, 43, 0.06) 6px,
+      rgba(139, 90, 43, 0.06) 7px
+    ),
     radial-gradient(ellipse 80% 60% at 50% -10%, rgba(217, 119, 6, 0.14) 0%, transparent 60%);
   --primary: #b45309;
   --primary-strong: #92400e;
@@ -2662,7 +2668,13 @@ select option {
   --card-shadow-strong: 0 12px 48px rgba(0, 0, 0, 0.55), 0 0 20px rgba(217, 119, 6, 0.18);
   --card-shadow-glow: 0 0 0 1px rgba(217, 119, 6, 0.4), 0 8px 40px rgba(217, 119, 6, 0.25);
   --bg-gradient:
-    repeating-linear-gradient(90deg, transparent 0px, transparent 6px, rgba(255, 220, 170, 0.04) 6px, rgba(255, 220, 170, 0.04) 7px),
+    repeating-linear-gradient(
+      90deg,
+      transparent 0px,
+      transparent 6px,
+      rgba(255, 220, 170, 0.04) 6px,
+      rgba(255, 220, 170, 0.04) 7px
+    ),
     radial-gradient(ellipse 80% 55% at 50% -10%, rgba(217, 119, 6, 0.18) 0%, transparent 55%);
   --primary: #f59e0b;
   --primary-strong: #d97706;
@@ -2720,6 +2732,11 @@ select option {
   --game-board-block: rgba(0, 135, 81, 0.6);
   --game-page-bg: #008751;
   --game-accent: #008751;
+  /* Card face: soft Nigerian-green wash + green border so cards read as
+   * "Naija" cards without drowning the per-shape identity. */
+  --game-card-tint: rgba(0, 135, 81, 0.08);
+  --game-card-glow: 0 0 6px rgba(0, 135, 81, 0.3);
+  --game-card-border: rgba(0, 135, 81, 0.55);
 }
 
 /* ── Naija Ludo / Naija Whot (Dark) ──────────────────────────── */
@@ -2755,6 +2772,10 @@ select option {
   --gradient-title-start: #ede3d3;
   --gradient-title-end: #10b981;
   --modal-backdrop: rgba(0, 15, 9, 0.75);
+  /* Card face: darker forest wash + brighter mint glow for dark mode. */
+  --game-card-tint: rgba(0, 40, 24, 0.5);
+  --game-card-glow: 0 0 12px rgba(16, 185, 129, 0.4);
+  --game-card-border: rgba(16, 185, 129, 0.6);
   /* Naija dark = dark forest board, mint accents. */
   --game-board-bg: #003820;
   --game-board-fg: #ede3d3;
@@ -2800,6 +2821,16 @@ select option {
   --game-board-block: rgba(8, 145, 178, 0.55);
   --game-page-bg: #d0ecfa;
   --game-accent: #0891b2;
+  /* Card-face overlay + glow — layered ON TOP of the per-shape gradient
+   * so Whot's shape identity (circle=blue, cross=green, …) still shows
+   * through, but a Neon Whot card also carries a teal-tinted wash and
+   * a subtle cyan glow. Defaults at :root are transparent/none so
+   * unthemed play is untouched. Tint is intentionally very light in
+   * light mode so shape gradients still read crisply — Neon in light
+   * mode is a 'daylight circuit' feel, not a wash of colour. */
+  --game-card-tint: rgba(8, 145, 178, 0.08);
+  --game-card-glow: 0 0 8px rgba(8, 145, 178, 0.35);
+  --game-card-border: rgba(8, 145, 178, 0.55);
 }
 
 /* ── Neon Whot (Dark — Midnight Circuit) ─────────────────────── */
@@ -2840,6 +2871,13 @@ select option {
   --game-board-block: rgba(0, 229, 255, 0.5);
   --game-page-bg: #05050c;
   --game-accent: #00e5ff;
+  /* Card face overlay — dark blue-black wash so the shape gradient reads
+   * as a glow on the card rather than a pastel; plus a cyan neon outer
+   * glow and cyan border. This is where Neon Whot's identity actually
+   * lands on a card in the hand. */
+  --game-card-tint: rgba(5, 8, 22, 0.55);
+  --game-card-glow: 0 0 14px rgba(0, 229, 255, 0.45), 0 0 4px rgba(0, 229, 255, 0.6) inset;
+  --game-card-border: rgba(0, 229, 255, 0.75);
 }
 
 /* ── Minimalist Sudoku (Light) — pure ink on white ───────────── */

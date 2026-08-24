@@ -314,7 +314,12 @@ export function LudoBoard({
           key={`${r}-${c}`}
           className={[
             'relative aspect-square flex items-center justify-center gap-0.5 flex-wrap p-0.5',
-            kind.kind === 'base' || kind.kind === 'center' ? 'border-0 z-0' : 'border border-slate-700/70 z-[6]',
+            // Cell border reads a themed token so Wooden Ludo shows
+            // walnut-brown grid lines (not slate) and Naija shows
+            // Nigerian-green grid lines. Base/center have no border.
+            kind.kind === 'base' || kind.kind === 'center'
+              ? 'border-0 z-0'
+              : 'border z-[6] [border-color:var(--game-board-grid)]',
             isHighlight ? 'ring-2 ring-[var(--primary)] z-10' : '',
             isMyStart ? 'ring-2 ring-white ring-offset-1 ring-offset-slate-900 shadow-lg' : '',
           ].join(' ')}
@@ -332,7 +337,13 @@ export function LudoBoard({
             </span>
           )}
           {kind.kind === 'track' && direction && (
-            <span className="absolute text-[7px] font-bold text-slate-300/90 pointer-events-none">
+            // Track arrow reads --game-board-fg so Wooden Ludo shows
+            // dark-brown arrows on the oak board, Newsprint would show
+            // ink arrows, etc.
+            <span
+              className="absolute text-[7px] font-bold pointer-events-none opacity-60"
+              style={{ color: 'var(--game-board-fg)' }}
+            >
               {ARROW_GLYPH[direction]}
             </span>
           )}
@@ -344,18 +355,27 @@ export function LudoBoard({
   return (
     <div className="w-full max-w-[min(100%,28rem)] mx-auto space-y-2">
       {myColor && (
-        <p className="text-center text-xs text-white/70 leading-relaxed">
+        // Chrome text — reads --foreground so a Wooden Ludo board on a
+        // warm cream page shows dark-brown copy (not white which
+        // vanishes on light-mode Wooden), and a dark theme shows the
+        // proper cream tone.
+        <p className="text-center text-xs leading-relaxed opacity-80" style={{ color: 'var(--foreground)' }}>
           You are{' '}
           <span className="font-bold" style={{ color: COLOR_VIVID[myColor] }}>
             {LUDO_COLOR_LABELS[myColor]}
           </span>
-          . Roll a 6 on either die to leave your yard onto your <span className="font-bold text-white">★</span> start
-          square, then follow the arrows clockwise around the board into your coloured home column.
+          . Roll a 6 on either die to leave your yard onto your{' '}
+          <span className="font-bold" style={{ color: 'var(--foreground)' }}>
+            ★
+          </span>{' '}
+          start square, then follow the arrows clockwise around the board into your coloured home column.
         </p>
       )}
       <div
-        className="relative rounded-lg overflow-hidden border-2 border-black/30 shadow-xl"
-        style={{ background: BOARD_BG }}
+        className="relative rounded-lg overflow-hidden border-2 shadow-xl"
+        // Outer board frame uses a themed border colour, not black —
+        // Wooden Ludo gets walnut-brown edging, Naija gets green.
+        style={{ background: BOARD_BG, borderColor: 'var(--game-board-block)' }}
       >
         <div className="grid gap-0" style={{ gridTemplateColumns: 'repeat(15, minmax(0, 1fr))' }}>
           {cells}
@@ -460,12 +480,19 @@ function LudoPlayerCard({
 
   return (
     <div
+      // Player card chrome reads --card so a themed page (Wooden brown,
+      // Naija cream) tints the card panel with the theme, not a
+      // hardcoded black/15.
       className={[
-        'flex min-w-0 items-center gap-2 rounded-xl border-2 bg-black/15 px-2.5 py-1.5 backdrop-blur-sm transition-all',
+        'flex min-w-0 items-center gap-2 rounded-xl border-2 px-2.5 py-1.5 backdrop-blur-sm transition-all',
         align === 'right' ? 'flex-row-reverse text-right' : '',
         isTurn ? 'scale-[1.03] shadow-lg' : 'opacity-90',
       ].join(' ')}
-      style={{ borderColor: color, boxShadow: isTurn ? `0 0 0 2px ${color}, 0 0 12px ${color}80` : undefined }}
+      style={{
+        backgroundColor: 'var(--card)',
+        borderColor: color,
+        boxShadow: isTurn ? `0 0 0 2px ${color}, 0 0 12px ${color}80` : undefined,
+      }}
     >
       <span className="relative shrink-0">
         <Avatar name={player?.name ?? 'Player'} size="sm" />
@@ -475,13 +502,19 @@ function LudoPlayerCard({
         />
       </span>
       <div className="min-w-0">
-        <p className="truncate text-[11px] font-bold leading-tight text-white">
+        {/* Card text reads --foreground / muted so a light-themed Ludo
+         * page (Naija cream) doesn't leave the player-card copy white
+         * and invisible. */}
+        <p className="truncate text-[11px] font-bold leading-tight" style={{ color: 'var(--foreground)' }}>
           {player?.name ?? 'Player'}
           {isMe ? ' (you)' : ''}
         </p>
         <p
-          className="flex items-center gap-1 text-[10px] font-semibold leading-tight text-white/70"
-          style={{ justifyContent: align === 'right' ? 'flex-end' : 'flex-start' }}
+          className="flex items-center gap-1 text-[10px] font-semibold leading-tight opacity-70"
+          style={{
+            justifyContent: align === 'right' ? 'flex-end' : 'flex-start',
+            color: 'var(--foreground)',
+          }}
         >
           <span aria-hidden>☠</span>
           <span className="tabular-nums">{finished}/4 home</span>
@@ -623,8 +656,11 @@ export function LudoGamePanel({
 
   return (
     <div
-      className="mx-auto w-full max-w-[30rem] space-y-3 rounded-2xl p-3 text-white shadow-xl sm:p-4 lg:max-w-[52rem]"
-      style={{ backgroundColor: PAGE_BG }}
+      // Page-panel text reads --foreground so a paid theme with a light
+      // page (Naija cream, Wooden light oak) doesn't leave the chrome
+      // reading white-on-cream. PAGE_BG already token-driven.
+      className="mx-auto w-full max-w-[30rem] space-y-3 rounded-2xl p-3 shadow-xl sm:p-4 lg:max-w-[52rem]"
+      style={{ backgroundColor: PAGE_BG, color: 'var(--foreground)' }}
     >
       <LudoTurnBar
         turnPlayerName={turnPlayer?.name}
@@ -676,7 +712,13 @@ export function LudoGamePanel({
             next to the board on desktop. */}
         <div className="space-y-3 lg:flex-1 lg:min-w-0 lg:max-w-xs lg:self-center">
           {/* Dice + roll control */}
-          <div className="flex items-center justify-center rounded-xl bg-black/20 px-3 py-2">
+          {/* Dice tray reads --card so the tray tints with the page
+           * (Wooden brown, Naija cream) — was bg-black/20 which made
+           * every theme look dark. */}
+          <div
+            className="flex items-center justify-center rounded-xl px-3 py-2"
+            style={{ backgroundColor: 'var(--card)' }}
+          >
             <LudoBoardCenter
               dice={diceDisplay}
               rolling={rolling}
@@ -690,11 +732,11 @@ export function LudoGamePanel({
             />
           </div>
 
-          {session.status_message && <p className="text-center text-sm text-white/80">{session.status_message}</p>}
+          {session.status_message && <p className="text-center text-sm opacity-80">{session.status_message}</p>}
 
           {isMyTurn && session.phase === 'move' && displayMoves.length > 0 && onMovePiece && (
             <div className="space-y-2">
-              <p className="text-center text-sm font-semibold text-white">
+              <p className="text-center text-sm font-semibold" style={{ color: 'var(--foreground)' }}>
                 {hasCombinedMove
                   ? `Move your piece ${remainingDice.reduce((sum, n) => sum + n, 0)} spaces`
                   : allSixes && remainingDice.length === 2
@@ -707,7 +749,7 @@ export function LudoGamePanel({
                           ? `Move a piece ${remainingDice[0]} spaces`
                           : `Use each die (${remainingDice.join(' & ')}) — pick a piece`}
               </p>
-              <p className="text-center text-xs text-white/60">
+              <p className="text-center text-xs opacity-60">
                 Tap a highlighted piece on the board or use a button below
               </p>
               <div className="grid grid-cols-2 gap-2 lg:grid-cols-1">
@@ -727,7 +769,15 @@ export function LudoGamePanel({
                       type="button"
                       disabled={acting}
                       onClick={() => handleMovePiece(move.pieceId, move.diceIndex)}
-                      className="rounded-xl border border-white/25 bg-white/10 px-3 py-2 text-left text-xs font-semibold text-white hover:bg-white/20 disabled:opacity-50"
+                      // Move-choice buttons: pick from --card + --border
+                      // so they read consistently on Wooden brown / Naija
+                      // green / any other theme, not a black wash.
+                      className="rounded-xl border px-3 py-2 text-left text-xs font-semibold disabled:opacity-50 hover:opacity-90"
+                      style={{
+                        backgroundColor: 'var(--card)',
+                        borderColor: 'var(--border)',
+                        color: 'var(--foreground)',
+                      }}
                     >
                       <span className="flex items-center gap-1.5">
                         <span
@@ -741,7 +791,7 @@ export function LudoGamePanel({
                           🎲 {move.usesAllDice ? remainingDice.join('+') : move.diceValue}
                         </span>
                       </span>
-                      <span className="mt-0.5 block font-normal text-white/60">
+                      <span className="mt-0.5 block font-normal opacity-60">
                         {fromLabel} → {toLabel}
                         {move.captures ? ' · Capture!' : ''}
                       </span>
@@ -759,7 +809,7 @@ export function LudoGamePanel({
           )}
 
           {isMyTurn && session.phase === 'roll' && !rolling && (
-            <p className="text-center text-xs text-white/60">
+            <p className="text-center text-xs opacity-60">
               Tap 🎲 Roll below — roll a 6 on either die to leave your yard onto your ★ square
             </p>
           )}
