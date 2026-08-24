@@ -1,0 +1,49 @@
+name: Mobile Rollout Gate
+
+# Only dev -> main. Merging into `dev` is safe: installed mobile builds read the PROD
+# Supabase project, so a revoke reaches users only at the promotion to main.
+on:
+  pull_request:
+    branches: [main]
+    # `edited` matters: the documented escape hatch is adding MOBILE-ROLLOUT-ACK to the PR body,
+    # and the default activity types (opened/synchronize/reopened) do NOT fire on a body edit.
+    # Without it the acknowledgement never re-runs the gate and the check stays red forever.
+    types: [opened, synchronize, reopened, edited]
+
+# This job only reads the repo; it writes nothing back.
+permissions:
+  contents: read
+
+jobs:
+  mobile-rollout-gate:
+    name: Mobile Rollout Gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          # Don't leave a usable token in .git/config for anything this job runs.
+          persist-credentials: false
+
+      # Run the enforcement script from the BASE revision, not the PR's.
+      #
+      # A required check that executes code the pull request can edit is not a gate: a PR that
+      # revokes a column could also rewrite this script to exit 0 and the check would pass. The
+      # script is therefore extracted from the base commit to a path outside the working tree and
+      # run from there. It still INSPECTS the PR's migrations (via HEAD_SHA) — only the
+      # enforcement logic is pinned to what main already trusts.
+      - name: Extract the gate script from the base revision
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/gate"
+          git show "$BASE_SHA:scripts/ci/mobile-rollout-gate.mjs" > "$RUNNER_TEMP/gate/mobile-rollout-gate.mjs"
+
+      - name: Check for revokes that break installed mobile builds
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          # Via env, never interpolated into the shell — PR bodies are untrusted input.
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: node "$RUNNER_TEMP/gate/mobile-rollout-gate.mjs"
