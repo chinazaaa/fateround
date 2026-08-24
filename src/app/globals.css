@@ -893,6 +893,46 @@ body {
     color 0.2s ease;
 }
 
+/* ── Boot overlay ────────────────────────────────────────────────
+ * Painted from the server-rendered HTML in layout.tsx so it's on
+ * screen from the first paint — before React hydrates. Bridges the
+ * gap on iOS Safari cold-renders (e.g. tab returning from background
+ * after memory eviction) so users don't see a near-white flash
+ * before the game view mounts. BootLoaderHider (client) fades it
+ * out ~250ms after hydration; stays in the DOM to avoid hydration
+ * mismatch. */
+#app-boot-loader {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--background);
+  pointer-events: none;
+  opacity: 1;
+  transition: opacity 200ms ease;
+}
+body.app-hydrated #app-boot-loader {
+  opacity: 0;
+}
+#app-boot-loader.app-boot-loader--gone {
+  display: none;
+}
+.app-boot-spinner {
+  width: 44px;
+  height: 44px;
+  border: 2px solid var(--primary, #6366f1);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: app-boot-spin 0.8s linear infinite;
+}
+@keyframes app-boot-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 /* ── Ambient background ─────────────────────────────────────────── */
 .ambient-bg {
   position: fixed;
