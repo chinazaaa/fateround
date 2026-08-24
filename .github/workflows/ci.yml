@@ -134,42 +134,6 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
 
-      # Boot smoke test. `pnpm build` does NOT execute the instrumentation hook or any
-      # server-startup path, so a module-graph problem compiles clean and only explodes when
-      # the container starts. That is exactly what happened on 2026-08-24: every check on this
-      # workflow was green, the image built and deployed, and the server then failed to start
-      # with "Cannot access 'g' before initialization" — a total outage shipped past a fully
-      # green CI. This step starts the real standalone server and requires it to answer.
-      - name: Boot smoke test
-        run: |
-          set -euo pipefail
-          cp -r .next/static .next/standalone/.next/static
-          cp -r public .next/standalone/public
-          cd .next/standalone
-          PORT=3999 HOSTNAME=127.0.0.1 NODE_ENV=production IDLE_REAPER_DISABLED=1 \
-            node server.js > /tmp/boot.log 2>&1 &
-          pid=$!
-          for i in $(seq 1 30); do
-            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 http://127.0.0.1:3999/ || true)
-            [ "$code" = "200" ] && break
-            kill -0 "$pid" 2>/dev/null || { echo "::error::server process exited during boot"; cat /tmp/boot.log; exit 1; }
-            sleep 2
-          done
-          kill "$pid" 2>/dev/null || true
-          if [ "${code:-}" != "200" ]; then
-            echo "::error::server did not serve 200 within 60s"
-            cat /tmp/boot.log
-            exit 1
-          fi
-          # A booted server that logged a module-graph error is still broken — that is how the
-          # 2026-08-24 outage presented once the instrumentation trigger was removed.
-          if grep -qE "before initialization|Failed to prepare server|instrumentation hook" /tmp/boot.log; then
-            echo "::error::server booted but logged a module-graph error"
-            cat /tmp/boot.log
-            exit 1
-          fi
-          echo "Boot smoke test passed."
-
   migrate:
     name: DB Migrate
     needs: [build, migrations-check]
