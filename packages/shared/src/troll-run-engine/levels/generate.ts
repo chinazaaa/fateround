@@ -93,6 +93,7 @@ const SHAPES_BY_WORLD: Record<TrollRunWorldId, readonly SkeletonShape[]> = {
   doors: ['flat', 'pits', 'steps', 'islands'],
   gravity: ['corridor'],
   gauntlet: ['flat', 'pits', 'steps', 'islands', 'corridor'],
+  machines: ['flat', 'pits', 'steps', 'islands'],
 }
 
 /** A run of solid tiles on one row. `fromCol` and `toCol` are both inclusive. */
@@ -273,8 +274,11 @@ interface TrapRecipe {
   name: string
   /** Words this trap lends the level's name. */
   words: readonly string[]
-  /** Two traps fighting over where the door ends up would make its final spot a coin toss. */
-  movesDoor?: boolean
+  /**
+   * This trap owns the exit — it moves it, or it reads where it stands to arm itself there. Only one
+   * per level: two of them would make the door's final spot a coin toss, or aim one at the old one.
+   */
+  claimsDoor?: boolean
   /** Applies the trap, or returns false when this layout has no room for it. */
   apply(context: TrapContext): boolean
 }
@@ -449,7 +453,7 @@ function doorPositionFor(skeleton: Skeleton, spot: { col: number; row: number })
 const DOOR_RELOCATES: TrapRecipe = {
   name: 'door_relocates',
   words: ['Runaway', 'Restless', 'Fleeing'],
-  movesDoor: true,
+  claimsDoor: true,
   apply(context) {
     const destination = relocationTarget(context)
     if (!destination) return false
@@ -467,7 +471,7 @@ const DOOR_RELOCATES: TrapRecipe = {
 const BAIT_DOOR: TrapRecipe = {
   name: 'bait_door',
   words: ['Phantom', 'Mirage', 'Baited'],
-  movesDoor: true,
+  claimsDoor: true,
   apply(context) {
     const { skeleton, rng } = context
     const gaps: { col: number; row: number }[] = []
@@ -547,10 +551,152 @@ const INVERT_CONTROLS: TrapRecipe = {
   },
 }
 
+/** Whether every cell of `col` from `fromRow` to `toRow` inclusive is open air. */
+function columnIsClear(tiles: number[][], col: number, fromRow: number, toRow: number): boolean {
+  for (let row = fromRow; row <= toRow; row += 1) {
+    if (tiles[row]?.[col] !== TrollRunTileType.EMPTY) return false
+  }
+  return true
+}
+
+const ICE_PATCH: TrapRecipe = {
+  name: 'ice_patch',
+  words: ['Slick', 'Frozen', 'Greased'],
+  apply({ skeleton, triggers, rng }) {
+    // The landing is what ices over, so the slide starts with the runner's arrival speed still on
+    // them. The first platform is spared — there is nothing to arrive from — and on a ceiling layout
+    // it is the ceiling that freezes, because that is the surface an inverted runner walks.
+    const walkway = skeleton.ceiling.length > 0 ? skeleton.ceiling : skeleton.floor
+    const landings = walkway.slice(1).filter((segment) => segmentLength(segment) >= 4)
+    if (landings.length === 0) return false
+
+    const segment = pickOne(rng, landings)
+    const cells: [number, number][] = [
+      [segment.fromCol, segment.row],
+      [segment.fromCol + 1, segment.row],
+    ]
+
+    triggers.push({
+      zone: columnBand(segment.fromCol - 2, 2),
+      condition: 'enter',
+      actions: [{ type: 'ice_floor', tiles: cells }],
+    })
+    return true
+  },
+}
+
+const BOUNCE_TRAP: TrapRecipe = {
+  name: 'bounce_trap',
+  words: ['Springy', 'Helpful', 'Eager'],
+  apply({ skeleton, door, rng }) {
+    // No trigger: the pad and the spikes over it are both in plain sight, and the lie is that a
+    // trampoline is a gift. It launches 103px where the spikes hang 64px up, so trusting it is fatal
+    // and clipping a jump over it is the answer.
+    const doorCol = Math.floor(door.x / TROLL_RUN_TILE_SIZE)
+    const roomy = skeleton.floor.filter((segment) => segmentLength(segment) >= 5 && segment.row >= 4)
+    if (roomy.length === 0) return false
+
+    const segment = pickOne(rng, roomy)
+    const candidates: number[] = []
+    for (let col = segment.fromCol + 2; col <= segment.toCol - 2; col += 1) {
+      if (Math.abs(col - doorCol) < 2) continue
+      if (columnIsClear(skeleton.tiles, col, segment.row - 4, segment.row - 1)) candidates.push(col)
+    }
+    if (candidates.length === 0) return false
+
+    const col = pickOne(rng, candidates)
+    skeleton.tiles[segment.row][col] = TrollRunTileType.BOUNCE
+    skeleton.tiles[segment.row - 4][col] = TrollRunTileType.SPIKE_DOWN
+    return true
+  },
+}
+
+const COIN_BAIT: TrapRecipe = {
+  name: 'coin_bait',
+  words: ['Golden', 'Tempting', 'Costly'],
+  apply({ skeleton, triggers, rng }) {
+    const roomy = skeleton.floor.filter((segment) => segmentLength(segment) >= 6 && segment.row >= 2)
+    if (roomy.length === 0) return false
+
+    const segment = pickOne(rng, roomy)
+    const candidates: number[] = []
+    for (let col = segment.fromCol + 2; col <= segment.toCol - 3; col += 1) {
+      if (columnIsClear(skeleton.tiles, col, segment.row - 2, segment.row - 1)) candidates.push(col)
+    }
+    if (candidates.length === 0) return false
+
+    // Hung two rows up: out of reach of a walk, inside reach of any jump, so taking it is a choice.
+    const col = pickOne(rng, candidates)
+    skeleton.tiles[segment.row - 2][col] = TrollRunTileType.COIN
+
+    triggers.push({
+      // `collect_coin` fires wherever the coin is taken, so the zone is here to say where that was.
+      zone: columnBand(col, 2),
+      condition: 'collect_coin',
+      actions: [
+        {
+          type: 'collapse_tiles',
+          tiles: [
+            [col, segment.row],
+            [col + 1, segment.row],
+          ],
+          delay: 0.2,
+        },
+      ],
+    })
+    return true
+  },
+}
+
+const FLOOR_BEHIND: TrapRecipe = {
+  name: 'floor_behind',
+  words: ['Vanishing', 'Closing', 'Doomed'],
+  apply({ skeleton, triggers, rng }) {
+    const width = randomInt(rng, 1, 2)
+    // Run-up, the stretch that goes, and a landing after it — and never the tile the runner spawns on.
+    const roomy = skeleton.floor.filter((segment) => segmentLength(segment) >= width + 5)
+    if (roomy.length === 0) return false
+
+    const segment = pickOne(rng, roomy)
+    const startCol = randomInt(rng, segment.fromCol + 2, segment.toCol - width - 2)
+    const cells: [number, number][] = []
+    for (let offset = 0; offset < width; offset += 1) cells.push([startCol + offset, segment.row])
+
+    triggers.push({
+      // Leaving is the cue, so the floor goes as the runner steps off it rather than while they stand
+      // on it. Nothing is waiting behind them any more, which is the whole idea.
+      zone: columnBand(startCol, width),
+      condition: 'exit',
+      actions: [{ type: 'collapse_tiles', tiles: cells, delay: 0.1 }],
+    })
+    return true
+  },
+}
+
+const BITING_DOOR: TrapRecipe = {
+  name: 'biting_door',
+  words: ['Snapping', 'Toothed', 'Ravenous'],
+  claimsDoor: true,
+  apply({ door, triggers }) {
+    const doorCol = Math.floor(door.x / TROLL_RUN_TILE_SIZE)
+    if (doorCol < 3) return false
+
+    triggers.push({
+      // Armed three columns out, so the exit is already snapping by the time the runner arrives. The
+      // bite counts itself down: waiting it out is always available, sprinting into it is not.
+      zone: columnBand(doorCol - 3, 2),
+      condition: 'enter',
+      actions: [{ type: 'fake_door', duration: 1.5 }],
+    })
+    return true
+  },
+}
+
 const TRAP_PALETTES: Record<TrollRunWorldId, readonly TrapRecipe[]> = {
-  pits: [COLLAPSE_UNDERFOOT, COLLAPSE_CHAIN, SPIKE_AMBUSH, FAKE_FLOOR, DOOR_RELOCATES],
-  doors: [DOOR_RELOCATES, BAIT_DOOR, SPIKE_WALL, CEILING_DROP, SPIKE_AMBUSH],
-  gravity: [CEILING_SPIKES, INVERT_CONTROLS, SPIKE_AMBUSH],
+  pits: [COLLAPSE_UNDERFOOT, COLLAPSE_CHAIN, SPIKE_AMBUSH, FAKE_FLOOR, DOOR_RELOCATES, FLOOR_BEHIND, ICE_PATCH],
+  doors: [DOOR_RELOCATES, BAIT_DOOR, SPIKE_WALL, CEILING_DROP, SPIKE_AMBUSH, BITING_DOOR, COIN_BAIT],
+  gravity: [CEILING_SPIKES, INVERT_CONTROLS, SPIKE_AMBUSH, ICE_PATCH, BOUNCE_TRAP, BITING_DOOR],
+  machines: [BOUNCE_TRAP, ICE_PATCH, COLLAPSE_CHAIN, SPIKE_WALL, CEILING_DROP, FLOOR_BEHIND, BITING_DOOR],
   gauntlet: [
     COLLAPSE_UNDERFOOT,
     COLLAPSE_CHAIN,
@@ -562,6 +708,11 @@ const TRAP_PALETTES: Record<TrollRunWorldId, readonly TrapRecipe[]> = {
     DOOR_RELOCATES,
     BAIT_DOOR,
     INVERT_CONTROLS,
+    ICE_PATCH,
+    BOUNCE_TRAP,
+    COIN_BAIT,
+    FLOOR_BEHIND,
+    BITING_DOOR,
   ],
 }
 
@@ -571,7 +722,7 @@ function applyTraps(palette: readonly TrapRecipe[], budget: number, context: Tra
 
   while (applied.length < budget && untried.length > 0) {
     const recipe = untried.splice(Math.floor(context.rng() * untried.length), 1)[0]
-    if (recipe.movesDoor && applied.some((chosen) => chosen.movesDoor)) continue
+    if (recipe.claimsDoor && applied.some((chosen) => chosen.claimsDoor)) continue
     if (recipe.apply(context)) applied.push(recipe)
   }
 

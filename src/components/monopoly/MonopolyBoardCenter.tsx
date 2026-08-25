@@ -28,12 +28,16 @@ type PostAction = (url: string, body?: Record<string, unknown>) => Promise<void>
 function BoardTimer({ seconds }: { seconds: number }) {
   if (seconds <= 0) return null
   const urgent = seconds <= 5
+  // Timer chip: urgent stays red (semantic warning), default reads
+  // --card / --foreground so a themed Monopoly edition (Naija, USA,
+  // Christmas) tints the countdown chip instead of a hardcoded emerald.
   return (
     <span
       className={[
         'rounded-full px-2 py-0.5 text-[10px] font-bold tabular-nums',
-        urgent ? 'bg-red-500/30 text-red-100 animate-pulse' : 'bg-emerald-950/50 text-emerald-100',
+        urgent ? 'bg-red-500/30 text-red-100 animate-pulse' : '',
       ].join(' ')}
+      style={urgent ? undefined : { backgroundColor: 'var(--card-strong)', color: 'var(--foreground)' }}
     >
       {seconds}s
     </span>
@@ -56,7 +60,11 @@ function BoardPrimaryButton({
       type="button"
       onClick={onClick}
       disabled={disabled || loading}
-      className="rounded-lg bg-amber-400 hover:bg-amber-300 disabled:opacity-40 text-emerald-950 px-2 sm:px-3 py-1 sm:py-1.5 text-[10px] sm:text-xs font-bold transition-colors w-full"
+      // Center-of-board primary CTA: reads --primary (each Monopoly
+      // edition sets this — USA red, Naija green, Christmas red, …)
+      // so the Roll button matches the edition, not a fixed amber.
+      className="rounded-lg disabled:opacity-40 px-2 sm:px-3 py-1 sm:py-1.5 text-[10px] sm:text-xs font-bold transition-colors w-full hover:opacity-90"
+      style={{ backgroundColor: 'var(--primary)', color: 'var(--background)' }}
     >
       {loading ? '…' : children}
     </button>
@@ -77,7 +85,11 @@ function BoardSecondaryButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="rounded-lg border border-emerald-300/40 bg-emerald-900/70 hover:bg-emerald-800/80 disabled:opacity-40 text-emerald-50 px-2.5 sm:px-3 py-1.5 text-[11px] sm:text-xs font-bold transition-colors w-full"
+      // Center-of-board secondary CTA: --card / --border / --foreground
+      // so end-turn/end-auction buttons tint per edition (Naija cream,
+      // Christmas green, …) instead of a fixed emerald.
+      className="rounded-lg border disabled:opacity-40 px-2.5 sm:px-3 py-1.5 text-[11px] sm:text-xs font-bold transition-colors w-full hover:opacity-90"
+      style={{ backgroundColor: 'var(--card)', borderColor: 'var(--border)', color: 'var(--foreground)' }}
     >
       {children}
     </button>
