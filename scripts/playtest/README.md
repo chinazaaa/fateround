@@ -60,14 +60,17 @@ A revoke that breaks the game fails these just as loudly as one that leaks.
 
 ## Gotchas found writing these
 
-- `anon` denials surface as **401**, not 403. Assert "not 200", not a specific code.
+- `anon` denials surface as **401** locally and **403** hosted. Assert one of those two
+  specifically — NOT merely "not 200". A 404, 429 or 500 is _inconclusive_, not proof of
+  redaction, and treating it as a pass lets an outage or a rate limit masquerade as a working
+  security boundary. `assertDenied` in `_shared.mjs` encodes this.
 - Codewords masks the key **element-wise**: non-spymasters get `key: [null × 25]`, preserving the
   array shape. Checking for the presence of a `key` field reports a false leak — check for a
-  non-null *element*.
+  non-null _element_.
 - `ttl_round_lies.lie_index` is the index into the **shuffled** statement order, so it will not
   match the `lieIndex` that was submitted. That is by design (`two-truths.test.ts:25`).
 - Two Truths cannot start until every player has submitted statements; the "Need at least 3
-  players to submit their statements" error is legitimate then, and is *also* the signature of the
+  players to submit their statements" error is legitimate then, and is _also_ the signature of the
   #838 revoke regression. Submit statements first, or the test cannot tell the two apart.
 - Codewords needs `participant_mode: 'joiners'`, else creation 400s asking for a participant list.
 - **A logged status is not an assertion.** The two-truths harness originally logged the guess

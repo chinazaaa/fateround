@@ -1,35 +1,10 @@
-const APP = 'http://127.0.0.1:3000',
-  REST = 'http://127.0.0.1:54321/rest/v1'
+import { APP, REST, SRV, post } from './_shared.mjs'
 
-/**
- * Read a required key from the environment.
- *
- * These were previously hard-coded. They were Supabase's public local demo keys (`iss:
- * supabase-demo`, identical on every machine), so nothing secret was committed — but a
- * `service_role` string in the repo is a bad pattern regardless, and hard-coding pinned these
- * scripts to a local stack. Failing loudly beats defaulting: a silently-wrong key would make
- * every redaction assertion below pass for the wrong reason.
- */
-function requireEnv(name) {
-  const v = process.env[name]
-  if (!v) {
-    console.error(`Missing ${name}. Export it before running (see scripts/playtest/README.md):`)
-    console.error(`  export ${name}="$(supabase status -o env | grep ${name} | cut -d= -f2-)"`)
-    process.exit(2)
-  }
-  return v
-}
-const SRV = requireEnv('SUPABASE_SERVICE_ROLE_KEY')
-const J = { 'Content-Type': 'application/json' }
-const post = async (u, b) => {
-  const r = await fetch(u, { method: 'POST', headers: J, body: JSON.stringify(b) })
-  let d = null
-  try {
-    d = await r.json()
-  } catch {}
-  return { status: r.status, d }
-}
+// This script's `get` intentionally differs from the shared one: it returns the PARSED BODY
+// rather than {status, d}, because every call here is a service-role read used only to learn
+// the expected word/holder. It asserts nothing, so it needs no status handling.
 const get = async (u) => fetch(u, { headers: { apikey: SRV, Authorization: `Bearer ${SRV}` } }).then((r) => r.json())
+
 const fail = []
 
 for (const [type, api, table, holderCol, extra] of [

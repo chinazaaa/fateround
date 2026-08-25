@@ -1,44 +1,4 @@
-const APP = 'http://127.0.0.1:3000',
-  REST = 'http://127.0.0.1:54321/rest/v1'
-
-/**
- * Read a required key from the environment.
- *
- * These were previously hard-coded. They were Supabase's public local demo keys (`iss:
- * supabase-demo`, identical on every machine), so nothing secret was committed — but a
- * `service_role` string in the repo is a bad pattern regardless, and hard-coding pinned these
- * scripts to a local stack. Failing loudly beats defaulting: a silently-wrong key would make
- * every redaction assertion below pass for the wrong reason.
- */
-function requireEnv(name) {
-  const v = process.env[name]
-  if (!v) {
-    console.error(`Missing ${name}. Export it before running (see scripts/playtest/README.md):`)
-    console.error(`  export ${name}="$(supabase status -o env | grep ${name} | cut -d= -f2-)"`)
-    process.exit(2)
-  }
-  return v
-}
-const ANON = requireEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY')
-const SRV = requireEnv('SUPABASE_SERVICE_ROLE_KEY')
-const h = (k) => ({ apikey: k, Authorization: `Bearer ${k}` })
-const J = { 'Content-Type': 'application/json' }
-const post = async (u, b) => {
-  const r = await fetch(u, { method: 'POST', headers: J, body: JSON.stringify(b) })
-  let d = null
-  try {
-    d = await r.json()
-  } catch {}
-  return { status: r.status, d }
-}
-const get = async (u, k) => {
-  const r = await fetch(u, { headers: h(k) })
-  let d = null
-  try {
-    d = await r.json()
-  } catch {}
-  return { status: r.status, d }
-}
+import { ANON, APP, REST, SRV, assertDenied, assertQueryUsable, assertReadableRows, get, post } from './_shared.mjs'
 const log = [],
   fail = []
 
@@ -88,10 +48,10 @@ if (!b.d?.[0]?.key) fail.push('no board key generated')
 // anon must not read the key; must still read the words
 const leak = await get(`${REST}/codewords_boards?game_id=eq.${code}&select=key`, ANON)
 log.push(`anon key -> ${leak.status}`)
-if (leak.status === 200) fail.push('LEAK: anon read codewords_boards.key')
+assertDenied(leak, 'codewords_boards.key', fail)
 const star = await get(`${REST}/codewords_boards?game_id=eq.${code}&select=*`, ANON)
 log.push(`anon select=* -> ${star.status}`)
-if (star.status === 200) fail.push('LEAK: anon select=* returned 200')
+assertDenied(star, 'codewords_boards select=*', fail)
 const words = await get(`${REST}/codewords_boards?game_id=eq.${code}&select=game_id,words`, ANON)
 const wordRow = Array.isArray(words.d) ? words.d[0] : null
 log.push(
