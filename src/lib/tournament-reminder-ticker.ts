@@ -13,6 +13,7 @@
  * endpoint is the same shape `game-tick.ts` uses, for the same reason: the
  * route keeps all the behaviour, and the ticker stays a plain fetch caller.
  */
+import { isProdDeployment } from '@/lib/app-env'
 
 function selfBaseUrl(): string {
   // In `output: 'standalone'` the server listens on PORT (default 3000). Loopback
@@ -52,7 +53,7 @@ let started = false
 export function startTournamentReminderTicker(): void {
   if (started) return
   if (process.env.TOURNAMENT_REMINDERS_DISABLED === '1') return
-  const enabled = process.env.NODE_ENV === 'production' || process.env.TOURNAMENT_REMINDERS_ENABLED === '1'
+  const enabled = isProdDeployment() || process.env.TOURNAMENT_REMINDERS_ENABLED === '1'
   if (!enabled) return
   started = true
   const intervalMs = Number(process.env.TOURNAMENT_REMINDERS_INTERVAL_MS) || 60_000

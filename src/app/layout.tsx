@@ -14,6 +14,7 @@ import { ToastProvider } from '@/components/ui/Toast'
 import { ConfirmProvider } from '@/components/ui/ConfirmDialog'
 import { QueryProvider } from '@/components/QueryProvider'
 import { AppBackground } from '@/components/AppBackground'
+import { BootLoaderHider } from '@/components/BootLoaderHider'
 import { rootMetadata } from '@/lib/seo'
 import './globals.css'
 
@@ -61,6 +62,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <ThemeInitScript />
       </head>
       <body className="min-h-full flex flex-col" style={{ color: 'var(--foreground)' }}>
+        {/* Server-rendered boot overlay — visible from the first paint until
+         *  React hydrates, so iOS Safari's cold-render after a memory-evicted
+         *  tab returns from background doesn't flash near-white before the
+         *  game view mounts. Hidden by BootLoaderHider once mounted. */}
+        <div id="app-boot-loader" aria-hidden="true">
+          <div className="app-boot-spinner" />
+        </div>
         {analyticsEnabled && (
           <>
             <Script
@@ -81,6 +89,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <ToastProvider>
             <ConfirmProvider>
               <QueryProvider>
+                <BootLoaderHider />
                 <AppBackground />
                 <NetworkIndicator />
                 <AppVersionWatcher />

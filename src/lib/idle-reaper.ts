@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { adminEndGame, type AdminGameToEnd } from '@/lib/admin-end-game'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { isProdDeployment } from '@/lib/app-env'
 
 /**
  * Idle-active-game reaper.
@@ -36,8 +37,15 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
 const DEFAULT_IDLE_MINUTES = 30
 const MIN_IDLE_MINUTES = 1
-const DEFAULT_INTERVAL_MS = 5 * 60 * 1000 // every 5 minutes
-const REAPER_BATCH_LIMIT = 200
+// Backlog-safe defaults: the first tick after this landed on prod tried to
+// reap up to 200 games at once every 5 minutes, each running the full
+// TypeScript adminEndGame path (room-game points, round-facts snapshot,
+// tournament resolution, trophy awards). That saturated the DB and made
+// PostgREST/Auth health checks flap. Small batch + longer interval means
+// the backlog drains gently; if IDLE_REAPER_DISABLED=1 is set the reaper
+// no-ops entirely (kill-switch).
+const DEFAULT_INTERVAL_MS = 15 * 60 * 1000 // every 15 minutes
+const REAPER_BATCH_LIMIT = 20
 
 function resolveIdleMinutes(): number {
   const raw = Number(process.env.IDLE_REAPER_MINUTES)
@@ -142,7 +150,7 @@ async function tick(): Promise<void> {
 export function startIdleReaper(): void {
   if (started) return
   if (process.env.IDLE_REAPER_DISABLED === '1') return
-  const enabled = process.env.NODE_ENV === 'production' || process.env.IDLE_REAPER_ENABLED === '1'
+  const enabled = isProdDeployment() || process.env.IDLE_REAPER_ENABLED === '1'
   if (!enabled) return
   started = true
   const intervalMs = Number(process.env.IDLE_REAPER_INTERVAL_MS) || DEFAULT_INTERVAL_MS

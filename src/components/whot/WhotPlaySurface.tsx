@@ -38,7 +38,11 @@ import { formatCountdown } from '@/lib/timer-format'
 import type { WhotCard, WhotSession, WhotShape } from '@/types'
 
 /** Deck accent for the Whot card backs (emerald, matching the design). */
-const WHOT_ACCENT = '#059669'
+/** Deck / draw-pile accent. Reads --game-accent so a paid theme
+ *  (Neon Whot cyan, Naija Whot green) actually repaints the deck felt.
+ *  The default at :root falls back to --primary, which keeps site-wide
+ *  themes visually stable. */
+const WHOT_ACCENT = 'var(--game-accent)'
 
 /** Shapes callable from a WHOT wild (the design's picker set — no `whot`). */
 const WHOT_CALL_SHAPES: WhotShape[] = ['circle', 'triangle', 'cross', 'square', 'star']

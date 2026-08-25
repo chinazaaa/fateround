@@ -195,10 +195,10 @@ export const TROLL_RUN: SystemTrophySpec[] = [
     suffix: 'all_worlds',
     tier: 'gold',
     title: 'World tour',
-    description: 'Finish a race in all four worlds.',
-    // A SET, not a sum: four different worlds, in any order, across any number of games.
-    // `TROLL_RUN_WORLD_IDS.length` rather than a literal 4, so shipping a fifth world raises
-    // the bar with it instead of leaving a trophy that reads "all four" and means "any four".
+    // Count derived for the same reason the criteria is: a literal in either place leaves a
+    // trophy that reads "all four" once a fifth world ships.
+    description: `Finish a race in all ${TROLL_RUN_WORLD_IDS.length} worlds.`,
+    // A SET, not a sum: every world, in any order, across any number of games.
     criteria: distinctCrit('troll_run_worlds', TROLL_RUN_WORLD_IDS.length),
     points: 60,
     sortOrder: 250,
