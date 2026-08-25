@@ -1,0 +1,147 @@
+# CodeRabbit configuration.
+#
+# Previously absent, so reviews ran on whatever the dashboard defaults were — invisible to the
+# repo and unversioned. Two of those defaults cost us real time (see auto_review below).
+#
+# NOTE: there is no "auto-resolve review threads" option. CodeRabbit resolves threads IT authored
+# once a later review pass confirms the fix, and never resolves threads authored by a human. On a
+# base branch that requires conversation resolution, that means a fixed-but-not-yet-reconfirmed
+# thread still blocks the merge. Resolve those yourself, with the reasoning in the reply.
+#
+# Schema: https://storage.googleapis.com/coderabbit_public_assets/schema.v2.json
+language: en-US
+
+reviews:
+  profile: chill
+  # Don't let a review block a merge on its own; the branch policy already gates on unresolved
+  # conversations, and doubling that up makes a nitpick as expensive as a defect.
+  request_changes_workflow: false
+  high_level_summary: true
+  review_status: true
+  sequence_diagrams: false
+  poem: false
+
+  auto_review:
+    enabled: true
+
+    # DEFAULT IS false, AND IT COST US. Seven security PRs (#744 #758 #759 #787 #838 #866 #867)
+    # sat in draft for roughly two weeks with zero automated review, because drafts are skipped
+    # by default. They are exactly the changes that most wanted reviewing — column revokes that
+    # break installed clients if they are wrong.
+    # Tradeoff: this increases review volume, and this account has hit its review limit before.
+    # If quota becomes the binding constraint again, set this back to false rather than dropping
+    # the base_branches or path_instructions below.
+    drafts: true
+
+    # DEFAULT IS 5. Branches here are long-lived and get `dev` merged into them repeatedly —
+    # `dev` moves ~70 commits a day — so five reviewed commits is a couple of days at most, after
+    # which automatic review silently stops and `@coderabbitai review` answers "rate limited …
+    # applicable only when automatic reviews are paused". 0 disables the pause entirely.
+    auto_pause_after_reviewed_commits: 0
+
+    base_branches:
+      - dev
+      - main
+
+  # Generated and vendored files. The Scrabble dictionaries alone are ~430k lines of single-word
+  # rows; reviewing them burns budget and produces nothing.
+  path_filters:
+    - '!src/lib/data/scrabble-words-*.ts'
+    - '!**/pnpm-lock.yaml'
+    - '!**/package-lock.json'
+    - '!**/*.min.js'
+    - '!apps/mobile/ios/**'
+    - '!apps/mobile/android/**'
+
+  # Invariants this codebase has already broken at least once each. Encoded so they are checked
+  # automatically rather than rediscovered.
+  path_instructions:
+    - path: 'src/lib/supabase-selects.ts'
+      instructions: |
+        These constants define what the ANON key reads. Two rules:
+
+        1. A `*_NOT_NULL_KEYS` list must name only columns that are ALSO in the matching
+           `*_SELECT`. If a column is removed from a select but left in the keys list, the
+           `isComplete*Row` guard returns false for every realtime payload, so every delta is
+           rejected and each one forces a full reload — a performance regression that looks like
+           nothing is wrong. This has happened twice (UNO piles, Monopoly decks).
+        2. A column removed here is still readable over Realtime unless it is also revoked from
+           `anon`, because a client select constrains PostgREST only. Do not describe removing a
+           column from a select as closing a leak.
+
+        The mobile copy at `apps/mobile/lib/supabase-selects.ts` must be kept in step; they have
+        drifted before.
+
+    - path: 'supabase/migrations/**/*.sql'
+      instructions: |
+        Migration review, in order of how badly each has bitten this repo:
+
+        1. A REVOKE that takes a column away from `anon` breaks every INSTALLED MOBILE BUILD that
+           still selects it: PostgREST fails the WHOLE select with 42501, not just that column.
+           Mobile has no OTA (no `updates` block in app.json), so recovery needs a store release.
+           Flag any new revoke and ask whether the shipped mobile select still names the column.
+        2. `ALTER PUBLICATION ... SET TABLE` replaces the publication's ENTIRE table list.
+           `supabase_realtime` carries 80+ tables here, so SET would silently unpublish all the
+           others. Use `DROP TABLE` + `ADD TABLE (cols)` to change one table.
+        3. Timestamped filenames may sort BEFORE migrations already applied on the remote. That
+           is handled only because CI runs `supabase db push --include-all`; flag any change that
+           removes that flag.
+        4. A column-level revoke breaks every surviving `select('*')` on that table. Ask whether
+           the call sites were swept.
+
+    - path: 'src/instrumentation.ts'
+      instructions: |
+        This hook runs during server startup, so anything it imports is loaded before the server
+        can serve. An import that reaches a circular module graph resolves to a temporal-dead-zone
+        error ("Cannot access 'X' before initialization"), the hook throws, and EVERY request
+        500s — a total outage, not a degraded feature. This has happened (2026-08-24).
+
+        Be strict about any new import here, including a dynamic `await import(...)`: the danger is
+        the module graph it pulls in, not the syntax. `src/lib/game-finish.ts` in particular is
+        imported by every per-game module and must stay a leaf at import time.
+
+    - path: 'scripts/playtest/**/*.mjs'
+      instructions: |
+        These assert a security boundary, so the failure mode that matters is an assertion that
+        CANNOT FAIL. Check specifically:
+        - a status is asserted, not merely logged;
+        - "denied" means a documented denial status (401/403), not any non-2xx — a 500 or 429 is
+          inconclusive, not proof of protection;
+        - a non-secret read asserts rows came back, since 200 with `[]` proves nothing;
+        - fixtures use DISTINCT per-player values, so a cross-player leak cannot coincide with
+          the expected value;
+        - the script exits non-zero when anything failed.
+
+    - path: '.github/workflows/**'
+      instructions: |
+        Treat these as production infrastructure. Flag: a step that fetches and executes remote
+        code without a pinned commit AND a checksum; a required check that runs a script the pull
+        request under review can edit (pin it to the base revision instead); a missing
+        least-privilege `permissions:` block; and `cancel-in-progress` on a workflow that applies
+        database migrations, since cancelling mid-`db push` leaves them partly applied.
+
+  tools:
+    # Postgres migration linter — directly relevant given the history above.
+    squawk:
+      enabled: true
+    # GitHub Actions: correctness and supply-chain/security posture.
+    actionlint:
+      enabled: true
+    zizmor:
+      enabled: true
+    # Terraform, in infra/.
+    tflint:
+      enabled: true
+    checkov:
+      enabled: true
+    shellcheck:
+      enabled: true
+    yamllint:
+      enabled: true
+    gitleaks:
+      enabled: true
+    eslint:
+      enabled: true
+
+chat:
+  auto_reply: true
