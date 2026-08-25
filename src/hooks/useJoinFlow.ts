@@ -21,6 +21,7 @@ import { PLAYER_SELECT } from '@/lib/supabase-selects'
 import { useRoomMemberAutoJoin, useRoomMemberJoin, useRoomMemberNamePrefill } from '@/hooks/useRoomMemberJoin'
 import { useToast } from '@/components/ui/Toast'
 import { trackEvent, GA_EVENTS } from '@/lib/analytics'
+import { authHeaders } from '@/lib/auth-headers'
 import type { Game, Participant, Player, Round, ParticipantGender, PlayerGender } from '@/types'
 
 import type { View } from '@/hooks/useGameSession'
@@ -262,22 +263,41 @@ export function useJoinFlow(deps: JoinFlowDeps) {
       // PATCH above, and leaving clears the session (so a deliberate rejoin still gets a new row).
       const existingToken = isSelfEdit ? null : (getPlayerSession(gameCode)?.resumeToken ?? null)
 
-      const res = await fetch('/api/players', {
-        method: isSelfEdit ? 'PATCH' : 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(
-          isSelfEdit
-            ? { ...body, playerId: myPlayerId, resumeToken: editResumeToken }
-            : {
-                ...body,
-                ...activeJoinExtras,
-                ...joinExtras,
-                ...(tournamentToken ? { tournamentToken } : {}),
-                ...(existingToken ? { resumeToken: existingToken } : {}),
-              }
-        ),
-      })
-      const data = await res.json()
+      const doJoin = async (continueOnThisDevice: boolean) =>
+        fetch('/api/players', {
+          method: isSelfEdit ? 'PATCH' : 'POST',
+          headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+          body: JSON.stringify(
+            isSelfEdit
+              ? { ...body, playerId: myPlayerId, resumeToken: editResumeToken }
+              : {
+                  ...body,
+                  ...activeJoinExtras,
+                  ...joinExtras,
+                  ...(tournamentToken ? { tournamentToken } : {}),
+                  ...(existingToken ? { resumeToken: existingToken } : {}),
+                  ...(continueOnThisDevice ? { continueOnThisDevice: true } : {}),
+                }
+          ),
+        })
+      let res = await doJoin(false)
+      let data = await res.json()
+      if (
+        !isSelfEdit &&
+        res.status === 409 &&
+        (data?.reason === 'already_hosting' || data?.reason === 'already_joined')
+      ) {
+        const isHost = data.reason === 'already_hosting'
+        const message = isHost
+          ? 'You’re already hosting this game on another device. Continue on this device, or keep it on the other one?'
+          : `You’re already a player in this game on another device${
+              data.existingPlayerName ? ` (as ${data.existingPlayerName})` : ''
+            }. Continue on this device, or keep it on the other one?`
+        const proceed = typeof window !== 'undefined' && window.confirm(message)
+        if (!proceed) return
+        res = await doJoin(true)
+        data = await res.json()
+      }
       if (data.playerId) {
         // Remember the name for next time. Uses the name that went in, not `data.playerName`,
         // because anonymous games hand back a server-generated alias that isn't the player's.

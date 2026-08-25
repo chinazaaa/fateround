@@ -504,7 +504,11 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
   }
 
   return (
-    <GameShell title={game?.title || batch9GameLabel('anonymous_messages')} subtitle={`${playerCount} in room`}>
+    <GameShell
+      title={game?.title || batch9GameLabel('anonymous_messages')}
+      subtitle={`${playerCount} in room`}
+      keyboardAvoiding
+    >
       {game ? <AnonymousRoomHeadcount game={game} players={players} /> : null}
       {anonTimersPinned ? null : anonTimers}
       {!canChat && !isPlayerBanned(banUntil) ? (

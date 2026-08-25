@@ -1,5 +1,16 @@
 import { useCallback, useEffect, useState } from 'react'
-import { ActivityIndicator, Alert, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
+import {
+  ActivityIndicator,
+  Alert,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native'
 import { useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import type { Theme } from '@/constants/theme'
@@ -203,15 +214,19 @@ function SaveToProfileSheet({
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose}>
-        {/* Stop taps inside the sheet from dismissing it. */}
-        <Pressable style={styles.sheetWrap} onPress={() => {}}>
-          <SafeAreaView edges={['bottom']} style={styles.sheet}>
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <Pressable style={styles.backdrop} onPress={onClose}>
+          {/* Stop taps inside the sheet from dismissing it. */}
+          <Pressable style={styles.sheetWrap} onPress={() => {}}>
+            <SafeAreaView edges={['bottom']} style={styles.sheet}>
             <View style={styles.grabber} />
             <View style={styles.header}>
               <Text style={styles.title}>{signedIn ? 'Your profile' : 'Save your progress'}</Text>
               <Pressable hitSlop={12} onPress={onClose} accessibilityRole="button" accessibilityLabel="Close">
-                <Text style={styles.close}>Done</Text>
+                <Text style={styles.close}>✕</Text>
               </Pressable>
             </View>
 
@@ -245,6 +260,10 @@ function SaveToProfileSheet({
                     autoCorrect={false}
                     keyboardType="email-address"
                     textContentType="emailAddress"
+                    returnKeyType="send"
+                    onSubmitEditing={() => {
+                      if (!busy && email.trim()) void sendCode()
+                    }}
                   />
                   {message ? <Text style={styles.error}>{message}</Text> : null}
                   <Pressable
@@ -263,10 +282,10 @@ function SaveToProfileSheet({
                 </>
               ) : (
                 <>
-                  <Text style={styles.hint}>We emailed a 6-digit code to {email}.</Text>
+                  <Text style={styles.hint}>We emailed an 8-digit code to {email}.</Text>
                   <TextInput
                     style={styles.input}
-                    placeholder="123456"
+                    placeholder="12345678"
                     placeholderTextColor={theme.textFaint}
                     value={code}
                     onChangeText={setCode}
@@ -275,6 +294,10 @@ function SaveToProfileSheet({
                     keyboardType="number-pad"
                     textContentType="oneTimeCode"
                     maxLength={8}
+                    returnKeyType="done"
+                    onSubmitEditing={() => {
+                      if (!busy && code.trim()) void submitCode()
+                    }}
                   />
                   {message ? <Text style={styles.error}>{message}</Text> : null}
                   <Pressable
@@ -327,9 +350,10 @@ function SaveToProfileSheet({
                 <Text style={styles.link}>🔔 Notification preferences →</Text>
               </Pressable>
             </View>
-          </SafeAreaView>
+            </SafeAreaView>
+          </Pressable>
         </Pressable>
-      </Pressable>
+      </KeyboardAvoidingView>
     </Modal>
   )
 }
@@ -350,6 +374,7 @@ const makeStyles = (theme: Theme) =>
     pressed: { opacity: 0.7 },
     chipText: { color: theme.text, fontSize: 14, fontWeight: '700' },
     chipMeta: { color: theme.textSecondary, fontSize: 13, fontWeight: '600' },
+    flex: { flex: 1 },
     backdrop: {
       flex: 1,
       backgroundColor: 'rgba(0,0,0,0.5)',

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native'
+import { ActivityIndicator, Alert, FlatList, Pressable, StyleSheet, Text, View } from 'react-native'
 import { Image } from 'expo-image'
 import type { AnonymousMessage, Game, Player } from '@fateround/shared'
 import {
@@ -170,28 +170,46 @@ export function AnonymousMessagesHostScreen({ gameCode, hostToken, game, players
     }
   }
 
-  const onRemovePlayer = async (playerId: string) => {
-    setRemovingPlayerId(playerId)
-    try {
-      await removePlayerAsHost(code, playerId, hostToken)
-      onReload()
-    } catch (err) {
-      toastError(err instanceof Error ? err.message : 'Failed to remove player')
-    } finally {
-      setRemovingPlayerId(null)
-    }
+  const onRemovePlayer = (playerId: string, playerName: string) => {
+    Alert.alert(`Remove ${playerName}?`, 'They’ll be kicked from the room.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Remove',
+        style: 'destructive',
+        onPress: async () => {
+          setRemovingPlayerId(playerId)
+          try {
+            await removePlayerAsHost(code, playerId, hostToken)
+            onReload()
+          } catch (err) {
+            toastError(err instanceof Error ? err.message : 'Failed to remove player')
+          } finally {
+            setRemovingPlayerId(null)
+          }
+        },
+      },
+    ])
   }
 
-  const onEndSession = async () => {
-    setActing(true)
-    try {
-      await postFinishGame(code, hostToken)
-      onReload()
-    } catch (err) {
-      toastError(err instanceof Error ? err.message : 'Could not end session')
-    } finally {
-      setActing(false)
-    }
+  const onEndSession = () => {
+    Alert.alert('End session', 'End the session for everyone now?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'End session',
+        style: 'destructive',
+        onPress: async () => {
+          setActing(true)
+          try {
+            await postFinishGame(code, hostToken)
+            onReload()
+          } catch (err) {
+            toastError(err instanceof Error ? err.message : 'Could not end session')
+          } finally {
+            setActing(false)
+          }
+        },
+      },
+    ])
   }
 
   const onPlayAgain = async () => {
@@ -328,7 +346,7 @@ export function AnonymousMessagesHostScreen({ gameCode, hostToken, game, players
                         )}
                         <Pressable
                           disabled={removingPlayerId === player.id}
-                          onPress={() => void onRemovePlayer(player.id)}
+                          onPress={() => onRemovePlayer(player.id, player.name ?? 'this player')}
                           hitSlop={6}
                         >
                           <Text style={styles.removeText}>{removingPlayerId === player.id ? '…' : 'Remove'}</Text>

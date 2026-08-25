@@ -95,9 +95,19 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
   const [hintUsed, setHintUsed] = useState(false)
   const [hintText, setHintText] = useState<string | null>(null)
   const [progressRows, setProgressRows] = useState<WordleRoomProgressRow[]>([])
+  // Flips true once the standings query has returned at least once, so we can
+  // gate the "active" render on standings + grid both being ready.
+  const [progressLoaded, setProgressLoaded] = useState(false)
   const [roundId, setRoundId] = useState<string | null>(null)
   const submitLockRef = useRef(false)
   const advanceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Absolute deadline (ms since epoch) after which the scheduled advance should have
+  // fired. useGameTableSync consults this to skip fetchStatus while the reveal
+  // ("Correct!" / "the word was …") should still be visible.
+  const advanceDeadlineRef = useRef<number>(0)
+  // Track the last (word_index, currentWord) we synced from the server so realtime
+  // resyncs on the *same* word don't wipe the letters the user is currently typing.
+  const lastSyncedWordRef = useRef<{ index: number; word: string } | null>(null)
 
   const me = bootstrap.myPlayerId ? bootstrap.players.find((p) => p.id === bootstrap.myPlayerId) : undefined
   const isViewer = !!(bootstrap.game && me && playerIsViewer(me, bootstrap.game))
@@ -106,33 +116,44 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
     if (!bootstrap.myResumeToken || !bootstrap.game) return
     try {
       const data = await postWordleRoomStatus(bootstrap.code, bootstrap.myResumeToken)
-      // Apply completion state BEFORE the currentWord check so a finished sequence (no
-      // currentWord in the response) locks input immediately, matching the web fix.
-      if (data.finished === true) setMyFinished(true)
+      // Only lock the board on an unambiguous per-player completion signal — `finished:true`
+      // alone can also mean "game not active yet" or "solutions row missing", neither of
+      // which is a real completion. sequenceComplete is only true when progress.finished is.
+      if (data.sequenceComplete === true) setMyFinished(true)
       if (data.currentWord) {
+        const nextIndex = data.word_index ?? 0
+        const prev = lastSyncedWordRef.current
+        const wordChanged = !prev || prev.index !== nextIndex || prev.word !== data.currentWord
         setCurrentWord(data.currentWord)
         setWordLength(data.wordLength ?? data.currentWord.length)
         setMaxAttempts(data.maxAttempts ?? data.currentWord.length + 1)
-        setWordIndex(data.word_index ?? 0)
+        setWordIndex(nextIndex)
         setWordCount(data.word_count ?? 5)
         setWordsSolved(data.words_solved ?? 0)
         setCategoryLabel(data.categoryLabel ?? 'Wordle')
-        setMyFinished(data.finished === true)
+        setMyFinished(data.sequenceComplete === true)
         setHintAvailable(data.hintAvailable === true)
         setHintUsed(data.hintUsed === true)
         setHintText(data.hint ?? null)
         setGuesses((data.guesses ?? []).map((g) => ({ word: g.guess, states: g.state })))
-        setCurrent('')
-        setCursorAt(0)
-      } else if (data.finished === true) {
-        setCurrentWord(null)
-        setGuesses([])
-        setCurrent('')
-        setCursorAt(0)
-        setHintAvailable(false)
-        setHintUsed(false)
-        setHintText(null)
+        // Only wipe the in-progress typed letters + banner when we've actually
+        // advanced to a new word. Realtime resyncs on the same word (another
+        // player's progress row updating) previously blew away whatever the user
+        // was typing.
+        if (wordChanged) {
+          setCurrent('')
+          setCursorAt(0)
+          // Clear the previous word's transient banner ("Out of attempts — the word was X",
+          // "Correct! +N pts") so it doesn't linger into the next word.
+          setMessage(null)
+        }
+        lastSyncedWordRef.current = { index: nextIndex, word: data.currentWord }
       }
+      // Deliberately DO NOT wipe currentWord/guesses when finished:true arrives without a
+      // currentWord — the server uses that shape in several non-completion cases (game not
+      // yet active, solutions row missing, transient races), and blanking state there hides
+      // the grid + hint button for a still-playing user. Real completion locks input via
+      // myFinished (see addLetter/submitGuess guards).
       if (data.status === 'finished') void bootstrap.load()
     } catch {
       /* swallowed — will retry on next tick */
@@ -142,7 +163,9 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
   const scheduleAdvance = useCallback(
     (delayMs: number) => {
       if (advanceTimerRef.current) clearTimeout(advanceTimerRef.current)
+      advanceDeadlineRef.current = Date.now() + delayMs
       advanceTimerRef.current = setTimeout(() => {
+        advanceDeadlineRef.current = 0
         void fetchStatus()
       }, delayMs)
     },
@@ -180,7 +203,12 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
       .select('*')
       .eq('game_id', bootstrap.code)
       .eq('round_id', roundId)
-    if (res.data) setProgressRows(res.data as WordleRoomProgressRow[])
+    // Only flip progressLoaded on a successful query. A failed query mustn't
+    // pass the render gate — otherwise the finished screen or the active
+    // board renders with empty/stale standings and the user gets no retry.
+    if (res.error) return
+    setProgressRows((res.data ?? []) as WordleRoomProgressRow[])
+    setProgressLoaded(true)
   }, [bootstrap.code, roundId])
 
   useEffect(() => {
@@ -194,13 +222,24 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
     void fetchStatus()
   }, [bootstrap.myResumeToken, bootstrap.game, fetchStatus])
 
-  // Realtime standings + status re-sync on any progress change.
+  // Realtime standings + status re-sync on any progress change. Standings refresh
+  // immediately; the status re-fetch is deferred until any pending reveal delay has
+  // elapsed so a completed guess's own progress-row update doesn't race the
+  // scheduled advance and blow away the "the word was …" banner early.
   useGameTableSync(
     gameCode,
     ['players', { table: 'games', column: 'id' }, 'wordle_room_progress'],
     () => {
       void loadProgress()
-      void fetchStatus()
+      const now = Date.now()
+      if (advanceDeadlineRef.current > now) {
+        const wait = advanceDeadlineRef.current - now
+        setTimeout(() => {
+          if (advanceDeadlineRef.current <= Date.now()) void fetchStatus()
+        }, wait + 10)
+      } else {
+        void fetchStatus()
+      }
     },
     !!bootstrap.game && !!roundId
   )
@@ -274,7 +313,9 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
         setMessage(`Out of attempts — the word was ${currentWord.toUpperCase()}`)
       }
       const wordDone = res.finished === true || (res.wordIndex ?? wordIndex) !== wordIndex
-      if (wordDone) scheduleAdvance(1400)
+      // Longer beat on out-of-attempts so the revealed word is actually readable; solved
+      // is a shorter delay since the player already knows what the word was.
+      if (wordDone) scheduleAdvance(res.solved ? 1400 : 5000)
     } catch (err) {
       setMessage(err instanceof Error ? err.message : 'Guess failed')
     } finally {
@@ -347,6 +388,9 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
   if (!bootstrap.game) return <GameLoading />
 
   if (bootstrap.screen === 'finished') {
+    // Wait for standings before rendering the finish panel — otherwise the
+    // leaderboard is empty and the panel collapses to just the footer buttons.
+    if (!progressLoaded) return <GameLoading />
     const top = standings[0]
     const winnerId = top?.total_points && top.total_points > 0 ? top.player_id : null
     const title = winnerId ? (bootstrap.myPlayerId === winnerId ? 'You win!' : `${top!.name} wins!`) : 'Game over'
@@ -371,6 +415,11 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
       </GameShell>
     )
   }
+
+  // Gate the active render on BOTH the grid data (currentWord) and standings
+  // (progressLoaded) being ready, so the standings panel doesn't flash before
+  // the grid loads in.
+  if (bootstrap.screen === 'active' && (!currentWord || !progressLoaded)) return <GameLoading />
 
   // Active — render the board + keyboard + standings.
   const rows: React.ReactNode[] = []
@@ -430,6 +479,20 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
             Word {Math.min(wordIndex + 1, wordCount)}/{wordCount}
           </Text>
         </View>
+        <View style={styles.legend}>
+          <View style={styles.legendItem}>
+            <View style={[styles.legendSwatch, { backgroundColor: '#538d4e' }]} />
+            <Text style={styles.legendText}>right letter, right spot</Text>
+          </View>
+          <View style={styles.legendItem}>
+            <View style={[styles.legendSwatch, { backgroundColor: '#b59f3b' }]} />
+            <Text style={styles.legendText}>in the word, wrong spot</Text>
+          </View>
+          <View style={styles.legendItem}>
+            <View style={[styles.legendSwatch, { backgroundColor: '#3a3a3c' }]} />
+            <Text style={styles.legendText}>not in the word</Text>
+          </View>
+        </View>
         {currentWord && <View style={styles.board}>{rows}</View>}
         {message && <Text style={styles.message}>{message}</Text>}
         {currentWord &&
@@ -467,7 +530,24 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
             ))}
           </View>
         )}
-        {myFinished && <Text style={styles.finishedNote}>You finished — waiting on others!</Text>}
+        {myFinished && (
+          <View style={styles.finishedCard}>
+            <Text style={styles.finishedNote}>You finished — waiting on others!</Text>
+            <Text style={styles.finishedStats}>
+              {(() => {
+                const rank = standings.findIndex((s) => s.player_id === bootstrap.myPlayerId) + 1
+                const suffix = rank === 1 ? 'st' : rank === 2 ? 'nd' : rank === 3 ? 'rd' : 'th'
+                const ms = myStanding?.total_time_ms ?? null
+                const timeText =
+                  ms != null
+                    ? `${Math.floor(ms / 60000)}:${String(Math.floor((ms % 60000) / 1000)).padStart(2, '0')}`
+                    : '—'
+                const rankText = rank > 0 ? `${rank}${suffix} so far · ` : ''
+                return `${rankText}${myStanding?.total_points ?? 0} pts · time ${timeText}`
+              })()}
+            </Text>
+          </View>
+        )}
         <View style={styles.standingsBox}>
           <Text style={styles.standingsTitle}>Race standings</Text>
           {standings.length === 0 ? (
@@ -525,6 +605,18 @@ const makeStyles = (theme: Theme) =>
     },
     badgeText: { color: '#fff', fontSize: 12, fontWeight: '700', letterSpacing: 0.5 },
     headerMeta: { color: theme.textMuted, fontSize: 13, fontWeight: '600' },
+    legend: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      justifyContent: 'center',
+      columnGap: 12,
+      rowGap: 4,
+      width: '100%',
+      maxWidth: 420,
+    },
+    legendItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+    legendSwatch: { width: 10, height: 10, borderRadius: 2 },
+    legendText: { color: theme.textMuted, fontSize: 11 },
     board: { gap: 5, alignItems: 'center' },
     row: { flexDirection: 'row', gap: 5 },
     rowShake: { transform: [{ translateX: 3 }] },
@@ -541,7 +633,18 @@ const makeStyles = (theme: Theme) =>
     tileEmpty: { borderColor: theme.border, opacity: 0.6 },
     tileCurrent: { borderColor: theme.text },
     tileFocus: { borderColor: theme.primary, borderWidth: 3 },
-    tileText: { color: theme.text, fontSize: 22, fontWeight: '800', textTransform: 'uppercase' },
+    // alignSelf:'stretch' + textAlign:'center' — RN New Arch measures a narrow
+    // lone glyph inside a flexed Text to zero and renders nothing (the "I" tile
+    // and "I" key were blank). Stretch + center sidesteps the intrinsic-width
+    // measurement.
+    tileText: {
+      color: theme.text,
+      fontSize: 22,
+      fontWeight: '800',
+      textTransform: 'uppercase',
+      alignSelf: 'stretch',
+      textAlign: 'center',
+    },
     message: { color: theme.text, fontSize: 14, fontWeight: '600', textAlign: 'center' },
     hintText: { color: theme.textMuted, fontSize: 13, textAlign: 'center' },
     hintCost: { color: theme.textFaint, fontSize: 11 },
@@ -569,9 +672,24 @@ const makeStyles = (theme: Theme) =>
       justifyContent: 'center',
     },
     keyWide: { flex: 1.5 },
-    keyText: { color: theme.text, fontSize: 15, fontWeight: '700', textTransform: 'uppercase' },
+    keyText: {
+      color: theme.text,
+      fontSize: 15,
+      fontWeight: '700',
+      textTransform: 'uppercase',
+      alignSelf: 'stretch',
+      textAlign: 'center',
+    },
     keyTextWide: { fontSize: 12 },
     finishedNote: { color: theme.primary, fontWeight: '700', textAlign: 'center' },
+    finishedCard: {
+      alignSelf: 'stretch',
+      backgroundColor: theme.surface,
+      borderRadius: 10,
+      padding: 10,
+      gap: 4,
+    },
+    finishedStats: { color: theme.textMuted, fontSize: 12, textAlign: 'center' },
     standingsBox: {
       width: '100%',
       maxWidth: 420,
