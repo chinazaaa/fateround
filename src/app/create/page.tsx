@@ -120,6 +120,7 @@ import {
   CrownIcon,
   DoorOpenIcon,
   FlashIcon,
+  GearsIcon,
   GlobeIcon,
   LockIcon,
   Moon02Icon,
@@ -513,7 +514,10 @@ function CreateGameInner() {
   )
   const [monopolyMaxPlayers, setMonopolyMaxPlayers] = useState(MONOPOLY_DEFAULT_MAX_PLAYERS)
   const [monopolyBoardSize, setMonopolyBoardSize] = useState<40 | 48>(40)
-  const [monopolyGameDuration, setMonopolyGameDuration] = useState(0)
+  // Default to 1h so a host that skips the setting doesn't unknowingly
+  // create a marathon session. Users can still pick "No limit" (0) or
+  // any other option from MONOPOLY_GAME_DURATION_OPTIONS.
+  const [monopolyGameDuration, setMonopolyGameDuration] = useState(3600)
   // House rules — mirror the host-lobby toggles. Defaults match the DB defaults
   // (loans enabled, 15% flat interest, 4-round term) so what a host sets here
   // travels through to the lobby untouched.
@@ -4450,6 +4454,7 @@ function CreateGameInner() {
               </SettingsGroup>
             ) : isCheckers ? (
               <SettingsGroup title="Checkers room">
+                <SoloPracticeCta gameType="checkers" />
                 <p className="text-faint text-sm">Exactly 2 players — the host can join as one of them.</p>
                 <Field label="Time per player">
                   <CustomSelect
@@ -4472,6 +4477,7 @@ function CreateGameInner() {
               </SettingsGroup>
             ) : isDraughts10 ? (
               <SettingsGroup title={isCheckersNigeria ? 'Nigerian Draughts room' : 'International Draughts room'}>
+                <SoloPracticeCta gameType={settings.game_type} />
                 <p className="text-faint text-sm">Exactly 2 players — the host can join as one of them.</p>
                 <Field label="Time per player">
                   <CustomSelect
@@ -6253,6 +6259,12 @@ function CreateGameInner() {
                         title: 'World 4: The Gauntlet',
                         icon: CrownIcon,
                         desc: 'Master gauntlet with all traps',
+                      },
+                      {
+                        id: 'machines',
+                        title: 'World 5: The Machine Room',
+                        icon: GearsIcon,
+                        desc: 'Sweeping presses & moving walkways',
                       },
                     ].map((w) => (
                       <button

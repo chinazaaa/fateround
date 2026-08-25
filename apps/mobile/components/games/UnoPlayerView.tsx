@@ -841,7 +841,12 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
                   // their chosen colour. Server routes phase='color_roulette' draws
                   // to processUnoColorRouletteReveal.
                   actions.push(
-                    <Pressable key="roulette" style={styles.handAction} disabled={acting} onPress={() => void drawCard()}>
+                    <Pressable
+                      key="roulette"
+                      style={styles.handAction}
+                      disabled={acting}
+                      onPress={() => void drawCard()}
+                    >
                       <Text style={styles.handActionText}>Draw a card</Text>
                     </Pressable>
                   )

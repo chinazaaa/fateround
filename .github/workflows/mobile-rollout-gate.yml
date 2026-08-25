@@ -38,7 +38,18 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/gate"
-          git show "$BASE_SHA:scripts/ci/mobile-rollout-gate.mjs" > "$RUNNER_TEMP/gate/mobile-rollout-gate.mjs"
+          dest="$RUNNER_TEMP/gate/mobile-rollout-gate.mjs"
+          if git show "$BASE_SHA:scripts/ci/mobile-rollout-gate.mjs" > "$dest" 2>/dev/null; then
+            echo "Using the gate script from the base revision ($BASE_SHA) — enforcement logic is pinned."
+          else
+            # BOOTSTRAP: the base branch does not have the gate yet, because this workflow reaches
+            # `main` for the first time in the very PR it is guarding. Pinning to base protects an
+            # ESTABLISHED gate from being edited by the PR under review; on the first promotion
+            # there is no established gate, so falling back to this PR's copy is no weaker than
+            # main not having the workflow at all. Every subsequent run takes the branch above.
+            echo "::warning::Gate script absent on base ($BASE_SHA) — bootstrap run, using this PR's copy. Enforcement logic is NOT pinned for this run only."
+            cp scripts/ci/mobile-rollout-gate.mjs "$dest"
+          fi
 
       - name: Check for revokes that break installed mobile builds
         env:

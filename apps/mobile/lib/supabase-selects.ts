@@ -154,6 +154,10 @@ export const LANDMINE_ANSWER_SELECT =
 
 export const LANDMINE_MARK_SELECT = 'id,game_id,round_id,marker_player_id,target_player_id,valid,marked_at'
 
+// The Codewords board is fetched via the server route (postCodewordsBoard), not a direct
+// select — `codewords_boards.key` is no longer anon-selectable (audit finding H2), so there is
+// no board SELECT constant here on purpose. The route returns the full board object.
+
 export const CODEWORDS_PLAYER_ROLE_SELECT = 'id,game_id,player_id,team,role,created_at'
 
 export const HOT_SEAT_SUBMISSIONS_SELECT = 'id,game_id,round_id,player_id,text,submission_type,created_at'
