@@ -1305,7 +1305,20 @@ export interface CodewordsBoard {
   id: string
   game_id: string
   words: string[]
-  key: CodewordsCellType[]
+  /**
+   * Word → team assignment. SECRET while the game is live: only the host and the two
+   * spymasters receive the real array from /api/codewords/board. Everyone else gets a MASKED
+   * copy — the true type at revealed indices, `null` at unrevealed ones — which is all an
+   * operative's UI needs (audit finding H2). Mirrors the web type in src/types/index.ts.
+   */
+  key: (CodewordsCellType | null)[]
+  /**
+   * How many cells belong to each type. Not secret (the split is fixed by the ruleset and is
+   * already on screen), but it CANNOT be derived from a masked key — counting a masked key
+   * yields "revealed reds" as the red total, i.e. a scoreboard that says both teams have
+   * already found everything. The API sends it explicitly for exactly that reason.
+   */
+  key_totals?: Partial<Record<CodewordsCellType, number>>
   starting_team: CodewordsTeam
   revealed_indices: number[]
   current_turn: CodewordsTeam
