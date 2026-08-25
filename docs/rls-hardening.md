@@ -212,10 +212,16 @@ which the lock-in UI and the realtime subscription need. Results are folded into
 `ttl_metadata.guesses` at reveal; the caller's own in-flight row comes from
 `POST /api/two-truths/my-guesses` (resume-token gated).
 
-### ✅ Realtime honours column-level grants — VERIFIED on a live DB (2026-08-16)
+### ✅ Realtime honours column-level grants — measured on a LOCAL Supabase (2026-08-16)
 
 The open question from Phase 3 ("a column-level REVOKE only constrains PostgREST — does
-Realtime filter the same columns?") is now answered **yes**, measured, not reasoned:
+Realtime filter the same columns?") is answered **yes**, measured rather than reasoned — but read
+the scope before relying on it. This was measured against a LOCAL Supabase stack, not a hosted
+project. An earlier version of this heading said "VERIFIED on a live DB", which overstated it:
+the setup below has always said local, and hosted Supabase differs from a from-scratch local
+stack in exactly the area this concerns — grants (see the bootstrap-grant note in
+`local-supabase-playtest`). The mechanism is the same Realtime build in both, so the result is
+expected to hold, but a hosted confirmation has NOT been done.
 
 - Setup: local Supabase (all migrations applied), an anon-key `supabase-js` client subscribed
   to `postgres_changes` (`event: '*'`) on `public.ttl_statements` and `public.ttl_guesses`
