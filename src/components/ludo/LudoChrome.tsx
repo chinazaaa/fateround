@@ -236,7 +236,12 @@ export function LudoDicePair({
         <LudoDiceFace value={d2} rolling={rolling} compact={compact} />
       </div>
       {dice && !rolling && (
-        <p className="text-[8px] sm:text-[10px] font-bold text-slate-900 tabular-nums leading-none">
+        <p
+          // Dice total reads --foreground so it stays legible when the
+          // page around it is themed (Wooden dark, Naija dark, …).
+          className="text-[8px] sm:text-[10px] font-bold tabular-nums leading-none"
+          style={{ color: 'var(--foreground)' }}
+        >
           {dice.total}
           {dice.d1 === 6 && dice.d2 === 6 ? ' · Double six!' : ''}
         </p>

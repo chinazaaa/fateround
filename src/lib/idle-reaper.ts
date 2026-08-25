@@ -37,8 +37,15 @@ import { isProdDeployment } from '@/lib/app-env'
 
 const DEFAULT_IDLE_MINUTES = 30
 const MIN_IDLE_MINUTES = 1
-const DEFAULT_INTERVAL_MS = 5 * 60 * 1000 // every 5 minutes
-const REAPER_BATCH_LIMIT = 200
+// Backlog-safe defaults: the first tick after this landed on prod tried to
+// reap up to 200 games at once every 5 minutes, each running the full
+// TypeScript adminEndGame path (room-game points, round-facts snapshot,
+// tournament resolution, trophy awards). That saturated the DB and made
+// PostgREST/Auth health checks flap. Small batch + longer interval means
+// the backlog drains gently; if IDLE_REAPER_DISABLED=1 is set the reaper
+// no-ops entirely (kill-switch).
+const DEFAULT_INTERVAL_MS = 15 * 60 * 1000 // every 15 minutes
+const REAPER_BATCH_LIMIT = 20
 
 function resolveIdleMinutes(): number {
   const raw = Number(process.env.IDLE_REAPER_MINUTES)

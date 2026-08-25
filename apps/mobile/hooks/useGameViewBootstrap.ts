@@ -7,7 +7,7 @@ import { useRouter } from 'expo-router'
 import { JoinError, joinGame } from '@/lib/api'
 import { takeOverHosting } from '@/lib/take-over-hosting'
 import { recordRecentGame } from '@/lib/recent-games'
-import { getPlayerSession, setPlayerSession } from '@/lib/secure-session'
+import { getPlayerSession, setPlayerSession, type PlayerSession } from '@/lib/secure-session'
 import { reconcilePlayerSession } from '@/lib/player-session-reconcile'
 import { subscribePlayerSession } from '@/lib/session-events'
 import { getSupabase, GAME_SELECT, PLAYER_SELECT } from '@/lib/supabase'
@@ -20,7 +20,16 @@ export type UseGameViewBootstrapOptions<Screen extends string, GameState> = {
   notFoundScreen: Screen
   joinScreen: Screen
   waitingScreen: Screen
-  loadGameState: (game: Game, players: Player[]) => Promise<{ state: GameState; ok: boolean }>
+  /**
+   * Load the game-specific slice of state. `session` is the CALLER'S reconciled session for
+   * this load (see runLoad) — use its `resumeToken` for any per-player server read instead of
+   * reading SecureStore, so the read is never made with a stale/rotated token.
+   */
+  loadGameState: (
+    game: Game,
+    players: Player[],
+    session: PlayerSession | null
+  ) => Promise<{ state: GameState; ok: boolean }>
   computeScreen: (game: Game, playerId: string | null, state: GameState) => Screen
   afterResolve?: (game: Game, playerId: string | null, state: GameState) => void | Promise<void>
 }
@@ -107,17 +116,18 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
       if (gameData.status === 'finished') finishedSessionRef.current = gameData.session_started_at ?? null
       else if (gameData.status === 'waiting') finishedSessionRef.current = undefined
 
-      const { state, ok } = await loadGameStateRef.current(gameData, playerRows)
-
-      setGame(gameData)
-      setPlayers(playerRows)
-      setGameState(ok ? state : null)
-
       // Reconcile the stored session against the roster we just fetched: a drifted/
       // stale player id (removed+rejoined, reclaim miss, rotated token) otherwise
       // sticks forever and mismatches the dealt hand ("Your hand (0)"). Heals via
       // the server's token-keyed resume, clears only on a confirmed 404. Web does
       // this via resolvePlayerSession; mobile never had it.
+      //
+      // BEFORE loadGameState, and handed to it: game state that is fetched per-player
+      // through a server route (the Codewords key card, a card hand) authenticates with
+      // the resume token, so loading it against the pre-reconciliation token yields a
+      // REDACTED view of a live game — a spymaster staring at an operative's grid until
+      // some later event happens to reload (review on PR #787). Reading SecureStore
+      // directly inside loadGameState has the same flaw and one extra keychain read.
       const session = await reconcilePlayerSession(code, playerRows)
       const playerId = session?.playerId ?? null
       if (session) {
@@ -133,6 +143,12 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
         setMyPlayerId(null)
         setMyResumeToken(null)
       }
+
+      const { state, ok } = await loadGameStateRef.current(gameData, playerRows, session)
+
+      setGame(gameData)
+      setPlayers(playerRows)
+      setGameState(ok ? state : null)
 
       const resolvedState = ok ? state : (null as GameState)
       if (afterResolveRef.current) await afterResolveRef.current(gameData, playerId, resolvedState)

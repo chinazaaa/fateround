@@ -561,13 +561,7 @@ function ChevronArrow({ open, color }: { open: boolean; color: string }) {
   return (
     <View style={{ transform: [{ rotate: open ? '90deg' : '0deg' }] }}>
       <Svg width={16} height={16} viewBox="0 0 20 20" fill="none">
-        <Polyline
-          points="7 4 13 10 7 16"
-          stroke={color}
-          strokeWidth={2}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
+        <Polyline points="7 4 13 10 7 16" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
       </Svg>
     </View>
   )
