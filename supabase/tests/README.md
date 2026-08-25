@@ -7,7 +7,13 @@ a column breaks the game just as surely as a leak exposes it).
 
 Run it against a fully migrated database:
 
+> **`supabase db reset` DESTROYS the local database.** It drops and recreates it, so anything not
+> reproducible from `supabase/migrations` or a seed script is gone — including games created
+> during a playtest. Use a disposable local project, and back up anything you need first. It does
+> not touch hosted projects.
+
 ```sh
+supabase start                    # the local stack must be RUNNING; reset cannot apply otherwise
 supabase db reset                 # applies every migration from scratch
 docker cp supabase/tests/redaction-guard.sql \
   supabase_db_<project-ref>:/tmp/redaction-guard.sql

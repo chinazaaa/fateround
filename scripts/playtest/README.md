@@ -6,8 +6,19 @@ re-implementing the masking by hand cannot.
 
 ## Running
 
+> **`supabase db reset` DESTROYS the local database** — it drops and recreates it. Anything not
+> reproducible from migrations or a seed script is lost. Hosted projects are untouched.
+
+The scripts read their keys from the environment and **exit 2 if either is missing**, rather than
+falling back to a default that would make every assertion below pass for the wrong reason.
+
 ```sh
 supabase start && supabase db reset
+
+# Required — the scripts will not run without these:
+export NEXT_PUBLIC_SUPABASE_ANON_KEY="$(supabase status -o env | grep NEXT_PUBLIC_SUPABASE_ANON_KEY | cut -d= -f2-)"
+export SUPABASE_SERVICE_ROLE_KEY="$(supabase status -o env | grep SUPABASE_SERVICE_ROLE_KEY | cut -d= -f2-)"
+
 
 # REQUIRED. Without this every route 403s and all four harnesses fail at the first request.
 # A from-scratch reset leaves service_role with no SELECT on tables created before
