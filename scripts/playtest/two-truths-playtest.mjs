@@ -39,6 +39,15 @@ const get = async (u, k) => {
   } catch {}
   return { status: r.status, d }
 }
+// A leak is a SUCCESSFUL read. But "not 200" is not the same as "denied": a 404, 429 or 500
+// would otherwise sail through as if the column were protected. Only the documented denial
+// statuses count as proof — 401 locally, 403 hosted (see README).
+function assertDenied(res, label, fail) {
+  if (res.status === 200) fail.push(`LEAK: anon read ${label}`)
+  else if (res.status !== 401 && res.status !== 403)
+    fail.push(`INCONCLUSIVE ${label} -> ${res.status} (expected a 401/403 denial, not an error)`)
+}
+
 const fail = [],
   log = []
 // A DISTINCT lie index per player. With everyone on the same value, /my-statement returning
@@ -79,13 +88,20 @@ const s = await post(`${APP}/api/games/${code}/start`, { hostToken })
 log.push(`START -> ${s.status} ${s.status !== 200 ? JSON.stringify(s.d) : ''}`)
 if (s.status !== 200) fail.push(`START FAILED: ${JSON.stringify(s.d)} <-- #838 regression signature`)
 const g1 = await get(`${REST}/games?id=eq.${code}&select=status`, SRV)
-log.push(`game.status=${g1.d?.[0]?.status}`)
-if (g1.d?.[0]?.status === 'waiting') fail.push(`game still waiting after start`)
+const g1Row = Array.isArray(g1.d) ? g1.d[0] : null
+log.push(`game.status=${g1Row?.status} (query g1.status)`)
+// Verify the QUERY before trusting its answer. A 401/500/malformed body/empty result leaves the
+// status undefined, which would silently skip the still-waiting check below and could hide a
+// revoked `games` privilege while every other assertion still passed.
+if (g1.status !== 200) fail.push(`games status query failed (${g1.status}) — cannot verify the game started`)
+else if (!g1Row) fail.push(`games row ${code} not found — cannot verify the game started`)
+else if (g1Row.status == null) fail.push(`games row ${code} has a null status — cannot verify the game started`)
+else if (g1Row.status === 'waiting') fail.push(`game still waiting after start`)
 
 // redaction: anon must not read lie_index, must still read the rest
 const leak = await get(`${REST}/ttl_statements?game_id=eq.${code}&select=lie_index`, ANON)
 log.push(`anon lie_index -> ${leak.status}`)
-if (leak.status === 200) fail.push(`LEAK: anon read lie_index`)
+assertDenied(leak, 'ttl_statements.lie_index', fail)
 const okc = await get(`${REST}/ttl_statements?game_id=eq.${code}&select=id,player_id,statement_a`, ANON)
 log.push(`anon non-secret cols -> ${okc.status} (${okc.d?.length ?? 0} rows)`)
 if (okc.status !== 200) fail.push(`BREAK: anon cannot read non-secret ttl_statements cols (${okc.status})`)
@@ -167,7 +183,7 @@ if (!rows.d?.length) fail.push('ttl_guesses is EMPTY — the anon assertions bel
 for (const col of ['guessed_index', 'is_correct', 'points']) {
   const gl = await get(`${REST}/ttl_guesses?game_id=eq.${code}&select=${col}`, ANON)
   log.push(`anon ttl_guesses.${col} -> ${gl.status}`)
-  if (gl.status === 200) fail.push(`LEAK: anon read ttl_guesses.${col}`)
+  assertDenied(gl, `ttl_guesses.${col}`, fail)
 }
 // the other half: anon must still read the non-secret columns, and actually get the rows back
 const gok = await get(`${REST}/ttl_guesses?game_id=eq.${code}&select=id,player_id`, ANON)
@@ -176,7 +192,7 @@ if (gok.status !== 200) fail.push(`BREAK: anon cannot read non-secret ttl_guesse
 else if (!gok.d?.length) fail.push('anon read ttl_guesses but got 0 rows — assertions are vacuous')
 const rl = await get(`${REST}/ttl_round_lies?select=*&limit=1`, ANON)
 log.push(`anon ttl_round_lies -> ${rl.status}`)
-if (rl.status === 200) fail.push(`LEAK: anon read ttl_round_lies`)
+assertDenied(rl, 'ttl_round_lies', fail)
 
 console.log('===== TWO TRUTHS =====')
 log.forEach((l) => console.log('  · ' + l))

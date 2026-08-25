@@ -71,7 +71,9 @@ for (const [type, api, table, holderCol, extra] of [
     if (!isHolder && got && got !== 'null') fail.push(`${type}: NON-holder P${i + 1} received a word ${got} (LEAK)`)
   }
   const noTok = await post(`${APP}/api/${api}/my-word`, { gameCode: code })
-  const nt = JSON.stringify(noTok.d?.word ?? null)
+  // Check BOTH shapes. The holder path reads `word ?? currentWord`; checking only `word` here
+  // would let a 4xx response that carries `currentWord` report success while leaking the secret.
+  const nt = JSON.stringify(noTok.d?.word ?? noTok.d?.currentWord ?? null)
   console.log(`  · no-token -> ${noTok.status} word=${nt.slice(0, 40)}`)
   if (nt && nt !== 'null') fail.push(`${type}: unauthenticated caller got a word ${nt} (LEAK)`)
   // A 200 with no word is not proof of rejection — it is indistinguishable from "no word yet".
