@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { authHeaders } from '@/lib/identity'
 import { COIN_HISTORY_FILTERS, COIN_REASON_LABEL, type CoinHistoryFilter } from '@/lib/coins/reasons'
+import { GAME_TYPE_CONFIG } from '@/lib/game-types'
+import type { GameType } from '@/types'
 import { trackEvent, GA_EVENTS } from '@/lib/analytics'
 
 type LedgerRow = {
@@ -19,8 +21,81 @@ type LedgerRow = {
 
 const PAGE_SIZE = 50
 
+/** Pretty game name from a first-mode bonus ref_id (format `first_mode:{gameType}`).
+ *  Falls back to the raw slug (title-cased) if the game type isn't in the
+ *  catalog, so a retired game still reads sensibly. */
+function firstModeBonusGameLabel(refId: string | null): string | null {
+  if (!refId?.startsWith('first_mode:')) return null
+  const slug = refId.slice('first_mode:'.length)
+  const config = GAME_TYPE_CONFIG[slug as GameType]
+  if (config?.label) return config.label
+  return slug ? slug.replace(/[_-]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : null
+}
+
+const PURCHASE_KIND_LABELS: Record<string, string> = {
+  frame: 'Avatar frame',
+  name_color: 'Name color',
+  animation: 'Winner animation',
+  card_template: 'Card template',
+  streak_freeze: 'Streak freeze',
+  theme: 'Game theme',
+  edition: 'Edition',
+  library_pack: 'Library pack',
+  extra_bot: 'Extra bot',
+}
+
+/** Human-readable purchase description from a shop_purchase ref_id.
+ *
+ *  Durable purchases: `<kind>:<slug>` (e.g. `animation:winner-anim-confetti`)
+ *    → "Winner animation · winner-anim-confetti".
+ *
+ *  Extra bot (post 20261103120000_extra_bot_ref_id_with_game):
+ *    `extra_bot:<game_type>:<game_code>:<player_uuid>`
+ *    → "Extra bot · Whot TXVHTD".
+ *
+ *  Legacy extra bot (pre-migration rows):
+ *    `extra_bot:<player_uuid>`
+ *    → "Extra bot" (drop the UUID; it wasn't useful and rendered ugly).
+ */
+function shopPurchaseLabel(refId: string | null): string | null {
+  if (!refId) return null
+  const colon = refId.indexOf(':')
+  if (colon <= 0) return null
+  const kind = refId.slice(0, colon)
+  const rest = refId.slice(colon + 1)
+  if (!rest) return null
+  const kindLabel = PURCHASE_KIND_LABELS[kind] ?? kind
+
+  if (kind === 'extra_bot') {
+    // New: <game_type>:<game_code>:<player_uuid>. Old: <player_uuid>.
+    const parts = rest.split(':')
+    if (parts.length >= 3) {
+      const gameType = parts[0]
+      const gameCode = parts[1]
+      const gameName = GAME_TYPE_CONFIG[gameType as GameType]?.label ?? gameType
+      return `${kindLabel} · ${gameName} ${gameCode}`
+    }
+    // Old-format row (raw UUID) — hide the UUID; the "when" column is the
+    // primary way to distinguish these anyway.
+    return kindLabel
+  }
+
+  return `${kindLabel} · ${rest}`
+}
+
 function describeRow(row: LedgerRow): string {
   if (row.reason === 'admin_adjustment') return 'Adjustment by support'
+  if (row.reason === 'first_mode_bonus') {
+    const game = firstModeBonusGameLabel(row.ref_id)
+    return game ? `First-time bonus · ${game}` : (COIN_REASON_LABEL[row.reason] ?? row.reason)
+  }
+  if (row.reason === 'shop_purchase') {
+    // Attach what was bought so a wall of "Shop purchase" rows becomes
+    // "Winner animation · confetti", "Edition · america", etc. — the
+    // player can eyeball spend without cross-referencing the shop.
+    const purchase = shopPurchaseLabel(row.ref_id)
+    return purchase ? `Shop · ${purchase}` : (COIN_REASON_LABEL[row.reason] ?? row.reason)
+  }
   return COIN_REASON_LABEL[row.reason] ?? row.reason
 }
 

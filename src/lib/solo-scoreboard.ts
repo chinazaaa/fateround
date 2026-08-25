@@ -10,7 +10,16 @@
  * cross-device leaderboard. Solo practice has no account attached.
  */
 
-export type SoloScoreboardKey = 'whot' | 'uno' | 'crazy_eights' | 'ayo' | 'ludo' | 'yahtzee'
+export type SoloScoreboardKey =
+  | 'whot'
+  | 'uno'
+  | 'crazy_eights'
+  | 'ayo'
+  | 'ludo'
+  | 'yahtzee'
+  | 'checkers'
+  | 'checkers_international'
+  | 'checkers_nigeria'
 
 export type SoloScoreboard = {
   human: number

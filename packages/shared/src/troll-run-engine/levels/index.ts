@@ -8,6 +8,7 @@ export { WORLD_1_LEVELS } from './world-1-pits'
 export { WORLD_2_LEVELS } from './world-2-doors'
 export { WORLD_3_LEVELS } from './world-3-gravity'
 export { WORLD_4_LEVELS } from './world-4-gauntlet'
+export { WORLD_5_LEVELS } from './world-5-machines'
 
 export { ALL_TROLL_RUN_LEVELS, TROLL_RUN_WORLDS, getWorldLevels, type TrollRunWorldConfig } from './catalogue'
 

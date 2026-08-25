@@ -85,8 +85,10 @@ export const WHOT_SESSION_SELECT =
 
 export const WHOT_PLAYER_HANDS_SELECT = 'id,game_id,player_id,cards,player_order'
 
+// last_play_player_id, pending_wild and the colour-roulette / draw-stack bookkeeping are
+// deliberately absent — see the note on the web copy in src/lib/supabase-selects.ts.
 export const UNO_SESSION_SELECT =
-  'id,game_id,turn_order,current_turn_index,direction,phase,draw_pile,discard_pile,top_card,required_color,draw_penalty,draw_penalty_kind,drawn_card_id,last_play_cards,pending_wild,challenge_prev_color,wd4_player_id,uno_pending_player,uno_called,status_message,winner_player_id,finish_order,left_player_ids,team_decider_id,eliminated_player_ids,color_roulette_player_id,last_play_player_id,draw_stack_chain,turn_deadline_at,created_at,updated_at'
+  'id,game_id,turn_order,current_turn_index,direction,phase,draw_pile,discard_pile,top_card,required_color,draw_penalty,draw_penalty_kind,drawn_card_id,last_play_cards,challenge_prev_color,wd4_player_id,uno_pending_player,uno_called,status_message,winner_player_id,finish_order,left_player_ids,team_decider_id,eliminated_player_ids,turn_deadline_at,created_at,updated_at'
 
 export const UNO_PLAYER_HANDS_SELECT = 'id,game_id,player_id,cards,player_order,created_at'
 
@@ -152,6 +154,10 @@ export const LANDMINE_ANSWER_SELECT =
 
 export const LANDMINE_MARK_SELECT = 'id,game_id,round_id,marker_player_id,target_player_id,valid,marked_at'
 
+// The Codewords board is fetched via the server route (postCodewordsBoard), not a direct
+// select — `codewords_boards.key` is no longer anon-selectable (audit finding H2), so there is
+// no board SELECT constant here on purpose. The route returns the full board object.
+
 export const CODEWORDS_PLAYER_ROLE_SELECT = 'id,game_id,player_id,team,role,created_at'
 
 export const HOT_SEAT_SUBMISSIONS_SELECT = 'id,game_id,round_id,player_id,text,submission_type,created_at'
@@ -162,7 +168,7 @@ export const CODEWORDS_GUESS_SELECT =
 export const CODEWORDS_MESSAGE_SELECT = 'id,game_id,player_id,team,text,created_at'
 
 export const MONOPOLY_BOARD_SELECT =
-  'id,game_id,board_size,turn_order,current_turn_index,phase,last_dice,consecutive_doubles,property_owners,property_buildings,mortgaged_properties,houses_in_bank,hotels_in_bank,chance_deck,community_deck,chance_discard,community_discard,auction_state,pending_trade,pending_debt,pending_space,status_message,last_card_event,last_rent_event,last_cash_event,last_trade_event,loans,turn_deadline_at,winner_player_id,created_at,updated_at'
+  'id,game_id,board_size,turn_order,current_turn_index,phase,last_dice,consecutive_doubles,property_owners,property_buildings,mortgaged_properties,houses_in_bank,hotels_in_bank,auction_state,pending_trade,pending_debt,pending_space,status_message,last_card_event,last_rent_event,last_cash_event,last_trade_event,loans,turn_deadline_at,winner_player_id,created_at,updated_at'
 
 export const MONOPOLY_PLAYER_STATE_SELECT =
   'id,game_id,player_id,position,cash,in_jail,jail_turns,get_out_of_jail_free,bankrupt,passed_go_once,player_order,created_at'

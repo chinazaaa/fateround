@@ -54,6 +54,15 @@ export function WhotPlayingCard({
       type="button"
       onClick={onClick}
       disabled={!onClick}
+      // --game-card-* tokens layer a paid-theme identity ON TOP of the
+      // shape gradient/border below: an outer glow (Neon Whot cyan,
+      // Naija Whot green), a tinted wash via the ::before-style overlay
+      // below, and an optional theme-tinted border. Defaults at :root
+      // are `none`/`transparent`, so an unthemed card looks identical
+      // to before — never a regression for default site themes.
+      style={{
+        boxShadow: 'var(--game-card-glow, none)',
+      }}
       className={[
         'relative flex flex-col items-center justify-center gap-0.5 rounded-xl border-2 bg-linear-to-br font-black transition-all overflow-hidden',
         sizeStyles.box,
@@ -66,12 +75,22 @@ export function WhotPlayingCard({
         !onClick ? 'cursor-default' : '',
       ].join(' ')}
     >
-      <WhotShapeIcon shape={card.shape} size={sizeStyles.icon} variant="on-card" />
-      <span className={`font-black leading-none ${sizeStyles.num}`}>{isWhot ? 'WHOT' : card.number}</span>
+      {/* Theme tint overlay — transparent by default; per-theme paints a
+       * soft cyan/green wash so cards feel neon/naija without hiding the
+       * shape identity gradient underneath. */}
+      <span
+        aria-hidden
+        className="pointer-events-none absolute inset-0 rounded-[calc(0.75rem-2px)]"
+        style={{ background: 'var(--game-card-tint, transparent)' }}
+      />
+      <span className="relative">
+        <WhotShapeIcon shape={card.shape} size={sizeStyles.icon} variant="on-card" />
+      </span>
+      <span className={`relative font-black leading-none ${sizeStyles.num}`}>{isWhot ? 'WHOT' : card.number}</span>
       {label && size !== 'sm' && (
         <span
           className={[
-            'mt-0.5 max-w-full truncate rounded px-1 py-0.5 font-bold uppercase tracking-wide leading-tight',
+            'relative mt-0.5 max-w-full truncate rounded px-1 py-0.5 font-bold uppercase tracking-wide leading-tight',
             'text-white/95 bg-black/30',
             sizeStyles.badge,
           ].join(' ')}
@@ -157,13 +176,33 @@ export function WhotTable({
                 patternUnits="userSpaceOnUse"
                 patternTransform="rotate(45)"
               >
-                <line x1="0" y1="0" x2="0" y2="6" stroke="#2a3a5a" strokeWidth="1.5" />
+                <line x1="0" y1="0" x2="0" y2="6" stroke="var(--game-accent)" strokeWidth="1.5" />
               </pattern>
             </defs>
-            <rect width="56" height="80" rx="10" fill="url(#card-back-hatch)" stroke="#2a3a5a" strokeWidth="1" />
-            <rect x="3" y="3" width="50" height="74" rx="8" fill="none" stroke="#2a4a7a" strokeWidth="1.5" />
-            <polygon points="28,24 36,40 28,56 20,40" fill="none" stroke="#3a5a9a" strokeWidth="1.5" />
-            <circle cx="28" cy="40" r="3" fill="#3a5a9a" opacity="0.7" />
+            {/* Card-back art reads from --game-accent so Neon Whot paints
+                a cyan hatched back, Naija Whot paints a Nigerian-green
+                one, and the default site theme keeps its rose-red primary. */}
+            <rect
+              width="56"
+              height="80"
+              rx="10"
+              fill="url(#card-back-hatch)"
+              stroke="var(--game-accent)"
+              strokeWidth="1"
+            />
+            <rect
+              x="3"
+              y="3"
+              width="50"
+              height="74"
+              rx="8"
+              fill="none"
+              stroke="var(--game-accent)"
+              strokeWidth="1.5"
+              opacity="0.7"
+            />
+            <polygon points="28,24 36,40 28,56 20,40" fill="none" stroke="var(--game-accent)" strokeWidth="1.5" />
+            <circle cx="28" cy="40" r="3" fill="var(--game-accent)" opacity="0.7" />
           </svg>
           <p className="text-[10px] text-muted mt-1">{drawCount} left</p>
         </div>

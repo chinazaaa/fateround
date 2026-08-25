@@ -34,9 +34,9 @@ export async function takeOverHosting(gameCode: string): Promise<string | null> 
     // host-only. The server rotated the resume token, so the other device's stored
     // credential is already dead.
     if (player && player.playerId && player.resumeToken) {
-      const gender = (player.playerGender === 'male' || player.playerGender === 'female'
-        ? player.playerGender
-        : 'both') as PlayerGender
+      const gender = (
+        player.playerGender === 'male' || player.playerGender === 'female' ? player.playerGender : 'both'
+      ) as PlayerGender
       await setPlayerSession(gameCode, player.playerId, player.playerName ?? '', gender, player.resumeToken)
     }
     return hostToken

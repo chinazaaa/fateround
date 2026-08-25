@@ -10,12 +10,17 @@ import {
   TROLL_RUN_PHYSICS,
   TROLL_RUN_TILE_SIZE,
   TrollRunTileType,
+  trollEntityIsActive,
   type TrollMovingEntity,
+  type TrollRunDoorState,
 } from './types'
 import type { InputState, PlayerState } from './types'
 
 // How far outside the visible viewport the player may travel before the fall counts as a death.
 const OUT_OF_BOUNDS_MARGIN = 40
+
+// How far past the viewport an unbounded entity flies before it is dropped.
+const ENTITY_DESPAWN_MARGIN = 24
 
 // Upward launch speed of a bounce pad, in pixels/s (negative is up).
 const BOUNCE_VELOCITY = -450
@@ -46,6 +51,7 @@ export function createInitialPlayerState(spawn: { x: number; y: number }): Playe
     invertedControlsTimer: 0,
     gravityInverted: false,
     doorEntryProgress: 0,
+    ridingEntityId: null,
   }
 }
 
@@ -67,7 +73,7 @@ export function updatePlayerPhysics(
   input: InputState,
   dt: number,
   tiles: number[][],
-  door: { x: number; y: number },
+  door: TrollRunDoorState,
   movingEntities: TrollMovingEntity[] = []
 ): CollisionResult {
   const result: CollisionResult = {
@@ -158,14 +164,22 @@ export function updatePlayerPhysics(
   player.y += player.vy * dt
   player.grounded = false
   player.onIce = false
+  player.ridingEntityId = null
   resolveTileCollisionsY(player, tiles, result)
 
-  // Moving Entity Collisions (crushers, buzzsaws, moving platforms)
+  // Moving Entity Collisions (crushers, buzzsaws, lifts, sliding platforms)
   for (const entity of movingEntities) {
-    if (aabbIntersect(player.x, player.y, player.width, player.height, entity.x, entity.y, entity.w, entity.h)) {
-      if (entity.killsOnTouch) {
-        result.hitSpike = true
-      }
+    // A pulsing hazard in its gap is not there at all: no hitbox, no footing.
+    if (!trollEntityIsActive(entity)) continue
+    if (!aabbIntersect(player.x, player.y, player.width, player.height, entity.x, entity.y, entity.w, entity.h)) {
+      continue
+    }
+    if (entity.killsOnTouch) {
+      result.hitSpike = true
+      continue
+    }
+    if (entity.solid) {
+      resolveSolidEntity(player, entity)
     }
   }
 
@@ -182,7 +196,12 @@ export function updatePlayerPhysics(
       TROLL_RUN_DOOR_HEIGHT
     )
   ) {
-    result.reachedDoor = true
+    // A biting door is a hazard, not an exit: `fake_door` has given it teeth for a moment.
+    if ((door.biteTimer ?? 0) > 0) {
+      result.hitSpike = true
+    } else {
+      result.reachedDoor = true
+    }
   }
 
   // Out of bounds death
@@ -196,6 +215,59 @@ export function updatePlayerPhysics(
   }
 
   return result
+}
+
+/**
+ * Moves the machinery. Patrolled entities ping-pong between their bounds; unbounded ones fly
+ * straight and are dropped once they leave the screen, so spawned hazards do not pile up. A runner
+ * standing on a solid entity is carried by the same delta, which is what makes a lift feel like a
+ * lift instead of a floor that slides out from under them.
+ */
+export function advanceTrollRunEntities(entities: TrollMovingEntity[], player: PlayerState, dt: number): void {
+  for (let index = entities.length - 1; index >= 0; index--) {
+    const entity = entities[index]
+    // A pulsing hazard keeps its own clock whether or not it travels, so a beam bolted to a wall
+    // still blinks.
+    if (entity.pulse) entity.pulseElapsed = (entity.pulseElapsed ?? 0) + dt
+    if (!entity.vx && !entity.vy) continue
+
+    const previousX = entity.x
+    const previousY = entity.y
+
+    if (entity.vx) entity.x += entity.vx * dt
+    if (entity.vy) entity.y += entity.vy * dt
+
+    const patrol = entity.patrol
+    if (patrol) {
+      if (patrol.minX !== undefined && entity.x < patrol.minX) {
+        entity.x = patrol.minX
+        entity.vx = Math.abs(entity.vx ?? 0)
+      } else if (patrol.maxX !== undefined && entity.x > patrol.maxX) {
+        entity.x = patrol.maxX
+        entity.vx = -Math.abs(entity.vx ?? 0)
+      }
+      if (patrol.minY !== undefined && entity.y < patrol.minY) {
+        entity.y = patrol.minY
+        entity.vy = Math.abs(entity.vy ?? 0)
+      } else if (patrol.maxY !== undefined && entity.y > patrol.maxY) {
+        entity.y = patrol.maxY
+        entity.vy = -Math.abs(entity.vy ?? 0)
+      }
+    } else if (
+      entity.x + entity.w < -ENTITY_DESPAWN_MARGIN ||
+      entity.x > TROLL_RUN_INTERNAL_WIDTH + ENTITY_DESPAWN_MARGIN ||
+      entity.y + entity.h < -ENTITY_DESPAWN_MARGIN ||
+      entity.y > TROLL_RUN_INTERNAL_HEIGHT + ENTITY_DESPAWN_MARGIN
+    ) {
+      entities.splice(index, 1)
+      continue
+    }
+
+    if (player.alive && player.ridingEntityId === entity.id) {
+      player.x += entity.x - previousX
+      player.y += entity.y - previousY
+    }
+  }
 }
 
 function resolveTileCollisionsX(player: PlayerState, tiles: number[][], result: CollisionResult): void {
@@ -282,6 +354,48 @@ function resolveTileCollisionsY(player: PlayerState, tiles: number[][], result: 
       }
     }
   }
+}
+
+/**
+ * Pushes the runner out of a solid entity along whichever side they are least deep into, which is
+ * the side they came from. Standing on one counts as ground and records the ride, so the engine can
+ * carry the runner along when the entity moves next frame.
+ */
+function resolveSolidEntity(player: PlayerState, entity: TrollMovingEntity): void {
+  const fromLeft = player.x + player.width - entity.x
+  const fromRight = entity.x + entity.w - player.x
+  const fromTop = player.y + player.height - entity.y
+  const fromBottom = entity.y + entity.h - player.y
+  const shallowest = Math.min(fromLeft, fromRight, fromTop, fromBottom)
+
+  if (shallowest === fromTop) {
+    player.y = entity.y - player.height
+    if (player.vy > 0) player.vy = 0
+    if (!player.gravityInverted) {
+      player.grounded = true
+      player.ridingEntityId = entity.id
+    }
+    return
+  }
+
+  if (shallowest === fromBottom) {
+    player.y = entity.y + entity.h
+    if (player.vy < 0) player.vy = 0
+    if (player.gravityInverted) {
+      player.grounded = true
+      player.ridingEntityId = entity.id
+    }
+    return
+  }
+
+  if (shallowest === fromLeft) {
+    player.x = entity.x - player.width
+    if (player.vx > 0) player.vx = 0
+    return
+  }
+
+  player.x = entity.x + entity.w
+  if (player.vx < 0) player.vx = 0
 }
 
 function isSolidTile(tile: number): boolean {

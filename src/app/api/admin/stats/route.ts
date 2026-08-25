@@ -309,6 +309,34 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // Popular games by country — feeds ads targeting ("what should we
+  // advertise in Nigeria vs the UK?"). Joins each player-join's country
+  // against the game's type (`gameTypeById` already built above from the
+  // main games fetch). Bot seats are excluded so the counts reflect real
+  // humans in each country — `playersAll.hasBotColumn` gates that filter
+  // (used directly so this block doesn't depend on ordering vs the
+  // rooms-with-bots block below which declares its own `hasBotColumn`
+  // binding). Countries with fewer than 3 real joins are dropped as
+  // noise (single-player samples aren't a signal for ad decisions).
+  const gamesByCountry: Record<string, Record<string, number>> = {}
+  const countryTotals: Record<string, number> = {}
+  for (const row of playerRows) {
+    if (!row.country) continue
+    if (playersAll.hasBotColumn && row.is_bot) continue
+    const gameType = gameTypeById.get(row.game_id)
+    if (!gameType) continue
+    const bucket = (gamesByCountry[row.country] ??= {})
+    bucket[gameType] = (bucket[gameType] ?? 0) + 1
+    countryTotals[row.country] = (countryTotals[row.country] ?? 0) + 1
+  }
+  const POPULAR_MIN_JOINS = 3
+  const popularGamesByCountry: Record<string, { totalJoins: number; games: Record<string, number> }> = {}
+  for (const [country, byType] of Object.entries(gamesByCountry)) {
+    const total = countryTotals[country] ?? 0
+    if (total < POPULAR_MIN_JOINS) continue
+    popularGamesByCountry[country] = { totalJoins: total, games: byType }
+  }
+
   // Rooms-with-bots stats — a real game room that had at least one bot seat.
   // `is_bot` was added in 20260925120000_players_is_bot; if the field isn't
   // present on the fetched rows (older schema), hasBotColumn stays false and
@@ -611,6 +639,7 @@ export async function GET(req: NextRequest) {
     userGrowth,
     dauTrend,
     playersByCountry,
+    popularGamesByCountry,
     usersByCountry,
     uniqueCountries,
     dailyChallengeStats,
