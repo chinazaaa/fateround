@@ -170,23 +170,38 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
       const genAtRequest = boardGenRef.current
       const res = await postCodewordsBoard(gameCode, resumeToken)
       if (!res.ok) return false
-      boardFetchedAtRef.current = Date.now()
-      boardStaleRef.current = false
+      // The REQUEST succeeded, so the backoff resets regardless of whether we apply the payload.
       boardRetryDelayRef.current = BOARD_RETRY_BASE_MS
+
       const next = res.board
       const prev = boardRef.current
-      // Two ways this response can be stale, and both end the same way — keep the live board and
-      // graft on only the key, which is the reason we asked the route at all:
-      //   1. A realtime update landed WHILE this request was in flight (generation moved). This
-      //      catches clue/turn/winner changes, which leave the reveal count untouched.
-      //   2. The route read a replica that trails an update we already applied (fewer reveals).
-      const supersededByRealtime = boardGenRef.current !== genAtRequest
+
+      // A realtime update landed WHILE this request was in flight, so the payload describes an
+      // older world than the one on screen. It must never define board state — including when it
+      // is a board and `prev` is now null, which is exactly what a DELETE mid-flight looks like:
+      // applying it there would resurrect a deleted board.
+      //
+      // The key is still worth taking, but only when the payload describes the SAME board we
+      // still hold. Staleness is deliberately NOT cleared: we have not reconciled against current
+      // state, so the 15s reconcile should still come back for it.
+      if (boardGenRef.current !== genAtRequest) {
+        if (next && prev && prev.id === next.id) {
+          applyBoard({ ...prev, key: next.key, key_totals: next.key_totals ?? prev.key_totals })
+        }
+        return true
+      }
+
+      // No realtime event raced us, but the route may still have read a replica that trails an
+      // update we already applied (fewer reveals than we hold). Same treatment: keep the live
+      // board, graft on the key.
       const trailsReplica = (prev?.revealed_indices?.length ?? 0) > (next?.revealed_indices?.length ?? 0)
-      if (next && prev && prev.id === next.id && (supersededByRealtime || trailsReplica)) {
+      if (next && prev && prev.id === next.id && trailsReplica) {
         applyBoard({ ...prev, key: next.key, key_totals: next.key_totals ?? prev.key_totals })
       } else {
         applyBoard(next)
       }
+      boardFetchedAtRef.current = Date.now()
+      boardStaleRef.current = false
       return true
     },
     [gameCode, applyBoard]
