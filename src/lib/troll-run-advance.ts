@@ -120,18 +120,22 @@ export async function syncTrollRunGameState(
     const finalStates = await readRoundStates(supabase, gameId, session.current_round)
     const parSeconds = trollRunRoundParSeconds(session.current_world, session.level_order)
 
-    for (const score of buildTrollRunRoundScores(finalStates, parSeconds)) {
-      await supabase
-        .from('troll_run_player_states')
-        .update({
-          round_finished: true,
-          finish_position: score.finishPosition,
-          round_score: score.roundScore,
-          total_score: score.totalScore,
-          updated_at: nowIso,
-        })
-        .eq('id', score.stateId)
-    }
+    // Written together: the scoreboard waits on the last row, and a serial pass made that wait
+    // grow with every extra player in the room.
+    await Promise.all(
+      buildTrollRunRoundScores(finalStates, parSeconds).map((score) =>
+        supabase
+          .from('troll_run_player_states')
+          .update({
+            round_finished: true,
+            finish_position: score.finishPosition,
+            round_score: score.roundScore,
+            total_score: score.totalScore,
+            updated_at: nowIso,
+          })
+          .eq('id', score.stateId)
+      )
+    )
 
     return { ok: true, code: 'finished_round', phase: 'scoreboard' }
   }
