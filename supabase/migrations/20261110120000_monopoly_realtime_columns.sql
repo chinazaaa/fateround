@@ -31,43 +31,66 @@
 
 do $$
 begin
-  alter publication supabase_realtime set table public.monopoly_boards (
-    id,
-    game_id,
-    board_size,
-    turn_order,
-    current_turn_index,
-    phase,
-    last_dice,
-    consecutive_doubles,
-    property_owners,
-    property_buildings,
-    mortgaged_properties,
-    houses_in_bank,
-    hotels_in_bank,
-    auction_state,
-    pending_trade,
-    pending_debt,
-    pending_space,
-    status_message,
-    last_card_event,
-    last_rent_event,
-    last_cash_event,
-    last_trade_event,
-    loans,
-    turn_deadline_at,
-    winner_player_id,
-    created_at,
-    updated_at
-  );
-exception
-  when undefined_object then
-    -- Table not in the publication on this database (a fresh local stack that has not run the
-    -- ADD TABLE yet). Nothing to narrow; the ADD in 0045 will include every column, which is the
-    -- pre-existing behaviour rather than a regression.
-    raise notice 'monopoly_boards not in supabase_realtime — skipping column narrowing';
+  -- DROP then ADD, never `SET TABLE`.
+  --
+  -- `ALTER PUBLICATION ... SET TABLE` replaces the publication's ENTIRE table list. This
+  -- publication carries 84 tables; using SET here would have silently dropped the other 83 and
+  -- killed realtime across nearly every game in the app. `DROP TABLE` + `ADD TABLE (cols)`
+  -- touches only monopoly_boards. (Caught in review — the first version of this migration had
+  -- exactly that bug, in both the statement and its rollback.)
+  --
+  -- Both statements are guarded so this is safe on a database where the table is not published
+  -- yet (a fresh local stack that has not reached 0045), and idempotent on re-run.
+  if exists (select 1 from pg_class c
+               join pg_namespace n on n.oid = c.relnamespace
+              where n.nspname = 'public' and c.relname = 'monopoly_boards') then
+
+    if exists (select 1 from pg_publication_rel pr
+                 join pg_publication p on p.oid = pr.prpubid
+                 join pg_class c on c.oid = pr.prrelid
+                 join pg_namespace n on n.oid = c.relnamespace
+                where p.pubname = 'supabase_realtime'
+                  and n.nspname = 'public'
+                  and c.relname = 'monopoly_boards') then
+      alter publication supabase_realtime drop table public.monopoly_boards;
+    end if;
+
+    alter publication supabase_realtime add table public.monopoly_boards (
+      id,
+      game_id,
+      board_size,
+      turn_order,
+      current_turn_index,
+      phase,
+      last_dice,
+      consecutive_doubles,
+      property_owners,
+      property_buildings,
+      mortgaged_properties,
+      houses_in_bank,
+      hotels_in_bank,
+      auction_state,
+      pending_trade,
+      pending_debt,
+      pending_space,
+      status_message,
+      last_card_event,
+      last_rent_event,
+      last_cash_event,
+      last_trade_event,
+      loans,
+      turn_deadline_at,
+      winner_player_id,
+      created_at,
+      updated_at
+    );
+  else
+    raise notice 'monopoly_boards not present — skipping realtime column narrowing';
+  end if;
 end $$;
 
 -- ── ROLLBACK (drafted, not run) ──────────────────────────────────────────────
 -- Restores the full-row publication:
---   alter publication supabase_realtime set table public.monopoly_boards;
+--   alter publication supabase_realtime drop table public.monopoly_boards;
+--   alter publication supabase_realtime add  table public.monopoly_boards;
+-- (DROP + ADD, NOT `set table` — that would replace the publication's whole table list.)
