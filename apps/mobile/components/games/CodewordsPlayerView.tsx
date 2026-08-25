@@ -133,6 +133,14 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
   // between the load closure and the realtime handler; `board` is what renders.
   const [board, setBoard] = useState<CodewordsBoard | null>(null)
   const boardRef = useRef<CodewordsBoard | null>(null)
+  /**
+   * Bumped by every REALTIME board update. `fetchBoard` snapshots it before awaiting and compares
+   * after, so a route response that started before a live update cannot overwrite the newer state.
+   * The `revealed_indices` length check alone was not enough: an update that changes only the
+   * clue, the turn or the winner leaves the reveal count untouched, so a slow response would
+   * still land on top and show an obsolete turn until the next event or the 15s reconcile.
+   */
+  const boardGenRef = useRef(0)
   /** When the last successful route fetch landed (0 = never). */
   const boardFetchedAtRef = useRef(0)
   /** Set when we know the cached board is (or may be) behind — forces the next fetch. */
@@ -159,6 +167,7 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
    */
   const fetchBoard = useCallback(
     async (resumeToken: string | null): Promise<boolean> => {
+      const genAtRequest = boardGenRef.current
       const res = await postCodewordsBoard(gameCode, resumeToken)
       if (!res.ok) return false
       boardFetchedAtRef.current = Date.now()
@@ -166,14 +175,14 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
       boardRetryDelayRef.current = BOARD_RETRY_BASE_MS
       const next = res.board
       const prev = boardRef.current
-      if (
-        next &&
-        prev &&
-        prev.id === next.id &&
-        (prev.revealed_indices?.length ?? 0) > (next.revealed_indices?.length ?? 0)
-      ) {
-        // The route read a replica that trails a realtime update we already applied. Take only
-        // the key (the reason we asked at all) and keep the newer live fields.
+      // Two ways this response can be stale, and both end the same way — keep the live board and
+      // graft on only the key, which is the reason we asked the route at all:
+      //   1. A realtime update landed WHILE this request was in flight (generation moved). This
+      //      catches clue/turn/winner changes, which leave the reveal count untouched.
+      //   2. The route read a replica that trails an update we already applied (fewer reveals).
+      const supersededByRealtime = boardGenRef.current !== genAtRequest
+      const trailsReplica = (prev?.revealed_indices?.length ?? 0) > (next?.revealed_indices?.length ?? 0)
+      if (next && prev && prev.id === next.id && (supersededByRealtime || trailsReplica)) {
         applyBoard({ ...prev, key: next.key, key_totals: next.key_totals ?? prev.key_totals })
       } else {
         applyBoard(next)
@@ -374,12 +383,16 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
         { event: '*', schema: 'public', table: 'codewords_boards', filter: `game_id=eq.${code}` },
         (payload) => {
           if (payload.eventType === 'DELETE') {
+            boardGenRef.current += 1
             applyBoard(null)
             boardStaleRef.current = true
             return
           }
           const incoming = payload.new as CodewordsBoard
           const prev = boardRef.current
+          // Bump BEFORE applying so an in-flight fetch that resolves next tick still sees the
+          // change and declines to overwrite it.
+          boardGenRef.current += 1
           applyBoard(mergeCodewordsBoardUpdate(prev, incoming))
           const rowReplaced = !prev || prev.id !== incoming.id
           const revealedChanged = (prev?.revealed_indices?.length ?? -1) !== (incoming.revealed_indices?.length ?? 0)
