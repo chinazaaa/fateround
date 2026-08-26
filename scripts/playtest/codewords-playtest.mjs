@@ -31,15 +31,12 @@ const s = await post(`${APP}/api/games/${code}/start`, { hostToken })
 log.push(`START -> ${s.status} ${s.status !== 200 ? JSON.stringify(s.d) : ''}`)
 if (s.status !== 200) fail.push(`START FAILED: ${JSON.stringify(s.d)}`)
 const g = await get(`${REST}/games?id=eq.${code}&select=status`, SRV)
-const gRow = Array.isArray(g.d) ? g.d[0] : null
-log.push(`game.status=${gRow?.status} (query g.status)`)
-// Verify the QUERY before trusting its answer. A 401/500/malformed body/empty result leaves the
-// status undefined, which would silently skip the still-waiting check below and could hide a
-// revoked `games` privilege while every other assertion still passed.
-if (g.status !== 200) fail.push(`games status query failed (${g.status}) — cannot verify the game started`)
-else if (!gRow) fail.push(`games row ${code} not found — cannot verify the game started`)
-else if (gRow.status == null) fail.push(`games row ${code} has a null status — cannot verify the game started`)
-else if (gRow.status === 'waiting') fail.push('still waiting after start')
+// assertQueryUsable fails loudly on a non-200, an empty result, or a row whose `status` is
+// absent/null — any of which would otherwise leave the check below reading `undefined` and
+// silently passing, hiding (for example) a revoked `games` privilege.
+const gRow = assertQueryUsable(g, `games ${code}`, fail, ['status'])
+log.push(`game.status=${gRow?.status}`)
+if (gRow?.status === 'waiting') fail.push('still waiting after start')
 
 const b = await get(`${REST}/codewords_boards?game_id=eq.${code}&select=key`, SRV)
 log.push(`board rows(service)=${b.d?.length}, key present=${!!b.d?.[0]?.key}`)

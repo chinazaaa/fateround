@@ -1,4 +1,4 @@
-import { ANON, APP, REST, SRV, assertDenied, assertQueryUsable, assertReadableRows, h, post } from './_shared.mjs'
+import { ANON, APP, REST, SRV, assertDenied, assertQueryUsable, assertReadableRows, get, post } from './_shared.mjs'
 
 const GAMES = [
   { type: 'whot', players: 3, table: 'whot_sessions', secrets: ['draw_pile', 'discard_pile'], extra: {} },
@@ -96,16 +96,14 @@ async function run(g) {
   // assertQueryUsable fails loudly on a 401/500/empty result rather than leaving `status`
   // undefined, which would silently skip the "still waiting" check below.
   const gres = await get(`${REST}/games?id=eq.${code}&select=status`, SRV)
-  const status = assertQueryUsable(gres, `games ${code}`, fail)?.status
+  const status = assertQueryUsable(gres, `games ${code}`, fail, ['status'])?.status
   log.push(`game.status=${status}`)
   if (status === 'waiting') fail.push(`game still 'waiting' after start (silent-failure signature)`)
 
   // secret row must exist and be populated (service role)
   const col = g.table === 'ttl_statements' ? 'game_id' : 'game_id'
   const sel = g.secrets.join(',')
-  const sr = await fetch(`${REST}/${g.table}?${col}=eq.${code}&select=${sel}`, { headers: h(SRV) }).then((r) =>
-    r.json()
-  )
+  const sr = (await get(`${REST}/${g.table}?${col}=eq.${code}&select=${sel}`, SRV)).d
   const rows = Array.isArray(sr) ? sr : []
   // Non-vacuity: a row whose secret columns are ALL null proves nothing about redaction — the
   // anon denials below would pass against empty state. Require the game to have generated

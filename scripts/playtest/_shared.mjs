@@ -100,7 +100,7 @@ export function assertReadableRows(res, label, fail) {
  * whatever check depended on it — hiding, for example, a revoked `games` privilege while every
  * other assertion still passes.
  */
-export function assertQueryUsable(res, label, fail) {
+export function assertQueryUsable(res, label, fail, requiredFields = []) {
   if (res.status !== 200) {
     fail.push(`${label} query failed (${res.status}) — its answer cannot be trusted`)
     return null
@@ -108,6 +108,14 @@ export function assertQueryUsable(res, label, fail) {
   const row = Array.isArray(res.d) ? res.d[0] : null
   if (!row) {
     fail.push(`${label} query returned no row — its answer cannot be trusted`)
+    return null
+  }
+  // A row can come back present but hollow — `{}` or a null column — and returning it then lets
+  // the caller read `undefined` and skip the check that depended on it, which is the same silent
+  // pass this helper exists to prevent. Name the fields you are about to read.
+  const missing = requiredFields.filter((f) => row[f] === undefined || row[f] === null)
+  if (missing.length > 0) {
+    fail.push(`${label} row is missing ${missing.join(', ')} — its answer cannot be trusted`)
     return null
   }
   return row
