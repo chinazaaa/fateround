@@ -11,6 +11,7 @@ import { formatWhotGameDuration, WHOT_GAME_DURATION_OPTIONS } from '@/lib/whot'
 import { formatCrazyEightsGameDuration, CRAZY8_GAME_DURATION_OPTIONS } from '@/lib/crazy-eights'
 import { formatRummyGameDuration, RUMMY_GAME_DURATION_OPTIONS } from '@/lib/rummy'
 import { formatUnoGameDuration, UNO_GAME_DURATION_OPTIONS } from '@/lib/uno'
+import { formatGofishGameDuration, GOFISH_GAME_DURATION_OPTIONS } from '@/lib/gofish'
 import { lobbyMaxPlayersFromGame, playerCountOptions, type GamePlayerLimitsMap } from '@/lib/game-limits'
 import { HostAllowViewersField } from '@/components/HostAllowViewersField'
 import { HostLobbySettingsSection } from '@/components/host-lobby/HostLobbySettingsSection'
@@ -295,7 +296,9 @@ export function HostBoardGameLobbyPanel({
           ? formatRummyGameDuration
           : boardGameType === 'uno'
             ? formatUnoGameDuration
-            : formatMonopolyGameDuration
+            : boardGameType === 'gofish'
+              ? formatGofishGameDuration
+              : formatMonopolyGameDuration
   const durationOptionsSource =
     boardGameType === 'whot'
       ? WHOT_GAME_DURATION_OPTIONS
@@ -305,7 +308,9 @@ export function HostBoardGameLobbyPanel({
           ? RUMMY_GAME_DURATION_OPTIONS
           : boardGameType === 'uno'
             ? UNO_GAME_DURATION_OPTIONS
-            : MONOPOLY_GAME_DURATION_OPTIONS
+            : boardGameType === 'gofish'
+              ? GOFISH_GAME_DURATION_OPTIONS
+              : MONOPOLY_GAME_DURATION_OPTIONS
 
   const durationOptions = useMemo(
     () =>

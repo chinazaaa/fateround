@@ -19,7 +19,7 @@ import { HostModeSelector } from '@/components/host/HostModeSelector'
 import { HostGameLayout } from '@/components/host/HostGameLayout'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { GameInfoChips } from '@/components/game-lobby/GameInfoChips'
-import { HostMaxPlayersLobbyPanel } from '@/components/host-lobby/HostMaxPlayersLobbyPanel'
+import { HostBoardGameLobbyPanel } from '@/components/host-lobby/HostBoardGameLobbyPanel'
 import { HostActiveSettings } from '@/components/host/HostActiveSettings'
 import { TransferHostControl } from '@/components/TransferHostControl'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
@@ -255,12 +255,13 @@ export function GoFishHostView({ gameCode, hostToken }: { gameCode: string; host
 
     const lobbySettings = (
       <>
-        <HostMaxPlayersLobbyPanel
+        <HostBoardGameLobbyPanel
           gameCode={gameCode}
           hostToken={hostToken}
           game={game}
-          limitType="gofish"
-          playerCount={activePlayers.length}
+          boardGameType="gofish"
+          playerCount={players.length}
+          seatedCount={activePlayers.length}
           onGameUpdate={setGame}
         />
         <TransferHostControl triggerClassName="btn-secondary w-full flex items-center justify-center gap-2" />
