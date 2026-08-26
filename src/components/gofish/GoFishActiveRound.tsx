@@ -133,7 +133,7 @@ export function GoFishActiveRound({
   }
 
   const events = session?.event_log ?? []
-  useGoFishEventToasts(events, myPlayerId, nameOf, isFinished)
+  useGoFishEventToasts(events, session?.id ?? null, myPlayerId, nameOf, isFinished)
 
   return (
     <div className="space-y-6">
@@ -556,20 +556,27 @@ function EventLog({ events, nameOf }: { events: GoFishSession['event_log']; name
  */
 function useGoFishEventToasts(
   events: GoFishSession['event_log'],
+  sessionId: string | null,
   myPlayerId: string,
   nameOf: (id: string) => string,
   isFinished: boolean
 ) {
   const { info } = useToast()
   const seenRef = useRef<Set<string> | null>(null)
+  const sessionIdRef = useRef<string | null>(null)
   useEffect(() => {
     if (isFinished) return
-    // First run: mark everything as already-seen so we don't spam on join.
-    if (seenRef.current === null) {
+    // Wait until the session row lands — if we prime with an empty list before it does,
+    // the backlog would appear "new" on the next reload and spam a burst of history toasts.
+    if (!sessionId) return
+    // Reset when the session id changes (a new round in the same room): prime the ref
+    // from the current events without notifying for that backlog.
+    if (sessionIdRef.current !== sessionId) {
+      sessionIdRef.current = sessionId
       seenRef.current = new Set(events.map((e) => `${e.kind}:${e.at}`))
       return
     }
-    const seen = seenRef.current
+    const seen = seenRef.current!
     for (const event of events) {
       const key = `${event.kind}:${event.at}`
       if (seen.has(key)) continue
@@ -577,7 +584,7 @@ function useGoFishEventToasts(
       const msg = perspectiveMessage(event, myPlayerId, nameOf)
       if (msg) info(msg, 4500)
     }
-  }, [events, myPlayerId, nameOf, info, isFinished])
+  }, [events, sessionId, myPlayerId, nameOf, info, isFinished])
 }
 
 function perspectiveMessage(event: GoFishEvent, myPlayerId: string, nameOf: (id: string) => string): string | null {

@@ -32,7 +32,13 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ co
     return NextResponse.json({ expired: false, finished: false })
   }
 
-  const finished = await finishExpiredGoFishGame(supabase, gameId)
-  if (!finished) return NextResponse.json({ error: 'Failed to end game' }, { status: 500 })
-  return NextResponse.json({ expired: true, finished: true })
+  const result = await finishExpiredGoFishGame(supabase, gameId)
+  // 200 for "already finished by a concurrent poke" so the client's retry loop stops;
+  // 500 only for a real load/write failure. Bare boolean would send both to 500.
+  if (result.error) return NextResponse.json({ error: result.error }, { status: 500 })
+  return NextResponse.json({
+    expired: true,
+    finished: result.finished,
+    alreadyFinished: result.alreadyFinished ?? false,
+  })
 }
