@@ -9,6 +9,7 @@ import {
 import { formatMonopolyGameDuration, MONOPOLY_GAME_DURATION_OPTIONS } from '@/lib/monopoly'
 import { formatWhotGameDuration, WHOT_GAME_DURATION_OPTIONS } from '@/lib/whot'
 import { formatCrazyEightsGameDuration, CRAZY8_GAME_DURATION_OPTIONS } from '@/lib/crazy-eights'
+import { formatRummyGameDuration, RUMMY_GAME_DURATION_OPTIONS } from '@/lib/rummy'
 import { formatUnoGameDuration, UNO_GAME_DURATION_OPTIONS } from '@/lib/uno'
 import { lobbyMaxPlayersFromGame, playerCountOptions, type GamePlayerLimitsMap } from '@/lib/game-limits'
 import { HostAllowViewersField } from '@/components/HostAllowViewersField'
@@ -290,17 +291,21 @@ export function HostBoardGameLobbyPanel({
       ? formatWhotGameDuration
       : boardGameType === 'crazy_eights'
         ? formatCrazyEightsGameDuration
-        : boardGameType === 'uno'
-          ? formatUnoGameDuration
-          : formatMonopolyGameDuration
+        : boardGameType === 'rummy'
+          ? formatRummyGameDuration
+          : boardGameType === 'uno'
+            ? formatUnoGameDuration
+            : formatMonopolyGameDuration
   const durationOptionsSource =
     boardGameType === 'whot'
       ? WHOT_GAME_DURATION_OPTIONS
       : boardGameType === 'crazy_eights'
         ? CRAZY8_GAME_DURATION_OPTIONS
-        : boardGameType === 'uno'
-          ? UNO_GAME_DURATION_OPTIONS
-          : MONOPOLY_GAME_DURATION_OPTIONS
+        : boardGameType === 'rummy'
+          ? RUMMY_GAME_DURATION_OPTIONS
+          : boardGameType === 'uno'
+            ? UNO_GAME_DURATION_OPTIONS
+            : MONOPOLY_GAME_DURATION_OPTIONS
 
   const durationOptions = useMemo(
     () =>
@@ -345,6 +350,7 @@ export function HostBoardGameLobbyPanel({
         {(boardGameType === 'monopoly' ||
           boardGameType === 'whot' ||
           boardGameType === 'crazy_eights' ||
+          boardGameType === 'rummy' ||
           boardGameType === 'uno') && (
           <HostLobbySettingBlock title="Game length" className="sm:col-span-2">
             <HostLobbyOptionChips value={gameDuration} options={durationOptions} onChange={onGameDurationChange} />

@@ -43,6 +43,7 @@ const DIR_TO_GAME_TYPES: Record<string, GameType[]> = {
   npat: ['i_call_on'],
   'quick-draw': ['quick_draw'],
   quiplash: ['quiplash'],
+  rummy: ['rummy'],
   scrabble: ['scrabble'],
   'snake-and-ladder': ['snake_and_ladder'],
   sudoku: ['sudoku'],
