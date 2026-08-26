@@ -528,6 +528,11 @@ export async function clearRummySessionData(
   return clearSessionTables(supabase, gameId, [RUMMY_SESSIONS, RUMMY_HANDS], { resetSpectators: true })
 }
 
+// Reads the session, hands, player names, and game-clock fields together. If any of the three
+// required reads fails (session / hands / games row) we surface an `error` — treating a failed
+// hands read as `[]` in a draw handler would let the session-claim + hand write overwrite the
+// player's persisted hand with only the freshly drawn card. Player names are display-only, so
+// pRes failures fall through with an empty map.
 async function loadRummyState(
   supabase: SupabaseClient,
   gameId: string
@@ -538,6 +543,7 @@ async function loadRummyState(
   timerSeconds: number
   gameDurationSeconds: number
   sessionStartedAt: string | null
+  error?: string
 }> {
   const [sRes, hRes, pRes, gRes] = await Promise.all([
     supabase.from(RUMMY_SESSIONS).select('*').eq('game_id', gameId).maybeSingle(),
@@ -551,6 +557,7 @@ async function loadRummyState(
   ])
   const names = new Map<string, string>()
   for (const p of pRes.data ?? []) names.set(p.id, p.name)
+  const readError = sRes.error ?? hRes.error ?? gRes.error
   return {
     session: (sRes.data as RummySession | null) ?? null,
     hands: (hRes.data as RummyPlayerHand[]) ?? [],
@@ -558,6 +565,7 @@ async function loadRummyState(
     timerSeconds: gRes.data?.timer_seconds ?? 0,
     gameDurationSeconds: gRes.data?.game_duration_seconds ?? 0,
     sessionStartedAt: gRes.data?.session_started_at ?? null,
+    ...(readError ? { error: internalErrorMessage('rummy', readError) } : {}),
   }
 }
 
@@ -574,12 +582,22 @@ export async function processRummyDraw(
   playerId: string,
   source: 'pile' | 'discard'
 ): Promise<{ error?: string }> {
-  const { session, hands, names, gameDurationSeconds, sessionStartedAt } = await loadRummyState(supabase, gameId)
+  const state = await loadRummyState(supabase, gameId)
+  if (state.error) return { error: state.error }
+  const { session, hands, names, gameDurationSeconds, sessionStartedAt } = state
   if (!session) return { error: 'Rummy session not found' }
   if (session.phase === 'finished') return { error: 'Game is finished' }
-  if (await maybeFinalizeGameClock(supabase, gameId, session, hands, names, sessionStartedAt, gameDurationSeconds)) {
-    return {}
-  }
+  const clockRes = await maybeFinalizeGameClock(
+    supabase,
+    gameId,
+    session,
+    hands,
+    names,
+    sessionStartedAt,
+    gameDurationSeconds
+  )
+  if (clockRes.error) return { error: clockRes.error }
+  if (clockRes.finalized) return {}
   if (currentPlayerId(session) !== playerId) return { error: "It's not your turn" }
   if (session.turn_step !== 'draw') return { error: 'You already drew — discard to end your turn' }
 
@@ -653,15 +671,22 @@ export async function processRummyDiscard(
   playerId: string,
   cardId: string
 ): Promise<{ error?: string }> {
-  const { session, hands, names, timerSeconds, gameDurationSeconds, sessionStartedAt } = await loadRummyState(
-    supabase,
-    gameId
-  )
+  const state = await loadRummyState(supabase, gameId)
+  if (state.error) return { error: state.error }
+  const { session, hands, names, timerSeconds, gameDurationSeconds, sessionStartedAt } = state
   if (!session) return { error: 'Rummy session not found' }
   if (session.phase === 'finished') return { error: 'Game is finished' }
-  if (await maybeFinalizeGameClock(supabase, gameId, session, hands, names, sessionStartedAt, gameDurationSeconds)) {
-    return {}
-  }
+  const clockRes = await maybeFinalizeGameClock(
+    supabase,
+    gameId,
+    session,
+    hands,
+    names,
+    sessionStartedAt,
+    gameDurationSeconds
+  )
+  if (clockRes.error) return { error: clockRes.error }
+  if (clockRes.finalized) return {}
   if (currentPlayerId(session) !== playerId) return { error: "It's not your turn" }
   if (session.turn_step !== 'discard') return { error: 'You must draw before discarding' }
 
@@ -706,12 +731,22 @@ export async function processRummyGoOut(
   meldCardIds: string[][],
   discardCardId: string | null
 ): Promise<{ error?: string }> {
-  const { session, hands, names, gameDurationSeconds, sessionStartedAt } = await loadRummyState(supabase, gameId)
+  const state = await loadRummyState(supabase, gameId)
+  if (state.error) return { error: state.error }
+  const { session, hands, names, gameDurationSeconds, sessionStartedAt } = state
   if (!session) return { error: 'Rummy session not found' }
   if (session.phase === 'finished') return { error: 'Game is finished' }
-  if (await maybeFinalizeGameClock(supabase, gameId, session, hands, names, sessionStartedAt, gameDurationSeconds)) {
-    return {}
-  }
+  const clockRes = await maybeFinalizeGameClock(
+    supabase,
+    gameId,
+    session,
+    hands,
+    names,
+    sessionStartedAt,
+    gameDurationSeconds
+  )
+  if (clockRes.error) return { error: clockRes.error }
+  if (clockRes.finalized) return {}
   if (currentPlayerId(session) !== playerId) return { error: "It's not your turn" }
   // Going out requires you to have drawn this turn (the classic sequence: draw → meld → discard).
   if (session.turn_step !== 'discard') return { error: 'Draw a card before going out' }
@@ -767,6 +802,13 @@ export async function processRummyGoOut(
 /** If the whole-game clock ran out, finalize by lowest hand total and return true so the
  *  caller stops. Runs before every action processor — server clock is the source of truth
  *  so a stale/skewed client can't extend the game past the buzzer. */
+// `finalized: true` means the game clock ran out and the row flipped to finished.
+// `finalized: false, error: undefined` means the clock has not expired yet — normal case,
+// carry on with the caller's action. `error` means expired but the finalizing write failed —
+// caller must NOT continue as if the round were still in progress, and must NOT report the
+// action as done. Distinguishing these three cases stops a downstream draw/discard from
+// racing a stale (should-be-finished) session, and stops the expire route from lying to the
+// client about a finalize that never persisted.
 async function maybeFinalizeGameClock(
   supabase: SupabaseClient,
   gameId: string,
@@ -775,12 +817,11 @@ async function maybeFinalizeGameClock(
   names: Map<string, string>,
   sessionStartedAt: string | null,
   gameDurationSeconds: number
-): Promise<boolean> {
-  if (!rummyGameSessionExpired(sessionStartedAt, gameDurationSeconds)) return false
+): Promise<{ finalized: boolean; error?: string }> {
+  if (!rummyGameSessionExpired(sessionStartedAt, gameDurationSeconds)) return { finalized: false }
   const res = await finalizeByLowestHand(supabase, gameId, session, hands, names, "Time's up!")
-  // If the finalization write failed the game is still active — don't tell the caller
-  // it's done; they'll retry (game-tick will poke again).
-  return !res.error
+  if (res.error) return { finalized: false, error: res.error }
+  return { finalized: true }
 }
 
 /**
@@ -795,12 +836,22 @@ export async function processRummyExpireTurn(
   supabase: SupabaseClient,
   gameId: string
 ): Promise<{ error?: string; skipped?: boolean }> {
-  const { session, hands, names, gameDurationSeconds, sessionStartedAt } = await loadRummyState(supabase, gameId)
+  const state = await loadRummyState(supabase, gameId)
+  if (state.error) return { error: state.error }
+  const { session, hands, names, gameDurationSeconds, sessionStartedAt } = state
   if (!session) return { error: 'Session not found' }
   if (session.phase === 'finished') return { skipped: true }
-  if (await maybeFinalizeGameClock(supabase, gameId, session, hands, names, sessionStartedAt, gameDurationSeconds)) {
-    return {}
-  }
+  const clockRes = await maybeFinalizeGameClock(
+    supabase,
+    gameId,
+    session,
+    hands,
+    names,
+    sessionStartedAt,
+    gameDurationSeconds
+  )
+  if (clockRes.error) return { error: clockRes.error }
+  if (clockRes.finalized) return {}
   if (!session.turn_deadline_at || new Date(session.turn_deadline_at) > new Date()) {
     return { skipped: true }
   }
@@ -814,10 +865,13 @@ export async function processRummyExpireTurn(
     // calling processRummyDiscard against a finished session would return "Game is
     // finished" as an error and misreport the successful finalization.
     const after = await loadRummyState(supabase, gameId)
+    if (after.error) return { error: after.error }
     if (!after.session || after.session.phase === 'finished') return {}
   }
   // After the draw the turn_step is 'discard' — auto-discard the first hand card.
-  const { hands: hands2 } = await loadRummyState(supabase, gameId)
+  const after2 = await loadRummyState(supabase, gameId)
+  if (after2.error) return { error: after2.error }
+  const hands2 = after2.hands
   const hand = handForPlayer(hands2, currentId)
   const first = hand[0]
   if (!first) return { skipped: true }
@@ -834,7 +888,11 @@ export async function finishExpiredRummyGame(
 ): Promise<boolean> {
   if (game.status !== 'active') return false
   if (!rummyGameSessionExpired(game.session_started_at, game.game_duration_seconds)) return false
-  const { session, hands, names } = await loadRummyState(supabase, game.id)
+  const state = await loadRummyState(supabase, game.id)
+  // A required-read failure is NOT "finished" — return false so the route retries next tick
+  // instead of telling the client the game ended.
+  if (state.error) return false
+  const { session, hands, names } = state
   if (!session) return false
   const res = await finalizeByLowestHand(supabase, game.id, session, hands, names, "Time's up!")
   // Propagate a finalize failure — the route caller reads this to decide whether the
@@ -871,6 +929,11 @@ async function finalizeByLowestHand(
     })
     .eq('game_id', gameId)
   if (error) return { error: internalErrorMessage('rummy', error) }
-  await markGameFinished(supabase, gameId)
+  // markGameFinished flips games.status from 'active' → 'finished'. If THAT write fails the
+  // rummy_sessions row is already finished but games.status is still active — game-tick would
+  // keep poking the expire route while the client sees a finished session. Propagate so the
+  // caller returns false and the route retries next tick instead of misreporting success.
+  const finish = await markGameFinished(supabase, gameId)
+  if (finish.error) return { error: internalErrorMessage('rummy', finish.error) }
   return {}
 }
