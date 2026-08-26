@@ -10,6 +10,7 @@ import {
   gofishTurnDeadline,
   pickAutoAsk,
   resolveGoFishAsk,
+  resolveGoFishRefill,
   resolveWinner,
   shuffleDeck,
   type GoFishAskResult,
@@ -349,4 +350,75 @@ function askErrorMessage(
 /** Public snapshot for status polling / debugging. */
 export function summariseEvents(events: GoFishEvent[]): string {
   return `${events.length} events`
+}
+
+/**
+ * Draw a fresh hand for the active player when they start their turn with 0 cards.
+ * Same concurrency guard as processGoFishAsk — session claim on updated_at, hand write
+ * only after the claim succeeds.
+ */
+export async function processGoFishRefill(
+  supabase: SupabaseClient,
+  gameId: string,
+  playerId: string
+): Promise<{ error?: string; drewCount?: number }> {
+  const loaded = await loadGameState(supabase, gameId)
+  if (loaded.error) return { error: loaded.error }
+  const { session, hands = [] } = loaded
+  if (!session) return { error: 'Session not found' }
+
+  const finalized = await finalizeIfSessionExpired(supabase, gameId, session, hands)
+  if (finalized.error) return { error: finalized.error }
+  if (finalized.ok) return { error: "Time's up" }
+
+  const now = new Date().toISOString()
+  const result = resolveGoFishRefill({ session, hands, playerId, now })
+  if (!result.ok) return { error: refillErrorMessage(result.error) }
+
+  const { data: gameRow } = await supabase.from('games').select('timer_seconds').eq('id', gameId).maybeSingle()
+  const timerSeconds = (gameRow?.timer_seconds ?? 0) as number
+
+  const { data: claimed, error: sessionError } = await supabase
+    .from('gofish_sessions')
+    .update({
+      ocean: result.session.ocean,
+      ocean_count: result.session.ocean_count,
+      event_log: result.session.event_log,
+      // Fresh clock on the refill — the player still has to make their ask afterwards.
+      turn_deadline_at: gofishTurnDeadline(timerSeconds),
+      updated_at: result.session.updated_at,
+    })
+    .eq('game_id', gameId)
+    .eq('updated_at', session.updated_at)
+    .select('game_id')
+  if (sessionError) return { error: internalErrorMessage('gofish', sessionError) }
+  if (!claimed || claimed.length === 0) {
+    return { error: 'Session changed by another request — please retry' }
+  }
+
+  const { error: handError } = await supabase
+    .from('gofish_player_hands')
+    .update({ cards: result.handUpdate.cards, books: result.handUpdate.books })
+    .eq('game_id', gameId)
+    .eq('player_id', result.handUpdate.playerId)
+  if (handError) return { error: internalErrorMessage('gofish', handError) }
+
+  return { drewCount: result.drawn.length }
+}
+
+function refillErrorMessage(
+  code: 'game_finished' | 'not_your_turn' | 'unknown_player' | 'hand_not_empty' | 'ocean_empty'
+): string {
+  switch (code) {
+    case 'game_finished':
+      return 'The game is over'
+    case 'not_your_turn':
+      return "It's not your turn"
+    case 'unknown_player':
+      return 'You are not seated in this game'
+    case 'hand_not_empty':
+      return 'Your hand still has cards — no refill needed'
+    case 'ocean_empty':
+      return 'The ocean is empty — no cards to draw'
+  }
 }

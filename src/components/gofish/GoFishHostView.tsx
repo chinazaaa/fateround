@@ -21,7 +21,6 @@ import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { GameInfoChips } from '@/components/game-lobby/GameInfoChips'
 import { HostMaxPlayersLobbyPanel } from '@/components/host-lobby/HostMaxPlayersLobbyPanel'
 import { HostActiveSettings } from '@/components/host/HostActiveSettings'
-import { HostRulesRow } from '@/components/host/HostRulesRow'
 import { TransferHostControl } from '@/components/TransferHostControl'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { GoFishActiveRound } from '@/components/gofish/GoFishActiveRound'
@@ -302,20 +301,25 @@ export function GoFishHostView({ gameCode, hostToken }: { gameCode: string; host
   const isFinished = game.status === 'finished' || session?.phase === 'finished'
   const hostPlays = hostMode === 'player' && Boolean(hostPlayerId)
 
+  const activeTurnName = session
+    ? (players.find((p) => p.id === session.turn_order[session.current_turn_index])?.name ?? '—')
+    : '—'
+
   const projector = (
     <div className="mx-auto max-w-4xl p-4 sm:p-6 space-y-4">
-      <div className="glass-card-strong p-4 flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-black">{cfg.label}</h1>
+      <div className="glass-card-strong p-3 sm:p-4 flex items-center gap-3 flex-wrap">
+        <div className="min-w-0 flex-1">
+          <h1 className="text-lg sm:text-xl font-black truncate">{cfg.label}</h1>
           <p className="text-muted text-xs">
             {isFinished
               ? 'Game finished'
               : session
-                ? `Ocean: ${session.ocean_count} · Turn: ${players.find((p) => p.id === session.turn_order[session.current_turn_index])?.name ?? '—'}`
+                ? `Ocean: ${session.ocean_count} · Turn: ${activeTurnName}`
                 : 'Loading round…'}
           </p>
         </div>
-        <HostRulesRow gameType="gofish" />
+        {/* HostRulesRow is the "How to play" link — keep it in the settings gear + the
+            active round's finished screen. In the header it dominates the width. */}
       </div>
       <GoFishActiveRound
         gameCode={gameCode}
@@ -362,7 +366,7 @@ export function GoFishHostView({ gameCode, hostToken }: { gameCode: string; host
         showTabs={false}
         gameStarted={true}
         header={<HostGameHeader game={game} />}
-        primary={<div className="mx-auto max-w-4xl w-full p-4 sm:p-6">{projector}</div>}
+        primary={projector}
         manage={projector}
       />
     )

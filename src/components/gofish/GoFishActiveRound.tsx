@@ -48,6 +48,7 @@ export function GoFishActiveRound({
   const [selectedTargetId, setSelectedTargetId] = useState<string | null>(null)
   const [selectedRank, setSelectedRank] = useState<GoFishRank | null>(null)
   const [asking, setAsking] = useState(false)
+  const [refilling, setRefilling] = useState(false)
 
   const playersById = useMemo(() => new Map(players.map((p) => [p.id, p])), [players])
   const nameOf = (id: string) => playersById.get(id)?.name ?? 'Player'
@@ -83,6 +84,27 @@ export function GoFishActiveRound({
       ),
     [hands, players]
   )
+
+  const needsRefill = isMyTurn && myCards.length === 0 && (session?.ocean_count ?? 0) > 0 && !!myResumeToken
+
+  const submitRefill = async () => {
+    if (!needsRefill || refilling) return
+    setRefilling(true)
+    try {
+      const res = await fetch('/api/gofish/refill', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gameId: gameCode, resumeToken: myResumeToken }),
+      })
+      const data = (await res.json()) as { error?: string }
+      if (!res.ok) throw new Error(data.error ?? 'Refill failed')
+      await onReload()
+    } catch (err) {
+      toastError(err instanceof Error ? err.message : 'Refill failed')
+    } finally {
+      setRefilling(false)
+    }
+  }
 
   const submitAsk = async () => {
     if (!isMyTurn || asking || !selectedTargetId || selectedRank == null || !myResumeToken) return
@@ -135,7 +157,10 @@ export function GoFishActiveRound({
       ) : (
         <>
           {!readOnly && myHandRow && <MyHand cards={myCards} myBooks={myBooks} />}
-          {!readOnly && isMyTurn && (
+          {!readOnly && needsRefill && (
+            <RefillPrompt onSubmit={submitRefill} loading={refilling} oceanCount={session?.ocean_count ?? 0} />
+          )}
+          {!readOnly && isMyTurn && !needsRefill && (
             <AskPicker
               askableRanks={askable}
               eligibleTargets={eligibleTargets.map(({ player, hand }) => ({
@@ -289,28 +314,38 @@ function AskPicker({
   }
   const canSubmit = !asking && selectedTargetId != null && selectedRank != null
   return (
-    <section className="rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-4 space-y-4">
-      <h2 className="text-sm font-semibold uppercase tracking-wide text-emerald-300">Your turn — ask a player</h2>
+    <section
+      className="rounded-2xl border p-4 space-y-4"
+      style={{
+        borderColor: 'color-mix(in srgb, var(--primary) 30%, transparent)',
+        backgroundColor: 'color-mix(in srgb, var(--primary) 6%, transparent)',
+      }}
+    >
+      <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--primary)]">Your turn — ask a player</h2>
       <div className="space-y-2">
         <p className="text-xs uppercase tracking-wide text-muted">1. Pick a player</p>
         <div className="flex flex-wrap gap-2">
-          {eligibleTargets.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => onSelectTarget(t.id === selectedTargetId ? null : t.id)}
-              className={`px-3 py-2 rounded-xl border text-sm transition-colors ${
-                selectedTargetId === t.id
-                  ? 'border-emerald-400 bg-emerald-500/20 text-emerald-100'
-                  : 'border-white/10 bg-white/5 hover:bg-white/10'
-              }`}
-            >
-              <span className="font-medium">{t.name}</span>{' '}
-              <span className="text-muted text-xs">
-                · {t.cardCount} cards · {t.books.length} books
-              </span>
-            </button>
-          ))}
+          {eligibleTargets.map((t) => {
+            const selected = selectedTargetId === t.id
+            return (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => onSelectTarget(t.id === selectedTargetId ? null : t.id)}
+                className={`px-3 py-2 rounded-xl border text-sm transition-colors ${
+                  selected
+                    ? 'border-[var(--primary)] bg-[color-mix(in_srgb,var(--primary)_18%,transparent)] text-body'
+                    : 'border-black/10 dark:border-white/10 bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10'
+                }`}
+                aria-pressed={selected}
+              >
+                <span className="font-medium">{t.name}</span>{' '}
+                <span className="text-muted text-xs">
+                  · {t.cardCount} cards · {t.books.length} books
+                </span>
+              </button>
+            )
+          })}
         </div>
       </div>
       <div className="space-y-2">
@@ -325,8 +360,8 @@ function AskPicker({
                 onClick={() => onSelectRank(rank === selectedRank ? null : rank)}
                 className={`px-3 py-2 rounded-xl border text-sm font-mono font-bold transition-colors ${
                   selected
-                    ? 'border-emerald-400 bg-emerald-500/20 text-emerald-100'
-                    : 'border-white/10 bg-white/5 hover:bg-white/10'
+                    ? 'border-[var(--primary)] bg-[color-mix(in_srgb,var(--primary)_18%,transparent)] text-body'
+                    : 'border-black/10 dark:border-white/10 bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10'
                 }`}
                 aria-pressed={selected}
                 aria-label={`Ask for rank ${gofishRankLabel(rank)}`}
@@ -348,6 +383,45 @@ function AskPicker({
           : selectedTargetId && selectedRank
             ? `Ask ${eligibleTargets.find((t) => t.id === selectedTargetId)?.name ?? 'them'} for ${gofishRankPlural(selectedRank)}`
             : 'Pick a player and rank'}
+      </button>
+    </section>
+  )
+}
+
+/**
+ * Rendered when the active player starts their turn with 0 cards and the ocean still
+ * has cards — the physical-game rule is that they draw a fresh hand (up to 5) to stay
+ * in the game. Standalone action so the player doesn't get stranded when the picker is
+ * gated on "hold at least one card of the rank you ask".
+ */
+function RefillPrompt({
+  onSubmit,
+  loading,
+  oceanCount,
+}: {
+  onSubmit: () => void
+  loading: boolean
+  oceanCount: number
+}) {
+  return (
+    <section
+      className="rounded-2xl border p-4 space-y-3"
+      style={{
+        borderColor: 'color-mix(in srgb, var(--primary) 30%, transparent)',
+        backgroundColor: 'color-mix(in srgb, var(--primary) 6%, transparent)',
+      }}
+    >
+      <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--primary)]">
+        Your turn — draw a fresh hand
+      </h2>
+      <p className="text-sm text-muted">You have no cards. Draw up to 5 from the ocean, then ask a player.</p>
+      <button
+        type="button"
+        onClick={onSubmit}
+        disabled={loading}
+        className="btn-primary w-full py-3 text-base disabled:opacity-40"
+      >
+        {loading ? 'Drawing…' : `Draw ${Math.min(5, oceanCount)} cards`}
       </button>
     </section>
   )
