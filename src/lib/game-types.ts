@@ -933,6 +933,49 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
       },
     },
   },
+  rummy: {
+    id: 'rummy',
+    label: 'Rummy',
+    tagline: 'Meld sets and runs — first to empty their hand wins',
+    headerEmoji: '🃏♠',
+    card: {
+      accent: '#0891b2',
+      accentSoft: 'rgba(8, 145, 178, 0.15)',
+      emoji: '🃏',
+      players: '2–6 players',
+      vibe: 'Classic card night',
+      featured: false,
+    },
+    slots: {
+      kiss: {
+        emoji: '🃏',
+        label: 'Cards left',
+        color: '#0891b2',
+        leaderboardLabel: 'Fewest cards',
+        activeClass: 'bg-cyan-500/20 text-cyan-100 border-cyan-400',
+        borderClass: 'border-cyan-500/50 bg-cyan-500/10',
+        textColor: '#67e8f9',
+      },
+      marry: {
+        emoji: '🎯',
+        label: 'Melds',
+        color: '#7c3aed',
+        leaderboardLabel: 'Melds laid down',
+        activeClass: 'bg-violet-500/20 text-violet-100 border-violet-400',
+        borderClass: 'border-violet-500/50 bg-violet-500/10',
+        textColor: '#c4b5fd',
+      },
+      kill: {
+        emoji: '🏆',
+        label: 'Winner',
+        color: '#fbbf24',
+        leaderboardLabel: 'Winner',
+        activeClass: 'bg-amber-500/20 text-amber-100 border-amber-400',
+        borderClass: 'border-amber-500/50 bg-amber-500/10',
+        textColor: '#fcd34d',
+      },
+    },
+  },
   crazy_eights: {
     id: 'crazy_eights',
     label: 'Crazy Eights',
@@ -2176,6 +2219,7 @@ export const GAME_TYPE_OPTIONS: GameType[] = [
   'monopoly',
   'yahtzee',
   'whot',
+  'rummy',
   'ludo',
   'mahjong',
   'i_call_on',
@@ -2286,6 +2330,7 @@ const GAME_CATEGORY_BY_TYPE: Partial<Record<GameType, GameCategory>> = {
   quiplash: 'guessing',
   // Cards
   whot: 'cards',
+  rummy: 'cards',
   crazy_eights: 'cards',
   uno: 'cards',
   // Board / strategy
@@ -2356,6 +2401,7 @@ export function parseGameType(raw: unknown): GameType {
   if (raw === 'scrabble') return 'scrabble'
   if (raw === 'snake_and_ladder' || raw === 'snakes-and-ladders') return 'snake_and_ladder'
   if (raw === 'crazy_eights' || raw === 'crazy-eights') return 'crazy_eights'
+  if (raw === 'rummy') return 'rummy'
   if (raw === 'uno') return 'uno'
   if (raw === 'checkers' || raw === 'draughts') return 'checkers'
   if (
@@ -2454,6 +2500,8 @@ export function gameHowItWorks(
       return 'Players roll, hold dice, and choose a score category each turn. Build the best total across all combos.'
     case 'whot':
       return 'Players join with their name. Match the top card by shape or number — WHOT lets you call the next match. Pick 2 and Pick 3 stacks are separate. First to empty their hand wins — or lowest hand total when the game clock runs out.'
+    case 'rummy':
+      return 'Players join with their name (2–6 play). On your turn, draw one card from the pile or the top of the discard, then discard one. Rearrange your hand into sets (three or four of the same rank) and runs (three or more consecutive cards of the same suit). Lay your whole hand down as valid melds — usually with one card left to discard — to go out and win. If the game clock runs out first, whoever is closest to going out (most cards that could form valid melds) wins.'
     case 'uno':
       return 'Players join with their name and are dealt 7 cards. Match the top card by colour, number, or symbol. Skip, Reverse, Draw 2, and Wild cards shake things up — call "last card" on your second-to-last card or draw a penalty. First to empty their hand wins.'
     case 'ludo':
@@ -2752,6 +2800,7 @@ const NAME_ONLY_PLAYER_JOIN_GAMES: Record<GameType, boolean> = {
   monopoly: true,
   yahtzee: true,
   whot: true,
+  rummy: true,
   ludo: true,
   mahjong: true,
   i_call_on: true,
@@ -2804,6 +2853,7 @@ const LOBBY_GAMES: Record<GameType, boolean> = {
   monopoly: false,
   yahtzee: false,
   whot: false,
+  rummy: false,
   ludo: false,
   mahjong: false,
   i_call_on: false,
@@ -2865,6 +2915,7 @@ const VOTE_HISTORY_GAMES: Record<GameType, boolean> = {
   monopoly: false,
   yahtzee: false,
   whot: false,
+  rummy: false,
   ludo: false,
   mahjong: false,
   i_call_on: false,
@@ -2988,6 +3039,10 @@ export function isWhotGame(gameType: GameType | string | undefined): boolean {
 
 export function isCrazyEightsGame(gameType: GameType | string | undefined): boolean {
   return parseGameType(gameType) === 'crazy_eights'
+}
+
+export function isRummyGame(gameType: GameType | string | undefined): boolean {
+  return parseGameType(gameType) === 'rummy'
 }
 
 export function isUnoGame(gameType: GameType | string | undefined): boolean {

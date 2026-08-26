@@ -30,6 +30,7 @@ export type GameType =
   | 'monopoly'
   | 'yahtzee'
   | 'whot'
+  | 'rummy'
   | 'ludo'
   | 'mahjong'
   | 'i_call_on'
@@ -858,6 +859,66 @@ export interface CrazyEightsPlayerHand {
   game_id: string
   player_id: string
   cards: CrazyEightsCard[]
+  player_order: number
+  created_at: string
+}
+
+/** The four suits of a standard 52-card Rummy deck. */
+export type RummySuit = 'spades' | 'clubs' | 'hearts' | 'diamonds'
+
+export type RummyPhase = 'playing' | 'finished'
+
+export interface RummyCard {
+  id: string
+  suit: RummySuit
+  /** Ace = 1 … King = 13. In this variant Aces are low; runs never wrap. */
+  rank: number
+}
+
+/** A meld laid down at "going out". `kind` is derived, but stored so client UI can render
+ *  the run/set distinction without re-checking. */
+export type RummyMeldKind = 'set' | 'run'
+
+export interface RummyMeld {
+  kind: RummyMeldKind
+  cards: RummyCard[]
+}
+
+export interface RummySession {
+  id: string
+  game_id: string
+  turn_order: string[]
+  current_turn_index: number
+  phase: RummyPhase
+  draw_pile: RummyCard[]
+  discard_pile: RummyCard[]
+  /** Convenience mirror of the top-of-discard for realtime clients that don't hold the full pile. */
+  top_discard: RummyCard | null
+  /** `draw` = must draw a card to start turn; `discard` = has drawn, must discard to end turn. */
+  turn_step: 'draw' | 'discard'
+  status_message: string | null
+  winner_player_id: string | null
+  /** Winning melds captured at "going out" for the finished screen. */
+  winning_melds: RummyMeld[] | null
+  /** How many times the draw pile has been rebuilt from the discard. Capped to avoid
+   *  infinite loops when nobody can go out; game ends by lowest hand total once reached. */
+  reshuffle_count: number
+  turn_deadline_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface RummyPlayerHand {
+  id: string
+  game_id: string
+  player_id: string
+  /**
+   * The player's cards. `null` means REDACTED (someone else's hand). Empty array means the
+   * player has laid everything down and is out — do not conflate the two.
+   */
+  cards: RummyCard[] | null
+  /** How many cards the player holds. Public, survives redaction. */
+  card_count?: number
   player_order: number
   created_at: string
 }

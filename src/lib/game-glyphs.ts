@@ -94,6 +94,7 @@ const GAME_ICONS: Record<GameType, IconSvgElement> = {
   monopoly: HatIcon,
   yahtzee: DicesIcon,
   whot: Cards02Icon,
+  rummy: Cards01Icon,
   ludo: TokenCircleIcon,
   mahjong: DominoIcon,
   i_call_on: Megaphone01Icon,
