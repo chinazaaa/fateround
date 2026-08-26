@@ -1,5 +1,11 @@
 -- Go Fish — classic "ask an opponent for a rank" card game on a standard 52-card deck.
 --
+-- Timestamp bumped past 20261104120000_rummy.sql so this file is the LAST word on
+-- games_game_type_check / app_feedback_game_type_check / game_player_limits_game_type_check.
+-- Both games' original migrations shared the 20261104120000 timestamp, and whichever ran
+-- last would drop the other from the enum. All three lists below name rummy alongside
+-- gofish so nothing is silently dropped.
+--
 -- Server-authoritative writes only: anon may READ (realtime needs it) but every mutation
 -- goes through a service-role API route. Hands ship read-only-to-anon like the other card
 -- games; the `cards` column will be redacted through the same hand-redaction primitive
@@ -71,7 +77,7 @@ ALTER TABLE games ADD CONSTRAINT games_game_type_check CHECK (game_type IN (
   'smash_marry_kill', 'red_flag_green_flag', 'smash_or_pass', 'parent_approval',
   'would_you_rather', 'never_have_i_ever', 'pick_a_number', 'this_or_that', 'most_likely_to',
   'who_said_this', 'hot_seat', 'custom', 'anonymous_messages', 'secret_message', 'bingo',
-  'codewords', 'trivia', 'two_truths', 'monopoly', 'yahtzee', 'whot', 'crazy_eights', 'ludo',
+  'codewords', 'trivia', 'two_truths', 'monopoly', 'yahtzee', 'whot', 'rummy', 'crazy_eights', 'ludo',
   'i_call_on', 'sudoku', 'tic_tac_toe', 'word_hunt', 'chess', 'describe_it', 'scrabble',
   'snake_and_ladder', 'checkers', 'mahjong', 'mafia', 'matching_pairs', 'quiplash', 'word_rush',
   'quick_draw', 'ayo', 'crossword', 'word_search', 'word_scramble', 'landmine', 'uno',
@@ -84,7 +90,7 @@ ALTER TABLE app_feedback ADD CONSTRAINT app_feedback_game_type_check CHECK (game
   'general', 'smash_marry_kill', 'red_flag_green_flag', 'smash_or_pass', 'parent_approval',
   'would_you_rather', 'never_have_i_ever', 'pick_a_number', 'this_or_that', 'most_likely_to',
   'who_said_this', 'hot_seat', 'custom', 'anonymous_messages', 'secret_message', 'bingo',
-  'codewords', 'trivia', 'two_truths', 'monopoly', 'yahtzee', 'whot', 'crazy_eights', 'ludo',
+  'codewords', 'trivia', 'two_truths', 'monopoly', 'yahtzee', 'whot', 'rummy', 'crazy_eights', 'ludo',
   'i_call_on', 'sudoku', 'tic_tac_toe', 'word_hunt', 'chess', 'describe_it', 'scrabble',
   'snake_and_ladder', 'checkers', 'mahjong', 'mafia', 'matching_pairs', 'quiplash', 'word_rush',
   'quick_draw', 'ayo', 'crossword', 'word_search', 'word_scramble', 'landmine', 'uno',
@@ -100,7 +106,7 @@ ALTER TABLE game_player_limits DROP CONSTRAINT IF EXISTS game_player_limits_game
 ALTER TABLE game_player_limits ADD CONSTRAINT game_player_limits_game_type_check CHECK (
   game_type IN (
     'anonymous_messages', 'bingo', 'codewords', 'trivia', 'two_truths', 'monopoly', 'yahtzee',
-    'whot', 'crazy_eights', 'uno', 'ludo', 'mahjong', 'i_call_on', 'sudoku', 'tic_tac_toe',
+    'whot', 'rummy', 'crazy_eights', 'uno', 'ludo', 'mahjong', 'i_call_on', 'sudoku', 'tic_tac_toe',
     'word_hunt', 'chess', 'checkers', 'checkers_international', 'checkers_nigeria', 'scrabble',
     'describe_it', 'snake_and_ladder', 'mafia', 'matching_pairs', 'quiplash', 'quick_draw',
     'word_rush', 'ayo', 'crossword', 'word_search', 'word_scramble', 'word_grouping',
@@ -112,10 +118,10 @@ INSERT INTO game_player_limits (game_type, max_players)
 VALUES ('gofish', 6)
 ON CONFLICT (game_type) DO NOTHING;
 
--- Community leaderboard registration. sort_order continues the existing sequence
--- (highest before this: 62, Troll Run — see 20261022120000_troll_run_fixes).
+-- Community leaderboard registration. sort_order continues the sequence (highest
+-- before this: 70, Rummy — see 20261104120000_rummy.sql).
 INSERT INTO community_games (name, slug, accent, sort_order, game_type, is_active)
-VALUES ('Go Fish', 'go-fish', '#0ea5e9', 63, 'gofish', true)
+VALUES ('Go Fish', 'go-fish', '#0ea5e9', 71, 'gofish', true)
 ON CONFLICT (slug) DO UPDATE
 SET
   game_type = EXCLUDED.game_type,

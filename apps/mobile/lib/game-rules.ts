@@ -26,6 +26,7 @@ const GAME_TYPE_TO_SLUG: Record<GameType, string> = {
   monopoly: 'estate-kings',
   yahtzee: 'yahtzee',
   whot: 'whot',
+  rummy: 'rummy',
   uno: 'uno',
   crazy_eights: 'crazy-eights',
   ludo: 'ludo',

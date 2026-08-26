@@ -403,6 +403,7 @@ export const GAME_LANDING_OG_BY_SLUG: Record<string, string> = {
   wordle: '/og/wordle.png',
   yahtzee: '/og/yahtzee.png',
   whot: '/og/whot.png',
+  rummy: '/og/rummy.png',
   'crazy-eights': '/og/crazy-eights.png',
   ludo: '/og/ludo.png',
   'i-call-on': '/og/i-call-on.png',

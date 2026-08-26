@@ -107,6 +107,7 @@ export function DescribeItPlayPanel({
   words,
   guesses,
   myPlayerId,
+  myWord,
   secondsLeft,
   breakLeft,
   urgent,
@@ -121,6 +122,13 @@ export function DescribeItPlayPanel({
   words: DescribeItWord[]
   guesses: DescribeItGuess[]
   myPlayerId: string | null
+  /**
+   * The secret word, fetched through /api/describe-it/my-word by the parent view when the local
+   * player is the describer. It is NOT on `session` any more: `current_word` is revoked from anon
+   * (migration 20260807130000) precisely because shipping it to every guesser and only *hiding*
+   * it in the UI was not a control at all. null = not loaded yet (or not ours to see).
+   */
+  myWord?: string | null
   secondsLeft: number
   breakLeft: number
   urgent: boolean
@@ -224,7 +232,12 @@ export function DescribeItPlayPanel({
           {isDescriber ? (
             <DescribeItCard className="p-4 space-y-3 text-center">
               <p className="label-caps text-[var(--primary)]">Describe this — don&apos;t say it!</p>
-              <p className="text-3xl sm:text-4xl font-black tracking-tight break-words">{session.current_word}</p>
+              {myWord ? (
+                <p className="text-3xl sm:text-4xl font-black tracking-tight break-words">{myWord}</p>
+              ) : (
+                // Neutral placeholder rather than an empty box while the route round-trips.
+                <p className="text-3xl sm:text-4xl font-black tracking-tight text-faint animate-pulse">…</p>
+              )}
               {onClue && (
                 <ClueOrGuessInput placeholder="Type a clue…" buttonLabel="Send" onSubmit={onClue} disabled={!!acting} />
               )}
