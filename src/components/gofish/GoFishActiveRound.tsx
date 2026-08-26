@@ -194,7 +194,7 @@ export function GoFishActiveRound({
         </>
       )}
 
-      <EventLog events={session?.event_log ?? []} nameOf={nameOf} />
+      {!isFinished && <EventLog events={session?.event_log ?? []} nameOf={nameOf} />}
     </div>
   )
 }
