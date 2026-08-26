@@ -17,6 +17,7 @@ import {
   isWhotGame,
   isCrazyEightsGame,
   isUnoGame,
+  isGoFishGame,
   isLudoGame,
   isSnakeAndLadderGame,
   isTicTacToeGame,
@@ -45,6 +46,7 @@ import { ShareActionButtons } from '@/components/ShareActionButtons'
 import type { MonopolyStanding } from '@/lib/monopoly'
 import { formatMonopolyMoney } from '@/lib/monopoly'
 import type { WhotStanding } from '@/lib/whot'
+import type { GoFishStanding } from '@/lib/gofish'
 import type { LudoStanding } from '@/lib/ludo'
 import type { SnakeLadderStanding } from '@/lib/snake-and-ladder'
 
@@ -63,6 +65,8 @@ function buildShareText({
   monopolyWinnerName,
   whotStandings,
   whotWinnerName,
+  gofishStandings,
+  gofishWinnerName,
   ludoStandings,
   ludoWinnerName,
   ludoEndedEarly,
@@ -97,6 +101,8 @@ function buildShareText({
   monopolyWinnerName?: string
   whotStandings?: WhotStanding[]
   whotWinnerName?: string
+  gofishStandings?: GoFishStanding[]
+  gofishWinnerName?: string
   ludoStandings?: LudoStanding[]
   ludoWinnerName?: string
   ludoEndedEarly?: boolean
@@ -220,6 +226,22 @@ function buildShareText({
       '',
       'Final standings:',
       ...snakeLadderStandings.slice(0, 8).map((row) => `  ${row.rank}. ${row.name} — square ${row.position}`),
+      '',
+      `Play at ${appDomain()}`,
+    ]
+    return lines.join('\n')
+  }
+
+  if (isGoFishGame(gameType) && gofishStandings && gofishStandings.length > 0) {
+    const lines = [
+      ...gameHeader,
+      gofishWinnerName ? `🏆 ${gofishWinnerName} wins!` : '🏆 Game over',
+      '',
+      'Final standings:',
+      ...gofishStandings.slice(0, 8).map((row) => {
+        const bookLabel = row.books === 1 ? '1 book' : `${row.books} books`
+        return `  ${row.rank}. ${row.name} — ${bookLabel}`
+      }),
       '',
       `Play at ${appDomain()}`,
     ]
@@ -438,6 +460,8 @@ export function ShareResults({
   monopolyWinnerName,
   whotStandings,
   whotWinnerName,
+  gofishStandings,
+  gofishWinnerName,
   ludoStandings,
   ludoWinnerName,
   ludoEndedEarly,
@@ -474,6 +498,8 @@ export function ShareResults({
   monopolyWinnerName?: string
   whotStandings?: WhotStanding[]
   whotWinnerName?: string
+  gofishStandings?: GoFishStanding[]
+  gofishWinnerName?: string
   ludoStandings?: LudoStanding[]
   ludoWinnerName?: string
   ludoEndedEarly?: boolean
@@ -518,6 +544,8 @@ export function ShareResults({
         monopolyWinnerName,
         whotStandings,
         whotWinnerName,
+        gofishStandings,
+        gofishWinnerName,
         ludoStandings,
         ludoWinnerName,
         ludoEndedEarly,
@@ -553,6 +581,8 @@ export function ShareResults({
       monopolyWinnerName,
       whotStandings,
       whotWinnerName,
+      gofishStandings,
+      gofishWinnerName,
       ludoStandings,
       ludoWinnerName,
       ludoEndedEarly,
