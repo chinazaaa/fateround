@@ -30,6 +30,7 @@ import { useRoomMemberAutoJoin, useRoomMemberJoin, useRoomMemberNamePrefill } fr
 import { playerIsViewer, preJoinScreen } from '@/lib/viewers'
 import { ViewerModeBanner } from '@/components/ViewerModeBanner'
 import { GameWaitingRoom } from '@/components/game-lobby/GameWaitingRoom'
+import { useGoFishNotifications } from '@/hooks/useGoFishNotifications'
 
 type Screen = 'loading' | 'join' | 'game_started_waiting' | 'game_ended' | 'playing' | 'not_found'
 
@@ -125,6 +126,10 @@ export function GoFishPlayerView({ gameCode }: { gameCode: string }) {
   const me = players.find((p) => p.id === myPlayerId)
   const myPlayerName = me?.name ?? ''
   const isViewer = !!(game && me && playerIsViewer(me, game))
+
+  // Audio cues driven off the shared event log — turn bell / hit / miss / book / end.
+  // Spectators still hear the room activity; global mute toggle is honoured by lib/sounds.
+  useGoFishNotifications({ game, session, myPlayerId, enabled: game?.status === 'active' })
 
   const playerSettingsNode = useMemo(() => {
     if (!myPlayerId) return null

@@ -15,6 +15,7 @@ import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { useHostSeat } from '@/hooks/useHostSeat'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
 import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
+import { useGoFishNotifications } from '@/hooks/useGoFishNotifications'
 import { useRegisterGameSettings } from '@/components/GameSettingsContext'
 import { HostLobby } from '@/components/host/HostLobby'
 import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
@@ -57,6 +58,10 @@ export function GoFishHostView({ gameCode, hostToken }: { gameCode: string; host
   const [tab, setTab] = useState<HostTab>('manage')
 
   useApplyGameTheme(game?.theme, game?.game_type)
+
+  // Host projector: hearing the cues matters even more than at a player seat, because
+  // the host is the "casting screen" for the room. Fire off the same event bell.
+  useGoFishNotifications({ game, session, myPlayerId: null, enabled: game?.status === 'active' })
 
   const reload = useCallback(async () => {
     // Host hand fetch: pass hostToken so a seated host sees their own cards; a pure
