@@ -281,6 +281,30 @@ export async function processGoFishExpireTurn(
  * abort — a silent `false` here would let the caller carry on writing turn state on top
  * of a game that should be finished but isn't (the same bug CodeRabbit flagged on Rummy).
  */
+/**
+ * Public entry point used by /api/games/[code]/expire-gofish for the whole-game timer bar.
+ * Loads the current session + hands and delegates to the shared `finalizeIfSessionExpired`,
+ * so the "most books wins when the buzzer sounds" rule stays server-authoritative and
+ * idempotent — a re-poke after finish is a no-op.
+ *
+ * Returns a tri-state so the route can answer 200 for "already finished" (and stop the
+ * client retry loop) and reserve 500 for real failures. A bare boolean collapsed those
+ * two into the same 500 and made the timer bar retry every `retryMs` forever after a race.
+ */
+export async function finishExpiredGoFishGame(
+  supabase: SupabaseClient,
+  gameId: string
+): Promise<{ finished: boolean; alreadyFinished?: boolean; error?: string }> {
+  const loaded = await loadGameState(supabase, gameId)
+  if (loaded.error) return { finished: false, error: loaded.error }
+  const { session, hands = [] } = loaded
+  if (!session) return { finished: false, error: 'Session not found' }
+  if (session.phase === 'finished') return { finished: true, alreadyFinished: true }
+  const result = await finalizeIfSessionExpired(supabase, gameId, session, hands)
+  if (result.error) return { finished: false, error: result.error }
+  return { finished: result.ok }
+}
+
 async function finalizeIfSessionExpired(
   supabase: SupabaseClient,
   gameId: string,
