@@ -60,6 +60,7 @@ export type GameType =
   | 'word_grouping'
   | 'wordle_room'
   | 'troll_run'
+  | 'gofish'
 
 export interface Game {
   id: string

@@ -180,6 +180,7 @@ import { clampMonopolyGameDuration, clampMonopolyTurnTimer } from '@/lib/monopol
 import { clampWhotGameDuration } from '@/lib/whot'
 import { clampCrazyEightsGameDuration } from '@/lib/crazy-eights'
 import { clampUnoGameDuration, parseMultiPlayMode } from '@/lib/uno'
+import { clampGofishGameDuration } from '@/lib/gofish'
 import { clampBoardGameTurnTimer } from '@/lib/board-game-lobby-settings'
 import { clampWordHuntTimer } from '@/lib/word-hunt'
 import { clampWordleRoomCategory, clampWordleRoomWordCount, clampWordleRoomTimer } from '@/lib/wordle-room'
@@ -1128,11 +1129,13 @@ export async function POST(req: NextRequest) {
                                               ? clampBoardGameTurnTimer(timer_seconds, 'uno')
                                               : isMahjongGame(game_type)
                                                 ? clampBoardGameTurnTimer(timer_seconds, 'mahjong')
-                                                : isMatchingPairsGame(game_type)
-                                                  ? Math.max(0, Math.min(600, Math.round(Number(timer_seconds) || 0)))
-                                                  : [15, 30, 60].includes(Number(timer_seconds))
-                                                    ? Number(timer_seconds)
-                                                    : 30,
+                                                : parseGameType(game_type) === 'gofish'
+                                                  ? clampBoardGameTurnTimer(timer_seconds, 'gofish')
+                                                  : isMatchingPairsGame(game_type)
+                                                    ? Math.max(0, Math.min(600, Math.round(Number(timer_seconds) || 0)))
+                                                    : [15, 30, 60].includes(Number(timer_seconds))
+                                                      ? Number(timer_seconds)
+                                                      : 30,
     ...(isCodewordsGame(game_type)
       ? {
           operative_timer_seconds: clampCodewordsTimer(
@@ -1434,49 +1437,51 @@ export async function POST(req: NextRequest) {
                       mahjong_ruleset: parseMahjongRuleset(rawMahjongRuleset),
                       mahjong_rule_options: parseMahjongRuleOptions(rawMahjongRuleOptions),
                     }
-                  : isMatchingPairsGame(game_type)
-                    ? { game_duration_seconds: rawGameDurationSeconds ?? 0 }
-                    : isSudokuGame(game_type)
-                      ? { game_duration_seconds: clampSudokuGameDuration(rawGameDurationSeconds ?? 0) }
-                      : isCrosswordGame(game_type)
-                        ? {
-                            game_duration_seconds: clampCrosswordGameDuration(
-                              rawGameDurationSeconds ?? CROSSWORD_DEFAULT_DURATION
-                            ),
-                          }
-                        : isWordSearchGame(game_type)
+                  : parseGameType(game_type) === 'gofish'
+                    ? { game_duration_seconds: clampGofishGameDuration(rawGameDurationSeconds) }
+                    : isMatchingPairsGame(game_type)
+                      ? { game_duration_seconds: rawGameDurationSeconds ?? 0 }
+                      : isSudokuGame(game_type)
+                        ? { game_duration_seconds: clampSudokuGameDuration(rawGameDurationSeconds ?? 0) }
+                        : isCrosswordGame(game_type)
                           ? {
-                              game_duration_seconds: clampWordSearchGameDuration(
-                                rawGameDurationSeconds ?? WORD_SEARCH_DEFAULT_DURATION
+                              game_duration_seconds: clampCrosswordGameDuration(
+                                rawGameDurationSeconds ?? CROSSWORD_DEFAULT_DURATION
                               ),
                             }
-                          : isWordScrambleGame(game_type)
+                          : isWordSearchGame(game_type)
                             ? {
-                                game_duration_seconds: clampWordScrambleGameDuration(
-                                  rawGameDurationSeconds ?? WORD_SCRAMBLE_DEFAULT_DURATION
+                                game_duration_seconds: clampWordSearchGameDuration(
+                                  rawGameDurationSeconds ?? WORD_SEARCH_DEFAULT_DURATION
                                 ),
                               }
-                            : isWordGroupingGame(game_type)
+                            : isWordScrambleGame(game_type)
                               ? {
-                                  game_duration_seconds: clampWordGroupingGameDuration(
-                                    rawGameDurationSeconds ?? WORD_GROUPING_DEFAULT_DURATION
+                                  game_duration_seconds: clampWordScrambleGameDuration(
+                                    rawGameDurationSeconds ?? WORD_SCRAMBLE_DEFAULT_DURATION
                                   ),
                                 }
-                              : isMafiaGame(game_type)
+                              : isWordGroupingGame(game_type)
                                 ? {
-                                    // Role selection is automatic (see resolveMafiaRoundToggles in
-                                    // @/lib/mafia) — the only role-affecting setting left is this
-                                    // single Classic/Advanced switch.
-                                    mafia_advanced_mode: parsed.data.mafia_advanced_mode === true,
-                                    mafia_anonymous_votes: parsed.data.mafia_anonymous_votes === true,
-                                    ...(parsed.data.mafia_day_seconds !== undefined
-                                      ? { mafia_day_seconds: parsed.data.mafia_day_seconds }
-                                      : {}),
-                                    ...(parsed.data.mafia_voting_seconds !== undefined
-                                      ? { mafia_voting_seconds: parsed.data.mafia_voting_seconds }
-                                      : {}),
+                                    game_duration_seconds: clampWordGroupingGameDuration(
+                                      rawGameDurationSeconds ?? WORD_GROUPING_DEFAULT_DURATION
+                                    ),
                                   }
-                                : {}),
+                                : isMafiaGame(game_type)
+                                  ? {
+                                      // Role selection is automatic (see resolveMafiaRoundToggles in
+                                      // @/lib/mafia) — the only role-affecting setting left is this
+                                      // single Classic/Advanced switch.
+                                      mafia_advanced_mode: parsed.data.mafia_advanced_mode === true,
+                                      mafia_anonymous_votes: parsed.data.mafia_anonymous_votes === true,
+                                      ...(parsed.data.mafia_day_seconds !== undefined
+                                        ? { mafia_day_seconds: parsed.data.mafia_day_seconds }
+                                        : {}),
+                                      ...(parsed.data.mafia_voting_seconds !== undefined
+                                        ? { mafia_voting_seconds: parsed.data.mafia_voting_seconds }
+                                        : {}),
+                                    }
+                                  : {}),
     ...(isCustomGame(game_type) && parsed.data.custom_slots
       ? {
           custom_slots: {
