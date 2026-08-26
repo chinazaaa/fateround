@@ -6,6 +6,7 @@ import {
   isChessGame,
   isCodewordsGame,
   isCrazyEightsGame,
+  isRummyGame,
   isDescribeItGame,
   isICallOnGame,
   isLandmineGame,
@@ -101,6 +102,7 @@ export function gameAllowsLatePlayerJoin(gameType: GameType): boolean {
     !isYahtzeeGame(gameType) &&
     !isWhotGame(gameType) &&
     !isCrazyEightsGame(gameType) &&
+    !isRummyGame(gameType) &&
     !isUnoGame(gameType) &&
     !isGoFishGame(gameType) &&
     !isLudoGame(gameType) &&
@@ -284,6 +286,7 @@ export function spectatorForActiveJoin(
     isYahtzeeGame(gameType) ||
     isWhotGame(gameType) ||
     isCrazyEightsGame(gameType) ||
+    isRummyGame(gameType) ||
     isUnoGame(gameType) ||
     isGoFishGame(gameType)
   )
