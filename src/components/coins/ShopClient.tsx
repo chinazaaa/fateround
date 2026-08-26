@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import { authHeaders } from '@/lib/identity'
 import { trackEvent, GA_EVENTS } from '@/lib/analytics'
 import { useProfile } from '@/hooks/useProfile'
@@ -11,6 +12,9 @@ import { findAnimation, findCardTemplate, type ShopKind } from '@/lib/coins/shop
 import { Avatar } from '@/components/Avatar'
 import { PlayerName } from '@/components/PlayerName'
 import { Skeleton } from '@/components/Skeleton'
+import { THEMES, type ThemeConfig } from '@/lib/themes'
+import { ThemePreviewModal } from '@/components/ThemePreviewModal'
+import { MONOPOLY_EDITION_TO_THEME } from '@/lib/coins/editions'
 
 type ShopItem = {
   kind: ShopKind
@@ -45,11 +49,24 @@ const CATEGORIES: { key: ShopKind; label: string }[] = [
   { key: 'edition', label: 'Editions' },
 ]
 
+const VALID_KINDS = new Set<ShopKind>(CATEGORIES.map((c) => c.key))
+
 export function ShopClient() {
   const { profile, refresh } = useProfile()
+  const searchParams = useSearchParams()
+  // Deep-link filter: /shop?category=edition (Monopoly USA/Christmas locked
+  // tiles) or /shop?category=theme (Whot/Ludo/Sudoku per-game reskins). Any
+  // other value is ignored — falls back to "All" so a stale link never
+  // strands the shop on an empty category.
+  const initialCategory = ((): ShopKind | 'all' => {
+    const raw = searchParams?.get('category')
+    if (raw && VALID_KINDS.has(raw as ShopKind)) return raw as ShopKind
+    return 'all'
+  })()
   const [catalog, setCatalog] = useState<Catalog | null>(null)
   const [loading, setLoading] = useState(true)
-  const [filter, setFilter] = useState<ShopKind | 'all'>('all')
+  const [filter, setFilter] = useState<ShopKind | 'all'>(initialCategory)
+  const [previewItem, setPreviewItem] = useState<ShopItem | null>(null)
   // Independent from category — a player scanning "what have I bought?" wants
   // a quick answer without scrolling every category. `owned` cross-cuts the
   // kind filter, so both apply together.
@@ -320,6 +337,14 @@ export function ShopClient() {
               item={item}
               equipped={equippedFor(item)}
               onClick={() => openConfirm(item)}
+              onPreview={
+                item.kind === 'animation' ||
+                item.kind === 'card_template' ||
+                ((item.kind === 'theme' || item.kind === 'edition') && themeConfigForItem(item) !== null)
+                  ? () => setPreviewItem(item)
+                  : undefined
+              }
+              stackedOwnedCount={item.kind === 'streak_freeze' ? (catalog?.profile?.streak_freezes ?? 0) : null}
               handle={profile?.handle ?? 'Player'}
               photoUrl={profile?.avatar_url ?? null}
             />
@@ -336,6 +361,17 @@ export function ShopClient() {
           onConfirm={confirmPurchase}
         />
       )}
+      {previewItem &&
+        (previewItem.kind === 'theme' || previewItem.kind === 'edition' ? (
+          <ThemePreviewModal
+            open
+            theme={themeConfigForItem(previewItem)}
+            onClose={() => setPreviewItem(null)}
+            gameType={previewItem.gameType}
+          />
+        ) : (
+          <PreviewModal item={previewItem} onClose={() => setPreviewItem(null)} />
+        ))}
       {toast && <Toast text={toast} onClose={() => setToast(null)} />}
     </>
   )
@@ -370,22 +406,44 @@ function ShopTile({
   item,
   equipped,
   onClick,
+  onPreview,
+  stackedOwnedCount,
   handle,
   photoUrl,
 }: {
   item: ShopItem
   equipped: boolean
   onClick: () => void
+  /** Optional preview handler — set for animation / card_template kinds so
+   *  the tile shows a "Preview" button that opens PreviewModal instead of
+   *  the buy/equip flow. */
+  onPreview?: () => void
+  /** Set for stackable consumables (streak_freeze) so the tile can render
+   *  the current owned count — a one-shot doesn't have an equipped state
+   *  to signal "you have this", so this is the only place a buyer sees
+   *  their stockpile before it's spent. `null` means "not stackable". */
+  stackedOwnedCount?: number | null
   handle: string
   photoUrl: string | null
 }) {
   const owned = item.owned || equipped
   const dimmed = owned && !isEquippable(item.kind)
+  const primaryLabel = !owned ? 'Buy' : isEquippable(item.kind) && !equipped ? 'Equip' : null
   return (
-    <button
-      type="button"
+    // Outer is a div — a nested Preview button (below) would be invalid
+    // HTML inside a <button>. We keep keyboard + a11y equivalence with
+    // role=button / tabIndex / Enter+Space handling.
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onClick}
-      className={`glass-card-interactive text-left p-4 space-y-3 ${dimmed ? 'opacity-70' : ''}`}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onClick()
+        }
+      }}
+      className={`glass-card-interactive text-left p-4 space-y-3 cursor-pointer ${dimmed ? 'opacity-70' : ''}`}
       aria-label={`${item.name}, ${item.price} coins${owned ? ' (owned)' : ''}`}
     >
       <div className="flex items-start justify-between gap-2">
@@ -406,27 +464,53 @@ function ShopTile({
               Seasonal
             </span>
           )}
-          {owned && (
+          {typeof stackedOwnedCount === 'number' && stackedOwnedCount > 0 ? (
+            // Stackable consumable — show the current count instead of an
+            // "Owned" pill (which reads as "you have this, hide the buy CTA"
+            // and would confuse re-buying another freeze).
             <span className="rounded-full border border-[var(--border)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted">
-              {equipped ? 'Equipped' : 'Owned'}
+              You own {stackedOwnedCount}
             </span>
+          ) : (
+            owned && (
+              <span className="rounded-full border border-[var(--border)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted">
+                {equipped ? 'Equipped' : 'Owned'}
+              </span>
+            )
           )}
         </div>
       </div>
 
       <TilePreview item={item} handle={handle} photoUrl={photoUrl} />
 
+      {tileHint(item.kind) && <p className="text-[11px] text-faint leading-snug">{tileHint(item.kind)}</p>}
+
       <div className="flex items-center justify-between">
         <span className="text-sm font-bold text-body">
           <span aria-hidden>🪙 </span>
           {item.price.toLocaleString()}
         </span>
-        {!owned && <span className="text-[var(--primary)] text-xs font-semibold">Buy</span>}
-        {owned && isEquippable(item.kind) && !equipped && (
-          <span className="text-[var(--primary)] text-xs font-semibold">Equip</span>
-        )}
+        <div className="flex items-center gap-3">
+          {onPreview && (
+            <button
+              type="button"
+              onClick={(e) => {
+                // Preview must NOT bubble to the outer buy/equip handler,
+                // otherwise tapping Preview would open the purchase modal
+                // (the bug this whole prop exists to fix).
+                e.stopPropagation()
+                onPreview()
+              }}
+              className="text-xs font-semibold text-muted underline-offset-2 hover:text-body hover:underline"
+              aria-label={`Preview ${item.name}`}
+            >
+              Preview
+            </button>
+          )}
+          {primaryLabel && <span className="text-[var(--primary)] text-xs font-semibold">{primaryLabel}</span>}
+        </div>
       </div>
-    </button>
+    </div>
   )
 }
 
@@ -434,7 +518,58 @@ function isEquippable(kind: ShopKind): boolean {
   return kind === 'frame' || kind === 'name_color' || kind === 'animation' || kind === 'card_template'
 }
 
+/** Short one-line hint that tells the buyer WHERE the cosmetic shows up so
+ *  they know what they're getting. Not every kind needs one — themes /
+ *  editions are self-explanatory ("this is the board"), and streak_freeze /
+ *  library_pack are gameplay items, not visual reskins. */
+function tileHint(kind: ShopKind): string | null {
+  switch (kind) {
+    case 'frame':
+      return 'Shown around your avatar in every lobby, game, and leaderboard.'
+    case 'name_color':
+      return 'Colors your name wherever it appears to other players.'
+    case 'animation':
+      return 'Plays for everyone in the room when you win a round.'
+    case 'card_template':
+      return 'Styles the results card you share after a game ends.'
+    case 'streak_freeze':
+      return 'Auto-covers a missed day — buy before or after the miss.'
+    default:
+      return null
+  }
+}
+
+/** Resolve a shop item slug to a ThemeConfig for preview purposes. Themes
+ *  map by slug directly; Monopoly editions map through
+ *  MONOPOLY_EDITION_TO_THEME to their painted board id. Returns null if the
+ *  slug doesn't correspond to a THEMES entry (which case there's nothing
+ *  to preview visually — the buy tile still stands). */
+function themeConfigForItem(item: ShopItem): ThemeConfig | null {
+  const targetId = item.kind === 'edition' ? MONOPOLY_EDITION_TO_THEME[item.slug] : item.slug
+  if (!targetId) return null
+  return THEMES.find((t) => t.id === targetId) ?? null
+}
+
 function TilePreview({ item, handle, photoUrl }: { item: ShopItem; handle: string; photoUrl: string | null }) {
+  if (item.kind === 'theme' || item.kind === 'edition') {
+    const theme = themeConfigForItem(item)
+    if (!theme) return null
+    // Three-swatch strip matching ThemePreviewCard on the create page —
+    // gives shop viewers the same at-a-glance palette hint the picker
+    // shows, without needing to open the full ThemePreviewModal first.
+    return (
+      <div className="flex h-16 items-center justify-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface-inset-bg)]">
+        {[theme.preview.bg, theme.preview.accent, theme.preview.text].map((color, i) => (
+          <span
+            key={i}
+            className="h-8 w-8 rounded-full border border-black/10 shadow-inner"
+            style={{ background: color }}
+            aria-hidden
+          />
+        ))}
+      </div>
+    )
+  }
   if (item.kind === 'frame') {
     return (
       <div className="flex justify-center py-2">
@@ -450,12 +585,19 @@ function TilePreview({ item, handle, photoUrl }: { item: ShopItem; handle: strin
     )
   }
   if (item.kind === 'animation') {
-    const anim = findAnimation(item.slug)
+    // Do NOT apply the animation cssClass here — these are one-shot CSS
+    // keyframes that burn through on first paint. Worse, some effects
+    // (Fireworks) set `background: transparent` mid-keyframe and, with
+    // `animation-fill-mode: forwards`, that transparent bg sticks —
+    // clobbering the tile's own bg-[var(--surface-inset-bg)] and leaving
+    // the tile visibly empty (user report, 2026-08-23). The real
+    // animation plays inside PreviewModal instead, on a fresh mount each
+    // Replay click via a bumped React key.
     return (
-      <div
-        className={`relative h-16 overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface-inset-bg)] ${anim?.cssClass ?? ''}`}
-      >
-        <span className="absolute inset-0 flex items-center justify-center text-xs text-muted">Preview</span>
+      <div className="relative flex h-16 items-center justify-center overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface-inset-bg)]">
+        <span aria-hidden className="text-2xl opacity-70">
+          ✨
+        </span>
       </div>
     )
   }
@@ -470,6 +612,82 @@ function TilePreview({ item, handle, photoUrl }: { item: ShopItem; handle: strin
     )
   }
   return null
+}
+
+/**
+ * Full-screen preview for winner animations and results-card templates —
+ * the "Preview" button on the shop tile opens this so tapping to preview
+ * no longer opens the purchase confirm dialog. Animations re-play on a
+ * Replay button (a bumped React `key` restarts the one-shot CSS keyframes);
+ * card templates render a bigger sample with the actual results copy so
+ * hosts can see what the shared card will look like.
+ */
+function PreviewModal({ item, onClose }: { item: ShopItem; onClose: () => void }) {
+  const [replayKey, setReplayKey] = useState(0)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+  const anim = item.kind === 'animation' ? findAnimation(item.slug) : null
+  const tpl = item.kind === 'card_template' ? findCardTemplate(item.slug) : null
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-label={`${item.name} preview`}
+      onClick={onClose}
+    >
+      <div className="glass-card-strong w-full max-w-md space-y-4 p-5" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-faint">
+              {CATEGORIES.find((c) => c.key === item.kind)?.label ?? item.kind} preview
+            </p>
+            <h2 className="text-xl font-black text-body">{item.name}</h2>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close preview"
+            className="text-2xl leading-none text-muted hover:text-body"
+          >
+            ×
+          </button>
+        </div>
+
+        {anim && (
+          <div
+            key={replayKey}
+            className={`relative h-64 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-inset-bg)] ${anim.cssClass}`}
+            aria-hidden
+          />
+        )}
+        {tpl && (
+          <div className={`rounded-xl border border-[var(--border)] p-6 ${tpl.cssClass}`}>
+            <p className="gradient-title text-xs font-bold uppercase tracking-[0.2em]">Winner</p>
+            <p className="mt-1 text-3xl font-black">Sample Player</p>
+            <p className="mt-3 text-sm opacity-80">Final score · 2,480</p>
+            <p className="mt-4 text-xs opacity-60">Fate Round · Whot · shared to friends</p>
+          </div>
+        )}
+
+        <div className="flex items-center justify-end gap-2">
+          {anim && (
+            <button type="button" onClick={() => setReplayKey((n) => n + 1)} className="fr-btn--nav text-xs">
+              Replay
+            </button>
+          )}
+          <button type="button" onClick={onClose} className="fr-btn--nav text-xs">
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 function ConfirmDialog({
@@ -513,7 +731,9 @@ function ConfirmDialog({
           </div>
         </div>
         {item.kind === 'streak_freeze' && (
-          <p className="text-xs text-muted">One-shot. Consumed the next time you miss a daily challenge.</p>
+          <p className="text-xs text-muted">
+            One-shot. Auto-covers a missed day — buy before or after, as long as you haven&rsquo;t played yet.
+          </p>
         )}
         {insufficient && (
           <p className="text-red-500 text-sm">

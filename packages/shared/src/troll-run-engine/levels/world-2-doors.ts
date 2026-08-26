@@ -158,10 +158,13 @@ export const WORLD_2_LEVELS: TrollRunLevel[] = [
       spawn: { x: 32, y: 120 },
       door: { x: 272, y: 124 },
       tiles,
+      // `land_on`, not `enter`: the zone spans the jump as well as the platform, so entering it
+      // collapsed the landing while the runner was still in the air. Firing on the touchdown instead
+      // leaves the beat it was always meant to be — the floor goes a moment after you reach it.
       triggers: [
         {
           zone: { x: 128, y: 80, w: 64, h: 30 },
-          condition: 'enter',
+          condition: 'land_on',
           actions: [
             {
               type: 'collapse_tiles',
@@ -171,11 +174,12 @@ export const WORLD_2_LEVELS: TrollRunLevel[] = [
                 [10, 6],
                 [11, 6],
               ],
+              delay: 0.45,
             },
           ],
         },
       ],
-      parTime: 5,
+      parTime: 7,
     }
   })(),
 

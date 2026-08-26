@@ -14,6 +14,7 @@ import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { gameTypeConfig, parseGameType } from '@/lib/game-types'
 import { getPlayerSession } from '@/lib/utils'
+import { readHostToken } from '@/lib/host-session'
 import { useActiveGames } from '@/lib/active-games'
 import type { PublicGame } from '@/lib/game-browse'
 
@@ -120,7 +121,15 @@ export function LiveGamesStrip() {
             const lateJoinable = isActive && game.allow_late_players === true && !isFull
             // Profile first (covers another device, and a host with no seat), then this
             // browser's own session as a fallback for a guest with no profile.
-            const myRole = myActiveGames.get(game.id.toUpperCase())
+            const apiRole = myActiveGames.get(game.id.toUpperCase())
+            // Local host-token check overrides the API role. When a host is ALSO seated
+            // as a player and the game's host_user_id doesn't match this profile (e.g.
+            // guest-created game whose host_user_id was never backfilled on signup), the
+            // API returns 'player' — routing the host to /game and stripping their host
+            // rights. On the device that literally holds the host token, always resume
+            // as host.
+            const hasHostTokenHere = !!readHostToken(game.id)
+            const myRole: 'host' | 'player' | undefined = hasHostTokenHere ? 'host' : apiRole
             const alreadyJoined = !!myRole || joinedSet.has(game.id.toUpperCase())
             // Resume where the role actually lives: /host reclaims the host token, /game
             // continues the seat. Sending a host to /game would seat them as a player.

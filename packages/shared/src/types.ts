@@ -992,10 +992,22 @@ export interface DescribeItSession {
   active_team: number
   describer_player_id: string | null
   roster: string[]
-  current_word: string | null
+  /**
+   * The secret word. NOT present on a client-side session — `current_word` is revoked from
+   * anon/authenticated by migration 20260807130000, and DESCRIBE_IT_SESSION_SELECT no longer
+   * asks for it. The describer fetches it via POST /api/describe-it/my-word.
+   */
+  current_word?: string | null
   current_clue: string | null
   current_clues: string[]
+  /**
+   * A SHADOW COPY of the secret — every write that sets `current_word` appends it here, so the
+   * last element IS the current word. Revoked from anon with `current_word`, so it is absent
+   * client-side. Use `word_seq` for the per-word counter.
+   */
   used_words?: string[]
+  /** Public per-word counter (`cardinality(used_words)`) — ticks once per word rotation. */
+  word_seq?: number
   status: 'active' | 'finished'
   status_message: string | null
   turn_deadline_at: string | null
@@ -1305,7 +1317,20 @@ export interface CodewordsBoard {
   id: string
   game_id: string
   words: string[]
-  key: CodewordsCellType[]
+  /**
+   * Word → team assignment. SECRET while the game is live: only the host and the two
+   * spymasters receive the real array from /api/codewords/board. Everyone else gets a MASKED
+   * copy — the true type at revealed indices, `null` at unrevealed ones — which is all an
+   * operative's UI needs (audit finding H2). Mirrors the web type in src/types/index.ts.
+   */
+  key: (CodewordsCellType | null)[]
+  /**
+   * How many cells belong to each type. Not secret (the split is fixed by the ruleset and is
+   * already on screen), but it CANNOT be derived from a masked key — counting a masked key
+   * yields "revealed reds" as the red total, i.e. a scoreboard that says both teams have
+   * already found everything. The API sends it explicitly for exactly that reason.
+   */
+  key_totals?: Partial<Record<CodewordsCellType, number>>
   starting_team: CodewordsTeam
   revealed_indices: number[]
   current_turn: CodewordsTeam
@@ -1519,10 +1544,15 @@ export interface MonopolyBoard {
   mortgaged_properties: Record<string, boolean>
   houses_in_bank: number
   hotels_in_bank: number
-  chance_deck: number[]
-  community_deck: number[]
-  chance_discard: number[]
-  community_discard: number[]
+  // Server-only. These are the shuffled Chance / Community Chest decks; knowing their order is
+  // knowing every upcoming card, so they are NOT in MONOPOLY_BOARD_SELECT and never reach a
+  // client. `monopoly.ts` reads them through the service role with `select('*')`. Optional here
+  // because a client-fetched row genuinely lacks them — `parseDeck` already returns [] for a
+  // non-array, so no read site needs changing.
+  chance_deck?: number[]
+  community_deck?: number[]
+  chance_discard?: number[]
+  community_discard?: number[]
   auction_state: MonopolyAuctionState | null
   pending_trade: unknown | null
   pending_debt: MonopolyPendingDebt | null
@@ -1716,9 +1746,23 @@ export interface QuickDrawGuessSession {
   current_round: number
   active_team: number
   drawer_player_id: string | null
-  current_word: string | null
+  /**
+   * The secret prompt. NOT present on a client-side session — `current_word` is revoked from
+   * anon/authenticated by migration 20260807140000, and QUICK_DRAW_GUESS_SESSION_SELECT no longer
+   * asks for it. The drawer gets it back via POST /api/quick-draw/my-word.
+   */
+  current_word?: string | null
   current_stroke_data: QuickDrawDrawingStrokeData
-  used_words: string[]
+  /**
+   * Also secret: its last entry IS the current word, so it is revoked alongside `current_word`
+   * and absent from client reads. Use `word_seq` when all you need is "the word changed".
+   */
+  used_words?: string[]
+  /**
+   * Public per-word counter — `cardinality(used_words)`, a generated column. Ticks once per word,
+   * including the mid-turn rotations (correct guess, skip) that leave `turn_index` untouched.
+   */
+  word_seq?: number
   turn_deadline_at: string | null
   break_deadline_at: string | null
   status: 'active' | 'finished'

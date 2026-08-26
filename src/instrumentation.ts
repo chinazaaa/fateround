@@ -35,6 +35,27 @@ export async function register() {
   const { startTournamentReminderTicker } = await import('@/lib/tournament-reminder-ticker')
   startTournamentReminderTicker()
 
+  // ── IDLE REAPER DISABLED — DO NOT RE-ADD WITHOUT READING THIS ────────────────
+  // Importing '@/lib/idle-reaper' from here took production down on 2026-08-24
+  // (shipped in #1059). This hook runs during Next's server bootstrap, and that
+  // module pulls in the whole finish graph — admin-end-game -> game-finish ->
+  // room-points / tournament-* / trophies-* -> coins. Bundled, that graph is
+  // circular, and webpack resolves the cycle into a temporal-dead-zone access:
+  //
+  //   ReferenceError: An error occurred while loading instrumentation hook:
+  //     Cannot access 'g' before initialization
+  //   Failed to prepare server
+  //
+  // The server never finishes starting, so EVERY request 500s — a total outage,
+  // not a degraded feature. The two tickers above are safe because their module
+  // graphs don't reach the finish machinery.
+  //
+  // Note the cycle is NOT unique to this hook: a production build of main also
+  // fails to collect page data with the same ReferenceError, on a different
+  // route each run. So re-enabling the reaper needs the cycle broken and proven
+  // (build + boot), not just a lazy import here. Tracked as follow-up.
+  // ─────────────────────────────────────────────────────────────────────────────
+
   // Not configured for this environment → do nothing.
   if (!process.env.OTEL_EXPORTER_OTLP_ENDPOINT) return
 
