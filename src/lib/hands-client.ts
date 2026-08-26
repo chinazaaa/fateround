@@ -1,4 +1,4 @@
-import type { BingoCard, WhotPlayerHand } from '@/types'
+import type { BingoCard, GoFishPlayerHand, WhotPlayerHand } from '@/types'
 
 /**
  * Fetch hands through the server route instead of reading the table.
@@ -26,6 +26,28 @@ export async function fetchWhotHands(
     })
     if (!res.ok) return null
     const data = (await res.json()) as { hands?: WhotPlayerHand[] }
+    return data.hands ?? []
+  } catch {
+    return null
+  }
+}
+
+export async function fetchGoFishHands(
+  gameCode: string,
+  auth: { resumeToken?: string | null; hostToken?: string | null }
+): Promise<GoFishPlayerHand[] | null> {
+  try {
+    const res = await fetch('/api/gofish/hands', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        gameCode: gameCode.toUpperCase(),
+        resumeToken: auth.resumeToken ?? undefined,
+        hostToken: auth.hostToken ?? undefined,
+      }),
+    })
+    if (!res.ok) return null
+    const data = (await res.json()) as { hands?: GoFishPlayerHand[] }
     return data.hands ?? []
   } catch {
     return null
