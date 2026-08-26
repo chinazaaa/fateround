@@ -37,6 +37,7 @@ import { WordScrambleHostView } from '@/components/word-scramble/WordScrambleHos
 import { WordGroupingHostView } from '@/components/word-grouping/WordGroupingHostView'
 import { WordleRoomHostView } from '@/components/wordle-room/WordleRoomHostView'
 import { TrollRunHostView } from '@/components/troll-run/TrollRunHostView'
+import { GoFishHostView } from '@/components/gofish/GoFishHostView'
 
 export type GameHostView = ComponentType<{ gameCode: string; hostToken: string }>
 
@@ -85,4 +86,5 @@ export const HOST_VIEW_REGISTRY: Partial<Record<GameType, GameHostView>> = {
   word_grouping: WordGroupingHostView,
   wordle_room: WordleRoomHostView,
   troll_run: TrollRunHostView,
+  gofish: GoFishHostView,
 }
