@@ -159,12 +159,12 @@ and is what the table UI and the out/finished checks actually consume.
 
 ### Per-game status
 
-| Game         | Table                       | Server route         | Web readers              | Mobile reader | Playtested      | Migration  |
-| ------------ | --------------------------- | -------------------- | ------------------------ | ------------- | --------------- | ---------- |
-| Whot         | `whot_player_hands`         | ✅ `/api/whot/hands` | ✅ player, host, history | ✅            | ❌ **required** | ⏳ blocked |
-| UNO          | `uno_player_hands`          | ❌                   | ❌                       | ❌            | ❌              | ⏳ blocked |
-| Crazy Eights | `crazy_eights_player_hands` | ✅ `/api/crazy-eights/hands` | ✅ player, host, history | ✅            | ❌ **required** | ⏳ blocked (piles already hidden — see below) |
-| Bingo        | `bingo_cards`               | ❌                   | ❌                       | ❌            | ❌              | ⏳ blocked |
+| Game         | Table                       | Server route         | Web readers                     | Mobile reader | Playtested      | Migration  |
+| ------------ | --------------------------- | -------------------- | ------------------------------- | ------------- | --------------- | ---------- |
+| Whot         | `whot_player_hands`         | ✅ `/api/whot/hands` | ✅ player, host, history        | ✅            | ❌ **required** | ⏳ blocked |
+| UNO          | `uno_player_hands`          | ❌                   | ❌                              | ❌            | ❌              | ⏳ blocked |
+| Crazy Eights | `crazy_eights_player_hands` | ✅ `/api/crazy-eights/hands` | ✅ player, host, history        | ✅            | ❌ **required** | ⏳ blocked (piles already hidden — see below) |
+| Bingo        | `bingo_cards`               | ✅ `/api/bingo/card` | ✅ player, host (own seat only) | ✅            | ❌ **required** | ⏳ blocked |
 
 ### Deliberate: the hands routes are unauthenticated reads
 
@@ -249,7 +249,7 @@ asymmetry rather than because both break —
 
 - **Database ahead of code** (42501, revoked column) breaks any client still selecting those
   columns, and has no client-side rescue by design. This is the direction that forces the wait.
-- **Code ahead of database** (42703, undefined column) is *supported*: `readDescribeItSession()`
+- **Code ahead of database** (42703, undefined column) is _supported_: `readDescribeItSession()`
   retries once without `word_seq`, so a deploy landing before the migration degrades to a slower
   word refresh and self-heals. Supported is not the same as intended — the additive migration
   should still go first; the fallback exists so a mis-ordered deploy is a slowdown, not an outage.
