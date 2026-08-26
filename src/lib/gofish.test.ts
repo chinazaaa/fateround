@@ -51,6 +51,7 @@ function baseSession(overrides: Partial<GoFishSession> = {}): GoFishSession {
     status_message: null,
     winner_player_id: null,
     finish_order: [],
+    turn_deadline_at: null,
     created_at: '2026-01-01T00:00:00Z',
     updated_at: '2026-01-01T00:00:00Z',
     ...overrides,

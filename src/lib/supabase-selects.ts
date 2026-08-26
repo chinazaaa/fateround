@@ -99,7 +99,7 @@ export const WHOT_PLAYER_HANDS_SELECT = 'id,game_id,player_id,cards,player_order
  * the client only needs `ocean_count` to render "N cards left" without seeing card order.
  */
 export const GOFISH_SESSION_SELECT =
-  'id,game_id,turn_order,current_turn_index,phase,ocean_count,event_log,status_message,winner_player_id,finish_order,created_at,updated_at'
+  'id,game_id,turn_order,current_turn_index,phase,ocean_count,event_log,status_message,winner_player_id,finish_order,turn_deadline_at,created_at,updated_at'
 
 /**
  * Go Fish hands — `cards` is redacted per-viewer by the /api/gofish/hands route, so this

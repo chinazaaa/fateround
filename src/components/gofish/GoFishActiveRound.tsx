@@ -12,6 +12,7 @@ import {
   GOFISH_RANKS,
 } from '@/lib/gofish'
 import { useToast } from '@/components/ui/Toast'
+import { useGoFishTurnTimer } from '@/hooks/useGoFishTurnTimer'
 
 type Props = {
   gameCode: string
@@ -57,6 +58,11 @@ export function GoFishActiveRound({
   const activeTurnPlayerId = session ? currentPlayerId(session) : null
   const isMyTurn = !readOnly && activeTurnPlayerId === myPlayerId
   const isFinished = game.status === 'finished' || session?.phase === 'finished'
+
+  // Client countdown + auto-poke expire-turn when the deadline lands. Runs for every
+  // watcher, not just the active player: if the browser tab of the active player is
+  // asleep, any other client will nudge the server to auto-play.
+  const { secondsLeft, hasTimer: hasTurnTimer } = useGoFishTurnTimer(gameCode, session, !isFinished)
 
   const eligibleTargets = useMemo(
     () =>
@@ -105,6 +111,7 @@ export function GoFishActiveRound({
         isMyTurn={isMyTurn}
         oceanCount={session?.ocean_count ?? 0}
         isFinished={isFinished}
+        secondsLeft={hasTurnTimer ? secondsLeft : null}
       />
 
       {isFinished ? (
@@ -149,21 +156,32 @@ function TurnStatusBanner({
   isMyTurn,
   oceanCount,
   isFinished,
+  secondsLeft,
 }: {
   activeName: string
   isMyTurn: boolean
   oceanCount: number
   isFinished: boolean
+  secondsLeft: number | null
 }) {
+  const urgent = secondsLeft != null && secondsLeft > 0 && secondsLeft <= 10
   return (
-    <div className="rounded-2xl border border-white/10 bg-[color-mix(in_srgb,var(--primary)_8%,transparent)] px-4 py-3 flex items-center justify-between">
-      <div>
+    <div className="rounded-2xl border border-white/10 bg-[color-mix(in_srgb,var(--primary)_8%,transparent)] px-4 py-3 flex items-center justify-between gap-3">
+      <div className="min-w-0">
         <p className="text-xs uppercase tracking-wide text-muted">Turn</p>
-        <p className="text-lg font-semibold">
+        <p className="text-lg font-semibold truncate">
           {isFinished ? 'Game over' : isMyTurn ? 'Your turn — pick a target' : `${activeName} is asking…`}
         </p>
       </div>
-      <div className="text-right">
+      {!isFinished && secondsLeft != null && (
+        <div className="text-right shrink-0">
+          <p className="text-xs uppercase tracking-wide text-muted">Time</p>
+          <p className={`font-mono text-lg font-bold tabular-nums ${urgent ? 'text-rose-400 animate-pulse' : ''}`}>
+            {Math.max(0, secondsLeft)}s
+          </p>
+        </div>
+      )}
+      <div className="text-right shrink-0">
         <p className="text-xs uppercase tracking-wide text-muted">Ocean</p>
         <p className="text-lg font-semibold">🐟 {oceanCount}</p>
       </div>

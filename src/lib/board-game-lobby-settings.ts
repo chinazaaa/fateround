@@ -12,6 +12,8 @@ export const CRAZY8_TURN_TIMER_OPTIONS = [0, 10, 15, 30, 60, 90, 120] as const
 // UNO turns are quick like Whot / Crazy Eights — same short-timer options.
 export const UNO_TURN_TIMER_OPTIONS = [0, 10, 15, 30, 60, 90, 120] as const
 export const MAHJONG_TURN_TIMER_OPTIONS = [0, 30, 60, 90, 120] as const
+// Go Fish: an ask + optional draw is quick — offer short options plus the "no timer" opt-out.
+export const GOFISH_TURN_TIMER_OPTIONS = [0, 30, 45, 60, 90, 120] as const
 
 export type BoardGameLobbyType =
   | 'monopoly'
@@ -22,6 +24,7 @@ export type BoardGameLobbyType =
   | 'ludo'
   | 'mahjong'
   | 'snake_and_ladder'
+  | 'gofish'
 
 export function boardGameToLobbyLimitType(gameType: BoardGameLobbyType): LobbyLimitGameType {
   return gameType
@@ -35,6 +38,7 @@ export function turnTimerOptionsFor(gameType: BoardGameLobbyType): readonly numb
   if (gameType === 'whot') return WHOT_TURN_TIMER_OPTIONS
   if (gameType === 'crazy_eights') return CRAZY8_TURN_TIMER_OPTIONS
   if (gameType === 'uno') return UNO_TURN_TIMER_OPTIONS
+  if (gameType === 'gofish') return GOFISH_TURN_TIMER_OPTIONS
   return BOARD_GAME_TURN_TIMER_OPTIONS
 }
 
@@ -42,9 +46,12 @@ export function clampBoardGameTurnTimer(raw: unknown, gameType: BoardGameLobbyTy
   const opts = turnTimerOptionsFor(gameType)
   const n = Number(raw ?? 0)
   if ((opts as readonly number[]).includes(n)) return n
-  return gameType === 'ludo' || gameType === 'snake_and_ladder' || gameType === 'mahjong'
-    ? 0
-    : MONOPOLY_DEFAULT_TURN_TIMER
+  if (gameType === 'ludo' || gameType === 'snake_and_ladder' || gameType === 'mahjong') return 0
+  // Go Fish defaults to 45 s so a fresh room isn't stall-vulnerable if the host doesn't touch
+  // the picker — Whot / UNO explicitly opt-in to a value via their custom flow, but Go Fish
+  // creates via the generic path.
+  if (gameType === 'gofish') return 45
+  return MONOPOLY_DEFAULT_TURN_TIMER
 }
 
 export function formatBoardGameTurnTimer(seconds: number): string {

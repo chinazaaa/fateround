@@ -19,6 +19,35 @@ export function gofishDealCount(playerCount: number): number {
 /** Standard refill draw when a player empties their hand while the ocean still has cards. */
 export const GOFISH_REFILL_TARGET = 5
 
+/** Default per-turn seconds. Configurable per game via games.timer_seconds. */
+export const GOFISH_DEFAULT_TIMER_SECONDS = 45
+export const GOFISH_TIMER_OPTIONS = [0, 30, 45, 60, 90, 120] as const
+
+/** ISO deadline `seconds` from now, or null when no timer is configured. */
+export function gofishTurnDeadline(timerSeconds: number, now: Date = new Date()): string | null {
+  if (!timerSeconds || timerSeconds <= 0) return null
+  return new Date(now.getTime() + timerSeconds * 1000).toISOString()
+}
+
+/**
+ * On expiry, pick a legal auto-ask for the current player: any rank they hold, targeting
+ * any opponent with cards. Returns null when the player has no cards (turn just passes),
+ * no legal target (nobody else has cards), or no askable rank.
+ */
+export function pickAutoAsk(
+  hand: GoFishCard[],
+  opponentCardCounts: Map<string, number>,
+  rng: () => number = Math.random
+): { targetPlayerId: string; rank: GoFishRank } | null {
+  const ranks = askableRanks(hand)
+  if (ranks.length === 0) return null
+  const targets = [...opponentCardCounts.entries()].filter(([, count]) => count > 0).map(([id]) => id)
+  if (targets.length === 0) return null
+  const rank = ranks[Math.floor(rng() * ranks.length)]
+  const target = targets[Math.floor(rng() * targets.length)]
+  return { targetPlayerId: target, rank }
+}
+
 export const GOFISH_SUITS: GoFishSuit[] = ['spades', 'hearts', 'diamonds', 'clubs']
 export const GOFISH_RANKS: GoFishRank[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
 

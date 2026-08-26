@@ -1048,6 +1048,8 @@ export interface GoFishSession {
   winner_player_id: string | null
   /** Player ids in the order they finished (either ran out of cards with an empty ocean, or the game ended). */
   finish_order: string[]
+  /** ISO timestamp when the current player's turn expires; null means no timer configured. */
+  turn_deadline_at: string | null
   created_at: string
   updated_at: string
 }

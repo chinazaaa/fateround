@@ -1128,6 +1128,8 @@ export async function POST(req: NextRequest) {
                                               ? clampBoardGameTurnTimer(timer_seconds, 'uno')
                                               : isMahjongGame(game_type)
                                                 ? clampBoardGameTurnTimer(timer_seconds, 'mahjong')
+                                                : parseGameType(game_type) === 'gofish'
+                                                  ? clampBoardGameTurnTimer(timer_seconds, 'gofish')
                                                 : isMatchingPairsGame(game_type)
                                                   ? Math.max(0, Math.min(600, Math.round(Number(timer_seconds) || 0)))
                                                   : [15, 30, 60].includes(Number(timer_seconds))

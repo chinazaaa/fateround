@@ -6,6 +6,8 @@ import {
   buildGoFishDeck,
   currentPlayerId,
   dealGoFish,
+  gofishTurnDeadline,
+  pickAutoAsk,
   resolveGoFishAsk,
   shuffleDeck,
   type GoFishAskResult,
@@ -31,6 +33,9 @@ export async function initializeGoFishGame(
   playerIds: string[]
 ): Promise<{ error?: string }> {
   if (playerIds.length < 2) return { error: 'Need at least 2 players' }
+  const { data: gameRow } = await supabase.from('games').select('timer_seconds').eq('id', gameId).maybeSingle()
+  const timerSeconds = (gameRow?.timer_seconds ?? 0) as number
+
   const turnOrder = shuffleDeck(playerIds)
   const deck = shuffleDeck(buildGoFishDeck())
   const { hands, initialBooks, ocean } = dealGoFish(turnOrder, deck)
@@ -47,6 +52,7 @@ export async function initializeGoFishGame(
     status_message: null,
     winner_player_id: null,
     finish_order: [],
+    turn_deadline_at: gofishTurnDeadline(timerSeconds),
     created_at: now,
     updated_at: now,
   }
@@ -129,6 +135,12 @@ export async function processGoFishAsk(
 
   const { session: nextSession, handUpdates } = result
 
+  // Refresh the deadline on every write: whether the same player goes again or the turn passes,
+  // the new active player gets a fresh clock. Cleared when the game finishes.
+  const { data: gameRow } = await supabase.from('games').select('timer_seconds').eq('id', gameId).maybeSingle()
+  const timerSeconds = (gameRow?.timer_seconds ?? 0) as number
+  const nextDeadline = nextSession.phase === 'finished' ? null : gofishTurnDeadline(timerSeconds)
+
   // Persist. Do the session write first so a failed hand update doesn't leave stale
   // ocean/log state — every mutation here is idempotent by session state + player id.
   const { error: sessionError } = await supabase
@@ -142,6 +154,7 @@ export async function processGoFishAsk(
       status_message: nextSession.status_message,
       winner_player_id: nextSession.winner_player_id,
       finish_order: nextSession.finish_order,
+      turn_deadline_at: nextDeadline,
       updated_at: nextSession.updated_at,
     })
     .eq('game_id', gameId)
@@ -161,6 +174,68 @@ export async function processGoFishAsk(
   }
 
   return { result }
+}
+
+/**
+ * Auto-play when the current player's turn timer runs out.
+ *
+ * Picks a random legal ask from the current player's hand + a random target with cards.
+ * Idempotent: only acts if the deadline has genuinely passed AND the game is still active.
+ * Passes the turn without side effects when the player has no cards (they'd refill on the
+ * next legal turn) or no valid target exists.
+ */
+export async function processGoFishExpireTurn(
+  supabase: SupabaseClient,
+  gameId: string
+): Promise<{ error?: string; skipped?: boolean }> {
+  const { session, hands } = await loadGameState(supabase, gameId)
+  if (!session) return { error: 'Session not found' }
+  if (session.phase === 'finished') return { skipped: true }
+  if (!session.turn_deadline_at || new Date(session.turn_deadline_at) > new Date()) {
+    return { skipped: true }
+  }
+
+  const activePlayerId = currentPlayerId(session)
+  if (!activePlayerId) return { error: 'No current player' }
+  const activeHand = hands.find((h) => h.player_id === activePlayerId)
+  const activeCards = ((activeHand?.cards ?? []) as unknown[]) as import('@/types').GoFishCard[]
+
+  const opponentCounts = new Map<string, number>()
+  for (const hand of hands) {
+    if (hand.player_id === activePlayerId) continue
+    opponentCounts.set(hand.player_id, ((hand.cards ?? []) as unknown[]).length)
+  }
+
+  const pick = pickAutoAsk(activeCards, opponentCounts)
+  if (!pick) {
+    // No legal ask: advance the turn pointer without a state-changing action so the
+    // room does not deadlock behind an empty-handed or targetless player.
+    const nextIndex = nextActiveTurnIndexFromHands(session, hands)
+    const { data: gameRow } = await supabase.from('games').select('timer_seconds').eq('id', gameId).maybeSingle()
+    const timerSeconds = (gameRow?.timer_seconds ?? 0) as number
+    await supabase
+      .from('gofish_sessions')
+      .update({
+        current_turn_index: nextIndex,
+        turn_deadline_at: gofishTurnDeadline(timerSeconds),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('game_id', gameId)
+    return {}
+  }
+
+  const { error } = await processGoFishAsk(supabase, gameId, activePlayerId, pick.targetPlayerId, pick.rank)
+  return error ? { error } : {}
+}
+
+function nextActiveTurnIndexFromHands(session: GoFishSession, hands: GoFishPlayerHand[]): number {
+  const order = session.turn_order
+  const cardCount = (id: string) => ((hands.find((h) => h.player_id === id)?.cards ?? []) as unknown[]).length
+  for (let step = 1; step <= order.length; step += 1) {
+    const idx = (session.current_turn_index + step) % order.length
+    if (cardCount(order[idx]) > 0) return idx
+  }
+  return session.current_turn_index
 }
 
 function askErrorMessage(
