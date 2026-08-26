@@ -4,6 +4,7 @@ import { ayoFacts } from './ayo'
 import { checkersFacts } from './checkers'
 import { chessFacts } from './chess'
 import { crazyEightsFacts } from './crazy-eights'
+import { rummyFacts } from './rummy'
 import { describeItFacts } from './describe-it'
 import { mafiaFacts } from './mafia'
 import { mahjongFacts } from './mahjong'
@@ -89,6 +90,7 @@ const BUILDERS: Partial<Record<GameType, FactsBuilder>> = {
   chess: chessFacts,
   codewords: codewordsFacts,
   crazy_eights: crazyEightsFacts,
+  rummy: rummyFacts,
   describe_it: describeItFacts,
   ludo: ludoFacts,
   mafia: mafiaFacts,

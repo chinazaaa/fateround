@@ -53,6 +53,7 @@ const WINNER_SOURCES: Partial<Record<GameType, WinnerSource>> = {
   scrabble: { table: 'scrabble_sessions', column: 'winner_player_id' },
   snake_and_ladder: { table: 'snake_ladder_sessions', column: 'winner_player_id' },
   crazy_eights: { table: 'crazy_eights_sessions', column: 'winner_player_id' },
+  rummy: { table: 'rummy_sessions', column: 'winner_player_id' },
   checkers: { table: 'checkers_sessions', column: 'winner_player_id' },
   // Both 10×10 variants share the draughts10 engine and therefore one table.
   checkers_international: { table: 'checkers10_sessions', column: 'winner_player_id' },

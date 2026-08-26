@@ -57,6 +57,7 @@ export const GAME_TYPE_TO_SLUG: Record<GameType, string> = {
   monopoly: 'estate-kings',
   yahtzee: 'yahtzee',
   whot: 'whot',
+  rummy: 'rummy',
   crazy_eights: 'crazy-eights',
   uno: 'uno',
   ludo: 'ludo',
@@ -1605,6 +1606,71 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     relatedBlogPosts: [
       { slug: 'whot-rules-explained', label: 'Whot rules explained →' },
       { slug: 'is-whot-like-uno', label: 'Whot vs Uno: what’s actually different →' },
+    ],
+  }),
+  rummy: landing('rummy', {
+    seoTitle: 'Play Rummy Online Free with Friends — Sets, Runs, No Sign-Up',
+    seoDescription:
+      'Play Rummy online free with friends — no sign-up, no download. Draw, discard, and meld sets and runs. First to lay down their whole hand wins the round. 2–6 players.',
+    keywords: [
+      'rummy online',
+      'rummy rules',
+      'how to play rummy',
+      'rummy card game',
+      'play rummy friends',
+      'rummy multiplayer',
+      'play rummy online free',
+      'rummy with friends online',
+      'rummy online free no download',
+      'basic rummy rules',
+      'sets and runs rummy',
+      'go out rummy',
+    ],
+    heroSubtitle: 'The classic card game — draw, discard, and be first to meld your whole hand into sets and runs.',
+    bodyParagraph:
+      'Rummy on FateRound plays by the everyone-knows-this rules: on your turn draw one card from the pile or the top of the discard, then discard one. Build sets (three or four cards of the same rank) and runs (three or more consecutive cards of the same suit). The moment your entire hand can be laid down as valid melds — usually with one card left to discard — you go out and win the round. If the clock runs out first, whoever is closest to going out wins — the player with the most cards that could still be laid down as valid melds; leftover deadwood (face cards 10, ace 1, numerics face value) breaks a tie.',
+    highlights: ['Standard 52-card deck', '2–6 players', 'Sets & runs — first hand out wins'],
+    features: [
+      {
+        title: 'Draw and discard',
+        description: 'Pick from the pile or steal the top of the discard, then throw one away.',
+        emoji: '🃏',
+      },
+      {
+        title: 'Meld sets and runs',
+        description: 'Three of a kind, four of a kind, or three-plus consecutive cards of one suit.',
+        emoji: '🎯',
+      },
+      SHARED_FEATURES.mobile,
+      SHARED_FEATURES.noSignup,
+    ],
+    steps: [
+      { title: 'Join a room', description: 'Enter your name and wait for the host to deal.' },
+      { title: 'Take your turn', description: 'Draw one card, rearrange your hand, then discard one.' },
+      { title: 'Go out', description: 'Lay your whole hand down as valid sets and runs — you win the round.' },
+    ],
+    perfectFor: ['Family card night', 'Card-game learners', 'Quick tactical rounds'],
+    extraFaqs: [
+      {
+        question: 'How many cards do you deal in Rummy?',
+        answer:
+          'Two players get 10 cards each; three or four players get 7 each; five or six players get 6 each. One card is turned face-up to start the discard pile.',
+      },
+      {
+        question: 'What counts as a set or a run?',
+        answer:
+          'A SET is 3 or 4 cards of the same rank in different suits (e.g. 7♠ 7♥ 7♦). A RUN is 3 or more consecutive cards of the same suit (e.g. 4♣ 5♣ 6♣). Aces are low — A-2-3 is legal, Q-K-A is not.',
+      },
+      {
+        question: 'How do you go out and win?',
+        answer:
+          'When your whole hand can be laid down as valid sets and runs — usually with one card left to discard — you go out. That ends the round and you win it.',
+      },
+      {
+        question: 'How does scoring work if the clock runs out?',
+        answer:
+          'The winner is whoever is CLOSEST to going out — the player whose hand has the most cards that could be laid down as valid sets and runs. Ties are broken by fewest leftover deadwood (face cards 10, aces 1, numerics face value). This rewards a Rummy-ready hand over one that just happens to be holding cheap junk.',
+      },
     ],
   }),
   crazy_eights: landing('crazy_eights', {
