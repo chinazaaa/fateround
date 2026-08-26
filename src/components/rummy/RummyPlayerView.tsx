@@ -8,7 +8,7 @@ import {
   RummySecondaryButton,
   RummyShell,
 } from '@/components/rummy/RummyChrome'
-import { RummyGamePanel, RummyStandingsBox } from '@/components/rummy/RummyBoard'
+import { RummyGamePanel } from '@/components/rummy/RummyBoard'
 import { EditNameInline } from '@/components/ui/EditNameInline'
 import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
 import { useRegisterGameSettings } from '@/components/GameSettingsContext'
@@ -30,6 +30,8 @@ import { useRummyTurnTimer } from '@/hooks/useRummyTurnTimer'
 import { useRummyGameTimer } from '@/hooks/useRummyGameTimer'
 import { GameStartedWaiting } from '@/components/GameStartedWaiting'
 import { GameEndedScreen } from '@/components/GameEndedScreen'
+import { PlayerRoomShell } from '@/components/rooms/PlayerRoomShell'
+import { RummyFinalResultsShareBlock } from '@/components/rummy/RummyFinalResultsShareBlock'
 import { GameInfoChips } from '@/components/game-lobby/GameInfoChips'
 import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
 import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
@@ -402,12 +404,16 @@ export function RummyPlayerView({ gameCode }: { gameCode: string }) {
     const iWon = myPlayerId != null && session?.winner_player_id === myPlayerId
     return (
       <RummyShell title={game?.title ?? cfg.label} compact>
-        <RummyCardBox className="p-4 text-center space-y-2">
-          <p className="text-4xl">{winner ? '🏆' : '🏁'}</p>
-          <p className="text-xl font-black">{winner ? (iWon ? 'You win!' : `${winner.name} wins!`) : 'Round ended'}</p>
-          {session?.status_message && <p className="text-sm text-muted">{session.status_message}</p>}
-        </RummyCardBox>
-        {session && <RummyStandingsBox session={session} players={players} hands={hands} myPlayerId={myPlayerId} />}
+        {game && session && (
+          <RummyFinalResultsShareBlock
+            game={game}
+            players={players as Player[]}
+            hands={hands}
+            session={session}
+            winnerName={winner?.name}
+            highlightPlayerId={myPlayerId}
+          />
+        )}
         {iWon && game && (
           <PostWinToCommunity gameType="rummy" gameCode={gameCode} winnerName={myName} roundKey={session?.id} />
         )}
@@ -415,8 +421,12 @@ export function RummyPlayerView({ gameCode }: { gameCode: string }) {
     )
   }
 
+  // Active play mounts inside PlayerRoomShell — the design-system room frame provides the
+  // `.fr-room fr-room-poll` → `.pr-stage` ancestor that the shared card-table CSS (`.fr-room .pc`,
+  // `.fr-room .ct-surface`, `.fr-room .hand`) scopes under. Without it every card renders as
+  // unstyled default flow (three stacked spans per card).
   return (
-    <RummyShell title={game?.title ?? cfg.label} compact wide>
+    <PlayerRoomShell>
       {isViewer && <ViewerModeBanner />}
       {session && (
         <RummyGamePanel
@@ -438,6 +448,6 @@ export function RummyPlayerView({ gameCode }: { gameCode: string }) {
           onGoOut={(melds, discardCardId) => void callAction('/api/rummy/go-out', { melds, discardCardId })}
         />
       )}
-    </RummyShell>
+    </PlayerRoomShell>
   )
 }
