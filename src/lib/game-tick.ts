@@ -52,6 +52,7 @@ export const ROUND_ADVANCE_SLUG: Record<string, string> = {
 export const TURN_EXPIRE_SLUG: Record<string, string> = {
   whot: 'whot',
   crazy_eights: 'crazy-eights',
+  rummy: 'rummy',
   chess: 'chess',
   checkers: 'checkers',
   checkers_international: 'checkers-international',

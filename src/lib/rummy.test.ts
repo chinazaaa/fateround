@@ -9,6 +9,7 @@ import {
   drawFromPile,
   isValidRun,
   isValidSet,
+  maxMeldableCount,
   rummyCardPoints,
   rummyHandSize,
   rummyHandSum,
@@ -184,23 +185,60 @@ describe('scoring', () => {
   })
 })
 
-describe('placement order', () => {
-  it('winner first, others by hand total then card count then id', () => {
-    const hands = [
-      { player_id: 'w', cards: [] },
-      { player_id: 'a', cards: [c('hearts', 5)] },
-      { player_id: 'b', cards: [c('hearts', 2), c('spades', 2)] },
-      { player_id: 'c', cards: [c('hearts', 5), c('spades', 10)] },
-    ]
-    expect(rummyPlacementOrder(hands, ['w', 'a', 'b', 'c'], 'w')).toEqual(['w', 'b', 'a', 'c'])
+describe('maxMeldableCount', () => {
+  it('is 0 for hands too short to meld', () => {
+    expect(maxMeldableCount([])).toBe(0)
+    expect(maxMeldableCount([c('hearts', 5), c('spades', 5)])).toBe(0)
   })
 
-  it('no winner (time out) just sorts by hand total', () => {
+  it('is the full hand when every card lays down', () => {
+    const hand = [c('spades', 7), c('hearts', 7), c('diamonds', 7), c('clubs', 4), c('clubs', 5), c('clubs', 6)]
+    expect(maxMeldableCount(hand)).toBe(6)
+  })
+
+  it('ignores stray deadwood', () => {
+    const hand = [
+      c('spades', 7),
+      c('hearts', 7),
+      c('diamonds', 7),
+      c('clubs', 4),
+      c('clubs', 5),
+      c('clubs', 6),
+      c('spades', 10), // deadwood — 5♣6♣7♠ never both use 7♠ / 6♣ / 5♣ optimally
+      c('hearts', 13),
+    ]
+    expect(maxMeldableCount(hand)).toBe(6)
+  })
+
+  it('resolves overlap by choosing one meld — best is 3, not both', () => {
+    // Both 5♣6♣7♣ (run) and 7♠7♥7♣ (set) use 7♣, so at most one can be melded.
+    const hand = [c('spades', 7), c('hearts', 7), c('clubs', 7), c('clubs', 5), c('clubs', 6)]
+    expect(maxMeldableCount(hand)).toBe(3)
+  })
+})
+
+describe('placement order', () => {
+  it('declared winner first, then closest-to-going-out, then lower deadwood', () => {
     const hands = [
-      { player_id: 'a', cards: [c('hearts', 5), c('spades', 10)] },
+      { player_id: 'w', cards: [] },
+      // 'a' can meld 3 cards (7-7-7)
+      { player_id: 'a', cards: [c('spades', 7), c('hearts', 7), c('diamonds', 7)] },
+      // 'b' can meld none, 5 pts of deadwood
+      { player_id: 'b', cards: [c('hearts', 5)] },
+      // 'c' can meld none, 12 pts of deadwood
+      { player_id: 'c', cards: [c('hearts', 5), c('hearts', 7)] },
+    ]
+    expect(rummyPlacementOrder(hands, ['w', 'a', 'b', 'c'], 'w')).toEqual(['w', 'a', 'b', 'c'])
+  })
+
+  it('no declared winner (time out) ranks by closest-to-going-out', () => {
+    const hands = [
+      // 'a' can meld all 3 of a run
+      { player_id: 'a', cards: [c('clubs', 4), c('clubs', 5), c('clubs', 6)] },
+      // 'b' can meld nothing (only 1 card)
       { player_id: 'b', cards: [c('hearts', 2)] },
     ]
-    expect(rummyPlacementOrder(hands, ['a', 'b'], null)).toEqual(['b', 'a'])
+    expect(rummyPlacementOrder(hands, ['a', 'b'], null)).toEqual(['a', 'b'])
   })
 })
 

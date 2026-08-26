@@ -727,9 +727,10 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
     {
       title: 'Game length',
       points: [
-        'The host can set a game length (10, 15, 30 minutes, etc.) or play with no limit.',
+        'The host can set a per-player turn timer AND a whole-game clock — or turn either off.',
+        'When your turn timer hits zero, the game auto-draws and auto-discards for you and moves on.',
         'First to lay everything down wins during normal play (no game clock).',
-        'With a game clock, time running out ends the round — lowest hand total wins.',
+        'When the whole-game clock runs out, the winner is whoever is CLOSEST to going out — the player whose hand has the most cards that could be laid down as valid sets and runs. Ties are broken by fewest leftover deadwood, so a Rummy-ready hand beats one that just happens to hold cheap cards.',
       ],
     },
   ],

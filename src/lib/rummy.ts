@@ -3,7 +3,7 @@ import { internalErrorMessage } from '@/lib/api-errors'
 import { clearSessionTables } from './session-clear'
 import { markGameFinished } from '@/lib/game-finish'
 import { secondsUntilDeadline } from '@/lib/round-timing'
-import type { RummyCard, RummyMeld, RummyPlayerHand, RummySession, RummySuit } from '@/types'
+import type { Game, RummyCard, RummyMeld, RummyPlayerHand, RummySession, RummySuit } from '@/types'
 
 export const RUMMY_MIN_PLAYERS = 2
 export const RUMMY_MAX_PLAYERS = 6
@@ -83,6 +83,17 @@ export function rummyGameSessionExpired(
   if (!durationSeconds || durationSeconds <= 0) return false
   if (!sessionStartedAt) return false
   return secondsUntilDeadline(sessionStartedAt, durationSeconds) <= 0
+}
+
+/** Per-turn deadline. `timerSeconds` = the host's per-player clock from `games.timer_seconds`. */
+export function rummyTurnDeadline(timerSeconds: number): string | null {
+  if (!timerSeconds || timerSeconds <= 0) return null
+  return new Date(Date.now() + timerSeconds * 1000).toISOString()
+}
+
+export function rummySecondsLeft(deadlineAt: string | null | undefined): number {
+  if (!deadlineAt) return 0
+  return Math.max(0, Math.ceil((new Date(deadlineAt).getTime() - Date.now()) / 1000))
 }
 
 /** Standard 52-card deck. Card ids are stable strings so client re-renders stay keyed. */
@@ -231,7 +242,15 @@ export type RummyStanding = {
 
 type RummyRankableHand = { player_id: string; cards: RummyCard[] | null }
 
-/** First to empty their hand wins; everyone else is ordered by lowest deadwood total. */
+/**
+ * Placement order (1st → last).
+ *
+ * The declared winner (someone who went out) always ranks first. Everyone else is ordered
+ * by "closest to going out" — the largest number of cards in their hand that could form
+ * valid melds — so the timeout ending rewards a Rummy-ready hand rather than just holding
+ * cheap cards. Ties are broken by fewest leftover deadwood, then fewer cards, then id
+ * (stable).
+ */
 export function rummyPlacementOrder(
   hands: RummyRankableHand[],
   turnOrder: string[],
@@ -242,9 +261,16 @@ export function rummyPlacementOrder(
     .filter((h) => activeIds.has(h.player_id) && h.player_id !== winnerId)
     .map((h) => {
       const cards = h.cards ?? []
-      return { playerId: h.player_id, handSum: rummyHandSum(cards), cardCount: cards.length }
+      return {
+        playerId: h.player_id,
+        meldable: maxMeldableCount(cards),
+        handSum: rummyHandSum(cards),
+        cardCount: cards.length,
+      }
     })
     .sort((a, b) => {
+      // More meldable cards = closer to going out = higher placement.
+      if (a.meldable !== b.meldable) return b.meldable - a.meldable
       if (a.handSum !== b.handSum) return a.handSum - b.handSum
       if (a.cardCount !== b.cardCount) return a.cardCount - b.cardCount
       return a.playerId.localeCompare(b.playerId)
@@ -309,6 +335,122 @@ export function pushDiscard(discardPile: RummyCard[], card: RummyCard): RummyCar
 }
 
 // ---------------------------------------------------------------------------
+// "Closest to going out" — timeout scoring
+// ---------------------------------------------------------------------------
+
+/**
+ * Enumerate every valid meld that can be formed from `hand`. Small — a full hand of 11
+ * cards yields at most a few dozen candidates because sets/runs are tightly constrained
+ * (same rank, or consecutive same-suit).
+ */
+function candidateMelds(hand: RummyCard[]): RummyCard[][] {
+  const out: RummyCard[][] = []
+  // Sets (3 or 4 of a rank) — one per rank the hand actually holds.
+  const byRank = new Map<number, RummyCard[]>()
+  for (const c of hand) {
+    const arr = byRank.get(c.rank) ?? []
+    arr.push(c)
+    byRank.set(c.rank, arr)
+  }
+  for (const [, cards] of byRank) {
+    if (cards.length >= 3) {
+      // Every 3-subset and, if we have four suits, the 4-set itself.
+      for (let i = 0; i < cards.length; i += 1) {
+        for (let j = i + 1; j < cards.length; j += 1) {
+          for (let k = j + 1; k < cards.length; k += 1) {
+            out.push([cards[i], cards[j], cards[k]])
+          }
+        }
+      }
+      if (cards.length === 4) out.push(cards.slice())
+    }
+  }
+  // Runs (3+ consecutive same-suit) — for each suit, sort by rank and pull every
+  // contiguous window of size 3..len that's actually consecutive.
+  const bySuit = new Map<RummySuit, RummyCard[]>()
+  for (const c of hand) {
+    const arr = bySuit.get(c.suit) ?? []
+    arr.push(c)
+    bySuit.set(c.suit, arr)
+  }
+  for (const [, cards] of bySuit) {
+    const sorted = [...cards].sort((a, b) => a.rank - b.rank)
+    for (let i = 0; i < sorted.length; i += 1) {
+      for (let j = i + 2; j < sorted.length; j += 1) {
+        // Window [i..j]: contiguous ranks only.
+        let ok = true
+        for (let k = i + 1; k <= j; k += 1) {
+          if (sorted[k].rank !== sorted[k - 1].rank + 1) {
+            ok = false
+            break
+          }
+        }
+        if (ok) out.push(sorted.slice(i, j + 1))
+      }
+    }
+  }
+  return out
+}
+
+/**
+ * The maximum number of cards from `hand` that can be simultaneously assigned to a set
+ * of non-overlapping valid melds. This is "how close is this player to going out": if it
+ * equals `hand.length` they could have gone Rummy this turn; less means that many cards
+ * are deadwood. Used for the timeout ranking.
+ *
+ * Correctness: exhaustive DFS over candidate melds; each meld uses a bitmask over hand
+ * indices, and we only descend into melds disjoint from the running mask. Prunes on the
+ * best-so-far bound so it's fast for realistic 6-11 card hands.
+ */
+export function maxMeldableCount(hand: RummyCard[]): number {
+  if (hand.length < 3) return 0
+  const idOf = new Map(hand.map((c, i) => [c.id, i]))
+  const cands = candidateMelds(hand)
+    .map((cards) => {
+      let mask = 0
+      for (const c of cards) mask |= 1 << (idOf.get(c.id) ?? 0)
+      return { mask, size: cards.length }
+    })
+    // Bigger melds first so DFS finds strong baselines fast.
+    .sort((a, b) => b.size - a.size)
+
+  let best = 0
+  const visited = new Set<number>()
+  const dfs = (used: number, covered: number, start: number) => {
+    if (covered > best) best = covered
+    // Prune: even if every remaining candidate joined perfectly, could we beat best?
+    // Loose bound: cards not yet used.
+    const remainingCards = hand.length - covered - popcount(used & ~coverAll(hand.length, used))
+    if (covered + Math.max(0, hand.length - popcount(used)) <= best) {
+      // Best case is take every un-used card — if that can't beat `best`, prune.
+      if (remainingCards === 0) return
+    }
+    if (visited.has(used)) return
+    visited.add(used)
+    for (let i = start; i < cands.length; i += 1) {
+      const { mask, size } = cands[i]
+      if (mask & used) continue
+      dfs(used | mask, covered + size, i + 1)
+    }
+  }
+  dfs(0, 0, 0)
+  return best
+}
+
+function popcount(x: number): number {
+  let n = 0
+  while (x) {
+    n += x & 1
+    x >>>= 1
+  }
+  return n
+}
+
+function coverAll(len: number, used: number): number {
+  return ((1 << len) - 1) & ~used
+}
+
+// ---------------------------------------------------------------------------
 // Server engine
 // ---------------------------------------------------------------------------
 
@@ -328,7 +470,9 @@ function handForPlayer(hands: RummyPlayerHand[], playerId: string): RummyCard[] 
   return (row?.cards as RummyCard[] | null) ?? []
 }
 
-/** Deal a fresh game, seed session + hand rows, and post the opening status message. */
+/** Deal a fresh game, seed session + hand rows, and post the opening status message.
+ *  `shuffleArray(playerIds)` gives a random turn order every deal, so the first mover
+ *  rotates naturally between games (checklist item #8 — no player is always first). */
 export async function initializeRummyGame(
   supabase: SupabaseClient,
   gameId: string,
@@ -339,12 +483,15 @@ export async function initializeRummyGame(
   }
 
   const turnOrder = shuffleArray(playerIds)
-
   const { hands, drawPile, discardPile } = dealRummy(turnOrder)
 
-  const { data: playerRows } = await supabase.from('players').select('id, name').eq('game_id', gameId)
+  const [{ data: playerRows }, { data: gameRow }] = await Promise.all([
+    supabase.from('players').select('id, name').eq('game_id', gameId),
+    supabase.from('games').select('timer_seconds').eq('id', gameId).maybeSingle(),
+  ])
   const names = new Map<string, string>()
   for (const p of playerRows ?? []) names.set(p.id, p.name)
+  const timerSeconds = gameRow?.timer_seconds ?? 0
 
   const firstId = turnOrder[0]
   const topDiscard = discardPile[discardPile.length - 1] ?? null
@@ -362,7 +509,7 @@ export async function initializeRummyGame(
     winner_player_id: null,
     winning_melds: null,
     reshuffle_count: 0,
-    turn_deadline_at: null,
+    turn_deadline_at: rummyTurnDeadline(timerSeconds),
   }
 
   const { error: sErr } = await supabase.from(RUMMY_SESSIONS).insert(sessionRow)
@@ -396,11 +543,19 @@ async function loadRummyState(
   session: RummySession | null
   hands: RummyPlayerHand[]
   names: Map<string, string>
+  timerSeconds: number
+  gameDurationSeconds: number
+  sessionStartedAt: string | null
 }> {
-  const [sRes, hRes, pRes] = await Promise.all([
+  const [sRes, hRes, pRes, gRes] = await Promise.all([
     supabase.from(RUMMY_SESSIONS).select('*').eq('game_id', gameId).maybeSingle(),
     supabase.from(RUMMY_HANDS).select('*').eq('game_id', gameId).order('player_order'),
     supabase.from('players').select('id, name').eq('game_id', gameId),
+    supabase
+      .from('games')
+      .select('timer_seconds, game_duration_seconds, session_started_at')
+      .eq('id', gameId)
+      .maybeSingle(),
   ])
   const names = new Map<string, string>()
   for (const p of pRes.data ?? []) names.set(p.id, p.name)
@@ -408,6 +563,9 @@ async function loadRummyState(
     session: (sRes.data as RummySession | null) ?? null,
     hands: (hRes.data as RummyPlayerHand[]) ?? [],
     names,
+    timerSeconds: gRes.data?.timer_seconds ?? 0,
+    gameDurationSeconds: gRes.data?.game_duration_seconds ?? 0,
+    sessionStartedAt: gRes.data?.session_started_at ?? null,
   }
 }
 
@@ -424,9 +582,12 @@ export async function processRummyDraw(
   playerId: string,
   source: 'pile' | 'discard'
 ): Promise<{ error?: string }> {
-  const { session, hands, names } = await loadRummyState(supabase, gameId)
+  const { session, hands, names, gameDurationSeconds, sessionStartedAt } = await loadRummyState(supabase, gameId)
   if (!session) return { error: 'Rummy session not found' }
   if (session.phase === 'finished') return { error: 'Game is finished' }
+  if (await maybeFinalizeGameClock(supabase, gameId, session, hands, names, sessionStartedAt, gameDurationSeconds)) {
+    return {}
+  }
   if (currentPlayerId(session) !== playerId) return { error: "It's not your turn" }
   if (session.turn_step !== 'draw') return { error: 'You already drew — discard to end your turn' }
 
@@ -493,9 +654,15 @@ export async function processRummyDiscard(
   playerId: string,
   cardId: string
 ): Promise<{ error?: string }> {
-  const { session, hands, names } = await loadRummyState(supabase, gameId)
+  const { session, hands, names, timerSeconds, gameDurationSeconds, sessionStartedAt } = await loadRummyState(
+    supabase,
+    gameId
+  )
   if (!session) return { error: 'Rummy session not found' }
   if (session.phase === 'finished') return { error: 'Game is finished' }
+  if (await maybeFinalizeGameClock(supabase, gameId, session, hands, names, sessionStartedAt, gameDurationSeconds)) {
+    return {}
+  }
   if (currentPlayerId(session) !== playerId) return { error: "It's not your turn" }
   if (session.turn_step !== 'discard') return { error: 'You must draw before discarding' }
 
@@ -523,6 +690,7 @@ export async function processRummyDiscard(
       current_turn_index: nextIndex,
       turn_step: 'draw',
       status_message: `${playerNameFrom(names, nextId)}'s turn — draw a card`,
+      turn_deadline_at: rummyTurnDeadline(timerSeconds),
       updated_at: new Date().toISOString(),
     })
     .eq('game_id', gameId)
@@ -539,9 +707,12 @@ export async function processRummyGoOut(
   meldCardIds: string[][],
   discardCardId: string | null
 ): Promise<{ error?: string }> {
-  const { session, hands, names } = await loadRummyState(supabase, gameId)
+  const { session, hands, names, gameDurationSeconds, sessionStartedAt } = await loadRummyState(supabase, gameId)
   if (!session) return { error: 'Rummy session not found' }
   if (session.phase === 'finished') return { error: 'Game is finished' }
+  if (await maybeFinalizeGameClock(supabase, gameId, session, hands, names, sessionStartedAt, gameDurationSeconds)) {
+    return {}
+  }
   if (currentPlayerId(session) !== playerId) return { error: "It's not your turn" }
   // Going out requires you to have drawn this turn (the classic sequence: draw → meld → discard).
   if (session.turn_step !== 'discard') return { error: 'Draw a card before going out' }
@@ -594,6 +765,78 @@ export async function processRummyGoOut(
   return {}
 }
 
+/** If the whole-game clock ran out, finalize by lowest hand total and return true so the
+ *  caller stops. Runs before every action processor — server clock is the source of truth
+ *  so a stale/skewed client can't extend the game past the buzzer. */
+async function maybeFinalizeGameClock(
+  supabase: SupabaseClient,
+  gameId: string,
+  session: RummySession,
+  hands: RummyPlayerHand[],
+  names: Map<string, string>,
+  sessionStartedAt: string | null,
+  gameDurationSeconds: number
+): Promise<boolean> {
+  if (!rummyGameSessionExpired(sessionStartedAt, gameDurationSeconds)) return false
+  await finalizeByLowestHand(supabase, gameId, session, hands, names, "Time's up!")
+  return true
+}
+
+/**
+ * Auto-play the current player's turn when their clock hit zero.
+ *   - draw step: draw one card from the pile (or discard if the pile is empty), then
+ *     auto-discard the first card in the resulting hand
+ *   - discard step: auto-discard the first card in the hand
+ * Then the discard processor advances the turn to the next player with a fresh deadline.
+ * Only acts once the deadline has genuinely passed (server clock) — any client may poke.
+ */
+export async function processRummyExpireTurn(
+  supabase: SupabaseClient,
+  gameId: string
+): Promise<{ error?: string; skipped?: boolean }> {
+  const { session, hands, names, gameDurationSeconds, sessionStartedAt } = await loadRummyState(supabase, gameId)
+  if (!session) return { error: 'Session not found' }
+  if (session.phase === 'finished') return { skipped: true }
+  if (await maybeFinalizeGameClock(supabase, gameId, session, hands, names, sessionStartedAt, gameDurationSeconds)) {
+    return {}
+  }
+  if (!session.turn_deadline_at || new Date(session.turn_deadline_at) > new Date()) {
+    return { skipped: true }
+  }
+  const currentId = currentPlayerId(session)
+  if (!currentId) return { error: 'No current player' }
+
+  if (session.turn_step === 'draw') {
+    const dr = await processRummyDraw(supabase, gameId, currentId, 'pile')
+    if (dr.error) return { error: dr.error }
+  }
+  // After the draw the turn_step is 'discard' — auto-discard the first hand card.
+  const { hands: hands2 } = await loadRummyState(supabase, gameId)
+  const hand = handForPlayer(hands2, currentId)
+  const first = hand[0]
+  if (!first) return { skipped: true }
+  const dc = await processRummyDiscard(supabase, gameId, currentId, first.id)
+  if (dc.error) return { error: dc.error }
+  return {}
+}
+
+/** Called by the /api/games/[code]/expire-rummy route — server clock has passed the
+ *  whole-game deadline; end the round by lowest hand total. Idempotent. */
+export async function finishExpiredRummyGame(
+  supabase: SupabaseClient,
+  game: Pick<Game, 'id' | 'status' | 'session_started_at' | 'game_duration_seconds'>
+): Promise<boolean> {
+  if (game.status !== 'active') return false
+  if (!rummyGameSessionExpired(game.session_started_at, game.game_duration_seconds)) return false
+  const { session, hands, names } = await loadRummyState(supabase, game.id)
+  if (!session) return false
+  await finalizeByLowestHand(supabase, game.id, session, hands, names, "Time's up!")
+  return true
+}
+
+/** End the round without a "Rummy" declaration — ranks everyone by closest-to-going-out
+ *  (see rummyPlacementOrder) so the winner is the player with the most meld-able cards,
+ *  not just the one holding the cheapest junk. */
 async function finalizeByLowestHand(
   supabase: SupabaseClient,
   gameId: string,
@@ -604,13 +847,16 @@ async function finalizeByLowestHand(
 ): Promise<{ error?: string }> {
   const winnerId = rummyPlacementOrder(hands, session.turn_order ?? [], null)[0] ?? null
   const winnerName = winnerId ? playerNameFrom(names, winnerId) : 'Nobody'
-  const total = winnerId ? rummyHandSum(handForPlayer(hands, winnerId)) : 0
+  const winnerHand = winnerId ? handForPlayer(hands, winnerId) : []
+  const meldable = maxMeldableCount(winnerHand)
+  const detail =
+    winnerHand.length === 0 ? 'empty hand' : `closest to going out (${meldable}/${winnerHand.length} cards would meld)`
   const { error } = await supabase
     .from(RUMMY_SESSIONS)
     .update({
       phase: 'finished',
       winner_player_id: winnerId,
-      status_message: `${reason} ${winnerName} wins on lowest hand total (${total}).`,
+      status_message: `${reason} ${winnerName} wins — ${detail}.`,
       turn_deadline_at: null,
       updated_at: new Date().toISOString(),
     })

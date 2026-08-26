@@ -1669,7 +1669,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       {
         question: 'How does scoring work if the clock runs out?',
         answer:
-          'Anyone still holding cards is scored by their deadwood: face cards count 10, aces 1, and every other card its face value. Lowest total wins.',
+          'The winner is whoever is CLOSEST to going out — the player whose hand has the most cards that could be laid down as valid sets and runs. Ties are broken by fewest leftover deadwood (face cards 10, aces 1, numerics face value). This rewards a Rummy-ready hand over one that just happens to be holding cheap junk.',
       },
     ],
   }),

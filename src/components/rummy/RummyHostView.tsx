@@ -19,6 +19,8 @@ import type { Game, Player, RummyPlayerHand, RummySession } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { RummyGamePanel, RummyStandingsBox } from '@/components/rummy/RummyBoard'
 import { RummyCard as RummyCardBox, RummyShell } from '@/components/rummy/RummyChrome'
+import { useRummyTurnTimer } from '@/hooks/useRummyTurnTimer'
+import { useRummyGameTimer } from '@/hooks/useRummyGameTimer'
 
 const RUMMY_SESSION_SELECT =
   'id,game_id,turn_order,current_turn_index,phase,draw_pile,discard_pile,top_discard,turn_step,status_message,winner_player_id,winning_melds,reshuffle_count,turn_deadline_at,created_at,updated_at'
@@ -129,6 +131,10 @@ export function RummyHostView({ gameCode, hostToken }: { gameCode: string; hostT
     void load()
   })
 
+  // Timers must be unconditional (rules-of-hooks) — call them before the early return.
+  const hostTurnTimer = useRummyTurnTimer(gameCode, session, game?.status === 'active')
+  const hostGameTimer = useRummyGameTimer(gameCode, game)
+
   if (loading || !game) return <HostLobbySkeleton />
 
   const cfg = gameTypeConfig('rummy')
@@ -198,6 +204,12 @@ export function RummyHostView({ gameCode, hostToken }: { gameCode: string; hostT
           isMyTurn={false}
           isViewer
           acting={false}
+          secondsLeft={hostTurnTimer.secondsLeft}
+          hasTimer={hostTurnTimer.hasTimer}
+          urgent={hostTurnTimer.urgent}
+          gameCountdown={hostGameTimer.active ? hostGameTimer.label : null}
+          gameSecondsLeft={hostGameTimer.secondsLeft}
+          gameDurationSeconds={hostGameTimer.durationSeconds}
         />
       )}
       <div className="pt-2">

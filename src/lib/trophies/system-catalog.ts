@@ -3,6 +3,7 @@ import { AYO } from './system-trophies/ayo'
 import { CHECKERS, CHECKERS_INTERNATIONAL, CHECKERS_NIGERIA } from './system-trophies/checkers'
 import { CHESS } from './system-trophies/chess'
 import { CRAZY_EIGHTS } from './system-trophies/crazy-eights'
+import { RUMMY } from './system-trophies/rummy'
 import { DESCRIBE_IT } from './system-trophies/describe-it'
 import { MAFIA } from './system-trophies/mafia'
 import { MAHJONG } from './system-trophies/mahjong'
@@ -69,6 +70,7 @@ const BY_GAME: Record<string, SystemTrophySpec[]> = {
   chess: CHESS,
   codewords: CODEWORDS,
   crazy_eights: CRAZY_EIGHTS,
+  rummy: RUMMY,
   describe_it: DESCRIBE_IT,
   ludo: LUDO,
   mafia: MAFIA,

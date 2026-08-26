@@ -2501,7 +2501,7 @@ export function gameHowItWorks(
     case 'whot':
       return 'Players join with their name. Match the top card by shape or number — WHOT lets you call the next match. Pick 2 and Pick 3 stacks are separate. First to empty their hand wins — or lowest hand total when the game clock runs out.'
     case 'rummy':
-      return 'Players join with their name (2–6 play). On your turn, draw one card from the pile or the top of the discard, then discard one. Rearrange your hand into sets (three or four of the same rank) and runs (three or more consecutive cards of the same suit). Lay down your whole hand as valid melds — usually with one card left to discard — to go out and win the round.'
+      return 'Players join with their name (2–6 play). On your turn, draw one card from the pile or the top of the discard, then discard one. Rearrange your hand into sets (three or four of the same rank) and runs (three or more consecutive cards of the same suit). Lay your whole hand down as valid melds — usually with one card left to discard — to go out and win. If the game clock runs out first, whoever is closest to going out (most cards that could form valid melds) wins.'
     case 'uno':
       return 'Players join with their name and are dealt 7 cards. Match the top card by colour, number, or symbol. Skip, Reverse, Draw 2, and Wild cards shake things up — call "last card" on your second-to-last card or draw a penalty. First to empty their hand wins.'
     case 'ludo':

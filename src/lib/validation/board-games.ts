@@ -187,6 +187,10 @@ export type RummyDrawInput = z.infer<typeof rummyDrawSchema>
 export type RummyDiscardInput = z.infer<typeof rummyDiscardSchema>
 export type RummyGoOutInput = z.infer<typeof rummyGoOutSchema>
 
+/** Timer-expiration route — any client can poke, server clock decides. */
+export const rummyExpireTurnSchema = z.object({ gameId: gameCodeString() })
+export type RummyExpireTurnInput = z.infer<typeof rummyExpireTurnSchema>
+
 // UNO (POST /api/uno/*)
 
 const unoColorEnum = z.enum(['red', 'yellow', 'green', 'blue'])

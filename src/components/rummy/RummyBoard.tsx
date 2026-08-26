@@ -1,19 +1,40 @@
 'use client'
 
+/**
+ * Rummy — design-system play surface.
+ *
+ * Uses the shared card-table primitives (`CardTableSurface`, `TurnRail`, `Piles`,
+ * `DrawPile`, `RummyCardFace`, `Hand`, `GameTimerBar`, `ActionToast`) so Rummy reads
+ * as one of the FateRound card games rather than a bespoke panel — same felt, same
+ * seats, same look for the hand fan. Rummy adds one custom section on top of the shell:
+ * the inline meld builder, which lets a player assign hand cards into meld piles and
+ * "Go out" without a full-screen modal (there's no equivalent in Whot / Crazy Eights).
+ *
+ * Presentation only — every action is delegated to callbacks on the parent view.
+ */
+
 import { useMemo, useState } from 'react'
-import { RummyCard as RummyCardBox, RummyPrimaryButton, RummySecondaryButton, suitColorClass } from './RummyChrome'
-import { RUMMY_SUIT_SYMBOLS, classifyMeld, canGoOut, rummyCardLabel, rummyHandSum } from '@/lib/rummy'
+import {
+  ActionToast,
+  CardTableSurface,
+  DrawPile,
+  GameTimerBar,
+  Hand,
+  Piles,
+  RummyCardFace,
+  Table,
+  TurnRail,
+  TurnStatus,
+  type TurnSeat,
+} from '@/components/rooms/card-table/primitives'
+import { RummyCard as RummyCardBox } from './RummyChrome'
+import { canGoOut, classifyMeld, rummyCardLabel, rummyHandSum } from '@/lib/rummy'
+import { formatCountdown } from '@/lib/timer-format'
 import type { Player, RummyCard, RummyPlayerHand, RummySession } from '@/types'
 
-/**
- * The active-game panel for Rummy — used by both the player view (with real hand +
- * action buttons) and the host view (spectator, no actions). Shows the turn indicator,
- * the discard-top / draw-pile piles, a rearrangeable hand, and a lay-down / go-out
- * builder for the current player.
- *
- * `myHand` is null for spectators / non-current players; the hand fan then only shows
- * the count. All card actions are gated behind `isMyTurn && !isViewer` in the caller.
- */
+/** Deck accent for Rummy's card backs (classic table cyan). */
+const RUMMY_ACCENT = '#0891b2'
+
 export function RummyGamePanel({
   session,
   players,
@@ -22,6 +43,12 @@ export function RummyGamePanel({
   isMyTurn,
   isViewer,
   acting,
+  secondsLeft,
+  hasTimer,
+  urgent,
+  gameCountdown,
+  gameSecondsLeft,
+  gameDurationSeconds,
   onDraw,
   onDiscard,
   onGoOut,
@@ -33,6 +60,13 @@ export function RummyGamePanel({
   isMyTurn: boolean
   isViewer: boolean
   acting: boolean
+  secondsLeft?: number
+  hasTimer?: boolean
+  urgent?: boolean
+  /** Whole-game clock label ("2:14") — null/undefined when there is no cap. */
+  gameCountdown?: string | null
+  gameSecondsLeft?: number
+  gameDurationSeconds?: number
   onDraw?: (source: 'pile' | 'discard') => void
   onDiscard?: (cardId: string) => void
   onGoOut?: (melds: string[][], discardCardId: string | null) => void
@@ -41,34 +75,104 @@ export function RummyGamePanel({
   const turnName = players.find((p) => p.id === turnPlayerId)?.name ?? 'Player'
   const topDiscard = session.top_discard
   const drawCount = (session.draw_pile as RummyCard[] | null | undefined)?.length ?? 0
+  const canDrawNow = isMyTurn && !isViewer && session.turn_step === 'draw' && !acting
+
+  const turnTimeLabel = hasTimer && secondsLeft != null && secondsLeft > 0 ? formatCountdown(secondsLeft) : undefined
+  const handCountFor = (id: string): number => {
+    const row = players.find((p) => p.id === id)
+    if (!row) return 0
+    // The whole-hand payload isn't in `session` — for the turn rail we can only see the
+    // local player's hand length; other seats fall back to a placeholder.
+    if (id === myPlayerId && myHand) return myHand.length
+    return -1
+  }
+
+  const seats: TurnSeat[] = session.turn_order
+    .map((id) => ({
+      id,
+      p: players.find((x) => x.id === id),
+    }))
+    .filter((s): s is { id: string; p: Player } => !!s.p)
+    .map(({ id, p }) => {
+      const isTurn = id === turnPlayerId
+      const count = handCountFor(id)
+      return {
+        name: p.name,
+        cards: count >= 0 ? count : undefined,
+        turn: isTurn,
+        you: id === myPlayerId,
+        winner: id === session.winner_player_id,
+        timeLabel: isTurn ? turnTimeLabel : undefined,
+        timeLow: isTurn ? urgent : undefined,
+      }
+    })
+
+  const gamePct =
+    gameSecondsLeft != null && gameDurationSeconds && gameDurationSeconds > 0
+      ? Math.max(0, Math.min(100, (gameSecondsLeft / gameDurationSeconds) * 100))
+      : 0
 
   return (
-    <div className="space-y-4">
-      <TurnStrip
-        turnName={turnName}
-        isMyTurn={isMyTurn}
-        step={session.turn_step}
-        statusMessage={session.status_message}
-      />
+    <CardTableSurface>
+      {gameCountdown && (
+        <GameTimerBar label={gameCountdown} pct={gamePct} low={gameSecondsLeft != null && gameSecondsLeft <= 60} />
+      )}
+      <TurnRail seats={seats} />
 
-      <div className="grid grid-cols-2 gap-3">
-        <PileTile
-          label={session.turn_step === 'draw' ? 'Draw pile' : 'Draw pile'}
-          count={drawCount}
-          faceDown
-          disabled={!isMyTurn || isViewer || session.turn_step !== 'draw' || acting}
-          onClick={() => onDraw?.('pile')}
+      <Table>
+        <Piles
+          draw={
+            <button
+              type="button"
+              className="reset-btn"
+              disabled={!canDrawNow}
+              onClick={() => onDraw?.('pile')}
+              aria-label="Draw from pile"
+              style={{
+                background: 'none',
+                border: 'none',
+                padding: 0,
+                cursor: canDrawNow ? 'pointer' : 'not-allowed',
+              }}
+            >
+              <DrawPile count={drawCount} accent={RUMMY_ACCENT} />
+            </button>
+          }
+          discard={
+            topDiscard ? (
+              <button
+                type="button"
+                className="reset-btn"
+                disabled={!canDrawNow}
+                onClick={() => onDraw?.('discard')}
+                aria-label={`Take top of discard: ${rummyCardLabel(topDiscard)}`}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  padding: 0,
+                  cursor: canDrawNow ? 'pointer' : 'not-allowed',
+                }}
+              >
+                <RummyCardFace card={topDiscard} big />
+              </button>
+            ) : (
+              <span className="turn-status g">No discard</span>
+            )
+          }
         />
-        <PileTile
-          label="Top of discard"
-          card={topDiscard}
-          count={(session.discard_pile as RummyCard[] | null | undefined)?.length ?? 0}
-          disabled={!isMyTurn || isViewer || session.turn_step !== 'draw' || !topDiscard || acting}
-          onClick={() => onDraw?.('discard')}
-        />
-      </div>
 
-      <HandCountRow players={players} session={session} myPlayerId={myPlayerId} />
+        {isViewer ? (
+          <TurnStatus muted>Watching — {turnName}&apos;s turn</TurnStatus>
+        ) : session.status_message ? (
+          <ActionToast tone="ok">{session.status_message}</ActionToast>
+        ) : isMyTurn ? (
+          <TurnStatus>
+            {session.turn_step === 'draw' ? 'Your turn — draw a card' : 'Your turn — now discard or go out'}
+          </TurnStatus>
+        ) : (
+          <TurnStatus muted>Waiting for {turnName}…</TurnStatus>
+        )}
+      </Table>
 
       {myHand ? (
         <HandAndActions
@@ -79,151 +183,24 @@ export function RummyGamePanel({
           onGoOut={onGoOut}
         />
       ) : (
-        <RummyCardBox className="p-4 text-center text-sm text-muted">
+        <RummyCardBox className="p-4 text-center text-sm text-muted mx-3">
           {isViewer ? 'You are watching this round.' : 'Waiting for your seat…'}
         </RummyCardBox>
       )}
-    </div>
+    </CardTableSurface>
   )
-}
-
-function TurnStrip({
-  turnName,
-  isMyTurn,
-  step,
-  statusMessage,
-}: {
-  turnName: string
-  isMyTurn: boolean
-  step: 'draw' | 'discard'
-  statusMessage: string | null
-}) {
-  return (
-    <div
-      className={[
-        'rounded-xl px-3 py-2 border text-sm',
-        isMyTurn
-          ? 'bg-[var(--primary)]/15 border-[var(--primary)]/40 text-[var(--foreground)]'
-          : 'bg-[var(--surface-inset-bg)] border-[var(--border)] text-muted',
-      ].join(' ')}
-    >
-      <div className="flex items-center justify-between gap-2">
-        <span className="font-semibold">
-          {isMyTurn ? `Your turn — ${step === 'draw' ? 'draw a card' : 'discard a card'}` : `${turnName}'s turn`}
-        </span>
-        <span className="text-xs uppercase tracking-wide opacity-70">{step === 'draw' ? 'Step 1' : 'Step 2'}</span>
-      </div>
-      {statusMessage && <p className="text-xs mt-1 opacity-80">{statusMessage}</p>}
-    </div>
-  )
-}
-
-function PileTile({
-  label,
-  card,
-  count,
-  faceDown,
-  disabled,
-  onClick,
-}: {
-  label: string
-  card?: RummyCard | null
-  count: number
-  faceDown?: boolean
-  disabled?: boolean
-  onClick?: () => void
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className={[
-        'glass-card p-3 flex flex-col items-center justify-center gap-2 min-h-[100px]',
-        disabled ? 'opacity-60 cursor-not-allowed' : 'hover:scale-[1.02] active:scale-[0.98] transition-transform',
-      ].join(' ')}
-    >
-      <span className="text-xs uppercase tracking-wide text-muted">{label}</span>
-      <PlayingCard card={card ?? null} faceDown={faceDown} />
-      <span className="text-xs text-muted">
-        {count} card{count === 1 ? '' : 's'}
-      </span>
-    </button>
-  )
-}
-
-function HandCountRow({
-  players,
-  session,
-  myPlayerId,
-}: {
-  players: Player[]
-  session: RummySession
-  myPlayerId: string | null
-}) {
-  const rows = session.turn_order
-    .map((id, idx) => {
-      const p = players.find((x) => x.id === id)
-      if (!p) return null
-      return { id, name: p.name, isCurrent: idx === session.current_turn_index, isMe: id === myPlayerId }
-    })
-    .filter(Boolean) as { id: string; name: string; isCurrent: boolean; isMe: boolean }[]
-
-  return (
-    <div className="flex flex-wrap gap-2 justify-center">
-      {rows.map((r) => (
-        <span
-          key={r.id}
-          className={[
-            'text-xs px-2 py-1 rounded-full border',
-            r.isCurrent
-              ? 'bg-[var(--primary)]/20 border-[var(--primary)]/50 text-[var(--foreground)]'
-              : 'bg-[var(--surface-inset-bg)] border-[var(--border)] text-muted',
-            r.isMe ? 'font-bold' : '',
-          ].join(' ')}
-        >
-          {r.name}
-          {r.isMe ? ' (you)' : ''}
-        </span>
-      ))}
-    </div>
-  )
-}
-
-/** Playing-card face. Face-down shows a neutral back. */
-function PlayingCard({ card, faceDown, small }: { card: RummyCard | null; faceDown?: boolean; small?: boolean }) {
-  const size = small ? 'w-10 h-14 text-xs' : 'w-14 h-20 text-lg'
-  if (faceDown || !card) {
-    return (
-      <div
-        className={`${size} rounded-md border border-[var(--border)] bg-[var(--surface-inset-bg)] flex items-center justify-center`}
-      >
-        <span className="text-muted">🂠</span>
-      </div>
-    )
-  }
-  return (
-    <div
-      className={`${size} rounded-md border-2 border-neutral-300 bg-white text-neutral-900 flex flex-col items-center justify-center shadow-md`}
-    >
-      <span className={`font-black leading-none ${suitColorClass(card.suit)}`}>{rankLabel(card.rank)}</span>
-      <span className={`text-2xl leading-none ${suitColorClass(card.suit)}`}>{RUMMY_SUIT_SYMBOLS[card.suit]}</span>
-    </div>
-  )
-}
-
-function rankLabel(rank: number): string {
-  const map: Record<number, string> = { 1: 'A', 11: 'J', 12: 'Q', 13: 'K' }
-  return map[rank] ?? String(rank)
 }
 
 /**
- * Hand fan with an inline meld builder. The player either:
- * - discards a single selected card to end their turn, or
- * - assigns cards into meld piles (add / remove / new meld) and hits "Go out".
+ * Hand fan + inline meld builder.
  *
- * The go-out validator runs on the client for UX (button disabled until valid) AND on
- * the server (source of truth) — a client bug can't fabricate a bad lay-down.
+ * On the draw step this is a preview only (the hand still shows but "Discard" and
+ * "Go out" are disabled — the player has to draw first). On the discard step:
+ *  - clicking a hand card opens its tiny menu: mark it as the discard, add it to
+ *    an existing meld pile, or start a new meld with it.
+ *  - The go-out button is disabled until the assembled melds legally clear the hand.
+ * The server also re-validates going out, so a client bug can't fabricate a bad
+ * lay-down.
  */
 function HandAndActions({
   hand,
@@ -242,6 +219,8 @@ function HandAndActions({
   const [assignment, setAssignment] = useState<Record<string, number>>({})
   const [meldCount, setMeldCount] = useState(0)
   const [discardChoice, setDiscardChoice] = useState<string | null>(null)
+  // Which hand card's popup menu is open. null = none.
+  const [openMenu, setOpenMenu] = useState<string | null>(null)
 
   const grouped = useMemo(() => {
     const inHand: RummyCard[] = []
@@ -281,195 +260,163 @@ function HandAndActions({
     setDiscardChoice((prev) => (prev === cardId ? null : cardId))
   }
 
+  const many = grouped.inHand.length > 8
+
   return (
-    <div className="space-y-3">
-      <RummyCardBox className="p-3 space-y-3">
-        <div className="flex items-center justify-between text-xs text-muted">
-          <span>
-            Your hand · {hand.length} cards · {rummyHandSum(hand)} deadwood
-          </span>
-          <span>{isMyTurn && canAct ? 'Discard, or lay down and go out' : 'Watching'}</span>
-        </div>
-        <div className="flex flex-wrap gap-2 justify-center">
-          {grouped.inHand.map((c) => (
-            <HandCardChip
-              key={c.id}
-              card={c}
-              disabled={!isMyTurn || !canAct}
-              selected={discardChoice === c.id}
-              onDiscardToggle={() => toggleDiscard(c.id)}
-              onAssign={(mi) => assignToMeld(c.id, mi)}
-              meldCount={meldCount}
-              onAddMeld={addNewMeldPile}
-            />
-          ))}
-          {grouped.inHand.length === 0 && (
-            <span className="text-xs text-muted">All cards assigned. Choose a discard (or none) and go out.</span>
-          )}
-        </div>
-
-        {isMyTurn && canAct && (
-          <div className="flex gap-2">
-            <RummySecondaryButton
-              onClick={() => {
-                if (discardChoice) onDiscard?.(discardChoice)
-              }}
-              disabled={!discardChoice || meldCount > 0}
-            >
-              Discard {discardChoice ? rummyCardLabel(hand.find((c) => c.id === discardChoice)!) : '…'}
-            </RummySecondaryButton>
-          </div>
-        )}
-      </RummyCardBox>
-
-      {(meldCount > 0 || (isMyTurn && canAct)) && (
-        <RummyCardBox className="p-3 space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-semibold">Melds to lay down</span>
-            {isMyTurn && canAct && (
+    <>
+      <Hand
+        count={grouped.inHand.length}
+        many={many}
+        hint={
+          isMyTurn && canAct
+            ? `${rummyHandSum(hand)} deadwood · tap a card to discard or add to a meld`
+            : `${hand.length} cards · ${rummyHandSum(hand)} deadwood`
+        }
+        actions={
+          isMyTurn && canAct ? (
+            <div className="flex gap-2 w-full">
               <button
                 type="button"
-                onClick={addNewMeldPile}
-                className="text-xs px-2 py-1 rounded border border-[var(--border)] hover:bg-[var(--surface-inset-bg)]"
+                className="fr-btn fr-btn--secondary fr-btn--block"
+                disabled={!discardChoice || meldCount > 0}
+                onClick={() => discardChoice && onDiscard?.(discardChoice)}
               >
-                + New meld pile
+                {discardChoice ? `Discard ${rummyCardLabel(hand.find((c) => c.id === discardChoice)!)}` : 'Discard…'}
               </button>
+              <button type="button" className="fr-btn fr-btn--secondary fr-btn--block" onClick={addNewMeldPile}>
+                + Meld pile
+              </button>
+            </div>
+          ) : undefined
+        }
+      >
+        {grouped.inHand.map((card) => (
+          <div key={card.id} style={{ position: 'relative' }}>
+            <RummyCardFace
+              card={card}
+              sel={discardChoice === card.id}
+              onClick={isMyTurn && canAct ? () => setOpenMenu(openMenu === card.id ? null : card.id) : undefined}
+            />
+            {openMenu === card.id && isMyTurn && canAct && (
+              <div
+                className="glass-card"
+                style={{
+                  position: 'absolute',
+                  top: '100%',
+                  left: '50%',
+                  transform: 'translateX(-50%)',
+                  zIndex: 20,
+                  minWidth: '10rem',
+                  padding: '0.35rem',
+                  marginTop: '0.25rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.25rem',
+                }}
+              >
+                <button
+                  type="button"
+                  className="fr-btn fr-btn--secondary"
+                  onClick={() => {
+                    toggleDiscard(card.id)
+                    setOpenMenu(null)
+                  }}
+                  style={{ fontSize: '0.75rem', padding: '0.3rem 0.5rem' }}
+                >
+                  {discardChoice === card.id ? '✓ Marked to discard' : 'Mark as discard'}
+                </button>
+                {Array.from({ length: meldCount }).map((_, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    className="fr-btn fr-btn--secondary"
+                    onClick={() => {
+                      assignToMeld(card.id, i)
+                      setOpenMenu(null)
+                    }}
+                    style={{ fontSize: '0.75rem', padding: '0.3rem 0.5rem' }}
+                  >
+                    Add to meld #{i + 1}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  className="fr-btn fr-btn--secondary"
+                  onClick={() => {
+                    addNewMeldPile()
+                    assignToMeld(card.id, meldCount)
+                    setOpenMenu(null)
+                  }}
+                  style={{ fontSize: '0.75rem', padding: '0.3rem 0.5rem' }}
+                >
+                  Start new meld
+                </button>
+              </div>
             )}
           </div>
-          {grouped.melds.length === 0 && <p className="text-xs text-muted">No melds yet. Add a pile to start.</p>}
-          <div className="space-y-2">
-            {grouped.melds.map((meld, idx) => {
-              const kind = classifyMeld(meld)
-              return (
-                <div key={idx} className="rounded-lg border border-[var(--border)] p-2">
-                  <div className="flex items-center justify-between text-xs mb-1">
-                    <span>
-                      Meld #{idx + 1} — {meld.length} card{meld.length === 1 ? '' : 's'}
-                      {' · '}
-                      <span className={kind ? 'text-emerald-400' : 'text-amber-400'}>
-                        {kind ? kind.toUpperCase() : meld.length < 3 ? 'needs 3+' : 'invalid'}
-                      </span>
+        ))}
+      </Hand>
+
+      {meldCount > 0 && (
+        <div className="mx-3 mb-3 space-y-2">
+          {grouped.melds.map((meld, idx) => {
+            const kind = classifyMeld(meld)
+            return (
+              <div
+                key={idx}
+                className="rounded-lg border p-2"
+                style={{ borderColor: 'var(--border)', background: 'var(--surface-inset-bg)' }}
+              >
+                <div className="flex items-center justify-between text-xs mb-1">
+                  <span>
+                    Meld #{idx + 1} — {meld.length} card{meld.length === 1 ? '' : 's'}
+                    {' · '}
+                    <span style={{ color: kind ? '#34d399' : '#fbbf24' }}>
+                      {kind ? kind.toUpperCase() : meld.length < 3 ? 'needs 3+' : 'invalid'}
                     </span>
-                  </div>
-                  <div className="flex flex-wrap gap-1">
-                    {meld.map((c) => (
-                      <button
-                        key={c.id}
-                        type="button"
-                        onClick={() => returnToHand(c.id)}
-                        disabled={!isMyTurn || !canAct}
-                        className="disabled:opacity-60"
-                        title="Return to hand"
-                      >
-                        <PlayingCard card={c} small />
-                      </button>
-                    ))}
-                    {meld.length === 0 && (
-                      <span className="text-xs text-muted italic self-center">
-                        (Empty — click a hand card and choose meld #{idx + 1})
-                      </span>
-                    )}
-                  </div>
+                  </span>
                 </div>
-              )
-            })}
-          </div>
-
+                <div className="flex flex-wrap gap-1">
+                  {meld.map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => returnToHand(c.id)}
+                      disabled={!isMyTurn || !canAct}
+                      className="disabled:opacity-60"
+                      title="Return to hand"
+                      style={{ background: 'none', border: 'none', padding: 0 }}
+                    >
+                      <RummyCardFace card={c} />
+                    </button>
+                  ))}
+                  {meld.length === 0 && (
+                    <span className="text-xs text-muted italic self-center">
+                      (Empty — pick a hand card and choose meld #{idx + 1})
+                    </span>
+                  )}
+                </div>
+              </div>
+            )
+          })}
           {isMyTurn && canAct && (
-            <RummyPrimaryButton onClick={() => onGoOut?.(meldIdsForServer, discardChoice)} disabled={!canGo}>
-              Go out {discardChoice ? `+ discard ${rummyCardLabel(hand.find((c) => c.id === discardChoice)!)}` : ''}
-            </RummyPrimaryButton>
-          )}
-        </RummyCardBox>
-      )}
-    </div>
-  )
-}
-
-/**
- * A hand card that opens a small action menu: either discard it to end the turn, or
- * assign it to one of the meld piles. Keeps the meld builder inline so laying down
- * doesn't need a full-screen modal.
- */
-function HandCardChip({
-  card,
-  disabled,
-  selected,
-  onDiscardToggle,
-  onAssign,
-  meldCount,
-  onAddMeld,
-}: {
-  card: RummyCard
-  disabled: boolean
-  selected: boolean
-  onDiscardToggle: () => void
-  onAssign: (meldIndex: number) => void
-  meldCount: number
-  onAddMeld: () => void
-}) {
-  const [open, setOpen] = useState(false)
-  return (
-    <div className="relative">
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={() => setOpen((v) => !v)}
-        className={[
-          'transition-transform',
-          selected ? 'ring-2 ring-amber-400 ring-offset-2 ring-offset-transparent scale-105' : '',
-          disabled ? 'opacity-70 cursor-not-allowed' : 'hover:scale-105 active:scale-95',
-        ].join(' ')}
-      >
-        <PlayingCard card={card} />
-      </button>
-      {open && !disabled && (
-        <div className="absolute z-10 top-full mt-1 left-1/2 -translate-x-1/2 glass-card p-2 flex flex-col gap-1 min-w-[8rem] shadow-xl">
-          <button
-            type="button"
-            className={[
-              'text-xs px-2 py-1 rounded text-left',
-              selected ? 'bg-amber-500/20' : 'hover:bg-[var(--surface-inset-bg)]',
-            ].join(' ')}
-            onClick={() => {
-              onDiscardToggle()
-              setOpen(false)
-            }}
-          >
-            {selected ? '✓ Marked as discard' : 'Mark as discard'}
-          </button>
-          {Array.from({ length: meldCount }).map((_, i) => (
             <button
-              key={i}
               type="button"
-              className="text-xs px-2 py-1 rounded text-left hover:bg-[var(--surface-inset-bg)]"
-              onClick={() => {
-                onAssign(i)
-                setOpen(false)
-              }}
+              className="fr-btn fr-btn--primary fr-btn--block"
+              onClick={() => onGoOut?.(meldIdsForServer, discardChoice)}
+              disabled={!canGo}
             >
-              Add to meld #{i + 1}
+              Go out {discardChoice ? `+ discard ${rummyCardLabel(hand.find((c) => c.id === discardChoice)!)}` : ''}
             </button>
-          ))}
-          <button
-            type="button"
-            className="text-xs px-2 py-1 rounded text-left hover:bg-[var(--surface-inset-bg)]"
-            onClick={() => {
-              onAddMeld()
-              // The new meld's index is meldCount (0-based) — assign this card there.
-              onAssign(meldCount)
-              setOpen(false)
-            }}
-          >
-            Start new meld with this card
-          </button>
+          )}
         </div>
       )}
-    </div>
+    </>
   )
 }
 
-/** Compact standings box for the finished screen — winner first, then everyone by hand total. */
+/** Compact standings box for the finished screen — winner first, then everyone by
+ *  closest-to-going-out (a Rummy-ready hand beats one just holding cheap cards). */
 export function RummyStandingsBox({
   session,
   players,

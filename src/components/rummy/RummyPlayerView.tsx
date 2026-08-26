@@ -26,6 +26,8 @@ import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
 import { useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { useGameTableSync } from '@/hooks/useGameTableSync'
 import { useTurnNotifications } from '@/hooks/useTurnNotifications'
+import { useRummyTurnTimer } from '@/hooks/useRummyTurnTimer'
+import { useRummyGameTimer } from '@/hooks/useRummyGameTimer'
 import { GameStartedWaiting } from '@/components/GameStartedWaiting'
 import { GameEndedScreen } from '@/components/GameEndedScreen'
 import { GameInfoChips } from '@/components/game-lobby/GameInfoChips'
@@ -252,6 +254,14 @@ export function RummyPlayerView({ gameCode }: { gameCode: string }) {
     enabled: !isViewer,
   })
 
+  const { secondsLeft, hasTimer, urgent } = useRummyTurnTimer(gameCode, session, game?.status === 'active' && !isViewer)
+  const {
+    label: gameCountdown,
+    active: gameCountdownActive,
+    secondsLeft: gameSecondsLeft,
+    durationSeconds: gameDurationSeconds,
+  } = useRummyGameTimer(gameCode, game)
+
   const playerSettingsNode = useMemo(() => {
     if (!myPlayerId) return null
     return (
@@ -415,6 +425,12 @@ export function RummyPlayerView({ gameCode }: { gameCode: string }) {
           isMyTurn={isMyTurn && !isViewer}
           isViewer={isViewer}
           acting={acting}
+          secondsLeft={secondsLeft}
+          hasTimer={hasTimer}
+          urgent={urgent}
+          gameCountdown={gameCountdownActive ? gameCountdown : null}
+          gameSecondsLeft={gameSecondsLeft}
+          gameDurationSeconds={gameDurationSeconds}
           onDraw={(source) => void callAction('/api/rummy/draw', { source })}
           onDiscard={(cardId) => void callAction('/api/rummy/discard', { cardId })}
           onGoOut={(melds, discardCardId) => void callAction('/api/rummy/go-out', { melds, discardCardId })}
