@@ -4,6 +4,7 @@ import { ayoFacts } from './ayo'
 import { checkersFacts } from './checkers'
 import { chessFacts } from './chess'
 import { crazyEightsFacts } from './crazy-eights'
+import { rummyFacts } from './rummy'
 import { describeItFacts } from './describe-it'
 import { mafiaFacts } from './mafia'
 import { mahjongFacts } from './mahjong'
@@ -33,6 +34,7 @@ import { wordSearchFacts } from './word-search'
 import { wordGroupingFacts } from './word-grouping'
 import { snakeAndLadderFacts } from './snake-and-ladder'
 import { wordleRoomFacts } from './wordle-room'
+import { gofishFacts } from './gofish'
 
 /**
  * Per-game facts for the award pass.
@@ -89,6 +91,7 @@ const BUILDERS: Partial<Record<GameType, FactsBuilder>> = {
   chess: chessFacts,
   codewords: codewordsFacts,
   crazy_eights: crazyEightsFacts,
+  rummy: rummyFacts,
   describe_it: describeItFacts,
   ludo: ludoFacts,
   mafia: mafiaFacts,
@@ -117,6 +120,7 @@ const BUILDERS: Partial<Record<GameType, FactsBuilder>> = {
   word_grouping: wordGroupingFacts,
   snake_and_ladder: snakeAndLadderFacts,
   wordle_room: wordleRoomFacts,
+  gofish: gofishFacts,
 }
 
 /** True when this game type emits per-game facts, for the admin UI's benefit. */

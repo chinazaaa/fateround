@@ -74,7 +74,9 @@ import {
   gameHowItWorks,
   isYahtzeeGame,
   isWhotGame,
+  isGoFishGame,
   isCrazyEightsGame,
+  isRummyGame,
   isUnoGame,
   isLudoGame,
   isSnakeAndLadderGame,
@@ -279,6 +281,8 @@ import {
   CRAZY8_GAME_DURATION_OPTIONS,
   formatCrazyEightsGameDuration,
 } from '@/lib/crazy-eights'
+import { RUMMY_DEFAULT_MAX_PLAYERS, RUMMY_GAME_DURATION_OPTIONS, formatRummyGameDuration } from '@/lib/rummy'
+import { GOFISH_DEFAULT_MAX_PLAYERS, GOFISH_GAME_DURATION_OPTIONS, formatGofishGameDuration } from '@/lib/gofish'
 import { UNO_DEFAULT_MAX_PLAYERS, UNO_GAME_DURATION_OPTIONS, formatUnoGameDuration } from '@/lib/uno'
 import { turnTimerOptionsFor, formatBoardGameTurnTimer } from '@/lib/board-game-lobby-settings'
 import { LUDO_DEFAULT_MAX_PLAYERS } from '@/lib/ludo'
@@ -548,6 +552,10 @@ function CreateGameInner() {
   const [whotNumberCallsEnabled, setWhotNumberCallsEnabled] = useState(true)
   const [crazy8MaxPlayers, setCrazy8MaxPlayers] = useState(CRAZY8_DEFAULT_MAX_PLAYERS)
   const [crazy8GameDuration, setCrazy8GameDuration] = useState(0)
+  const [rummyMaxPlayers, setRummyMaxPlayers] = useState(RUMMY_DEFAULT_MAX_PLAYERS)
+  const [rummyGameDuration, setRummyGameDuration] = useState(0)
+  const [goFishMaxPlayers, setGoFishMaxPlayers] = useState(GOFISH_DEFAULT_MAX_PLAYERS)
+  const [goFishGameDuration, setGoFishGameDuration] = useState(0)
   const [crazy8ActionCards, setCrazy8ActionCards] = useState(true)
   const [crazy8Jokers, setCrazy8Jokers] = useState(false)
   const [crazy8Pick2Stacking, setCrazy8Pick2Stacking] = useState(true)
@@ -745,6 +753,7 @@ function CreateGameInner() {
     setYahtzeeMaxPlayers((v) => clamp('yahtzee', v))
     setWhotMaxPlayers((v) => clamp('whot', v))
     setCrazy8MaxPlayers((v) => clamp('crazy_eights', v))
+    setRummyMaxPlayers((v) => clamp('rummy', v))
     setUnoMaxPlayers((v) => clamp('uno', v))
     setLudoMaxPlayers((v) => clamp('ludo', v))
     setSnakeLadderMaxPlayers((v) => clamp('snake_and_ladder', v))
@@ -849,11 +858,30 @@ function CreateGameInner() {
               rounds_count: 1,
             }
           : {}),
+        ...(isRummyGame(type)
+          ? {
+              participant_mode: 'joiners' as const,
+              anonymous: true,
+              rounds_count: 1,
+              // 30-second per-player turn clock is the classic pace.
+              timer_seconds: 30,
+            }
+          : {}),
         ...(isUnoGame(type)
           ? {
               participant_mode: 'joiners' as const,
               anonymous: true,
               rounds_count: 1,
+            }
+          : {}),
+        ...(isGoFishGame(type)
+          ? {
+              // Go Fish is a lobby-joined card game like Whot/UNO — everyone joins by name,
+              // no upload step. `rounds_count: 1` because one Go Fish game is a single round.
+              participant_mode: 'joiners' as const,
+              anonymous: true,
+              rounds_count: 1,
+              timer_seconds: 45,
             }
           : {}),
         ...(isLudoGame(type)
@@ -1054,7 +1082,9 @@ function CreateGameInner() {
     if (!whotCardsEnabled) setWhotNumberCallsEnabled(false)
   }, [whotCardsEnabled])
   const isCrazy8 = isCrazyEightsGame(settings.game_type)
+  const isRummy = isRummyGame(settings.game_type)
   const isUno = isUnoGame(settings.game_type)
+  const isGoFish = isGoFishGame(settings.game_type)
   const isLudo = isLudoGame(settings.game_type)
   const isSnakeLadder = isSnakeAndLadderGame(settings.game_type)
   const isTicTacToe = isTicTacToeGame(settings.game_type)
@@ -1705,6 +1735,17 @@ function CreateGameInner() {
       set: (v) => setCrazy8Pick2Stacking(v as boolean),
       appliesTo: isCrazyEightsGame,
     },
+    // Rummy
+    rummy_max_players: {
+      get: () => rummyMaxPlayers,
+      set: (v) => setRummyMaxPlayers(v as number),
+      appliesTo: isRummyGame,
+    },
+    rummy_game_duration: {
+      get: () => rummyGameDuration,
+      set: (v) => setRummyGameDuration(v as number),
+      appliesTo: isRummyGame,
+    },
     // Ludo
     ludo_max_players: { get: () => ludoMaxPlayers, set: (v) => setLudoMaxPlayers(v as number), appliesTo: isLudoGame },
     ludo_variant: { get: () => ludoVariant, set: (v) => setLudoVariant(v as LudoVariant), appliesTo: isLudoGame },
@@ -1970,7 +2011,9 @@ function CreateGameInner() {
     isYahtzee ||
     isWhot ||
     isCrazy8 ||
+    isRummy ||
     isUno ||
+    isGoFish ||
     isLudo ||
     isSnakeLadder ||
     isTicTacToe ||
@@ -2134,6 +2177,14 @@ function CreateGameInner() {
           }
         : {}),
       ...(isCrazyEightsGame(type)
+        ? {
+            participant_mode: 'joiners' as const,
+            anonymous: true,
+            rounds_count: 1,
+            timer_seconds: 30,
+          }
+        : {}),
+      ...(isRummyGame(type)
         ? {
             participant_mode: 'joiners' as const,
             anonymous: true,
@@ -2842,36 +2893,40 @@ function CreateGameInner() {
                               ? whotMaxPlayers
                               : isCrazy8
                                 ? crazy8MaxPlayers
-                                : isUno
-                                  ? unoMaxPlayers
-                                  : isLudo
-                                    ? ludoMaxPlayers
-                                    : isSnakeLadder
-                                      ? snakeLadderMaxPlayers
-                                      : isNpat
-                                        ? npatMaxPlayers
-                                        : isSudoku
-                                          ? sudokuMaxPlayers
-                                          : isCrossword
-                                            ? crosswordMaxPlayers
-                                            : isWordSearch
-                                              ? wordSearchMaxPlayers
-                                              : isWordScramble
-                                                ? wordScrambleMaxPlayers
-                                                : isWordGrouping
-                                                  ? wordGroupingMaxPlayers
-                                                  : isWordHunt
-                                                    ? wordHuntMaxPlayers
-                                                    : isWordleRoom
-                                                      ? wordleRoomMaxPlayers
-                                                      : isWordRush
-                                                        ? wordRushMaxPlayers
-                                                        : isDescribeIt
-                                                          ? describeItMaxPlayers
-                                                          : isMatchingPairs
-                                                            ? (settings.max_players ??
-                                                              effectiveLimits.matching_pairs.max)
-                                                            : undefined,
+                                : isRummy
+                                  ? rummyMaxPlayers
+                                  : isUno
+                                    ? unoMaxPlayers
+                                    : isGoFish
+                                      ? goFishMaxPlayers
+                                      : isLudo
+                                        ? ludoMaxPlayers
+                                        : isSnakeLadder
+                                          ? snakeLadderMaxPlayers
+                                          : isNpat
+                                            ? npatMaxPlayers
+                                            : isSudoku
+                                              ? sudokuMaxPlayers
+                                              : isCrossword
+                                                ? crosswordMaxPlayers
+                                                : isWordSearch
+                                                  ? wordSearchMaxPlayers
+                                                  : isWordScramble
+                                                    ? wordScrambleMaxPlayers
+                                                    : isWordGrouping
+                                                      ? wordGroupingMaxPlayers
+                                                      : isWordHunt
+                                                        ? wordHuntMaxPlayers
+                                                        : isWordleRoom
+                                                          ? wordleRoomMaxPlayers
+                                                          : isWordRush
+                                                            ? wordRushMaxPlayers
+                                                            : isDescribeIt
+                                                              ? describeItMaxPlayers
+                                                              : isMatchingPairs
+                                                                ? (settings.max_players ??
+                                                                  effectiveLimits.matching_pairs.max)
+                                                                : undefined,
           // Estate Kings edition — mirror the theme pick into the dedicated
           // edition_slug column the engine reads (docs/estate-kings-america-edition.md
           // + coins-and-shop-plan.md § "Launch sequencing" → Phase 4).
@@ -2912,29 +2967,33 @@ function CreateGameInner() {
               ? whotGameDuration
               : isCrazy8
                 ? crazy8GameDuration
-                : isUno
-                  ? unoGameDuration
-                  : isNpat
-                    ? npatGameDuration
-                    : isScrabble
-                      ? scrabbleGameDuration
-                      : isSudoku
-                        ? sudokuGameDuration
-                        : isCrossword
-                          ? crosswordGameDuration
-                          : isWordSearch
-                            ? wordSearchGameDuration
-                            : isWordScramble
-                              ? wordScrambleGameDuration
-                              : isWordGrouping
-                                ? wordGroupingGameDuration
-                                : isMatchingPairs
-                                  ? (settings.game_duration_seconds ?? 0)
-                                  : isQuickDraw
-                                    ? quickDrawVoteTimer
-                                    : isLandmine
-                                      ? landmineCategoryTimer
-                                      : undefined,
+                : isRummy
+                  ? rummyGameDuration
+                  : isUno
+                    ? unoGameDuration
+                    : isGoFish
+                      ? goFishGameDuration
+                      : isNpat
+                        ? npatGameDuration
+                        : isScrabble
+                          ? scrabbleGameDuration
+                          : isSudoku
+                            ? sudokuGameDuration
+                            : isCrossword
+                              ? crosswordGameDuration
+                              : isWordSearch
+                                ? wordSearchGameDuration
+                                : isWordScramble
+                                  ? wordScrambleGameDuration
+                                  : isWordGrouping
+                                    ? wordGroupingGameDuration
+                                    : isMatchingPairs
+                                      ? (settings.game_duration_seconds ?? 0)
+                                      : isQuickDraw
+                                        ? quickDrawVoteTimer
+                                        : isLandmine
+                                          ? landmineCategoryTimer
+                                          : undefined,
           whot_pick3_enabled: isWhot ? whotPick3Enabled : undefined,
           whot_pick2_stacking: isWhot ? whotPick2Stacking : undefined,
           whot_cards_enabled: isWhot ? whotCardsEnabled : undefined,
@@ -4091,6 +4150,86 @@ function CreateGameInner() {
                   suit{crazy8ActionCards ? '; 2 makes them draw, J & A skip, Q reverses' : ''}. First to empty their
                   hand wins! With a game length set, time running out ends the game — whoever has the lowest total on
                   the cards left in their hand wins.
+                </p>
+              </SettingsGroup>
+            ) : isRummy ? (
+              <SettingsGroup title="Rummy room">
+                <Field label={`Max players (${effectiveLimits.rummy.min}–${effectiveLimits.rummy.max})`}>
+                  <CustomSelect
+                    value={rummyMaxPlayers}
+                    onChange={setRummyMaxPlayers}
+                    options={playerCountOptions(effectiveLimits.rummy.min, effectiveLimits.rummy.max).map((n) => ({
+                      value: n,
+                      label: `${n} players`,
+                    }))}
+                  />
+                </Field>
+                <Field label="Turn timer (per player)">
+                  <CustomSelect
+                    value={settings.timer_seconds}
+                    onChange={(val) => setSettings({ ...settings, timer_seconds: val })}
+                    options={turnTimerOptionsFor('rummy').map((s) => ({
+                      value: s,
+                      label: formatBoardGameTurnTimer(s),
+                    }))}
+                  />
+                </Field>
+                <Field label="Game length (whole game)">
+                  <CustomSelect
+                    value={rummyGameDuration}
+                    onChange={setRummyGameDuration}
+                    options={RUMMY_GAME_DURATION_OPTIONS.map((s) => ({
+                      value: s,
+                      label: formatRummyGameDuration(s),
+                    }))}
+                  />
+                </Field>
+                <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="rummy" />
+                <p className="text-faint text-sm leading-relaxed">
+                  Classic Rummy — on your turn, draw one card, then discard one. Build sets (3–4 of a rank) and runs (3+
+                  consecutive of one suit). First to lay their whole hand down as valid melds wins the round. If the
+                  game clock runs out first, whoever is <b>closest to going out</b> wins — the player with the most
+                  cards that could still be laid down as valid sets and runs (ties broken by fewest leftover deadwood).
+                </p>
+              </SettingsGroup>
+            ) : isGoFish ? (
+              <SettingsGroup title="Go Fish room">
+                <Field label={`Max players (${effectiveLimits.gofish.min}–${effectiveLimits.gofish.max})`}>
+                  <CustomSelect
+                    value={goFishMaxPlayers}
+                    onChange={setGoFishMaxPlayers}
+                    options={playerCountOptions(effectiveLimits.gofish.min, effectiveLimits.gofish.max).map((n) => ({
+                      value: n,
+                      label: `${n} players`,
+                    }))}
+                  />
+                </Field>
+                <Field label="Turn timer (per player)">
+                  <CustomSelect
+                    value={settings.timer_seconds}
+                    onChange={(val) => setSettings({ ...settings, timer_seconds: val })}
+                    options={turnTimerOptionsFor('gofish').map((s) => ({
+                      value: s,
+                      label: formatBoardGameTurnTimer(s),
+                    }))}
+                  />
+                </Field>
+                <Field label="Game length (whole game)">
+                  <CustomSelect
+                    value={goFishGameDuration}
+                    onChange={setGoFishGameDuration}
+                    options={GOFISH_GAME_DURATION_OPTIONS.map((s) => ({
+                      value: s,
+                      label: formatGofishGameDuration(s),
+                    }))}
+                  />
+                </Field>
+                <LateJoinField value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="gofish" />
+                <p className="text-faint text-sm leading-relaxed">
+                  Classic Go Fish — on your turn, ask an opponent for a rank you already hold. If they have any, they
+                  hand them all over and you go again; if not, draw from the ocean. Collect all four of a rank to make a
+                  book. Most books when the ocean runs out wins; if the game clock runs out first, the player with the
+                  most books wins (tiebreak: fewest cards left in hand).
                 </p>
               </SettingsGroup>
             ) : isUno ? (

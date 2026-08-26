@@ -4,6 +4,7 @@ import { initializeMonopolyGame, MONOPOLY_MIN_PLAYERS } from '@/lib/monopoly'
 import { initializeYahtzeeGame, YAHTZEE_MIN_PLAYERS } from '@/lib/yahtzee'
 import { initializeWhotGame, WHOT_MIN_PLAYERS } from '@/lib/whot'
 import { initializeCrazyEightsGame, CRAZY8_MIN_PLAYERS } from '@/lib/crazy-eights'
+import { initializeRummyGame, RUMMY_MIN_PLAYERS, RUMMY_MAX_PLAYERS } from '@/lib/rummy'
 import { initializeUnoGame, UNO_MIN_PLAYERS, UNO_MAX_PLAYERS } from '@/lib/uno'
 import { initializeLudoGame, LUDO_MIN_PLAYERS, LUDO_MAX_PLAYERS } from '@/lib/ludo'
 import { initializeMahjongGame, MAHJONG_MIN_PLAYERS, MAHJONG_MAX_PLAYERS } from '@/lib/mahjong'
@@ -20,6 +21,8 @@ import { initializeAyoGame, AYO_MIN_PLAYERS } from '@/lib/ayo'
 import { initializeScrabbleGame, SCRABBLE_MIN_PLAYERS, SCRABBLE_MAX_PLAYERS } from '@/lib/scrabble'
 import { initializeMafiaGame, MAFIA_MIN_PLAYERS, MAFIA_MAX_PLAYERS } from '@/lib/mafia'
 import { initializeTrollRunGame, TROLL_RUN_MIN_PLAYERS, TROLL_RUN_MAX_PLAYERS } from '@/lib/troll-run'
+import { initializeGoFishGame } from '@/lib/gofish-server'
+import { GOFISH_MIN_PLAYERS, GOFISH_MAX_PLAYERS } from '@/lib/gofish'
 
 /** The slice of the game row a start initializer may need. */
 type StartGame = { timer_seconds?: number | null; checkers_nigeria_street_rules?: boolean | null }
@@ -66,6 +69,11 @@ export const GAME_START_SPECS: Partial<Record<GameType, StartSpec>> = {
   crazy_eights: {
     minPlayers: CRAZY8_MIN_PLAYERS,
     initialize: (admin, code, ids) => initializeCrazyEightsGame(admin, code, ids),
+  },
+  rummy: {
+    minPlayers: RUMMY_MIN_PLAYERS,
+    maxPlayers: RUMMY_MAX_PLAYERS,
+    initialize: (admin, code, ids) => initializeRummyGame(admin, code, ids),
   },
   uno: {
     minPlayers: UNO_MIN_PLAYERS,
@@ -133,6 +141,11 @@ export const GAME_START_SPECS: Partial<Record<GameType, StartSpec>> = {
     minPlayers: TROLL_RUN_MIN_PLAYERS,
     maxPlayers: TROLL_RUN_MAX_PLAYERS,
     initialize: (admin, code, ids, game) => initializeTrollRunGame(admin, code, ids, game as any),
+  },
+  gofish: {
+    minPlayers: GOFISH_MIN_PLAYERS,
+    maxPlayers: GOFISH_MAX_PLAYERS,
+    initialize: (admin, code, ids) => initializeGoFishGame(admin, code, ids),
   },
 }
 

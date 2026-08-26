@@ -933,6 +933,49 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
       },
     },
   },
+  rummy: {
+    id: 'rummy',
+    label: 'Rummy',
+    tagline: 'Meld sets and runs — first to empty their hand wins',
+    headerEmoji: '🃏♠',
+    card: {
+      accent: '#0891b2',
+      accentSoft: 'rgba(8, 145, 178, 0.15)',
+      emoji: '🃏',
+      players: '2–6 players',
+      vibe: 'Classic card night',
+      featured: false,
+    },
+    slots: {
+      kiss: {
+        emoji: '🃏',
+        label: 'Cards left',
+        color: '#0891b2',
+        leaderboardLabel: 'Fewest cards',
+        activeClass: 'bg-cyan-500/20 text-cyan-100 border-cyan-400',
+        borderClass: 'border-cyan-500/50 bg-cyan-500/10',
+        textColor: '#67e8f9',
+      },
+      marry: {
+        emoji: '🎯',
+        label: 'Melds',
+        color: '#7c3aed',
+        leaderboardLabel: 'Melds laid down',
+        activeClass: 'bg-violet-500/20 text-violet-100 border-violet-400',
+        borderClass: 'border-violet-500/50 bg-violet-500/10',
+        textColor: '#c4b5fd',
+      },
+      kill: {
+        emoji: '🏆',
+        label: 'Winner',
+        color: '#fbbf24',
+        leaderboardLabel: 'Winner',
+        activeClass: 'bg-amber-500/20 text-amber-100 border-amber-400',
+        borderClass: 'border-amber-500/50 bg-amber-500/10',
+        textColor: '#fcd34d',
+      },
+    },
+  },
   crazy_eights: {
     id: 'crazy_eights',
     label: 'Crazy Eights',
@@ -964,6 +1007,49 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
         activeClass: 'bg-orange-500/20 text-orange-100 border-orange-400',
         borderClass: 'border-orange-500/50 bg-orange-500/10',
         textColor: '#fdba74',
+      },
+      kill: {
+        emoji: '🏆',
+        label: 'Winner',
+        color: '#fbbf24',
+        leaderboardLabel: 'Winner',
+        activeClass: 'bg-amber-500/20 text-amber-100 border-amber-400',
+        borderClass: 'border-amber-500/50 bg-amber-500/10',
+        textColor: '#fcd34d',
+      },
+    },
+  },
+  gofish: {
+    id: 'gofish',
+    label: 'Go Fish',
+    tagline: 'Ask for ranks, collect four to make a book',
+    headerEmoji: '🐟🃏',
+    card: {
+      accent: '#0ea5e9',
+      accentSoft: 'rgba(14, 165, 233, 0.15)',
+      emoji: '🐟',
+      players: '2–6 players',
+      vibe: 'Classic card game',
+      featured: false,
+    },
+    slots: {
+      kiss: {
+        emoji: '📚',
+        label: 'Books',
+        color: '#0ea5e9',
+        leaderboardLabel: 'Books',
+        activeClass: 'bg-sky-500/20 text-sky-100 border-sky-400',
+        borderClass: 'border-sky-500/50 bg-sky-500/10',
+        textColor: '#7dd3fc',
+      },
+      marry: {
+        emoji: '🎯',
+        label: 'Hits',
+        color: '#22c55e',
+        leaderboardLabel: 'Successful asks',
+        activeClass: 'bg-emerald-500/20 text-emerald-100 border-emerald-400',
+        borderClass: 'border-emerald-500/50 bg-emerald-500/10',
+        textColor: '#6ee7b7',
       },
       kill: {
         emoji: '🏆',
@@ -2176,6 +2262,7 @@ export const GAME_TYPE_OPTIONS: GameType[] = [
   'monopoly',
   'yahtzee',
   'whot',
+  'rummy',
   'ludo',
   'mahjong',
   'i_call_on',
@@ -2204,6 +2291,7 @@ export const GAME_TYPE_OPTIONS: GameType[] = [
   'uno',
   'wordle_room',
   'troll_run',
+  'gofish',
 ]
 
 // Games pinned to the top of the picker / games list, in this exact order.
@@ -2286,8 +2374,10 @@ const GAME_CATEGORY_BY_TYPE: Partial<Record<GameType, GameCategory>> = {
   quiplash: 'guessing',
   // Cards
   whot: 'cards',
+  rummy: 'cards',
   crazy_eights: 'cards',
   uno: 'cards',
+  gofish: 'cards',
   // Board / strategy
   monopoly: 'board',
   ludo: 'board',
@@ -2356,7 +2446,9 @@ export function parseGameType(raw: unknown): GameType {
   if (raw === 'scrabble') return 'scrabble'
   if (raw === 'snake_and_ladder' || raw === 'snakes-and-ladders') return 'snake_and_ladder'
   if (raw === 'crazy_eights' || raw === 'crazy-eights') return 'crazy_eights'
+  if (raw === 'rummy') return 'rummy'
   if (raw === 'uno') return 'uno'
+  if (raw === 'gofish' || raw === 'go_fish' || raw === 'go-fish') return 'gofish'
   if (raw === 'checkers' || raw === 'draughts') return 'checkers'
   if (
     raw === 'checkers_international' ||
@@ -2454,8 +2546,12 @@ export function gameHowItWorks(
       return 'Players roll, hold dice, and choose a score category each turn. Build the best total across all combos.'
     case 'whot':
       return 'Players join with their name. Match the top card by shape or number — WHOT lets you call the next match. Pick 2 and Pick 3 stacks are separate. First to empty their hand wins — or lowest hand total when the game clock runs out.'
+    case 'rummy':
+      return 'Players join with their name (2–6 play). On your turn, draw one card from the pile or the top of the discard, then discard one. Rearrange your hand into sets (three or four of the same rank) and runs (three or more consecutive cards of the same suit). Lay your whole hand down as valid melds — usually with one card left to discard — to go out and win. If the game clock runs out first, whoever is closest to going out (most cards that could form valid melds) wins.'
     case 'uno':
       return 'Players join with their name and are dealt 7 cards. Match the top card by colour, number, or symbol. Skip, Reverse, Draw 2, and Wild cards shake things up — call "last card" on your second-to-last card or draw a penalty. First to empty their hand wins.'
+    case 'gofish':
+      return 'Players join with their name — 2 to 6 play. Each turn, ask one opponent for a rank you already hold ("Do you have any 7s?"). If they have any, they hand them all over and you go again. If not, "Go Fish" — draw from the ocean; a lucky draw of the same rank keeps your turn. Collect all four of a rank to make a book. Most books when the ocean runs out wins.'
     case 'ludo':
       return 'Players join with their name. Roll two dice each turn and use each die separately — a 6 brings pieces out; doubles earn another roll after both dice are played. Capture opponents, block with pairs — first to finish all four pieces wins!'
     case 'mahjong':
@@ -2752,6 +2848,7 @@ const NAME_ONLY_PLAYER_JOIN_GAMES: Record<GameType, boolean> = {
   monopoly: true,
   yahtzee: true,
   whot: true,
+  rummy: true,
   ludo: true,
   mahjong: true,
   i_call_on: true,
@@ -2780,6 +2877,7 @@ const NAME_ONLY_PLAYER_JOIN_GAMES: Record<GameType, boolean> = {
   mafia: false,
   wordle_room: true,
   troll_run: true,
+  gofish: true,
 }
 
 const LOBBY_GAMES: Record<GameType, boolean> = {
@@ -2804,6 +2902,7 @@ const LOBBY_GAMES: Record<GameType, boolean> = {
   monopoly: false,
   yahtzee: false,
   whot: false,
+  rummy: false,
   ludo: false,
   mahjong: false,
   i_call_on: false,
@@ -2832,6 +2931,7 @@ const LOBBY_GAMES: Record<GameType, boolean> = {
   mafia: false,
   wordle_room: false,
   troll_run: false,
+  gofish: false,
 }
 
 // Does this game record its history as rows in the `votes` table (plus `participants` /
@@ -2865,6 +2965,7 @@ const VOTE_HISTORY_GAMES: Record<GameType, boolean> = {
   monopoly: false,
   yahtzee: false,
   whot: false,
+  rummy: false,
   ludo: false,
   mahjong: false,
   i_call_on: false,
@@ -2893,6 +2994,7 @@ const VOTE_HISTORY_GAMES: Record<GameType, boolean> = {
   mafia: false,
   wordle_room: false,
   troll_run: false,
+  gofish: false,
 }
 
 /**
@@ -2990,8 +3092,16 @@ export function isCrazyEightsGame(gameType: GameType | string | undefined): bool
   return parseGameType(gameType) === 'crazy_eights'
 }
 
+export function isRummyGame(gameType: GameType | string | undefined): boolean {
+  return parseGameType(gameType) === 'rummy'
+}
+
 export function isUnoGame(gameType: GameType | string | undefined): boolean {
   return parseGameType(gameType) === 'uno'
+}
+
+export function isGoFishGame(gameType: GameType | string | undefined): boolean {
+  return parseGameType(gameType) === 'gofish'
 }
 
 export function isLudoGame(gameType: GameType | string | undefined): boolean {
