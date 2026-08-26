@@ -179,6 +179,10 @@ export function RummyGamePanel({
           hand={myHand}
           isMyTurn={isMyTurn && !isViewer}
           canAct={session.turn_step === 'discard' && !acting}
+          canDraw={canDrawNow}
+          drawCount={drawCount}
+          topDiscard={topDiscard}
+          onDraw={onDraw}
           onDiscard={onDiscard}
           onGoOut={onGoOut}
         />
@@ -206,12 +210,20 @@ function HandAndActions({
   hand,
   isMyTurn,
   canAct,
+  canDraw,
+  drawCount,
+  topDiscard,
+  onDraw,
   onDiscard,
   onGoOut,
 }: {
   hand: RummyCard[]
   isMyTurn: boolean
   canAct: boolean
+  canDraw: boolean
+  drawCount: number
+  topDiscard: RummyCard | null
+  onDraw?: (source: 'pile' | 'discard') => void
   onDiscard?: (cardId: string) => void
   onGoOut?: (melds: string[][], discardCardId: string | null) => void
 }) {
@@ -294,10 +306,31 @@ function HandAndActions({
         hint={
           isMyTurn && canAct
             ? `${rummyHandSum(hand)} deadwood · tap a card to discard or add to a meld`
-            : `${hand.length} cards · ${rummyHandSum(hand)} deadwood`
+            : isMyTurn && canDraw
+              ? `${rummyHandSum(hand)} deadwood · draw from the pile or take the top discard`
+              : `${hand.length} cards · ${rummyHandSum(hand)} deadwood`
         }
         actions={
-          isMyTurn && canAct ? (
+          isMyTurn && canDraw ? (
+            <div className="flex gap-2 w-full">
+              <button
+                type="button"
+                className="fr-btn fr-btn--primary fr-btn--block"
+                disabled={drawCount === 0}
+                onClick={() => onDraw?.('pile')}
+              >
+                Draw ({drawCount})
+              </button>
+              <button
+                type="button"
+                className="fr-btn fr-btn--secondary fr-btn--block"
+                disabled={!topDiscard}
+                onClick={() => onDraw?.('discard')}
+              >
+                {topDiscard ? `Take ${rummyCardLabel(topDiscard)}` : 'Take discard'}
+              </button>
+            </div>
+          ) : isMyTurn && canAct ? (
             <div className="flex gap-2 w-full">
               <button
                 type="button"
