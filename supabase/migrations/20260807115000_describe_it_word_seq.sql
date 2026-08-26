@@ -18,14 +18,21 @@
 
 do $$
 begin
-  -- Skip rather than abort where the table hasn't been created yet (a fresh environment
-  -- applying migrations out of order).
+  -- ABORT rather than skip when the table is absent.
+  --
+  -- Skipping returns successfully, so this migration is recorded as applied — and if
+  -- `describe_it_sessions` is created afterwards, `word_seq` and its grant are never installed.
+  -- Nothing would fail loudly: `readDescribeItSession()` retries without `word_seq` on 42703, so
+  -- the database stays permanently on the slower compatibility path while looking healthy.
+  --
+  -- The table is created by 0092_describe_it.sql, which sorts far earlier, so in any correct
+  -- apply order it exists. Its absence here means the chain is genuinely broken, and that should
+  -- stop the deploy rather than be papered over.
   if not exists (
     select 1 from information_schema.tables
      where table_schema = 'public' and table_name = 'describe_it_sessions'
   ) then
-    raise notice 'describe_it_sessions not present — skipping';
-    return;
+    raise exception 'describe_it_sessions is absent — 0092_describe_it.sql must run before this migration';
   end if;
 
   execute 'alter table public.describe_it_sessions

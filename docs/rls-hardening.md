@@ -208,10 +208,19 @@ changed" — a count, not the words.
 
 ### Split the migration: additive first, revoke last
 
-A redaction slice changes the schema in two ways that pull in opposite directions, and putting
-both in one migration leaves no safe deploy order — the file simultaneously **creates** the
-public counter new clients select and **removes** the columns old clients select, so whichever
-of database/code you move first, the other breaks. Describe It is therefore three files:
+A redaction slice changes the schema in two ways that pull in opposite directions: the file
+simultaneously **creates** the public counter new clients select and **removes** the columns old
+clients select. The two directions are not equally dangerous, and the split exists because of the
+asymmetry rather than because both break —
+
+- **Database ahead of code** (42501, revoked column) breaks any client still selecting those
+  columns, and has no client-side rescue by design. This is the direction that forces the wait.
+- **Code ahead of database** (42703, undefined column) is *supported*: `readDescribeItSession()`
+  retries once without `word_seq`, so a deploy landing before the migration degrades to a slower
+  word refresh and self-heals. Supported is not the same as intended — the additive migration
+  should still go first; the fallback exists so a mis-ordered deploy is a slowdown, not an outage.
+
+Describe It is therefore three files:
 
 | File                                           | Effect                             | Safe against                             |
 | ---------------------------------------------- | ---------------------------------- | ---------------------------------------- |
