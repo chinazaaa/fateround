@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
 // bot here" set from the same map — see the note there. A Next route file cannot re-export
 // a plain const, so the shared registry could not live in the route.
 import { BOT_TICK_SLUG } from '@/lib/bots-in-room'
+import { isProdDeployment } from '@/lib/app-env'
 
 /**
  * Server-side game ticker.
@@ -51,6 +52,7 @@ export const ROUND_ADVANCE_SLUG: Record<string, string> = {
 export const TURN_EXPIRE_SLUG: Record<string, string> = {
   whot: 'whot',
   crazy_eights: 'crazy-eights',
+  rummy: 'rummy',
   chess: 'chess',
   checkers: 'checkers',
   checkers_international: 'checkers-international',
@@ -194,7 +196,7 @@ let started = false
 export function startGameTicker(): void {
   if (started) return
   if (process.env.GAME_TICK_DISABLED === '1') return
-  const enabled = process.env.NODE_ENV === 'production' || process.env.GAME_TICK_ENABLED === '1'
+  const enabled = isProdDeployment() || process.env.GAME_TICK_ENABLED === '1'
   if (!enabled) return
   started = true
   const intervalMs = Number(process.env.GAME_TICK_INTERVAL_MS) || 2500

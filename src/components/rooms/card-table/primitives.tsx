@@ -20,8 +20,9 @@ import type { CSSProperties, KeyboardEvent, ReactNode } from 'react'
 import { useEffect, useState } from 'react'
 import { WhotShapeIcon } from '@/components/whot/WhotShapeIcon'
 import { CRAZY8_SUIT_SYMBOLS } from '@/lib/crazy-eights'
+import { RUMMY_SUIT_SYMBOLS } from '@/lib/rummy'
 import { cardShortLabel } from '@/lib/uno'
-import type { CrazyEightsCard, UnoCard, WhotCard as WhotCardType } from '@/types'
+import type { CrazyEightsCard, RummyCard as RummyCardType, UnoCard, WhotCard as WhotCardType } from '@/types'
 
 /**
  * Button semantics for a clickable card face so keyboard-only players can
@@ -145,6 +146,50 @@ export function CrazyCardFace({ card, sel, dim, big, playable, onClick }: CrazyC
       </div>
     )
   }
+  return (
+    <div className={cls} onClick={onClick} {...interactiveProps}>
+      <span className="c tl">
+        {label}
+        <small>{glyph}</small>
+      </span>
+      <div className="mid">{glyph}</div>
+      <span className="c br">
+        {label}
+        <small>{glyph}</small>
+      </span>
+    </div>
+  )
+}
+
+/* ─── Rummy card face ───────────────────────────────────────────── */
+
+const RUMMY_RANK_LABELS: Record<number, string> = { 1: 'A', 11: 'J', 12: 'Q', 13: 'K' }
+
+export type RummyCardFaceProps = {
+  card: RummyCardType
+  sel?: boolean
+  dim?: boolean
+  big?: boolean
+  playable?: boolean
+  onClick?: () => void
+}
+
+/**
+ * A single Rummy `.pc` face. Reuses the standard-deck styling — hearts/diamonds
+ * get `.red`, other suits stay neutral — with rank + suit glyph in the corners.
+ */
+export function RummyCardFace({ card, sel, dim, big, playable, onClick }: RummyCardFaceProps) {
+  const red = card.suit === 'hearts' || card.suit === 'diamonds'
+  const glyph = RUMMY_SUIT_SYMBOLS[card.suit]
+  const label = RUMMY_RANK_LABELS[card.rank] ?? String(card.rank)
+  const cls =
+    'pc' +
+    (red ? ' red' : '') +
+    (big ? ' lg' : '') +
+    (sel ? ' sel' : '') +
+    (dim ? ' dim' : '') +
+    (playable ? ' playable' : '')
+  const interactiveProps = cardInteractiveProps(onClick)
   return (
     <div className={cls} onClick={onClick} {...interactiveProps}>
       <span className="c tl">

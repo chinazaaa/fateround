@@ -193,13 +193,22 @@ export default function AdminCoinsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-black tracking-tight">Coin adjustments</h1>
-        <p className="mt-1 text-sm text-[var(--muted)]">
-          Move a profile&rsquo;s coin balance for bug reimbursements, goodwill, or promotions. Every adjustment is
-          logged forever with your admin identity, a category, and a note. You can only move coins &mdash; not grant
-          specific editions or themes.
-        </p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-black tracking-tight">Coin adjustments</h1>
+          <p className="mt-1 text-sm text-[var(--muted)]">
+            Move a profile&rsquo;s coin balance for bug reimbursements, goodwill, or promotions. Every adjustment is
+            logged forever with your admin identity, a category, and a note. You can only move coins &mdash; not grant
+            specific editions or themes.
+          </p>
+        </div>
+        <a
+          href="/admin/coins/stats"
+          className="fr-btn--nav shrink-0 whitespace-nowrap text-xs"
+          title="Aggregate shop / economy stats"
+        >
+          📈 Shop stats
+        </a>
       </div>
 
       <div className="glass-card p-5">

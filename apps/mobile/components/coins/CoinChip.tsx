@@ -55,7 +55,7 @@ export function CoinChip() {
 
   return (
     <Pressable
-      onPress={() => router.push('/profile?tab=coins')}
+      onPress={() => router.push('/shop' as never)}
       style={({ pressed }) => [styles.chip, pressed && styles.pressed]}
       accessibilityRole="button"
       accessibilityLabel={`${coins} coins`}

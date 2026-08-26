@@ -43,7 +43,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     }
   }
 
-  const { error } = await supabase.from('games').update({ pending_host_player_id: playerId }).eq('id', gameId)
+  // Stamp `pending_host_nominated_at` alongside so /claim-host and the
+  // HostNominationBanner can open the claim to any remaining eligible player
+  // once the named nominee has ignored it for ~60s. Cancels (playerId=null)
+  // clear the timestamp too so a subsequent explicit transfer restarts the clock.
+  const { error } = await supabase
+    .from('games')
+    .update({
+      pending_host_player_id: playerId,
+      pending_host_nominated_at: playerId ? new Date().toISOString() : null,
+    })
+    .eq('id', gameId)
   if (error) return NextResponse.json({ error: 'Failed to update nomination' }, { status: 500 })
 
   return NextResponse.json({ ok: true, pendingHostPlayerId: playerId }, { status: 200 })

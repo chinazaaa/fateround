@@ -4,7 +4,7 @@
 
 export * from '../troll-run-types'
 
-import type { TrollMovingEntity, TrollRunLevel } from '../troll-run-types'
+import type { TrollMovingEntity, TrollRunDoorState, TrollRunLevel } from '../troll-run-types'
 
 export interface InputState {
   left: boolean
@@ -35,6 +35,19 @@ export interface PlayerState {
    * renderer uses it to draw them behind the door leaf and fade them out.
    */
   doorEntryProgress: number
+  /**
+   * The solid entity the runner is standing on, so the engine can carry them when it moves.
+   * Recomputed every frame by the physics step, exactly like `grounded`.
+   */
+  ridingEntityId: string | null
+}
+
+/**
+ * The level as the running game draws it: authored geometry with the live tile grid and the live
+ * door. A plain `TrollRunLevel` satisfies it, so authored levels still render untouched.
+ */
+export interface TrollRunRenderLevel extends Omit<TrollRunLevel, 'door'> {
+  door: TrollRunDoorState
 }
 
 export interface GhostRunner {
@@ -51,6 +64,20 @@ export interface GhostRunner {
   facing: 'left' | 'right'
   alive: boolean
   lastUpdate: number
+}
+
+/**
+ * A spot where a runner died, left on screen so everyone watches the same trap collect its victims.
+ * Costs no extra network traffic: deaths are read off the `alive` flag the position broadcast
+ * already carries.
+ */
+export interface TrollRunDeathMark {
+  x: number
+  y: number
+  color: string
+  levelIndex: number
+  /** Seconds since the death, used for the fade-out. */
+  age: number
 }
 
 export interface GhostPositionPayload {
@@ -84,6 +111,21 @@ export function getPlayerGhostColor(playerId: string): string {
   }
   const idx = Math.abs(hash) % GHOST_COLORS.length
   return GHOST_COLORS[idx]
+}
+
+/**
+ * Whether a pulsing hazard is live this instant. Entities with no `pulse` are always live; a pulsing
+ * one starts in its off phase, so the very first thing a runner meets is the gap rather than the beam.
+ */
+export function trollEntityIsActive(entity: TrollMovingEntity): boolean {
+  const pulse = entity.pulse
+  if (!pulse) return true
+
+  const period = pulse.onSeconds + pulse.offSeconds
+  if (period <= 0) return true
+
+  const elapsed = (entity.pulseElapsed ?? 0) + (pulse.phaseSeconds ?? 0)
+  return elapsed % period >= pulse.offSeconds
 }
 
 export interface ActiveTween {
@@ -139,12 +181,14 @@ export interface EngineCallbacks {
  */
 export interface TrollRunFrame {
   /** The level with its live tile grid and live door position, not the authored originals. */
-  level: TrollRunLevel
+  level: TrollRunRenderLevel
   player: PlayerState
   particles: readonly Particle[]
   entities: readonly TrollMovingEntity[]
   /** Only the ghosts on the same level index as the local runner. */
   ghosts: readonly GhostRunner[]
+  /** Only the death marks on the same level index as the local runner. */
+  deathMarks: readonly TrollRunDeathMark[]
   /** `performance.now()` at the top of the frame, for time-based shimmer/pulse effects. */
   now: number
 }

@@ -35,6 +35,7 @@ import { clearMonopolySessionData } from '@/lib/monopoly'
 import { clearYahtzeeSessionData } from '@/lib/yahtzee'
 import { clearWhotSessionData } from '@/lib/whot'
 import { clearCrazyEightsSessionData } from '@/lib/crazy-eights'
+import { clearRummySessionData } from '@/lib/rummy'
 import { clearUnoSessionData } from '@/lib/uno'
 import { clearLudoSessionData } from '@/lib/ludo'
 import { clearMahjongSessionData, canMahjongPlayAgain } from '@/lib/mahjong'
@@ -105,6 +106,7 @@ type ClearableSessionGameType = Extract<
   | 'monopoly'
   | 'yahtzee'
   | 'whot'
+  | 'rummy'
   | 'crazy_eights'
   | 'uno'
   | 'ludo'
@@ -147,6 +149,7 @@ const SESSION_CLEARERS: Record<ClearableSessionGameType, SessionClearer> = {
   monopoly: clearMonopolySessionData,
   yahtzee: clearYahtzeeSessionData,
   whot: clearWhotSessionData,
+  rummy: clearRummySessionData,
   crazy_eights: clearCrazyEightsSessionData,
   uno: clearUnoSessionData,
   ludo: clearLudoSessionData,

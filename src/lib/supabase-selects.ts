@@ -42,7 +42,7 @@ export const VOTE_SELECT =
 export const CONFESSION_SELECT = 'id,game_id,round_id,text,created_at'
 
 export const MONOPOLY_BOARD_SELECT =
-  'id,game_id,board_size,turn_order,current_turn_index,phase,last_dice,consecutive_doubles,property_owners,property_buildings,mortgaged_properties,houses_in_bank,hotels_in_bank,chance_deck,community_deck,chance_discard,community_discard,auction_state,pending_trade,pending_debt,pending_space,status_message,last_card_event,last_rent_event,last_cash_event,last_trade_event,loans,turn_deadline_at,winner_player_id,created_at,updated_at'
+  'id,game_id,board_size,turn_order,current_turn_index,phase,last_dice,consecutive_doubles,property_owners,property_buildings,mortgaged_properties,houses_in_bank,hotels_in_bank,auction_state,pending_trade,pending_debt,pending_space,status_message,last_card_event,last_rent_event,last_cash_event,last_trade_event,loans,turn_deadline_at,winner_player_id,created_at,updated_at'
 
 /**
  * `monopoly_boards` columns that are NOT NULL in the DB.
@@ -54,14 +54,14 @@ export const MONOPOLY_BOARD_SELECT =
  * ownership, buildings and the decks on screen. Callers use {@link isCompleteMonopolyBoardRow}
  * to detect that and fall back to a full reload instead of the delta fast-path.
  */
+// The four card decks are deliberately absent — they are no longer in MONOPOLY_BOARD_SELECT, so
+// a pushed row never carries them and requiring them here would make isCompleteMonopolyBoardRow
+// return false for EVERY payload, rejecting every delta and forcing a full reload each time.
+// (Exactly the bug found in UNO_SESSION_NOT_NULL_KEYS after its piles were revoked.)
 export const MONOPOLY_BOARD_NOT_NULL_KEYS = [
   'property_owners',
   'property_buildings',
   'mortgaged_properties',
-  'chance_deck',
-  'community_deck',
-  'chance_discard',
-  'community_discard',
   'turn_order',
   'loans',
 ] as const
@@ -104,8 +104,12 @@ export const CRAZY8_SESSION_SELECT =
 // /api/crazy-eights/hands, which redacts every hand but the caller's own (lib/hand-redaction.ts).
 // The old `…,cards,…` select is deliberately gone so nothing can reintroduce the direct read.
 
+// last_play_player_id, pending_wild, color_roulette_player_id, color_roulette_reveals and
+// draw_stack_chain are deliberately absent: no client reads them, and the server paths that
+// do (processUnoPlay, processUnoDraw, processUnoChoose, …) re-fetch the row themselves with
+// `select('*')` through the service role.
 export const UNO_SESSION_SELECT =
-  'id,game_id,turn_order,current_turn_index,direction,phase,draw_pile,discard_pile,top_card,required_color,draw_penalty,draw_penalty_kind,drawn_card_id,last_play_cards,last_play_player_id,pending_wild,challenge_prev_color,wd4_player_id,uno_pending_player,uno_called,status_message,winner_player_id,finish_order,left_player_ids,team_decider_id,eliminated_player_ids,color_roulette_player_id,color_roulette_reveals,draw_stack_chain,turn_deadline_at,created_at,updated_at'
+  'id,game_id,turn_order,current_turn_index,direction,phase,draw_pile,discard_pile,top_card,required_color,draw_penalty,draw_penalty_kind,drawn_card_id,last_play_cards,challenge_prev_color,wd4_player_id,uno_pending_player,uno_called,status_message,winner_player_id,finish_order,left_player_ids,team_decider_id,eliminated_player_ids,turn_deadline_at,created_at,updated_at'
 
 /**
  * `uno_sessions` columns that are NOT NULL in the DB.
@@ -143,8 +147,14 @@ export const SNAKE_LADDER_SESSION_SELECT =
 
 export const SNAKE_LADDER_PLAYER_STATE_SELECT = 'id,game_id,player_id,color,position,player_order,created_at'
 
+// Hand-resolution bookkeeping (dealer_index, honba, riichi_sticks, round_wind, hand_number,
+// last_action, hand_result, rule_options, the ura-dora indicators and the claim/ippatsu id
+// lists) is deliberately absent: no client reads any of it, and every server path that does
+// — processMahjongNextHand, processMahjongRiichi, sanitizeMahjongSession and friends —
+// re-fetches the row itself with `select('*')` through the service role. `claim_passes` IS
+// kept: mobile reads it directly.
 export const MAHJONG_SESSION_SELECT =
-  'id,game_id,ruleset,turn_order,dealer_index,current_turn_index,phase,wall,dead_wall,dora_indicators,ura_dora_indicators,honba,riichi_sticks,round_wind,hand_number,last_action,hand_result,rule_options,rinshan_player_id,chankan_player_id,ippatsu_eligible_player_ids,exhaustive_draw_tenpai_player_ids,scores,discard_pile,last_discard,claim_passes,status_message,winner_player_id,winner_player_ids,winning_tile,win_type,score_summary,turn_deadline_at,created_at,updated_at'
+  'id,game_id,ruleset,turn_order,current_turn_index,phase,wall,dead_wall,dora_indicators,scores,discard_pile,last_discard,claim_passes,status_message,winner_player_id,winner_player_ids,winning_tile,win_type,score_summary,turn_deadline_at,created_at,updated_at'
 
 export const MAHJONG_PLAYER_STATE_SELECT =
   'id,game_id,player_id,seat,hand,hand_count,last_drawn_tile,flowers,riichi_declared,riichi_discard_index,temporary_furiten,permanent_furiten,melds,discarded,player_order,created_at'
@@ -164,8 +174,29 @@ export const DRAUGHTS10_SESSION_SELECT =
 export const AYO_SESSION_SELECT =
   'id,game_id,player_a_id,player_b_id,pits,captured_a,captured_b,houses_a,houses_b,match_round,a_row_size,b_row_size,current_turn,a_win_streak,b_win_streak,a_time_ms,b_time_ms,turn_started_at,last_pit,status,result_reason,winner_player_id,is_draw,status_message,turn_deadline_at,created_at,updated_at'
 
-export const DESCRIBE_IT_SESSION_SELECT =
-  'id,game_id,mode,num_teams,total_rounds,turn_seconds,phase,turn_index,current_round,active_team,describer_player_id,roster,current_word,current_clue,current_clues,used_words,turn_deadline_at,break_deadline_at,status,status_message,created_at,updated_at'
+/**
+ * NOTE: no `current_word` and no `used_words`. Both are revoked from anon/authenticated by
+ * migration 20260807130000 — the word used to ship to every guesser's client and was merely
+ * hidden in the UI, and `used_words[last]` IS that word. The describer fetches it from POST
+ * /api/describe-it/my-word instead.
+ *
+ * Every column here except `word_seq` predates the migrations on this branch, so this list is
+ * the part that is safe against ANY database version.
+ */
+export const DESCRIBE_IT_SESSION_SELECT_NO_WORD_SEQ =
+  'id,game_id,mode,num_teams,total_rounds,turn_seconds,phase,turn_index,current_round,active_team,describer_player_id,roster,current_clue,current_clues,turn_deadline_at,break_deadline_at,status,status_message,created_at,updated_at'
+
+/**
+ * `word_seq` (added by migration 20260807115000) is the public per-word counter that replaced
+ * the clients' only legitimate use of the revoked `used_words` array — its length.
+ *
+ * DEPLOY SKEW: naming a column that does not exist yet makes PostgREST fail the WHOLE select
+ * with 42703, which would take out all session state, not just the word. Read the session
+ * through `readDescribeItSession()` (src/lib/describe-it-session-read.ts), which falls back to
+ * DESCRIBE_IT_SESSION_SELECT_NO_WORD_SEQ on 42703 so a web deploy that lands ahead of the
+ * migration degrades instead of bricking the game.
+ */
+export const DESCRIBE_IT_SESSION_SELECT = `${DESCRIBE_IT_SESSION_SELECT_NO_WORD_SEQ},word_seq`
 
 export const DESCRIBE_IT_PLAYER_SELECT = 'id,game_id,player_id,team,score,created_at'
 
@@ -222,8 +253,15 @@ export const QUICK_DRAW_TITLE_SELECT = 'id,game_id,drawing_id,player_id,text,is_
 
 export const QUICK_DRAW_VOTE_SELECT = 'id,game_id,drawing_id,player_id,chosen_title_id,voted_at'
 
+/**
+ * NOTE: no `current_word` and no `used_words`. The secret prompt is revoked from
+ * anon/authenticated by migration 20260807140000 — it used to ship to every guesser's client
+ * (twice: as `current_word`, and as the last entry of `used_words`) and was merely hidden in the
+ * UI. The drawer fetches it from POST /api/quick-draw/my-word instead, and `word_seq` is the
+ * public per-word counter clients use to know it rotated.
+ */
 export const QUICK_DRAW_GUESS_SESSION_SELECT =
-  'id,game_id,mode,num_teams,total_rounds,turn_seconds,roster,phase,turn_index,current_round,active_team,drawer_player_id,current_word,current_stroke_data,used_words,turn_deadline_at,break_deadline_at,status,status_message,created_at,updated_at'
+  'id,game_id,mode,num_teams,total_rounds,turn_seconds,roster,phase,turn_index,current_round,active_team,drawer_player_id,current_stroke_data,word_seq,turn_deadline_at,break_deadline_at,status,status_message,created_at,updated_at'
 
 export const QUICK_DRAW_GUESS_PLAYER_SELECT = 'id,game_id,player_id,team,score,created_at'
 

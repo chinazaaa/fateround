@@ -3,10 +3,13 @@
  */
 
 import {
+  TROLL_RUN_FAKE_DOOR_BITE_SECONDS,
+  TROLL_RUN_SPAWNED_ENTITY_SIZE,
   TrollRunTileType,
   type PlayerState,
   type TrollAction,
   type TrollMovingEntity,
+  type TrollRunDoorState,
   type TrollTrigger,
 } from './types'
 import { aabbIntersect } from './physics'
@@ -33,7 +36,7 @@ function resolveEasingName(
 export interface TriggerContext {
   player: PlayerState
   tiles: number[][]
-  door: { x: number; y: number }
+  door: TrollRunDoorState
   movingEntities: TrollMovingEntity[]
   tweens: TweenManager
   onSound?: (soundName: 'jump' | 'death' | 'clear' | 'trap' | 'coin' | 'invert') => void
@@ -46,6 +49,9 @@ export class TriggerManager {
   private triggers: TrollTrigger[] = []
   private firedTriggerIds = new Set<string>()
   private pendingTimeouts = new Set<ReturnType<typeof setTimeout>>()
+  // Triggers whose zone the player is currently inside, so `exit` can fire on the way out.
+  private occupiedZoneIds = new Set<string>()
+  private spawnCounter = 0
 
   public setTriggers(triggers: TrollTrigger[]): void {
     this.triggers = triggers.map((trigger, index) => ({
@@ -57,6 +63,8 @@ export class TriggerManager {
 
   public reset(): void {
     this.firedTriggerIds.clear()
+    this.occupiedZoneIds.clear()
+    this.spawnCounter = 0
     for (const timeout of this.pendingTimeouts) {
       clearTimeout(timeout)
     }
@@ -101,6 +109,14 @@ export class TriggerManager {
 
       if (trigger.condition === 'enter' && playerInZone) {
         shouldFire = true
+      } else if (trigger.condition === 'exit') {
+        // Fires on the in→out transition, so the floor can fall away behind the runner rather than
+        // under them. Occupancy is tracked per trigger and cleared on reset with everything else.
+        if (playerInZone) {
+          this.occupiedZoneIds.add(id)
+        } else if (this.occupiedZoneIds.delete(id)) {
+          shouldFire = true
+        }
       } else if (trigger.condition === 'collect_coin' && frameEvents.includes('collect_coin')) {
         shouldFire = true
       } else if (trigger.condition === 'land_on' && frameEvents.includes('land_on') && playerInZone) {
@@ -193,6 +209,13 @@ export class TriggerManager {
           break
         }
 
+        case 'fake_door': {
+          // The exit grows teeth for a moment. The engine counts the timer down, so the bite always
+          // expires: the level stays clearable, just not on the naive first run at it.
+          door.biteTimer = action.duration ?? TROLL_RUN_FAKE_DOOR_BITE_SECONDS
+          break
+        }
+
         case 'flip_gravity': {
           player.gravityInverted = !player.gravityInverted
           player.vy = 0
@@ -220,14 +243,19 @@ export class TriggerManager {
         }
 
         case 'spawn_entity': {
+          // A spawned solid is machinery the runner can stand on; anything else is a hazard, which
+          // is what every spawn was before `solid` existed. The counter keeps ids reproducible.
+          const size = action.size ?? TROLL_RUN_SPAWNED_ENTITY_SIZE
+          this.spawnCounter += 1
           movingEntities.push({
-            id: `spawned_${Date.now()}_${Math.random()}`,
+            id: `spawned_${this.spawnCounter}`,
             x: action.position.x,
             y: action.position.y,
-            w: 14,
-            h: 14,
+            w: size,
+            h: size,
             type: action.entityType,
-            killsOnTouch: true,
+            solid: action.solid === true,
+            killsOnTouch: action.solid !== true,
             vx: action.velocity?.x ?? 0,
             vy: action.velocity?.y ?? 0,
           })

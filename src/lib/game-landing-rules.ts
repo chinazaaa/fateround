@@ -689,6 +689,52 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
     },
   ],
 
+  rummy: [
+    {
+      title: 'Objective',
+      points: [
+        'Be the first player to lay your entire hand down as valid sets and runs.',
+        'A set is 3 or 4 cards of the same rank (e.g. 7♠ 7♥ 7♦). A run is 3+ consecutive cards of the same suit (e.g. 4♣ 5♣ 6♣).',
+      ],
+    },
+    {
+      title: 'Setup',
+      points: [
+        '2–6 players join a room. Standard 52-card deck.',
+        '2 players are dealt 10 cards each; 3–4 players get 7 each; 5–6 players get 6 each.',
+        'One card is turned face-up to start the discard pile; the rest form the draw pile.',
+      ],
+    },
+    {
+      title: 'How to play',
+      points: [
+        'On your turn, draw one card — from the draw pile (face down) or the top of the discard pile (face up).',
+        'Rearrange your hand and work toward complete sets and runs.',
+        'Then discard one card face-up onto the discard pile to end your turn.',
+        'When your whole hand can be laid down as valid sets and runs (often with one card left to discard), you go out and win the round.',
+        'If the draw pile runs out, played cards (except the current top card) are reshuffled into a new draw pile — capped so the deck cannot cycle forever.',
+      ],
+    },
+    {
+      title: 'Card values (for scoring)',
+      points: [
+        'Values matter when the round ends without a winner — lowest deadwood total wins.',
+        'Ace — 1 point (aces are LOW; A-2-3 is a valid run, Q-K-A is not).',
+        'Number cards 2–10 — face value.',
+        'Jack, Queen, King — 10 points each.',
+      ],
+    },
+    {
+      title: 'Game length',
+      points: [
+        'The host can set a per-player turn timer AND a whole-game clock — or turn either off.',
+        'When your turn timer hits zero, the game auto-draws and auto-discards for you and moves on.',
+        'First to lay everything down wins during normal play (no game clock).',
+        'When the whole-game clock runs out, the winner is whoever is CLOSEST to going out — the player whose hand has the most cards that could be laid down as valid sets and runs. Ties are broken by fewest leftover deadwood, so a Rummy-ready hand beats one that just happens to hold cheap cards.',
+      ],
+    },
+  ],
+
   crazy_eights: [
     {
       title: 'Objective',

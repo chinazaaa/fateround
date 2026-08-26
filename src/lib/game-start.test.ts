@@ -43,7 +43,7 @@ describe('startHumanSeatError', () => {
 })
 
 describe('GAME_START_SPECS', () => {
-  it('registers exactly the 17 uniform games', () => {
+  it('registers exactly the 18 uniform games', () => {
     expect(Object.keys(GAME_START_SPECS).sort()).toEqual([
       'ayo',
       'checkers',
@@ -55,6 +55,7 @@ describe('GAME_START_SPECS', () => {
       'mafia',
       'mahjong',
       'monopoly',
+      'rummy',
       'scrabble',
       'snake_and_ladder',
       'tic_tac_toe',

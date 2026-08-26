@@ -151,6 +151,20 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
   const { error } = await markGameFinished(admin, gameId, now)
   if (error) return NextResponse.json({ error: internalErrorMessage('games/code/finish-game', error) }, { status: 500 })
 
+  // Host force-ended without a natural winner → tag as an aborted finish so the
+  // trophy/coin pass skips "play N games" / streak / first-mode credit. A game
+  // the host ended AFTER a winner was decided keeps result_reason NULL (natural
+  // finish) so those credits still apply. See ABORT_REASONS in
+  // src/lib/trophies/award.ts. Best-effort.
+  if (winnerNames.length === 0) {
+    const { error: reasonError } = await admin
+      .from('games')
+      .update({ result_reason: 'host_ended' })
+      .eq('id', gameId)
+      .is('result_reason', null)
+    if (reasonError) console.error(`finish-game: result_reason update failed for ${gameId}`, reasonError)
+  }
+
   try {
     await awardTournamentPlacements(admin, gameId)
   } catch {

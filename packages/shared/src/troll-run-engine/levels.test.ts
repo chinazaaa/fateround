@@ -6,6 +6,7 @@ import {
   WORLD_2_LEVELS,
   WORLD_3_LEVELS,
   WORLD_4_LEVELS,
+  WORLD_5_LEVELS,
   getWorldLevels,
 } from './levels'
 import { checkTrollRunReachable, trollRunDoorIsBuried, trollRunDoorPlacements } from './levels/reach'
@@ -16,16 +17,20 @@ import {
   TROLL_RUN_GRID_ROWS,
   TROLL_RUN_INTERNAL_HEIGHT,
   TROLL_RUN_INTERNAL_WIDTH,
+  TrollRunTileType,
+  trollEntityIsActive,
 } from './types'
+import { TROLL_RUN_FAKE_DOOR_BITE_SECONDS } from '../troll-run-types'
 
 describe('Troll Run Level Registry & Worlds', () => {
-  it('contains exactly 4 worlds and 40 total levels', () => {
-    expect(TROLL_RUN_WORLDS).toHaveLength(4)
+  it('contains exactly 5 worlds and 50 total levels', () => {
+    expect(TROLL_RUN_WORLDS).toHaveLength(5)
     expect(WORLD_1_LEVELS).toHaveLength(10)
     expect(WORLD_2_LEVELS).toHaveLength(10)
     expect(WORLD_3_LEVELS).toHaveLength(10)
     expect(WORLD_4_LEVELS).toHaveLength(10)
-    expect(ALL_TROLL_RUN_LEVELS).toHaveLength(40)
+    expect(WORLD_5_LEVELS).toHaveLength(10)
+    expect(ALL_TROLL_RUN_LEVELS).toHaveLength(50)
   })
 
   it('correctly routes world levels via getWorldLevels', () => {
@@ -33,10 +38,11 @@ describe('Troll Run Level Registry & Worlds', () => {
     expect(getWorldLevels('doors')).toBe(WORLD_2_LEVELS)
     expect(getWorldLevels('gravity')).toBe(WORLD_3_LEVELS)
     expect(getWorldLevels('gauntlet')).toBe(WORLD_4_LEVELS)
+    expect(getWorldLevels('machines')).toBe(WORLD_5_LEVELS)
     expect(getWorldLevels(null)).toBe(WORLD_1_LEVELS)
   })
 
-  it('ensures each of the 40 levels has valid geometry, spawn point, door, and par times', () => {
+  it('ensures each of the 50 levels has valid geometry, spawn point, door, and par times', () => {
     const seenIds = new Set<string>()
 
     for (const lvl of ALL_TROLL_RUN_LEVELS) {
@@ -137,6 +143,91 @@ describe('Troll Run Level Registry & Worlds', () => {
           }
         }
       })
+    }
+  })
+
+  // World 5's machinery is threat and timing laid over a route the tiles already carry. The solver
+  // reads entities as static geometry parked at their start position, so a level whose only way
+  // through is catching a moving part would pass the route check above and still be a lie in play.
+  // Stripping the machinery out entirely is what proves it never became the floor.
+  it('keeps every authored level clearable with its moving machinery removed', () => {
+    for (const level of ALL_TROLL_RUN_LEVELS) {
+      if (!level.movingEntities || level.movingEntities.length === 0) continue
+
+      const withoutMachinery = { ...level, movingEntities: [], tiles: level.tiles.map((row) => [...row]) }
+      const verdict = checkTrollRunReachable(withoutMachinery)
+      expect(verdict.solvable, `${level.id} (${level.name}) depends on machinery for its route`).toBe(true)
+    }
+  })
+
+  // A bite that never expires is a level nobody can finish. `updatePlayerPhysics` turns door contact
+  // lethal for exactly as long as the timer the engine counts down, so a zero or negative duration
+  // would either do nothing or never end.
+  it('gives every fake_door a positive bite duration', () => {
+    for (const level of ALL_TROLL_RUN_LEVELS) {
+      for (const trigger of level.triggers) {
+        for (const action of trigger.actions) {
+          if (action.type !== 'fake_door') continue
+          const effectiveDuration = action.duration ?? TROLL_RUN_FAKE_DOOR_BITE_SECONDS
+          expect(effectiveDuration, `${level.id}: fake_door bite must expire`).toBeGreaterThan(0)
+        }
+      }
+    }
+  })
+
+  // `trollEntityIsActive` is the only thing standing between a pulsing hazard and the route solver,
+  // which never advances a clock: a beam authored mid-cycle would read as parked-and-lethal, block
+  // the route, and be reported as an unclearable level. Starting in the gap keeps the parked read
+  // truthful — and it is also what gives the runner a look at the beat before it can kill them.
+  it('starts every pulsing hazard in its gap, on a cycle that actually turns over', () => {
+    for (const level of ALL_TROLL_RUN_LEVELS) {
+      for (const entity of level.movingEntities ?? []) {
+        if (!entity.pulse) continue
+        const where = `${level.id} / ${entity.id}`
+
+        expect(entity.pulse.onSeconds, `${where}: beam never lights`).toBeGreaterThan(0)
+        expect(entity.pulse.offSeconds, `${where}: gap never opens`).toBeGreaterThan(0)
+        expect(entity.pulseElapsed, `${where}: authored levels carry no runtime clock`).toBeUndefined()
+        expect(trollEntityIsActive(entity), `${where}: hazard is live before anything has moved`).toBe(false)
+      }
+    }
+  })
+
+  /**
+   * The fault "Elevator Pitch" and "Elevator Trap" shipped with. A zone big enough to stand on is
+   * also big enough to fly through, so an `enter` collapse can take the platform the runner was
+   * heading for away before they land on it, leaving a gap no jump covers. `checkTrollRunReachable`
+   * reads the pristine grid and never runs a trigger, so it called both levels clearable.
+   *
+   * Only undelayed collapses are judged: a delay is itself the escape, and `land_on` cannot fire
+   * until the runner is provably standing on the tiles it takes.
+   */
+  it('leaves a level clearable after any collapse that fires the moment its zone is entered', () => {
+    for (const level of ALL_TROLL_RUN_LEVELS) {
+      for (const trigger of level.triggers) {
+        if (trigger.condition !== 'enter') continue
+
+        const tiles = level.tiles.map((row) => [...row])
+        let collapsedAnything = false
+
+        for (const action of trigger.actions) {
+          if (action.type !== 'collapse_tiles' || action.delay) continue
+          for (const [col, row] of action.tiles) {
+            if (tiles[row]?.[col] === undefined) continue
+            tiles[row][col] = TrollRunTileType.EMPTY
+            collapsedAnything = true
+          }
+        }
+
+        if (!collapsedAnything) continue
+
+        const verdict = checkTrollRunReachable({ ...level, tiles })
+        expect(
+          verdict.solvable,
+          `${level.id} / ${trigger.id ?? 'trigger'}: entering the zone drops tiles the level cannot be finished ` +
+            `without — give the collapse a delay to jump off inside, or gate it on 'land_on'`
+        ).toBe(true)
+      }
     }
   })
 })

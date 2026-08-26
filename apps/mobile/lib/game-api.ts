@@ -1,6 +1,6 @@
 import { apiUrl } from '@/lib/config'
 import { authHeaders } from '@/lib/auth-headers'
-import type { CrazyEightsPlayerHand, GameType, WhotPlayerHand } from '@fateround/shared'
+import type { CodewordsBoard, CrazyEightsPlayerHand, GameType, WhotPlayerHand } from '@fateround/shared'
 import type { GamePlayerLimitsMap } from '@fateround/shared/lobby-limits'
 import { getCodeDefaultLimits } from '@fateround/shared/lobby-limits'
 import type { MafiaStateResponse } from '@fateround/shared/mafia'
@@ -845,26 +845,6 @@ export function postMafiaVigilanteAction(
 // SELECT that names `key` errors and the row never arrives. The route hands the
 // real key to a spymaster (resolved from their resume token) or a finished game,
 // and a masked copy to everyone else.
-export async function fetchCodewordsBoard(
-  gameCode: string,
-  auth?: { resumeToken?: string | null }
-): Promise<import('@fateround/shared').CodewordsBoard | null> {
-  try {
-    const res = await fetch(apiUrl('/api/codewords/board'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
-      body: JSON.stringify({
-        gameCode: gameCode.toUpperCase(),
-        resumeToken: auth?.resumeToken ?? undefined,
-      }),
-    })
-    if (!res.ok) return null
-    const data = (await res.json()) as { board?: import('@fateround/shared').CodewordsBoard | null }
-    return data.board ?? null
-  } catch {
-    return null
-  }
-}
 
 export function postCodewordsRole(
   gameId: string,
@@ -909,6 +889,50 @@ export function postCodewordsExpireTurn(gameId: string) {
   return postJson<{ success: boolean; board?: unknown; skipped?: boolean }>('/api/codewords/expire-turn', {
     gameId,
   })
+}
+
+/**
+ * Fetch the Codewords board through the server route rather than reading the table.
+ *
+ * `codewords_boards.key` (the secret colour assignment) is no longer anon-selectable since
+ * migration 20260803170000 (audit finding H2), so a direct client read now errors. The route
+ * hands the real key only to the host, a spymaster, or anyone once the game has finished, and
+ * masks it for everyone else. POST so the token travels in the body, not the URL.
+ *
+ * A missing board and a FAILED fetch are different answers and must never collapse into one
+ * (review on PR #787): `{ ok: true, board: null }` means the server says there is no board row
+ * yet, while `{ ok: false }` means we could not find out (429, 5xx, offline). A caller that
+ * treats the second as "no board" blanks a live grid on one dropped packet — the recurring
+ * "failed read rendered as game state" bug. Callers must keep the board they already hold on
+ * `ok: false` and retry.
+ *
+ * No `hostToken`: mobile has no Codewords host board view (the host plays through this same
+ * player view and is entitled to the key only via their own spymaster resume token, exactly as
+ * on web's player view). Add the parameter back with the call site that needs it.
+ */
+export type CodewordsBoardFetch = { ok: true; board: CodewordsBoard | null } | { ok: false; board: null }
+
+export async function postCodewordsBoard(gameCode: string, resumeToken?: string | null): Promise<CodewordsBoardFetch> {
+  try {
+    const res = await fetch(apiUrl('/api/codewords/board'), {
+      method: 'POST',
+      // authHeaders() came from dev's fetchCodewordsBoard, which this replaces. The {ok, board}
+      // return shape is kept because the caller needs it: `fetchBoard` distinguishes a genuine
+      // failure (429/5xx/offline -> retry with backoff) from the successful answer "this game has
+      // no board row yet" (-> null, no retry). Collapsing both to `null`, as dev's version did,
+      // would have made a rate-limited fetch look like an empty board and stalled the retry loop.
+      headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+      body: JSON.stringify({
+        gameCode: gameCode.toUpperCase(),
+        resumeToken: resumeToken ?? undefined,
+      }),
+    })
+    if (!res.ok) return { ok: false, board: null }
+    const data = (await res.json()) as { board?: CodewordsBoard | null }
+    return { ok: true, board: data.board ?? null }
+  } catch {
+    return { ok: false, board: null }
+  }
 }
 
 export function postMonopolyRoll(gameId: string, resumeToken: string) {
@@ -1051,6 +1075,65 @@ export function postQuickDrawGuessSkip(gameId: string, resumeToken: string) {
 
 export function postQuickDrawGuessTeam(gameId: string, resumeToken: string, team: number) {
   return postJson<{ success: boolean }>('/api/quick-draw/guess-team', { gameId, resumeToken, team })
+}
+
+/**
+ * A word read that succeeded (`word: null` means "not yours to see", a real answer) kept distinct
+ * from one that never got an answer at all. Mirrors QuickDrawWordResult in src/lib/quick-draw-client.ts.
+ */
+export type QuickDrawWordResult =
+  | { ok: true; word: string | null }
+  /** `retryable` false = a settled 4xx (bad code, wrong game type); retrying cannot change it. */
+  | { ok: false; retryable: boolean }
+
+/**
+ * The Quick Draw (guess mode) secret prompt via the server route.
+ *
+ * `quick_draw_guess_sessions.current_word` is not anon-selectable since 20260807140000 — it used
+ * to ship to every guesser's device and was merely hidden in the UI. The route returns the word
+ * only when the caller's resume token resolves to the current drawer; everyone else gets `null`,
+ * which is a normal (non-error) answer.
+ *
+ * Not `postJson`: that collapses every failure into a bare Error with no status, so a transient
+ * 429/5xx could not be told from a settled 400 — and the caller must retry the first without
+ * spinning forever on the second. A failed read is also never reported as `word: null`, which is
+ * real game state ("you are not the drawer").
+ */
+export async function postQuickDrawWord(
+  gameCode: string,
+  auth: { resumeToken?: string | null }
+): Promise<QuickDrawWordResult> {
+  try {
+    const res = await fetch(apiUrl('/api/quick-draw/my-word'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        gameCode: gameCode.toUpperCase(),
+        resumeToken: auth.resumeToken ?? undefined,
+      }),
+    })
+    // 429 (shared handsFetch bucket), 408 and 5xx (cold start, deploy, blip) clear on their own.
+    if (!res.ok) return { ok: false, retryable: res.status === 408 || res.status === 429 || res.status >= 500 }
+    const data = (await res.json()) as { word?: string | null }
+    return { ok: true, word: data.word ?? null }
+  } catch {
+    return { ok: false, retryable: true }
+  }
+}
+
+/**
+ * The Describe It secret word via the server route.
+ *
+ * `describe_it_sessions.current_word` is not anon-selectable since 20260807130000 — it used to
+ * ship to every guesser's device and was merely hidden in the UI. The route returns the word only
+ * when the caller's resume token resolves to the current describer; everyone else gets `null`,
+ * which is a normal (non-error) answer.
+ */
+export function postDescribeItWord(gameCode: string, auth: { resumeToken?: string | null }) {
+  return postJson<{ word: string | null }>('/api/describe-it/my-word', {
+    gameCode: gameCode.toUpperCase(),
+    resumeToken: auth.resumeToken ?? undefined,
+  })
 }
 
 /**

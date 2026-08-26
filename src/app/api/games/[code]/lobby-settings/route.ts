@@ -8,6 +8,7 @@ import {
   isSnakeAndLadderGame,
   isWhotGame,
   isCrazyEightsGame,
+  isRummyGame,
   isUnoGame,
   isYahtzeeGame,
   isMahjongGame,
@@ -35,6 +36,7 @@ import { clampBoardGameTurnTimer, type BoardGameLobbyType } from '@/lib/board-ga
 import { clampMonopolyGameDuration } from '@/lib/monopoly'
 import { clampWhotGameDuration } from '@/lib/whot'
 import { clampCrazyEightsGameDuration } from '@/lib/crazy-eights'
+import { clampRummyGameDuration } from '@/lib/rummy'
 import { clampUnoGameDuration, parseMultiPlayMode, UNO_TEAM_PLAYERS } from '@/lib/uno'
 import { clampWordHuntTimer } from '@/lib/word-hunt'
 import { clampWordleRoomCategory, clampWordleRoomTimer, clampWordleRoomWordCount } from '@/lib/wordle-room'
@@ -79,6 +81,7 @@ function boardGameLobbyType(gameType: string): BoardGameLobbyType | null {
   if (isYahtzeeGame(parsed)) return 'yahtzee'
   if (isWhotGame(parsed)) return 'whot'
   if (isCrazyEightsGame(parsed)) return 'crazy_eights'
+  if (isRummyGame(parsed)) return 'rummy'
   if (isUnoGame(parsed)) return 'uno'
   if (isLudoGame(parsed)) return 'ludo'
   if (isMahjongGame(parsed)) return 'mahjong'
@@ -552,6 +555,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       gameUpdate.game_duration_seconds = clampWhotGameDuration(game_duration_seconds)
     } else if (boardLobbyType === 'crazy_eights') {
       gameUpdate.game_duration_seconds = clampCrazyEightsGameDuration(game_duration_seconds)
+    } else if (boardLobbyType === 'rummy') {
+      gameUpdate.game_duration_seconds = clampRummyGameDuration(game_duration_seconds)
     } else if (boardLobbyType === 'uno') {
       gameUpdate.game_duration_seconds = clampUnoGameDuration(game_duration_seconds)
     } else {

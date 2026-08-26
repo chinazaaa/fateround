@@ -11,6 +11,8 @@ export const WHOT_TURN_TIMER_OPTIONS = [0, 10, 15, 30, 60, 90, 120] as const
 export const CRAZY8_TURN_TIMER_OPTIONS = [0, 10, 15, 30, 60, 90, 120] as const
 // UNO turns are quick like Whot / Crazy Eights — same short-timer options.
 export const UNO_TURN_TIMER_OPTIONS = [0, 10, 15, 30, 60, 90, 120] as const
+// Rummy turns can be a little longer (rearranging the hand) — 0 = No timer.
+export const RUMMY_TURN_TIMER_OPTIONS = [0, 15, 30, 45, 60, 90, 120] as const
 export const MAHJONG_TURN_TIMER_OPTIONS = [0, 30, 60, 90, 120] as const
 
 export type BoardGameLobbyType =
@@ -18,6 +20,7 @@ export type BoardGameLobbyType =
   | 'yahtzee'
   | 'whot'
   | 'crazy_eights'
+  | 'rummy'
   | 'uno'
   | 'ludo'
   | 'mahjong'
@@ -34,6 +37,7 @@ export function turnTimerOptionsFor(gameType: BoardGameLobbyType): readonly numb
   if (gameType === 'monopoly') return MONOPOLY_TURN_TIMER_OPTIONS
   if (gameType === 'whot') return WHOT_TURN_TIMER_OPTIONS
   if (gameType === 'crazy_eights') return CRAZY8_TURN_TIMER_OPTIONS
+  if (gameType === 'rummy') return RUMMY_TURN_TIMER_OPTIONS
   if (gameType === 'uno') return UNO_TURN_TIMER_OPTIONS
   return BOARD_GAME_TURN_TIMER_OPTIONS
 }
