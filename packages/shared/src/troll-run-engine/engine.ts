@@ -455,6 +455,8 @@ export class TrollRunEngine {
     // The level is already won; the runner is stepping into the door and takes no more input.
     if (this.levelCleared) {
       this.advanceDoorEntry(dt)
+      // Without these frames a peer's ghost freezes short of the exit for the whole animation.
+      this.tickPositionEmit(dt)
       return
     }
 
@@ -496,12 +498,7 @@ export class TrollRunEngine {
     }
 
     // Emit Realtime Position for other players
-    this.positionEmitTimer += dt
-    if (this.positionEmitTimer >= 0.05) {
-      // 20Hz update
-      this.positionEmitTimer = 0
-      this.emitPlayerPosition()
-    }
+    this.tickPositionEmit(dt)
 
     // Handle collision flags
     if (collision.hitSpike) {
@@ -594,6 +591,15 @@ export class TrollRunEngine {
 
     this.lastHudState = next
     callback(next)
+  }
+
+  /** Hands peers a position 20 times a second, which is as often as a ghost can usefully move. */
+  private tickPositionEmit(dt: number): void {
+    this.positionEmitTimer += dt
+    if (this.positionEmitTimer >= 0.05) {
+      this.positionEmitTimer = 0
+      this.emitPlayerPosition()
+    }
   }
 
   private emitPlayerPosition(): void {

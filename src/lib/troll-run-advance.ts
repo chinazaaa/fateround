@@ -6,6 +6,7 @@ import {
   TROLL_RUN_COUNTDOWN_SECONDS,
   trollRunRoundParSeconds,
 } from '@/lib/troll-run'
+import type { TrollRunRoundScore } from '@/lib/troll-run'
 import type { TrollRunPlayerState, TrollRunSession } from '@/types'
 
 export type TrollRunAdvanceCode =
@@ -120,17 +121,40 @@ export async function syncTrollRunGameState(
     const finalStates = await readRoundStates(supabase, gameId, session.current_round)
     const parSeconds = trollRunRoundParSeconds(session.current_world, session.level_order)
 
-    for (const score of buildTrollRunRoundScores(finalStates, parSeconds)) {
-      await supabase
-        .from('troll_run_player_states')
-        .update({
-          round_finished: true,
-          finish_position: score.finishPosition,
-          round_score: score.roundScore,
-          total_score: score.totalScore,
-          updated_at: nowIso,
+    const roundScores = buildTrollRunRoundScores(finalStates, parSeconds)
+
+    // Written together: the scoreboard waits on the last row, and a serial pass made that wait
+    // grow with every extra player in the room.
+    const writeRoundScores = async (scores: TrollRunRoundScore[]): Promise<TrollRunRoundScore[]> => {
+      const outcomes = await Promise.all(
+        scores.map(async (score) => {
+          const { error: scoreError } = await supabase
+            .from('troll_run_player_states')
+            .update({
+              round_finished: true,
+              finish_position: score.finishPosition,
+              round_score: score.roundScore,
+              total_score: score.totalScore,
+              updated_at: nowIso,
+            })
+            .eq('id', score.stateId)
+
+          return scoreError ? score : null
         })
-        .eq('id', score.stateId)
+      )
+
+      return outcomes.filter((score): score is TrollRunRoundScore => score !== null)
+    }
+
+    let unwritten = await writeRoundScores(roundScores)
+    if (unwritten.length > 0) {
+      unwritten = await writeRoundScores(unwritten)
+    }
+
+    if (unwritten.length > 0) {
+      throw new Error(
+        `troll run scoring left ${unwritten.length} of ${roundScores.length} players unwritten in game ${gameId} round ${session.current_round}`
+      )
     }
 
     return { ok: true, code: 'finished_round', phase: 'scoreboard' }
