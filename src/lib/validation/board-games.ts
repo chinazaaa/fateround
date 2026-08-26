@@ -160,6 +160,37 @@ export type CrazyEightsPlayInput = z.infer<typeof crazyEightsPlaySchema>
 export type CrazyEightsDrawInput = z.infer<typeof crazyEightsDrawSchema>
 export type CrazyEightsChooseInput = z.infer<typeof crazyEightsChooseSchema>
 
+// Rummy (POST /api/rummy/*)
+
+export const rummyActionSchema = z.object({
+  gameId: gameCodeString(),
+  resumeToken: z.string().min(4),
+})
+
+export const rummyDrawSchema = rummyActionSchema.extend({
+  source: z.enum(['pile', 'discard']),
+})
+
+export const rummyDiscardSchema = rummyActionSchema.extend({
+  cardId: z.string().min(1),
+})
+
+export const rummyGoOutSchema = rummyActionSchema.extend({
+  // Every meld is an array of card ids (the cards from the player's hand that form the meld).
+  melds: z.array(z.array(z.string().min(1)).min(3)).min(1),
+  // Optional: the card to discard as part of the going-out action. Null = "rummy" (empty
+  // the hand entirely with no leftover discard).
+  discardCardId: z.string().min(1).nullable().optional(),
+})
+
+export type RummyDrawInput = z.infer<typeof rummyDrawSchema>
+export type RummyDiscardInput = z.infer<typeof rummyDiscardSchema>
+export type RummyGoOutInput = z.infer<typeof rummyGoOutSchema>
+
+/** Timer-expiration route — any client can poke, server clock decides. */
+export const rummyExpireTurnSchema = z.object({ gameId: gameCodeString() })
+export type RummyExpireTurnInput = z.infer<typeof rummyExpireTurnSchema>
+
 // UNO (POST /api/uno/*)
 
 const unoColorEnum = z.enum(['red', 'yellow', 'green', 'blue'])

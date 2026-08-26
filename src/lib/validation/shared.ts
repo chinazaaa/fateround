@@ -88,6 +88,7 @@ export const gameTypeEnum = z.enum([
   'monopoly',
   'yahtzee',
   'whot',
+  'rummy',
   'crazy_eights',
   'uno',
   'ludo',

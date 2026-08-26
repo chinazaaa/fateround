@@ -44,7 +44,10 @@ next-env.d.ts
 # expo / mobile
 apps/mobile/.expo/
 apps/mobile/dist/
-apps/mobile/node_modules/
+# No trailing slash: with one, this matches a DIRECTORY only, so a symlink named
+# `apps/mobile/node_modules` slips past it and `git add -A` commits a machine-specific
+# absolute path. That happened once (caught in review on #866).
+apps/mobile/node_modules
 CLAUDE.md
 .venv
 .claude/
