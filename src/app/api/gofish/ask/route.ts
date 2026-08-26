@@ -16,6 +16,11 @@ import { assertPlayer } from '@/lib/game-admin'
  * Server-authoritative: the caller is authorised by their secret resume_token, and
  * `resolveGoFishAsk` enforces "not your turn" / "must hold the rank you ask for" /
  * "target has cards" — the client can't cheat by asking for a rank it doesn't hold.
+ *
+ * Concurrency: `processGoFishAsk` claims the session row on its loaded `updated_at`;
+ * a losing claim (another writer moved first) returns a 400 with an error mentioning
+ * "please retry", not a hard failure. Clients should re-fetch state and re-submit
+ * the same action rather than surface the message as a fatal error.
  */
 export async function POST(req: NextRequest) {
   const { data: body, error: bodyError } = await parseJsonBody(req, gofishAskSchema)
