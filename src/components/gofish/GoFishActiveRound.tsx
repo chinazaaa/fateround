@@ -13,6 +13,7 @@ import {
 } from '@/lib/gofish'
 import { useToast } from '@/components/ui/Toast'
 import { useGoFishTurnTimer } from '@/hooks/useGoFishTurnTimer'
+import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 
 type Props = {
   gameCode: string
@@ -115,7 +116,17 @@ export function GoFishActiveRound({
       />
 
       {isFinished ? (
-        <FinishedResults standings={standings} winnerId={session?.winner_player_id ?? null} nameOf={nameOf} />
+        <>
+          <FinishedResults standings={standings} winnerId={session?.winner_player_id ?? null} nameOf={nameOf} />
+          {!readOnly && myPlayerId && session?.winner_player_id === myPlayerId && (
+            <PostWinToCommunity
+              gameType="gofish"
+              gameCode={gameCode}
+              winnerName={playersById.get(myPlayerId)?.name ?? ''}
+              roundKey={game.session_started_at ?? session?.id}
+            />
+          )}
+        </>
       ) : (
         <>
           {!readOnly && myHandRow && (

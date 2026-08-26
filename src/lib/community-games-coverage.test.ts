@@ -47,6 +47,7 @@ const DIR_TO_GAME_TYPES: Record<string, GameType[]> = {
   'snake-and-ladder': ['snake_and_ladder'],
   sudoku: ['sudoku'],
   'tic-tac-toe': ['tic_tac_toe'],
+  gofish: ['gofish'],
   trivia: ['trivia'],
   'troll-run': ['troll_run'],
   'two-truths': ['two_truths'],

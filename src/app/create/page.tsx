@@ -74,6 +74,7 @@ import {
   gameHowItWorks,
   isYahtzeeGame,
   isWhotGame,
+  isGoFishGame,
   isCrazyEightsGame,
   isUnoGame,
   isLudoGame,
@@ -854,6 +855,16 @@ function CreateGameInner() {
               participant_mode: 'joiners' as const,
               anonymous: true,
               rounds_count: 1,
+            }
+          : {}),
+        ...(isGoFishGame(type)
+          ? {
+              // Go Fish is a lobby-joined card game like Whot/UNO — everyone joins by name,
+              // no upload step. `rounds_count: 1` because one Go Fish game is a single round.
+              participant_mode: 'joiners' as const,
+              anonymous: true,
+              rounds_count: 1,
+              timer_seconds: 45,
             }
           : {}),
         ...(isLudoGame(type)
