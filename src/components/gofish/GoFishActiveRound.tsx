@@ -14,6 +14,7 @@ import {
 import { useToast } from '@/components/ui/Toast'
 import { useGoFishTurnTimer } from '@/hooks/useGoFishTurnTimer'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
+import { GoFishCardBack, GoFishCardCountBadge, GoFishCardFace } from '@/components/gofish/GoFishCardFace'
 
 type Props = {
   gameCode: string
@@ -201,15 +202,20 @@ function TurnStatusBanner({
 }
 
 function MyHand({ cards, myBooks }: { cards: GoFishCard[]; myBooks: GoFishRank[] }) {
-  const grouped = new Map<GoFishRank, GoFishCard[]>()
-  for (const card of cards) {
-    if (!grouped.has(card.rank)) grouped.set(card.rank, [])
-    grouped.get(card.rank)!.push(card)
-  }
-  const sortedRanks = [...grouped.keys()].sort((a, b) => a - b)
+  // Sort by rank so like cards sit together — the human eye groups a Go Fish hand that way
+  // and it makes "which ranks am I holding" scannable at a glance.
+  const sorted = [...cards].sort((a, b) => {
+    if (a.rank !== b.rank) return a.rank - b.rank
+    return a.suit.localeCompare(b.suit)
+  })
+  // Count each rank so we can badge stacks of 2/3 with a small "×2" chip on the top card.
+  const perRank = new Map<GoFishRank, number>()
+  for (const card of cards) perRank.set(card.rank, (perRank.get(card.rank) ?? 0) + 1)
+  const seenRanks = new Set<GoFishRank>()
+
   return (
     <section className="rounded-2xl border border-white/10 bg-black/20 p-4 space-y-3">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">Your hand · {cards.length}</h2>
         {myBooks.length > 0 && <BooksRow books={myBooks} label="Your books" />}
       </div>
@@ -217,12 +223,18 @@ function MyHand({ cards, myBooks }: { cards: GoFishCard[]; myBooks: GoFishRank[]
         <p className="text-sm text-muted">No cards — refill on your next turn if the ocean has any left.</p>
       ) : (
         <div className="flex flex-wrap gap-2">
-          {sortedRanks.map((rank) => (
-            <div key={rank} className="flex items-center gap-1 px-3 py-2 rounded-xl bg-white/5 font-mono text-lg">
-              <span className="font-bold">{gofishRankLabel(rank)}</span>
-              <span className="text-xs text-muted">× {grouped.get(rank)!.length}</span>
-            </div>
-          ))}
+          {sorted.map((card) => {
+            // Only badge the first card of each rank — the second copy sits behind it
+            // without duplicating the count.
+            const showBadge = !seenRanks.has(card.rank)
+            seenRanks.add(card.rank)
+            return (
+              <div key={card.id} className="relative">
+                <GoFishCardFace card={card} className="w-14 sm:w-16" />
+                {showBadge && <GoFishCardCountBadge count={perRank.get(card.rank) ?? 1} />}
+              </div>
+            )
+          })}
         </div>
       )}
     </section>
@@ -304,20 +316,25 @@ function AskPicker({
       <div className="space-y-2">
         <p className="text-xs uppercase tracking-wide text-muted">2. Pick a rank you already hold</p>
         <div className="flex flex-wrap gap-2">
-          {ranks.map((rank) => (
-            <button
-              key={rank}
-              type="button"
-              onClick={() => onSelectRank(rank === selectedRank ? null : rank)}
-              className={`px-3 py-2 rounded-xl border text-sm font-mono font-bold transition-colors ${
-                selectedRank === rank
-                  ? 'border-emerald-400 bg-emerald-500/20 text-emerald-100'
-                  : 'border-white/10 bg-white/5 hover:bg-white/10'
-              }`}
-            >
-              {gofishRankLabel(rank)}
-            </button>
-          ))}
+          {ranks.map((rank) => {
+            const selected = selectedRank === rank
+            return (
+              <button
+                key={rank}
+                type="button"
+                onClick={() => onSelectRank(rank === selectedRank ? null : rank)}
+                className={`px-3 py-2 rounded-xl border text-sm font-mono font-bold transition-colors ${
+                  selected
+                    ? 'border-emerald-400 bg-emerald-500/20 text-emerald-100'
+                    : 'border-white/10 bg-white/5 hover:bg-white/10'
+                }`}
+                aria-pressed={selected}
+                aria-label={`Ask for rank ${gofishRankLabel(rank)}`}
+              >
+                {gofishRankLabel(rank)}
+              </button>
+            )
+          })}
         </div>
       </div>
       <button
@@ -348,24 +365,45 @@ function OpponentsPanel({
   return (
     <section className="rounded-2xl border border-white/10 bg-black/20 p-4 space-y-3">
       <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">Opponents</h2>
-      <div className="space-y-2">
+      <div className="space-y-3">
         {players.map((p) => {
           const hand = hands.find((h) => h.player_id === p.id) ?? null
           const cardCount = (hand?.card_count ?? (hand?.cards as unknown[] | null)?.length ?? 0) as number
           const books = (hand?.books ?? []) as GoFishRank[]
+          // Small fan of face-down backs so opponents "look like" a Go Fish hand rather
+          // than a numeric row. Cap at 6 to keep the row bounded on narrow screens; the
+          // count under the name is the source of truth.
+          const shownBacks = Math.min(cardCount, 6)
           return (
-            <div key={p.id} className="flex items-center justify-between rounded-xl bg-white/5 px-3 py-2">
-              <div>
-                <p className="font-medium">{nameOf(p.id)}</p>
-                <p className="text-xs text-muted">
-                  {cardCount} card{cardCount === 1 ? '' : 's'} · {books.length} book{books.length === 1 ? '' : 's'}
-                </p>
+            <div key={p.id} className="rounded-xl bg-white/5 px-3 py-2">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="font-medium truncate">{nameOf(p.id)}</p>
+                  <p className="text-xs text-muted">
+                    {cardCount} card{cardCount === 1 ? '' : 's'} · {books.length} book{books.length === 1 ? '' : 's'}
+                  </p>
+                </div>
+                {cardCount > 0 ? (
+                  <div className="flex items-center -space-x-3">
+                    {Array.from({ length: shownBacks }).map((_, i) => (
+                      <GoFishCardBack key={i} className="w-6 sm:w-7 shrink-0 shadow-sm" />
+                    ))}
+                    {cardCount > shownBacks && (
+                      <span className="ml-2 text-xs text-muted">+{cardCount - shownBacks}</span>
+                    )}
+                  </div>
+                ) : (
+                  <span className="text-xs text-muted">out</span>
+                )}
               </div>
               {books.length > 0 && (
-                <div className="flex gap-1 flex-wrap justify-end max-w-[60%]">
+                <div className="mt-2 flex gap-1 flex-wrap">
                   {books.map((rank) => (
-                    <span key={rank} className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-100 text-xs font-mono">
-                      {gofishRankPlural(rank)}
+                    <span
+                      key={rank}
+                      className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-100 text-xs font-mono"
+                    >
+                      📚 {gofishRankPlural(rank)}
                     </span>
                   ))}
                 </div>
