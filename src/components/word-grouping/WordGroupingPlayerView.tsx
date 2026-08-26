@@ -14,10 +14,12 @@ import { useGameRosterPoll } from '@/hooks/useGameRosterPoll'
 import { useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { useRoomMemberAutoJoin, useRoomMemberJoin, useRoomMemberNamePrefill } from '@/hooks/useRoomMemberJoin'
 import { allowLatePlayers, playerIsViewer, preJoinScreen } from '@/lib/viewers'
+import { ViewerModeBanner } from '@/components/ViewerModeBanner'
 import { LateJoinChoice } from '@/components/LateJoinChoice'
 import { EditNameInline } from '@/components/ui/EditNameInline'
 import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
 import { useRegisterGameSettings } from '@/components/GameSettingsContext'
+import { RulesInPlaySection } from '@/components/game-lobby/RulesInPlaySection'
 import { useToast } from '@/components/ui/Toast'
 import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
 import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
@@ -326,6 +328,7 @@ export function WordGroupingPlayerView({ gameCode, embedded = false }: { gameCod
     if (!myPlayerId) return null
     return (
       <div className="space-y-3">
+        <RulesInPlaySection game={game} />
         <EditNameInline
           gameCode={gameCode}
           playerId={myPlayerId}
@@ -344,7 +347,7 @@ export function WordGroupingPlayerView({ gameCode, embedded = false }: { gameCod
         />
       </div>
     )
-  }, [myPlayerId, gameCode, me?.name, isViewer, load, router])
+  }, [game, myPlayerId, gameCode, me?.name, isViewer, load, router])
   // Skip the registration when embedded by the host view. The host chrome already renders
   // its own `EditNameInline` for the host's seat, plus the host-scoped `HostActiveSettings`
   // (late-joiner + end-game + leave-seat), so re-registering the player-side rename+leave
@@ -735,6 +738,13 @@ export function WordGroupingPlayerView({ gameCode, embedded = false }: { gameCod
         .wg-shake { animation: wg-shake 0.4s ease-in-out; }
         .wg-one-away { animation: wg-one-away 1.5s ease-in-out forwards; }
       `}</style>
+
+      {/* Word Grouping allows late players (`gameAllowsLatePlayerJoin`), so a spectator here
+          CAN be promoted — but nothing offered it, leaving them watching with no way in. Every
+          other promotable game's player view carries this. */}
+      {isViewer && (
+        <ViewerModeBanner gameCode={gameCode} playerId={myPlayerId} game={game} player={me} onPromoted={load} />
+      )}
 
       {/* Mistakes · score · timer bar. Three-column grid so the score sits between the
           mistake dots and the countdown, mirroring the way the finished screen presents

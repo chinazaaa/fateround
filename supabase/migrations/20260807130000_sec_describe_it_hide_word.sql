@@ -11,7 +11,7 @@
 -- skip paths in src/lib/describe-it.ts), so `used_words[last]` IS the current word. Revoking
 -- only `current_word` would have moved the leak, not closed it — a guesser would just read the
 -- last element instead. The clients' one legitimate use of the array was its LENGTH, which
--- 20260807120000 replaced with the public `word_seq` counter.
+-- 20260807115000 replaced with the public `word_seq` counter.
 --
 -- Not affected, deliberately:
 --   * `describe_it_words` is a post-hoc LOG — rows are inserted only AFTER a word is guessed
@@ -50,7 +50,7 @@
 -- which stops host and players receiving ALL session state mid-game (review on PR #866, and the
 -- same shape as the known TTL #838 incident). Apply strictly in this order:
 --
---   1. 20260807110000 + 20260807120000 (helper + `word_seq`). Additive, safe at any time,
+--   1. 20260807110000 + 20260807115000 (helper + `word_seq`). Additive, safe at any time,
 --      compatible with every client version.
 --   2. Deploy web, and SHIP the mobile build that stops selecting the secret columns.
 --   3. Wait until installed mobile builds predating that release are drained, THEN apply this

@@ -4,7 +4,7 @@ import { ContentPage, Section, MailLink } from '@/components/content/ContentPage
 import { SITE_NAME } from '@/lib/seo'
 import { LEGAL_EMAIL, SUPPORT_EMAIL, TERMS_EMAIL } from '@/lib/contact'
 
-const LAST_UPDATED = 'August 6, 2026'
+const LAST_UPDATED = 'August 23, 2026'
 
 export const metadata: Metadata = {
   title: 'Terms of Service',
@@ -92,6 +92,47 @@ export default function TermsPage() {
           </Link>
           , you additionally allow other hosts to use it in their games. We may edit, tag, reject, or remove Library
           submissions at our discretion.
+        </p>
+      </Section>
+
+      <Section title="Coins">
+        <p>
+          {SITE_NAME} has an in-app virtual currency called &ldquo;Coins.&rdquo; You may earn Coins by playing games and
+          may spend them on in-app cosmetics, editions, themes, question packs, and other digital items we make
+          available from time to time. Coins have <strong>no cash value</strong> and cannot be exchanged for money,
+          cryptocurrency, or any other currency, in-app or outside the app.
+        </p>
+        <p>
+          Coins are a limited, personal, non-transferable, revocable licence to use them within {SITE_NAME}. You have no
+          ownership rights in Coins or in the amount reflected in your balance. We may adjust, add, remove, expire, or
+          reset Coins in our sole discretion where required to correct errors, prevent or respond to abuse, comply with
+          law, or shut down the service.
+        </p>
+        <p>
+          You may not sell, trade, gift, or otherwise transfer Coins between accounts. The one exception is the
+          automatic guest-to-account migration: Coins earned as a guest before you create your account may be granted to
+          your new account subject to the migration rules and caps described in the app.
+        </p>
+        <p>
+          Digital items you unlock with Coins are licensed to your account for as long as we operate the service. They
+          are non-transferable, non-refundable in Coin form except at our discretion, and may be modified, replaced, or
+          discontinued if we retire or rework the underlying feature. If we do retire an item you paid Coins for, we
+          will make a reasonable effort to grant an equivalent replacement or Coin credit. Because Coins are earned
+          in-app and have no cash value, we do not offer cash refunds for Coin balances or Coin purchases; if a purchase
+          was made in error or through a bug, contact <MailLink address={SUPPORT_EMAIL} /> and we may — at our
+          discretion — credit Coins back to your account.
+        </p>
+        <p>
+          <strong>Fair play.</strong> You may not manipulate the Coin system, including by creating multiple accounts to
+          farm rewards, colluding with other players to inflate earnings, exploiting bugs to earn or duplicate Coins, or
+          purchasing, selling, or advertising Coins outside the app. We may adjust balances, remove items, or suspend
+          accounts that violate this section. If your account is terminated for any reason, any unspent Coins and any
+          digital items unlocked with Coins are forfeited without compensation.
+        </p>
+        <p>
+          We may change how Coins are earned, spent, priced, or displayed, including retiring items from the shop,
+          changing prices, adding new items, or discontinuing the Coin system entirely. We will provide reasonable
+          notice for material changes.
         </p>
       </Section>
 

@@ -9,6 +9,7 @@ import { GameStartedWaitingScreen } from '@/components/lifecycle/GameStartedWait
 import { LateJoinChoiceScreen } from '@/components/lifecycle/LateJoinChoiceScreen'
 import { useLateJoinContext } from '@/hooks/useLateJoinContext'
 import { joinGame } from '@/lib/api'
+import { getRememberedName, rememberName } from '@/lib/identity-local'
 import { getPlayerSession, setPlayerSession } from '@/lib/secure-session'
 import { getSupabase, GAME_SELECT } from '@/lib/supabase'
 
@@ -31,7 +32,15 @@ export function PlayerPreJoinGate({ gameCode, children }: Props) {
   const reload = useCallback(async () => {
     const session = await getPlayerSession(code)
     setHasPlayer(!!session?.playerId)
-    if (session?.playerName) setJoinName(session.playerName)
+    if (session?.playerName) {
+      setJoinName(session.playerName)
+    } else {
+      // No per-game session yet (the late-join / viewer-join case): fall back
+      // to the device's remembered name so a returning user isn't retyping it.
+      // Only fill when the field is still blank — never clobber an in-progress edit.
+      const remembered = await getRememberedName()
+      if (remembered) setJoinName((current) => (current.trim() ? current : remembered))
+    }
 
     const res = await getSupabase().from('games').select(GAME_SELECT).eq('id', code).maybeSingle()
     if (res.error || !res.data) {
@@ -65,11 +74,7 @@ export function PlayerPreJoinGate({ gameCode, children }: Props) {
   }, [code, game, hasPlayer, reload])
 
   const preJoin = game && !hasPlayer ? preJoinScreen(game, false) : null
-  const { context, loading: contextLoading } = useLateJoinContext(
-    code,
-    game,
-    preJoin === 'late_join_choice'
-  )
+  const { context, loading: contextLoading } = useLateJoinContext(code, game, preJoin === 'late_join_choice')
 
   const joinWithMode = async (joinAsViewer: boolean) => {
     const playerName = joinName.trim()
@@ -89,6 +94,9 @@ export function PlayerPreJoinGate({ gameCode, children }: Props) {
       })
       const gender = data.playerGender ?? 'both'
       await setPlayerSession(code, data.playerId, data.playerName, gender, data.resumeToken ?? null)
+      // Seed the device-wide remembered name so the next game the user joins
+      // (player OR viewer) starts prefilled — mirrors JoinScreen's submitJoin.
+      await rememberName(playerName)
       await reload()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to join')
@@ -103,14 +111,7 @@ export function PlayerPreJoinGate({ gameCode, children }: Props) {
   if (preJoin === 'game_ended') return <GameEndedScreen game={game} />
 
   if (preJoin === 'game_started_waiting') {
-    return (
-      <GameStartedWaitingScreen
-        gameCode={code}
-        game={game}
-        onLobbyOpen={() => void reload()}
-        key={refreshKey}
-      />
-    )
+    return <GameStartedWaitingScreen gameCode={code} game={game} onLobbyOpen={() => void reload()} key={refreshKey} />
   }
 
   if (preJoin === 'late_join_choice') {

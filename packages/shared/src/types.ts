@@ -162,6 +162,9 @@ export interface Game {
   monopoly_no_rent_in_jail?: boolean | null
   monopoly_estate_dividend?: boolean | null
   monopoly_board_size?: 40 | 48 | null
+  monopoly_loans_enabled?: boolean | null
+  monopoly_loan_interest?: number | null
+  monopoly_loan_term_rounds?: number | null
   quick_draw_variant?: QuickDrawVariant | null
   quick_draw_play_mode?: QuickDrawPlayMode | null
   quick_draw_num_teams?: number | null
@@ -772,6 +775,10 @@ export interface CrazyEightsSession {
   winner_player_id: string | null
   finish_order: string[]
   turn_deadline_at: string | null
+  created_at: string
+  /** Bumped on every write. The realtime delta fast-path orders rows by it, so a row that
+   *  arrives out of order can be dropped instead of regressing the board. */
+  updated_at: string
 }
 
 export interface CrazyEightsPlayerHand {
@@ -809,6 +816,10 @@ export interface WhotSession {
   finish_order: string[]
   reshuffle_count: number
   turn_deadline_at: string | null
+  created_at: string
+  /** Bumped on every write. The realtime delta fast-path orders rows by it, so a row that
+   *  arrives out of order can be dropped instead of regressing the board. */
+  updated_at: string
 }
 
 export interface WhotPlayerHand {
@@ -1306,7 +1317,20 @@ export interface CodewordsBoard {
   id: string
   game_id: string
   words: string[]
-  key: CodewordsCellType[]
+  /**
+   * Word → team assignment. SECRET while the game is live: only the host and the two
+   * spymasters receive the real array from /api/codewords/board. Everyone else gets a MASKED
+   * copy — the true type at revealed indices, `null` at unrevealed ones — which is all an
+   * operative's UI needs (audit finding H2). Mirrors the web type in src/types/index.ts.
+   */
+  key: (CodewordsCellType | null)[]
+  /**
+   * How many cells belong to each type. Not secret (the split is fixed by the ruleset and is
+   * already on screen), but it CANNOT be derived from a masked key — counting a masked key
+   * yields "revealed reds" as the red total, i.e. a scoreboard that says both teams have
+   * already found everything. The API sends it explicitly for exactly that reason.
+   */
+  key_totals?: Partial<Record<CodewordsCellType, number>>
   starting_team: CodewordsTeam
   revealed_indices: number[]
   current_turn: CodewordsTeam
@@ -1492,6 +1516,20 @@ export interface MonopolyLastCardEvent {
   other_player_count?: number
 }
 
+export interface MonopolyLoan {
+  id: string
+  player_id: string
+  principal: number
+  interest_rate: number
+  total_due: number
+  amount_repaid: number
+  balance_remaining: number
+  term_rounds: number
+  rounds_remaining: number
+  created_at: string
+  status: 'active' | 'repaid' | 'defaulted'
+}
+
 export interface MonopolyBoard {
   id: string
   game_id: string
@@ -1506,10 +1544,15 @@ export interface MonopolyBoard {
   mortgaged_properties: Record<string, boolean>
   houses_in_bank: number
   hotels_in_bank: number
-  chance_deck: number[]
-  community_deck: number[]
-  chance_discard: number[]
-  community_discard: number[]
+  // Server-only. These are the shuffled Chance / Community Chest decks; knowing their order is
+  // knowing every upcoming card, so they are NOT in MONOPOLY_BOARD_SELECT and never reach a
+  // client. `monopoly.ts` reads them through the service role with `select('*')`. Optional here
+  // because a client-fetched row genuinely lacks them — `parseDeck` already returns [] for a
+  // non-array, so no read site needs changing.
+  chance_deck?: number[]
+  community_deck?: number[]
+  chance_discard?: number[]
+  community_discard?: number[]
   auction_state: MonopolyAuctionState | null
   pending_trade: unknown | null
   pending_debt: MonopolyPendingDebt | null
@@ -1519,6 +1562,7 @@ export interface MonopolyBoard {
   last_rent_event: unknown | null
   last_cash_event: unknown | null
   last_trade_event: unknown | null
+  loans?: MonopolyLoan[]
   turn_deadline_at: string | null
   winner_player_id: string | null
   created_at: string
@@ -1702,9 +1746,23 @@ export interface QuickDrawGuessSession {
   current_round: number
   active_team: number
   drawer_player_id: string | null
-  current_word: string | null
+  /**
+   * The secret prompt. NOT present on a client-side session — `current_word` is revoked from
+   * anon/authenticated by migration 20260807140000, and QUICK_DRAW_GUESS_SESSION_SELECT no longer
+   * asks for it. The drawer gets it back via POST /api/quick-draw/my-word.
+   */
+  current_word?: string | null
   current_stroke_data: QuickDrawDrawingStrokeData
-  used_words: string[]
+  /**
+   * Also secret: its last entry IS the current word, so it is revoked alongside `current_word`
+   * and absent from client reads. Use `word_seq` when all you need is "the word changed".
+   */
+  used_words?: string[]
+  /**
+   * Public per-word counter — `cardinality(used_words)`, a generated column. Ticks once per word,
+   * including the mid-turn rotations (correct guess, skip) that leave `turn_index` untouched.
+   */
+  word_seq?: number
   turn_deadline_at: string | null
   break_deadline_at: string | null
   status: 'active' | 'finished'

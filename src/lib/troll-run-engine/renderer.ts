@@ -13,106 +13,24 @@
  */
 
 import {
+  TROLL_RUN_DEATH_MARK_SECONDS,
   TROLL_RUN_DOOR_HEIGHT,
   TROLL_RUN_DOOR_WIDTH,
   TROLL_RUN_INTERNAL_HEIGHT,
   TROLL_RUN_INTERNAL_WIDTH,
+  TROLL_RUN_PHYSICS,
   TROLL_RUN_TILE_SIZE,
   TrollRunTileType,
+  trollEntityIsActive,
   type GhostRunner,
   type PlayerState,
   type TrollMovingEntity,
-  type TrollRunLevel,
-} from './types'
-import type { ParticleManager } from './particles'
+  type TrollRunDeathMark,
+  type TrollRunFrame,
+} from '../../../packages/shared/src/troll-run-engine/types'
+import { THEMES, type MassPalette, type RenderTheme } from '../../../packages/shared/src/troll-run-engine/palette'
 
-/** Flat-shaded material: a body, a lit face where it meets open air, an outline, and a shadow. */
-export interface MassPalette {
-  body: string
-  top: string
-  edge: string
-  shade: string
-}
-
-export interface RenderTheme {
-  bgTop: string
-  bgBottom: string
-  bgGrid: string
-  solid: MassPalette
-  ice: MassPalette
-  bounce: MassPalette
-  block: MassPalette
-  spike: { body: string; lit: string; socket: string }
-  hazard: { body: string; lit: string }
-  saw: { blade: string; teeth: string; hub: string }
-  door: { frame: string; body: string; glow: string; lit: string }
-  coin: { body: string; lit: string }
-  player: { body: string; top: string; outline: string; eye: string }
-  ghostOutline: string
-  ghostTagText: string
-}
-
-/**
- * One palette per lobby "Visual Palette" choice. These are deliberately far apart — the previous
- * set differed by two hex values, so picking a theme changed nothing anyone could see. Each is
- * tuned against the matching app theme in `globals.css` so the canvas and its chrome agree.
- *
- * Platforms are mid-tone on purpose: filling ~40% of the screen with near-white glares and
- * flattens every hazard drawn on top of it.
- */
-export const THEMES: Record<string, RenderTheme> = {
-  dark: {
-    bgTop: '#0b1120',
-    bgBottom: '#182338',
-    bgGrid: 'rgba(148, 163, 184, 0.06)',
-    solid: { body: '#475569', top: '#94a3b8', edge: '#0f172a', shade: '#334155' },
-    ice: { body: '#0ea5e9', top: '#a5f3fc', edge: '#082f49', shade: '#0369a1' },
-    bounce: { body: '#be185d', top: '#f9a8d4', edge: '#4c0519', shade: '#9d174d' },
-    block: { body: '#57534e', top: '#a8a29e', edge: '#1c1917', shade: '#44403c' },
-    spike: { body: '#e11d48', lit: '#fda4af', socket: '#4c0519' },
-    hazard: { body: '#e11d48', lit: '#fda4af' },
-    saw: { blade: '#cbd5e1', teeth: '#f1f5f9', hub: '#e11d48' },
-    door: { frame: '#a16207', body: '#facc15', glow: '#fde047', lit: '#fefce8' },
-    coin: { body: '#eab308', lit: '#fef9c3' },
-    player: { body: '#38bdf8', top: '#bae6fd', outline: '#082f49', eye: '#04121f' },
-    ghostOutline: 'rgba(8, 47, 73, 0.85)',
-    ghostTagText: '#f8fafc',
-  },
-  retro: {
-    bgTop: '#241a12',
-    bgBottom: '#3b2a1a',
-    bgGrid: 'rgba(232, 145, 43, 0.07)',
-    solid: { body: '#8a6a44', top: '#d1a86b', edge: '#1a1109', shade: '#6b5133' },
-    ice: { body: '#7ea8b8', top: '#d6ecf2', edge: '#1e3038', shade: '#5c8593' },
-    bounce: { body: '#a8481f', top: '#f0a97a', edge: '#2b0f05', shade: '#83350f' },
-    block: { body: '#6f5a3e', top: '#b39364', edge: '#1a1109', shade: '#54432d' },
-    spike: { body: '#b91c1c', lit: '#f0846f', socket: '#2b0805' },
-    hazard: { body: '#b91c1c', lit: '#f0846f' },
-    saw: { blade: '#c1a684', teeth: '#f2e4cd', hub: '#b91c1c' },
-    door: { frame: '#7c4a10', body: '#e8912b', glow: '#f6c46a', lit: '#fff3dc' },
-    coin: { body: '#d97706', lit: '#fde9c0' },
-    player: { body: '#f2e4cd', top: '#fffaf0', outline: '#2b1c0d', eye: '#2b1c0d' },
-    ghostOutline: 'rgba(43, 28, 13, 0.85)',
-    ghostTagText: '#fff8ee',
-  },
-  neon: {
-    bgTop: '#05050f',
-    bgBottom: '#120a24',
-    bgGrid: 'rgba(0, 229, 255, 0.08)',
-    solid: { body: '#3b2a63', top: '#a855f7', edge: '#0a0618', shade: '#2a1d49' },
-    ice: { body: '#0e7490', top: '#67e8f9', edge: '#062b33', shade: '#0b5567' },
-    bounce: { body: '#9d174d', top: '#f472b6', edge: '#2b0316', shade: '#7a0f3c' },
-    block: { body: '#312e5c', top: '#8b7fd6', edge: '#0a0618', shade: '#241f45' },
-    spike: { body: '#ff1744', lit: '#ff8aa3', socket: '#2b0310' },
-    hazard: { body: '#ff1744', lit: '#ff8aa3' },
-    saw: { blade: '#00e5ff', teeth: '#b3f7ff', hub: '#ff1744' },
-    door: { frame: '#2f7a12', body: '#76ff03', glow: '#b6ff6b', lit: '#eaffd6' },
-    coin: { body: '#00e5ff', lit: '#d6feff' },
-    player: { body: '#00e5ff', top: '#c8feff', outline: '#04202b', eye: '#04202b' },
-    ghostOutline: 'rgba(4, 32, 43, 0.85)',
-    ghostTagText: '#e0ffe0',
-  },
-}
+export { THEMES, type MassPalette, type RenderTheme }
 
 /** Which tiles fill their cell, and which of them read as the same material. */
 const MASS_GROUP_NONE = 0
@@ -157,15 +75,8 @@ export class CanvasRenderer {
     this.backdropTheme = null
   }
 
-  public render(
-    ctx: CanvasRenderingContext2D,
-    level: TrollRunLevel,
-    player: PlayerState,
-    particles: ParticleManager,
-    movingEntities: TrollMovingEntity[] = [],
-    ghosts: GhostRunner[] = [],
-    nowMs = 0
-  ): void {
+  public render(ctx: CanvasRenderingContext2D, frame: TrollRunFrame): void {
+    const { level, player, entities: movingEntities, ghosts, deathMarks, particles, now: nowMs } = frame
     const tileSize = TROLL_RUN_TILE_SIZE
 
     this.renderBackdrop(ctx)
@@ -215,7 +126,11 @@ export class CanvasRenderer {
       this.renderEnteringPlayer(ctx, player)
     }
 
-    this.renderDoor(ctx, level.door.x, level.door.y, nowMs)
+    this.renderDoor(ctx, level.door.x, level.door.y, nowMs, (level.door.biteTimer ?? 0) > 0)
+
+    for (const mark of deathMarks) {
+      this.renderDeathMark(ctx, mark)
+    }
 
     for (const ghost of ghosts) {
       this.renderGhost(ctx, ghost)
@@ -225,7 +140,19 @@ export class CanvasRenderer {
       this.renderPlayer(ctx, player)
     }
 
-    particles.render(ctx)
+    for (const particle of particles) {
+      const alpha = Math.max(0, particle.life / particle.maxLife)
+      ctx.save()
+      ctx.globalAlpha = alpha
+      ctx.fillStyle = particle.color
+      ctx.fillRect(
+        Math.round(particle.x - particle.size / 2),
+        Math.round(particle.y - particle.size / 2),
+        particle.size,
+        particle.size
+      )
+      ctx.restore()
+    }
   }
 
   /**
@@ -387,7 +314,13 @@ export class CanvasRenderer {
     drawTriangle(lit, 4)
   }
 
-  private renderDoor(ctx: CanvasRenderingContext2D, doorX: number, doorY: number, nowMs: number): void {
+  private renderDoor(
+    ctx: CanvasRenderingContext2D,
+    doorX: number,
+    doorY: number,
+    nowMs: number,
+    biting: boolean
+  ): void {
     const width = TROLL_RUN_DOOR_WIDTH
     const height = TROLL_RUN_DOOR_HEIGHT
     const left = Math.round(doorX)
@@ -395,6 +328,11 @@ export class CanvasRenderer {
 
     // Three-frame pulse: a stepped animation stays crisp where a smooth fade would band.
     const pulseFrame = Math.floor(nowMs / 190) % 3
+
+    if (biting) {
+      this.renderBitingDoor(ctx, left, top, width, height, nowMs)
+      return
+    }
 
     // Stepped halo instead of a blurred gradient — nearest-neighbour upscaling keeps it clean.
     ctx.save()
@@ -421,7 +359,83 @@ export class CanvasRenderer {
     ctx.fillRect(left + width - 4, top + Math.round(height / 2), 2, 2)
   }
 
+  /**
+   * The exit with teeth. The frame stays put so the runner can still see where the door is — only
+   * the opening changes, snapping shut on a two-frame chomp that reads at 320×180 where a smooth
+   * close would just look like the door sliding.
+   */
+  private renderBitingDoor(
+    ctx: CanvasRenderingContext2D,
+    left: number,
+    top: number,
+    width: number,
+    height: number,
+    nowMs: number
+  ): void {
+    const chompOpen = Math.floor(nowMs / 110) % 2 === 0
+    const toothHeight = chompOpen ? 4 : 6
+
+    ctx.fillStyle = this.theme.hazard.body
+    ctx.fillRect(left, top, width, height)
+
+    ctx.fillStyle = this.theme.spike.socket
+    ctx.fillRect(left + 2, top + 2, width - 4, height - 4)
+
+    // Two rows of teeth biting toward the middle from the top and bottom lips.
+    ctx.fillStyle = this.theme.spike.body
+    const toothWidth = 3
+    for (let toothLeft = left + 2; toothLeft + toothWidth <= left + width - 2; toothLeft += toothWidth + 1) {
+      ctx.beginPath()
+      ctx.moveTo(toothLeft, top + 2)
+      ctx.lineTo(toothLeft + toothWidth, top + 2)
+      ctx.lineTo(toothLeft + toothWidth / 2, top + 2 + toothHeight)
+      ctx.closePath()
+      ctx.fill()
+
+      ctx.beginPath()
+      ctx.moveTo(toothLeft, top + height - 2)
+      ctx.lineTo(toothLeft + toothWidth, top + height - 2)
+      ctx.lineTo(toothLeft + toothWidth / 2, top + height - 2 - toothHeight)
+      ctx.closePath()
+      ctx.fill()
+    }
+
+    ctx.fillStyle = this.theme.hazard.lit
+    ctx.fillRect(left, top, width, 1)
+    ctx.fillRect(left, top + height - 1, width, 1)
+  }
+
+  /**
+   * Where somebody died, in their own ghost colour: a small cross fading out over its lifetime.
+   * Drawn under the ghosts so a live runner standing on the spot is never hidden by it.
+   */
+  private renderDeathMark(ctx: CanvasRenderingContext2D, mark: TrollRunDeathMark): void {
+    const remaining = Math.max(0, 1 - mark.age / TROLL_RUN_DEATH_MARK_SECONDS)
+    if (remaining <= 0) return
+
+    const centerX = Math.round(mark.x + TROLL_RUN_PHYSICS.PLAYER_WIDTH / 2)
+    const centerY = Math.round(mark.y + TROLL_RUN_PHYSICS.PLAYER_HEIGHT / 2)
+
+    ctx.save()
+    // Quantised alpha, like the door-entry dissolve — a smooth fade bands on the upscaled buffer.
+    ctx.globalAlpha = Math.ceil(remaining * 4) / 4
+    ctx.fillStyle = mark.color
+    for (let offset = -3; offset <= 3; offset++) {
+      ctx.fillRect(centerX + offset, centerY + offset, 1, 1)
+      ctx.fillRect(centerX + offset, centerY - offset, 1, 1)
+    }
+    ctx.restore()
+  }
+
   private renderEntity(ctx: CanvasRenderingContext2D, entity: TrollMovingEntity, nowMs: number): void {
+    if (entity.type === 'laser') {
+      this.renderLaser(ctx, entity, nowMs)
+      return
+    }
+
+    // A pulsing hazard in its gap has no hitbox, so drawing it would be a lie about what kills.
+    if (!trollEntityIsActive(entity)) return
+
     if (entity.type === 'buzzsaw') {
       this.renderSaw(ctx, entity, nowMs)
       return
@@ -461,6 +475,45 @@ export class CanvasRenderer {
     ctx.fillRect(left, top + entity.h - 1, entity.w, 1)
     ctx.fillRect(left, top, 1, entity.h)
     ctx.fillRect(left + entity.w - 1, top, 1, entity.h)
+  }
+
+  /**
+   * A laser reads in two phases and the emitters are drawn in both, because a beam that vanished
+   * without leaving a socket behind would look like a level that simply lost a wall. Dormant: dim
+   * caps and a dotted trace of where the beam will return. Live: a hot core inside a wider glow.
+   */
+  private renderLaser(ctx: CanvasRenderingContext2D, entity: TrollMovingEntity, nowMs: number): void {
+    const left = Math.round(entity.x)
+    const top = Math.round(entity.y)
+    const beamWidth = Math.max(1, entity.w)
+    const capHeight = 2
+
+    ctx.fillStyle = this.theme.spike.socket
+    ctx.fillRect(left - 1, top, beamWidth + 2, capHeight)
+    ctx.fillRect(left - 1, top + entity.h - capHeight, beamWidth + 2, capHeight)
+
+    if (!trollEntityIsActive(entity)) {
+      ctx.fillStyle = this.theme.spike.socket
+      for (let offset = top + capHeight + 1; offset < top + entity.h - capHeight; offset += 4) {
+        ctx.fillRect(left, offset, beamWidth, 1)
+      }
+      return
+    }
+
+    const beamTop = top + capHeight
+    const beamHeight = Math.max(1, entity.h - capHeight * 2)
+
+    ctx.fillStyle = this.theme.hazard.body
+    ctx.fillRect(left, beamTop, beamWidth, beamHeight)
+
+    // The core crawls so a live beam never reads as a painted stripe.
+    ctx.fillStyle = this.theme.hazard.lit
+    const coreWidth = Math.max(1, Math.round(beamWidth / 2))
+    ctx.fillRect(left + Math.floor((beamWidth - coreWidth) / 2), beamTop, coreWidth, beamHeight)
+    for (let spark = 0; spark < beamHeight; spark += 6) {
+      const drift = (spark + Math.floor(nowMs / 40)) % beamHeight
+      ctx.fillRect(left, beamTop + drift, beamWidth, 1)
+    }
   }
 
   private renderSaw(ctx: CanvasRenderingContext2D, entity: TrollMovingEntity, nowMs: number): void {

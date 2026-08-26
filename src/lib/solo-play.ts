@@ -17,6 +17,9 @@ const SOLO_PLAY_SLUGS: Partial<Record<GameType, string>> = {
   uno: 'uno',
   ludo: 'ludo',
   yahtzee: 'yahtzee',
+  checkers: 'checkers',
+  checkers_international: 'checkers-international',
+  checkers_nigeria: 'checkers-nigeria',
 }
 
 export function soloPlaySlug(gameType: GameType): string | null {
@@ -41,6 +44,9 @@ export const SOLO_PLAY_INDEX: readonly { slug: string; label: string }[] = [
   { slug: 'ludo', label: 'Ludo' },
   { slug: 'ayo', label: 'Ayo (Mancala)' },
   { slug: 'yahtzee', label: 'Five Dice (Yahtzee)' },
+  { slug: 'checkers', label: 'Checkers (American)' },
+  { slug: 'checkers-international', label: 'International Draughts' },
+  { slug: 'checkers-nigeria', label: 'Nigerian Draughts' },
 ] as const
 
 /**

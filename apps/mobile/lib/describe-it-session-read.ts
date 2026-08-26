@@ -14,7 +14,7 @@ export type DescribeItSessionResult = { data: DescribeItSession | null; error: {
  *
  * This matters MORE here. A web deploy can be rolled back in a minute; an installed app binary
  * cannot. Without this fallback, any build shipped after this PR would be dead in Describe It
- * against a database where migration 20260807120000 has not been applied yet (a rollback of the
+ * against a database where migration 20260807115000 has not been applied yet (a rollback of the
  * migration, a self-hosted/staging database, or a store release that reaches users before the
  * migration runs). With it, such a build simply refetches the word on the poll instead of on the
  * counter.

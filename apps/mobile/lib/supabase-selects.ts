@@ -1,5 +1,5 @@
 export const GAME_SELECT =
-  'id,title,content_label,game_type,status,current_round_number,timer_seconds,max_players,allow_viewers,allow_late_players,is_public,anonymous,theme,replay_pending,pending_host_player_id,host_player_id,tournament_id,ayo_variant,participant_mode,pair_vote_mode,player_questions_enabled,player_questions_order,custom_questions,custom_slots,gender_based,ludo_variant,rounds_count,question_source,wst_quote_source,trivia_category,created_at,finished_at,result_reason,describe_it_num_teams,describe_it_mode,crazy8_action_cards,crazy8_jokers,crazy8_pick2_stacking,whot_pick3_enabled,whot_cards_enabled,whot_number_calls_enabled,whot_pick2_stacking,uno_wd4_challenge,uno_uno_penalty,uno_wd4_challenge_penalty,uno_zero_seven,uno_stacking,uno_multi_play,uno_multi_play_mode,uno_team_mode,uno_jump_in,uno_mode,uno_no_mercy_win,uno_series_scoring,uno_series_target,uno_series_scores,uno_series_winner_id,word_rush_mode,word_rush_num_teams,word_rush_prompt_mode,word_rush_difficulty,session_started_at,game_duration_seconds,anonymous_messages_trimmed_at,chess_board_theme,chess_piece_set,scrabble_dictionary_id,scrabble_clock_mode,scrabble_clock_seconds,operative_timer_seconds,codewords_player_picks,codewords_late_join,codewords_randomize_teams,mafia_doctor_enabled,mafia_detective_enabled,mafia_anonymous_votes,monopoly_double_go_salary,monopoly_forced_auctions,monopoly_auction_timer_seconds,monopoly_no_rent_in_jail,monopoly_estate_dividend,monopoly_board_size,quick_draw_variant,quick_draw_play_mode,quick_draw_num_teams,mahjong_ruleset,mahjong_rule_options,bingo_call_mode,bingo_call_interval_seconds,crossword_theme,crossword_difficulty,word_search_theme,word_search_difficulty,word_scramble_theme,word_scramble_difficulty,landmine_mode,landmine_mine_count,landmine_originality_bonus,landmine_mine_source,landmine_elim_seconds,landmine_review,landmine_review_seconds,checkers_nigeria_street_rules,last_activity_at,host_idle_warning_sent_at,scheduled_at,opened_at'
+  'id,title,content_label,game_type,status,current_round_number,timer_seconds,max_players,allow_viewers,allow_late_players,is_public,anonymous,theme,replay_pending,pending_host_player_id,host_player_id,tournament_id,ayo_variant,participant_mode,pair_vote_mode,player_questions_enabled,player_questions_order,custom_questions,custom_slots,gender_based,ludo_variant,rounds_count,question_source,wst_quote_source,trivia_category,created_at,finished_at,result_reason,describe_it_num_teams,describe_it_mode,crazy8_action_cards,crazy8_jokers,crazy8_pick2_stacking,whot_pick3_enabled,whot_cards_enabled,whot_number_calls_enabled,whot_pick2_stacking,uno_wd4_challenge,uno_uno_penalty,uno_wd4_challenge_penalty,uno_zero_seven,uno_stacking,uno_multi_play,uno_multi_play_mode,uno_team_mode,uno_jump_in,uno_mode,uno_no_mercy_win,uno_series_scoring,uno_series_target,uno_series_scores,uno_series_winner_id,word_rush_mode,word_rush_num_teams,word_rush_prompt_mode,word_rush_difficulty,session_started_at,game_duration_seconds,anonymous_messages_trimmed_at,chess_board_theme,chess_piece_set,scrabble_dictionary_id,scrabble_clock_mode,scrabble_clock_seconds,operative_timer_seconds,codewords_player_picks,codewords_late_join,codewords_randomize_teams,mafia_doctor_enabled,mafia_detective_enabled,mafia_anonymous_votes,monopoly_double_go_salary,monopoly_forced_auctions,monopoly_auction_timer_seconds,monopoly_no_rent_in_jail,monopoly_estate_dividend,monopoly_board_size,monopoly_loans_enabled,monopoly_loan_interest,monopoly_loan_term_rounds,quick_draw_variant,quick_draw_play_mode,quick_draw_num_teams,mahjong_ruleset,mahjong_rule_options,bingo_call_mode,bingo_call_interval_seconds,crossword_theme,crossword_difficulty,word_search_theme,word_search_difficulty,word_scramble_theme,word_scramble_difficulty,landmine_mode,landmine_mine_count,landmine_originality_bonus,landmine_mine_source,landmine_elim_seconds,landmine_review,landmine_review_seconds,checkers_nigeria_street_rules,last_activity_at,host_idle_warning_sent_at,scheduled_at,opened_at,edition_slug'
 
 export const PLAYER_SELECT =
   'id,game_id,name,gender,joined_at,spectator,is_eliminated,lives_remaining,eliminated_at,monopoly_token,participant_id,is_bot'
@@ -76,17 +76,19 @@ export const BINGO_CLAIM_SELECT = 'id,game_id,player_id,pattern,status,created_a
 export const TRIVIA_ANSWER_SELECT = 'id,game_id,round_id,player_id,choice_index,is_correct,response_ms,points'
 
 export const CRAZY8_SESSION_SELECT =
-  'id,game_id,turn_order,current_turn_index,direction,phase,draw_pile,discard_pile,top_card,required_suit,pick_two_stack,joker_penalty,status_message,winner_player_id,finish_order,turn_deadline_at'
+  'id,game_id,turn_order,current_turn_index,direction,phase,draw_pile,discard_pile,top_card,required_suit,pick_two_stack,joker_penalty,status_message,winner_player_id,finish_order,turn_deadline_at,created_at,updated_at'
 
 export const CRAZY8_PLAYER_HANDS_SELECT = 'id,game_id,player_id,cards,player_order'
 
 export const WHOT_SESSION_SELECT =
-  'id,game_id,turn_order,current_turn_index,phase,draw_pile,discard_pile,top_card,required_shape,required_number,pick_two_stack,pick_five_stack,status_message,winner_player_id,finish_order,reshuffle_count,turn_deadline_at'
+  'id,game_id,turn_order,current_turn_index,phase,draw_pile,discard_pile,top_card,required_shape,required_number,pick_two_stack,pick_five_stack,status_message,winner_player_id,finish_order,reshuffle_count,turn_deadline_at,created_at,updated_at'
 
 export const WHOT_PLAYER_HANDS_SELECT = 'id,game_id,player_id,cards,player_order'
 
+// last_play_player_id, pending_wild and the colour-roulette / draw-stack bookkeeping are
+// deliberately absent — see the note on the web copy in src/lib/supabase-selects.ts.
 export const UNO_SESSION_SELECT =
-  'id,game_id,turn_order,current_turn_index,direction,phase,draw_pile,discard_pile,top_card,required_color,draw_penalty,draw_penalty_kind,drawn_card_id,last_play_cards,pending_wild,challenge_prev_color,wd4_player_id,uno_pending_player,uno_called,status_message,winner_player_id,finish_order,left_player_ids,team_decider_id,eliminated_player_ids,color_roulette_player_id,last_play_player_id,draw_stack_chain,turn_deadline_at,created_at,updated_at'
+  'id,game_id,turn_order,current_turn_index,direction,phase,draw_pile,discard_pile,top_card,required_color,draw_penalty,draw_penalty_kind,drawn_card_id,last_play_cards,challenge_prev_color,wd4_player_id,uno_pending_player,uno_called,status_message,winner_player_id,finish_order,left_player_ids,team_decider_id,eliminated_player_ids,turn_deadline_at,created_at,updated_at'
 
 export const UNO_PLAYER_HANDS_SELECT = 'id,game_id,player_id,cards,player_order,created_at'
 
@@ -126,7 +128,7 @@ export const DESCRIBE_IT_SESSION_SELECT_NO_WORD_SEQ =
   'id,game_id,mode,num_teams,total_rounds,turn_seconds,phase,turn_index,current_round,active_team,describer_player_id,roster,current_clue,current_clues,turn_deadline_at,break_deadline_at,status,status_message'
 
 /**
- * `word_seq` (added by migration 20260807120000) is the public per-word counter that replaced
+ * `word_seq` (added by migration 20260807115000) is the public per-word counter that replaced
  * the clients' only legitimate use of the revoked `used_words` array — its length.
  *
  * DEPLOY SKEW: naming a column that does not exist yet makes PostgREST fail the WHOLE select
@@ -173,8 +175,9 @@ export const LANDMINE_ANSWER_SELECT =
 
 export const LANDMINE_MARK_SELECT = 'id,game_id,round_id,marker_player_id,target_player_id,valid,marked_at'
 
-export const CODEWORDS_BOARD_SELECT =
-  'id,game_id,words,key,starting_team,revealed_indices,current_turn,guesses_remaining,current_clue_word,current_clue_number,winner,assassin_team,spymaster_timer_seconds,operative_timer_seconds,turn_phase,turn_deadline_at,created_at'
+// The Codewords board is fetched via the server route (postCodewordsBoard), not a direct
+// select — `codewords_boards.key` is no longer anon-selectable (audit finding H2), so there is
+// no board SELECT constant here on purpose. The route returns the full board object.
 
 export const CODEWORDS_PLAYER_ROLE_SELECT = 'id,game_id,player_id,team,role,created_at'
 
@@ -186,13 +189,20 @@ export const CODEWORDS_GUESS_SELECT =
 export const CODEWORDS_MESSAGE_SELECT = 'id,game_id,player_id,team,text,created_at'
 
 export const MONOPOLY_BOARD_SELECT =
-  'id,game_id,board_size,turn_order,current_turn_index,phase,last_dice,consecutive_doubles,property_owners,property_buildings,mortgaged_properties,houses_in_bank,hotels_in_bank,chance_deck,community_deck,chance_discard,community_discard,auction_state,pending_trade,pending_debt,pending_space,status_message,last_card_event,last_rent_event,last_cash_event,last_trade_event,turn_deadline_at,winner_player_id,created_at,updated_at'
+  'id,game_id,board_size,turn_order,current_turn_index,phase,last_dice,consecutive_doubles,property_owners,property_buildings,mortgaged_properties,houses_in_bank,hotels_in_bank,auction_state,pending_trade,pending_debt,pending_space,status_message,last_card_event,last_rent_event,last_cash_event,last_trade_event,loans,turn_deadline_at,winner_player_id,created_at,updated_at'
 
 export const MONOPOLY_PLAYER_STATE_SELECT =
   'id,game_id,player_id,position,cash,in_jail,jail_turns,get_out_of_jail_free,bankrupt,passed_go_once,player_order,created_at'
 
+/**
+ * NOTE: no `current_word` and no `used_words`. The secret prompt is revoked from
+ * anon/authenticated by migration 20260807140000 — it used to ship to every guesser's client
+ * (twice: as `current_word`, and as the last entry of `used_words`) and was merely hidden in the
+ * UI. The drawer fetches it from POST /api/quick-draw/my-word instead, and `word_seq` is the
+ * public per-word counter clients use to know it rotated.
+ */
 export const QUICK_DRAW_GUESS_SESSION_SELECT =
-  'id,game_id,mode,num_teams,total_rounds,turn_seconds,roster,phase,turn_index,current_round,active_team,drawer_player_id,current_word,current_stroke_data,used_words,turn_deadline_at,break_deadline_at,status,status_message,created_at,updated_at'
+  'id,game_id,mode,num_teams,total_rounds,turn_seconds,roster,phase,turn_index,current_round,active_team,drawer_player_id,current_stroke_data,word_seq,turn_deadline_at,break_deadline_at,status,status_message,created_at,updated_at'
 
 export const QUICK_DRAW_GUESS_PLAYER_SELECT = 'id,game_id,player_id,team,score,created_at'
 
@@ -215,3 +225,11 @@ export const ANONYMOUS_MESSAGE_SELECT =
   'id,game_id,player_id,text,created_at,reply_to_id,reply_to_text,message_type,media_url'
 
 export const ANONYMOUS_ROOM_BAN_SELECT = 'id,game_id,player_id,banned_until,created_at'
+
+export const TROLL_RUN_SESSION_SELECT =
+  'id,game_id,phase,current_round,total_rounds,current_world,levels_per_round,round_time_limit,round_started_at,turn_deadline_at,level_order,created_at,updated_at'
+
+export const TROLL_RUN_PLAYER_STATE_SELECT =
+  'id,game_id,player_id,current_round,current_level_index,deaths,levels_cleared,total_time_ms,round_score,total_score,finish_position,round_finished,created_at,updated_at'
+
+export const TROLL_RUN_EVENT_SELECT = 'id,game_id,player_id,round,level_id,level_name,event_type,time_ms,created_at'

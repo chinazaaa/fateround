@@ -11,6 +11,7 @@ import { MONOPOLY_COLOR_CLASSES } from '@/lib/monopoly'
 import type { MonopolyColorGroup } from '@/lib/monopoly'
 import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
 import { GameInfoChips } from '@/components/game-lobby/GameInfoChips'
+import { RulesInPlaySection } from '@/components/game-lobby/RulesInPlaySection'
 import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
 import { LeaderboardJoinNote } from '@/components/game-lobby/LeaderboardJoinNote'
 import { MonopolyPageHeader } from '@/components/monopoly/MonopolyChrome'
@@ -20,13 +21,8 @@ import { Glyph } from '@/components/icons/Glyph'
 import { MonopolyFinalResultsShareBlock } from '@/components/monopoly/MonopolyFinalResultsShareBlock'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
-import {
-  buildMonopolyStandings,
-  MONOPOLY_MIN_PLAYERS,
-  MONOPOLY_STARTING_CASH,
-  startingCashForSize,
-} from '@/lib/monopoly'
-import { formatThemedMoney } from '@/components/monopoly/monopoly-themes'
+import { buildMonopolyStandings, MONOPOLY_MIN_PLAYERS, startingCashForSize } from '@/lib/monopoly'
+import { formatThemedMoney, formatThemedText } from '@/components/monopoly/monopoly-themes'
 import { supabase } from '@/lib/supabase'
 import { MONOPOLY_BOARD_SELECT, MONOPOLY_PLAYER_STATE_SELECT, isCompleteMonopolyBoardRow } from '@/lib/supabase-selects'
 import { clearPlayerSession, isFetchNetworkError, messageFromFetchActionError } from '@/lib/utils'
@@ -96,7 +92,20 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
     ])
     const ok = supabasePollOk(boardRes, stateRes)
     if (ok) {
-      setBoard(boardRes.data as MonopolyBoard | null)
+      const nextBoard = boardRes.data as MonopolyBoard | null
+      const prevBoard = boardRef.current
+      if (
+        nextBoard &&
+        prevBoard &&
+        nextBoard.updated_at &&
+        prevBoard.updated_at &&
+        new Date(nextBoard.updated_at).getTime() < new Date(prevBoard.updated_at).getTime()
+      ) {
+        // Do not overwrite a newer state that already arrived via realtime push!
+        return { state: null, ok }
+      }
+      setBoard(nextBoard)
+      boardRef.current = nextBoard
       setStates((stateRes.data as MonopolyPlayerState[]) ?? [])
     }
     return { state: null, ok }
@@ -172,7 +181,14 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
   const applyBoardRow = useCallback((row: Record<string, unknown>): boolean => {
     const next = row as unknown as MonopolyBoard
     const prev = boardRef.current
-    if (prev && next.updated_at < prev.updated_at) return true
+    if (
+      prev &&
+      next.updated_at &&
+      prev.updated_at &&
+      new Date(next.updated_at).getTime() < new Date(prev.updated_at).getTime()
+    ) {
+      return true
+    }
     // Realtime UPDATE payloads drop unchanged TOAST-ed columns (large jsonb such as
     // property_owners) — they arrive as null once a game has enough owned properties. Applying
     // such a partial row would wipe ownership/buildings on screen (players show 0 property, can't
@@ -272,7 +288,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
       if (!res.ok) throw new Error(data.error ?? 'Action failed')
       await load()
     } catch (err) {
-      toastError(messageFromFetchActionError(err))
+      toastError(formatThemedText(messageFromFetchActionError(err), game?.theme))
       if (isFetchNetworkError(err)) await load()
     } finally {
       actingRef.current = false
@@ -298,10 +314,16 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
   // Change name · Leave game for players/spectators live behind the main chrome's ⚙
   // gear (top header). Registered while the game is active; the shared settings sheet
   // renders it. Purely additive — the in-page PlayerSessionControls stays as-is.
+  //
+  // Also renders a "Rules in play" chip summary so a player can recall the house rules
+  // mid-game (bank loans on/off, forced auctions, Robin Hood, etc.) without going back
+  // to the lobby. Same content the host sees in their settings sheet, same chips as at
+  // join.
   const playerSettingsNode = useMemo(() => {
     if (!myPlayerId) return null
     return (
       <div className="space-y-3">
+        <RulesInPlaySection game={game} />
         <EditNameInline
           gameCode={gameCode}
           playerId={myPlayerId}
@@ -320,7 +342,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
         />
       </div>
     )
-  }, [myPlayerId, game?.status, gameCode, me?.name, meSpectating, load, router])
+  }, [myPlayerId, game, gameCode, me?.name, meSpectating, load, router])
   useRegisterGameSettings(playerSettingsNode)
 
   useMonopolyNotifications({
@@ -537,7 +559,8 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
             board.property_owners,
             board.property_buildings,
             board.mortgaged_properties,
-            board.board_size ?? 40
+            board.board_size ?? 40,
+            board.loans
           )[0]?.name
         : null)
 

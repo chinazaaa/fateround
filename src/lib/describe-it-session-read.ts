@@ -13,7 +13,7 @@ export type DescribeItSessionResult = { data: DescribeItSession | null; error: {
 /**
  * Read the Describe It session, tolerating a database that does not have `word_seq` yet.
  *
- * WHY: `word_seq` is added by migration 20260807120000. An explicit PostgREST select that names
+ * WHY: `word_seq` is added by migration 20260807115000. An explicit PostgREST select that names
  * a column the database does not have fails the ENTIRE row with 42703 — so a web deploy that
  * lands before the migration is applied would not merely lose the per-word counter, it would
  * stop host and players receiving ANY session state mid-game (flagged in review on PR #866).

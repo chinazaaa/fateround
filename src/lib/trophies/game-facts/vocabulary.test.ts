@@ -38,6 +38,14 @@ describe('game-facts counters are all registered', () => {
       for (const m of src.matchAll(/\b\w+\.([a-z][a-z0-9]*_[a-z0-9_]*)\s*=(?![=>])/g)) keys.add(m[1])
       // `obj['some_key'] = …`
       for (const m of src.matchAll(/\b\w+\['([a-z][a-z0-9]*_[a-z0-9_]*)'\]\s*=(?![=>])/g)) keys.add(m[1])
+      // `bump(out, playerId, 'some_key')` / `flag(out, playerId, 'some_key')` — the accumulator
+      // helper form (quick-draw.ts). Matched on the helper NAME rather than any quoted
+      // snake_case string, so table names like 'quick_draw_guess_words' aren't swept in as
+      // counters. A builder that adds its own helper must either use these names or assert its
+      // keys explicitly below, the same as the templated cases.
+      for (const m of src.matchAll(/\b(?:bump|flag)\([^,)]+,[^,)]+,\s*'([a-z][a-z0-9]*_[a-z0-9_]*)'/g)) {
+        keys.add(m[1])
+      }
 
       expect(keys.size, `${file} emits no counters — did the emission syntax change?`).toBeGreaterThan(0)
       const unknown = [...keys].filter((k) => !isKnownCounter(k))

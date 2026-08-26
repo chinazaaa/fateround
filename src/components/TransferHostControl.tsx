@@ -114,6 +114,29 @@ export function TransferHostControl({ triggerClassName }: { triggerClassName?: s
       })
       const data = (await res.json().catch(() => ({}))) as { error?: string }
       if (!res.ok) {
+        // 403 "Unauthorized" here almost always means the nominee already accepted
+        // (or otherwise rotated the game's host_token) between our last pending-poll
+        // and this click — so our token is stale and we're no longer host. Instead
+        // of surfacing a scary red error, confirm we lost host, close the picker,
+        // and reload so the host page swaps to the "Host transferred" screen.
+        if (res.status === 403) {
+          const verify = await fetch(`/api/games/${code}/verify-host`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ hostToken }),
+          }).catch(() => null)
+          const stillHost = verify?.ok
+            ? (((await verify.json().catch(() => ({}))) as { ok?: boolean }).ok ?? false)
+            : false
+          if (!stillHost) {
+            selfClearedRef.current = true
+            prevPendingRef.current = null
+            setPendingId(null)
+            setOpen(false)
+            if (typeof window !== 'undefined') window.location.reload()
+            return
+          }
+        }
         setError(data.error ?? 'Something went wrong')
         return
       }

@@ -331,7 +331,7 @@ export function LandmineHostView({ gameCode, hostToken }: { gameCode: string; ho
   const hostSettingsNode = useMemo(
     () =>
       game?.status === 'active' ? (
-        <HostActiveSettings gameCode={gameCode} hostToken={hostToken} gameType="landmine" onEnded={load}>
+        <HostActiveSettings game={game} gameCode={gameCode} hostToken={hostToken} gameType="landmine" onEnded={load}>
           {hostMode === 'player' && !!hostPlayerId && (
             <HostLeaveSeatButton onLeave={leaveSeatKeepHosting} className="btn-secondary w-full py-3 text-base" />
           )}
@@ -436,7 +436,7 @@ export function LandmineHostView({ gameCode, hostToken }: { gameCode: string; ho
           onJoinNameChange={setHostJoinName}
           onJoin={() => void hostJoinGame()}
           joining={hostJoining}
-          spectatorHint="Watch the game from the Watch tab"
+          spectatorHint="Watch the game"
           playingNote={
             <p className="text-sm text-muted">
               Playing as <strong className="text-body">{hostPlayerName}</strong> — play once you start.
@@ -660,7 +660,8 @@ export function LandmineHostView({ gameCode, hostToken }: { gameCode: string; ho
           )}
           {hostPlayerId && (
             <div className="glass-card p-4 text-center text-sm text-muted">
-              You&apos;re playing as <strong className="text-body">{hostPlayerName}</strong> — switch to the Play tab.
+              You&apos;re playing as <strong className="text-body">{hostPlayerName}</strong> — the game board is above;
+              pick categories and submit answers from there.
             </div>
           )}
           <div className="glass-card-strong p-5 sm:p-6 space-y-3">

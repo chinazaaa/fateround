@@ -1,6 +1,6 @@
 import { apiUrl } from '@/lib/config'
 import { authHeaders } from '@/lib/auth-headers'
-import type { GameType, WhotPlayerHand } from '@fateround/shared'
+import type { CodewordsBoard, GameType, WhotPlayerHand } from '@fateround/shared'
 import type { GamePlayerLimitsMap } from '@fateround/shared/lobby-limits'
 import { getCodeDefaultLimits } from '@fateround/shared/lobby-limits'
 import type { MafiaStateResponse } from '@fateround/shared/mafia'
@@ -840,6 +840,12 @@ export function postMafiaVigilanteAction(
   })
 }
 
+// Board reads go through the route, not `from('codewords_boards')`: `key` is not
+// anon-selectable since migration 20260803170000 (audit finding H2), so a direct
+// SELECT that names `key` errors and the row never arrives. The route hands the
+// real key to a spymaster (resolved from their resume token) or a finished game,
+// and a masked copy to everyone else.
+
 export function postCodewordsRole(
   gameId: string,
   resumeToken: string,
@@ -883,6 +889,50 @@ export function postCodewordsExpireTurn(gameId: string) {
   return postJson<{ success: boolean; board?: unknown; skipped?: boolean }>('/api/codewords/expire-turn', {
     gameId,
   })
+}
+
+/**
+ * Fetch the Codewords board through the server route rather than reading the table.
+ *
+ * `codewords_boards.key` (the secret colour assignment) is no longer anon-selectable since
+ * migration 20260803170000 (audit finding H2), so a direct client read now errors. The route
+ * hands the real key only to the host, a spymaster, or anyone once the game has finished, and
+ * masks it for everyone else. POST so the token travels in the body, not the URL.
+ *
+ * A missing board and a FAILED fetch are different answers and must never collapse into one
+ * (review on PR #787): `{ ok: true, board: null }` means the server says there is no board row
+ * yet, while `{ ok: false }` means we could not find out (429, 5xx, offline). A caller that
+ * treats the second as "no board" blanks a live grid on one dropped packet — the recurring
+ * "failed read rendered as game state" bug. Callers must keep the board they already hold on
+ * `ok: false` and retry.
+ *
+ * No `hostToken`: mobile has no Codewords host board view (the host plays through this same
+ * player view and is entitled to the key only via their own spymaster resume token, exactly as
+ * on web's player view). Add the parameter back with the call site that needs it.
+ */
+export type CodewordsBoardFetch = { ok: true; board: CodewordsBoard | null } | { ok: false; board: null }
+
+export async function postCodewordsBoard(gameCode: string, resumeToken?: string | null): Promise<CodewordsBoardFetch> {
+  try {
+    const res = await fetch(apiUrl('/api/codewords/board'), {
+      method: 'POST',
+      // authHeaders() came from dev's fetchCodewordsBoard, which this replaces. The {ok, board}
+      // return shape is kept because the caller needs it: `fetchBoard` distinguishes a genuine
+      // failure (429/5xx/offline -> retry with backoff) from the successful answer "this game has
+      // no board row yet" (-> null, no retry). Collapsing both to `null`, as dev's version did,
+      // would have made a rate-limited fetch look like an empty board and stalled the retry loop.
+      headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+      body: JSON.stringify({
+        gameCode: gameCode.toUpperCase(),
+        resumeToken: resumeToken ?? undefined,
+      }),
+    })
+    if (!res.ok) return { ok: false, board: null }
+    const data = (await res.json()) as { board?: CodewordsBoard | null }
+    return { ok: true, board: data.board ?? null }
+  } catch {
+    return { ok: false, board: null }
+  }
 }
 
 export function postMonopolyRoll(gameId: string, resumeToken: string) {
@@ -948,6 +998,14 @@ export function postMonopolyTrade(
   }
 ) {
   return postJson<{ success: boolean }>('/api/monopoly/trade', { gameId, resumeToken, ...payload })
+}
+
+export function postMonopolyLoanBorrow(gameId: string, resumeToken: string, amount: number) {
+  return postJson<{ success: boolean }>('/api/monopoly/loan/borrow', { gameId, resumeToken, amount })
+}
+
+export function postMonopolyLoanRepay(gameId: string, resumeToken: string, amount: number) {
+  return postJson<{ success: boolean }>('/api/monopoly/loan/repay', { gameId, resumeToken, amount })
 }
 
 /** Host adds time to a timed Monopoly game (extensionSeconds ∈ {600,900,1800}). */
@@ -1017,6 +1075,50 @@ export function postQuickDrawGuessSkip(gameId: string, resumeToken: string) {
 
 export function postQuickDrawGuessTeam(gameId: string, resumeToken: string, team: number) {
   return postJson<{ success: boolean }>('/api/quick-draw/guess-team', { gameId, resumeToken, team })
+}
+
+/**
+ * A word read that succeeded (`word: null` means "not yours to see", a real answer) kept distinct
+ * from one that never got an answer at all. Mirrors QuickDrawWordResult in src/lib/quick-draw-client.ts.
+ */
+export type QuickDrawWordResult =
+  | { ok: true; word: string | null }
+  /** `retryable` false = a settled 4xx (bad code, wrong game type); retrying cannot change it. */
+  | { ok: false; retryable: boolean }
+
+/**
+ * The Quick Draw (guess mode) secret prompt via the server route.
+ *
+ * `quick_draw_guess_sessions.current_word` is not anon-selectable since 20260807140000 — it used
+ * to ship to every guesser's device and was merely hidden in the UI. The route returns the word
+ * only when the caller's resume token resolves to the current drawer; everyone else gets `null`,
+ * which is a normal (non-error) answer.
+ *
+ * Not `postJson`: that collapses every failure into a bare Error with no status, so a transient
+ * 429/5xx could not be told from a settled 400 — and the caller must retry the first without
+ * spinning forever on the second. A failed read is also never reported as `word: null`, which is
+ * real game state ("you are not the drawer").
+ */
+export async function postQuickDrawWord(
+  gameCode: string,
+  auth: { resumeToken?: string | null }
+): Promise<QuickDrawWordResult> {
+  try {
+    const res = await fetch(apiUrl('/api/quick-draw/my-word'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        gameCode: gameCode.toUpperCase(),
+        resumeToken: auth.resumeToken ?? undefined,
+      }),
+    })
+    // 429 (shared handsFetch bucket), 408 and 5xx (cold start, deploy, blip) clear on their own.
+    if (!res.ok) return { ok: false, retryable: res.status === 408 || res.status === 429 || res.status >= 500 }
+    const data = (await res.json()) as { word?: string | null }
+    return { ok: true, word: data.word ?? null }
+  } catch {
+    return { ok: false, retryable: true }
+  }
 }
 
 /**
@@ -1140,6 +1242,24 @@ export function postTransferHost(gameCode: string, hostToken: string, playerId: 
     `/api/games/${gameCode.toUpperCase()}/transfer-host`,
     { hostToken, playerId }
   )
+}
+
+/**
+ * Reclaim the host token by verified profile — the recovery path when SecureStore was
+ * cleared, the phone was replaced, or the host is opening the game on a different device.
+ * Additive per `docs/accounts-and-identity-plan.md` §3: guests and non-hosts get 401/403
+ * and the existing host_token flow keeps working; this never gates gameplay.
+ */
+export function postReclaimHost(gameCode: string) {
+  return postJson<{
+    hostToken: string
+    player?: {
+      playerId: string
+      playerName: string
+      playerGender: string
+      resumeToken: string
+    } | null
+  }>(`/api/games/${gameCode.toUpperCase()}/reclaim-host`, {})
 }
 
 /** Nominee accepts — mints & returns a fresh host token. Auth: nominee's resume token. */
@@ -1267,6 +1387,9 @@ export type BoardLobbyPatch = {
   monopoly_estate_dividend?: boolean
   /** 40 (classic) or 48 (expanded). 48 requires max_players >= 6 (server enforces). */
   monopoly_board_size?: 40 | 48
+  monopoly_loans_enabled?: boolean
+  monopoly_loan_interest?: number
+  monopoly_loan_term_rounds?: number
   operative_timer_seconds?: number
   quick_draw_variant?: 'lie' | 'guess'
   quick_draw_play_mode?: 'team' | 'individual'
@@ -1289,6 +1412,12 @@ export type BoardLobbyPatch = {
   wordle_room_word_count?: number
   /** Wordle Room — optional library-pack pool ({word, hint?}[]); clears when empty. */
   wordle_room_words?: { word: string; hint?: string }[] | null
+  /** Troll Run — which level catalogue the server draws each round's order from. */
+  troll_run_world?: string
+  /** Troll Run — races in the championship (server clamps to 1–20). */
+  troll_run_rounds?: number
+  /** Troll Run — seconds on the round clock (server clamps to 30–600). */
+  troll_run_time_limit?: number
 }
 
 export function postLobbySettings(gameCode: string, hostToken: string, patch: BoardLobbyPatch) {
@@ -1691,4 +1820,91 @@ export function postWordleRoomRevealHint(gameId: string, resumeToken: string, wo
       wordIndex,
     }
   )
+}
+
+// ---------------------------------------------------------------------------
+// Troll Run
+// ---------------------------------------------------------------------------
+
+/**
+ * One in-race report. Progress is server-authoritative, so a report that never lands strands the
+ * runner on that level for the rest of the round — worth exactly one retry on a network blip or a
+ * server fault. A 4xx is a decision the server already made (round over, level already cleared)
+ * and repeating the request would only get the same answer. Mirrors the web client's `postRaceReport`.
+ */
+async function postTrollRunReport(path: string, body: Record<string, unknown>): Promise<boolean> {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const res = await fetch(apiUrl(path), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+        body: JSON.stringify(body),
+      })
+      if (res.ok) return true
+      if (res.status < 500) return false
+    } catch {
+      // Network blip — worth exactly one more try.
+    }
+  }
+  return false
+}
+
+export function postTrollRunDeath(gameId: string, resumeToken: string, levelId: string, levelName: string) {
+  return postTrollRunReport('/api/troll-run/report-death', {
+    gameId: gameId.toUpperCase(),
+    resumeToken,
+    levelId,
+    levelName,
+  })
+}
+
+export function postTrollRunClear(
+  gameId: string,
+  resumeToken: string,
+  levelId: string,
+  levelName: string,
+  timeMs: number
+) {
+  return postTrollRunReport('/api/troll-run/report-clear', {
+    gameId: gameId.toUpperCase(),
+    resumeToken,
+    levelId,
+    levelName,
+    timeMs: Math.max(0, Math.round(timeMs)),
+  })
+}
+
+/**
+ * Claims the round as finished. Nothing about the result is sent: the server accepts the claim
+ * only if its own progress row shows every level cleared, and reads the finishing time off the
+ * shared round clock.
+ */
+export function postTrollRunRoundFinish(gameId: string, resumeToken: string) {
+  return postTrollRunReport('/api/troll-run/report-round-finish', {
+    gameId: gameId.toUpperCase(),
+    resumeToken,
+  })
+}
+
+/**
+ * Pokes the deadline-driven phase machine (countdown → racing → scoreboard). Tokenless and
+ * idempotent: it can only apply a transition the clock has already earned, never skip a round.
+ */
+export function postTrollRunSync(gameId: string) {
+  return postJson<{ success?: boolean; skipped?: boolean; phase?: string }>('/api/troll-run/sync', {
+    gameId: gameId.toUpperCase(),
+  })
+}
+
+/**
+ * Leaves the between-rounds scoreboard for the next round. Host-only, because unlike every other
+ * Troll Run transition this one is a decision rather than a deadline — the server rejects
+ * `forceNextRound` without the host token.
+ */
+export function postTrollRunNextRound(gameId: string, hostToken: string) {
+  return postJson<{ ok?: boolean; code?: string; phase?: string }>('/api/troll-run/advance', {
+    gameId: gameId.toUpperCase(),
+    hostToken,
+    forceNextRound: true,
+  })
 }

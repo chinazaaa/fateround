@@ -3,6 +3,7 @@ import {
   MONOPOLY_BOARD,
   MONOPOLY_EXPANDED_BOARD,
   MONOPOLY_MAX_PLAYERS,
+  goSalaryForSize,
   housesInBankForSize,
   hotelsInBankForSize,
   monopolyGoToJailPosition,
@@ -25,8 +26,8 @@ import { buildColorGroupStatuses } from '@/lib/monopoly-color-portfolio'
 import { formatTradeSideText, tradeSideHasValue } from '@/lib/monopoly-trade-messages'
 
 describe('Estate Kings expanded board', () => {
-  it('supports eight players while preserving the classic board', () => {
-    expect(MONOPOLY_MAX_PLAYERS).toBe(8)
+  it('supports nine players while preserving the classic board', () => {
+    expect(MONOPOLY_MAX_PLAYERS).toBe(9)
     expect(MONOPOLY_BOARD).toHaveLength(40)
     expect(spaceAt(10).type).toBe('jail')
   })
@@ -234,5 +235,10 @@ describe('Estate Kings expanded board', () => {
   it('quadruples starting capital per player for 48-space board (6000 vs 1500)', () => {
     expect(startingCashForSize(40)).toBe(1500)
     expect(startingCashForSize(48)).toBe(6000)
+  })
+
+  it('quadruples the PAYDAY salary for 48-space board (800 vs 200)', () => {
+    expect(goSalaryForSize(40)).toBe(200)
+    expect(goSalaryForSize(48)).toBe(800)
   })
 })

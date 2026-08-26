@@ -338,7 +338,7 @@ export function pickTriviaQuestions(
 
 const TRIVIA_CAT_LABELS: Record<string, string> = {
   tech: 'Tech',
-  general: 'General (All)',
+  general: 'General knowledge',
   art: 'Art',
   food: 'Food',
   geography: 'Geography',
@@ -356,6 +356,29 @@ const TRIVIA_CAT_LABELS: Record<string, string> = {
   world_culture: 'World Culture',
 }
 
-export function triviaCategoryLabel(category: TriviaCategory): string {
-  return TRIVIA_CAT_LABELS[category] ?? category
+/**
+ * Display label for a stored category.
+ *
+ * Takes a loose string because the read sites (lobby chips, host panels) get the column
+ * straight off the game row. Anything unrecognised falls back to the general label rather
+ * than leaking a raw enum value like `pop_culture` into the UI.
+ */
+export function triviaCategoryLabel(category: string | null | undefined): string {
+  return (category && TRIVIA_CAT_LABELS[category]) || TRIVIA_CAT_LABELS.general
 }
+
+/**
+ * Options for a category picker, in display order — the single list behind the create page
+ * and the lobby edit sheet. Both used to hand-maintain their own array, and the lobby one
+ * had drifted down to just Tech/General, so re-opening the settings of a Maths room showed
+ * "General" preselected.
+ */
+export const TRIVIA_CATEGORY_OPTIONS: readonly { value: TriviaCategory; label: string }[] = (
+  Object.keys(TRIVIA_CAT_LABELS) as TriviaCategory[]
+)
+  .map((value) => ({
+    // The picker spells out what "general" draws from; chips use the short label.
+    value,
+    label: value === 'general' ? 'General (All Categories)' : TRIVIA_CAT_LABELS[value],
+  }))
+  .sort((a, b) => (a.value === 'general' ? -1 : b.value === 'general' ? 1 : a.label.localeCompare(b.label)))

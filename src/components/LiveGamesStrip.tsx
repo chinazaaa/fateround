@@ -14,6 +14,8 @@ import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { gameTypeConfig, parseGameType } from '@/lib/game-types'
 import { getPlayerSession } from '@/lib/utils'
+import { readHostToken } from '@/lib/host-session'
+import { useActiveGames } from '@/lib/active-games'
 import type { PublicGame } from '@/lib/game-browse'
 
 const PREVIEW_LIMIT = 5
@@ -25,6 +27,11 @@ export function LiveGamesStrip() {
   // Uppercased set of game codes this browser has a player session for, so we
   // can flip the CTA to "Continue" on games the viewer has already joined.
   const [joinedSet, setJoinedSet] = useState<Set<string>>(() => new Set())
+  // Profile-level, so it also covers a game you're in from ANOTHER device and a host with no
+  // player seat — both of which `joinedSet` (this browser's sessions) missed. Used to turn a
+  // "Join" card into a "Continue" one, never to hide the game: closing a tab by accident is
+  // the common way to lose a game you're running, and a list that omits it leaves no way back.
+  const { byCode: myActiveGames } = useActiveGames()
   const inFlight = useRef(false)
 
   const load = useCallback(async () => {
@@ -103,12 +110,30 @@ export function LiveGamesStrip() {
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {shown.map((game) => {
             const cfg = gameTypeConfig(parseGameType(game.game_type))
-            const count = game.max_players != null ? `${game.playerCount}/${game.max_players}` : `${game.playerCount}`
+            const playerLabel =
+              game.max_players != null ? `${game.playerCount}/${game.max_players}` : `${game.playerCount}`
+            const attendance =
+              `${playerLabel} player${game.playerCount === 1 ? '' : 's'}` +
+              (game.viewerCount > 0 ? ` · ${game.viewerCount} watching` : '')
             const isLobby = game.status === 'waiting'
             const isActive = game.status === 'active'
             const isFull = game.max_players != null && game.playerCount >= game.max_players
             const lateJoinable = isActive && game.allow_late_players === true && !isFull
-            const alreadyJoined = joinedSet.has(game.id.toUpperCase())
+            // Profile first (covers another device, and a host with no seat), then this
+            // browser's own session as a fallback for a guest with no profile.
+            const apiRole = myActiveGames.get(game.id.toUpperCase())
+            // Local host-token check overrides the API role. When a host is ALSO seated
+            // as a player and the game's host_user_id doesn't match this profile (e.g.
+            // guest-created game whose host_user_id was never backfilled on signup), the
+            // API returns 'player' — routing the host to /game and stripping their host
+            // rights. On the device that literally holds the host token, always resume
+            // as host.
+            const hasHostTokenHere = !!readHostToken(game.id)
+            const myRole: 'host' | 'player' | undefined = hasHostTokenHere ? 'host' : apiRole
+            const alreadyJoined = !!myRole || joinedSet.has(game.id.toUpperCase())
+            // Resume where the role actually lives: /host reclaims the host token, /game
+            // continues the seat. Sending a host to /game would seat them as a player.
+            const resumeHref = myRole === 'host' ? `/host/${game.id}` : `/game/${game.id}`
             const stateLine = isLobby
               ? isFull
                 ? 'Lobby full'
@@ -133,15 +158,15 @@ export function LiveGamesStrip() {
                   {cfg.card.emoji}
                 </span>
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-bold" style={{ color: 'var(--text)' }}>
+                  <div className="line-clamp-2 text-sm font-bold break-words" style={{ color: 'var(--text)' }}>
                     {cfg.label}
                   </div>
-                  <div className="truncate text-xs" style={{ color: 'var(--text-muted)' }}>
-                    {stateLine} · {count} player{game.playerCount === 1 ? '' : 's'}
+                  <div className="line-clamp-2 text-xs break-words" style={{ color: 'var(--text-muted)' }}>
+                    {stateLine} · {attendance}
                   </div>
                 </div>
                 <Link
-                  href={`/game/${game.id}`}
+                  href={alreadyJoined ? resumeHref : `/game/${game.id}`}
                   className={`${ctaClass} btn-fit px-3 py-1.5 text-xs`}
                   target="_blank"
                   rel="noopener noreferrer"

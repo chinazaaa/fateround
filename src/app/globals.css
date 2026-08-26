@@ -84,11 +84,32 @@ body:has(.fr-site) .app-fixed-theme-toggle {
 
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+
+  /* ── Game-surface tokens ────────────────────────────────────────
+   * Read by the actual game boards (whot, ludo, sudoku, monopoly).
+   * Site themes (pirate/arctic/naija/…) inherit these defaults; the
+   * per-game paid themes (ludo-wooden, whot-neon, sudoku-newsprint,
+   * …) override the ones that carry their identity so a bought theme
+   * actually repaints the board, not just the page chrome around it.
+   * NEVER hardcode a board colour in a component — use these tokens
+   * so a future theme can retint without touching every game file. */
+  --game-board-bg: #ffffff; /* Board "paper" — Ludo track, Sudoku cells, Whot felt */
+  --game-board-fg: var(--foreground); /* Digits/text on the board */
+  --game-board-grid: rgba(203, 213, 225, 0.6); /* Thin grid lines (slate-300/60 default) */
+  --game-board-block: rgba(100, 116, 139, 0.7); /* Thick 3x3 / cell block dividers */
+  --game-page-bg: var(--background); /* Page-level backdrop the board sits on */
+  --game-accent: var(--primary); /* Deck/card accent, primary game colour */
+  --game-selected-bg: rgba(99, 102, 241, 0.35); /* Selected-cell / active highlight */
+  --game-highlight-bg: rgba(56, 189, 248, 0.3); /* Same-number highlight */
 }
 
 /* ── Dark theme override ────────────────────────────────────────── */
 [data-theme='dark'] {
   color-scheme: dark;
+
+  --game-board-bg: #0f172a; /* slate-900 — dark board paper */
+  --game-board-grid: rgba(71, 85, 105, 0.6); /* slate-600/60 */
+  --game-board-block: rgba(148, 163, 184, 0.7); /* slate-400/70 */
 
   --background: #08080f;
   --background-soft: #0e0e16;
@@ -870,6 +891,46 @@ body {
   transition:
     background-color 0.3s ease,
     color 0.2s ease;
+}
+
+/* ── Boot overlay ────────────────────────────────────────────────
+ * Painted from the server-rendered HTML in layout.tsx so it's on
+ * screen from the first paint — before React hydrates. Bridges the
+ * gap on iOS Safari cold-renders (e.g. tab returning from background
+ * after memory eviction) so users don't see a near-white flash
+ * before the game view mounts. BootLoaderHider (client) fades it
+ * out ~250ms after hydration; stays in the DOM to avoid hydration
+ * mismatch. */
+#app-boot-loader {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--background);
+  pointer-events: none;
+  opacity: 1;
+  transition: opacity 200ms ease;
+}
+body.app-hydrated #app-boot-loader {
+  opacity: 0;
+}
+#app-boot-loader.app-boot-loader--gone {
+  display: none;
+}
+.app-boot-spinner {
+  width: 44px;
+  height: 44px;
+  border: 2px solid var(--primary, #6366f1);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: app-boot-spin 0.8s linear infinite;
+}
+@keyframes app-boot-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* ── Ambient background ─────────────────────────────────────────── */
@@ -2118,14 +2179,28 @@ select.input-field option,
 
 /* ── Custom Utilities ───────────────────────────────────────────── */
 @theme {
-  --animate-intermittent-shake: intermittent-shake 5s cubic-bezier(.36,.07,.19,.97) infinite;
+  --animate-intermittent-shake: intermittent-shake 5s cubic-bezier(0.36, 0.07, 0.19, 0.97) infinite;
   @keyframes intermittent-shake {
-    0%, 80% { transform: translateX(0); }
-    82% { transform: translateX(-4px) rotate(-3deg); }
-    84% { transform: translateX(4px) rotate(3deg); }
-    86% { transform: translateX(-4px) rotate(-3deg); }
-    88% { transform: translateX(4px) rotate(3deg); }
-    90%, 100% { transform: translateX(0); }
+    0%,
+    80% {
+      transform: translateX(0);
+    }
+    82% {
+      transform: translateX(-4px) rotate(-3deg);
+    }
+    84% {
+      transform: translateX(4px) rotate(3deg);
+    }
+    86% {
+      transform: translateX(-4px) rotate(-3deg);
+    }
+    88% {
+      transform: translateX(4px) rotate(3deg);
+    }
+    90%,
+    100% {
+      transform: translateX(0);
+    }
   }
 }
 
@@ -2134,3 +2209,838 @@ select option {
   color: var(--foreground) !important;
 }
 
+/* ── Phase 3 coin-shop cosmetics ────────────────────────────────── */
+/* Name color CSS-var flip so PlayerName is theme-aware without prop drilling. */
+.fr-name-solid {
+  color: var(--pname-solid-light);
+}
+[data-theme='dark'] .fr-name-solid {
+  color: var(--pname-solid-dark);
+}
+.fr-name-gradient {
+  background-image: var(--pname-gradient-light);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+[data-theme='dark'] .fr-name-gradient {
+  background-image: var(--pname-gradient-dark);
+}
+
+/* Avatar frame decorations layered over the ring set inline in Avatar.tsx.
+   Kept as ::before pseudo-elements so no wrapper markup is required — the
+   ring itself carries the shadow, these add texture on top. */
+.fr-frame-laurel::before {
+  content: '';
+  position: absolute;
+  inset: -6px;
+  border-radius: 9999px;
+  background: conic-gradient(
+    from 200deg,
+    transparent 0deg,
+    rgba(183, 141, 63, 0.45) 20deg,
+    transparent 60deg,
+    transparent 300deg,
+    rgba(183, 141, 63, 0.45) 320deg,
+    transparent 360deg
+  );
+  pointer-events: none;
+}
+.fr-frame-stars::before {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 9999px;
+  background:
+    radial-gradient(1px 1px at 20% 30%, rgba(255, 255, 255, 0.85), transparent 60%),
+    radial-gradient(1px 1px at 75% 20%, rgba(255, 255, 255, 0.85), transparent 60%),
+    radial-gradient(1px 1px at 80% 70%, rgba(255, 255, 255, 0.85), transparent 60%),
+    radial-gradient(1px 1px at 25% 78%, rgba(255, 255, 255, 0.85), transparent 60%);
+  pointer-events: none;
+}
+
+/* Card templates — wrapper styling on the results-share capture container. */
+.fr-card-gold-luxe {
+  padding: 1rem;
+  border-radius: 1rem;
+  background: linear-gradient(160deg, #1a1208 0%, #0f0a03 100%);
+  color: #f5e7bf;
+  box-shadow: inset 0 0 0 1px #d4a017;
+}
+.fr-card-gold-luxe .gradient-title {
+  background-image: linear-gradient(90deg, #f5e7bf, #d4a017);
+}
+.fr-card-neon {
+  padding: 1rem;
+  border-radius: 1rem;
+  background: linear-gradient(160deg, #0b0f1e 0%, #05060b 100%);
+  color: #e5e7eb;
+  box-shadow:
+    inset 0 0 0 1px #22d3ee,
+    0 0 20px rgba(34, 211, 238, 0.25);
+}
+.fr-card-neon .gradient-title {
+  background-image: linear-gradient(90deg, #22d3ee, #d946ef);
+}
+
+/* Winner animations — pure-CSS particle effects using the box-shadow
+   many-particle trick. A single 6px element casts 30+ colored shadows,
+   each a distinct particle. Cheap to render (one DOM node per layer,
+   GPU-composited transform + opacity animation) and self-contained so
+   the Lottie swap later is still a one-file change. Class names and
+   .cssClass mapping in src/lib/coins/shop-catalog.ts are unchanged. */
+
+/* --- Confetti: 30 pieces drifting up and out with rotation and fade --- */
+@keyframes fr-anim-confetti-rise {
+  0% {
+    transform: translate3d(0, 20%, 0) rotate(0deg);
+    opacity: 0;
+  }
+  15% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate3d(0, -120%, 0) rotate(540deg);
+    opacity: 0;
+  }
+}
+.fr-anim-confetti {
+  position: relative;
+}
+.fr-anim-confetti::before,
+.fr-anim-confetti::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  width: 6px;
+  height: 10px;
+  border-radius: 1px;
+  background: transparent;
+  animation: fr-anim-confetti-rise 2.6s ease-out 1 forwards;
+  /* 30 particles per pseudo (60 total). Each shadow: x-offset y-offset
+     blur=0 spread=0 color. Positions span the viewport horizontally,
+     staggered slightly in y so the rise reads as a burst-and-drift. */
+  box-shadow:
+    -46vw 2vh 0 0 #f472b6,
+    -42vw -1vh 0 0 #22d3ee,
+    -38vw 3vh 0 0 #fcd34d,
+    -34vw 0 0 0 #a78bfa,
+    -30vw 4vh 0 0 #4ade80,
+    -26vw 1vh 0 0 #f472b6,
+    -22vw -2vh 0 0 #fb923c,
+    -18vw 2vh 0 0 #22d3ee,
+    -14vw 4vh 0 0 #fcd34d,
+    -10vw 0 0 0 #a78bfa,
+    -6vw 3vh 0 0 #4ade80,
+    -2vw 1vh 0 0 #f472b6,
+    2vw 4vh 0 0 #fb923c,
+    6vw -1vh 0 0 #22d3ee,
+    10vw 2vh 0 0 #fcd34d,
+    14vw 0 0 0 #a78bfa,
+    18vw 3vh 0 0 #4ade80,
+    22vw 1vh 0 0 #f472b6,
+    26vw 4vh 0 0 #fb923c,
+    30vw -2vh 0 0 #22d3ee,
+    34vw 2vh 0 0 #fcd34d,
+    38vw 0 0 0 #a78bfa,
+    42vw 4vh 0 0 #4ade80,
+    46vw 1vh 0 0 #f472b6,
+    -20vw 6vh 0 0 #22d3ee,
+    20vw 6vh 0 0 #fb923c,
+    -8vw 5vh 0 0 #4ade80,
+    8vw 5vh 0 0 #fcd34d,
+    -14vw 7vh 0 0 #a78bfa,
+    14vw 7vh 0 0 #f472b6;
+}
+.fr-anim-confetti::after {
+  /* Second wave, larger particles + slight delay for depth. */
+  width: 8px;
+  height: 12px;
+  animation-delay: 0.15s;
+  animation-duration: 3s;
+  box-shadow:
+    -44vw 4vh 0 0 #fcd34d,
+    -36vw -3vh 0 0 #22d3ee,
+    -28vw 5vh 0 0 #f472b6,
+    -20vw 1vh 0 0 #a78bfa,
+    -12vw 6vh 0 0 #fb923c,
+    -4vw -1vh 0 0 #4ade80,
+    4vw 6vh 0 0 #22d3ee,
+    12vw 1vh 0 0 #fcd34d,
+    20vw 5vh 0 0 #f472b6,
+    28vw -3vh 0 0 #a78bfa,
+    36vw 4vh 0 0 #fb923c,
+    44vw 0 0 0 #4ade80,
+    -40vw 8vh 0 0 #f472b6,
+    -24vw 8vh 0 0 #fb923c,
+    -8vw 9vh 0 0 #22d3ee,
+    8vw 9vh 0 0 #fcd34d,
+    24vw 8vh 0 0 #a78bfa,
+    40vw 8vh 0 0 #4ade80;
+}
+
+/* --- Fireworks: 3 staggered bursts, each an expanding ring --- */
+@keyframes fr-anim-fireworks-burst {
+  0% {
+    transform: scale(0.1);
+    opacity: 0;
+  }
+  20% {
+    opacity: 1;
+  }
+  70% {
+    opacity: 0.9;
+  }
+  100% {
+    transform: scale(3.2);
+    opacity: 0;
+  }
+}
+.fr-anim-fireworks {
+  position: relative;
+}
+.fr-anim-fireworks::before,
+.fr-anim-fireworks::after {
+  content: '';
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  border-radius: 9999px;
+  background: transparent;
+  animation: fr-anim-fireworks-burst 1.5s ease-out 1 forwards;
+}
+/* First burst — top-left, gold. 12 sparks radiating from center. */
+.fr-anim-fireworks::before {
+  left: 28%;
+  top: 30%;
+  box-shadow:
+    0 -18px 0 0 #fcd34d,
+    12px -14px 0 0 #fcd34d,
+    18px 0 0 0 #fcd34d,
+    14px 12px 0 0 #fcd34d,
+    0 18px 0 0 #fcd34d,
+    -12px 14px 0 0 #fcd34d,
+    -18px 0 0 0 #fcd34d,
+    -14px -12px 0 0 #fcd34d,
+    0 -10px 0 0 #fef3c7,
+    10px 0 0 0 #fef3c7,
+    0 10px 0 0 #fef3c7,
+    -10px 0 0 0 #fef3c7;
+}
+/* Second burst — right, magenta. Delayed. */
+.fr-anim-fireworks::after {
+  left: 68%;
+  top: 45%;
+  animation-delay: 0.4s;
+  box-shadow:
+    0 -18px 0 0 #f472b6,
+    12px -14px 0 0 #f472b6,
+    18px 0 0 0 #f472b6,
+    14px 12px 0 0 #f472b6,
+    0 18px 0 0 #f472b6,
+    -12px 14px 0 0 #f472b6,
+    -18px 0 0 0 #f472b6,
+    -14px -12px 0 0 #f472b6,
+    0 -10px 0 0 #fce7f3,
+    10px 0 0 0 #fce7f3,
+    0 10px 0 0 #fce7f3,
+    -10px 0 0 0 #fce7f3;
+}
+/* Third burst — bottom-center, cyan. Adds a wrapper element via a child
+   div isn't possible here, so we layer via ::before of a nested element.
+   The overlay component only renders one element, so we simulate the
+   third burst by using a large radial-gradient painted on the wrapper. */
+.fr-anim-fireworks {
+  background: radial-gradient(circle 3px at 50% 78%, transparent 0, transparent 100%);
+  animation: fr-anim-fireworks-third 1.8s ease-out 0.75s 1 forwards;
+}
+@keyframes fr-anim-fireworks-third {
+  0% {
+    background:
+      radial-gradient(circle 2px at 50% 78%, #22d3ee 0%, transparent 3px),
+      radial-gradient(circle 2px at 45% 74%, #22d3ee 0%, transparent 3px),
+      radial-gradient(circle 2px at 55% 74%, #22d3ee 0%, transparent 3px),
+      radial-gradient(circle 2px at 43% 80%, #22d3ee 0%, transparent 3px),
+      radial-gradient(circle 2px at 57% 80%, #22d3ee 0%, transparent 3px),
+      radial-gradient(circle 2px at 50% 70%, #cffafe 0%, transparent 3px),
+      radial-gradient(circle 2px at 50% 86%, #cffafe 0%, transparent 3px);
+    opacity: 0;
+  }
+  20% {
+    opacity: 1;
+  }
+  100% {
+    background:
+      radial-gradient(circle 3px at 50% 60%, transparent 0%, transparent 100%),
+      radial-gradient(circle 3px at 30% 58%, transparent 0%, transparent 100%),
+      radial-gradient(circle 3px at 70% 58%, transparent 0%, transparent 100%),
+      radial-gradient(circle 3px at 24% 74%, transparent 0%, transparent 100%),
+      radial-gradient(circle 3px at 76% 74%, transparent 0%, transparent 100%),
+      radial-gradient(circle 3px at 50% 52%, transparent 0%, transparent 100%),
+      radial-gradient(circle 3px at 50% 94%, transparent 0%, transparent 100%);
+    opacity: 0;
+  }
+}
+
+/* --- Gold shower: 24 coin-shaped particles falling with staggered
+   timing, with a soft trailing glow behind them --- */
+@keyframes fr-anim-gold-shower-fall {
+  /* Translate uses vh (viewport-scaled) so the fall distance matches the
+     vh-scaled y-offsets on the box-shadow particles below. Percent units
+     were relative to the 8px pseudo-element (~20px total travel) and left
+     the particles stuck at their -10vh…-48vh starting positions, well
+     above any smaller preview container. vh translate carries them
+     through the whole viewport height, so the shower reads correctly
+     both fullscreen (winner overlay) and in the shop preview modal. */
+  0% {
+    transform: translate3d(0, -60vh, 0);
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  90% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate3d(0, 60vh, 0);
+    opacity: 0;
+  }
+}
+.fr-anim-gold-shower {
+  position: relative;
+  overflow: hidden;
+}
+.fr-anim-gold-shower::before,
+.fr-anim-gold-shower::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  background: transparent;
+  animation: fr-anim-gold-shower-fall 2.4s ease-in 1 forwards;
+  /* Gold coin particles — radial gradient makes each shadow read as a
+     round coin with a highlight. 12 per pseudo (24 total), spread across
+     the viewport horizontally, staggered vertically so the fall looks
+     continuous instead of layered. */
+  box-shadow:
+    -45vw -10vh 0 0 #f6c453,
+    -37vw -20vh 0 0 #d4a017,
+    -29vw -5vh 0 0 #fcd34d,
+    -21vw -25vh 0 0 #f6c453,
+    -13vw -15vh 0 0 #d4a017,
+    -5vw -30vh 0 0 #fcd34d,
+    5vw -8vh 0 0 #f6c453,
+    13vw -22vh 0 0 #d4a017,
+    21vw -12vh 0 0 #fcd34d,
+    29vw -28vh 0 0 #f6c453,
+    37vw -6vh 0 0 #d4a017,
+    45vw -18vh 0 0 #fcd34d;
+}
+.fr-anim-gold-shower::after {
+  /* Second wave, offset in time + position, smaller particles for depth. */
+  width: 6px;
+  height: 6px;
+  animation-delay: 0.4s;
+  animation-duration: 2.6s;
+  box-shadow:
+    -41vw -40vh 0 0 #fcd34d,
+    -33vw -32vh 0 0 #d4a017,
+    -25vw -45vh 0 0 #f6c453,
+    -17vw -35vh 0 0 #fcd34d,
+    -9vw -48vh 0 0 #d4a017,
+    -1vw -38vh 0 0 #f6c453,
+    7vw -44vh 0 0 #fcd34d,
+    15vw -34vh 0 0 #d4a017,
+    23vw -46vh 0 0 #f6c453,
+    31vw -36vh 0 0 #fcd34d,
+    39vw -42vh 0 0 #d4a017,
+    47vw -34vh 0 0 #f6c453;
+}
+
+/* Honor the viewer's reduced-motion preference for the winner-animation
+   overlays (reviewer round 6 finding #11). The one-shot celebratory
+   animations are pure decoration; suppress them entirely for anyone
+   who has asked their OS to reduce motion. */
+@media (prefers-reduced-motion: reduce) {
+  .fr-anim-confetti,
+  .fr-anim-confetti::before,
+  .fr-anim-confetti::after,
+  .fr-anim-fireworks,
+  .fr-anim-fireworks::before,
+  .fr-anim-fireworks::after,
+  .fr-anim-gold-shower,
+  .fr-anim-gold-shower::before,
+  .fr-anim-gold-shower::after {
+    animation: none;
+    opacity: 0;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Per-game paid theme palettes (Phase 3 shop)
+ *
+ * The per-game reskins (ludo-wooden, ludo-naija, whot-neon, whot-naija,
+ * sudoku-minimalist, sudoku-newsprint) shipped with only preview swatches
+ * in themes.ts — the actual `[data-game-theme='<slug>']` CSS blocks
+ * never landed, so a bought paid theme looked identical to default on
+ * the real game board. That reads as a scam to the buyer, so the blocks
+ * are added here even though full art delivery is a separate PR.
+ *
+ * Each block sets the same variable surface the app-wide themes above
+ * (pirate, arctic, naija, neon, retro, elegant, tropical) already set,
+ * so the whole game screen — background, glass cards, primary buttons,
+ * gradient title, avatar chips — repaints with the theme's palette.
+ * Textures (wood grain / paper speckle / neon glow) live in `--bg-gradient`.
+ *
+ * Selector shape mirrors the app-wide theme blocks: the `:not(...)`
+ * guards keep the light block from applying inside a dark-forced subtree
+ * and vice-versa. All six themes ship both a light and a dark variant
+ * so the site-mode toggle keeps working per user preference.
+ * ────────────────────────────────────────────────────────────────────── */
+
+/* ── Wooden Ludo (Light) ─────────────────────────────────────── */
+:root[data-game-theme='ludo-wooden']:not([data-theme='dark']),
+[data-game-theme='ludo-wooden']:not([data-theme='dark']) {
+  --background: #e8d3b0;
+  --background-soft: #f0dfc0;
+  --foreground: #2a1a0d;
+  --muted: #5a3d24;
+  --faint: #8a6a48;
+  --card: rgba(240, 223, 192, 0.88);
+  --card-strong: rgba(248, 232, 205, 0.96);
+  --card-hover: rgba(252, 240, 215, 0.92);
+  --surface-inset-bg: rgba(42, 26, 13, 0.06);
+  --border: rgba(139, 90, 43, 0.35);
+  --border-strong: rgba(139, 90, 43, 0.55);
+  --card-shadow: 0 1px 3px rgba(42, 26, 13, 0.15), 0 4px 16px rgba(139, 90, 43, 0.12);
+  --card-shadow-strong: 0 8px 32px rgba(42, 26, 13, 0.22), 0 2px 8px rgba(139, 90, 43, 0.15);
+  --card-shadow-glow: 0 0 0 1px rgba(217, 119, 6, 0.35), 0 8px 32px rgba(217, 119, 6, 0.22);
+  --bg-gradient:
+    repeating-linear-gradient(
+      90deg,
+      transparent 0px,
+      transparent 6px,
+      rgba(139, 90, 43, 0.06) 6px,
+      rgba(139, 90, 43, 0.06) 7px
+    ),
+    radial-gradient(ellipse 80% 60% at 50% -10%, rgba(217, 119, 6, 0.14) 0%, transparent 60%);
+  --primary: #b45309;
+  --primary-strong: #92400e;
+  --primary-glow: rgba(180, 83, 9, 0.4);
+  --avatar-bg: rgba(180, 83, 9, 0.15);
+  --avatar-border: rgba(180, 83, 9, 0.35);
+  --avatar-color: #92400e;
+  --gradient-title-start: #2a1a0d;
+  --gradient-title-end: #b45309;
+  --modal-backdrop: rgba(42, 26, 13, 0.6);
+  /* Wooden Ludo — carved-oak feel. Board = warm cream with grain, cell
+   * borders + track = dark walnut, page = deep espresso so the board
+   * pops against a wood-toned backdrop. */
+  --game-board-bg: #f5deb3;
+  --game-board-fg: #2a1a0d;
+  --game-board-grid: rgba(74, 40, 20, 0.45);
+  --game-board-block: rgba(74, 40, 20, 0.7);
+  --game-page-bg: #3d2b1f;
+  --game-accent: #b45309;
+}
+
+/* ── Wooden Ludo (Dark) ──────────────────────────────────────── */
+[data-theme='dark'][data-game-theme='ludo-wooden']:not([data-theme='light']),
+:root[data-theme='dark'] [data-game-theme='ludo-wooden']:not([data-theme='light']),
+[data-theme='dark'] [data-game-theme='ludo-wooden']:not([data-theme='light']) {
+  --background: #3d2b1f;
+  --background-soft: #4a3626;
+  --foreground: #faf3e6;
+  --muted: #c9b28e;
+  --faint: #9a8368;
+  --card: rgba(74, 54, 38, 0.85);
+  --card-strong: rgba(90, 66, 46, 0.95);
+  --card-hover: rgba(105, 78, 55, 0.9);
+  --surface-inset-bg: rgba(0, 0, 0, 0.25);
+  --border: rgba(217, 119, 6, 0.35);
+  --border-strong: rgba(217, 119, 6, 0.55);
+  --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.5), 0 4px 20px rgba(0, 0, 0, 0.3);
+  --card-shadow-strong: 0 12px 48px rgba(0, 0, 0, 0.55), 0 0 20px rgba(217, 119, 6, 0.18);
+  --card-shadow-glow: 0 0 0 1px rgba(217, 119, 6, 0.4), 0 8px 40px rgba(217, 119, 6, 0.25);
+  --bg-gradient:
+    repeating-linear-gradient(
+      90deg,
+      transparent 0px,
+      transparent 6px,
+      rgba(255, 220, 170, 0.04) 6px,
+      rgba(255, 220, 170, 0.04) 7px
+    ),
+    radial-gradient(ellipse 80% 55% at 50% -10%, rgba(217, 119, 6, 0.18) 0%, transparent 55%);
+  --primary: #f59e0b;
+  --primary-strong: #d97706;
+  --primary-glow: rgba(245, 158, 11, 0.45);
+  --avatar-bg: rgba(245, 158, 11, 0.18);
+  --avatar-border: rgba(245, 158, 11, 0.4);
+  --avatar-color: #f59e0b;
+  --gradient-title-start: #faf3e6;
+  --gradient-title-end: #f59e0b;
+  --modal-backdrop: rgba(20, 12, 6, 0.75);
+  /* Wooden Ludo dark = deep walnut board, amber accents. */
+  --game-board-bg: #6b4423;
+  --game-board-fg: #faf3e6;
+  --game-board-grid: rgba(250, 243, 230, 0.28);
+  --game-board-block: rgba(250, 243, 230, 0.5);
+  --game-page-bg: #2a1a0d;
+  --game-accent: #f59e0b;
+}
+
+/* ── Naija Ludo (Light) — shared palette with Naija Whot ─────── */
+:root[data-game-theme='ludo-naija']:not([data-theme='dark']),
+[data-game-theme='ludo-naija']:not([data-theme='dark']),
+:root[data-game-theme='whot-naija']:not([data-theme='dark']),
+[data-game-theme='whot-naija']:not([data-theme='dark']) {
+  --background: #ede3d3;
+  --background-soft: #f5ecdb;
+  --foreground: #002d1a;
+  --muted: #2a5040;
+  --faint: #5c7060;
+  --card: rgba(255, 255, 255, 0.75);
+  --card-strong: rgba(255, 255, 255, 0.92);
+  --card-hover: rgba(250, 246, 235, 0.9);
+  --surface-inset-bg: rgba(0, 45, 26, 0.06);
+  --border: rgba(0, 135, 81, 0.3);
+  --border-strong: rgba(0, 135, 81, 0.5);
+  --card-shadow: 0 1px 3px rgba(0, 45, 26, 0.12), 0 4px 16px rgba(0, 135, 81, 0.1);
+  --card-shadow-strong: 0 8px 32px rgba(0, 45, 26, 0.2), 0 2px 8px rgba(0, 135, 81, 0.15);
+  --card-shadow-glow: 0 0 0 1px rgba(0, 135, 81, 0.35), 0 8px 32px rgba(0, 135, 81, 0.22);
+  --bg-gradient:
+    radial-gradient(ellipse 90% 60% at 50% -20%, rgba(0, 135, 81, 0.18) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 40% at 90% 80%, rgba(200, 16, 46, 0.1) 0%, transparent 50%);
+  --primary: #008751;
+  --primary-strong: #006638;
+  --primary-glow: rgba(0, 135, 81, 0.4);
+  --avatar-bg: rgba(0, 135, 81, 0.15);
+  --avatar-border: rgba(0, 135, 81, 0.35);
+  --avatar-color: #006638;
+  --gradient-title-start: #002d1a;
+  --gradient-title-end: #008751;
+  --modal-backdrop: rgba(0, 30, 18, 0.6);
+  /* Naija (Ludo + Whot) — cream board with Nigerian-green accents. */
+  --game-board-bg: #fbf6e6;
+  --game-board-fg: #002d1a;
+  --game-board-grid: rgba(0, 135, 81, 0.28);
+  --game-board-block: rgba(0, 135, 81, 0.6);
+  --game-page-bg: #008751;
+  --game-accent: #008751;
+  /* Card face: soft Nigerian-green wash + green border so cards read as
+   * "Naija" cards without drowning the per-shape identity. */
+  --game-card-tint: rgba(0, 135, 81, 0.08);
+  --game-card-glow: 0 0 6px rgba(0, 135, 81, 0.3);
+  --game-card-border: rgba(0, 135, 81, 0.55);
+}
+
+/* ── Naija Ludo / Naija Whot (Dark) ──────────────────────────── */
+[data-theme='dark'][data-game-theme='ludo-naija']:not([data-theme='light']),
+:root[data-theme='dark'] [data-game-theme='ludo-naija']:not([data-theme='light']),
+[data-theme='dark'] [data-game-theme='ludo-naija']:not([data-theme='light']),
+[data-theme='dark'][data-game-theme='whot-naija']:not([data-theme='light']),
+:root[data-theme='dark'] [data-game-theme='whot-naija']:not([data-theme='light']),
+[data-theme='dark'] [data-game-theme='whot-naija']:not([data-theme='light']) {
+  --background: #002d1a;
+  --background-soft: #003d24;
+  --foreground: #ede3d3;
+  --muted: #a8b8a0;
+  --faint: #6d7d70;
+  --card: rgba(0, 61, 36, 0.85);
+  --card-strong: rgba(0, 77, 45, 0.95);
+  --card-hover: rgba(0, 92, 55, 0.9);
+  --surface-inset-bg: rgba(0, 0, 0, 0.25);
+  --border: rgba(237, 227, 211, 0.25);
+  --border-strong: rgba(237, 227, 211, 0.4);
+  --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.5), 0 4px 20px rgba(0, 0, 0, 0.3);
+  --card-shadow-strong: 0 12px 48px rgba(0, 0, 0, 0.6), 0 0 20px rgba(0, 200, 120, 0.15);
+  --card-shadow-glow: 0 0 0 1px rgba(0, 200, 120, 0.35), 0 8px 40px rgba(0, 200, 120, 0.2);
+  --bg-gradient:
+    radial-gradient(ellipse 90% 55% at 50% -10%, rgba(0, 200, 120, 0.15) 0%, transparent 55%),
+    radial-gradient(ellipse 50% 35% at 85% 90%, rgba(255, 210, 100, 0.1) 0%, transparent 50%);
+  --primary: #10b981;
+  --primary-strong: #059669;
+  --primary-glow: rgba(16, 185, 129, 0.4);
+  --avatar-bg: rgba(16, 185, 129, 0.18);
+  --avatar-border: rgba(16, 185, 129, 0.4);
+  --avatar-color: #10b981;
+  --gradient-title-start: #ede3d3;
+  --gradient-title-end: #10b981;
+  --modal-backdrop: rgba(0, 15, 9, 0.75);
+  /* Card face: darker forest wash + brighter mint glow for dark mode. */
+  --game-card-tint: rgba(0, 40, 24, 0.5);
+  --game-card-glow: 0 0 12px rgba(16, 185, 129, 0.4);
+  --game-card-border: rgba(16, 185, 129, 0.6);
+  /* Naija dark = dark forest board, mint accents. */
+  --game-board-bg: #003820;
+  --game-board-fg: #ede3d3;
+  --game-board-grid: rgba(237, 227, 211, 0.22);
+  --game-board-block: rgba(237, 227, 211, 0.4);
+  --game-page-bg: #001a10;
+  --game-accent: #10b981;
+}
+
+/* ── Neon Whot (Light — Daylight Circuit) ────────────────────── */
+:root[data-game-theme='whot-neon']:not([data-theme='dark']),
+[data-game-theme='whot-neon']:not([data-theme='dark']) {
+  --background: #e8f4ff;
+  --background-soft: #f0f8ff;
+  --foreground: #0a1a2b;
+  --muted: #3d5878;
+  --faint: #6a85a8;
+  --card: rgba(240, 248, 255, 0.9);
+  --card-strong: rgba(250, 253, 255, 0.96);
+  --card-hover: rgba(235, 245, 255, 0.92);
+  --surface-inset-bg: rgba(10, 26, 43, 0.06);
+  --border: rgba(6, 182, 212, 0.35);
+  --border-strong: rgba(6, 182, 212, 0.55);
+  --card-shadow: 0 1px 3px rgba(10, 26, 43, 0.12), 0 4px 16px rgba(6, 182, 212, 0.12);
+  --card-shadow-strong: 0 8px 32px rgba(10, 26, 43, 0.2), 0 2px 8px rgba(6, 182, 212, 0.18);
+  --card-shadow-glow: 0 0 0 1px rgba(6, 182, 212, 0.4), 0 8px 32px rgba(6, 182, 212, 0.28);
+  --bg-gradient:
+    radial-gradient(ellipse 90% 60% at 50% -10%, rgba(6, 182, 212, 0.18) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 40% at 90% 90%, rgba(217, 70, 239, 0.1) 0%, transparent 50%);
+  --primary: #0891b2;
+  --primary-strong: #0e7490;
+  --primary-glow: rgba(8, 145, 178, 0.45);
+  --avatar-bg: rgba(8, 145, 178, 0.15);
+  --avatar-border: rgba(8, 145, 178, 0.35);
+  --avatar-color: #0e7490;
+  --gradient-title-start: #0a1a2b;
+  --gradient-title-end: #0891b2;
+  --modal-backdrop: rgba(10, 26, 43, 0.6);
+  /* Neon Whot light = pale-cyan surface, teal accents. */
+  --game-board-bg: #f0faff;
+  --game-board-fg: #0a1a2b;
+  --game-board-grid: rgba(8, 145, 178, 0.3);
+  --game-board-block: rgba(8, 145, 178, 0.55);
+  --game-page-bg: #d0ecfa;
+  --game-accent: #0891b2;
+  /* Card-face overlay + glow — layered ON TOP of the per-shape gradient
+   * so Whot's shape identity (circle=blue, cross=green, …) still shows
+   * through, but a Neon Whot card also carries a teal-tinted wash and
+   * a subtle cyan glow. Defaults at :root are transparent/none so
+   * unthemed play is untouched. Tint is intentionally very light in
+   * light mode so shape gradients still read crisply — Neon in light
+   * mode is a 'daylight circuit' feel, not a wash of colour. */
+  --game-card-tint: rgba(8, 145, 178, 0.08);
+  --game-card-glow: 0 0 8px rgba(8, 145, 178, 0.35);
+  --game-card-border: rgba(8, 145, 178, 0.55);
+}
+
+/* ── Neon Whot (Dark — Midnight Circuit) ─────────────────────── */
+[data-theme='dark'][data-game-theme='whot-neon']:not([data-theme='light']),
+:root[data-theme='dark'] [data-game-theme='whot-neon']:not([data-theme='light']),
+[data-theme='dark'] [data-game-theme='whot-neon']:not([data-theme='light']) {
+  --background: #0a0a14;
+  --background-soft: #12122a;
+  --foreground: #e0ffe0;
+  --muted: #8ab8b0;
+  --faint: #5a7876;
+  --card: rgba(18, 18, 42, 0.85);
+  --card-strong: rgba(26, 26, 60, 0.95);
+  --card-hover: rgba(38, 38, 80, 0.9);
+  --surface-inset-bg: rgba(0, 0, 0, 0.35);
+  --border: rgba(0, 229, 255, 0.4);
+  --border-strong: rgba(0, 229, 255, 0.6);
+  --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.6), 0 4px 20px rgba(0, 229, 255, 0.15);
+  --card-shadow-strong: 0 12px 48px rgba(0, 0, 0, 0.7), 0 0 24px rgba(0, 229, 255, 0.25);
+  --card-shadow-glow: 0 0 0 1px rgba(0, 229, 255, 0.5), 0 8px 40px rgba(0, 229, 255, 0.35);
+  --bg-gradient:
+    radial-gradient(ellipse 90% 55% at 50% -10%, rgba(0, 229, 255, 0.2) 0%, transparent 55%),
+    radial-gradient(ellipse 50% 40% at 20% 100%, rgba(217, 70, 239, 0.15) 0%, transparent 55%),
+    radial-gradient(ellipse 50% 40% at 80% 100%, rgba(255, 100, 200, 0.12) 0%, transparent 55%);
+  --primary: #00e5ff;
+  --primary-strong: #00b8d4;
+  --primary-glow: rgba(0, 229, 255, 0.55);
+  --avatar-bg: rgba(0, 229, 255, 0.2);
+  --avatar-border: rgba(0, 229, 255, 0.5);
+  --avatar-color: #00e5ff;
+  --gradient-title-start: #e0ffe0;
+  --gradient-title-end: #00e5ff;
+  --modal-backdrop: rgba(0, 0, 10, 0.85);
+  /* Neon Whot dark = deep midnight felt, cyan glow. */
+  --game-board-bg: #0a0a14;
+  --game-board-fg: #e0ffe0;
+  --game-board-grid: rgba(0, 229, 255, 0.28);
+  --game-board-block: rgba(0, 229, 255, 0.5);
+  --game-page-bg: #05050c;
+  --game-accent: #00e5ff;
+  /* Card face overlay — dark blue-black wash so the shape gradient reads
+   * as a glow on the card rather than a pastel; plus a cyan neon outer
+   * glow and cyan border. This is where Neon Whot's identity actually
+   * lands on a card in the hand. */
+  --game-card-tint: rgba(5, 8, 22, 0.55);
+  --game-card-glow: 0 0 14px rgba(0, 229, 255, 0.45), 0 0 4px rgba(0, 229, 255, 0.6) inset;
+  --game-card-border: rgba(0, 229, 255, 0.75);
+}
+
+/* ── Minimalist Sudoku (Light) — pure ink on white ───────────── */
+:root[data-game-theme='sudoku-minimalist']:not([data-theme='dark']),
+[data-game-theme='sudoku-minimalist']:not([data-theme='dark']) {
+  --background: #ffffff;
+  --background-soft: #fafafa;
+  --foreground: #0a0a0a;
+  --muted: #525252;
+  --faint: #a3a3a3;
+  --card: rgba(250, 250, 250, 0.92);
+  --card-strong: rgba(255, 255, 255, 0.98);
+  --card-hover: rgba(245, 245, 245, 0.94);
+  --surface-inset-bg: rgba(0, 0, 0, 0.04);
+  --border: rgba(0, 0, 0, 0.12);
+  --border-strong: rgba(0, 0, 0, 0.22);
+  --card-shadow: 0 1px 2px rgba(0, 0, 0, 0.06), 0 2px 8px rgba(0, 0, 0, 0.05);
+  --card-shadow-strong: 0 4px 20px rgba(0, 0, 0, 0.1), 0 1px 4px rgba(0, 0, 0, 0.06);
+  --card-shadow-glow: 0 0 0 1px rgba(0, 0, 0, 0.2), 0 4px 20px rgba(0, 0, 0, 0.1);
+  --bg-gradient: none;
+  --primary: #0a0a0a;
+  --primary-strong: #000000;
+  --primary-glow: rgba(0, 0, 0, 0.2);
+  --avatar-bg: rgba(0, 0, 0, 0.06);
+  --avatar-border: rgba(0, 0, 0, 0.15);
+  --avatar-color: #0a0a0a;
+  --gradient-title-start: #0a0a0a;
+  --gradient-title-end: #525252;
+  --modal-backdrop: rgba(0, 0, 0, 0.5);
+  /* Minimalist Sudoku light = pure white, hairline gray dividers. */
+  --game-board-bg: #ffffff;
+  --game-board-fg: #0a0a0a;
+  --game-board-grid: rgba(0, 0, 0, 0.12);
+  --game-board-block: rgba(0, 0, 0, 0.55);
+  --game-page-bg: #fafafa;
+  --game-accent: #0a0a0a;
+  --game-selected-bg: rgba(0, 0, 0, 0.08);
+  --game-highlight-bg: rgba(0, 0, 0, 0.05);
+}
+
+/* ── Minimalist Sudoku (Dark) — pure ink on charcoal ─────────── */
+[data-theme='dark'][data-game-theme='sudoku-minimalist']:not([data-theme='light']),
+:root[data-theme='dark'] [data-game-theme='sudoku-minimalist']:not([data-theme='light']),
+[data-theme='dark'] [data-game-theme='sudoku-minimalist']:not([data-theme='light']) {
+  --background: #0a0a0a;
+  --background-soft: #171717;
+  --foreground: #fafafa;
+  --muted: #a3a3a3;
+  --faint: #525252;
+  --card: rgba(23, 23, 23, 0.88);
+  --card-strong: rgba(30, 30, 30, 0.96);
+  --card-hover: rgba(40, 40, 40, 0.92);
+  --surface-inset-bg: rgba(255, 255, 255, 0.04);
+  --border: rgba(255, 255, 255, 0.14);
+  --border-strong: rgba(255, 255, 255, 0.28);
+  --card-shadow: 0 1px 2px rgba(0, 0, 0, 0.6), 0 4px 20px rgba(0, 0, 0, 0.4);
+  --card-shadow-strong: 0 12px 48px rgba(0, 0, 0, 0.7), 0 2px 8px rgba(0, 0, 0, 0.5);
+  --card-shadow-glow: 0 0 0 1px rgba(255, 255, 255, 0.25), 0 4px 20px rgba(255, 255, 255, 0.1);
+  --bg-gradient: none;
+  --primary: #fafafa;
+  --primary-strong: #ffffff;
+  --primary-glow: rgba(255, 255, 255, 0.2);
+  --avatar-bg: rgba(255, 255, 255, 0.08);
+  --avatar-border: rgba(255, 255, 255, 0.2);
+  --avatar-color: #fafafa;
+  --gradient-title-start: #fafafa;
+  --gradient-title-end: #a3a3a3;
+  --modal-backdrop: rgba(0, 0, 0, 0.85);
+  /* Minimalist Sudoku dark = pure charcoal, hairline white dividers. */
+  --game-board-bg: #0a0a0a;
+  --game-board-fg: #fafafa;
+  --game-board-grid: rgba(255, 255, 255, 0.14);
+  --game-board-block: rgba(255, 255, 255, 0.55);
+  --game-page-bg: #171717;
+  --game-accent: #fafafa;
+  --game-selected-bg: rgba(255, 255, 255, 0.1);
+  --game-highlight-bg: rgba(255, 255, 255, 0.06);
+}
+
+/* ── Newsprint Sudoku (Light) — cream paper + serif ink ──────── */
+:root[data-game-theme='sudoku-newsprint']:not([data-theme='dark']),
+[data-game-theme='sudoku-newsprint']:not([data-theme='dark']) {
+  --background: #f4ecd8;
+  --background-soft: #fbf5e5;
+  --foreground: #1a1a1a;
+  --muted: #4a4638;
+  --faint: #8a8272;
+  --card: rgba(251, 245, 229, 0.88);
+  --card-strong: rgba(254, 249, 235, 0.96);
+  --card-hover: rgba(248, 240, 220, 0.92);
+  --surface-inset-bg: rgba(26, 26, 26, 0.05);
+  --border: rgba(74, 70, 56, 0.25);
+  --border-strong: rgba(74, 70, 56, 0.42);
+  --card-shadow: 0 1px 3px rgba(26, 26, 26, 0.1), 0 4px 16px rgba(74, 70, 56, 0.1);
+  --card-shadow-strong: 0 8px 32px rgba(26, 26, 26, 0.15), 0 2px 8px rgba(74, 70, 56, 0.12);
+  --card-shadow-glow: 0 0 0 1px rgba(43, 43, 43, 0.3), 0 8px 32px rgba(74, 70, 56, 0.2);
+  --bg-gradient:
+    radial-gradient(circle at 20% 15%, rgba(74, 70, 56, 0.06) 0px, transparent 45%),
+    radial-gradient(circle at 80% 85%, rgba(74, 70, 56, 0.05) 0px, transparent 45%);
+  --primary: #2b2b2b;
+  --primary-strong: #1a1a1a;
+  --primary-glow: rgba(43, 43, 43, 0.25);
+  --avatar-bg: rgba(43, 43, 43, 0.08);
+  --avatar-border: rgba(43, 43, 43, 0.2);
+  --avatar-color: #1a1a1a;
+  --gradient-title-start: #1a1a1a;
+  --gradient-title-end: #4a4638;
+  --modal-backdrop: rgba(26, 20, 10, 0.55);
+  /* Newsprint Sudoku light = cream paper, ink-black dividers. */
+  --game-board-bg: #f4ecd8;
+  --game-board-fg: #1a1a1a;
+  --game-board-grid: rgba(26, 26, 26, 0.2);
+  --game-board-block: rgba(26, 26, 26, 0.7);
+  --game-page-bg: #ede2c8;
+  --game-accent: #2b2b2b;
+  --game-selected-bg: rgba(26, 26, 26, 0.1);
+  --game-highlight-bg: rgba(26, 26, 26, 0.06);
+}
+
+/* ── Newsprint Sudoku (Dark) — warm-tube type on dark paper ──── */
+[data-theme='dark'][data-game-theme='sudoku-newsprint']:not([data-theme='light']),
+:root[data-theme='dark'] [data-game-theme='sudoku-newsprint']:not([data-theme='light']),
+[data-theme='dark'] [data-game-theme='sudoku-newsprint']:not([data-theme='light']) {
+  --background: #1c1810;
+  --background-soft: #2a241a;
+  --foreground: #f4ecd8;
+  --muted: #b5ab90;
+  --faint: #7a7160;
+  --card: rgba(42, 36, 26, 0.88);
+  --card-strong: rgba(52, 44, 32, 0.96);
+  --card-hover: rgba(62, 52, 38, 0.92);
+  --surface-inset-bg: rgba(0, 0, 0, 0.3);
+  --border: rgba(244, 236, 216, 0.22);
+  --border-strong: rgba(244, 236, 216, 0.38);
+  --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.5), 0 4px 20px rgba(0, 0, 0, 0.3);
+  --card-shadow-strong: 0 12px 48px rgba(0, 0, 0, 0.6), 0 0 20px rgba(244, 236, 216, 0.08);
+  --card-shadow-glow: 0 0 0 1px rgba(244, 236, 216, 0.3), 0 8px 40px rgba(244, 236, 216, 0.12);
+  --bg-gradient:
+    radial-gradient(circle at 20% 15%, rgba(244, 236, 216, 0.05) 0px, transparent 45%),
+    radial-gradient(circle at 80% 85%, rgba(244, 236, 216, 0.04) 0px, transparent 45%);
+  --primary: #f4ecd8;
+  --primary-strong: #e6dcbe;
+  --primary-glow: rgba(244, 236, 216, 0.28);
+  --avatar-bg: rgba(244, 236, 216, 0.12);
+  --avatar-border: rgba(244, 236, 216, 0.3);
+  --avatar-color: #f4ecd8;
+  --gradient-title-start: #f4ecd8;
+  --gradient-title-end: #b5ab90;
+  --modal-backdrop: rgba(10, 8, 4, 0.8);
+  /* Newsprint Sudoku dark = warm-tube paper, sepia-cream dividers. */
+  --game-board-bg: #2a2418;
+  --game-board-fg: #f4ecd8;
+  --game-board-grid: rgba(244, 236, 216, 0.22);
+  --game-board-block: rgba(244, 236, 216, 0.55);
+  --game-page-bg: #1c1810;
+  --game-accent: #f4ecd8;
+  --game-selected-bg: rgba(244, 236, 216, 0.12);
+  --game-highlight-bg: rgba(244, 236, 216, 0.07);
+}
+
+/* Newsprint Sudoku swaps digits + headings to a serif face so the theme
+   reads as newsprint print, not just cream-coloured. Confined to the
+   game-theme subtree so nothing else on the site catches serif. */
+[data-game-theme='sudoku-newsprint'] {
+  font-family: Georgia, 'Times New Roman', serif;
+}

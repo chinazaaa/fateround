@@ -7,8 +7,12 @@ import { SaveToProfileModal } from '@/components/profile/SaveToProfileModal'
 import { ShareProfileModal } from '@/components/profile/ShareProfileModal'
 import { StatsTab } from '@/components/profile/StatsTab'
 import { SettingsTab } from '@/components/profile/SettingsTab'
+import { CoinBalanceCard } from '@/components/coins/CoinBalanceCard'
+import { CoinHistoryTab } from '@/components/coins/CoinHistoryTab'
+import { WelcomeGrantModal } from '@/components/coins/WelcomeGrantModal'
 import { GAME_CATEGORIES, parseGameType } from '@/lib/game-types'
 import { authHeaders } from '@/lib/identity'
+import { StreakStatusBanner } from '@/components/profile/StreakStatusBanner'
 import { Skeleton } from '@/components/Skeleton'
 import { Glyph } from '@/components/icons/Glyph'
 import { ChampionIcon, CrownIcon, FireIcon } from '@hugeicons/core-free-icons'
@@ -48,13 +52,14 @@ type ProfileSummary = {
 const TABS = [
   { key: 'trophies', label: 'Trophies' },
   { key: 'stats', label: 'Stats & History' },
+  { key: 'coins', label: 'Coin History' },
   { key: 'settings', label: 'Settings' },
 ] as const
 
 type TabKey = (typeof TABS)[number]['key']
 
 function isValidTab(v: string | null): v is TabKey {
-  return v === 'trophies' || v === 'stats' || v === 'settings'
+  return v === 'trophies' || v === 'stats' || v === 'coins' || v === 'settings'
 }
 
 function plural(count: number, word: string): string {
@@ -192,12 +197,23 @@ export default function ProfilePage() {
         </button>
       </div>
 
+      <StreakStatusBanner profile={profile} />
+
+      <CoinBalanceCard onViewHistory={() => switchTab('coins')} />
+      <WelcomeGrantModal />
+
       <div className="grid grid-cols-3 gap-3">
         <Stat
           icon={FireIcon}
           value={`${profile?.current_streak ?? 0}`}
           label="Day streak"
-          sub={`Best ${profile?.longest_streak ?? 0}`}
+          // Freezes were invisible everywhere despite being stored per profile — a player had
+          // no way to know forgiveness existed, which is most of its retention value.
+          sub={
+            profile && profile.streak_freezes > 0
+              ? `Best ${profile.longest_streak} · ${profile.streak_freezes} ❄`
+              : `Best ${profile?.longest_streak ?? 0}`
+          }
         />
         <Stat
           icon={ChampionIcon}
@@ -280,6 +296,8 @@ export default function ProfilePage() {
       )}
 
       {tab === 'stats' && <StatsTab games={games} myName={profile?.handle ?? null} />}
+
+      {tab === 'coins' && <CoinHistoryTab />}
 
       {tab === 'settings' && <SettingsTab profile={profile} onChanged={() => void load()} />}
 

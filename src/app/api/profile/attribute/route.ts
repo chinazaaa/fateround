@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { internalErrorMessage } from '@/lib/api-errors'
-import { getProfileFromRequest } from '@/lib/identity-server'
+import { getProfileFromRequest, hasBearerToken } from '@/lib/identity-server'
 import { parseJsonBody } from '@/lib/parse-body'
 import { enforceRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
-import { awardForFinishedGame } from '@/lib/trophies/award'
+import { awardForFinishedGame, recordGuestFinishForDevice } from '@/lib/trophies/award'
 import { normalizeResumeToken } from '@/lib/utils'
 import type { SupabaseClient } from '@supabase/supabase-js'
+import type { CoinAwardResult, GuestPendingResult } from '@/lib/coins/award-service'
 
 /**
  * Link a `players` row to the caller's profile — the single join between the two identity
@@ -34,6 +35,13 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 const attributeSchema = z.object({
   gameCode: z.string().min(4),
   resumeToken: z.string().min(4),
+  /**
+   * Optional device id for the guest-earnings path (`docs/coins-and-shop-plan.md`
+   * §"Guest earnings & migration"). When present and the caller has no profile
+   * identity, the finished game credits `guest_pending_grants` instead — held
+   * server-side until signup materialises them.
+   */
+  deviceId: z.string().min(4).max(128).optional(),
 })
 
 export async function POST(req: NextRequest) {
@@ -46,7 +54,45 @@ export async function POST(req: NextRequest) {
   try {
     // No identity: the overwhelmingly common case (every guest, every game). Not an error.
     const profileId = await getProfileFromRequest(req)
-    if (!profileId) return NextResponse.json({ attributed: false, reason: 'no_identity' })
+    if (!profileId) {
+      // Distinguish "no bearer token at all" (real guest) from "token present
+      // but Auth couldn't verify right now" (transient — e.g. Supabase Auth
+      // Unhealthy under DB pressure, or a signed-in user whose token just
+      // expired mid-session). Only real guests go to the guest-earning path;
+      // treating a transiently-unverified signed-in user as a guest writes
+      // rows into `guest_pending_grants` keyed on their device, and the next
+      // `migrate_guest_grants` fire (re-auth / profile init) credits phantom
+      // guest coins to their profile up to the 500-coin cap. See the
+      // 2026-08-24 outage notes on hasBearerToken.
+      if (body.deviceId && !hasBearerToken(req)) {
+        const admin = getSupabaseAdmin()
+        const gameIdG = body.gameCode.toUpperCase()
+        const resumeTokenG = normalizeResumeToken(body.resumeToken)
+        const { data: guestPlayer } = await admin
+          .from('players')
+          .select('id, game_id')
+          .eq('game_id', gameIdG)
+          .eq('resume_token', resumeTokenG)
+          .maybeSingle()
+        if (guestPlayer) {
+          const guest = await recordGuestFinishForDevice(admin, {
+            gameId: gameIdG,
+            deviceId: body.deviceId,
+            sessionId: null,
+            myPlayerId: guestPlayer.id as string,
+          })
+          return NextResponse.json({ attributed: false, reason: 'no_identity', guestCoins: guest })
+        }
+      }
+      // Signed-in caller whose token didn't verify this pass (likely a
+      // transient Auth timeout). Do NOT record guest grants for them —
+      // return a distinct reason so the client can retry when Auth is
+      // healthy again.
+      if (hasBearerToken(req)) {
+        return NextResponse.json({ attributed: false, reason: 'auth_unavailable' })
+      }
+      return NextResponse.json({ attributed: false, reason: 'no_identity' })
+    }
 
     const gameId = body.gameCode.toUpperCase()
     const resumeToken = normalizeResumeToken(body.resumeToken)
@@ -111,16 +157,28 @@ async function runAwardPass(
   admin: SupabaseClient,
   profileId: string,
   gameId: string
-): Promise<{ earned?: { id: string; title: string; tier: string; points: number }[]; gameType?: string }> {
+): Promise<{
+  earned?: { id: string; title: string; tier: string; points: number }[]
+  gameType?: string
+  coins?: CoinAwardResult
+  guestCoins?: GuestPendingResult
+}> {
   try {
     const result = await awardForFinishedGame(admin, profileId, gameId)
-    // Only surface trophies earned by THIS pass — that is what the post-win prompt celebrates.
-    if (!result.earned.length) return {}
-    // The game type travels with the result so the finished-screen link knows where to point.
-    // Reading it here costs one small select on a path that already did several; the
-    // alternative was threading the type through both game chromes into ~40 views.
+    // The trophy list drives the post-win celebration; the coin block drives
+    // the itemized results-screen panel. Return both — either can be empty.
+    const coins = result.coins
+    if (!result.earned.length && (!coins || coins.total === 0)) {
+      // Still return coins if present (even zero) so the panel can render a
+      // "0 coins — below the 2-human floor" message.
+      return coins ? { coins } : {}
+    }
     const { data: game } = await admin.from('games').select('game_type').eq('id', gameId).maybeSingle()
-    return { earned: result.earned, gameType: (game?.game_type as string) ?? undefined }
+    return {
+      earned: result.earned,
+      gameType: (game?.game_type as string) ?? undefined,
+      coins,
+    }
   } catch {
     return {}
   }

@@ -28,6 +28,25 @@ function bearerToken(req: NextRequest): string | null {
   return token ? token : null
 }
 
+/**
+ * True when the request carries a bearer token, regardless of whether it
+ * verifies. Callers on the guest-earning path use this to distinguish "no
+ * identity at all" (real guest — write pending grants) from "signed-in but
+ * Auth just timed out or errored" (transient — DON'T write pending grants,
+ * or the recovery-time `migrate_guest_grants` will credit phantom guest
+ * coins to the signed-in user's profile).
+ *
+ * Motivating incident: during the 2026-08-24 DB saturation, Supabase Auth
+ * flapped Unhealthy. `getIdentityFromRequest` timed out at 5s and returned
+ * null, and `/api/profile/attribute` fell into the guest branch for genuine
+ * signed-in users, writing rows to `guest_pending_grants` keyed on their
+ * device. Once Auth recovered and a re-auth re-fired the migration, those
+ * rows were credited to their profile up to the 500-coin cap.
+ */
+export function hasBearerToken(req: NextRequest): boolean {
+  return bearerToken(req) !== null
+}
+
 export type RequestIdentity = {
   profileId: string
   /** False once an email identity is attached. Drives `profiles.is_anonymous`. */

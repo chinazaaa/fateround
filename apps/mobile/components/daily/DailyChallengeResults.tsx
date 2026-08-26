@@ -154,9 +154,7 @@ export function DailyChallengeResults({
             ) : null}
           </View>
 
-          {score === 0 ? (
-            <Text style={styles.zeroNote}>Scores of 0 don&apos;t appear on the leaderboard.</Text>
-          ) : null}
+          {score === 0 ? <Text style={styles.zeroNote}>Scores of 0 don&apos;t appear on the leaderboard.</Text> : null}
 
           {grid ? <Text style={styles.grid}>{grid}</Text> : null}
 
@@ -174,6 +172,15 @@ export function DailyChallengeResults({
         onPress={() => router.push(`/daily-challenges/leaderboard/${slug}` as never)}
       />
       <AppButton label="Share result" tone="secondary" fullWidth onPress={() => void share()} />
+      {/* Peak "but what WAS the answer?" moment. Pointing it at yesterday's puzzle satisfies the
+          itch without ever revealing a live one — today's answers appear here tomorrow, which is
+          what keeps the leaderboard worth topping. */}
+      <AppButton
+        label="Yesterday's answers"
+        tone="ghost"
+        fullWidth
+        onPress={() => router.push(`/daily-challenges/answers/${slug}` as never)}
+      />
       <AppButton label="Back to Daily Challenges" tone="ghost" fullWidth onPress={onBackToHub} />
     </View>
   )

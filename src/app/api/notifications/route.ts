@@ -51,11 +51,20 @@ const unsubscribeSchema = z.object({
   gameType: z.string().min(1).max(64).optional(),
 })
 
+const minutesField = z.number().int().min(0).max(1439).nullable().optional()
 const quietHoursSchema = z.object({
   tokenKey: z.string().min(1).max(1000),
+  // Callers that may be editing quiet hours BEFORE ever toggling a game (no
+  // device row yet) send `channel` so we can create the row on first patch.
+  // Legacy callers omit it → we fall back to a plain UPDATE.
+  channel: CHANNEL.optional(),
+  webKeys: webKeysSchema.optional(),
   mode: z.enum(['off', 'quiet', 'available']).optional(),
-  startMinutes: z.number().int().min(0).max(1439).nullable().optional(),
-  endMinutes: z.number().int().min(0).max(1439).nullable().optional(),
+  // The 'quiet' and 'available' windows are independent — patch each separately.
+  quietStartMinutes: minutesField,
+  quietEndMinutes: minutesField,
+  availableStartMinutes: minutesField,
+  availableEndMinutes: minutesField,
   timezone: z.string().min(1).max(64).optional(),
 })
 
@@ -91,11 +100,20 @@ export async function GET(req: NextRequest) {
     quietHours: device
       ? {
           mode: device.quiet_mode,
-          startMinutes: device.quiet_start_minutes,
-          endMinutes: device.quiet_end_minutes,
+          quietStartMinutes: device.quiet_start_minutes,
+          quietEndMinutes: device.quiet_end_minutes,
+          availableStartMinutes: device.available_start_minutes,
+          availableEndMinutes: device.available_end_minutes,
           timezone: device.timezone,
         }
-      : { mode: 'off', startMinutes: null, endMinutes: null, timezone: null },
+      : {
+          mode: 'off',
+          quietStartMinutes: null,
+          quietEndMinutes: null,
+          availableStartMinutes: null,
+          availableEndMinutes: null,
+          timezone: null,
+        },
     countsByGameType: counts,
   })
 }
@@ -192,11 +210,23 @@ export async function PATCH(req: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
   }
-  const { tokenKey, mode, startMinutes, endMinutes, timezone } = parsed.data
+  const {
+    tokenKey,
+    channel,
+    webKeys,
+    mode,
+    quietStartMinutes,
+    quietEndMinutes,
+    availableStartMinutes,
+    availableEndMinutes,
+    timezone,
+  } = parsed.data
   const update: Record<string, unknown> = { updated_at: new Date().toISOString() }
   if (mode !== undefined) update.quiet_mode = mode
-  if (startMinutes !== undefined) update.quiet_start_minutes = startMinutes
-  if (endMinutes !== undefined) update.quiet_end_minutes = endMinutes
+  if (quietStartMinutes !== undefined) update.quiet_start_minutes = quietStartMinutes
+  if (quietEndMinutes !== undefined) update.quiet_end_minutes = quietEndMinutes
+  if (availableStartMinutes !== undefined) update.available_start_minutes = availableStartMinutes
+  if (availableEndMinutes !== undefined) update.available_end_minutes = availableEndMinutes
   if (timezone !== undefined) update.timezone = timezone
   // Bind the device to the caller's profile when a bearer is sent (never
   // clear an existing binding on an anonymous refresh) — matches POST above
@@ -205,7 +235,23 @@ export async function PATCH(req: NextRequest) {
   const subscriberUserId = await getProfileFromRequest(req)
   if (subscriberUserId) update.user_id = subscriberUserId
   const admin = getSupabaseAdmin()
-  const { error } = await admin.from('notification_subscriber_devices').update(update).eq('token_key', tokenKey)
+  // When `channel` is provided, upsert so a quiet-hours edit made BEFORE any
+  // game toggle still creates the device row (otherwise a plain UPDATE would
+  // match zero rows, return 200 OK, and the setting would vanish on reload).
+  const { error } = channel
+    ? await admin.from('notification_subscriber_devices').upsert(
+        {
+          token_key: tokenKey,
+          channel,
+          // Only carry web keys on the web channel — never clear a mobile row's
+          // (already-null) columns explicitly, and never wipe existing web keys
+          // just because the caller sent none this time.
+          ...(channel === 'web' && webKeys ? { web_p256dh: webKeys.p256dh, web_auth: webKeys.auth } : {}),
+          ...update,
+        },
+        { onConflict: 'token_key' }
+      )
+    : await admin.from('notification_subscriber_devices').update(update).eq('token_key', tokenKey)
   if (error) return NextResponse.json({ error: internalErrorMessage('notifications', error) }, { status: 500 })
   return NextResponse.json({ ok: true })
 }

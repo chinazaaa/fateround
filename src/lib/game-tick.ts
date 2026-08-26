@@ -1,4 +1,10 @@
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+// game_type → `/api/<slug>/bot-tick` slug, for the games that can seat a bot. Lives in its
+// own dependency-free module because `/api/games/[code]/bots` derives its "may a host seat a
+// bot here" set from the same map — see the note there. A Next route file cannot re-export
+// a plain const, so the shared registry could not live in the route.
+import { BOT_TICK_SLUG } from '@/lib/bots-in-room'
+import { isProdDeployment } from '@/lib/app-env'
 
 /**
  * Server-side game ticker.
@@ -23,7 +29,7 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
  */
 
 /** game_type → URL slug for the round-based `/api/<slug>/advance` endpoints. */
-const ROUND_ADVANCE_SLUG: Record<string, string> = {
+export const ROUND_ADVANCE_SLUG: Record<string, string> = {
   trivia: 'trivia',
   i_call_on: 'npat',
   two_truths: 'two-truths',
@@ -35,36 +41,42 @@ const ROUND_ADVANCE_SLUG: Record<string, string> = {
 }
 
 /**
- * game_type → URL slug for the `/api/<slug>/bot-tick` endpoints. Present only
- * for games where a bot-in-room driver has been shipped. Bots-in-room Phase 1
- * covered Whot; Phase 2 added Monopoly. Add entries here as other games'
- * drivers land.
+ * game_type → URL slug for the turn-based `/api/<slug>/expire-turn` endpoints.
+ *
+ * Must list EVERY game whose `expire-turn` route is a tokenless system/timer route —
+ * otherwise that game's clock only advances while some browser tab has the view open and
+ * foregrounded, which is exactly the failure this ticker exists to prevent. The
+ * `expire-turn-coverage.test.ts` guard fails CI when a route directory has no entry here
+ * and isn't explicitly opted out.
  */
-const BOT_TICK_SLUG: Record<string, string> = {
-  whot: 'whot',
-  monopoly: 'monopoly',
-}
-
-/** game_type → URL slug for the turn-based `/api/<slug>/expire-turn` endpoints. */
-const TURN_EXPIRE_SLUG: Record<string, string> = {
+export const TURN_EXPIRE_SLUG: Record<string, string> = {
   whot: 'whot',
   crazy_eights: 'crazy-eights',
   chess: 'chess',
   checkers: 'checkers',
+  checkers_international: 'checkers-international',
+  checkers_nigeria: 'checkers-nigeria',
   monopoly: 'monopoly',
   tic_tac_toe: 'tic-tac-toe',
   yahtzee: 'yahtzee',
   snake_and_ladder: 'snake-and-ladder',
   codewords: 'codewords',
+  ludo: 'ludo',
+  scrabble: 'scrabble',
+  uno: 'uno',
+  ayo: 'ayo',
+  mahjong: 'mahjong',
 }
 
-// Bingo is deliberately excluded: its auto-call route requires the host token (it's a
-// host-run game, not a tokenless system timer), so the ticker can't drive it.
+// Mafia, Bingo and Troll Run are driven through bespoke targets below rather than the two
+// slug maps: their `/advance` routes are token-gated (host- or player-authorized), so each
+// has its own tokenless system entry point that only applies clock-earned transitions.
 export const HANDLED_GAME_TYPES = [
   ...Object.keys(ROUND_ADVANCE_SLUG),
   ...Object.keys(TURN_EXPIRE_SLUG),
   'mafia',
   'bingo',
+  'troll_run',
 ]
 
 type PokeTarget = { path: string; body: Record<string, unknown> }
@@ -85,6 +97,11 @@ export function pokeTargetFor(gameType: string, gameId: string): PokeTarget | nu
   // configured interval has elapsed (no-op in manual mode / before the interval).
   if (gameType === 'bingo') {
     return { path: `/api/bingo/sync`, body: { gameId } }
+  }
+  // Troll Run: `/advance` needs a host or player token, so the ticker uses the tokenless
+  // `sync` sibling. It never forces a round — only transitions the clock already earned.
+  if (gameType === 'troll_run') {
+    return { path: `/api/troll-run/sync`, body: { gameId } }
   }
   return null
 }
@@ -178,7 +195,7 @@ let started = false
 export function startGameTicker(): void {
   if (started) return
   if (process.env.GAME_TICK_DISABLED === '1') return
-  const enabled = process.env.NODE_ENV === 'production' || process.env.GAME_TICK_ENABLED === '1'
+  const enabled = isProdDeployment() || process.env.GAME_TICK_ENABLED === '1'
   if (!enabled) return
   started = true
   const intervalMs = Number(process.env.GAME_TICK_INTERVAL_MS) || 2500

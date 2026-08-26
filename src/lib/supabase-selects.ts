@@ -6,7 +6,7 @@
 // server-side via the service role. Anon `select('*')` on games/players now ERRORS, so
 // client reads must use these curated lists.
 export const GAME_SELECT =
-  'id,title,content_label,rounds_count,timer_seconds,operative_timer_seconds,anonymous,auto_reveal,auto_submit_behavior,participant_mode,participant_filter,pair_vote_mode,question_source,custom_questions,player_questions_enabled,player_questions_order,game_type,theme,status,current_round_number,created_at,finished_at,session_started_at,allow_viewers,allow_late_players,max_players,monopoly_board_size,anonymous_messages_trimmed_at,wst_quote_source,custom_slots,gender_based,codewords_player_picks,codewords_late_join,codewords_randomize_teams,describe_it_num_teams,describe_it_mode,quick_draw_variant,quick_draw_play_mode,quick_draw_num_teams,word_rush_mode,word_rush_prompt_mode,word_rush_difficulty,word_rush_num_teams,pool_usage,trivia_category,bingo_call_mode,bingo_call_interval_seconds,game_duration_seconds,whot_pick3_enabled,whot_cards_enabled,whot_number_calls_enabled,whot_pick2_stacking,crazy8_action_cards,crazy8_jokers,crazy8_pick2_stacking,uno_wd4_challenge,uno_uno_penalty,uno_wd4_challenge_penalty,uno_zero_seven,uno_stacking,uno_multi_play,uno_multi_play_mode,uno_team_mode,uno_jump_in,uno_mode,uno_no_mercy_win,uno_series_scoring,uno_series_target,uno_series_scores,uno_series_winner_id,ludo_variant,ayo_variant,mahjong_ruleset,mahjong_rule_options,scrabble_dictionary_id,scrabble_clock_mode,scrabble_clock_seconds,chess_board_theme,chess_piece_set,tournament_id,pending_host_player_id,host_player_id,is_public,music_enabled,replay_pending,crossword_theme,crossword_difficulty,word_search_theme,word_search_difficulty,word_scramble_theme,word_scramble_difficulty,monopoly_double_go_salary,monopoly_forced_auctions,monopoly_auction_timer_seconds,monopoly_no_rent_in_jail,monopoly_estate_dividend,landmine_mode,landmine_mine_count,landmine_originality_bonus,landmine_mine_source,landmine_elim_seconds,landmine_review,landmine_review_seconds,checkers_nigeria_street_rules,wordle_room_category,wordle_room_word_count,troll_run_rounds,troll_run_time_limit,troll_run_world,last_activity_at,host_idle_warning_sent_at,result_reason,scheduled_at,opened_at'
+  'id,title,content_label,rounds_count,timer_seconds,operative_timer_seconds,anonymous,auto_reveal,auto_submit_behavior,participant_mode,participant_filter,pair_vote_mode,question_source,custom_questions,player_questions_enabled,player_questions_order,game_type,theme,status,current_round_number,created_at,finished_at,session_started_at,allow_viewers,allow_late_players,max_players,monopoly_board_size,anonymous_messages_trimmed_at,wst_quote_source,custom_slots,gender_based,codewords_player_picks,codewords_late_join,codewords_randomize_teams,describe_it_num_teams,describe_it_mode,quick_draw_variant,quick_draw_play_mode,quick_draw_num_teams,word_rush_mode,word_rush_prompt_mode,word_rush_difficulty,word_rush_num_teams,pool_usage,trivia_category,bingo_call_mode,bingo_call_interval_seconds,game_duration_seconds,whot_pick3_enabled,whot_cards_enabled,whot_number_calls_enabled,whot_pick2_stacking,crazy8_action_cards,crazy8_jokers,crazy8_pick2_stacking,uno_wd4_challenge,uno_uno_penalty,uno_wd4_challenge_penalty,uno_zero_seven,uno_stacking,uno_multi_play,uno_multi_play_mode,uno_team_mode,uno_jump_in,uno_mode,uno_no_mercy_win,uno_series_scoring,uno_series_target,uno_series_scores,uno_series_winner_id,ludo_variant,ayo_variant,mahjong_ruleset,mahjong_rule_options,scrabble_dictionary_id,scrabble_clock_mode,scrabble_clock_seconds,chess_board_theme,chess_piece_set,tournament_id,pending_host_player_id,host_player_id,is_public,music_enabled,replay_pending,crossword_theme,crossword_difficulty,word_search_theme,word_search_difficulty,word_scramble_theme,word_scramble_difficulty,monopoly_double_go_salary,monopoly_forced_auctions,monopoly_auction_timer_seconds,monopoly_no_rent_in_jail,monopoly_estate_dividend,monopoly_loans_enabled,monopoly_loan_interest,monopoly_loan_term_rounds,landmine_mode,landmine_mine_count,landmine_originality_bonus,landmine_mine_source,landmine_elim_seconds,landmine_review,landmine_review_seconds,checkers_nigeria_street_rules,wordle_room_category,wordle_room_word_count,troll_run_rounds,troll_run_time_limit,troll_run_world,last_activity_at,host_idle_warning_sent_at,result_reason,scheduled_at,opened_at,edition_slug'
 
 export const PLAYER_SELECT =
   'id,game_id,name,gender,identity_gender,participant_id,joined_at,spectator,monopoly_token,is_eliminated,eliminated_at,lives_remaining,is_bot'
@@ -42,7 +42,7 @@ export const VOTE_SELECT =
 export const CONFESSION_SELECT = 'id,game_id,round_id,text,created_at'
 
 export const MONOPOLY_BOARD_SELECT =
-  'id,game_id,board_size,turn_order,current_turn_index,phase,last_dice,consecutive_doubles,property_owners,property_buildings,mortgaged_properties,houses_in_bank,hotels_in_bank,chance_deck,community_deck,chance_discard,community_discard,auction_state,pending_trade,pending_debt,pending_space,status_message,last_card_event,last_rent_event,last_cash_event,last_trade_event,turn_deadline_at,winner_player_id,created_at,updated_at'
+  'id,game_id,board_size,turn_order,current_turn_index,phase,last_dice,consecutive_doubles,property_owners,property_buildings,mortgaged_properties,houses_in_bank,hotels_in_bank,auction_state,pending_trade,pending_debt,pending_space,status_message,last_card_event,last_rent_event,last_cash_event,last_trade_event,loans,turn_deadline_at,winner_player_id,created_at,updated_at'
 
 /**
  * `monopoly_boards` columns that are NOT NULL in the DB.
@@ -54,15 +54,16 @@ export const MONOPOLY_BOARD_SELECT =
  * ownership, buildings and the decks on screen. Callers use {@link isCompleteMonopolyBoardRow}
  * to detect that and fall back to a full reload instead of the delta fast-path.
  */
+// The four card decks are deliberately absent — they are no longer in MONOPOLY_BOARD_SELECT, so
+// a pushed row never carries them and requiring them here would make isCompleteMonopolyBoardRow
+// return false for EVERY payload, rejecting every delta and forcing a full reload each time.
+// (Exactly the bug found in UNO_SESSION_NOT_NULL_KEYS after its piles were revoked.)
 export const MONOPOLY_BOARD_NOT_NULL_KEYS = [
   'property_owners',
   'property_buildings',
   'mortgaged_properties',
-  'chance_deck',
-  'community_deck',
-  'chance_discard',
-  'community_discard',
   'turn_order',
+  'loans',
 ] as const
 
 /** True when a pushed `monopoly_boards` row carries every NOT-NULL column (i.e. is not a
@@ -98,8 +99,12 @@ export const CRAZY8_SESSION_SELECT =
 
 export const CRAZY8_PLAYER_HANDS_SELECT = 'id,game_id,player_id,cards,player_order,created_at'
 
+// last_play_player_id, pending_wild, color_roulette_player_id, color_roulette_reveals and
+// draw_stack_chain are deliberately absent: no client reads them, and the server paths that
+// do (processUnoPlay, processUnoDraw, processUnoChoose, …) re-fetch the row themselves with
+// `select('*')` through the service role.
 export const UNO_SESSION_SELECT =
-  'id,game_id,turn_order,current_turn_index,direction,phase,draw_pile,discard_pile,top_card,required_color,draw_penalty,draw_penalty_kind,drawn_card_id,last_play_cards,last_play_player_id,pending_wild,challenge_prev_color,wd4_player_id,uno_pending_player,uno_called,status_message,winner_player_id,finish_order,left_player_ids,team_decider_id,eliminated_player_ids,color_roulette_player_id,color_roulette_reveals,draw_stack_chain,turn_deadline_at,created_at,updated_at'
+  'id,game_id,turn_order,current_turn_index,direction,phase,draw_pile,discard_pile,top_card,required_color,draw_penalty,draw_penalty_kind,drawn_card_id,last_play_cards,challenge_prev_color,wd4_player_id,uno_pending_player,uno_called,status_message,winner_player_id,finish_order,left_player_ids,team_decider_id,eliminated_player_ids,turn_deadline_at,created_at,updated_at'
 
 /**
  * `uno_sessions` columns that are NOT NULL in the DB.
@@ -137,8 +142,14 @@ export const SNAKE_LADDER_SESSION_SELECT =
 
 export const SNAKE_LADDER_PLAYER_STATE_SELECT = 'id,game_id,player_id,color,position,player_order,created_at'
 
+// Hand-resolution bookkeeping (dealer_index, honba, riichi_sticks, round_wind, hand_number,
+// last_action, hand_result, rule_options, the ura-dora indicators and the claim/ippatsu id
+// lists) is deliberately absent: no client reads any of it, and every server path that does
+// — processMahjongNextHand, processMahjongRiichi, sanitizeMahjongSession and friends —
+// re-fetches the row itself with `select('*')` through the service role. `claim_passes` IS
+// kept: mobile reads it directly.
 export const MAHJONG_SESSION_SELECT =
-  'id,game_id,ruleset,turn_order,dealer_index,current_turn_index,phase,wall,dead_wall,dora_indicators,ura_dora_indicators,honba,riichi_sticks,round_wind,hand_number,last_action,hand_result,rule_options,rinshan_player_id,chankan_player_id,ippatsu_eligible_player_ids,exhaustive_draw_tenpai_player_ids,scores,discard_pile,last_discard,claim_passes,status_message,winner_player_id,winner_player_ids,winning_tile,win_type,score_summary,turn_deadline_at,created_at,updated_at'
+  'id,game_id,ruleset,turn_order,current_turn_index,phase,wall,dead_wall,dora_indicators,scores,discard_pile,last_discard,claim_passes,status_message,winner_player_id,winner_player_ids,winning_tile,win_type,score_summary,turn_deadline_at,created_at,updated_at'
 
 export const MAHJONG_PLAYER_STATE_SELECT =
   'id,game_id,player_id,seat,hand,hand_count,last_drawn_tile,flowers,riichi_declared,riichi_discard_index,temporary_furiten,permanent_furiten,melds,discarded,player_order,created_at'
@@ -171,7 +182,7 @@ export const DESCRIBE_IT_SESSION_SELECT_NO_WORD_SEQ =
   'id,game_id,mode,num_teams,total_rounds,turn_seconds,phase,turn_index,current_round,active_team,describer_player_id,roster,current_clue,current_clues,turn_deadline_at,break_deadline_at,status,status_message,created_at,updated_at'
 
 /**
- * `word_seq` (added by migration 20260807120000) is the public per-word counter that replaced
+ * `word_seq` (added by migration 20260807115000) is the public per-word counter that replaced
  * the clients' only legitimate use of the revoked `used_words` array — its length.
  *
  * DEPLOY SKEW: naming a column that does not exist yet makes PostgREST fail the WHOLE select
@@ -237,8 +248,15 @@ export const QUICK_DRAW_TITLE_SELECT = 'id,game_id,drawing_id,player_id,text,is_
 
 export const QUICK_DRAW_VOTE_SELECT = 'id,game_id,drawing_id,player_id,chosen_title_id,voted_at'
 
+/**
+ * NOTE: no `current_word` and no `used_words`. The secret prompt is revoked from
+ * anon/authenticated by migration 20260807140000 — it used to ship to every guesser's client
+ * (twice: as `current_word`, and as the last entry of `used_words`) and was merely hidden in the
+ * UI. The drawer fetches it from POST /api/quick-draw/my-word instead, and `word_seq` is the
+ * public per-word counter clients use to know it rotated.
+ */
 export const QUICK_DRAW_GUESS_SESSION_SELECT =
-  'id,game_id,mode,num_teams,total_rounds,turn_seconds,roster,phase,turn_index,current_round,active_team,drawer_player_id,current_word,current_stroke_data,used_words,turn_deadline_at,break_deadline_at,status,status_message,created_at,updated_at'
+  'id,game_id,mode,num_teams,total_rounds,turn_seconds,roster,phase,turn_index,current_round,active_team,drawer_player_id,current_stroke_data,word_seq,turn_deadline_at,break_deadline_at,status,status_message,created_at,updated_at'
 
 export const QUICK_DRAW_GUESS_PLAYER_SELECT = 'id,game_id,player_id,team,score,created_at'
 

@@ -138,6 +138,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     monopoly_auction_timer_seconds,
     monopoly_no_rent_in_jail,
     monopoly_estate_dividend,
+    monopoly_loans_enabled,
+    monopoly_loan_interest,
+    monopoly_loan_term_rounds,
     monopoly_board_size,
     whot_pick3_enabled,
     whot_cards_enabled,
@@ -224,6 +227,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     monopoly_auction_timer_seconds === undefined &&
     monopoly_no_rent_in_jail === undefined &&
     monopoly_estate_dividend === undefined &&
+    monopoly_loans_enabled === undefined &&
+    monopoly_loan_interest === undefined &&
+    monopoly_loan_term_rounds === undefined &&
     monopoly_board_size === undefined &&
     whot_pick3_enabled === undefined &&
     whot_cards_enabled === undefined &&
@@ -351,9 +357,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     gameUpdate.theme = theme
   }
 
-  // Single source of truth for capacity rules (board-size gate + reset).
-  const effectiveMaxPlayers =
-    max_players !== undefined ? clampLobbyMaxPlayers(limitKey, max_players, lobbyLimits) : Number(game.max_players ?? 6)
+  // Single source of truth for capacity rules (board-size gate + reset). Team-Up
+  // forces the room to UNO_TEAM_PLAYERS (see the uno block below); derive the
+  // NEXT team-mode state from the request when supplied, else from the game's
+  // current state, so an existing Team-Up room raising max_players still stays
+  // capped at 4 instead of the requested cap silently landing.
+  const nextUnoTeamMode =
+    boardLobbyType === 'uno' && (uno_team_mode === undefined ? game.uno_team_mode === true : uno_team_mode === true)
+  const effectiveMaxPlayers = nextUnoTeamMode
+    ? UNO_TEAM_PLAYERS
+    : max_players !== undefined
+      ? clampLobbyMaxPlayers(limitKey, max_players, lobbyLimits)
+      : Number(game.max_players ?? 6)
 
   // Public + max_players < 2 is a contradiction (nobody to fill the seat) — the
   // /browse feed excludes those rows, so silently accepting the flag would
@@ -369,20 +384,43 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     gameUpdate.content_label = trimmed ? trimmed.slice(0, 40) : null
   }
 
-  if (max_players !== undefined) {
+  // Seated-count gate — runs for any update that could lower the effective cap,
+  // not just an explicit max_players change. Enabling uno_team_mode forces the
+  // room to UNO_TEAM_PLAYERS (see the uno block below), which can drop the cap
+  // below the current seated count even when max_players wasn't in the request.
+  if (max_players !== undefined || uno_team_mode === true) {
     const nextMax = effectiveMaxPlayers
-    const { count: playerCount } = await supabase
+    // Count only ready (non-spectator) players against the new cap. Not-ready players
+    // are `spectator: true` (see /api/players/ready — readiness maps directly onto the
+    // spectator flag), and a spectator does not consume a player seat. Counting them
+    // against the cap forced the host to remove people who weren't taking a seat in the
+    // first place, which is what the user hit trying to reduce max from 8 to 6 while
+    // three not-ready players were watching.
+    const { count: seatedCount, error: countError } = await supabase
       .from('players')
       .select('id', { count: 'exact', head: true })
       .eq('game_id', gameCode)
-    if ((playerCount ?? 0) > nextMax) {
+      .not('spectator', 'is', true)
+    // A failed count query would silently pass through as 0 and let the write land
+    // with no bound on seated size — treat it as a hard failure so callers see it.
+    if (countError || seatedCount === null) {
       return NextResponse.json(
-        { error: `Already have ${playerCount} players — remove someone or pick at least ${playerCount}` },
+        {
+          error: internalErrorMessage('games/code/lobby-settings', countError ?? new Error('seated count unavailable')),
+        },
+        { status: 500 }
+      )
+    }
+    if (seatedCount > nextMax) {
+      return NextResponse.json(
+        { error: `Already have ${seatedCount} seated players — remove someone or pick at least ${seatedCount}` },
         { status: 400 }
       )
     }
-    gameUpdate.max_players = nextMax
-    if (boardLobbyType === 'monopoly' && nextMax < 6) gameUpdate.monopoly_board_size = 40
+    if (max_players !== undefined) {
+      gameUpdate.max_players = nextMax
+      if (boardLobbyType === 'monopoly' && nextMax < 6) gameUpdate.monopoly_board_size = 40
+    }
   }
 
   if (timer_seconds !== undefined) {
@@ -631,6 +669,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       gameUpdate.monopoly_auction_timer_seconds = monopoly_auction_timer_seconds
     if (monopoly_no_rent_in_jail !== undefined) gameUpdate.monopoly_no_rent_in_jail = monopoly_no_rent_in_jail
     if (monopoly_estate_dividend !== undefined) gameUpdate.monopoly_estate_dividend = monopoly_estate_dividend
+    if (monopoly_loans_enabled !== undefined) gameUpdate.monopoly_loans_enabled = monopoly_loans_enabled
+    if (monopoly_loan_interest !== undefined) gameUpdate.monopoly_loan_interest = monopoly_loan_interest
+    if (monopoly_loan_term_rounds !== undefined) gameUpdate.monopoly_loan_term_rounds = monopoly_loan_term_rounds
     if (monopoly_board_size !== undefined) {
       const requestedBoardSize = monopoly_board_size === 48 ? 48 : 40
       if (requestedBoardSize === 48 && effectiveMaxPlayers < 6) {
@@ -647,6 +688,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     monopoly_auction_timer_seconds !== undefined ||
     monopoly_no_rent_in_jail !== undefined ||
     monopoly_estate_dividend !== undefined ||
+    monopoly_loans_enabled !== undefined ||
+    monopoly_loan_interest !== undefined ||
+    monopoly_loan_term_rounds !== undefined ||
     monopoly_board_size !== undefined
   ) {
     return NextResponse.json({ error: 'These rules only apply to Estate Kings games' }, { status: 400 })

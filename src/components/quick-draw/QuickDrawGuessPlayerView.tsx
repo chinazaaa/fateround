@@ -36,6 +36,7 @@ import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
 import { useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { useGameTableSync } from '@/hooks/useGameTableSync'
 import { useQuickDrawGuessTimer } from '@/hooks/useQuickDrawGuessTimer'
+import { useQuickDrawWord } from '@/hooks/useQuickDrawWord'
 import { GameStartedWaiting } from '@/components/GameStartedWaiting'
 import { GameEndedScreen } from '@/components/GameEndedScreen'
 import { allowLatePlayers, playerIsViewer, preJoinScreen } from '@/lib/viewers'
@@ -46,6 +47,7 @@ import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { EditNameInline } from '@/components/ui/EditNameInline'
 import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
 import { useRegisterGameSettings } from '@/components/GameSettingsContext'
+import { RulesInPlaySection } from '@/components/game-lobby/RulesInPlaySection'
 import {
   DescribeItCard,
   DescribeItLoadingScreen,
@@ -260,12 +262,17 @@ export function QuickDrawGuessPlayerView({ gameCode }: { gameCode: string }) {
     game?.status === 'active' && !isViewer
   )
 
+  // The secret prompt is no longer in the session read — only the drawer can pull it, and only
+  // through the server route. See src/hooks/useQuickDrawWord.ts.
+  const myWord = useQuickDrawWord(gameCode, session, myPlayerId, { resumeToken: myResumeToken })
+
   // Change name · Leave game for players/spectators live behind the main chrome's ⚙ gear
   // (top header). Registered while the game is active; GameChromeSettings renders it in the sheet.
   const playerSettingsNode = useMemo(() => {
     if (!myPlayerId) return null
     return (
       <div className="space-y-3">
+        <RulesInPlaySection game={game} />
         <EditNameInline
           gameCode={gameCode}
           playerId={myPlayerId}
@@ -284,7 +291,7 @@ export function QuickDrawGuessPlayerView({ gameCode }: { gameCode: string }) {
         />
       </div>
     )
-  }, [myPlayerId, game?.status, gameCode, activePlayer?.name, isViewer, load, router])
+  }, [game, myPlayerId, game?.status, gameCode, activePlayer?.name, isViewer, load, router])
   useRegisterGameSettings(playerSettingsNode)
 
   if (screen === 'loading') return <DescribeItLoadingScreen />
@@ -471,6 +478,7 @@ export function QuickDrawGuessPlayerView({ gameCode }: { gameCode: string }) {
           words={words}
           guesses={guesses}
           myPlayerId={myPlayerId}
+          myWord={myWord}
           myResumeToken={myResumeToken}
           secondsLeft={secondsLeft}
           breakLeft={breakLeft}
