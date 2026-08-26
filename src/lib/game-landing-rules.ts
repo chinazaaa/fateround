@@ -2007,7 +2007,7 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
       points: [
         '2 to 6 players. 2 players are dealt 7 cards each; 3 or more players are dealt 5 cards each.',
         'The rest of the standard 52-card deck becomes the ocean (draw pile) in the middle.',
-        'Spectators can watch but cannot see any player\'s hand — only counts and completed books.',
+        "Spectators can watch but cannot see any player's hand — only counts and completed books.",
       ],
     },
     {

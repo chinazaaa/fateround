@@ -76,7 +76,11 @@ export function GoFishActiveRound({
   )
 
   const standings = useMemo(
-    () => buildGoFishStandings(hands, players.map((p) => ({ id: p.id, name: p.name }))),
+    () =>
+      buildGoFishStandings(
+        hands,
+        players.map((p) => ({ id: p.id, name: p.name }))
+      ),
     [hands, players]
   )
 
@@ -130,9 +134,7 @@ export function GoFishActiveRound({
         </>
       ) : (
         <>
-          {!readOnly && myHandRow && (
-            <MyHand cards={myCards} myBooks={myBooks} />
-          )}
+          {!readOnly && myHandRow && <MyHand cards={myCards} myBooks={myBooks} />}
           {!readOnly && isMyTurn && (
             <AskPicker
               askableRanks={askable}
@@ -150,11 +152,7 @@ export function GoFishActiveRound({
               asking={asking}
             />
           )}
-          <OpponentsPanel
-            players={players.filter((p) => p.id !== myPlayerId)}
-            hands={hands}
-            nameOf={nameOf}
-          />
+          <OpponentsPanel players={players.filter((p) => p.id !== myPlayerId)} hands={hands} nameOf={nameOf} />
         </>
       )}
 
@@ -308,7 +306,9 @@ function AskPicker({
               }`}
             >
               <span className="font-medium">{t.name}</span>{' '}
-              <span className="text-muted text-xs">· {t.cardCount} cards · {t.books.length} books</span>
+              <span className="text-muted text-xs">
+                · {t.cardCount} cards · {t.books.length} books
+              </span>
             </button>
           ))}
         </div>
@@ -416,13 +416,7 @@ function OpponentsPanel({
   )
 }
 
-function EventLog({
-  events,
-  nameOf,
-}: {
-  events: GoFishSession['event_log']
-  nameOf: (id: string) => string
-}) {
+function EventLog({ events, nameOf }: { events: GoFishSession['event_log']; nameOf: (id: string) => string }) {
   const shown = events.slice(-20).reverse()
   return (
     <section className="rounded-2xl border border-white/10 bg-black/20 p-4 space-y-2">
@@ -451,7 +445,7 @@ function FinishedResults({
   winnerId: string | null
   nameOf: (id: string) => string
 }) {
-  const winnerName = winnerId ? nameOf(winnerId) : standings[0]?.name ?? 'No winner'
+  const winnerName = winnerId ? nameOf(winnerId) : (standings[0]?.name ?? 'No winner')
   return (
     <section className="rounded-2xl border border-amber-400/40 bg-amber-500/10 p-6 text-center space-y-4">
       <p className="text-xs uppercase tracking-wide text-amber-200">Winner</p>

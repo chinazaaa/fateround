@@ -3481,7 +3481,8 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     features: [
       {
         title: 'Ask an opponent',
-        description: 'Pick a player and a rank you already hold. Hit and they hand all of theirs over, then you go again.',
+        description:
+          'Pick a player and a rank you already hold. Hit and they hand all of theirs over, then you go again.',
         emoji: '🎯',
       },
       {

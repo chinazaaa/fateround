@@ -318,7 +318,14 @@ describe('empty-hand refill', () => {
     // book of… no. Use the "target hits with all four" -> book -> empty hand -> refill flow.
     // Set up: asker has three 7s (from earlier plays), target has the fourth 7. After the hit,
     // asker completes the book and is empty; ocean should refill 5 cards.
-    const ocean = [card(1, 'spades'), card(2, 'spades'), card(3, 'clubs'), card(4, 'clubs'), card(5, 'clubs'), card(6, 'clubs')]
+    const ocean = [
+      card(1, 'spades'),
+      card(2, 'spades'),
+      card(3, 'clubs'),
+      card(4, 'clubs'),
+      card(5, 'clubs'),
+      card(6, 'clubs'),
+    ]
     const session = baseSession({
       turn_order: ['a', 'b'],
       current_turn_index: 0,
@@ -474,7 +481,11 @@ describe('pickAutoAsk', () => {
 
   it('picks a rank the player holds and a target with cards', () => {
     const hand = [card(3), card(7)]
-    const opponents = new Map([['b', 2], ['c', 0], ['d', 5]])
+    const opponents = new Map([
+      ['b', 2],
+      ['c', 0],
+      ['d', 5],
+    ])
     // Deterministic rng — return 0 always.
     const pick = pickAutoAsk(hand, opponents, () => 0)
     expect(pick).not.toBeNull()

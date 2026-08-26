@@ -14,13 +14,7 @@ import {
   shuffleDeck,
   type GoFishAskResult,
 } from '@/lib/gofish'
-import type {
-  GoFishCard,
-  GoFishEvent,
-  GoFishPlayerHand,
-  GoFishRank,
-  GoFishSession,
-} from '@/types'
+import type { GoFishCard, GoFishEvent, GoFishPlayerHand, GoFishRank, GoFishSession } from '@/types'
 
 /**
  * Seed the game's tables with a fresh Go Fish round.
@@ -211,7 +205,7 @@ export async function processGoFishExpireTurn(
   const activePlayerId = currentPlayerId(session)
   if (!activePlayerId) return { error: 'No current player' }
   const activeHand = hands.find((h) => h.player_id === activePlayerId)
-  const activeCards = ((activeHand?.cards ?? []) as unknown[]) as import('@/types').GoFishCard[]
+  const activeCards = (activeHand?.cards ?? []) as unknown[] as import('@/types').GoFishCard[]
 
   const opponentCounts = new Map<string, number>()
   for (const hand of hands) {

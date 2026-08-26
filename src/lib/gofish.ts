@@ -1,11 +1,4 @@
-import type {
-  GoFishCard,
-  GoFishEvent,
-  GoFishPlayerHand,
-  GoFishRank,
-  GoFishSession,
-  GoFishSuit,
-} from '@/types'
+import type { GoFishCard, GoFishEvent, GoFishPlayerHand, GoFishRank, GoFishSession, GoFishSuit } from '@/types'
 
 export const GOFISH_MIN_PLAYERS = 2
 export const GOFISH_MAX_PLAYERS = 6
@@ -260,13 +253,7 @@ export type GoFishAskInput = {
 export type GoFishAskResult =
   | {
       ok: false
-      error:
-        | 'not_your_turn'
-        | 'game_finished'
-        | 'unknown_target'
-        | 'ask_self'
-        | 'target_no_cards'
-        | 'must_hold_rank'
+      error: 'not_your_turn' | 'game_finished' | 'unknown_target' | 'ask_self' | 'target_no_cards' | 'must_hold_rank'
     }
   | {
       ok: true
@@ -462,9 +449,7 @@ export function resolveGoFishAsk(input: GoFishAskInput): GoFishAskResult {
     hit,
     sameTurn,
     transferred,
-    newBooks: handUpdates
-      .find((u) => u.playerId === fromPlayerId)!
-      .books.filter((r) => !asker.books.includes(r)),
+    newBooks: handUpdates.find((u) => u.playerId === fromPlayerId)!.books.filter((r) => !asker.books.includes(r)),
     events,
     session: newSession,
     handUpdates,
@@ -527,10 +512,7 @@ export function buildGoFishStandings(
 }
 
 /** Simple label helper for the event log UI. Renders one line per event. */
-export function describeGoFishEvent(
-  event: GoFishEvent,
-  nameOf: (playerId: string) => string
-): string {
+export function describeGoFishEvent(event: GoFishEvent, nameOf: (playerId: string) => string): string {
   switch (event.kind) {
     case 'ask_hit':
       return `${nameOf(event.from_id)} asked ${nameOf(event.target_id)} for ${gofishRankPlural(
@@ -546,15 +528,11 @@ export function describeGoFishEvent(
         ? `${nameOf(event.from_id)} asked ${nameOf(event.target_id)} for ${gofishRankPlural(
             event.rank
           )} — Go Fish! Drew a ${gofishRankLabel(event.rank)}, goes again.`
-        : `${nameOf(event.from_id)} asked ${nameOf(event.target_id)} for ${gofishRankPlural(
-            event.rank
-          )} — Go Fish!`
+        : `${nameOf(event.from_id)} asked ${nameOf(event.target_id)} for ${gofishRankPlural(event.rank)} — Go Fish!`
     case 'book':
       return `${nameOf(event.player_id)} completed a book of ${gofishRankPlural(event.rank)}.`
     case 'refill':
-      return `${nameOf(event.player_id)} refilled with ${event.count} card${
-        event.count === 1 ? '' : 's'
-      }.`
+      return `${nameOf(event.player_id)} refilled with ${event.count} card${event.count === 1 ? '' : 's'}.`
     case 'out_of_cards':
       return `${nameOf(event.player_id)} is out of cards.`
     case 'game_over':

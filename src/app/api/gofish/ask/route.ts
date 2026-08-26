@@ -35,13 +35,7 @@ export async function POST(req: NextRequest) {
   const auth = await assertPlayer(supabase, code, resumeToken)
   if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
 
-  const { error, result } = await processGoFishAsk(
-    supabase,
-    code,
-    auth.player.id,
-    targetPlayerId,
-    rank as GoFishRank
-  )
+  const { error, result } = await processGoFishAsk(supabase, code, auth.player.id, targetPlayerId, rank as GoFishRank)
   if (error || !result || !result.ok) {
     return NextResponse.json({ error: error ?? 'Ask failed' }, { status: 400 })
   }

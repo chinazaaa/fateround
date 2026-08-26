@@ -2,11 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import {
-  GAME_SELECT,
-  GOFISH_SESSION_SELECT,
-  PLAYER_SELECT,
-} from '@/lib/supabase-selects'
+import { GAME_SELECT, GOFISH_SESSION_SELECT, PLAYER_SELECT } from '@/lib/supabase-selects'
 import { fetchGoFishHands } from '@/lib/hands-client'
 import { useGameTableSync } from '@/hooks/useGameTableSync'
 import { usePolling, POLL_INTERVALS, supabasePollOk } from '@/hooks/usePolling'
@@ -101,13 +97,7 @@ export function GoFishHostView({ gameCode, hostToken }: { gameCode: string; host
   const hostSettingsNode = useMemo(
     () =>
       game?.status === 'active' ? (
-        <HostActiveSettings
-          game={game}
-          gameCode={gameCode}
-          hostToken={hostToken}
-          gameType="gofish"
-          onEnded={reload}
-        />
+        <HostActiveSettings game={game} gameCode={gameCode} hostToken={hostToken} gameType="gofish" onEnded={reload} />
       ) : null,
     [game?.status, gameCode, hostToken, reload]
   )
@@ -340,7 +330,12 @@ export function GoFishHostView({ gameCode, hostToken }: { gameCode: string; host
       />
       {isFinished && (
         <div className="glass-card-strong p-4 flex flex-wrap gap-2 justify-end">
-          <button type="button" onClick={() => void confirmReturnToLobby()} disabled={playingAgain} className="btn-secondary">
+          <button
+            type="button"
+            onClick={() => void confirmReturnToLobby()}
+            disabled={playingAgain}
+            className="btn-secondary"
+          >
             Return to lobby
           </button>
           <button type="button" onClick={() => void confirmPlayAgain()} disabled={playingAgain} className="btn-primary">
