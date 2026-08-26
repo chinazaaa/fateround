@@ -1,3 +1,4 @@
+import { Suspense } from 'react'
 import { ShopClient } from '@/components/coins/ShopClient'
 
 export const metadata = {
@@ -14,7 +15,17 @@ export default function ShopPage() {
           Spend the coins you earn on cosmetics that follow you across every game.
         </p>
       </div>
-      <ShopClient />
+      {/*
+        Suspense boundary is REQUIRED here. ShopClient calls useSearchParams()
+        (added for the ?category= deep-link from create-page / lobby locked
+        tiles), and Next.js 16's static prerender refuses to build a page that
+        uses that hook outside a Suspense boundary — it needs the CSR bailout
+        surface so client-side param reads don't corrupt the static HTML.
+        The prod build failed on #1054 without this; do NOT remove.
+      */}
+      <Suspense fallback={null}>
+        <ShopClient />
+      </Suspense>
     </div>
   )
 }

@@ -8,7 +8,7 @@ import { HostLobbySettingBlock } from '@/components/host-lobby/HostLobbySettingB
 import { HostLobbyOptionChips } from '@/components/host-lobby/HostLobbyOptionChips'
 import { useToast } from '@/components/ui/Toast'
 import { Glyph } from '@/components/icons/Glyph'
-import { ArrowUpDownIcon, BlackHoleIcon, CrownIcon, DoorOpenIcon } from '@hugeicons/core-free-icons'
+import { ArrowUpDownIcon, BlackHoleIcon, CrownIcon, DoorOpenIcon, GearsIcon } from '@hugeicons/core-free-icons'
 import type { Game } from '@/types'
 
 type Props = {
@@ -67,6 +67,15 @@ const WORLD_OPTIONS = [
       <span className="inline-flex items-center gap-1.5">
         <Glyph icon={CrownIcon} size={14} />
         <span>W4: Gauntlet</span>
+      </span>
+    ),
+  },
+  {
+    value: 'machines',
+    label: (
+      <span className="inline-flex items-center gap-1.5">
+        <Glyph icon={GearsIcon} size={14} />
+        <span>W5: Machines</span>
       </span>
     ),
   },

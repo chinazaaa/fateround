@@ -1,16 +1,11 @@
 import { StyleSheet, Text, View } from 'react-native'
-import type {
-  CodewordsBoard,
-  CodewordsGuess,
-  CodewordsPlayerRole,
-  CodewordsTeam,
-} from '@fateround/shared'
+import type { CodewordsBoard, CodewordsGuess, CodewordsPlayerRole, CodewordsTeam } from '@fateround/shared'
 import {
   cellBackground,
   cellTextColor,
   countRevealedTeamCells,
-  countTeamCells,
   roleLabel,
+  teamCellTotal,
 } from '@fateround/shared/codewords'
 import {
   pickBestCodewordsSpymaster,
@@ -27,9 +22,7 @@ export function CodewordsTeamBadge({ team }: { team: CodewordsTeam }) {
   const styles = useThemedStyles(makeStyles)
   return (
     <View style={[styles.badge, { backgroundColor: `${TEAM_COLOR[team]}33` }]}>
-      <Text style={[styles.badgeText, { color: TEAM_TEXT[team] }]}>
-        {team === 'red' ? '🔴 Red' : '🔵 Blue'}
-      </Text>
+      <Text style={[styles.badgeText, { color: TEAM_TEXT[team] }]}>{team === 'red' ? '🔴 Red' : '🔵 Blue'}</Text>
     </View>
   )
 }
@@ -49,13 +42,17 @@ export function CodewordsScoreboard({
   const styles = useThemedStyles(makeStyles)
 
   const panel = (team: CodewordsTeam) => {
-    const total = countTeamCells(board.key, team)
+    // key_totals, not a count of the key: the scoreboard also renders mid-game, where an
+    // operative's key is masked and counting it would report the team as already finished.
+    const total = teamCellTotal(board, team)
     const found = countRevealedTeamCells(board.key, board.revealed_indices, team)
     const left = total - found
     const pct = total > 0 ? Math.round((found / total) * 100) : 0
     const members = roles.filter((r) => r.team === team)
     return (
-      <View style={[styles.teamPanel, { borderColor: `${TEAM_COLOR[team]}66`, backgroundColor: `${TEAM_COLOR[team]}14` }]}>
+      <View
+        style={[styles.teamPanel, { borderColor: `${TEAM_COLOR[team]}66`, backgroundColor: `${TEAM_COLOR[team]}14` }]}
+      >
         <View style={styles.teamHeader}>
           <CodewordsTeamBadge team={team} />
           <Text style={[styles.teamLeft, { color: TEAM_TEXT[team] }]}>{left} left</Text>
@@ -63,7 +60,9 @@ export function CodewordsScoreboard({
         <View style={styles.barTrack}>
           <View style={[styles.barFill, { width: `${pct}%`, backgroundColor: TEAM_COLOR[team] }]} />
         </View>
-        <Text style={styles.foundText}>{found}/{total} found</Text>
+        <Text style={styles.foundText}>
+          {found}/{total} found
+        </Text>
         <View style={styles.roster}>
           {members.map((r) => {
             const isYou = r.player_id === highlightPlayerId
@@ -130,7 +129,9 @@ export function CodewordsEndGameStats({
               <Text style={styles.mvpEmoji}>🎯</Text>
               <Text style={styles.mvpTitle}>Best operative</Text>
               <Text style={styles.mvpName}>{bestOperative.name}</Text>
-              <Text style={styles.mvpDetail}>{bestOperative.correct} correct · {bestOperative.score} pts</Text>
+              <Text style={styles.mvpDetail}>
+                {bestOperative.correct} correct · {bestOperative.score} pts
+              </Text>
             </View>
           ) : null}
           {bestSpymaster ? (
@@ -138,7 +139,9 @@ export function CodewordsEndGameStats({
               <Text style={styles.mvpEmoji}>🕵️</Text>
               <Text style={styles.mvpTitle}>Best spymaster</Text>
               <Text style={styles.mvpName}>{bestSpymaster.name}</Text>
-              <Text style={styles.mvpDetail}>{bestSpymaster.wordsFound} found · {bestSpymaster.cluesGiven} clues</Text>
+              <Text style={styles.mvpDetail}>
+                {bestSpymaster.wordsFound} found · {bestSpymaster.cluesGiven} clues
+              </Text>
             </View>
           ) : null}
         </View>
@@ -148,10 +151,7 @@ export function CodewordsEndGameStats({
         <View style={styles.spyList}>
           <Text style={styles.cardLabel}>Spymasters</Text>
           {sortedSpies.map((spy) => (
-            <View
-              key={spy.playerId}
-              style={[styles.spyRow, spy.playerId === highlightPlayerId && styles.spyRowYou]}
-            >
+            <View key={spy.playerId} style={[styles.spyRow, spy.playerId === highlightPlayerId && styles.spyRowYou]}>
               <View style={styles.spyInfo}>
                 <Text style={styles.spyName}>
                   {spy.name}
@@ -164,7 +164,9 @@ export function CodewordsEndGameStats({
               </View>
               <View style={styles.spyScoreCol}>
                 <Text style={styles.spyScore}>{spy.score} pts</Text>
-                <Text style={styles.spyScoreSub}>{spy.wordsFound} found · {spy.cluesGiven} clues</Text>
+                <Text style={styles.spyScoreSub}>
+                  {spy.wordsFound} found · {spy.cluesGiven} clues
+                </Text>
               </View>
             </View>
           ))}
@@ -196,13 +198,18 @@ export function CodewordsBoardReveal({
           const onDark = fg !== '#171717'
           return (
             <View key={index} style={[styles.cell, { backgroundColor: bg }]}>
-              <Text style={[styles.cellWord, { color: fg }]} numberOfLines={2}>{word}</Text>
+              <Text style={[styles.cellWord, { color: fg }]} numberOfLines={2}>
+                {word}
+              </Text>
               {cellAttribution[index] ? (
                 <Text style={[styles.cellAttr, onDark && styles.cellSecondaryOnDark]} numberOfLines={1}>
                   {cellAttribution[index]}
                 </Text>
               ) : null}
-              <Text style={[styles.cellKey, onDark && styles.cellSecondaryOnDark]}>{cellType[0].toUpperCase()}</Text>
+              {/* Post-game reveal: the key is unmasked here, but stay null-safe. */}
+              {cellType ? (
+                <Text style={[styles.cellKey, onDark && styles.cellSecondaryOnDark]}>{cellType[0].toUpperCase()}</Text>
+              ) : null}
             </View>
           )
         })}
@@ -223,7 +230,13 @@ const makeStyles = (theme: Theme) =>
       padding: theme.space.md,
       gap: theme.space.sm,
     },
-    cardLabel: { color: theme.textMuted, fontSize: 12, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5 },
+    cardLabel: {
+      color: theme.textMuted,
+      fontSize: 12,
+      fontWeight: '800',
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+    },
     teamPanel: { borderWidth: 2, borderRadius: theme.radius.md, padding: theme.space.sm, gap: 6 },
     teamHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
     teamLeft: { fontSize: 13, fontWeight: '900' },
@@ -245,7 +258,13 @@ const makeStyles = (theme: Theme) =>
       gap: 2,
     },
     mvpEmoji: { fontSize: 26 },
-    mvpTitle: { color: theme.textMuted, fontSize: 10, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5 },
+    mvpTitle: {
+      color: theme.textMuted,
+      fontSize: 10,
+      fontWeight: '800',
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+    },
     mvpName: { color: theme.text, fontSize: 16, fontWeight: '900', textAlign: 'center' },
     mvpDetail: { color: theme.textMuted, fontSize: 12, textAlign: 'center' },
     spyList: { gap: theme.space.xs },

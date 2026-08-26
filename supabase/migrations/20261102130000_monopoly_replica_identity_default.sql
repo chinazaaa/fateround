@@ -1,0 +1,32 @@
+-- Flip monopoly_boards / monopoly_player_state back to REPLICA IDENTITY DEFAULT.
+--
+-- Root cause of the 2026-08-24 prod DB saturation incident: PostgREST + Auth
+-- were flapping Unhealthy and users saw "Can't reach the server" because
+-- Supabase Realtime's WAL decoder was drowning the DB. pg_stat_statements
+-- ranked the WAL-decoding query at ~27h of accumulated CPU across ~8.7M
+-- calls, and the top app-side write was the Monopoly board-patch RPC.
+--
+-- Migration 20261026120000_monopoly_loans.sql set both tables to
+-- REPLICA IDENTITY FULL to preserve unchanged TOASTed jsonb columns in
+-- Realtime UPDATE payloads. FULL emits the ENTIRE row to WAL on every
+-- update — for tables with heavy jsonb (property_owners, loans, per-player
+-- state) that quickly balloons WAL volume and decoder CPU.
+--
+-- Client already handles the DEFAULT case (TOAST-omitted null columns):
+--   src/components/monopoly/MonopolyPlayerView.tsx:181-200
+--     applyBoardRow → isCompleteMonopolyBoardRow(row) → returns false on
+--     null-TOAST payload → the debounced full-reload path refetches the
+--     complete row. Same fallback lives in MonopolyHostView.
+-- monopoly_player_state has ONLY scalar columns (bool / int / timestamptz),
+-- so DEFAULT is a pure win there — nothing is TOASTable to begin with.
+--
+-- Net: much smaller WAL records, much less decoder CPU, minor extra latency
+-- (one refetch) on the specific board updates whose payload happens to
+-- omit an unchanged TOASTed column. If any Monopoly write path is later
+-- found to need OLD-row values in the Realtime payload, that specific need
+-- should be met with a table-scoped fix (e.g. an update trigger that
+-- rewrites the JSONB in place, or a follow-up SELECT client-side) rather
+-- than reverting the whole table to FULL.
+
+ALTER TABLE public.monopoly_boards REPLICA IDENTITY DEFAULT;
+ALTER TABLE public.monopoly_player_state REPLICA IDENTITY DEFAULT;

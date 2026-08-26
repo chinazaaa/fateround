@@ -96,6 +96,18 @@ export function CoinAwardPanel({ gameCode }: Props) {
           <Text style={styles.ctaText}>Sign up to claim {shown.total} coins</Text>
         </Pressable>
       )}
+      {/* Discoverability hint — mirrors the web CoinAwardPanel's post-earn
+          "Spend coins in the Shop" line. Only shown to profiled players
+          with real credit; guests see the sign-up CTA above instead. */}
+      {!isGuest && anyCredit && (
+        <Text style={styles.hint}>
+          {'Spend coins in the '}
+          <Text style={styles.hintLink} onPress={() => router.push('/shop' as never)}>
+            Shop
+          </Text>
+          {' — frames, name colors, winner animations, and more.'}
+        </Text>
+      )}
     </View>
   )
 }
@@ -131,4 +143,6 @@ const makeStyles = (theme: Theme) =>
       alignItems: 'center',
     },
     ctaText: { color: '#fff', fontWeight: '700', fontSize: 14 },
+    hint: { color: theme.textFaint, fontSize: 12, lineHeight: 17, paddingTop: 4 },
+    hintLink: { color: theme.primary, fontWeight: '700', textDecorationLine: 'underline' },
   })

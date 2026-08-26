@@ -26,6 +26,7 @@ const GAME_TYPE_TO_SLUG: Record<GameType, string> = {
   monopoly: 'estate-kings',
   yahtzee: 'yahtzee',
   whot: 'whot',
+  rummy: 'rummy',
   uno: 'uno',
   crazy_eights: 'crazy-eights',
   ludo: 'ludo',
@@ -54,6 +55,7 @@ const GAME_TYPE_TO_SLUG: Record<GameType, string> = {
   landmine: 'landmine',
   wordle_room: 'wordle',
   troll_run: 'troll-run',
+  gofish: 'go-fish',
 }
 
 export function gameRulesUrl(gameType: GameType | string): string | null {

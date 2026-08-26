@@ -68,10 +68,31 @@ export async function GET(req: NextRequest) {
     if (ledgerErr)
       return NextResponse.json({ error: internalErrorMessage('profile/coins', ledgerErr) }, { status: 500 })
 
+    // Resolve game_type for the win rows on this page so the client can render
+    // "Won a round · Whot" instead of the bare reason label. Only wins have a
+    // ref_id that points at `games.id`; other reasons encode different things
+    // in ref_id (`first_mode:{type}`, `<kind>:<slug>`, …).
+    const rows = ledger ?? []
+    const winRefIds = Array.from(
+      new Set(
+        rows
+          .filter((r) => r.reason === 'win' && typeof r.ref_id === 'string' && r.ref_id.length > 0)
+          .map((r) => r.ref_id as string)
+      )
+    )
+    const gameTypeByRefId: Record<string, string> = {}
+    if (winRefIds.length > 0) {
+      const { data: games } = await admin.from('games').select('id, game_type').in('id', winRefIds)
+      for (const g of games ?? []) {
+        if (g?.id && g?.game_type) gameTypeByRefId[g.id as string] = g.game_type as string
+      }
+    }
+
     return NextResponse.json({
       profile: profile ?? null,
-      ledger: ledger ?? [],
-      hasMore: (ledger ?? []).length === limit,
+      ledger: rows,
+      gameTypeByRefId,
+      hasMore: rows.length === limit,
       filter,
       offset,
       limit,

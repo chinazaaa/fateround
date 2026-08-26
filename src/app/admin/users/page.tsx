@@ -17,6 +17,7 @@ type User = {
   gameTypes: number
   trophies: number
   country: string | null
+  coins: number
 }
 
 type Detail = {
@@ -200,6 +201,7 @@ export default function AdminUsersPage() {
                     <th className="py-2 pr-3 text-right">🏆</th>
                     <th className="py-2 pr-3 text-right">Pts</th>
                     <th className="py-2 pr-3 text-right">Streak</th>
+                    <th className="py-2 pr-3 text-right">🪙</th>
                     <th className="py-2 pr-3">Country</th>
                     <th className="py-2 pr-3">Last active</th>
                     <th className="py-2">Joined</th>
@@ -231,6 +233,7 @@ export default function AdminUsersPage() {
                           <span className="text-[var(--muted)]"> / {u.longestStreak}</span>
                         )}
                       </td>
+                      <td className="py-2 pr-3 text-right tabular-nums">{u.coins.toLocaleString()}</td>
                       <td className="py-2 pr-3 text-[var(--muted)]">{u.country ? countryName(u.country) : '—'}</td>
                       <td className="py-2 pr-3 text-[var(--muted)]">{shortDate(u.lastActiveDate)}</td>
                       <td className="py-2 text-[var(--muted)]">{shortDate(u.createdAt)}</td>

@@ -5,6 +5,19 @@ import { markGameFinished } from '@/lib/game-finish'
 import type { DescribeItGuess, DescribeItMode, DescribeItSession, DescribeItWord, Game } from '@/types'
 import { DESCRIBE_IT_WORD_POOL, parseStoredDescribeItWords, pickDescribeWord } from '@/lib/describe-it-words'
 
+/**
+ * A session as the SERVICE ROLE sees it — i.e. with the secret `current_word`.
+ *
+ * `DescribeItSession` deliberately marks that column optional/absent, because migration
+ * 20260807130000 revoked it from anon/authenticated: no browser read ever carries it. Everything
+ * in this module runs under the service role (write routes + cron), so it gets the real thing.
+ */
+export type DescribeItServerSession = DescribeItSession & {
+  current_word: string | null
+  /** Revoked from anon as a shadow copy of the word (its last entry IS `current_word`). */
+  used_words: string[]
+}
+
 export const DESCRIBE_IT_MIN_PLAYERS = 4
 /** Individual mode only needs a describer + one guesser, so it can start with fewer. */
 export const DESCRIBE_IT_MIN_PLAYERS_INDIVIDUAL = 2
@@ -372,10 +385,10 @@ function dedupeWords(words: string[]): string[] {
 async function loadSession(
   supabase: SupabaseClient,
   gameId: string
-): Promise<{ session: DescribeItSession | null; error?: string; internal?: boolean }> {
+): Promise<{ session: DescribeItServerSession | null; error?: string; internal?: boolean }> {
   const { data, error } = await supabase.from('describe_it_sessions').select('*').eq('game_id', gameId).maybeSingle()
   if (error) return { session: null, ...internalFailure('describe-it:loadSession', error) }
-  return { session: data as DescribeItSession | null }
+  return { session: data as DescribeItServerSession | null }
 }
 
 /** Postgres foreign-key violation (SQLSTATE 23503) — e.g. a describer who left mid-advance. */
@@ -413,7 +426,7 @@ function buildTurn(opts: {
   primary: readonly string[]
   fallback: readonly string[]
   usedWords: string[]
-}): Partial<DescribeItSession> | null {
+}): Partial<DescribeItServerSession> | null {
   const { turnIndex, mode, numTeams, totalRounds, turnSeconds, teamRoster, individualRoster, primary, fallback } = opts
   const units = mode === 'individual' ? individualRoster.length : numTeams
   if (units === 0 || turnIndex >= units * totalRounds) return null
@@ -712,7 +725,7 @@ async function processIndividualGuess(
   gameId: string,
   playerId: string,
   text: string,
-  session: DescribeItSession
+  session: DescribeItServerSession
 ): Promise<{ error?: string; correct?: boolean; internal?: boolean }> {
   // Gate on the LIVE roster (describe_it_players), not the frozen session.roster.
   // Late joiners are seeded into describe_it_players but never into session.roster
@@ -780,7 +793,7 @@ async function processIndividualGuess(
 async function endIndividualTurn(
   supabase: SupabaseClient,
   gameId: string,
-  session: DescribeItSession,
+  session: DescribeItServerSession,
   opts?: { noClue?: boolean }
 ): Promise<void> {
   // Pull each correct guess's points so the describer can be paid the mirror of

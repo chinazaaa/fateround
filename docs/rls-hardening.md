@@ -25,13 +25,13 @@ are hidden from anon (Phase 3).
    and keep playing by carrying their `resume_token` (URL `?player=` or entered player
    code → `/api/players/resume` → `localStorage['kmk_player_<code>']`). Authorization is by
    the **token in the request**, never by device/cookie/IP — so any device with the correct
-   token is authorized. This *strengthens* security (today moves are authorized by a bare,
+   token is authorized. This _strengthens_ security (today moves are authorized by a bare,
    public `playerId`) while preserving cross-device play.
 
 ## Threat model (scope)
 
 In scope: **write-side cheating/griefing of game state.** Out of scope (for now):
-read-side data privacy — reads and realtime stay public, so the anon key can still *read*
+read-side data privacy — reads and realtime stay public, so the anon key can still _read_
 any game. This is an accepted, documented decision; revisit only if the threat model
 expands to privacy (which would be the point to consider anonymous Supabase auth).
 
@@ -53,40 +53,41 @@ expands to privacy (which would be the point to consider anonymous Supabase auth
 
 - [x] **Phase 0 — Foundations**
   - [x] `getSupabaseAdmin()` fail-loud: no silent anon fallback in production
-    (`src/lib/supabase-admin.ts`). Dev keeps an anon fallback with a warning.
+        (`src/lib/supabase-admin.ts`). Dev keeps an anon fallback with a warning.
   - [x] `assertPlayer(supabase, gameCode, resumeToken)` authz helper added
-    (`src/lib/game-admin.ts`), mirroring the existing `assertHost*` helpers.
+        (`src/lib/game-admin.ts`), mirroring the existing `assertHost*` helpers.
   - [x] This tracking doc / write inventory.
 - [x] **Phase 1 — Authorization boundary in routes** (per-game tables): every game's write
-  routes use the service-role client and enforce `assertHost`/`assertPlayer`; player schemas
-  carry `resumeToken`; the actor `playerId` is derived from the token server-side.
+      routes use the service-role client and enforce `assertHost`/`assertPlayer`; player schemas
+      carry `resumeToken`; the actor `playerId` is derived from the token server-side.
 - [x] **Phase 2 — Writes server-side** (per-game tables): confirmed all game-state-table
-  writes already flow through API routes (no direct browser writes were found for the locked
-  tables); shared writers in start/play-again/players/promote switched to the service role.
+      writes already flow through API routes (no direct browser writes were found for the locked
+      tables); shared writers in start/play-again/players/promote switched to the service role.
 - [x] **Phase 4 — RLS lockdown** for all 16 game-state table groups (migrations 0106–0121):
-  `FOR ALL USING(true)` replaced with SELECT-only `_read` policies; rollbacks drafted in-file.
+      `FOR ALL USING(true)` replaced with SELECT-only `_read` policies; rollbacks drafted in-file.
 - [x] **Phase 3 — Hide tokens from reads** (migration 0122, approach A = column-level grants):
-  `REVOKE SELECT` on `games.host_token` / `players.resume_token` from anon+authenticated, re-grant
-  every other column (built dynamically from `information_schema`). The service role bypasses the
-  grant, so server auth reads keep working. Tokens removed from `GAME_SELECT`/`PLAYER_SELECT`
-  (+ new `HOST_GAME_SELECT` for the host page); ~25 client `select('*')` on games/players rewritten
-  to curated lists (Postgres rejects `*` on an ungranted column); ~20 server token-read routes and
-  all anon `insert/update().select()` that returned a token switched to the service role; client
-  token-readers (`useHostPlayerSession`, `player-resume`) now rely on the local session; host page
-  gates via a new `/api/games/[code]/verify-host` endpoint instead of reading `host_token`.
-  `Game.host_token` made optional on the shared type.
-  ⚠️ **Realtime must be verified on the live DB** — approach A relies on Supabase realtime
-  excluding ungranted columns from anon `postgres_changes` payloads. If a test shows the tokens
-  still arrive over realtime, escalate those two columns to separate secret tables.
+      `REVOKE SELECT` on `games.host_token` / `players.resume_token` from anon+authenticated, re-grant
+      every other column (built dynamically from `information_schema`). The service role bypasses the
+      grant, so server auth reads keep working. Tokens removed from `GAME_SELECT`/`PLAYER_SELECT`
+      (+ new `HOST_GAME_SELECT` for the host page); ~25 client `select('*')` on games/players rewritten
+      to curated lists (Postgres rejects `*` on an ungranted column); ~20 server token-read routes and
+      all anon `insert/update().select()` that returned a token switched to the service role; client
+      token-readers (`useHostPlayerSession`, `player-resume`) now rely on the local session; host page
+      gates via a new `/api/games/[code]/verify-host` endpoint instead of reading `host_token`.
+      `Game.host_token` made optional on the shared type.
+      ⚠️ **Realtime must be verified on the live DB** — approach A relies on Supabase realtime
+      excluding ungranted columns from anon `postgres_changes` payloads. If a test shows the tokens
+      still arrive over realtime, escalate those two columns to separate secret tables.
 - [x] **Core tables** locked: `games`, `players`, `participants`, `rounds`, `votes`,
-  `confessions`, `player_questions`, `wst_quote_pool`, `anime_quote_pool`,
-  `hot_seat_submissions`, `game_snapshots`, and `rooms`/`room_*`. These back the original
-  voting games (SMK/WYR/MLT/who-said-this/hot-seat/etc.) and shared infra. Locked by
-  `20260628132823_rls_lockdown_core_gameplay.sql` (core gameplay tables) and
-  `0126_rls_lockdown_rooms.sql` (rooms/`room_*`, plus hiding `creator_token`/`member_code`
-  from anon reads). See Phase 5 below (marked **IMPLEMENTED**).
+      `confessions`, `player_questions`, `wst_quote_pool`, `anime_quote_pool`,
+      `hot_seat_submissions`, `game_snapshots`, and `rooms`/`room_*`. These back the original
+      voting games (SMK/WYR/MLT/who-said-this/hot-seat/etc.) and shared infra. Locked by
+      `20260628132823_rls_lockdown_core_gameplay.sql` (core gameplay tables) and
+      `0126_rls_lockdown_rooms.sql` (rooms/`room_*`, plus hiding `creator_token`/`member_code`
+      from anon reads). See Phase 5 below (marked **IMPLEMENTED**).
 
 ### Games hardened (Phase 1+2+4 done): migrations 0106–0121
+
 snake-and-ladder, tic-tac-toe, yahtzee, whot, ludo, chess, monopoly, scrabble, trivia,
 two-truths, sudoku, word-hunt, codewords, describe-it, bingo, npat/i-call-on. Snake & Ladder
 verified live (happy path, cross-device resume, anon-write rejected). The other 15 are
@@ -108,6 +109,7 @@ the smallest end-to-end proof of the pattern, then the rest follow on the same b
 ## Per-game slice checklist (template)
 
 For each game:
+
 - [ ] All browser writes for the game moved into API routes
 - [ ] Routes use the service-role client (`getSupabaseAdmin`)
 - [ ] Host routes enforce `assertHost*`; player routes enforce `assertPlayer` (token, not playerId)
@@ -157,12 +159,12 @@ and is what the table UI and the out/finished checks actually consume.
 
 ### Per-game status
 
-| Game | Table | Server route | Web readers | Mobile reader | Playtested | Migration |
-|---|---|---|---|---|---|---|
-| Whot | `whot_player_hands` | ✅ `/api/whot/hands` | ✅ player, host, history | ✅ | ❌ **required** | ⏳ blocked |
-| UNO | `uno_player_hands` | ✅ `/api/uno/hands` | ✅ player, host, history | ✅ | ❌ **required** | ⏳ blocked |
-| Crazy Eights | `crazy_eights_player_hands` | ❌ | ❌ | ❌ | ❌ | ⏳ blocked |
-| Bingo | `bingo_cards` | ❌ | ❌ | ❌ | ❌ | ⏳ blocked |
+| Game         | Table                       | Server route         | Web readers                     | Mobile reader | Playtested      | Migration  |
+| ------------ | --------------------------- | -------------------- | ------------------------------- | ------------- | --------------- | ---------- |
+| Whot         | `whot_player_hands`         | ✅ `/api/whot/hands` | ✅ player, host, history        | ✅            | ❌ **required** | ⏳ blocked |
+| UNO          | `uno_player_hands`          | ✅ `/api/uno/hands`  | ✅ player, host, history        | ✅            | ❌ **required** | ⏳ blocked |
+| Crazy Eights | `crazy_eights_player_hands` | ❌                   | ❌                              | ❌            | ❌              | ⏳ blocked |
+| Bingo        | `bingo_cards`               | ✅ `/api/bingo/card` | ✅ player, host (own seat only) | ✅            | ❌ **required** | ⏳ blocked |
 
 **Per the staging rule below, the migration revoking `cards` from anon comes LAST — one
 migration covering all four, only once every reader for every one of those tables is on a
@@ -178,7 +180,7 @@ the anon key. Confirmed live on dev: `uno_sessions.draw_pile` returned 86 ordere
 players, `draw_pile` + `discard_pile` + your own hand subtract from the known deck to give your
 opponent's exact hand; with N players you still know every future draw, in order.
 
-Fix shape (Crazy Eights `20260815120000`, UNO `20260816120000`): add generated stored
+Fix shape (Crazy Eights `20260815120000`, UNO `20261003120000`): add generated stored
 `draw_count` / `discard_count` — jsonb columns, so `jsonb_array_length` behind a
 `jsonb_typeof(...) = 'array'` guard, not `cardinality` — then revoke the two piles from
 `anon`/`authenticated` and re-grant every other column. `top_card` stays public; it is a separate
@@ -194,6 +196,116 @@ Two rules this keeps tripping over, both encoded in the code:
 
 Whot's `whot_sessions` has the identical leak and is left to its own PR.
 
+## Phase 8 — per-turn secret state (the word / the key card)
+
+Same class as H2 (`codewords_boards.key`), but the secret is one column on a shared session row
+rather than a whole table, so the fix IS a column revoke — the shape used for `games.host_token`
+(0122) and `codewords_boards.key` (20260803170000):
+
+1. Revoke table SELECT from anon + authenticated, re-grant every column except the secret,
+   built dynamically from `information_schema` in an idempotent `do $$` block.
+2. Add `POST /api/<game>/<secret>` that resolves the caller from a **secret** (resume token, or
+   host token → `games.host_player_id` for a host who took a seat) and returns the secret only
+   when that resolves to the entitled player. Everyone else gets a `200` with `null` — asking is
+   normal traffic, so the status code must not become an oracle.
+3. Every browser reader drops the column from its `*_SELECT` and refetches through the route.
+
+Why it is safe here where Phase 7's hand tables are not: these session rows are consumed as a
+**reload trigger** (`useGameTableSync` → `load()`), never applied to state, so a realtime payload
+missing the column cannot corrupt anything.
+
+**Check for shadow copies of the secret.** Both Describe It and Quick Draw kept the current word
+in `used_words` as well — every write that sets `current_word` appends it — so the array's last
+element _was_ the answer, and revoking `current_word` alone would have moved the leak rather than
+closed it. Both columns are revoked in each game; a generated `word_seq` (`cardinality(used_words)`)
+is granted in their place, because the one legitimate client use of `used_words` was "the word
+changed" — a count, not the words.
+
+### Per-game status
+
+| Game               | Column                                                  | Route                         | Web readers     | Mobile reader | Playtested | Migration                                           |
+| ------------------ | ------------------------------------------------------- | ----------------------------- | --------------- | ------------- | ---------- | --------------------------------------------------- |
+| Codewords          | `codewords_boards.key`                                  | ✅ `/api/codewords/board`     | ✅              | ✅            | ✅         | ✅ 20260803170000                                   |
+| Describe It        | `describe_it_sessions.current_word` + `used_words`      | ✅ `/api/describe-it/my-word` | ✅ player, host | ✅            | ✅         | ✅ 20260807110000 + 20260807115000 + 20260807130000 |
+| Quick Draw (guess) | `quick_draw_guess_sessions.current_word` + `used_words` | ✅ `/api/quick-draw/my-word`  | ✅ player, host | ✅            | ✅         | ✅ 20260807140000                                   |
+
+### Split the migration: additive first, revoke last
+
+A redaction slice changes the schema in two ways that pull in opposite directions: the file
+simultaneously **creates** the public counter new clients select and **removes** the columns old
+clients select. The two directions are not equally dangerous, and the split exists because of the
+asymmetry rather than because both break —
+
+- **Database ahead of code** (42501, revoked column) breaks any client still selecting those
+  columns, and has no client-side rescue by design. This is the direction that forces the wait.
+- **Code ahead of database** (42703, undefined column) is _supported_: `readDescribeItSession()`
+  retries once without `word_seq`, so a deploy landing before the migration degrades to a slower
+  word refresh and self-heals. Supported is not the same as intended — the additive migration
+  should still go first; the fallback exists so a mis-ordered deploy is a slowdown, not an outage.
+
+Describe It is therefore three files:
+
+| File                                           | Effect                             | Safe against                             |
+| ---------------------------------------------- | ---------------------------------- | ---------------------------------------- |
+| `20260807110000_sec_regrant_except.sql`        | defines the shared regrant helper  | every client version                     |
+| `20260807115000_describe_it_word_seq.sql`      | **adds** `word_seq` + grants it    | every client version                     |
+| `20260807130000_sec_describe_it_hide_word.sql` | **revokes** the two secret columns | only clients that stopped selecting them |
+
+Apply 1+2 → deploy web and ship mobile → drain old installs → apply 3. Only the third file can
+break a live client.
+
+**The two skew directions are not symmetric.**
+
+_Code ahead of the database_ (42703, undefined column) is handled in code and needs no
+discipline: `readDescribeItSession()` (`src/lib/describe-it-session-read.ts`, mirrored in
+`apps/mobile/lib/`) retries once without `word_seq`, so a deploy that lands before the migration
+degrades to a slightly slower word refresh instead of taking out all session state. It self-heals
+when the migration runs — no redeploy. Verified locally: primary select → 400/42703, fallback →
+200, and 200 again after re-applying the migration.
+
+_Database ahead of code_ (42501, revoked column) has **no** client-side rescue, deliberately — a
+revoked column must keep failing loudly rather than be retried into success. It is handled only by
+the ordering above, and it is mobile that forces the wait: a web deploy reverts in a minute, an
+installed binary does not. Note that `expo-updates` is already a dependency and `eas.json` defines
+per-profile channels, but OTA is **not** wired — `app.json` has no `updates` block or
+`runtimeVersion` and nothing runs `eas update`.
+
+**Wiring OTA does not rescue builds already installed.** `expo-updates` reads its update URL and
+`runtimeVersion` from config baked into the native binary at build time, so a build produced
+without them never checks for updates; `eas update:configure` affects only future builds. No valid
+config has ever shipped here — `babc8f46` (2026-07-10) added a literal
+`replace-with-eas-project-id` placeholder URL and `f287ac20` removed it the next day. Step 3 is
+therefore a real store-release wait, or an accepted and recorded breakage window. Wire OTA anyway
+so the _next_ revoke is hot-fixable, but do not plan this one around it.
+
+### A failed read is not game state
+
+Both `useDescribeItWord` hooks store a fetch result **only on success**. `null` from
+`/api/describe-it/my-word` is real state ("you are not the describer"); a 429, a 500 or an offline
+blip is not, and recording one under the current refetch key used to satisfy the key check and pin
+the describer's panel to `…` for the whole turn — unrecoverable, since individual mode has no
+skip. Failures now retry with backoff (500ms → 4s) and successes re-poll every 5s, which also
+makes `word_seq` an optimisation rather than a correctness requirement. Only the describer polls,
+so the cost is ~12 calls/min per game against `RATE_LIMITS.handsFetch` (1200 / 5 min).
+
+Describe It playtest focus: the word rotates on every correct guess **and** every skip without
+`turn_index` changing, so the refetch is keyed on `word_seq`. Watch that the describer's word
+changes the instant a guess lands, on a skip, and at a turn/describer change — on web, mobile,
+and as a host-player.
+
+Playtested 2026-08-13 against a fully-migrated local database: exactly one player (the describer)
+receives the word and everyone else gets a `200` with `null`; the word rotates on both a correct
+guess and a skip with `word_seq` advancing; `current_word` and `used_words` are both refused
+(42501) to the publishable anon key, confirmed from a real browser session as a guesser.
+
+Quick Draw playtest focus: the word rotates on every correct guess **and** every skip without
+`turn_index` changing, so the refetch is keyed on `word_seq`. Watch that the drawer's prompt
+changes the instant a guess lands, on a skip, and at a turn/drawer change — team and individual
+mode, on web, mobile, and as a host-player — and that the canvas clears with it.
+
+Quick Draw "lie" mode (Drawful) is a separate flow: each drawer's private prompt lives in
+`quick_draw_assignments.prompt`, which is not covered here.
+
 ## Progress log
 
 ### Snake & Ladder (canary) — code-complete, ⏳ live verification pending
@@ -204,6 +316,7 @@ its writes already lived in `src/lib/snake-and-ladder.ts` functions that take a
 the service-role client.
 
 Changed:
+
 - `snakeLadderActionSchema`: `playerId` → `resumeToken` (`src/lib/validation.ts`).
 - `/api/snake-and-ladder/roll`: service role + `assertPlayer` (token → authoritative
   `player.id`); no longer trusts a client `playerId`.
@@ -220,20 +333,21 @@ Changed:
 Verified locally: `pnpm typecheck` clean; eslint 0 errors (pre-existing warnings only).
 
 **Still needs live verification against Supabase** (cannot run from this environment):
+
 - Apply `0106`; play create → join → roll loop → finish with RLS locked.
 - Cross-device resume: join on A, roll on B via token.
 - Negative: anon-key `update`/`delete` on snake tables rejected; anon `select` + realtime
   still work; roll with wrong/absent `resumeToken` → 403.
 
 > **Shared-route insight (affects sequencing for the rest):** writes to a game's tables are
-> spread across per-game routes *and* shared routes (`start`, `play-again`, `players`). The
+> spread across per-game routes _and_ shared routes (`start`, `play-again`, `players`). The
 > lib-takes-a-client pattern lets us hand just the service-role client to a game's calls
 > inside those shared routes, keeping each slice isolated. Games whose write logic is inline
 > in client components (not lib functions taking a client) will need real Phase-2 work first.
 
 ### Players DELETE — follow-up noted
 
-The non-host self-removal path (`/api/players` DELETE, else-branch) authorizes the *session*
+The non-host self-removal path (`/api/players` DELETE, else-branch) authorizes the _session_
 but doesn't verify the target `playerId` belongs to the caller — a player could remove
 another. Pre-existing; fix in the players-route slice (add `assertPlayer` and require the
 removed id to match, unless host).
@@ -247,32 +361,32 @@ removed id to match, unless host).
 `client=anon` must switch to the service role in Phase 1. `playerId-only(NO-AUTHZ)` is the
 core hole: authorize by `resume_token` instead.
 
-| Route | Client | Authz today | Writes |
-|---|---|---|---|
-| ai-questions | anon | HOST | games |
-| anime-quotes, anime-quotes/reroll | anon | HOST | anime_quote_pool, games |
-| anonymous-messages | anon | HOST | anonymous_messages, anonymous_room_bans, games, players |
-| anonymous-room/bans | ADMIN | HOST | anonymous_room_bans, games, players |
-| bingo/call, bingo/settings | anon | HOST | bingo_called_numbers, games |
-| **bingo/claim, bingo/mark** | anon | **playerId-only** | bingo_*, games, players |
-| **codewords/chat, clue, end-turn, guess, role** | anon | **playerId-only** | codewords_*, games, players |
-| codewords/expire-turn | anon | NONE (system) | codewords_boards, games |
-| codewords/host-role, timers | anon | HOST | codewords_*, games, players |
-| confessions | anon | NONE | confessions |
-| describe-it/balance, settings | anon | HOST | describe_it_players, games |
-| **describe-it/team** | anon | **playerId-only** | describe_it_players, games, players |
-| feedback | anon | NONE (public insert) | app_feedback |
-| games/[code]/end-round, finish-game, lobby-pool, lobby-settings, next-round, play-again, start, [code], games/ | anon | HOST | games + many |
-| **hot-seat** | anon | **playerId-only** | games, hot_seat_submissions, players, rounds |
-| library, admin/* | ADMIN | NONE (admin-gated) | question_packs, product_updates, game_player_limits |
-| **npat/dispute, draft, letter, mark, submit** | anon | **playerId-only** | npat_*, games, players, rounds |
-| participants | anon | HOST | participants, players |
-| **photos, player-participants, player-questions, players/promote, players/ready, quote** | anon | **playerId-only** | various |
-| players | anon | HOST + RESUME | games, participants, players |
-| rooms/* | anon | NONE | rooms, room_* , games |
-| tournaments/* | anon | HOST (most) / NONE (players) | tournaments, tournament_* |
-| **trivia/answer, two-truths/guess, two-truths/statements, votes, word-hunt/submit** | anon | **playerId-only** | various |
-| wst-quotes | anon | HOST | games, participants, players, wst_quote_pool |
+| Route                                                                                                          | Client | Authz today                  | Writes                                                  |
+| -------------------------------------------------------------------------------------------------------------- | ------ | ---------------------------- | ------------------------------------------------------- |
+| ai-questions                                                                                                   | anon   | HOST                         | games                                                   |
+| anime-quotes, anime-quotes/reroll                                                                              | anon   | HOST                         | anime_quote_pool, games                                 |
+| anonymous-messages                                                                                             | anon   | HOST                         | anonymous_messages, anonymous_room_bans, games, players |
+| anonymous-room/bans                                                                                            | ADMIN  | HOST                         | anonymous_room_bans, games, players                     |
+| bingo/call, bingo/settings                                                                                     | anon   | HOST                         | bingo_called_numbers, games                             |
+| **bingo/claim, bingo/mark**                                                                                    | anon   | **playerId-only**            | bingo\_\*, games, players                               |
+| **codewords/chat, clue, end-turn, guess, role**                                                                | anon   | **playerId-only**            | codewords\_\*, games, players                           |
+| codewords/expire-turn                                                                                          | anon   | NONE (system)                | codewords_boards, games                                 |
+| codewords/host-role, timers                                                                                    | anon   | HOST                         | codewords\_\*, games, players                           |
+| confessions                                                                                                    | anon   | NONE                         | confessions                                             |
+| describe-it/balance, settings                                                                                  | anon   | HOST                         | describe_it_players, games                              |
+| **describe-it/team**                                                                                           | anon   | **playerId-only**            | describe_it_players, games, players                     |
+| feedback                                                                                                       | anon   | NONE (public insert)         | app_feedback                                            |
+| games/[code]/end-round, finish-game, lobby-pool, lobby-settings, next-round, play-again, start, [code], games/ | anon   | HOST                         | games + many                                            |
+| **hot-seat**                                                                                                   | anon   | **playerId-only**            | games, hot_seat_submissions, players, rounds            |
+| library, admin/\*                                                                                              | ADMIN  | NONE (admin-gated)           | question_packs, product_updates, game_player_limits     |
+| **npat/dispute, draft, letter, mark, submit**                                                                  | anon   | **playerId-only**            | npat\_\*, games, players, rounds                        |
+| participants                                                                                                   | anon   | HOST                         | participants, players                                   |
+| **photos, player-participants, player-questions, players/promote, players/ready, quote**                       | anon   | **playerId-only**            | various                                                 |
+| players                                                                                                        | anon   | HOST + RESUME                | games, participants, players                            |
+| rooms/\*                                                                                                       | anon   | NONE                         | rooms, room\_\* , games                                 |
+| tournaments/\*                                                                                                 | anon   | HOST (most) / NONE (players) | tournaments, tournament\_\*                             |
+| **trivia/answer, two-truths/guess, two-truths/statements, votes, word-hunt/submit**                            | anon   | **playerId-only**            | various                                                 |
+| wst-quotes                                                                                                     | anon   | HOST                         | games, participants, players, wst_quote_pool            |
 
 ### Move/expire routes (writes happen in the game-logic lib they call)
 
@@ -379,31 +493,31 @@ routes, and the lockdown migrations.
 
 ## Write surface (from audit) — what each route needs
 
-| Route | Writes | Today | Needs |
-|---|---|---|---|
-| `votes` | votes | **playerId only** | `resumeToken` + `assertPlayer` (THE voting-games action) |
-| `player-questions` | player_questions | playerId only | `resumeToken` + assertPlayer |
-| `player-participants` | participants | playerId only | `resumeToken` + assertPlayer |
-| `photos` | participants, players | playerId only | `resumeToken` + assertPlayer |
-| `confessions` | confessions | **no authz** (anonymous) | gate with `resume_token` + assertPlayer (player-facing anonymity preserved; stops anon spam) |
-| `hot-seat` | hot_seat_submissions | playerId only | `resumeToken` + assertPlayer |
-| `wst-quotes` | wst_quote_pool | host + playerId | host path keeps hostToken; player submissions get `resumeToken` |
-| `quote` | who-said-this lobby submission | playerId only | `resumeToken` + assertPlayer |
-| `anime-quotes`(+reroll) | anime_quote_pool | host (now admin) | already host-authed; service-role write |
-| `players/promote` | players | playerId only | host or self ownership check |
-| `participants` | participants, players | host | host-authed (service role) |
-| `games` (POST create) | games, participants | anon insert (host_token generated) | service-role insert when games is locked |
-| `rooms` (POST create) | rooms | none (creator_token generated) | service-role insert; creator_token is the owner credential |
-| `rooms/[code]` | rooms | member_code (partial) | creator_token for room edits; service role |
-| `rooms/[code]/join` | room_members | member_code | service-role insert (returns member_code); keep member_code identity |
-| `rooms/[code]/messages` | room_messages | member_code-checked | `member_code` author check (mostly present); service role |
-| `rooms/[code]/members/[memberId]` | room_members | none | member/creator ownership check |
-| shared: `start`, `play-again`, `finish-game`, `next-round` | rounds, votes, confessions, etc. | mostly admin already (Phases 1–3) | finish the sweep |
+| Route                                                      | Writes                           | Today                              | Needs                                                                                        |
+| ---------------------------------------------------------- | -------------------------------- | ---------------------------------- | -------------------------------------------------------------------------------------------- |
+| `votes`                                                    | votes                            | **playerId only**                  | `resumeToken` + `assertPlayer` (THE voting-games action)                                     |
+| `player-questions`                                         | player_questions                 | playerId only                      | `resumeToken` + assertPlayer                                                                 |
+| `player-participants`                                      | participants                     | playerId only                      | `resumeToken` + assertPlayer                                                                 |
+| `photos`                                                   | participants, players            | playerId only                      | `resumeToken` + assertPlayer                                                                 |
+| `confessions`                                              | confessions                      | **no authz** (anonymous)           | gate with `resume_token` + assertPlayer (player-facing anonymity preserved; stops anon spam) |
+| `hot-seat`                                                 | hot_seat_submissions             | playerId only                      | `resumeToken` + assertPlayer                                                                 |
+| `wst-quotes`                                               | wst_quote_pool                   | host + playerId                    | host path keeps hostToken; player submissions get `resumeToken`                              |
+| `quote`                                                    | who-said-this lobby submission   | playerId only                      | `resumeToken` + assertPlayer                                                                 |
+| `anime-quotes`(+reroll)                                    | anime_quote_pool                 | host (now admin)                   | already host-authed; service-role write                                                      |
+| `players/promote`                                          | players                          | playerId only                      | host or self ownership check                                                                 |
+| `participants`                                             | participants, players            | host                               | host-authed (service role)                                                                   |
+| `games` (POST create)                                      | games, participants              | anon insert (host_token generated) | service-role insert when games is locked                                                     |
+| `rooms` (POST create)                                      | rooms                            | none (creator_token generated)     | service-role insert; creator_token is the owner credential                                   |
+| `rooms/[code]`                                             | rooms                            | member_code (partial)              | creator_token for room edits; service role                                                   |
+| `rooms/[code]/join`                                        | room_members                     | member_code                        | service-role insert (returns member_code); keep member_code identity                         |
+| `rooms/[code]/messages`                                    | room_messages                    | member_code-checked                | `member_code` author check (mostly present); service role                                    |
+| `rooms/[code]/members/[memberId]`                          | room_members                     | none                               | member/creator ownership check                                                               |
+| shared: `start`, `play-again`, `finish-game`, `next-round` | rounds, votes, confessions, etc. | mostly admin already (Phases 1–3)  | finish the sweep                                                                             |
 
 ## Slices (sequenced)
 
 1. **Service-role sweep (mechanical, safe, no behavior change).** Convert every remaining
-   *anon-client* write of a core table to the service role (`getSupabaseAdmin()`), same pattern
+   _anon-client_ write of a core table to the service role (`getSupabaseAdmin()`), same pattern
    as earlier phases. Targets: `votes`, `confessions`, `player-questions`, `player-participants`,
    `photos`, `quote`, `hot-seat`, `wst-quotes`, `games` (create), `participants`, plus any
    stragglers in `start`/`play-again`/`next-round`. Also fix anon `insert/update().select()`

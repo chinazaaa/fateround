@@ -1065,6 +1065,79 @@ export const COUNTERS: readonly CounterDef[] = [
     availability: 'partial',
     phrase: 'won at least {n} game{s} on a Joker',
   },
+  // ── Rummy — derived from rummy_sessions.winning_melds at finish ───────────────────────────────────────────
+  {
+    key: 'rummy_melds_laid',
+    label: 'Rummy — melds laid',
+    description: 'Sets or runs laid down across winning Rummy hands.',
+    scope: 'per-game',
+    availability: 'partial',
+    phrase: 'laid down at least {n} meld{s}',
+  },
+  {
+    key: 'rummy_run_wins',
+    label: 'Rummy — run winner',
+    description: 'Went out with at least one run.',
+    scope: 'per-game',
+    availability: 'partial',
+    phrase: 'won with a run at least {n} time{s}',
+  },
+  {
+    key: 'rummy_set_wins',
+    label: 'Rummy — set winner',
+    description: 'Went out with at least one set.',
+    scope: 'per-game',
+    availability: 'partial',
+    phrase: 'won with a set at least {n} time{s}',
+  },
+  {
+    key: 'rummy_mixed_bag_wins',
+    label: 'Rummy — mixed bag',
+    description: 'Went out with both a set and a run in the same hand.',
+    scope: 'per-game',
+    availability: 'partial',
+    phrase: 'won with a mixed lay-down at least {n} time{s}',
+  },
+  {
+    key: 'rummy_long_meld_wins',
+    label: 'Rummy — long meld',
+    description: 'Went out with a meld of five or more cards.',
+    scope: 'per-game',
+    availability: 'partial',
+    phrase: 'won with a 5+ card meld at least {n} time{s}',
+  },
+  {
+    key: 'rummy_solo_meld_wins',
+    label: 'Rummy — one-meld finish',
+    description: 'Went out with a single meld covering the whole hand.',
+    scope: 'per-game',
+    availability: 'partial',
+    phrase: 'won with a single meld at least {n} time{s}',
+  },
+  {
+    key: 'rummy_pure_run_wins',
+    label: 'Rummy — pure runs',
+    description: 'Went out with runs only (multiple melds, no sets).',
+    scope: 'per-game',
+    availability: 'partial',
+    phrase: 'won a runs-only hand at least {n} time{s}',
+  },
+  {
+    key: 'rummy_pure_set_wins',
+    label: 'Rummy — pure sets',
+    description: 'Went out with sets only (multiple melds, no runs).',
+    scope: 'per-game',
+    availability: 'partial',
+    phrase: 'won a sets-only hand at least {n} time{s}',
+  },
+  {
+    key: 'rummy_big_table_wins',
+    label: 'Rummy — big table',
+    description: 'Won a Rummy game with four or more players.',
+    scope: 'per-game',
+    availability: 'partial',
+    phrase: 'won at least {n} big-table game{s}',
+  },
   // ── Whot — from whot_player_hands.stats at finish ───────────────────────────────────────────
   {
     key: 'whot_pick_twos',
@@ -4882,6 +4955,80 @@ export const COUNTERS: readonly CounterDef[] = [
     availability: 'partial',
     phrase: 'finished at least {n} full-lobby game{s}',
   },
+
+  // ── Go Fish — from gofish_sessions.event_log + gofish_player_hands.books ────────────────────
+  {
+    key: 'gofish_books_completed',
+    label: 'Go Fish — books completed',
+    description: 'Total books (four of a rank) collected across all Go Fish games.',
+    scope: 'per-game',
+    availability: 'partial',
+    phrase: 'completed at least {n} book{s}',
+  },
+  {
+    key: 'gofish_successful_asks',
+    label: 'Go Fish — successful asks',
+    description: 'Times an ask hit and cards were handed over.',
+    scope: 'per-game',
+    availability: 'partial',
+    phrase: 'landed at least {n} successful ask{s}',
+  },
+  {
+    key: 'gofish_go_fish_draws',
+    label: 'Go Fish — misses',
+    description: 'Times an ask missed and the player drew from the ocean.',
+    scope: 'per-game',
+    availability: 'partial',
+    phrase: 'drew from the ocean at least {n} time{s}',
+  },
+  {
+    key: 'gofish_lucky_draws',
+    label: 'Go Fish — lucky draws',
+    description: 'Times the drawn Go-Fish card happened to be the asked rank.',
+    scope: 'per-game',
+    availability: 'partial',
+    phrase: 'landed at least {n} lucky draw{s}',
+  },
+  {
+    key: 'gofish_four_book_games',
+    label: 'Go Fish — 4-book games',
+    description: 'Games with 4 or more books collected.',
+    scope: 'per-game',
+    availability: 'partial',
+    phrase: 'collected 4+ books in at least {n} game{s}',
+  },
+  {
+    key: 'gofish_seven_book_games',
+    label: 'Go Fish — 7-book games',
+    description: 'Games with 7 or more books collected (dominant hand).',
+    scope: 'per-game',
+    availability: 'partial',
+    phrase: 'collected 7+ books in at least {n} game{s}',
+  },
+  {
+    key: 'gofish_dominant_wins',
+    label: 'Go Fish — dominant wins',
+    description: 'Wins with 7 or more books.',
+    scope: 'per-game',
+    availability: 'partial',
+    phrase: 'won at least {n} game{s} with 7+ books',
+  },
+  {
+    key: 'gofish_no_miss_wins',
+    label: 'Go Fish — clean-sweep wins',
+    description: 'Wins where every ask you made hit.',
+    scope: 'per-game',
+    availability: 'partial',
+    phrase: 'won at least {n} game{s} without a single miss',
+  },
+  {
+    key: 'gofish_big_room_wins',
+    label: 'Go Fish — big-room wins',
+    description: 'Wins in a 5+ player game.',
+    scope: 'per-game',
+    availability: 'partial',
+    phrase: 'won at least {n} big-room game{s}',
+  },
 ] as const
 
 /**
@@ -4926,8 +5073,8 @@ export const DISTINCT_SETS: readonly DistinctDef[] = [
   },
   {
     // Emitted by trollRunFacts as `distinct:troll_run_worlds:<world>`, folded into
-    // `player_distinct` by the award pass. Four worlds ship (`TROLL_RUN_WORLD_IDS`), each with
-    // its own hazard vocabulary, so "ran all four" is a breadth measure no sum can express.
+    // `player_distinct` by the award pass. Every shipped world (`TROLL_RUN_WORLD_IDS`) has its
+    // own hazard vocabulary, so "ran them all" is a breadth measure no sum can express.
     key: 'troll_run_worlds',
     label: 'Troll Run — worlds run',
     description: 'Distinct Troll Run worlds this profile has finished a game in.',

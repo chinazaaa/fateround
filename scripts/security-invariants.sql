@@ -68,7 +68,7 @@ begin
       'quick_draw_titles','quick_draw_votes',
       'quick_draw_guess_sessions','quick_draw_guess_players','quick_draw_guess_words',
       'quick_draw_guess_guesses',
-      'memory_match_progress','memory_match_submissions','ping_pong_sessions',
+      'memory_match_progress','memory_match_submissions',
       'tournaments','tournament_players','tournament_games',
       'anonymous_messages','anonymous_room_bans'
     )

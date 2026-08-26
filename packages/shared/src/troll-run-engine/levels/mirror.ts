@@ -12,15 +12,14 @@ import {
   TROLL_RUN_GRID_COLS,
   TROLL_RUN_INTERNAL_WIDTH,
   TROLL_RUN_PHYSICS,
+  TROLL_RUN_SPAWNED_ENTITY_SIZE,
   TrollRunTileType,
   type TrollAction,
+  type TrollEntityPatrol,
   type TrollMovingEntity,
   type TrollRunLevel,
   type TrollTrigger,
 } from '../types'
-
-/** `spawn_entity` builds a fixed 14x14 box (triggers.ts), so that is the width to reflect around. */
-const SPAWNED_ENTITY_SIZE = 14
 
 /** Mirrors the left edge of something `size` wide, keeping it in the same place on the far side. */
 function mirrorSpan(x: number, size: number): number {
@@ -76,12 +75,16 @@ function mirrorAction(action: TrollAction, movingEntities: readonly TrollMovingE
       return { ...action, to: { x: mirrorSpan(action.to.x, wallWidth), y: action.to.y } }
     }
 
-    case 'spawn_entity':
+    case 'spawn_entity': {
+      // The box the trigger will actually build is what has to be reflected around, so a spawn that
+      // overrides the default size lands in the mirrored spot rather than 14px off it.
+      const spawnSize = action.size ?? TROLL_RUN_SPAWNED_ENTITY_SIZE
       return {
         ...action,
-        position: { x: mirrorSpan(action.position.x, SPAWNED_ENTITY_SIZE), y: action.position.y },
+        position: { x: mirrorSpan(action.position.x, spawnSize), y: action.position.y },
         velocity: action.velocity ? { x: -action.velocity.x, y: action.velocity.y } : undefined,
       }
+    }
 
     // Nothing about these has a side to it: they flip the controls, flip gravity, or make the door
     // a liar.
@@ -100,11 +103,29 @@ function mirrorTrigger(trigger: TrollTrigger, movingEntities: readonly TrollMovi
   }
 }
 
+/**
+ * A patrol run flips end for end: the old right-hand limit becomes the new left-hand one. Vertical
+ * limits are untouched, and both edges are reflected around the entity's own width so the mirrored
+ * machine sweeps exactly the span its original did.
+ */
+function mirrorPatrol(patrol: TrollEntityPatrol, width: number): TrollEntityPatrol {
+  const mirrored: TrollEntityPatrol = {}
+  if (patrol.maxX !== undefined) mirrored.minX = mirrorSpan(patrol.maxX, width)
+  if (patrol.minX !== undefined) mirrored.maxX = mirrorSpan(patrol.minX, width)
+  if (patrol.minY !== undefined) mirrored.minY = patrol.minY
+  if (patrol.maxY !== undefined) mirrored.maxY = patrol.maxY
+  return mirrored
+}
+
 function mirrorEntity(entity: TrollMovingEntity): TrollMovingEntity {
   return {
     ...entity,
     x: mirrorSpan(entity.x, entity.w),
     vx: entity.vx === undefined ? undefined : -entity.vx,
+    patrol: entity.patrol ? mirrorPatrol(entity.patrol, entity.w) : undefined,
+    // A pulse has no handedness — reflecting a room does not change when the beam blinks. It is still
+    // copied rather than shared, so the mirror can never reach back into the authored singleton.
+    pulse: entity.pulse ? { ...entity.pulse } : undefined,
   }
 }
 

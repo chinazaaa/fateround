@@ -689,6 +689,52 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
     },
   ],
 
+  rummy: [
+    {
+      title: 'Objective',
+      points: [
+        'Be the first player to lay your entire hand down as valid sets and runs.',
+        'A set is 3 or 4 cards of the same rank (e.g. 7♠ 7♥ 7♦). A run is 3+ consecutive cards of the same suit (e.g. 4♣ 5♣ 6♣).',
+      ],
+    },
+    {
+      title: 'Setup',
+      points: [
+        '2–6 players join a room. Standard 52-card deck.',
+        '2 players are dealt 10 cards each; 3–4 players get 7 each; 5–6 players get 6 each.',
+        'One card is turned face-up to start the discard pile; the rest form the draw pile.',
+      ],
+    },
+    {
+      title: 'How to play',
+      points: [
+        'On your turn, draw one card — from the draw pile (face down) or the top of the discard pile (face up).',
+        'Rearrange your hand and work toward complete sets and runs.',
+        'Then discard one card face-up onto the discard pile to end your turn.',
+        'When your whole hand can be laid down as valid sets and runs (often with one card left to discard), you go out and win the round.',
+        'If the draw pile runs out, played cards (except the current top card) are reshuffled into a new draw pile — capped so the deck cannot cycle forever.',
+      ],
+    },
+    {
+      title: 'Card values (for scoring)',
+      points: [
+        'Values matter when the round ends without a winner — lowest deadwood total wins.',
+        'Ace — 1 point (aces are LOW; A-2-3 is a valid run, Q-K-A is not).',
+        'Number cards 2–10 — face value.',
+        'Jack, Queen, King — 10 points each.',
+      ],
+    },
+    {
+      title: 'Game length',
+      points: [
+        'The host can set a per-player turn timer AND a whole-game clock — or turn either off.',
+        'When your turn timer hits zero, the game auto-draws and auto-discards for you and moves on.',
+        'First to lay everything down wins during normal play (no game clock).',
+        'When the whole-game clock runs out, the winner is whoever is CLOSEST to going out — the player whose hand has the most cards that could be laid down as valid sets and runs. Ties are broken by fewest leftover deadwood, so a Rummy-ready hand beats one that just happens to hold cheap cards.',
+      ],
+    },
+  ],
+
   crazy_eights: [
     {
       title: 'Objective',
@@ -1944,6 +1990,40 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
         'Desktop: Arrow keys or A/D to run, Space/Up/W to jump.',
         'Mobile: On-screen touch buttons for Left, Right, and Jump.',
         'Responsive platforming with coyote time (80ms) and jump buffering (100ms) for snappy jumps.',
+      ],
+    },
+  ],
+
+  gofish: [
+    {
+      title: 'Objective',
+      points: [
+        'Collect the most "books" — a book is all four cards of the same rank (e.g. all four Queens).',
+        'Play continues until every one of the 13 books has been made, or the ocean runs out and nobody can ask.',
+      ],
+    },
+    {
+      title: 'Setup',
+      points: [
+        '2 to 6 players. 2 players are dealt 7 cards each; 3 or more players are dealt 5 cards each.',
+        'The rest of the standard 52-card deck becomes the ocean (draw pile) in the middle.',
+        "Spectators can watch but cannot see any player's hand — only counts and completed books.",
+      ],
+    },
+    {
+      title: 'How a turn works',
+      points: [
+        'On your turn, ask one opponent for a specific rank you already hold at least one of ("Do you have any 7s?").',
+        'If they have any, they must hand over ALL of them — then you go again and ask anyone for another rank.',
+        'If they have none, they say "Go Fish" and you draw the top card from the ocean. If the drawn card is the rank you asked for, you go again; otherwise play passes to the next player.',
+      ],
+    },
+    {
+      title: 'Books, refill, and end of game',
+      points: [
+        'Whenever you complete a set of 4 of a rank, it becomes a scored book displayed in front of you.',
+        'If your hand empties while the ocean still has cards, you draw a fresh hand (up to 5) and keep playing.',
+        'Once all 13 books are made — or the ocean is empty and everyone is out of cards — the game ends. Most books wins; ties are broken by fewest remaining cards.',
       ],
     },
   ],

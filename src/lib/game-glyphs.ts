@@ -94,6 +94,7 @@ const GAME_ICONS: Record<GameType, IconSvgElement> = {
   monopoly: HatIcon,
   yahtzee: DicesIcon,
   whot: Cards02Icon,
+  rummy: Cards01Icon,
   ludo: TokenCircleIcon,
   mahjong: DominoIcon,
   i_call_on: Megaphone01Icon,
@@ -122,6 +123,7 @@ const GAME_ICONS: Record<GameType, IconSvgElement> = {
   uno: CardExchange01Icon,
   wordle_room: GridViewIcon,
   troll_run: SkullIcon,
+  gofish: Cards02Icon,
 }
 
 export function gameIcon(type: GameType): IconSvgElement {
