@@ -435,6 +435,7 @@ export const GAME_LANDING_OG_BY_SLUG: Record<string, string> = {
   'word-grouping': '/og/word-grouping.png',
   landmine: '/og/landmine.png',
   uno: '/og/uno.png',
+  'go-fish': '/og/go-fish.png',
   'daily-challenges': '/og/daily-challenges.png',
   'daily-crossword': '/og/daily-crossword.png',
   'daily-word-search': '/og/daily-word-search.png',

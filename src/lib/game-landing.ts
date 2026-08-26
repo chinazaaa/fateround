@@ -85,6 +85,7 @@ export const GAME_TYPE_TO_SLUG: Record<GameType, string> = {
   landmine: 'landmine',
   wordle_room: 'wordle',
   troll_run: 'troll-run',
+  gofish: 'go-fish',
 }
 
 const SLUG_TO_GAME_TYPE = Object.fromEntries(
@@ -3387,6 +3388,74 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         question: 'How does Troll Run multiplayer work?',
         answer:
           'Players race independently through the same level layouts simultaneously. A live ticker announces whenever someone falls for a trap or clears a level. Round placement and total deaths determine the winner.',
+      },
+    ],
+  }),
+  gofish: landing('gofish', {
+    seoTitle: 'Play Go Fish Online Free with Friends — Classic Card Game, No Sign-Up',
+    seoDescription:
+      'Play Go Fish online free with friends — no sign-up, no download. Ask opponents for ranks, draw from the ocean, and collect books. 2–6 players, plays best with 3+.',
+    keywords: [
+      'go fish online',
+      'go fish card game',
+      'play go fish online',
+      'go fish rules',
+      'how to play go fish',
+      'go fish multiplayer',
+      'go fish with friends online',
+      'free go fish online',
+      'go fish online no sign up',
+      'go fish for kids',
+      'classic card game online',
+    ],
+    heroSubtitle: 'The classic ask-for-a-rank card game. Collect four of a kind to score a book. Most books wins.',
+    bodyParagraph:
+      'Go Fish on FateRound plays by the standard rules — ask an opponent for a rank you already hold, take all of theirs if they have any, "Go Fish" from the ocean if they don\'t. Complete four of a rank for a book and keep asking until all 13 books are made. 2–6 players; 3 or more is the sweet spot for making the asking part interesting.',
+    highlights: ['Standard 52-card deck', '2–6 players', 'Great for kids and casual card night'],
+    features: [
+      {
+        title: 'Ask an opponent',
+        description: 'Pick a player and a rank you already hold. Hit and they hand all of theirs over, then you go again.',
+        emoji: '🎯',
+      },
+      {
+        title: 'Go Fish',
+        description: 'Miss and you draw from the ocean. If your draw matches the rank you asked for, you go again.',
+        emoji: '🐟',
+      },
+      {
+        title: 'Score books',
+        description: 'Collect all four cards of a rank to score a book. Most books when the game ends wins.',
+        emoji: '📚',
+      },
+      SHARED_FEATURES.mobile,
+    ],
+    steps: [
+      { title: 'Create a room', description: 'Pick 2–6 seats, share the code, everyone joins in seconds.' },
+      { title: 'Ask for a rank', description: 'On your turn, ask any opponent for a rank you already hold.' },
+      { title: 'Complete books', description: 'Collect four of a kind for a book. Most books at the end wins.' },
+    ],
+    perfectFor: ['Family game nights', 'Kids and casual players', 'Warming up before a bigger card game'],
+    extraFaqs: [
+      {
+        question: 'How many cards do you deal in Go Fish?',
+        answer:
+          'With 2 players, deal 7 cards each. With 3 or more players, deal 5 cards each. The rest of the deck becomes the ocean (draw pile) in the middle.',
+      },
+      {
+        question: 'Can I ask for a rank I do not hold?',
+        answer:
+          'No. Standard Go Fish rules require you to hold at least one card of the rank you ask for. FateRound enforces this on the server, so the "Ask" menu only offers ranks you actually have in hand.',
+      },
+      {
+        question: 'What happens when I run out of cards mid-game?',
+        answer:
+          'If the ocean still has cards, you automatically draw a fresh hand (up to 5) and stay in the game. If both your hand and the ocean are empty, you are out for the rest of this round.',
+      },
+      {
+        question: 'When does Go Fish end?',
+        answer:
+          'The game ends when all 13 books have been made, or when the ocean is empty and no player has any cards left. Whoever has the most books wins; ties are broken by fewest remaining cards.',
       },
     ],
   }),
