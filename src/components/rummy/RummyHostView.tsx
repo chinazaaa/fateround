@@ -1,10 +1,16 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { HostLobby } from '@/components/host/HostLobby'
 import { HostBoardGameLobbyPanel } from '@/components/host-lobby/HostBoardGameLobbyPanel'
 import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
+import { HostLeaveSeatButton } from '@/components/host/HostLeaveSeatButton'
+import { HostRulesRow } from '@/components/host/HostRulesRow'
+import { HostLateJoinSettingsCard } from '@/components/HostLateJoinSettingsCard'
+import { RulesInPlaySection } from '@/components/game-lobby/RulesInPlaySection'
+import { useRegisterGameSettings } from '@/components/GameSettingsContext'
+import { ExitIcon } from '@/components/host/host-icons'
 import { gameTypeConfig } from '@/lib/game-types'
 import { RUMMY_MIN_PLAYERS, RUMMY_MAX_PLAYERS } from '@/lib/rummy'
 import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
@@ -191,6 +197,38 @@ export function RummyHostView({ gameCode, hostToken }: { gameCode: string; hostT
   const hostTurnTimer = useRummyTurnTimer(gameCode, session, game?.status === 'active')
   const hostGameTimer = useRummyGameTimer(gameCode, game)
 
+  // Host settings for the active room live behind the main chrome's ⚙ gear (Rules
+  // in play · late-join · Leave seat · How to play · End game), mirroring Crazy
+  // Eights and Whot — no in-body Leave/End buttons during play.
+  const hostSettingsNode = useMemo(() => {
+    if (game?.status !== 'active') return null
+    return (
+      <div className="space-y-4">
+        <RulesInPlaySection game={game} />
+        <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
+        {hostMode === 'player' && !!hostPlayerId && (
+          <HostLeaveSeatButton
+            onLeave={leaveGameRemovePlayer}
+            variant="remove"
+            className="btn-secondary w-full py-3 text-base"
+          />
+        )}
+        <HostRulesRow gameType="rummy" />
+        <HostEndGameButton
+          gameCode={gameCode}
+          hostToken={hostToken}
+          onEnded={load}
+          label="End game"
+          icon={<ExitIcon size={14} />}
+          confirmTitle="End this game?"
+          confirmMessage="Everyone sees the final results. You can start a new game from the room afterward."
+          className="btn-danger-soft w-full"
+        />
+      </div>
+    )
+  }, [game, gameCode, hostToken, setGame, load, hostMode, hostPlayerId, leaveGameRemovePlayer])
+  useRegisterGameSettings(hostSettingsNode)
+
   if (loading || !game) return <HostLobbySkeleton />
 
   const cfg = gameTypeConfig('rummy')
@@ -325,14 +363,6 @@ export function RummyHostView({ gameCode, hostToken }: { gameCode: string; hostT
           }
         />
       )}
-      <div className="px-3 pt-2 pb-4 space-y-2">
-        {hostPlays && (
-          <button type="button" className="btn-secondary w-full py-2" onClick={leaveGameRemovePlayer}>
-            Leave the table (keep hosting)
-          </button>
-        )}
-        <HostEndGameButton gameCode={gameCode} hostToken={hostToken} onEnded={load} />
-      </div>
     </HostRoomShell>
   )
 }
