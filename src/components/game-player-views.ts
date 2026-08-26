@@ -12,6 +12,7 @@ import { CodewordsPlayerView } from '@/components/codewords/CodewordsPlayerView'
 import { MonopolyPlayerView } from '@/components/monopoly/MonopolyPlayerView'
 import { YahtzeePlayerView } from '@/components/yahtzee/YahtzeePlayerView'
 import { WhotPlayerView } from '@/components/whot/WhotPlayerView'
+import { RummyPlayerView } from '@/components/rummy/RummyPlayerView'
 import { CrazyEightsPlayerView } from '@/components/crazy-eights/CrazyEightsPlayerView'
 import { UnoPlayerView } from '@/components/uno/UnoPlayerView'
 import { LudoPlayerView } from '@/components/ludo/LudoPlayerView'
@@ -37,6 +38,7 @@ import { WordScramblePlayerView } from '@/components/word-scramble/WordScrambleP
 import { WordGroupingPlayerView } from '@/components/word-grouping/WordGroupingPlayerView'
 import { WordleRoomPlayerView } from '@/components/wordle-room/WordleRoomPlayerView'
 import { TrollRunPlayerView } from '@/components/troll-run/TrollRunPlayerView'
+import { GoFishPlayerView } from '@/components/gofish/GoFishPlayerView'
 
 export type GamePlayerView = ComponentType<{ gameCode: string }>
 
@@ -58,6 +60,7 @@ export const PLAYER_VIEW_REGISTRY: Partial<Record<GameType, GamePlayerView>> = {
   monopoly: MonopolyPlayerView,
   yahtzee: YahtzeePlayerView,
   whot: WhotPlayerView,
+  rummy: RummyPlayerView,
   crazy_eights: CrazyEightsPlayerView,
   uno: UnoPlayerView,
   ludo: LudoPlayerView,
@@ -85,4 +88,5 @@ export const PLAYER_VIEW_REGISTRY: Partial<Record<GameType, GamePlayerView>> = {
   word_grouping: WordGroupingPlayerView,
   wordle_room: WordleRoomPlayerView,
   troll_run: TrollRunPlayerView,
+  gofish: GoFishPlayerView,
 }

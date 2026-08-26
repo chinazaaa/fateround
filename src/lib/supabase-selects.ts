@@ -94,6 +94,20 @@ export const WHOT_SESSION_SELECT =
 
 export const WHOT_PLAYER_HANDS_SELECT = 'id,game_id,player_id,cards,player_order,created_at'
 
+/**
+ * Go Fish session — `ocean` (the face-down draw pile) is EXCLUDED. It is server-only state;
+ * the client only needs `ocean_count` to render "N cards left" without seeing card order.
+ */
+export const GOFISH_SESSION_SELECT =
+  'id,game_id,turn_order,current_turn_index,phase,ocean_count,event_log,status_message,winner_player_id,finish_order,turn_deadline_at,created_at,updated_at'
+
+/**
+ * Go Fish hands — `cards` is redacted per-viewer by the /api/gofish/hands route, so this
+ * select is fine to run from the browser: opponents' rows carry public `books` and a
+ * `card_count`, and only your own row carries the real cards.
+ */
+export const GOFISH_PLAYER_HANDS_SELECT = 'id,game_id,player_id,cards,books,player_order,created_at'
+
 export const CRAZY8_SESSION_SELECT =
   'id,game_id,turn_order,current_turn_index,direction,phase,draw_pile,discard_pile,top_card,required_suit,pick_two_stack,joker_penalty,status_message,winner_player_id,finish_order,turn_deadline_at,created_at,updated_at'
 

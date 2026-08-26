@@ -51,6 +51,7 @@ export const ROUND_ADVANCE_SLUG: Record<string, string> = {
 export const TURN_EXPIRE_SLUG: Record<string, string> = {
   whot: 'whot',
   crazy_eights: 'crazy-eights',
+  rummy: 'rummy',
   chess: 'chess',
   checkers: 'checkers',
   checkers_international: 'checkers-international',
@@ -65,6 +66,7 @@ export const TURN_EXPIRE_SLUG: Record<string, string> = {
   uno: 'uno',
   ayo: 'ayo',
   mahjong: 'mahjong',
+  gofish: 'gofish',
 }
 
 // Mafia, Bingo and Troll Run are driven through bespoke targets below rather than the two

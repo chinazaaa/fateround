@@ -57,6 +57,7 @@ export const GAME_TYPE_TO_SLUG: Record<GameType, string> = {
   monopoly: 'estate-kings',
   yahtzee: 'yahtzee',
   whot: 'whot',
+  rummy: 'rummy',
   crazy_eights: 'crazy-eights',
   uno: 'uno',
   ludo: 'ludo',
@@ -85,6 +86,7 @@ export const GAME_TYPE_TO_SLUG: Record<GameType, string> = {
   landmine: 'landmine',
   wordle_room: 'wordle',
   troll_run: 'troll-run',
+  gofish: 'go-fish',
 }
 
 const SLUG_TO_GAME_TYPE = Object.fromEntries(
@@ -1605,6 +1607,71 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     relatedBlogPosts: [
       { slug: 'whot-rules-explained', label: 'Whot rules explained →' },
       { slug: 'is-whot-like-uno', label: 'Whot vs Uno: what’s actually different →' },
+    ],
+  }),
+  rummy: landing('rummy', {
+    seoTitle: 'Play Rummy Online Free with Friends — Sets, Runs, No Sign-Up',
+    seoDescription:
+      'Play Rummy online free with friends — no sign-up, no download. Draw, discard, and meld sets and runs. First to lay down their whole hand wins the round. 2–6 players.',
+    keywords: [
+      'rummy online',
+      'rummy rules',
+      'how to play rummy',
+      'rummy card game',
+      'play rummy friends',
+      'rummy multiplayer',
+      'play rummy online free',
+      'rummy with friends online',
+      'rummy online free no download',
+      'basic rummy rules',
+      'sets and runs rummy',
+      'go out rummy',
+    ],
+    heroSubtitle: 'The classic card game — draw, discard, and be first to meld your whole hand into sets and runs.',
+    bodyParagraph:
+      'Rummy on FateRound plays by the everyone-knows-this rules: on your turn draw one card from the pile or the top of the discard, then discard one. Build sets (three or four cards of the same rank) and runs (three or more consecutive cards of the same suit). The moment your entire hand can be laid down as valid melds — usually with one card left to discard — you go out and win the round. If the clock runs out first, whoever is closest to going out wins — the player with the most cards that could still be laid down as valid melds; leftover deadwood (face cards 10, ace 1, numerics face value) breaks a tie.',
+    highlights: ['Standard 52-card deck', '2–6 players', 'Sets & runs — first hand out wins'],
+    features: [
+      {
+        title: 'Draw and discard',
+        description: 'Pick from the pile or steal the top of the discard, then throw one away.',
+        emoji: '🃏',
+      },
+      {
+        title: 'Meld sets and runs',
+        description: 'Three of a kind, four of a kind, or three-plus consecutive cards of one suit.',
+        emoji: '🎯',
+      },
+      SHARED_FEATURES.mobile,
+      SHARED_FEATURES.noSignup,
+    ],
+    steps: [
+      { title: 'Join a room', description: 'Enter your name and wait for the host to deal.' },
+      { title: 'Take your turn', description: 'Draw one card, rearrange your hand, then discard one.' },
+      { title: 'Go out', description: 'Lay your whole hand down as valid sets and runs — you win the round.' },
+    ],
+    perfectFor: ['Family card night', 'Card-game learners', 'Quick tactical rounds'],
+    extraFaqs: [
+      {
+        question: 'How many cards do you deal in Rummy?',
+        answer:
+          'Two players get 10 cards each; three or four players get 7 each; five or six players get 6 each. One card is turned face-up to start the discard pile.',
+      },
+      {
+        question: 'What counts as a set or a run?',
+        answer:
+          'A SET is 3 or 4 cards of the same rank in different suits (e.g. 7♠ 7♥ 7♦). A RUN is 3 or more consecutive cards of the same suit (e.g. 4♣ 5♣ 6♣). Aces are low — A-2-3 is legal, Q-K-A is not.',
+      },
+      {
+        question: 'How do you go out and win?',
+        answer:
+          'When your whole hand can be laid down as valid sets and runs — usually with one card left to discard — you go out. That ends the round and you win it.',
+      },
+      {
+        question: 'How does scoring work if the clock runs out?',
+        answer:
+          'The winner is whoever is CLOSEST to going out — the player whose hand has the most cards that could be laid down as valid sets and runs. Ties are broken by fewest leftover deadwood (face cards 10, aces 1, numerics face value). This rewards a Rummy-ready hand over one that just happens to be holding cheap junk.',
+      },
     ],
   }),
   crazy_eights: landing('crazy_eights', {
@@ -3387,6 +3454,75 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         question: 'How does Troll Run multiplayer work?',
         answer:
           'Players race independently through the same level layouts simultaneously. A live ticker announces whenever someone falls for a trap or clears a level. Round placement and total deaths determine the winner.',
+      },
+    ],
+  }),
+  gofish: landing('gofish', {
+    seoTitle: 'Play Go Fish Online Free with Friends — Classic Card Game, No Sign-Up',
+    seoDescription:
+      'Play Go Fish online free with friends — no sign-up, no download. Ask opponents for ranks, draw from the ocean, and collect books. 2–6 players, plays best with 3+.',
+    keywords: [
+      'go fish online',
+      'go fish card game',
+      'play go fish online',
+      'go fish rules',
+      'how to play go fish',
+      'go fish multiplayer',
+      'go fish with friends online',
+      'free go fish online',
+      'go fish online no sign up',
+      'go fish for kids',
+      'classic card game online',
+    ],
+    heroSubtitle: 'The classic ask-for-a-rank card game. Collect four of a kind to score a book. Most books wins.',
+    bodyParagraph:
+      'Go Fish on FateRound plays by the standard rules — ask an opponent for a rank you already hold, take all of theirs if they have any, "Go Fish" from the ocean if they don\'t. Complete four of a rank for a book and keep asking until all 13 books are made. 2–6 players; 3 or more is the sweet spot for making the asking part interesting. Hosts can set an optional per-turn timer (or leave it off) and a whole-game clock; when the game clock runs out, most books wins, tiebreak by fewest cards left in hand.',
+    highlights: ['Standard 52-card deck', '2–6 players', 'Great for kids and casual card night'],
+    features: [
+      {
+        title: 'Ask an opponent',
+        description:
+          'Pick a player and a rank you already hold. Hit and they hand all of theirs over, then you go again.',
+        emoji: '🎯',
+      },
+      {
+        title: 'Go Fish',
+        description: 'Miss and you draw from the ocean. If your draw matches the rank you asked for, you go again.',
+        emoji: '🐟',
+      },
+      {
+        title: 'Score books',
+        description: 'Collect all four cards of a rank to score a book. Most books when the game ends wins.',
+        emoji: '📚',
+      },
+      SHARED_FEATURES.mobile,
+    ],
+    steps: [
+      { title: 'Create a room', description: 'Pick 2–6 seats, share the code, everyone joins in seconds.' },
+      { title: 'Ask for a rank', description: 'On your turn, ask any opponent for a rank you already hold.' },
+      { title: 'Complete books', description: 'Collect four of a kind for a book. Most books at the end wins.' },
+    ],
+    perfectFor: ['Family game nights', 'Kids and casual players', 'Warming up before a bigger card game'],
+    extraFaqs: [
+      {
+        question: 'How many cards do you deal in Go Fish?',
+        answer:
+          'With 2 players, deal 7 cards each. With 3 or more players, deal 5 cards each. The rest of the deck becomes the ocean (draw pile) in the middle.',
+      },
+      {
+        question: 'Can I ask for a rank I do not hold?',
+        answer:
+          'No. Standard Go Fish rules require you to hold at least one card of the rank you ask for. FateRound enforces this on the server, so the "Ask" menu only offers ranks you actually have in hand.',
+      },
+      {
+        question: 'What happens when I run out of cards mid-game?',
+        answer:
+          'If the ocean still has cards, you automatically draw a fresh hand (up to 5) and stay in the game. If both your hand and the ocean are empty, you are out for the rest of this round.',
+      },
+      {
+        question: 'When does Go Fish end?',
+        answer:
+          'The game ends when all 13 books have been made, or when the ocean is empty and no player has any cards left. Whoever has the most books wins; ties are broken by fewest remaining cards.',
       },
     ],
   }),

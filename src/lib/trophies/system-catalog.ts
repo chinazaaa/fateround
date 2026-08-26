@@ -3,6 +3,7 @@ import { AYO } from './system-trophies/ayo'
 import { CHECKERS, CHECKERS_INTERNATIONAL, CHECKERS_NIGERIA } from './system-trophies/checkers'
 import { CHESS } from './system-trophies/chess'
 import { CRAZY_EIGHTS } from './system-trophies/crazy-eights'
+import { RUMMY } from './system-trophies/rummy'
 import { DESCRIBE_IT } from './system-trophies/describe-it'
 import { MAFIA } from './system-trophies/mafia'
 import { MAHJONG } from './system-trophies/mahjong'
@@ -33,6 +34,7 @@ import { WORD_SEARCH } from './system-trophies/word-search'
 import { WORD_GROUPING } from './system-trophies/word-grouping'
 import { SNAKE_AND_LADDER } from './system-trophies/snake-and-ladder'
 import { WORDLE_ROOM } from './system-trophies/wordle-room'
+import { GOFISH } from './system-trophies/gofish'
 
 /**
  * SYSTEM trophies — authored in code, against one game's own measurements.
@@ -69,6 +71,7 @@ const BY_GAME: Record<string, SystemTrophySpec[]> = {
   chess: CHESS,
   codewords: CODEWORDS,
   crazy_eights: CRAZY_EIGHTS,
+  rummy: RUMMY,
   describe_it: DESCRIBE_IT,
   ludo: LUDO,
   mafia: MAFIA,
@@ -97,6 +100,7 @@ const BY_GAME: Record<string, SystemTrophySpec[]> = {
   word_grouping: WORD_GROUPING,
   snake_and_ladder: SNAKE_AND_LADDER,
   wordle_room: WORDLE_ROOM,
+  gofish: GOFISH,
 }
 
 /**
