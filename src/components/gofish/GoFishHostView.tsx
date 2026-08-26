@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { GAME_SELECT, GOFISH_SESSION_SELECT, PLAYER_SELECT } from '@/lib/supabase-selects'
 import { fetchGoFishHands } from '@/lib/hands-client'
@@ -24,6 +24,8 @@ import { HostActiveSettings } from '@/components/host/HostActiveSettings'
 import { TransferHostControl } from '@/components/TransferHostControl'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { GoFishActiveRound } from '@/components/gofish/GoFishActiveRound'
+import { GoFishFinalResultsShareBlock } from '@/components/gofish/GoFishFinalResultsShareBlock'
+import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { gameTypeConfig } from '@/lib/game-types'
 import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
 import { GOFISH_MIN_PLAYERS } from '@/lib/gofish'
@@ -51,6 +53,10 @@ export function GoFishHostView({ gameCode, hostToken }: { gameCode: string; host
   const [starting, setStarting] = useState(false)
   const [playingAgain, setPlayingAgain] = useState(false)
   const [tab, setTab] = useState<HostTab>('manage')
+  // Ref lets the reload callback pick up the freshest host resume token without being
+  // re-created every time it changes (mirrors WhotHostView). Without a token the hands
+  // route can't unredact a seated host's own cards — they'd see nothing in their hand.
+  const hostResumeTokenRef = useRef<string | null>(null)
 
   useApplyGameTheme(game?.theme, game?.game_type)
 
@@ -66,7 +72,7 @@ export function GoFishHostView({ gameCode, hostToken }: { gameCode: string; host
       supabase.from('games').select(GAME_SELECT).eq('id', gameCode).maybeSingle(),
       supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at'),
       supabase.from('gofish_sessions').select(GOFISH_SESSION_SELECT).eq('game_id', gameCode).maybeSingle(),
-      fetchGoFishHands(gameCode, { hostToken }),
+      fetchGoFishHands(gameCode, { hostToken, resumeToken: hostResumeTokenRef.current ?? undefined }),
     ])
     if (supabasePollOk(gameRes, plrsRes, sessRes)) {
       if (gameRes.data) setGame(gameRes.data as unknown as Game)
@@ -126,6 +132,21 @@ export function GoFishHostView({ gameCode, hostToken }: { gameCode: string; host
       else if (mode === 'spectator') setTab('manage')
     },
   })
+  hostResumeTokenRef.current = hostResumeToken
+
+  // First hand fetch runs before useHostSeat resolves the host's player resume token, so a
+  // seated host's own hand comes back redacted ("0 cards"). Re-fetch with the token the moment
+  // it lands (mirrors WhotHostView).
+  useEffect(() => {
+    if (!hostResumeToken || game?.status !== 'active') return
+    let cancelled = false
+    void fetchGoFishHands(gameCode, { hostToken, resumeToken: hostResumeToken }).then((h) => {
+      if (!cancelled && h) setHands(h)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [gameCode, hostToken, hostResumeToken, game?.status])
 
   const handlePlayerRemoved = useCallback(
     (playerId: string) => {
@@ -322,31 +343,58 @@ export function GoFishHostView({ gameCode, hostToken }: { gameCode: string; host
         {/* HostRulesRow is the "How to play" link — keep it in the settings gear + the
             active round's finished screen. In the header it dominates the width. */}
       </div>
-      <GoFishActiveRound
-        gameCode={gameCode}
-        game={game}
-        players={players}
-        session={session}
-        hands={hands}
-        myPlayerId={hostPlayerId ?? ''}
-        myResumeToken={hostResumeToken ?? null}
-        onReload={reload}
-        readOnly={!hostPlays}
-      />
-      {isFinished && (
-        <div className="glass-card-strong p-4 flex flex-wrap gap-2 justify-end">
-          <button
-            type="button"
-            onClick={() => void confirmReturnToLobby()}
-            disabled={playingAgain}
-            className="btn-secondary"
-          >
-            Return to lobby
-          </button>
-          <button type="button" onClick={() => void confirmPlayAgain()} disabled={playingAgain} className="btn-primary">
-            Play again · same settings
-          </button>
-        </div>
+      {isFinished ? (
+        <>
+          <GoFishFinalResultsShareBlock
+            game={game}
+            players={players}
+            hands={hands}
+            session={session}
+            winnerName={players.find((p) => p.id === session?.winner_player_id)?.name}
+            highlightPlayerId={hostPlayerId}
+            playAgainButton={
+              <button
+                type="button"
+                onClick={() => void confirmPlayAgain()}
+                disabled={playingAgain}
+                className="btn-secondary w-full py-3 text-base disabled:opacity-60"
+              >
+                {playingAgain ? 'Starting…' : '↻ Play again · same settings'}
+              </button>
+            }
+            returnToLobbyButton={
+              <button
+                type="button"
+                onClick={() => void confirmReturnToLobby()}
+                disabled={playingAgain}
+                className="w-full py-2.5 text-sm font-semibold text-muted transition-colors hover:text-body disabled:opacity-60"
+              >
+                Return to lobby
+              </button>
+            }
+            lobbyNote="Same settings reopens the game for ready-up — watchers and new people can join · lobby lets you tweak settings first."
+          />
+          {hostPlayerId && session?.winner_player_id === hostPlayerId && (
+            <PostWinToCommunity
+              gameType="gofish"
+              gameCode={gameCode}
+              winnerName={hostPlayerName}
+              roundKey={session?.id}
+            />
+          )}
+        </>
+      ) : (
+        <GoFishActiveRound
+          gameCode={gameCode}
+          game={game}
+          players={players}
+          session={session}
+          hands={hands}
+          myPlayerId={hostPlayerId ?? ''}
+          myResumeToken={hostResumeToken ?? null}
+          onReload={reload}
+          readOnly={!hostPlays}
+        />
       )}
     </div>
   )

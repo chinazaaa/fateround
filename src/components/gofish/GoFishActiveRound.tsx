@@ -4,7 +4,6 @@ import { useMemo, useState } from 'react'
 import type { Game, GoFishCard, GoFishPlayerHand, GoFishRank, GoFishSession, Player } from '@/types'
 import {
   askableRanks,
-  buildGoFishStandings,
   currentPlayerId,
   describeGoFishEvent,
   gofishRankLabel,
@@ -15,6 +14,7 @@ import { useToast } from '@/components/ui/Toast'
 import { useGoFishTurnTimer } from '@/hooks/useGoFishTurnTimer'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { GoFishCardBack, GoFishCardCountBadge, GoFishCardFace } from '@/components/gofish/GoFishCardFace'
+import { GoFishFinalResultsShareBlock } from '@/components/gofish/GoFishFinalResultsShareBlock'
 
 type Props = {
   gameCode: string
@@ -76,15 +76,6 @@ export function GoFishActiveRound({
     [players, hands, myPlayerId]
   )
 
-  const standings = useMemo(
-    () =>
-      buildGoFishStandings(
-        hands,
-        players.map((p) => ({ id: p.id, name: p.name }))
-      ),
-    [hands, players]
-  )
-
   const needsRefill = isMyTurn && myCards.length === 0 && (session?.ocean_count ?? 0) > 0 && !!myResumeToken
 
   const submitRefill = async () => {
@@ -144,7 +135,14 @@ export function GoFishActiveRound({
 
       {isFinished ? (
         <>
-          <FinishedResults standings={standings} winnerId={session?.winner_player_id ?? null} nameOf={nameOf} />
+          <GoFishFinalResultsShareBlock
+            game={game}
+            players={players}
+            hands={hands}
+            session={session}
+            winnerName={session?.winner_player_id ? nameOf(session.winner_player_id) : undefined}
+            highlightPlayerId={myPlayerId || undefined}
+          />
           {!readOnly && myPlayerId && session?.winner_player_id === myPlayerId && (
             <PostWinToCommunity
               gameType="gofish"
@@ -506,41 +504,6 @@ function EventLog({ events, nameOf }: { events: GoFishSession['event_log']; name
           ))}
         </ul>
       )}
-    </section>
-  )
-}
-
-function FinishedResults({
-  standings,
-  winnerId,
-  nameOf,
-}: {
-  standings: ReturnType<typeof buildGoFishStandings>
-  winnerId: string | null
-  nameOf: (id: string) => string
-}) {
-  const winnerName = winnerId ? nameOf(winnerId) : (standings[0]?.name ?? 'No winner')
-  return (
-    <section className="rounded-2xl border border-amber-400/40 bg-amber-500/10 p-6 text-center space-y-4">
-      <p className="text-xs uppercase tracking-wide text-amber-200">Winner</p>
-      <h2 className="text-3xl font-black">🏆 {winnerName}</h2>
-      <div className="mt-4 space-y-2">
-        {standings.map((s) => (
-          <div
-            key={s.playerId}
-            className={`flex justify-between rounded-xl px-3 py-2 ${
-              s.playerId === winnerId ? 'bg-amber-500/20 border border-amber-400/40' : 'bg-white/5'
-            }`}
-          >
-            <span className="font-medium">
-              #{s.rank} · {s.name}
-            </span>
-            <span className="text-sm text-muted">
-              {s.books} book{s.books === 1 ? '' : 's'} · {s.cardCount} left
-            </span>
-          </div>
-        ))}
-      </div>
     </section>
   )
 }
