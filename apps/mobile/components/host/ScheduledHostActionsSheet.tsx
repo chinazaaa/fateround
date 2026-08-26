@@ -169,18 +169,8 @@ export function ScheduledHostActionsSheet({ visible, onClose, gameCode, hostToke
             </View>
             <Text style={styles.subLabel}>Custom time</Text>
             <View style={styles.row}>
-              <DatePickerField
-                label="Date"
-                value={customDate}
-                placeholder="Pick a day"
-                onChange={setCustomDate}
-              />
-              <TimePickerField
-                label="Time"
-                value={customTime}
-                placeholder="Pick a time"
-                onChange={setCustomTime}
-              />
+              <DatePickerField label="Date" value={customDate} placeholder="Pick a day" onChange={setCustomDate} />
+              <TimePickerField label="Time" value={customTime} placeholder="Pick a time" onChange={setCustomTime} />
             </View>
             <AppButton
               label="Save custom time"
