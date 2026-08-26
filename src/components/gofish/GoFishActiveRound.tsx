@@ -1,7 +1,7 @@
 'use client'
 
-import { useMemo, useState } from 'react'
-import type { Game, GoFishCard, GoFishPlayerHand, GoFishRank, GoFishSession, Player } from '@/types'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { Game, GoFishCard, GoFishEvent, GoFishPlayerHand, GoFishRank, GoFishSession, Player } from '@/types'
 import {
   askableRanks,
   currentPlayerId,
@@ -78,8 +78,8 @@ export function GoFishActiveRound({
 
   const needsRefill = isMyTurn && myCards.length === 0 && (session?.ocean_count ?? 0) > 0 && !!myResumeToken
 
-  const submitRefill = async () => {
-    if (!needsRefill || refilling) return
+  const submitRefill = useCallback(async () => {
+    if (!myResumeToken || refilling) return
     setRefilling(true)
     try {
       const res = await fetch('/api/gofish/refill', {
@@ -95,7 +95,15 @@ export function GoFishActiveRound({
     } finally {
       setRefilling(false)
     }
-  }
+  }, [gameCode, myResumeToken, refilling, onReload, toastError])
+
+  // Auto-refill the moment the turn opens with an empty hand and ocean cards. Physical Go Fish
+  // draws automatically — the manual button was a friction moment ("why am I stuck?"). The
+  // guard on `refilling` stops the effect from double-firing while the request is in flight;
+  // once state updates the condition flips off.
+  useEffect(() => {
+    if (needsRefill && !refilling) void submitRefill()
+  }, [needsRefill, refilling, submitRefill])
 
   const submitAsk = async () => {
     if (!isMyTurn || asking || !selectedTargetId || selectedRank == null || !myResumeToken) return
@@ -123,8 +131,12 @@ export function GoFishActiveRound({
     }
   }
 
+  const events = session?.event_log ?? []
+  const latestEvent = events.length > 0 ? events[events.length - 1] : null
+
   return (
     <div className="space-y-6">
+      {latestEvent && !isFinished && <JustHappenedBanner event={latestEvent} myPlayerId={myPlayerId} nameOf={nameOf} />}
       <TurnStatusBanner
         activeName={activeTurnPlayerId ? nameOf(activeTurnPlayerId) : 'Nobody'}
         isMyTurn={isMyTurn}
@@ -155,9 +167,7 @@ export function GoFishActiveRound({
       ) : (
         <>
           {!readOnly && myHandRow && <MyHand cards={myCards} myBooks={myBooks} />}
-          {!readOnly && needsRefill && (
-            <RefillPrompt onSubmit={submitRefill} loading={refilling} oceanCount={session?.ocean_count ?? 0} />
-          )}
+          {!readOnly && needsRefill && <RefillPrompt oceanCount={session?.ocean_count ?? 0} />}
           {!readOnly && isMyTurn && !needsRefill && (
             <AskPicker
               askableRanks={askable}
@@ -175,7 +185,12 @@ export function GoFishActiveRound({
               asking={asking}
             />
           )}
-          <OpponentsPanel players={players.filter((p) => p.id !== myPlayerId)} hands={hands} nameOf={nameOf} />
+          <OpponentsPanel
+            players={players.filter((p) => p.id !== myPlayerId)}
+            hands={hands}
+            nameOf={nameOf}
+            activeTurnPlayerId={activeTurnPlayerId}
+          />
         </>
       )}
 
@@ -392,35 +407,27 @@ function AskPicker({
  * in the game. Standalone action so the player doesn't get stranded when the picker is
  * gated on "hold at least one card of the rank you ask".
  */
-function RefillPrompt({
-  onSubmit,
-  loading,
-  oceanCount,
-}: {
-  onSubmit: () => void
-  loading: boolean
-  oceanCount: number
-}) {
+function RefillPrompt({ oceanCount }: { oceanCount: number }) {
+  // Auto-refill fires from the parent effect — this is a status card, not a button.
+  // Just tell the player what's happening so the moment the round pauses makes sense.
+  const drawing = Math.min(5, oceanCount)
   return (
     <section
-      className="rounded-2xl border p-4 space-y-3"
+      className="rounded-2xl border p-4 flex items-center gap-3"
       style={{
         borderColor: 'color-mix(in srgb, var(--primary) 30%, transparent)',
         backgroundColor: 'color-mix(in srgb, var(--primary) 6%, transparent)',
       }}
     >
-      <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--primary)]">
-        Your turn — draw a fresh hand
-      </h2>
-      <p className="text-sm text-muted">You have no cards. Draw up to 5 from the ocean, then ask a player.</p>
-      <button
-        type="button"
-        onClick={onSubmit}
-        disabled={loading}
-        className="btn-primary w-full py-3 text-base disabled:opacity-40"
-      >
-        {loading ? 'Drawing…' : `Draw ${Math.min(5, oceanCount)} cards`}
-      </button>
+      <span className="text-2xl animate-pulse" aria-hidden>
+        🐟
+      </span>
+      <div className="min-w-0 flex-1">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--primary)]">Drawing from the ocean…</h2>
+        <p className="text-xs text-muted mt-0.5">
+          Refilling your hand with {drawing} card{drawing === 1 ? '' : 's'}, then you ask.
+        </p>
+      </div>
     </section>
   )
 }
@@ -429,10 +436,12 @@ function OpponentsPanel({
   players,
   hands,
   nameOf,
+  activeTurnPlayerId,
 }: {
   players: Player[]
   hands: GoFishPlayerHand[]
   nameOf: (id: string) => string
+  activeTurnPlayerId: string | null
 }) {
   return (
     <section className="rounded-2xl border border-white/10 bg-black/20 p-4 space-y-3">
@@ -442,15 +451,30 @@ function OpponentsPanel({
           const hand = hands.find((h) => h.player_id === p.id) ?? null
           const cardCount = (hand?.card_count ?? (hand?.cards as unknown[] | null)?.length ?? 0) as number
           const books = (hand?.books ?? []) as GoFishRank[]
+          const isTheirTurn = p.id === activeTurnPlayerId
           // Small fan of face-down backs so opponents "look like" a Go Fish hand rather
           // than a numeric row. Cap at 6 to keep the row bounded on narrow screens; the
           // count under the name is the source of truth.
           const shownBacks = Math.min(cardCount, 6)
           return (
-            <div key={p.id} className="rounded-xl bg-white/5 px-3 py-2">
+            <div
+              key={p.id}
+              className={
+                isTheirTurn
+                  ? 'rounded-xl px-3 py-2 border border-[var(--primary)] bg-[color-mix(in_srgb,var(--primary)_10%,transparent)]'
+                  : 'rounded-xl bg-white/5 px-3 py-2 border border-transparent'
+              }
+            >
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="font-medium truncate">{nameOf(p.id)}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="font-medium truncate">{nameOf(p.id)}</p>
+                    {isTheirTurn && (
+                      <span className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide bg-[var(--primary)] text-white animate-pulse">
+                        Asking…
+                      </span>
+                    )}
+                  </div>
                   <p className="text-xs text-muted">
                     {cardCount} card{cardCount === 1 ? '' : 's'} · {books.length} book{books.length === 1 ? '' : 's'}
                   </p>
@@ -505,6 +529,111 @@ function EventLog({ events, nameOf }: { events: GoFishSession['event_log']; name
         </ul>
       )}
     </section>
+  )
+}
+
+/**
+ * Big transient callout above the round showing what just happened, phrased from the
+ * viewer's perspective ("You got 2 sevens from Alice!" vs "Alice took 2 sevens from Bob").
+ *
+ * The event log is a running history — useful, but a wall of text. This surfaces only the
+ * newest event and fades it after ~5s so the player never has to hunt for "wait, what
+ * happened last turn?" The message swaps as new events arrive; the fade is tied to the
+ * event's identity (kind + at) so consecutive identical events still restart the timer.
+ */
+function JustHappenedBanner({
+  event,
+  myPlayerId,
+  nameOf,
+}: {
+  event: GoFishEvent
+  myPlayerId: string
+  nameOf: (id: string) => string
+}) {
+  const [visible, setVisible] = useState(true)
+  // Key any client-scoped reset off the event's identity — the append-only log gives us `at`
+  // for free, and pairing it with kind guards against a same-timestamp burst.
+  const key = `${event.kind}:${event.at}`
+  const lastKey = useRef<string | null>(null)
+  useEffect(() => {
+    if (lastKey.current === key) return
+    lastKey.current = key
+    setVisible(true)
+    const t = setTimeout(() => setVisible(false), 5000)
+    return () => clearTimeout(t)
+  }, [key])
+  if (!visible) return null
+
+  let emoji = '💬'
+  let text = describeGoFishEvent(event, nameOf)
+
+  switch (event.kind) {
+    case 'ask_hit': {
+      emoji = '🎯'
+      const rank = gofishRankPlural(event.rank)
+      const count = event.count
+      if (event.from_id === myPlayerId) {
+        text = `You got ${count} ${rank} from ${nameOf(event.target_id)}. Go again!`
+      } else if (event.target_id === myPlayerId) {
+        text = `${nameOf(event.from_id)} took ${count} of your ${rank}. They go again.`
+      } else {
+        text = `${nameOf(event.from_id)} took ${count} ${rank} from ${nameOf(event.target_id)}.`
+      }
+      break
+    }
+    case 'ask_miss': {
+      emoji = '🐟'
+      const rank = gofishRankPlural(event.rank)
+      if (event.from_id === myPlayerId) {
+        if (!event.drew) text = `You asked for ${rank}. Go Fish! (ocean's empty)`
+        else if (event.lucky_draw) text = `Go Fish! Lucky — you drew a ${gofishRankLabel(event.rank)}. Go again!`
+        else text = `Go Fish! You drew a card from the ocean.`
+      } else if (event.target_id === myPlayerId) {
+        text = `${nameOf(event.from_id)} asked you for ${rank}. Go Fish!`
+      } else {
+        text = `${nameOf(event.from_id)} asked ${nameOf(event.target_id)} for ${rank} — Go Fish!`
+      }
+      break
+    }
+    case 'book': {
+      emoji = '📚'
+      const rank = gofishRankPlural(event.rank)
+      text =
+        event.player_id === myPlayerId
+          ? `Book of ${rank}! You collected all four.`
+          : `${nameOf(event.player_id)} completed a book of ${rank}.`
+      break
+    }
+    case 'refill': {
+      emoji = '🃏'
+      text =
+        event.player_id === myPlayerId
+          ? `You drew ${event.count} fresh card${event.count === 1 ? '' : 's'} from the ocean.`
+          : `${nameOf(event.player_id)} drew ${event.count} fresh card${event.count === 1 ? '' : 's'}.`
+      break
+    }
+    case 'out_of_cards': {
+      emoji = '🏳️'
+      text = event.player_id === myPlayerId ? `You're out of cards!` : `${nameOf(event.player_id)} is out.`
+      break
+    }
+    case 'game_over': {
+      emoji = '🏆'
+      text = 'Game over — see the standings below.'
+      break
+    }
+  }
+  return (
+    <div
+      className="rounded-2xl border border-[var(--primary)] bg-[color-mix(in_srgb,var(--primary)_12%,var(--surface))] px-4 py-3 flex items-center gap-3 shadow-sm"
+      role="status"
+      aria-live="polite"
+    >
+      <span className="text-2xl shrink-0" aria-hidden>
+        {emoji}
+      </span>
+      <p className="text-sm sm:text-base font-semibold text-body">{text}</p>
+    </div>
   )
 }
 
