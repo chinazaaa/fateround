@@ -285,6 +285,76 @@ function toRecord(hands: GoFishPlayerHand[]): Map<string, GoFishPlayerHand> {
 }
 
 /**
+ * Refill result — used by the "draw a fresh hand" flow when the active player starts their
+ * turn with 0 cards while the ocean still has cards. Same shape as an ask, minus target.
+ */
+export type GoFishRefillInput = {
+  session: GoFishSession
+  hands: GoFishPlayerHand[]
+  playerId: string
+  now: string
+}
+
+export type GoFishRefillResult =
+  | { ok: false; error: 'game_finished' | 'not_your_turn' | 'unknown_player' | 'hand_not_empty' | 'ocean_empty' }
+  | {
+      ok: true
+      drawn: GoFishCard[]
+      newBooks: GoFishRank[]
+      events: GoFishEvent[]
+      session: GoFishSession
+      handUpdate: { playerId: string; cards: GoFishCard[]; books: GoFishRank[] }
+    }
+
+/**
+ * Draw up to REFILL_TARGET (5) from the ocean for a player who starts their turn with an
+ * empty hand. This is the "you draw a fresh hand to stay in the game" rule — when a
+ * physical game player runs out mid-turn and the ocean still has cards, they draw again.
+ *
+ * Idempotent: returns `hand_not_empty` if the player still has cards; `ocean_empty` if
+ * nothing to draw. Does NOT advance the turn — the same player asks after the refill.
+ */
+export function resolveGoFishRefill(input: GoFishRefillInput): GoFishRefillResult {
+  const { session, hands, playerId, now } = input
+  if (session.phase === 'finished') return { ok: false, error: 'game_finished' }
+  if (currentPlayerId(session) !== playerId) return { ok: false, error: 'not_your_turn' }
+  const handRow = hands.find((h) => h.player_id === playerId)
+  if (!handRow) return { ok: false, error: 'unknown_player' }
+  const currentCards = (handRow.cards ?? []) as GoFishCard[]
+  if (currentCards.length > 0) return { ok: false, error: 'hand_not_empty' }
+  if (session.ocean.length === 0) return { ok: false, error: 'ocean_empty' }
+
+  const ocean = [...session.ocean]
+  const take = Math.min(GOFISH_REFILL_TARGET, ocean.length)
+  const drawn = ocean.splice(0, take)
+  const after = extractBooks(drawn)
+  const events: GoFishEvent[] = []
+  events.push({ kind: 'refill', player_id: playerId, count: drawn.length, at: now })
+  for (const bookRank of after.books) {
+    events.push({ kind: 'book', player_id: playerId, rank: bookRank, at: now })
+  }
+  const nextSession: GoFishSession = {
+    ...session,
+    ocean,
+    ocean_count: ocean.length,
+    event_log: [...session.event_log, ...events],
+    updated_at: now,
+  }
+  return {
+    ok: true,
+    drawn,
+    newBooks: after.books,
+    events,
+    session: nextSession,
+    handUpdate: {
+      playerId,
+      cards: after.hand,
+      books: [...(handRow.books ?? []), ...after.books].sort((a, b) => a - b) as GoFishRank[],
+    },
+  }
+}
+
+/**
  * Resolve one ask. Server-authoritative — validates turn, target, and "you must hold the
  * rank you ask for" (the standard house rule). Applies transfer or Go-Fish-draw, extracts
  * newly-completed books, refills the asker's hand if it empties while the ocean still has
