@@ -31,6 +31,7 @@ import {
   isTriviaGame,
   isTwoTruthsGame,
   isUnoGame,
+  isGoFishGame,
   isWhotGame,
   isWordHuntGame,
   isWordRushGame,
@@ -103,6 +104,7 @@ export function gameAllowsLatePlayerJoin(gameType: GameType): boolean {
     !isCrazyEightsGame(gameType) &&
     !isRummyGame(gameType) &&
     !isUnoGame(gameType) &&
+    !isGoFishGame(gameType) &&
     !isLudoGame(gameType) &&
     !isMahjongGame(gameType) &&
     !isSnakeAndLadderGame(gameType) &&
@@ -285,7 +287,8 @@ export function spectatorForActiveJoin(
     isWhotGame(gameType) ||
     isCrazyEightsGame(gameType) ||
     isRummyGame(gameType) ||
-    isUnoGame(gameType)
+    isUnoGame(gameType) ||
+    isGoFishGame(gameType)
   )
     return true
   if (!allowLatePlayers(game)) return true

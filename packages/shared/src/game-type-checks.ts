@@ -56,6 +56,10 @@ export function isRummyGame(gameType: GameType | string | undefined): boolean {
   return eq(gameType, 'rummy')
 }
 
+export function isGoFishGame(gameType: GameType | string | undefined): boolean {
+  return eq(gameType, 'gofish')
+}
+
 export function isLudoGame(gameType: GameType | string | undefined): boolean {
   return eq(gameType, 'ludo')
 }
