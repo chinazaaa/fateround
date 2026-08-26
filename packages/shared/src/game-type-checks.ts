@@ -52,6 +52,10 @@ export function isUnoGame(gameType: GameType | string | undefined): boolean {
   return eq(gameType, 'uno')
 }
 
+export function isGoFishGame(gameType: GameType | string | undefined): boolean {
+  return eq(gameType, 'gofish')
+}
+
 export function isLudoGame(gameType: GameType | string | undefined): boolean {
   return eq(gameType, 'ludo')
 }

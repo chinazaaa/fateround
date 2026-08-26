@@ -67,6 +67,7 @@ export const TURN_EXPIRE_SLUG: Record<string, string> = {
   uno: 'uno',
   ayo: 'ayo',
   mahjong: 'mahjong',
+  gofish: 'gofish',
 }
 
 // Mafia, Bingo and Troll Run are driven through bespoke targets below rather than the two

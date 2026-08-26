@@ -136,6 +136,20 @@ export type WhotPlayInput = z.infer<typeof whotPlaySchema>
 export type WhotDrawInput = z.infer<typeof whotDrawSchema>
 export type WhotChooseInput = z.infer<typeof whotChooseSchema>
 
+// Go Fish (POST /api/gofish/*) — the ask action doubles as the "Go Fish → draw one" flow,
+// so there is no separate draw endpoint. See src/lib/gofish.ts resolveGoFishAsk.
+export const gofishActionSchema = z.object({
+  gameId: gameCodeString(),
+  resumeToken: z.string().min(4),
+})
+
+export const gofishAskSchema = gofishActionSchema.extend({
+  targetPlayerId: z.string().uuid(),
+  rank: z.coerce.number().int().min(1).max(13),
+})
+
+export type GoFishAskInput = z.infer<typeof gofishAskSchema>
+
 // Crazy Eights (POST /api/crazy-eights/*)
 
 const crazyEightsSuitEnum = z.enum(['spades', 'clubs', 'hearts', 'diamonds'])

@@ -59,6 +59,7 @@ export type GameType =
   | 'word_grouping'
   | 'wordle_room'
   | 'troll_run'
+  | 'gofish'
 
 export type NpatPhase = 'letter_pick' | 'writing' | 'marking' | 'host_review' | 'reveal'
 export type NpatCategory = 'name' | 'animal' | 'place' | 'thing' | 'food'
@@ -1048,6 +1049,105 @@ export interface UnoPlayerHand {
   game_id: string
   player_id: string
   cards: UnoCard[]
+  player_order: number
+  created_at: string
+}
+
+/** Standard playing-card suits used by Go Fish. Suit is cosmetic — only rank matters for books. */
+export type GoFishSuit = 'spades' | 'hearts' | 'diamonds' | 'clubs'
+
+/** Ace = 1 … King = 13. Every rank makes exactly one book. */
+export type GoFishRank = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13
+
+export type GoFishPhase = 'playing' | 'finished'
+
+export interface GoFishCard {
+  id: string
+  suit: GoFishSuit
+  rank: GoFishRank
+}
+
+/** One entry in the public event log — every player and spectator sees the same list. */
+export type GoFishEvent =
+  | {
+      kind: 'ask_hit'
+      from_id: string
+      target_id: string
+      rank: GoFishRank
+      /** How many cards the target had to hand over (>= 1). */
+      count: number
+      at: string
+    }
+  | {
+      kind: 'ask_miss'
+      from_id: string
+      target_id: string
+      rank: GoFishRank
+      /** True if the drawn card happened to be the asked rank (asker goes again). */
+      lucky_draw: boolean
+      /** False when the ocean was empty at ask time. */
+      drew: boolean
+      at: string
+    }
+  | {
+      kind: 'book'
+      player_id: string
+      rank: GoFishRank
+      at: string
+    }
+  | {
+      kind: 'refill'
+      player_id: string
+      /** Number of cards drawn to refill an empty hand. */
+      count: number
+      at: string
+    }
+  | {
+      kind: 'out_of_cards'
+      player_id: string
+      at: string
+    }
+  | {
+      kind: 'game_over'
+      at: string
+    }
+
+export interface GoFishSession {
+  id: string
+  game_id: string
+  turn_order: string[]
+  current_turn_index: number
+  phase: GoFishPhase
+  /** Face-down draw pile. Server-only source of truth; redacted from client responses. */
+  ocean: GoFishCard[]
+  /** Public size of the ocean — survives redaction, so clients can render "N cards left". */
+  ocean_count: number
+  /** Append-only public log of what happened this game. */
+  event_log: GoFishEvent[]
+  status_message: string | null
+  winner_player_id: string | null
+  /** Player ids in the order they finished (either ran out of cards with an empty ocean, or the game ended). */
+  finish_order: string[]
+  /** ISO timestamp when the current player's turn expires; null means no timer configured. */
+  turn_deadline_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface GoFishPlayerHand {
+  id: string
+  game_id: string
+  player_id: string
+  /**
+   * The player's private hand. `null` means REDACTED (someone else's hand). Never `[]` for
+   * redaction — an empty array means the player really has no cards, which is meaningful state.
+   * Use `card_count` for anyone other than the local player.
+   */
+  cards: GoFishCard[] | null
+  /** Public: how many cards this player is holding. Survives redaction. */
+  card_count?: number
+  /** Books this player has completed — public. Each entry names the rank collected. */
+  books: GoFishRank[]
   player_order: number
   created_at: string
 }

@@ -1993,4 +1993,38 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
       ],
     },
   ],
+
+  gofish: [
+    {
+      title: 'Objective',
+      points: [
+        'Collect the most "books" — a book is all four cards of the same rank (e.g. all four Queens).',
+        'Play continues until every one of the 13 books has been made, or the ocean runs out and nobody can ask.',
+      ],
+    },
+    {
+      title: 'Setup',
+      points: [
+        '2 to 6 players. 2 players are dealt 7 cards each; 3 or more players are dealt 5 cards each.',
+        'The rest of the standard 52-card deck becomes the ocean (draw pile) in the middle.',
+        "Spectators can watch but cannot see any player's hand — only counts and completed books.",
+      ],
+    },
+    {
+      title: 'How a turn works',
+      points: [
+        'On your turn, ask one opponent for a specific rank you already hold at least one of ("Do you have any 7s?").',
+        'If they have any, they must hand over ALL of them — then you go again and ask anyone for another rank.',
+        'If they have none, they say "Go Fish" and you draw the top card from the ocean. If the drawn card is the rank you asked for, you go again; otherwise play passes to the next player.',
+      ],
+    },
+    {
+      title: 'Books, refill, and end of game',
+      points: [
+        'Whenever you complete a set of 4 of a rank, it becomes a scored book displayed in front of you.',
+        'If your hand empties while the ocean still has cards, you draw a fresh hand (up to 5) and keep playing.',
+        'Once all 13 books are made — or the ocean is empty and everyone is out of cards — the game ends. Most books wins; ties are broken by fewest remaining cards.',
+      ],
+    },
+  ],
 }

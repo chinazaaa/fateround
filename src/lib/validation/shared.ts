@@ -117,6 +117,7 @@ export const gameTypeEnum = z.enum([
   'landmine',
   'wordle_room',
   'troll_run',
+  'gofish',
 ])
 
 export const participantModeEnum = z.enum(['import', 'joiners', 'voters'])

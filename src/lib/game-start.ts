@@ -21,6 +21,8 @@ import { initializeAyoGame, AYO_MIN_PLAYERS } from '@/lib/ayo'
 import { initializeScrabbleGame, SCRABBLE_MIN_PLAYERS, SCRABBLE_MAX_PLAYERS } from '@/lib/scrabble'
 import { initializeMafiaGame, MAFIA_MIN_PLAYERS, MAFIA_MAX_PLAYERS } from '@/lib/mafia'
 import { initializeTrollRunGame, TROLL_RUN_MIN_PLAYERS, TROLL_RUN_MAX_PLAYERS } from '@/lib/troll-run'
+import { initializeGoFishGame } from '@/lib/gofish-server'
+import { GOFISH_MIN_PLAYERS, GOFISH_MAX_PLAYERS } from '@/lib/gofish'
 
 /** The slice of the game row a start initializer may need. */
 type StartGame = { timer_seconds?: number | null; checkers_nigeria_street_rules?: boolean | null }
@@ -139,6 +141,11 @@ export const GAME_START_SPECS: Partial<Record<GameType, StartSpec>> = {
     minPlayers: TROLL_RUN_MIN_PLAYERS,
     maxPlayers: TROLL_RUN_MAX_PLAYERS,
     initialize: (admin, code, ids, game) => initializeTrollRunGame(admin, code, ids, game as any),
+  },
+  gofish: {
+    minPlayers: GOFISH_MIN_PLAYERS,
+    maxPlayers: GOFISH_MAX_PLAYERS,
+    initialize: (admin, code, ids) => initializeGoFishGame(admin, code, ids),
   },
 }
 

@@ -1,4 +1,4 @@
-import type { CrazyEightsPlayerHand, WhotPlayerHand } from '@/types'
+import type { CrazyEightsPlayerHand, GoFishPlayerHand, WhotPlayerHand } from '@/types'
 
 type HandsAuth = { resumeToken?: string | null; hostToken?: string | null }
 
@@ -42,4 +42,9 @@ export function fetchWhotHands(gameCode: string, auth: HandsAuth): Promise<WhotP
 /** Crazy Eights hands — see {@link fetchHands} for the contract. */
 export function fetchCrazyEightsHands(gameCode: string, auth: HandsAuth): Promise<CrazyEightsPlayerHand[] | null> {
   return fetchHands<CrazyEightsPlayerHand>('/api/crazy-eights/hands', gameCode, auth)
+}
+
+/** Go Fish hands — see {@link fetchHands} for the contract. */
+export function fetchGoFishHands(gameCode: string, auth: HandsAuth): Promise<GoFishPlayerHand[] | null> {
+  return fetchHands<GoFishPlayerHand>('/api/gofish/hands', gameCode, auth)
 }
