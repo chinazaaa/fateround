@@ -56,9 +56,13 @@ reviews:
   # Invariants this codebase has already broken at least once each. Encoded so they are checked
   # automatically rather than rediscovered.
   path_instructions:
-    - path: 'src/lib/supabase-selects.ts'
+    # Glob, not a single path: the web and mobile copies are separate files, and a mobile-ONLY
+    # change would otherwise bypass this guidance entirely — which is the exact drift rule 3
+    # below exists to catch.
+    - path: '**/lib/supabase-selects.ts'
       instructions: |
-        These constants define what the ANON key reads. Two rules:
+        These constants define what the ANON key reads. This applies to BOTH copies —
+        `src/lib/supabase-selects.ts` and `apps/mobile/lib/supabase-selects.ts`. Three rules:
 
         1. A `*_NOT_NULL_KEYS` list must name only columns that are ALSO in the matching
            `*_SELECT`. If a column is removed from a select but left in the keys list, the
@@ -69,8 +73,10 @@ reviews:
            `anon`, because a client select constrains PostgREST only. Do not describe removing a
            column from a select as closing a leak.
 
-        The mobile copy at `apps/mobile/lib/supabase-selects.ts` must be kept in step; they have
-        drifted before.
+        3. The two copies must be kept in step; they have drifted before. If a change touches only
+           one of them, say so explicitly and ask whether the other needs the same edit — a
+           mobile-only select change is how installed builds end up requesting a column the web
+           client no longer does.
 
     - path: 'supabase/migrations/**/*.sql'
       instructions: |
