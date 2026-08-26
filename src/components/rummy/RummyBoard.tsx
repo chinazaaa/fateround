@@ -316,7 +316,7 @@ function HandAndActions({
               <button
                 type="button"
                 className="fr-btn fr-btn--primary fr-btn--block"
-                disabled={drawCount === 0 && !topDiscard}
+                disabled={drawCount === 0}
                 onClick={() => onDraw?.('pile')}
               >
                 Draw ({drawCount})
