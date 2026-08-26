@@ -1,0 +1,90 @@
+-- Describe It — the secret word was public (same class as the Codewords key card, audit H2).
+--
+-- `describe_it_sessions.current_word` is the word the describer must get their team to say.
+-- It was listed in DESCRIBE_IT_SESSION_SELECT and read from the browser with the publishable
+-- anon key, so EVERY guesser's client already held the answer. The UI merely *rendered* it
+-- conditionally (`isDescriber` in DescribeItPlay.tsx), which is presentation, not a control:
+-- any guesser could read their own network response in devtools and win every turn.
+--
+-- `used_words` IS A SHADOW COPY OF THE SAME SECRET and is revoked with it. Every write that
+-- sets `current_word` also appends that word to `used_words` (buildTurn, plus the guess and
+-- skip paths in src/lib/describe-it.ts), so `used_words[last]` IS the current word. Revoking
+-- only `current_word` would have moved the leak, not closed it — a guesser would just read the
+-- last element instead. The clients' one legitimate use of the array was its LENGTH, which
+-- 20260807115000 replaced with the public `word_seq` counter.
+--
+-- Not affected, deliberately:
+--   * `describe_it_words` is a post-hoc LOG — rows are inserted only AFTER a word is guessed
+--     or skipped, so those words are already revealed to everyone.
+--   * `current_clue`, `current_clues` are public by design. The clues ARE the game.
+--   * `status_message` interpolates the word ("…'s word was \"X\"") and stays public — but ONLY
+--     because it is written on the turn -> break transition, i.e. at reveal, when the word is no
+--     longer secret. ⚠️ If that message is ever set earlier in the turn, it becomes a third path
+--     to the answer and must be revoked alongside the two columns below.
+--
+-- Same shape as `games.host_token` (0122) and `codewords_boards.key` (20260803170000), so the
+-- same fix, now via the shared `sec_regrant_except` helper (20260807110000): revoke the public
+-- roles' table-wide SELECT and re-grant every column except the secret ones. The data stays
+-- exactly where it is — the service role bypasses column grants, so src/lib/describe-it.ts
+-- (clue validation, guess matching, word rotation, turn summaries) and every describe-it write
+-- route keep working unchanged. No data movement, no server rewrite.
+--
+-- The describer gets their word back through POST /api/describe-it/my-word, which resolves the
+-- caller from their secret resume token (or the host token, for a host who is seated as a
+-- player) and returns the word only when that resolves to `describer_player_id`.
+--
+-- Realtime: anon `postgres_changes` payloads exclude columns the role cannot select, so
+-- `current_word` stops arriving over realtime too. Safe here — the describe-it views use the
+-- session event as a RELOAD TRIGGER (useGameTableSync -> load()), never as state to apply, and
+-- the describer refetches the word through the route on every session change.
+--
+-- ⚠️ FUTURE SCHEMA CHANGES: anon/authenticated now hold COLUMN-level (not table-level) SELECT
+-- on `describe_it_sessions`. A NEW column must also be granted (re-running the call below does
+-- that), or client reads of it will error. Fails closed — a read error, never a word leak.
+--
+-- ============================================================================
+-- ⚠️ ROLLOUT ORDER — THIS FILE IS THE ONE THAT CAN BREAK LIVE CLIENTS
+-- ============================================================================
+-- This is the only step here that TAKES A PRIVILEGE AWAY. Any client still naming
+-- `current_word` or `used_words` gets 42501 on the whole session select the moment it lands,
+-- which stops host and players receiving ALL session state mid-game (review on PR #866, and the
+-- same shape as the known TTL #838 incident). Apply strictly in this order:
+--
+--   1. 20260807110000 + 20260807115000 (helper + `word_seq`). Additive, safe at any time,
+--      compatible with every client version.
+--   2. Deploy web, and SHIP the mobile build that stops selecting the secret columns.
+--   3. Wait until installed mobile builds predating that release are drained, THEN apply this
+--      file.
+--
+-- Step 3 is a real wait, not a formality, and it is the mobile side that forces it: a web
+-- deploy is atomic and reversible in a minute, but an installed app binary is not. NOTE for
+-- whoever schedules this: `expo-updates` IS already a dependency (apps/mobile/package.json) and
+-- eas.json defines per-profile channels, but OTA is NOT wired up — app.json has no `updates`
+-- block or `runtimeVersion`, and nothing runs `eas update`. The only way to roll a shipped build
+-- forward is a store release.
+--
+-- WIRING OTA NOW DOES NOT CHANGE THAT, for the builds this step is about. `expo-updates` reads
+-- its update URL and `runtimeVersion` from config baked into the NATIVE BINARY at build time, so
+-- a build made without them never checks for updates at all; `eas update:configure` only affects
+-- FUTURE builds. And no valid config has ever shipped here — babc8f46 (2026-07-10) added
+-- `"url": "https://u.expo.dev/replace-with-eas-project-id"`, a literal placeholder, and f287ac20
+-- removed it the next day. So step 3 is genuinely "store release, then wait", or an accepted and
+-- recorded breakage window. Wire OTA anyway so the NEXT revoke is hot-fixable — just do not count
+-- on it for this one.
+--
+-- The OTHER skew direction (code ahead of the database) is already handled in code and needs no
+-- ordering discipline: `readDescribeItSession()` retries without `word_seq` on 42703, so a web
+-- deploy that lands before step 1 degrades to a slightly slower word refresh instead of an
+-- outage. There is no equivalent client-side rescue for 42501, which is why step 3 exists —
+-- a revoked column must keep failing loudly rather than being retried into success.
+-- ============================================================================
+
+select public.sec_regrant_except('describe_it_sessions', array['current_word', 'used_words']);
+
+-- ----------------------------------------------------------------------------
+-- ROLLBACK (drafted). Apply as a NEW forward migration; do NOT edit this file
+-- after it has shipped. This RE-OPENS the leak — only for an emergency where
+-- step 3 above turned out to be premature.
+--
+--   grant select on public.describe_it_sessions to anon, authenticated;
+-- ----------------------------------------------------------------------------
