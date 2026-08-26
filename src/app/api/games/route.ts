@@ -180,6 +180,7 @@ import { clampMonopolyGameDuration, clampMonopolyTurnTimer } from '@/lib/monopol
 import { clampWhotGameDuration } from '@/lib/whot'
 import { clampCrazyEightsGameDuration } from '@/lib/crazy-eights'
 import { clampUnoGameDuration, parseMultiPlayMode } from '@/lib/uno'
+import { clampGofishGameDuration } from '@/lib/gofish'
 import { clampBoardGameTurnTimer } from '@/lib/board-game-lobby-settings'
 import { clampWordHuntTimer } from '@/lib/word-hunt'
 import { clampWordleRoomCategory, clampWordleRoomWordCount, clampWordleRoomTimer } from '@/lib/wordle-room'
@@ -1436,6 +1437,8 @@ export async function POST(req: NextRequest) {
                       mahjong_ruleset: parseMahjongRuleset(rawMahjongRuleset),
                       mahjong_rule_options: parseMahjongRuleOptions(rawMahjongRuleOptions),
                     }
+                  : parseGameType(game_type) === 'gofish'
+                    ? { game_duration_seconds: clampGofishGameDuration(rawGameDurationSeconds) }
                   : isMatchingPairsGame(game_type)
                     ? { game_duration_seconds: rawGameDurationSeconds ?? 0 }
                     : isSudokuGame(game_type)

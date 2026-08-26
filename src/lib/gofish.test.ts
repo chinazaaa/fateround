@@ -4,18 +4,24 @@ import {
   askableRanks,
   buildGoFishDeck,
   buildGoFishStandings,
+  clampGofishGameDuration,
   countRanks,
   currentPlayerId,
   dealGoFish,
   describeGoFishEvent,
   extractBooks,
+  formatGofishGameDuration,
   GOFISH_DEFAULT_MAX_PLAYERS,
+  GOFISH_GAME_DURATION_OPTIONS,
   GOFISH_MAX_PLAYERS,
   GOFISH_MIN_PLAYERS,
   GOFISH_RANKS,
   gofishDealCount,
+  gofishGameSessionExpired,
+  gofishTurnDeadline,
   isGameOver,
   nextActiveTurnIndex,
+  pickAutoAsk,
   playerHasRank,
   resolveGoFishAsk,
   resolveWinner,
@@ -416,6 +422,65 @@ describe('standings + logging', () => {
     expect(describeGoFishEvent({ kind: 'book', player_id: 'a', rank: 12, at: '' }, nameOf)).toBe(
       'Alice completed a book of Queens.'
     )
+  })
+})
+
+describe('timers', () => {
+  it('gofishTurnDeadline returns null when no timer set', () => {
+    expect(gofishTurnDeadline(0)).toBe(null)
+  })
+
+  it('gofishTurnDeadline returns an ISO string N seconds ahead', () => {
+    const now = new Date('2026-05-01T12:00:00Z')
+    expect(gofishTurnDeadline(45, now)).toBe('2026-05-01T12:00:45.000Z')
+  })
+
+  it('clampGofishGameDuration accepts only the documented options', () => {
+    for (const opt of GOFISH_GAME_DURATION_OPTIONS) {
+      expect(clampGofishGameDuration(opt)).toBe(opt)
+    }
+    expect(clampGofishGameDuration(37)).toBe(0)
+    expect(clampGofishGameDuration('nope')).toBe(0)
+  })
+
+  it('formatGofishGameDuration renders no-limit / hours / minutes cases', () => {
+    expect(formatGofishGameDuration(0)).toBe('No limit')
+    expect(formatGofishGameDuration(3600)).toBe('1 hour')
+    expect(formatGofishGameDuration(1800)).toBe('30 minutes')
+  })
+
+  it('gofishGameSessionExpired matches whot semantics: 0 duration never expires', () => {
+    const now = new Date('2026-05-01T13:00:00Z')
+    expect(gofishGameSessionExpired('2026-05-01T12:00:00Z', 0, now)).toBe(false)
+    expect(gofishGameSessionExpired(null, 600, now)).toBe(false)
+  })
+
+  it('gofishGameSessionExpired flips at the deadline', () => {
+    const start = '2026-05-01T12:00:00Z'
+    expect(gofishGameSessionExpired(start, 600, new Date('2026-05-01T12:09:59Z'))).toBe(false)
+    expect(gofishGameSessionExpired(start, 600, new Date('2026-05-01T12:10:00Z'))).toBe(true)
+    expect(gofishGameSessionExpired(start, 600, new Date('2026-05-01T13:00:00Z'))).toBe(true)
+  })
+})
+
+describe('pickAutoAsk', () => {
+  it('returns null when the player has no cards', () => {
+    expect(pickAutoAsk([], new Map([['b', 3]]))).toBeNull()
+  })
+
+  it('returns null when nobody else has cards', () => {
+    expect(pickAutoAsk([card(7)], new Map([['b', 0]]))).toBeNull()
+  })
+
+  it('picks a rank the player holds and a target with cards', () => {
+    const hand = [card(3), card(7)]
+    const opponents = new Map([['b', 2], ['c', 0], ['d', 5]])
+    // Deterministic rng — return 0 always.
+    const pick = pickAutoAsk(hand, opponents, () => 0)
+    expect(pick).not.toBeNull()
+    expect([3, 7]).toContain(pick!.rank)
+    expect(['b', 'd']).toContain(pick!.targetPlayerId)
+    expect(pick!.targetPlayerId).not.toBe('c')
   })
 })
 

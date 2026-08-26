@@ -6,9 +6,11 @@ import {
   buildGoFishDeck,
   currentPlayerId,
   dealGoFish,
+  gofishGameSessionExpired,
   gofishTurnDeadline,
   pickAutoAsk,
   resolveGoFishAsk,
+  resolveWinner,
   shuffleDeck,
   type GoFishAskResult,
 } from '@/lib/gofish'
@@ -122,6 +124,11 @@ export async function processGoFishAsk(
   const { session, hands } = await loadGameState(supabase, gameId)
   if (!session) return { error: 'Session not found' }
 
+  // Whole-game clock takes precedence over the ask: if the session buzzer has sounded,
+  // finalize by most-books-wins instead of accepting another turn's mutation.
+  const finalized = await finalizeIfSessionExpired(supabase, gameId, session, hands)
+  if (finalized) return { error: "Time's up" }
+
   const now = new Date().toISOString()
   const result = resolveGoFishAsk({
     session,
@@ -191,6 +198,12 @@ export async function processGoFishExpireTurn(
   const { session, hands } = await loadGameState(supabase, gameId)
   if (!session) return { error: 'Session not found' }
   if (session.phase === 'finished') return { skipped: true }
+
+  // Session buzzer beats the turn buzzer: check the whole-game clock first, so a room
+  // that's timed out never auto-plays another turn on top of the finished state.
+  const finalized = await finalizeIfSessionExpired(supabase, gameId, session, hands)
+  if (finalized) return {}
+
   if (!session.turn_deadline_at || new Date(session.turn_deadline_at) > new Date()) {
     return { skipped: true }
   }
@@ -226,6 +239,49 @@ export async function processGoFishExpireTurn(
 
   const { error } = await processGoFishAsk(supabase, gameId, activePlayerId, pick.targetPlayerId, pick.rank)
   return error ? { error } : {}
+}
+
+/**
+ * End the game by most-books-wins when the session buzzer has sounded.
+ *
+ * Reads games.session_started_at + games.game_duration_seconds and, if the clock has
+ * expired, flips the session to `finished`, appends a `game_over` event, and marks
+ * the game finished with a CAS on status=active so trophies + community leaderboard
+ * hooks fire exactly once even if two ticks race here.
+ */
+async function finalizeIfSessionExpired(
+  supabase: SupabaseClient,
+  gameId: string,
+  session: GoFishSession,
+  hands: GoFishPlayerHand[]
+): Promise<boolean> {
+  if (session.phase === 'finished') return false
+  const { data: gameRow } = await supabase
+    .from('games')
+    .select('session_started_at, game_duration_seconds')
+    .eq('id', gameId)
+    .maybeSingle()
+  if (!gameRow) return false
+  const expired = gofishGameSessionExpired(gameRow.session_started_at, gameRow.game_duration_seconds)
+  if (!expired) return false
+
+  const now = new Date().toISOString()
+  const winnerId = resolveWinner(hands)
+  const { error } = await supabase
+    .from('gofish_sessions')
+    .update({
+      phase: 'finished',
+      winner_player_id: winnerId,
+      turn_deadline_at: null,
+      status_message: "Time's up!",
+      event_log: [...(session.event_log ?? []), { kind: 'game_over', at: now }],
+      updated_at: now,
+    })
+    .eq('game_id', gameId)
+    .neq('phase', 'finished')
+  if (error) return false
+  await markGameFinished(supabase, gameId, now, { onlyIfActive: true })
+  return true
 }
 
 function nextActiveTurnIndexFromHands(session: GoFishSession, hands: GoFishPlayerHand[]): number {

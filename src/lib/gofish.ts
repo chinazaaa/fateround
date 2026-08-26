@@ -23,6 +23,37 @@ export const GOFISH_REFILL_TARGET = 5
 export const GOFISH_DEFAULT_TIMER_SECONDS = 45
 export const GOFISH_TIMER_OPTIONS = [0, 30, 45, 60, 90, 120] as const
 
+/** Whole-game session length (seconds). 0 = no limit. */
+export const GOFISH_GAME_DURATION_OPTIONS = [0, 600, 900, 1800, 2700, 3600] as const
+
+export function clampGofishGameDuration(raw: unknown): number {
+  const n = Number(raw ?? 0)
+  return (GOFISH_GAME_DURATION_OPTIONS as readonly number[]).includes(n) ? n : 0
+}
+
+export function formatGofishGameDuration(seconds: number): string {
+  if (!seconds || seconds <= 0) return 'No limit'
+  if (seconds % 3600 === 0) return `${seconds / 3600} hour${seconds / 3600 === 1 ? '' : 's'}`
+  return `${Math.round(seconds / 60)} minutes`
+}
+
+/**
+ * True when the session has been running longer than its configured duration. Used by the
+ * ask + expire-turn handlers to end the game by most-books-wins when the clock runs out —
+ * `resolveWinner` already tiebreaks by fewest cards, which is exactly the rule.
+ */
+export function gofishGameSessionExpired(
+  sessionStartedAt: string | null | undefined,
+  durationSeconds: number | null | undefined,
+  now: Date = new Date()
+): boolean {
+  if (!durationSeconds || durationSeconds <= 0) return false
+  if (!sessionStartedAt) return false
+  const startMs = new Date(sessionStartedAt).getTime()
+  if (Number.isNaN(startMs)) return false
+  return now.getTime() >= startMs + durationSeconds * 1000
+}
+
 /** ISO deadline `seconds` from now, or null when no timer is configured. */
 export function gofishTurnDeadline(timerSeconds: number, now: Date = new Date()): string | null {
   if (!timerSeconds || timerSeconds <= 0) return null
