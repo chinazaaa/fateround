@@ -163,12 +163,12 @@ export function RummyGamePanel({
 
         {isViewer ? (
           <TurnStatus muted>Watching — {turnName}&apos;s turn</TurnStatus>
-        ) : session.status_message ? (
-          <ActionToast tone="ok">{session.status_message}</ActionToast>
         ) : isMyTurn ? (
           <TurnStatus>
             {session.turn_step === 'draw' ? 'Your turn — draw a card' : 'Your turn — now discard or go out'}
           </TurnStatus>
+        ) : session.status_message ? (
+          <ActionToast tone="ok">{session.status_message}</ActionToast>
         ) : (
           <TurnStatus muted>Waiting for {turnName}…</TurnStatus>
         )}
