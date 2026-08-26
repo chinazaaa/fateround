@@ -331,85 +331,83 @@ function HandAndActions({
               </button>
             </div>
           ) : isMyTurn && canAct ? (
-            <div className="flex gap-2 w-full">
-              <button
-                type="button"
-                className="fr-btn fr-btn--secondary fr-btn--block"
-                disabled={!discardChoice || grouped.melds.some((m) => m.length > 0)}
-                onClick={() => discardChoice && onDiscard?.(discardChoice)}
-              >
-                {discardChoice ? `Discard ${rummyCardLabel(hand.find((c) => c.id === discardChoice)!)}` : 'Discard…'}
-              </button>
-              <button type="button" className="fr-btn fr-btn--secondary fr-btn--block" onClick={addNewMeldPile}>
-                + Meld pile
-              </button>
+            <div className="flex flex-col gap-2 w-full">
+              {openMenu && (
+                <div className="flex flex-wrap items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface-inset-bg)] p-2">
+                  <span className="text-xs text-muted mr-1">
+                    Selected: <strong>{rummyCardLabel(hand.find((c) => c.id === openMenu)!)}</strong>
+                  </span>
+                  <button
+                    type="button"
+                    className="fr-btn fr-btn--secondary"
+                    style={{ fontSize: '0.75rem', padding: '0.3rem 0.6rem' }}
+                    onClick={() => {
+                      toggleDiscard(openMenu)
+                      setOpenMenu(null)
+                    }}
+                  >
+                    {discardChoice === openMenu ? '✓ Marked to discard' : 'Mark as discard'}
+                  </button>
+                  {Array.from({ length: meldCount }).map((_, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      className="fr-btn fr-btn--secondary"
+                      style={{ fontSize: '0.75rem', padding: '0.3rem 0.6rem' }}
+                      onClick={() => {
+                        assignToMeld(openMenu, i)
+                        setOpenMenu(null)
+                      }}
+                    >
+                      Add to meld #{i + 1}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    className="fr-btn fr-btn--secondary"
+                    style={{ fontSize: '0.75rem', padding: '0.3rem 0.6rem' }}
+                    onClick={() => {
+                      addNewMeldPile()
+                      assignToMeld(openMenu, meldCount)
+                      setOpenMenu(null)
+                    }}
+                  >
+                    + Start new meld
+                  </button>
+                  <button
+                    type="button"
+                    className="ml-auto text-xs text-muted hover:text-[var(--foreground)]"
+                    onClick={() => setOpenMenu(null)}
+                    aria-label="Cancel"
+                  >
+                    ✕
+                  </button>
+                </div>
+              )}
+              <div className="flex gap-2 w-full">
+                <button
+                  type="button"
+                  className="fr-btn fr-btn--secondary fr-btn--block"
+                  disabled={!discardChoice || grouped.melds.some((m) => m.length > 0)}
+                  onClick={() => discardChoice && onDiscard?.(discardChoice)}
+                >
+                  {discardChoice ? `Discard ${rummyCardLabel(hand.find((c) => c.id === discardChoice)!)}` : 'Discard…'}
+                </button>
+                <button type="button" className="fr-btn fr-btn--secondary fr-btn--block" onClick={addNewMeldPile}>
+                  + Meld pile
+                </button>
+              </div>
             </div>
           ) : undefined
         }
       >
         {grouped.inHand.map((card) => (
-          <div key={card.id} style={{ position: 'relative' }}>
+          <div key={card.id}>
             <RummyCardFace
               card={card}
-              sel={discardChoice === card.id}
+              sel={discardChoice === card.id || openMenu === card.id}
               onClick={isMyTurn && canAct ? () => setOpenMenu(openMenu === card.id ? null : card.id) : undefined}
             />
-            {openMenu === card.id && isMyTurn && canAct && (
-              <div
-                className="glass-card"
-                style={{
-                  position: 'absolute',
-                  top: '100%',
-                  left: '50%',
-                  transform: 'translateX(-50%)',
-                  zIndex: 20,
-                  minWidth: '10rem',
-                  padding: '0.35rem',
-                  marginTop: '0.25rem',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '0.25rem',
-                }}
-              >
-                <button
-                  type="button"
-                  className="fr-btn fr-btn--secondary"
-                  onClick={() => {
-                    toggleDiscard(card.id)
-                    setOpenMenu(null)
-                  }}
-                  style={{ fontSize: '0.75rem', padding: '0.3rem 0.5rem' }}
-                >
-                  {discardChoice === card.id ? '✓ Marked to discard' : 'Mark as discard'}
-                </button>
-                {Array.from({ length: meldCount }).map((_, i) => (
-                  <button
-                    key={i}
-                    type="button"
-                    className="fr-btn fr-btn--secondary"
-                    onClick={() => {
-                      assignToMeld(card.id, i)
-                      setOpenMenu(null)
-                    }}
-                    style={{ fontSize: '0.75rem', padding: '0.3rem 0.5rem' }}
-                  >
-                    Add to meld #{i + 1}
-                  </button>
-                ))}
-                <button
-                  type="button"
-                  className="fr-btn fr-btn--secondary"
-                  onClick={() => {
-                    addNewMeldPile()
-                    assignToMeld(card.id, meldCount)
-                    setOpenMenu(null)
-                  }}
-                  style={{ fontSize: '0.75rem', padding: '0.3rem 0.5rem' }}
-                >
-                  Start new meld
-                </button>
-              </div>
-            )}
           </div>
         ))}
       </Hand>
