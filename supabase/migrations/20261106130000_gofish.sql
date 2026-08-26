@@ -112,7 +112,7 @@ ALTER TABLE game_player_limits ADD CONSTRAINT game_player_limits_game_type_check
     'word_rush', 'ayo', 'crossword', 'word_search', 'word_scramble', 'word_grouping',
     'landmine', 'wordle_room', 'troll_run', 'gofish'
   )
-);
+) NOT VALID;
 
 INSERT INTO game_player_limits (game_type, max_players)
 VALUES ('gofish', 6)

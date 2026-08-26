@@ -84,11 +84,25 @@ type LoadedState = {
   hands: GoFishPlayerHand[]
 }
 
-async function loadGameState(supabase: SupabaseClient, gameId: string): Promise<LoadedState> {
+/**
+ * Server-side state load.
+ *
+ * A failed hands query is returned as `{ error }`, never silently mapped to an empty
+ * array. Empty hands are a valid successful result ("this game has no players yet"),
+ * but a transient DB error is not — we saw the Rummy pattern where a failed read let
+ * the action handler build a fresh empty hand and overwrite the real one. Callers
+ * must abort the action on error rather than persist anything.
+ */
+async function loadGameState(
+  supabase: SupabaseClient,
+  gameId: string
+): Promise<{ error?: string } & Partial<LoadedState>> {
   const [sessionRes, handsRes] = await Promise.all([
     supabase.from('gofish_sessions').select('*').eq('game_id', gameId).maybeSingle(),
     supabase.from('gofish_player_hands').select('*').eq('game_id', gameId).order('player_order'),
   ])
+  if (sessionRes.error) return { error: internalErrorMessage('gofish', sessionRes.error) }
+  if (handsRes.error) return { error: internalErrorMessage('gofish', handsRes.error) }
   return {
     session: (sessionRes.data as GoFishSession | null) ?? null,
     hands: ((handsRes.data as GoFishPlayerHand[] | null) ?? []).map((h) => ({
@@ -115,18 +129,21 @@ export async function processGoFishAsk(
   targetPlayerId: string,
   rank: GoFishRank
 ): Promise<{ error?: string; result?: GoFishAskResult }> {
-  const { session, hands } = await loadGameState(supabase, gameId)
+  const loaded = await loadGameState(supabase, gameId)
+  if (loaded.error) return { error: loaded.error }
+  const { session, hands } = loaded
   if (!session) return { error: 'Session not found' }
 
   // Whole-game clock takes precedence over the ask: if the session buzzer has sounded,
   // finalize by most-books-wins instead of accepting another turn's mutation.
-  const finalized = await finalizeIfSessionExpired(supabase, gameId, session, hands)
-  if (finalized) return { error: "Time's up" }
+  const finalized = await finalizeIfSessionExpired(supabase, gameId, session, hands ?? [])
+  if (finalized.error) return { error: finalized.error }
+  if (finalized.ok) return { error: "Time's up" }
 
   const now = new Date().toISOString()
   const result = resolveGoFishAsk({
     session,
-    hands,
+    hands: hands ?? [],
     fromPlayerId,
     targetPlayerId,
     rank,
@@ -142,9 +159,12 @@ export async function processGoFishAsk(
   const timerSeconds = (gameRow?.timer_seconds ?? 0) as number
   const nextDeadline = nextSession.phase === 'finished' ? null : gofishTurnDeadline(timerSeconds)
 
-  // Persist. Do the session write first so a failed hand update doesn't leave stale
-  // ocean/log state — every mutation here is idempotent by session state + player id.
-  const { error: sessionError } = await supabase
+  // Optimistic concurrency: claim the session row on its loaded `updated_at`. Two concurrent
+  // asks against the same snapshot would otherwise both pass the phase check and both write
+  // stale hand mutations on top of each other. `.select('game_id')` forces the write to
+  // return the affected row so we can detect the losing claim; the loser aborts before any
+  // hand write, and the client re-fetches and retries with the fresh state.
+  const { data: claimed, error: sessionError } = await supabase
     .from('gofish_sessions')
     .update({
       current_turn_index: nextSession.current_turn_index,
@@ -159,7 +179,12 @@ export async function processGoFishAsk(
       updated_at: nextSession.updated_at,
     })
     .eq('game_id', gameId)
+    .eq('updated_at', session.updated_at)
+    .select('game_id')
   if (sessionError) return { error: internalErrorMessage('gofish', sessionError) }
+  if (!claimed || claimed.length === 0) {
+    return { error: 'Session changed by another request — please retry' }
+  }
 
   for (const update of handUpdates) {
     const { error: handError } = await supabase
@@ -171,7 +196,10 @@ export async function processGoFishAsk(
   }
 
   if (nextSession.phase === 'finished') {
-    await markGameFinished(supabase, gameId, nextSession.updated_at, { onlyIfActive: true })
+    const finishResult = await markGameFinished(supabase, gameId, nextSession.updated_at, { onlyIfActive: true })
+    // markGameFinished's error carries the persistence failure — propagate it so the caller
+    // doesn't report success while the games row is still `active`.
+    if (finishResult?.error) return { error: internalErrorMessage('gofish', finishResult.error) }
   }
 
   return { result }
@@ -189,14 +217,17 @@ export async function processGoFishExpireTurn(
   supabase: SupabaseClient,
   gameId: string
 ): Promise<{ error?: string; skipped?: boolean }> {
-  const { session, hands } = await loadGameState(supabase, gameId)
+  const loaded = await loadGameState(supabase, gameId)
+  if (loaded.error) return { error: loaded.error }
+  const { session, hands = [] } = loaded
   if (!session) return { error: 'Session not found' }
   if (session.phase === 'finished') return { skipped: true }
 
   // Session buzzer beats the turn buzzer: check the whole-game clock first, so a room
   // that's timed out never auto-plays another turn on top of the finished state.
   const finalized = await finalizeIfSessionExpired(supabase, gameId, session, hands)
-  if (finalized) return {}
+  if (finalized.error) return { error: finalized.error }
+  if (finalized.ok) return {}
 
   if (!session.turn_deadline_at || new Date(session.turn_deadline_at) > new Date()) {
     return { skipped: true }
@@ -243,21 +274,28 @@ export async function processGoFishExpireTurn(
  * the game finished with a CAS on status=active so trophies + community leaderboard
  * hooks fire exactly once even if two ticks race here.
  */
+/**
+ * Result signals: `{ ok: false }` = clock hasn't expired, keep going. `{ ok: true }` = we
+ * finalized the game. `{ error }` = the finalization itself failed and the caller must
+ * abort — a silent `false` here would let the caller carry on writing turn state on top
+ * of a game that should be finished but isn't (the same bug CodeRabbit flagged on Rummy).
+ */
 async function finalizeIfSessionExpired(
   supabase: SupabaseClient,
   gameId: string,
   session: GoFishSession,
   hands: GoFishPlayerHand[]
-): Promise<boolean> {
-  if (session.phase === 'finished') return false
-  const { data: gameRow } = await supabase
+): Promise<{ ok: boolean; error?: string }> {
+  if (session.phase === 'finished') return { ok: false }
+  const { data: gameRow, error: gameError } = await supabase
     .from('games')
     .select('session_started_at, game_duration_seconds')
     .eq('id', gameId)
     .maybeSingle()
-  if (!gameRow) return false
+  if (gameError) return { ok: false, error: internalErrorMessage('gofish', gameError) }
+  if (!gameRow) return { ok: false }
   const expired = gofishGameSessionExpired(gameRow.session_started_at, gameRow.game_duration_seconds)
-  if (!expired) return false
+  if (!expired) return { ok: false }
 
   const now = new Date().toISOString()
   const winnerId = resolveWinner(hands)
@@ -273,9 +311,10 @@ async function finalizeIfSessionExpired(
     })
     .eq('game_id', gameId)
     .neq('phase', 'finished')
-  if (error) return false
-  await markGameFinished(supabase, gameId, now, { onlyIfActive: true })
-  return true
+  if (error) return { ok: false, error: internalErrorMessage('gofish', error) }
+  const finishResult = await markGameFinished(supabase, gameId, now, { onlyIfActive: true })
+  if (finishResult?.error) return { ok: false, error: internalErrorMessage('gofish', finishResult.error) }
+  return { ok: true }
 }
 
 function nextActiveTurnIndexFromHands(session: GoFishSession, hands: GoFishPlayerHand[]): number {

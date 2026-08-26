@@ -3476,7 +3476,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     ],
     heroSubtitle: 'The classic ask-for-a-rank card game. Collect four of a kind to score a book. Most books wins.',
     bodyParagraph:
-      'Go Fish on FateRound plays by the standard rules — ask an opponent for a rank you already hold, take all of theirs if they have any, "Go Fish" from the ocean if they don\'t. Complete four of a rank for a book and keep asking until all 13 books are made. 2–6 players; 3 or more is the sweet spot for making the asking part interesting.',
+      'Go Fish on FateRound plays by the standard rules — ask an opponent for a rank you already hold, take all of theirs if they have any, "Go Fish" from the ocean if they don\'t. Complete four of a rank for a book and keep asking until all 13 books are made. 2–6 players; 3 or more is the sweet spot for making the asking part interesting. Hosts can set an optional per-turn timer (or leave it off) and a whole-game clock; when the game clock runs out, most books wins, tiebreak by fewest cards left in hand.',
     highlights: ['Standard 52-card deck', '2–6 players', 'Great for kids and casual card night'],
     features: [
       {
