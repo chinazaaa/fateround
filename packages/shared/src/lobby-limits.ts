@@ -67,6 +67,7 @@ export const LOBBY_LIMIT_GAME_TYPES = [
   'word_search',
   'word_grouping',
   'wordle_room',
+  'gofish',
 ] as const
 
 export type LobbyLimitGameType = (typeof LOBBY_LIMIT_GAME_TYPES)[number]
@@ -188,6 +189,11 @@ export const GAME_LIMIT_CODE_DEFAULTS: GamePlayerLimitsMap = {
     min: WORDLE_ROOM_MIN_PLAYERS,
     max: WORDLE_ROOM_MAX_PLAYERS,
     default: WORDLE_ROOM_DEFAULT_MAX_PLAYERS,
+  },
+  gofish: {
+    min: 2,
+    max: 6,
+    default: 4,
   },
 }
 

@@ -35,6 +35,7 @@ import { clearMonopolySessionData } from '@/lib/monopoly'
 import { clearYahtzeeSessionData } from '@/lib/yahtzee'
 import { clearWhotSessionData } from '@/lib/whot'
 import { clearCrazyEightsSessionData } from '@/lib/crazy-eights'
+import { clearGoFishSessionData } from '@/lib/gofish-server'
 import { clearRummySessionData } from '@/lib/rummy'
 import { clearUnoSessionData } from '@/lib/uno'
 import { clearLudoSessionData } from '@/lib/ludo'
@@ -131,6 +132,7 @@ type ClearableSessionGameType = Extract<
   | 'word_scramble'
   | 'landmine'
   | 'troll_run'
+  | 'gofish'
 >
 
 /**
@@ -178,6 +180,7 @@ const SESSION_CLEARERS: Record<ClearableSessionGameType, SessionClearer> = {
   // game_id column and blocked play-again.
   landmine: clearLandmineSessionData,
   troll_run: clearTrollRunSessionData,
+  gofish: clearGoFishSessionData,
 }
 
 async function handlePost(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
