@@ -169,8 +169,29 @@ export const DRAUGHTS10_SESSION_SELECT =
 export const AYO_SESSION_SELECT =
   'id,game_id,player_a_id,player_b_id,pits,captured_a,captured_b,houses_a,houses_b,match_round,a_row_size,b_row_size,current_turn,a_win_streak,b_win_streak,a_time_ms,b_time_ms,turn_started_at,last_pit,status,result_reason,winner_player_id,is_draw,status_message,turn_deadline_at,created_at,updated_at'
 
-export const DESCRIBE_IT_SESSION_SELECT =
-  'id,game_id,mode,num_teams,total_rounds,turn_seconds,phase,turn_index,current_round,active_team,describer_player_id,roster,current_word,current_clue,current_clues,used_words,turn_deadline_at,break_deadline_at,status,status_message,created_at,updated_at'
+/**
+ * NOTE: no `current_word` and no `used_words`. Both are revoked from anon/authenticated by
+ * migration 20260807130000 — the word used to ship to every guesser's client and was merely
+ * hidden in the UI, and `used_words[last]` IS that word. The describer fetches it from POST
+ * /api/describe-it/my-word instead.
+ *
+ * Every column here except `word_seq` predates the migrations on this branch, so this list is
+ * the part that is safe against ANY database version.
+ */
+export const DESCRIBE_IT_SESSION_SELECT_NO_WORD_SEQ =
+  'id,game_id,mode,num_teams,total_rounds,turn_seconds,phase,turn_index,current_round,active_team,describer_player_id,roster,current_clue,current_clues,turn_deadline_at,break_deadline_at,status,status_message,created_at,updated_at'
+
+/**
+ * `word_seq` (added by migration 20260807115000) is the public per-word counter that replaced
+ * the clients' only legitimate use of the revoked `used_words` array — its length.
+ *
+ * DEPLOY SKEW: naming a column that does not exist yet makes PostgREST fail the WHOLE select
+ * with 42703, which would take out all session state, not just the word. Read the session
+ * through `readDescribeItSession()` (src/lib/describe-it-session-read.ts), which falls back to
+ * DESCRIBE_IT_SESSION_SELECT_NO_WORD_SEQ on 42703 so a web deploy that lands ahead of the
+ * migration degrades instead of bricking the game.
+ */
+export const DESCRIBE_IT_SESSION_SELECT = `${DESCRIBE_IT_SESSION_SELECT_NO_WORD_SEQ},word_seq`
 
 export const DESCRIBE_IT_PLAYER_SELECT = 'id,game_id,player_id,team,score,created_at'
 
@@ -227,8 +248,15 @@ export const QUICK_DRAW_TITLE_SELECT = 'id,game_id,drawing_id,player_id,text,is_
 
 export const QUICK_DRAW_VOTE_SELECT = 'id,game_id,drawing_id,player_id,chosen_title_id,voted_at'
 
+/**
+ * NOTE: no `current_word` and no `used_words`. The secret prompt is revoked from
+ * anon/authenticated by migration 20260807140000 — it used to ship to every guesser's client
+ * (twice: as `current_word`, and as the last entry of `used_words`) and was merely hidden in the
+ * UI. The drawer fetches it from POST /api/quick-draw/my-word instead, and `word_seq` is the
+ * public per-word counter clients use to know it rotated.
+ */
 export const QUICK_DRAW_GUESS_SESSION_SELECT =
-  'id,game_id,mode,num_teams,total_rounds,turn_seconds,roster,phase,turn_index,current_round,active_team,drawer_player_id,current_word,current_stroke_data,used_words,turn_deadline_at,break_deadline_at,status,status_message,created_at,updated_at'
+  'id,game_id,mode,num_teams,total_rounds,turn_seconds,roster,phase,turn_index,current_round,active_team,drawer_player_id,current_stroke_data,word_seq,turn_deadline_at,break_deadline_at,status,status_message,created_at,updated_at'
 
 export const QUICK_DRAW_GUESS_PLAYER_SELECT = 'id,game_id,player_id,team,score,created_at'
 
