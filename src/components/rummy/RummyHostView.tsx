@@ -20,8 +20,11 @@ import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
 import { useScrollHostViewToTop } from '@/hooks/useScrollHostViewToTop'
 import type { Game, Player, RummyPlayerHand, RummySession } from '@/types'
 import { useToast } from '@/components/ui/Toast'
-import { RummyGamePanel, RummyStandingsBox } from '@/components/rummy/RummyBoard'
-import { RummyCard as RummyCardBox, RummyShell } from '@/components/rummy/RummyChrome'
+import { RummyGamePanel } from '@/components/rummy/RummyBoard'
+import { RummyShell } from '@/components/rummy/RummyChrome'
+import { RummyFinalResultsShareBlock } from '@/components/rummy/RummyFinalResultsShareBlock'
+import { HostRoomShell } from '@/components/host/HostRoomShell'
+import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { useRummyTurnTimer } from '@/hooks/useRummyTurnTimer'
 import { useRummyGameTimer } from '@/hooks/useRummyGameTimer'
 
@@ -226,47 +229,64 @@ export function RummyHostView({ gameCode, hostToken }: { gameCode: string; hostT
             spectatorHint="Watch the room; don't take a seat"
           />
         }
-      >
-        <HostBoardGameLobbyPanel
-          gameCode={gameCode}
-          hostToken={hostToken}
-          game={game}
-          boardGameType="rummy"
-          playerCount={players.length}
-          seatedCount={activePlayers.length}
-          onGameUpdate={setGame}
-        />
-      </HostLobby>
+        settingsChildren={
+          <HostBoardGameLobbyPanel
+            gameCode={gameCode}
+            hostToken={hostToken}
+            game={game}
+            boardGameType="rummy"
+            playerCount={players.length}
+            seatedCount={activePlayers.length}
+            onGameUpdate={setGame}
+          />
+        }
+      />
     )
   }
 
   if (gameFinished) {
+    const hostWon = hostPlayerId != null && session?.winner_player_id === hostPlayerId
     return (
       <RummyShell title={game.title ?? cfg.label} compact>
-        <RummyCardBox className="p-4 text-center space-y-2">
-          <p className="text-4xl">🏆</p>
-          <p className="text-xl font-black">{winnerName ? `${winnerName} wins!` : 'Round ended'}</p>
-          {session?.status_message && <p className="text-sm text-muted">{session.status_message}</p>}
-        </RummyCardBox>
-        {session && <RummyStandingsBox session={session} players={players} hands={hands} myPlayerId={null} />}
-        <div className="grid grid-cols-2 gap-2">
-          <button
-            type="button"
-            className="btn-secondary py-2"
-            onClick={() => void playAgain(false)}
-            disabled={playingAgain}
-          >
-            Reopen lobby
-          </button>
-          <button
-            type="button"
-            className="btn-primary py-2"
-            onClick={() => void playAgain(true)}
-            disabled={playingAgain}
-          >
-            Play again · same settings
-          </button>
-        </div>
+        {session && (
+          <RummyFinalResultsShareBlock
+            game={game}
+            players={players}
+            hands={hands}
+            session={session}
+            winnerName={winnerName ?? null}
+            highlightPlayerId={hostPlayerId}
+            playAgainButton={
+              <button
+                type="button"
+                onClick={() => void playAgain(true)}
+                disabled={playingAgain}
+                className="btn-secondary w-full py-3 text-base disabled:opacity-60"
+              >
+                {playingAgain ? 'Starting…' : '↻ Play again · same settings'}
+              </button>
+            }
+            returnToLobbyButton={
+              <button
+                type="button"
+                onClick={() => void playAgain(false)}
+                disabled={playingAgain}
+                className="w-full py-2.5 text-sm font-semibold text-muted transition-colors hover:text-body disabled:opacity-60"
+              >
+                Return to lobby
+              </button>
+            }
+            lobbyNote="Same settings reopens the game for ready-up — watchers and new people can join · lobby lets you tweak settings first."
+          />
+        )}
+        {hostWon && (
+          <PostWinToCommunity
+            gameType="rummy"
+            gameCode={gameCode}
+            winnerName={hostPlayerName ?? winnerName ?? ''}
+            roundKey={session?.id}
+          />
+        )}
       </RummyShell>
     )
   }
@@ -277,8 +297,10 @@ export function RummyHostView({ gameCode, hostToken }: { gameCode: string; hostT
     : null
   const isHostTurn = hostPlays && session ? session.turn_order[session.current_turn_index] === hostPlayerId : false
 
+  // Active play mounts inside HostRoomShell — supplies the `.fr-room fr-room-poll` → `.pr-stage`
+  // ancestor the shared card-table CSS scopes under. See RummyPlayerView for the same note.
   return (
-    <RummyShell title={game.title ?? cfg.label} compact wide>
+    <HostRoomShell>
       {session && (
         <RummyGamePanel
           session={session}
@@ -303,7 +325,7 @@ export function RummyHostView({ gameCode, hostToken }: { gameCode: string; hostT
           }
         />
       )}
-      <div className="pt-2 space-y-2">
+      <div className="px-3 pt-2 pb-4 space-y-2">
         {hostPlays && (
           <button type="button" className="btn-secondary w-full py-2" onClick={leaveGameRemovePlayer}>
             Leave the table (keep hosting)
@@ -311,6 +333,6 @@ export function RummyHostView({ gameCode, hostToken }: { gameCode: string; hostT
         )}
         <HostEndGameButton gameCode={gameCode} hostToken={hostToken} onEnded={load} />
       </div>
-    </RummyShell>
+    </HostRoomShell>
   )
 }

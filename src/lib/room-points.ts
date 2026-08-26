@@ -10,10 +10,13 @@ import { tallySudokuScores } from '@/lib/sudoku'
 import { tallyWordHuntScores } from '@/lib/word-hunt'
 import { tallyWordGroupingScores } from '@/lib/word-grouping'
 import { tallyWordleRoomScores } from '@/lib/wordle-room'
+import { buildGoFishStandings } from '@/lib/gofish'
+import type { GoFishPlayerHand } from '@/types'
 import {
   parseGameType,
   isMonopolyGame,
   isYahtzeeGame,
+  isGoFishGame,
   isWhotGame,
   isCrazyEightsGame,
   isUnoGame,
@@ -65,6 +68,7 @@ export function isCompetitiveRoomGame(gameType: GameType): boolean {
     isWhotGame(gameType) ||
     isCrazyEightsGame(gameType) ||
     isUnoGame(gameType) ||
+    isGoFishGame(gameType) ||
     isLudoGame(gameType) ||
     isSnakeAndLadderGame(gameType) ||
     isBingoGame(gameType) ||
@@ -365,6 +369,19 @@ export async function getCompetitiveStandings(
     if (!submissions?.length) return []
     const seated = players.filter((p) => p.spectator !== true).map((p) => ({ id: p.id, name: p.name }))
     return tallyWordGroupingScores(seated, submissions).map((row) => row.id)
+  }
+
+  if (isGoFishGame(gameType)) {
+    // Standings mirror the in-game results panel: most books, then fewest cards, then id.
+    // `winner_player_id` is authoritative when populated; the standings fallback covers a
+    // session that never reached finalize (e.g. host end-early on an empty room).
+    const [{ data: session }, { data: hands }] = await Promise.all([
+      supabase.from('gofish_sessions').select('winner_player_id').eq('game_id', gameId).maybeSingle(),
+      supabase.from('gofish_player_hands').select('player_id, cards, books').eq('game_id', gameId),
+    ])
+    if (!hands?.length) return session?.winner_player_id ? [session.winner_player_id] : []
+    const seated = players.filter((p) => p.spectator !== true).map((p) => ({ id: p.id, name: p.name }))
+    return buildGoFishStandings(hands as unknown as GoFishPlayerHand[], seated).map((s) => s.playerId)
   }
 
   if (isWordleRoomGame(gameType)) {
