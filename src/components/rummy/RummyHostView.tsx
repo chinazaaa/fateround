@@ -229,17 +229,18 @@ export function RummyHostView({ gameCode, hostToken }: { gameCode: string; hostT
             spectatorHint="Watch the room; don't take a seat"
           />
         }
-      >
-        <HostBoardGameLobbyPanel
-          gameCode={gameCode}
-          hostToken={hostToken}
-          game={game}
-          boardGameType="rummy"
-          playerCount={players.length}
-          seatedCount={activePlayers.length}
-          onGameUpdate={setGame}
-        />
-      </HostLobby>
+        settingsChildren={
+          <HostBoardGameLobbyPanel
+            gameCode={gameCode}
+            hostToken={hostToken}
+            game={game}
+            boardGameType="rummy"
+            playerCount={players.length}
+            seatedCount={activePlayers.length}
+            onGameUpdate={setGame}
+          />
+        }
+      />
     )
   }
 
