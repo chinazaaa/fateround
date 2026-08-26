@@ -83,7 +83,7 @@ function shopPurchaseLabel(refId: string | null): string | null {
   return `${kindLabel} · ${rest}`
 }
 
-function describeRow(row: LedgerRow): string {
+function describeRow(row: LedgerRow, gameTypeByRefId: Record<string, string>): string {
   if (row.reason === 'admin_adjustment') return 'Adjustment by support'
   if (row.reason === 'first_mode_bonus') {
     const game = firstModeBonusGameLabel(row.ref_id)
@@ -96,7 +96,13 @@ function describeRow(row: LedgerRow): string {
     const purchase = shopPurchaseLabel(row.ref_id)
     return purchase ? `Shop · ${purchase}` : (COIN_REASON_LABEL[row.reason] ?? row.reason)
   }
-  return COIN_REASON_LABEL[row.reason] ?? row.reason
+  const base = COIN_REASON_LABEL[row.reason] ?? row.reason
+  if (row.reason === 'win' && row.ref_id) {
+    const gameType = gameTypeByRefId[row.ref_id]
+    const label = gameType ? (GAME_TYPE_CONFIG[gameType as GameType]?.label ?? gameType) : null
+    if (label) return `${base} · ${label}`
+  }
+  return base
 }
 
 function formatDate(iso: string): string {
@@ -117,6 +123,7 @@ function formatDate(iso: string): string {
  */
 export function CoinHistoryTab() {
   const [rows, setRows] = useState<LedgerRow[]>([])
+  const [gameTypeByRefId, setGameTypeByRefId] = useState<Record<string, string>>({})
   const [filter, setFilter] = useState<CoinHistoryFilter>('all')
   const [offset, setOffset] = useState(0)
   const [hasMore, setHasMore] = useState(false)
@@ -148,6 +155,7 @@ export function CoinHistoryTab() {
       const json = (await res.json()) as {
         profile?: { id: string } | null
         ledger?: LedgerRow[]
+        gameTypeByRefId?: Record<string, string>
         hasMore?: boolean
       }
       if (mySeq !== requestSeqRef.current) return
@@ -158,6 +166,7 @@ export function CoinHistoryTab() {
       }
       setSignedOut(false)
       setRows((prev) => (append ? [...prev, ...(json.ledger ?? [])] : (json.ledger ?? [])))
+      setGameTypeByRefId((prev) => (append ? { ...prev, ...(json.gameTypeByRefId ?? {}) } : (json.gameTypeByRefId ?? {})))
       setHasMore(Boolean(json.hasMore))
     } finally {
       if (mySeq === requestSeqRef.current) setLoading(false)
@@ -236,7 +245,7 @@ export function CoinHistoryTab() {
                 return (
                   <tr key={row.id} className="border-t border-[var(--border)]">
                     <td className="py-2 pr-2 text-muted tabular-nums">{formatDate(row.created_at)}</td>
-                    <td className="py-2 pr-2 text-body">{describeRow(row)}</td>
+                    <td className="py-2 pr-2 text-body">{describeRow(row, gameTypeByRefId)}</td>
                     <td
                       className={
                         positive
