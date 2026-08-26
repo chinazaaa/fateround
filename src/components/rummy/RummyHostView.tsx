@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { HostLobby } from '@/components/host/HostLobby'
+import { HostBoardGameLobbyPanel } from '@/components/host-lobby/HostBoardGameLobbyPanel'
 import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
 import { gameTypeConfig } from '@/lib/game-types'
@@ -11,6 +12,8 @@ import { supabase } from '@/lib/supabase'
 import { GAME_SELECT, PLAYER_SELECT } from '@/lib/supabase-selects'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
+import { useHostSeat } from '@/hooks/useHostSeat'
+import { HostModeSelector } from '@/components/host/HostModeSelector'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
 import { useGameTableSync } from '@/hooks/useGameTableSync'
 import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
@@ -42,6 +45,7 @@ export function RummyHostView({ gameCode, hostToken }: { gameCode: string; hostT
   const [starting, setStarting] = useState(false)
   const [playingAgain, setPlayingAgain] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [acting, setActing] = useState(false)
 
   useApplyGameTheme(game?.theme)
   useScrollHostViewToTop({ gameStatus: game?.status })
@@ -80,8 +84,32 @@ export function RummyHostView({ gameCode, hostToken }: { gameCode: string; hostT
     runImmediately: false,
   })
 
-  // (No host auto-ready: host is spectator-only for Rummy in this Phase-2 shape — no seat to
-  // auto-mark ready. When Rummy adds host-plays support, wire useHostAutoReady here.)
+  // Host seat: host may play as a seated player OR stay spectator (checklist #7). When
+  // seated, they get a resume token and act through the same /api/rummy/* routes as
+  // anyone else — no bespoke "host action" API.
+  const {
+    hostMode,
+    hostPlayerId,
+    hostResumeToken,
+    hostPlayerName,
+    hostJoinName,
+    setHostJoinName,
+    hostJoining,
+    changeHostMode,
+    hostJoinGame,
+    leaveGameRemovePlayer,
+    renameHost,
+    handlePlayerRemoved: onHostSeatRemoved,
+  } = useHostSeat({
+    gameCode,
+    hostToken,
+    gameStatus: game?.status,
+    players,
+    onReload: load,
+    toast: { success, error: toastError },
+  })
+
+  useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
 
   const activePlayers = players.filter((p) => !p.spectator)
 
@@ -127,9 +155,33 @@ export function RummyHostView({ gameCode, hostToken }: { gameCode: string; hostT
     [gameCode, hostToken, playingAgain, success, toastError, load]
   )
 
-  const { removePlayer } = useHostRemovePlayer(gameCode, hostToken, () => {
+  const { removePlayer } = useHostRemovePlayer(gameCode, hostToken, (playerId: string) => {
+    onHostSeatRemoved(playerId)
     void load()
   })
+
+  const callAction = useCallback(
+    async (path: string, body: Record<string, unknown>) => {
+      if (!hostResumeToken) {
+        toastError('Join a seat first to play')
+        return
+      }
+      setActing(true)
+      try {
+        const res = await fetch(path, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ gameId: gameCode, resumeToken: hostResumeToken, ...body }),
+        })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) toastError(data.error ?? 'Action failed')
+        else await load()
+      } finally {
+        setActing(false)
+      }
+    },
+    [gameCode, hostResumeToken, load, toastError]
+  )
 
   // Timers must be unconditional (rules-of-hooks) — call them before the early return.
   const hostTurnTimer = useRummyTurnTimer(gameCode, session, game?.status === 'active')
@@ -157,8 +209,33 @@ export function RummyHostView({ gameCode, hostToken }: { gameCode: string; hostT
         startDisabled={!canStart}
         startDisabledHint={canStart ? null : `Need at least ${RUMMY_MIN_PLAYERS} players`}
         onRemovePlayer={removePlayer}
+        highlightPlayerId={hostPlayerId}
         onEnded={load}
-      />
+        playCard={
+          <HostModeSelector
+            mode={hostMode}
+            onChange={changeHostMode}
+            joinedPlayerId={hostPlayerId}
+            joinedPlayerName={hostPlayerName}
+            joinName={hostJoinName}
+            onJoinNameChange={setHostJoinName}
+            onJoin={() => void hostJoinGame()}
+            joining={hostJoining}
+            onEditName={renameHost}
+            spectatorHint="Watch the room; don't take a seat"
+          />
+        }
+      >
+        <HostBoardGameLobbyPanel
+          gameCode={gameCode}
+          hostToken={hostToken}
+          game={game}
+          boardGameType="rummy"
+          playerCount={players.length}
+          seatedCount={activePlayers.length}
+          onGameUpdate={setGame}
+        />
+      </HostLobby>
     )
   }
 
@@ -193,26 +270,44 @@ export function RummyHostView({ gameCode, hostToken }: { gameCode: string; hostT
     )
   }
 
+  const hostPlays = hostMode === 'player' && !!hostPlayerId
+  const hostHand = hostPlayerId
+    ? ((hands.find((h) => h.player_id === hostPlayerId)?.cards as import('@/types').RummyCard[] | null) ?? null)
+    : null
+  const isHostTurn = hostPlays && session ? session.turn_order[session.current_turn_index] === hostPlayerId : false
+
   return (
     <RummyShell title={game.title ?? cfg.label} compact wide>
       {session && (
         <RummyGamePanel
           session={session}
           players={players}
-          myPlayerId={null}
-          myHand={null}
-          isMyTurn={false}
-          isViewer
-          acting={false}
+          myPlayerId={hostPlays ? hostPlayerId : null}
+          myHand={hostPlays ? hostHand : null}
+          isMyTurn={isHostTurn}
+          isViewer={!hostPlays}
+          acting={acting}
           secondsLeft={hostTurnTimer.secondsLeft}
           hasTimer={hostTurnTimer.hasTimer}
           urgent={hostTurnTimer.urgent}
           gameCountdown={hostGameTimer.active ? hostGameTimer.label : null}
           gameSecondsLeft={hostGameTimer.secondsLeft}
           gameDurationSeconds={hostGameTimer.durationSeconds}
+          onDraw={hostPlays ? (source) => void callAction('/api/rummy/draw', { source }) : undefined}
+          onDiscard={hostPlays ? (cardId) => void callAction('/api/rummy/discard', { cardId }) : undefined}
+          onGoOut={
+            hostPlays
+              ? (melds, discardCardId) => void callAction('/api/rummy/go-out', { melds, discardCardId })
+              : undefined
+          }
         />
       )}
-      <div className="pt-2">
+      <div className="pt-2 space-y-2">
+        {hostPlays && (
+          <button type="button" className="btn-secondary w-full py-2" onClick={leaveGameRemovePlayer}>
+            Leave the table (keep hosting)
+          </button>
+        )}
         <HostEndGameButton gameCode={gameCode} hostToken={hostToken} onEnded={load} />
       </div>
     </RummyShell>
