@@ -777,8 +777,10 @@ async function maybeFinalizeGameClock(
   gameDurationSeconds: number
 ): Promise<boolean> {
   if (!rummyGameSessionExpired(sessionStartedAt, gameDurationSeconds)) return false
-  await finalizeByLowestHand(supabase, gameId, session, hands, names, "Time's up!")
-  return true
+  const res = await finalizeByLowestHand(supabase, gameId, session, hands, names, "Time's up!")
+  // If the finalization write failed the game is still active — don't tell the caller
+  // it's done; they'll retry (game-tick will poke again).
+  return !res.error
 }
 
 /**
@@ -834,8 +836,11 @@ export async function finishExpiredRummyGame(
   if (!rummyGameSessionExpired(game.session_started_at, game.game_duration_seconds)) return false
   const { session, hands, names } = await loadRummyState(supabase, game.id)
   if (!session) return false
-  await finalizeByLowestHand(supabase, game.id, session, hands, names, "Time's up!")
-  return true
+  const res = await finalizeByLowestHand(supabase, game.id, session, hands, names, "Time's up!")
+  // Propagate a finalize failure — the route caller reads this to decide whether the
+  // expired game actually flipped to finished. Returning true on failure would tell
+  // the client the game finished while the row is still active.
+  return !res.error
 }
 
 /** End the round without a "Rummy" declaration — ranks everyone by closest-to-going-out
