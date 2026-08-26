@@ -8,6 +8,7 @@ import {
   isGoFishGame,
   isWhotGame,
   isCrazyEightsGame,
+  isRummyGame,
   isUnoGame,
   isLudoGame,
   isMahjongGame,
@@ -120,6 +121,7 @@ export function gameAllowsLatePlayerJoin(gameType: GameType): boolean {
     !isYahtzeeGame(gameType) &&
     !isWhotGame(gameType) &&
     !isCrazyEightsGame(gameType) &&
+    !isRummyGame(gameType) &&
     !isUnoGame(gameType) &&
     // Go Fish deals a fixed hand to each seat at start; a mid-game newcomer would have no cards
     // and no share of the ocean already dealt out. Late joiners can only spectate.
@@ -290,6 +292,7 @@ export function spectatorForActiveJoin(
     isYahtzeeGame(gameType) ||
     isWhotGame(gameType) ||
     isCrazyEightsGame(gameType) ||
+    isRummyGame(gameType) ||
     isUnoGame(gameType) ||
     isGoFishGame(gameType)
   )
