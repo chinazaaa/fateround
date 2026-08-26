@@ -418,13 +418,9 @@ export function maxMeldableCount(hand: RummyCard[]): number {
   const visited = new Set<number>()
   const dfs = (used: number, covered: number, start: number) => {
     if (covered > best) best = covered
-    // Prune: even if every remaining candidate joined perfectly, could we beat best?
-    // Loose bound: cards not yet used.
-    const remainingCards = hand.length - covered - popcount(used & ~coverAll(hand.length, used))
-    if (covered + Math.max(0, hand.length - popcount(used)) <= best) {
-      // Best case is take every un-used card — if that can't beat `best`, prune.
-      if (remainingCards === 0) return
-    }
+    // Upper bound: even if every card not yet used could join a meld, would `covered`
+    // plus those unused cards beat `best`? If not, prune this branch.
+    if (covered + (hand.length - popcount(used)) <= best) return
     if (visited.has(used)) return
     visited.add(used)
     for (let i = start; i < cands.length; i += 1) {
@@ -444,10 +440,6 @@ function popcount(x: number): number {
     x >>>= 1
   }
   return n
-}
-
-function coverAll(len: number, used: number): number {
-  return ((1 << len) - 1) & ~used
 }
 
 // ---------------------------------------------------------------------------
@@ -621,16 +613,13 @@ export async function processRummyDraw(
   }
 
   const newHand = [...hand, card]
-
-  const { error: hErr } = await supabase
-    .from(RUMMY_HANDS)
-    .update({ cards: newHand })
-    .eq('game_id', gameId)
-    .eq('player_id', playerId)
-  if (hErr) return { error: internalErrorMessage('rummy', hErr) }
-
   const top = discardPile[discardPile.length - 1] ?? null
-  const { error: sErr } = await supabase
+
+  // Claim the session row with an optimistic-concurrency check on `updated_at` BEFORE
+  // touching the hand. Without this a stale request could win the hand write even when
+  // a concurrent action already advanced the turn — the pattern the other card engines
+  // (Crazy Eights / Whot) use.
+  const { data: claim, error: sErr } = await supabase
     .from(RUMMY_SESSIONS)
     .update({
       draw_pile: drawPile,
@@ -642,7 +631,17 @@ export async function processRummyDraw(
       updated_at: new Date().toISOString(),
     })
     .eq('game_id', gameId)
+    .eq('updated_at', session.updated_at)
+    .select('game_id')
   if (sErr) return { error: internalErrorMessage('rummy', sErr) }
+  if ((claim?.length ?? 0) === 0) return { error: 'Another action already updated this turn — try again' }
+
+  const { error: hErr } = await supabase
+    .from(RUMMY_HANDS)
+    .update({ cards: newHand })
+    .eq('game_id', gameId)
+    .eq('player_id', playerId)
+  if (hErr) return { error: internalErrorMessage('rummy', hErr) }
   return {}
 }
 
