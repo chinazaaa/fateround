@@ -111,9 +111,7 @@ export default function SoloYahtzeeScreen() {
       setScoreboard(next)
       void markSoloStateScored('solo-yahtzee-state-v1')
     })
-    void soloSessionId('yahtzee').then((sessionId) =>
-      logSoloPlayFinished({ gameType: 'yahtzee', outcome, sessionId })
-    )
+    void soloSessionId('yahtzee').then((sessionId) => logSoloPlayFinished({ gameType: 'yahtzee', outcome, sessionId }))
   }, [state])
 
   // Bot loop — walk roll/hold/score one step per timeout.
