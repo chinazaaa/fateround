@@ -1,0 +1,208 @@
+'use client'
+
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { HostLobby } from '@/components/host/HostLobby'
+import { HostLobbySkeleton } from '@/components/host/HostLobbySkeleton'
+import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
+import { gameTypeConfig } from '@/lib/game-types'
+import { RUMMY_MIN_PLAYERS, RUMMY_MAX_PLAYERS } from '@/lib/rummy'
+import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
+import { supabase } from '@/lib/supabase'
+import { GAME_SELECT, PLAYER_SELECT } from '@/lib/supabase-selects'
+import { useHostAutoReady } from '@/hooks/useHostAutoReady'
+import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
+import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
+import { useGameTableSync } from '@/hooks/useGameTableSync'
+import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
+import { useScrollHostViewToTop } from '@/hooks/useScrollHostViewToTop'
+import type { Game, Player, RummyPlayerHand, RummySession } from '@/types'
+import { useToast } from '@/components/ui/Toast'
+import { RummyGamePanel, RummyStandingsBox } from '@/components/rummy/RummyBoard'
+import { RummyCard as RummyCardBox, RummyShell } from '@/components/rummy/RummyChrome'
+
+const RUMMY_SESSION_SELECT =
+  'id,game_id,turn_order,current_turn_index,phase,draw_pile,discard_pile,top_discard,turn_step,status_message,winner_player_id,winning_melds,reshuffle_count,turn_deadline_at,created_at,updated_at'
+const RUMMY_HAND_SELECT = 'id,game_id,player_id,cards,player_order,created_at'
+
+/**
+ * Rummy host view. Host is spectator-only for now (no seat in the turn engine — matching
+ * Crazy Eights / Whot host-only rooms). Uses the shared HostLobby for the waiting phase
+ * and the shared RummyGamePanel for the active table view.
+ */
+export function RummyHostView({ gameCode, hostToken }: { gameCode: string; hostToken: string }) {
+  const { error: toastError, success } = useToast()
+  const [game, setGame] = useState<Game | null>(null)
+  const [players, setPlayers] = useState<Player[]>([])
+  const [session, setSession] = useState<RummySession | null>(null)
+  const [hands, setHands] = useState<RummyPlayerHand[]>([])
+  const sessionRef = useRef<RummySession | null>(null)
+  sessionRef.current = session
+  const [starting, setStarting] = useState(false)
+  const [playingAgain, setPlayingAgain] = useState(false)
+  const [loading, setLoading] = useState(true)
+
+  useApplyGameTheme(game?.theme)
+  useScrollHostViewToTop({ gameStatus: game?.status })
+
+  const load = useCallback(async (): Promise<boolean> => {
+    const [gameRes, plrsRes] = await Promise.all([
+      supabase.from('games').select(GAME_SELECT).eq('id', gameCode).maybeSingle(),
+      supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at'),
+    ])
+    if (!supabasePollOk(gameRes, plrsRes)) return false
+    setGame(gameRes.data)
+    setPlayers(plrsRes.data ?? [])
+    setLoading(false)
+    const [sessionRes, handsRes] = await Promise.all([
+      supabase.from('rummy_sessions').select(RUMMY_SESSION_SELECT).eq('game_id', gameCode).maybeSingle(),
+      supabase.from('rummy_player_hands').select(RUMMY_HAND_SELECT).eq('game_id', gameCode).order('player_order'),
+    ])
+    if (supabasePollOk(sessionRes)) setSession(sessionRes.data as RummySession | null)
+    if (supabasePollOk(handsRes)) setHands((handsRes.data as RummyPlayerHand[]) ?? [])
+    return supabasePollOk(sessionRes) && supabasePollOk(handsRes)
+  }, [gameCode])
+
+  useEffect(() => {
+    void load()
+  }, [load])
+
+  const connected = useGameTableSync(
+    gameCode,
+    ['players', { table: 'games', column: 'id' }, { table: 'rummy_sessions' }, { table: 'rummy_player_hands' }],
+    load
+  )
+
+  usePolling(() => load(), [gameCode, load], {
+    intervalMs: game?.status === 'waiting' ? POLL_INTERVALS.lobby : POLL_INTERVALS.realtimeFallback,
+    enabled: game?.status === 'waiting' || !connected,
+    runImmediately: false,
+  })
+
+  // (No host auto-ready: host is spectator-only for Rummy in this Phase-2 shape — no seat to
+  // auto-mark ready. When Rummy adds host-plays support, wire useHostAutoReady here.)
+
+  const activePlayers = players.filter((p) => !p.spectator)
+
+  const startGame = useCallback(async () => {
+    if (starting) return
+    setStarting(true)
+    try {
+      const res = await fetch(`/api/games/${encodeURIComponent(gameCode)}/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hostToken }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error ?? 'Failed to start')
+      await load()
+    } catch (err) {
+      toastError(err instanceof Error ? err.message : 'Failed to start')
+    } finally {
+      setStarting(false)
+    }
+  }, [gameCode, hostToken, starting, load, toastError])
+
+  const playAgain = useCallback(
+    async (sameSettings: boolean) => {
+      if (playingAgain) return
+      setPlayingAgain(true)
+      try {
+        const res = await fetch(`/api/games/${encodeURIComponent(gameCode)}/play-again`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ hostToken, same_settings: sameSettings }),
+        })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error(data.error ?? 'Failed to reopen lobby')
+        success(sameSettings ? 'Re-dealing…' : 'Lobby reopened')
+        await load()
+      } catch (err) {
+        toastError(err instanceof Error ? err.message : 'Failed')
+      } finally {
+        setPlayingAgain(false)
+      }
+    },
+    [gameCode, hostToken, playingAgain, success, toastError, load]
+  )
+
+  const { removePlayer } = useHostRemovePlayer(gameCode, hostToken, () => {
+    void load()
+  })
+
+  if (loading || !game) return <HostLobbySkeleton />
+
+  const cfg = gameTypeConfig('rummy')
+  const winnerName = players.find((p) => p.id === session?.winner_player_id)?.name
+  const gameFinished = session?.phase === 'finished' || game.status === 'finished'
+  const maxPlayers = lobbyMaxPlayersFromGameClient('rummy', game) ?? RUMMY_MAX_PLAYERS
+  const canStart = activePlayers.length >= RUMMY_MIN_PLAYERS
+
+  if (game.status === 'waiting') {
+    return (
+      <HostLobby
+        gameCode={gameCode}
+        hostToken={hostToken}
+        game={game}
+        gameTypeLabel={cfg.label}
+        players={players}
+        maxPlayers={maxPlayers}
+        onStart={startGame}
+        starting={starting}
+        startDisabled={!canStart}
+        startDisabledHint={canStart ? null : `Need at least ${RUMMY_MIN_PLAYERS} players`}
+        onRemovePlayer={removePlayer}
+        onEnded={load}
+      />
+    )
+  }
+
+  if (gameFinished) {
+    return (
+      <RummyShell title={game.title ?? cfg.label} compact>
+        <RummyCardBox className="p-4 text-center space-y-2">
+          <p className="text-4xl">🏆</p>
+          <p className="text-xl font-black">{winnerName ? `${winnerName} wins!` : 'Round ended'}</p>
+          {session?.status_message && <p className="text-sm text-muted">{session.status_message}</p>}
+        </RummyCardBox>
+        {session && <RummyStandingsBox session={session} players={players} hands={hands} myPlayerId={null} />}
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            className="btn-secondary py-2"
+            onClick={() => void playAgain(false)}
+            disabled={playingAgain}
+          >
+            Reopen lobby
+          </button>
+          <button
+            type="button"
+            className="btn-primary py-2"
+            onClick={() => void playAgain(true)}
+            disabled={playingAgain}
+          >
+            Play again · same settings
+          </button>
+        </div>
+      </RummyShell>
+    )
+  }
+
+  return (
+    <RummyShell title={game.title ?? cfg.label} compact wide>
+      {session && (
+        <RummyGamePanel
+          session={session}
+          players={players}
+          myPlayerId={null}
+          myHand={null}
+          isMyTurn={false}
+          isViewer
+          acting={false}
+        />
+      )}
+      <div className="pt-2">
+        <HostEndGameButton gameCode={gameCode} hostToken={hostToken} onEnded={load} />
+      </div>
+    </RummyShell>
+  )
+}

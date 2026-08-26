@@ -11,6 +11,7 @@ import { TTL_DEFAULT_MAX_PLAYERS, TTL_MAX_PLAYERS, TTL_MIN_PLAYERS } from '@/lib
 import { MONOPOLY_DEFAULT_MAX_PLAYERS, MONOPOLY_MAX_PLAYERS, MONOPOLY_MIN_PLAYERS } from '@/lib/monopoly'
 import { YAHTZEE_DEFAULT_MAX_PLAYERS, YAHTZEE_MAX_PLAYERS, YAHTZEE_MIN_PLAYERS } from '@/lib/yahtzee'
 import { WHOT_DEFAULT_MAX_PLAYERS, WHOT_MAX_PLAYERS, WHOT_MIN_PLAYERS } from '@/lib/whot'
+import { RUMMY_DEFAULT_MAX_PLAYERS, RUMMY_MAX_PLAYERS, RUMMY_MIN_PLAYERS } from '@/lib/rummy'
 import { CRAZY8_DEFAULT_MAX_PLAYERS, CRAZY8_MAX_PLAYERS, CRAZY8_MIN_PLAYERS } from '@/lib/crazy-eights'
 import { UNO_DEFAULT_MAX_PLAYERS, UNO_MAX_PLAYERS, UNO_MIN_PLAYERS } from '@/lib/uno'
 import { LUDO_DEFAULT_MAX_PLAYERS, LUDO_MAX_PLAYERS, LUDO_MIN_PLAYERS } from '@/lib/ludo'
@@ -68,6 +69,7 @@ export const LOBBY_LIMIT_GAME_TYPES = [
   'monopoly',
   'yahtzee',
   'whot',
+  'rummy',
   'crazy_eights',
   'uno',
   'ludo',
@@ -161,6 +163,11 @@ export const GAME_LIMIT_CODE_DEFAULTS: GamePlayerLimitsMap = {
     min: WHOT_MIN_PLAYERS,
     max: WHOT_MAX_PLAYERS,
     default: WHOT_DEFAULT_MAX_PLAYERS,
+  },
+  rummy: {
+    min: RUMMY_MIN_PLAYERS,
+    max: RUMMY_MAX_PLAYERS,
+    default: RUMMY_DEFAULT_MAX_PLAYERS,
   },
   crazy_eights: {
     min: CRAZY8_MIN_PLAYERS,
@@ -312,6 +319,7 @@ export function getCodeDefaultLimits(): GamePlayerLimitsMap {
     monopoly: { ...GAME_LIMIT_CODE_DEFAULTS.monopoly },
     yahtzee: { ...GAME_LIMIT_CODE_DEFAULTS.yahtzee },
     whot: { ...GAME_LIMIT_CODE_DEFAULTS.whot },
+    rummy: { ...GAME_LIMIT_CODE_DEFAULTS.rummy },
     crazy_eights: { ...GAME_LIMIT_CODE_DEFAULTS.crazy_eights },
     uno: { ...GAME_LIMIT_CODE_DEFAULTS.uno },
     ludo: { ...GAME_LIMIT_CODE_DEFAULTS.ludo },
