@@ -80,12 +80,24 @@ function makeDb(over: Partial<Record<string, unknown[]>> = {}) {
     from(table: string) {
       const rows = (tables[table] ??= [])
       const filters: Array<[string, unknown]> = []
-      const current = () => (tables[table] ?? []).filter(match(filters))
+      let limitN: number | null = null
+      const current = () => {
+        const filtered = (tables[table] ?? []).filter(match(filters))
+        return limitN == null ? filtered : filtered.slice(0, limitN)
+      }
 
       const api = {
         select: () => api,
         eq: (col: string, val: unknown) => {
           filters.push([col, val])
+          return api
+        },
+        // `.limit(n)` is chainable in real Supabase; the mock caps rows
+        // returned by `then` only if a limit is set. Engagement checks
+        // call `.limit(1)` for existence, so a no-op here would drop the
+        // chain — return `api` and honor n at await time below.
+        limit: (n: number) => {
+          limitN = n
           return api
         },
         maybeSingle: async () => ({ data: current()[0] ?? null, error: null }),
@@ -271,6 +283,10 @@ describe('awardForFinishedGame', () => {
           session_started_at: '2026-08-02T11:50:00Z',
         },
       ],
+      // Engagement gate: a vote from this player proves they actually
+      // played this round, so the pass credits games_played. Without it
+      // the finish reads as a no-engagement two-device farm and skips.
+      votes: [{ player_id: 'pl-1', game_id: 'ABCD' }],
     })
     await awardForFinishedGame(client, 'prof-1', 'ABCD')
     expect(tables.player_stats.find((r) => r.game_type === '__global__')).toMatchObject({
@@ -393,7 +409,10 @@ describe('awardForFinishedGame — every round in a room awards', () => {
       player_stats: [],
       awarded_sessions: [],
       player_distinct: [],
-      trivia_answers: [],
+      // Engagement gate — the trivia table needs at least one answer from
+      // prof-1's player to prove they engaged. Without it the pass reads
+      // this finish as a no-engagement two-device farm and skips.
+      trivia_answers: [{ player_id: 'p1', game_id: 'ROOM01', round_id: 'r1' }],
       rounds: [],
     })
 

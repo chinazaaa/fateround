@@ -396,7 +396,7 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
   const startBlockedHint = !meetsPlayerMinimum
     ? `Need at least ${minPlayers} player${minPlayers === 1 ? '' : 's'} to start (${activePlayers.length}/${minPlayers})`
     : codewordsGate && !codewordsGate.ok
-      ? codewordsGate.error ?? null
+      ? (codewordsGate.error ?? null)
       : null
 
   return (
@@ -598,9 +598,7 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
             </Pressable>
           ) : replayLobby ? (
             <>
-              {!meetsMinimum && startBlockedHint ? (
-                <Text style={styles.minHint}>{startBlockedHint}</Text>
-              ) : null}
+              {!meetsMinimum && startBlockedHint ? <Text style={styles.minHint}>{startBlockedHint}</Text> : null}
               <Pressable
                 style={[styles.startButton, (starting || !meetsMinimum) && styles.startButtonDisabled]}
                 onPress={onStart}
@@ -616,9 +614,7 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
             </>
           ) : (
             <>
-              {!meetsMinimum && startBlockedHint ? (
-                <Text style={styles.minHint}>{startBlockedHint}</Text>
-              ) : null}
+              {!meetsMinimum && startBlockedHint ? <Text style={styles.minHint}>{startBlockedHint}</Text> : null}
               <Pressable
                 style={[styles.startButton, (starting || !meetsMinimum) && styles.startButtonDisabled]}
                 onPress={onStart}

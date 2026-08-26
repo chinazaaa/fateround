@@ -1602,7 +1602,14 @@ export function formatThemedText(
       return `${edition.currencySymbol}${canonicalToDisplayMoney(num, themeId).toLocaleString('en-GB')}`
     })
   } else {
-    formatted = formatted.replace(/£(\d+(?:,\d+)*(?:\.\d+)?)/g, `${edition.currencySymbol}$1`)
+    // MUST use a function replacer, not a string. `edition.currencySymbol`
+    // is `$` for USA / Christmas / any dollar edition, and a string
+    // replacement of `${'$'}$1` = "$$1" is parsed by String.replace as
+    // an escaped `$` followed by literal `1` — so `£1,500` came out as
+    // `$1` (dropping the captured amount) on every USA landing / rules /
+    // marketing surface (user report, 2026-08-23). A function replacer
+    // never runs through that parser, so `$` in the symbol is safe.
+    formatted = formatted.replace(/£(\d+(?:,\d+)*(?:\.\d+)?)/g, (_, num) => `${edition.currencySymbol}${num}`)
   }
   formatted = formatted.replace(/£/g, edition.currencySymbol)
   if (edition.currencyWord && edition.currencyWord !== 'pounds') {

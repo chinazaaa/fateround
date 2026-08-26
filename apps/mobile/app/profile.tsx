@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { ListRow } from '@/components/ui/ListRow'
 import { SurfaceCard } from '@/components/ui/SurfaceCard'
 import { StreakStatusCard } from '@/components/profile/StreakStatusCard'
+import { CoinBalanceCard } from '@/components/coins/CoinBalanceCard'
 import { ProfileStatsTab } from '@/components/profile/ProfileStatsTab'
 import { SettingsButton } from '@/components/ui/SettingsSheet'
 import { centeredContent } from '@/constants/layout'
@@ -143,6 +144,11 @@ export default function ProfileScreen() {
 
         {/* Only renders when the streak is actually in danger — see StreakStatusCard. */}
         <StreakStatusCard profile={profile} />
+
+        {/* Coin balance is prominent on profile so a signed-in player has a
+            one-tap route to the shop and to their coin history. Guests see
+            nothing here — the card hides itself. */}
+        <CoinBalanceCard />
 
         {/* Trophies | Stats. Web has a third tab for Settings; here that is the ⚙ in the top
             bar instead — a tab that teleports out of the tab set is a worse trade than an

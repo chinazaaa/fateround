@@ -93,8 +93,7 @@ export function MonopolyLoanModal({
   const interestAmount = totalDueForBorrow - borrowAmount
 
   const maxRepay = activeLoan && myState ? Math.min(myState.cash, activeLoan.balance_remaining) : 0
-  const repayAmount =
-    customRepayAmount !== null ? Math.min(maxRepay, Math.max(0, customRepayAmount)) : maxRepay
+  const repayAmount = customRepayAmount !== null ? Math.min(maxRepay, Math.max(0, customRepayAmount)) : maxRepay
 
   const busy = submitting || acting
 
@@ -141,11 +140,7 @@ export function MonopolyLoanModal({
             <Pressable
               onPress={() => !activeLoan && setSelectedTab('borrow')}
               disabled={Boolean(activeLoan)}
-              style={[
-                styles.tab,
-                tab === 'borrow' && styles.tabActive,
-                Boolean(activeLoan) && styles.tabDisabled,
-              ]}
+              style={[styles.tab, tab === 'borrow' && styles.tabActive, Boolean(activeLoan) && styles.tabDisabled]}
             >
               <Text style={[styles.tabLabel, tab === 'borrow' && styles.tabLabelActive]}>Take Loan</Text>
             </Pressable>
@@ -181,9 +176,7 @@ export function MonopolyLoanModal({
                 <View style={styles.creditBox}>
                   <Text style={styles.creditLabel}>Your Maximum Credit Limit</Text>
                   <Text style={styles.creditValue}>{formatThemedMoney(creditLimit, themeId)}</Text>
-                  <Text style={styles.creditHint}>
-                    Based on current liquid cash + unencumbered property collateral
-                  </Text>
+                  <Text style={styles.creditHint}>Based on current liquid cash + unencumbered property collateral</Text>
                 </View>
 
                 <Text style={styles.subheader}>Choose Amount</Text>
@@ -196,11 +189,7 @@ export function MonopolyLoanModal({
                         key={tier}
                         disabled={disabled}
                         onPress={() => setCustomBorrowAmount(tier)}
-                        style={[
-                          styles.preset,
-                          selected && styles.presetSelected,
-                          disabled && styles.presetDisabled,
-                        ]}
+                        style={[styles.preset, selected && styles.presetSelected, disabled && styles.presetDisabled]}
                       >
                         <Text style={[styles.presetLabel, selected && styles.presetLabelSelected]}>
                           {formatThemedMoney(tier, themeId)}
@@ -217,9 +206,7 @@ export function MonopolyLoanModal({
                       creditLimit < minLoanAmount && styles.presetDisabled,
                     ]}
                   >
-                    <Text
-                      style={[styles.presetLabel, borrowAmount === creditLimit && styles.presetLabelSelected]}
-                    >
+                    <Text style={[styles.presetLabel, borrowAmount === creditLimit && styles.presetLabelSelected]}>
                       Max
                     </Text>
                   </Pressable>
@@ -244,18 +231,13 @@ export function MonopolyLoanModal({
                     value={formatThemedMoney(totalDueForBorrow, themeId)}
                     bold
                   />
-                  <BreakdownRow
-                    styles={styles}
-                    label="Repayment Window"
-                    value={`${termRounds} full rounds`}
-                    muted
-                  />
+                  <BreakdownRow styles={styles} label="Repayment Window" value={`${termRounds} full rounds`} muted />
                 </View>
 
                 <View style={styles.warnBox}>
                   <Text style={styles.warnText}>
-                    ⚠️ Foreclosure warning: if not fully repaid within {termRounds} rounds, the bank will seize
-                    your cash, liquidate buildings at 50%, and foreclose properties.
+                    ⚠️ Foreclosure warning: if not fully repaid within {termRounds} rounds, the bank will seize your
+                    cash, liquidate buildings at 50%, and foreclose properties.
                   </Text>
                 </View>
 
@@ -297,9 +279,7 @@ export function MonopolyLoanModal({
                   </View>
 
                   <Text style={styles.balanceLabel}>Remaining Balance Due</Text>
-                  <Text style={styles.balanceValue}>
-                    {formatThemedMoney(activeLoan.balance_remaining, themeId)}
-                  </Text>
+                  <Text style={styles.balanceValue}>{formatThemedMoney(activeLoan.balance_remaining, themeId)}</Text>
 
                   <View style={styles.divider} />
                   <BreakdownRow
