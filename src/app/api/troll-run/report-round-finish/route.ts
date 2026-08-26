@@ -32,7 +32,12 @@ export async function POST(req: NextRequest) {
   const { session, state } = guard
 
   if (state.current_level_index < session.level_order.length) {
-    return NextResponse.json({ error: 'You still have levels left to clear' }, { status: 400 })
+    // The index rides along so a runner whose clear report never landed can be put back on the
+    // level still outstanding here instead of stalling with nothing left to run.
+    return NextResponse.json(
+      { error: 'You still have levels left to clear', currentLevelIndex: state.current_level_index },
+      { status: 400 }
+    )
   }
 
   const { data: claimed, error: updateError } = await supabase

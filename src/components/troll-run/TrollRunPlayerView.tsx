@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { useGameTableSync } from '@/hooks/useGameTableSync'
-import { usePolling, POLL_INTERVALS } from '@/hooks/usePolling'
+import { usePolling, POLL_INTERVALS, supabasePollOk } from '@/hooks/usePolling'
 import { useRoomMemberJoin } from '@/hooks/useRoomMemberJoin'
 import { useDeadlineCountdown } from '@/hooks/useDeadlineCountdown'
 import { useTrollRunAdvanceNudge } from '@/hooks/useTrollRunAdvanceNudge'
@@ -139,11 +139,14 @@ export function TrollRunPlayerView({
         .limit(TROLL_RUN_FEED_HISTORY),
     ])
 
-    setSession(sessRes.data ? (sessRes.data as unknown as TrollRunSession) : null)
-    setPlayerStates((statesRes.data as unknown as TrollRunPlayerState[]) ?? [])
-    setEvents(((eventsRes.data as unknown as TrollRunEvent[]) ?? []).slice().reverse())
+    // A read that failed is not an empty room. Blanking on an error unmounts the canvas mid-race,
+    // which restarts the run and wipes every ghost; the last good snapshot survives instead.
+    if (supabasePollOk(sessRes)) setSession(sessRes.data ? (sessRes.data as unknown as TrollRunSession) : null)
+    if (supabasePollOk(statesRes)) setPlayerStates((statesRes.data as unknown as TrollRunPlayerState[]) ?? [])
+    if (supabasePollOk(eventsRes)) setEvents(((eventsRes.data as unknown as TrollRunEvent[]) ?? []).slice().reverse())
 
-    return { state: null, ok: !sessRes.error }
+    // `ok` gates the polling fallback's back-off, so it holds only when every read landed.
+    return { state: null, ok: supabasePollOk(sessRes, statesRes, eventsRes) }
   }, [gameCode])
 
   const computeScreen = useCallback(
@@ -343,6 +346,7 @@ export function TrollRunPlayerView({
 
   const engineRef = useRef<TrollRunEngine | null>(null)
   const broadcastChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null)
+  const ghostChannelJoinedRef = useRef(false)
 
   const handleEngineReady = useCallback((engine: TrollRunEngine | null) => {
     engineRef.current = engine
@@ -363,18 +367,30 @@ export function TrollRunPlayerView({
         if (!ghost || typeof ghost.playerId !== 'string') return
         engineRef.current?.setGhostPosition(ghost)
       })
-      .subscribe()
+      .subscribe((status) => {
+        ghostChannelJoinedRef.current = status === 'SUBSCRIBED'
+      })
 
     broadcastChannelRef.current = channel
 
     return () => {
-      channel.unsubscribe()
+      ghostChannelJoinedRef.current = false
       broadcastChannelRef.current = null
+      // `unsubscribe` alone leaves the channel registered with its rejoin timer live, so remounts
+      // pile zombie channels onto the one socket and their joins count against the realtime limits.
+      void supabase.removeChannel(channel)
     }
   }, [gameCode, effectiveMyPlayerId])
 
   const handlePlayerPosition = useCallback((position: GhostPositionPayload) => {
-    broadcastChannelRef.current?.send({ type: 'broadcast', event: 'ghost_pos', payload: position }).catch(() => {
+    const channel = broadcastChannelRef.current
+    // Off the socket, `send` posts one REST request per message on a 10s timeout; at 20 frames a
+    // second those queue and land seconds late and out of order, which is the ghost stutter. Both
+    // halves of realtime-js's `canPush()` are checked — the status callback never reports the
+    // socket, which can drop long after the channel said SUBSCRIBED — and a frame that cannot go
+    // out now is dropped, since a position is worthless a frame later.
+    if (!channel || !ghostChannelJoinedRef.current || !channel.socket.isConnected()) return
+    channel.send({ type: 'broadcast', event: 'ghost_pos', payload: position }).catch(() => {
       // Ghosts are cosmetic; a dropped frame is replaced 50ms later.
     })
   }, [])
@@ -392,23 +408,28 @@ export function TrollRunPlayerView({
    * Posts one in-race report. Progress is server-authoritative, so a report that never lands
    * strands the runner on that level for the rest of the round — worth one retry on a network blip
    * or a server fault. A refusal is a decision the server already made (round over, level already
-   * cleared) and repeating the request would only get the same answer.
+   * cleared) and repeating the request would only get the same answer, so the refusal is handed
+   * back instead: it carries the progress the server actually holds.
    */
   const postRaceReport = useCallback(
-    async (path: string, payload: Record<string, unknown>): Promise<boolean> => {
-      if (!effectiveMyResumeToken) return false
+    async (
+      path: string,
+      payload: Record<string, unknown>
+    ): Promise<{ ok: boolean; body: Record<string, unknown> | null }> => {
+      if (!effectiveMyResumeToken) return { ok: false, body: null }
       const body = JSON.stringify({ gameId: gameCode, resumeToken: effectiveMyResumeToken, ...payload })
 
       for (let attempt = 0; attempt < 2; attempt += 1) {
         try {
           const res = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body })
-          if (res.ok) return true
-          if (res.status < 500) return false
+          const parsed = (await res.json().catch(() => null)) as Record<string, unknown> | null
+          if (res.ok) return { ok: true, body: parsed }
+          if (res.status < 500) return { ok: false, body: parsed }
         } catch {
           // Network blip — worth exactly one more try.
         }
       }
-      return false
+      return { ok: false, body: null }
     },
     [gameCode, effectiveMyResumeToken]
   )
@@ -437,8 +458,18 @@ export function TrollRunPlayerView({
     vibrate([100, 50, 100, 50, 200])
     // Nothing about the result is sent: the server accepts the claim only if its own progress row
     // shows every level cleared, and reads the finishing time off the shared round clock.
-    void postRaceReport('/api/troll-run/report-round-finish', {})
-  }, [postRaceReport])
+    void postRaceReport('/api/troll-run/report-round-finish', {}).then((outcome) => {
+      if (outcome.ok) return
+
+      // Refused because the server still holds levels this runner has played, so a clear report
+      // never landed. The engine has stopped itself by now, which would end the round on the
+      // clear chime with no way back in — put them on the level the server is waiting for.
+      const resumeIndex = outcome.body?.currentLevelIndex
+      if (typeof resumeIndex === 'number' && resumeIndex < roundLevels.length) {
+        engineRef.current?.start(resumeIndex)
+      }
+    })
+  }, [postRaceReport, roundLevels.length])
 
   const handleEndGameEarly = useCallback(async () => {
     await onEndGameEarly?.()
