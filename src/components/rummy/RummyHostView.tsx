@@ -24,6 +24,7 @@ import { RummyGamePanel } from '@/components/rummy/RummyBoard'
 import { RummyShell } from '@/components/rummy/RummyChrome'
 import { RummyFinalResultsShareBlock } from '@/components/rummy/RummyFinalResultsShareBlock'
 import { HostRoomShell } from '@/components/host/HostRoomShell'
+import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { useRummyTurnTimer } from '@/hooks/useRummyTurnTimer'
 import { useRummyGameTimer } from '@/hooks/useRummyGameTimer'
 
@@ -243,6 +244,7 @@ export function RummyHostView({ gameCode, hostToken }: { gameCode: string; hostT
   }
 
   if (gameFinished) {
+    const hostWon = hostPlayerId != null && session?.winner_player_id === hostPlayerId
     return (
       <RummyShell title={game.title ?? cfg.label} compact>
         {session && (
@@ -252,27 +254,36 @@ export function RummyHostView({ gameCode, hostToken }: { gameCode: string; hostT
             hands={hands}
             session={session}
             winnerName={winnerName ?? null}
-            highlightPlayerId={null}
+            highlightPlayerId={hostPlayerId}
             playAgainButton={
               <button
                 type="button"
-                className="btn-primary w-full py-2"
                 onClick={() => void playAgain(true)}
                 disabled={playingAgain}
+                className="btn-secondary w-full py-3 text-base disabled:opacity-60"
               >
-                Play again · same settings
+                {playingAgain ? 'Starting…' : '↻ Play again · same settings'}
               </button>
             }
             returnToLobbyButton={
               <button
                 type="button"
-                className="btn-secondary w-full py-2"
                 onClick={() => void playAgain(false)}
                 disabled={playingAgain}
+                className="w-full py-2.5 text-sm font-semibold text-muted transition-colors hover:text-body disabled:opacity-60"
               >
-                Reopen lobby
+                Return to lobby
               </button>
             }
+            lobbyNote="Same settings reopens the game for ready-up — watchers and new people can join · lobby lets you tweak settings first."
+          />
+        )}
+        {hostWon && (
+          <PostWinToCommunity
+            gameType="rummy"
+            gameCode={gameCode}
+            winnerName={hostPlayerName ?? winnerName ?? ''}
+            roundKey={session?.id}
           />
         )}
       </RummyShell>
