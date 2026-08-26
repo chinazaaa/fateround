@@ -62,14 +62,14 @@ type Screen =
   | 'finished'
   | 'not_found'
 
-async function loadHands(gameCode: string): Promise<RummyPlayerHand[]> {
+async function loadHands(gameCode: string): Promise<{ hands: RummyPlayerHand[]; ok: boolean }> {
   const res = await supabase
     .from('rummy_player_hands')
     .select(RUMMY_HAND_SELECT)
     .eq('game_id', gameCode)
     .order('player_order')
-  if (!supabasePollOk(res)) return []
-  return (res.data as RummyPlayerHand[]) ?? []
+  if (!supabasePollOk(res)) return { hands: [], ok: false }
+  return { hands: (res.data as RummyPlayerHand[]) ?? [], ok: true }
 }
 
 export function RummyPlayerView({ gameCode }: { gameCode: string }) {
@@ -83,14 +83,16 @@ export function RummyPlayerView({ gameCode }: { gameCode: string }) {
   const [acting, setActing] = useState(false)
 
   const loadGameState = useCallback(async (): Promise<{ state: RummySession | null; ok: boolean }> => {
-    const [sessionRes, handsList] = await Promise.all([
+    const [sessionRes, handsRes] = await Promise.all([
       supabase.from('rummy_sessions').select(RUMMY_SESSION_SELECT).eq('game_id', gameCode).maybeSingle(),
       loadHands(gameCode),
     ])
     const sessionData = supabasePollOk(sessionRes) ? (sessionRes.data as RummySession | null) : null
     if (sessionData) setSession(sessionData)
-    setHands(handsList)
-    return { state: sessionData, ok: supabasePollOk(sessionRes) }
+    // A failed hands query must NOT clobber the last-known hand — otherwise a transient
+    // Supabase blip would blank the player's own hand until the next successful poll.
+    if (handsRes.ok) setHands(handsRes.hands)
+    return { state: sessionData, ok: supabasePollOk(sessionRes) && handsRes.ok }
   }, [gameCode])
 
   const computeScreen = useCallback(

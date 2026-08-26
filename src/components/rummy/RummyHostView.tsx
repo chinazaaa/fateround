@@ -30,9 +30,10 @@ const RUMMY_SESSION_SELECT =
 const RUMMY_HAND_SELECT = 'id,game_id,player_id,cards,player_order,created_at'
 
 /**
- * Rummy host view. Host is spectator-only for now (no seat in the turn engine — matching
- * Crazy Eights / Whot host-only rooms). Uses the shared HostLobby for the waiting phase
- * and the shared RummyGamePanel for the active table view.
+ * Rummy host view. The host either watches or takes a seat (see `useHostSeat` below) —
+ * when seated they act through the same /api/rummy/* routes as any other player. Uses
+ * the shared HostLobby for the waiting phase and the shared RummyGamePanel for the
+ * active table view.
  */
 export function RummyHostView({ gameCode, hostToken }: { gameCode: string; hostToken: string }) {
   const { error: toastError, success } = useToast()

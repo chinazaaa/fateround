@@ -1628,7 +1628,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     ],
     heroSubtitle: 'The classic card game — draw, discard, and be first to meld your whole hand into sets and runs.',
     bodyParagraph:
-      'Rummy on FateRound plays by the everyone-knows-this rules: on your turn draw one card from the pile or the top of the discard, then discard one. Build sets (three or four cards of the same rank) and runs (three or more consecutive cards of the same suit). The moment your entire hand can be laid down as valid melds — usually with one card left to discard — you go out and win the round. Anyone still holding cards scores against them (face cards 10, ace 1, numerics face value). Lowest total wins if the clock runs out.',
+      'Rummy on FateRound plays by the everyone-knows-this rules: on your turn draw one card from the pile or the top of the discard, then discard one. Build sets (three or four cards of the same rank) and runs (three or more consecutive cards of the same suit). The moment your entire hand can be laid down as valid melds — usually with one card left to discard — you go out and win the round. If the clock runs out first, whoever is closest to going out wins — the player with the most cards that could still be laid down as valid melds; leftover deadwood (face cards 10, ace 1, numerics face value) breaks a tie.',
     highlights: ['Standard 52-card deck', '2–6 players', 'Sets & runs — first hand out wins'],
     features: [
       {

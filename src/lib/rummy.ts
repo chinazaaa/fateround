@@ -809,6 +809,11 @@ export async function processRummyExpireTurn(
   if (session.turn_step === 'draw') {
     const dr = await processRummyDraw(supabase, gameId, currentId, 'pile')
     if (dr.error) return { error: dr.error }
+    // The auto-draw can legitimately end the round (empty deck + reshuffle cap hit) —
+    // calling processRummyDiscard against a finished session would return "Game is
+    // finished" as an error and misreport the successful finalization.
+    const after = await loadRummyState(supabase, gameId)
+    if (!after.session || after.session.phase === 'finished') return {}
   }
   // After the draw the turn_step is 'discard' — auto-discard the first hand card.
   const { hands: hands2 } = await loadRummyState(supabase, gameId)

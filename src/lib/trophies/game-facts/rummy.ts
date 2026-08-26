@@ -41,12 +41,20 @@ export async function rummyFacts(
   const winnerId = session?.winner_player_id ?? null
   const melds = (session?.winning_melds ?? []) as RummyMeld[]
 
-  // Only the winner produces facts today. A timeout end has no `winning_melds` — the
-  // winner was crowned by "closest to going out", not by a lay-down, so we don't emit
-  // meld-shape flags for them (they wouldn't be truthful).
-  if (!winnerId || !ctx.winners.includes(winnerId) || melds.length === 0) return out
+  // A recognised Rummy winner produces facts. Meld-shape flags require `winning_melds`
+  // (only a lay-down produces them; a timeout win crowned by "closest to going out"
+  // has no melds), but the table-size flag depends only on the seated roster — so it
+  // fires for a timeout winner too.
+  if (!winnerId || !ctx.winners.includes(winnerId)) return out
 
   const facts: Record<string, number> = {}
+  if (ctx.seated.length >= BIG_TABLE_SEATS) facts.rummy_big_table_wins = 1
+
+  if (melds.length === 0) {
+    // Timeout winner — no lay-down to inspect. Emit only the seat-count fact.
+    out.set(winnerId, facts)
+    return out
+  }
 
   // Lifetime tally — sums correctly across games.
   facts.rummy_melds_laid = melds.length
@@ -64,7 +72,6 @@ export async function rummyFacts(
   // Won with only one kind of meld — pure-runs or pure-sets. Awards a bit of style.
   if (melds.length >= 2 && hasRun && !hasSet) facts.rummy_pure_run_wins = 1
   if (melds.length >= 2 && hasSet && !hasRun) facts.rummy_pure_set_wins = 1
-  if (ctx.seated.length >= BIG_TABLE_SEATS) facts.rummy_big_table_wins = 1
 
   out.set(winnerId, facts)
   return out

@@ -13,7 +13,7 @@
  * Presentation only — every action is delegated to callbacks on the parent view.
  */
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   ActionToast,
   CardTableSurface,
@@ -222,6 +222,17 @@ function HandAndActions({
   // Which hand card's popup menu is open. null = none.
   const [openMenu, setOpenMenu] = useState<string | null>(null)
 
+  // Drop the builder state as soon as the discard step ends — otherwise a leftover
+  // meld pile (or a stale `discardChoice`) from a previous turn would block the next
+  // turn's discard the moment it starts.
+  useEffect(() => {
+    if (isMyTurn && canAct) return
+    setAssignment({})
+    setMeldCount(0)
+    setDiscardChoice(null)
+    setOpenMenu(null)
+  }, [isMyTurn, canAct])
+
   const grouped = useMemo(() => {
     const inHand: RummyCard[] = []
     const melds: RummyCard[][] = Array.from({ length: meldCount }, () => [])
@@ -256,6 +267,19 @@ function HandAndActions({
       return next
     })
   }
+  /** Remove an empty meld pile the player added by accident (or changed their mind on).
+   *  Shifts higher-indexed piles down so the assignment map stays contiguous. */
+  const removeMeldPile = (idx: number) => {
+    setAssignment((prev) => {
+      const next: Record<string, number> = {}
+      for (const [cardId, m] of Object.entries(prev)) {
+        if (m === idx) continue
+        next[cardId] = m > idx ? m - 1 : m
+      }
+      return next
+    })
+    setMeldCount((n) => Math.max(0, n - 1))
+  }
   const toggleDiscard = (cardId: string) => {
     setDiscardChoice((prev) => (prev === cardId ? null : cardId))
   }
@@ -278,7 +302,7 @@ function HandAndActions({
               <button
                 type="button"
                 className="fr-btn fr-btn--secondary fr-btn--block"
-                disabled={!discardChoice || meldCount > 0}
+                disabled={!discardChoice || grouped.melds.some((m) => m.length > 0)}
                 onClick={() => discardChoice && onDiscard?.(discardChoice)}
               >
                 {discardChoice ? `Discard ${rummyCardLabel(hand.find((c) => c.id === discardChoice)!)}` : 'Discard…'}
@@ -375,6 +399,17 @@ function HandAndActions({
                       {kind ? kind.toUpperCase() : meld.length < 3 ? 'needs 3+' : 'invalid'}
                     </span>
                   </span>
+                  {isMyTurn && canAct && (
+                    <button
+                      type="button"
+                      onClick={() => removeMeldPile(idx)}
+                      className="text-xs text-muted hover:text-[var(--foreground)]"
+                      aria-label={`Remove meld pile ${idx + 1}`}
+                      title="Remove this meld pile"
+                    >
+                      ✕
+                    </button>
+                  )}
                 </div>
                 <div className="flex flex-wrap gap-1">
                   {meld.map((c) => (
