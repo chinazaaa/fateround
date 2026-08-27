@@ -46,6 +46,7 @@ import { clearPlayerSession } from '@/lib/utils'
 import { useToast } from '@/components/ui/Toast'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import type { Game } from '@/types'
+import { mergeRealtimeGame } from '@/lib/realtime-merge'
 
 interface WordleRoomStatus {
   currentWord?: string
@@ -370,7 +371,7 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
         (payload) => {
-          setGame(payload.new as Game)
+          setGame((prev) => mergeRealtimeGame(prev, payload.new as Partial<Game>))
           void load()
         }
       )

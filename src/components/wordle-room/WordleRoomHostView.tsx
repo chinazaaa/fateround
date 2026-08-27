@@ -43,6 +43,7 @@ import { useHostSeat } from '@/hooks/useHostSeat'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
 import { useTurnNotifications } from '@/hooks/useTurnNotifications'
 import { useToast } from '@/components/ui/Toast'
+import { mergeRealtimeGame } from '@/lib/realtime-merge'
 
 type HostTab = 'manage' | 'play'
 
@@ -211,7 +212,7 @@ export function WordleRoomHostView({ gameCode, hostToken }: { gameCode: string; 
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
         (payload) => {
-          setGame(payload.new as Game)
+          setGame((prev) => mergeRealtimeGame(prev, payload.new as Partial<Game>))
           load()
         }
       )
