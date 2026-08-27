@@ -50,12 +50,8 @@ export function lateJoinPolicyFromGame(game: Pick<Game, 'allow_viewers' | 'allow
   return 'viewers_and_players'
 }
 
-// Host can toggle late join policy. Excludes secret message and Rummy — for Rummy every
-// player's hand is redacted from spectators, so a viewer only sees the top of the discard
-// change and the draw count decrement, which isn't enough of a live view to justify a
-// spectate flow. Late arrivals see the finished screen when the round ends.
 export function gameSupportsViewerSetting(gameType: GameType): boolean {
-  return !isSecretMessageGame(gameType) && !isRummyGame(gameType)
+  return !isSecretMessageGame(gameType)
 }
 
 export function lateJoinPolicyToFields(policy: LateJoinPolicy): {

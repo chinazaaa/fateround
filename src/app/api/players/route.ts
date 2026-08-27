@@ -10,6 +10,7 @@ import { removeMonopolyPlayer } from '@/lib/monopoly'
 import { removeScrabblePlayer } from '@/lib/scrabble'
 import { removeWhotPlayer } from '@/lib/whot'
 import { removeCrazyEightsPlayer } from '@/lib/crazy-eights'
+import { removeRummyPlayer } from '@/lib/rummy'
 import { removeUnoPlayer } from '@/lib/uno'
 import { removeLudoPlayer } from '@/lib/ludo'
 import { removeMahjongPlayer } from '@/lib/mahjong'
@@ -52,6 +53,7 @@ import {
   isYahtzeeGame,
   isWhotGame,
   isCrazyEightsGame,
+  isRummyGame,
   isUnoGame,
   isLudoGame,
   isMahjongGame,
@@ -2052,6 +2054,12 @@ export async function DELETE(req: NextRequest) {
 
   if (isCrazyEightsGame(gameType)) {
     const { error } = await removeCrazyEightsPlayer(getSupabaseAdmin(), id, playerId, player.name)
+    if (error) return NextResponse.json({ error }, { status: 500 })
+    return NextResponse.json({ success: true })
+  }
+
+  if (isRummyGame(gameType)) {
+    const { error } = await removeRummyPlayer(getSupabaseAdmin(), id, playerId, player.name)
     if (error) return NextResponse.json({ error }, { status: 500 })
     return NextResponse.json({ success: true })
   }
