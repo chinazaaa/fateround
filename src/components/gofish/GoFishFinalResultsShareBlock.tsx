@@ -47,7 +47,11 @@ export function GoFishFinalResultsShareBlock({
   )
 
   const winnerPlayerId = session?.winner_player_id ?? null
-  const displayWinner = winnerName ?? standings.find((row) => row.rank === 1)?.name ?? null
+  // When the server declined to pick a winner (no books completed by anyone, or a tie
+  // at the top), don't fall back to standings[0] — "wins!" on 0 books would read as
+  // an arbitrary handout. Passing null lets FinishedWinnerHero render its neutral
+  // "Game over!" headline instead.
+  const displayWinner = winnerPlayerId ? (winnerName ?? standings.find((row) => row.rank === 1)?.name ?? null) : null
 
   return (
     <div className="space-y-4">
@@ -56,7 +60,13 @@ export function GoFishFinalResultsShareBlock({
         <FinishedWinnerHero
           winnerName={displayWinner}
           game={game}
-          subtitle={standings.length > 1 ? 'Most books wins · four of a rank = one book' : undefined}
+          subtitle={
+            !winnerPlayerId
+              ? 'No books completed — no winner'
+              : standings.length > 1
+                ? 'Most books wins · four of a rank = one book'
+                : undefined
+          }
         />
         {standings.length > 0 && (
           <div className="space-y-2">

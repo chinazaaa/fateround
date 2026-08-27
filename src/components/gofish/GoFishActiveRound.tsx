@@ -139,17 +139,21 @@ export function GoFishActiveRound({
     <div className="space-y-6">
       {/* Sticky pinned bars — game timer + turn/ocean/time — so a scrolled-down player
           can still see "whose turn is it, how long left, ocean count" without hunting
-          back to the top. Mobile is the target: on desktop the round rarely scrolls. */}
-      <div className="sticky top-[4.5rem] z-30 -mx-1 px-1 space-y-2 backdrop-blur-md bg-[color-mix(in_srgb,var(--background)_80%,transparent)] rounded-2xl">
-        {!isFinished && <GoFishGameTimerBar gameCode={gameCode} game={game} />}
-        <TurnStatusBanner
-          activeName={activeTurnPlayerId ? nameOf(activeTurnPlayerId) : 'Nobody'}
-          isMyTurn={isMyTurn}
-          oceanCount={session?.ocean_count ?? 0}
-          isFinished={isFinished}
-          secondsLeft={hasTurnTimer ? secondsLeft : null}
-        />
-      </div>
+          back to the top. Mobile is the target: on desktop the round rarely scrolls.
+          Hidden entirely on finish so the results block owns the surface (the "Game
+          over · Ocean 19" line just competed with the winner banner underneath). */}
+      {!isFinished && (
+        <div className="sticky top-[4.5rem] z-30 -mx-1 px-1 space-y-2 backdrop-blur-md bg-[color-mix(in_srgb,var(--background)_80%,transparent)] rounded-2xl">
+          <GoFishGameTimerBar gameCode={gameCode} game={game} />
+          <TurnStatusBanner
+            activeName={activeTurnPlayerId ? nameOf(activeTurnPlayerId) : 'Nobody'}
+            isMyTurn={isMyTurn}
+            oceanCount={session?.ocean_count ?? 0}
+            isFinished={isFinished}
+            secondsLeft={hasTurnTimer ? secondsLeft : null}
+          />
+        </div>
+      )}
 
       {isFinished ? (
         <>

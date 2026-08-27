@@ -326,15 +326,17 @@ export function GoFishHostView({ gameCode, hostToken }: { gameCode: string; host
   const projector = (
     <div className="mx-auto max-w-4xl p-4 sm:p-6 space-y-4">
       {/* Round-header line ("Ocean: N · Turn: X") is redundant with the TurnStatusBanner
-          inside GoFishActiveRound, which shows the same info in the primary theme. On
-          mobile the projector title bar competed with the banner one row down. Keep
-          the game label only. */}
-      <div className="glass-card-strong p-3 sm:p-4 flex items-center gap-3 flex-wrap">
-        <div className="min-w-0 flex-1">
-          <h1 className="text-lg sm:text-xl font-black truncate">{cfg.label}</h1>
-          {isFinished && <p className="text-muted text-xs">Game finished</p>}
+          inside GoFishActiveRound. On finish, the header itself competes with the
+          FinishedWinnerHero underneath ("Go Fish · Game finished" reads like a duplicate
+          of the winner banner), so drop the header entirely there — the shared results
+          block owns the surface. */}
+      {!isFinished && (
+        <div className="glass-card-strong p-3 sm:p-4 flex items-center gap-3 flex-wrap">
+          <div className="min-w-0 flex-1">
+            <h1 className="text-lg sm:text-xl font-black truncate">{cfg.label}</h1>
+          </div>
         </div>
-      </div>
+      )}
       {isFinished ? (
         <>
           <GoFishFinalResultsShareBlock
