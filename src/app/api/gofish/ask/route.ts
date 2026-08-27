@@ -47,11 +47,19 @@ export async function POST(req: NextRequest) {
 
   scheduleTurnNotification(code)
 
+  // On a miss with a draw, surface the drawn rank to the ASKER only (this is safe: it's
+  // their own newly-owned card, and the physical game keeps a miss-draw private too).
+  // The lucky-draw case already carries the rank in the public ask_miss event; the plain
+  // miss-draw doesn't (opponents shouldn't see what you drew), so we return it here for
+  // the client to render as a viewer-scoped "you drew a Q" toast.
+  const drewRank = !result.hit && result.transferred.length > 0 ? result.transferred[0]?.rank : undefined
+
   return NextResponse.json({
     success: true,
     hit: result.hit,
     sameTurn: result.sameTurn,
     transferredCount: result.transferred.length,
     newBooks: result.newBooks,
+    drewRank,
   })
 }
