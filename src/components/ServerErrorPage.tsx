@@ -15,8 +15,15 @@ type ServerErrorPageProps = {
 export function ServerErrorPage({
   title = "Can't reach server",
   message = "We're having trouble connecting to the server. Check your internet connection or try refreshing.",
+  error,
   reset,
 }: ServerErrorPageProps) {
+  // Identity of the underlying error, shown to the user. This page has always taken an
+  // `error` prop and never rendered it, so every report of this screen arrived without the
+  // one detail that would explain it — four separate attempts at the tab-resume bug were
+  // made without anyone ever seeing what actually threw. Small and muted, but present and
+  // selectable, so a screenshot is enough to identify it.
+  const detail = [error?.digest && `ref ${error.digest}`, error?.message].filter(Boolean).join(' · ')
   return (
     <SiteChrome>
       <div className="fr-band fr-band--tight flex-1 flex items-center justify-center min-h-[70vh]">
@@ -64,6 +71,12 @@ export function ServerErrorPage({
                 Back home
               </Link>
             </div>
+
+            {detail ? (
+              <p className="text-xs pt-2 break-words select-all font-mono" style={{ color: 'var(--text-faint)' }}>
+                {detail}
+              </p>
+            ) : null}
 
             <p className="text-xs pt-2" style={{ color: 'var(--text-faint)' }}>
               If this issue persists, contact us at{' '}
