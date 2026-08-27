@@ -253,18 +253,29 @@ export async function processGoFishExpireTurn(
   const pick = pickAutoAsk(activeCards, opponentCounts)
   if (!pick) {
     // No legal ask: advance the turn pointer without a state-changing action so the
-    // room does not deadlock behind an empty-handed or targetless player.
+    // room does not deadlock behind an empty-handed or targetless player. Optimistic-
+    // concurrency guard on updated_at — the client-side auto-pass effect + the turn-
+    // timer's own auto-poke + N watchers-observing-the-deadline can all fire against
+    // the same snapshot; without the CAS two writers would advance the turn twice.
     const nextIndex = nextActiveTurnIndexFromHands(session, hands)
     const { data: gameRow } = await supabase.from('games').select('timer_seconds').eq('id', gameId).maybeSingle()
     const timerSeconds = (gameRow?.timer_seconds ?? 0) as number
-    await supabase
+    const now = new Date().toISOString()
+    const { data: claimed } = await supabase
       .from('gofish_sessions')
       .update({
         current_turn_index: nextIndex,
         turn_deadline_at: gofishTurnDeadline(timerSeconds),
-        updated_at: new Date().toISOString(),
+        updated_at: now,
       })
       .eq('game_id', gameId)
+      .eq('updated_at', session.updated_at)
+      .select('game_id')
+    if (!claimed || claimed.length === 0) {
+      // Another writer moved first; the caller polls, so return skipped rather than
+      // an error — the fresh state will arrive on the next reload.
+      return { skipped: true }
+    }
     return {}
   }
 
