@@ -356,7 +356,8 @@ export function HostBoardGameLobbyPanel({
           boardGameType === 'whot' ||
           boardGameType === 'crazy_eights' ||
           boardGameType === 'rummy' ||
-          boardGameType === 'uno') && (
+          boardGameType === 'uno' ||
+          boardGameType === 'gofish') && (
           <HostLobbySettingBlock title="Game length" className="sm:col-span-2">
             <HostLobbyOptionChips value={gameDuration} options={durationOptions} onChange={onGameDurationChange} />
           </HostLobbySettingBlock>

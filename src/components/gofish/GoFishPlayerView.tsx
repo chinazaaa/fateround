@@ -11,6 +11,8 @@ import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
 import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
 import { NameJoinForm } from '@/components/game-lobby/NameJoinForm'
 import { GoFishActiveRound } from '@/components/gofish/GoFishActiveRound'
+import { ReplayReadyRing } from '@/components/ReplayReadyRing'
+import { GOFISH_MIN_PLAYERS } from '@/lib/gofish'
 import { gameTypeConfig } from '@/lib/game-types'
 import { gameIcon } from '@/lib/game-glyphs'
 import { Glyph } from '@/components/icons/Glyph'
@@ -122,6 +124,34 @@ export function GoFishPlayerView({ gameCode }: { gameCode: string }) {
   useLobbyOpenNotification(game?.status, () => {
     if (screen === 'game_started_waiting') void load()
   })
+
+  // "Play again · same settings" reopens the lobby with a ready-up ring — same shape Whot uses.
+  // Reuses /api/players/ready (readiness = holding a seat; ready:false sits the player back out).
+  const [replayReadyPending, setReplayReadyPending] = useState(false)
+  const toggleReplayReady = useCallback(
+    async (ready: boolean) => {
+      if (!myResumeToken) {
+        toastError('Your player session expired — rejoin to continue')
+        return
+      }
+      setReplayReadyPending(true)
+      try {
+        const res = await fetch('/api/players/ready', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ gameId: gameCode, resumeToken: myResumeToken, ready }),
+        })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error((data as { error?: string }).error ?? 'Failed to update ready')
+        await load()
+      } catch (err) {
+        toastError(err instanceof Error ? err.message : 'Failed to update ready')
+      } finally {
+        setReplayReadyPending(false)
+      }
+    },
+    [gameCode, myResumeToken, load, toastError]
+  )
 
   const me = players.find((p) => p.id === myPlayerId)
   const myPlayerName = me?.name ?? ''
@@ -241,21 +271,39 @@ export function GoFishPlayerView({ gameCode }: { gameCode: string }) {
   return (
     <div className="min-h-screen pb-24">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 space-y-5">
-        <div className="text-center space-y-1">
-          <div className="flex justify-center text-[var(--primary)] pb-1">
-            <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[color-mix(in_srgb,var(--primary)_12%,transparent)]">
-              <Glyph icon={gameIcon('gofish')} size={24} />
-            </span>
+        {/* Room title + game label above the surface. Hidden on the finished screen — the
+            shared FinishedWinnerHero already renders the game label + winner headline, and
+            the extra title above just competed with it visually. */}
+        {game.status !== 'finished' && (
+          <div className="text-center space-y-1">
+            <div className="flex justify-center text-[var(--primary)] pb-1">
+              <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[color-mix(in_srgb,var(--primary)_12%,transparent)]">
+                <Glyph icon={gameIcon('gofish')} size={24} />
+              </span>
+            </div>
+            <h1 className="text-2xl sm:text-3xl font-black tracking-tight gradient-title">{game.title}</h1>
+            <p className="text-muted text-sm sm:text-base">{cfg.label}</p>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-black tracking-tight gradient-title">{game.title}</h1>
-          <p className="text-muted text-sm sm:text-base">{cfg.label}</p>
-        </div>
+        )}
 
         {isViewer && (
           <ViewerModeBanner gameCode={gameCode} playerId={myPlayerId} game={game} player={me} onPromoted={load} />
         )}
 
-        {game.status === 'waiting' ? (
+        {game.status === 'waiting' && game.replay_pending ? (
+          <ReplayReadyRing
+            players={players}
+            meId={myPlayerId}
+            isHost={false}
+            minPlayers={GOFISH_MIN_PLAYERS}
+            capacityGame={game}
+            onToggleReady={(ready) => void toggleReplayReady(ready)}
+            onStart={() => {}}
+            pending={replayReadyPending}
+            gameCode={gameCode}
+            onLeft={handlePlayerLeft}
+          />
+        ) : game.status === 'waiting' ? (
           <GameWaitingRoom
             gameCode={gameCode}
             players={players}
@@ -266,6 +314,7 @@ export function GoFishPlayerView({ gameCode }: { gameCode: string }) {
             spectating={isViewer}
             onRenamed={() => void load()}
             onLeft={handlePlayerLeft}
+            seatAvailable={players.filter((p) => !p.spectator).length < (game.max_players ?? 6)}
             onReady={
               me?.spectator === true && !game.tournament_id
                 ? async () => {
