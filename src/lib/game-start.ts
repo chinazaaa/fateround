@@ -20,12 +20,23 @@ import { initializeDraughts10Game, DRAUGHTS10_MIN_PLAYERS } from '@/lib/draughts
 import { initializeAyoGame, AYO_MIN_PLAYERS } from '@/lib/ayo'
 import { initializeScrabbleGame, SCRABBLE_MIN_PLAYERS, SCRABBLE_MAX_PLAYERS } from '@/lib/scrabble'
 import { initializeMafiaGame, MAFIA_MIN_PLAYERS, MAFIA_MAX_PLAYERS } from '@/lib/mafia'
-import { initializeTrollRunGame, TROLL_RUN_MIN_PLAYERS, TROLL_RUN_MAX_PLAYERS } from '@/lib/troll-run'
+import {
+  initializeTrollRunGame,
+  TROLL_RUN_MIN_PLAYERS,
+  TROLL_RUN_MAX_PLAYERS,
+  TROLL_RUN_DEFAULT_ROUNDS,
+} from '@/lib/troll-run'
 import { initializeGoFishGame } from '@/lib/gofish-server'
 import { GOFISH_MIN_PLAYERS, GOFISH_MAX_PLAYERS } from '@/lib/gofish'
 
 /** The slice of the game row a start initializer may need. */
-type StartGame = { timer_seconds?: number | null; checkers_nigeria_street_rules?: boolean | null }
+type StartGame = {
+  timer_seconds?: number | null
+  checkers_nigeria_street_rules?: boolean | null
+  troll_run_rounds?: number
+  troll_run_time_limit?: number
+  troll_run_world?: string
+}
 
 export interface StartSpec {
   /** minimum players required (or the exact count when `exact`). */
@@ -34,6 +45,8 @@ export interface StartSpec {
   exact?: boolean
   /** also enforce an upper bound (scrabble). */
   maxPlayers?: number
+  /** rounds this game will play, for the ones that are not single-round board games. */
+  roundsCount?: (game: StartGame) => number
   /** seed the game's tables; runs via the service role (RLS-locked to anon writes). */
   initialize: (
     admin: SupabaseClient,
@@ -140,7 +153,13 @@ export const GAME_START_SPECS: Partial<Record<GameType, StartSpec>> = {
   troll_run: {
     minPlayers: TROLL_RUN_MIN_PLAYERS,
     maxPlayers: TROLL_RUN_MAX_PLAYERS,
-    initialize: (admin, code, ids, game) => initializeTrollRunGame(admin, code, ids, game as any),
+    roundsCount: (game) => game.troll_run_rounds ?? TROLL_RUN_DEFAULT_ROUNDS,
+    initialize: (admin, code, ids, game) =>
+      initializeTrollRunGame(admin, code, ids, {
+        totalRounds: game.troll_run_rounds,
+        timeLimitSeconds: game.troll_run_time_limit,
+        world: game.troll_run_world,
+      }),
   },
   gofish: {
     minPlayers: GOFISH_MIN_PLAYERS,
