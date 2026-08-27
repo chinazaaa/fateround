@@ -166,7 +166,9 @@ export function CoinHistoryTab() {
       }
       setSignedOut(false)
       setRows((prev) => (append ? [...prev, ...(json.ledger ?? [])] : (json.ledger ?? [])))
-      setGameTypeByRefId((prev) => (append ? { ...prev, ...(json.gameTypeByRefId ?? {}) } : (json.gameTypeByRefId ?? {})))
+      setGameTypeByRefId((prev) =>
+        append ? { ...prev, ...(json.gameTypeByRefId ?? {}) } : (json.gameTypeByRefId ?? {})
+      )
       setHasMore(Boolean(json.hasMore))
     } finally {
       if (mySeq === requestSeqRef.current) setLoading(false)
