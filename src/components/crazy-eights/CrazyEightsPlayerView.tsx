@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   CrazyEightsCard,
@@ -23,7 +23,8 @@ import {
 } from '@/lib/crazy-eights'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { supabase } from '@/lib/supabase'
-import { clearPlayerSession } from '@/lib/utils'
+import { fetchCrazyEightsHands } from '@/lib/hands-client'
+import { clearPlayerSession, getPlayerSession } from '@/lib/utils'
 import type { Game, CrazyEightsPlayerHand, CrazyEightsSession } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
@@ -49,10 +50,9 @@ import { useCrazyEightsTurnTimer } from '@/hooks/useCrazyEightsTurnTimer'
 import { useCrazyEightsGameTimer } from '@/hooks/useCrazyEightsGameTimer'
 import { useCrazyEightsNotifications, playCrazyEightsActionSound } from '@/hooks/useCrazyEightsNotifications'
 import { useGamePlacements, useGameStats } from '@/components/roster/RosterDrawerContext'
-
-const CRAZY8_SESSION_SELECT =
-  'id,game_id,turn_order,current_turn_index,direction,phase,draw_pile,discard_pile,top_card,required_suit,pick_two_stack,joker_penalty,status_message,winner_player_id,finish_order,turn_deadline_at,created_at,updated_at'
-const CRAZY8_PLAYER_HANDS_SELECT = 'id,game_id,player_id,cards,player_order,created_at'
+// Imported rather than re-declared inline: this file used to carry its own copy of the column
+// list, which is exactly how a redaction gets half-applied.
+import { CRAZY8_SESSION_SELECT } from '@/lib/supabase-selects'
 
 type Screen =
   | 'loading'
@@ -71,24 +71,39 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
   const sessionRef = useRef<CrazyEightsSession | null>(null)
   sessionRef.current = session
   const [hands, setHands] = useState<CrazyEightsPlayerHand[]>([])
+  // The authoritative resume token, mirrored to a ref so the hand fetch can use it without a
+  // dependency cycle (loadGameState is defined before useGameViewBootstrap resolves the token).
+  // It's the fallback when the localStorage session isn't populated yet — see the fetch below.
+  const myResumeTokenRef = useRef<string | null>(null)
   const { displayName: roomDisplayName, joinExtras, resolving: resolvingRoomMember } = useRoomMemberJoin(gameCode)
   const [acting, setActing] = useState(false)
 
   // Game-specific load: fetch the crazy eights session + player hands (the shared
   // game/players fetch + session resolution lives in useGameViewBootstrap).
   const loadGameState = useCallback(async (): Promise<{ state: CrazyEightsSession | null; ok: boolean }> => {
-    const [sessionRes, handsRes] = await Promise.all([
+    // Hands come from /api/crazy-eights/hands, not the table: other players' `cards` must never
+    // reach this client (see lib/hand-redaction.ts). Own cards come back in full; everyone
+    // else's arrive as `card_count`.
+    const [sessionRes, handsData] = await Promise.all([
       supabase.from('crazy_eights_sessions').select(CRAZY8_SESSION_SELECT).eq('game_id', gameCode).maybeSingle(),
-      supabase
-        .from('crazy_eights_player_hands')
-        .select(CRAZY8_PLAYER_HANDS_SELECT)
-        .eq('game_id', gameCode)
-        .order('player_order'),
+      // Prefer the localStorage session token, falling back to the bootstrap-resolved token via a
+      // ref. This callback runs BEFORE the player is resolved on the first load (see
+      // useGameViewBootstrap: loadGameState is called before resolvePlayerSession), so for a
+      // player who arrived via a share link the localStorage session isn't written yet — without
+      // a token the route redacts our OWN hand to empty, which `isOut` would read as "you are
+      // out". The ref covers subsequent loads; the effect below re-fetches the moment the token
+      // resolves.
+      fetchCrazyEightsHands(gameCode, {
+        resumeToken: getPlayerSession(gameCode)?.resumeToken ?? myResumeTokenRef.current ?? undefined,
+      }),
     ])
     const sessionData = supabasePollOk(sessionRes) ? (sessionRes.data as CrazyEightsSession | null) : null
     if (sessionData) setSession(sessionData)
-    if (supabasePollOk(handsRes)) setHands((handsRes.data as CrazyEightsPlayerHand[]) ?? [])
-    return { state: sessionData, ok: supabasePollOk(sessionRes, handsRes) }
+    // null = the fetch failed. Leave the previous hands in place rather than clearing them —
+    // an empty hand is meaningful state here ("you are out"), so a transport blip must not
+    // masquerade as one.
+    if (handsData) setHands(handsData)
+    return { state: sessionData, ok: supabasePollOk(sessionRes) && handsData !== null }
   }, [gameCode])
 
   const computeScreen = useCallback((gameData: Game, playerId: string | null): Screen => {
@@ -125,6 +140,21 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
     joinExtras,
     onJoinError: toastError,
   })
+  myResumeTokenRef.current = myResumeToken
+
+  // The first hand fetch (in loadGameState) can run before the player — and thus the resume
+  // token — is resolved, which the redaction route answers with our own hand blanked. Re-fetch
+  // with the authoritative token the moment it lands, so a share-link player sees their cards.
+  useEffect(() => {
+    if (!myResumeToken || game?.status !== 'active') return
+    let cancelled = false
+    void fetchCrazyEightsHands(gameCode, { resumeToken: myResumeToken }).then((h) => {
+      if (!cancelled && h) setHands(h)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [myResumeToken, game?.status, gameCode])
 
   useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
   useApplyGameTheme(screen === 'game_ended' ? 'default' : game?.theme)
@@ -141,17 +171,44 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
     sessionRef.current = next
     return prev != null
   }, [])
-  const applyHandRow = useCallback((row: Record<string, unknown>): boolean => {
-    const next = row as unknown as CrazyEightsPlayerHand
-    setHands((prev) => {
-      const i = prev.findIndex((h) => h.id === next.id)
-      if (i === -1) return [...prev, next].sort((a, b) => a.player_order - b.player_order)
-      const copy = [...prev]
-      copy[i] = next
-      return copy
-    })
-    return true
-  }, [])
+  const applyHandRow = useCallback(
+    (row: Record<string, unknown>): boolean => {
+      const next = row as unknown as CrazyEightsPlayerHand
+      // Once `cards` is revoked from anon, realtime payloads carry no cards at all. Applying
+      // one verbatim to OUR OWN row would blank the hand — and because `isOut` is derived from
+      // an empty hand, it would read as "you are out" mid-game. So: never let a payload shrink
+      // our own hand; re-fetch through the authorized route instead.
+      if (myPlayerId && next.player_id === myPlayerId && !Array.isArray(next.cards)) {
+        void fetchCrazyEightsHands(gameCode, {
+          resumeToken: getPlayerSession(gameCode)?.resumeToken ?? myResumeTokenRef.current ?? undefined,
+        }).then((hands) => {
+          if (hands) setHands(hands)
+        })
+        return true
+      }
+      // Can we derive the new count from this payload? Once `cards` is revoked from anon the
+      // payload carries neither `cards` nor `card_count` (card_count is computed by the
+      // redaction route, not a column), so the answer is no — and then the row must NOT be
+      // absorbed: returning true here would skip the reconciliation reload (useGameTableSync)
+      // while polling is off, freezing every opponent's count at its last known value.
+      const countable = Array.isArray(next.cards) || typeof next.card_count === 'number'
+      setHands((prev) => {
+        const i = prev.findIndex((h) => h.id === next.id)
+        // Carry a known count forward when the payload omits it, so an opponent never
+        // momentarily renders as holding zero cards while the reload is in flight.
+        const merged: CrazyEightsPlayerHand = {
+          ...next,
+          card_count: next.card_count ?? (Array.isArray(next.cards) ? next.cards.length : prev[i]?.card_count),
+        }
+        if (i === -1) return [...prev, merged].sort((a, b) => a.player_order - b.player_order)
+        const copy = [...prev]
+        copy[i] = merged
+        return copy
+      })
+      return countable
+    },
+    [gameCode, myPlayerId]
+  )
 
   const connected = useGameTableSync(
     gameCode,
@@ -249,7 +306,7 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
   const handCounts = useMemo(() => {
     const counts: Record<string, number> = {}
     for (const h of hands) {
-      counts[h.player_id] = h.cards?.length ?? 0
+      counts[h.player_id] = h.card_count ?? h.cards?.length ?? 0
     }
     return counts
   }, [hands])
@@ -285,7 +342,15 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
   // card and went out). Require the hand row to actually be loaded — after a network drop
   // `hands` can be briefly empty/unfetched, and treating a not-yet-loaded hand as empty would
   // flip a still-playing player into the watch-only UI until the next refetch.
-  const isOut = !!myHandRow && myHand.length === 0 && game?.status === 'active'
+  // `cards: null` means REDACTED, not empty (lib/hand-redaction.ts): if our own row came back
+  // hidden (no resume token yet, or a realtime payload we haven't re-fetched), fall back to the
+  // count that survives redaction and never let "I can't see it" render as "I'm out".
+  const myCardCount = myHandRow
+    ? Array.isArray(myHandRow.cards)
+      ? myHandRow.cards.length
+      : (myHandRow.card_count ?? null)
+    : null
+  const isOut = myCardCount === 0 && game?.status === 'active'
   const isWatching = isViewer || isOut
 
   // Turn timer (per-player countdown) + game timer (overall duration). Both hooks
@@ -501,7 +566,7 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
       isMyTurn={isMyTurn && !isWatching}
       watching={isWatching}
       acting={acting}
-      drawCount={session.draw_pile?.length ?? 0}
+      drawCount={session.draw_count ?? 0}
       drawDepleted={drawDepleted}
       myCanPlay={myCanPlay}
       suitCallActive={session.required_suit != null}

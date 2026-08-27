@@ -1,6 +1,14 @@
 import { apiUrl } from '@/lib/config'
 import { authHeaders } from '@/lib/auth-headers'
-import type { BingoCard, CodewordsBoard, GameType, TtlGuess, TtlStatement, WhotPlayerHand } from '@fateround/shared'
+import type {
+  BingoCard,
+  CodewordsBoard,
+  CrazyEightsPlayerHand,
+  GameType,
+  TtlGuess,
+  TtlStatement,
+  WhotPlayerHand,
+} from '@fateround/shared'
 import type { GamePlayerLimitsMap } from '@fateround/shared/lobby-limits'
 import { getCodeDefaultLimits } from '@fateround/shared/lobby-limits'
 import type { MafiaStateResponse } from '@fateround/shared/mafia'
@@ -1170,6 +1178,18 @@ export function postTtlMyStatement(gameCode: string, auth: { resumeToken?: strin
  */
 export function postTtlMyGuesses(gameCode: string, auth: { resumeToken?: string | null }) {
   return postJson<{ guesses: TtlGuess[] }>('/api/two-truths/my-guesses', {
+    gameCode: gameCode.toUpperCase(),
+    resumeToken: auth.resumeToken ?? undefined,
+  })
+}
+
+/**
+ * Crazy Eights hands via the server route — own cards in full, everyone else's as a count.
+ * Returns null on failure so callers can keep the previous hands rather than rendering an
+ * empty one (which reads as "you are out"). See src/lib/hand-redaction.ts.
+ */
+export function postCrazyEightsHands(gameCode: string, auth: { resumeToken?: string | null }) {
+  return postJson<{ hands: CrazyEightsPlayerHand[] }>('/api/crazy-eights/hands', {
     gameCode: gameCode.toUpperCase(),
     resumeToken: auth.resumeToken ?? undefined,
   })
