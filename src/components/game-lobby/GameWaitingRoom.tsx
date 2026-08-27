@@ -27,6 +27,7 @@ export function GameWaitingRoom({
   onRenamed,
   onLeft,
   onReady,
+  seatAvailable = true,
   title = 'Waiting for the host to start',
   subtitle = 'The game will begin shortly',
   minPlayers,
@@ -46,6 +47,13 @@ export function GameWaitingRoom({
   onLeft: () => void
   /** When set (spectator who can join), renders the "I'm in — ready to play" button. */
   onReady?: () => void | Promise<void>
+  /**
+   * Whether the room currently has an open seat for a spectator promotion. When false the
+   * ready button is greyed out and the copy explains why — a spectator who joined into a
+   * full room shouldn't see an armed button, only for the click to fail (that read like a
+   * broken control). Defaults to `true` for back-compat with callers that don't check.
+   */
+  seatAvailable?: boolean
   title?: string
   subtitle?: string
   minPlayers?: number
@@ -87,14 +95,19 @@ export function GameWaitingRoom({
         <p className="mt-1 text-sm text-muted">{subtitle}</p>
         {game ? <GameInfoChips game={game} className="pt-3" /> : null}
         {spectating && onReady ? (
-          <button
-            type="button"
-            onClick={() => void handleReady()}
-            disabled={readying}
-            className="btn-primary mt-4 w-full py-3 text-base font-bold sm:w-auto sm:px-8"
-          >
-            {readying ? 'Joining…' : "I'm in — ready to play"}
-          </button>
+          <>
+            <button
+              type="button"
+              onClick={() => void handleReady()}
+              disabled={readying || !seatAvailable}
+              className="btn-primary mt-4 w-full py-3 text-base font-bold sm:w-auto sm:px-8 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {readying ? 'Joining…' : !seatAvailable ? 'Room is full — waiting for a seat' : "I'm in — ready to play"}
+            </button>
+            {!seatAvailable && (
+              <p className="mt-2 text-xs text-muted">A seat will free up if someone leaves before the host starts.</p>
+            )}
+          </>
         ) : null}
       </div>
 
