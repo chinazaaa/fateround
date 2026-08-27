@@ -1,14 +1,15 @@
 // @vitest-environment jsdom
 import { describe, it, expect } from 'vitest'
-import { PLAYER_VIEW_REGISTRY } from './game-player-views'
-import { HOST_VIEW_REGISTRY } from './game-host-views'
+import { PLAYER_VIEW_REGISTRY, PLAYER_VIEW_LOADERS } from './game-player-views'
+import { HOST_VIEW_REGISTRY, HOST_VIEW_LOADERS } from './game-host-views'
 import { GAME_TYPE_CONFIG } from '@/lib/game-types'
 import type { GameType } from '@/types'
 
-// This test imports every dedicated player/host view component — each of which builds a
-// Supabase client at module load. It exercises the harness's dummy-Supabase env (without
-// it, these imports throw "supabaseUrl is required"). It also restores the registry
-// coverage check that had to be dropped from #150 for exactly that reason.
+// The views are code-split (see game-player-views.tsx), so importing the registries no longer
+// pulls every view in. The last test here resolves every loader explicitly to keep what the
+// static imports used to give for free: each view component builds a Supabase client at module
+// load, so this still exercises the harness's dummy-Supabase env (without it, these imports
+// throw "supabaseUrl is required") and still catches a view that fails to import at all.
 
 // Poll-family games render via the shared PollGamePlayerExperience and are intentionally
 // NOT in the per-game view registries. Every other game type must have both views.
@@ -47,4 +48,13 @@ describe('game view registries', () => {
       expect(v).toBeTruthy()
     }
   })
+
+  it('every lazily-loaded view module resolves to a real component', async () => {
+    const loaders = [...Object.entries(PLAYER_VIEW_LOADERS), ...Object.entries(HOST_VIEW_LOADERS)]
+    expect(loaders.length).toBeGreaterThan(0)
+    for (const [type, load] of loaders) {
+      const View = await load()
+      expect(View, `view for ${type} failed to load`).toBeTruthy()
+    }
+  }, 60_000)
 })

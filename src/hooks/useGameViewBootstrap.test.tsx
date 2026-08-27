@@ -2,15 +2,20 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, waitFor, act } from '@testing-library/react'
 
-const h = vi.hoisted(() => ({ gameRow: null as Record<string, unknown> | null, players: [] as unknown[] }))
+const h = vi.hoisted(() => ({
+  gameRow: null as Record<string, unknown> | null,
+  players: [] as unknown[],
+  /** When true, reads never settle — models an iOS-suspended fetch. */
+  hang: false,
+}))
 
 vi.mock('@/lib/supabase', () => {
   const chain = (result: unknown) => {
     const o: Record<string, unknown> = {
       select: () => o,
       eq: () => o,
-      maybeSingle: () => Promise.resolve(result),
-      order: () => Promise.resolve(result),
+      maybeSingle: () => (h.hang ? new Promise(() => {}) : Promise.resolve(result)),
+      order: () => (h.hang ? new Promise(() => {}) : Promise.resolve(result)),
     }
     return o
   }
@@ -28,6 +33,7 @@ import { useGameViewBootstrap } from './useGameViewBootstrap'
 beforeEach(() => {
   h.gameRow = null
   h.players = []
+  h.hang = false
 })
 
 function setup(extra: Record<string, unknown> = {}) {
@@ -181,6 +187,45 @@ describe('useGameViewBootstrap', () => {
     // Restore the default so the persistent mock doesn't leak into other tests.
     vi.mocked(utils.getPlayerSession).mockReturnValue(null)
     vi.unstubAllGlobals()
+  })
+
+  it('recovers when the first load hangs and the tab comes back (no permanent loading screen)', async () => {
+    // iOS Safari suspends in-flight fetches on backgrounding; some never settle. The
+    // singleflight latch used to stay held by that zombie forever, so every later load()
+    // short-circuited as "already loading" and the view sat on its spinner for good.
+    h.hang = true
+    const { result } = setup()
+    await waitFor(() => expect(result.current.screen).toBe('loading'))
+
+    // The stuck read is still pending. Push the clock past the abandonment deadline and
+    // let the tab come back to the foreground with a healthy connection.
+    const realNow = Date.now
+    const nowSpy = vi.spyOn(Date, 'now').mockImplementation(() => realNow() + 60_000)
+    try {
+      h.hang = false
+      h.gameRow = { id: 'ABCD', status: 'waiting' }
+      h.players = [{ id: 'p1' }]
+      act(() => {
+        document.dispatchEvent(new Event('visibilitychange'))
+      })
+      await waitFor(() => expect(result.current.screen).toBe('waiting'))
+    } finally {
+      nowSpy.mockRestore()
+    }
+  })
+
+  it('refreshes on pageshow (bfcache restore fires no visibilitychange)', async () => {
+    h.gameRow = { id: 'ABCD', status: 'waiting' }
+    const { result, loadGameState } = setup()
+    await waitFor(() => expect(result.current.screen).toBe('waiting'))
+    const before = loadGameState.mock.calls.length
+
+    h.gameRow = { id: 'ABCD', status: 'active' }
+    act(() => {
+      window.dispatchEvent(new Event('pageshow'))
+    })
+    await waitFor(() => expect(loadGameState.mock.calls.length).toBeGreaterThan(before))
+    await waitFor(() => expect(result.current.screen).toBe('active'))
   })
 
   it('completes bootstrap even if afterResolve throws (falls back to loadGameState state)', async () => {
