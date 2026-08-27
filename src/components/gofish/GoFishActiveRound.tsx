@@ -183,6 +183,10 @@ export function GoFishActiveRound({
         </>
       ) : (
         <>
+          {/* Spectator-only: what each asker has been going after, right under the
+              sticky bars so it's visible without scrolling. Above the opponent panel
+              on purpose — spectators want signal about the game before piles. */}
+          {readOnly && <SpectatorRecentPicks events={session?.event_log ?? []} nameOf={nameOf} />}
           {!readOnly && myHandRow && <MyHand cards={myCards} myBooks={myBooks} />}
           {!readOnly && needsRefill && <RefillPrompt oceanCount={session?.ocean_count ?? 0} />}
           {!readOnly && isMyTurn && !needsRefill && (
@@ -568,6 +572,85 @@ function OpponentsPanel({
           )
         })}
       </div>
+    </section>
+  )
+}
+
+/**
+ * Per-player "what have they asked for?" summary for spectators.
+ *
+ * Go Fish is a hidden-info game — the event log tells you what happened but doesn't let
+ * you scan "who probably still has what". This card aggregates each asker's last few
+ * requests (hits show the count they took, misses show they didn't get it) so a watcher
+ * can infer holdings: a miss means the target had none of that rank at that moment; a
+ * hit means the asker just picked up N of it.
+ *
+ * Rendered only for spectators (readOnly) because it would be noise for a player who
+ * already sees each event as a toast + in the log below.
+ */
+function SpectatorRecentPicks({
+  events,
+  nameOf,
+}: {
+  events: GoFishSession['event_log']
+  nameOf: (id: string) => string
+}) {
+  // Group the last N asks by asker. Chronological last-first so the freshest attempt is
+  // easy to spot; cap per-player at 5 to keep the row scannable in a 6-player game.
+  const perPlayer = useMemo(() => {
+    const byId = new Map<string, Array<{ rank: GoFishRank; hit: boolean; count: number; targetId: string }>>()
+    for (const event of events) {
+      if (event.kind !== 'ask_hit' && event.kind !== 'ask_miss') continue
+      const arr = byId.get(event.from_id) ?? []
+      arr.push({
+        rank: event.rank,
+        hit: event.kind === 'ask_hit',
+        count: event.kind === 'ask_hit' ? event.count : 0,
+        targetId: event.target_id,
+      })
+      byId.set(event.from_id, arr)
+    }
+    // Newest first, capped at 5 per player. Order rows by askerId so the layout doesn't
+    // reshuffle on every event; the caller (nameOf) resolves the label.
+    return Array.from(byId.entries())
+      .map(([id, asks]) => ({ id, asks: asks.slice(-5).reverse() }))
+      .sort((a, b) => a.id.localeCompare(b.id))
+  }, [events])
+
+  if (perPlayer.length === 0) return null
+  return (
+    <section className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-4 space-y-3">
+      <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">Recent picks</h2>
+      <div className="space-y-2">
+        {perPlayer.map(({ id, asks }) => (
+          <div key={id} className="flex items-start gap-2">
+            <p className="text-sm font-medium min-w-[6rem] shrink-0 truncate">{nameOf(id)}</p>
+            <div className="flex flex-wrap gap-1.5">
+              {asks.map((a, i) => (
+                <span
+                  key={i}
+                  className={
+                    a.hit
+                      ? 'px-2 py-0.5 rounded-md text-xs font-mono font-semibold border border-[var(--primary)] bg-[color-mix(in_srgb,var(--primary)_15%,var(--card))] text-body'
+                      : 'px-2 py-0.5 rounded-md text-xs font-mono border border-[var(--border)] bg-[var(--surface-inset-bg)] text-muted'
+                  }
+                  title={
+                    a.hit
+                      ? `${a.count} ${gofishRankPlural(a.rank)} from ${nameOf(a.targetId)}`
+                      : `Miss on ${nameOf(a.targetId)}`
+                  }
+                >
+                  {gofishRankLabel(a.rank)}
+                  {a.hit ? ` +${a.count}` : ' ×'}
+                </span>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+      <p className="text-[10px] text-faint">
+        Solid pink = hit (asker took cards). Faded × = miss (target had none at the time).
+      </p>
     </section>
   )
 }
