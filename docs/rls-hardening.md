@@ -163,8 +163,45 @@ and is what the table UI and the out/finished checks actually consume.
 | ------------ | --------------------------- | -------------------- | ------------------------------- | ------------- | --------------- | ---------- |
 | Whot         | `whot_player_hands`         | ✅ `/api/whot/hands` | ✅ player, host, history        | ✅            | ❌ **required** | ⏳ blocked |
 | UNO          | `uno_player_hands`          | ✅ `/api/uno/hands`  | ✅ player, host, history        | ✅            | ❌ **required** | ⏳ blocked |
-| Crazy Eights | `crazy_eights_player_hands` | ❌                   | ❌                              | ❌            | ❌              | ⏳ blocked |
+| Crazy Eights | `crazy_eights_player_hands` | ✅ `/api/crazy-eights/hands` | ✅ player, host, history        | ✅            | ❌ **required** | ⏳ blocked (pile counts ready; pile revoke pending a mobile release — see below) |
 | Bingo        | `bingo_cards`               | ✅ `/api/bingo/card` | ✅ player, host (own seat only) | ✅            | ❌ **required** | ⏳ blocked |
+
+### Deliberate: the hands routes are unauthenticated reads
+
+`POST /api/whot/hands` and `POST /api/crazy-eights/hands` accept a request with no token at all.
+Anyone who knows a game code gets every hand's `card_count`, and full hands once the game is
+`finished`. That is the intended contract, not an oversight:
+
+- card counts are public information at the table (you can see how many cards an opponent holds),
+  and the spectator/host views need them without holding any player's secret;
+- a finished game's hands are already on `/history/[code]` for everyone;
+- the secret that actually gates anything is the resume token, and it is the only thing that
+  unredacts a live hand.
+
+Rate limiting (`RATE_LIMITS.handsFetch`) is what bounds abuse. If this ever needs tightening, the
+change belongs to every card game at once, not one route.
+
+### Crazy Eights also had to hide the deck
+
+Redacting hands alone is not enough where the ordered deck is public: with `draw_pile` +
+`discard_pile` and your own hand, a 2-player opponent's hand is a subtraction, and at any table
+size you know every future draw in order. The fix is split in two, per "Split the migration"
+above: `20260815115000_crazy8_pile_counts.sql` **adds** the generated `draw_count` /
+`discard_count` — all the clients ever used (`isDrawPileDepleted`, the play surface's draw count)
+— and is safe against every client version, while `20260815120000_sec_crazy8_hide_piles.sql`
+**revokes** the two piles and must wait for a compatible mobile build. The revoke raises rather
+than proceeds if the counts are absent. **Whot and UNO still ship their piles — same leak, still
+open.**
+
+### Redacted state must never be read as real state (the recurring bug)
+
+Three separate places on the Crazy Eights branch turned "I can't see this" into a game fact:
+`isOut` from a hidden hand, opponent counts frozen because a realtime payload with no `cards` was
+reported as absorbed (so `useGameTableSync` skipped the reconciliation reload), and
+`crazyEightsPlacementOrder` scoring every hidden hand at 0 cards / 0 points, which ranks a whole
+table as "out of cards". The rule: a redacted field resolves to `null`/unknown and is rendered as
+unknown — never 0, never empty, never "out". `card_count` and `finish_order` are the only
+substitutes, because they survive redaction / are public session state.
 
 **Per the staging rule below, the migration revoking `cards` from anon comes LAST — one
 migration covering all four, only once every reader for every one of those tables is on a

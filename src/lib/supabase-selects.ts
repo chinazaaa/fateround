@@ -108,10 +108,15 @@ export const GOFISH_SESSION_SELECT =
  */
 export const GOFISH_PLAYER_HANDS_SELECT = 'id,game_id,player_id,cards,books,player_order,created_at'
 
+// `draw_pile`/`discard_pile` are deliberately absent: anon/authenticated hold no SELECT on them
+// (20260815120000), since the ordered deck deanonymizes every other hand. The generated
+// `draw_count`/`discard_count` cover the only thing clients ever used them for — the size.
 export const CRAZY8_SESSION_SELECT =
-  'id,game_id,turn_order,current_turn_index,direction,phase,draw_pile,discard_pile,top_card,required_suit,pick_two_stack,joker_penalty,status_message,winner_player_id,finish_order,turn_deadline_at,created_at,updated_at'
+  'id,game_id,turn_order,current_turn_index,direction,phase,draw_count,discard_count,top_card,required_suit,pick_two_stack,joker_penalty,status_message,winner_player_id,finish_order,turn_deadline_at,created_at,updated_at'
 
-export const CRAZY8_PLAYER_HANDS_SELECT = 'id,game_id,player_id,cards,player_order,created_at'
+// Crazy Eights hands are NOT selected from the browser any more — they come from
+// /api/crazy-eights/hands, which redacts every hand but the caller's own (lib/hand-redaction.ts).
+// The old `…,cards,…` select is deliberately gone so nothing can reintroduce the direct read.
 
 // Two independent sets of removals are folded in here — keep BOTH:
 //   * `draw_pile`/`discard_pile` are gone because anon/authenticated hold no SELECT on them

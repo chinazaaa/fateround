@@ -210,10 +210,13 @@ function drawWithRefill(
   return { drawn, pile: p, discard: d, reshuffled }
 }
 
+// Solo play never reads a session from Supabase — it builds one in memory — so the piles are
+// always present here. The `?? []` only satisfies the optional type introduced when
+// draw_pile/discard_pile were revoked from anon for multiplayer.
 function discardTop(session: CrazyEightsSession): CrazyEightsCard[] {
   const prev = session.top_card
-  if (!prev) return session.discard_pile
-  return [...session.discard_pile, prev]
+  if (!prev) return session.discard_pile ?? []
+  return [...(session.discard_pile ?? []), prev]
 }
 
 /**
@@ -401,7 +404,7 @@ export function crazy8SoloDraw(state: Crazy8SoloState, playerIdx: 0 | 1, rng: ()
   const penalty = pickTwo > 0 ? pickTwo : jokerPenalty > 0 ? jokerPenalty : 0
   const count = penalty > 0 ? penalty : 1
 
-  const drawRes = drawWithRefill(state.session.draw_pile, state.session.discard_pile, count, rng)
+  const drawRes = drawWithRefill(state.session.draw_pile ?? [], state.session.discard_pile ?? [], count, rng)
   const hand = state.hands[playerIdx]
 
   if (drawRes.drawn.length === 0) {
