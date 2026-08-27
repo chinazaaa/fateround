@@ -148,6 +148,11 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
       // fetch that finally settles must not write its stale snapshot over newer state.
       const superseded = () => gen !== loadGenRef.current
 
+      // NOTE: `loadGameState` is the view's own fetch and sets the view's own state, so a run
+      // already inside it can still commit late — guarding that would mean threading the
+      // generation through all ~17 views. Everything this hook owns is guarded below, which
+      // bounds the stale window to that one call.
+
       const [gameRes, plrsRes] = await Promise.all([
         supabase.from('games').select(GAME_SELECT).eq('id', gameCode).maybeSingle(),
         supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at'),
@@ -184,8 +189,13 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
       setPlayers(plrs)
 
       const { state, ok } = await loadGameState(gameData, plrs)
+      // Every await below is a point where a fresher load can overtake this one, so re-check
+      // before each commit rather than only before setScreen: a zombie that resolves late
+      // would otherwise leave its stale session behind the newer run's screen.
+      if (superseded()) return ok
 
       const playerSession = await resolvePlayerSession(gameCode, plrs)
+      if (superseded()) return ok
       const playerId = playerSession?.playerId ?? null
       setMyPlayerId(playerId)
       setMyResumeToken(playerSession?.resumeToken ?? null)
