@@ -329,7 +329,7 @@ function HandAndActions({
                 disabled={!topDiscard}
                 onClick={() => onDraw?.('discard')}
               >
-                {topDiscard ? `Take ${rummyCardLabel(topDiscard)}` : 'Take discard'}
+                {topDiscard ? `Take discard (${rummyCardLabel(topDiscard)})` : 'Take discard'}
               </button>
             </div>
           ) : isMyTurn && canAct ? (
