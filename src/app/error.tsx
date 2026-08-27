@@ -1,156 +1,30 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { ServerErrorPage } from '@/components/ServerErrorPage'
 
 /**
  * Global error boundary.
  *
- * iOS Safari (and any mobile browser under memory pressure) will suspend a
- * background tab; when you switch back — from WhatsApp, from another app —
- * the tab resumes and any in-flight fetch, background revalidation, or
- * navigation prefetch that was in flight can reject with a NetworkError,
- * bubbling into this boundary. That's not a real "the server is down"
- * situation — it's a resume hiccup and the very next fetch usually
- * succeeds. So we auto-retry once per resume event when the tab is
- * actually visible AND the browser reports online; only if THAT retry
- * also errors does the user see the "Can't reach server" screen.
+ * Deliberately does nothing but show the error screen. It used to auto-`reset()`
+ * itself on tab resume, to hide the "Can't reach server" flash people saw after
+ * switching back from another app. `reset()` re-mounts the ENTIRE route, so every
+ * app switch that tripped this boundary tore the whole game down — realtime
+ * subscriptions, in-memory state, every fetch — and rebuilt it from a loading
+ * spinner. Three follow-up commits widened when that fired (once per boundary →
+ * once per error → once per resume, i.e. every single app switch), each one
+ * making the teardown more frequent rather than less.
  *
- * Dedup is MODULE-scoped, not component-scoped: `reset()` unmounts and
- * remounts this component, so a component-scoped ref would forget the
- * retry across mounts. But dedup is scoped per RESUME EPOCH, not per
- * page lifetime — a monotonically increasing counter bumps on every
- * visibility→visible or online transition. That way a user who
- * app-switches back into the page many times (playing Monopoly while
- * flipping to WhatsApp, etc.) gets a fresh silent retry on each return
- * instead of hitting the "Can't reach server" screen from the second
- * switch onward. A retry that itself re-throws stays on the same epoch,
- * so it can't retry again until a new resume — that's the guard against
- * the tight reset/error/reset loop Safari can't unwind.
- *
- * The retry is also deferred a beat so it doesn't run synchronously
- * inside the render that reported the error — that gives React a chance
- * to unmount the old tree cleanly before we ask it to try again.
+ * The flash it was hiding is a symptom: something throws when the tab resumes,
+ * and none of those four attempts touched it, because nothing ever showed WHAT
+ * throws. So: no auto-retry, no silent placeholder. The error surfaces, with its
+ * identity on screen (see ServerErrorPage), and "Try again" is the user's to
+ * press — the behaviour this page had before any of it.
  */
-
-// Resume epoch: bumped every time the tab becomes visible or the network
-// comes back online. Starts at 1 so the first mount (no resume yet) can
-// still auto-retry once.
-let resumeEpoch = 1
-if (typeof document !== 'undefined') {
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') resumeEpoch++
-  })
-}
-if (typeof window !== 'undefined') {
-  window.addEventListener('online', () => {
-    resumeEpoch++
-  })
-}
-
-// For each error digest, the resume epoch at which we last auto-retried it.
-// If the current epoch is greater, we're allowed to retry again.
-const retriedAtEpoch = new Map<string, number>()
-
 export default function GlobalErrorPage({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
-  // Prefer digest (stable across mounts); fall back to message so an error without
-  // a Next.js digest still gets a stable identity.
-  const key = error.digest || error.message || 'unknown-error'
-
-  const canRetry = () => {
-    const last = retriedAtEpoch.get(key)
-    return last === undefined || last < resumeEpoch
-  }
-
-  // Whether the auto-retry has already been used for THIS error at the current
-  // resume epoch. If so, the retry clearly did not fix it — fall through and
-  // show the full "Can't reach server" screen. Otherwise render a silent
-  // placeholder while the retry runs, so a one-off resume-hiccup doesn't flash
-  // the error page for a couple of hundred milliseconds before the retry
-  // succeeds. Read as initial state so the first render already picks the
-  // right branch — a setState after mount would still render the wrong UI once.
-  const [retryExhausted, setRetryExhausted] = useState<boolean>(() => !canRetry())
-
   useEffect(() => {
     console.error('Global Error Boundary caught:', error)
   }, [error])
-
-  useEffect(() => {
-    if (typeof window === 'undefined' || typeof document === 'undefined') return
-    if (!canRetry()) {
-      // Already retried at this epoch — the placeholder branch below would
-      // wait forever for a retry that isn't coming. Show the error screen.
-      setRetryExhausted(true)
-      return
-    }
-
-    let timeoutId: number | null = null
-    // If we can't retry right now (hidden tab, offline), fall back to the full
-    // error page after a short grace period rather than a placeholder that
-    // never resolves.
-    const grace = window.setTimeout(() => setRetryExhausted(true), 4000)
-
-    const tryAutoReset = () => {
-      if (!canRetry()) return
-      // Only retry if the tab is actually visible (a hidden tab reset would
-      // just re-fire) AND the browser thinks the network is up.
-      if (document.visibilityState !== 'visible') return
-      if (typeof navigator !== 'undefined' && navigator.onLine === false) return
-      // Mark BEFORE calling reset(): if reset() re-throws the same error, the
-      // fresh mount sees this epoch is already used and won't retry again
-      // until a new resume bumps the epoch.
-      retriedAtEpoch.set(key, resumeEpoch)
-      window.clearTimeout(grace)
-      // Defer past this render/microtask so the error boundary can unmount its
-      // subtree cleanly before Next attempts to remount it. Without this the
-      // retry runs inside the same tick as the error and Safari can pin the
-      // main thread on a reset loop when the retry immediately re-throws.
-      timeoutId = window.setTimeout(reset, 200)
-    }
-
-    // If we mount while already visible + online, retry (deferred).
-    tryAutoReset()
-
-    document.addEventListener('visibilitychange', tryAutoReset)
-    window.addEventListener('online', tryAutoReset)
-    return () => {
-      document.removeEventListener('visibilitychange', tryAutoReset)
-      window.removeEventListener('online', tryAutoReset)
-      window.clearTimeout(grace)
-      if (timeoutId != null) window.clearTimeout(timeoutId)
-    }
-  }, [error, reset, key])
-
-  if (!retryExhausted) {
-    // Silent placeholder while the auto-retry runs. A blank page is nicer than
-    // flashing "Can't reach server" for a couple of hundred milliseconds and
-    // then swapping straight back to the page the user was on.
-    return (
-      <div
-        aria-busy="true"
-        aria-live="polite"
-        style={{
-          minHeight: '100dvh',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          background: 'var(--background)',
-        }}
-      >
-        <div
-          style={{
-            width: 40,
-            height: 40,
-            border: '3px solid var(--primary)',
-            borderTopColor: 'transparent',
-            borderRadius: '50%',
-            animation: 'error-boundary-spin 0.9s linear infinite',
-          }}
-        />
-        <style>{`@keyframes error-boundary-spin { to { transform: rotate(360deg); } }`}</style>
-      </div>
-    )
-  }
 
   return <ServerErrorPage error={error} reset={reset} />
 }
