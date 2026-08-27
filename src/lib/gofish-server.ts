@@ -430,6 +430,91 @@ export async function processGoFishRefill(
   return { drewCount: result.drawn.length }
 }
 
+/**
+ * Drop a player from a Go Fish game. Mirrors removeWhotPlayer:
+ *
+ * - Lobby / spectator / already-finished: just delete their row + hand. No session mutation.
+ * - Active game with them in turn_order: filter them from turn_order, adjust current index,
+ *   delete their hand. When active-remaining < 2 (Go Fish min is 2) the game is finished:
+ *   the lone survivor takes the winner slot if they have any books; otherwise winner is null
+ *   (matches resolveWinner's no-books-null contract from PR #1109).
+ */
+export async function removeGoFishPlayer(
+  supabase: SupabaseClient,
+  gameId: string,
+  playerId: string,
+  playerName?: string
+): Promise<{ error: string | null }> {
+  const { data: sessionRaw } = await supabase.from('gofish_sessions').select('*').eq('game_id', gameId).maybeSingle()
+  const session = sessionRaw as GoFishSession | null
+
+  const order = session ? [...(session.turn_order ?? [])] : []
+  const removedIndex = order.indexOf(playerId)
+
+  if (session && removedIndex >= 0 && session.phase !== 'finished') {
+    const turnOrder = order.filter((id) => id !== playerId)
+    let currentTurnIndex = session.current_turn_index
+    if (removedIndex < currentTurnIndex) currentTurnIndex -= 1
+    else if (removedIndex === currentTurnIndex && turnOrder.length > 0) currentTurnIndex %= turnOrder.length
+    if (turnOrder.length === 0) currentTurnIndex = 0
+
+    const removedName = playerName ?? 'A player'
+    const { data: playerRows } = await supabase.from('players').select('id, name').eq('game_id', gameId)
+    const names = new Map<string, string>()
+    for (const p of playerRows ?? []) names.set(p.id, p.name)
+
+    const update: Record<string, unknown> = {
+      turn_order: turnOrder,
+      current_turn_index: currentTurnIndex,
+      updated_at: new Date().toISOString(),
+    }
+
+    // Go Fish needs at least 2 to keep playing. When the leaver drops the room below that
+    // (lone survivor, or empty), finalize. `resolveWinner` on the remaining hands hands us
+    // the fair answer: lone survivor with books wins; nobody with books ⇒ null.
+    if (turnOrder.length < 2) {
+      const { data: handsRaw } = await supabase
+        .from('gofish_player_hands')
+        .select('*')
+        .eq('game_id', gameId)
+        .neq('player_id', playerId)
+      const remainingHands = ((handsRaw as GoFishPlayerHand[] | null) ?? []).map((h) => ({
+        ...h,
+        cards: (h.cards ?? []) as GoFishCard[],
+        books: (h.books ?? []) as GoFishRank[],
+      }))
+      const winnerPlayerId = resolveWinner(remainingHands)
+      const winnerName = winnerPlayerId ? (names.get(winnerPlayerId) ?? 'Winner') : null
+      update.phase = 'finished'
+      update.winner_player_id = winnerPlayerId
+      update.status_message = winnerName
+        ? `${removedName} left — ${winnerName} wins!`
+        : `${removedName} left — game over.`
+      update.turn_deadline_at = null
+      update.event_log = [...(session.event_log ?? []), { kind: 'game_over', at: update.updated_at }]
+    } else {
+      const nextPlayerId = turnOrder[currentTurnIndex]
+      update.status_message = `${removedName} left. ${names.get(nextPlayerId) ?? 'Next player'}'s turn`
+      update.turn_deadline_at = gofishTurnDeadline(
+        (await supabase.from('games').select('timer_seconds').eq('id', gameId).maybeSingle()).data?.timer_seconds ?? 0
+      )
+    }
+
+    const { error: sessionError } = await supabase.from('gofish_sessions').update(update).eq('game_id', gameId)
+    if (sessionError) return { error: internalErrorMessage('gofish', sessionError) }
+
+    await supabase.from('gofish_player_hands').delete().eq('game_id', gameId).eq('player_id', playerId)
+    if (turnOrder.length < 2) await markGameFinished(supabase, gameId)
+    const { error } = await supabase.from('players').delete().eq('id', playerId).eq('game_id', gameId)
+    return { error: error?.message ?? null }
+  }
+
+  // Lobby / spectator / already-finished / not in turn_order → just drop hand + row.
+  await supabase.from('gofish_player_hands').delete().eq('game_id', gameId).eq('player_id', playerId)
+  const { error } = await supabase.from('players').delete().eq('id', playerId).eq('game_id', gameId)
+  return { error: error?.message ?? null }
+}
+
 function refillErrorMessage(
   code: 'game_finished' | 'not_your_turn' | 'unknown_player' | 'hand_not_empty' | 'ocean_empty'
 ): string {

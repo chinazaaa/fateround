@@ -10,6 +10,7 @@ import { removeMonopolyPlayer } from '@/lib/monopoly'
 import { removeScrabblePlayer } from '@/lib/scrabble'
 import { removeWhotPlayer } from '@/lib/whot'
 import { removeCrazyEightsPlayer } from '@/lib/crazy-eights'
+import { removeGoFishPlayer } from '@/lib/gofish-server'
 import { removeUnoPlayer } from '@/lib/uno'
 import { removeLudoPlayer } from '@/lib/ludo'
 import { removeMahjongPlayer } from '@/lib/mahjong'
@@ -53,6 +54,7 @@ import {
   isWhotGame,
   isCrazyEightsGame,
   isUnoGame,
+  isGoFishGame,
   isLudoGame,
   isMahjongGame,
   isSnakeAndLadderGame,
@@ -2046,6 +2048,12 @@ export async function DELETE(req: NextRequest) {
 
   if (isWhotGame(gameType)) {
     const { error } = await removeWhotPlayer(getSupabaseAdmin(), id, playerId, player.name)
+    if (error) return NextResponse.json({ error }, { status: 500 })
+    return NextResponse.json({ success: true })
+  }
+
+  if (isGoFishGame(gameType)) {
+    const { error } = await removeGoFishPlayer(getSupabaseAdmin(), id, playerId, player.name)
     if (error) return NextResponse.json({ error }, { status: 500 })
     return NextResponse.json({ success: true })
   }
