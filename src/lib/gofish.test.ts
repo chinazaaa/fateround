@@ -396,6 +396,17 @@ describe('game over', () => {
     ]
     expect(resolveWinner(hands)).toBe('b')
   })
+
+  it('no books completed by anyone → no winner (game ended too early)', () => {
+    // Host ends the game immediately after start: hands are the initial deal, nobody's
+    // touched a book yet. Falling back to standings[0] here would declare an arbitrary
+    // "winner" who did nothing — read as unearned by the player. Explicitly null.
+    const hands: GoFishPlayerHand[] = [
+      { ...hand('a', [card(1), card(2), card(3), card(4), card(5), card(6), card(7)]), books: [] },
+      { ...hand('b', [card(8), card(9), card(10), card(11), card(12), card(13), card(1)]), books: [] },
+    ]
+    expect(resolveWinner(hands)).toBeNull()
+  })
 })
 
 describe('standings + logging', () => {
