@@ -12,6 +12,11 @@ import { trackEvent, GA_EVENTS } from '@/lib/analytics'
 import { authHeaders } from '@/lib/auth-headers'
 import type { Game, Player } from '@/types'
 
+/** How long an in-flight load may run before a new caller is allowed to supersede it.
+ *  Comfortably longer than a slow-but-real read, short enough that a returning player
+ *  isn't left staring at a spinner. */
+const STALE_LOAD_MS = 12_000
+
 /**
  * The load/screen/join scaffold that ~17 game player-views re-implement identically:
  * fetch the game + players, resolve this device's player session, then derive the screen
@@ -121,94 +126,140 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
   // read-replica still returning the pre-finish `active` row bounces it back to the board.
   const loadingRef = useRef(false)
   const pendingRef = useRef(false)
+  // When the in-flight load started, and which generation it belongs to. iOS Safari
+  // suspends in-flight fetches when the tab goes to the background and, on return, some
+  // of them neither resolve nor reject — the promise is simply abandoned. That left
+  // `loadingRef` latched true forever, so every later load() (the visibility refresh, the
+  // realtime fallback poll, a timer) returned early as "already loading" and the view sat
+  // on its loading spinner until the user reloaded the page by hand. A load that has been
+  // running longer than STALE_LOAD_MS is therefore treated as abandoned: the generation is
+  // bumped (so the zombie can no longer release the latch or set state) and a fresh load
+  // starts.
+  const loadStartedAtRef = useRef(0)
+  const loadGenRef = useRef(0)
   // Keyed on the session that finished. `start` only moves a game to 'active' from 'waiting'
   // with a NEW session_started_at, so a later read showing the SAME session as 'active' can
   // only be replica lag — ignore it. A real replay passes through 'waiting' (clears the latch).
   const finishedSessionRef = useRef<string | null | undefined>(undefined)
 
-  const runLoad = useCallback(async (): Promise<boolean> => {
-    const [gameRes, plrsRes] = await Promise.all([
-      supabase.from('games').select(GAME_SELECT).eq('id', gameCode).maybeSingle(),
-      supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at'),
-    ])
-    if (!supabasePollOk(gameRes, plrsRes)) return false
+  const runLoad = useCallback(
+    async (gen: number): Promise<boolean> => {
+      // True once this run has been superseded by a fresher one (see loadGenRef). A zombie
+      // fetch that finally settles must not write its stale snapshot over newer state.
+      const superseded = () => gen !== loadGenRef.current
 
-    const gameData = gameRes.data as Game | null
-    const plrs = (plrsRes.data ?? []) as Player[]
+      const [gameRes, plrsRes] = await Promise.all([
+        supabase.from('games').select(GAME_SELECT).eq('id', gameCode).maybeSingle(),
+        supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at'),
+      ])
+      if (superseded()) return true
+      if (!supabasePollOk(gameRes, plrsRes)) return false
 
-    if (!gameData) {
-      // Clear any cached state from a prior successful load so consumers don't render
-      // (or `join()` branch on) a stale game once it's gone.
-      setGame(null)
-      setPlayers([])
-      setMyPlayerId(null)
-      setMyResumeToken(null)
-      setScreen(notFoundScreen)
-      return true
-    }
+      const gameData = gameRes.data as Game | null
+      const plrs = (plrsRes.data ?? []) as Player[]
 
-    // Stale-replica guard (see finishedSessionRef above).
-    if (
-      finishedSessionRef.current !== undefined &&
-      gameData.status === 'active' &&
-      (gameData.session_started_at ?? null) === finishedSessionRef.current
-    ) {
-      return true
-    }
-    if (gameData.status === 'finished') finishedSessionRef.current = gameData.session_started_at ?? null
-    else if (gameData.status === 'waiting') finishedSessionRef.current = undefined
-
-    setGame(gameData)
-    setPlayers(plrs)
-
-    const { state, ok } = await loadGameState(gameData, plrs)
-
-    const playerSession = await resolvePlayerSession(gameCode, plrs)
-    const playerId = playerSession?.playerId ?? null
-    setMyPlayerId(playerId)
-    setMyResumeToken(playerSession?.resumeToken ?? null)
-
-    // Post-resolve seam: run playerId-dependent side effects and optionally enrich the
-    // state slice handed to computeScreen (undefined return => keep the loadGameState state).
-    let effectiveState = state
-    if (afterResolve) {
-      try {
-        const patched = await afterResolve(gameData, playerId, state)
-        if (patched !== undefined) effectiveState = patched
-      } catch (err) {
-        // A throwing afterResolve must not leave the hook stuck on the loading screen
-        // (or reject as an unhandled promise) — fall back to the loadGameState state and
-        // still compute + set the screen so bootstrap always completes.
-        console.error('useGameViewBootstrap: afterResolve failed', err)
+      if (!gameData) {
+        // Clear any cached state from a prior successful load so consumers don't render
+        // (or `join()` branch on) a stale game once it's gone.
+        setGame(null)
+        setPlayers([])
+        setMyPlayerId(null)
+        setMyResumeToken(null)
+        setScreen(notFoundScreen)
+        return true
       }
-    }
 
-    setScreen(computeScreen(gameData, playerId, effectiveState))
-    return ok
-  }, [gameCode, notFoundScreen, loadGameState, computeScreen, afterResolve])
+      // Stale-replica guard (see finishedSessionRef above).
+      if (
+        finishedSessionRef.current !== undefined &&
+        gameData.status === 'active' &&
+        (gameData.session_started_at ?? null) === finishedSessionRef.current
+      ) {
+        return true
+      }
+      if (gameData.status === 'finished') finishedSessionRef.current = gameData.session_started_at ?? null
+      else if (gameData.status === 'waiting') finishedSessionRef.current = undefined
+
+      setGame(gameData)
+      setPlayers(plrs)
+
+      const { state, ok } = await loadGameState(gameData, plrs)
+
+      const playerSession = await resolvePlayerSession(gameCode, plrs)
+      const playerId = playerSession?.playerId ?? null
+      setMyPlayerId(playerId)
+      setMyResumeToken(playerSession?.resumeToken ?? null)
+
+      // Post-resolve seam: run playerId-dependent side effects and optionally enrich the
+      // state slice handed to computeScreen (undefined return => keep the loadGameState state).
+      let effectiveState = state
+      if (afterResolve) {
+        try {
+          const patched = await afterResolve(gameData, playerId, state)
+          if (patched !== undefined) effectiveState = patched
+        } catch (err) {
+          // A throwing afterResolve must not leave the hook stuck on the loading screen
+          // (or reject as an unhandled promise) — fall back to the loadGameState state and
+          // still compute + set the screen so bootstrap always completes.
+          console.error('useGameViewBootstrap: afterResolve failed', err)
+        }
+      }
+
+      if (superseded()) return ok
+      setScreen(computeScreen(gameData, playerId, effectiveState))
+      return ok
+    },
+    [gameCode, notFoundScreen, loadGameState, computeScreen, afterResolve]
+  )
 
   const load = useCallback(async (): Promise<boolean> => {
     // Coalesce overlapping calls: while one runs, extra callers flag a single trailing re-run
     // so we still settle on the freshest snapshot instead of racing N interleaved loads.
-    if (loadingRef.current) {
+    if (loadingRef.current && Date.now() - loadStartedAtRef.current < STALE_LOAD_MS) {
       pendingRef.current = true
       return true
     }
+    // Either nothing is running, or what's running has been stuck past the deadline and is
+    // abandoned. Bumping the generation orphans the stuck run: its `finally` can no longer
+    // clear the latch out from under this one, and its state writes are dropped.
+    const gen = ++loadGenRef.current
     loadingRef.current = true
+    loadStartedAtRef.current = Date.now()
     try {
-      let ok = await runLoad()
-      while (pendingRef.current) {
+      let ok = await runLoad(gen)
+      while (pendingRef.current && gen === loadGenRef.current) {
         pendingRef.current = false
-        ok = await runLoad()
+        loadStartedAtRef.current = Date.now()
+        ok = await runLoad(gen)
       }
       return ok
     } finally {
-      loadingRef.current = false
+      if (gen === loadGenRef.current) loadingRef.current = false
     }
   }, [runLoad])
 
   useEffect(() => {
     void load()
+  }, [load])
+
+  // Re-read whenever the tab comes back to the foreground. A backgrounded tab loses its
+  // realtime socket (and, on iOS, any in-flight fetch), so without this the view can come
+  // back showing a snapshot from before the switch — or, for the several views that run no
+  // fallback poll at all, never come back at all. `pageshow` covers the bfcache restore
+  // that fires no visibilitychange.
+  useEffect(() => {
+    if (typeof document === 'undefined') return
+    const refresh = () => {
+      if (document.visibilityState !== 'visible') return
+      void load()
+    }
+    const onPageShow = () => refresh()
+    document.addEventListener('visibilitychange', refresh)
+    window.addEventListener('pageshow', onPageShow)
+    return () => {
+      document.removeEventListener('visibilitychange', refresh)
+      window.removeEventListener('pageshow', onPageShow)
+    }
   }, [load])
 
   const join = useCallback(
