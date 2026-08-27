@@ -4,7 +4,7 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { fetchCodewordsBoard } from '@/lib/codewords-board-client'
-import { fetchWhotHands } from '@/lib/hands-client'
+import { fetchWhotHands, fetchCrazyEightsHands } from '@/lib/hands-client'
 import { roundGenderLabel } from '@/lib/participants'
 import { isGenderFreeVoting } from '@/lib/gender-based'
 import {
@@ -47,7 +47,6 @@ import {
   CODEWORDS_GUESS_SELECT,
   CODEWORDS_PLAYER_ROLE_SELECT,
   CONFESSION_SELECT,
-  CRAZY8_PLAYER_HANDS_SELECT,
   CRAZY8_SESSION_SELECT,
   GAME_SELECT,
   LUDO_PLAYER_STATE_SELECT,
@@ -65,7 +64,6 @@ import {
   UNO_PLAYER_HANDS_SELECT,
   UNO_SESSION_SELECT,
   VOTE_SELECT,
-  WHOT_PLAYER_HANDS_SELECT,
   WHOT_SESSION_SELECT,
   YAHTZEE_PLAYER_SCORES_SELECT,
   YAHTZEE_SESSION_SELECT,
@@ -426,14 +424,13 @@ export default function GameHistoryPage() {
       }
 
       if (isCrazyEightsGame(gameType)) {
-        const [{ data: plrs }, { data: sessionData }, { data: handRows }] = await Promise.all([
+        // Hands via /api/crazy-eights/hands: `cards` is no longer read directly by the browser.
+        // This page only renders finished games, and the route reveals full hands once a game is
+        // finished, so the post-game summary is unchanged.
+        const [{ data: plrs }, { data: sessionData }, handRows] = await Promise.all([
           supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at'),
           supabase.from('crazy_eights_sessions').select(CRAZY8_SESSION_SELECT).eq('game_id', gameCode).maybeSingle(),
-          supabase
-            .from('crazy_eights_player_hands')
-            .select(CRAZY8_PLAYER_HANDS_SELECT)
-            .eq('game_id', gameCode)
-            .order('player_order'),
+          fetchCrazyEightsHands(gameCode, {}),
         ])
         setGame(gameData)
         setPlayers(plrs ?? [])

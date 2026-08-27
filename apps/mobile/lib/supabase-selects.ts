@@ -75,10 +75,14 @@ export const BINGO_CALLED_NUMBER_SELECT = 'id,game_id,number,called_at'
 export const BINGO_CLAIM_SELECT = 'id,game_id,player_id,pattern,status,created_at'
 export const TRIVIA_ANSWER_SELECT = 'id,game_id,round_id,player_id,choice_index,is_correct,response_ms,points'
 
+// `draw_pile`/`discard_pile` are deliberately absent: anon/authenticated hold no SELECT on them
+// (20260815120000), since the ordered deck deanonymizes every other hand. The generated
+// `draw_count`/`discard_count` cover the only thing clients ever used them for — the size.
 export const CRAZY8_SESSION_SELECT =
-  'id,game_id,turn_order,current_turn_index,direction,phase,draw_pile,discard_pile,top_card,required_suit,pick_two_stack,joker_penalty,status_message,winner_player_id,finish_order,turn_deadline_at,created_at,updated_at'
+  'id,game_id,turn_order,current_turn_index,direction,phase,draw_count,discard_count,top_card,required_suit,pick_two_stack,joker_penalty,status_message,winner_player_id,finish_order,turn_deadline_at,created_at,updated_at'
 
-export const CRAZY8_PLAYER_HANDS_SELECT = 'id,game_id,player_id,cards,player_order'
+// Crazy Eights hands come from /api/crazy-eights/hands (redacted server-side), never from a
+// direct table select — the old `…,cards,…` select is gone so it can't be reintroduced.
 
 export const WHOT_SESSION_SELECT =
   'id,game_id,turn_order,current_turn_index,phase,draw_pile,discard_pile,top_card,required_shape,required_number,pick_two_stack,pick_five_stack,status_message,winner_player_id,finish_order,reshuffle_count,turn_deadline_at,created_at,updated_at'

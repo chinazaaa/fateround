@@ -767,8 +767,19 @@ export interface CrazyEightsSession {
   current_turn_index: number
   direction: number
   phase: CrazyEightsPhase
-  draw_pile: CrazyEightsCard[]
-  discard_pile: CrazyEightsCard[]
+  /**
+   * REDACTED from clients: anon/authenticated hold no SELECT on this column, because the ordered
+   * deck plus your own hand reveals every opponent's hand (2 players) or every future draw (N).
+   * Only service-role reads (src/lib/crazy-eights.ts) see it — hence optional. Clients use
+   * `draw_count`.
+   */
+  draw_pile?: CrazyEightsCard[]
+  /** REDACTED from clients alongside `draw_pile` — see above. Clients use `discard_count`. */
+  discard_pile?: CrazyEightsCard[]
+  /** Public size of `draw_pile`. Generated stored column; counts leak no order or identity. */
+  draw_count?: number
+  /** Public size of `discard_pile`. Generated stored column. */
+  discard_count?: number
   top_card: CrazyEightsCard | null
   required_suit: CrazyEightsCalledSuit | null
   pick_two_stack: number
@@ -787,7 +798,14 @@ export interface CrazyEightsPlayerHand {
   id: string
   game_id: string
   player_id: string
-  cards: CrazyEightsCard[]
+  /**
+   * `null` means REDACTED (another player's hand) — deliberately not `[]`, since an empty
+   * array is meaningful state ("this player is out"). Use `card_count` for anyone but the
+   * local player. See src/lib/hand-redaction.ts.
+   */
+  cards: CrazyEightsCard[] | null
+  /** How many cards the player holds. Public information; survives redaction. */
+  card_count?: number
   player_order: number
 }
 

@@ -1,6 +1,6 @@
 import { apiUrl } from '@/lib/config'
 import { authHeaders } from '@/lib/auth-headers'
-import type { BingoCard, CodewordsBoard, GameType, WhotPlayerHand } from '@fateround/shared'
+import type { BingoCard, CodewordsBoard, CrazyEightsPlayerHand, GameType, WhotPlayerHand } from '@fateround/shared'
 import type { GamePlayerLimitsMap } from '@fateround/shared/lobby-limits'
 import { getCodeDefaultLimits } from '@fateround/shared/lobby-limits'
 import type { MafiaStateResponse } from '@fateround/shared/mafia'
@@ -1143,6 +1143,18 @@ export function postDescribeItWord(gameCode: string, auth: { resumeToken?: strin
  */
 export function postWhotHands(gameCode: string, auth: { resumeToken?: string | null }) {
   return postJson<{ hands: WhotPlayerHand[] }>('/api/whot/hands', {
+    gameCode: gameCode.toUpperCase(),
+    resumeToken: auth.resumeToken ?? undefined,
+  })
+}
+
+/**
+ * Crazy Eights hands via the server route — own cards in full, everyone else's as a count.
+ * Returns null on failure so callers can keep the previous hands rather than rendering an
+ * empty one (which reads as "you are out"). See src/lib/hand-redaction.ts.
+ */
+export function postCrazyEightsHands(gameCode: string, auth: { resumeToken?: string | null }) {
+  return postJson<{ hands: CrazyEightsPlayerHand[] }>('/api/crazy-eights/hands', {
     gameCode: gameCode.toUpperCase(),
     resumeToken: auth.resumeToken ?? undefined,
   })
