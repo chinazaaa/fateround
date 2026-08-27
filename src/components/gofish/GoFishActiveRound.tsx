@@ -179,6 +179,10 @@ export function GoFishActiveRound({
         </>
       ) : (
         <>
+          {/* Spectator-only: what each asker has been going after, right under the
+              sticky bars so it's visible without scrolling. Above the opponent panel
+              on purpose — spectators want signal about the game before piles. */}
+          {readOnly && <SpectatorRecentPicks events={session?.event_log ?? []} nameOf={nameOf} />}
           {!readOnly && myHandRow && <MyHand cards={myCards} myBooks={myBooks} />}
           {!readOnly && needsRefill && <RefillPrompt oceanCount={session?.ocean_count ?? 0} />}
           {!readOnly && isMyTurn && !needsRefill && (
@@ -217,7 +221,6 @@ export function GoFishActiveRound({
         </>
       )}
 
-      {!isFinished && readOnly && <SpectatorRecentPicks events={session?.event_log ?? []} nameOf={nameOf} />}
       {!isFinished && <EventLog events={session?.event_log ?? []} nameOf={nameOf} />}
     </div>
   )
