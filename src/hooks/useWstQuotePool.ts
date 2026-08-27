@@ -6,6 +6,7 @@ import { getPlayerSession } from '@/lib/utils'
 import { dedupeWstPool, mergeWstPoolEntry } from '@/lib/who-said-this'
 import { useToast } from '@/components/ui/Toast'
 import type { WstQuotePoolEntry } from '@/types'
+import { WST_QUOTE_POOL_SELECT } from '@/lib/supabase-selects'
 
 /** Blank answer-option inputs (A–D) for a new Who Said This question. */
 export const emptyWstOptions = (): string[] => ['', '', '', '']
@@ -20,7 +21,11 @@ export function useWstQuotePool({ gameCode, myPlayerId }: { gameCode: string; my
   const [editingQuoteId, setEditingQuoteId] = useState<string | null>(null)
 
   async function fetchWstPool() {
-    const { data } = await supabase.from('wst_quote_pool').select('*').eq('game_id', gameCode).order('created_at')
+    const { data } = await supabase
+      .from('wst_quote_pool')
+      .select(WST_QUOTE_POOL_SELECT)
+      .eq('game_id', gameCode)
+      .order('created_at')
     const pool = dedupeWstPool(data ?? [])
     setWstPool(pool)
     return pool

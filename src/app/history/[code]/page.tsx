@@ -44,20 +44,27 @@ import {
 import {
   BINGO_CALLED_NUMBER_SELECT,
   BINGO_CLAIM_SELECT,
+  CODEWORDS_GUESS_SELECT,
+  CODEWORDS_PLAYER_ROLE_SELECT,
+  CONFESSION_SELECT,
+  CRAZY8_SESSION_SELECT,
   GAME_SELECT,
-  PLAYER_SELECT,
   LUDO_PLAYER_STATE_SELECT,
   LUDO_SESSION_SELECT,
-  SNAKE_LADDER_PLAYER_STATE_SELECT,
-  SNAKE_LADDER_SESSION_SELECT,
   MONOPOLY_BOARD_SELECT,
   MONOPOLY_PLAYER_STATE_SELECT,
+  PARTICIPANT_SELECT,
+  PLAYER_SELECT,
+  ROUND_SELECT,
+  SNAKE_LADDER_PLAYER_STATE_SELECT,
+  SNAKE_LADDER_SESSION_SELECT,
+  TRIVIA_ANSWER_SELECT,
   TTL_GUESS_SELECT,
   TTL_STATEMENT_SELECT,
-  WHOT_SESSION_SELECT,
-  CRAZY8_SESSION_SELECT,
   UNO_PLAYER_HANDS_SELECT,
   UNO_SESSION_SELECT,
+  VOTE_SELECT,
+  WHOT_SESSION_SELECT,
   YAHTZEE_PLAYER_SCORES_SELECT,
   YAHTZEE_SESSION_SELECT,
 } from '@/lib/supabase-selects'
@@ -300,8 +307,8 @@ export default function GameHistoryPage() {
       if (isTriviaGame(gameType)) {
         const [{ data: plrs }, { data: rds }, { data: ans }] = await Promise.all([
           supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at'),
-          supabase.from('rounds').select('*').eq('game_id', gameCode).order('round_number'),
-          supabase.from('trivia_answers').select('*').eq('game_id', gameCode),
+          supabase.from('rounds').select(ROUND_SELECT).eq('game_id', gameCode).order('round_number'),
+          supabase.from('trivia_answers').select(TRIVIA_ANSWER_SELECT).eq('game_id', gameCode),
         ])
         setGame(gameData)
         setPlayers(plrs ?? [])
@@ -322,11 +329,11 @@ export default function GameHistoryPage() {
         // key once a game is finished — so the post-game key reveal still works.
         const [{ data: plrs }, { data: roleRows }, boardData, { data: guessRows }] = await Promise.all([
           supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at'),
-          supabase.from('codewords_player_roles').select('*').eq('game_id', gameCode),
+          supabase.from('codewords_player_roles').select(CODEWORDS_PLAYER_ROLE_SELECT).eq('game_id', gameCode),
           fetchCodewordsBoard(gameCode),
           supabase
             .from('codewords_guesses')
-            .select('*')
+            .select(CODEWORDS_GUESS_SELECT)
             .eq('game_id', gameCode)
             .order('created_at', { ascending: true }),
         ])
@@ -544,7 +551,7 @@ export default function GameHistoryPage() {
       if (isTwoTruthsGame(gameType)) {
         const [{ data: plrs }, { data: rds }, { data: guessRows }, { data: statementRows }] = await Promise.all([
           supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at'),
-          supabase.from('rounds').select('*').eq('game_id', gameCode).order('round_number'),
+          supabase.from('rounds').select(ROUND_SELECT).eq('game_id', gameCode).order('round_number'),
           supabase.from('ttl_guesses').select(TTL_GUESS_SELECT).eq('game_id', gameCode),
           supabase.from('ttl_statements').select(TTL_STATEMENT_SELECT).eq('game_id', gameCode),
         ])
@@ -585,11 +592,11 @@ export default function GameHistoryPage() {
 
       const [{ data: parts }, { data: plrs }, { data: rds }, { data: vts }, { data: confs }, { data: subs }] =
         await Promise.all([
-          supabase.from('participants').select('*').eq('game_id', gameCode).order('display_order'),
+          supabase.from('participants').select(PARTICIPANT_SELECT).eq('game_id', gameCode).order('display_order'),
           supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at'),
-          supabase.from('rounds').select('*').eq('game_id', gameCode).order('round_number'),
-          supabase.from('votes').select('*').eq('game_id', gameCode),
-          supabase.from('confessions').select('*').eq('game_id', gameCode).order('created_at'),
+          supabase.from('rounds').select(ROUND_SELECT).eq('game_id', gameCode).order('round_number'),
+          supabase.from('votes').select(VOTE_SELECT).eq('game_id', gameCode),
+          supabase.from('confessions').select(CONFESSION_SELECT).eq('game_id', gameCode).order('created_at'),
           supabase.from('hot_seat_submissions').select('id, round_id, text, submission_type').eq('game_id', gameCode),
         ])
 

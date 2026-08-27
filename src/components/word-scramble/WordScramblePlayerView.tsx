@@ -48,6 +48,7 @@ import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { gameTypeConfig } from '@/lib/game-types'
 import type { Game, Player } from '@/types'
+import { mergeRealtimeGame } from '@/lib/realtime-merge'
 
 const SOLVE_SELECT = 'id,game_id,round_id,player_id,scramble_index,word,via_hint,solved_at'
 const HINT_SELECT = 'player_id,scramble_index,letters'
@@ -242,7 +243,7 @@ export function WordScramblePlayerView({ gameCode }: { gameCode: string }) {
         { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
         (payload) => {
           const next = payload.new as Game
-          setGame(next)
+          setGame((prev) => mergeRealtimeGame(prev, next))
           // Full reload only on a status transition; other games-row writes just refresh the
           // object above. Reloading on every UPDATE was a primary driver of the finish flicker.
           if (next.status !== gameStatusRef.current) load()

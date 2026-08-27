@@ -55,6 +55,7 @@ import { useToast } from '@/components/ui/Toast'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { FinishedWinnerHero } from '@/components/FinishedWinner'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
+import { mergeRealtimeGame } from '@/lib/realtime-merge'
 
 type HostTab = 'manage' | 'play'
 
@@ -216,7 +217,7 @@ export function CrosswordHostView({ gameCode, hostToken }: { gameCode: string; h
         { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
         (payload) => {
           const next = payload.new as Game
-          setGame(next)
+          setGame((prev) => mergeRealtimeGame(prev, next))
           // markGameFinished writes the games row more than once at finish (status, then
           // finished_at / winner). Reloading on every UPDATE replayed the finish cascade
           // several times — the host's "glitches several times". Reload only on a status flip.

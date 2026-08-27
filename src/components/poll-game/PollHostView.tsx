@@ -13,6 +13,7 @@ import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import { useRosterBase, useRosterManage } from '@/components/roster/RosterDrawerContext'
 import {
   CONFESSION_SELECT,
+  GAME_SELECT,
   HOST_GAME_SELECT,
   PARTICIPANT_SELECT,
   PLAYER_SELECT,
@@ -825,7 +826,7 @@ export function PollHostView({ gameCode, hostToken }: { gameCode: string; hostTo
 
       const [{ data: gameData }, { data: roundData }] = await Promise.all([
         supabase.from('games').select(HOST_GAME_SELECT).eq('id', gameCode).maybeSingle(),
-        supabase.from('rounds').select('*').eq('game_id', gameCode).eq('status', 'active').maybeSingle(),
+        supabase.from('rounds').select(ROUND_SELECT).eq('game_id', gameCode).eq('status', 'active').maybeSingle(),
       ])
       if (gameData) setGame(gameData)
       if (roundData) setCurrentRound(roundData)
@@ -1004,9 +1005,9 @@ export function PollHostView({ gameCode, hostToken }: { gameCode: string; hostTo
   async function refreshLobbyLists() {
     const [{ data: plrs }, { data: parts }, { data: pool }] = await Promise.all([
       supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at'),
-      supabase.from('participants').select('*').eq('game_id', gameCode).order('display_order'),
+      supabase.from('participants').select(PARTICIPANT_SELECT).eq('game_id', gameCode).order('display_order'),
       game && isWhoSaidThis(parseGameType(game.game_type))
-        ? supabase.from('wst_quote_pool').select('*').eq('game_id', gameCode).order('created_at')
+        ? supabase.from('wst_quote_pool').select(WST_QUOTE_POOL_SELECT).eq('game_id', gameCode).order('created_at')
         : Promise.resolve({ data: null }),
     ])
     if (plrs) setPlayers(plrs)
@@ -2067,7 +2068,11 @@ export function PollHostView({ gameCode, hostToken }: { gameCode: string; hostTo
                   const data = await res.json()
                   if (!res.ok) {
                     toast.error(data.error || 'Failed to save rounds setting')
-                    const { data: gameData } = await supabase.from('games').select('*').eq('id', gameCode).maybeSingle()
+                    const { data: gameData } = await supabase
+                      .from('games')
+                      .select(GAME_SELECT)
+                      .eq('id', gameCode)
+                      .maybeSingle()
                     if (gameData) setGame(gameData)
                     return
                   }
@@ -2118,7 +2123,11 @@ export function PollHostView({ gameCode, hostToken }: { gameCode: string; hostTo
                   const data = await res.json()
                   if (!res.ok) {
                     toast.error(data.error || 'Failed to save pair voting')
-                    const { data: gameData } = await supabase.from('games').select('*').eq('id', gameCode).maybeSingle()
+                    const { data: gameData } = await supabase
+                      .from('games')
+                      .select(GAME_SELECT)
+                      .eq('id', gameCode)
+                      .maybeSingle()
                     if (gameData) setGame(gameData)
                     return
                   }

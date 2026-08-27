@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { gameKeys } from '@/lib/query-keys'
 import type { Round } from '@/types'
+import { ROUND_SELECT } from '@/lib/supabase-selects'
 
 export function useActiveRound(code: string, enabled = true) {
   return useQuery({
@@ -9,7 +10,7 @@ export function useActiveRound(code: string, enabled = true) {
     queryFn: async () => {
       const { data } = await supabase
         .from('rounds')
-        .select('*')
+        .select(ROUND_SELECT)
         .eq('game_id', code)
         .eq('status', 'active')
         .maybeSingle()

@@ -2,12 +2,17 @@ import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { gameKeys } from '@/lib/query-keys'
 import type { Confession } from '@/types'
+import { CONFESSION_SELECT } from '@/lib/supabase-selects'
 
 export function useConfessions(code: string, enabled = true) {
   return useQuery({
     queryKey: gameKeys.confessions.all(code),
     queryFn: async () => {
-      const { data } = await supabase.from('confessions').select('*').eq('game_id', code).order('created_at')
+      const { data } = await supabase
+        .from('confessions')
+        .select(CONFESSION_SELECT)
+        .eq('game_id', code)
+        .order('created_at')
       return (data ?? []) as Confession[]
     },
     staleTime: Infinity,

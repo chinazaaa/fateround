@@ -179,6 +179,7 @@ import type {
   WstQuotePoolEntry,
 } from '@/types'
 import type { View } from '@/hooks/useGameSession'
+import { PARTICIPANT_SELECT } from '@/lib/supabase-selects'
 
 export function PollGamePlayerExperience({
   gameCode: gameCodeProp,
@@ -1310,7 +1311,7 @@ export function PollGamePlayerExperience({
                           setPnNameInput('')
                           const { data: parts } = await supabase
                             .from('participants')
-                            .select('*')
+                            .select(PARTICIPANT_SELECT)
                             .eq('game_id', gameCode)
                             .order('display_order')
                           if (parts) setParticipants(parts)
