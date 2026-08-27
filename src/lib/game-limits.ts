@@ -11,6 +11,7 @@ import { TTL_DEFAULT_MAX_PLAYERS, TTL_MAX_PLAYERS, TTL_MIN_PLAYERS } from '@/lib
 import { MONOPOLY_DEFAULT_MAX_PLAYERS, MONOPOLY_MAX_PLAYERS, MONOPOLY_MIN_PLAYERS } from '@/lib/monopoly'
 import { YAHTZEE_DEFAULT_MAX_PLAYERS, YAHTZEE_MAX_PLAYERS, YAHTZEE_MIN_PLAYERS } from '@/lib/yahtzee'
 import { WHOT_DEFAULT_MAX_PLAYERS, WHOT_MAX_PLAYERS, WHOT_MIN_PLAYERS } from '@/lib/whot'
+import { RUMMY_DEFAULT_MAX_PLAYERS, RUMMY_MAX_PLAYERS, RUMMY_MIN_PLAYERS } from '@/lib/rummy'
 import { CRAZY8_DEFAULT_MAX_PLAYERS, CRAZY8_MAX_PLAYERS, CRAZY8_MIN_PLAYERS } from '@/lib/crazy-eights'
 import { UNO_DEFAULT_MAX_PLAYERS, UNO_MAX_PLAYERS, UNO_MIN_PLAYERS } from '@/lib/uno'
 import { LUDO_DEFAULT_MAX_PLAYERS, LUDO_MAX_PLAYERS, LUDO_MIN_PLAYERS } from '@/lib/ludo'
@@ -56,8 +57,9 @@ import {
   WORD_GROUPING_DEFAULT_MAX_PLAYERS,
 } from '@/lib/word-grouping'
 import { LANDMINE_MIN_PLAYERS, LANDMINE_MAX_PLAYERS, LANDMINE_DEFAULT_MAX_PLAYERS } from '@/lib/landmine'
-import { PING_PONG_MIN_PLAYERS, PING_PONG_MAX_PLAYERS, PING_PONG_DEFAULT_MAX_PLAYERS } from '@/lib/ping-pong'
 import { WORDLE_ROOM_MIN_PLAYERS, WORDLE_ROOM_MAX_PLAYERS, WORDLE_ROOM_DEFAULT_MAX_PLAYERS } from '@/lib/wordle-room'
+import { TROLL_RUN_MIN_PLAYERS, TROLL_RUN_MAX_PLAYERS, TROLL_RUN_DEFAULT_MAX_PLAYERS } from '@/lib/troll-run-types'
+import { GOFISH_MIN_PLAYERS, GOFISH_MAX_PLAYERS, GOFISH_DEFAULT_MAX_PLAYERS } from '@/lib/gofish'
 
 export const LOBBY_LIMIT_GAME_TYPES = [
   'anonymous_messages',
@@ -68,6 +70,7 @@ export const LOBBY_LIMIT_GAME_TYPES = [
   'monopoly',
   'yahtzee',
   'whot',
+  'rummy',
   'crazy_eights',
   'uno',
   'ludo',
@@ -94,8 +97,9 @@ export const LOBBY_LIMIT_GAME_TYPES = [
   'word_scramble',
   'word_grouping',
   'landmine',
-  'ping_pong',
   'wordle_room',
+  'troll_run',
+  'gofish',
 ] as const
 
 export type LobbyLimitGameType = (typeof LOBBY_LIMIT_GAME_TYPES)[number]
@@ -161,6 +165,11 @@ export const GAME_LIMIT_CODE_DEFAULTS: GamePlayerLimitsMap = {
     min: WHOT_MIN_PLAYERS,
     max: WHOT_MAX_PLAYERS,
     default: WHOT_DEFAULT_MAX_PLAYERS,
+  },
+  rummy: {
+    min: RUMMY_MIN_PLAYERS,
+    max: RUMMY_MAX_PLAYERS,
+    default: RUMMY_DEFAULT_MAX_PLAYERS,
   },
   crazy_eights: {
     min: CRAZY8_MIN_PLAYERS,
@@ -284,15 +293,20 @@ export const GAME_LIMIT_CODE_DEFAULTS: GamePlayerLimitsMap = {
     max: LANDMINE_MAX_PLAYERS,
     default: LANDMINE_DEFAULT_MAX_PLAYERS,
   },
-  ping_pong: {
-    min: PING_PONG_MIN_PLAYERS,
-    max: PING_PONG_MAX_PLAYERS,
-    default: PING_PONG_DEFAULT_MAX_PLAYERS,
-  },
   wordle_room: {
     min: WORDLE_ROOM_MIN_PLAYERS,
     max: WORDLE_ROOM_MAX_PLAYERS,
     default: WORDLE_ROOM_DEFAULT_MAX_PLAYERS,
+  },
+  troll_run: {
+    min: TROLL_RUN_MIN_PLAYERS,
+    max: TROLL_RUN_MAX_PLAYERS,
+    default: TROLL_RUN_DEFAULT_MAX_PLAYERS,
+  },
+  gofish: {
+    min: GOFISH_MIN_PLAYERS,
+    max: GOFISH_MAX_PLAYERS,
+    default: GOFISH_DEFAULT_MAX_PLAYERS,
   },
 }
 
@@ -312,6 +326,7 @@ export function getCodeDefaultLimits(): GamePlayerLimitsMap {
     monopoly: { ...GAME_LIMIT_CODE_DEFAULTS.monopoly },
     yahtzee: { ...GAME_LIMIT_CODE_DEFAULTS.yahtzee },
     whot: { ...GAME_LIMIT_CODE_DEFAULTS.whot },
+    rummy: { ...GAME_LIMIT_CODE_DEFAULTS.rummy },
     crazy_eights: { ...GAME_LIMIT_CODE_DEFAULTS.crazy_eights },
     uno: { ...GAME_LIMIT_CODE_DEFAULTS.uno },
     ludo: { ...GAME_LIMIT_CODE_DEFAULTS.ludo },
@@ -336,8 +351,9 @@ export function getCodeDefaultLimits(): GamePlayerLimitsMap {
     word_scramble: { ...GAME_LIMIT_CODE_DEFAULTS.word_scramble },
     word_grouping: { ...GAME_LIMIT_CODE_DEFAULTS.word_grouping },
     landmine: { ...GAME_LIMIT_CODE_DEFAULTS.landmine },
-    ping_pong: { ...GAME_LIMIT_CODE_DEFAULTS.ping_pong },
     wordle_room: { ...GAME_LIMIT_CODE_DEFAULTS.wordle_room },
+    troll_run: { ...GAME_LIMIT_CODE_DEFAULTS.troll_run },
+    gofish: { ...GAME_LIMIT_CODE_DEFAULTS.gofish },
   }
 }
 

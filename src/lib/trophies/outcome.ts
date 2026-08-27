@@ -53,13 +53,14 @@ const WINNER_SOURCES: Partial<Record<GameType, WinnerSource>> = {
   scrabble: { table: 'scrabble_sessions', column: 'winner_player_id' },
   snake_and_ladder: { table: 'snake_ladder_sessions', column: 'winner_player_id' },
   crazy_eights: { table: 'crazy_eights_sessions', column: 'winner_player_id' },
+  rummy: { table: 'rummy_sessions', column: 'winner_player_id' },
   checkers: { table: 'checkers_sessions', column: 'winner_player_id' },
   // Both 10×10 variants share the draughts10 engine and therefore one table.
   checkers_international: { table: 'checkers10_sessions', column: 'winner_player_id' },
   checkers_nigeria: { table: 'checkers10_sessions', column: 'winner_player_id' },
   ayo: { table: 'ayo_sessions', column: 'winner_player_id' },
-  ping_pong: { table: 'ping_pong_sessions', column: 'winner_player_id' },
   uno: { table: 'uno_sessions', column: 'winner_player_id' },
+  gofish: { table: 'gofish_sessions', column: 'winner_player_id' },
   // Mahjong can end with several winners, so prefer the array and fall back to the scalar.
 }
 
@@ -162,9 +163,17 @@ function winnersFromStandings(standings: string[] | null, gameType: GameType): s
 
 /**
  * Game types whose standings are ordered by TEAM, so the leading block is all winners.
- * Adding to this needs a look at how that game builds its standings, not a guess from the name.
+ *
+ * Currently empty on purpose. The only entry ever was `codewords`, but Codewords standings are
+ * actually shaped `[...winning team, ...losing team]` so the room-points leaderboard can rank
+ * both sides — flattening the "leading block" to the whole list credited every seated player,
+ * including the losing team, as a winner. Codewords now goes through its own
+ * CUSTOM_WINNER_RESOLVERS entry which reads `codewords_boards.winner` directly.
+ *
+ * Add here only when a game's standings really do put ONLY the winning side at the front and
+ * nothing else — check the actual shape in `getCompetitiveStandings`, don't guess from the name.
  */
-const TEAM_STANDINGS_GAMES = new Set<string>(['codewords'])
+const TEAM_STANDINGS_GAMES = new Set<string>()
 
 /**
  * UNO Team-Up: the partner of the player who went out also won.
@@ -258,6 +267,74 @@ const CUSTOM_WINNER_RESOLVERS: Partial<
   mafia: resolveMafiaWinners,
   mahjong: resolveMahjongWinners,
   describe_it: resolveDescribeItWinners,
+  troll_run: resolveTrollRunWinners,
+  // Codewords standings put the whole roster in a "winners then losers" list — that shape
+  // exists so the room-points leaderboard can rank both sides. Reading it as "winners" for
+  // the trophy pass credited a win to the LOSING team as well: every seated player was in
+  // the standings, TEAM_STANDINGS_GAMES flattened the leading block to the whole list, and
+  // `awardForFinishedGame` treated everyone in `winners.includes(me.id)` as a winner. So a
+  // losing operative watched `games_won` (and every /wins-based trophy) tick up on their
+  // profile after every match. Read the board's own `winner` team and return only the
+  // player ids of that team.
+  codewords: resolveCodewordsWinners,
+}
+
+async function resolveCodewordsWinners(supabase: SupabaseClient, gameId: string): Promise<string[] | null> {
+  try {
+    const { data: board } = await supabase.from('codewords_boards').select('winner').eq('game_id', gameId).maybeSingle()
+    const winningTeam = (board as { winner?: string | null } | null)?.winner ?? null
+    // No winner yet (or the board row hasn't landed) → withhold the verdict rather than
+    // record a loss for everyone. `null` means "cannot determine".
+    if (!winningTeam) return null
+    const { data: roles } = await supabase
+      .from('codewords_player_roles')
+      .select('player_id, team')
+      .eq('game_id', gameId)
+    const winners = (roles ?? []).filter((r) => r.team === winningTeam).map((r) => r.player_id as string)
+    // A definite `winningTeam` with an EMPTY winner set is not a resolved
+    // "nobody won" — it's the role rows missing (migration lag, case mismatch,
+    // historical enum). Callers treat [] as "resolved: no winner" and bump
+    // games_played for every player + no games_won for anyone + no win-coin
+    // credit. Return null instead so the whole pass withholds.
+    if (winners.length === 0) {
+      console.warn('[trophies/outcome] codewords: winner set but no matching roles', { gameId, winningTeam })
+      return null
+    }
+    return winners
+  } catch {
+    return null
+  }
+}
+
+async function resolveTrollRunWinners(supabase: SupabaseClient, gameId: string): Promise<string[] | null> {
+  try {
+    const { data: states } = await supabase
+      .from('troll_run_player_states')
+      .select('player_id, total_score, deaths, total_time_ms')
+      .eq('game_id', gameId)
+
+    if (!states || states.length === 0) return null
+
+    const byPlayer = new Map<string, { totalScore: number; deaths: number; totalTimeMs: number }>()
+    for (const state of states) {
+      const prev = byPlayer.get(state.player_id) ?? { totalScore: 0, deaths: 0, totalTimeMs: 0 }
+      prev.totalScore = Math.max(prev.totalScore, state.total_score ?? 0)
+      prev.deaths += state.deaths ?? 0
+      prev.totalTimeMs += state.total_time_ms ?? 0
+      byPlayer.set(state.player_id, prev)
+    }
+
+    const sorted = [...byPlayer.entries()].sort(([, a], [, b]) => {
+      if (b.totalScore !== a.totalScore) return b.totalScore - a.totalScore
+      if (a.deaths !== b.deaths) return a.deaths - b.deaths
+      return a.totalTimeMs - b.totalTimeMs
+    })
+
+    if (sorted.length === 0 || sorted[0][1].totalScore === 0) return []
+    return [sorted[0][0]]
+  } catch {
+    return null
+  }
 }
 
 async function resolveMafiaWinners(supabase: SupabaseClient, gameId: string): Promise<string[] | null> {

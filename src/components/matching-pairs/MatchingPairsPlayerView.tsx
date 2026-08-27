@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { EditNameInline } from '@/components/ui/EditNameInline'
 import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
 import { useRegisterGameSettings } from '@/components/GameSettingsContext'
+import { RulesInPlaySection } from '@/components/game-lobby/RulesInPlaySection'
 import { GameEndedScreen } from '@/components/GameEndedScreen'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
 import { HostGameFinishedActions } from '@/components/host/HostGameFinishedActions'
@@ -59,6 +60,7 @@ import { allowLatePlayers, preJoinScreen, playerIsViewer } from '@/lib/viewers'
 import { clearPlayerSession } from '@/lib/utils'
 import { useToast } from '@/components/ui/Toast'
 import type { Game } from '@/types'
+import { mergeRealtimeGame } from '@/lib/realtime-merge'
 
 // ── Screen type ───────────────────────────────────────────────────────────────
 
@@ -393,7 +395,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
         { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
         (payload) => {
           const updated = payload.new as Game
-          setGame(updated)
+          setGame((prev) => mergeRealtimeGame(prev, updated))
           // Always call load() so computeScreen re-runs with the new game status.
           // This covers both 'active' (game started) and 'finished' transitions.
           void load()
@@ -642,6 +644,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
     if (!myPlayerId) return null
     return (
       <div className="space-y-3">
+        <RulesInPlaySection game={game} />
         <EditNameInline
           gameCode={gameCode}
           playerId={myPlayerId}
@@ -660,7 +663,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
         />
       </div>
     )
-  }, [myPlayerId, game?.status, gameCode, me?.name, isViewer, load, router])
+  }, [game, myPlayerId, game?.status, gameCode, me?.name, isViewer, load, router])
   useRegisterGameSettings(playerSettingsNode)
 
   const { context: lateJoinContext, loading: lateJoinContextLoading } = useLateJoinContext(

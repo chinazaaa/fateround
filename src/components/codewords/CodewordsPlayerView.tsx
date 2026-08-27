@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { EditNameInline } from '@/components/ui/EditNameInline'
 import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
 import { useRegisterGameSettings } from '@/components/GameSettingsContext'
+import { RulesInPlaySection } from '@/components/game-lobby/RulesInPlaySection'
 import { CodewordsLeaveButton } from '@/components/codewords/CodewordsLeaveButton'
 import { CodewordsFinalResultsShareBlock } from '@/components/codewords/CodewordsFinalResultsShareBlock'
 import { CodewordsEndGameStats } from '@/components/codewords/CodewordsEndGameStats'
@@ -43,7 +44,12 @@ import { useLateJoinContext } from '@/hooks/useLateJoinContext'
 import { useRoomMemberAutoJoin, useRoomMemberJoin, useRoomMemberNamePrefill } from '@/hooks/useRoomMemberJoin'
 import { allowLateJoin, allowLatePlayers, playerIsViewer, preJoinScreen } from '@/lib/viewers'
 import { supabase } from '@/lib/supabase'
-import { GAME_SELECT, PLAYER_SELECT } from '@/lib/supabase-selects'
+import {
+  CODEWORDS_GUESS_SELECT,
+  CODEWORDS_PLAYER_ROLE_SELECT,
+  GAME_SELECT,
+  PLAYER_SELECT,
+} from '@/lib/supabase-selects'
 import { getPlayerSession, setPlayerSession, clearPlayerSession } from '@/lib/utils'
 import { markPlayerReady } from '@/lib/player-ready'
 import { resolvePlayerSession } from '@/lib/player-resume'
@@ -144,7 +150,7 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
       }
       const { data: role } = await supabase
         .from('codewords_player_roles')
-        .select('*')
+        .select(CODEWORDS_PLAYER_ROLE_SELECT)
         .eq('game_id', gameCode)
         .eq('player_id', playerId)
         .maybeSingle()
@@ -199,7 +205,7 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
   const loadGuesses = useCallback(async () => {
     const { data } = await supabase
       .from('codewords_guesses')
-      .select('*')
+      .select(CODEWORDS_GUESS_SELECT)
       .eq('game_id', gameCode)
       .order('created_at', { ascending: true })
     setGuesses(mergeCodewordsGuesses([], (data as CodewordsGuess[]) ?? []))
@@ -208,7 +214,7 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
   const loadScoreboard = useCallback(async () => {
     const [{ data: plrs }, { data: roleRows }] = await Promise.all([
       supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at'),
-      supabase.from('codewords_player_roles').select('*').eq('game_id', gameCode),
+      supabase.from('codewords_player_roles').select(CODEWORDS_PLAYER_ROLE_SELECT).eq('game_id', gameCode),
     ])
     setAllPlayers(plrs ?? [])
     setAllRoles(roleRows ?? [])
@@ -440,6 +446,7 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
     if (!myPlayerId) return null
     return (
       <div className="space-y-3">
+        <RulesInPlaySection game={game} />
         <EditNameInline
           gameCode={gameCode}
           playerId={myPlayerId}
@@ -458,7 +465,7 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
         />
       </div>
     )
-  }, [myPlayerId, game?.status, gameCode, me?.name, myPlayerName, isViewer, load, router])
+  }, [game, myPlayerId, game?.status, gameCode, me?.name, myPlayerName, isViewer, load, router])
   useRegisterGameSettings(playerSettingsNode)
 
   const { context: viewerPromoteContext } = useLateJoinContext(gameCode, game, isViewer && screen === 'active')
@@ -759,13 +766,17 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
           <div className="glass-card p-4 space-y-4">
             <p className="label-caps text-center">Full board</p>
             <CodewordsBoardGrid board={board} showKey cellAttribution={cellAttribution} />
-            <CodewordsScoreboard board={board} players={allPlayers} roles={allRoles} highlightPlayerId={myPlayerId} />
+            {/* CodewordsFinalResultsShareBlock above already carries the winner hero, the
+                MVP cards, and the operative leaderboard, and the board reveal makes the
+                per-team progress obvious — so drop the live Scoreboard here and render
+                only the spymaster list from CodewordsEndGameStats. */}
             <CodewordsEndGameStats
               guesses={guesses}
               roles={allRoles}
               players={allPlayers}
               highlightPlayerId={myPlayerId}
               winner={board.winner}
+              variant="spymasters"
             />
           </div>
           <CodewordsAchievementPosts

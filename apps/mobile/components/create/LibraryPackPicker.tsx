@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native'
+import { useRouter } from 'expo-router'
 import type { GameType } from '@fateround/shared'
 import { fetchLibraryPack, fetchLibraryPacks, type LibraryPackSummary } from '@/lib/api'
 import { packQuestionsToState, type CustomContentState } from '@/lib/create-settings/custom-content'
@@ -14,6 +15,7 @@ type Props = {
 
 export function LibraryPackPicker({ gameType, custom, onChange }: Props) {
   const theme = useTheme()
+  const router = useRouter()
   const styles = useThemedStyles(makeStyles)
   const [packs, setPacks] = useState<LibraryPackSummary[] | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -37,6 +39,14 @@ export function LibraryPackPicker({ gameType, custom, onChange }: Props) {
 
   const selectPack = async (pack: LibraryPackSummary) => {
     if (loadingId) return
+    // Paid + unowned packs route to /shop instead of trying to load. The
+    // server would refuse the load anyway; this mirrors the web
+    // LibraryPackPicker's inline shop CTA (plan §"UI surfaces").
+    const priced = (pack.price_coins ?? 0) > 0
+    if (priced && !pack.owned) {
+      router.push('/shop' as never)
+      return
+    }
     setLoadingId(pack.id)
     setError(null)
     try {
@@ -67,11 +77,11 @@ export function LibraryPackPicker({ gameType, custom, onChange }: Props) {
 
   return (
     <View style={styles.list}>
-      {custom.libraryPackTitle ? (
-        <Text style={styles.selected}>Loaded: {custom.libraryPackTitle}</Text>
-      ) : null}
+      {custom.libraryPackTitle ? <Text style={styles.selected}>Loaded: {custom.libraryPackTitle}</Text> : null}
       {packs.map((pack) => {
         const active = custom.libraryPackTitle === pack.title
+        const price = pack.price_coins ?? 0
+        const priced = price > 0
         return (
           <Pressable
             key={pack.id}
@@ -94,7 +104,16 @@ export function LibraryPackPicker({ gameType, custom, onChange }: Props) {
                 {pack.description}
               </Text>
             ) : null}
-            <Text style={styles.cardAuthor}>by {pack.author_name}</Text>
+            <View style={styles.cardFooter}>
+              <Text style={styles.cardAuthor}>by {pack.author_name}</Text>
+              {priced ? (
+                pack.owned ? (
+                  <Text style={styles.ownedBadge}>Owned</Text>
+                ) : (
+                  <Text style={styles.priceBadge}>🪙 {price.toLocaleString()}</Text>
+                )
+              ) : null}
+            </View>
           </Pressable>
         )
       })}
@@ -104,23 +123,32 @@ export function LibraryPackPicker({ gameType, custom, onChange }: Props) {
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-  centered: { paddingVertical: theme.space.lg, alignItems: 'center' },
-  error: { color: theme.error, fontSize: 13 },
-  empty: { color: theme.textFaint, fontSize: 14, lineHeight: 20 },
-  list: { gap: theme.space.sm },
-  selected: { color: theme.success, fontSize: 13, fontWeight: '700' },
-  card: {
-    backgroundColor: theme.bgElevated,
-    borderWidth: 1,
-    borderColor: theme.border,
-    borderRadius: theme.radius.md,
-    padding: theme.space.md,
-    gap: 4,
-  },
-  cardActive: { borderColor: theme.primary, backgroundColor: theme.primarySoft },
-  cardHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.space.sm },
-  cardTitle: { color: theme.text, fontSize: 15, fontWeight: '800', flex: 1 },
-  cardCount: { color: theme.primaryMuted, fontSize: 13, fontWeight: '700' },
-  cardDesc: { color: theme.textMuted, fontSize: 13, lineHeight: 18 },
-  cardAuthor: { color: theme.textFaint, fontSize: 12 },
-})
+    centered: { paddingVertical: theme.space.lg, alignItems: 'center' },
+    error: { color: theme.error, fontSize: 13 },
+    empty: { color: theme.textFaint, fontSize: 14, lineHeight: 20 },
+    list: { gap: theme.space.sm },
+    selected: { color: theme.success, fontSize: 13, fontWeight: '700' },
+    card: {
+      backgroundColor: theme.bgElevated,
+      borderWidth: 1,
+      borderColor: theme.border,
+      borderRadius: theme.radius.md,
+      padding: theme.space.md,
+      gap: 4,
+    },
+    cardActive: { borderColor: theme.primary, backgroundColor: theme.primarySoft },
+    cardHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.space.sm },
+    cardTitle: { color: theme.text, fontSize: 15, fontWeight: '800', flex: 1 },
+    cardCount: { color: theme.primaryMuted, fontSize: 13, fontWeight: '700' },
+    cardDesc: { color: theme.textMuted, fontSize: 13, lineHeight: 18 },
+    cardAuthor: { color: theme.textFaint, fontSize: 12 },
+    cardFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.space.sm },
+    priceBadge: { color: theme.primary, fontSize: 12, fontWeight: '800' },
+    ownedBadge: {
+      color: theme.textMuted,
+      fontSize: 11,
+      fontWeight: '700',
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+    },
+  })

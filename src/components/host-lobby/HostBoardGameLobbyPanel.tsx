@@ -9,7 +9,9 @@ import {
 import { formatMonopolyGameDuration, MONOPOLY_GAME_DURATION_OPTIONS } from '@/lib/monopoly'
 import { formatWhotGameDuration, WHOT_GAME_DURATION_OPTIONS } from '@/lib/whot'
 import { formatCrazyEightsGameDuration, CRAZY8_GAME_DURATION_OPTIONS } from '@/lib/crazy-eights'
+import { formatRummyGameDuration, RUMMY_GAME_DURATION_OPTIONS } from '@/lib/rummy'
 import { formatUnoGameDuration, UNO_GAME_DURATION_OPTIONS } from '@/lib/uno'
+import { formatGofishGameDuration, GOFISH_GAME_DURATION_OPTIONS } from '@/lib/gofish'
 import { lobbyMaxPlayersFromGame, playerCountOptions, type GamePlayerLimitsMap } from '@/lib/game-limits'
 import { HostAllowViewersField } from '@/components/HostAllowViewersField'
 import { HostLobbySettingsSection } from '@/components/host-lobby/HostLobbySettingsSection'
@@ -26,6 +28,9 @@ type Props = {
   game: Game
   boardGameType: BoardGameLobbyType
   playerCount: number
+  /** Ready (non-spectator) players — the count that actually consumes a cap seat.
+   *  Defaults to `playerCount` for callers that haven't opted in. */
+  seatedCount?: number
   onGameUpdate: (game: Game) => void
 }
 
@@ -50,6 +55,7 @@ export function HostBoardGameLobbyPanel({
   game,
   boardGameType,
   playerCount,
+  seatedCount,
   onGameUpdate,
 }: Props) {
   const { error: toastError } = useToast()
@@ -63,6 +69,9 @@ export function HostBoardGameLobbyPanel({
   const [monopolyAuctionTimerSeconds, setMonopolyAuctionTimerSeconds] = useState(10)
   const [monopolyNoRentInJail, setMonopolyNoRentInJail] = useState(false)
   const [monopolyEstateDividend, setMonopolyEstateDividend] = useState(false)
+  const [monopolyLoansEnabled, setMonopolyLoansEnabled] = useState(true)
+  const [monopolyLoanInterest, setMonopolyLoanInterest] = useState(15)
+  const [monopolyLoanTermRounds, setMonopolyLoanTermRounds] = useState(4)
   const [monopolyBoardSize, setMonopolyBoardSize] = useState<40 | 48>(40)
   const [whotPick3Enabled, setWhotPick3Enabled] = useState(true)
   const [whotPick2Stacking, setWhotPick2Stacking] = useState(true)
@@ -112,6 +121,9 @@ export function HostBoardGameLobbyPanel({
       setMonopolyAuctionTimerSeconds(game.monopoly_auction_timer_seconds ?? 10)
       setMonopolyNoRentInJail(game.monopoly_no_rent_in_jail === true)
       setMonopolyEstateDividend(game.monopoly_estate_dividend === true)
+      setMonopolyLoansEnabled(game.monopoly_loans_enabled !== false)
+      setMonopolyLoanInterest(game.monopoly_loan_interest ?? 15)
+      setMonopolyLoanTermRounds(game.monopoly_loan_term_rounds ?? 4)
       setMonopolyBoardSize(game.monopoly_board_size === 48 ? 48 : 40)
     }
     if (boardGameType === 'whot') {
@@ -181,8 +193,14 @@ export function HostBoardGameLobbyPanel({
   )
 
   const onMaxPlayersChange = (next: number) => {
-    if (next < playerCount) {
-      toastError(`Already have ${playerCount} players — remove someone first`)
+    // Only ready (non-spectator) players count against the cap — matches the server. Not-ready
+    // players are `spectator: true`, so counting them here would refuse a valid lower-cap change
+    // while they watch. seatedCount defaults to playerCount for callers that haven't opted in.
+    const effectiveSeated = seatedCount ?? playerCount
+    if (next < effectiveSeated) {
+      toastError(
+        `Already have ${effectiveSeated} seated player${effectiveSeated === 1 ? '' : 's'} — remove someone or pick at least ${effectiveSeated}`
+      )
       return
     }
     setMaxPlayers(next)
@@ -274,17 +292,25 @@ export function HostBoardGameLobbyPanel({
       ? formatWhotGameDuration
       : boardGameType === 'crazy_eights'
         ? formatCrazyEightsGameDuration
-        : boardGameType === 'uno'
-          ? formatUnoGameDuration
-          : formatMonopolyGameDuration
+        : boardGameType === 'rummy'
+          ? formatRummyGameDuration
+          : boardGameType === 'uno'
+            ? formatUnoGameDuration
+            : boardGameType === 'gofish'
+              ? formatGofishGameDuration
+              : formatMonopolyGameDuration
   const durationOptionsSource =
     boardGameType === 'whot'
       ? WHOT_GAME_DURATION_OPTIONS
       : boardGameType === 'crazy_eights'
         ? CRAZY8_GAME_DURATION_OPTIONS
-        : boardGameType === 'uno'
-          ? UNO_GAME_DURATION_OPTIONS
-          : MONOPOLY_GAME_DURATION_OPTIONS
+        : boardGameType === 'rummy'
+          ? RUMMY_GAME_DURATION_OPTIONS
+          : boardGameType === 'uno'
+            ? UNO_GAME_DURATION_OPTIONS
+            : boardGameType === 'gofish'
+              ? GOFISH_GAME_DURATION_OPTIONS
+              : MONOPOLY_GAME_DURATION_OPTIONS
 
   const durationOptions = useMemo(
     () =>
@@ -329,7 +355,9 @@ export function HostBoardGameLobbyPanel({
         {(boardGameType === 'monopoly' ||
           boardGameType === 'whot' ||
           boardGameType === 'crazy_eights' ||
-          boardGameType === 'uno') && (
+          boardGameType === 'rummy' ||
+          boardGameType === 'uno' ||
+          boardGameType === 'gofish') && (
           <HostLobbySettingBlock title="Game length" className="sm:col-span-2">
             <HostLobbyOptionChips value={gameDuration} options={durationOptions} onChange={onGameDurationChange} />
           </HostLobbySettingBlock>
@@ -389,6 +417,53 @@ export function HostBoardGameLobbyPanel({
                   void patchSettings({ monopoly_estate_dividend: v })
                 }}
               />
+              <Toggle
+                label="Bank Loans"
+                description="Allow players to borrow emergency funds from the Bank with flat interest and a foreclosure term limit."
+                value={monopolyLoansEnabled}
+                onChange={(v: boolean) => {
+                  setMonopolyLoansEnabled(v)
+                  void patchSettings({ monopoly_loans_enabled: v })
+                }}
+              />
+              {monopolyLoansEnabled && (
+                <div className="pl-3 border-l-2 border-[var(--border)] space-y-3 pt-1">
+                  <div>
+                    <div className="mb-1.5 text-xs font-medium text-muted">Loan interest rate</div>
+                    <HostLobbyOptionChips
+                      value={monopolyLoanInterest}
+                      options={[
+                        { value: 10, label: '10%' },
+                        { value: 15, label: '15% (Default)' },
+                        { value: 20, label: '20%' },
+                        { value: 25, label: '25%' },
+                      ]}
+                      onChange={(value) => {
+                        const nextInterest = Number(value)
+                        setMonopolyLoanInterest(nextInterest)
+                        void patchSettings({ monopoly_loan_interest: nextInterest })
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <div className="mb-1.5 text-xs font-medium text-muted">Loan term (rounds to repay)</div>
+                    <HostLobbyOptionChips
+                      value={monopolyLoanTermRounds}
+                      options={[
+                        { value: 2, label: '2 rounds' },
+                        { value: 3, label: '3 rounds' },
+                        { value: 4, label: '4 rounds (Default)' },
+                        { value: 5, label: '5 rounds' },
+                      ]}
+                      onChange={(value) => {
+                        const nextTerm = Number(value)
+                        setMonopolyLoanTermRounds(nextTerm)
+                        void patchSettings({ monopoly_loan_term_rounds: nextTerm })
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           </HostLobbySettingBlock>
         )}

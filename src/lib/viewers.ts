@@ -5,8 +5,10 @@ import {
   isCodewordsGame,
   isMonopolyGame,
   isYahtzeeGame,
+  isGoFishGame,
   isWhotGame,
   isCrazyEightsGame,
+  isRummyGame,
   isUnoGame,
   isLudoGame,
   isMahjongGame,
@@ -15,7 +17,6 @@ import {
   isChessGame,
   isCheckersGame,
   isDraughts10Game,
-  isPingPongGame,
   isAyoGame,
   isScrabbleGame,
   isDescribeItGame,
@@ -39,6 +40,7 @@ import {
   isMafiaGame,
   isWordGroupingGame,
   isWordleRoomGame,
+  isTrollRunGame,
   parseGameType,
 } from '@/lib/game-types'
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -99,15 +101,31 @@ export function gameSupportsViewerSetting(gameType: GameType): boolean {
  * (Sudoku / Crossword / Word Search) are the same: a late arrival watches a player's board
  * (and can switch between players), rather than joining the race late. So the only late-join
  * options for these are "viewers only" or "lobby only" — never "viewers + players".
+ *
+ * The test for this list is not "is it a puzzle" but "can a player who arrives now actually
+ * take part". Word Scramble seeds NO per-player state at start — `word_scramble_solves` rows
+ * are upserted as each word is solved — so a late arrival simply starts solving with fewer
+ * words banked, which is a disadvantage rather than a broken seat. Mafia, Troll Run and the
+ * turn games are the opposite: roles, seats and per-round state are all written in one pass at
+ * start, so someone arriving later holds a `players` row with nothing behind it.
  */
 export function gameAllowsLatePlayerJoin(gameType: GameType): boolean {
   return (
+    // Anonymous Messages is a closed circle: the whole session is messages between the people
+    // who were in the room when it started, and the anonymity only means anything against a
+    // known, fixed roster. Someone arriving mid-session both breaks that and has no thread to
+    // arrive into, so they watch or wait for the next lobby — never join as a player.
+    !isAnonymousMessagesGame(gameType) &&
     !isMafiaGame(gameType) &&
     !isMonopolyGame(gameType) &&
     !isYahtzeeGame(gameType) &&
     !isWhotGame(gameType) &&
     !isCrazyEightsGame(gameType) &&
+    !isRummyGame(gameType) &&
     !isUnoGame(gameType) &&
+    // Go Fish deals a fixed hand to each seat at start; a mid-game newcomer would have no cards
+    // and no share of the ocean already dealt out. Late joiners can only spectate.
+    !isGoFishGame(gameType) &&
     !isLudoGame(gameType) &&
     !isMahjongGame(gameType) &&
     !isSnakeAndLadderGame(gameType) &&
@@ -116,12 +134,11 @@ export function gameAllowsLatePlayerJoin(gameType: GameType): boolean {
     !isCheckersGame(gameType) &&
     !isDraughts10Game(gameType) &&
     !isAyoGame(gameType) &&
-    !isPingPongGame(gameType) &&
     !isScrabbleGame(gameType) &&
     !isSudokuGame(gameType) &&
     !isCrosswordGame(gameType) &&
     !isWordSearchGame(gameType) &&
-    !isWordScrambleGame(gameType)
+    !isTrollRunGame(gameType)
   )
 }
 
@@ -275,7 +292,9 @@ export function spectatorForActiveJoin(
     isYahtzeeGame(gameType) ||
     isWhotGame(gameType) ||
     isCrazyEightsGame(gameType) ||
-    isUnoGame(gameType)
+    isRummyGame(gameType) ||
+    isUnoGame(gameType) ||
+    isGoFishGame(gameType)
   )
     return true
   if (!allowLatePlayers(game)) return true

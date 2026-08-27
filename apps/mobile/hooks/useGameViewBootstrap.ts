@@ -3,9 +3,11 @@ import { AppState } from 'react-native'
 import type { Game, Player } from '@fateround/shared'
 import { normalizeGameCode } from '@fateround/shared'
 import { Alert } from 'react-native'
+import { useRouter } from 'expo-router'
 import { JoinError, joinGame } from '@/lib/api'
+import { takeOverHosting } from '@/lib/take-over-hosting'
 import { recordRecentGame } from '@/lib/recent-games'
-import { getPlayerSession, setPlayerSession } from '@/lib/secure-session'
+import { getPlayerSession, setPlayerSession, type PlayerSession } from '@/lib/secure-session'
 import { reconcilePlayerSession } from '@/lib/player-session-reconcile'
 import { subscribePlayerSession } from '@/lib/session-events'
 import { getSupabase, GAME_SELECT, PLAYER_SELECT } from '@/lib/supabase'
@@ -18,7 +20,16 @@ export type UseGameViewBootstrapOptions<Screen extends string, GameState> = {
   notFoundScreen: Screen
   joinScreen: Screen
   waitingScreen: Screen
-  loadGameState: (game: Game, players: Player[]) => Promise<{ state: GameState; ok: boolean }>
+  /**
+   * Load the game-specific slice of state. `session` is the CALLER'S reconciled session for
+   * this load (see runLoad) — use its `resumeToken` for any per-player server read instead of
+   * reading SecureStore, so the read is never made with a stale/rotated token.
+   */
+  loadGameState: (
+    game: Game,
+    players: Player[],
+    session: PlayerSession | null
+  ) => Promise<{ state: GameState; ok: boolean }>
   computeScreen: (game: Game, playerId: string | null, state: GameState) => Screen
   afterResolve?: (game: Game, playerId: string | null, state: GameState) => void | Promise<void>
 }
@@ -37,6 +48,7 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
     afterResolve,
   } = opts
 
+  const router = useRouter()
   const code = normalizeGameCode(gameCode)
   const [screen, setScreen] = useState<Screen>(loadingScreen)
   const [game, setGame] = useState<Game | null>(null)
@@ -104,17 +116,18 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
       if (gameData.status === 'finished') finishedSessionRef.current = gameData.session_started_at ?? null
       else if (gameData.status === 'waiting') finishedSessionRef.current = undefined
 
-      const { state, ok } = await loadGameStateRef.current(gameData, playerRows)
-
-      setGame(gameData)
-      setPlayers(playerRows)
-      setGameState(ok ? state : null)
-
       // Reconcile the stored session against the roster we just fetched: a drifted/
       // stale player id (removed+rejoined, reclaim miss, rotated token) otherwise
       // sticks forever and mismatches the dealt hand ("Your hand (0)"). Heals via
       // the server's token-keyed resume, clears only on a confirmed 404. Web does
       // this via resolvePlayerSession; mobile never had it.
+      //
+      // BEFORE loadGameState, and handed to it: game state that is fetched per-player
+      // through a server route (the Codewords key card, a card hand) authenticates with
+      // the resume token, so loading it against the pre-reconciliation token yields a
+      // REDACTED view of a live game — a spymaster staring at an operative's grid until
+      // some later event happens to reload (review on PR #787). Reading SecureStore
+      // directly inside loadGameState has the same flaw and one extra keychain read.
       const session = await reconcilePlayerSession(code, playerRows)
       const playerId = session?.playerId ?? null
       if (session) {
@@ -130,6 +143,12 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
         setMyPlayerId(null)
         setMyResumeToken(null)
       }
+
+      const { state, ok } = await loadGameStateRef.current(gameData, playerRows, session)
+
+      setGame(gameData)
+      setPlayers(playerRows)
+      setGameState(ok ? state : null)
 
       const resolvedState = ok ? state : (null as GameState)
       if (afterResolveRef.current) await afterResolveRef.current(gameData, playerId, resolvedState)
@@ -201,15 +220,46 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
           // seated from another device. Ask the user which device wins; on
           // "Continue here" re-issue the join with the override flag.
           if (err instanceof JoinError && (err.reason === 'already_hosting' || err.reason === 'already_joined')) {
-            const isHost = err.reason === 'already_hosting'
+            // Hosting is a different offer from continuing a seat: retrying the join would
+            // seat the host as an ordinary PLAYER and leave hosting on the other device.
+            if (err.reason === 'already_hosting') {
+              const takeOver = await new Promise<boolean>((resolve) => {
+                Alert.alert(
+                  'Hosting on another device',
+                  'You’re hosting this game on another device. Take over hosting on this device?',
+                  [
+                    { text: 'Keep other device', style: 'cancel', onPress: () => resolve(false) },
+                    { text: 'Take over here', style: 'default', onPress: () => resolve(true) },
+                  ],
+                  { cancelable: false }
+                )
+              })
+              if (!takeOver) {
+                setError(null)
+                setJoining(false)
+                return
+              }
+              const hostToken = await takeOverHosting(gameCode)
+              if (hostToken) {
+                setError(null)
+                setJoining(false)
+                router.replace(`/host/${gameCode.toUpperCase()}` as never)
+                return
+              }
+              // Handoff unavailable (a failed request, or the profile no longer owns this
+              // game). STOP here rather than falling through: the next prompt says "you're
+              // already a player on another device", which is false for a host, and confirming
+              // it would seat them as an ordinary player in the game they are running.
+              setError('Could not take over hosting on this device. Try again.')
+              setJoining(false)
+              return
+            }
             const proceed = await new Promise<boolean>((resolve) => {
               Alert.alert(
-                isHost ? 'Already hosting elsewhere' : 'Already in this game elsewhere',
-                isHost
-                  ? 'You’re hosting this game on another device. Continue on this device, or keep it on the other one?'
-                  : `You’re already a player in this game on another device${
-                      err.existingPlayerName ? ` (as ${err.existingPlayerName})` : ''
-                    }. Continue on this device, or keep it on the other one?`,
+                'Already in this game elsewhere',
+                `You’re already a player in this game on another device${
+                  err.existingPlayerName ? ` (as ${err.existingPlayerName})` : ''
+                }. Continue on this device, or keep it on the other one?`,
                 [
                   { text: 'Keep other device', style: 'cancel', onPress: () => resolve(false) },
                   { text: 'Continue here', style: 'default', onPress: () => resolve(true) },
@@ -238,6 +288,11 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
       } catch (err) {
         setLobbyFull((err as { full?: boolean })?.full === true)
         setError(err instanceof Error ? err.message : 'Failed to join')
+        // Refresh the room snapshot so the picker sees whatever changed between the
+        // caller's last render and this rejection — e.g. a not-ready player claiming the
+        // same monopoly token in the seconds before we hit submit. Without this reload
+        // the client keeps offering the token as free and the user retries the same click.
+        void load()
       } finally {
         setJoining(false)
       }
@@ -328,9 +383,7 @@ export function useGameTableSync(
   // so the subscription (keyed on table names + columns) never has to be torn
   // down and rebuilt. Same trick as web useGameTableSync.
   const applyRef = useRef(new Map<string, ((row: Record<string, unknown>) => void | boolean) | undefined>())
-  applyRef.current = new Map(
-    tables.map((t) => (typeof t === 'string' ? [t, undefined] : [t.table, t.apply]))
-  )
+  applyRef.current = new Map(tables.map((t) => (typeof t === 'string' ? [t, undefined] : [t.table, t.apply])))
 
   useEffect(() => {
     if (!enabled || !gameCode || tables.length === 0) return
@@ -378,12 +431,7 @@ export function useGameTableSync(
             // still reload as before.
             const apply = applyRef.current.get(table)
             let handled = false
-            if (
-              apply &&
-              payload?.eventType !== 'DELETE' &&
-              payload?.new &&
-              Object.keys(payload.new).length > 0
-            ) {
+            if (apply && payload?.eventType !== 'DELETE' && payload?.new && Object.keys(payload.new).length > 0) {
               try {
                 handled = apply(payload.new) === true
               } catch {

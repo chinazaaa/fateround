@@ -8,6 +8,7 @@ import { PollGamePlayerExperience } from '@/components/poll-game/PollGamePlayerE
 import { AudioChat } from '@/components/AudioChat'
 import { IosInstallPushNudge } from '@/components/IosInstallPushNudge'
 import { PublicGameFinishOverlay } from '@/components/notifications/PublicGameFinishOverlay'
+import { HostFinishFloating } from '@/components/host/HostFinishFloating'
 import { ScheduledGameOverlay } from '@/components/notifications/ScheduledGameOverlay'
 import { MatureGameGate } from '@/components/MatureGameGate'
 import { getPlayerSession } from '@/lib/utils'
@@ -113,15 +114,18 @@ function TournamentBanner({
 }
 
 export default function GamePage() {
-  const { code } = useParams<{ code: string }>()
+  const params = useParams<{ code?: string | string[] }>()
+  const code = params?.code
   const searchParams = useSearchParams()
-  const gameCode = (Array.isArray(code) ? code[0] : code).toUpperCase()
+  const rawCode = Array.isArray(code) ? code[0] : code
+  const gameCode = (typeof rawCode === 'string' ? rawCode : '').toUpperCase()
   const tournamentId = searchParams.get('tournament')
   // Spectator "Watch live" links carry ?watch=1 — auto-join as a viewer under a
   // stable generated name so people can follow the game without playing.
   const watch = searchParams.get('watch') === '1'
   const { profile } = useProfile()
   const initialName = useMemo(() => {
+    if (!gameCode) return undefined
     if (!watch) return searchParams.get('name') ?? undefined
     if (typeof window === 'undefined') return undefined
     const key = `watcher_name_${gameCode}`
@@ -226,6 +230,9 @@ export default function GamePage() {
           games only — tournament players already get the "back to hub" banner
           in that same corner. */}
       {!tournamentId && <PublicGameFinishOverlay gameCode={gameCode} />}
+      {/* Safety net for hosts on the player URL — surfaces Play again / Return
+          to lobby at end of round when the viewer still holds a host token. */}
+      {!tournamentId && <HostFinishFloating gameCode={gameCode} />}
       {/* Discovery Phase C — hides itself for immediate games; renders the
           full-screen RSVP takeover for scheduled ones and the "I'm ready"
           floating prompt for RSVPers in the post-open lobby. */}

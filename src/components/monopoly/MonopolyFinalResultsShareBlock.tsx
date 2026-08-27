@@ -44,7 +44,8 @@ export function MonopolyFinalResultsShareBlock({
             board.property_owners,
             board.property_buildings,
             board.mortgaged_properties,
-            board.board_size ?? 40
+            board.board_size ?? 40,
+            board.loans
           )
         : [],
     [board, players, states]

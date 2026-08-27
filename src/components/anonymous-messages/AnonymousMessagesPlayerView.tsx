@@ -38,12 +38,14 @@ import { PlayerSessionControls } from '@/components/ui/PlayerSessionControls'
 import { EditNameInline } from '@/components/ui/EditNameInline'
 import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
 import { useRegisterGameSettings } from '@/components/GameSettingsContext'
+import { RulesInPlaySection } from '@/components/game-lobby/RulesInPlaySection'
 import { CreateNewGameButton } from '@/components/ui/CreateNewGameButton'
 import { useLobbyOpenNotification } from '@/hooks/useLobbyOpenNotification'
 import { useTurnNotifications } from '@/hooks/useTurnNotifications'
 import { useRoomMemberAutoJoin, useRoomMemberJoin } from '@/hooks/useRoomMemberJoin'
 import { markPlayerReady } from '@/lib/player-ready'
 import { allowLateJoin, playerIsViewer, preJoinScreen } from '@/lib/viewers'
+import { mergeRealtimeGame } from '@/lib/realtime-merge'
 
 type Screen =
   | 'loading'
@@ -137,7 +139,7 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
         { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
         (payload) => {
           const next = payload.new as Game
-          setGame(next)
+          setGame((prev) => mergeRealtimeGame(prev, next))
           syncScreen(next, myPlayerId)
         }
       )
@@ -297,6 +299,7 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
     if (!myPlayerId) return null
     return (
       <div className="space-y-3">
+        <RulesInPlaySection game={game} />
         <EditNameInline
           gameCode={gameCode}
           playerId={myPlayerId}
@@ -314,7 +317,7 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
         />
       </div>
     )
-  }, [myPlayerId, screen, gameCode, myPlayerName, router])
+  }, [game, myPlayerId, screen, gameCode, myPlayerName, router])
   useRegisterGameSettings(playerSettingsNode)
 
   if (screen === 'loading') {

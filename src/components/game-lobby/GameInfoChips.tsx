@@ -5,6 +5,8 @@ import { wordSearchThemeOptions } from '@/lib/word-search-puzzles'
 import { wordScrambleThemeOptions } from '@/lib/word-scramble-puzzles'
 import { THEME_MAP } from '@/lib/themes'
 import { parseUnoRules } from '@/lib/uno'
+import { clampWordleRoomCategory, wordleRoomCategoryLabel } from '@/lib/wordle-room'
+import { triviaCategoryLabel } from '@/lib/trivia-questions'
 import { Glyph } from '@/components/icons/Glyph'
 import {
   UserMultipleIcon,
@@ -137,6 +139,7 @@ type GameMeta = {
   monopoly_auction_timer_seconds?: number | null
   monopoly_no_rent_in_jail?: boolean | null
   monopoly_estate_dividend?: boolean | null
+  monopoly_loans_enabled?: boolean | null
   landmine_mode?: string | null
   landmine_mine_count?: number | null
   landmine_originality_bonus?: boolean | null
@@ -145,21 +148,15 @@ type GameMeta = {
   mafia_anonymous_votes?: boolean | null
   mafia_day_seconds?: number | null
   mafia_voting_seconds?: number | null
-  ping_pong_points_to_win?: number | null
   codewords_player_picks?: boolean | null
   codewords_randomize_teams?: boolean | null
   codewords_late_join?: boolean | null
   operative_timer_seconds?: number | null
+  wordle_room_category?: string | null
+  wordle_room_word_count?: number | null
 }
 
-const FIXED_TWO_PLAYER = new Set([
-  'chess',
-  'checkers',
-  'checkers_international',
-  'checkers_nigeria',
-  'tic_tac_toe',
-  'ping_pong',
-])
+const FIXED_TWO_PLAYER = new Set(['chess', 'checkers', 'checkers_international', 'checkers_nigeria', 'tic_tac_toe'])
 
 const DUEL_CLOCK_LABEL: Record<string, string> = {
   chess: 'Time per player',
@@ -251,6 +248,12 @@ export function gameInfoItems(game: GameMeta | null | undefined): string[] {
     // Mafia has no overall session-length cap — it runs in per-phase timers (night/day/voting,
     // shown in the mafia-specific block below) rather than a duration, so skip the generic
     // "No time limit" chip that would otherwise misleadingly imply untimed phases too.
+  } else if (gt === 'wordle_room') {
+    // Wordle Room's session cap lives in `timer_seconds` (not
+    // `game_duration_seconds`), so the generic fallback below would keep
+    // reading a stale 0 and always render "No time limit" even after the
+    // host bumps the timer in the lobby. Read timer_seconds directly.
+    items.push(`⏳ ${formatDuration(game.timer_seconds ?? 0)}`)
   } else if (typeof game.game_duration_seconds === 'number') {
     items.push(`⏳ ${formatDuration(game.game_duration_seconds)}`)
   }
@@ -283,7 +286,8 @@ export function gameInfoItems(game: GameMeta | null | undefined): string[] {
       items.push(puzzleThemeChip(wordScrambleThemeOptions(), game.word_scramble_theme))
     if (game.word_scramble_difficulty) items.push(capitalize(game.word_scramble_difficulty))
   } else if (gt === 'trivia') {
-    if (game.trivia_category) items.push(game.trivia_category === 'tech' ? 'Tech' : 'General knowledge')
+    // All 17 categories, not a tech/general binary: a Maths room used to chip "General knowledge".
+    if (game.trivia_category) items.push(triviaCategoryLabel(game.trivia_category))
   } else if (gt === 'who_said_this') {
     if (game.wst_quote_source) {
       const labels: Record<string, string> = {
@@ -347,6 +351,7 @@ export function gameInfoItems(game: GameMeta | null | undefined): string[] {
     if (game.monopoly_forced_auctions) items.push('🔨 Forced auctions')
     if (game.monopoly_no_rent_in_jail) items.push('🚫 No rent in NICKED')
     if (game.monopoly_estate_dividend) items.push('🏦 Estate dividend')
+    if (game.monopoly_loans_enabled) items.push('🏦 Bank loans')
   } else if (gt === 'landmine') {
     items.push(game.landmine_mode === 'elimination' ? '💥 Elimination' : '0️⃣ Zero points')
     if (typeof game.landmine_mine_count === 'number') items.push(`💣 ${game.landmine_mine_count} mines`)
@@ -364,14 +369,22 @@ export function gameInfoItems(game: GameMeta | null | undefined): string[] {
       items.push(`🗳️ ${formatDuration(game.mafia_voting_seconds)} voting`)
     }
     if (game.mafia_anonymous_votes) items.push('🕶️ Anonymous votes')
-  } else if (gt === 'ping_pong') {
-    if (game.ping_pong_points_to_win) items.push(`🏓 First to ${game.ping_pong_points_to_win}`)
   } else if (gt === 'codewords') {
     if (game.codewords_player_picks) items.push('🙋 Players pick roles')
     if (game.codewords_randomize_teams) items.push('🎲 Randomized operatives')
     if (game.codewords_late_join) items.push('🚪 Late join allowed')
     if (typeof game.operative_timer_seconds === 'number' && game.operative_timer_seconds > 0) {
       items.push(`⏱ ${game.operative_timer_seconds}s guess timer`)
+    }
+  } else if (gt === 'wordle_room') {
+    // Wordle Room pool: word count + category label so a joiner sees what
+    // they're racing on. Mirrors the mobile GameInfoChips branch.
+    if (typeof game.wordle_room_word_count === 'number' && game.wordle_room_word_count > 0) {
+      items.push(`${game.wordle_room_word_count} words`)
+    }
+    if (game.wordle_room_category) {
+      const label = wordleRoomCategoryLabel(clampWordleRoomCategory(game.wordle_room_category))
+      if (label) items.push(label)
     }
   }
 

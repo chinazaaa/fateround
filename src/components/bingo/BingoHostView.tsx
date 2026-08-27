@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
 import { BingoCardGrid, CalledNumbersBoard } from '@/components/bingo/BingoCardGrid'
 import { HostActiveSettings } from '@/components/host/HostActiveSettings'
@@ -34,13 +34,8 @@ import {
   hasBingoWin,
 } from '@/lib/bingo'
 import { supabase } from '@/lib/supabase'
-import {
-  BINGO_CALLED_NUMBER_SELECT,
-  BINGO_CARD_SELECT,
-  BINGO_CLAIM_SELECT,
-  GAME_SELECT,
-  PLAYER_SELECT,
-} from '@/lib/supabase-selects'
+import { fetchBingoCard } from '@/lib/hands-client'
+import { BINGO_CALLED_NUMBER_SELECT, BINGO_CLAIM_SELECT, GAME_SELECT, PLAYER_SELECT } from '@/lib/supabase-selects'
 import { appOrigin } from '@/lib/site'
 import { HostAllowViewersField } from '@/components/HostAllowViewersField'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
@@ -52,6 +47,7 @@ import { useBingoWinNotification, useBingoStartNotification } from '@/hooks/useB
 import { useBingoAutoCall } from '@/hooks/useBingoAutoCall'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
 import { useScrollHostViewToTop } from '@/hooks/useScrollHostViewToTop'
+import { mergeRealtimeGame } from '@/lib/realtime-merge'
 
 type HostTab = 'play' | 'manage'
 
@@ -75,21 +71,32 @@ export function BingoHostView({ gameCode, hostToken }: { gameCode: string; hostT
   const [hostMarking, setHostMarking] = useState(false)
   const [hostClaiming, setHostClaiming] = useState(false)
   const [tab, setTab] = useState<HostTab>('manage')
+  // The host seat's resume token comes from useHostSeat, declared further down; a ref lets
+  // loadHostCard (defined above it, and captured by the realtime subscription) read the current
+  // token without re-subscribing.
+  const hostResumeTokenRef = useRef<string | null>(null)
 
   useScrollHostViewToTop({ gameStatus: game?.status, tab })
 
-  const loadHostCard = useCallback(
-    async (playerId: string) => {
-      const res = await supabase
-        .from('bingo_cards')
-        .select(BINGO_CARD_SELECT)
-        .eq('game_id', gameCode)
-        .eq('player_id', playerId)
-        .maybeSingle()
-      if (res.data) setHostCard(res.data as BingoCard)
-    },
-    [gameCode]
-  )
+  // The host reads a card through /api/bingo/card so `cells`/`marked_indices` never reach the
+  // browser via the anon key. It reads it as a PLAYER — with the host seat's own resume token,
+  // the same secret markHostNumber/claimHostBingo already require — not with the host token.
+  // The host token used to authorize naming ANY player's card, which handed every holder of the
+  // shared /host/CODE link every player's card; nothing needed that (claim verification is
+  // server-side in /api/bingo/claim), so the route no longer offers it.
+  //
+  // `ok` means the server answered: a null card then genuinely means "not dealt", so it CLEARS
+  // the card rather than leaving a stale one from the previous round. A transport blip leaves
+  // the current card alone.
+  //
+  // Returns the poll health signal: true when the server answered (with or without a card),
+  // false only on a transport/authorization failure — so the recovery poll below doesn't back
+  // off exponentially while waiting for a card to be dealt.
+  const loadHostCard = useCallback(async (): Promise<boolean> => {
+    const result = await fetchBingoCard(gameCode, { resumeToken: hostResumeTokenRef.current })
+    if (result.ok) setHostCard(result.card)
+    return result.ok
+  }, [gameCode])
 
   const load = useCallback(async (): Promise<boolean> => {
     const [gameRes, plrsRes, calledRes, claimRes] = await Promise.all([
@@ -145,6 +152,7 @@ export function BingoHostView({ gameCode, hostToken }: { gameCode: string; hostT
     onReload: load,
     toast: { success, error: toastError },
   })
+  hostResumeTokenRef.current = hostResumeToken
 
   const handlePlayerRemoved = useCallback(
     (playerId: string) => {
@@ -157,11 +165,24 @@ export function BingoHostView({ gameCode, hostToken }: { gameCode: string; hostT
 
   const { removePlayer, removingPlayerId } = useHostRemovePlayer(gameCode, hostToken, handlePlayerRemoved)
 
+  // A round that ends and is replayed deals fresh cards. Drop the finished round's card as soon
+  // as the lobby reopens, so a stale card can't render over the new round (the load effect below
+  // only fires while active, so nothing would have cleared it).
   useEffect(() => {
-    if (hostPlayerId && game?.status === 'active' && !hostCard) {
-      void loadHostCard(hostPlayerId)
+    if (game?.status === 'waiting') setHostCard(null)
+  }, [game?.status])
+
+  useEffect(() => {
+    if (hostPlayerId && hostResumeToken && game?.status === 'active' && !hostCard) {
+      void loadHostCard()
     }
-  }, [hostPlayerId, game?.status, hostCard, loadHostCard])
+  }, [hostPlayerId, hostResumeToken, game?.status, hostCard, loadHostCard])
+
+  // Recovery poll, mirroring the player view: the deal can land after the game flips to active.
+  usePolling(() => loadHostCard(), [loadHostCard], {
+    intervalMs: POLL_INTERVALS.lobby,
+    enabled: game?.status === 'active' && !!hostPlayerId && !!hostResumeToken && !hostCard,
+  })
 
   useEffect(() => {
     const channel = supabase
@@ -171,7 +192,7 @@ export function BingoHostView({ gameCode, hostToken }: { gameCode: string; hostT
         { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
         (payload) => {
           const next = payload.new as Game
-          setGame(next)
+          setGame((prev) => mergeRealtimeGame(prev, next))
           setLobbyCallMode(bingoCallModeFromGame(next))
           setLobbyCallInterval(bingoCallIntervalFromGame(next))
         }
@@ -201,8 +222,10 @@ export function BingoHostView({ gameCode, hostToken }: { gameCode: string; hostT
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'bingo_cards', filter: `game_id=eq.${gameCode}` },
         (payload) => {
-          if (hostPlayerId && (payload.new as BingoCard).player_id === hostPlayerId) {
-            setHostCard(payload.new as BingoCard)
+          // Post-revoke the payload carries no `cells`/`marked_indices`, so applying it verbatim
+          // would blank the host's card. Re-fetch through the authorized route instead.
+          if (hostPlayerId && (payload.new as { player_id?: string }).player_id === hostPlayerId) {
+            void loadHostCard()
           }
         }
       )
@@ -211,7 +234,7 @@ export function BingoHostView({ gameCode, hostToken }: { gameCode: string; hostT
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [gameCode, load, hostPlayerId])
+  }, [gameCode, load, hostPlayerId, loadHostCard])
 
   usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
 
@@ -416,7 +439,7 @@ export function BingoHostView({ gameCode, hostToken }: { gameCode: string; hostT
   const hostSettingsNode = useMemo(
     () =>
       game?.status === 'active' ? (
-        <HostActiveSettings gameCode={gameCode} hostToken={hostToken} gameType="bingo" onEnded={load}>
+        <HostActiveSettings game={game} gameCode={gameCode} hostToken={hostToken} gameType="bingo" onEnded={load}>
           {hostMode === 'player' && !!hostPlayerId && (
             <HostLeaveSeatButton onLeave={leaveSeatKeepHosting} className="btn-secondary w-full py-3 text-base" />
           )}
@@ -540,7 +563,7 @@ export function BingoHostView({ gameCode, hostToken }: { gameCode: string; hostT
           onJoinNameChange={setHostJoinName}
           onJoin={() => void hostJoinGame()}
           joining={hostJoining}
-          spectatorHint="Watch the game from the Watch tab"
+          spectatorHint="Watch the game"
           playingNote={
             <p className="text-sm text-muted">
               Playing as <strong className="text-body">{hostPlayerName}</strong> — you&apos;ll get a card when the game

@@ -1,7 +1,7 @@
 import { z } from 'zod'
-import { PING_PONG_POINTS_OPTIONS } from '@/lib/ping-pong'
 import { LOBBY_LIMIT_GAME_TYPES } from '@/lib/game-limits'
 import { SCRABBLE_DICTIONARY_OPTIONS } from '@/lib/scrabble-dictionary-meta'
+import { TROLL_RUN_WORLD_IDS } from '@/lib/troll-run-types'
 import {
   sanitizedString,
   gameCodeString,
@@ -20,6 +20,10 @@ import {
 } from './shared'
 
 const mahjongRulesetEnum = z.enum(['fate_round', 'hong_kong', 'riichi', 'mcr'])
+
+// A world id the server does not recognise would silently fall back to World 1 while the
+// room's settings claimed otherwise, so reject it at the edge instead.
+const trollRunWorldEnum = z.enum(TROLL_RUN_WORLD_IDS)
 const mahjongRuleOptionsSchema = z
   .object({
     matchLength: z.enum(['east', 'hanchan']).optional(),
@@ -81,6 +85,7 @@ export const createGameSchema = z.object({
   player_questions_order: playerQuestionsOrderEnum.optional(),
   game_type: gameTypeEnum.optional(),
   theme: themeEnum.optional(),
+  edition_slug: z.string().min(1).max(64).optional(),
   wst_quote_source: wstQuoteSourceEnum.optional(),
   participant_filter: participantFilterEnum.optional(),
   gender_based: z.boolean().optional(),
@@ -95,6 +100,14 @@ export const createGameSchema = z.object({
     .int()
     .refine((value) => value === 40 || value === 48)
     .optional(),
+  monopoly_double_go_salary: z.boolean().optional(),
+  monopoly_forced_auctions: z.boolean().optional(),
+  monopoly_auction_timer_seconds: z.coerce.number().int().min(5).max(60).optional(),
+  monopoly_no_rent_in_jail: z.boolean().optional(),
+  monopoly_estate_dividend: z.boolean().optional(),
+  monopoly_loans_enabled: z.boolean().optional(),
+  monopoly_loan_interest: z.coerce.number().int().min(0).max(100).optional(),
+  monopoly_loan_term_rounds: z.coerce.number().int().min(1).max(20).optional(),
   codewords_player_picks: z.boolean().optional(),
   codewords_late_join: z.boolean().optional(),
   describe_it_num_teams: z.coerce.number().int().min(2).max(4).optional(),
@@ -195,11 +208,6 @@ export const createGameSchema = z.object({
   mafia_advanced_mode: z.boolean().optional(),
   mafia_day_seconds: z.coerce.number().int().min(10).max(600).optional(),
   mafia_voting_seconds: z.coerce.number().int().min(10).max(600).optional(),
-  ping_pong_points_to_win: z.coerce
-    .number()
-    .int()
-    .refine((val: number) => (PING_PONG_POINTS_OPTIONS as readonly number[]).includes(val))
-    .optional(),
   wordle_room_category: z
     .enum([
       'general_english',
@@ -236,6 +244,9 @@ export const createGameSchema = z.object({
     .max(2000)
     .optional(),
   library_pack_id: z.string().uuid().optional(),
+  troll_run_rounds: z.coerce.number().int().min(1).max(20).optional(),
+  troll_run_time_limit: z.coerce.number().int().min(30).max(600).optional(),
+  troll_run_world: trollRunWorldEnum.optional(),
   custom_slots: z
     .object({
       slots: z
@@ -269,6 +280,7 @@ export const updateGameSchema = z.object({
   // Player-facing content label ("Maths", "Bible trivia"). Empty string clears it.
   content_label: z.string().max(40).optional(),
   theme: themeEnum.optional(),
+  edition_slug: z.string().min(1).max(64).optional(),
   rounds_count: z.coerce.number().int().min(1, 'rounds_count is required').optional(),
   timer_seconds: z.coerce.number().optional(),
   operative_timer_seconds: z.coerce.number().optional(),
@@ -311,11 +323,6 @@ export const updateGameSchema = z.object({
   landmine_originality_bonus: z.boolean().optional(),
   landmine_review: z.boolean().optional(),
   landmine_review_seconds: z.coerce.number().int().optional(),
-  ping_pong_points_to_win: z.coerce
-    .number()
-    .int()
-    .refine((val: number) => (PING_PONG_POINTS_OPTIONS as readonly number[]).includes(val))
-    .optional(),
   // Discovery Phase A — "Keep open" button on the host T-13min banner. Bumps
   // last_activity_at + stamps host_idle_warning_sent_at so the pg_cron close
   // job holds off and the banner never re-fires for this game. The plan
@@ -393,6 +400,8 @@ export const boardGameLobbySettingsSchema = z.object({
   gameId: gameCodeString(),
   hostToken: hostTokenString(),
   is_public: z.boolean().optional(),
+  theme: themeEnum.optional(),
+  edition_slug: z.string().min(1).max(64).optional(),
   checkers_nigeria_street_rules: z.boolean().optional(),
   // Player-facing content label ("Maths", "Bible trivia"). Empty string clears it.
   content_label: z.string().max(40).optional(),
@@ -405,6 +414,9 @@ export const boardGameLobbySettingsSchema = z.object({
   monopoly_auction_timer_seconds: z.number().int().min(5).max(60).nullable().optional(),
   monopoly_no_rent_in_jail: z.boolean().optional(),
   monopoly_estate_dividend: z.boolean().optional(),
+  monopoly_loans_enabled: z.boolean().optional(),
+  monopoly_loan_interest: z.coerce.number().int().min(0).max(100).optional(),
+  monopoly_loan_term_rounds: z.coerce.number().int().min(1).max(20).optional(),
   monopoly_board_size: z.coerce
     .number()
     .int()
@@ -432,7 +444,7 @@ export const boardGameLobbySettingsSchema = z.object({
   ludo_variant: z.enum(['modern', 'traditional']).optional(),
   ayo_variant: z.enum(['traditional', 'oware']).optional(),
   mahjong_ruleset: mahjongRulesetEnum.optional(),
-  mahjong_rule_options: mahjongRuleOptionsSchema,
+  mahjong_rule_options: mahjongRuleOptionsSchema.optional(),
   mafia_doctor_enabled: z.boolean().optional(),
   mafia_detective_enabled: z.boolean().optional(),
   mafia_bodyguard_enabled: z.boolean().optional(),
@@ -481,11 +493,6 @@ export const boardGameLobbySettingsSchema = z.object({
   // We accept any object shape at the wire level so the WG nested-array/number values don't get
   // 400'd here — the per-game parsers reject anything invalid downstream.
   puzzle_custom_questions: z.array(z.record(z.string(), z.unknown())).max(500).optional(),
-  ping_pong_points_to_win: z.coerce
-    .number()
-    .int()
-    .refine((val: number) => (PING_PONG_POINTS_OPTIONS as readonly number[]).includes(val))
-    .optional(),
   wordle_room_category: z
     .enum([
       'general_english',
@@ -522,6 +529,9 @@ export const boardGameLobbySettingsSchema = z.object({
     .max(2000)
     .optional(),
   library_pack_id: z.string().uuid().optional(),
+  troll_run_rounds: z.coerce.number().int().min(1).max(20).optional(),
+  troll_run_time_limit: z.coerce.number().int().min(30).max(600).optional(),
+  troll_run_world: trollRunWorldEnum.optional(),
 })
 
 export type BoardGameLobbySettingsInput = z.infer<typeof boardGameLobbySettingsSchema>

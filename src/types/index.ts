@@ -30,6 +30,7 @@ export type GameType =
   | 'monopoly'
   | 'yahtzee'
   | 'whot'
+  | 'rummy'
   | 'ludo'
   | 'mahjong'
   | 'i_call_on'
@@ -54,10 +55,11 @@ export type GameType =
   | 'word_search'
   | 'word_scramble'
   | 'landmine'
-  | 'ping_pong'
   | 'uno'
   | 'word_grouping'
   | 'wordle_room'
+  | 'troll_run'
+  | 'gofish'
 
 export type NpatPhase = 'letter_pick' | 'writing' | 'marking' | 'host_review' | 'reveal'
 export type NpatCategory = 'name' | 'animal' | 'place' | 'thing' | 'food'
@@ -270,16 +272,15 @@ export interface CodewordsMessage {
   created_at: string
   player_name?: string
 }
-export type ThemeId =
-  | 'default'
-  | 'neon'
-  | 'retro'
-  | 'elegant'
-  | 'tropical'
-  | 'pirate'
-  | 'arctic'
-  | 'naija'
-  | 'grass_court'
+// Re-export the canonical union from @/lib/themes rather than duplicating it.
+// The old shadow definition here missed 'america' when Phase 4 added it, so
+// consumers importing `ThemeId` from '@/types' rejected the paid edition even
+// though the rest of the app accepts it. Import once, source of truth = one —
+// and bring `ThemeId` into local scope so the `theme?: ThemeId` field below
+// type-checks (a bare `export type ... from ...` re-exports without creating
+// a local binding, which is what broke CI type-check on the Phase 4 merge).
+import type { ThemeId } from '@/lib/themes'
+export type { ThemeId }
 export type WyrChoice = 'a' | 'b'
 
 export type ParticipantGender = 'male' | 'female'
@@ -387,6 +388,12 @@ export interface Game {
   monopoly_no_rent_in_jail?: boolean
   monopoly_estate_dividend?: boolean
   monopoly_board_size?: 40 | 48
+  monopoly_loans_enabled?: boolean
+  monopoly_loan_interest?: number
+  monopoly_loan_term_rounds?: number
+  troll_run_rounds?: number
+  troll_run_time_limit?: number
+  troll_run_world?: string
   anonymous: boolean
   auto_reveal: boolean
   auto_submit_behavior: AutoSubmitBehavior
@@ -401,6 +408,13 @@ export interface Game {
   player_questions_order?: PlayerQuestionsOrder
   game_type: GameType
   theme?: ThemeId
+  /**
+   * Estate Kings edition slug picked by the host (docs/estate-kings-america-edition.md).
+   * Mirrors `theme` for Monopoly — 'london' | 'naija' | 'pirate' | 'arctic' | 'america'
+   * — and is null for every other game type. See Phase 4 migration
+   * `20261101120700_estate_kings_america_edition.sql`.
+   */
+  edition_slug?: string | null
   status: GameStatus
   /** When true, the game is listed in /browse (discoverable). Default false = code-only. */
   is_public?: boolean
@@ -541,8 +555,6 @@ export interface Game {
   landmine_review_seconds?: number | null
   /** Nigerian Draughts — opt-in "Street Rules" (huffing): decline a capture, risk the piece. */
   checkers_nigeria_street_rules?: boolean | null
-  /** Ping Pong — points required to win the match (3, 5, 7, 11, 15, or 21). */
-  ping_pong_points_to_win?: number | null
   /** Wordle Room — which built-in word bank the race draws from. */
   wordle_room_category?:
     | 'general_english'
@@ -585,6 +597,13 @@ export interface MonopolyAuctionState {
 
 export interface MonopolyPendingTrade {
   from_player_id: string
+  /**
+   * ISO deadline for the recipient to answer. The board holds ONE pending
+   * trade at a time, so an unanswered offer blocks trading for the whole
+   * table — this bounds that. Optional: trades proposed before this field
+   * existed simply never expire, same as the old behaviour.
+   */
+  expires_at?: string | null
   to_player_id: string
   offer_cash: number
   offer_properties: number[]
@@ -621,11 +640,42 @@ export interface MonopolyLastCashEvent {
   bankrupt?: boolean
 }
 
+/**
+ * Why a trade was declined. Only ever set by the BOT — humans decline with a
+ * single tap and are never asked to justify it, so `decline_reason` stays null
+ * for human declines and the UI falls back to the plain "X declined" line.
+ */
+export type MonopolyTradeDeclineReason =
+  /** Handing the card over would complete a colour set for the proposer. */
+  | 'completes_your_set'
+  /** The card is part of a monopoly the bot has already completed. */
+  | 'protects_my_monopoly'
+  /** The bot doesn't hold the cash/cards/property the proposer asked for. */
+  | 'cannot_fulfil'
+  /** Valued the offer below its own side plus the accept margin. */
+  | 'offer_too_low'
+
 export interface MonopolyLastTradeEvent {
   seq: number
   from_player_id: string
   to_player_id: string
-  outcome: 'proposed' | 'declined' | 'accepted' | 'cancelled'
+  outcome: 'proposed' | 'declined' | 'accepted' | 'cancelled' | 'expired'
+  /** Bot-only explanation for a decline. Null/absent for human declines. */
+  decline_reason?: MonopolyTradeDeclineReason | null
+}
+
+export interface MonopolyLoan {
+  id: string
+  player_id: string
+  principal: number
+  interest_rate: number
+  total_due: number
+  amount_repaid: number
+  balance_remaining: number
+  term_rounds: number
+  rounds_remaining: number
+  created_at: string
+  status: 'active' | 'repaid' | 'defaulted'
 }
 
 export interface MonopolyBoard {
@@ -655,6 +705,7 @@ export interface MonopolyBoard {
   last_rent_event: MonopolyLastRentEvent | null
   last_cash_event: MonopolyLastCashEvent | null
   last_trade_event: MonopolyLastTradeEvent | null
+  loans?: MonopolyLoan[]
   turn_deadline_at: string | null
   winner_player_id: string | null
   created_at: string
@@ -813,6 +864,66 @@ export interface CrazyEightsPlayerHand {
   created_at: string
 }
 
+/** The four suits of a standard 52-card Rummy deck. */
+export type RummySuit = 'spades' | 'clubs' | 'hearts' | 'diamonds'
+
+export type RummyPhase = 'playing' | 'finished'
+
+export interface RummyCard {
+  id: string
+  suit: RummySuit
+  /** Ace = 1 … King = 13. In this variant Aces are low; runs never wrap. */
+  rank: number
+}
+
+/** A meld laid down at "going out". `kind` is derived, but stored so client UI can render
+ *  the run/set distinction without re-checking. */
+export type RummyMeldKind = 'set' | 'run'
+
+export interface RummyMeld {
+  kind: RummyMeldKind
+  cards: RummyCard[]
+}
+
+export interface RummySession {
+  id: string
+  game_id: string
+  turn_order: string[]
+  current_turn_index: number
+  phase: RummyPhase
+  draw_pile: RummyCard[]
+  discard_pile: RummyCard[]
+  /** Convenience mirror of the top-of-discard for realtime clients that don't hold the full pile. */
+  top_discard: RummyCard | null
+  /** `draw` = must draw a card to start turn; `discard` = has drawn, must discard to end turn. */
+  turn_step: 'draw' | 'discard'
+  status_message: string | null
+  winner_player_id: string | null
+  /** Winning melds captured at "going out" for the finished screen. */
+  winning_melds: RummyMeld[] | null
+  /** How many times the draw pile has been rebuilt from the discard. Capped to avoid
+   *  infinite loops when nobody can go out; game ends by lowest hand total once reached. */
+  reshuffle_count: number
+  turn_deadline_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface RummyPlayerHand {
+  id: string
+  game_id: string
+  player_id: string
+  /**
+   * The player's cards. `null` means REDACTED (someone else's hand). Empty array means the
+   * player has laid everything down and is out — do not conflate the two.
+   */
+  cards: RummyCard[] | null
+  /** How many cards the player holds. Public, survives redaction. */
+  card_count?: number
+  player_order: number
+  created_at: string
+}
+
 /** A playable UNO colour ('wild' is the colourless slot for Wild / Wild Draw Four cards). */
 export type UnoCardColor = 'red' | 'yellow' | 'green' | 'blue' | 'wild'
 
@@ -919,6 +1030,105 @@ export interface UnoPlayerHand {
   game_id: string
   player_id: string
   cards: UnoCard[]
+  player_order: number
+  created_at: string
+}
+
+/** Standard playing-card suits used by Go Fish. Suit is cosmetic — only rank matters for books. */
+export type GoFishSuit = 'spades' | 'hearts' | 'diamonds' | 'clubs'
+
+/** Ace = 1 … King = 13. Every rank makes exactly one book. */
+export type GoFishRank = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13
+
+export type GoFishPhase = 'playing' | 'finished'
+
+export interface GoFishCard {
+  id: string
+  suit: GoFishSuit
+  rank: GoFishRank
+}
+
+/** One entry in the public event log — every player and spectator sees the same list. */
+export type GoFishEvent =
+  | {
+      kind: 'ask_hit'
+      from_id: string
+      target_id: string
+      rank: GoFishRank
+      /** How many cards the target had to hand over (>= 1). */
+      count: number
+      at: string
+    }
+  | {
+      kind: 'ask_miss'
+      from_id: string
+      target_id: string
+      rank: GoFishRank
+      /** True if the drawn card happened to be the asked rank (asker goes again). */
+      lucky_draw: boolean
+      /** False when the ocean was empty at ask time. */
+      drew: boolean
+      at: string
+    }
+  | {
+      kind: 'book'
+      player_id: string
+      rank: GoFishRank
+      at: string
+    }
+  | {
+      kind: 'refill'
+      player_id: string
+      /** Number of cards drawn to refill an empty hand. */
+      count: number
+      at: string
+    }
+  | {
+      kind: 'out_of_cards'
+      player_id: string
+      at: string
+    }
+  | {
+      kind: 'game_over'
+      at: string
+    }
+
+export interface GoFishSession {
+  id: string
+  game_id: string
+  turn_order: string[]
+  current_turn_index: number
+  phase: GoFishPhase
+  /** Face-down draw pile. Server-only source of truth; redacted from client responses. */
+  ocean: GoFishCard[]
+  /** Public size of the ocean — survives redaction, so clients can render "N cards left". */
+  ocean_count: number
+  /** Append-only public log of what happened this game. */
+  event_log: GoFishEvent[]
+  status_message: string | null
+  winner_player_id: string | null
+  /** Player ids in the order they finished (either ran out of cards with an empty ocean, or the game ended). */
+  finish_order: string[]
+  /** ISO timestamp when the current player's turn expires; null means no timer configured. */
+  turn_deadline_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface GoFishPlayerHand {
+  id: string
+  game_id: string
+  player_id: string
+  /**
+   * The player's private hand. `null` means REDACTED (someone else's hand). Never `[]` for
+   * redaction — an empty array means the player really has no cards, which is meaningful state.
+   * Use `card_count` for anyone other than the local player.
+   */
+  cards: GoFishCard[] | null
+  /** Public: how many cards this player is holding. Survives redaction. */
+  card_count?: number
+  /** Books this player has completed — public. Each entry names the rank collected. */
+  books: GoFishRank[]
   player_order: number
   created_at: string
 }
@@ -1185,21 +1395,6 @@ export interface TicTacToeSession {
   updated_at: string
 }
 
-export interface PingPongSession {
-  id: string
-  game_id: string
-  player_x_id: string
-  player_o_id: string
-  score_x: number
-  score_o: number
-  points_to_win: number
-  status: 'active' | 'finished'
-  winner_player_id: string | null
-  status_message: string | null
-  created_at: string
-  updated_at: string
-}
-
 export type ChessColor = 'w' | 'b'
 
 export interface ChessSession {
@@ -1396,11 +1591,25 @@ export interface DescribeItSession {
   describer_player_id: string | null
   /** Ordered player ids that take turns describing (individual mode only). */
   roster: string[]
-  current_word: string | null
+  /**
+   * The secret word. NOT present on a client-side session — `current_word` is revoked from
+   * anon/authenticated by migration 20260807130000, and DESCRIBE_IT_SESSION_SELECT no longer
+   * asks for it. Only service-role reads see it (see `DescribeItServerSession` in
+   * src/lib/describe-it.ts); the describer gets it back via POST /api/describe-it/my-word.
+   */
+  current_word?: string | null
   current_clue: string | null
   /** All clues given for the current word (reset each word). */
   current_clues: string[]
-  used_words: string[]
+  /**
+   * A SHADOW COPY of the secret: every write that sets `current_word` appends it here, so the
+   * last element IS the current word. Revoked from anon alongside `current_word` and therefore
+   * absent client-side; the service role still sees the full history. Use `word_seq` for the
+   * per-word counter the clients actually need.
+   */
+  used_words?: string[]
+  /** Public per-word counter (`cardinality(used_words)`) — ticks once per word rotation. */
+  word_seq?: number
   turn_deadline_at: string | null
   break_deadline_at: string | null
   status: 'active' | 'finished'
@@ -1807,9 +2016,24 @@ export interface QuickDrawGuessSession {
   current_round: number
   active_team: number
   drawer_player_id: string | null
-  current_word: string | null
+  /**
+   * The secret prompt. NOT present on a client-side session — `current_word` is revoked from
+   * anon/authenticated by migration 20260807140000, and QUICK_DRAW_GUESS_SESSION_SELECT no longer
+   * asks for it. Only service-role reads see it (see `QuickDrawGuessServerSession` in
+   * src/lib/quick-draw-guess.ts); the drawer gets it back via POST /api/quick-draw/my-word.
+   */
+  current_word?: string | null
   current_stroke_data: QuickDrawDrawingStrokeData
-  used_words: string[]
+  /**
+   * Also secret: its last entry IS the current word, so it is revoked alongside `current_word`
+   * and absent from client reads. Use `word_seq` when all you need is "the word changed".
+   */
+  used_words?: string[]
+  /**
+   * Public per-word counter — `cardinality(used_words)`, a generated column. Ticks once per word,
+   * including the mid-turn rotations (correct guess, skip) that leave `turn_index` untouched.
+   */
+  word_seq?: number
   turn_deadline_at: string | null
   break_deadline_at: string | null
   status: 'active' | 'finished'
@@ -2261,4 +2485,52 @@ export interface MafiaMyState {
    *  the roster grid can mark their tiles with a heart without exposing it to anyone else. */
   loverIds?: string[]
   enabledRoles?: MafiaRole[]
+}
+
+export type TrollRunPhase = 'lobby' | 'countdown' | 'racing' | 'scoreboard' | 'finished'
+
+export interface TrollRunSession {
+  id: string
+  game_id: string
+  phase: TrollRunPhase
+  current_round: number
+  total_rounds: number
+  current_world: string
+  levels_per_round: number
+  round_time_limit: number
+  round_started_at: string | null
+  turn_deadline_at: string | null
+  level_order: string[]
+  created_at: string
+  updated_at: string
+}
+
+export interface TrollRunPlayerState {
+  id: string
+  game_id: string
+  player_id: string
+  current_round: number
+  current_level_index: number
+  deaths: number
+  levels_cleared: number
+  total_time_ms: number
+  round_score: number
+  total_score: number
+  finish_position: number | null
+  round_finished: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface TrollRunEvent {
+  id: string
+  game_id: string
+  player_id: string
+  player_name?: string
+  round: number
+  level_id: string
+  level_name?: string
+  event_type: 'death' | 'clear'
+  time_ms?: number | null
+  created_at: string
 }

@@ -45,12 +45,14 @@ import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
 import { useHostSeat } from '@/hooks/useHostSeat'
 import { useTurnNotifications } from '@/hooks/useTurnNotifications'
+import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
 import { useToast } from '@/components/ui/Toast'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { FinishedWinnerHero } from '@/components/FinishedWinner'
 import { HostGameFinishedActions } from '@/components/host/HostGameFinishedActions'
 import { ShareResults } from '@/components/ShareResults'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
+import { mergeRealtimeGame } from '@/lib/realtime-merge'
 
 type HostTab = 'manage' | 'play'
 
@@ -79,6 +81,11 @@ export function SudokuHostView({ gameCode, hostToken }: { gameCode: string; host
   }, [game?.status])
 
   useTurnNotifications({ status: game?.status })
+  // Apply the room's per-game theme slug (Minimalist / Newsprint) as
+  // data-game-theme on <html>; CSS in globals.css resolves the palette
+  // (art delivery PR ships those blocks). Mirrors WhotHostView /
+  // LudoHostView.
+  useApplyGameTheme(game?.theme)
 
   const load = useCallback(async () => {
     const [{ data: gameData }, { data: playersData }] = await Promise.all([
@@ -180,7 +187,7 @@ export function SudokuHostView({ gameCode, hostToken }: { gameCode: string; host
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
         (payload) => {
-          setGame(payload.new as Game)
+          setGame((prev) => mergeRealtimeGame(prev, payload.new as Partial<Game>))
           load()
         }
       )
@@ -336,6 +343,7 @@ export function SudokuHostView({ gameCode, hostToken }: { gameCode: string; host
     () =>
       game?.status === 'active' ? (
         <HostActiveSettings
+          game={game}
           gameCode={gameCode}
           hostToken={hostToken}
           gameType="sudoku"
@@ -439,7 +447,7 @@ export function SudokuHostView({ gameCode, hostToken }: { gameCode: string; host
             onJoinNameChange={setHostJoinName}
             onJoin={() => void hostJoinGame()}
             joining={hostJoining}
-            spectatorHint="Watch the puzzle from the Watch tab"
+            spectatorHint="Watch the puzzle"
           />
         ) : undefined
       }
@@ -451,6 +459,7 @@ export function SudokuHostView({ gameCode, hostToken }: { gameCode: string; host
             hostToken={hostToken}
             game={game}
             playerCount={players.length}
+            seatedCount={players.filter((p) => !p.spectator).length}
             onGameUpdate={setGame}
           />
         ) : (
@@ -546,6 +555,7 @@ export function SudokuHostView({ gameCode, hostToken }: { gameCode: string; host
         hostToken={hostToken}
         game={game}
         playerCount={players.length}
+        seatedCount={players.filter((p) => !p.spectator).length}
         onGameUpdate={setGame}
       />
       <TransferHostControl triggerClassName="btn-secondary w-full flex items-center justify-center gap-2" />

@@ -20,7 +20,11 @@ export class JoinError extends Error {
   /** Set when the server returned a cross-device 409 (already_hosting / already_joined). */
   reason?: 'already_hosting' | 'already_joined'
   existingPlayerName?: string | null
-  constructor(message: string, full: boolean, extras?: { reason?: JoinError['reason']; existingPlayerName?: string | null }) {
+  constructor(
+    message: string,
+    full: boolean,
+    extras?: { reason?: JoinError['reason']; existingPlayerName?: string | null }
+  ) {
     super(message)
     this.name = 'JoinError'
     this.full = full
@@ -101,6 +105,9 @@ export async function joinGame(input: {
   pollGender?: ParticipantGender
   /** Set true to bypass the server's cross-device 409 and take the seat here. */
   continueOnThisDevice?: boolean
+  /** Host device's own host_token — proves the caller is the host, not another
+   *  device on the same profile. Skips the cross-device host-conflict check. */
+  hostToken?: string | null
 }): Promise<JoinPlayerResponse> {
   const res = await fetch(apiUrl('/api/players'), {
     method: 'POST',
@@ -116,6 +123,7 @@ export async function joinGame(input: {
       identityGender: input.identityGender ?? undefined,
       pollGender: input.pollGender ?? undefined,
       continueOnThisDevice: input.continueOnThisDevice === true ? true : undefined,
+      hostToken: input.hostToken ?? undefined,
     }),
   })
   const data = (await res.json()) as JoinPlayerResponse & {
@@ -140,14 +148,25 @@ export type LibraryPackSummary = {
   description: string | null
   question_count: number
   tags?: string[]
+  /** Phase 3 shop — a paid pack's price in coins. Absent or 0 for free packs. */
+  price_coins?: number
+  /** True when the caller's profile has already purchased this pack. */
+  owned?: boolean
 }
 
 export type LibraryPack = LibraryPackSummary & { questions: unknown[] }
 
 /** Community question packs for a game type (read-only pick). */
 export async function fetchLibraryPacks(gameType: GameType): Promise<LibraryPackSummary[]> {
+  // Auth headers must attach so the server can hydrate `pack.owned` from
+  // `profile_owned_packs`. Without them every returned pack has
+  // owned:false, which would cause a paid pack the caller already
+  // purchased to render as an unowned locked tile and bounce their tap
+  // to /shop (Phase 3 shop-parity review finding — a "you already paid
+  // for this" regression is worse than a raw error).
   const res = await fetch(apiUrl(`/api/library?game_type=${encodeURIComponent(gameType)}&page_size=100`), {
     cache: 'no-store',
+    headers: await authHeaders(),
   })
   const data = (await res.json()) as { packs?: LibraryPackSummary[]; error?: string }
   if (!res.ok) throw new Error(data.error ?? 'Could not load packs')

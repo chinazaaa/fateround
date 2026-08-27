@@ -54,6 +54,7 @@ import { useToast } from '@/components/ui/Toast'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { FinishedWinnerHero } from '@/components/FinishedWinner'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
+import { mergeRealtimeGame } from '@/lib/realtime-merge'
 
 const WORD_SEARCH_FOUND_SELECT =
   'id,game_id,round_id,player_id,word,start_row,start_col,end_row,end_col,via_hint,found_at'
@@ -224,7 +225,7 @@ export function WordSearchHostView({ gameCode, hostToken }: { gameCode: string; 
         { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
         (payload) => {
           const next = payload.new as Game
-          setGame(next)
+          setGame((prev) => mergeRealtimeGame(prev, next))
           // Reload only on a status flip; finish writes the games row several times and
           // reloading on each replayed the finish cascade (the host's "glitches several times").
           if (next.status !== gameStatusRef.current) load()
@@ -423,6 +424,7 @@ export function WordSearchHostView({ gameCode, hostToken }: { gameCode: string; 
     () =>
       game?.status === 'active' ? (
         <HostActiveSettings
+          game={game}
           gameCode={gameCode}
           hostToken={hostToken}
           gameType="word_search"
@@ -537,7 +539,7 @@ export function WordSearchHostView({ gameCode, hostToken }: { gameCode: string; 
             onJoinNameChange={setHostJoinName}
             onJoin={() => void hostJoinGame()}
             joining={hostJoining}
-            spectatorHint="Watch the hunt from the Watch tab"
+            spectatorHint="Watch the hunt"
           />
         ) : undefined
       }
@@ -548,6 +550,7 @@ export function WordSearchHostView({ gameCode, hostToken }: { gameCode: string; 
             hostToken={hostToken}
             game={game}
             playerCount={players.length}
+            seatedCount={players.filter((p) => !p.spectator).length}
             onGameUpdate={setGame}
             durationChoices={WORD_SEARCH_GAME_DURATION_OPTIONS}
             puzzleSettings={
@@ -653,6 +656,7 @@ export function WordSearchHostView({ gameCode, hostToken }: { gameCode: string; 
         hostToken={hostToken}
         game={game}
         playerCount={players.length}
+        seatedCount={players.filter((p) => !p.spectator).length}
         onGameUpdate={setGame}
         durationChoices={WORD_SEARCH_GAME_DURATION_OPTIONS}
         puzzleSettings={

@@ -311,7 +311,13 @@ export async function clearWordleRoomSessionData(
   supabase: SupabaseClient,
   gameId: string
 ): Promise<{ error: string | null }> {
-  return clearSessionTables(supabase, gameId, ['wordle_room_guesses', 'wordle_room_progress', 'wordle_room_solutions'])
+  // Only tables with a `game_id` column can be cleared this way. wordle_room_solutions
+  // is keyed by round_id ONLY (no game_id), so deleting it by game_id errors with
+  // "column game_id does not exist" and 500s the whole play-again route — which blocks
+  // the host from restarting the game. It's already removed by the unconditional
+  // `rounds` delete in the play-again route (ON DELETE CASCADE from rounds), so it must
+  // NOT be listed here. Same pitfall the word_grouping clearer note documents.
+  return clearSessionTables(supabase, gameId, ['wordle_room_guesses', 'wordle_room_progress'])
 }
 
 // ── Timer / expiry ───────────────────────────────────────────────────────────

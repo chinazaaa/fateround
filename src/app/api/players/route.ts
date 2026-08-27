@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAnon } from '@/lib/supabase-anon'
 import { createPlayerSchema, updatePlayerSchema, deletePlayerSchema } from '@/lib/validation'
 import { enforceRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
+import { adminEndGame } from '@/lib/admin-end-game'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { normalizeGender, normalizePlayerGender, type ParticipantGender } from '@/lib/participants'
 import { generateResumeToken, normalizeResumeToken } from '@/lib/utils'
@@ -9,6 +10,8 @@ import { removeMonopolyPlayer } from '@/lib/monopoly'
 import { removeScrabblePlayer } from '@/lib/scrabble'
 import { removeWhotPlayer } from '@/lib/whot'
 import { removeCrazyEightsPlayer } from '@/lib/crazy-eights'
+import { removeRummyPlayer } from '@/lib/rummy'
+import { removeGoFishPlayer } from '@/lib/gofish-server'
 import { removeUnoPlayer } from '@/lib/uno'
 import { removeLudoPlayer } from '@/lib/ludo'
 import { removeMahjongPlayer } from '@/lib/mahjong'
@@ -21,7 +24,6 @@ import { removeAyoPlayer } from '@/lib/ayo'
 import { maybeNotifyHostPlayerJoined } from '@/lib/push'
 import { getProfileFromRequest } from '@/lib/identity-server'
 import { removeTicTacToePlayer } from '@/lib/tic-tac-toe'
-import { removePingPongPlayer } from '@/lib/ping-pong'
 import { isMonopolyTokenId } from '@/lib/monopoly-tokens'
 import { generateAnonymousDisplayName } from '@/lib/anonymous-names'
 import { anonymousPlayerCanChat } from '@/lib/anonymous-messages'
@@ -52,7 +54,9 @@ import {
   isYahtzeeGame,
   isWhotGame,
   isCrazyEightsGame,
+  isRummyGame,
   isUnoGame,
+  isGoFishGame,
   isLudoGame,
   isMahjongGame,
   isSnakeAndLadderGame,
@@ -67,7 +71,6 @@ import {
   isQuickDrawGame,
   isSudokuGame,
   isTwoTruthsGame,
-  isPingPongGame,
   isMafiaGame,
 } from '@/lib/game-types'
 import { announceMafiaLateJoin } from '@/lib/mafia'
@@ -295,9 +298,16 @@ export async function POST(req: NextRequest) {
   // they pick up right where they left off instead of starting a new seat.
   const joinerUserId = await getProfileFromRequest(req)
   const continueOnThisDevice = body.continueOnThisDevice === true
+  // A host_token that matches the game's own host_token proves the caller IS
+  // the host device (SecureStore holds it only on that device). Without this
+  // shortcut the host would hit the cross-device 409 when playing along in
+  // their own lobby, because host_user_id is set to their own auth uid.
+  const suppliedHostToken = body.hostToken?.trim() || null
+  const gameHostToken = (gameRow as { host_token?: string | null }).host_token ?? null
+  const callerIsHostDevice = !!suppliedHostToken && !!gameHostToken && suppliedHostToken === gameHostToken
   if (joinerUserId) {
     const hostUserId = (gameRow as { host_user_id?: string | null }).host_user_id ?? null
-    if (hostUserId && hostUserId === joinerUserId && !continueOnThisDevice) {
+    if (hostUserId && hostUserId === joinerUserId && !continueOnThisDevice && !callerIsHostDevice) {
       return NextResponse.json(
         {
           error: 'You’re already hosting this game on another device.',
@@ -883,8 +893,7 @@ export async function POST(req: NextRequest) {
     isChessGame(rowGameType) ||
     isCheckersGame(rowGameType) ||
     isAyoGame(rowGameType) ||
-    isScrabbleGame(rowGameType) ||
-    isPingPongGame(rowGameType)
+    isScrabbleGame(rowGameType)
   ) {
     const joinCheck = canJoinGame(gameRow as Game)
     if (!joinCheck.ok) {
@@ -903,9 +912,7 @@ export async function POST(req: NextRequest) {
           ? 'ayo'
           : isScrabbleGame(rowGameType)
             ? 'scrabble'
-            : isPingPongGame(rowGameType)
-              ? 'ping_pong'
-              : 'tic_tac_toe'
+            : 'tic_tac_toe'
     const maxPlayers = lobbyMaxPlayersFromGame(limitKey, gameRow, lobbyLimits)
     const { count: playerCount } = await supabase
       .from('players')
@@ -1888,6 +1895,121 @@ export async function DELETE(req: NextRequest) {
 
   if (!player) return NextResponse.json({ error: 'Player not found' }, { status: 404 })
 
+  /**
+   * Host self-leave on a live game.
+   *
+   * Only fires when a non-host caller (no hostToken presented) is leaving their own seat,
+   * AND that seat happens to be the current host_player_id. Everyone else's leave falls
+   * straight through to the per-game-type removal.
+   *
+   *   * Pending nomination already set → the nominee's HostNominationBanner is live and
+   *     their /claim-host path still works; just null out host_user_id so the outgoing
+   *     host's cross-device Continue stops routing them back to /host/[code].
+   *
+   *   * No pending nomination and at least one non-bot, non-spectator player remains →
+   *     auto-nominate the oldest of them (joined_at ASC). Their banner fires and the
+   *     same claim path an explicit transfer uses hands off host_token cleanly. Avoids
+   *     the orphaned-host state where nobody can advance turns.
+   *
+   *   * No pending nomination and no eligible successor → end the game via adminEndGame
+   *     with result_reason='host_ended'. Same shape as the idle reaper's abandoned-game
+   *     handling. The finished-game branch below then retains the leaving player's row
+   *     for leaderboard integrity.
+   */
+  if (!hostToken) {
+    const { data: gameRow } = await getSupabaseAdmin()
+      .from('games')
+      .select('status, game_type, host_player_id, pending_host_player_id')
+      .eq('id', id)
+      .maybeSingle()
+    const isHostLeaving = !!gameRow && gameRow.host_player_id === playerId
+    const isLive = gameRow?.status === 'waiting' || gameRow?.status === 'active'
+    if (isHostLeaving && isLive) {
+      if (gameRow.pending_host_player_id) {
+        await getSupabaseAdmin().from('games').update({ host_user_id: null }).eq('id', id)
+      } else {
+        const { data: successor } = await getSupabaseAdmin()
+          .from('players')
+          .select('id')
+          .eq('game_id', id)
+          .eq('is_bot', false)
+          .eq('spectator', false)
+          .neq('id', playerId)
+          .order('joined_at', { ascending: true })
+          .limit(1)
+          .maybeSingle()
+        if (successor?.id) {
+          await getSupabaseAdmin()
+            .from('games')
+            .update({
+              pending_host_player_id: successor.id,
+              pending_host_nominated_at: new Date().toISOString(),
+              host_user_id: null,
+            })
+            .eq('id', id)
+        } else {
+          const ended = await adminEndGame(getSupabaseAdmin(), {
+            id,
+            status: gameRow.status,
+            game_type: gameRow.game_type,
+          })
+          if (!ended.error) {
+            await getSupabaseAdmin()
+              .from('games')
+              .update({ result_reason: 'host_ended' })
+              .eq('id', id)
+              .is('result_reason', null)
+            // Fall through to the "finished game" branch below (row retained).
+            ;(game as { status?: string }).status = 'finished'
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   * A finished game is a RESULT, and a result does not change because someone closed the tab.
+   *
+   * Leaving hard-DELETEs the players row, and the per-game score tables cascade off it
+   * (`trivia_answers.player_id references players(id) on delete cascade`, and the same shape
+   * everywhere else). Every finished screen ranks the rows that are still there and highlights
+   * the top one — so when the players above you left the results screen, their scores were
+   * ERASED and you were promoted into first. Reported as "I was 5th, the top four left, and the
+   * finished screen made me the winner".
+   *
+   * It was never only cosmetic. `GameFinishPanel` derives `winnerPlayerId` the same way and
+   * `PostWinToCommunity` fires on it, so a phantom win was posted to the community leaderboard;
+   * the award pass takes its winners from the same place.
+   *
+   * So: once a game is over, removal is a no-op. There is nothing left to leave — the client
+   * clears its local session and navigates away either way, which is why this answers 200
+   * rather than an error. Mid-game departures still delete, and that stays correct: a player
+   * who walks out before the end forfeits rather than placing.
+   *
+   * Placed BEFORE the per-game branches deliberately: each of those runs its own removal and
+   * returns early, so a guard any lower would miss most of the games.
+   */
+  if ((game as { status?: string }).status === 'finished') {
+    /**
+     * Keep the row, but honour the leave in the one way that still has meaning: stop pushing
+     * to them about this game.
+     *
+     * Both push tables key on `players(id) ON DELETE CASCADE`, so before this guard existed a
+     * leave unsubscribed the device as a side effect of the delete. Retaining the row retains
+     * those rows too — which would have left someone who deliberately left a finished game
+     * still receiving "Play again? 🔁" when the host reopened the lobby. Unsubscribing here
+     * costs the standings nothing: the score tables hang off the player row, not these.
+     *
+     * Best-effort: a failure to unsubscribe must not turn a successful leave into an error.
+     */
+    await Promise.all([
+      getSupabaseAdmin().from('push_subscriptions').delete().eq('game_id', id).eq('player_id', playerId),
+      getSupabaseAdmin().from('mobile_push_tokens').delete().eq('game_id', id).eq('player_id', playerId),
+    ]).catch(() => {})
+
+    return NextResponse.json({ success: true, retained: true })
+  }
+
   const gameType = parseGameType((game as { game_type?: string }).game_type)
 
   if (isCodewordsGame(gameType)) {
@@ -1932,8 +2054,20 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ success: true })
   }
 
+  if (isGoFishGame(gameType)) {
+    const { error } = await removeGoFishPlayer(getSupabaseAdmin(), id, playerId, player.name)
+    if (error) return NextResponse.json({ error }, { status: 500 })
+    return NextResponse.json({ success: true })
+  }
+
   if (isCrazyEightsGame(gameType)) {
     const { error } = await removeCrazyEightsPlayer(getSupabaseAdmin(), id, playerId, player.name)
+    if (error) return NextResponse.json({ error }, { status: 500 })
+    return NextResponse.json({ success: true })
+  }
+
+  if (isRummyGame(gameType)) {
+    const { error } = await removeRummyPlayer(getSupabaseAdmin(), id, playerId, player.name)
     if (error) return NextResponse.json({ error }, { status: 500 })
     return NextResponse.json({ success: true })
   }
@@ -1998,12 +2132,6 @@ export async function DELETE(req: NextRequest) {
     // Tic-Tac-Toe tables are RLS-locked to anon writes — remove via service role.
     // (Caller authority — host, or the player removing themselves — is enforced above.)
     const { error } = await removeTicTacToePlayer(getSupabaseAdmin(), id, playerId, player.name)
-    if (error) return NextResponse.json({ error }, { status: 500 })
-    return NextResponse.json({ success: true })
-  }
-
-  if (isPingPongGame(gameType)) {
-    const { error } = await removePingPongPlayer(getSupabaseAdmin(), id, playerId, player.name)
     if (error) return NextResponse.json({ error }, { status: 500 })
     return NextResponse.json({ success: true })
   }

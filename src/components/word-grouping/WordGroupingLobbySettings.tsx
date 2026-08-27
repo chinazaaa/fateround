@@ -29,6 +29,8 @@ export function WordGroupingLobbySettings({
   const fileRef = useRef<HTMLInputElement | null>(null)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [uploadSummary, setUploadSummary] = useState<string | null>(null)
+  const [customTab, setCustomTab] = useState<'upload' | 'paste'>('upload')
+  const [pasteText, setPasteText] = useState('')
 
   // Persisted question_source is 'platform' or 'custom'. Both Library and "Your own" fold to
   // 'custom' at rest — we can't tell them apart afterwards, so on load we default a saved custom
@@ -81,11 +83,10 @@ export function WordGroupingLobbySettings({
     }
   }
 
-  const onFile = async (file: File) => {
+  const importText = async (text: string) => {
     setUploadError(null)
     setUploadSummary(null)
     try {
-      const text = await file.text()
       const { entries, totalRows, skippedRows } = parseWordGroupingPoolText(text)
       const validated = parseStoredWordGroupingPuzzles(entries)
       if (!validated || validated.length < 1) {
@@ -148,25 +149,59 @@ export function WordGroupingLobbySettings({
             CSV columns: <code>puzzle, category, difficulty, word1, word2, word3, word4</code>. Four rows per puzzle
             (one per group, difficulties 1–4). JSON-per-line also accepted.
           </p>
-          <button
-            type="button"
-            onClick={() => fileRef.current?.click()}
-            className="btn-secondary w-full py-2.5 text-sm"
-            disabled={saving}
-          >
-            {saving ? 'Uploading…' : 'Upload puzzles'}
-          </button>
-          <input
-            ref={fileRef}
-            type="file"
-            accept=".csv,.json,.jsonl,.ndjson,.txt,text/csv,application/json,text/plain"
-            className="hidden"
-            onChange={async (e) => {
-              const file = e.target.files?.[0]
-              if (file) await onFile(file)
-              e.target.value = ''
+          <SegmentedControl
+            value={customTab}
+            onChange={(v) => {
+              setCustomTab(v)
+              setUploadError(null)
+              setUploadSummary(null)
             }}
+            options={[
+              { value: 'upload', label: 'Upload file' },
+              { value: 'paste', label: 'Paste' },
+            ]}
           />
+          {customTab === 'upload' ? (
+            <>
+              <button
+                type="button"
+                onClick={() => fileRef.current?.click()}
+                className="btn-secondary w-full py-2.5 text-sm"
+                disabled={saving}
+              >
+                {saving ? 'Uploading…' : 'Upload puzzles'}
+              </button>
+              <input
+                ref={fileRef}
+                type="file"
+                accept=".csv,.json,.jsonl,.ndjson,.txt,text/csv,application/json,text/plain"
+                className="hidden"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0]
+                  if (file) await importText(await file.text())
+                  e.target.value = ''
+                }}
+              />
+            </>
+          ) : (
+            <>
+              <textarea
+                value={pasteText}
+                onChange={(e) => setPasteText(e.target.value)}
+                placeholder="Paste puzzle,category,difficulty,word1,word2,word3,word4 rows (four rows per puzzle)"
+                rows={6}
+                className="input-field w-full text-sm"
+              />
+              <button
+                type="button"
+                onClick={() => importText(pasteText)}
+                className="btn-secondary w-full py-2.5 text-sm"
+                disabled={saving || !pasteText.trim()}
+              >
+                {saving ? 'Uploading…' : 'Import pasted puzzles'}
+              </button>
+            </>
+          )}
           {uploadSummary && (
             <p className="text-emerald-600 dark:text-emerald-400 text-xs font-medium">{uploadSummary}</p>
           )}

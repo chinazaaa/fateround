@@ -58,7 +58,19 @@ export async function adminEndGame(supabase: SupabaseClient, game: AdminGameToEn
   }
 
   const { error } = await markGameFinished(supabase, gameId, now)
-  return { error: error ? internalErrorMessage('admin-end-game', error) : null }
+  if (error) return { error: internalErrorMessage('admin-end-game', error) }
+
+  // Tag the abort reason so the trophy/coin award pass knows to skip counter
+  // and streak credit for this finish (src/lib/trophies/award.ts — ABORT_REASONS).
+  // Best-effort: the game is already finished; a missing tag only weakens the
+  // farming gate for this one row, it doesn't corrupt anything.
+  const { error: reasonError } = await supabase
+    .from('games')
+    .update({ result_reason: 'admin_ended' })
+    .eq('id', gameId)
+    .is('result_reason', null)
+  if (reasonError) console.error(`admin-end-game: result_reason update failed for ${gameId}`, reasonError)
+  return { error: null }
 }
 
 export async function countStaleOpenGames(

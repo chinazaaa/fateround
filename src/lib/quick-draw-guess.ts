@@ -37,6 +37,20 @@ import type {
   Game,
 } from '@/types'
 
+/**
+ * A session as the SERVICE ROLE sees it — i.e. with the secret `current_word` and the full
+ * `used_words` history.
+ *
+ * `QuickDrawGuessSession` deliberately marks both columns optional/absent, because migration
+ * 20260807140000 revoked them from anon/authenticated: no browser read ever carries them (and
+ * `used_words`' last entry is the current word, so it is exactly as secret). Everything in this
+ * module runs under the service role (write routes + cron), so it gets the real thing.
+ */
+export type QuickDrawGuessServerSession = QuickDrawGuessSession & {
+  current_word: string | null
+  used_words: string[]
+}
+
 export const QUICK_DRAW_GUESS_MIN_PLAYERS_TEAM = 4
 export const QUICK_DRAW_GUESS_MIN_PLAYERS_INDIVIDUAL = 3
 export const QUICK_DRAW_GUESS_BREAK_SECONDS = DESCRIBE_IT_BREAK_SECONDS
@@ -103,14 +117,14 @@ function isForeignKeyViolation(error: unknown): boolean {
 async function loadSession(
   supabase: SupabaseClient,
   gameId: string
-): Promise<{ session: QuickDrawGuessSession | null; error?: string; internal?: boolean }> {
+): Promise<{ session: QuickDrawGuessServerSession | null; error?: string; internal?: boolean }> {
   const { data, error } = await supabase
     .from('quick_draw_guess_sessions')
     .select('*')
     .eq('game_id', gameId)
     .maybeSingle()
   if (error) return { session: null, ...internalFailure('quick-draw-guess:loadSession', error) }
-  return { session: data as QuickDrawGuessSession | null }
+  return { session: data as QuickDrawGuessServerSession | null }
 }
 
 async function loadTeamRows(
@@ -141,7 +155,7 @@ function buildTurn(opts: {
   individualRoster: string[]
   primary: readonly string[]
   usedWords: string[]
-}): Partial<QuickDrawGuessSession> | null {
+}): Partial<QuickDrawGuessServerSession> | null {
   const { turnIndex, mode, numTeams, totalRounds, turnSeconds, teamRoster, individualRoster, primary } = opts
   const units = mode === 'individual' ? individualRoster.length : numTeams
   if (units === 0 || turnIndex >= units * totalRounds) return null
@@ -372,7 +386,7 @@ async function processIndividualGuess(
   gameId: string,
   playerId: string,
   text: string,
-  session: QuickDrawGuessSession
+  session: QuickDrawGuessServerSession
 ): Promise<{ error?: string; correct?: boolean; internal?: boolean }> {
   const liveRoster = await loadTeamRows(supabase, gameId)
   const liveIds = new Set(liveRoster.map((r) => r.player_id))
@@ -420,7 +434,7 @@ async function processIndividualGuess(
 async function endIndividualTurn(
   supabase: SupabaseClient,
   gameId: string,
-  session: QuickDrawGuessSession
+  session: QuickDrawGuessServerSession
 ): Promise<void> {
   const { data: correctGuesses, error: guessesError } = await supabase
     .from('quick_draw_guess_guesses')

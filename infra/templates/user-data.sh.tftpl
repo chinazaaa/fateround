@@ -100,6 +100,36 @@ OTEL_EXPORTER_OTLP_ENDPOINT=$(get_param_opt --name "/$PREFIX/OTEL_EXPORTER_OTLP_
 OTEL_EXPORTER_OTLP_HEADERS=$(get_param_opt --with-decryption --name "/$PREFIX/OTEL_EXPORTER_OTLP_HEADERS")
 OTEL_RESOURCE_ATTRIBUTES=$(get_param_opt --name "/$PREFIX/OTEL_RESOURCE_ATTRIBUTES")
 
+# Background workers. The code now gates these on `isProdDeployment()` (src/lib/app-env.ts),
+# which resolves from APP_ENV or the NEXT_PUBLIC_APP_URL host — NOT NODE_ENV, which a deployed
+# dev build also sets to production. So dev turns these off by itself and these three are pure
+# overrides: empty means "no override", not "production default".
+# Which DEPLOYMENT this is (prod|dev). Optional: src/lib/app-env.ts derives it from the host in
+# NEXT_PUBLIC_APP_URL when unset, so a stack cannot inherit prod behaviour by omission. Set it
+# explicitly only to override that (e.g. a preview stack on a prod-looking hostname).
+# Read APP_ENV so a LOOKUP FAILURE cannot silently promote a stack to prod behaviour.
+# get_param_opt maps every failure — IAM denial, throttling, a transient SSM blip — to an empty
+# value, which is indistinguishable from "not set". For most parameters that is fine. Here it is
+# not: a non-prod stack that relies on APP_ENV=dev to override a prod-looking NEXT_PUBLIC_APP_URL
+# would fall through to host detection and start the background workers against the shared
+# Supabase project. ParameterNotFound is the only benign miss; anything else pins APP_ENV to dev,
+# the direction that does LESS.
+APP_ENV=$(
+  err_file=$(mktemp)
+  if val=$(aws ssm get-parameter --region "$REGION" --name "/$PREFIX/APP_ENV" --query 'Parameter.Value' --output text 2>"$err_file"); then
+    printf '%s' "$val"
+  elif grep -q "ParameterNotFound" "$err_file"; then
+    printf ''
+  else
+    echo "WARN: APP_ENV lookup failed -- $(tr -d '\n' < "$err_file"); defaulting to dev (safe side)" >&2
+    printf 'dev'
+  fi
+  rm -f "$err_file"
+)
+GAME_TICK_DISABLED=$(get_param_opt --name "/$PREFIX/GAME_TICK_DISABLED")
+GAME_TICK_INTERVAL_MS=$(get_param_opt --name "/$PREFIX/GAME_TICK_INTERVAL_MS")
+IDLE_REAPER_DISABLED=$(get_param_opt --name "/$PREFIX/IDLE_REAPER_DISABLED")
+
 # With Caddy (origin TLS) the app is private behind Caddy on localhost:8080.
 # Without it, the app is published directly on :80.
 if [ "$ENABLE_CADDY" = "true" ]; then PORT_PUBLISH="127.0.0.1:8080:$APP_PORT"; else PORT_PUBLISH="80:$APP_PORT"; fi
@@ -129,6 +159,10 @@ docker run -d --name app --restart always \
   -e OTEL_EXPORTER_OTLP_ENDPOINT="$OTEL_EXPORTER_OTLP_ENDPOINT" \
   -e OTEL_EXPORTER_OTLP_HEADERS="$OTEL_EXPORTER_OTLP_HEADERS" \
   -e OTEL_RESOURCE_ATTRIBUTES="$OTEL_RESOURCE_ATTRIBUTES" \
+  -e APP_ENV="$APP_ENV" \
+  -e GAME_TICK_DISABLED="$GAME_TICK_DISABLED" \
+  -e GAME_TICK_INTERVAL_MS="$GAME_TICK_INTERVAL_MS" \
+  -e IDLE_REAPER_DISABLED="$IDLE_REAPER_DISABLED" \
   "$REPO:$TAG"
 
 # Reclaim disk from previous images. Each deploy pulls "$REPO:<commit-sha>", so old images
@@ -211,3 +245,35 @@ EOF
 
 systemctl daemon-reload
 systemctl enable --now fateround-tick.timer
+
+# Streak come-back nudge — once a day, in the evening WAT. Late enough that anyone who was
+# going to play today already has (so we don't ping people who need no ping), early enough to
+# still act on it. 18:00 UTC is 19:00 WAT. Per-device quiet hours are honoured inside the
+# route, and it self-limits to one push per device per 20h, so an extra run is harmless.
+cat > /etc/systemd/system/fateround-streak-reminders.service <<EOF
+[Unit]
+Description=FateRound streak come-back reminders
+After=docker.service
+
+[Service]
+Type=oneshot
+TimeoutStartSec=120
+ExecStart=/usr/bin/curl -fsS --max-time 90 -X POST -H "Authorization: Bearer $CRON_SECRET" $TICK_URL/api/cron/streak-reminders
+EOF
+chmod 600 /etc/systemd/system/fateround-streak-reminders.service
+
+cat > /etc/systemd/system/fateround-streak-reminders.timer <<'EOF'
+[Unit]
+Description=FateRound streak come-back reminder timer
+
+[Timer]
+OnCalendar=*-*-* 18:00:00 UTC
+# A box that was down at 18:00 still sends today's batch when it comes back.
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF
+
+systemctl daemon-reload
+systemctl enable --now fateround-streak-reminders.timer

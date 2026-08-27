@@ -23,12 +23,8 @@ import { useGameScores, useGameStats, useRosterBase } from '@/components/roster/
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { DescribeItAchievementPosts } from '@/components/describe-it/DescribeItAchievementPosts'
 import { supabase } from '@/lib/supabase'
-import {
-  DESCRIBE_IT_SESSION_SELECT,
-  DESCRIBE_IT_PLAYER_SELECT,
-  DESCRIBE_IT_WORD_SELECT,
-  DESCRIBE_IT_GUESS_SELECT,
-} from '@/lib/supabase-selects'
+import { DESCRIBE_IT_PLAYER_SELECT, DESCRIBE_IT_WORD_SELECT, DESCRIBE_IT_GUESS_SELECT } from '@/lib/supabase-selects'
+import { readDescribeItSession } from '@/lib/describe-it-session-read'
 import { clearPlayerSession } from '@/lib/utils'
 import type { DescribeItGuess, DescribeItPlayer, DescribeItSession, DescribeItWord, Game } from '@/types'
 import { useToast } from '@/components/ui/Toast'
@@ -46,11 +42,13 @@ import { NameJoinForm } from '@/components/game-lobby/NameJoinForm'
 import { EditNameInline } from '@/components/ui/EditNameInline'
 import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
 import { useRegisterGameSettings } from '@/components/GameSettingsContext'
+import { RulesInPlaySection } from '@/components/game-lobby/RulesInPlaySection'
 import { preJoinScreen, playerIsViewer, allowLatePlayers } from '@/lib/viewers'
 import { ViewerModeBanner } from '@/components/ViewerModeBanner'
 import { LateJoinChoice } from '@/components/LateJoinChoice'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { useDescribeItTimer } from '@/hooks/useDescribeItTimer'
+import { useDescribeItWord } from '@/hooks/useDescribeItWord'
 import { useDescribeItSounds } from '@/hooks/useDescribeItSounds'
 import { useTurnNotifications } from '@/hooks/useTurnNotifications'
 
@@ -82,7 +80,7 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
   // game/players fetch + session resolution lives in useGameViewBootstrap).
   const loadGameState = useCallback(async (): Promise<{ state: DescribeItSession | null; ok: boolean }> => {
     const [sessionRes, teamRes, wordRes, guessRes] = await Promise.all([
-      supabase.from('describe_it_sessions').select(DESCRIBE_IT_SESSION_SELECT).eq('game_id', gameCode).maybeSingle(),
+      readDescribeItSession(gameCode),
       supabase
         .from('describe_it_players')
         .select(DESCRIBE_IT_PLAYER_SELECT)
@@ -303,12 +301,17 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
     enabled: game?.status === 'active' && !isViewer,
   })
 
+  // The secret word is no longer in the session read — only the describer can pull it, and only
+  // through the server route. See src/hooks/useDescribeItWord.ts.
+  const myWord = useDescribeItWord(gameCode, session, myPlayerId, { resumeToken: myResumeToken })
+
   // Change name · Leave game for players/spectators live behind the main chrome's ⚙ gear
   // (top header). Registered while the game is active; GameChromeSettings renders it in the sheet.
   const playerSettingsNode = useMemo(() => {
     if (!myPlayerId) return null
     return (
       <div className="space-y-3">
+        <RulesInPlaySection game={game} />
         <EditNameInline
           gameCode={gameCode}
           playerId={myPlayerId}
@@ -327,7 +330,7 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
         />
       </div>
     )
-  }, [myPlayerId, game?.status, gameCode, activePlayer?.name, isViewer, load, router])
+  }, [game, myPlayerId, game?.status, gameCode, activePlayer?.name, isViewer, load, router])
   useRegisterGameSettings(playerSettingsNode)
 
   if (screen === 'loading') return <DescribeItLoadingScreen />
@@ -514,6 +517,7 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
           words={words}
           guesses={guesses}
           myPlayerId={myPlayerId}
+          myWord={myWord}
           secondsLeft={secondsLeft}
           breakLeft={breakLeft}
           urgent={urgent}

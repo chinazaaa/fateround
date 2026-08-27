@@ -6,6 +6,7 @@ import { deleteWstQuote, postWstQuote } from '@/components/games/poll/poll-api'
 import type { WstQuotePoolEntry } from '@/components/games/poll/poll-types'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
 import type { Theme } from '@/constants/theme'
+import { WST_QUOTE_POOL_SELECT } from '@/lib/supabase-selects'
 
 type Props = {
   gameCode: string
@@ -40,7 +41,11 @@ export function WstQuotePool({ gameCode, resumeToken, myPlayerId, deckMode, canS
   const code = gameCode.toUpperCase()
 
   const fetchPool = useCallback(async () => {
-    const { data } = await getSupabase().from('wst_quote_pool').select('*').eq('game_id', code).order('created_at')
+    const { data } = await getSupabase()
+      .from('wst_quote_pool')
+      .select(WST_QUOTE_POOL_SELECT)
+      .eq('game_id', code)
+      .order('created_at')
     setPool((data as WstQuotePoolEntry[]) ?? [])
   }, [code])
 

@@ -38,6 +38,7 @@ import { ViewerModeBanner } from '@/components/ViewerModeBanner'
 import { EditNameInline } from '@/components/ui/EditNameInline'
 import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
 import { useRegisterGameSettings } from '@/components/GameSettingsContext'
+import { RulesInPlaySection } from '@/components/game-lobby/RulesInPlaySection'
 import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
 import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
 import { GameInfoChips } from '@/components/game-lobby/GameInfoChips'
@@ -47,6 +48,7 @@ import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { gameTypeConfig } from '@/lib/game-types'
 import type { Game, Player } from '@/types'
+import { mergeRealtimeGame } from '@/lib/realtime-merge'
 
 const SOLVE_SELECT = 'id,game_id,round_id,player_id,scramble_index,word,via_hint,solved_at'
 const HINT_SELECT = 'player_id,scramble_index,letters'
@@ -241,7 +243,7 @@ export function WordScramblePlayerView({ gameCode }: { gameCode: string }) {
         { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
         (payload) => {
           const next = payload.new as Game
-          setGame(next)
+          setGame((prev) => mergeRealtimeGame(prev, next))
           // Full reload only on a status transition; other games-row writes just refresh the
           // object above. Reloading on every UPDATE was a primary driver of the finish flicker.
           if (next.status !== gameStatusRef.current) load()
@@ -383,6 +385,7 @@ export function WordScramblePlayerView({ gameCode }: { gameCode: string }) {
     if (!myPlayerId) return null
     return (
       <div className="space-y-3">
+        <RulesInPlaySection game={game} />
         <EditNameInline
           gameCode={gameCode}
           playerId={myPlayerId}
@@ -401,7 +404,7 @@ export function WordScramblePlayerView({ gameCode }: { gameCode: string }) {
         />
       </div>
     )
-  }, [myPlayerId, game?.status, gameCode, me?.name, isViewer, load, router])
+  }, [game, myPlayerId, game?.status, gameCode, me?.name, isViewer, load, router])
   useRegisterGameSettings(playerSettingsNode)
 
   // Memoized: without it, tallyWordScrambleScores re-ran on every `setGuess` keystroke (and

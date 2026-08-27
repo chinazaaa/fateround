@@ -52,6 +52,7 @@ import { useToast } from '@/components/ui/Toast'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
 import { useGameTableSync } from '@/hooks/useGameTableSync'
 import { useQuickDrawGuessTimer } from '@/hooks/useQuickDrawGuessTimer'
+import { useQuickDrawWord } from '@/hooks/useQuickDrawWord'
 import { useHostSeat } from '@/hooks/useHostSeat'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
@@ -178,6 +179,25 @@ export function QuickDrawGuessHostView({ gameCode, hostToken }: { gameCode: stri
 
   const { secondsLeft, breakLeft, urgent } = useQuickDrawGuessTimer(gameCode, session, game?.status === 'active')
 
+  // Computed here rather than after the `!game` early return because the word fetch below is
+  // gated on it. Same expression as the props further down, which is the point.
+  const hostPlayer = hostPlayerId ? (players.find((p) => p.id === hostPlayerId) ?? null) : null
+  const hostReadOnly = hostPlayer && game ? playerIsViewer(hostPlayer, game) : true
+  const hostPlays = hostMode === 'player' && !!hostPlayerId && !hostReadOnly
+
+  // The secret prompt is no longer in the session read. A host-player pulls it through the route;
+  // the host token is sent alongside the seat's resume token so the route can still resolve the
+  // seat (games.host_player_id) if the resume token hasn't loaded yet.
+  //
+  // Gated on `hostPlays`, not just on holding a seat: a watch-only host (spectator mode, eliminated
+  // or late-joined seat) never draws, and the host console is often the projected/shared screen —
+  // it must not pull the drawer's prompt into a browser the whole room can see, even though it
+  // would never render it.
+  const myWord = useQuickDrawWord(gameCode, session, hostPlays ? hostPlayerId : null, {
+    resumeToken: hostResumeToken,
+    hostToken,
+  })
+
   const startGame = async () => {
     if (starting || !canStart) return
     if (hostMode === 'player' && !hostPlayerId) {
@@ -282,9 +302,6 @@ export function QuickDrawGuessHostView({ gameCode, hostToken }: { gameCode: stri
 
   const cfg = gameTypeConfig('quick_draw')
 
-  const hostPlayer = hostPlayerId ? (players.find((p) => p.id === hostPlayerId) ?? null) : null
-  const hostReadOnly = hostPlayer ? playerIsViewer(hostPlayer, game) : true
-  const hostPlays = hostMode === 'player' && !!hostPlayerId && !hostReadOnly
   const showTabs = game.status !== 'finished'
   const gameStarted = game.status === 'active'
   const primaryKind: 'play' | 'watch' = hostPlays ? 'play' : 'watch'
@@ -299,6 +316,7 @@ export function QuickDrawGuessHostView({ gameCode, hostToken }: { gameCode: stri
       words={words}
       guesses={guesses}
       myPlayerId={hostPlays ? hostPlayerId : null}
+      myWord={myWord}
       myResumeToken={hostPlays ? hostResumeToken : null}
       secondsLeft={secondsLeft}
       breakLeft={breakLeft}
@@ -353,7 +371,7 @@ export function QuickDrawGuessHostView({ gameCode, hostToken }: { gameCode: stri
           onJoin={() => void hostJoinGame()}
           joining={hostJoining}
           onEditName={renameHost}
-          spectatorHint="Watch drawings from the Watch tab"
+          spectatorHint="Watch drawings"
           playingNote={
             hostPlayerName ? (
               <p className="text-sm text-muted">
@@ -370,6 +388,7 @@ export function QuickDrawGuessHostView({ gameCode, hostToken }: { gameCode: stri
           hostToken={hostToken}
           game={game}
           playerCount={players.length}
+          seatedCount={players.filter((p) => !p.spectator).length}
           onGameUpdate={setGame}
         />
       )}
@@ -542,6 +561,7 @@ export function QuickDrawGuessHostView({ gameCode, hostToken }: { gameCode: stri
         hostToken={hostToken}
         game={game}
         playerCount={players.length}
+        seatedCount={players.filter((p) => !p.spectator).length}
         onGameUpdate={setGame}
       />
       <TransferHostControl triggerClassName="btn-secondary w-full flex items-center justify-center gap-2" />

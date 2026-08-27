@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { EditNameInline } from '@/components/ui/EditNameInline'
 import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
 import { useRegisterGameSettings } from '@/components/GameSettingsContext'
+import { RulesInPlaySection } from '@/components/game-lobby/RulesInPlaySection'
 import { SudokuBoard } from '@/components/sudoku/SudokuBoard'
 import { SudokuGameTimerBar } from '@/components/sudoku/SudokuGameTimerBar'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
@@ -40,6 +41,7 @@ import { formatMinutesSeconds } from '@/lib/timer-format'
 import { useGameRosterPoll } from '@/hooks/useGameRosterPoll'
 import { useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { useTurnNotifications } from '@/hooks/useTurnNotifications'
+import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
 import { useRoomMemberAutoJoin, useRoomMemberJoin, useRoomMemberNamePrefill } from '@/hooks/useRoomMemberJoin'
 import { useLateJoinContext } from '@/hooks/useLateJoinContext'
 import { allowLatePlayers, playerIsViewer, preJoinScreen } from '@/lib/viewers'
@@ -53,6 +55,7 @@ import { NameJoinForm } from '@/components/game-lobby/NameJoinForm'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { gameTypeConfig } from '@/lib/game-types'
 import type { Game, Player } from '@/types'
+import { mergeRealtimeGame } from '@/lib/realtime-merge'
 
 const GRID_KEY = (roundId: string, playerId: string) => `sudoku_grid_${roundId}_${playerId}`
 
@@ -246,6 +249,12 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
   useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
 
   useTurnNotifications({ status: game?.status })
+  // Apply the room's per-game theme slug (Minimalist / Newsprint) as
+  // data-game-theme on <html>; palette resolution happens in globals.css
+  // (art delivery PR ships those blocks). Reverts to the default palette
+  // on the finished screen so the winner hero and share card render
+  // outside the puzzle skin.
+  useApplyGameTheme(view === 'finished' ? 'default' : game?.theme)
 
   useEffect(() => {
     if (view === 'playing') {
@@ -268,7 +277,7 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
         (payload) => {
-          setGame(payload.new as Game)
+          setGame((prev) => mergeRealtimeGame(prev, payload.new as Partial<Game>))
           // Re-derive the screen from session + status (handles lobby reopen for
           // no-session viewers, mid-game start, and finish alike).
           load()
@@ -436,6 +445,7 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
     if (!myPlayerId) return null
     return (
       <div className="space-y-3">
+        <RulesInPlaySection game={game} />
         <EditNameInline
           gameCode={gameCode}
           playerId={myPlayerId}
@@ -454,7 +464,7 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
         />
       </div>
     )
-  }, [myPlayerId, game?.status, gameCode, me?.name, isViewer, load, router])
+  }, [game, myPlayerId, game?.status, gameCode, me?.name, isViewer, load, router])
   useRegisterGameSettings(playerSettingsNode)
   const myRank = leaderboard.findIndex((r) => r.player_id === myPlayerId) + 1
   const myCompletion = puzzle && myPlayerId ? playerCompletionPercent(puzzle, submissions, myPlayerId) : 0
@@ -833,7 +843,14 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50/80 dark:bg-slate-950/50">
+    <div
+      className="min-h-screen flex flex-col"
+      // Page surround reads --background so Newsprint Sudoku's cream
+      // paper (or any per-game theme) reaches the whole screen — not
+      // just the board itself. User complaint: 'the board is newspaper
+      // which is fine but the surrounding is white'.
+      style={{ backgroundColor: 'var(--background)' }}
+    >
       {toast && (
         <div
           className={`fixed top-20 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-full text-sm font-semibold shadow-lg ${toast.ok ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white'}`}
@@ -864,10 +881,14 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
                         key={p.id}
                         type="button"
                         onClick={() => setWatchedPlayerId(p.id)}
+                        // Watch-player tabs: active tab uses --primary
+                        // (theme accent) so Newsprint = ink black,
+                        // Neon Whot = cyan, etc. Idle tab uses --card
+                        // / --border which each theme block sets.
                         className={`shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border transition-colors ${
                           active
-                            ? 'bg-slate-800 text-white border-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:border-slate-100'
-                            : 'bg-slate-100/70 text-slate-600 border-slate-200 hover:text-slate-900 dark:bg-slate-800/50 dark:text-slate-300 dark:border-slate-700'
+                            ? 'bg-[var(--primary)] text-[var(--background)] border-[var(--primary)]'
+                            : 'bg-[var(--card)] text-muted border-[var(--border)] hover:text-body'
                         }`}
                       >
                         <span
@@ -892,8 +913,11 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
             <div className="flex items-center gap-3">
               <div className="w-4 h-4 rounded-sm shrink-0" style={{ backgroundColor: SUDOKU_MY_CELL_COLOR }} />
               <div>
-                <p className="font-bold text-slate-800 dark:text-slate-100 leading-tight">{me?.name ?? 'Me'}</p>
-                <p className="text-sm text-slate-500 dark:text-slate-400">
+                {/* Player identity block — text reads tokens so a
+                 * Newsprint theme's ink-black text renders instead of
+                 * default slate. */}
+                <p className="font-bold text-body leading-tight">{me?.name ?? 'Me'}</p>
+                <p className="text-sm text-muted">
                   {myRank > 0 ? `${ordinal(myRank)}` : '—'} | {myCompletion}%
                 </p>
               </div>
@@ -995,24 +1019,25 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
             return (
               <div
                 key={row.player_id}
+                // Leaderboard row surfaces: 'me' row uses --card-strong
+                // (theme-tinted highlighted card), others use --card so
+                // Newsprint / Neon / Naija all repaint consistently.
                 className={`flex items-center gap-3 rounded-lg border px-3 py-2.5 ${
                   row.player_id === myPlayerId
-                    ? 'border-slate-300 bg-white dark:border-slate-600 dark:bg-slate-900'
-                    : 'border-transparent bg-slate-100/60 dark:bg-slate-900/40'
+                    ? 'border-[var(--border)] bg-[var(--card-strong)]'
+                    : 'border-transparent bg-[var(--card)]'
                 }`}
               >
                 <MiniGrid puzzle={puzzle} playerSolved={playerSolved} color={color} />
                 <div className="w-3 h-3 rounded-sm shrink-0" style={{ backgroundColor: color }} />
                 <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-sm text-slate-800 dark:text-slate-100 truncate">{row.name}</p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                  <p className="font-semibold text-sm text-body truncate">{row.name}</p>
+                  <p className="text-xs text-muted">
                     {ordinal(i + 1)} of {leaderboard.length} · Completed: {pct}%{' '}
                     {game?.session_started_at ? `· ⏱️ ${formatMinutesSeconds(timeSecs)}` : ''}
                   </p>
                 </div>
-                <span className="text-sm font-bold text-slate-600 dark:text-slate-300 tabular-nums">
-                  {row.points} pts
-                </span>
+                <span className="text-sm font-bold text-muted tabular-nums">{row.points} pts</span>
               </div>
             )
           })}
@@ -1040,12 +1065,16 @@ function MiniGrid({
   playerSolved: boolean[][]
   color: string
 }) {
-  if (!puzzle) return <div className="w-8 h-8 rounded bg-slate-200 dark:bg-slate-700 shrink-0" />
+  if (!puzzle) {
+    // Empty-state placeholder — reads the same board-bg the mini paints
+    // with when it has data, so themes stay consistent.
+    return <div className="w-8 h-8 rounded shrink-0" style={{ backgroundColor: 'var(--game-board-bg)' }} />
+  }
 
   return (
     <div
-      className="grid shrink-0 w-8 h-8 border border-slate-300 dark:border-slate-600 rounded-sm overflow-hidden"
-      style={{ gridTemplateColumns: 'repeat(9, 1fr)' }}
+      className="grid shrink-0 w-8 h-8 rounded-sm overflow-hidden border"
+      style={{ borderColor: 'var(--game-board-block)', gridTemplateColumns: 'repeat(9, 1fr)' }}
     >
       {Array.from({ length: 81 }, (_, i) => {
         const row = Math.floor(i / 9)

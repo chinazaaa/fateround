@@ -60,7 +60,11 @@ import {
   CODEWORDS_DEFAULT_OPERATIVE_TIMER,
   CODEWORDS_DEFAULT_SPYMASTER_TIMER,
   HOT_SEAT_DEFAULT_MAX_ROUNDS,
+  clampTrollRunRounds,
+  clampTrollRunTimeLimit,
+  isTrollRunWorldId,
   type CodewordsTeamAssignment,
+  type TrollRunWorldId,
 } from '@fateround/shared/create-party-games'
 import {
   clampDescribeItMode,
@@ -99,6 +103,11 @@ import {
   WORD_RUSH_TEAM_OPTIONS,
 } from '@fateround/shared/word-rush'
 import { WORD_HUNT_DEFAULT_TIMER } from '@fateround/shared/word-hunt'
+import {
+  TROLL_RUN_DEFAULT_ROUNDS,
+  TROLL_RUN_DEFAULT_TIME_LIMIT,
+  TROLL_RUN_DEFAULT_WORLD,
+} from '@fateround/shared/troll-run-types'
 
 export { BATCH_20_PARTY_GAMES, hasPartyRoomSettings, isPollPartyGame }
 
@@ -137,6 +146,9 @@ export type PartyRoomSettings = {
   wordSearchDifficulty: WordSearchDifficulty
   wordScrambleTheme: string
   wordScrambleDifficulty: WordScrambleDifficulty
+  trollRunWorld: TrollRunWorldId
+  trollRunRounds: number
+  trollRunTimeLimit: number
 }
 
 export function defaultPartyRoomSettings(gameType: GameType): PartyRoomSettings {
@@ -184,6 +196,9 @@ export function defaultPartyRoomSettings(gameType: GameType): PartyRoomSettings 
     wordSearchDifficulty: WORD_SEARCH_DEFAULT_DIFFICULTY,
     wordScrambleTheme: WORD_SCRAMBLE_DEFAULT_THEME,
     wordScrambleDifficulty: WORD_SCRAMBLE_DEFAULT_DIFFICULTY,
+    trollRunWorld: TROLL_RUN_DEFAULT_WORLD,
+    trollRunRounds: TROLL_RUN_DEFAULT_ROUNDS,
+    trollRunTimeLimit: TROLL_RUN_DEFAULT_TIME_LIMIT,
   }
 }
 
@@ -219,6 +234,17 @@ export function partyRoomSettingsPayload(gameType: GameType, party: PartyRoomSet
     payload.rounds_count = clampPartyRounds(gameType, party.roundsCount)
     payload.timer_seconds = party.timerSeconds
     payload.trivia_category = clampTriviaCategory(party.triviaCategory)
+    return payload
+  }
+
+  if (gameType === 'troll_run') {
+    const rounds = clampTrollRunRounds(party.trollRunRounds)
+    payload.troll_run_world = isTrollRunWorldId(party.trollRunWorld) ? party.trollRunWorld : TROLL_RUN_DEFAULT_WORLD
+    payload.troll_run_rounds = rounds
+    payload.troll_run_time_limit = clampTrollRunTimeLimit(party.trollRunTimeLimit)
+    // Troll Run's own round count is also the room's, and the lobby chips read `rounds_count` —
+    // web sends both for the same reason.
+    payload.rounds_count = rounds
     return payload
   }
 

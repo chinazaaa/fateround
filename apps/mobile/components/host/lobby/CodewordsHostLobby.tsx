@@ -100,14 +100,20 @@ export function CodewordsHostLobby({ gameCode, hostToken, game, players }: Props
   const active = players.filter((p) => !p.spectator)
   const unassigned = active.filter((p) => !roleFor(p.id))
   const randomize = game.codewords_randomize_teams === true
+  const gameActive = game.status === 'active'
 
   return (
     <View style={styles.card}>
       <Text style={styles.title}>Teams & roles</Text>
       <Text style={styles.hint}>
-        {randomize
-          ? 'Pick the two spymasters — operatives shuffle at start.'
-          : 'Tap 🕵️/🎯 to set the role, the arrow to switch team, ✕ to bench.'}
+        {gameActive
+          ? // Mid-game the shuffle button is hidden and the hint tells the host
+            // WHY this panel exists in-play — a spymaster went AFK, a team-mate
+            // needs promoting, someone should be benched.
+            'Promote an operative to spymaster if one goes AFK, or bench a player.'
+          : randomize
+            ? 'Pick the two spymasters — operatives shuffle at start.'
+            : 'Tap 🕵️/🎯 to set the role, the arrow to switch team, ✕ to bench.'}
       </Text>
 
       {active.length === 0 ? (
@@ -206,7 +212,9 @@ export function CodewordsHostLobby({ gameCode, hostToken, game, players }: Props
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
-      {randomize ? (
+      {randomize && !gameActive ? (
+        // Shuffle blows up the whole team layout, which only makes sense before
+        // the round starts — hidden once the game is active.
         <Pressable
           style={[styles.shuffle, shuffling && styles.disabled]}
           disabled={shuffling}

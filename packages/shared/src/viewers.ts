@@ -6,6 +6,7 @@ import {
   isChessGame,
   isCodewordsGame,
   isCrazyEightsGame,
+  isRummyGame,
   isDescribeItGame,
   isICallOnGame,
   isLandmineGame,
@@ -21,10 +22,16 @@ import {
   isCrosswordGame,
   isWordSearchGame,
   isWordScrambleGame,
+  isMafiaGame,
+  isDraughts10Game,
+  isTrollRunGame,
+  isWordGroupingGame,
+  isWordleRoomGame,
   isTicTacToeGame,
   isTriviaGame,
   isTwoTruthsGame,
   isUnoGame,
+  isGoFishGame,
   isWhotGame,
   isWordHuntGame,
   isWordRushGame,
@@ -76,13 +83,28 @@ export function defaultLateJoinPolicyForGameType(gameType: GameType): LateJoinPo
   return 'viewers_only'
 }
 
+/**
+ * MUST match `src/lib/viewers.ts`. It had drifted — this copy was missing Mafia, Draughts,
+ * Word Scramble and Troll Run, so mobile offered "join as player" in four games where web
+ * refuses it and a promoted player has no seat or turn to take. `viewers-parity.test.ts` runs
+ * both copies over every game type so it cannot drift again.
+ */
 export function gameAllowsLatePlayerJoin(gameType: GameType): boolean {
   return (
+    // Anonymous Messages is a closed circle: the session is messages between the people who
+    // were in the room when it started, and the anonymity only means anything against a known,
+    // fixed roster.
+    !isAnonymousMessagesGame(gameType) &&
+    !isMafiaGame(gameType) &&
+    !isDraughts10Game(gameType) &&
+    !isTrollRunGame(gameType) &&
     !isMonopolyGame(gameType) &&
     !isYahtzeeGame(gameType) &&
     !isWhotGame(gameType) &&
     !isCrazyEightsGame(gameType) &&
+    !isRummyGame(gameType) &&
     !isUnoGame(gameType) &&
+    !isGoFishGame(gameType) &&
     !isLudoGame(gameType) &&
     !isMahjongGame(gameType) &&
     !isSnakeAndLadderGame(gameType) &&
@@ -127,8 +149,13 @@ export function gameSupportsInPlaceSpectate(gameType: GameType): boolean {
   )
 }
 
+/** MUST match `src/lib/viewers.ts` — see the note on gameAllowsLatePlayerJoin. */
 export function gameOffersLateJoinChoice(gameType: GameType): boolean {
   return (
+    // Both were missing here, so a late arrival on mobile never got the watch-or-play choice
+    // that web offers for them.
+    isWordGroupingGame(gameType) ||
+    isWordleRoomGame(gameType) ||
     isTriviaGame(gameType) ||
     isCodewordsGame(gameType) ||
     isDescribeItGame(gameType) ||
@@ -259,7 +286,9 @@ export function spectatorForActiveJoin(
     isYahtzeeGame(gameType) ||
     isWhotGame(gameType) ||
     isCrazyEightsGame(gameType) ||
-    isUnoGame(gameType)
+    isRummyGame(gameType) ||
+    isUnoGame(gameType) ||
+    isGoFishGame(gameType)
   )
     return true
   if (!allowLatePlayers(game)) return true

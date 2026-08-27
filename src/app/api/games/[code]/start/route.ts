@@ -514,7 +514,7 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
         status: 'active',
         session_started_at: sessionStartedAt,
         current_round_number: 1,
-        rounds_count: 1,
+        rounds_count: startSpec.roundsCount?.(game) ?? 1,
         // A "same settings" replay lands here — clear the ready-up flag now that we've dealt.
         replay_pending: false,
       })
@@ -579,10 +579,19 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
       return NextResponse.json({ error: `Need at least ${CODEWORDS_MIN_PLAYERS} players to start` }, { status: 400 })
     }
 
-    const { data: roleRows } = await supabase
+    // Admin, not the anon client: this read decides whether the game may start, and the host
+    // is already authorized by `host_token` above. Read it with the role that is not subject to
+    // anon's table grants, and surface the error instead of discarding it — a swallowed
+    // permission failure here yields `roles = []`, which the checks below report as
+    // "Red team needs exactly 1 spymaster" while the roles sit in the table. Same trap as the
+    // ttl_statements read that blocked Two Truths from starting (PR #838).
+    const { data: roleRows, error: roleError } = await getSupabaseAdmin()
       .from('codewords_player_roles')
       .select('player_id, team, role')
       .eq('game_id', code.toUpperCase())
+    if (roleError) {
+      return NextResponse.json({ error: internalErrorMessage('games/code/start', roleError) }, { status: 500 })
+    }
 
     let roles = roleRows ?? []
     const playerIds = playersData.map((p) => p.id)

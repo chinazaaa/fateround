@@ -41,6 +41,7 @@ import { FinalResultsShareBlock } from '@/components/FinalResultsShareBlock'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import type { Game, Player } from '@/types'
+import { mergeRealtimeGame } from '@/lib/realtime-merge'
 
 const GROUP_COLORS: Record<number, string> = {
   1: '#f9df6d',
@@ -172,6 +173,7 @@ export function WordGroupingHostView({ gameCode, hostToken }: { gameCode: string
     () =>
       game && game.status === 'active' ? (
         <HostActiveSettings
+          game={game}
           gameCode={gameCode}
           hostToken={hostToken}
           gameType="word_grouping"
@@ -198,7 +200,7 @@ export function WordGroupingHostView({ gameCode, hostToken }: { gameCode: string
         { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
         (payload) => {
           const next = payload.new as Game
-          setGame(next)
+          setGame((prev) => mergeRealtimeGame(prev, next))
           if (next.status !== gameStatusRef.current) load()
         }
       )
@@ -206,7 +208,7 @@ export function WordGroupingHostView({ gameCode, hostToken }: { gameCode: string
     return () => {
       void supabase.removeChannel(ch)
     }
-  }, [gameCode, load])
+  }, [game, gameCode, load])
 
   useEffect(() => {
     if (!roundId) return
@@ -400,6 +402,7 @@ export function WordGroupingHostView({ gameCode, hostToken }: { gameCode: string
         hostToken={hostToken}
         game={game}
         playerCount={players.length}
+        seatedCount={players.filter((p) => !p.spectator).length}
         onGameUpdate={setGame}
         durationChoices={WORD_GROUPING_GAME_DURATION_OPTIONS}
         puzzleSettings={

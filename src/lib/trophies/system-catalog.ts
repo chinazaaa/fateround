@@ -3,6 +3,7 @@ import { AYO } from './system-trophies/ayo'
 import { CHECKERS, CHECKERS_INTERNATIONAL, CHECKERS_NIGERIA } from './system-trophies/checkers'
 import { CHESS } from './system-trophies/chess'
 import { CRAZY_EIGHTS } from './system-trophies/crazy-eights'
+import { RUMMY } from './system-trophies/rummy'
 import { DESCRIBE_IT } from './system-trophies/describe-it'
 import { MAFIA } from './system-trophies/mafia'
 import { MAHJONG } from './system-trophies/mahjong'
@@ -20,8 +21,9 @@ import { CROSSWORD } from './system-trophies/crossword'
 import { I_CALL_ON } from './system-trophies/i-call-on'
 import { LANDMINE } from './system-trophies/landmine'
 import { MATCHING_PAIRS } from './system-trophies/matching-pairs'
-import { PING_PONG } from './system-trophies/ping-pong'
 import { QUIPLASH } from './system-trophies/quiplash'
+import { QUICK_DRAW } from './system-trophies/quick-draw'
+import { TROLL_RUN } from './system-trophies/troll-run'
 import { SUDOKU } from './system-trophies/sudoku'
 import { TIC_TAC_TOE } from './system-trophies/tic-tac-toe'
 import { TWO_TRUTHS } from './system-trophies/two-truths'
@@ -32,6 +34,7 @@ import { WORD_SEARCH } from './system-trophies/word-search'
 import { WORD_GROUPING } from './system-trophies/word-grouping'
 import { SNAKE_AND_LADDER } from './system-trophies/snake-and-ladder'
 import { WORDLE_ROOM } from './system-trophies/wordle-room'
+import { GOFISH } from './system-trophies/gofish'
 
 /**
  * SYSTEM trophies — authored in code, against one game's own measurements.
@@ -68,6 +71,7 @@ const BY_GAME: Record<string, SystemTrophySpec[]> = {
   chess: CHESS,
   codewords: CODEWORDS,
   crazy_eights: CRAZY_EIGHTS,
+  rummy: RUMMY,
   describe_it: DESCRIBE_IT,
   ludo: LUDO,
   mafia: MAFIA,
@@ -83,8 +87,9 @@ const BY_GAME: Record<string, SystemTrophySpec[]> = {
   i_call_on: I_CALL_ON,
   landmine: LANDMINE,
   matching_pairs: MATCHING_PAIRS,
-  ping_pong: PING_PONG,
   quiplash: QUIPLASH,
+  quick_draw: QUICK_DRAW,
+  troll_run: TROLL_RUN,
   sudoku: SUDOKU,
   tic_tac_toe: TIC_TAC_TOE,
   two_truths: TWO_TRUTHS,
@@ -95,6 +100,7 @@ const BY_GAME: Record<string, SystemTrophySpec[]> = {
   word_grouping: WORD_GROUPING,
   snake_and_ladder: SNAKE_AND_LADDER,
   wordle_room: WORDLE_ROOM,
+  gofish: GOFISH,
 }
 
 /**

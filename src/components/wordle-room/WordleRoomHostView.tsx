@@ -34,7 +34,7 @@ import {
   type WordleRoomStandingRow,
 } from '@/lib/wordle-room'
 import { useWordleRoomGameTimer } from '@/hooks/useWordleRoomGameTimer'
-import { GAME_SELECT, PLAYER_SELECT } from '@/lib/supabase-selects'
+import { GAME_SELECT, PLAYER_SELECT, WORDLE_ROOM_PROGRESS_SELECT } from '@/lib/supabase-selects'
 import type { Game, Player } from '@/types'
 import { useGameRosterPoll } from '@/hooks/useGameRosterPoll'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
@@ -43,6 +43,7 @@ import { useHostSeat } from '@/hooks/useHostSeat'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
 import { useTurnNotifications } from '@/hooks/useTurnNotifications'
 import { useToast } from '@/components/ui/Toast'
+import { mergeRealtimeGame } from '@/lib/realtime-merge'
 
 type HostTab = 'manage' | 'play'
 
@@ -91,7 +92,7 @@ export function WordleRoomHostView({ gameCode, hostToken }: { gameCode: string; 
         setRoundId(roundData.id as string)
         const { data: progress } = await supabase
           .from('wordle_room_progress')
-          .select('*')
+          .select(WORDLE_ROOM_PROGRESS_SELECT)
           .eq('game_id', gameCode)
           .eq('round_id', roundData.id)
         setProgressRows((progress ?? []) as WordleRoomProgressRow[])
@@ -211,7 +212,7 @@ export function WordleRoomHostView({ gameCode, hostToken }: { gameCode: string; 
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
         (payload) => {
-          setGame(payload.new as Game)
+          setGame((prev) => mergeRealtimeGame(prev, payload.new as Partial<Game>))
           load()
         }
       )
@@ -254,7 +255,7 @@ export function WordleRoomHostView({ gameCode, hostToken }: { gameCode: string; 
         () => {
           supabase
             .from('wordle_room_progress')
-            .select('*')
+            .select(WORDLE_ROOM_PROGRESS_SELECT)
             .eq('game_id', gameCode)
             .eq('round_id', roundId)
             .then(({ data }) => {
@@ -343,6 +344,7 @@ export function WordleRoomHostView({ gameCode, hostToken }: { gameCode: string; 
     () =>
       game?.status === 'active' ? (
         <HostActiveSettings
+          game={game}
           gameCode={gameCode}
           hostToken={hostToken}
           gameType="wordle_room"
@@ -460,7 +462,7 @@ export function WordleRoomHostView({ gameCode, hostToken }: { gameCode: string; 
           onJoinNameChange={setHostJoinName}
           onJoin={() => void hostJoinGame()}
           joining={hostJoining}
-          spectatorHint="Watch the game from the Watch tab"
+          spectatorHint="Watch the game"
           playingNote={
             <p className="text-sm text-muted">
               Playing as <strong className="text-body">{hostPlayerName}</strong> — play once you start.
@@ -491,6 +493,7 @@ export function WordleRoomHostView({ gameCode, hostToken }: { gameCode: string; 
             hostToken={hostToken}
             game={game}
             playerCount={players.length}
+            seatedCount={players.filter((p) => !p.spectator).length}
             onGameUpdate={setGame}
           />
           <HostLobbyWaitingFooter
@@ -636,6 +639,7 @@ export function WordleRoomHostView({ gameCode, hostToken }: { gameCode: string; 
         hostToken={hostToken}
         game={game}
         playerCount={players.length}
+        seatedCount={players.filter((p) => !p.spectator).length}
         onGameUpdate={setGame}
       />
       <TransferHostControl triggerClassName="btn-secondary w-full flex items-center justify-center gap-2" />

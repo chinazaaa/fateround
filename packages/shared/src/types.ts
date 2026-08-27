@@ -31,6 +31,7 @@ export type GameType =
   | 'monopoly'
   | 'yahtzee'
   | 'whot'
+  | 'rummy'
   | 'ludo'
   | 'mahjong'
   | 'i_call_on'
@@ -56,9 +57,10 @@ export type GameType =
   | 'word_search'
   | 'word_scramble'
   | 'landmine'
-  | 'ping_pong'
   | 'word_grouping'
   | 'wordle_room'
+  | 'troll_run'
+  | 'gofish'
 
 export interface Game {
   id: string
@@ -162,6 +164,9 @@ export interface Game {
   monopoly_no_rent_in_jail?: boolean | null
   monopoly_estate_dividend?: boolean | null
   monopoly_board_size?: 40 | 48 | null
+  monopoly_loans_enabled?: boolean | null
+  monopoly_loan_interest?: number | null
+  monopoly_loan_term_rounds?: number | null
   quick_draw_variant?: QuickDrawVariant | null
   quick_draw_play_mode?: QuickDrawPlayMode | null
   quick_draw_num_teams?: number | null
@@ -180,6 +185,9 @@ export interface Game {
   /** Who Said This: 'player' (players submit) or 'deck' (host Platform/Library/CSV deck). */
   wst_quote_source?: string | null
   trivia_category?: TriviaCategory | string | null
+  troll_run_rounds?: number | null
+  troll_run_time_limit?: number | null
+  troll_run_world?: string | null
   created_at?: string | null
   bingo_call_mode?: 'manual' | 'auto' | string | null
   bingo_call_interval_seconds?: number | null
@@ -189,7 +197,6 @@ export interface Game {
   word_search_difficulty?: WordSearchDifficulty | string | null
   word_scramble_theme?: string | null
   word_scramble_difficulty?: WordScrambleDifficulty | string | null
-  ping_pong_points_to_win?: number | null
   /** Wordle Room — built-in category the race draws from. */
   wordle_room_category?: string | null
   /** Wordle Room — 5/10/15/20 words per race. */
@@ -236,21 +243,6 @@ export interface TicTacToeSession {
   is_draw: boolean
   status_message: string | null
   turn_deadline_at: string | null
-}
-
-export interface PingPongSession {
-  id: string
-  game_id: string
-  player_x_id: string
-  player_o_id: string
-  score_x: number
-  score_o: number
-  points_to_win: number
-  status: 'active' | 'finished'
-  winner_player_id: string | null
-  status_message: string | null
-  created_at?: string
-  updated_at?: string
 }
 
 export type CheckersColor = 'r' | 'b'
@@ -785,6 +777,10 @@ export interface CrazyEightsSession {
   winner_player_id: string | null
   finish_order: string[]
   turn_deadline_at: string | null
+  created_at: string
+  /** Bumped on every write. The realtime delta fast-path orders rows by it, so a row that
+   *  arrives out of order can be dropped instead of regressing the board. */
+  updated_at: string
 }
 
 export interface CrazyEightsPlayerHand {
@@ -822,6 +818,10 @@ export interface WhotSession {
   finish_order: string[]
   reshuffle_count: number
   turn_deadline_at: string | null
+  created_at: string
+  /** Bumped on every write. The realtime delta fast-path orders rows by it, so a row that
+   *  arrives out of order can be dropped instead of regressing the board. */
+  updated_at: string
 }
 
 export interface WhotPlayerHand {
@@ -1036,10 +1036,22 @@ export interface DescribeItSession {
   active_team: number
   describer_player_id: string | null
   roster: string[]
-  current_word: string | null
+  /**
+   * The secret word. NOT present on a client-side session — `current_word` is revoked from
+   * anon/authenticated by migration 20260807130000, and DESCRIBE_IT_SESSION_SELECT no longer
+   * asks for it. The describer fetches it via POST /api/describe-it/my-word.
+   */
+  current_word?: string | null
   current_clue: string | null
   current_clues: string[]
+  /**
+   * A SHADOW COPY of the secret — every write that sets `current_word` appends it here, so the
+   * last element IS the current word. Revoked from anon with `current_word`, so it is absent
+   * client-side. Use `word_seq` for the per-word counter.
+   */
   used_words?: string[]
+  /** Public per-word counter (`cardinality(used_words)`) — ticks once per word rotation. */
+  word_seq?: number
   status: 'active' | 'finished'
   status_message: string | null
   turn_deadline_at: string | null
@@ -1349,7 +1361,20 @@ export interface CodewordsBoard {
   id: string
   game_id: string
   words: string[]
-  key: CodewordsCellType[]
+  /**
+   * Word → team assignment. SECRET while the game is live: only the host and the two
+   * spymasters receive the real array from /api/codewords/board. Everyone else gets a MASKED
+   * copy — the true type at revealed indices, `null` at unrevealed ones — which is all an
+   * operative's UI needs (audit finding H2). Mirrors the web type in src/types/index.ts.
+   */
+  key: (CodewordsCellType | null)[]
+  /**
+   * How many cells belong to each type. Not secret (the split is fixed by the ruleset and is
+   * already on screen), but it CANNOT be derived from a masked key — counting a masked key
+   * yields "revealed reds" as the red total, i.e. a scoreboard that says both teams have
+   * already found everything. The API sends it explicitly for exactly that reason.
+   */
+  key_totals?: Partial<Record<CodewordsCellType, number>>
   starting_team: CodewordsTeam
   revealed_indices: number[]
   current_turn: CodewordsTeam
@@ -1535,6 +1560,20 @@ export interface MonopolyLastCardEvent {
   other_player_count?: number
 }
 
+export interface MonopolyLoan {
+  id: string
+  player_id: string
+  principal: number
+  interest_rate: number
+  total_due: number
+  amount_repaid: number
+  balance_remaining: number
+  term_rounds: number
+  rounds_remaining: number
+  created_at: string
+  status: 'active' | 'repaid' | 'defaulted'
+}
+
 export interface MonopolyBoard {
   id: string
   game_id: string
@@ -1549,10 +1588,15 @@ export interface MonopolyBoard {
   mortgaged_properties: Record<string, boolean>
   houses_in_bank: number
   hotels_in_bank: number
-  chance_deck: number[]
-  community_deck: number[]
-  chance_discard: number[]
-  community_discard: number[]
+  // Server-only. These are the shuffled Chance / Community Chest decks; knowing their order is
+  // knowing every upcoming card, so they are NOT in MONOPOLY_BOARD_SELECT and never reach a
+  // client. `monopoly.ts` reads them through the service role with `select('*')`. Optional here
+  // because a client-fetched row genuinely lacks them — `parseDeck` already returns [] for a
+  // non-array, so no read site needs changing.
+  chance_deck?: number[]
+  community_deck?: number[]
+  chance_discard?: number[]
+  community_discard?: number[]
   auction_state: MonopolyAuctionState | null
   pending_trade: unknown | null
   pending_debt: MonopolyPendingDebt | null
@@ -1562,6 +1606,7 @@ export interface MonopolyBoard {
   last_rent_event: unknown | null
   last_cash_event: unknown | null
   last_trade_event: unknown | null
+  loans?: MonopolyLoan[]
   turn_deadline_at: string | null
   winner_player_id: string | null
   created_at: string
@@ -1745,9 +1790,23 @@ export interface QuickDrawGuessSession {
   current_round: number
   active_team: number
   drawer_player_id: string | null
-  current_word: string | null
+  /**
+   * The secret prompt. NOT present on a client-side session — `current_word` is revoked from
+   * anon/authenticated by migration 20260807140000, and QUICK_DRAW_GUESS_SESSION_SELECT no longer
+   * asks for it. The drawer gets it back via POST /api/quick-draw/my-word.
+   */
+  current_word?: string | null
   current_stroke_data: QuickDrawDrawingStrokeData
-  used_words: string[]
+  /**
+   * Also secret: its last entry IS the current word, so it is revoked alongside `current_word`
+   * and absent from client reads. Use `word_seq` when all you need is "the word changed".
+   */
+  used_words?: string[]
+  /**
+   * Public per-word counter — `cardinality(used_words)`, a generated column. Ticks once per word,
+   * including the mid-turn rotations (correct guess, skip) that leave `turn_index` untouched.
+   */
+  word_seq?: number
   turn_deadline_at: string | null
   break_deadline_at: string | null
   status: 'active' | 'finished'
@@ -1877,5 +1936,53 @@ export interface AnonymousRoomBan {
   game_id: string
   player_id: string
   banned_until: string
+  created_at: string
+}
+
+export type TrollRunPhase = 'lobby' | 'countdown' | 'racing' | 'scoreboard' | 'finished'
+
+export interface TrollRunSession {
+  id: string
+  game_id: string
+  phase: TrollRunPhase
+  current_round: number
+  total_rounds: number
+  current_world: string
+  levels_per_round: number
+  round_time_limit: number
+  round_started_at: string | null
+  turn_deadline_at: string | null
+  level_order: string[]
+  created_at: string
+  updated_at: string
+}
+
+export interface TrollRunPlayerState {
+  id: string
+  game_id: string
+  player_id: string
+  current_round: number
+  current_level_index: number
+  deaths: number
+  levels_cleared: number
+  total_time_ms: number
+  round_score: number
+  total_score: number
+  finish_position: number | null
+  round_finished: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface TrollRunEvent {
+  id: string
+  game_id: string
+  player_id: string
+  player_name?: string
+  round: number
+  level_id: string
+  level_name?: string
+  event_type: 'death' | 'clear'
+  time_ms?: number | null
   created_at: string
 }

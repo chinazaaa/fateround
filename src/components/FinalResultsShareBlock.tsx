@@ -5,6 +5,7 @@ import type { Game, Participant, Player, Round, TriviaAnswer, Vote } from '@/typ
 import { HostGameFinishedActions } from '@/components/host/HostGameFinishedActions'
 import { ShareResultsCaptureHeader } from '@/components/ShareResultsCaptureHeader'
 import { ShareResults } from '@/components/ShareResults'
+import { findCardTemplate } from '@/lib/coins/shop-catalog'
 
 /** Wraps final leaderboard UI so Share Results captures a snapshot of what's on screen. */
 export function FinalResultsShareBlock({
@@ -20,6 +21,7 @@ export function FinalResultsShareBlock({
   variant = 'default',
   returnToLobbyButton,
   lobbyNote,
+  cardTemplateSlug,
 }: {
   children: ReactNode
   game: Game
@@ -40,12 +42,21 @@ export function FinalResultsShareBlock({
   returnToLobbyButton?: ReactNode
   /** 'winner' only — helper text explaining the two play-again paths. */
   lobbyNote?: ReactNode
+  /**
+   * Equipped card-template slug for the game host — the results-share
+   * capture inherits the host's template (`docs/coins-and-shop-plan.md`
+   * §"Where cosmetics render" → "Card templates"). Falls back to the free
+   * default when the slug is unknown or null.
+   */
+  cardTemplateSlug?: string | null
 }) {
   const captureRef = useRef<HTMLDivElement>(null)
+  const cardTemplate = findCardTemplate(cardTemplateSlug)
+  const templateClass = cardTemplate ? cardTemplate.cssClass : ''
 
   return (
     <>
-      <div ref={captureRef} className="space-y-4">
+      <div ref={captureRef} className={`space-y-4 ${templateClass}`}>
         <ShareResultsCaptureHeader game={game} />
         {children}
       </div>

@@ -4,6 +4,7 @@ import { ayoFacts } from './ayo'
 import { checkersFacts } from './checkers'
 import { chessFacts } from './chess'
 import { crazyEightsFacts } from './crazy-eights'
+import { rummyFacts } from './rummy'
 import { describeItFacts } from './describe-it'
 import { mafiaFacts } from './mafia'
 import { mahjongFacts } from './mahjong'
@@ -20,8 +21,9 @@ import { crosswordFacts } from './crossword'
 import { iCallOnFacts } from './i-call-on'
 import { landmineFacts } from './landmine'
 import { matchingPairsFacts } from './matching-pairs'
-import { pingPongFacts } from './ping-pong'
 import { quiplashFacts } from './quiplash'
+import { quickDrawFacts } from './quick-draw'
+import { trollRunFacts } from './troll-run'
 import { sudokuFacts } from './sudoku'
 import { ticTacToeFacts } from './tic-tac-toe'
 import { twoTruthsFacts } from './two-truths'
@@ -32,6 +34,7 @@ import { wordSearchFacts } from './word-search'
 import { wordGroupingFacts } from './word-grouping'
 import { snakeAndLadderFacts } from './snake-and-ladder'
 import { wordleRoomFacts } from './wordle-room'
+import { gofishFacts } from './gofish'
 
 /**
  * Per-game facts for the award pass.
@@ -88,6 +91,7 @@ const BUILDERS: Partial<Record<GameType, FactsBuilder>> = {
   chess: chessFacts,
   codewords: codewordsFacts,
   crazy_eights: crazyEightsFacts,
+  rummy: rummyFacts,
   describe_it: describeItFacts,
   ludo: ludoFacts,
   mafia: mafiaFacts,
@@ -103,8 +107,9 @@ const BUILDERS: Partial<Record<GameType, FactsBuilder>> = {
   i_call_on: iCallOnFacts,
   landmine: landmineFacts,
   matching_pairs: matchingPairsFacts,
-  ping_pong: pingPongFacts,
   quiplash: quiplashFacts,
+  quick_draw: quickDrawFacts,
+  troll_run: trollRunFacts,
   sudoku: sudokuFacts,
   tic_tac_toe: ticTacToeFacts,
   two_truths: twoTruthsFacts,
@@ -115,6 +120,7 @@ const BUILDERS: Partial<Record<GameType, FactsBuilder>> = {
   word_grouping: wordGroupingFacts,
   snake_and_ladder: snakeAndLadderFacts,
   wordle_room: wordleRoomFacts,
+  gofish: gofishFacts,
 }
 
 /** True when this game type emits per-game facts, for the admin UI's benefit. */

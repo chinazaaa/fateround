@@ -88,6 +88,7 @@ export const gameTypeEnum = z.enum([
   'monopoly',
   'yahtzee',
   'whot',
+  'rummy',
   'crazy_eights',
   'uno',
   'ludo',
@@ -114,8 +115,9 @@ export const gameTypeEnum = z.enum([
   'word_scramble',
   'word_grouping',
   'landmine',
-  'ping_pong',
   'wordle_room',
+  'troll_run',
+  'gofish',
 ])
 
 export const participantModeEnum = z.enum(['import', 'joiners', 'voters'])
@@ -149,6 +151,7 @@ export const playerGenderEnum = z.enum(['male', 'female', 'both'])
 export const pairFlagEnum = z.enum(['kiss', 'kill'])
 export const themeEnum = z.enum([
   'default',
+  'dark',
   'neon',
   'retro',
   'elegant',
@@ -156,7 +159,19 @@ export const themeEnum = z.enum([
   'pirate',
   'arctic',
   'naija',
+  'america',
+  'christmas',
   'grass_court',
+  // Per-game visual reskins seeded in game_themes (Phase 3 shop). Ownership
+  // is gated server-side in the create/PATCH routes via
+  // checkGameThemeEntitlement — a fibbing client that PATCHes to one of
+  // these without owning it gets 403 rather than silently downgraded.
+  'whot-neon',
+  'whot-naija',
+  'ludo-wooden',
+  'ludo-naija',
+  'sudoku-minimalist',
+  'sudoku-newsprint',
 ])
 export const participantFilterEnum = z.enum(['all', 'joined'])
 export const timerSecondsEnum = z.union([z.literal(10), z.literal(15), z.literal(30), z.literal(60)])

@@ -24,9 +24,9 @@ import {
   isWordHuntGame,
   isCrosswordGame,
   isWordSearchGame,
-  isPingPongGame,
   isWhoSaidThis,
   isWordleRoomGame,
+  isTrollRunGame,
 } from '@/lib/game-types'
 import { clearAnonymousRoomSessionData, reopenSecretMessageBoard } from '@/lib/anonymous-messages'
 import { clearBingoSessionData } from '@/lib/bingo'
@@ -35,12 +35,13 @@ import { clearMonopolySessionData } from '@/lib/monopoly'
 import { clearYahtzeeSessionData } from '@/lib/yahtzee'
 import { clearWhotSessionData } from '@/lib/whot'
 import { clearCrazyEightsSessionData } from '@/lib/crazy-eights'
+import { clearGoFishSessionData } from '@/lib/gofish-server'
+import { clearRummySessionData } from '@/lib/rummy'
 import { clearUnoSessionData } from '@/lib/uno'
 import { clearLudoSessionData } from '@/lib/ludo'
 import { clearMahjongSessionData, canMahjongPlayAgain } from '@/lib/mahjong'
 import { clearSnakeAndLadderSessionData } from '@/lib/snake-and-ladder'
 import { clearTicTacToeSessionData, canTicTacToePlayAgain } from '@/lib/tic-tac-toe'
-import { clearPingPongSessionData, canPingPongPlayAgain } from '@/lib/ping-pong'
 import { clearChessSessionData, canChessPlayAgain } from '@/lib/chess'
 import { clearCheckersSessionData, canCheckersPlayAgain } from '@/lib/checkers'
 import { clearDraughts10SessionData, canDraughts10PlayAgain } from '@/lib/draughts10'
@@ -55,6 +56,7 @@ import { clearWordSearchSessionData } from '@/lib/word-search'
 import { clearWordScrambleSessionData } from '@/lib/word-scramble'
 import { clearWordHuntSessionData } from '@/lib/word-hunt'
 import { clearWordleRoomSessionData } from '@/lib/wordle-room'
+import { clearTrollRunSessionData } from '@/lib/troll-run'
 import { clearMafiaSessionData } from '@/lib/mafia'
 import { clearTriviaSessionData } from '@/lib/trivia'
 import { clearTwoTruthsSessionData } from '@/lib/two-truths'
@@ -105,6 +107,7 @@ type ClearableSessionGameType = Extract<
   | 'monopoly'
   | 'yahtzee'
   | 'whot'
+  | 'rummy'
   | 'crazy_eights'
   | 'uno'
   | 'ludo'
@@ -128,7 +131,8 @@ type ClearableSessionGameType = Extract<
   | 'word_search'
   | 'word_scramble'
   | 'landmine'
-  | 'ping_pong'
+  | 'troll_run'
+  | 'gofish'
 >
 
 /**
@@ -147,6 +151,7 @@ const SESSION_CLEARERS: Record<ClearableSessionGameType, SessionClearer> = {
   monopoly: clearMonopolySessionData,
   yahtzee: clearYahtzeeSessionData,
   whot: clearWhotSessionData,
+  rummy: clearRummySessionData,
   crazy_eights: clearCrazyEightsSessionData,
   uno: clearUnoSessionData,
   ludo: clearLudoSessionData,
@@ -174,7 +179,8 @@ const SESSION_CLEARERS: Record<ClearableSessionGameType, SessionClearer> = {
   // `rounds` delete above already cleans both — a custom clearer here 500'd on the missing
   // game_id column and blocked play-again.
   landmine: clearLandmineSessionData,
-  ping_pong: clearPingPongSessionData,
+  troll_run: clearTrollRunSessionData,
+  gofish: clearGoFishSessionData,
 }
 
 async function handlePost(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
@@ -204,7 +210,6 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
   const ticTacToeCanReplay = isTicTacToeGame(gameType)
     ? await canTicTacToePlayAgain(supabase, gameId, game.status)
     : false
-  const pingPongCanReplay = isPingPongGame(gameType) ? await canPingPongPlayAgain(supabase, gameId, game.status) : false
   const chessCanReplay = isChessGame(gameType) ? await canChessPlayAgain(supabase, gameId, game.status) : false
   const checkersCanReplay = isCheckersGame(gameType) ? await canCheckersPlayAgain(supabase, gameId, game.status) : false
   const draughts10CanReplay = isDraughts10Game(gameType)
@@ -221,7 +226,6 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
     game.status === 'waiting' ||
     game.status === 'finished' ||
     ticTacToeCanReplay ||
-    pingPongCanReplay ||
     chessCanReplay ||
     checkersCanReplay ||
     draughts10CanReplay ||
@@ -237,7 +241,8 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
     (isWordHuntGame(gameType) && game.status === 'active') ||
     (isWordleRoomGame(gameType) && game.status === 'active') ||
     (isCrosswordGame(gameType) && game.status === 'active') ||
-    (isWordSearchGame(gameType) && game.status === 'active')
+    (isWordSearchGame(gameType) && game.status === 'active') ||
+    (isTrollRunGame(gameType) && game.status === 'active')
   if (!canReturnToLobby) {
     return NextResponse.json({ error: 'Game must be finished before playing again' }, { status: 400 })
   }

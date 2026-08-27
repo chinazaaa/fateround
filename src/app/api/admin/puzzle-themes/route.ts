@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { assertAdminRequest } from '@/lib/admin-api'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { MAX_PRICE_COINS } from '@/lib/coins/pricing'
 import {
   isPuzzleThemeGameType,
   isPuzzleThemeDifficulty,
@@ -22,7 +23,7 @@ export async function GET(req: NextRequest) {
   const supabase = getSupabaseAdmin()
   let query = supabase
     .from('puzzle_themes')
-    .select('id, game_type, name, difficulty, entry_count, is_builtin, sort_order, created_at, updated_at')
+    .select('id, game_type, name, difficulty, entry_count, is_builtin, sort_order, created_at, updated_at, price_coins')
     .order('game_type', { ascending: true })
     .order('sort_order', { ascending: true })
     .order('created_at', { ascending: false })
@@ -45,7 +46,7 @@ export async function POST(req: NextRequest) {
   } catch {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
-  const { game_type, name, difficulty, csv } = (body ?? {}) as Record<string, unknown>
+  const { game_type, name, difficulty, csv, price_coins } = (body ?? {}) as Record<string, unknown>
 
   if (!isPuzzleThemeGameType(game_type)) {
     return NextResponse.json({ error: 'game_type must be crossword, word_search, or word_scramble' }, { status: 400 })
@@ -78,6 +79,20 @@ export async function POST(req: NextRequest) {
     )
   }
 
+  // Coerce/validate shop price. 0 stays free; > 0 makes the theme premium.
+  // Ceiling shared with purchase_item + every other admin price-write path.
+  let priceCoins = 0
+  if (price_coins !== undefined && price_coins !== null && price_coins !== '') {
+    const n = typeof price_coins === 'string' ? Number(price_coins) : (price_coins as number)
+    if (!Number.isFinite(n) || !Number.isInteger(n) || n < 0 || n > MAX_PRICE_COINS) {
+      return NextResponse.json(
+        { error: `price_coins must be an integer between 0 and ${MAX_PRICE_COINS}` },
+        { status: 400 }
+      )
+    }
+    priceCoins = n
+  }
+
   const supabase = getSupabaseAdmin()
   const { data, error } = await supabase
     .from('puzzle_themes')
@@ -87,8 +102,9 @@ export async function POST(req: NextRequest) {
       difficulty: diff,
       entries: parsed.entries,
       entry_count: parsed.entries.length,
+      price_coins: priceCoins,
     })
-    .select('id, game_type, name, difficulty, entry_count')
+    .select('id, game_type, name, difficulty, entry_count, price_coins')
     .single()
 
   if (error) return NextResponse.json({ error: internalErrorMessage('admin/puzzle-themes', error) }, { status: 500 })
