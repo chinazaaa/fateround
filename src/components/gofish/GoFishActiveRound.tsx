@@ -46,7 +46,7 @@ export function GoFishActiveRound({
   onReload,
   readOnly,
 }: Props) {
-  const { error: toastError } = useToast()
+  const { error: toastError, info: toastInfo } = useToast()
   const [selectedTargetId, setSelectedTargetId] = useState<string | null>(null)
   const [selectedRank, setSelectedRank] = useState<GoFishRank | null>(null)
   const [asking, setAsking] = useState(false)
@@ -126,11 +126,18 @@ export function GoFishActiveRound({
           rank: selectedRank,
         }),
       })
-      const data = (await res.json()) as { error?: string }
+      const data = (await res.json()) as { error?: string; hit?: boolean; drewRank?: GoFishRank }
       if (!res.ok) throw new Error(data.error ?? 'Ask failed')
       setSelectedRank(null)
       setSelectedTargetId(null)
       setAskSheetOpen(false)
+      // Viewer-scoped toast: the ask_miss event log intentionally hides the drawn rank on
+      // a plain (non-lucky) miss so opponents can't see your ocean draw. Show it privately
+      // to the asker so they know what they drew — the hand fan re-sorts on refresh and it
+      // was easy to miss.
+      if (data.hit === false && data.drewRank != null) {
+        toastInfo(`🎣 You drew a ${gofishRankLabel(data.drewRank)} from the ocean.`, 4500)
+      }
       await onReload()
     } catch (err) {
       toastError(err instanceof Error ? err.message : 'Ask failed')
@@ -314,7 +321,10 @@ function BooksRow({ books, label }: { books: GoFishRank[]; label: string }) {
       <span className="text-xs text-muted">{label}:</span>
       <div className="flex gap-1 flex-wrap">
         {books.map((rank) => (
-          <span key={rank} className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-100 text-xs font-mono">
+          <span
+            key={rank}
+            className="px-2 py-0.5 rounded-md border border-[var(--primary)] bg-[color-mix(in_srgb,var(--primary)_18%,var(--card))] text-body text-xs font-mono font-semibold"
+          >
             📚 {gofishRankPlural(rank)}
           </span>
         ))}
@@ -561,7 +571,7 @@ function OpponentsPanel({
                   {books.map((rank) => (
                     <span
                       key={rank}
-                      className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-100 text-xs font-mono"
+                      className="px-2 py-0.5 rounded-md border border-[var(--primary)] bg-[color-mix(in_srgb,var(--primary)_18%,var(--card))] text-body text-xs font-mono font-semibold"
                     >
                       📚 {gofishRankPlural(rank)}
                     </span>
@@ -736,7 +746,9 @@ function perspectiveMessage(event: GoFishEvent, myPlayerId: string, nameOf: (id:
         if (event.lucky_draw) return `🎣 Lucky draw! You got a ${gofishRankLabel(event.rank)}. Go again!`
         return `🐟 Go Fish! You drew from the ocean.`
       }
-      if (event.target_id === myPlayerId) return `🐟 ${nameOf(event.from_id)} asked you for ${rank}. Go Fish!`
+      // Reword away from "Go Fish!" when the viewer is the target — reading "you...Go Fish!"
+      // makes it sound like the viewer is drawing, but it's actually the asker who draws.
+      if (event.target_id === myPlayerId) return `🐟 ${nameOf(event.from_id)} asked you for ${rank} — they go fish!`
       return `🐟 ${nameOf(event.from_id)} asked ${nameOf(event.target_id)} for ${rank} — Go Fish!`
     }
     case 'book': {
