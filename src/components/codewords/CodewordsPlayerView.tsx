@@ -44,7 +44,12 @@ import { useLateJoinContext } from '@/hooks/useLateJoinContext'
 import { useRoomMemberAutoJoin, useRoomMemberJoin, useRoomMemberNamePrefill } from '@/hooks/useRoomMemberJoin'
 import { allowLateJoin, allowLatePlayers, playerIsViewer, preJoinScreen } from '@/lib/viewers'
 import { supabase } from '@/lib/supabase'
-import { GAME_SELECT, PLAYER_SELECT } from '@/lib/supabase-selects'
+import {
+  CODEWORDS_GUESS_SELECT,
+  CODEWORDS_PLAYER_ROLE_SELECT,
+  GAME_SELECT,
+  PLAYER_SELECT,
+} from '@/lib/supabase-selects'
 import { getPlayerSession, setPlayerSession, clearPlayerSession } from '@/lib/utils'
 import { markPlayerReady } from '@/lib/player-ready'
 import { resolvePlayerSession } from '@/lib/player-resume'
@@ -145,7 +150,7 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
       }
       const { data: role } = await supabase
         .from('codewords_player_roles')
-        .select('*')
+        .select(CODEWORDS_PLAYER_ROLE_SELECT)
         .eq('game_id', gameCode)
         .eq('player_id', playerId)
         .maybeSingle()
@@ -200,7 +205,7 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
   const loadGuesses = useCallback(async () => {
     const { data } = await supabase
       .from('codewords_guesses')
-      .select('*')
+      .select(CODEWORDS_GUESS_SELECT)
       .eq('game_id', gameCode)
       .order('created_at', { ascending: true })
     setGuesses(mergeCodewordsGuesses([], (data as CodewordsGuess[]) ?? []))
@@ -209,7 +214,7 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
   const loadScoreboard = useCallback(async () => {
     const [{ data: plrs }, { data: roleRows }] = await Promise.all([
       supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at'),
-      supabase.from('codewords_player_roles').select('*').eq('game_id', gameCode),
+      supabase.from('codewords_player_roles').select(CODEWORDS_PLAYER_ROLE_SELECT).eq('game_id', gameCode),
     ])
     setAllPlayers(plrs ?? [])
     setAllRoles(roleRows ?? [])

@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { gameKeys } from '@/lib/query-keys'
+import { PLAYER_QUESTION_SELECT } from '@/lib/supabase-selects'
 
 export interface PlayerQuestion {
   id: string
@@ -15,7 +16,11 @@ export function usePlayerQuestions(code: string, enabled = true) {
   return useQuery({
     queryKey: gameKeys.playerQuestions(code),
     queryFn: async () => {
-      const { data } = await supabase.from('player_questions').select('*').eq('game_id', code).order('created_at')
+      const { data } = await supabase
+        .from('player_questions')
+        .select(PLAYER_QUESTION_SELECT)
+        .eq('game_id', code)
+        .order('created_at')
       return (data ?? []) as PlayerQuestion[]
     },
     staleTime: 10_000,

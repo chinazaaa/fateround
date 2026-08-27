@@ -34,7 +34,7 @@ import {
   type WordleRoomStandingRow,
 } from '@/lib/wordle-room'
 import { useWordleRoomGameTimer } from '@/hooks/useWordleRoomGameTimer'
-import { GAME_SELECT, PLAYER_SELECT } from '@/lib/supabase-selects'
+import { GAME_SELECT, PLAYER_SELECT, WORDLE_ROOM_PROGRESS_SELECT } from '@/lib/supabase-selects'
 import type { Game, Player } from '@/types'
 import { useGameRosterPoll } from '@/hooks/useGameRosterPoll'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
@@ -92,7 +92,7 @@ export function WordleRoomHostView({ gameCode, hostToken }: { gameCode: string; 
         setRoundId(roundData.id as string)
         const { data: progress } = await supabase
           .from('wordle_room_progress')
-          .select('*')
+          .select(WORDLE_ROOM_PROGRESS_SELECT)
           .eq('game_id', gameCode)
           .eq('round_id', roundData.id)
         setProgressRows((progress ?? []) as WordleRoomProgressRow[])
@@ -255,7 +255,7 @@ export function WordleRoomHostView({ gameCode, hostToken }: { gameCode: string; 
         () => {
           supabase
             .from('wordle_room_progress')
-            .select('*')
+            .select(WORDLE_ROOM_PROGRESS_SELECT)
             .eq('game_id', gameCode)
             .eq('round_id', roundId)
             .then(({ data }) => {
