@@ -185,10 +185,13 @@ change belongs to every card game at once, not one route.
 
 Redacting hands alone is not enough where the ordered deck is public: with `draw_pile` +
 `discard_pile` and your own hand, a 2-player opponent's hand is a subtraction, and at any table
-size you know every future draw in order. `20260815120000_sec_crazy8_hide_piles.sql` revokes both
-columns and adds generated `draw_count` / `discard_count`, which is all the clients ever used
-(`isDrawPileDepleted`, the play surface's draw count). **Whot and UNO still ship their piles —
-same leak, still open.**
+size you know every future draw in order. The fix is split in two, per "Split the migration"
+above: `20260815115000_crazy8_pile_counts.sql` **adds** the generated `draw_count` /
+`discard_count` — all the clients ever used (`isDrawPileDepleted`, the play surface's draw count)
+— and is safe against every client version, while `20260815120000_sec_crazy8_hide_piles.sql`
+**revokes** the two piles and must wait for a compatible mobile build. The revoke raises rather
+than proceeds if the counts are absent. **Whot and UNO still ship their piles — same leak, still
+open.**
 
 ### Redacted state must never be read as real state (the recurring bug)
 

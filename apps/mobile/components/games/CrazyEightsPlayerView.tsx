@@ -163,17 +163,46 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
     sessionRef.current = next
     return prev != null
   }, [])
-  const applyHandRow = useCallback((row: Record<string, unknown>): boolean => {
-    const next = row as unknown as CrazyEightsPlayerHand
-    setHands((prev) => {
-      const i = prev.findIndex((h) => h.id === next.id)
-      if (i === -1) return [...prev, next].sort((a, b) => a.player_order - b.player_order)
-      const copy = [...prev]
-      copy[i] = next
-      return copy
-    })
-    return true
-  }, [])
+  const applyHandRow = useCallback(
+    (row: Record<string, unknown>): boolean => {
+      const next = row as unknown as CrazyEightsPlayerHand
+      // Mirrors the web applyHandRow — see src/components/crazy-eights/CrazyEightsPlayerView.tsx.
+      // Once `cards` is revoked from anon, realtime payloads carry no cards at all. Applying one
+      // verbatim to OUR OWN row would blank the hand, and because `isOut` is derived from an empty
+      // hand it would read as "you are out" mid-game. Re-fetch through the authorized route.
+      if (bootstrap.myPlayerId && next.player_id === bootstrap.myPlayerId && !Array.isArray(next.cards)) {
+        void (async () => {
+          const code = gameCode.toUpperCase()
+          const stored = await getPlayerSession(code)
+          const res = await postCrazyEightsHands(code, {
+            resumeToken: stored?.resumeToken ?? myResumeTokenRef.current ?? undefined,
+          }).catch(() => null)
+          if (res?.hands) setHands(res.hands)
+        })()
+        return true
+      }
+      // Can we derive the new count from this payload? Once `cards` is revoked the payload carries
+      // neither `cards` nor `card_count` (card_count is computed by the redaction route, not a
+      // column), so the answer is no — and the row must NOT be absorbed: returning true would skip
+      // the reconciliation reload while polling is off, freezing every opponent's count.
+      const countable = Array.isArray(next.cards) || typeof next.card_count === 'number'
+      setHands((prev) => {
+        const i = prev.findIndex((h) => h.id === next.id)
+        // Carry a known count forward when the payload omits it, so an opponent never momentarily
+        // renders as holding zero cards while the reload is in flight.
+        const merged: CrazyEightsPlayerHand = {
+          ...next,
+          card_count: next.card_count ?? (Array.isArray(next.cards) ? next.cards.length : prev[i]?.card_count),
+        }
+        if (i === -1) return [...prev, merged].sort((a, b) => a.player_order - b.player_order)
+        const copy = [...prev]
+        copy[i] = merged
+        return copy
+      })
+      return countable
+    },
+    [gameCode, bootstrap.myPlayerId]
+  )
 
   useGameTableSync(
     gameCode,
