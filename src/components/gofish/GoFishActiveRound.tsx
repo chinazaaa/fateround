@@ -16,6 +16,7 @@ import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { GoFishCardBack, GoFishCardCountBadge, GoFishCardFace } from '@/components/gofish/GoFishCardFace'
 import { GoFishFinalResultsShareBlock } from '@/components/gofish/GoFishFinalResultsShareBlock'
 import { GoFishGameTimerBar } from '@/components/gofish/GoFishGameTimerBar'
+import { Modal } from '@/components/ui/Modal'
 
 type Props = {
   gameCode: string
@@ -50,6 +51,11 @@ export function GoFishActiveRound({
   const [selectedRank, setSelectedRank] = useState<GoFishRank | null>(null)
   const [asking, setAsking] = useState(false)
   const [refilling, setRefilling] = useState(false)
+  // The picker lives in a modal now (see AskSheet). On mobile a 6-player target list
+  // wrapped below the hand fan meant scrolling down to choose, then scrolling back up
+  // to see cards — the sheet keeps both on screen at once and gets out of the way when
+  // it's not your turn.
+  const [askSheetOpen, setAskSheetOpen] = useState(false)
 
   const playersById = useMemo(() => new Map(players.map((p) => [p.id, p])), [players])
   const nameOf = (id: string) => playersById.get(id)?.name ?? 'Player'
@@ -124,6 +130,7 @@ export function GoFishActiveRound({
       if (!res.ok) throw new Error(data.error ?? 'Ask failed')
       setSelectedRank(null)
       setSelectedTargetId(null)
+      setAskSheetOpen(false)
       await onReload()
     } catch (err) {
       toastError(err instanceof Error ? err.message : 'Ask failed')
@@ -179,21 +186,31 @@ export function GoFishActiveRound({
           {!readOnly && myHandRow && <MyHand cards={myCards} myBooks={myBooks} />}
           {!readOnly && needsRefill && <RefillPrompt oceanCount={session?.ocean_count ?? 0} />}
           {!readOnly && isMyTurn && !needsRefill && (
-            <AskPicker
-              askableRanks={askable}
-              eligibleTargets={eligibleTargets.map(({ player, hand }) => ({
-                id: player.id,
-                name: player.name,
-                cardCount: (hand?.card_count ?? (hand?.cards as unknown[] | null)?.length ?? 0) as number,
-                books: (hand?.books ?? []) as GoFishRank[],
-              }))}
-              selectedTargetId={selectedTargetId}
-              onSelectTarget={setSelectedTargetId}
-              selectedRank={selectedRank}
-              onSelectRank={setSelectedRank}
-              onSubmit={submitAsk}
-              asking={asking}
-            />
+            <>
+              <AskLaunchButton
+                canAsk={askable.length > 0 && eligibleTargets.length > 0}
+                onOpen={() => setAskSheetOpen(true)}
+                askableCount={askable.length}
+                targetCount={eligibleTargets.length}
+              />
+              <Modal open={askSheetOpen} onClose={() => setAskSheetOpen(false)} title="Ask a player">
+                <AskPicker
+                  askableRanks={askable}
+                  eligibleTargets={eligibleTargets.map(({ player, hand }) => ({
+                    id: player.id,
+                    name: player.name,
+                    cardCount: (hand?.card_count ?? (hand?.cards as unknown[] | null)?.length ?? 0) as number,
+                    books: (hand?.books ?? []) as GoFishRank[],
+                  }))}
+                  selectedTargetId={selectedTargetId}
+                  onSelectTarget={setSelectedTargetId}
+                  selectedRank={selectedRank}
+                  onSelectRank={setSelectedRank}
+                  onSubmit={submitAsk}
+                  asking={asking}
+                />
+              </Modal>
+            </>
           )}
           <OpponentsPanel
             players={players.filter((p) => p.id !== myPlayerId)}
@@ -302,6 +319,47 @@ function BooksRow({ books, label }: { books: GoFishRank[]; label: string }) {
   )
 }
 
+/**
+ * Bottom-anchored "Ask a player" launcher. The picker itself now lives inside a modal
+ * (see AskPicker) — this button opens it. Sits right below the hand fan so on mobile
+ * the user's thumb is already near it when it's their turn, no scroll.
+ *
+ * Disabled with a helper line when there's nothing to do:
+ *   - askableCount 0 → refill fires from the parent effect, or the round is stuck
+ *     because both you and the ocean are empty (rare, but real).
+ *   - targetCount 0 → every other seat is out of cards.
+ */
+function AskLaunchButton({
+  canAsk,
+  onOpen,
+  askableCount,
+  targetCount,
+}: {
+  canAsk: boolean
+  onOpen: () => void
+  askableCount: number
+  targetCount: number
+}) {
+  const hint = !canAsk
+    ? askableCount === 0
+      ? 'You have no cards to ask with — waiting for a refill.'
+      : 'Nobody else has cards to ask right now.'
+    : null
+  return (
+    <div className="space-y-2">
+      <button
+        type="button"
+        onClick={onOpen}
+        disabled={!canAsk}
+        className="btn-primary w-full py-4 text-base font-bold disabled:opacity-40 disabled:cursor-not-allowed"
+      >
+        Ask a player →
+      </button>
+      {hint && <p className="text-xs text-muted text-center">{hint}</p>}
+    </div>
+  )
+}
+
 function AskPicker({
   askableRanks: ranks,
   eligibleTargets,
@@ -321,30 +379,18 @@ function AskPicker({
   onSubmit: () => void
   asking: boolean
 }) {
+  // Sheet context — the AskLaunchButton gates on ranks/targets being non-empty, so we
+  // shouldn't normally reach these fallbacks inside the modal, but keep them for safety
+  // if the state flips mid-open.
   if (ranks.length === 0) {
-    return (
-      <section className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-4">
-        <p className="text-sm text-muted">You have no cards in hand — waiting for refill on the next turn.</p>
-      </section>
-    )
+    return <p className="text-sm text-muted">You have no cards in hand — waiting for refill on the next turn.</p>
   }
   if (eligibleTargets.length === 0) {
-    return (
-      <section className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-4">
-        <p className="text-sm text-muted">Nobody else has cards to ask right now.</p>
-      </section>
-    )
+    return <p className="text-sm text-muted">Nobody else has cards to ask right now.</p>
   }
   const canSubmit = !asking && selectedTargetId != null && selectedRank != null
   return (
-    <section
-      className="rounded-2xl border p-4 space-y-4"
-      style={{
-        borderColor: 'color-mix(in srgb, var(--primary) 30%, transparent)',
-        backgroundColor: 'color-mix(in srgb, var(--primary) 6%, transparent)',
-      }}
-    >
-      <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--primary)]">Your turn — ask a player</h2>
+    <div className="space-y-4">
       {/* Rank-first: physical Go Fish is played by looking at your hand and thinking
           "who might have a 7?" — the rank you already hold is the anchor, not the
           player. With 5+ opponents, target-first was two rows of names before you
@@ -411,7 +457,7 @@ function AskPicker({
             ? `Ask ${eligibleTargets.find((t) => t.id === selectedTargetId)?.name ?? 'them'} for ${gofishRankPlural(selectedRank)}`
             : 'Pick a player and rank'}
       </button>
-    </section>
+    </div>
   )
 }
 

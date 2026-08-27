@@ -41,7 +41,11 @@ export function GoFishFinalResultsShareBlock({
     () =>
       buildGoFishStandings(
         hands,
-        players.map((p) => ({ id: p.id, name: p.name }))
+        // Spectators never got dealt a hand, so their books=0 / cards=0 row was
+        // sneaking to rank-1 via the alphabetic tiebreak in the pure standings
+        // sort — and when the server declined to name a winner (0 books game),
+        // the null-fallback crowned that spectator row. Filter them out here.
+        players.filter((p) => !p.spectator).map((p) => ({ id: p.id, name: p.name }))
       ),
     [hands, players]
   )
@@ -71,7 +75,10 @@ export function GoFishFinalResultsShareBlock({
         {standings.length > 0 && (
           <div className="space-y-2">
             {standings.map((row) => {
-              const isWinner = winnerPlayerId ? row.playerId === winnerPlayerId : row.rank === 1
+              // No winner (0 books game / server declined) → no row gets the winner
+              // treatment. Falling back to rank-1 would visually crown whoever sorts
+              // first in the standings, which is arbitrary and reads as unearned.
+              const isWinner = winnerPlayerId != null && row.playerId === winnerPlayerId
               const isMe = row.playerId === highlightPlayerId
               return (
                 <div
