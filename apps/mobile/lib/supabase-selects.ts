@@ -233,3 +233,13 @@ export const TROLL_RUN_PLAYER_STATE_SELECT =
   'id,game_id,player_id,current_round,current_level_index,deaths,levels_cleared,total_time_ms,round_score,total_score,finish_position,round_finished,created_at,updated_at'
 
 export const TROLL_RUN_EVENT_SELECT = 'id,game_id,player_id,round,level_id,level_name,event_type,time_ms,created_at'
+
+// Mirrors src/lib/supabase-selects.ts — keep the column lists identical.
+
+export const CONFESSION_SELECT = 'id,game_id,round_id,text,created_at'
+
+export const WST_QUOTE_POOL_SELECT =
+  'id,game_id,player_id,quote_text,options,correct_index,author_participant_id,created_at,updated_at'
+
+export const WORDLE_ROOM_PROGRESS_SELECT =
+  'id,game_id,round_id,player_id,word_index,current_word_guesses,words_solved,total_guesses,total_time_ms,finished,finished_at,created_at,updated_at'

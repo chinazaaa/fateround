@@ -11,7 +11,6 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import { supabase } from '@/lib/supabase'
 import { gameTypeConfig, parseGameType } from '@/lib/game-types'
 import { getPlayerSession } from '@/lib/utils'
 import { readHostToken } from '@/lib/host-session'
@@ -52,15 +51,18 @@ export function LiveGamesStrip() {
 
   useEffect(() => {
     void load()
-    // Per-mount channel name — supabase-js caches channels by name and
-    // removeChannel is async, so a stale-then-remounted strip could otherwise
-    // hit "cannot add postgres_changes callbacks … after subscribe()".
-    const channel = supabase
-      .channel(`public_games_home_strip_${Math.random().toString(36).slice(2, 10)}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'games' }, () => {
-        void load()
-      })
-      .subscribe()
+    // NO realtime subscription here, deliberately.
+    //
+    // This strip used to hold `{ event: '*', schema: 'public', table: 'games' }` — UNFILTERED, so
+    // every visitor on the home page received a message for every write to EVERY game in the
+    // system (each status change, each current_round_number increment, each last_activity_at
+    // touch) and refetched on each one. Cost scaled as home-page viewers × all game writes, which
+    // made the busiest page in the app the largest single source of realtime egress.
+    //
+    // The poll below already refreshes every 15s while visible, and visibilitychange refreshes on
+    // return, so the subscription bought at most 15 seconds of freshness on a decorative strip.
+    // If this ever needs to feel live again, filter it server-side rather than reinstating a
+    // table-wide listener.
     const onVisible = () => {
       if (document.visibilityState === 'visible') void load()
     }
@@ -69,7 +71,6 @@ export function LiveGamesStrip() {
       if (document.visibilityState === 'visible') void load()
     }, POLL_FALLBACK_MS)
     return () => {
-      supabase.removeChannel(channel)
       document.removeEventListener('visibilitychange', onVisible)
       clearInterval(interval)
     }
