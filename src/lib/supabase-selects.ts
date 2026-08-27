@@ -310,3 +310,26 @@ export const TROLL_RUN_PLAYER_STATE_SELECT =
   'id,game_id,player_id,current_round,current_level_index,deaths,levels_cleared,total_time_ms,round_score,total_score,finish_position,round_finished,created_at,updated_at'
 
 export const TROLL_RUN_EVENT_SELECT = 'id,game_id,player_id,round,level_id,level_name,event_type,time_ms,created_at'
+
+/**
+ * Wordle Room per-player progress — the anon-readable, realtime half of the game. The secrets
+ * live in sibling tables that have NO policies and no anon grants at all
+ * (`wordle_room_solutions.words`, `wordle_room_guesses.state`), so nothing here needs redacting;
+ * this constant exists to name the columns rather than ship whatever the row grows next.
+ */
+export const WORDLE_ROOM_PROGRESS_SELECT =
+  'id,game_id,round_id,player_id,word_index,current_word_guesses,words_solved,total_guesses,total_time_ms,finished,finished_at,created_at,updated_at'
+
+/**
+ * Codewords seat assignments. `role` is what makes someone a spymaster and is read by the board,
+ * so it stays for now — but naming the columns is what lets the codewords redaction PR drop it
+ * from the client without hunting `select('*')` call sites.
+ */
+export const CODEWORDS_PLAYER_ROLE_SELECT = 'id,game_id,player_id,team,role,created_at'
+
+/** Codewords guesses — all public once made; the board key lives in `codewords_boards.key`. */
+export const CODEWORDS_GUESS_SELECT =
+  'id,game_id,board_id,player_id,cell_index,word,cell_type,clue_word,clue_number,team,created_at'
+
+/** Anonymous-room bans. */
+export const ANONYMOUS_ROOM_BAN_SELECT = 'id,game_id,player_id,banned_until,created_at'

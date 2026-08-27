@@ -42,6 +42,8 @@ export function useGameChannel(
 ) {
   // Stable ref for callbacks so the channel doesn't re-subscribe on every render
   const cbRef = useRef(callbacks)
+  // Latest merged game, so onGameUpdate can be handed the whole row rather than the patch.
+  const mergedRef = useRef<Game | null>(null)
 
   // Sync ref in a passive effect to satisfy react-hooks/refs lint rule
   useEffect(() => {
@@ -57,13 +59,21 @@ export function useGameChannel(
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
         (payload) => {
-          const g = payload.new as Game
-          // Realtime UPDATE payloads drop unchanged TOAST-ed columns (large jsonb such as
-          // custom_questions) — they arrive null. Merge over the previous state so a routine
-          // games update (e.g. a round advance bumping current_round_number) can't blank the
+          const patch = payload.new as Partial<Game>
+          // A realtime `games` payload is a PATCH, never a whole row: unchanged TOAST-ed columns
+          // (large jsonb such as custom_questions) arrive null, and columns outside the
+          // publication's column list are absent entirely. Merge over the previous state so a
+          // routine update (e.g. a round advance bumping current_round_number) can't blank the
           // Pick-a-Number pool. See mergeRealtimeGame.
-          state.setGame((prev) => mergeRealtimeGame(prev, g))
-          cbRef.current.onGameUpdate?.(g)
+          state.setGame((prev) => {
+            const merged = mergeRealtimeGame(prev, patch)
+            // Hand subscribers the MERGED game, not the raw patch. Two of the three
+            // onGameUpdate consumers are `onGameUpdate: setGame`, so passing the patch made
+            // them re-introduce exactly the blanking this merge exists to prevent.
+            mergedRef.current = merged
+            return merged
+          })
+          if (mergedRef.current) cbRef.current.onGameUpdate?.(mergedRef.current)
         }
       )
 

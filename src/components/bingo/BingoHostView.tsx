@@ -47,6 +47,7 @@ import { useBingoWinNotification, useBingoStartNotification } from '@/hooks/useB
 import { useBingoAutoCall } from '@/hooks/useBingoAutoCall'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
 import { useScrollHostViewToTop } from '@/hooks/useScrollHostViewToTop'
+import { mergeRealtimeGame } from '@/lib/realtime-merge'
 
 type HostTab = 'play' | 'manage'
 
@@ -191,7 +192,7 @@ export function BingoHostView({ gameCode, hostToken }: { gameCode: string; hostT
         { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
         (payload) => {
           const next = payload.new as Game
-          setGame(next)
+          setGame((prev) => mergeRealtimeGame(prev, next))
           setLobbyCallMode(bingoCallModeFromGame(next))
           setLobbyCallInterval(bingoCallIntervalFromGame(next))
         }

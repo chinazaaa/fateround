@@ -150,7 +150,14 @@ export function UnoHostView({ gameCode, hostToken }: { gameCode: string; hostTok
           resumeToken: hostResumeTokenRef.current,
         }).then((rows) => {
           if (rows) setHands(rows)
+          // The refetch is the recovery path, so a FAILED one must fall back to the debounced
+          // reconciling reload — otherwise a transient 5xx leaves the host's own hand stale for
+          // the rest of the game with nothing scheduled to fix it.
+          else void load()
         })
+        // The refetch above supersedes the reload for this event, so don't also schedule one:
+        // this fires on every host/teammate write once `cards` is revoked, and a second full
+        // reload each time is exactly the realtime egress we are trying to cut.
         return true
       }
       // Once `cards` is revoked from anon the realtime payload carries neither cards nor a count,

@@ -13,6 +13,7 @@ import { getSupabase, GAME_SELECT } from '@/lib/supabase'
 import type { Game } from '@fateround/shared'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
+import { mergeRealtimeGame } from '@/lib/realtime-merge'
 
 const GAME_EMOJI = gameTypeMeta('secret_message').emoji
 const GAME_LABEL = batch9GameLabel('secret_message')
@@ -111,7 +112,7 @@ export function SecretMessagePlayerView({ gameCode }: { gameCode: string }) {
         { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${code}` },
         (payload) => {
           const next = payload.new as Game
-          setGame(next)
+          setGame((prev) => mergeRealtimeGame(prev, next))
           if (next.status !== 'active') {
             setScreen('closed')
             void clearPlayerSession(code)
