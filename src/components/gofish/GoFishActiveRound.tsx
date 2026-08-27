@@ -121,16 +121,28 @@ export function GoFishActiveRound({
   useEffect(() => {
     if (!isStuck || passingRef.current) return
     passingRef.current = true
-    void fetch('/api/gofish/expire-turn', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ gameId: gameCode }),
-    })
-      .then(() => onReload())
-      .finally(() => {
+    const run = async () => {
+      try {
+        const res = await fetch('/api/gofish/expire-turn', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ gameId: gameCode }),
+        })
+        if (!res.ok) {
+          const body = (await res.json().catch(() => ({}))) as { error?: string }
+          // Not a fatal for the user — the turn-timer fallback still finishes the
+          // pass eventually. Surface the reason so a repeated failure is visible.
+          toastError(body.error ?? 'Auto-pass failed — waiting for the turn timer.')
+        }
+        await onReload()
+      } catch (err) {
+        toastError(err instanceof Error ? err.message : 'Auto-pass failed — waiting for the turn timer.')
+      } finally {
         passingRef.current = false
-      })
-  }, [isStuck, gameCode, onReload])
+      }
+    }
+    void run()
+  }, [isStuck, gameCode, onReload, toastError])
 
   const submitAsk = async () => {
     if (!isMyTurn || asking || !selectedTargetId || selectedRank == null || !myResumeToken) return

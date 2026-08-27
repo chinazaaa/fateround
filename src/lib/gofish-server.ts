@@ -8,6 +8,7 @@ import {
   dealGoFish,
   gofishGameSessionExpired,
   gofishTurnDeadline,
+  isGameOver,
   pickAutoAsk,
   resolveGoFishAsk,
   resolveGoFishRefill,
@@ -252,11 +253,40 @@ export async function processGoFishExpireTurn(
 
   const pick = pickAutoAsk(activeCards, opponentCounts)
   if (!pick) {
-    // No legal ask: advance the turn pointer without a state-changing action so the
-    // room does not deadlock behind an empty-handed or targetless player. Optimistic-
-    // concurrency guard on updated_at — the client-side auto-pass effect + the turn-
-    // timer's own auto-poke + N watchers-observing-the-deadline can all fire against
-    // the same snapshot; without the CAS two writers would advance the turn twice.
+    // Terminal case first: all 13 books collected, OR the ocean is empty AND every
+    // player is empty-handed → the round is over per isGameOver. Without this check,
+    // `nextActiveTurnIndexFromHands` would return the current index (no active seat
+    // exists), the auto-pass would renew turn_deadline_at, and repeated expiry calls
+    // would loop forever with phase='playing'. Finalize by most-books-wins.
+    if (isGameOver({ hands, ocean: session.ocean })) {
+      const now = new Date().toISOString()
+      const winnerId = resolveWinner(hands)
+      const { data: claimed } = await supabase
+        .from('gofish_sessions')
+        .update({
+          phase: 'finished',
+          winner_player_id: winnerId,
+          turn_deadline_at: null,
+          status_message: 'Game over.',
+          event_log: [...(session.event_log ?? []), { kind: 'game_over', at: now }],
+          updated_at: now,
+        })
+        .eq('game_id', gameId)
+        .eq('updated_at', session.updated_at)
+        .neq('phase', 'finished')
+        .select('game_id')
+      if (!claimed || claimed.length === 0) return { skipped: true }
+      const finish = await markGameFinished(supabase, gameId, now, { onlyIfActive: true })
+      if (finish?.error) return { error: internalErrorMessage('gofish', finish.error) }
+      return {}
+    }
+
+    // No legal ask, but game continues (some other player still holds cards): advance
+    // the turn pointer without a state-changing action so the room does not deadlock
+    // behind an empty-handed player. Optimistic-concurrency guard on updated_at — the
+    // client-side auto-pass effect + the turn-timer's own auto-poke + N watchers
+    // observing the deadline in the same instant can all fire against the same
+    // snapshot; without the CAS two writers would advance the turn twice.
     const nextIndex = nextActiveTurnIndexFromHands(session, hands)
     const { data: gameRow } = await supabase.from('games').select('timer_seconds').eq('id', gameId).maybeSingle()
     const timerSeconds = (gameRow?.timer_seconds ?? 0) as number
@@ -271,11 +301,7 @@ export async function processGoFishExpireTurn(
       .eq('game_id', gameId)
       .eq('updated_at', session.updated_at)
       .select('game_id')
-    if (!claimed || claimed.length === 0) {
-      // Another writer moved first; the caller polls, so return skipped rather than
-      // an error — the fresh state will arrive on the next reload.
-      return { skipped: true }
-    }
+    if (!claimed || claimed.length === 0) return { skipped: true }
     return {}
   }
 
