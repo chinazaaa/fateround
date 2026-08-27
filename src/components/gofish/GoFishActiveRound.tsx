@@ -112,6 +112,26 @@ export function GoFishActiveRound({
     if (needsRefill && !refilling) void submitRefill()
   }, [needsRefill, refilling, submitRefill])
 
+  // Provably-stuck auto-pass: it's my turn, my hand is empty, and so is the ocean. No
+  // ask, no refill, nothing to do — sitting through the turn-timer countdown here just
+  // stalls the room. Poke expire-turn once; the server bypasses its deadline check for
+  // this exact state and advances the turn pointer.
+  const isStuck = isMyTurn && myCards.length === 0 && (session?.ocean_count ?? 0) === 0 && !isFinished
+  const passingRef = useRef(false)
+  useEffect(() => {
+    if (!isStuck || passingRef.current) return
+    passingRef.current = true
+    void fetch('/api/gofish/expire-turn', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ gameId: gameCode }),
+    })
+      .then(() => onReload())
+      .finally(() => {
+        passingRef.current = false
+      })
+  }, [isStuck, gameCode, onReload])
+
   const submitAsk = async () => {
     if (!isMyTurn || asking || !selectedTargetId || selectedRank == null || !myResumeToken) return
     setAsking(true)

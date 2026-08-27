@@ -230,14 +230,19 @@ export async function processGoFishExpireTurn(
   if (finalized.error) return { error: finalized.error }
   if (finalized.ok) return {}
 
-  if (!session.turn_deadline_at || new Date(session.turn_deadline_at) > new Date()) {
-    return { skipped: true }
-  }
-
   const activePlayerId = currentPlayerId(session)
   if (!activePlayerId) return { error: 'No current player' }
   const activeHand = hands.find((h) => h.player_id === activePlayerId)
   const activeCards = (activeHand?.cards ?? []) as unknown[] as import('@/types').GoFishCard[]
+  // "Provably stuck" — the active player has no cards AND the ocean is empty, so they
+  // can neither ask nor refill and there's no legal action for anyone to take on their
+  // behalf. Bypass the deadline check here so the room doesn't sit through 30+ seconds
+  // of a countdown that has no possible outcome; the auto-pass path below advances the
+  // turn. Server-verified state, so a client-side poke can't force-pass anyone else.
+  const stuck = activeCards.length === 0 && session.ocean_count === 0
+  if (!stuck && (!session.turn_deadline_at || new Date(session.turn_deadline_at) > new Date())) {
+    return { skipped: true }
+  }
 
   const opponentCounts = new Map<string, number>()
   for (const hand of hands) {
