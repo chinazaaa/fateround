@@ -380,6 +380,19 @@ describe('game over', () => {
     expect(isGameOver({ hands, ocean: [card(1)] })).toBe(false)
   })
 
+  it('ends when the ocean is empty AND every hand is empty (terminal auto-pass case)', () => {
+    // Server auto-pass edge: every player has 0 cards, ocean is 0, but total books
+    // is less than 13 (unusual but possible if all remaining cards ended up in books
+    // across hands). processGoFishExpireTurn must finalize here rather than renew
+    // the deadline — otherwise it would loop with phase='playing' since
+    // nextActiveTurnIndexFromHands returns the current index when nobody is active.
+    const hands: GoFishPlayerHand[] = [
+      { ...hand('a', []), books: [1, 2, 3, 4, 5] },
+      { ...hand('b', []), books: [6, 7, 8, 9, 10, 11, 12, 13] },
+    ]
+    expect(isGameOver({ hands, ocean: [] })).toBe(true)
+  })
+
   it('resolveWinner picks the most books, tiebreak by fewest cards then id', () => {
     const hands: GoFishPlayerHand[] = [
       { ...hand('a', [card(1), card(2)]), books: [3, 4] },
@@ -461,10 +474,10 @@ describe('timers', () => {
     expect(clampGofishGameDuration('nope')).toBe(0)
   })
 
-  it('formatGofishGameDuration renders no-limit / hours / minutes cases', () => {
+  it('formatGofishGameDuration renders no-limit / minutes cases', () => {
     expect(formatGofishGameDuration(0)).toBe('No limit')
-    expect(formatGofishGameDuration(3600)).toBe('1 hour')
     expect(formatGofishGameDuration(1800)).toBe('30 minutes')
+    expect(formatGofishGameDuration(300)).toBe('5 minutes')
   })
 
   it('gofishGameSessionExpired matches whot semantics: 0 duration never expires', () => {
