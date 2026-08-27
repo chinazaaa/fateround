@@ -474,10 +474,10 @@ describe('timers', () => {
     expect(clampGofishGameDuration('nope')).toBe(0)
   })
 
-  it('formatGofishGameDuration renders no-limit / hours / minutes cases', () => {
+  it('formatGofishGameDuration renders no-limit / minutes cases', () => {
     expect(formatGofishGameDuration(0)).toBe('No limit')
-    expect(formatGofishGameDuration(3600)).toBe('1 hour')
     expect(formatGofishGameDuration(1800)).toBe('30 minutes')
+    expect(formatGofishGameDuration(300)).toBe('5 minutes')
   })
 
   it('gofishGameSessionExpired matches whot semantics: 0 duration never expires', () => {
