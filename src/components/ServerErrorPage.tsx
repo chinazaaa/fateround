@@ -130,7 +130,11 @@ function truncate(text: string, max: number): string {
 /** Short, stable reference for an error with no Next.js digest (client-side throws don't get
  *  one). Same message → same code, so repeat reports of one bug are recognisably the same. */
 function shortHash(text: string | undefined): string | null {
-  if (!text) return null
+  // Only a genuinely absent message has no reference. An EMPTY one still does: `new Error()`
+  // reaches the boundary with `message === ''` and no digest, and that is exactly the report
+  // that most needs a code to quote — dropping the whole Reference line there would leave the
+  // player with nothing to tell support.
+  if (text === undefined) return null
   let h = 0
   for (let i = 0; i < text.length; i += 1) {
     h = (Math.imul(31, h) + text.charCodeAt(i)) | 0
