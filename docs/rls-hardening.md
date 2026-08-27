@@ -163,7 +163,7 @@ and is what the table UI and the out/finished checks actually consume.
 | ------------ | --------------------------- | -------------------- | ------------------------------- | ------------- | --------------- | ---------- |
 | Whot         | `whot_player_hands`         | ✅ `/api/whot/hands` | ✅ player, host, history        | ✅            | ❌ **required** | ⏳ blocked |
 | UNO          | `uno_player_hands`          | ❌                   | ❌                              | ❌            | ❌              | ⏳ blocked |
-| Crazy Eights | `crazy_eights_player_hands` | ✅ `/api/crazy-eights/hands` | ✅ player, host, history        | ✅            | ❌ **required** | ⏳ blocked (piles already hidden — see below) |
+| Crazy Eights | `crazy_eights_player_hands` | ✅ `/api/crazy-eights/hands` | ✅ player, host, history        | ✅            | ❌ **required** | ⏳ blocked (pile counts ready; pile revoke pending a mobile release — see below) |
 | Bingo        | `bingo_cards`               | ✅ `/api/bingo/card` | ✅ player, host (own seat only) | ✅            | ❌ **required** | ⏳ blocked |
 
 ### Deliberate: the hands routes are unauthenticated reads
