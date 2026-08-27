@@ -18,12 +18,18 @@ export function ServerErrorPage({
   error,
   reset,
 }: ServerErrorPageProps) {
-  // Identity of the underlying error, shown to the user. This page has always taken an
-  // `error` prop and never rendered it, so every report of this screen arrived without the
-  // one detail that would explain it — four separate attempts at the tab-resume bug were
-  // made without anyone ever seeing what actually threw. Small and muted, but present and
-  // selectable, so a screenshot is enough to identify it.
-  const detail = [error?.digest && `ref ${error.digest}`, error?.message].filter(Boolean).join(' · ')
+  // Identity of the underlying error. This page has always taken an `error` prop and never
+  // rendered it, so every report of this screen arrived without the one detail that would
+  // explain it — four separate attempts at the tab-resume bug were made without anyone ever
+  // seeing what actually threw.
+  //
+  // This runs in production, in front of customers, so the raw text is NOT on display: a
+  // player sees only a short reference code, which reads as a support code rather than a
+  // crash. The raw message sits behind a collapsed toggle — one tap for anyone debugging or
+  // quoting it to support, invisible to everyone else. Truncated so a long stack can't run
+  // away with the layout.
+  const reference = error?.digest || shortHash(error?.message)
+  const rawMessage = error?.message ? truncate(error.message, 300) : null
   return (
     <SiteChrome>
       <div className="fr-band fr-band--tight flex-1 flex items-center justify-center min-h-[70vh]">
@@ -72,10 +78,31 @@ export function ServerErrorPage({
               </Link>
             </div>
 
-            {detail ? (
-              <p className="text-xs pt-2 break-words select-all font-mono" style={{ color: 'var(--text-faint)' }}>
-                {detail}
-              </p>
+            {reference ? (
+              <div className="pt-2 space-y-2">
+                <p className="text-xs" style={{ color: 'var(--text-faint)' }}>
+                  Reference <span className="font-mono select-all">{reference}</span>
+                </p>
+                {rawMessage ? (
+                  <details className="text-left">
+                    <summary
+                      className="text-xs cursor-pointer text-center list-none"
+                      style={{ color: 'var(--text-faint)' }}
+                    >
+                      Technical details
+                    </summary>
+                    <p
+                      className="mt-2 text-xs font-mono break-words select-all max-h-40 overflow-y-auto rounded-md p-2"
+                      style={{
+                        color: 'var(--text-muted)',
+                        background: 'color-mix(in srgb, var(--text-faint) 10%, transparent)',
+                      }}
+                    >
+                      {rawMessage}
+                    </p>
+                  </details>
+                ) : null}
+              </div>
             ) : null}
 
             <p className="text-xs pt-2" style={{ color: 'var(--text-faint)' }}>
@@ -93,4 +120,20 @@ export function ServerErrorPage({
       </div>
     </SiteChrome>
   )
+}
+
+/** Trim to `max` characters so a long stack or a giant message can't blow out the card. */
+function truncate(text: string, max: number): string {
+  return text.length <= max ? text : `${text.slice(0, max)}…`
+}
+
+/** Short, stable reference for an error with no Next.js digest (client-side throws don't get
+ *  one). Same message → same code, so repeat reports of one bug are recognisably the same. */
+function shortHash(text: string | undefined): string | null {
+  if (!text) return null
+  let h = 0
+  for (let i = 0; i < text.length; i += 1) {
+    h = (Math.imul(31, h) + text.charCodeAt(i)) | 0
+  }
+  return (h >>> 0).toString(36).padStart(6, '0').slice(0, 6)
 }
