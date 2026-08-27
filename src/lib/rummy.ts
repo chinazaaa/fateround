@@ -528,6 +528,76 @@ export async function clearRummySessionData(
   return clearSessionTables(supabase, gameId, [RUMMY_SESSIONS, RUMMY_HANDS], { resetSpectators: true })
 }
 
+/**
+ * Drop a leaver from an active Rummy round: remove them from turn_order, fix
+ * current_turn_index, delete their hand, and — if fewer than 2 players remain —
+ * finalize the round with the lone survivor as the winner. Modelled on
+ * removeCrazyEightsPlayer. Rummy has no finish_order (the round ends the moment
+ * someone goes out), so any leaver who wasn't already the declared winner is
+ * simply dropped.
+ */
+export async function removeRummyPlayer(
+  supabase: SupabaseClient,
+  gameId: string,
+  playerId: string,
+  playerName?: string
+): Promise<{ error: string | null }> {
+  const { data: sessionRaw } = await supabase.from(RUMMY_SESSIONS).select('*').eq('game_id', gameId).maybeSingle()
+  const session = sessionRaw as RummySession | null
+
+  const order = session ? [...(session.turn_order ?? [])] : []
+  const removedIndex = order.indexOf(playerId)
+
+  if (session && removedIndex >= 0 && session.phase !== 'finished') {
+    const turnOrder = order.filter((id) => id !== playerId)
+    let currentTurnIndex = session.current_turn_index
+    if (removedIndex < currentTurnIndex) currentTurnIndex -= 1
+    else if (removedIndex === currentTurnIndex && turnOrder.length > 0) currentTurnIndex %= turnOrder.length
+    if (turnOrder.length === 0) currentTurnIndex = 0
+
+    const removedName = playerName ?? 'A player'
+    const { data: gameRow } = await supabase.from('games').select('timer_seconds').eq('id', gameId).maybeSingle()
+    const timerSeconds = gameRow?.timer_seconds ?? 0
+    const { data: playerRows } = await supabase.from('players').select('id, name').eq('game_id', gameId)
+    const names = new Map<string, string>()
+    for (const p of playerRows ?? []) names.set(p.id, p.name)
+
+    const update: Record<string, unknown> = {
+      turn_order: turnOrder,
+      current_turn_index: currentTurnIndex,
+      updated_at: new Date().toISOString(),
+    }
+
+    const finishing = turnOrder.length < 2
+    if (finishing) {
+      const winnerPlayerId = turnOrder[0] ?? null
+      const winnerName = winnerPlayerId ? (names.get(winnerPlayerId) ?? 'Winner') : null
+      update.phase = 'finished'
+      update.winner_player_id = winnerPlayerId
+      update.status_message = winnerName
+        ? `${removedName} left — ${winnerName} wins!`
+        : `${removedName} left — game over.`
+      update.turn_deadline_at = null
+    } else {
+      const nextPlayerId = turnOrder[currentTurnIndex]
+      update.status_message = `${removedName} left. ${names.get(nextPlayerId) ?? 'Next player'}'s turn`
+      update.turn_deadline_at = rummyTurnDeadline(timerSeconds)
+    }
+
+    const { error: sessionError } = await supabase.from(RUMMY_SESSIONS).update(update).eq('game_id', gameId)
+    if (sessionError) return { error: internalErrorMessage('rummy', sessionError) }
+
+    await supabase.from(RUMMY_HANDS).delete().eq('game_id', gameId).eq('player_id', playerId)
+    if (finishing) await markGameFinished(supabase, gameId)
+    const { error } = await supabase.from('players').delete().eq('id', playerId).eq('game_id', gameId)
+    return { error: error?.message ?? null }
+  }
+
+  await supabase.from(RUMMY_HANDS).delete().eq('game_id', gameId).eq('player_id', playerId)
+  const { error } = await supabase.from('players').delete().eq('id', playerId).eq('game_id', gameId)
+  return { error: error?.message ?? null }
+}
+
 // Reads the session, hands, player names, and game-clock fields together. If any of the three
 // required reads fails (session / hands / games row) we surface an `error` — treating a failed
 // hands read as `[]` in a draw handler would let the session-claim + hand write overwrite the
@@ -645,7 +715,10 @@ export async function processRummyDraw(
       top_discard: top,
       turn_step: 'discard',
       reshuffle_count: newReshuffle,
-      status_message: `${playerNameFrom(names, playerId)} drew — now discard a card`,
+      status_message:
+        source === 'discard'
+          ? `${playerNameFrom(names, playerId)} took ${rummyCardLabel(card)} from the discard — now discarding`
+          : `${playerNameFrom(names, playerId)} drew from the pile — now discarding`,
       updated_at: new Date().toISOString(),
     })
     .eq('game_id', gameId)
@@ -713,7 +786,7 @@ export async function processRummyDiscard(
       top_discard: card,
       current_turn_index: nextIndex,
       turn_step: 'draw',
-      status_message: `${playerNameFrom(names, nextId)}'s turn — draw a card`,
+      status_message: `${playerNameFrom(names, playerId)} discarded ${rummyCardLabel(card)} · ${playerNameFrom(names, nextId)}'s turn`,
       turn_deadline_at: rummyTurnDeadline(timerSeconds),
       updated_at: new Date().toISOString(),
     })

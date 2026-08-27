@@ -540,6 +540,12 @@ export function isGameOver(state: { hands: GoFishPlayerHand[]; ocean: GoFishCard
  */
 export function resolveWinner(hands: GoFishPlayerHand[]): string | null {
   if (hands.length === 0) return null
+  // Nobody has completed a book: no winner. This catches the "start-and-immediately-end"
+  // case (host ends game before any books are made) as well as any premature-finish
+  // scenario — declaring the alphabetically-first player the winner in that state
+  // reads as arbitrary and unearned.
+  const anyBooks = hands.some((h) => h.books.length > 0)
+  if (!anyBooks) return null
   const ranked = [...hands].sort((a, b) => {
     if (b.books.length !== a.books.length) return b.books.length - a.books.length
     const aCards = (a.cards ?? []).length

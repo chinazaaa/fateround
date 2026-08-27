@@ -41,12 +41,14 @@ export function RummyFinalResultsShareBlock({
   )
 
   const winnerPlayerId = session?.winner_player_id ?? null
-  const displayWinner = winnerName ?? standings.find((row) => row.rank === 1)?.name ?? null
+  // Only pick a fallback rank-1 winner when the SESSION says the round finished naturally.
+  // A host force-end mid-play (finish-game route flips games.status but doesn't touch
+  // rummy_sessions) has session.phase !== 'finished' AND winner_player_id null — that's
+  // "game ended early", not "some arbitrary closest-to-going-out player wins".
+  const declaredEnding = session?.phase === 'finished'
+  const displayWinner = winnerName ?? (declaredEnding ? (standings.find((row) => row.rank === 1)?.name ?? null) : null)
 
-  const winnerStanding =
-    (winnerPlayerId ? standings.find((row) => row.playerId === winnerPlayerId) : null) ??
-    standings.find((row) => row.rank === 1) ??
-    null
+  const winnerStanding = winnerPlayerId ? (standings.find((row) => row.playerId === winnerPlayerId) ?? null) : null
   const winnerEmptyHand = winnerStanding?.cardCount === 0
 
   return (
@@ -57,19 +59,21 @@ export function RummyFinalResultsShareBlock({
           winnerName={displayWinner}
           game={game}
           subtitle={
-            session?.phase === 'finished' && session.status_message
+            declaredEnding && session?.status_message
               ? session.status_message
-              : standings.length > 1
-                ? winnerEmptyHand
-                  ? 'First to lay down their hand wins'
-                  : 'Closest to going out wins'
-                : undefined
+              : !declaredEnding
+                ? 'Ended early by the host — no winner declared'
+                : standings.length > 1
+                  ? winnerEmptyHand
+                    ? 'First to lay down their hand wins'
+                    : 'Closest to going out wins'
+                  : undefined
           }
         />
         {standings.length > 0 && (
           <div className="space-y-2">
             {standings.map((row) => {
-              const isWinner = winnerPlayerId ? row.playerId === winnerPlayerId : row.rank === 1
+              const isWinner = winnerPlayerId ? row.playerId === winnerPlayerId : declaredEnding && row.rank === 1
               const isMe = row.playerId === highlightPlayerId
               return (
                 <div
