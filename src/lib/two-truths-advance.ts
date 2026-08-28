@@ -359,7 +359,19 @@ export async function syncTwoTruthsGameState(
     // This path runs on every poll until the next round activates, so a transient failure is
     // retried by the following poll. It is a no-op once the published count matches, which is the
     // usual case, so the steady-state cost is one comparison per advance.
-    await reconcileRevealedGuesses(supabase, pointerRound.id)
+    //
+    // And it HOLDS THE POINTER when it fails, because advancing is what makes the damage
+    // permanent: once current_round_number moves on, no later poll looks at this round again.
+    // An incomplete list is not cosmetic — tallyTtlScores runs over revealedTtlGuesses(rounds),
+    // i.e. over ttl_metadata.guesses, so a missing entry is a missing player's points and a wrong
+    // "fooled" count on the final leaderboard, silently and with no way to notice.
+    //
+    // `force` still advances: adminEndGame and the manual advance are the operator's escape hatch
+    // if a reconcile fails for a structural reason rather than a transient one, so this can slow a
+    // game down but cannot strand it.
+    if (!(await reconcileRevealedGuesses(supabase, pointerRound.id)) && !opts?.force) {
+      return { ok: true, code: 'reveal_pending' }
+    }
 
     // Elimination hook: run before isLast so final-round eliminations are recorded
     const { data: gameForElim, error: elimConfigError } = await supabase

@@ -211,4 +211,23 @@ describe('two truths reveal', () => {
     expect(rewrite).toBeTruthy()
     expect((rewrite!.vals.ttl_metadata as Record<string, unknown>).guesses).toHaveLength(1)
   })
+  // Advancing is what makes an incomplete guess list permanent: once current_round_number moves
+  // on, nothing looks at the old round again. And it is not cosmetic — tallyTtlScores runs over
+  // ttl_metadata.guesses, so a missing entry is a missing player's points on the final board.
+  it('holds the pointer when the advance-path reconcile fails', async () => {
+    const { supabase, updates } = makeMockSupabase({ alreadyRevealed: true, roundFinished: true, guessesError: true })
+    const res = await syncTwoTruthsGameState(supabase, 'ABCD')
+    expect(res.code).toBe('reveal_pending')
+    // nothing advanced: no round was activated and the game was not finished
+    expect(updates.find((u) => u.table === 'rounds' && u.vals.status === 'active')).toBeFalsy()
+    expect(updates.find((u) => u.table === 'games' && u.vals.status === 'finished')).toBeFalsy()
+  })
+
+  // ...but an operator can still force past it, so a structural failure slows a game rather than
+  // stranding it.
+  it('still advances under force when reconciliation cannot succeed', async () => {
+    const { supabase } = makeMockSupabase({ alreadyRevealed: true, roundFinished: true, guessesError: true })
+    const res = await syncTwoTruthsGameState(supabase, 'ABCD', { force: true })
+    expect(res.code).not.toBe('reveal_pending')
+  })
 })
