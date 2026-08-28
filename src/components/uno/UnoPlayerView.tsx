@@ -268,12 +268,20 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
     onJoin: (name) => join({ name }),
   })
 
+  /** Drop the local player session and return to the join screen after leaving the game. */
   const handlePlayerLeft = () => {
     clearPlayerSession(gameCode)
     setMyPlayerId(null)
     void load()
   }
 
+  /**
+   * POST one UNO move, tagging it with the caller's resume token.
+   *
+   * Every move goes through the server: the client never mutates the session directly, so the
+   * deck and other players' hands stay unreadable. An expired session is surfaced as "rejoin"
+   * rather than a silent no-op, because the alternative looks identical to a frozen board.
+   */
   const postAction = async (path: string, body: Record<string, unknown>) => {
     if (!myPlayerId) return
     if (!myResumeToken) {

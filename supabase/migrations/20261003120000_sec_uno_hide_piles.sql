@@ -1,3 +1,18 @@
+-- ⚠️ DO NOT APPLY TO PRODUCTION until a compatible mobile build has shipped and old installs
+-- have drained.
+--
+-- Verified against origin/main: the shipped build's UNO_SESSION_SELECT still requests
+-- `draw_pile` and `discard_pile` — on web AND mobile. PostgREST fails the WHOLE query with 42501
+-- when any requested column is revoked, so applying this to the production project breaks UNO on
+-- every installed build. A web deploy reverts in a minute; an installed binary does not, and OTA
+-- cannot rescue it — expo-updates reads its config from the native binary, baked at build time.
+-- That is a store-release wait or a recorded breakage window, not something a hotfix can undo.
+--
+-- Merging into `dev` is safe: installed builds read the PRODUCTION Supabase project. The exposure
+-- is at the dev → main promotion, which the Mobile Rollout Gate blocks without an explicit
+-- MOBILE-ROLLOUT-ACK. Same reasoning as 20260815120000_sec_crazy8_hide_piles.sql and
+-- 20260815130000_sec_ttl_hide_guesses.sql.
+--
 -- UNO: hide the ordered deck from the publishable anon key.
 --
 -- Redacting `uno_player_hands.cards` (this branch) buys very little while

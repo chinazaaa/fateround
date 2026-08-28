@@ -605,21 +605,25 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
   const selectedCards = selectedIds.map((id) => handById.get(id)).filter((c): c is UnoCard => !!c)
   const multiValid =
     multiMode && selectedCards.length >= 2 && validateMultiSet(selectedCards, session, rules.multiPlay) === null
+  /** Whether a card may join the current multi-play selection (same rank as the first pick). */
   const canAddToSet = (card: UnoCard): boolean => {
     if (card.color === 'wild') return false
     if (selectedCards.length === 0) return canPlayCard(card, session)
     return multiSetGroupingOk([...selectedCards, card], rules.multiPlay)
   }
+  /** Add or remove a card from the multi-play selection. */
   const toggleSelect = (card: UnoCard) => {
     setSelectedIds((prev) =>
       prev.includes(card.id) ? prev.filter((id) => id !== card.id) : canAddToSet(card) ? [...prev, card.id] : prev
     )
   }
+  /** Begin a multi-card play, seeding the selection with the tapped card. */
   const enterMultiMode = () => {
     setMultiMode(true)
     setSelectedIds([])
   }
 
+  /** Seats rotated so the local player is first — the order the table is drawn in. */
   const orderedPlayers = (() => {
     const byId = new Map(bootstrap.players.map((p) => [p.id, p]))
     const seated = (session.turn_order ?? []).map((id) => byId.get(id)).filter((p): p is Player => !!p)

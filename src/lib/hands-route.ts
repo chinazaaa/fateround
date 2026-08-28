@@ -30,6 +30,20 @@ export interface HandsRouteConfig {
   extraViewerIds?: (ctx: { supabase: SupabaseClient; gameId: string; viewerId: string }) => Promise<string[]> | string[]
 }
 
+/**
+ * Build the POST handler shared by every per-player hand route (/api/<game>/hands).
+ *
+ * One implementation rather than a copy per game, because the failure semantics are the whole
+ * point and a divergence between copies is how half a redaction ships. The contract:
+ *
+ *  - The viewer is resolved from a SECRET (resume token, or host token) — never from a
+ *    client-supplied playerId, which is public and forgeable.
+ *  - The viewer's own hand comes back in full; everyone else's is replaced by `card_count`, which
+ *    has to survive redaction because an empty hand is meaningful state ("this player is out").
+ *  - A finished game reveals everything: /history/[code] shows the final hands and by then
+ *    everyone has seen them.
+ *  - A host who never took a seat resolves to nobody and sees counts only.
+ */
 export function createHandsRoute(config: HandsRouteConfig) {
   return async function POST(req: NextRequest) {
     try {
