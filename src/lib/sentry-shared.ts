@@ -41,9 +41,28 @@ export const sharedSentryOptions = {
   release: sentryRelease,
   // Errors only — tracing belongs to OpenTelemetry.
   tracesSampleRate: 0,
-  // Never send emails, IPs, headers or request bodies. The only user context attached
-  // is the Supabase user id (see src/components/SentryUserContext.tsx), which is an
-  // opaque uuid.
+  // The conservative data-collection profile. Precisely (verified against
+  // @sentry/core 10.71's `defaultPiiToCollectionOptions`, not assumed):
+  //
+  //   NOT sent — request/response bodies (`httpBodies: []`), cookies, `user.ip_address`,
+  //     database query values, and any header or query param whose NAME contains a
+  //     credential-ish snippet (auth, token, secret, session, key, jwt, bearer, cookie, …)
+  //     or an IP-ish one (forwarded, -ip, remote-, via, -user). Every sensitive header this
+  //     app actually sends is covered by that: `authorization` (the Supabase JWT and the
+  //     cron secret), `x-host-token`, `x-forwarded-for` and `x-real-ip` all arrive as
+  //     "[Filtered]".
+  //   STILL sent — the remaining request headers and URL query params, e.g. `user-agent`,
+  //     `host`, `referer`, `cf-ipcountry`, and a room code in a query string. That is
+  //     deliberate: `user-agent` is how a Safari-only bug gets identified at all.
+  //
+  // The only user context attached is the Supabase user id (an opaque uuid) — see
+  // src/components/SentryUserContext.tsx.
+  //
+  // DO NOT "tighten" this by adding a partial `dataCollection` block. Setting that option
+  // AT ALL switches the resolver's base from this conservative profile to the permissive
+  // `DEFAULTS`, and every key left unspecified then flips ON — cookies, request bodies,
+  // user info, database query values. A `dataCollection` block here has to be complete or
+  // it is strictly worse than none.
   sendDefaultPii: false,
   // Sentry's own console noise, off in production builds.
   debug: false,
