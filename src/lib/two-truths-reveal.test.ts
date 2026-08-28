@@ -20,6 +20,7 @@ function makeMockSupabase(opts: {
   guessesError?: boolean
   noLieRow?: boolean
   roundsError?: boolean
+  alreadyRevealed?: boolean
 }) {
   const updates: Array<{ table: string; vals: Record<string, unknown> }> = []
   // alreadyRevealed: the round carries a lie AND a guesses array, but the array is SHORT —
