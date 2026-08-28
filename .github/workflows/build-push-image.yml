@@ -62,6 +62,11 @@ jobs:
                 # Spotify OAuth client id — public (PKCE); one Spotify app serves both envs.
                 # The matching SPOTIFY_CLIENT_SECRET is a runtime secret in SSM (terraform.prod.tfvars).
                 echo "NEXT_PUBLIC_SPOTIFY_CLIENT_ID=5bb672f70a7c4d6cba8b851104df2c76"
+                # Sentry DSN — public by design (write-only, and it ships in the browser
+                # bundle), so it lives here rather than in SSM. One project serves both
+                # environments; events are told apart by the `environment` tag, which
+                # resolveAppEnv() derives from NEXT_PUBLIC_APP_URL above.
+                echo "NEXT_PUBLIC_SENTRY_DSN=https://e954137da2d155ccb105ec5904a0f0bf@o4511987242958848.ingest.de.sentry.io/4511987244859472"
               } >> "$GITHUB_ENV"
               ;;
             dev)
@@ -80,6 +85,11 @@ jobs:
                 # Spotify OAuth client id — public (PKCE); one Spotify app serves both envs.
                 # The matching SPOTIFY_CLIENT_SECRET is a runtime secret in SSM (terraform.dev.tfvars).
                 echo "NEXT_PUBLIC_SPOTIFY_CLIENT_ID=5bb672f70a7c4d6cba8b851104df2c76"
+                # Sentry DSN — public by design (write-only, and it ships in the browser
+                # bundle), so it lives here rather than in SSM. One project serves both
+                # environments; events are told apart by the `environment` tag, which
+                # resolveAppEnv() derives from NEXT_PUBLIC_APP_URL above.
+                echo "NEXT_PUBLIC_SENTRY_DSN=https://e954137da2d155ccb105ec5904a0f0bf@o4511987242958848.ingest.de.sentry.io/4511987244859472"
               } >> "$GITHUB_ENV"
               ;;
             *) echo "Unknown environment: $ENV" >&2; exit 1 ;;
@@ -116,6 +126,7 @@ jobs:
             NEXT_PUBLIC_LIVEKIT_URL=${{ env.NEXT_PUBLIC_LIVEKIT_URL }}
             NEXT_PUBLIC_VAPID_PUBLIC_KEY=${{ env.NEXT_PUBLIC_VAPID_PUBLIC_KEY }}
             NEXT_PUBLIC_SPOTIFY_CLIENT_ID=${{ env.NEXT_PUBLIC_SPOTIFY_CLIENT_ID }}
+            NEXT_PUBLIC_SENTRY_DSN=${{ env.NEXT_PUBLIC_SENTRY_DSN }}
             GIT_SHA=${{ github.sha }}
 
       - name: Redeploy on the instance (SSM)

@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { GAME_START_SPECS, startCountError, startHumanSeatError, type StartSpec } from '@/lib/game-start'
 
 const atLeast: StartSpec = { minPlayers: 2, initialize: async () => ({ error: null }) }
@@ -75,5 +76,58 @@ describe('GAME_START_SPECS', () => {
     expect(GAME_START_SPECS.scrabble?.maxPlayers).toBeGreaterThan(GAME_START_SPECS.scrabble!.minPlayers)
     expect(GAME_START_SPECS.troll_run?.maxPlayers).toBeGreaterThan(GAME_START_SPECS.troll_run!.minPlayers)
     expect(GAME_START_SPECS.whot?.exact).toBeUndefined()
+  })
+})
+
+function makeStartAdmin() {
+  const sessionInserts: Record<string, unknown>[] = []
+
+  function from(table: string) {
+    return {
+      delete: () => ({ eq: () => Promise.resolve({ error: null }) }),
+      insert: (payload: Record<string, unknown> | Record<string, unknown>[]) => {
+        if (table === 'troll_run_sessions') sessionInserts.push(payload as Record<string, unknown>)
+        return Promise.resolve({ error: null })
+      },
+    }
+  }
+
+  return { admin: { from } as unknown as SupabaseClient, sessionInserts }
+}
+
+describe('GAME_START_SPECS.troll_run — host settings', () => {
+  it('seeds the session from the host lobby columns rather than the defaults', async () => {
+    const mock = makeStartAdmin()
+
+    const { error } = await GAME_START_SPECS.troll_run!.initialize(mock.admin, 'GAME', ['player-1'], {
+      troll_run_rounds: 3,
+      troll_run_time_limit: 90,
+      troll_run_world: 'machines',
+    })
+
+    expect(error).toBeNull()
+    expect(mock.sessionInserts).toHaveLength(1)
+    expect(mock.sessionInserts[0]).toMatchObject({
+      total_rounds: 3,
+      round_time_limit: 90,
+      current_world: 'machines',
+    })
+  })
+
+  it('falls back to the defaults when the host changed nothing', async () => {
+    const mock = makeStartAdmin()
+
+    await GAME_START_SPECS.troll_run!.initialize(mock.admin, 'GAME', ['player-1'], {})
+
+    expect(mock.sessionInserts[0]).toMatchObject({
+      total_rounds: 5,
+      round_time_limit: 120,
+      current_world: 'pits',
+    })
+  })
+
+  it('reports the host round count so start does not stamp games.rounds_count to 1', () => {
+    expect(GAME_START_SPECS.troll_run?.roundsCount?.({ troll_run_rounds: 3 })).toBe(3)
+    expect(GAME_START_SPECS.troll_run?.roundsCount?.({})).toBe(5)
   })
 })

@@ -10,6 +10,7 @@ import { ThemeInitScript } from '@/components/ThemeInitScript'
 import { NetworkIndicator } from '@/components/NetworkIndicator'
 import { AppVersionWatcher } from '@/components/AppVersionWatcher'
 import { AttributionRecovery } from '@/components/AttributionRecovery'
+import { SentryUserContext } from '@/components/SentryUserContext'
 import { ToastProvider } from '@/components/ui/Toast'
 import { ConfirmProvider } from '@/components/ui/ConfirmDialog'
 import { QueryProvider } from '@/components/QueryProvider'
@@ -94,6 +95,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 <NetworkIndicator />
                 <AppVersionWatcher />
                 <AttributionRecovery />
+                <SentryUserContext />
                 <ThemeToggle />
                 {/* Hidden for now:
                 <SupportButton />

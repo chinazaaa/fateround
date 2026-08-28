@@ -16,8 +16,11 @@ export const GOFISH_REFILL_TARGET = 5
 export const GOFISH_DEFAULT_TIMER_SECONDS = 45
 export const GOFISH_TIMER_OPTIONS = [0, 30, 45, 60, 90, 120] as const
 
-/** Whole-game session length (seconds). 0 = no limit. */
-export const GOFISH_GAME_DURATION_OPTIONS = [0, 600, 900, 1800, 2700, 3600] as const
+/** Whole-game session length (seconds). 0 = no limit.
+ *  Go Fish plays fast — a full round in a 4-6-player room usually lands in 10-20 min,
+ *  so the option list caps at 30 min rather than the 1hr the earlier draft copied from
+ *  Whot. Anything longer felt aspirational. */
+export const GOFISH_GAME_DURATION_OPTIONS = [0, 300, 600, 900, 1200, 1800] as const
 
 export function clampGofishGameDuration(raw: unknown): number {
   const n = Number(raw ?? 0)
