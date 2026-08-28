@@ -199,11 +199,16 @@ async function reconcileRevealedGuesses(supabase: SupabaseClient, roundId: strin
  * the redacted `ttl_guesses` columns).
  */
 export async function revealFinishedTtlRounds(supabase: SupabaseClient, gameId: string): Promise<boolean> {
-  const { data: rounds } = await supabase
+  const { data: rounds, error: roundsError } = await supabase
     .from('rounds')
     .select('id, ttl_metadata')
     .eq('game_id', gameId)
     .eq('status', 'finished')
+
+  // A failed select yields no rows, which is indistinguishable from "nothing to reveal" once it
+  // reaches `rounds ?? []` — the loop would not run and this would report success, letting the
+  // caller finish the game and lock out every retry. Unreadable is not the same as empty.
+  if (roundsError) return false
 
   let allRevealed = true
   for (const round of rounds ?? []) {

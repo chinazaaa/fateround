@@ -15,7 +15,12 @@ type Row = { data: unknown; error: unknown }
 
 const HOUR_AGO = new Date(Date.now() - 60 * 60 * 1000).toISOString()
 
-function makeMockSupabase(opts: { lieError?: boolean; guessesError?: boolean; noLieRow?: boolean }) {
+function makeMockSupabase(opts: {
+  lieError?: boolean
+  guessesError?: boolean
+  noLieRow?: boolean
+  roundsError?: boolean
+}) {
   const updates: Array<{ table: string; vals: Record<string, unknown> }> = []
   let roundMetadata: Record<string, unknown> = { statements: ['a', 'b', 'c'] }
 
@@ -56,6 +61,7 @@ function makeMockSupabase(opts: { lieError?: boolean; guessesError?: boolean; no
           if (table === 'players') return chain({ count: 2 })
           if (table === 'rounds') {
             if (cols === 'ttl_metadata') return chain({ data: { ttl_metadata: roundMetadata }, error: null })
+            if (opts.roundsError) return chain({ data: null, error: { message: 'boom' } })
             return chain({ data: [{ ...round, ttl_metadata: roundMetadata }], error: null })
           }
           if (table === 'ttl_round_lies') {
@@ -153,5 +159,12 @@ describe('two truths reveal', () => {
   it('reports success when every finished round reveals', async () => {
     const { supabase } = makeMockSupabase({})
     await expect(revealFinishedTtlRounds(supabase, 'ABCD')).resolves.toBe(true)
+  })
+  // A failed rounds SELECT returns no rows, which `rounds ?? []` turns into "nothing to reveal".
+  // Reporting success there is the same permanent loss as swallowing a per-round failure: the
+  // caller finishes the game and adminEndGame then rejects every retry.
+  it('reports failure when the finished-round query itself fails', async () => {
+    const { supabase } = makeMockSupabase({ roundsError: true })
+    await expect(revealFinishedTtlRounds(supabase, 'ABCD')).resolves.toBe(false)
   })
 })
