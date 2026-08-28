@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
-import { syncTwoTruthsGameState } from './two-truths-advance'
+import { syncTwoTruthsGameState, revealFinishedTtlRounds } from './two-truths-advance'
 
 // The reveal is the moment the round flips to 'finished': the server folds the hidden lie
 // (ttl_round_lies) and everyone's guesses (the revoked ttl_guesses columns) into
@@ -138,5 +138,20 @@ describe('two truths reveal', () => {
     const flip = updates.find((u) => u.table === 'rounds' && u.vals.status === 'finished')
     expect((flip!.vals.ttl_metadata as Record<string, unknown>).lie_index).toBeUndefined()
     expect(console.error).toHaveBeenCalledWith(expect.stringContaining('no lie recorded'), 'round-1')
+  })
+  // The ADMIN path (adminEndGame -> revealFinishedTtlRounds) had the same hole the player path
+  // was hardened against, but worse: the bulk update flips the rounds to 'finished' BEFORE the
+  // reveal runs, a failed reveal was silently skipped, and adminEndGame then finished the game —
+  // after which its own "only waiting or active games can be ended" guard rejects every retry.
+  // The round is then stuck with no lie_index and no guesses, permanently.
+  it('reports failure when a finished round cannot be revealed, so the game stays endable', async () => {
+    const { supabase } = makeMockSupabase({ lieError: true })
+    // rounds come back already 'finished' on this path
+    await expect(revealFinishedTtlRounds(supabase, 'ABCD')).resolves.toBe(false)
+  })
+
+  it('reports success when every finished round reveals', async () => {
+    const { supabase } = makeMockSupabase({})
+    await expect(revealFinishedTtlRounds(supabase, 'ABCD')).resolves.toBe(true)
   })
 })

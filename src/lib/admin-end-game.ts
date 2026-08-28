@@ -45,7 +45,14 @@ export async function adminEndGame(supabase: SupabaseClient, game: AdminGameToEn
   // so fold each finished round's lie back into its metadata — otherwise an admin-ended game
   // renders its last round with no lie highlighted.
   if (isTwoTruthsGame(gameType)) {
-    await revealFinishedTtlRounds(supabase, gameId)
+    // Bail before the game is marked finished if any reveal could not be written. The rounds are
+    // already 'finished' at this point, but revealFinishedTtlRounds picks those up again, so a
+    // retry recovers — whereas finishing the game makes this function reject every retry and the
+    // round keeps no lie_index forever.
+    const revealed = await revealFinishedTtlRounds(supabase, gameId)
+    if (!revealed) {
+      return { error: 'Could not reveal every Two Truths round — game left endable; retry.' }
+    }
   }
   if (isAnonymousMessagesGame(gameType)) {
     return finishAnonymousRoomSession(supabase, gameId)

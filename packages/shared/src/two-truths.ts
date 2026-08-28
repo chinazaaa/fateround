@@ -1,4 +1,4 @@
-import type { Player, Round, TtlGuess, TtlGuessResult, TtlMetadata } from './types'
+import type { Player, Round, TtlGuess, TtlGuessResult, TtlMetadata, TtlStatement } from './types'
 
 export const TTL_MIN_PLAYERS = 3
 export const TTL_MAX_PLAYERS = 40
@@ -161,4 +161,31 @@ export function tallyTtlScores(guesses: TtlGuess[], players: Player[], rounds: R
 export function playerDisplayName(playerId: string | null | undefined, players: Player[]): string {
   if (!playerId) return 'Someone'
   return players.find((p) => p.id === playerId)?.name ?? 'Someone'
+}
+
+/**
+ * Is the token-gated own-statement still current for the roster row it belongs to?
+ *
+ * The views keep two copies of the caller's submission: the roster row from the bulk
+ * `ttl_statements` read (no `lie_index` — it's revoked from anon) and the full row from
+ * POST /api/two-truths/my-statement. The full row is preferred, but only while it is FRESH.
+ *
+ * Matching on `id` alone is not enough: re-submitting UPSERTs the same row, so an edit keeps
+ * the id and only bumps `updated_at`. Without the timestamp check, reopening "edit" right
+ * after a re-submit prefills the PREVIOUS lie. Falling back to the roster row instead shows
+ * no lie selected — which is correct: unknown must not render as a stale answer.
+ */
+// Mirrored in src/lib/two-truths.ts — the web app does not depend on @fateround/shared, so the
+// two copies must be kept in step. Mobile imports this one.
+export function ownTtlStatementIsFresh(
+  own: Pick<TtlStatement, 'id' | 'updated_at'> | null | undefined,
+  roster: Pick<TtlStatement, 'id' | 'updated_at'> | null | undefined
+): boolean {
+  if (!own || !roster || own.id !== roster.id) return false
+  const ownAt = Date.parse(own.updated_at ?? '')
+  const rosterAt = Date.parse(roster.updated_at ?? '')
+  // Unparseable timestamps on either side: fall back to the id match rather than discarding a
+  // row that is probably fine (the own-row is the only source of the caller's own lie).
+  if (Number.isNaN(ownAt) || Number.isNaN(rosterAt)) return true
+  return ownAt >= rosterAt
 }

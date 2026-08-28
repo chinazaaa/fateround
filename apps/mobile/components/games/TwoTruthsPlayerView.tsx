@@ -19,6 +19,7 @@ import {
   visibleTtlGuesses,
 } from '@fateround/shared/two-truths'
 import { playerIsViewer, preJoinScreen } from '@fateround/shared/viewers'
+import { ownTtlStatementIsFresh } from '@fateround/shared/two-truths'
 import { JoinScreen } from '@/components/JoinScreen'
 import { GameInfoChips } from '@/components/GameInfoChips'
 import { LobbyView } from '@/components/LobbyView'
@@ -167,7 +168,11 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
     }
   }, [gameCode, myResumeToken, rosterStatementId, rosterStatementStamp])
   // Ignore a stale own-row (different player, or a lobby reset that cleared the submission).
-  const myStatement = (ownStatement?.id === rosterStatementId ? ownStatement : null) ?? rosterStatement
+  // Compares updated_at as well as id, via the shared helper: a RE-SUBMIT upserts the SAME row id
+  // and only bumps updated_at, so an id-only check keeps the previous lie_index until the refetch
+  // lands — prefilling the old lie when editing and marking the wrong statement as LIE on the
+  // waiting screen.
+  const myStatement = (ownTtlStatementIsFresh(ownStatement, rosterStatement) ? ownStatement : null) ?? rosterStatement
 
   // The bulk `ttl_guesses` read is PROGRESS only — guessed_index/is_correct/points are revoked
   // from anon, because a round ends only once every guesser has answered and those columns

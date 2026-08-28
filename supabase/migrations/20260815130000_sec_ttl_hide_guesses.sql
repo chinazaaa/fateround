@@ -1,3 +1,17 @@
+-- ⚠️ DO NOT APPLY TO PRODUCTION until a compatible mobile build has shipped and old installs
+-- have drained.
+--
+-- The build currently on `main` selects `guessed_index,is_correct,points` in TTL_GUESS_SELECT
+-- (apps/mobile/lib/supabase-selects.ts). PostgREST fails the WHOLE query with 42501 when any
+-- requested column is revoked, so this migration breaks Two Truths on every installed build the
+-- moment it reaches the production project — and OTA cannot rescue them, because expo-updates
+-- reads its config from the native binary, baked at build time. That is a store-release wait or
+-- a recorded breakage window, not something a hotfix can undo.
+--
+-- Merging into `dev` is safe: installed builds read the PRODUCTION Supabase project. The exposure
+-- is at the dev → main promotion, which the Mobile Rollout Gate blocks without an explicit
+-- MOBILE-ROLLOUT-ACK. Same reasoning as 20260815120000_sec_crazy8_hide_piles.sql.
+--
 -- Keep Two Truths GUESSES out of client-readable data until the round is revealed.
 --
 -- 20260807120000_sec_ttl_hide_lie.sql closed two paths to the answer (rounds.ttl_metadata

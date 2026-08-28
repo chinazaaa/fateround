@@ -198,13 +198,14 @@ async function reconcileRevealedGuesses(supabase: SupabaseClient, roundId: strin
  * no results, because both now live outside the anon-readable metadata (`ttl_round_lies` and
  * the redacted `ttl_guesses` columns).
  */
-export async function revealFinishedTtlRounds(supabase: SupabaseClient, gameId: string): Promise<void> {
+export async function revealFinishedTtlRounds(supabase: SupabaseClient, gameId: string): Promise<boolean> {
   const { data: rounds } = await supabase
     .from('rounds')
     .select('id, ttl_metadata')
     .eq('game_id', gameId)
     .eq('status', 'finished')
 
+  let allRevealed = true
   for (const round of rounds ?? []) {
     const metadata = round.ttl_metadata as Record<string, unknown> | null
     // Not a TTL round — nothing to fold in.
@@ -216,10 +217,20 @@ export async function revealFinishedTtlRounds(supabase: SupabaseClient, gameId: 
     // The metadata is already in hand from the select above — pass it in rather than making
     // `revealedTtlMetadata` re-read the same row.
     const revealed = await revealedTtlMetadata(supabase, round.id, metadata)
+    // FAILS CLOSED, like endActiveRound. A read failure here used to be swallowed: the caller
+    // finished the game anyway, and because adminEndGame rejects a game that is already finished,
+    // the round was left permanently with no lie_index and no guesses. Report it instead so the
+    // game stays endable and a retry can publish the reveal.
+    if (revealed.status === 'error') {
+      allRevealed = false
+      continue
+    }
     if (revealed.status === 'ok') {
-      await supabase.from('rounds').update({ ttl_metadata: revealed.metadata }).eq('id', round.id)
+      const { error } = await supabase.from('rounds').update({ ttl_metadata: revealed.metadata }).eq('id', round.id)
+      if (error) allRevealed = false
     }
   }
+  return allRevealed
 }
 
 /**

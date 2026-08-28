@@ -1,3 +1,16 @@
+-- ⚠️ DO NOT APPLY TO PRODUCTION until a compatible mobile build has shipped and old installs
+-- have drained.
+--
+-- This revokes `ttl_statements.lie_index`, and the build currently on `main` selects it in
+-- TTL_STATEMENT_SELECT (web and mobile). PostgREST fails the WHOLE query with 42501 when any
+-- requested column is revoked, so applying this to production breaks the Two Truths roster read
+-- on every installed build. Web reverts in a minute; an installed binary does not, and OTA cannot
+-- rescue it (expo-updates reads config baked into the native binary at build time).
+--
+-- Merging into `dev` is safe: installed builds read the PRODUCTION Supabase project. The exposure
+-- is at the dev → main promotion, which the Mobile Rollout Gate blocks without an explicit
+-- MOBILE-ROLLOUT-ACK. Same reasoning as the sibling 20260815130000_sec_ttl_hide_guesses.sql.
+--
 -- Keep the Two Truths & a Lie answer out of client-readable data.
 --
 -- Same situation as 0103_sudoku_hide_solution.sql ("the full solution lived in
