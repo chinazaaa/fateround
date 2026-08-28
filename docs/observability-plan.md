@@ -111,6 +111,69 @@ instead of guessing from a single box with no APM.
 
 ---
 
+## Track 3 — Sentry (error reporting) · Effort S ✅ DONE (code)
+
+**Goal:** know that something *threw*, and where. OTel answers "why is it slow" and the health
+endpoint answers "is it up"; neither surfaces an exception on one route for one player. Until
+now the only record of a client-side crash was a `console.error` in the broken tab — which is
+exactly why four attempts at the tab-resume bug shipped without anyone seeing what actually
+threw (see the note at the top of `src/app/error.tsx`).
+
+### 3a. App instrumentation (code — this repo) ✅ DONE
+
+`@sentry/nextjs`, wired for **errors only** across all three runtimes:
+
+- `src/instrumentation-client.ts` — browser.
+- `src/sentry.server.config.ts` / `src/sentry.edge.config.ts` — imported from `register()` in
+  `src/instrumentation.ts`; the `onRequestError` export in that file is what forwards uncaught
+  server-component / route-handler / middleware errors.
+- `src/app/error.tsx` reports from the route-level boundary; `src/app/global-error.tsx` is new
+  and catches root-layout crashes, which `error.tsx` structurally cannot.
+- `src/lib/sentry-shared.ts` holds the options common to all three.
+
+**Sentry does NOT do tracing here.** `tracesSampleRate: 0`, and both server runtimes set
+`skipOpenTelemetrySetup: true`. That flag is load-bearing: `@sentry/nextjs` builds its tracing on
+OpenTelemetry and, left alone, registers its own global `TracerProvider` — which would silently
+fight the one `@vercel/otel` registers in Track 2, and whichever loses stops exporting. Traces
+stay with Grafana; Sentry only takes exceptions.
+
+**Config:** `NEXT_PUBLIC_SENTRY_DSN`. The DSN is public by design (write-only, and it ships
+inside the browser bundle either way), so it is a build arg hardcoded per-environment in
+`.github/workflows/build-push-image.yml` alongside the VAPID and Spotify public keys — **no SSM
+parameter and no Terraform change**. Empty DSN → `Sentry.init` is skipped entirely, so local dev
+and any unconfigured stack run an inert SDK.
+
+One project serves both environments; events are separated by the `environment` tag, which comes
+from `resolveAppEnv()` (`APP_ENV`, else the host in `NEXT_PUBLIC_APP_URL`) — the same resolver the
+background workers gate on, so a new stack can't mislabel itself. `release` is the commit, from
+the existing `GIT_SHA` build arg.
+
+**PII:** `sendDefaultPii: false`. The only user context attached is the Supabase user id, an
+opaque uuid, set by `src/components/SentryUserContext.tsx` off `onAuthStateChange`. No handles,
+no emails, no request bodies. Session Replay is deliberately not enabled (~50KB of JS on every
+page, and it burns the event quota fast).
+
+### 3b. Source maps (outstanding) ⏳
+
+Without an upload, production stack traces name minified chunks
+(`app:///_next/server/chunks/11433.js`) instead of real files and lines. `next.config.ts` is
+already wired for it and no-ops without credentials, so turning it on is config only:
+
+1. Mint a Sentry **org auth token** with `project:releases` + `org:read`.
+2. Add it as the repo secret `SENTRY_AUTH_TOKEN`, and pass `SENTRY_ORG` / `SENTRY_PROJECT` plus
+   that secret into the build step in `.github/workflows/build-push-image.yml`.
+3. Flip `'@sentry/cli'` to `true` in `pnpm-workspace.yaml` — the uploader needs the binary its
+   postinstall fetches.
+
+### Decisions to make
+
+- **Alerting** — a Sentry project with no alert rule is a dashboard nobody opens. Point issue
+  alerts at the same channel UptimeRobot will use (Track 1b), so there is one place to watch.
+- **Quota** — the free tier is 5k errors/month across both environments. If dev noise crowds out
+  prod, split into two projects rather than raising sampling.
+
+---
+
 ## Sequencing
 
 1. ✅ `/api/health` endpoint (PR #393) — live in prod. ⏳ UptimeRobot monitors + one alert channel
@@ -119,7 +182,10 @@ instead of guessing from a single box with no APM.
    export + ✅ Grafana Cloud stack created and **dev exporting** (Application Observability
    activated on dev). ⏳ Wire **prod** (mint a prod token, set `otel_exporter_otlp_headers` in
    `terraform.prod.tfvars`, apply) and validate traces for the hot API routes.
-3. Custom Supabase/external spans + business metrics; (optional) log correlation and a status page.
+3. ✅ Sentry error reporting (Track 3) — code landed and verified end to end against a local
+   ingest sink (server error → event with the right `environment` and `release`). ⏳ Source-map
+   upload (3b) and an issue-alert rule.
+4. Custom Supabase/external spans + business metrics; (optional) log correlation and a status page.
 
 _Both are infra/ops initiatives, tracked in [architecture-debt.md](./architecture-debt.md) under
 "Phase 5 — Observability & operations". Deployment context: [environments.md](./environments.md)._

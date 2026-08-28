@@ -1,6 +1,7 @@
 import type { NextConfig } from 'next'
 import path from 'path'
 import { fileURLToPath } from 'url'
+import { withSentryConfig } from '@sentry/nextjs'
 
 const projectRoot = path.dirname(fileURLToPath(import.meta.url))
 
@@ -75,4 +76,32 @@ const nextConfig: NextConfig = {
   },
 }
 
-export default nextConfig
+/**
+ * Sentry's build step. It injects the SDK into the server/edge bundles and — only when a
+ * SENTRY_AUTH_TOKEN is present — uploads source maps so production stack traces name real
+ * files and lines instead of `main-4f2a.js:1:28174`.
+ *
+ * Upload is OFF by default and stays off for anyone building without the token (local
+ * builds, forks, a `docker build` on a laptop): missing credentials must not fail a build.
+ * To turn it on, set SENTRY_ORG/SENTRY_PROJECT and add SENTRY_AUTH_TOKEN as a repository
+ * secret wired into the build workflow — and flip `@sentry/cli` to `true` in
+ * pnpm-workspace.yaml, since the uploader needs its postinstall binary.
+ */
+const sentryUploadEnabled = Boolean(process.env.SENTRY_AUTH_TOKEN)
+
+export default withSentryConfig(nextConfig, {
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT,
+  authToken: process.env.SENTRY_AUTH_TOKEN,
+  // Don't narrate the upload (or its absence) on every build.
+  silent: true,
+  sourcemaps: { disable: !sentryUploadEnabled },
+  webpack: {
+    // Strip Sentry's own debug logging from the bundles.
+    treeshake: { removeDebugLogging: true },
+    // This app is not on Vercel — don't try to wire up Vercel Cron monitors.
+    automaticVercelMonitors: false,
+  },
+  // No build-time telemetry to Sentry.
+  telemetry: false,
+})
