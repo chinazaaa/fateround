@@ -723,26 +723,17 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
     // The round rows carry only the shuffled statements — the lie is NOT in ttl_metadata,
     // which is anon-readable. `.select()` gives us the generated ids so each round's lie can
     // be stored in ttl_round_lies (service-role only) and matched back by round_number.
-    const { data: insertedRounds, error: roundError } = await getSupabaseAdmin()
-      .from('rounds')
-      .insert(roundRows)
-      .select('id, round_number')
+    // Rounds and their answer keys are created by ONE rpc, inside one transaction. Doing it as
+    // two client calls meant a failure between them left rounds with no key in ttl_round_lies:
+    // /api/two-truths/guess fails closed on a missing key (deliberately), so the game could not
+    // be scored — and could not be restarted either, because rounds already existed for those
+    // round numbers. See 20261115120000_ttl_atomic_rounds_and_guess_guard.sql.
+    const { error: roundError } = await getSupabaseAdmin().rpc('create_ttl_rounds', {
+      p_rounds: roundRows,
+      p_lies: built.lies,
+    })
     if (roundError)
       return NextResponse.json({ error: internalErrorMessage('games/code/start', roundError) }, { status: 500 })
-
-    const roundIdByNumber = new Map((insertedRounds ?? []).map((r) => [r.round_number as number, r.id as string]))
-    const lieRows = built.lies.map(({ round_number, lie_index }) => ({
-      round_id: roundIdByNumber.get(round_number),
-      lie_index,
-    }))
-    // Fail the start rather than leave a round with no answer key: without it /guess cannot
-    // score and the reveal has nothing to show.
-    if (lieRows.some((r) => !r.round_id)) {
-      return NextResponse.json({ error: 'Failed to create rounds' }, { status: 500 })
-    }
-    const { error: lieError } = await getSupabaseAdmin().from('ttl_round_lies').insert(lieRows)
-    if (lieError)
-      return NextResponse.json({ error: internalErrorMessage('games/code/start', lieError) }, { status: 500 })
 
     // Only players who submitted statements enter the game; everyone else (the "Waiting…"
     // players in the lobby) becomes a watch-only viewer so they don't count as guessers.
