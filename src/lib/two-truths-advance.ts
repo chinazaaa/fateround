@@ -346,6 +346,21 @@ export async function syncTwoTruthsGameState(
   }
 
   if (pointerRound && pointerRound.status === 'finished') {
+    // Retry the reconcile on the advance path.
+    //
+    // endActiveRound reconciles once, immediately after flipping the status, and deliberately
+    // ignores the result (returning false there would report round_active to a caller that then
+    // retries endActiveRound, which can only fail once its `.eq('status','active')` guard stops
+    // matching). But a transient failure there had nothing to pick it up: normal polls waited out
+    // the reveal deadline and advanced, and revealFinishedTtlRounds only runs from adminEndGame.
+    // A short `ttl_metadata.guesses` was therefore permanent in normal play, and unreadable —
+    // guessed_index/is_correct/points are revoked from anon, so the published copy is all there is.
+    //
+    // This path runs on every poll until the next round activates, so a transient failure is
+    // retried by the following poll. It is a no-op once the published count matches, which is the
+    // usual case, so the steady-state cost is one comparison per advance.
+    await reconcileRevealedGuesses(supabase, pointerRound.id)
+
     // Elimination hook: run before isLast so final-round eliminations are recorded
     const { data: gameForElim, error: elimConfigError } = await supabase
       .from('games')

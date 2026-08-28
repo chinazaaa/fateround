@@ -21,6 +21,7 @@ function makeMockSupabase(opts: {
   noLieRow?: boolean
   roundsError?: boolean
   alreadyRevealed?: boolean
+  roundFinished?: boolean
 }) {
   const updates: Array<{ table: string; vals: Record<string, unknown> }> = []
   // alreadyRevealed: the round carries a lie AND a guesses array, but the array is SHORT —
@@ -39,13 +40,15 @@ function makeMockSupabase(opts: {
     timer_seconds: 30,
     elimination_config: null,
   }
+  // roundFinished: the round already ended and its reveal window has elapsed, so
+  // syncTwoTruthsGameState takes the ADVANCE path rather than the end-round path.
   const round = {
     id: 'round-1',
     game_id: 'ABCD',
     round_number: 1,
-    status: 'active',
+    status: opts.roundFinished ? 'finished' : 'active',
     started_at: HOUR_AGO, // timer long expired → the round is due to end
-    ended_at: null,
+    ended_at: opts.roundFinished ? HOUR_AGO : null,
     ttl_metadata: roundMetadata,
   }
 
@@ -189,5 +192,23 @@ describe('two truths reveal', () => {
   it('reports failure when an already-revealed round cannot be reconciled', async () => {
     const { supabase } = makeMockSupabase({ alreadyRevealed: true, guessesError: true })
     await expect(revealFinishedTtlRounds(supabase, 'ABCD')).resolves.toBe(false)
+  })
+  // endActiveRound reconciles once and ignores the result; before this, nothing else in NORMAL
+  // play ever tried again — the finished-round backfill only runs from adminEndGame. A transient
+  // failure therefore left ttl_metadata.guesses permanently short, and unreadable, because the
+  // raw guess columns are revoked from anon. The advance path now retries.
+  it('reconciles again on the advance path after the reveal window', async () => {
+    // Round already finished with a SHORT guess list, reveal window elapsed: the end-round path
+    // is not taken, so the only thing that can rewrite the metadata is the advance-path reconcile.
+    const { supabase, updates } = makeMockSupabase({ alreadyRevealed: true, roundFinished: true })
+    await syncTwoTruthsGameState(supabase, 'ABCD')
+    const rewrite = updates.find(
+      (u) =>
+        u.table === 'rounds' &&
+        u.vals.ttl_metadata &&
+        Array.isArray((u.vals.ttl_metadata as Record<string, unknown>).guesses)
+    )
+    expect(rewrite).toBeTruthy()
+    expect((rewrite!.vals.ttl_metadata as Record<string, unknown>).guesses).toHaveLength(1)
   })
 })
