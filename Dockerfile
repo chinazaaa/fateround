@@ -20,12 +20,21 @@ ARG NEXT_PUBLIC_VAPID_PUBLIC_KEY
 # Spotify OAuth client id — public (PKCE); the matching SPOTIFY_CLIENT_SECRET is a
 # runtime secret in SSM. Empty when in-game music isn't configured for this env.
 ARG NEXT_PUBLIC_SPOTIFY_CLIENT_ID
+# Sentry DSN — public by design (it only authorises writing events, and it ships in the
+# browser bundle either way), so it is a plain build arg like the VAPID and Spotify keys
+# rather than a runtime secret. Empty disables Sentry entirely for the image.
+ARG NEXT_PUBLIC_SENTRY_DSN
+# The commit, surfaced to Sentry as the release so a stack trace pins to a revision.
+# Declared again in the run stage below for /api/health; ARGs don't cross stages.
+ARG GIT_SHA
 ENV NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL
 ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY
 ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL
 ENV NEXT_PUBLIC_LIVEKIT_URL=$NEXT_PUBLIC_LIVEKIT_URL
 ENV NEXT_PUBLIC_VAPID_PUBLIC_KEY=$NEXT_PUBLIC_VAPID_PUBLIC_KEY
 ENV NEXT_PUBLIC_SPOTIFY_CLIENT_ID=$NEXT_PUBLIC_SPOTIFY_CLIENT_ID
+ENV NEXT_PUBLIC_SENTRY_DSN=$NEXT_PUBLIC_SENTRY_DSN
+ENV NEXT_PUBLIC_SENTRY_RELEASE=$GIT_SHA
 
 RUN pnpm build
 
