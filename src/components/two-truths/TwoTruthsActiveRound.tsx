@@ -22,6 +22,15 @@ import type { Game, Player, Round, TtlGuess, TtlGuessProgress } from '@/types'
 
 type PlayScreen = 'waiting' | 'featured' | 'active' | 'locked' | 'revealed' | 'finished'
 
+/**
+ * One round in play: the three statements, the guess controls, and the reveal.
+ *
+ * `showLie` is gated on the round being revealed or finished, which is the same moment the server
+ * folds the lie into `ttl_metadata` — so this never has an answer it should not be showing, and
+ * never renders a revealed round with nothing to show. Other players' results arrive the same
+ * way: `ttl_guesses.guessed_index`/`is_correct`/`points` are revoked from anon, so mid-round this
+ * view can only see WHO has guessed, not what.
+ */
 export function TwoTruthsActiveRound({
   gameCode,
   game,
@@ -156,6 +165,13 @@ export function TwoTruthsActiveRound({
     onExpire: () => setTimeExpired(true),
   })
 
+  /**
+   * Submit a guess for the current round.
+   *
+   * Scoring happens server-side against `ttl_round_lies`; the client is never told the lie until
+   * the round is revealed, so there is nothing to check here. A guess that arrives after the
+   * round ended comes back 409 rather than 500 — it did not fail, it was late.
+   */
   const submitGuess = async (index: number) => {
     if (!currentRound || readOnly || submitting) return
     if (!myResumeToken) {

@@ -47,6 +47,16 @@ type Screen =
   | 'playing'
   | 'not_found'
 
+/**
+ * The player's Two Truths screen: submit three statements, then guess on everyone else's round.
+ *
+ * Two reads back this view, and they are not interchangeable. The bulk `ttl_statements` read is
+ * the ROSTER — who has submitted — and no longer carries `lie_index`, which is revoked from the
+ * anon role. The caller's own row, lie included, comes from the token-gated
+ * /api/two-truths/my-statement. `ownTtlStatementIsFresh` decides which to trust: a re-submit
+ * upserts the same row id and bumps only `updated_at`, so comparing ids alone would keep showing
+ * the previous lie.
+ */
 export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
   const { error: toastError, success } = useToast()
   const [statements, setStatements] = useState<TtlStatement[]>([])
@@ -155,6 +165,7 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
     onJoin: (name) => join({ name }),
   })
 
+  /** Drop the local player session and return to the join screen after leaving the game. */
   const handlePlayerLeft = () => {
     clearPlayerSession(gameCode)
     setMyPlayerId(null)

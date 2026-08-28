@@ -24,6 +24,16 @@ export function staleGameCutoffIso(olderThanHours: number): string {
   return cutoff.toISOString()
 }
 
+/**
+ * The admin kill-switch: force a waiting or active game to finished.
+ *
+ * Rounds are bulk-updated to 'finished' WITHOUT going through each game's normal end-of-round
+ * path, so anything that path would have written has to be done here too. For Two Truths that is
+ * the reveal: `revealFinishedTtlRounds` folds each round's hidden lie and its guesses back into
+ * `ttl_metadata`, and this refuses to finish the game if any of that could not be written —
+ * because the guard above rejects a game that is already finished, so a failed reveal would be
+ * unrecoverable rather than retryable.
+ */
 export async function adminEndGame(supabase: SupabaseClient, game: AdminGameToEnd): Promise<{ error: string | null }> {
   if (game.status !== 'active' && game.status !== 'waiting') {
     return { error: 'Only waiting or active games can be ended' }

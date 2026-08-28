@@ -150,6 +150,13 @@ export function TwoTruthsHostView({ gameCode, hostToken }: { gameCode: string; h
     else if (game?.status === 'active') setTab('play')
   }, [game?.status])
 
+  /**
+   * Start the game once enough players have submitted.
+   *
+   * The start route builds one round per submitter and stores each round's lie in
+   * `ttl_round_lies` — both in a single transaction, so a game can never begin with a round that
+   * has no answer key and therefore cannot be scored.
+   */
   const startGame = async () => {
     setStarting(true)
     try {

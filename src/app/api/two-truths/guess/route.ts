@@ -7,6 +7,17 @@ import { parseTtlMetadata, TTL_GUESS_POINTS } from '@/lib/two-truths'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { assertPlayer } from '@/lib/game-admin'
 
+/**
+ * Record one player's guess for the active Two Truths round, and score it server-side.
+ *
+ * The answer key lives in `ttl_round_lies` (service-role only), never in anon-readable data, and
+ * this FAILS CLOSED: a missing key is a 500, not a guess scored as correct. `guessed_index`,
+ * `is_correct` and `points` are revoked from anon, so the row written here is only ever read back
+ * through the reveal or the caller's own token-gated route.
+ *
+ * A round that ended between the status check and the insert is rejected by a database trigger,
+ * surfaced here as 409 rather than 500 — the guess did not fail, it arrived too late.
+ */
 export async function POST(req: NextRequest) {
   const { data: body, error: bodyError } = await parseJsonBody(req, ttlGuessSchema)
   if (bodyError) return bodyError
