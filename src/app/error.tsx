@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect } from 'react'
+import * as Sentry from '@sentry/nextjs'
 import { ServerErrorPage } from '@/components/ServerErrorPage'
 
 /**
@@ -24,6 +25,10 @@ import { ServerErrorPage } from '@/components/ServerErrorPage'
 export default function GlobalErrorPage({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
   useEffect(() => {
     console.error('Global Error Boundary caught:', error)
+    // Report it. The console line above is only visible to whoever has devtools open on
+    // the broken tab, which — see the note above — is exactly why four attempts at the
+    // tab-resume bug were made without anyone seeing what actually threw.
+    Sentry.captureException(error)
   }, [error])
 
   return <ServerErrorPage error={error} reset={reset} />
