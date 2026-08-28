@@ -173,19 +173,27 @@ async function revealedTtlMetadata(
  * round is 'finished' the guess route refuses new rows, so a second read here is final. No-op
  * unless the count actually changed, to avoid a pointless realtime broadcast per round.
  */
-async function reconcileRevealedGuesses(supabase: SupabaseClient, roundId: string): Promise<void> {
-  const { data: round } = await supabase.from('rounds').select('ttl_metadata').eq('id', roundId).maybeSingle()
+async function reconcileRevealedGuesses(supabase: SupabaseClient, roundId: string): Promise<boolean> {
+  const { data: round, error: roundError } = await supabase
+    .from('rounds')
+    .select('ttl_metadata')
+    .eq('id', roundId)
+    .maybeSingle()
+  if (roundError) return false
   const metadata = round?.ttl_metadata
-  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return
+  // Not a TTL round (or no metadata at all) — nothing to reconcile, and not a failure.
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return true
   const published = (metadata as Record<string, unknown>).guesses
   const results = await roundGuessResults(supabase, roundId)
-  // Unreadable ≠ empty: leave the published results alone rather than blanking them.
-  if (!results) return
-  if (Array.isArray(published) && published.length === results.length) return
-  await supabase
+  // Unreadable ≠ empty: leave the published results alone rather than blanking them — but report
+  // it, so the round is retried instead of being left with a possibly-short guess list forever.
+  if (!results) return false
+  if (Array.isArray(published) && published.length === results.length) return true
+  const { error: updateError } = await supabase
     .from('rounds')
     .update({ ttl_metadata: { ...(metadata as Record<string, unknown>), guesses: results } })
     .eq('id', roundId)
+  return !updateError
 }
 
 /**
@@ -216,8 +224,15 @@ export async function revealFinishedTtlRounds(supabase: SupabaseClient, gameId: 
     // Not a TTL round — nothing to fold in.
     if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) continue
     if (!Array.isArray(metadata.statements)) continue
-    // Already fully revealed.
-    if (typeof metadata.lie_index === 'number' && Array.isArray(metadata.guesses)) continue
+    // Has a lie AND a guess list — but "has a list" is not "has the WHOLE list". A guess that
+    // landed between endActiveRound's read and its status flip is scored server-side yet missing
+    // from the published array, and skipping on shape alone meant this backfill could never
+    // repair it. Reconcile compares the published length against the real count and is a no-op
+    // when they already agree, so this costs one read per already-revealed round.
+    if (typeof metadata.lie_index === 'number' && Array.isArray(metadata.guesses)) {
+      if (!(await reconcileRevealedGuesses(supabase, round.id))) allRevealed = false
+      continue
+    }
 
     // The metadata is already in hand from the select above — pass it in rather than making
     // `revealedTtlMetadata` re-read the same row.
@@ -268,6 +283,11 @@ async function endActiveRound(supabase: SupabaseClient, roundId: string): Promis
     .maybeSingle()
   if (error || !data) return false
 
+  // The boolean is deliberately ignored here: the round HAS ended, and returning false would
+  // report `round_active` to a caller that then retries endActiveRound — which can only fail
+  // from now on, because its `.eq('status', 'active')` guard no longer matches. A short guess
+  // list is instead repaired by revealFinishedTtlRounds, which no longer skips a round just
+  // because it already has a guesses array.
   if (revealed.status === 'ok') await reconcileRevealedGuesses(supabase, roundId)
   return true
 }

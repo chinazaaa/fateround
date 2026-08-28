@@ -22,7 +22,12 @@ function makeMockSupabase(opts: {
   roundsError?: boolean
 }) {
   const updates: Array<{ table: string; vals: Record<string, unknown> }> = []
-  let roundMetadata: Record<string, unknown> = { statements: ['a', 'b', 'c'] }
+  // alreadyRevealed: the round carries a lie AND a guesses array, but the array is SHORT —
+  // one guess landed after endActiveRound read the results. This is the shape the backfill
+  // used to skip.
+  let roundMetadata: Record<string, unknown> = opts.alreadyRevealed
+    ? { statements: ['a', 'b', 'c'], lie_index: 2, guesses: [] }
+    : { statements: ['a', 'b', 'c'] }
 
   const game = {
     id: 'ABCD',
@@ -165,6 +170,23 @@ describe('two truths reveal', () => {
   // caller finishes the game and adminEndGame then rejects every retry.
   it('reports failure when the finished-round query itself fails', async () => {
     const { supabase } = makeMockSupabase({ roundsError: true })
+    await expect(revealFinishedTtlRounds(supabase, 'ABCD')).resolves.toBe(false)
+  })
+  // "Has a guesses array" is not "has the WHOLE list". A guess that lands between
+  // endActiveRound's read and its status flip is scored but missing from the published array,
+  // and the backfill used to skip any round whose metadata merely had the right SHAPE — so the
+  // missing guess could never be repaired. It now reconciles, and reports failure if it cannot.
+  it('backfills a finished round whose published guess list is short', async () => {
+    const { supabase, updates } = makeMockSupabase({ alreadyRevealed: true })
+    await expect(revealFinishedTtlRounds(supabase, 'ABCD')).resolves.toBe(true)
+    // the short list was rewritten from the real guess rows
+    const rewrite = updates.find((u) => u.table === 'rounds' && u.vals.ttl_metadata)
+    expect(rewrite).toBeTruthy()
+    expect((rewrite!.vals.ttl_metadata as Record<string, unknown>).guesses).toHaveLength(1)
+  })
+
+  it('reports failure when an already-revealed round cannot be reconciled', async () => {
+    const { supabase } = makeMockSupabase({ alreadyRevealed: true, guessesError: true })
     await expect(revealFinishedTtlRounds(supabase, 'ABCD')).resolves.toBe(false)
   })
 })
