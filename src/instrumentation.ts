@@ -1,3 +1,5 @@
+import * as Sentry from '@sentry/nextjs'
+
 // OpenTelemetry bootstrap. Next.js calls register() once at server startup.
 //
 // This is intentionally a NO-OP unless OTEL_EXPORTER_OTLP_ENDPOINT is set, so local dev and
@@ -16,6 +18,14 @@
 // Env-driven config (endpoint/headers/sampler/resource) is read by the SDK, so switching the
 // export target (Grafana Cloud direct ⇄ on-box collector) is a deploy-config change, not code.
 export async function register() {
+  // Sentry (errors only) — initialise before anything else so a failure in the startup
+  // work below is itself reported. Each config no-ops without NEXT_PUBLIC_SENTRY_DSN,
+  // and both set `skipOpenTelemetrySetup` so the SDK leaves the OTel globals that
+  // @vercel/otel registers further down alone. The two runtimes need different builds
+  // of the SDK, hence two files.
+  if (process.env.NEXT_RUNTIME === 'nodejs') await import('@/sentry.server.config')
+  else if (process.env.NEXT_RUNTIME === 'edge') await import('@/sentry.edge.config')
+
   // Only the Node.js server runtime runs background work; skip the edge runtime.
   if (process.env.NEXT_RUNTIME !== 'nodejs') return
 
@@ -64,3 +74,10 @@ export async function register() {
     serviceName: process.env.OTEL_SERVICE_NAME || 'fateround',
   })
 }
+
+/**
+ * Next.js hands every uncaught server-side error (route handlers, server components,
+ * middleware) to this hook. Forwarding it to Sentry is what makes those errors show up
+ * with their request context attached; without it only client-side errors are reported.
+ */
+export const onRequestError = Sentry.captureRequestError
