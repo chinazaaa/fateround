@@ -343,6 +343,81 @@ mode, on web, mobile, and as a host-player — and that the canvas clears with i
 Quick Draw "lie" mode (Drawful) is a separate flow: each drawer's private prompt lives in
 `quick_draw_assignments.prompt`, which is not covered here.
 
+---
+
+## Phase 9 — Two Truths & a Lie answer redaction — ⏳ SHIPPED, AWAITING PLAYTEST
+
+Same class as Phase 7 (the row *is* the secret), but it did not need the redaction plumbing —
+just a hidden table plus a reveal write-back. Migration:
+`20260807120000_sec_ttl_hide_lie.sql`.
+
+Two independent leaks, both closed:
+
+1. `rounds.ttl_metadata` was `{statements, lie_index}` and `ttl_metadata` is in the
+   anon-readable `ROUND_SELECT`. All rounds are created up front (one per submitter) by
+   `buildTtlRoundRows`, so the anon key could read the lie for **every** round — including the
+   one being guessed — from the moment the game started.
+2. `ttl_statements.lie_index` was anon-readable, handing over every player's lie directly.
+
+The fix follows `0103_sudoku_hide_solution.sql`: the lie moves to `ttl_round_lies`
+(RLS on, **zero** policies — every write is service-role, so anon needs no access at all), and
+`/api/two-truths/guess` scores against that table, failing closed if the row is missing.
+
+**No reveal route was needed.** `endActiveRound` (lib/two-truths-advance.ts) sets a round
+`status:'finished'` — that IS the reveal moment the UI already renders
+(`showLie = screen === 'revealed' || 'finished'`). It now folds the lie back into
+`ttl_metadata` in the *same* update, so there is no window where the answer is readable early,
+and none where the round reads as revealed with nothing to show. `parseTtlMetadata` therefore
+tolerates a missing `lie_index` (`number | null`) instead of rejecting the whole metadata,
+which would have blanked the board mid-round.
+
+`ttl_statements.lie_index` is column-revoked from anon/authenticated; the caller's own row is
+served by `POST /api/two-truths/my-statement` (resume-token gated, same shape as
+`/api/whot/hands`). The bulk `ttl_statements` read stays — it is only the roster.
+
+A third path to the same answer was closed by `20260815130000_sec_ttl_hide_guesses.sql`:
+`ttl_guesses` is anon-readable and carried `guessed_index` / `is_correct` / `points`, and a
+round only ends once **every** guesser has answered — so players 2..n could read the lie off
+player 1's row mid-round. Those three columns are column-revoked; the surviving columns
+(`id, game_id, round_id, player_id, guessed_at`) are live progress only ("who has guessed"),
+which the lock-in UI and the realtime subscription need. Results are folded into
+`ttl_metadata.guesses` at reveal; the caller's own in-flight row comes from
+`POST /api/two-truths/my-guesses` (resume-token gated).
+
+### ✅ Realtime honours column-level grants — measured on a LOCAL Supabase (2026-08-16)
+
+The open question from Phase 3 ("a column-level REVOKE only constrains PostgREST — does
+Realtime filter the same columns?") is answered **yes**, measured rather than reasoned — but read
+the scope before relying on it. This was measured against a LOCAL Supabase stack, not a hosted
+project. An earlier version of this heading said "VERIFIED on a live DB", which overstated it:
+the setup below has always said local, and hosted Supabase differs from a from-scratch local
+stack in exactly the area this concerns — grants (see the bootstrap-grant note in
+`local-supabase-playtest`). The mechanism is the same Realtime build in both, so the result is
+expected to hold, but a hosted confirmation has NOT been done.
+
+- Setup: local Supabase (all migrations applied), an anon-key `supabase-js` client subscribed
+  to `postgres_changes` (`event: '*'`) on `public.ttl_statements` and `public.ttl_guesses`
+  (both are in the `supabase_realtime` publication). Writes made server-side, as the app does.
+- INSERT + UPDATE on `ttl_statements` → payload contained `id, game_id, player_id,
+  statement_a/b/c, created_at, updated_at` and **no `lie_index`** — including on the re-submit
+  UPDATE path, whose `old` record was only `{id}`.
+- INSERT on `ttl_guesses` → payload contained `id, game_id, round_id, player_id, guessed_at`
+  and **no `guessed_index`, `is_correct` or `points`**.
+- Not a vacuous result: re-running the identical script after
+  `GRANT SELECT (lie_index) … TO anon` (and the three guess columns) made all four columns
+  appear in the payloads immediately; re-revoking removed them again. So the absence is caused
+  by the grant, not by replication config or by the columns being unset.
+
+Mechanism: Realtime's WALRUS filter drops any column the subscriber's role lacks
+`has_column_privilege(..., 'SELECT')` on, so this is table-agnostic — the same reasoning
+covers the Phase 3 `games.host_token` / `players.resume_token` revokes, though those were not
+themselves re-measured here.
+
+Playtest: 3+ players submit → start → confirm devtools/network shows no `lie_index` on the
+active round and no `guessed_index` on other players' guess rows → guess → reveal highlights
+the right statement and shows everyone's results → next round → finish → `/history/[code]`
+and the session summary still show every round's lie and scores.
+
 ## Progress log
 
 ### Snake & Ladder (canary) — code-complete, ⏳ live verification pending

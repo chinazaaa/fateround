@@ -13,9 +13,11 @@ import { gameTypeConfig } from '@/lib/game-types'
 import { gameIcon } from '@/lib/game-glyphs'
 import { Glyph } from '@/components/icons/Glyph'
 import { supabase } from '@/lib/supabase'
-import { ROUND_SELECT, TTL_GUESS_SELECT, TTL_STATEMENT_SELECT } from '@/lib/supabase-selects'
+import { ROUND_SELECT, TTL_GUESS_PROGRESS_SELECT, TTL_STATEMENT_SELECT } from '@/lib/supabase-selects'
+import { ownTtlStatementIsFresh, visibleTtlGuesses } from '@/lib/two-truths'
+import { fetchMyTtlGuesses, fetchMyTtlStatement } from '@/lib/two-truths-client'
 import { clearPlayerSession } from '@/lib/utils'
-import type { Game, Round, TtlGuess, TtlStatement } from '@/types'
+import type { Game, Round, TtlGuess, TtlGuessProgress, TtlStatement } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
 import { useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
@@ -45,11 +47,22 @@ type Screen =
   | 'playing'
   | 'not_found'
 
+/**
+ * The player's Two Truths screen: submit three statements, then guess on everyone else's round.
+ *
+ * Two reads back this view, and they are not interchangeable. The bulk `ttl_statements` read is
+ * the ROSTER — who has submitted — and no longer carries `lie_index`, which is revoked from the
+ * anon role. The caller's own row, lie included, comes from the token-gated
+ * /api/two-truths/my-statement. `ownTtlStatementIsFresh` decides which to trust: a re-submit
+ * upserts the same row id and bumps only `updated_at`, so comparing ids alone would keep showing
+ * the previous lie.
+ */
 export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
   const { error: toastError, success } = useToast()
   const [statements, setStatements] = useState<TtlStatement[]>([])
   const [rounds, setRounds] = useState<Round[]>([])
-  const [guesses, setGuesses] = useState<TtlGuess[]>([])
+  const [guessProgress, setGuessProgress] = useState<TtlGuessProgress[]>([])
+  const [ownGuesses, setOwnGuesses] = useState<TtlGuess[]>([])
   const { displayName: roomDisplayName, joinExtras, resolving: resolvingRoomMember } = useRoomMemberJoin(gameCode)
 
   // Game-specific load: fetch this game's statements/rounds/guesses (the shared
@@ -58,11 +71,11 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
     const [stmtsRes, rdsRes, gssRes] = await Promise.all([
       supabase.from('ttl_statements').select(TTL_STATEMENT_SELECT).eq('game_id', gameCode),
       supabase.from('rounds').select(ROUND_SELECT).eq('game_id', gameCode).order('round_number'),
-      supabase.from('ttl_guesses').select(TTL_GUESS_SELECT).eq('game_id', gameCode),
+      supabase.from('ttl_guesses').select(TTL_GUESS_PROGRESS_SELECT).eq('game_id', gameCode),
     ])
     if (supabasePollOk(stmtsRes)) setStatements((stmtsRes.data ?? []) as TtlStatement[])
     if (supabasePollOk(rdsRes)) setRounds((rdsRes.data ?? []) as Round[])
-    if (supabasePollOk(gssRes)) setGuesses((gssRes.data ?? []) as TtlGuess[])
+    if (supabasePollOk(gssRes)) setGuessProgress((gssRes.data ?? []) as TtlGuessProgress[])
     return { state: null, ok: supabasePollOk(stmtsRes, rdsRes, gssRes) }
   }, [gameCode])
 
@@ -152,6 +165,7 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
     onJoin: (name) => join({ name }),
   })
 
+  /** Drop the local player session and return to the join screen after leaving the game. */
   const handlePlayerLeft = () => {
     clearPlayerSession(gameCode)
     setMyPlayerId(null)
@@ -160,11 +174,61 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
   }
 
   const cfg = gameTypeConfig('two_truths')
-  const myStatement = myPlayerId ? statements.find((s) => s.player_id === myPlayerId) : null
+  // The bulk read above is the roster ("who has submitted") and no longer carries `lie_index`
+  // — it's revoked from the anon role. The caller's own row, lie included, comes from the
+  // token-gated route; prefer it and fall back to the roster row until it lands.
+  const rosterStatement = myPlayerId ? (statements.find((s) => s.player_id === myPlayerId) ?? null) : null
+  const [ownStatement, setOwnStatement] = useState<TtlStatement | null>(null)
+  const rosterStatementId = rosterStatement?.id ?? null
+  const rosterStatementStamp = rosterStatement?.updated_at ?? null
+  useEffect(() => {
+    if (!myResumeToken || !rosterStatementId) return
+    let cancelled = false
+    void fetchMyTtlStatement(gameCode, myResumeToken).then((row) => {
+      if (!cancelled) setOwnStatement(row)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [gameCode, myResumeToken, rosterStatementId, rosterStatementStamp])
+  // Ignore a stale own-row: a different player, a lobby reset that cleared the submission, or
+  // a re-submit (which UPSERTs the SAME row id and only bumps updated_at) whose refetch has
+  // not landed yet. See ownTtlStatementIsFresh.
+  const myStatement = (ownTtlStatementIsFresh(ownStatement, rosterStatement) ? ownStatement : null) ?? rosterStatement
   const existingStatements = myStatement
     ? ([myStatement.statement_a, myStatement.statement_b, myStatement.statement_c] as [string, string, string])
     : null
   const [editingStatements, setEditingStatements] = useState(false)
+
+  // The bulk `ttl_guesses` read above is PROGRESS only — guessed_index/is_correct/points are
+  // revoked from anon, because a round ends only once every guesser has answered and those
+  // columns handed the lie to whoever had not. The caller's own rows come from the token-gated
+  // route; everyone else's arrive folded into the round metadata at reveal. Refetch keyed on
+  // the caller's own progress-row ids, so a new guess (or a lobby reset) pulls fresh rows.
+  const myGuessKey = useMemo(
+    () =>
+      guessProgress
+        .filter((g) => g.player_id === myPlayerId)
+        .map((g) => g.id)
+        .sort()
+        .join(','),
+    [guessProgress, myPlayerId]
+  )
+  useEffect(() => {
+    if (!myResumeToken || !myGuessKey) {
+      setOwnGuesses([])
+      return
+    }
+    let cancelled = false
+    void fetchMyTtlGuesses(gameCode, myResumeToken).then((rows) => {
+      if (!cancelled && rows) setOwnGuesses(rows)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [gameCode, myResumeToken, myGuessKey])
+  const visibleGuesses = useMemo(() => visibleTtlGuesses(rounds, ownGuesses), [rounds, ownGuesses])
+
   const prevMyStatement = useRef(myStatement)
   useEffect(() => {
     if (!prevMyStatement.current && myStatement) setEditingStatements(false)
@@ -360,7 +424,8 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
             game={game}
             players={players}
             rounds={rounds}
-            guesses={guesses}
+            guesses={visibleGuesses}
+            guessProgress={guessProgress}
             myPlayerId={myPlayerId}
             myResumeToken={myResumeToken}
             playerName={myPlayerName}

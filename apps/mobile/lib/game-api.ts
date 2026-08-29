@@ -5,6 +5,8 @@ import type {
   CodewordsBoard,
   CrazyEightsPlayerHand,
   GameType,
+  TtlGuess,
+  TtlStatement,
   UnoPlayerHand,
   WhotPlayerHand,
 } from '@fateround/shared'
@@ -1163,6 +1165,33 @@ export function postWhotHands(gameCode: string, auth: { resumeToken?: string | n
  */
 export function postUnoHands(gameCode: string, auth: { resumeToken?: string | null }) {
   return postJson<{ hands: UnoPlayerHand[] }>('/api/uno/hands', {
+    gameCode: gameCode.toUpperCase(),
+    resumeToken: auth.resumeToken ?? undefined,
+  })
+}
+
+/**
+ * The caller's OWN Two Truths submission, including `lie_index`.
+ *
+ * `ttl_statements.lie_index` is revoked from the anon role, so the bulk table read used for
+ * the roster comes back without it. Mirrors postWhotHands: POST so the resume token stays out
+ * of the query string.
+ */
+export function postTtlMyStatement(gameCode: string, auth: { resumeToken?: string | null }) {
+  return postJson<{ statement: TtlStatement | null }>('/api/two-truths/my-statement', {
+    gameCode: gameCode.toUpperCase(),
+    resumeToken: auth.resumeToken ?? undefined,
+  })
+}
+
+/**
+ * The caller's OWN Two Truths guesses. `guessed_index`, `is_correct` and `points` are revoked
+ * from the anon role — a round only ends once everyone has guessed, so those columns handed the
+ * lie to whoever had not answered yet — leaving the bulk read as progress only. Post-reveal
+ * results arrive folded into `rounds.ttl_metadata.guesses`.
+ */
+export function postTtlMyGuesses(gameCode: string, auth: { resumeToken?: string | null }) {
+  return postJson<{ guesses: TtlGuess[] }>('/api/two-truths/my-guesses', {
     gameCode: gameCode.toUpperCase(),
     resumeToken: auth.resumeToken ?? undefined,
   })

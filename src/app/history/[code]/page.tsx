@@ -59,7 +59,6 @@ import {
   SNAKE_LADDER_PLAYER_STATE_SELECT,
   SNAKE_LADDER_SESSION_SELECT,
   TRIVIA_ANSWER_SELECT,
-  TTL_GUESS_SELECT,
   TTL_STATEMENT_SELECT,
   UNO_SESSION_SELECT,
   VOTE_SELECT,
@@ -83,6 +82,7 @@ import { GenericSessionSummary } from '@/components/history/GenericSessionSummar
 import { LudoSessionSummary } from '@/components/ludo/LudoSessionSummary'
 import { SnakeLadderSessionSummary } from '@/components/snake-and-ladder/SnakeLadderSessionSummary'
 import { mergeCodewordsGuesses } from '@/lib/codewords'
+import { revealedTtlGuesses } from '@/lib/two-truths'
 import { hotSeatPlayerDisplayName } from '@/lib/hot-seat'
 import { isMltImportGame, mltVoteTargets } from '@/lib/mlt'
 import {
@@ -549,10 +549,13 @@ export default function GameHistoryPage() {
       }
 
       if (isTwoTruthsGame(gameType)) {
-        const [{ data: plrs }, { data: rds }, { data: guessRows }, { data: statementRows }] = await Promise.all([
+        // No `ttl_guesses` read here: guessed_index/is_correct/points are revoked from the anon
+        // role (they leaked the lie to players who had not guessed yet). Every guess from a
+        // revealed round is folded into `rounds.ttl_metadata.guesses` by the server, which is
+        // where a finished session's results now come from.
+        const [{ data: plrs }, { data: rds }, { data: statementRows }] = await Promise.all([
           supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at'),
           supabase.from('rounds').select(ROUND_SELECT).eq('game_id', gameCode).order('round_number'),
-          supabase.from('ttl_guesses').select(TTL_GUESS_SELECT).eq('game_id', gameCode),
           supabase.from('ttl_statements').select(TTL_STATEMENT_SELECT).eq('game_id', gameCode),
         ])
         setGame(gameData)
@@ -563,7 +566,7 @@ export default function GameHistoryPage() {
         setConfessions([])
         setHotSeatSubmissions([])
         resetSpecializedState()
-        setTtlGuesses((guessRows as TtlGuess[]) ?? [])
+        setTtlGuesses(revealedTtlGuesses((rds ?? []) as Round[]))
         setTtlStatements((statementRows as TtlStatement[]) ?? [])
         setLoadState('ready')
         return
