@@ -13,6 +13,8 @@ import type {
   Player,
   Round,
 } from '@/types'
+import { LANDMINE_MIN_PLAYERS, LANDMINE_MAX_PLAYERS, LANDMINE_DEFAULT_MAX_PLAYERS } from '@/lib/player-limits'
+export { LANDMINE_MIN_PLAYERS, LANDMINE_MAX_PLAYERS, LANDMINE_DEFAULT_MAX_PLAYERS }
 
 // Re-export the generic marking-ring helper so callers can import it from one place.
 export { buildReviewerAssignments } from '@/lib/npat'
@@ -57,10 +59,6 @@ export function setLandmineHostMode(gameCode: string, mode: LandmineHostMode) {
   if (typeof window === 'undefined') return
   localStorage.setItem(landmineHostModeKey(gameCode), mode)
 }
-
-export const LANDMINE_MIN_PLAYERS = 3
-export const LANDMINE_MAX_PLAYERS = 20
-export const LANDMINE_DEFAULT_MAX_PLAYERS = 20
 
 export const LANDMINE_DEFAULT_WRITING_TIMER = 45
 export const LANDMINE_DEFAULT_MARKING_TIMER = 45

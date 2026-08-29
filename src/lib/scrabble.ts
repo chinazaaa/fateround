@@ -14,9 +14,8 @@ import { isValidScrabbleWord } from '@/lib/scrabble-dictionaries'
 import { SCRABBLE_DEFAULT_DICTIONARY } from '@/lib/scrabble-dictionary-meta'
 import { tileSetForDictionary } from '@/lib/scrabble-rulesets'
 import type { Game, ScrabblePlacedTile, ScrabblePlayerState, ScrabbleSession } from '@/types'
-
-export const SCRABBLE_MIN_PLAYERS = 2
-export const SCRABBLE_MAX_PLAYERS = 4
+import { SCRABBLE_MAX_PLAYERS, SCRABBLE_MIN_PLAYERS } from '@/lib/player-limits'
+export { SCRABBLE_MAX_PLAYERS, SCRABBLE_MIN_PLAYERS }
 
 /** Allowed per-turn timer values in seconds (0 = no timer). */
 export const SCRABBLE_TIMER_OPTIONS = [0, 60, 120, 180, 300] as const
