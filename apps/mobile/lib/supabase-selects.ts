@@ -112,10 +112,17 @@ export function isCompleteUnoSessionRow(row: Record<string, unknown>): boolean {
   return UNO_SESSION_NOT_NULL_KEYS.every((key) => row[key] != null)
 }
 
-export const TTL_STATEMENT_SELECT =
-  'id,game_id,player_id,statement_a,statement_b,statement_c,lie_index,created_at,updated_at'
+// `lie_index` is deliberately absent: it is revoked from the anon role (a bulk read of this
+// table handed over every player's lie). This roster read only needs to know WHO submitted;
+// the caller's own row, with its lie, comes from POST /api/two-truths/my-statement.
+export const TTL_STATEMENT_SELECT = 'id,game_id,player_id,statement_a,statement_b,statement_c,created_at,updated_at'
 
-export const TTL_GUESS_SELECT = 'id,game_id,round_id,player_id,guessed_index,is_correct,points,guessed_at'
+// PROGRESS ONLY — `guessed_index`, `is_correct` and `points` are deliberately absent: they are
+// revoked from the anon role, because a round only ends once everyone has guessed, so those
+// columns handed the lie to every player who had not answered yet. What survives is who has
+// guessed (the lock-in UI + realtime). Post-reveal results come from `ttl_metadata.guesses`;
+// the caller's own in-flight guess comes from POST /api/two-truths/my-guesses.
+export const TTL_GUESS_PROGRESS_SELECT = 'id,game_id,round_id,player_id,guessed_at'
 
 /**
  * NOTE: no `current_word` and no `used_words`. Both are revoked from anon/authenticated by

@@ -682,7 +682,19 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
       return NextResponse.json({ error: `Need at least ${TTL_MIN_PLAYERS} players to start` }, { status: 400 })
     }
 
-    const { data: statementRows } = await supabase.from('ttl_statements').select('*').eq('game_id', code.toUpperCase())
+    // Service role, not the anon client: `lie_index` is revoked from anon (20260807120000), and
+    // `select('*')` expands to every column — so the anon read fails wholesale with 42501 and the
+    // game can never start. The lie is also genuinely needed here; buildTtlRoundRows returns
+    // `built.lies`, which seeds ttl_round_lies below. Do not narrow this to TTL_STATEMENT_SELECT:
+    // that constant deliberately omits lie_index, which would leave every round without an answer.
+    const { data: statementRows, error: statementError } = await getSupabaseAdmin()
+      .from('ttl_statements')
+      .select('*')
+      .eq('game_id', code.toUpperCase())
+    // Surface the failure instead of treating it as "nobody submitted" — swallowing this error is
+    // what turned a permission bug into a misleading "Need at least 3 players to submit" message.
+    if (statementError)
+      return NextResponse.json({ error: internalErrorMessage('games/code/start', statementError) }, { status: 500 })
 
     const statements = statementRows ?? []
     const ready = lobbyReadyForTwoTruths(playerIds, statements)
@@ -692,9 +704,9 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
 
     const submittedPlayerIds = statements.map((s) => s.player_id).filter((id) => playerIds.includes(id))
     const playerOrder = shufflePlayerOrder(submittedPlayerIds)
-    let roundRows: ReturnType<typeof buildTtlRoundRows>
+    let built: ReturnType<typeof buildTtlRoundRows>
     try {
-      roundRows = buildTtlRoundRows({
+      built = buildTtlRoundRows({
         gameId: code.toUpperCase(),
         statements,
         playerOrder,
@@ -706,10 +718,31 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
         { status: 400 }
       )
     }
+    const roundRows = built.rows
 
-    const { error: roundError } = await getSupabaseAdmin().from('rounds').insert(roundRows)
+    // The round rows carry only the shuffled statements — the lie is NOT in ttl_metadata,
+    // which is anon-readable. `.select()` gives us the generated ids so each round's lie can
+    // be stored in ttl_round_lies (service-role only) and matched back by round_number.
+    const { data: insertedRounds, error: roundError } = await getSupabaseAdmin()
+      .from('rounds')
+      .insert(roundRows)
+      .select('id, round_number')
     if (roundError)
       return NextResponse.json({ error: internalErrorMessage('games/code/start', roundError) }, { status: 500 })
+
+    const roundIdByNumber = new Map((insertedRounds ?? []).map((r) => [r.round_number as number, r.id as string]))
+    const lieRows = built.lies.map(({ round_number, lie_index }) => ({
+      round_id: roundIdByNumber.get(round_number),
+      lie_index,
+    }))
+    // Fail the start rather than leave a round with no answer key: without it /guess cannot
+    // score and the reveal has nothing to show.
+    if (lieRows.some((r) => !r.round_id)) {
+      return NextResponse.json({ error: 'Failed to create rounds' }, { status: 500 })
+    }
+    const { error: lieError } = await getSupabaseAdmin().from('ttl_round_lies').insert(lieRows)
+    if (lieError)
+      return NextResponse.json({ error: internalErrorMessage('games/code/start', lieError) }, { status: 500 })
 
     // Only players who submitted statements enter the game; everyone else (the "Waiting…"
     // players in the lobby) becomes a watch-only viewer so they don't count as guessers.

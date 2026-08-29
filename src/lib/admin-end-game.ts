@@ -3,7 +3,14 @@ import { internalErrorMessage } from '@/lib/api-errors'
 import { finishAnonymousRoomSession, finishSecretMessageBoard } from '@/lib/anonymous-messages'
 import { finishCodewordsGame } from '@/lib/codewords'
 import { markGameFinished } from '@/lib/game-finish'
-import { isAnonymousMessagesGame, isCodewordsGame, isSecretMessageGame, parseGameType } from '@/lib/game-types'
+import {
+  isAnonymousMessagesGame,
+  isCodewordsGame,
+  isSecretMessageGame,
+  isTwoTruthsGame,
+  parseGameType,
+} from '@/lib/game-types'
+import { revealFinishedTtlRounds } from '@/lib/two-truths-advance'
 
 export type AdminGameToEnd = {
   id: string
@@ -17,6 +24,16 @@ export function staleGameCutoffIso(olderThanHours: number): string {
   return cutoff.toISOString()
 }
 
+/**
+ * The admin kill-switch: force a waiting or active game to finished.
+ *
+ * Rounds are bulk-updated to 'finished' WITHOUT going through each game's normal end-of-round
+ * path, so anything that path would have written has to be done here too. For Two Truths that is
+ * the reveal: `revealFinishedTtlRounds` folds each round's hidden lie and its guesses back into
+ * `ttl_metadata`, and this refuses to finish the game if any of that could not be written —
+ * because the guard above rejects a game that is already finished, so a failed reveal would be
+ * unrecoverable rather than retryable.
+ */
 export async function adminEndGame(supabase: SupabaseClient, game: AdminGameToEnd): Promise<{ error: string | null }> {
   if (game.status !== 'active' && game.status !== 'waiting') {
     return { error: 'Only waiting or active games can be ended' }
@@ -34,6 +51,19 @@ export async function adminEndGame(supabase: SupabaseClient, game: AdminGameToEn
   if (roundError) return { error: internalErrorMessage('admin-end-game', roundError) }
 
   const gameType = parseGameType(game.game_type)
+  // The bulk round update above finishes rounds without going through the Two Truths reveal,
+  // so fold each finished round's lie back into its metadata — otherwise an admin-ended game
+  // renders its last round with no lie highlighted.
+  if (isTwoTruthsGame(gameType)) {
+    // Bail before the game is marked finished if any reveal could not be written. The rounds are
+    // already 'finished' at this point, but revealFinishedTtlRounds picks those up again, so a
+    // retry recovers — whereas finishing the game makes this function reject every retry and the
+    // round keeps no lie_index forever.
+    const revealed = await revealFinishedTtlRounds(supabase, gameId)
+    if (!revealed) {
+      return { error: 'Could not reveal every Two Truths round — game left endable; retry.' }
+    }
+  }
   if (isAnonymousMessagesGame(gameType)) {
     return finishAnonymousRoomSession(supabase, gameId)
   }

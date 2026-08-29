@@ -7,6 +7,17 @@ import { parseTtlMetadata, TTL_GUESS_POINTS } from '@/lib/two-truths'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { assertPlayer } from '@/lib/game-admin'
 
+/**
+ * Record one player's guess for the active Two Truths round, and score it server-side.
+ *
+ * The answer key lives in `ttl_round_lies` (service-role only), never in anon-readable data, and
+ * this FAILS CLOSED: a missing key is a 500, not a guess scored as correct. `guessed_index`,
+ * `is_correct` and `points` are revoked from anon, so the row written here is only ever read back
+ * through the reveal or the caller's own token-gated route.
+ *
+ * A round that ended between the status check and the insert is rejected by a database trigger,
+ * surfaced here as 409 rather than 500 — the guess did not fail, it arrived too late.
+ */
 export async function POST(req: NextRequest) {
   const { data: body, error: bodyError } = await parseJsonBody(req, ttlGuessSchema)
   if (bodyError) return bodyError
@@ -55,7 +66,20 @@ export async function POST(req: NextRequest) {
     .maybeSingle()
   if (existing) return NextResponse.json({ error: 'Already guessed this round' }, { status: 400 })
 
-  const isCorrect = guessedIndex === metadata.lie_index
+  // The answer lives in ttl_round_lies (service-role only), NOT in round.ttl_metadata —
+  // metadata is anon-readable, so a lie stored there would be visible to every player before
+  // they guessed. Fail closed if the row is missing: never score a guess correct by default.
+  const { data: lieRow, error: lieError } = await supabase
+    .from('ttl_round_lies')
+    .select('lie_index')
+    .eq('round_id', round.id)
+    .maybeSingle()
+  if (lieError) return NextResponse.json({ error: internalErrorMessage('two-truths/guess', lieError) }, { status: 500 })
+  if (!lieRow || typeof lieRow.lie_index !== 'number') {
+    return NextResponse.json({ error: 'Round is missing its answer key' }, { status: 500 })
+  }
+
+  const isCorrect = guessedIndex === lieRow.lie_index
   const points = isCorrect ? TTL_GUESS_POINTS : 0
 
   const { error } = await supabase.from('ttl_guesses').insert({

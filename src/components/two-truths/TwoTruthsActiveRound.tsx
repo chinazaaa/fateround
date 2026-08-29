@@ -18,16 +18,26 @@ import { useTwoTruthsAdvance } from '@/hooks/useTwoTruthsAdvance'
 import { isAdvanceDriver } from '@/lib/advance-driver'
 import { playVoteSubmittedSound } from '@/lib/sounds'
 import { useToast } from '@/components/ui/Toast'
-import type { Game, Player, Round, TtlGuess } from '@/types'
+import type { Game, Player, Round, TtlGuess, TtlGuessProgress } from '@/types'
 
 type PlayScreen = 'waiting' | 'featured' | 'active' | 'locked' | 'revealed' | 'finished'
 
+/**
+ * One round in play: the three statements, the guess controls, and the reveal.
+ *
+ * `showLie` is gated on the round being revealed or finished, which is the same moment the server
+ * folds the lie into `ttl_metadata` — so this never has an answer it should not be showing, and
+ * never renders a revealed round with nothing to show. Other players' results arrive the same
+ * way: `ttl_guesses.guessed_index`/`is_correct`/`points` are revoked from anon, so mid-round this
+ * view can only see WHO has guessed, not what.
+ */
 export function TwoTruthsActiveRound({
   gameCode,
   game,
   players,
   rounds,
   guesses,
+  guessProgress,
   myPlayerId,
   myResumeToken,
   playerName,
@@ -39,7 +49,13 @@ export function TwoTruthsActiveRound({
   game: Game
   players: Player[]
   rounds: Round[]
+  /**
+   * Only the guesses this client may see: revealed rounds' folded results plus the caller's
+   * own rows. Other players' in-flight guesses are not readable — that is the point.
+   */
   guesses: TtlGuess[]
+  /** Anon-readable progress rows: WHO has guessed, never what. Drives the lock-in state. */
+  guessProgress: TtlGuessProgress[]
   myPlayerId: string
   myResumeToken: string | null
   playerName: string
@@ -65,6 +81,13 @@ export function TwoTruthsActiveRound({
     () =>
       currentRound ? (guesses.find((g) => g.player_id === myPlayerId && g.round_id === currentRound.id) ?? null) : null,
     [guesses, currentRound, myPlayerId]
+  )
+  // Lock in on the PROGRESS row, which is readable the instant the guess lands — never on
+  // `myGuess`, which arrives a round-trip later from the token-gated route (and not at all if
+  // that call fails). "I can't read my own pick yet" must not reopen the choices.
+  const hasGuessed = useMemo(
+    () => !!currentRound && guessProgress.some((g) => g.player_id === myPlayerId && g.round_id === currentRound.id),
+    [guessProgress, currentRound, myPlayerId]
   )
   const leaderboard = useMemo(() => tallyTtlScores(guesses, players, rounds), [guesses, players, rounds])
 
@@ -115,9 +138,9 @@ export function TwoTruthsActiveRound({
       return 'waiting'
     }
     if (isFeatured) return 'featured'
-    if (myGuess || timeExpired) return 'locked'
+    if (hasGuessed || timeExpired) return 'locked'
     return 'active'
-  }, [game.status, currentRound, isFeatured, myGuess, timeExpired])
+  }, [game.status, currentRound, isFeatured, hasGuessed, timeExpired])
 
   useEffect(() => {
     setTimeExpired(false)
@@ -142,6 +165,13 @@ export function TwoTruthsActiveRound({
     onExpire: () => setTimeExpired(true),
   })
 
+  /**
+   * Submit a guess for the current round.
+   *
+   * Scoring happens server-side against `ttl_round_lies`; the client is never told the lie until
+   * the round is revealed, so there is nothing to check here. A guess that arrives after the
+   * round ended comes back 409 rather than 500 — it did not fail, it was late.
+   */
   const submitGuess = async (index: number) => {
     if (!currentRound || readOnly || submitting) return
     if (!myResumeToken) {
@@ -293,7 +323,7 @@ export function TwoTruthsActiveRound({
 
       {screen === 'locked' && (
         <div className="glass-card p-4 text-center text-sm text-muted">
-          {myGuess
+          {hasGuessed
             ? 'Guess locked in — results when everyone finishes or time runs out'
             : "Time's up — waiting for results…"}
         </div>
