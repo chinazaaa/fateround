@@ -366,9 +366,19 @@ export function hasPlayableCard(
   return hand.some((c) => canPlayCard(c, session, rules))
 }
 
+/**
+ * True only when BOTH piles are known to be empty.
+ *
+ * Prefers the generated counts, because `draw_pile`/`discard_pile` are revoked from anon
+ * (20261120120000) and simply absent from a client read. The old `?? []` turned that absence into
+ * `.length === 0` and reported the pile as depleted — which flips a live game into its reshuffle
+ * and pass-turn paths. "I cannot see the pile" is not "the pile is empty", so when neither the
+ * count nor the array is readable this returns FALSE.
+ */
 export function isDrawPileDepleted(session: WhotSession): boolean {
-  const drawLen = ((session.draw_pile as WhotCard[]) ?? []).length
-  const discardLen = ((session.discard_pile as WhotCard[]) ?? []).length
+  const drawLen = session.draw_count ?? (Array.isArray(session.draw_pile) ? session.draw_pile.length : null)
+  const discardLen = session.discard_count ?? (Array.isArray(session.discard_pile) ? session.discard_pile.length : null)
+  if (drawLen == null || discardLen == null) return false
   return drawLen === 0 && discardLen === 0
 }
 
