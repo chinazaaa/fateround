@@ -4,6 +4,12 @@ import { internalErrorMessage, internalFailure } from '@/lib/api-errors'
 import { markGameFinished } from '@/lib/game-finish'
 import type { DescribeItGuess, DescribeItMode, DescribeItSession, DescribeItWord, Game } from '@/types'
 import { DESCRIBE_IT_WORD_POOL, parseStoredDescribeItWords, pickDescribeWord } from '@/lib/describe-it-words'
+import {
+  DESCRIBE_IT_DEFAULT_MAX_PLAYERS,
+  DESCRIBE_IT_MAX_PLAYERS,
+  DESCRIBE_IT_MIN_PLAYERS_INDIVIDUAL,
+} from '@/lib/player-limits'
+export { DESCRIBE_IT_DEFAULT_MAX_PLAYERS, DESCRIBE_IT_MAX_PLAYERS, DESCRIBE_IT_MIN_PLAYERS_INDIVIDUAL }
 
 /**
  * A session as the SERVICE ROLE sees it — i.e. with the secret `current_word`.
@@ -20,9 +26,6 @@ export type DescribeItServerSession = DescribeItSession & {
 
 export const DESCRIBE_IT_MIN_PLAYERS = 4
 /** Individual mode only needs a describer + one guesser, so it can start with fewer. */
-export const DESCRIBE_IT_MIN_PLAYERS_INDIVIDUAL = 2
-export const DESCRIBE_IT_MAX_PLAYERS = 20
-export const DESCRIBE_IT_DEFAULT_MAX_PLAYERS = 12
 
 // ── Individual (skribbl-style) mode scoring ──
 /** Flat points a correct guesser always earns, before the speed bonus. */

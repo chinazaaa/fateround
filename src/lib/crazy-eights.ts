@@ -11,10 +11,8 @@ import type {
   CrazyEightsSuit,
   Game,
 } from '@/types'
-
-export const CRAZY8_MIN_PLAYERS = 2
-export const CRAZY8_MAX_PLAYERS = 6
-export const CRAZY8_DEFAULT_MAX_PLAYERS = 6
+import { CRAZY8_DEFAULT_MAX_PLAYERS, CRAZY8_MAX_PLAYERS, CRAZY8_MIN_PLAYERS } from '@/lib/player-limits'
+export { CRAZY8_DEFAULT_MAX_PLAYERS, CRAZY8_MAX_PLAYERS, CRAZY8_MIN_PLAYERS }
 
 /** Whole-game session length (seconds). 0 = no limit. */
 export const CRAZY8_GAME_DURATION_OPTIONS = [0, 600, 900, 1800, 2700, 3600, 5400] as const

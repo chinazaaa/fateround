@@ -1,13 +1,12 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { clearSessionTables } from './session-clear'
+import { BINGO_DEFAULT_MAX_PLAYERS, BINGO_MAX_PLAYERS, BINGO_MIN_PLAYERS } from '@/lib/player-limits'
+export { BINGO_DEFAULT_MAX_PLAYERS, BINGO_MAX_PLAYERS, BINGO_MIN_PLAYERS }
 
 export const BINGO_COLUMNS = ['B', 'I', 'N', 'G', 'O'] as const
 export type BingoColumn = (typeof BINGO_COLUMNS)[number]
 export type BingoWinPattern = 'line' | 'full_house'
 
-export const BINGO_MIN_PLAYERS = 2
-export const BINGO_MAX_PLAYERS = 30
-export const BINGO_DEFAULT_MAX_PLAYERS = 20
 export const BINGO_FREE_INDEX = 12
 
 export type BingoCallMode = 'manual' | 'auto'

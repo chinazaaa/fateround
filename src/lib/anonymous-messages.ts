@@ -2,6 +2,12 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { clearSessionTables } from './session-clear'
 import type { Game, Player } from '@/types'
+import {
+  ANONYMOUS_ROOM_DEFAULT_MAX_PLAYERS,
+  ANONYMOUS_ROOM_MAX_PLAYERS,
+  ANONYMOUS_ROOM_MIN_PLAYERS,
+} from '@/lib/player-limits'
+export { ANONYMOUS_ROOM_DEFAULT_MAX_PLAYERS, ANONYMOUS_ROOM_MAX_PLAYERS, ANONYMOUS_ROOM_MIN_PLAYERS }
 
 /** Keep at most this many messages per anonymous room before batch trimming kicks in. */
 export const ANONYMOUS_ROOM_MAX_MESSAGES = 1000
@@ -16,9 +22,6 @@ export const ANONYMOUS_ROOM_TRIM_INTERVAL_MS = 5 * 60 * 1000
 export const ANONYMOUS_ROOM_SESSION_SECONDS = 15 * 60
 
 /** Lobby size limits for anonymous rooms. */
-export const ANONYMOUS_ROOM_MIN_PLAYERS = 2
-export const ANONYMOUS_ROOM_MAX_PLAYERS = 20
-export const ANONYMOUS_ROOM_DEFAULT_MAX_PLAYERS = 20
 
 export function clampAnonymousRoomMaxPlayers(value: number): number {
   return Math.min(ANONYMOUS_ROOM_MAX_PLAYERS, Math.max(ANONYMOUS_ROOM_MIN_PLAYERS, value))
