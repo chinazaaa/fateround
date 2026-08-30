@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import {
   type Game,
@@ -61,12 +61,14 @@ import {
   postUnoPass,
   postUnoPlay,
   postUnoPlayMulti,
+  postUnoHands,
   postUnoSwap,
   postUnoTeamLeaveDecision,
 } from '@/lib/game-api'
+import { getPlayerSession } from '@/lib/secure-session'
 import { playSound } from '@/lib/sounds'
 import { getSupabase } from '@/lib/supabase'
-import { UNO_PLAYER_HANDS_SELECT, UNO_SESSION_SELECT, isCompleteUnoSessionRow } from '@/lib/supabase-selects'
+import { UNO_SESSION_SELECT, isCompleteUnoSessionRow } from '@/lib/supabase-selects'
 import { usePlayerSessionActions } from '@/lib/player-session'
 import { cardHandLeaderboard } from '@/lib/finish-leaderboards'
 import { useUnoQuickChat } from '@/hooks/useUnoQuickChat'
@@ -104,6 +106,9 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
   const [session, setSession] = useState<UnoSession | null>(null)
   const [hands, setHands] = useState<UnoPlayerHand[]>([])
   const [acting, setActing] = useState(false)
+  // Authoritative resume token, mirrored to a ref so the hand fetch (defined before the bootstrap
+  // resolves the token) can fall back to it. See the fetch + effect below.
+  const myResumeTokenRef = useRef<string | null>(null)
   // Live mirror for the realtime apply fast-path — a subscription callback
   // can't read `session` directly (stale closure).
   const sessionRef = useRef<UnoSession | null>(null)
@@ -112,18 +117,24 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
   const loadGameState = useCallback(
     async (_game: Game, _players: Player[]): Promise<{ state: UnoSession | null; ok: boolean }> => {
       const code = gameCode.toUpperCase()
+      // Hands via /api/uno/hands so other players' cards never reach this device; own cards come
+      // back in full, everyone else's as `card_count`. In Team-Up mode the caller's teammate's
+      // hand also comes back in full (resolved server-side). See src/lib/hand-redaction.ts.
+      const session = await getPlayerSession(code)
       const [sessionRes, handsRes] = await Promise.all([
         getSupabase().from('uno_sessions').select(UNO_SESSION_SELECT).eq('game_id', code).maybeSingle(),
-        getSupabase()
-          .from('uno_player_hands')
-          .select(UNO_PLAYER_HANDS_SELECT)
-          .eq('game_id', code)
-          .order('player_order'),
+        // Fall back to the bootstrap-resolved token: this runs BEFORE the player is resolved on
+        // the first load, so for a share-link player the stored session isn't written yet, and a
+        // tokenless request makes the redaction route blank our OWN hand — which reads as "you
+        // are out". The effect below re-fetches once the token lands.
+        postUnoHands(code, { resumeToken: session?.resumeToken ?? myResumeTokenRef.current ?? undefined }).catch(
+          () => null
+        ),
       ])
-      if (sessionRes.error || handsRes.error) return { state: null, ok: false }
+      if (sessionRes.error || !handsRes) return { state: null, ok: false }
       const sessionData = sessionRes.data as UnoSession | null
       setSession(sessionData)
-      setHands((handsRes.data as UnoPlayerHand[]) ?? [])
+      setHands(handsRes.hands ?? [])
       return { state: sessionData, ok: true }
     },
     [gameCode]
@@ -153,6 +164,23 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
     computeScreen,
   })
   const { onLeft, lobbyProps } = usePlayerSessionActions(bootstrap)
+  myResumeTokenRef.current = bootstrap.myResumeToken
+
+  // The first hand fetch can run before the resume token is resolved, which the redaction route
+  // answers with our own hand blanked. Re-fetch with the authoritative token once it lands.
+  useEffect(() => {
+    const token = bootstrap.myResumeToken
+    if (!token || bootstrap.game?.status !== 'active') return
+    let cancelled = false
+    void postUnoHands(gameCode.toUpperCase(), { resumeToken: token })
+      .then((res) => {
+        if (!cancelled && res) setHands(res.hands ?? [])
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [bootstrap.myResumeToken, bootstrap.game?.status, gameCode])
 
   // Delta fast-path — mirrors web UnoPlayerView. Session + hand row changes
   // patch local state without a full reload; games row changes still reload so
@@ -169,17 +197,57 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
     sessionRef.current = merged
     return prev != null
   }, [])
-  const applyHandRow = useCallback((row: Record<string, unknown>): boolean => {
-    const next = row as unknown as UnoPlayerHand
-    setHands((prev) => {
-      const i = prev.findIndex((h) => h.id === next.id)
-      if (i === -1) return [...prev, next].sort((a, b) => a.player_order - b.player_order)
-      const copy = [...prev]
-      copy[i] = next
-      return copy
-    })
-    return true
-  }, [])
+  const applyHandRow = useCallback(
+    (row: Record<string, unknown>): boolean => {
+      const next = row as unknown as UnoPlayerHand
+      const myPlayerId = bootstrap.myPlayerId
+      // Once `cards` is revoked from anon, realtime payloads carry no cards at all. Applying one
+      // verbatim to OUR OWN row would blank the hand — and because the out-check is derived from
+      // an empty hand, it would read as "you are out" mid-game. In Team-Up the same is true of the
+      // teammate's row: we're authorized to see their cards, but a redacted payload would blank
+      // the partner panel until the next full load. For either, re-fetch through the authorized
+      // route instead of applying the payload. Mirrors the web view.
+      // `bootstrap.game?.uno_team_mode`, not `rules.teamMode`: `rules` is declared further down
+      // the component, so referencing it here would be a use-before-declaration. Same source the
+      // web view reads.
+      const teammateId =
+        bootstrap.game?.uno_team_mode === true && myPlayerId
+          ? unoTeammateId(sessionRef.current?.turn_order ?? [], myPlayerId)
+          : null
+      const isSelfOrTeammate = next.player_id === myPlayerId || next.player_id === teammateId
+      if (isSelfOrTeammate && myPlayerId && !Array.isArray(next.cards)) {
+        void postUnoHands(gameCode.toUpperCase(), {
+          resumeToken: myResumeTokenRef.current ?? undefined,
+        })
+          .then((res) => {
+            if (res) setHands(res.hands ?? [])
+          })
+          .catch(() => {})
+        return true
+      }
+      // Can the new count be derived from this payload? A redacted opponent row carries neither
+      // `cards` nor `card_count` (the latter is computed by the route, not a column).
+      const countable = Array.isArray(next.cards) || typeof next.card_count === 'number'
+      setHands((prev) => {
+        const i = prev.findIndex((h) => h.id === next.id)
+        const merged: UnoPlayerHand = {
+          ...next,
+          // Carry a known count forward when the payload omits it, so an opponent never
+          // momentarily renders as holding zero cards while the reload is in flight.
+          card_count: next.card_count ?? (Array.isArray(next.cards) ? next.cards.length : prev[i]?.card_count),
+        }
+        if (i === -1) return [...prev, merged].sort((a, b) => a.player_order - b.player_order)
+        const copy = [...prev]
+        copy[i] = merged
+        return copy
+      })
+      // Returning true for an uncountable row would skip useGameTableSync's reconciling reload —
+      // the only path that can learn the new count — freezing every opponent's count for the rest
+      // of the game, so "UNO!" would never show.
+      return countable
+    },
+    [gameCode, bootstrap.myPlayerId, bootstrap.game?.uno_team_mode]
+  )
 
   useGameTableSync(
     gameCode,
@@ -200,7 +268,14 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
 
   const me = bootstrap.myPlayerId ? (bootstrap.players.find((p) => p.id === bootstrap.myPlayerId) ?? null) : null
   const isViewer = !!(me && bootstrap.game && playerIsViewer(me, bootstrap.game))
-  const emptiedHand = !!myHand && myHand.cards.length === 0 && bootstrap.game?.status === 'active'
+  // `cards: null` means REDACTED (the route couldn't resolve us), NOT "no cards left" — only an
+  // actual empty array means the hand is genuinely empty. Without the Array.isArray check a token
+  // race silently flips a still-playing player into watching mode for the rest of the game.
+  // The guard belongs on `emptiedHand`, not on `isOut`: dev split the two so that elimination
+  // (`knockedOut`) is tracked separately, and `emptiedHand` is what drives both the finish
+  // position and the "you went out" copy.
+  const emptiedHand =
+    !!myHand && Array.isArray(myHand.cards) && myHand.cards.length === 0 && bootstrap.game?.status === 'active'
   const knockedOut =
     !!bootstrap.myPlayerId &&
     (session?.eliminated_player_ids ?? []).includes(bootstrap.myPlayerId) &&
@@ -271,7 +346,7 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
 
   const playableIds = useMemo(() => {
     if (!session || !myHand) return new Set<string>()
-    return new Set(myHand.cards.filter((c) => canPlayCard(c, session)).map((c) => c.id))
+    return new Set((myHand.cards ?? []).filter((c) => canPlayCard(c, session)).map((c) => c.id))
   }, [session, myHand])
 
   const timerSeconds = useTurnDeadlineSeconds(
@@ -306,7 +381,7 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
 
   const handCounts = useMemo(() => {
     const counts: Record<string, number> = {}
-    for (const hand of hands) counts[hand.player_id] = hand.cards.length
+    for (const hand of hands) counts[hand.player_id] = hand.card_count ?? hand.cards?.length ?? 0
     return counts
   }, [hands])
 
@@ -503,7 +578,7 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
   const tableHint = [demandLabel, penaltyLabel].filter(Boolean).join(' · ')
 
   const drawDepleted = isDrawPileDepleted(session)
-  const canPlayNow = !!myHand && hasPlayableCard(myHand.cards, session)
+  const canPlayNow = !!myHand && hasPlayableCard(myHand.cards ?? [], session)
   const canDraw = isMyTurn && session.phase === 'playing' && !session.drawn_card_id && !(drawDepleted && canPlayNow)
   const canPass = isMyTurn && session.phase === 'playing' && !!session.drawn_card_id
   const drawLabel = drawDepleted ? 'Pass turn' : 'Draw a card'
@@ -513,7 +588,7 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
   // settled (no pending Draw penalty) and it isn't already your turn.
   const canJumpIn =
     rules.jumpIn && !isWatching && !isMyTurn && session.phase === 'playing' && (session.draw_penalty ?? 0) === 0
-  const jumpableCards = canJumpIn && myHand ? myHand.cards.filter((c) => isJumpInMatch(c, top)) : []
+  const jumpableCards = canJumpIn && myHand ? (myHand.cards ?? []).filter((c) => isJumpInMatch(c, top)) : []
   const canJumpNow = jumpableCards.length > 0
 
   // ── Multi-Play selection ──────────────────────────────────────────────────────
@@ -525,26 +600,30 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
     !hasDrawn &&
     (session.draw_penalty ?? 0) === 0 &&
     rules.multiPlay !== 'off' &&
-    (myHand?.cards.length ?? 0) >= 2
+    (myHand?.cards?.length ?? 0) >= 2
   const handById = new Map((myHand?.cards ?? []).map((c) => [c.id, c]))
   const selectedCards = selectedIds.map((id) => handById.get(id)).filter((c): c is UnoCard => !!c)
   const multiValid =
     multiMode && selectedCards.length >= 2 && validateMultiSet(selectedCards, session, rules.multiPlay) === null
+  /** Whether a card may join the current multi-play selection (same rank as the first pick). */
   const canAddToSet = (card: UnoCard): boolean => {
     if (card.color === 'wild') return false
     if (selectedCards.length === 0) return canPlayCard(card, session)
     return multiSetGroupingOk([...selectedCards, card], rules.multiPlay)
   }
+  /** Add or remove a card from the multi-play selection. */
   const toggleSelect = (card: UnoCard) => {
     setSelectedIds((prev) =>
       prev.includes(card.id) ? prev.filter((id) => id !== card.id) : canAddToSet(card) ? [...prev, card.id] : prev
     )
   }
+  /** Begin a multi-card play, seeding the selection with the tapped card. */
   const enterMultiMode = () => {
     setMultiMode(true)
     setSelectedIds([])
   }
 
+  /** Seats rotated so the local player is first — the order the table is drawn in. */
   const orderedPlayers = (() => {
     const byId = new Map(bootstrap.players.map((p) => [p.id, p]))
     const seated = (session.turn_order ?? []).map((id) => byId.get(id)).filter((p): p is Player => !!p)
@@ -553,7 +632,7 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
     return [...seated, ...rest]
   })()
 
-  const drawReshuffles = drawDepleted && session.discard_pile.length > 0
+  const drawReshuffles = drawDepleted && (session.discard_count ?? 0) > 0
 
   const swapTargets = orderedPlayers.filter(
     (p) => p.id !== bootstrap.myPlayerId && (handCounts[p.id] ?? 0) > 0 && (session.turn_order ?? []).includes(p.id)
@@ -601,7 +680,7 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
         />
 
         <CardTableArea
-          pileCount={session.draw_pile.length}
+          pileCount={session.draw_count ?? 0}
           hint={tableHint || null}
           drawAccent={demandColor ? UNO_COLOR_HEX[demandColor] : '#334155'}
           topCard={
@@ -757,8 +836,8 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
         ) : (
           <>
             <CardHand
-              count={myHand?.cards.length ?? 0}
-              many={(myHand?.cards.length ?? 0) >= 8}
+              count={myHand?.cards?.length ?? 0}
+              many={(myHand?.cards?.length ?? 0) >= 8}
               hint={
                 multiMode && multiEnabled ? (
                   <Text style={styles.reshuffleNote}>

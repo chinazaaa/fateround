@@ -4,7 +4,7 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { fetchCodewordsBoard } from '@/lib/codewords-board-client'
-import { fetchWhotHands, fetchCrazyEightsHands } from '@/lib/hands-client'
+import { fetchCrazyEightsHands, fetchUnoHands, fetchWhotHands } from '@/lib/hands-client'
 import { roundGenderLabel } from '@/lib/participants'
 import { isGenderFreeVoting } from '@/lib/gender-based'
 import {
@@ -60,7 +60,6 @@ import {
   SNAKE_LADDER_SESSION_SELECT,
   TRIVIA_ANSWER_SELECT,
   TTL_STATEMENT_SELECT,
-  UNO_PLAYER_HANDS_SELECT,
   UNO_SESSION_SELECT,
   VOTE_SELECT,
   WHOT_SESSION_SELECT,
@@ -447,14 +446,15 @@ export default function GameHistoryPage() {
       }
 
       if (isUnoGame(gameType)) {
-        const [{ data: plrs }, { data: sessionData }, { data: handRows }] = await Promise.all([
+        // Hands via /api/uno/hands: `cards` is no longer read directly by the browser. The route
+        // reveals full hands only once the game is FINISHED, so the post-game summary is
+        // unchanged. This page also renders unfinished games (see the "Open game" link above),
+        // and for those every hand comes back redacted — UnoSessionSummary therefore refuses to
+        // render standings unless the game is finished, rather than showing everyone at 0 cards.
+        const [{ data: plrs }, { data: sessionData }, handRows] = await Promise.all([
           supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at'),
           supabase.from('uno_sessions').select(UNO_SESSION_SELECT).eq('game_id', gameCode).maybeSingle(),
-          supabase
-            .from('uno_player_hands')
-            .select(UNO_PLAYER_HANDS_SELECT)
-            .eq('game_id', gameCode)
-            .order('player_order'),
+          fetchUnoHands(gameCode, {}),
         ])
         setGame(gameData)
         setPlayers(plrs ?? [])

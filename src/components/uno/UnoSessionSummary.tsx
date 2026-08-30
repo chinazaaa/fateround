@@ -31,7 +31,12 @@ export function UnoSessionSummary({
   const winner = players.find((p) => p.id === session?.winner_player_id)
   const neverStarted = game.status === 'waiting' || !session
 
-  if (neverStarted) {
+  // Standings are only meaningful — and only readable — once the game is finished. /api/uno/hands
+  // reveals cards to a spectator ONLY for a finished game, so for a game still in progress every
+  // `cards` comes back null and buildUnoStandings would rank everyone at 0 cards / 0 points in
+  // player-id order. A redacted hand must never be rendered as a real result, so show the game's
+  // state instead (the page header already offers "Open game").
+  if (neverStarted || game.status !== 'finished') {
     return (
       <div className="space-y-5">
         <div className="glass-card p-4 grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
@@ -48,7 +53,11 @@ export function UnoSessionSummary({
             <p className="font-medium mt-0.5">{players.length}</p>
           </div>
         </div>
-        <div className="glass-card p-8 text-center text-muted">This UNO session never started.</div>
+        <div className="glass-card p-8 text-center text-muted">
+          {neverStarted
+            ? 'This UNO session never started.'
+            : 'This UNO game is still in progress — final standings appear here once it finishes.'}
+        </div>
       </div>
     )
   }

@@ -913,8 +913,18 @@ export interface UnoSession {
   /** 1 = forward through turn_order, -1 = reversed (Reverse flips it). */
   direction: number
   phase: UnoPhase
-  draw_pile: UnoCard[]
-  discard_pile: UnoCard[]
+  /**
+   * REDACTED from clients: anon/authenticated hold no SELECT on this column, because the ordered
+   * deck plus your own hand reveals every opponent's hand (2 players) or every future draw (N).
+   * Only service-role reads (src/lib/uno.ts) see it — hence optional. Clients use `draw_count`.
+   */
+  draw_pile?: UnoCard[]
+  /** REDACTED from clients alongside `draw_pile` — see above. Clients use `discard_count`. */
+  discard_pile?: UnoCard[]
+  /** Public size of `draw_pile`. Generated stored column; counts leak no order or identity. */
+  draw_count?: number
+  /** Public size of `discard_pile`. Generated stored column. */
+  discard_count?: number
   top_card: UnoCard | null
   /** Colour demanded by a played Wild / Wild Draw Four. */
   required_color: UnoColor | null
@@ -967,7 +977,15 @@ export interface UnoPlayerHand {
   id: string
   game_id: string
   player_id: string
-  cards: UnoCard[]
+  /**
+   * `null` means REDACTED (another player's hand) — deliberately not `[]`, since an empty
+   * array is meaningful state ("this player is out"). Use `card_count` for anyone but the
+   * local player (Team-Up: your teammate's cards also come back in full). See
+   * src/lib/hand-redaction.ts.
+   */
+  cards: UnoCard[] | null
+  /** How many cards the player holds. Public information; survives redaction. */
+  card_count?: number
   player_order: number
 }
 
