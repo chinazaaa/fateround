@@ -61,10 +61,18 @@ for (const g of GAMES) {
           fail.push(`${g.type}: tokenless fetch returned no rows — the redaction assertions below would be vacuous`)
         } else {
           // The contract: `cards` NULL (redacted, not empty) and `card_count` a NUMBER on EVERY row.
+          // `cards` must be EXACTLY null. Array-shaped checks alone would accept an omitted key
+          // or a non-array value whenever card_count happens to be numeric, which is how a
+          // redaction regression could slip past this test.
+          const notNull = rows.filter((h) => h.cards !== null)
           const leaked = rows.filter((h) => Array.isArray(h.cards) && h.cards.length > 0)
           const emptied = rows.filter((h) => Array.isArray(h.cards) && h.cards.length === 0)
           const noCount = rows.filter((h) => typeof h.card_count !== 'number')
           const zeroed = rows.filter((h) => h.card_count === 0)
+          if (notNull.length)
+            fail.push(
+              `${g.type}: ${notNull.length} row(s) had cards !== null (got ${JSON.stringify(notNull[0].cards)?.slice(0, 40)}) — redacted must be exactly null`
+            )
           if (leaked.length) fail.push(`${g.type}: LEAK — tokenless fetch returned real cards for ${leaked.length} row(s)`)
           if (emptied.length) fail.push(`${g.type}: tokenless fetch returned cards:[] — reads as "you are out"`)
           if (noCount.length) fail.push(`${g.type}: ${noCount.length} row(s) lost card_count — the count must survive redaction`)

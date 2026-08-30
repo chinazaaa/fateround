@@ -151,6 +151,10 @@ jobs:
     env:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      # Opt-in acknowledgement that a compatible mobile build has shipped. A repository VARIABLE,
+      # deliberately not a secret: it is an operational flag, not a credential, and it should be
+      # visible to anyone auditing why a revoke was allowed through.
+      MOBILE_ROLLOUT_ACK: ${{ vars.MOBILE_ROLLOUT_ACK }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -189,6 +193,41 @@ jobs:
           # skipping every migration behind it. Unique versions are enforced by
           # the migrations-check job, so a non-zero exit here is a genuine problem
           # a human must look at, not something to paper over.
+          # ── Production revoke guard ───────────────────────────────────────────
+          # This job applies migrations to PRODUCTION on a push to main, and it needs only
+          # [build, migrations-check]. The Mobile Rollout Gate is a SEPARATE workflow running on
+          # pull_request -> main, so it constrains this only if branch protection requires it as a
+          # status check — and `main` currently has no protection at all. Without this guard a
+          # column revoke reaches production while installed builds still select that column,
+          # and PostgREST then fails the WHOLE request with 42501. OTA cannot rescue an installed
+          # binary: app.json has no `updates` block.
+          #
+          # The check is on CONTENT, not on the filename. Names lie — 20261003120000 is called
+          # `sec_uno_hide_piles` but is now the ADDITIVE half of a split and is perfectly safe to
+          # apply, while a future revoke might be named anything at all.
+          if [ "${GITHUB_REF_NAME:-}" = "main" ] && [ "${MOBILE_ROLLOUT_ACK:-}" != "1" ]; then
+            blocked=""
+            for version in $(supabase migration list --linked 2>/dev/null | awk '$3 == "" {print $1}' | grep -E '^[0-9]{14}$'); do
+              for file in supabase/migrations/"$version"_*.sql; do
+                [ -f "$file" ] || continue
+                # strip comments, then look for an executable revoke
+                if sed 's/--.*//' "$file" | grep -qiE '\brevoke\b'; then
+                  blocked="$blocked  $file\n"
+                fi
+              done
+            done
+            if [ -n "$blocked" ]; then
+              echo "::error::Refusing to apply REVOKE migrations to PRODUCTION:"
+              printf "%b" "$blocked"
+              echo "These revoke columns that installed builds still request; PostgREST fails the whole"
+              echo "query with 42501 and OTA cannot rescue an installed build."
+              echo "Ship a compatible mobile build, let old installs drain, then set the repository"
+              echo "variable MOBILE_ROLLOUT_ACK=1 and re-run. Unset it afterwards so the next revoke"
+              echo "is gated too."
+              exit 1
+            fi
+          fi
+
           supabase db push --include-all
 
   rls-boundaries:
