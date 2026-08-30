@@ -1,13 +1,12 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { clearSessionTables } from './session-clear'
+import { CROSSWORD_MIN_PLAYERS, CROSSWORD_MAX_PLAYERS, CROSSWORD_DEFAULT_MAX_PLAYERS } from '@/lib/player-limits'
+export { CROSSWORD_MIN_PLAYERS, CROSSWORD_MAX_PLAYERS, CROSSWORD_DEFAULT_MAX_PLAYERS }
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
 // 1 so a single player can solve a crossword on their own (like Sudoku/Yahtzee),
 // not only in a race with others.
-export const CROSSWORD_MIN_PLAYERS = 1
-export const CROSSWORD_MAX_PLAYERS = 20
-export const CROSSWORD_DEFAULT_MAX_PLAYERS = 20
 
 export const CROSSWORD_DEFAULT_DURATION = 900 // 15 minutes
 export const CROSSWORD_GAME_DURATION_OPTIONS = [0, 120, 180, 300, 600, 900, 1200, 1800] as const

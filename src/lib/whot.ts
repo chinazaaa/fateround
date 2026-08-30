@@ -4,10 +4,8 @@ import { clearSessionTables } from './session-clear'
 import { markGameFinished } from '@/lib/game-finish'
 import { secondsUntilDeadline } from '@/lib/round-timing'
 import type { Game, WhotCard, WhotPlayerHand, WhotSession, WhotShape } from '@/types'
-
-export const WHOT_MIN_PLAYERS = 2
-export const WHOT_MAX_PLAYERS = 6
-export const WHOT_DEFAULT_MAX_PLAYERS = 6
+import { WHOT_DEFAULT_MAX_PLAYERS, WHOT_MAX_PLAYERS, WHOT_MIN_PLAYERS } from '@/lib/player-limits'
+export { WHOT_DEFAULT_MAX_PLAYERS, WHOT_MAX_PLAYERS, WHOT_MIN_PLAYERS }
 
 /** Whole-game session length (seconds). 0 = no limit. */
 export const WHOT_GAME_DURATION_OPTIONS = [0, 600, 900, 1800, 2700, 3600, 5400] as const

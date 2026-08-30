@@ -6,15 +6,18 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { clearSessionTables } from './session-clear'
+import {
+  WORD_SCRAMBLE_MIN_PLAYERS,
+  WORD_SCRAMBLE_MAX_PLAYERS,
+  WORD_SCRAMBLE_DEFAULT_MAX_PLAYERS,
+} from '@/lib/player-limits'
+export { WORD_SCRAMBLE_MIN_PLAYERS, WORD_SCRAMBLE_MAX_PLAYERS, WORD_SCRAMBLE_DEFAULT_MAX_PLAYERS }
 
 export type WordScrambleDifficulty = 'easy' | 'medium' | 'hard'
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
 // 1 so a single player can play solo (like the other puzzle games), not only in a race.
-export const WORD_SCRAMBLE_MIN_PLAYERS = 1
-export const WORD_SCRAMBLE_MAX_PLAYERS = 20
-export const WORD_SCRAMBLE_DEFAULT_MAX_PLAYERS = 20
 
 export const WORD_SCRAMBLE_DEFAULT_DURATION = 300 // 5 minutes
 export const WORD_SCRAMBLE_GAME_DURATION_OPTIONS = [0, 120, 180, 300, 600, 900] as const

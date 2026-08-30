@@ -4,10 +4,8 @@ import { clearSessionTables } from './session-clear'
 import { markGameFinished } from '@/lib/game-finish'
 import { secondsUntilDeadline } from '@/lib/round-timing'
 import type { Game, UnoCard, UnoCardColor, UnoColor, UnoPlayerHand, UnoSession } from '@/types'
-
-export const UNO_MIN_PLAYERS = 2
-export const UNO_MAX_PLAYERS = 10
-export const UNO_DEFAULT_MAX_PLAYERS = 6
+import { UNO_DEFAULT_MAX_PLAYERS, UNO_MAX_PLAYERS, UNO_MIN_PLAYERS } from '@/lib/player-limits'
+export { UNO_DEFAULT_MAX_PLAYERS, UNO_MAX_PLAYERS, UNO_MIN_PLAYERS }
 
 /** Cards dealt to each player at the start of a hand. */
 export const UNO_DEAL_COUNT = 7
