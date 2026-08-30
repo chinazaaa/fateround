@@ -3,10 +3,12 @@ import { internalErrorMessage } from '@/lib/api-errors'
 import { clearSessionTables } from './session-clear'
 import { markGameFinished } from '@/lib/game-finish'
 import type { Player, SnakeLadderColor, SnakeLadderEvent, SnakeLadderPlayerState, SnakeLadderSession } from '@/types'
-
-export const SNAKE_LADDER_MIN_PLAYERS = 2
-export const SNAKE_LADDER_MAX_PLAYERS = 6
-export const SNAKE_LADDER_DEFAULT_MAX_PLAYERS = 4
+import {
+  SNAKE_LADDER_DEFAULT_MAX_PLAYERS,
+  SNAKE_LADDER_MAX_PLAYERS,
+  SNAKE_LADDER_MIN_PLAYERS,
+} from '@/lib/player-limits'
+export { SNAKE_LADDER_DEFAULT_MAX_PLAYERS, SNAKE_LADDER_MAX_PLAYERS, SNAKE_LADDER_MIN_PLAYERS }
 
 /** Final square — land here exactly to win. */
 export const SNAKE_LADDER_GOAL = 100

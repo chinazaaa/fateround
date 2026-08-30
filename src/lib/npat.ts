@@ -3,6 +3,8 @@ import { clearSessionTables } from './session-clear'
 import { secondsUntilDeadline } from '@/lib/round-timing'
 import type { Game, NpatAnswer, NpatCategory, NpatMark, NpatMetadata, NpatPhase, Player, Round } from '@/types'
 import { catalogueAutoValid } from '@/lib/npat-catalogue'
+import { NPAT_DEFAULT_MAX_PLAYERS, NPAT_MAX_PLAYERS, NPAT_MIN_PLAYERS } from '@/lib/player-limits'
+export { NPAT_DEFAULT_MAX_PLAYERS, NPAT_MAX_PLAYERS, NPAT_MIN_PLAYERS }
 
 export type NpatHostMode = 'spectator' | 'player'
 
@@ -20,9 +22,6 @@ export function setNpatHostMode(gameCode: string, mode: NpatHostMode) {
   localStorage.setItem(npatHostModeKey(gameCode), mode)
 }
 
-export const NPAT_MIN_PLAYERS = 3
-export const NPAT_MAX_PLAYERS = 20
-export const NPAT_DEFAULT_MAX_PLAYERS = 20
 export const NPAT_DEFAULT_TIMER = 60
 export const NPAT_DEFAULT_MARKING_TIMER = 45
 export const NPAT_LETTER_PICK_SECONDS = 15

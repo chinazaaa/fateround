@@ -2,6 +2,8 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { clearSessionTables } from './session-clear'
 import type { Player, Round, TriviaAnswer, TriviaCategory, TriviaMetadata, TriviaQuestion } from '@/types'
 import { triviaQuestionKey } from '@/lib/trivia-questions'
+import { TRIVIA_DEFAULT_MAX_PLAYERS, TRIVIA_MAX_PLAYERS, TRIVIA_MIN_PLAYERS } from '@/lib/player-limits'
+export { TRIVIA_DEFAULT_MAX_PLAYERS, TRIVIA_MAX_PLAYERS, TRIVIA_MIN_PLAYERS }
 
 const VALID_TRIVIA_CATS = new Set<string>([
   'tech',
@@ -23,9 +25,6 @@ const VALID_TRIVIA_CATS = new Set<string>([
   'world_culture',
 ])
 
-export const TRIVIA_MIN_PLAYERS = 2
-export const TRIVIA_MAX_PLAYERS = 40
-export const TRIVIA_DEFAULT_MAX_PLAYERS = 30
 export const TRIVIA_DEFAULT_ROUNDS = 10
 export const TRIVIA_DEFAULT_TIMER = 10
 export const TRIVIA_TIMER_OPTIONS = [10, 15, 30, 60] as const

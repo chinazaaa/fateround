@@ -4,10 +4,8 @@ import { clearSessionTables } from './session-clear'
 import { markGameFinished } from '@/lib/game-finish'
 import { secondsUntilDeadline } from '@/lib/round-timing'
 import type { Game, RummyCard, RummyMeld, RummyPlayerHand, RummySession, RummySuit } from '@/types'
-
-export const RUMMY_MIN_PLAYERS = 2
-export const RUMMY_MAX_PLAYERS = 6
-export const RUMMY_DEFAULT_MAX_PLAYERS = 4
+import { RUMMY_DEFAULT_MAX_PLAYERS, RUMMY_MAX_PLAYERS, RUMMY_MIN_PLAYERS } from '@/lib/player-limits'
+export { RUMMY_DEFAULT_MAX_PLAYERS, RUMMY_MAX_PLAYERS, RUMMY_MIN_PLAYERS }
 
 /** Whole-game session length (seconds). 0 = no limit. */
 export const RUMMY_GAME_DURATION_OPTIONS = [0, 600, 900, 1800, 2700, 3600, 5400] as const

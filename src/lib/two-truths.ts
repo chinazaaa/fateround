@@ -1,6 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { clearSessionTables } from './session-clear'
 import type { Player, Round, TtlGuess, TtlGuessResult, TtlMetadata, TtlStatement } from '@/types'
+import { TTL_DEFAULT_MAX_PLAYERS, TTL_MAX_PLAYERS, TTL_MIN_PLAYERS } from '@/lib/player-limits'
+export { TTL_DEFAULT_MAX_PLAYERS, TTL_MAX_PLAYERS, TTL_MIN_PLAYERS }
 
 export type TtlHostMode = 'spectator' | 'player'
 
@@ -18,9 +20,6 @@ export function setTtlHostMode(gameCode: string, mode: TtlHostMode) {
   localStorage.setItem(ttlHostModeKey(gameCode), mode)
 }
 
-export const TTL_MIN_PLAYERS = 3
-export const TTL_MAX_PLAYERS = 40
-export const TTL_DEFAULT_MAX_PLAYERS = 20
 export const TTL_DEFAULT_TIMER = 45
 export const TTL_TIMER_OPTIONS = [10, 15, 30, 45, 60, 90] as const
 export const TTL_REVEAL_SECONDS = 5
