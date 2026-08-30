@@ -91,7 +91,18 @@ export async function POST(req: NextRequest) {
     points,
   })
 
-  if (error) return NextResponse.json({ error: internalErrorMessage('two-truths/guess', error) }, { status: 500 })
+  // The round-active check above and this insert are not one operation, so a guess can arrive
+  // after the round flipped to 'finished' — and after reconcileRevealedGuesses already published
+  // the results. That guess would then be invisible forever, because guessed_index/is_correct/
+  // points are revoked from anon and only the published copy is readable. A BEFORE INSERT trigger
+  // (20261115120000) makes the check atomic with the write and raises check_violation (23514);
+  // surface that as 409, which is what actually happened, rather than a 500.
+  if (error) {
+    if ((error as { code?: string }).code === '23514') {
+      return NextResponse.json({ error: 'This round has already ended' }, { status: 409 })
+    }
+    return NextResponse.json({ error: internalErrorMessage('two-truths/guess', error) }, { status: 500 })
+  }
 
   return NextResponse.json({ success: true })
 }
