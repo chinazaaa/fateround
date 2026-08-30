@@ -184,6 +184,7 @@ function drawWithRefill(
 
 // Solo builds its own session object, so the piles are always present here — the `?? []` is for
 // the shared WhotSession type, where they are optional because multiplayer revokes them from anon.
+/** The discard pile with the current top card folded back in, for refill maths. */
 function discardTop(session: WhotSession): WhotCard[] {
   const prev = session.top_card
   if (!prev) return session.discard_pile ?? []
@@ -335,7 +336,8 @@ export function soloPlay(
   return { state: next }
 }
 
-export function soloDraw(state: SoloWhotState, playerIdx: 0 | 1, rng: () => number): SoloWhotStepResult {
+export /** Draw for the solo player, refilling from the discard pile when the market runs dry. */
+function soloDraw(state: SoloWhotState, playerIdx: 0 | 1, rng: () => number): SoloWhotStepResult {
   const gate = requirePlayingPhase(state, playerIdx)
   if (gate) return { state, error: gate }
 

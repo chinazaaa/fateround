@@ -225,6 +225,7 @@ function drawWithRefill(
  */
 // Solo builds its own session object, so the piles are always present here — the `?? []` is for
 // the shared WhotSession type, where they are optional because multiplayer revokes them from anon.
+/** The discard pile with the current top card folded back in, for refill maths. */
 function discardTop(session: WhotSession): WhotCard[] {
   const prev = session.top_card
   if (!prev) return session.discard_pile ?? []

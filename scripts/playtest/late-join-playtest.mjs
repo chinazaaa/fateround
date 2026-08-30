@@ -45,23 +45,33 @@ for (const g of GAMES) {
     const anon = await post(`${APP}${g.route}`, { gameCode: code })
     log.push(`tokenless -> ${anon.status}`)
     if (g.key === 'card') {
-      // Bingo has no counts to fall back on, so a tokenless caller must be told it is NOT
-      // authorised rather than handed `card: null`, which the UI cannot tell from "not dealt yet".
-      if (anon.status === 200 && anon.d?.card === null) {
-        fail.push(`${g.type}: tokenless fetch answered 200/card:null — indistinguishable from "not dealt yet"`)
-      }
+      // Bingo has no counts to fall back on, so a tokenless caller must be DENIED rather than
+      // handed `card: null`, which the UI cannot tell from "not dealt yet". assertDenied, not a
+      // hand-rolled check: it also rejects 500/429, which would otherwise pass as "not 200".
+      assertDenied(anon, `${g.type} tokenless card`, fail)
     } else {
-      const rows = anon.d?.[g.key] ?? []
-      // The redaction contract: `cards` is NULL (redacted, not empty) and `card_count` SURVIVES.
-      // An empty ARRAY or a zeroed count is the regression — `isOut` derives from an empty hand,
-      // so either would render a live player as "out".
-      const emptied = rows.filter((h) => Array.isArray(h.cards) && h.cards.length === 0)
-      const zeroed = rows.filter((h) => h.card_count === 0)
-      const leaked = rows.filter((h) => Array.isArray(h.cards) && h.cards.length > 0)
-      if (leaked.length) fail.push(`${g.type}: LEAK — tokenless fetch returned real cards for ${leaked.length} row(s)`)
-      if (emptied.length) fail.push(`${g.type}: tokenless fetch returned cards:[] — reads as "you are out"`)
-      if (zeroed.length) fail.push(`${g.type}: tokenless fetch zeroed card_count — reads as "you are out"`)
-      log.push(`tokenless rows=${rows.length} cards=null card_count preserved=${rows.every((h) => typeof h.card_count === 'number')}`)
+      // MANDATORY, not filters over a possibly-empty array. A failed request or a 200 with no
+      // rows would make `rows` `[]`, and every .filter() over [] is empty — so the whole block
+      // would pass while asserting nothing. That is the vacuity this harness exists to avoid.
+      if (anon.status !== 200) {
+        fail.push(`${g.type}: tokenless fetch -> ${anon.status}; expected 200 with redacted rows`)
+      } else {
+        const rows = anon.d?.[g.key]
+        if (!Array.isArray(rows) || rows.length === 0) {
+          fail.push(`${g.type}: tokenless fetch returned no rows — the redaction assertions below would be vacuous`)
+        } else {
+          // The contract: `cards` NULL (redacted, not empty) and `card_count` a NUMBER on EVERY row.
+          const leaked = rows.filter((h) => Array.isArray(h.cards) && h.cards.length > 0)
+          const emptied = rows.filter((h) => Array.isArray(h.cards) && h.cards.length === 0)
+          const noCount = rows.filter((h) => typeof h.card_count !== 'number')
+          const zeroed = rows.filter((h) => h.card_count === 0)
+          if (leaked.length) fail.push(`${g.type}: LEAK — tokenless fetch returned real cards for ${leaked.length} row(s)`)
+          if (emptied.length) fail.push(`${g.type}: tokenless fetch returned cards:[] — reads as "you are out"`)
+          if (noCount.length) fail.push(`${g.type}: ${noCount.length} row(s) lost card_count — the count must survive redaction`)
+          if (zeroed.length) fail.push(`${g.type}: tokenless fetch zeroed card_count — reads as "you are out"`)
+          log.push(`tokenless rows=${rows.length}, cards=null, card_count numeric on all rows`)
+        }
+      }
     }
 
     // 2. WITH the token — the same call once the session lands. Must be populated.

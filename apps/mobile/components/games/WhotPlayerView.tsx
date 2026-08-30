@@ -323,6 +323,7 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
     ) : null
   const gameTimerPinned = useStickyTimer(gameTimer, [gameSecondsLeft, gameDurationSeconds])
 
+  /** Run one server action, holding the board disabled until it resolves. */
   const act = async (fn: () => Promise<unknown>) => {
     if (!bootstrap.myResumeToken || acting) return
     setActing(true)
@@ -338,17 +339,26 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
     }
   }
 
+  /** Play a card from this player's hand; the server validates legality and advances the turn. */
   const playCard = (cardId: string) => {
     playSound('card')
     return act(() => postWhotPlay(bootstrap.code, bootstrap.myResumeToken!, cardId))
   }
 
+  /** Answer a Whot 20's shape request. */
   const chooseShape = (shape: WhotShape) =>
     act(() => postWhotChooseShape(bootstrap.code, bootstrap.myResumeToken!, shape))
 
+  /** Answer a number-call request. */
   const chooseNumber = (number: number) =>
     act(() => postWhotChooseNumber(bootstrap.code, bootstrap.myResumeToken!, number))
 
+  /**
+   * Draw from the market.
+   *
+   * The pile itself is revoked from anon (20261120120000), so anything gating this button reads
+   * `draw_count`, never the array — the server owns the refill and reshuffle.
+   */
   const drawCard = () => {
     playSound('card')
     return act(() => postWhotDraw(bootstrap.code, bootstrap.myResumeToken!))
@@ -467,6 +477,7 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
 
   // Order the roster by turn_order so seats read in play order (matching web); append
   // any players not seated in the turn order (e.g. pure spectators) at the end.
+  /** Seats rotated so the local player is first — the order the table is drawn in. */
   const orderedPlayers = (() => {
     const byId = new Map(bootstrap.players.map((p) => [p.id, p]))
     const seated = (session.turn_order ?? []).map((id) => byId.get(id)).filter((p): p is Player => !!p)
