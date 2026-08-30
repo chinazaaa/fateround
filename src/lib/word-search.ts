@@ -1,13 +1,12 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { clearSessionTables } from './session-clear'
+import { WORD_SEARCH_MIN_PLAYERS, WORD_SEARCH_MAX_PLAYERS, WORD_SEARCH_DEFAULT_MAX_PLAYERS } from '@/lib/player-limits'
+export { WORD_SEARCH_MIN_PLAYERS, WORD_SEARCH_MAX_PLAYERS, WORD_SEARCH_DEFAULT_MAX_PLAYERS }
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
 // 1 so a single player can hunt a grid on their own (like Sudoku/Crossword), not
 // only in a race with others.
-export const WORD_SEARCH_MIN_PLAYERS = 1
-export const WORD_SEARCH_MAX_PLAYERS = 20
-export const WORD_SEARCH_DEFAULT_MAX_PLAYERS = 20
 
 export const WORD_SEARCH_DEFAULT_DURATION = 600 // 10 minutes
 export const WORD_SEARCH_GAME_DURATION_OPTIONS = [0, 120, 180, 300, 600, 900, 1200, 1800] as const

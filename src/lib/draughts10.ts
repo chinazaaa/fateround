@@ -2,6 +2,8 @@ import { internalErrorMessage } from '@/lib/api-errors'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { markGameFinished } from '@/lib/game-finish'
 import type { CheckersColor, Draughts10Session, Draughts10Variant } from '@/types'
+import { DRAUGHTS10_DEFAULT_MAX_PLAYERS, DRAUGHTS10_MAX_PLAYERS, DRAUGHTS10_MIN_PLAYERS } from '@/lib/player-limits'
+export { DRAUGHTS10_DEFAULT_MAX_PLAYERS, DRAUGHTS10_MAX_PLAYERS, DRAUGHTS10_MIN_PLAYERS }
 
 // International / Nigerian draughts. 10×10 board, 100-char string indexed by
 // row*10 + col (row 0 = top, col 0 = left). Only dark squares ((row+col) odd)
@@ -14,9 +16,6 @@ import type { CheckersColor, Draughts10Session, Draughts10Variant } from '@/type
 // Nigeria shares this exact engine — its only differences are presentational
 // (mirrored board orientation, "seed" terminology) plus an opt-in, off-by-default
 // "street rules" room toggle, neither of which changes move legality here.
-export const DRAUGHTS10_MIN_PLAYERS = 2
-export const DRAUGHTS10_MAX_PLAYERS = 2
-export const DRAUGHTS10_DEFAULT_MAX_PLAYERS = 2
 
 export const DRAUGHTS10_STARTING_BOARD =
   '.b.b.b.b.bb.b.b.b.b..b.b.b.b.bb.b.b.b.b......................r.r.r.r.rr.r.r.r.r..r.r.r.r.rr.r.r.r.r.'

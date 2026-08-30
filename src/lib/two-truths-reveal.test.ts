@@ -20,9 +20,16 @@ function makeMockSupabase(opts: {
   guessesError?: boolean
   noLieRow?: boolean
   roundsError?: boolean
+  alreadyRevealed?: boolean
+  roundFinished?: boolean
 }) {
   const updates: Array<{ table: string; vals: Record<string, unknown> }> = []
-  let roundMetadata: Record<string, unknown> = { statements: ['a', 'b', 'c'] }
+  // alreadyRevealed: the round carries a lie AND a guesses array, but the array is SHORT —
+  // one guess landed after endActiveRound read the results. This is the shape the backfill
+  // used to skip.
+  let roundMetadata: Record<string, unknown> = opts.alreadyRevealed
+    ? { statements: ['a', 'b', 'c'], lie_index: 2, guesses: [] }
+    : { statements: ['a', 'b', 'c'] }
 
   const game = {
     id: 'ABCD',
@@ -33,13 +40,15 @@ function makeMockSupabase(opts: {
     timer_seconds: 30,
     elimination_config: null,
   }
+  // roundFinished: the round already ended and its reveal window has elapsed, so
+  // syncTwoTruthsGameState takes the ADVANCE path rather than the end-round path.
   const round = {
     id: 'round-1',
     game_id: 'ABCD',
     round_number: 1,
-    status: 'active',
+    status: opts.roundFinished ? 'finished' : 'active',
     started_at: HOUR_AGO, // timer long expired → the round is due to end
-    ended_at: null,
+    ended_at: opts.roundFinished ? HOUR_AGO : null,
     ttl_metadata: roundMetadata,
   }
 
@@ -166,5 +175,59 @@ describe('two truths reveal', () => {
   it('reports failure when the finished-round query itself fails', async () => {
     const { supabase } = makeMockSupabase({ roundsError: true })
     await expect(revealFinishedTtlRounds(supabase, 'ABCD')).resolves.toBe(false)
+  })
+  // "Has a guesses array" is not "has the WHOLE list". A guess that lands between
+  // endActiveRound's read and its status flip is scored but missing from the published array,
+  // and the backfill used to skip any round whose metadata merely had the right SHAPE — so the
+  // missing guess could never be repaired. It now reconciles, and reports failure if it cannot.
+  it('backfills a finished round whose published guess list is short', async () => {
+    const { supabase, updates } = makeMockSupabase({ alreadyRevealed: true })
+    await expect(revealFinishedTtlRounds(supabase, 'ABCD')).resolves.toBe(true)
+    // the short list was rewritten from the real guess rows
+    const rewrite = updates.find((u) => u.table === 'rounds' && u.vals.ttl_metadata)
+    expect(rewrite).toBeTruthy()
+    expect((rewrite!.vals.ttl_metadata as Record<string, unknown>).guesses).toHaveLength(1)
+  })
+
+  it('reports failure when an already-revealed round cannot be reconciled', async () => {
+    const { supabase } = makeMockSupabase({ alreadyRevealed: true, guessesError: true })
+    await expect(revealFinishedTtlRounds(supabase, 'ABCD')).resolves.toBe(false)
+  })
+  // endActiveRound reconciles once and ignores the result; before this, nothing else in NORMAL
+  // play ever tried again — the finished-round backfill only runs from adminEndGame. A transient
+  // failure therefore left ttl_metadata.guesses permanently short, and unreadable, because the
+  // raw guess columns are revoked from anon. The advance path now retries.
+  it('reconciles again on the advance path after the reveal window', async () => {
+    // Round already finished with a SHORT guess list, reveal window elapsed: the end-round path
+    // is not taken, so the only thing that can rewrite the metadata is the advance-path reconcile.
+    const { supabase, updates } = makeMockSupabase({ alreadyRevealed: true, roundFinished: true })
+    await syncTwoTruthsGameState(supabase, 'ABCD')
+    const rewrite = updates.find(
+      (u) =>
+        u.table === 'rounds' &&
+        u.vals.ttl_metadata &&
+        Array.isArray((u.vals.ttl_metadata as Record<string, unknown>).guesses)
+    )
+    expect(rewrite).toBeTruthy()
+    expect((rewrite!.vals.ttl_metadata as Record<string, unknown>).guesses).toHaveLength(1)
+  })
+  // Advancing is what makes an incomplete guess list permanent: once current_round_number moves
+  // on, nothing looks at the old round again. And it is not cosmetic — tallyTtlScores runs over
+  // ttl_metadata.guesses, so a missing entry is a missing player's points on the final board.
+  it('holds the pointer when the advance-path reconcile fails', async () => {
+    const { supabase, updates } = makeMockSupabase({ alreadyRevealed: true, roundFinished: true, guessesError: true })
+    const res = await syncTwoTruthsGameState(supabase, 'ABCD')
+    expect(res.code).toBe('reveal_pending')
+    // nothing advanced: no round was activated and the game was not finished
+    expect(updates.find((u) => u.table === 'rounds' && u.vals.status === 'active')).toBeFalsy()
+    expect(updates.find((u) => u.table === 'games' && u.vals.status === 'finished')).toBeFalsy()
+  })
+
+  // ...but an operator can still force past it, so a structural failure slows a game rather than
+  // stranding it.
+  it('still advances under force when reconciliation cannot succeed', async () => {
+    const { supabase } = makeMockSupabase({ alreadyRevealed: true, roundFinished: true, guessesError: true })
+    const res = await syncTwoTruthsGameState(supabase, 'ABCD', { force: true })
+    expect(res.code).not.toBe('reveal_pending')
   })
 })

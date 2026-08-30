@@ -174,9 +174,10 @@ export function playerDisplayName(playerId: string | null | undefined, players: 
  * the id and only bumps `updated_at`. Without the timestamp check, reopening "edit" right
  * after a re-submit prefills the PREVIOUS lie. Falling back to the roster row instead shows
  * no lie selected — which is correct: unknown must not render as a stale answer.
+ *
+ * Mirrored in src/lib/two-truths.ts: the web app does not depend on @fateround/shared, so the
+ * two copies must be kept in step. Mobile imports this one.
  */
-// Mirrored in src/lib/two-truths.ts — the web app does not depend on @fateround/shared, so the
-// two copies must be kept in step. Mobile imports this one.
 export function ownTtlStatementIsFresh(
   own: Pick<TtlStatement, 'id' | 'updated_at'> | null | undefined,
   roster: Pick<TtlStatement, 'id' | 'updated_at'> | null | undefined

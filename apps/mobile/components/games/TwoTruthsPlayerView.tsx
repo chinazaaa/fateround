@@ -279,6 +279,13 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
 
   const canSubmitStatements = !!stmtA.trim() && !!stmtB.trim() && !!stmtC.trim() && lieIndex != null
 
+  /**
+   * Send this player's three statements and which one is the lie.
+   *
+   * The lie goes to the server and never into anon-readable data. A re-submit upserts the SAME
+   * statement row rather than inserting a new one, bumping `updated_at` — which is why the
+   * own-row freshness check has to compare timestamps and not ids.
+   */
   const submitStatements = async () => {
     if (!bootstrap.myResumeToken || submitting || lieIndex == null || !canSubmitStatements) return
     setSubmitting(true)
@@ -298,6 +305,13 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
     }
   }
 
+  /**
+   * Reopen the submission form pre-filled with this player's current statements and lie.
+   *
+   * Reads `myStatement`, which prefers the token-gated own-row over the roster row — the roster
+   * has no `lie_index` (revoked from anon), and a re-submit reuses the same row id, so a
+   * freshness check on id alone would prefill the PREVIOUS lie here.
+   */
   const startEditing = () => {
     if (!myStatement) return
     setStmtA(myStatement.statement_a)
