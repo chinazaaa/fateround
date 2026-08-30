@@ -55,11 +55,20 @@ begin
   join _new_rounds n on n.round_number = (l->>'round_number')::integer;
   get diagnostics v_inserted = row_count;
 
-  v_expected := jsonb_array_length(p_lies);
-  -- A short count means some round_number in p_lies matched no inserted round. Raising rolls the
-  -- rounds back too, rather than leaving a round that /guess can never score.
+  -- Require a ONE-TO-ONE mapping, checked in BOTH directions.
+  --
+  -- Comparing the keys stored against the keys SUPPLIED only catches a p_lies entry that matched
+  -- no round. It does not catch the opposite and more dangerous case: three rounds with mappings
+  -- for two. There v_inserted equals jsonb_array_length(p_lies), the check passes, and a round
+  -- commits with no answer key — which /api/two-truths/guess fails closed on, leaving a round
+  -- nobody can score. So the count is compared against the ROUNDS as well.
+  select count(*) into v_expected from _new_rounds;
   if v_inserted <> v_expected then
     raise exception 'ttl answer-key mismatch: stored % keys for % rounds', v_inserted, v_expected;
+  end if;
+  if v_inserted <> jsonb_array_length(p_lies) then
+    raise exception 'ttl answer-key mismatch: % of % supplied keys matched a round',
+      v_inserted, jsonb_array_length(p_lies);
   end if;
 
   return query select n.id, n.round_number from _new_rounds n order by n.round_number;
@@ -94,7 +103,13 @@ as $$
 declare
   v_status text;
 begin
-  select status into v_status from public.rounds where id = new.round_id;
+  -- FOR UPDATE, not a plain read. Without the lock this ordering is permitted: the trigger reads
+  -- 'active', the closing transaction flips the round to 'finished' and reconciles the published
+  -- guesses, and only then does this insert commit — storing a guess that the results will never
+  -- include, and that anon cannot read back because guessed_index/is_correct/points are revoked.
+  -- Taking the row lock makes the two mutually exclusive: either the close waits for this insert
+  -- (and its reconcile then sees the guess), or this trigger observes 'finished' and rejects.
+  select status into v_status from public.rounds where id = new.round_id for update;
   if v_status is null then
     raise exception 'ttl_guesses: round % does not exist', new.round_id
       using errcode = 'foreign_key_violation';
