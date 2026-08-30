@@ -162,7 +162,7 @@ and is what the table UI and the out/finished checks actually consume.
 | Game         | Table                       | Server route         | Web readers                     | Mobile reader | Playtested      | Migration  |
 | ------------ | --------------------------- | -------------------- | ------------------------------- | ------------- | --------------- | ---------- |
 | Whot         | `whot_player_hands`         | ✅ `/api/whot/hands` | ✅ player, host, history        | ✅            | ❌ **required** | ⏳ blocked |
-| UNO          | `uno_player_hands`          | ❌                   | ❌                              | ❌            | ❌              | ⏳ blocked |
+| UNO          | `uno_player_hands`          | ✅ `/api/uno/hands`  | ✅ player, host, history        | ✅            | ❌ **required** | ⏳ blocked |
 | Crazy Eights | `crazy_eights_player_hands` | ✅ `/api/crazy-eights/hands` | ✅ player, host, history        | ✅            | ❌ **required** | ⏳ blocked (pile counts ready; pile revoke pending a mobile release — see below) |
 | Bingo        | `bingo_cards`               | ✅ `/api/bingo/card` | ✅ player, host (own seat only) | ✅            | ❌ **required** | ⏳ blocked |
 
@@ -209,6 +209,29 @@ route.** Shipping it earlier breaks live games in the two ways described above.
 
 Playtest per game before its row is ticked: deal → several plays → a player goes out → finish,
 on web **and** mobile, watching that nobody is wrongly shown as out and opponent counts track.
+
+### The deck is the other half of the secret
+
+Redacting `cards` buys very little while the session row still ships the **full ordered deck** to
+the anon key. Confirmed live on dev: `uno_sessions.draw_pile` returned 86 ordered cards. With two
+players, `draw_pile` + `discard_pile` + your own hand subtract from the known deck to give your
+opponent's exact hand; with N players you still know every future draw, in order.
+
+Fix shape (Crazy Eights `20260815120000`, UNO `20261003120000`): add generated stored
+`draw_count` / `discard_count` — jsonb columns, so `jsonb_array_length` behind a
+`jsonb_typeof(...) = 'array'` guard, not `cardinality` — then revoke the two piles from
+`anon`/`authenticated` and re-grant every other column. `top_card` stays public; it is a separate
+column and is face-up at the table anyway. Every client reader only ever used `.length`.
+
+Two rules this keeps tripping over, both encoded in the code:
+
+- `isDrawPileDepleted` must return **false** when neither the count nor the array is readable.
+  "I cannot see the pile" reported as "the pile is empty" flips live games into pass-turn and
+  reshuffle states.
+- Anon now holds **column-level** SELECT on these session tables, so a NEW column must also be
+  granted (re-run the migration's do-block) or client reads of it error. Fails closed.
+
+Whot's `whot_sessions` has the identical leak and is left to its own PR.
 
 ## Phase 8 — per-turn secret state (the word / the key card)
 

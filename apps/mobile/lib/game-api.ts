@@ -7,6 +7,7 @@ import type {
   GameType,
   TtlGuess,
   TtlStatement,
+  UnoPlayerHand,
   WhotPlayerHand,
 } from '@fateround/shared'
 import type { GamePlayerLimitsMap } from '@fateround/shared/lobby-limits'
@@ -1151,6 +1152,19 @@ export function postDescribeItWord(gameCode: string, auth: { resumeToken?: strin
  */
 export function postWhotHands(gameCode: string, auth: { resumeToken?: string | null }) {
   return postJson<{ hands: WhotPlayerHand[] }>('/api/whot/hands', {
+    gameCode: gameCode.toUpperCase(),
+    resumeToken: auth.resumeToken ?? undefined,
+  })
+}
+
+/**
+ * UNO hands via the server route — own cards in full, everyone else's as a count. In Team-Up
+ * mode the caller's teammate's hand also comes back in full (resolved server-side from the
+ * resume token). Returns null on failure so callers can keep the previous hands rather than
+ * rendering an empty one (which reads as "you are out"). See src/lib/hand-redaction.ts.
+ */
+export function postUnoHands(gameCode: string, auth: { resumeToken?: string | null }) {
+  return postJson<{ hands: UnoPlayerHand[] }>('/api/uno/hands', {
     gameCode: gameCode.toUpperCase(),
     resumeToken: auth.resumeToken ?? undefined,
   })

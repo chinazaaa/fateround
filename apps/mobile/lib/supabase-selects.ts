@@ -89,10 +89,10 @@ export const WHOT_SESSION_SELECT =
 
 export const WHOT_PLAYER_HANDS_SELECT = 'id,game_id,player_id,cards,player_order'
 
-// last_play_player_id, pending_wild and the colour-roulette / draw-stack bookkeeping are
-// deliberately absent — see the note on the web copy in src/lib/supabase-selects.ts.
+// Both sets of removals — the anon-revoked piles and the unread bookkeeping columns.
+// See the note on the web copy in src/lib/supabase-selects.ts.
 export const UNO_SESSION_SELECT =
-  'id,game_id,turn_order,current_turn_index,direction,phase,draw_pile,discard_pile,top_card,required_color,draw_penalty,draw_penalty_kind,drawn_card_id,last_play_cards,challenge_prev_color,wd4_player_id,uno_pending_player,uno_called,status_message,winner_player_id,finish_order,left_player_ids,team_decider_id,eliminated_player_ids,turn_deadline_at,created_at,updated_at'
+  'id,game_id,turn_order,current_turn_index,direction,phase,draw_count,discard_count,top_card,required_color,draw_penalty,draw_penalty_kind,drawn_card_id,last_play_cards,challenge_prev_color,wd4_player_id,uno_pending_player,uno_called,status_message,winner_player_id,finish_order,left_player_ids,team_decider_id,eliminated_player_ids,turn_deadline_at,created_at,updated_at'
 
 export const UNO_PLAYER_HANDS_SELECT = 'id,game_id,player_id,cards,player_order,created_at'
 
@@ -100,13 +100,11 @@ export const UNO_PLAYER_HANDS_SELECT = 'id,game_id,player_id,cards,player_order,
 // grow, an update that touches only e.g. current_turn_index delivers those piles as null.
 // Applying that would wipe the board and every card would look unplayable. Callers check
 // isCompleteUnoSessionRow before merging; a false result falls back to the reload path.
-export const UNO_SESSION_NOT_NULL_KEYS = [
-  'turn_order',
-  'draw_pile',
-  'discard_pile',
-  'left_player_ids',
-  'eliminated_player_ids',
-] as const
+// draw_pile/discard_pile are deliberately absent: anon no longer holds SELECT on them, so a
+// realtime payload never carries them and requiring them here would make isCompleteUnoSessionRow
+// return false for EVERY row — rejecting every delta and forcing a full reload each time.
+// Mirrors src/lib/supabase-selects.ts.
+export const UNO_SESSION_NOT_NULL_KEYS = ['turn_order', 'left_player_ids', 'eliminated_player_ids'] as const
 
 export function isCompleteUnoSessionRow(row: Record<string, unknown>): boolean {
   return UNO_SESSION_NOT_NULL_KEYS.every((key) => row[key] != null)

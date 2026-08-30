@@ -1,4 +1,4 @@
-import type { BingoCard, CrazyEightsPlayerHand, GoFishPlayerHand, WhotPlayerHand } from '@/types'
+import type { BingoCard, CrazyEightsPlayerHand, GoFishPlayerHand, UnoPlayerHand, WhotPlayerHand } from '@/types'
 
 type HandsAuth = { resumeToken?: string | null; hostToken?: string | null }
 
@@ -42,6 +42,17 @@ export function fetchWhotHands(gameCode: string, auth: HandsAuth): Promise<WhotP
 /** Crazy Eights hands — see {@link fetchHands} for the contract. */
 export function fetchCrazyEightsHands(gameCode: string, auth: HandsAuth): Promise<CrazyEightsPlayerHand[] | null> {
   return fetchHands<CrazyEightsPlayerHand>('/api/crazy-eights/hands', gameCode, auth)
+}
+
+/**
+ * UNO hands — see {@link fetchHands} for the contract.
+ *
+ * UNO's one difference is Team-Up mode: when it's on, the route also returns the caller's
+ * teammate's hand in full (resolved server-side from the resume token), so no extra client
+ * argument is needed here.
+ */
+export function fetchUnoHands(gameCode: string, auth: HandsAuth): Promise<UnoPlayerHand[] | null> {
+  return fetchHands<UnoPlayerHand>('/api/uno/hands', gameCode, auth)
 }
 
 /** Go Fish hands — see {@link fetchHands} for the contract. */

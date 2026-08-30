@@ -118,30 +118,32 @@ export const CRAZY8_SESSION_SELECT =
 // /api/crazy-eights/hands, which redacts every hand but the caller's own (lib/hand-redaction.ts).
 // The old `…,cards,…` select is deliberately gone so nothing can reintroduce the direct read.
 
-// last_play_player_id, pending_wild, color_roulette_player_id, color_roulette_reveals and
-// draw_stack_chain are deliberately absent: no client reads them, and the server paths that
-// do (processUnoPlay, processUnoDraw, processUnoChoose, …) re-fetch the row themselves with
-// `select('*')` through the service role.
+// Two independent sets of removals are folded in here — keep BOTH:
+//   * `draw_pile`/`discard_pile` are gone because anon/authenticated hold no SELECT on them
+//     (20261003120000): the ordered deck deanonymizes every other hand. `draw_count`/
+//     `discard_count` are generated columns covering the only thing clients used them for.
+//   * last_play_player_id, pending_wild, color_roulette_player_id, color_roulette_reveals and
+//     draw_stack_chain are gone (#1070) because no client reads them, and the server paths that
+//     do (processUnoPlay, processUnoDraw, processUnoChoose, …) re-fetch the row themselves with
+//     `select('*')` through the service role.
 export const UNO_SESSION_SELECT =
-  'id,game_id,turn_order,current_turn_index,direction,phase,draw_pile,discard_pile,top_card,required_color,draw_penalty,draw_penalty_kind,drawn_card_id,last_play_cards,challenge_prev_color,wd4_player_id,uno_pending_player,uno_called,status_message,winner_player_id,finish_order,left_player_ids,team_decider_id,eliminated_player_ids,turn_deadline_at,created_at,updated_at'
+  'id,game_id,turn_order,current_turn_index,direction,phase,draw_count,discard_count,top_card,required_color,draw_penalty,draw_penalty_kind,drawn_card_id,last_play_cards,challenge_prev_color,wd4_player_id,uno_pending_player,uno_called,status_message,winner_player_id,finish_order,left_player_ids,team_decider_id,eliminated_player_ids,turn_deadline_at,created_at,updated_at'
 
 /**
  * `uno_sessions` columns that are NOT NULL in the DB.
  *
- * Realtime UPDATE payloads omit unchanged TOAST-ed columns — once the draw / discard piles
- * are big enough for Postgres to store them out-of-line, a partial update that doesn't touch
- * them delivers them as `null` (same failure mode as `monopoly_boards.property_owners`, see
- * MONOPOLY_BOARD_NOT_NULL_KEYS). Applying such a row would wipe the piles / turn order on
- * screen and make every card look unplayable (canPlayCard sees a stale session). Callers
- * use {@link isCompleteUnoSessionRow} to detect that and fall back to a full reload.
+ * Realtime UPDATE payloads omit unchanged TOAST-ed columns — a partial update that doesn't
+ * touch a large array delivers it as `null` (same failure mode as
+ * `monopoly_boards.property_owners`, see MONOPOLY_BOARD_NOT_NULL_KEYS). Applying such a row
+ * would wipe turn order on screen. Callers use {@link isCompleteUnoSessionRow} to detect that
+ * and fall back to a full reload.
+ *
+ * `draw_pile` / `discard_pile` are deliberately NOT listed: they are revoked from anon, so they
+ * never arrive over realtime at all. Gating on them would make this guard permanently false and
+ * force a full reload on every single payload. The counts that replace them are small integers
+ * that are never TOASTed.
  */
-export const UNO_SESSION_NOT_NULL_KEYS = [
-  'turn_order',
-  'draw_pile',
-  'discard_pile',
-  'left_player_ids',
-  'eliminated_player_ids',
-] as const
+export const UNO_SESSION_NOT_NULL_KEYS = ['turn_order', 'left_player_ids', 'eliminated_player_ids'] as const
 
 /** True when a pushed `uno_sessions` row carries every NOT-NULL column (i.e. is not a
  *  TOAST-truncated partial realtime payload — see {@link UNO_SESSION_NOT_NULL_KEYS}). */
