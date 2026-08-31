@@ -39,6 +39,9 @@ export function endpointOf(url: string): string {
  * bound. Patching the global catches that client, `/api/*` route pokes, and anything else the
  * hook under test happens to call, which is exactly the coverage a cost measurement needs.
  */
+/** Where a relative `/api/...` fetch is sent. NEVER default this to :3000 — see README. */
+const APP_BASE = process.env.BENCH_APP_URL ?? 'http://127.0.0.1:3199'
+
 export function startTally(): Tally {
   const realFetch = globalThis.fetch
   const RealWS = globalThis.WebSocket
@@ -48,13 +51,32 @@ export function startTally(): Tally {
   const state = { tx: 0 }
 
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
-    const res = await realFetch(input as RequestInfo, init)
-    // Buffer once so the body can be weighed AND still be consumed by the caller. `clone()`
-    // would be tidier but leaks a never-read stream when the caller never reads its copy.
-    const buf = await res.clone().arrayBuffer().catch(() => new ArrayBuffer(0))
-    rest.push({ url, endpoint: endpointOf(url), status: res.status, bytes: buf.byteLength, at: Date.now() })
-    return res
+    const raw = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+    // Node's `fetch` REJECTS a relative URL — jsdom's document origin does not apply to it. The
+    // app's own code fetches `/api/...` relative, so without this every such call throws before
+    // it leaves the process, the hook's own `catch` swallows it, and the bench records ZERO
+    // requests for a client that is in fact hammering the endpoint. That is a false saving, and
+    // it is how this bench first "proved" the bingo baseline made no requests at all.
+    const url = raw.startsWith('/') ? new URL(raw, APP_BASE).href : raw
+    const target: RequestInfo | URL = raw.startsWith('/') && typeof input !== 'string' && !(input instanceof URL)
+      ? new Request(url, input as Request)
+      : url === raw
+        ? (input as RequestInfo)
+        : url
+
+    try {
+      const res = await realFetch(target, init)
+      // Buffer once so the body can be weighed AND still be consumed by the caller. `clone()`
+      // would be tidier but leaks a never-read stream when the caller never reads its copy.
+      const buf = await res.clone().arrayBuffer().catch(() => new ArrayBuffer(0))
+      rest.push({ url, endpoint: endpointOf(url), status: res.status, bytes: buf.byteLength, at: Date.now() })
+      return res
+    } catch (err) {
+      // A request that FAILED still left the client and still cost something. Recording it with
+      // status 0 keeps a broken endpoint visible as traffic instead of erasing it from the count.
+      rest.push({ url, endpoint: endpointOf(url), status: 0, bytes: 0, at: Date.now() })
+      throw err
+    }
   }) as typeof fetch
 
   class CountingWebSocket extends RealWS {
