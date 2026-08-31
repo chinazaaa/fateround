@@ -2,6 +2,8 @@
 
 import { useEffect, useRef } from 'react'
 
+import { isRealtimeHealthy, subscribeToRealtimeHealth } from '@/lib/realtime-health'
+
 /** Polling intervals — Realtime is primary; these are slow fallbacks only. */
 export const POLL_INTERVALS = {
   realtimeFallback: 15_000,
@@ -17,6 +19,18 @@ export const POLL_INTERVALS = {
 } as const
 
 const MAX_BACKOFF_MS = 60_000
+
+/**
+ * A realtime-fallback poll SUSPENDS entirely while realtime is delivering -- it does not merely
+ * slow down. The initial `runImmediately` read still happens (the view needs its first state), and
+ * the loop restarts the instant any channel drops.
+ *
+ * The tradeoff, recorded because it is real: this makes correctness depend on realtime coverage
+ * being complete. If some view relies on a table nobody subscribed to, or on a handler that drops
+ * an event, the poll is no longer there to paper over it and the UI will sit stale until a channel
+ * drops or the user navigates. `gateOnRealtime: false` is the per-call-site escape hatch for any
+ * view found to need it.
+ */
 
 /**
  * Returns false when any result carries an error.
@@ -43,6 +57,15 @@ type UsePollingOptions = {
   intervalMs: number
   enabled?: boolean
   runImmediately?: boolean
+  /**
+   * Suspend this poll while realtime is healthy.
+   *
+   * Defaults to true for the two intervals that exist SOLELY as realtime fallbacks, and false for
+   * everything else. That distinction matters: `advanceSync` and `bingoAutoCall` are not
+   * fallbacks, they DRIVE gameplay (calling the next bingo number, advancing a round), and slowing
+   * them would break the game rather than save money.
+   */
+  gateOnRealtime?: boolean
 }
 
 /**
@@ -57,8 +80,11 @@ type UsePollingOptions = {
 export function usePolling(
   poll: () => void | Promise<boolean | void>,
   deps: unknown[],
-  { intervalMs, enabled = true, runImmediately = true }: UsePollingOptions
+  { intervalMs, enabled = true, runImmediately = true, gateOnRealtime }: UsePollingOptions
 ): void {
+  const gated =
+    gateOnRealtime ?? (intervalMs === POLL_INTERVALS.realtimeFallback || intervalMs === POLL_INTERVALS.duelFallback)
+
   const backoffRef = useRef(0)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pollRef = useRef(poll)
@@ -70,6 +96,11 @@ export function usePolling(
     if (!enabled) return
 
     let cancelled = false
+
+    // Read health at scheduling time rather than through the dependency array: a health flip must
+    // not tear down and re-create the poll loop (that would re-fire `runImmediately` and turn a
+    // flapping channel into a request storm -- the opposite of the point).
+    const suspended = () => gated && isRealtimeHealthy()
 
     const schedule = (delay: number) => {
       if (cancelled) return
@@ -94,6 +125,7 @@ export function usePolling(
 
       if (ok) {
         backoffRef.current = 0
+        if (suspended()) return // realtime is delivering; stop until a channel drops
         schedule(intervalMs)
       } else {
         backoffRef.current = Math.min(
@@ -111,17 +143,37 @@ export function usePolling(
       }
     }
 
+    // A channel dropping must restore full-speed polling promptly, not after the slow interval
+    // finishes elapsing.
+    const unsubscribeHealth = gated
+      ? subscribeToRealtimeHealth(() => {
+          if (cancelled) return
+          if (suspended()) {
+            // Realtime recovered. Drop the tick already queued from the last read, so recovery
+            // costs zero extra reads instead of one per reconnect.
+            if (timerRef.current) clearTimeout(timerRef.current)
+            return
+          }
+          // Realtime just dropped: resume immediately. The view has been relying on push, so it is
+          // already as stale as the outage is old -- waiting out a fresh interval adds to that.
+          void tick()
+        })
+      : undefined
+
     document.addEventListener('visibilitychange', onVisible)
+    // The first read always runs: suspension is about the steady-state repeat, not about leaving a
+    // freshly-mounted view with nothing to render.
     if (runImmediately) void tick()
-    else schedule(intervalMs)
+    else if (!suspended()) schedule(intervalMs)
 
     return () => {
       cancelled = true
+      unsubscribeHealth?.()
       document.removeEventListener('visibilitychange', onVisible)
       if (timerRef.current) clearTimeout(timerRef.current)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, intervalMs, runImmediately, ...deps])
+  }, [enabled, gated, intervalMs, runImmediately, ...deps])
 }
 
 export const LOAD_TIMEOUT_MS = 15_000
