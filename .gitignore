@@ -50,7 +50,17 @@ apps/mobile/dist/
 apps/mobile/node_modules
 CLAUDE.md
 .venv
-.claude/
+.claude/*
+# `pr-workflow` is the team's shared process, so it is tracked deliberately rather than
+# force-added past this ignore. Everything else under .claude/ (worktrees, local settings, the
+# terraform-* and worktree-cleanup skills) stays local.
+#
+# Re-including a path inside an ignored directory needs the parents un-ignored one level at a
+# time -- git never descends into an excluded directory, so `!.claude/skills/pr-workflow/` alone
+# would not work.
+!.claude/skills/
+.claude/skills/*
+!.claude/skills/pr-workflow/
 .worktrees/
 
 # local MCP server config
