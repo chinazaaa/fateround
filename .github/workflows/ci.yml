@@ -400,6 +400,27 @@ jobs:
             exit 1
           fi
 
+      # Hosted-parity grant for the SERVICE role, and only the service role.
+      #
+      # `20260803160000_default_privileges_lockdown.sql` uses ALTER DEFAULT PRIVILEGES, which
+      # applies to FUTURE objects only, so tables created by earlier migrations never received
+      # these grants on a database built from scratch. The hosted projects have them (they were
+      # granted when those tables were created, under the defaults of the day); a fresh
+      # `supabase start` does not. Without this, the suite's own write-probe control fails with
+      # `permission denied for table api_rate_limit_attempts` before it can probe anything.
+      #
+      # This CANNOT weaken any assertion in the suite. Every assertion is about `anon`, this
+      # touches only `service_role`, and the service role is the suite's known-POSITIVE control:
+      # it is supposed to be able to do everything, and the file is built on that. Never extend
+      # this to anon -- that would re-grant the very columns the redaction migrations revoked and
+      # turn the gate into a rubber stamp.
+      - name: Grant the service role hosted-parity access
+        run: |
+          set -euo pipefail
+          psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -v ON_ERROR_STOP=1 \
+            -c "grant all privileges on all tables in schema public to service_role;" \
+            -c "grant all privileges on all sequences in schema public to service_role;"
+
       # The suite needs at least one readable row to inspect: its column sweep can only report on
       # tables it actually read, and a stack where every table is empty proves nothing. One game
       # row is enough. `host_token` is deliberately a real-shaped value — it is one of the columns
