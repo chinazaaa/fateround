@@ -51,10 +51,20 @@ for (const [type, api, table, holderCol, extra] of [
   const nt = JSON.stringify(noTok.d?.word ?? noTok.d?.currentWord ?? null)
   console.log(`  · no-token -> ${noTok.status} word=${nt.slice(0, 40)}`)
   if (nt && nt !== 'null') fail.push(`${type}: unauthenticated caller got a word ${nt} (LEAK)`)
-  // A 200 with no word is not proof of rejection — it is indistinguishable from "no word yet".
-  // The route must actually refuse a caller it cannot resolve.
-  if (noTok.status < 400)
-    fail.push(`${type}: unauthenticated /my-word returned ${noTok.status}, expected a 4xx refusal`)
+  // The unauthenticated response must be INDISTINGUISHABLE from a legitimate non-holder's, which
+  // means 200 + null — not a 4xx.
+  //
+  // This assertion used to demand a 4xx, on the reasoning that "a 200 with no word is not proof of
+  // rejection". That is true of this line in isolation but wrong for the system: docs/
+  // rls-hardening.md § Phase 8 makes the sameness deliberate — "asking is normal traffic, so the
+  // status code must not become an oracle". A 4xx here would tell any caller whether the token
+  // they hold is the describer's, which is the very thing being hidden.
+  //
+  // Refusal is proven above instead, by contrast rather than by status: the HOLDER must receive
+  // the word (line ~44), and every non-holder must not. Those two together cannot both pass unless
+  // the route is genuinely resolving the caller.
+  if (noTok.status !== 200)
+    fail.push(`${type}: unauthenticated /my-word returned ${noTok.status}; expected 200 with a null word, so the status cannot be used as an oracle`)
 }
 console.log(fail.length ? `\nFAIL:\n  ✗ ` + fail.join('\n  ✗ ') : '\nPASS — word served only to its holder')
 process.exit(fail.length ? 1 : 0)
