@@ -6,6 +6,13 @@ on:
   pull_request:
     branches: [main, dev]
 
+# No job in this workflow writes to the repository — nothing comments, pushes or releases — so
+# the whole file runs read-only. Without this block GitHub applies the repository default, which
+# zizmor flags as excessive-permissions: a compromised action step would inherit whatever that
+# default happens to be. Jobs that need less still narrow it further themselves.
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -199,21 +206,28 @@ jobs:
           # pull_request -> main, so it constrains this only if branch protection requires it —
           # and `main` has no protection at all. Without this guard a column revoke reaches
           # production while installed builds still select that column, PostgREST fails the WHOLE
-          # request with 42501, and OTA cannot rescue an installed binary (no `updates` in
-          # app.json).
+          # request with 42501, and OTA cannot rescue an installed binary.
           #
-          # Two things this gets right that the obvious version does not:
+          # The acknowledgement names the VERSIONS it authorises — it is not a boolean. A blanket
+          # "1" would persist as a repository variable long after the release it was set for, and
+          # the NEXT revoke would then reach production with no rollout behind it. Requiring the
+          # exact version means a stale value authorises only the migration it was set for, and
+          # forgetting to clear it is inert rather than dangerous.
           #
-          #  1. It parses the migration table on "|", not on whitespace. `supabase migration list`
-          #     prints "Local | Remote | Time (UTC)", so whitespace tokenisation makes $3 the
-          #     SEPARATOR, never an empty remote field — an `awk '$3 == ""'` guard silently matches
-          #     nothing and fails OPEN, which is worse than no guard at all.
-          #  2. It FAILS CLOSED. If no local versions parse, the format has changed and we cannot
-          #     tell what is pending, so it blocks rather than assuming there is nothing to block.
+          #   MOBILE_ROLLOUT_ACK="20261121120000"                     one migration
+          #   MOBILE_ROLLOUT_ACK="20261121120000 20261120120000"      several
           #
-          # The revoke test is on CONTENT, not filename: 20261003120000 is still called
+          # Two details that matter:
+          #  1. The table is parsed on "|", not whitespace. `supabase migration list` prints
+          #     "Local | Remote | Time (UTC)", so whitespace tokenisation makes $3 the SEPARATOR,
+          #     never an empty remote field — that version of this guard matched nothing and
+          #     failed OPEN.
+          #  2. It FAILS CLOSED: if no local versions parse, the format has changed and we cannot
+          #     tell what is pending, so it blocks.
+          #
+          # The revoke test reads CONTENT, not the filename: 20261003120000 is still called
           # `sec_uno_hide_piles` but is now the ADDITIVE half of a split and is safe to apply.
-          if [ "${GITHUB_REF_NAME:-}" = "main" ] && [ "${MOBILE_ROLLOUT_ACK:-}" != "1" ]; then
+          if [ "${GITHUB_REF_NAME:-}" = "main" ]; then
             listing=$(supabase migration list --linked 2>/dev/null || true)
             local_total=$(printf '%s\n' "$listing" | awk -F'|' '{ l=$1; gsub(/[^0-9]/,"",l); if (length(l)==14) print l }' | wc -l | tr -d ' ')
             if [ "$local_total" = "0" ]; then
@@ -222,26 +236,28 @@ jobs:
               exit 1
             fi
             pending=$(printf '%s\n' "$listing" | awk -F'|' '{ l=$1; r=$2; gsub(/[^0-9]/,"",l); gsub(/[^0-9]/,"",r); if (length(l)==14 && length(r)==0) print l }')
-            blocked=""
+            unacked=""
             for version in $pending; do
               for file in supabase/migrations/"$version"_*.sql; do
                 [ -f "$file" ] || continue
-                if sed 's/--.*//' "$file" | grep -qiE '\brevoke\b'; then
-                  blocked="$blocked  $file\n"
-                fi
+                sed 's/--.*//' "$file" | grep -qiE '\brevoke\b' || continue
+                # acknowledged only if this exact version is listed
+                case " ${MOBILE_ROLLOUT_ACK:-} " in
+                  *" $version "*) echo "Revoke guard: $file acknowledged by MOBILE_ROLLOUT_ACK." ;;
+                  *) unacked="$unacked  $file (version $version)\n" ;;
+                esac
               done
             done
-            if [ -n "$blocked" ]; then
-              echo "::error::Refusing to apply REVOKE migrations to PRODUCTION:"
-              printf "%b" "$blocked"
+            if [ -n "$unacked" ]; then
+              echo "::error::Refusing to apply unacknowledged REVOKE migrations to PRODUCTION:"
+              printf "%b" "$unacked"
               echo "These revoke columns installed builds still request; PostgREST fails the whole query"
               echo "with 42501 and OTA cannot rescue an installed build."
               echo "Ship a compatible mobile build, let old installs drain, then set the repository"
-              echo "variable MOBILE_ROLLOUT_ACK=1 and re-run. Unset it afterwards so the next revoke"
-              echo "is gated too."
+              echo "variable MOBILE_ROLLOUT_ACK to the exact version(s) above, space-separated."
               exit 1
             fi
-            echo "Revoke guard: $local_total migrations known, no pending revokes."
+            echo "Revoke guard: $local_total migrations known, no unacknowledged pending revokes."
           fi
 
           supabase db push --include-all
