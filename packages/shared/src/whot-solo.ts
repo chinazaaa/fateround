@@ -182,10 +182,13 @@ function drawWithRefill(
   return { drawn, pile: p, discard: d, reshuffled }
 }
 
+// Solo builds its own session object, so the piles are always present here — the `?? []` is for
+// the shared WhotSession type, where they are optional because multiplayer revokes them from anon.
+/** The discard pile with the current top card folded back in, for refill maths. */
 function discardTop(session: WhotSession): WhotCard[] {
   const prev = session.top_card
-  if (!prev) return session.discard_pile
-  return [...session.discard_pile, prev]
+  if (!prev) return session.discard_pile ?? []
+  return [...(session.discard_pile ?? []), prev]
 }
 
 function checkWin(state: SoloWhotState): SoloWhotState {
@@ -271,7 +274,7 @@ export function soloPlay(
     }
   }
 
-  let drawPile = state.session.draw_pile
+  let drawPile = state.session.draw_pile ?? []
   let discardPile = discardTop(state.session)
   let marketNote: string | null = null
   if (card.number === 14) {
@@ -333,7 +336,8 @@ export function soloPlay(
   return { state: next }
 }
 
-export function soloDraw(state: SoloWhotState, playerIdx: 0 | 1, rng: () => number): SoloWhotStepResult {
+export /** Draw for the solo player, refilling from the discard pile when the market runs dry. */
+function soloDraw(state: SoloWhotState, playerIdx: 0 | 1, rng: () => number): SoloWhotStepResult {
   const gate = requirePlayingPhase(state, playerIdx)
   if (gate) return { state, error: gate }
 
@@ -341,7 +345,7 @@ export function soloDraw(state: SoloWhotState, playerIdx: 0 | 1, rng: () => numb
   const penalty = pickTwo > 0 ? pickTwo : pickFive > 0 ? pickFive : 0
   const count = penalty > 0 ? penalty : 1
 
-  const drawRes = drawWithRefill(state.session.draw_pile, state.session.discard_pile, count, rng)
+  const drawRes = drawWithRefill(state.session.draw_pile ?? [], state.session.discard_pile ?? [], count, rng)
   const hand = playerHand(state, playerIdx)
 
   if (drawRes.drawn.length === 0) {

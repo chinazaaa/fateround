@@ -42,6 +42,7 @@ node scripts/playtest/redaction-playtest.mjs      # all 7 games: create → join
 node scripts/playtest/word-holder-playtest.mjs    # describe_it / quick_draw: word only to its holder
 node scripts/playtest/two-truths-playtest.mjs     # submit → start → guess → reveal
 node scripts/playtest/codewords-playtest.mjs      # roles → start → key only to spymasters
+node scripts/playtest/late-join-playtest.mjs      # share-link joiner: own hand back, others counts-only
 ```
 
 Each script exits non-zero if any assertion fails, so they can be chained with `&&` or used in CI.

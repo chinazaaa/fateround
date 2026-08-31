@@ -6,6 +6,13 @@ on:
   pull_request:
     branches: [main, dev]
 
+# No job in this workflow writes to the repository — nothing comments, pushes or releases — so
+# the whole file runs read-only. Without this block GitHub applies the repository default, which
+# zizmor flags as excessive-permissions: a compromised action step would inherit whatever that
+# default happens to be. Jobs that need less still narrow it further themselves.
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -20,7 +27,7 @@ jobs:
     # one's schema_migrations insert (duplicate pkey), skipping every migration
     # queued behind it.
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Ensure migration versions are unique
         run: |
           dups="$(ls -1 supabase/migrations/*.sql 2>/dev/null \
@@ -43,9 +50,9 @@ jobs:
     name: Lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24'
           cache: 'pnpm'
@@ -56,9 +63,9 @@ jobs:
     name: Format
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24'
           cache: 'pnpm'
@@ -69,9 +76,9 @@ jobs:
     name: Type Check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24'
           cache: 'pnpm'
@@ -82,7 +89,7 @@ jobs:
     name: Type Check (mobile)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       # The Expo app has its OWN package.json + package-lock.json and is not part of the
       # pnpm workspace install, so this job installs it with npm rather than reusing the
       # web job's node_modules. It reaches back into packages/shared via a file: dep.
@@ -92,7 +99,7 @@ jobs:
       # for two shipped games), `formatDayLabel` was imported but never defined, and the
       # Whot / Crazy Eights session types had lost the `updated_at` their realtime
       # delta fast-path orders on. All invisible without this gate.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24'
           cache: 'npm'
@@ -106,11 +113,11 @@ jobs:
       contents: read
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24'
           cache: 'pnpm'
@@ -125,9 +132,9 @@ jobs:
       NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
       NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-key-for-build-only
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24'
           cache: 'pnpm'
@@ -151,11 +158,15 @@ jobs:
     env:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      # Opt-in acknowledgement that a compatible mobile build has shipped. A repository VARIABLE,
+      # deliberately not a secret: it is an operational flag, not a credential, and it should be
+      # visible to anyone auditing why a revoke was allowed through.
+      MOBILE_ROLLOUT_ACK: ${{ vars.MOBILE_ROLLOUT_ACK }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-      - uses: supabase/setup-cli@v1
+      - uses: supabase/setup-cli@ab058987d8d6c725971f6cf9d0b5c98467e30bd1 # v1 branch head
         with:
           version: 2.108.0
       # Apply migrations to the environment's own Supabase project, using that
@@ -189,6 +200,66 @@ jobs:
           # skipping every migration behind it. Unique versions are enforced by
           # the migrations-check job, so a non-zero exit here is a genuine problem
           # a human must look at, not something to paper over.
+          # ── Production revoke guard ───────────────────────────────────────────
+          # This job applies migrations to PRODUCTION on a push to main and needs only
+          # [build, migrations-check]. The Mobile Rollout Gate is a SEPARATE workflow on
+          # pull_request -> main, so it constrains this only if branch protection requires it —
+          # and `main` has no protection at all. Without this guard a column revoke reaches
+          # production while installed builds still select that column, PostgREST fails the WHOLE
+          # request with 42501, and OTA cannot rescue an installed binary.
+          #
+          # The acknowledgement names the VERSIONS it authorises — it is not a boolean. A blanket
+          # "1" would persist as a repository variable long after the release it was set for, and
+          # the NEXT revoke would then reach production with no rollout behind it. Requiring the
+          # exact version means a stale value authorises only the migration it was set for, and
+          # forgetting to clear it is inert rather than dangerous.
+          #
+          #   MOBILE_ROLLOUT_ACK="20261121120000"                     one migration
+          #   MOBILE_ROLLOUT_ACK="20261121120000 20261120120000"      several
+          #
+          # Two details that matter:
+          #  1. The table is parsed on "|", not whitespace. `supabase migration list` prints
+          #     "Local | Remote | Time (UTC)", so whitespace tokenisation makes $3 the SEPARATOR,
+          #     never an empty remote field — that version of this guard matched nothing and
+          #     failed OPEN.
+          #  2. It FAILS CLOSED: if no local versions parse, the format has changed and we cannot
+          #     tell what is pending, so it blocks.
+          #
+          # The revoke test reads CONTENT, not the filename: 20261003120000 is still called
+          # `sec_uno_hide_piles` but is now the ADDITIVE half of a split and is safe to apply.
+          if [ "${GITHUB_REF_NAME:-}" = "main" ]; then
+            listing=$(supabase migration list --linked 2>/dev/null || true)
+            local_total=$(printf '%s\n' "$listing" | awk -F'|' '{ l=$1; gsub(/[^0-9]/,"",l); if (length(l)==14) print l }' | wc -l | tr -d ' ')
+            if [ "$local_total" = "0" ]; then
+              echo "::error::Could not parse 'supabase migration list' output, so pending revokes cannot be identified."
+              echo "Failing closed rather than pushing to production blind. Check the CLI output format."
+              exit 1
+            fi
+            pending=$(printf '%s\n' "$listing" | awk -F'|' '{ l=$1; r=$2; gsub(/[^0-9]/,"",l); gsub(/[^0-9]/,"",r); if (length(l)==14 && length(r)==0) print l }')
+            unacked=""
+            for version in $pending; do
+              for file in supabase/migrations/"$version"_*.sql; do
+                [ -f "$file" ] || continue
+                sed 's/--.*//' "$file" | grep -qiE '\brevoke\b' || continue
+                # acknowledged only if this exact version is listed
+                case " ${MOBILE_ROLLOUT_ACK:-} " in
+                  *" $version "*) echo "Revoke guard: $file acknowledged by MOBILE_ROLLOUT_ACK." ;;
+                  *) unacked="$unacked  $file (version $version)\n" ;;
+                esac
+              done
+            done
+            if [ -n "$unacked" ]; then
+              echo "::error::Refusing to apply unacknowledged REVOKE migrations to PRODUCTION:"
+              printf "%b" "$unacked"
+              echo "These revoke columns installed builds still request; PostgREST fails the whole query"
+              echo "with 42501 and OTA cannot rescue an installed build."
+              echo "Ship a compatible mobile build, let old installs drain, then set the repository"
+              echo "variable MOBILE_ROLLOUT_ACK to the exact version(s) above, space-separated."
+              exit 1
+            fi
+            echo "Revoke guard: $local_total migrations known, no unacknowledged pending revokes."
+          fi
+
           supabase db push --include-all
 
   rls-boundaries:
@@ -209,11 +280,11 @@ jobs:
       NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24'
           cache: 'pnpm'
@@ -254,9 +325,9 @@ jobs:
     name: Security Scan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24'
           cache: 'pnpm'

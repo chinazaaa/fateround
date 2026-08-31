@@ -190,8 +190,8 @@ above: `20260815115000_crazy8_pile_counts.sql` **adds** the generated `draw_coun
 `discard_count` — all the clients ever used (`isDrawPileDepleted`, the play surface's draw count)
 — and is safe against every client version, while `20260815120000_sec_crazy8_hide_piles.sql`
 **revokes** the two piles and must wait for a compatible mobile build. The revoke raises rather
-than proceeds if the counts are absent. **Whot and UNO still ship their piles — same leak, still
-open.**
+than proceeds if the counts are absent. **Whot and UNO are now closed too** (UNO `20261003120000`, Whot `20261120115000` +
+`20261120120000`) — every card game's deck is now hidden from the anon key.
 
 ### Redacted state must never be read as real state (the recurring bug)
 
@@ -231,7 +231,8 @@ Two rules this keeps tripping over, both encoded in the code:
 - Anon now holds **column-level** SELECT on these session tables, so a NEW column must also be
   granted (re-run the migration's do-block) or client reads of it error. Fails closed.
 
-Whot's `whot_sessions` has the identical leak and is left to its own PR.
+Whot's `whot_sessions` had the identical leak; closed by `20261120115000_whot_pile_counts.sql`
++ `20261120120000_sec_whot_hide_piles.sql`, the same additive-then-revoke split.
 
 ## Phase 8 — per-turn secret state (the word / the key card)
 
